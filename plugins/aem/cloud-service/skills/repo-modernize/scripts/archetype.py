@@ -1,25 +1,19 @@
 #!/usr/bin/env python3
 """Archetype / AEM SDK version resolution (Maven Central) + the skill's pins.
 
-The skill scaffolds from a BUNDLED, PINNED copy of the AEM project archetype
-templates (`assets/archetype-pom-templates/`, currently archetype-56) and bakes a
-PINNED AEM SDK API version into the reactor. Pinning keeps every run deterministic
-and offline — a re-runnable, reviewable git diff — and mirrors how the CAM tool
-itself works (it bakes `template_archetype_56` into its jar).
+The skill scaffolds from BUNDLED module templates (`assets/archetype-pom-templates/`),
+generated from Adobe's AEM project archetype by `refresh_archetype.py` (which also
+rewrites the pins below; a maintainer runs it when a new archetype ships), and bakes
+a PINNED AEM SDK API version into the reactor. Pinning keeps every run deterministic and
+offline -- a re-runnable, reviewable git diff.
 
-This module adds the "always be on the latest" capability the pinning otherwise
-lacks, in two safe tiers:
+Two ways to be newer than the pins, both opt-in at apply time:
 
-  1. **SDK API version** — a single version string in the reactor's
-     `<dependencyManagement>` / `<aem.sdk.api>` property. Bumping it to the newest
-     Cloud SDK is low-risk (no structural change), so `refactor_poms` can opt into
-     the latest via `--sdk-version latest` (default stays pinned for determinism).
-
-  2. **Archetype template STRUCTURE** — the module poms/plugins the skill's
-     deterministic string-surgery is calibrated against. A newer archetype can
-     rename properties / reshape plugins, which could silently break the transform,
-     so the structure is NOT swapped at runtime. `refresh_archetype.py` regenerates
-     it under a test gate instead (the CAM `archetype-auto-update` model).
+  1. **SDK API version** -- `--sdk-version latest` writes the newest `aem-sdk-api` into
+     the reactor (a version string; no structural change).
+  2. **Archetype** -- `--archetype latest|<version>|<g:a:v>` generates the templates
+     from that archetype with Maven (`archetype_templates.py`) and checks they fit the
+     transforms before anything changes.
 
 Every network call here is best-effort and offline-safe: on timeout / no network /
 any error it returns `None`, never raises — callers fall back to the pin.
@@ -31,8 +25,8 @@ import urllib.request
 from typing import Optional
 
 # --- The skill's current pins (single source of truth; imported elsewhere) ------
-PINNED_ARCHETYPE = "56"
-PINNED_SDK_API = "2026.4.25520.20260417T163942Z-260300"
+PINNED_ARCHETYPE = "58"
+PINNED_SDK_API = "2026.10.29023.20261017T134015Z-260900"
 PINNED_AEMANALYSER = "1.6.6"
 
 _MC = "https://repo1.maven.org/maven2"
@@ -101,7 +95,7 @@ def staleness_note(timeout: float = 4.0) -> Optional[str]:
     if latest_sdk and latest_sdk != PINNED_SDK_API:
         advice.append("add --sdk-version latest to --apply to build against the newest SDK")
     if latest_arch and latest_arch != PINNED_ARCHETYPE:
-        advice.append(f"the module templates stay on archetype-{PINNED_ARCHETYPE} "
-                      "until the skill is updated")
+        advice.append(f"add --archetype latest to --apply to use archetype-{latest_arch} now "
+                      "(needs Maven); the bundled templates follow in a skill update")
     text = "; ".join(advice)
     return "newer available -> " + "; ".join(parts) + ".  " + text[:1].upper() + text[1:] + "."

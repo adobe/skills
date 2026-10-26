@@ -26,6 +26,7 @@ meant to touch, formatting elsewhere included.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -523,20 +524,18 @@ class RefactorContentPomOnFixtureTests(unittest.TestCase):
             self.assertNotRegex(out, r"\{\{[a-zA-Z]+\}\}",
                                  f"{module_dir}: unsubstituted template placeholder survived")
 
-    def test_ui_content_inner_dependency_version_is_substituted(self):
+    def test_ui_content_inner_dependency_version_resolves_to_the_project(self):
         out, _ = self._refactor("ui.content", "uiContent")
         self.assertNotIn("{{version}}", out)
-        # The filevault plugin's own <dependencies><dependency> block on
-        # ui.apps, specifically -- <version>1.0-SNAPSHOT</version> also
-        # occurs elsewhere in this same file (e.g. the module's own
-        # top-level <version>), so this pins the INNER block precisely by
-        # anchoring on its neighboring <artifactId>, rather than a bare
-        # assertIn that a coincidental match elsewhere could satisfy even
-        # if this specific substitution were broken.
+        # The filevault plugin's own <dependencies><dependency> block on ui.apps,
+        # anchored on its <artifactId> so a match elsewhere can't satisfy it. The
+        # archetype writes ${project.version} there; the module's own version is aligned
+        # with the reactor's (_ensure_module_version_matches_reactor), so it resolves
+        # to the project version, like a literal would.
         start = out.index("<artifactId>aem-guides-wknd.ui.apps</artifactId>",
                            out.index("filevault-package-maven-plugin"))
         end = out.index("</dependency>", start)
-        self.assertIn("<version>1.0-SNAPSHOT</version>", out[start:end])
+        self.assertRegex(out[start:end], r"<version>(\$\{project\.version\}|1\.0-SNAPSHOT)</version>")
 
     def test_ui_content_legacy_install_profiles_removed(self):
         out, _ = self._refactor("ui.content", "uiContent")
@@ -546,6 +545,8 @@ class RefactorContentPomOnFixtureTests(unittest.TestCase):
     def test_ui_content_real_acl_authoring_triggers_merge_preserve(self):
         out, findings = self._refactor("ui.content", "uiContent")
         self.assertIn("<accessControlHandling>merge_preserve</accessControlHandling>", out)
+        # the archetype's ui.content template sets `merge`; it is replaced, never duplicated
+        self.assertEqual(out.count("<accessControlHandling>"), 1)
         self.assertEqual(len(findings), 1, f"expected exactly one finding, got: {findings}")
         f = findings[0]
         self.assertIsInstance(f, C.Finding)
@@ -762,6 +763,26 @@ class RefactorContentPomCraftedTests(unittest.TestCase):
         self.assertIn("<extensions>true</extensions>", text)
         self.assertIn("filevault-package-maven-plugin", text)
 
+    def test_ui_content_without_acl_drops_the_templates_access_control_handling(self):
+        """The archetype's ui.content template sets acHandling=merge for its own sample
+        ACLs; a package without one would fail FileVault validation, so it is removed."""
+        p = self._write("ui.content", f"""<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="{NS}">
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>example-app.ui.content</artifactId>
+  <packaging>content-package</packaging>
+</project>
+""")
+        dam = p.parent / "src/main/content/jcr_root/content/dam"
+        dam.mkdir(parents=True)
+        (dam / ".content.xml").write_text(AclDetection.BARE)
+        fx = p.parent / "src/main/content/META-INF/vault/filter.xml"
+        fx.parent.mkdir(parents=True)
+        fx.write_text('<workspaceFilter version="1.0"><filter root="/content/dam/example"/></workspaceFilter>')
+        findings = R.refactor_content_pom(p, self.config, "uiContent")
+        self.assertNotIn("accessControlHandling", p.read_text())
+        self.assertEqual(findings, [])
+
     def test_no_acl_content_means_no_finding_and_no_access_control_handling(self):
         p = self._write("ui.apps", f"""<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="{NS}">
@@ -785,6 +806,103 @@ class RefactorContentPomCraftedTests(unittest.TestCase):
         self.assertEqual(findings, [])
         self.assertIn("<extensions>true</extensions>", text)
         self.assertIn("filevault-package-maven-plugin", text)
+
+
+class AclDetection(unittest.TestCase):
+    """`_has_acl_nodes`: only an access control list the package installs counts."""
+    BARE = ('<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:rep="internal" '
+            'jcr:primaryType="sling:Folder"><rep:policy/></jcr:root>')
+    ACL = ('<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:rep="internal" '
+           'jcr:primaryType="rep:ACL"/>')
+
+    def _module(self, files, roots=None):
+        module = Path(tempfile.mkdtemp()) / "ui.content"
+        jcr = module / "src/main/content/jcr_root"
+        for rel, text in files.items():
+            (jcr / rel).parent.mkdir(parents=True, exist_ok=True)
+            (jcr / rel).write_text(text)
+        if roots is not None:
+            fx = module / "src/main/content/META-INF/vault/filter.xml"
+            fx.parent.mkdir(parents=True, exist_ok=True)
+            fx.write_text('<workspaceFilter version="1.0">'
+                          + "".join(f'<filter root="{r}"/>' for r in roots) + "</workspaceFilter>")
+        return module / "pom.xml"
+
+    def test_bare_policy_reference_outside_the_filter(self):
+        """The public aem-guides-wknd-legacy sample: /content/dam/.content.xml lists a
+        <rep:policy/> child, but the package only covers /content/dam/wknd."""
+        self.assertFalse(R._has_acl_nodes(self._module(
+            {"content/dam/.content.xml": self.BARE}, ["/content/dam/wknd"])))
+
+    def test_bare_policy_reference_without_its_sidecar(self):
+        self.assertFalse(R._has_acl_nodes(self._module(
+            {"content/dam/wknd/.content.xml": self.BARE}, ["/content/dam/wknd"])))
+
+    def test_sidecar_inside_and_outside_the_filter(self):
+        self.assertTrue(R._has_acl_nodes(self._module(
+            {"content/dam/wknd/_rep_policy.xml": self.ACL}, ["/content/dam/wknd"])))
+        self.assertTrue(R._has_acl_nodes(self._module(
+            {"content/dam/wknd/_rep_policy.xml": self.ACL}, ["/content/dam/wknd/rep:policy"])))
+        self.assertFalse(R._has_acl_nodes(self._module(
+            {"content/_rep_policy.xml": self.ACL}, ["/content/dam/wknd"])))
+
+    def test_inline_acl_inside_the_filter(self):
+        inline = self.BARE.replace("<rep:policy/>", '<rep:policy jcr:primaryType="rep:ACL"/>')
+        self.assertTrue(R._has_acl_nodes(self._module(
+            {"content/dam/wknd/.content.xml": inline}, ["/content/dam/wknd"])))
+
+    def test_without_a_filter_every_path_counts(self):
+        self.assertTrue(R._has_acl_nodes(self._module({"content/_rep_policy.xml": self.ACL})))
+
+    def test_template_access_control_handling_removed_without_an_acl(self):
+        cfg = ("<configuration>\n    <packageType>content</packageType>\n"
+               "    <accessControlHandling>merge</accessControlHandling>\n</configuration>")
+        self.assertEqual(R._drop_access_control_handling(cfg),
+                         "<configuration>\n    <packageType>content</packageType>\n</configuration>")
+
+
+class TemplateConfigurationPlaceholders(unittest.TestCase):
+    def test_app_id_and_title_in_a_custom_template_are_filled_in(self):
+        """A customer's own archetype (--archetype) may use the app id/title in the FileVault
+        configuration copied into the project's ui.content; none may stay a literal {{...}}."""
+        custom = Path(tempfile.mkdtemp()) / "templates"
+        shutil.copytree(TEMPLATES_DIR, custom)
+        pom = custom / "ui.content/pom.xml"
+        text = pom.read_text()
+        at = text.index("<configuration>", text.index("filevault-package-maven-plugin")) + len("<configuration>")
+        pom.write_text(text[:at] + "<validRoots>/content/{{appId}},/conf/{{appId}}</validRoots>"
+                       "<name>{{appTitle}} content</name>" + text[at:])
+        config = {"groupId": "g", "artifactId": "a", "version": "1", "appId": "wknd", "appTitle": "WKND"}
+        saved = R._templates_dir_override
+        R._templates_dir_override = str(custom)
+        try:
+            out = R._template_plugin_configuration_xml("uiContent", config)
+        finally:
+            R._templates_dir_override = saved
+            shutil.rmtree(custom.parent, ignore_errors=True)
+        self.assertIn("<validRoots>/content/wknd,/conf/wknd</validRoots>", out)
+        self.assertIn("<name>WKND content</name>", out)
+        self.assertNotIn("{{", out)
+
+
+class AccessControlHandlingInjection(unittest.TestCase):
+    """`_inject_access_control_handling` on template `<configuration>` blocks."""
+
+    def test_replaces_a_value_the_template_already_sets(self):
+        cfg = ("<configuration>\n    <packageType>content</packageType>\n"
+               "    <accessControlHandling>merge</accessControlHandling>\n</configuration>")
+        out = R._inject_access_control_handling(cfg)
+        self.assertEqual(out.count("<accessControlHandling>"), 1)
+        self.assertIn("    <accessControlHandling>merge_preserve</accessControlHandling>\n", out)
+
+    def test_adds_it_at_the_blocks_own_indentation(self):
+        cfg = ("<configuration>\n                    <packageType>content</packageType>\n"
+               "                </configuration>")
+        out = R._inject_access_control_handling(cfg)
+        self.assertTrue(out.endswith(
+            "                    <packageType>content</packageType>\n"
+            "                    <accessControlHandling>merge_preserve</accessControlHandling>\n"
+            "                </configuration>"), out)
 
 
 class RefactorAllPomOnFixtureTests(unittest.TestCase):
@@ -1124,8 +1242,7 @@ class RefactorReactorPomOnFixtureTests(unittest.TestCase):
     def test_aem_sdk_api_property_added_with_template_value(self):
         R.refactor_reactor_pom(self.pom, self.config, has_oak_index=True)
         text = self.pom.read_text()
-        self.assertIn(
-            "<aem.sdk.api>2026.4.25520.20260417T163942Z-260300</aem.sdk.api>", text)
+        self.assertIn(f"<aem.sdk.api>{R._AEM_SDK_API_VERSION}</aem.sdk.api>", text)
 
     def test_required_modules_added_existing_preserved_no_dups(self):
         R.refactor_reactor_pom(self.pom, self.config, has_oak_index=True)
@@ -1257,8 +1374,7 @@ class RefactorReactorPomCraftedTests(unittest.TestCase):
         p = self._write_reactor()
         R.refactor_reactor_pom(p, self.config, has_oak_index=False)
         text = p.read_text()
-        self.assertIn(
-            "<aem.sdk.api>2026.4.25520.20260417T163942Z-260300</aem.sdk.api>", text)
+        self.assertIn(f"<aem.sdk.api>{R._AEM_SDK_API_VERSION}</aem.sdk.api>", text)
 
     def test_aem_sdk_api_property_not_duplicated_if_already_present(self):
         xml = self._reactor_xml().replace(
@@ -1349,7 +1465,7 @@ class RefactorReactorPomCraftedTests(unittest.TestCase):
         # the reactor's own <properties> gained the version property that
         # governs the plugin it just added, since it wasn't there yet
         reactor_text = p.read_text()
-        self.assertIn("<aemanalyser.version>1.6.6</aemanalyser.version>", reactor_text)
+        self.assertIn(f"<aemanalyser.version>{R._AEMANALYSER_VERSION}</aemanalyser.version>", reactor_text)
 
     def test_analyser_is_noop_when_already_present(self):
         p = self._write_reactor()
@@ -1452,6 +1568,33 @@ class MainCliOrchestrationTests(unittest.TestCase):
 
     def _run_main(self):
         return R.main([str(self.proj), "--config", str(self.cfg_path)])
+
+    def test_custom_templates_dir_supplies_configuration_and_versions(self):
+        """`--templates` (templates generated from the customer's own archetype): the
+        content modules get that template's FileVault configuration and the reactor gets
+        its plugin versions, for this run only."""
+        custom = Path(tempfile.mkdtemp()) / "templates"
+        shutil.copytree(TEMPLATES_DIR, custom)
+        apps = custom / "ui.apps/pom.xml"
+        text = apps.read_text()
+        cfg_at = text.index("<configuration>", text.index("filevault-package-maven-plugin"))
+        cfg_at += len("<configuration>")
+        apps.write_text(text[:cfg_at] + "<failOnEmptyFilter>true</failOnEmptyFilter>" + text[cfg_at:])
+        reactor = custom / "pom.xml"
+        reactor.write_text(re.sub(r"<aemanalyser\.version>[^<]*</aemanalyser\.version>",
+                                  "<aemanalyser.version>9.9.9-custom</aemanalyser.version>",
+                                  reactor.read_text(), count=1))
+        before = (R._templates_dir_override, R._AEMANALYSER_VERSION)
+        try:
+            self.assertEqual(R.main([str(self.proj), "--config", str(self.cfg_path),
+                                     "--templates", str(custom)]), 0)
+        finally:
+            shutil.rmtree(custom.parent, ignore_errors=True)
+        self.assertIn("<failOnEmptyFilter>true</failOnEmptyFilter>",
+                      (self.proj / "ui.apps/pom.xml").read_text())
+        self.assertIn("<aemanalyser.version>9.9.9-custom</aemanalyser.version>",
+                      (self.proj / "pom.xml").read_text())
+        self.assertEqual((R._templates_dir_override, R._AEMANALYSER_VERSION), before)
 
     def test_main_returns_zero(self):
         self.assertEqual(self._run_main(), 0)

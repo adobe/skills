@@ -15,7 +15,7 @@ a distinct real customer AEM codebase.
 | Project D | SINGLE | large, partly Cloud-restructured; ~3000 files, 26 config folders |
 
 Method: run the skill, diff its output against the same project's actual CAM
-`refactoring-job` output (report + refactored code). Automated suite: **353 tests**, run
+`refactoring-job` output (report + refactored code). Automated suite: **416 tests**, run
 against an in-repo copy of the public `aem-guides-wknd-legacy` sample
 (`plugins/aem/cloud-service/test/repo-modernize/run-tests.sh`).
 
@@ -80,6 +80,10 @@ LOW-priority findings; `org.apache.*` 3rd-party blind spot; vendored local-`repo
 - **Java level and plugin versions.** A legacy compiler level below 11 is raised to 11
   (`RM-908`), and the FileVault, content-package and analyser plugins get managed versions;
   CAM gets both from the archetype reactor it regenerates.
+- **Archetype version.** The skill's templates are generated from AEM Project Archetype 58
+  (CAM's are archetype 56, reformatted by CAM), so the module POMs differ in formatting,
+  `${project.version}` references and archetype 58's Oak index settings. Filters, embeds and
+  packageType (the parity columns above) are unchanged; re-checked on the public WKND sample.
 
 ## Why not wrap Adobe's public npm Repository Modernizer?
 The `migration` skill wraps Adobe's npm Dispatcher converter, so the same was tried here:

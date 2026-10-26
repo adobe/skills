@@ -43,6 +43,9 @@ def _write_all(root, embeds):
         '<packageType>container</packageType>'
         f'<embeddeds>{emb}</embeddeds>'
         '</configuration></plugin></plugins></build></project>')
+    fx = root / "all/src/main/content/META-INF/vault/filter.xml"
+    fx.parent.mkdir(parents=True, exist_ok=True)
+    fx.write_text('<workspaceFilter version="1.0"><filter root="/apps/acme-packages"/></workspaceFilter>')
 
 
 def _build_project():

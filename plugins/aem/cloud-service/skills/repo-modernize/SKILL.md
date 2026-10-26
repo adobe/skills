@@ -2,7 +2,7 @@
 name: repo-modernize
 description: "[BETA] Restructures a legacy AEM (6.x, AMS, on-prem) Maven project into the AEM as a Cloud Service package layout (ui.apps, ui.apps.structure, ui.config, ui.content, all) as a reviewable change on a git branch: the outcome of Adobe's CAM Repository Modernizer, produced locally. Splits immutable code (/apps, /libs, /oak:index) from mutable content, converts OSGi configs to typed .cfg.json, swaps uber-jar for aem-sdk-api, embeds bundles in all, and reports findings by priority, for single, nested, multi-project and monolithic layouts. Use for \"restructure my project for AEM as a Cloud Service\", \"split my apps and content packages\", or a project not yet in the Cloud Service layout. This skill is in beta. Verify all outputs before applying them to production projects."
 license: Apache-2.0
-compatibility: Requires git and Python 3.9+ with lxml (pip install -r requirements.txt). The optional build check needs Maven and JDK 11+.
+compatibility: Requires git and Python 3.9+ with lxml (pip install -r requirements.txt). Maven and JDK 11+ are needed only for the optional build check and for --archetype.
 metadata:
   status: beta
   version: "1.0"
@@ -27,10 +27,10 @@ Not for: Dispatcher configs (`migration`, Dispatcher branch), Java API fixes (`c
 
 ## Prerequisites
 - **git**, and **Python 3.9+ with `lxml`**. If `python3` lacks lxml, create a virtual environment in this skill's folder (never in the user's project): `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`, then use `.venv/bin/python` wherever `python3` appears below. The apply step checks both and stops with instructions if anything is missing.
-- **Optional build check:** Maven and JDK 11+.
-- A **clean working tree on a new branch**: `git checkout -b cloud-modernize`. If this skill is installed inside the project (e.g. `.agents/skills/`), that folder and `skills-lock.json` are ignored.
+- **Optional:** Maven and JDK 11+, for the build check (`--mvn`) and for `--archetype`.
+- A **clean working tree** (the user commits or stashes their own changes first). If this skill is installed inside the project (e.g. `.agents/skills/`), that folder and `skills-lock.json` are ignored.
 
-Run the scripts from this skill's folder (`scripts/...`), passing the project root. The project is changed in place; if the user wants a separate copy, run on a worktree instead: `git worktree add ../<project>-cloud -b cloud-modernize`.
+Run the scripts from this skill's folder (`scripts/...`), passing the project root. The project is changed in place; if the user wants a separate copy, run on a worktree instead: `git worktree add ../<project>-cloud -b repo-modernize/<YYYY-MM-DD>-<short-sha>`.
 
 ## Workflow
 
@@ -45,14 +45,17 @@ For each unit, show the shape, `appId`, bundles, content packages, target module
 - **`targetModules`**: rename any module that would collide with an existing directory.
 - **`bundles` / `testBundles`**: test bundles are not embedded in `all`.
 - **`contentPackages`**: every legacy content package must be listed.
+- **Archetype**: modules are scaffolded from the bundled AEM archetype templates. If the user has their own archetype (their company's, or a newer Adobe one), ask for its version or `groupId:artifactId:version` and add `--archetype` at apply.
 
 Edit `config.json` ([schema](references/config-schema.md)) and get explicit approval before applying.
 
 ### 3. Apply
-`python3 scripts/orchestrate.py <project-root> --apply --git --verify [--mvn] [--sdk-version latest]`
+After the user approves the plan, create the branch for the changes, named like `code-assessment`'s: `git checkout -b repo-modernize/<YYYY-MM-DD>-<short-sha>` (today's date, the first 7 characters of `HEAD`). Then:
+
+`python3 scripts/orchestrate.py <project-root> --apply --git --verify [--mvn] [--sdk-version latest] [--archetype <spec>]`
 
 Uses each reviewed `config.json` as-is (never re-inspects). Per unit, sub-projects first:
-1. scaffold the missing modules from the bundled archetype templates;
+1. scaffold the missing modules (and `all`'s package filter) from the archetype templates;
 2. split content and filters: `/apps`, `/libs`, `/oak:index` → `ui.apps`; everything else → `ui.content`; repository roots → `ui.apps.structure`;
 3. move OSGi configs to `ui.config/.../apps/<appId>/osgiconfig/<run-mode>/` and convert them to `.cfg.json`, typed exactly as AEM read the legacy file (`{Long}5` → `5`, `{Boolean}true` → `true`; consistent with the `migration` skill's OSGi rules);
 4. refactor POMs: `uber-jar` → `aem-sdk-api`, FileVault packaging, `all` embeds, reactor modules, Java level 11, plugin versions;
@@ -61,15 +64,15 @@ Uses each reviewed `config.json` as-is (never re-inspects). Per unit, sub-projec
 | Exit | Meaning | Next step |
 |---|---|---|
 | 0 | Done; with `--mvn`, either a clean build or a break in a module's **legacy code** (Java compile, Felix SCR plugin, unit tests) | Review; hand legacy code breaks to `code-assessment` |
-| 1 | Structural check failed (violations listed) | Usually a wrong mapping in `config.json`: reset the branch, fix the plan, re-apply |
-| 2 | Prerequisite or plan missing | Follow the printed instructions |
+| 1 | Structural check failed (violations listed) | Usually a wrong mapping in `config.json`: reset the branch (`git reset --hard`, then `git clean -fd -- <module folders apply created>`; the plan in `.modernize/` is kept), fix the plan, re-apply |
+| 2 | Prerequisite or plan missing, or the `--archetype` templates can't be used | Follow the printed instructions; nothing was changed |
 | 3 | aem-analyser ERROR | A real Cloud Service problem; investigate before continuing |
 | 4 | A restructured content module's POM can't be read by Maven | Report it as a bug with the printed lines |
 
 ### 4. Review the result with the user
 - `git status` / `git diff --stat`: new modules, moved files (history kept), changed POMs.
 - Spot-check that `ui.apps`' filter holds only immutable roots, and compare a few `.cfg.json` files with their sources (in the diff).
-- Work through the findings below, then commit when the user agrees. `.modernize/` holds the plan and reports; leave it out of the commit unless the user wants the record. Never commit an in-project install of this skill or `skills-lock.json`.
+- Work through the findings below, then commit when the user agrees. `.modernize/` (the plan and reports) ignores itself, so it never lands in a commit; `git add -f .modernize` keeps a record if the user wants one. Never commit an in-project install of this skill or `skills-lock.json`.
 
 ## Findings — what to do with each
 Findings are in each unit's `.modernize/findings.json`. Present them by priority, then:
@@ -81,7 +84,7 @@ Findings are in each unit's `.modernize/findings.json`. Present them by priority
 | RM-108 HIGH | Run-mode folder Cloud Service ignores (e.g. `config.qa`) | Moved unchanged. Hand to the `migration` skill's OSGi branch (unsupported run modes): the user decides which Cloud run mode each maps to. Never merge folders silently — conflicting values would be lost. |
 | RM-901 NORMAL | Repoinit config moved without conversion | Nothing required. |
 | RM-902 HIGH | Bundle uses Felix SCR / `maven-bundle-plugin` | Hand to `code-assessment` (SCR → OSGi DS annotations, `bnd-maven-plugin`). |
-| RM-903 NORMAL | ACLs in a content package; `accessControlHandling=merge_preserve` set | Confirm with the user. |
+| RM-903 NORMAL | The content package installs ACLs; `accessControlHandling=merge_preserve` set (without ACLs none is set: FileVault rejects one) | Confirm with the user. |
 | RM-904 NORMAL | Existing third-party embed kept in `all` | Confirm it is still needed. |
 | RM-905 HIGH | Oak index defined but not covered by any filter root | If the user wants it deployed, add `<filter root="/oak:index/<name>"/>` to `ui.apps`' filter and review index naming; the `migration` skill's Oak index branch converts legacy index definitions. [manual-followups §7](references/manual-followups.md) |
 | RM-906 NORMAL / HIGH | Same OSGi PID in several app folders | NORMAL: identical copies, deduplicated. HIGH: conflicting copies — the second stayed in `ui.apps`; ask the user which values apply, then move it. |
@@ -89,7 +92,10 @@ Findings are in each unit's `.modernize/findings.json`. Present them by priority
 | RM-908 NORMAL | Java compiler level raised to 11 | Code that no longer compiles goes to `code-assessment`. |
 
 ## Archetype and AEM SDK version
-No archetype is downloaded or generated: modules are scaffolded from bundled, pinned AEM archetype templates, so every run is deterministic and works offline. The plan step prints a notice when Maven Central has a newer archetype or SDK. `--sdk-version latest` writes the newest `aem-sdk-api` (falls back to the pinned version when offline). Newer archetype templates come with a skill update; maintainers refresh the pins with `scripts/refresh_archetype.py`.
+By default, modules are scaffolded from bundled templates generated from Adobe's AEM Project Archetype, with a pinned AEM SDK (both versions are in `scripts/archetype.py`): no download, deterministic, works offline. The plan step prints a notice when Maven Central has a newer archetype or SDK.
+- `--sdk-version latest` writes the newest `aem-sdk-api` (falls back to the pinned version when offline).
+- `--archetype <spec>` generates the templates from another archetype with Maven: `latest`, a version of Adobe's archetype (e.g. `58`), or `groupId:artifactId:version` of the user's own. Maven finds it in the local or company repository, otherwise downloads it. The templates are checked against what the restructuring needs before anything changes; if they don't fit, apply stops with exit 2 and says why.
+- Maintainers refresh the bundled templates with `scripts/refresh_archetype.py --update` (generates, checks and re-pins them) and the test suite, then open a pull request.
 
 ## References
 - [references/config-schema.md](references/config-schema.md) — the plan file.

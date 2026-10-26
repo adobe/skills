@@ -8,8 +8,8 @@ scoped by `references/transform-rules.md` — read that first for what *is* tran
 
 ## 1. Felix `maven-bundle-plugin` / `maven-scr-plugin` → BND
 
-The archetype-56 template's bundle module builds with the modern `biz.aQute.bnd:bnd-maven-plugin` +
-`biz.aQute.bnd:bnd-baseline-maven-plugin` (verified in `template_archetype_56/core/pom.xml`). Legacy AEM
+The archetype's bundle module (`core`) builds with the modern `biz.aQute.bnd:bnd-maven-plugin` +
+`biz.aQute.bnd:bnd-baseline-maven-plugin`. Legacy AEM
 projects commonly still use the older Felix tandem, `org.apache.felix:maven-scr-plugin` +
 `org.apache.felix:maven-bundle-plugin`.
 
@@ -128,7 +128,7 @@ that pinned `aem-sdk-api` surface — removed/renamed classes, changed method si
 APIs.
 
 **Fixture:** `core/pom.xml` depends on `com.adobe.aem:uber-jar` directly; this is dropped, and
-`template_archetype_56/core/pom.xml`'s bare `aem-sdk-api` dependency (inheriting `scope=provided` and
+the bundle's bare `aem-sdk-api` dependency (as in the archetype's `core/pom.xml`) (inheriting `scope=provided` and
 `version=${aem.sdk.api}` from the parent's `<dependencyManagement>`) takes its place.
 
 **Action:** this skill's job ends at making the swap and reporting that it happened. Any resulting compile

@@ -7,10 +7,13 @@
         Review/edit each config.json with the user before applying.
 
     python3 scripts/orchestrate.py <root> --apply [--git] [--verify] [--mvn] [--sdk-version V]
+                                                  [--archetype A]
         Restructure every legacy unit IN PLACE using its reviewed config.json -- never
         re-inspected, so plan edits are kept. Units are processed in CAM's order
         (sub-projects first, then the main project); already-restructured (`modern`) and
-        code-less (`empty`) units are skipped.
+        code-less (`empty`) units are skipped. Modules are scaffolded from the bundled
+        archetype templates, or with `--archetype latest|<version>|<g:a:v>` from templates
+        generated from that archetype with Maven and checked before anything changes.
 
 Running without --plan/--apply only plans: nothing is restructured before review.
 
@@ -23,8 +26,10 @@ non-zero code. `<root>/.modernize/orchestration.json` records the plan/result pe
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -97,6 +102,34 @@ def git_problem(root: str) -> Optional[str]:
     return None
 
 
+# --------------------------------------------------------------------------- templates
+
+def prepare_templates(root: str, spec: str, sdk_choice: str = "pinned") -> str:
+    """Generate module templates from the archetype `spec` (`latest`, a version of Adobe's
+    archetype, or groupId:artifactId:version), check they fit, and write them to
+    `<root>/.modernize/archetype-templates/`. Returns that directory; raises
+    `archetype_templates.ArchetypeError` (nothing written) when they can't be used."""
+    import archetype as A
+    import archetype_templates as AT
+    if sdk_choice == "pinned":
+        sdk = A.PINNED_SDK_API
+    elif sdk_choice == "latest":
+        sdk = A.sdk_api_version(prefer_latest=True)[0]
+    else:
+        sdk = sdk_choice
+    work = tempfile.mkdtemp(prefix="repo-modernize-archetype-")
+    try:
+        templates, coords = AT.build(spec, work, sdk)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    dest = C.ensure_manifest_dir(Path(root) / C.MANIFEST_DIR) / "archetype-templates"
+    if dest.exists():
+        shutil.rmtree(dest)
+    AT.write(templates, dest)
+    print(f"templates: archetype {':'.join(coords)} (generated with Maven and checked) -> {dest}")
+    return str(dest)
+
+
 # --------------------------------------------------------------------------- plan
 
 def _plan_unit(unit_dir: str) -> dict:
@@ -111,7 +144,8 @@ def _plan_unit(unit_dir: str) -> dict:
 
 # --------------------------------------------------------------------------- apply
 
-def _run_unit_pipeline(unit_dir: str, use_git: bool, sdk_version: str = "pinned") -> dict:
+def _run_unit_pipeline(unit_dir: str, use_git: bool, sdk_version: str = "pinned",
+                       templates: Optional[str] = None) -> dict:
     """Stages 3-6 on ONE planned unit, in place, from its reviewed config.json.
     Returns `{"ok", "failed_stage", "findings"}`; stops at the first failing stage."""
     import convert_osgi as OSGI   # imported here: refactor_poms needs lxml, checked by preflight
@@ -125,11 +159,12 @@ def _run_unit_pipeline(unit_dir: str, use_git: bool, sdk_version: str = "pinned"
                 "error": f"no reviewed plan at {cfg} -- run with --plan first"}
     git = ["--git"] if use_git else []
     sdk = ["--sdk-version", sdk_version] if sdk_version and sdk_version != "pinned" else []
+    tpl = ["--templates", templates] if templates else []
     stages = [
-        ("scaffold",      lambda: SC.main([unit_dir, "--config", cfg])),
+        ("scaffold",      lambda: SC.main([unit_dir, "--config", cfg] + tpl)),
         ("split",         lambda: SP.main([unit_dir, "--config", cfg] + git)),
         ("convert_osgi",  lambda: OSGI.main([unit_dir, "--config", cfg] + git)),
-        ("refactor_poms", lambda: RP.main([unit_dir, "--config", cfg] + sdk)),
+        ("refactor_poms", lambda: RP.main([unit_dir, "--config", cfg] + sdk + tpl)),
     ]
     for name, fn in stages:
         try:
@@ -155,9 +190,11 @@ def _verify_unit(unit_dir: str, use_mvn: bool) -> int:
 
 
 def orchestrate(root: str, mode: str = "plan", use_git: bool = True, do_verify: bool = False,
-                use_mvn: bool = False, sdk_version: str = "pinned") -> dict:
+                use_mvn: bool = False, sdk_version: str = "pinned",
+                templates: Optional[str] = None, archetype: str = "bundled") -> dict:
     """Plan or apply every legacy unit of `root`. Returns the result dict (also written to
-    `<root>/.modernize/orchestration.json`)."""
+    `<root>/.modernize/orchestration.json`). `templates` is a module-templates directory
+    (None = the bundled templates); `archetype` only labels where it came from."""
     if mode not in ("plan", "apply"):
         raise ValueError(f"mode must be 'plan' or 'apply', not {mode!r}")
     discovered = _ordered_units(root)
@@ -180,7 +217,7 @@ def orchestrate(root: str, mode: str = "plan", use_git: bool = True, do_verify: 
                 print(f"[FAIL] {rel}: inspect -- {r['error']}")
             continue
         print(f"[unit] modernizing {rel} ...")
-        r = _run_unit_pipeline(unit_dir, use_git, sdk_version=sdk_version)
+        r = _run_unit_pipeline(unit_dir, use_git, sdk_version=sdk_version, templates=templates)
         entry = {"path": rel, "status": status, "action": "modernized", **r}
         if r["ok"] and do_verify:
             entry["verify_rc"] = _verify_unit(unit_dir, use_mvn)
@@ -195,6 +232,8 @@ def orchestrate(root: str, mode: str = "plan", use_git: bool = True, do_verify: 
         results.append(entry)
 
     out = {"mode": mode, "shape": shape, "root": str(Path(root)), "units": results, "rc": overall_rc}
+    if mode == "apply":
+        out["archetype"] = archetype
     try:
         C.save_json(C.manifest_path(root, "orchestration.json"), out)
     except OSError:
@@ -240,6 +279,12 @@ def main(argv=None) -> int:
     ap.add_argument("--sdk-version", default="pinned",
                     help="AEM SDK API version: 'pinned' (default), 'latest' (newest from "
                          "Maven Central, offline-safe fallback), or an explicit version.")
+    ap.add_argument("--archetype", default="bundled",
+                    help="where the module templates come from: 'bundled' (default; tested, "
+                         "offline), 'latest' (newest Adobe AEM project archetype), a version of it "
+                         "(e.g. 58), or groupId:artifactId:version of your own archetype. "
+                         "Anything but 'bundled' needs Maven; the templates are checked before "
+                         "anything changes.")
     a = ap.parse_args(argv)
     if not a.apply:
         return orchestrate(a.root, mode="plan")["rc"]
@@ -247,8 +292,18 @@ def main(argv=None) -> int:
     if problems:
         print("repo-modernize: cannot apply yet --\n" + "\n".join(problems), file=sys.stderr)
         return 2
+    templates = None
+    if a.archetype != "bundled":
+        import archetype_templates as AT
+        try:
+            templates = prepare_templates(a.root, a.archetype, a.sdk_version)
+        except AT.ArchetypeError as e:
+            print(f"repo-modernize: cannot apply yet --\n{e}\nNothing was changed. Omit "
+                  "--archetype to use the bundled templates.", file=sys.stderr)
+            return 2
     return orchestrate(a.root, mode="apply", use_git=a.git, do_verify=a.verify, use_mvn=a.mvn,
-                       sdk_version=a.sdk_version)["rc"]
+                       sdk_version=a.sdk_version, templates=templates,
+                       archetype=a.archetype)["rc"]
 
 
 if __name__ == "__main__":

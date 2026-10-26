@@ -228,7 +228,7 @@ class OrchestratorPlan(unittest.TestCase):
 
         ran = []
         orig = O._run_unit_pipeline
-        O._run_unit_pipeline = lambda unit_dir, use_git, sdk_version="pinned": (ran.append(unit_dir) or
+        O._run_unit_pipeline = lambda unit_dir, use_git, **_kw: (ran.append(unit_dir) or
                                                            {"ok": True, "failed_stage": None, "findings": 0})
         try:
             buf = io.StringIO()
@@ -249,7 +249,7 @@ class OrchestratorPlan(unittest.TestCase):
         _single_project(d / "appA")
         ran = []
         orig = O._run_unit_pipeline
-        O._run_unit_pipeline = lambda unit_dir, use_git, sdk_version="pinned": (ran.append(unit_dir) or
+        O._run_unit_pipeline = lambda unit_dir, use_git, **_kw: (ran.append(unit_dir) or
                                                           {"ok": True, "failed_stage": None, "findings": 0})
         try:
             with contextlib.redirect_stdout(io.StringIO()):

@@ -235,7 +235,7 @@ class ManagedPluginVersions(unittest.TestCase):
         self.assertIn("<artifactId>aemanalyser-maven-plugin</artifactId>", out)
         self.assertIn("<version>${aemanalyser.version}</version>", out)
         self.assertIn("<artifactId>content-package-maven-plugin</artifactId>", out)
-        self.assertIn("<version>1.0.6</version>", out)
+        self.assertIn(f"<version>{RP._ARCHETYPE_CONTENT_PACKAGE_VERSION}</version>", out)
 
     def test_existing_entry_and_version_kept(self):
         out = _apply(_pm("<plugin><groupId>com.day.jcr.vault</groupId>"
@@ -243,7 +243,7 @@ class ManagedPluginVersions(unittest.TestCase):
                          "</plugin>\n"),
                      RP._ensure_managed_plugin_versions)
         self.assertIn("<version>0.0.24</version>", out)
-        self.assertNotIn("<version>1.0.6</version>", out)
+        self.assertNotIn(f"<version>{RP._ARCHETYPE_CONTENT_PACKAGE_VERSION}</version>", out)
         self.assertEqual(out.count("content-package-maven-plugin"), 1)
 
 
@@ -261,5 +261,5 @@ class IndexSettingsKeepFilevaultVersion(unittest.TestCase):
             RP._ensure_filevault_extensions_binding(root)
             RP._ensure_index_definition_settings(root)
         out = _apply(_pm(""), both)
-        self.assertIn("<version>1.3.6</version>", out)
+        self.assertIn(f"<version>{RP._ARCHETYPE_FILEVAULT_VERSION}</version>", out)
         self.assertEqual(out.count("filevault-package-maven-plugin"), 1)

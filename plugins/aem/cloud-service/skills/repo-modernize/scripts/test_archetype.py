@@ -91,7 +91,7 @@ class StalenessNote(unittest.TestCase):
              mock.patch.object(A, "resolve_latest_sdk_api", return_value="2099.1.1.NEW"):
             note = A.staleness_note()
         self.assertIn("Add --sdk-version latest to --apply", note)
-        self.assertIn(f"stay on archetype-{A.PINNED_ARCHETYPE} until the skill is updated", note)
+        self.assertIn("add --archetype latest to --apply to use archetype-99 now", note)
         self.assertNotIn("refresh_archetype", note)
 
     def test_sdk_only_note_has_no_archetype_advice(self):

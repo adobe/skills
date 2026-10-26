@@ -22,12 +22,28 @@ class Finding:
 def manifest_path(project_root, name: str) -> Path:
     return Path(project_root) / MANIFEST_DIR / name
 
+_MANIFEST_GITIGNORE = "# repo-modernize plan and reports: kept out of commits (git add -f to keep them)\n*\n"
+
+def ensure_manifest_dir(directory) -> Path:
+    """Create a `.modernize/` folder that ignores itself, so the plan and reports never land
+    in a commit (as code-assessment's `.autofix/`)."""
+    d = Path(directory)
+    d.mkdir(parents=True, exist_ok=True)
+    gitignore = d / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text(_MANIFEST_GITIGNORE)
+    return d
+
 def load_json(path):
     with open(path, "r", encoding="utf-8") as fh:
         return json.load(fh)
 
 def save_json(path, data) -> None:
-    p = Path(path); p.parent.mkdir(parents=True, exist_ok=True)
+    p = Path(path)
+    if p.parent.name == MANIFEST_DIR:
+        ensure_manifest_dir(p.parent)
+    else:
+        p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, sort_keys=True); fh.write("\n")
 

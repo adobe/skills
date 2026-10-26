@@ -5,7 +5,7 @@ implement. It reproduces the outcome of Adobe's CAM Repository Modernizer, verif
 output on real projects (see `cam-validation.md`) — **minus its bugs**. Where this doc's rule differs from CAM's actual
 behavior, that is intentional; see §9. Every concrete example below is verified against this skill's own
 fixture, `aem-guides-wknd-legacy` (`groupId=com.adobe.aem.guides`, `appId=wknd`, `appTitle=WKND`), and
-against the pinned archetype-56 templates this skill scaffolds from. Do not re-derive these rules from
+against the bundled archetype templates this skill scaffolds from (§13). Do not re-derive these rules from
 first principles — implement exactly what's written here, and if a script's behavior needs to diverge,
 update this file first.
 
@@ -118,15 +118,16 @@ Ancestor expansion + seeds yields exactly:
 /oak:index
 ```
 Because `/oak:index` is present, `ui.apps.structure/pom.xml` also gets
-`<allowIndexDefinitions>true</allowIndexDefinitions>`. The template ships this plugin's `<filters />` empty
-(`template_archetype_56/ui.apps.structure/pom.xml`) — this step populates it.
+`<allowIndexDefinitions>true</allowIndexDefinitions>`. The template's `<filters>` (the archetype's default roots,
+`assets/archetype-pom-templates/ui.apps.structure/pom.xml`) is replaced with these roots; an
+`allowIndexDefinitions` the template already sets is kept, never duplicated.
 
 Missing FileVault plugin block in the template is a hard failure, not a skip.
 
 ## 5. `packageType` and `cloudManagerTarget`
 
-Both are **static values baked into the archetype-56 templates**, verified byte-for-byte in
-`template_archetype_56/*/pom.xml` — no script computes them:
+Both are **static values baked into the archetype templates**
+(`assets/archetype-pom-templates/*/pom.xml`) — no script computes them:
 
 | Module | `packageType` | `cloudManagerTarget` |
 |---|---|---|
@@ -158,8 +159,8 @@ There is no rewrite step. Two independent facts produce the swap:
    `scope=provided` in the parent's `<dependencyManagement>` (version `${aem.sdk.api}`), and as a bare
    `<dependency>` (no version/scope — inherited) in `core`, `ui.apps`, and `ui.content`.
 
-**Fixture:** `core/pom.xml` declares `<dependency><groupId>com.adobe.aem</groupId><artifactId>uber-jar</artifactId></dependency>` — dropped on copy. The modernized `core/pom.xml` (from
-`template_archetype_56/core/pom.xml`) already has `aem-sdk-api` waiting; nothing re-adds it.
+**Fixture:** `core/pom.xml` declares `<dependency><groupId>com.adobe.aem</groupId><artifactId>uber-jar</artifactId></dependency>` — dropped on copy. A bundle scaffolded from
+the archetype's own `core/pom.xml` already has `aem-sdk-api` waiting; nothing re-adds it.
 
 Because the API surfaces of `uber-jar` and the pinned `aem-sdk-api` version differ, code that compiled
 against `uber-jar` may not compile against `aem-sdk-api` — that's a real hand-off, not a bug; see
@@ -392,7 +393,7 @@ reshape:
    **Note — this DIFFERS from CAM by design (verified against CAM source, `UiAppsPomHandler`/
    `UiContentPomHandler`).** CAM *copies* the customer's existing content-package pom and *merges* archetype
    elements into it, so it CARRIES OVER the legacy bundle `<dependency>` (and even re-adds project bundle
-   deps). This skill instead produces the clean archetype-56 shape — whose ui.apps/ui.content templates have
+   deps). This skill instead produces the clean archetype shape — whose ui.apps/ui.content templates have
    NO bundle dependency — so a content package never depends on a bundle. This is the same category as the
    skill's other deliberate corrections ("reproduce the CAM outcome *without its bugs*"): carrying a bundle
    dep into a content package is a legacy anti-pattern that breaks scoped `-am` builds, not a feature to
@@ -400,10 +401,13 @@ reshape:
 
 Legacy `autoInstallPackage`/`autoInstallPackagePublish` `<profile>`s that reference the now-bare legacy
 plugin are removed outright (they exist solely to `install` against a legacy CRX package manager URL —
-Cloud Service has no equivalent). If the package's own content has ACL authoring (a `_rep_policy.xml`
-sidecar, or an inline `rep:ACL`/`rep:policy` reference), `<accessControlHandling>merge_preserve
-</accessControlHandling>` is added to the filevault plugin's `<configuration>` and an `RM-903` finding
-(NORMAL) is raised.
+Cloud Service has no equivalent). If the package installs an access control list (a `_rep_policy.xml`
+sidecar or an inline `rep:ACL` node, at a path its own filter covers), `<accessControlHandling>merge_preserve
+</accessControlHandling>` is set in the filevault plugin's `<configuration>` and an `RM-903` finding
+(NORMAL) is raised. Otherwise any `accessControlHandling` from the template is removed (the archetype's
+`ui.content` sets `merge` for its own sample ACLs): FileVault rejects a package whose acHandling asks for
+an access control list it doesn't contain. A bare `<rep:policy/>` child reference, or a policy outside the
+filter (e.g. in a parent folder's `.content.xml`), is not an ACL the package installs.
 
 **`all` pom** (`refactor_all_pom`) — purely additive, never replaces the customer's own
 `filevault-package-maven-plugin` configuration: ensures `<packageType>container</packageType>`, then adds
@@ -487,7 +491,7 @@ numbers — deliberately outside both of CAM's real
 |---|---|---|---|
 | `RM-901` | NORMAL | `convert_osgi.py` (`move_and_convert`, §10) | A repoinit OSGi config was relocated into `ui.config` but deliberately left unconverted (still `.xml`) — informational, not an error. |
 | `RM-902` | HIGH | `refactor_poms.py` (`refactor_bundle_pom`, §11) | Legacy Felix `maven-scr-plugin`/`maven-bundle-plugin` found on a bundle module; migrate to `bnd-maven-plugin` manually — see `manual-followups.md` §1. |
-| `RM-903` | NORMAL | `refactor_poms.py` (`refactor_content_pom`, §11) | ACL authoring (`rep:policy`/`rep:ACL`) detected in a converted content package; `accessControlHandling=merge_preserve` was added automatically. |
+| `RM-903` | NORMAL | `refactor_poms.py` (`refactor_content_pom`, §11) | The converted content package installs an access control list (`_rep_policy.xml` / `rep:ACL` inside its filter); `accessControlHandling=merge_preserve` was set automatically. |
 | `RM-904` | NORMAL | `refactor_poms.py` (`refactor_all_pom`, §11) | A pre-existing 3rd-party `<embedded>` in `all/pom.xml` survived the refactor unchanged — informational. |
 | `RM-905` | HIGH | `inspect_project.py` (`find_oak_index_filter_gaps`, Phase-1 scan) | A source content package's `_oak_index/.content.xml` defines an `oak:QueryIndexDefinition` node with no matching `/oak:index/<name>` filter root anywhere in that package's `filter.xml` — a pre-existing customer-data gap that FileVault's `jackrabbit-filter` validator rejects once the content lands in the modernized `ui.apps`; see `manual-followups.md` §7. |
 | `RM-907` | NORMAL / HIGH | `convert_osgi.py` (`osgi_formats.py`, §10) | OSGi value conversion note. **NORMAL**: a property AEM never applied (e.g. a `{Name}`/`{Path}`/`{Date}` value the JCR installer ignored) was not carried over, or a non-canonical boolean was converted as AEM read it — the source value is in the finding. **HIGH**: an invalid value or unknown type hint was kept as a string, or a whole file that is not valid in its own format was relocated unconverted — fix the source and convert it. |
@@ -501,6 +505,34 @@ actually blocks automatic bundle modernization and routes to a human / the `code
 detail survived the refactor, not because either needs action. `RM-905` is, like `RM-902`, an
 actionable HIGH finding that routes to a human / the `code-assessment` skill — the tool deliberately
 does NOT auto-add the missing filter root (see `manual-followups.md` §7's ruling).
+
+## 13. Archetype templates (`assets/archetype-pom-templates/`, `archetype_templates.py`)
+
+The modules the skill adds, and the FileVault configuration it copies into existing `ui.apps` /
+`ui.content` POMs, come from templates generated from Adobe's AEM Project Archetype (version and AEM SDK
+pinned in `scripts/archetype.py`):
+
+1. **Generate** — `mvn archetype:generate` with sentinel coordinates and `aemVersion=cloud`,
+   `frontendModule=none`, `includeDispatcherConfig=n`, `includeExamples=n`, `sdkVersion=<pin>`.
+2. **Templatize** — the sentinels become `{{groupId}}`, `{{artifactId}}`, `{{appId}}`, `{{appTitle}}`,
+   `{{version}}`; the archetype's sample `core` bundle is removed from `all`, `ui.apps` and `ui.content`
+   (the project's own bundles are embedded instead). Kept: the six POMs and `all`'s workspace filter
+   (`/apps/<appId>-packages`, `/apps/<appId>-vendor-packages`), without which `all` does not build.
+3. **Validate** — every shape the transforms rely on: packageType per module, `cloudManagerTarget=none`,
+   a FileVault `<configuration>` per module, `<filters>` in `ui.apps.structure`, the `all` embeds and
+   filter, no `uber-jar`, only plugins and properties `refactor_poms` manages, and the pinned versions in
+   the reactor.
+
+`refresh_archetype.py --update` regenerates the bundled set and rewrites the pins (a maintainer runs it
+with the test suite and opens a pull request), and a test checks that the bundled set is exactly what the
+pinned archetype generates. `orchestrate.py --apply
+--archetype <spec>` runs the same three steps on the user's own archetype and stops (exit 2, nothing
+changed) if the result does not validate.
+
+Compared with CAM's templates (archetype 56, reformatted by CAM): archetype 58 adds the Oak index settings
+Adobe's indexing documentation requires in `ui.apps` and `ui.apps.structure` (`allowIndexDefinitions`,
+`noIntermediateSaves`, the `/oak:index` structure root), and the module POMs keep the archetype's own
+formatting and `${project.version}` references. Filters, embeds and packageTypes are unchanged.
 
 ## Source
 

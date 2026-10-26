@@ -41,6 +41,9 @@ def _write_all(root, embeds):
                    '<packageType>container</packageType>'
                    f'<embeddeds>{emb}</embeddeds>'
                    '</configuration></plugin></plugins></build></project>')
+    fx = root / "all/src/main/content/META-INF/vault/filter.xml"
+    fx.parent.mkdir(parents=True, exist_ok=True)
+    fx.write_text('<workspaceFilter version="1.0"><filter root="/apps/acme-packages"/></workspaceFilter>')
 
 
 def _config():
@@ -105,6 +108,12 @@ class Structural(unittest.TestCase):
 
     def test_pom_shape_clean_has_no_violations(self):
         self.assertEqual(V.check_pom_shape(str(self._mk()), _config()), [])
+
+    def test_module_without_a_workspace_filter(self):
+        """FileVault can't build a package without a filter ("No workspace filter defined")."""
+        d = self._mk()
+        (d / "all/src/main/content/META-INF/vault/filter.xml").unlink()
+        self.assertEqual([v.kind for v in V.check_pom_shape(str(d), _config())], ["missing-filter"])
 
     def test_pom_shape_skips_missing_module_silently(self):
         # existence is check_structural's job; check_pom_shape must not re-flag it either

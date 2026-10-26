@@ -129,11 +129,19 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import List, Optional
+from urllib.parse import unquote
 
 import pom_engine as E
 import rm_common as C
 
 _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "archetype-pom-templates"
+# Set by `main --templates` for one run (e.g. templates generated from the customer's own
+# archetype); None means the bundled templates.
+_templates_dir_override: Optional[str] = None
+
+
+def _templates_dir() -> Path:
+    return Path(_templates_dir_override) if _templates_dir_override else _ASSETS_DIR
 
 # A skill-original finding code (same pattern/rationale as convert_osgi.py's
 # `_REPOINIT_NOTE_CODE`): deliberately NOT `RM-108`, even though an earlier
@@ -454,26 +462,35 @@ def _template_plugin_configuration_xml(module_key: str, config: dict) -> str:
     pretty-printed from the moment it's parsed -- see this module's own
     docstring, "Avoid the dense one-liner trap"."""
     module_dir = _CONTENT_MODULE_TEMPLATE_DIR[module_key]
-    template_path = _ASSETS_DIR / module_dir / "pom.xml"
+    template_path = _templates_dir() / module_dir / "pom.xml"
     text = template_path.read_text(encoding="utf-8")
     anchor = text.index(f"<artifactId>{_FILEVAULT_PLUGIN[1]}</artifactId>")
     config_xml = _extract_element_block(text, "configuration", start=anchor)
-    return (
-        config_xml
-        .replace("{{groupId}}", config["groupId"])
-        .replace("{{artifactId}}", config["artifactId"])
-        .replace("{{version}}", config["version"])
-    )
+    config_xml = (config_xml
+                  .replace("{{groupId}}", config["groupId"])
+                  .replace("{{artifactId}}", config["artifactId"])
+                  .replace("{{version}}", config["version"]))
+    # Adobe's archetype uses only those three here; a customer's own archetype
+    # (--archetype) may also use the app id or title.
+    for key in ("appId", "appTitle"):
+        if config.get(key):
+            config_xml = config_xml.replace("{{" + key + "}}", config[key])
+    return config_xml
 
 
 def _inject_access_control_handling(config_xml: str) -> str:
-    """Insert `<accessControlHandling>merge_preserve</accessControlHandling>`
-    as the last child of the already-extracted, already-indented
-    `<configuration>...</configuration>` string, matching its existing
-    children's own indentation (derived from the closing tag's own line,
-    rather than a hardcoded column count, so this works unchanged for both
-    the `ui.apps` and `ui.content` templates) -- so it reads as one more
-    pretty-printed sibling, not a bolted-on one-liner."""
+    """Set `<accessControlHandling>merge_preserve</accessControlHandling>` in the
+    already-extracted, already-indented `<configuration>...</configuration>` string:
+    replace the value when the template sets one (the archetype's `ui.content` uses
+    `merge`), otherwise add it as the last child, indented like the block's other
+    children (derived from the text, not a hardcoded column count, so this works for
+    any template's indentation) -- so it reads as one more pretty-printed sibling,
+    not a bolted-on one-liner."""
+    existing = re.search(r"<accessControlHandling>[^<]*</accessControlHandling>", config_xml)
+    if existing:
+        return (config_xml[:existing.start()]
+                + "<accessControlHandling>merge_preserve</accessControlHandling>"
+                + config_xml[existing.end():])
     close_tag = "</configuration>"
     idx = config_xml.rfind(close_tag)
     if idx == -1:
@@ -483,41 +500,83 @@ def _inject_access_control_handling(config_xml: str) -> str:
     head = config_xml[:idx]
     line_start = head.rfind("\n") + 1
     closing_indent = head[line_start:]
-    child_indent = closing_indent + "  "
+    first_child = re.search(r"\n([ \t]*)<", config_xml)
+    child_indent = (first_child.group(1) if first_child and len(first_child.group(1)) > len(closing_indent)
+                    else closing_indent + "  ")
     insertion = f"{child_indent}<accessControlHandling>merge_preserve</accessControlHandling>\n{closing_indent}"
     return head[:line_start] + insertion + config_xml[idx:]
 
 
+def _drop_access_control_handling(config_xml: str) -> str:
+    """Remove a template's `<accessControlHandling>` (the archetype's `ui.content` sets
+    `merge` for its own sample ACLs): FileVault rejects a package whose acHandling asks for
+    an access control list it doesn't contain."""
+    config_xml = re.sub(r"\n[ \t]*<accessControlHandling>[^<]*</accessControlHandling>[ \t]*(?=\n)",
+                        "", config_xml)
+    return re.sub(r"<accessControlHandling>[^<]*</accessControlHandling>", "", config_xml)
+
+
+_ACL_POLICY_FILES = {"_rep_policy.xml", "_rep_repoPolicy.xml"}
+_ACL_PRIMARY_TYPE = re.compile(r'jcr:primaryType="rep:(ACL|CugPolicy|PrincipalPolicy)"')
+
+
+def _jcr_segment(fs_segment: str) -> str:
+    """FileVault's on-disk name -> the JCR name: `_rep_policy` -> `rep:policy`."""
+    m = re.fullmatch(r"_([A-Za-z0-9]+)_(.+)", fs_segment)
+    return f"{m.group(1)}:{m.group(2)}" if m else unquote(fs_segment)
+
+
+def _module_filter_roots(module_dir: Path) -> Optional[List[str]]:
+    """The module's own filter roots, or None when it has no readable filter.xml."""
+    fx = module_dir / "src" / "main" / "content" / "META-INF" / "vault" / "filter.xml"
+    if not fx.is_file():
+        return None
+    try:
+        return [e.attrib["root"] for e in ET.parse(str(fx)).iter()
+                if e.tag.split("}")[-1] == "filter" and e.attrib.get("root")]
+    except ET.ParseError:
+        return None
+
+
 def _has_acl_nodes(pom_path) -> bool:
-    """True if this content package's own `jcr_root` contains ACL authoring:
-    a filesystem-escaped `_rep_policy.xml` sidecar (Vault's escaping of a
-    `rep:policy` child node -- a real node name can't contain `:` on disk)
-    anywhere under it, or an XML file whose text mentions `rep:ACL` (the
-    sidecar's own `jcr:primaryType`) or `rep:policy` (an inline reference to
-    one, e.g. `<rep:policy/>` on the node it protects). Not full XML
-    parsing -- plain substring search on already-small vault XML files is
-    enough to answer "is there ACL authoring here at all", and this is a
-    read-only detector, not a mutation.
+    """True if this content package installs an access control list: a policy sidecar
+    (`_rep_policy.xml`, FileVault's escaping of a `rep:policy` child node) or an XML file
+    defining a `rep:ACL` / `rep:CugPolicy` / `rep:PrincipalPolicy` node, at a path its own
+    filter.xml covers. A bare `<rep:policy/>` only names a child whose content lives in a
+    sidecar, and files outside the filter (e.g. a parent folder's `.content.xml`) are never
+    installed -- counting either would set an acHandling FileVault then rejects ("Found no
+    access control list"). Not full XML parsing: substring checks on small docview files
+    answer "is there an ACL here", and this is a read-only detector.
 
     `pom_path`'s own containing directory is the module root
     (config-schema.md's `contentPackages[].jcrRoot` convention:
-    `"<module>/src/main/content/jcr_root"`) -- self-contained, no `config`
-    lookup needed. Missing directory (a crafted test pom with no content
-    tree at all) is simply "no ACLs", not an error."""
-    jcr_root = Path(pom_path).parent / "src" / "main" / "content" / "jcr_root"
+    `"<module>/src/main/content/jcr_root"`). No filter.xml -> every path counts. Missing
+    content tree (a crafted test pom) is simply "no ACLs", not an error."""
+    module = Path(pom_path).parent
+    jcr_root = module / "src" / "main" / "content" / "jcr_root"
     if not jcr_root.is_dir():
         return False
+    roots = _module_filter_roots(module)
+
+    def covered(node: str) -> bool:
+        return roots is None or any(node == r or node.startswith(r.rstrip("/") + "/")
+                                    for r in roots)
+
     for p in jcr_root.rglob("*"):
-        if not p.is_file():
+        if not p.is_file() or p.suffix != ".xml":
             continue
-        if p.name == "_rep_policy.xml":
-            return True
-        if p.suffix == ".xml":
-            try:
-                text = p.read_text(encoding="utf-8", errors="ignore")
-            except OSError:
-                continue
-            if "rep:ACL" in text or "rep:policy" in text:
+        parent = "".join("/" + _jcr_segment(s) for s in p.parent.relative_to(jcr_root).parts)
+        if p.name in _ACL_POLICY_FILES:
+            if covered(f"{parent}/{_jcr_segment(p.stem)}"):
+                return True
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        if _ACL_PRIMARY_TYPE.search(text):
+            node = parent if p.name == ".content.xml" else f"{parent}/{_jcr_segment(p.stem)}"
+            if covered(f"{node}/rep:policy"):
                 return True
     return False
 
@@ -814,6 +873,8 @@ def refactor_content_pom(pom_path, config: dict, module_key: str) -> List[C.Find
             ACL_HANDLING_FINDING_CODE, "NORMAL",
             "ACL authoring (rep:policy) detected; accessControlHandling="
             f"merge_preserve added to filevault-package-maven-plugin: {pom_path}"))
+    else:
+        config_xml = _drop_access_control_handling(config_xml)
 
     build_el = _ensure_build_element(root)
 
@@ -1059,7 +1120,7 @@ def refactor_all_pom(pom_path, config: dict) -> List[C.Finding]:
 # would be indirection without benefit, and would make this function's
 # output depend on the template file's continued presence/shape for values
 # that never vary per customer project.
-_AEM_SDK_API_VERSION = "2026.4.25520.20260417T163942Z-260300"
+_AEM_SDK_API_VERSION = "2026.10.29023.20261017T134015Z-260900"
 _AEMANALYSER_VERSION = "1.6.6"
 
 # The SDK API version the reactor step bakes in. Defaults to the pin above
@@ -1077,7 +1138,7 @@ _UBER_JAR = ("com.adobe.aem", "uber-jar")
 _AEM_SDK_API = ("com.adobe.aem", "aem-sdk-api")
 _AEMANALYSER_PLUGIN = ("com.adobe.aem", "aemanalyser-maven-plugin")
 
-# The archetype-56's own filevault-package-maven-plugin version (verified in
+# The archetype's own filevault-package-maven-plugin version (verified in
 # assets/archetype-pom-templates/pom.xml's <pluginManagement>). Used only when
 # the customer's legacy reactor has NO filevault entry to add extensions to --
 # an existing entry keeps its own version (see
@@ -1710,8 +1771,31 @@ def main(argv=None) -> int:
                     help="AEM SDK API version to bake into the reactor: 'pinned' (default, "
                          "deterministic/offline), 'latest' (resolve the newest from Maven "
                          "Central; falls back to pinned when offline), or an explicit version.")
+    ap.add_argument("--templates", default=None,
+                    help="module templates directory (default: the bundled archetype templates); "
+                         "its reactor pom.xml supplies the plugin versions")
     a = ap.parse_args(argv)
 
+    global _templates_dir_override, _AEMANALYSER_VERSION, _ARCHETYPE_FILEVAULT_VERSION
+    global _ARCHETYPE_CONTENT_PACKAGE_VERSION
+    saved = (_templates_dir_override, _AEMANALYSER_VERSION, _ARCHETYPE_FILEVAULT_VERSION,
+             _ARCHETYPE_CONTENT_PACKAGE_VERSION)
+    if a.templates and Path(a.templates).resolve() != _ASSETS_DIR.resolve():
+        import archetype_templates as AT
+        pins = AT.pins((Path(a.templates) / "pom.xml").read_text(encoding="utf-8"))
+        _templates_dir_override = a.templates
+        _AEMANALYSER_VERSION = pins["aemanalyser.version"] or _AEMANALYSER_VERSION
+        _ARCHETYPE_FILEVAULT_VERSION = pins["filevault"] or _ARCHETYPE_FILEVAULT_VERSION
+        _ARCHETYPE_CONTENT_PACKAGE_VERSION = pins["content-package"] or _ARCHETYPE_CONTENT_PACKAGE_VERSION
+    try:
+        return _refactor_all(a)
+    finally:
+        (_templates_dir_override, _AEMANALYSER_VERSION, _ARCHETYPE_FILEVAULT_VERSION,
+         _ARCHETYPE_CONTENT_PACKAGE_VERSION) = saved
+
+
+def _refactor_all(a) -> int:
+    """`main`'s body, run with the chosen templates in effect."""
     # Resolve the SDK version choice into the module override the reactor step reads.
     global _sdk_api_version_override
     if a.sdk_version and a.sdk_version != "pinned":

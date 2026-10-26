@@ -120,6 +120,15 @@ def check_pom_shape(project_root, config) -> List[Violation]:
         if pom.exists() and "none" not in C.pom_all_text(pom, "cloudManagerTarget"):
             out.append(Violation("missing-cloudManagerTarget", str(pom), f"{mod} lacks cloudManagerTarget none"))
 
+    # FileVault refuses to build a package without a workspace filter ("No workspace
+    # filter defined"): a filter.xml, or filters / a filterSource in the plugin config.
+    for mod in (tm["all"], tm["uiApps"], tm["uiContent"], tm["uiConfig"]):
+        pom = root / mod / "pom.xml"
+        if (pom.exists() and not (root / mod / "src/main/content/META-INF/vault/filter.xml").exists()
+                and not C.pom_all_text(pom, "root") and not C.pom_text(pom, "filterSource")):
+            out.append(Violation("missing-filter", str(pom),
+                                 f"{mod} has no workspace filter (META-INF/vault/filter.xml)"))
+
     return out
 
 

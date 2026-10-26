@@ -349,33 +349,35 @@ def derive_structure_roots(filter_roots, app_id: str) -> List[str]:
     return sorted(roots)
 
 
+def _indent_before(text: str, pos: int) -> str:
+    """The whitespace between the start of `pos`'s line and `pos` ('' if anything else)."""
+    line_start = text.rfind("\n", 0, pos) + 1
+    lead = text[line_start:pos]
+    return lead if lead.strip() == "" else ""
+
+
+def _indent_unit(text: str) -> str:
+    """One indentation step of this POM: the indent of the first element inside <project>."""
+    m = re.search(r"<project\b[^>]*>\s*?\n([ \t]+)<", text)
+    return m.group(1) if m else "  "
+
+
 def write_structure_roots(project_root, config: dict, roots: List[str]) -> None:
     """Populate `ui.apps.structure/pom.xml`'s FileVault plugin config with `roots`.
 
     The scaffolded template (`assets/archetype-pom-templates/ui.apps.structure/
-    pom.xml`, rendered verbatim by `scaffold_modules.scaffold`) ships this exact
-    shape:
+    pom.xml`, rendered verbatim by `scaffold_modules.scaffold`) holds a FileVault
+    `<configuration>` with `cloudManagerTarget` inside a `<properties>` wrapper and a
+    `<filters>` element: empty (`<filters />`) or listing the archetype's default roots.
+    This function replaces that element with a populated block, one
+    `<filter><root>R</root></filter>` per root — never nests inside `<properties>`
+    (reserved for FileVault packaging properties) and never leaves a second
+    `<filters>` behind. Indentation follows the file's own.
 
-        <configuration>
-          <properties>
-            <cloudManagerTarget>none</cloudManagerTarget>
-          </properties>
-          <filters />
-        </configuration>
-
-    i.e. `cloudManagerTarget` lives INSIDE a `<properties>` wrapper, and
-    `<filters>` is an EMPTY self-closing element — it is NOT a bare anchor
-    sitting next to `cloudManagerTarget`. This function replaces that empty
-    `<filters />` (or `<filters/>`, no space) with a populated block, one
-    `<filter><root>R</root></filter>` per root — never nests inside
-    `<properties>` (reserved for FileVault packaging properties) and never
-    leaves a duplicate empty `<filters />` behind.
-
-    When any root starts with `/oak:index`, this also inserts
-    `<allowIndexDefinitions>true</allowIndexDefinitions>` as a SIBLING of
-    `<properties>`/`<filters>` — immediately after the `</properties>` close —
-    which is the valid place for it in the FileVault plugin's config schema.
-    Only inserted when an oak root is present.
+    When any root starts with `/oak:index` and the configuration doesn't already allow
+    them, this also inserts `<allowIndexDefinitions>true</allowIndexDefinitions>` as a
+    SIBLING of `<properties>`/`<filters>` — immediately after the `</properties>`
+    close — which is the valid place for it in the FileVault plugin's config schema.
 
     Deterministic string surgery, safe here because this is OUR OWN scaffolded
     template (Task B3/B9), not a customer POM (that rewrite is the Phase-2
@@ -389,31 +391,30 @@ def write_structure_roots(project_root, config: dict, roots: List[str]) -> None:
     pom = root / tm["uiAppsStructure"] / "pom.xml"
     text = pom.read_text()
 
-    filter_lines = "\n".join(f"            <filter><root>{escape(r)}</root></filter>" for r in roots)
-    filters_block = f"<filters>\n{filter_lines}\n          </filters>"
-    # lambda replacement (not a raw string) so a root containing e.g. a literal
-    # backslash-digit sequence can never be misread as a regex backreference.
-    # First try the empty archetype placeholder `<filters />` (the normal case: a
-    # freshly-scaffolded ui.apps.structure). If that isn't present, the module was
-    # NOT freshly scaffolded from our template -- e.g. a partly-modernized project
-    # (umbrella) that already ships its own populated `ui.apps.structure/pom.xml` -- so
-    # replace the existing populated `<filters>...</filters>` block instead, whose
-    # roots we recompute from the modernized filters anyway.
-    text, n = re.subn(r"<filters\s*/>", lambda _m: filters_block, text, count=1)
-    if n == 0:
-        text, n = re.subn(r"<filters>.*?</filters>", lambda _m: filters_block,
-                          text, count=1, flags=re.DOTALL)
-    if n == 0:
+    # First try the empty archetype placeholder `<filters />`. If that isn't present, the
+    # template lists default roots, or the module was NOT freshly scaffolded from our
+    # template -- e.g. a partly-modernized project (umbrella) that already ships its own
+    # populated `ui.apps.structure/pom.xml` -- so replace the existing `<filters>...</filters>`
+    # block instead, whose roots we recompute from the modernized filters anyway.
+    m = re.search(r"<filters\s*/>", text) or re.search(r"<filters>.*?</filters>", text, re.S)
+    if m is None:
         raise ValueError(
             f"expected a <filters /> placeholder or a <filters>...</filters> block in "
             f"{pom}, none found")
+    indent = _indent_before(text, m.start())
+    child = indent + _indent_unit(text)
+    filter_lines = "\n".join(f"{child}<filter><root>{escape(r)}</root></filter>" for r in roots)
+    filters_block = f"<filters>\n{filter_lines}\n{indent}</filters>"
+    text = text[:m.start()] + filters_block + text[m.end():]
 
-    if any(r.startswith("/oak:index") for r in roots):
+    if (any(r.startswith("/oak:index") for r in roots)
+            and "<allowIndexDefinitions>" not in text):
         marker = "</properties>"
-        idx = text.index(marker)  # raises ValueError if the template shape is unexpected
+        anchor = text.find("<artifactId>filevault-package-maven-plugin</artifactId>")
+        idx = text.index(marker, max(anchor, 0))  # ValueError if the template shape is unexpected
         insert_at = idx + len(marker)
         text = (text[:insert_at]
-                + "\n          <allowIndexDefinitions>true</allowIndexDefinitions>"
+                + f"\n{_indent_before(text, idx)}<allowIndexDefinitions>true</allowIndexDefinitions>"
                 + text[insert_at:])
 
     pom.write_text(text)

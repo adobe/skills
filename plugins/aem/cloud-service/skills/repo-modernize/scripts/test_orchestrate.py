@@ -104,6 +104,17 @@ class PlanApplyGate(unittest.TestCase):
 
 
 class Preflight(unittest.TestCase):
+    def test_plan_folder_ignores_itself(self):
+        """.modernize/ never shows up in git status or a commit (like code-assessment's .autofix/)."""
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _commit_all(d)
+        _quiet(O.main, [str(d), "--plan"])
+        self.assertTrue((d / ".modernize/config.json").is_file())
+        self.assertIn("*", (d / ".modernize/.gitignore").read_text().splitlines())
+        status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=d,
+                                capture_output=True, text=True, check=True).stdout
+        self.assertEqual(status, "")
+
     def test_dirty_tree_refused_but_modernize_dir_ignored(self):
         d = _legacy_single(Path(tempfile.mkdtemp()))
         _commit_all(d)
@@ -171,6 +182,62 @@ class Preflight(unittest.TestCase):
             paths = [f["path"] for f in O.I.capture_inventory(d)["files"]]
         self.assertIn("pom.xml", paths)
         self.assertEqual([p for p in paths if p.startswith(".agents") or p == "skills-lock.json"], [])
+
+
+class ArchetypeOption(unittest.TestCase):
+    """--apply --archetype: templates generated from the customer's own archetype are used;
+    when usable templates can't be produced, nothing changes."""
+
+    BUNDLED = SKILL / "assets/archetype-pom-templates"
+
+    def _custom_templates(self) -> Path:
+        d = Path(tempfile.mkdtemp()) / "templates"
+        shutil.copytree(self.BUNDLED, d)
+        all_pom = d / "all/pom.xml"
+        all_pom.write_text(all_pom.read_text().replace(
+            "<modelVersion>", "<!-- from the customer's archetype -->\n    <modelVersion>", 1))
+        return d
+
+    def test_generated_templates_are_used(self):
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan"])
+        custom = self._custom_templates()
+        with mock.patch.object(O, "prepare_templates", return_value=str(custom)) as prep:
+            rc = _quiet(O.main, [str(d), "--apply", "--archetype", "com.acme:acme-archetype:3"])
+        prep.assert_called_once_with(str(d), "com.acme:acme-archetype:3", "pinned")
+        self.assertEqual(rc, 0)
+        self.assertIn("from the customer's archetype", (d / "all/pom.xml").read_text())
+        self.assertEqual(O.C.load_json(d / ".modernize/orchestration.json")["archetype"],
+                         "com.acme:acme-archetype:3")
+
+    def test_unusable_templates_change_nothing(self):
+        import archetype_templates as AT
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan"])
+        err = io.StringIO()
+        with mock.patch.object(AT, "build", side_effect=AT.TemplatesDoNotFit(
+                "ui.apps/pom.xml: no filevault-package-maven-plugin <configuration>")), \
+             contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            rc = O.main([str(d), "--apply", "--archetype", "58"])
+        self.assertEqual(rc, 2)
+        self.assertIn("ui.apps/pom.xml", err.getvalue())
+        self.assertIn("Nothing was changed", err.getvalue())
+        self.assertFalse((d / "ui.config").exists())
+        self.assertFalse((d / ".modernize/archetype-templates").exists())
+
+    def test_prepare_templates_writes_them_into_modernize(self):
+        import archetype as A
+        import archetype_templates as AT
+        d = Path(tempfile.mkdtemp())
+        bundled = {rel: (self.BUNDLED / rel).read_text() for rel in AT.TEMPLATE_FILES}
+        with mock.patch.object(AT, "build", return_value=(bundled, ("com.acme", "acme-archetype", "3"))) as b:
+            out = _quiet(O.prepare_templates, str(d), "com.acme:acme-archetype:3", "pinned")
+        self.assertEqual(Path(out), d / ".modernize/archetype-templates")
+        spec, workdir, sdk = b.call_args.args
+        self.assertEqual((spec, sdk), ("com.acme:acme-archetype:3", A.PINNED_SDK_API))
+        self.assertFalse(Path(workdir).exists())                 # scratch project removed
+        for rel in AT.TEMPLATE_FILES:
+            self.assertEqual((Path(out) / rel).read_text(), bundled[rel])
 
 
 @unittest.skipUnless(FIX.is_dir(), f"test fixture not found at {FIX} (set WKND_FIXTURE)")

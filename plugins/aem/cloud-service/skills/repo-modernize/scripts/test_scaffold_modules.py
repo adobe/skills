@@ -68,10 +68,37 @@ class Scaffold(unittest.TestCase):
         self.assertEqual(
             set(created),
             {"all/pom.xml", "ui.apps/pom.xml", "ui.apps.structure/pom.xml",
-             "ui.config/pom.xml", "ui.content/pom.xml"},
+             "ui.config/pom.xml", "ui.content/pom.xml",
+             "all/src/main/content/META-INF/vault/filter.xml"},
         )
         # the archetype's own parent pom.xml (templates_dir root) is NOT instantiated in Phase 1
         self.assertFalse((d / "pom.xml").exists())
+
+    def test_all_gets_the_filter_for_its_embedded_packages(self):
+        """Without a workspace filter the `all` package doesn't build."""
+        d = Path(tempfile.mkdtemp())
+        S.scaffold(str(d), CONFIG, str(TPL))
+        text = (d / "all/src/main/content/META-INF/vault/filter.xml").read_text()
+        self.assertIn('<filter root="/apps/acme-packages"/>', text)
+        self.assertNotIn("{{", text)
+
+    def test_existing_all_that_defines_its_filter_gets_none(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "all").mkdir()
+        (d / "all/pom.xml").write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"><build>'
+                                       '<filterSource>filter.xml</filterSource></build></project>')
+        created = S.scaffold(str(d), CONFIG, str(TPL))
+        self.assertNotIn("all/src/main/content/META-INF/vault/filter.xml", created)
+        self.assertFalse((d / "all/src").exists())
+
+    def test_existing_all_without_any_filter_gets_one(self):
+        """A legacy `all` that defines no filter couldn't build as a FileVault package."""
+        d = Path(tempfile.mkdtemp())
+        (d / "all").mkdir()
+        (d / "all/pom.xml").write_text('<project xmlns="http://maven.apache.org/POM/4.0.0"/>')
+        created = S.scaffold(str(d), CONFIG, str(TPL))
+        self.assertIn("all/src/main/content/META-INF/vault/filter.xml", created)
+        self.assertEqual((d / "all/pom.xml").read_text(), '<project xmlns="http://maven.apache.org/POM/4.0.0"/>')
 
     def test_idempotent_does_not_clobber_existing(self):
         d = Path(tempfile.mkdtemp())
