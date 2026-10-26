@@ -1,0 +1,26 @@
+[
+ {
+  "name": "banner",
+  "url_count": 2,
+  "instance_count": 2,
+  "maps_to": {
+   "hero": 2
+  }
+ },
+ {
+  "name": "tiles",
+  "url_count": 1,
+  "instance_count": 1,
+  "maps_to": {
+   "cards": 1
+  }
+ },
+ {
+  "name": "search",
+  "url_count": 1,
+  "instance_count": 1,
+  "maps_to": {
+   "site-search": 1
+  }
+ }
+]

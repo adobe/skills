@@ -1,0 +1,18 @@
+{
+  "provenance": "built from the live site only; it uses no output from any migration work",
+  "template_labels": { "page": "Content page" },
+  "signals": {},
+  "features": [
+    { "id": "site-search", "class": "S", "name": "Site search", "evidence": "quicksearch component: input + button, results from the search page", "disposition": "index-backed", "reproducibility": "self", "status": "pending", "pattern": "search-index-backed", "reach": "live sitemap block:site-search", "decisions": ["Q-1"] }
+  ],
+  "metadata_contract": [],
+  "query_indexes": [ { "name": "default", "include": ["/en/**"], "exclude": ["/nav", "/footer", "/**/nav*", "/**/footer*", "/fragments/**", "/drafts/**", "/search"], "properties": ["title", "description", "image", "lastModified", "robots"], "consumers": ["sitemap", "site-search"], "source": "og/meta" } ],
+  "site_config": [],
+  "consent_summary": null,
+  "loading_order": null,
+  "i18n_notes": ["Three locale trees (en, de, fr) share one template; the scoped tree is /en/."],
+  "open_questions": [
+    { "id": "Q-1", "area": "Search", "owner": "stakeholder", "blocking": false, "question": "Is metadata-based search (query index) acceptable, or is full-text search required?", "context": "EDS indexes give titles, descriptions and metadata.", "options": ["Query-index search", "Hosted search service"], "default": "Query-index search with title-first ranking, checked against the recorded probe counts.", "default_option": 0, "impact": "urls live sitemap block:site-search", "link": null },
+    { "id": "Q-2", "area": "Multi-language", "owner": "stakeholder", "blocking": true, "question": "Which locale trees follow the scoped tree, in what order?", "context": "Three trees share one template.", "options": ["Scoped tree only now", "Waves by traffic", "All trees at once"], "default": "Scoped tree first; the code base is built locale-ready; trees follow by traffic.", "default_option": 1, "impact": "urls live sitemap signal:hreflang", "link": null }
+  ]
+}

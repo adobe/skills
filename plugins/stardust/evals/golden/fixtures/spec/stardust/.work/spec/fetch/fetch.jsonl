@@ -1,0 +1,4 @@
+{"url":"https://www.example.com/en/a.html","status":200,"final_url":"https://www.example.com/en/a.html","final_status":200,"title":"A","template":"page"}
+{"url":"https://www.example.com/en/b.html","status":200,"final_url":"https://www.example.com/en/b.html","final_status":200,"title":"B","template":"page"}
+{"url":"https://www.example.com/en/old.html","status":301,"final_url":"https://www.example.com/en/gone.html","final_status":404,"chain":["https://www.example.com/en/gone.html"]}
+{"url":"https://www.example.com/en/walled.html","error":"bot challenge","blocked":"challenge"}

@@ -1,0 +1,1 @@
+[{ "term": "parking", "expectCount": 9, "expectTitles": ["Long-stay parking", "Short-stay parking"], "feature": "site-search", "path": "/en/search", "param": "q" }]
