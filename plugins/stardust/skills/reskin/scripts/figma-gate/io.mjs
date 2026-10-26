@@ -7,6 +7,7 @@ import { readCurrent } from '../figma/cache.mjs';
 import { UsageError } from '../figma/errors.mjs';
 import { assertIgnored } from '../figma/guard.mjs';
 import { readJson } from '../figma/io.mjs';
+import { edsEquivalent } from '../figma/eds-map.mjs';
 
 // A preview run has its own directory, so it never deletes or overwrites the evidence of a local run.
 export const workDir = (dir, slug, regime = 'local') => join(dir, '.work', 'reskin', 'gates', slug, regime === 'preview' ? 'figma-preview' : 'figma');
@@ -45,6 +46,14 @@ export function includedModules(rules) {
   const modules = new Map();
   for (const m of rules?.modules || []) if (m.status === 'include' && m.id) modules.set(m.id, m.frame);
   return modules;
+}
+
+// Included module id → the EDS block it renders as: its curation-rules eds, else deploy Step 2 on its name
+// (figma/eds-map.mjs). { block: null } is default content.
+export function edsModules(rules) {
+  const out = new Map();
+  for (const m of rules?.modules || []) if (m.status === 'include' && m.id) out.set(m.id, m.eds && typeof m.eds === 'object' && 'block' in m.eds ? m.eds : edsEquivalent(m.name));
+  return out;
 }
 
 export function confidentialGuard(dir) {

@@ -5,11 +5,14 @@
 // checks measure. The selector comes from the decorated page, never from the authored position: decoration prepends a
 // section (stock buildHeroBlock) or drops an empty one, so the two lists need not line up one to one. No browser:
 // the authored form is parsed as text, and the decorated sections' text is read by previewTarget's collect.
-//   plainSections(html)  → [{ index, text, empty }], one per top-level <div> of <main>: its position, its text (tags
-//                          off, entities decoded, whitespace collapsed, lower case) and whether it holds nothing
-//   plainJoin({ local, plain, decorated, mapping, anchors, modules })  → { pass, sections, problems, notes },
+//   plainSections(html)  → [{ index, text, empty, blocks }], one per top-level <div> of <main>: its position, its text
+//                          (tags off, entities decoded, whitespace collapsed, lower case), whether it holds nothing and
+//                          the blocks authored in it (metadata blocks aside)
+//   plainJoin({ local, plain, decorated, mapping, anchors, modules, eds })  → { pass, sections, problems, notes, naming },
 //                          matchSections' result with each section's selector and index (its position in the
-//                          decorated main) taken from the decorated page, and a note for each slot decoration moved
+//                          decorated main) taken from the decorated page, a note for each slot decoration moved and,
+//                          advisory, a naming line for each slot not authored as the EDS block deploy Step 2 names its
+//                          module (eds: id → { block }, block null = default content; io.mjs edsModules)
 import { matchSections } from './join.mjs';
 import { norm } from './mapping.mjs';
 
@@ -80,7 +83,8 @@ export function plainSections(html) {
       inner = inner.slice(0, block.start) + inner.slice(block.end);
     }
     const text = textOf(inner);
-    return { index, text, empty: !text && !MEDIA.test(inner) };
+    const blocks = topDivs(inner).map((d) => blockName(d.attrs)).filter(Boolean);
+    return { index, text, empty: !text && !MEDIA.test(inner), blocks };
   });
 }
 
@@ -131,7 +135,7 @@ const DECORATED = { where: 'the decorated main', missing: 'decorated main > div'
 // there, out of order or sharing a div (two slots would be measured in one section) is drift too. Decoration may add
 // or drop whole sections, so k need not be the authored position: each slot where it differs gets a note. A slot the
 // authored form lacks is reported once and not looked for in the decorated page.
-export function plainJoin({ local, plain, decorated, mapping, anchors: anchorOf, modules }) {
+export function plainJoin({ local, plain, decorated, mapping, anchors: anchorOf, modules, eds = new Map() }) {
   const matched = matchSections({ dom: local, mapping, anchors: anchorOf, modules });
   const problems = [...matched.problems];
   const drift = (msg) => problems.push(`section drift: ${msg}`);
@@ -153,11 +157,16 @@ export function plainJoin({ local, plain, decorated, mapping, anchors: anchorOf,
   rendered.problems.forEach(drift);
 
   const notes = [];
+  const naming = [];
   const sections = matched.sections.filter((s) => rendered.found.has(s.slot)).map((s) => {
     const index = rendered.found.get(s.slot);
     const wrote = authored.found.get(s.slot);
     if (index !== wrote) notes.push(`${s.slot}: decoration moved plain section ${wrote} to main > div:nth-child(${index + 1}): the selector follows the decorated page`);
+    const want = s.module && eds.get(s.module);
+    const got = plain.find((p) => p.index === wrote)?.blocks ?? [];
+    if (want && want.block === null && got.length) naming.push(`${s.slot}: ${s.module} is default content (deploy Step 2 D1) but plain section ${wrote} authors ${got.join(', ')}`);
+    else if (want?.block && !got.includes(want.block)) naming.push(`${s.slot}: ${s.module} is the EDS block "${want.block}" (deploy Step 2 D11) but plain section ${wrote} authors ${got.length ? got.join(', ') : 'no block'}`);
     return { ...s, selector: `main > div:nth-child(${index + 1})`, index };
   });
-  return { pass: problems.length === 0, sections, problems, notes };
+  return { pass: problems.length === 0, sections, problems, notes, naming };
 }

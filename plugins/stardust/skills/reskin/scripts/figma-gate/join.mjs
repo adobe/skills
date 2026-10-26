@@ -4,7 +4,7 @@
 // inside these sections, so a page that drifted from the mapping stops here.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { includedModules } from './io.mjs';
+import { edsModules, includedModules } from './io.mjs';
 import { anchors, norm, parseMapping } from './mapping.mjs';
 import { loadChromium, loadMeasureLive, localAttributes } from './target.mjs';
 
@@ -71,6 +71,7 @@ export async function runJoin({ target, inputs, out }) {
     mapping: parseMapping(inputs.mapping),
     anchors: anchors(inputs.contentModel),
     modules: includedModules(inputs.rules),
+    eds: edsModules(inputs.rules),
     selector: target.join.selector,
   });
   const result = { version: 1, url: target.url, regime: target.regime, width: WIDTH, ...matched };

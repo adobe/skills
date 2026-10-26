@@ -109,7 +109,7 @@ await check('plainSections: a metadata block\'s text is left out of the section 
   const smeta = '<div class="section-metadata"><div><div>style</div><div>dark</div></div></div>';
   const meta = '<div class="metadata"><div><div>title</div><div>Hidden title</div></div></div>';
   const s = plainSections(doc(`<div><h2>Hi there</h2>${smeta}<p>Body</p>${meta}</div>`));
-  assert.deepEqual(s, [{ index: 0, text: 'hi there body', empty: false }]);
+  assert.deepEqual(s, [{ index: 0, text: 'hi there body', empty: false, blocks: [] }]);
 });
 
 await check('plainSections: tags come off without splitting words, blocks split text, entities decode, comments and scripts are ignored', () => {
@@ -118,7 +118,7 @@ await check('plainSections: tags come off without splitting words, blocks split 
 });
 
 await check('plainSections: an image-only section is not empty; no <main> reads the whole document; an unclosed div ends at the end', () => {
-  assert.deepEqual(plainSections(doc('<div><p><picture><img src="a.png" alt="x"></picture></p></div>')), [{ index: 0, text: '', empty: false }]);
+  assert.deepEqual(plainSections(doc('<div><p><picture><img src="a.png" alt="x"></picture></p></div>')), [{ index: 0, text: '', empty: false, blocks: [] }]);
   assert.deepEqual(plainSections('<div>a</div><div>b</div>').map((x) => x.text), ['a', 'b']);
   assert.deepEqual(plainSections('<main><div><p>a</p></main>').map((x) => x.text), ['a']);
   assert.deepEqual(plainSections(''), []);
