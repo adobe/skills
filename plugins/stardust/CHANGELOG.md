@@ -41,6 +41,8 @@ with exit 2. This release adds no site auth: the gates send no Authorization hea
   `cards.primary.*`, `buttons.primary.height` or `layout.mobile.*`; `tokens` asserts them. Without them the block is unchanged.
 - **Section heights.** `parity` adds a `section-height` row per width: the reskin page's slots paired in order with the
   preview's non-empty sections, the worst |Δh| ≤ 10% (naming the slot), n/a when the counts differ.
+- **Stale evidence.** `deployed-gate all` records a `codeStamp` (the project's `blocks/`, `styles/`, `scripts/`,
+  `head.html`) in `summary.json` and the ledger fragment; `deployed-gate stamp` says `current` or `stale` (exit 1).
 - **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
   checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`.
 - **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The
