@@ -88,7 +88,7 @@ check('branded header row: brand | menu | actions zones; navAlign centres the me
   }] };
   const run = (chrome) => render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], ...chrome } } }).html;
   const centred = run({ navAlign: 'center' });
-  assert.match(centred, /<div class="chrome-row nav-align-center">[\s\S]*<div class="brand"><img class="logo"[^>]*><\/div>\s*<nav><button class="nav-menu"[^>]*>Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>\s*<div class="nav-actions"><a href="https:\/\/example\.test\/login">Login<\/a><button class="icon-btn nav-toggle" type="button" aria-label="Menu">/);
+  assert.match(centred, /<div class="chrome-row nav-align-center">[\s\S]*<div class="brand"><img class="logo"[^>]*><\/div>\s*<nav id="site-nav"><button class="nav-menu"[^>]*>Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>\s*<div class="nav-actions"><a href="https:\/\/example\.test\/login">Login<\/a><button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">/);
   assert.match(centred, /\.nav-align-center \.container \{ display: grid; grid-template-columns: 1fr auto 1fr; \}/);
   assert.match(run({}), /<div class="chrome-row nav-align-end">/);
   assert.match(run({ navAlign: 'bogus' }), /<div class="chrome-row nav-align-end">/);
@@ -413,6 +413,38 @@ check('0.42 chrome: a link with only sr-only text is the utility bar; a footer w
   assert.match(html, /<div class="footer-col"><p class="footer-col-title">Contact<\/p><ul><li>1 Hill St<\/li><li>02 1234<\/li><\/ul><\/div>/);
   assert.match(html, /<div class="footer-social"><p class="footer-social-label">Follow us<\/p><ul class="icon-links"><li><a href="https:\/\/example\.test\/fb" aria-label="Facebook">Facebook<\/a><\/li><\/ul><\/div>/);
 });
+const BRANDED = { sections: [{
+  slot: 'h1', images: [{ currentSrc: 'https://example.test/logo.svg', alt: 'Logo' }], ctas: [],
+  ordered: [
+    { kind: 'image', currentSrc: 'https://example.test/logo.svg' },
+    { kind: 'listItem', text: 'About', children: [{ kind: 'cta', text: 'About', absHref: 'https://example.test/about' }] },
+    { kind: 'listItem', text: 'Contact', children: [{ kind: 'cta', text: 'Contact', absHref: 'https://example.test/contact' }] },
+  ],
+}, {
+  slot: 'f1', images: [], paragraphs: [], ctas: [],
+  ordered: [
+    { kind: 'heading', level: 'h2', text: 'Hill School' },
+    { kind: 'heading', level: 'h3', text: 'Contact' },
+    { kind: 'listItem', text: '1 Hill St' },
+    { kind: 'cta', text: 'Privacy', absHref: 'https://example.test/privacy' },
+    { kind: 'cta', text: 'Terms', absHref: 'https://example.test/terms', children: [{ kind: 'text', text: 'Terms' }] },
+  ],
+}] };
+const brandedHtml = () => render({ ...base, chromeModel: BRANDED, mapping: { ...mapping, chrome: { header: ['h1'], footer: ['f1'] } } }).html;
+check('mobile menu toggle: aria-expanded/aria-controls on the toggle, the nav it controls, the page script and the open-state CSS', () => {
+  const html = brandedHtml();
+  assert.match(html, /<button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="site-nav">/);
+  assert.match(html, /<nav id="site-nav">/);
+  assert.match(html, /<script>document\.addEventListener\('click', \(e\) => \{ const b = e\.target\.closest\('\.nav-toggle'\)/);
+  assert.match(html, /\.site-header\.nav-open nav \{ display: flex;/);
+  const plain = render(base).html;
+  assert.doesNotMatch(plain, /nav-toggle"|closest\('\.nav-toggle'\)/);
+});
+check('zoned footer: a top-level link keeps its destination (text-only and text-children CTAs)', () => {
+  const html = brandedHtml();
+  assert.match(html, /<li><a href="https:\/\/example\.test\/privacy">Privacy<\/a><\/li>/);
+  assert.match(html, /<li><a href="https:\/\/example\.test\/terms">Terms<\/a><\/li>/);
+});
 check('0.42 main: an icon-font word is a glyph without the flag; a ledgered embed keeps its space after its section', () => {
   const ordered = [
     { kind: 'heading', level: 'h2', text: 'Find us' },
@@ -425,6 +457,32 @@ check('0.42 main: an icon-font word is a glyph without the flag; a ledgered embe
   const plain = render({ ...base, slug: 'login', model: { sections: [{ slot: 's01', ordered }] } }).html;
   assert.doesNotMatch(plain, /<div class="embed-placeholder"/);
 });
+
+// In a browser at 390px: the menu is folded, the toggle opens and closes it.
+await (async () => {
+  const name = 'mobile menu toggle in a browser at 390px: folded, opens on click, closes again';
+  let browser;
+  try {
+    const { chromium } = await import('playwright');
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
+    await page.setContent(brandedHtml(), { waitUntil: 'domcontentloaded' });
+    const nav = page.locator('#site-nav');
+    const toggle = page.locator('.nav-toggle');
+    assert.equal(await nav.isVisible(), false, 'nav folded at 390px');
+    await toggle.click();
+    assert.equal(await nav.isVisible(), true, 'nav open after a click');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+    assert.equal(await page.locator('#site-nav a[href="https://example.test/about"]').isVisible(), true, 'menu links visible');
+    await toggle.click();
+    assert.equal(await nav.isVisible(), false, 'nav folded after a second click');
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+    await page.setViewportSize({ width: 1440, height: 800 });
+    assert.equal(await toggle.isVisible(), false, 'no toggle at 1440px');
+    assert.equal(await nav.isVisible(), true, 'nav shown at 1440px');
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
+})();
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 process.exit(failed ? 1 : 0);
