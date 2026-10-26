@@ -92,14 +92,20 @@ export async function runRenders({ dir, url, client, at, scale = 1, refresh = fa
   let { pages, library } = t;
   if (only?.length) { pages = pages.filter((p) => only.includes(p.slug)); library = library.filter((v) => only.includes(v.block)); }
 
-  // PNGs: one images call per 40 ids, bytes downloaded once per id and scale
-  const fileOf = (id) => join(pngDir, `${safeId(id)}@${scale}x.png`);
+  // PNGs: one images call per 40 ids, bytes downloaded once per id and scale.
+  // A breakpoint frame (a page frame, a Breakpoint=… kit variant) is a viewport: rendered at its own bounds
+  // (use_absolute_bounds), so content bleeding past the frame edge does not widen the reference. A component
+  // variant keeps Figma's render bounds: its overflow is a menu, tooltip or shadow the design shows.
+  const framed = new Set([...pages.map((p) => p.id), ...library.filter((v) => v.breakpoint).map((v) => v.id)]);
+  const fileOf = (id) => join(pngDir, `${safeId(id)}@${scale}x${framed.has(id) ? '.frame' : ''}.png`);
   const ids = [...new Set([...pages, ...library].map((x) => x.id))];
   const need = ids.filter((id) => refresh || !existsSync(fileOf(id)));
   const failed = [];
   let calls = 0;
-  for (const part of chunks(need, 40)) {
-    const res = await client.getJson(`/v1/images/${fileKey}`, { ids: part.join(','), scale, format: 'png', version });
+  const batches = [...chunks(need.filter((id) => framed.has(id)), 40).map((part) => [part, true]),
+    ...chunks(need.filter((id) => !framed.has(id)), 40).map((part) => [part, false])];
+  for (const [part, bounds] of batches) {
+    const res = await client.getJson(`/v1/images/${fileKey}`, { ids: part.join(','), scale, format: 'png', version, ...(bounds ? { use_absolute_bounds: true } : {}) });
     calls += 1;
     if (res.err) throw new UsageError(`Figma could not render: ${res.err}`);
     for (const id of part) {

@@ -84,10 +84,14 @@ await test('runRenders: one PNG per id, cached; figma-renders.json indexes pages
     const out = JSON.parse(readFileSync(join(dir, 'reskin', 'figma-renders.json'), 'utf8'));
     assert.deepEqual(Object.keys(out.library), ['button', 'header', 'footer', 'toggle']);
     assert.equal(out.library.toggle.used, false);
-    assert.match(out.pages['login-landing'][0].png, /_pages\/7\/png\/.*@1x\.png$/);
+    assert.match(out.pages['login-landing'][0].png, /_pages\/7\/png\/.*@1x\.frame\.png$/, 'a page frame is rendered at its own bounds');
     assert.ok(existsSync(join(dir, out.library.button.variants[0].png)));
     assert.equal(out.library.header.variants.find((v) => v.id === 'h2').png, null);
-    assert.equal(log.filter(([p]) => /images/.test(p)).length, 1, 'one images call for ≤ 40 ids');
+    const imageCalls = log.filter(([p]) => /images/.test(p));
+    assert.ok(imageCalls.length <= 2, 'one images call per kind (frames, components) for ≤ 40 ids');
+    const frameCall = imageCalls.find(([, q]) => q.use_absolute_bounds);
+    assert.ok(frameCall && frameCall[1].ids.split(',').includes(out.pages['login-landing'][0].id), 'frames ask use_absolute_bounds');
+    assert.ok(imageCalls.every(([, q]) => !q.use_absolute_bounds || !q.ids.split(',').includes('t1')), 'a component variant keeps its render bounds');
     const again = [];
     const r2 = await runRenders({ dir, url: URL, client: stub(again), at: 'T' });
     assert.deepEqual([r2.fetched, again.filter(([p]) => /nodes/.test(p)).length], [0, 0], 'cached: only the missing PNG is asked again');
