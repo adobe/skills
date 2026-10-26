@@ -293,6 +293,10 @@ falls short. Either way the renderer:
   them (`reference/gates.md` § (d));
 - writes `stardust/reskin/pages/<slug>.html`, self-contained.
 
+`--localize-images` downloads each image to
+`stardust/prototypes/assets/img/` (migrate's root) and mirrors it beside
+the page, `src="assets/img/…"`: the page shows it from
+`stardust/reskin/pages/` and `migrate` bundles it with default flags.
 `--register` (flow `reskin` only) records the page in `state.json`
 through `state.mjs`: `prototypePath` set to the rendered file, the page
 advanced to `prototyped` — a same-type sibling of an approved archetype

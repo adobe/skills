@@ -15,10 +15,13 @@
  *
  * Images are hot-linked to the source by default (the gates compare host+path). --localize-images
  * downloads each one to <dir>/prototypes/assets/img/<host>/<path> (the migrate bundler's root; a query
- * becomes a short hash on the file name so image-proxy URLs stay distinct), writes
- * src relative to --out and keeps data-source-src="<original>" — dom-equality and slot-coverage match
- * on it, so the gates hold on a localized page. A failed download (or two URLs landing on one local
- * file) keeps the remote src and is listed.
+ * becomes a short hash on the file name so image-proxy URLs stay distinct), copies it beside the page as
+ * <out dir>/assets/img/<host>/<path> and writes src="assets/img/<host>/<path>": the one ref form both a
+ * browser opening the page (the local gates) and migrate's bundler with its default --proto-dir resolve
+ * (its `assets/` prefix → <proto-dir>/assets/img/…), since the page and the proto dir sit at different
+ * depths. It keeps data-source-src="<original>" — dom-equality and slot-coverage match on it, so the gates
+ * hold on a localized page. A failed download (or two URLs landing on one local file) keeps the remote
+ * src and is listed.
  *
  * mapping.json (the only per-site input; schema and defaults: reference/mapping-json.md):
  *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent",
@@ -70,12 +73,13 @@
  *
  * Reads:  <dir>/reskin/content-model/<slug>/content-model.json, <dir>/reskin/donor-tokens.json,
  *         the mapping, the chrome model when mapped.
- * Writes: --out (parent dirs created); with --localize-images also <dir>/prototypes/assets/img/**;
+ * Writes: --out (parent dirs created); with --localize-images also <dir>/prototypes/assets/img/** and
+ *         <out dir>/assets/img/**;
  *         with --register <dir>/state.json.
  * Exit:   0 rendered, 1 render error (unknown node kind, label round-trip), 2 setup error.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rootTokens } from './render/root-tokens.mjs';
@@ -92,7 +96,8 @@ Render one page from <dir>/reskin/content-model/<slug>/content-model.json with t
   --model-dir <d>      content models (default <dir>/reskin/content-model)
   --out <file>         output HTML (default <dir>/reskin/pages/<slug>.html); --register hands it to
                        the ledger, the canon bridge and migrate
-  --localize-images    download images to <dir>/prototypes/assets/img/ and keep data-source-src
+  --localize-images    download images to <dir>/prototypes/assets/img/ (migrate's root), copy them to
+                       <out dir>/assets/img/, src="assets/img/…", keep data-source-src
   --register           record the page in <dir>/state.json through state.mjs (flow "reskin" only, else
                        exit 2 before rendering): prototypePath = --out relative to the project root;
                        extracted/directed → prototyped, or → directed for a sibling of a type that has
@@ -1035,8 +1040,16 @@ async function main(argv) {
   if (o['localize-images']) {
     const assetsDir = resolve(dir, 'prototypes', 'assets');
     const loc = await localize(result.images, assetsDir, model.metadata?.canonical || model.url || undefined);
+    // The page's own assets/ mirror: src="assets/img/…" resolves from the page in a browser and, through
+    // migrate's `assets/` prefix, against its default --proto-dir (<dir>/prototypes).
+    const pageAssets = join(dirname(out), 'assets');
+    const local = new Map([...loc.map].map(([u, file]) => {
+      const mirror = join(pageAssets, relative(assetsDir, file));
+      if (resolve(mirror) !== resolve(file)) { mkdirSync(dirname(mirror), { recursive: true }); copyFileSync(file, mirror); }
+      return [u, mirror];
+    }));
     const rel = (file) => relative(dirname(out), file).split(sep).join('/');
-    result = render({ ...input, resolveImg: (u) => (loc.map.has(u) ? { src: rel(loc.map.get(u)), source: u } : { src: u }) });
+    result = render({ ...input, resolveImg: (u) => (local.has(u) ? { src: rel(local.get(u)), source: u } : { src: u }) });
     console.log(`localized ${loc.map.size}/${result.images.length} image(s) → ${relative(process.cwd(), assetsDir)}/img/`);
     for (const f of loc.failed) console.error(`WARN image kept remote: ${f.url} (${f.why})`);
   }

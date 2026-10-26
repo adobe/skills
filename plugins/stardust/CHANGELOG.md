@@ -51,6 +51,11 @@ multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 wi
 - **The handoff marks siblings ready for migrate.** Under flow `reskin`, `canon-from-reskin` advances each approved
   type's `extracted` pages to `directed` through `state.mjs` (`direct` refuses under reskin, and `migrate` renders
   siblings only from `directed`); stale and `prototyped` siblings are named, not moved; re-runs are no-ops.
+- **Localized images bundle in migrate with default flags.** `stream-render --localize-images` wrote
+  `../../prototypes/assets/img/…`, which migrate resolves against `--proto-dir` and so left unbundled (a run passed
+  `--proto-dir stardust/reskin/pages --current stardust/prototypes`). It now writes `src="assets/img/…"`, keeps the
+  files in `stardust/prototypes/assets/img/` and mirrors them beside the page, so the page displays them and
+  migrate bundles them with its defaults.
 
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 

@@ -5,16 +5,18 @@
 // heading alignment from type.display.textAlign (default left), resolveImg → data-source-src, localSubpath,
 // and an unknown stream node kind throws instead of dropping content. Run: node <this file>.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
 import { advance } from '../../../stardust/scripts/state.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
 const LEDGER = join(dirname(fileURLToPath(import.meta.url)), '..', 'reskin-ledger.mjs');
+const MIGRATE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'migrate', 'scripts', 'migrate.mjs');
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
@@ -535,6 +537,44 @@ check('--deploy-map CLI: prints the block-roundtrip arguments, writes nothing', 
   assert.equal(existsSync(join(root, 'stardust', 'reskin', 'pages')), false);
   assert.equal(spawnSync(process.execPath, [SCRIPT, 'about', '--deploy-map'], { cwd: root, encoding: 'utf8' }).status, 2);
 });
+
+
+// --localize-images → --register → migrate render with its DEFAULT --proto-dir: the image is bundled, and the
+// reskin page still shows it from stardust/reskin/pages/ (src="assets/img/…", mirrored beside the page).
+await (async () => {
+  const name = 'localized images: src="assets/img/…" displays from reskin/pages and migrate bundles it with default flags';
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a1f3a2a40000000049454e44ae426082', 'hex');
+  const srv = createServer((q, r) => { r.writeHead(200, { 'content-type': 'image/png' }); r.end(PNG); }).listen(0, '127.0.0.1');
+  const run = (cwd, args) => new Promise((ok) => { const c = spawn(process.execPath, args, { cwd }); let out = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; }); c.on('close', (status) => ok({ status, out })); });
+  let browser;
+  try {
+    await new Promise((ok) => srv.on('listening', ok));
+    const src = `http://127.0.0.1:${srv.address().port}/media/a.png`;
+    const m = { metadata: { title: 'Sign in' }, sections: [{ slot: 's01', ordered: [{ kind: 'heading', level: 'h1', text: 'Hi' }, { kind: 'image', currentSrc: src, alt: 'A' }] }] };
+    const root = project({ state: { ...reskinState([page('login', 'extracted')]), site: { originUrl: 'https://example.test/' } } });
+    writeFileSync(join(root, 'stardust', 'reskin', 'content-model', 'login', 'content-model.json'), JSON.stringify(m));
+    mkdirSync(join(root, 'stardust', 'canon'), { recursive: true }); writeFileSync(join(root, 'stardust', 'canon', 'canon.css'), ':root { --x: 1; }\n');
+    const r = await run(root, [SCRIPT, 'login', '--localize-images', '--register']);
+    assert.equal(r.status, 0, r.out);
+    const html = readFileSync(join(root, 'stardust', 'reskin', 'pages', 'login.html'), 'utf8');
+    assert.match(html, /<img src="assets\/img\/127\.0\.0\.1\/media\/a\.png" data-source-src="http:\/\/127\.0\.0\.1:\d+\/media\/a\.png" alt="A">/);
+    for (const d of ['reskin/pages/assets', 'prototypes/assets']) assert.ok(existsSync(join(root, 'stardust', d, 'img', '127.0.0.1', 'media', 'a.png')), d);
+    const mg = await run(root, [MIGRATE, 'render', 'login']);
+    assert.equal(mg.status, 0, mg.out);
+    assert.match(readFileSync(join(root, 'stardust', 'migrated', 'login', 'index.html'), 'utf8'), /<img src="\.\.\/assets\/img\/127\.0\.0\.1\/media\/a\.png"/);
+    assert.ok(existsSync(join(root, 'stardust', 'migrated', 'assets', 'img', '127.0.0.1', 'media', 'a.png')), 'bundled into migrated/assets');
+    const st = JSON.parse(readFileSync(join(root, 'stardust', 'state.json'), 'utf8'));
+    assert.ok(st.migrate.bundledAssets.includes('img/127.0.0.1/media/a.png')); assert.deepEqual(st.migrate.missingAssets, []);
+    try {
+      const { chromium } = await import('playwright');
+      browser = await chromium.launch();
+      const pg = await browser.newPage();
+      await pg.goto(pathToFileURL(join(root, 'stardust', 'reskin', 'pages', 'login.html')).href);
+      assert.equal(await pg.evaluate(() => document.querySelector('main img').naturalWidth), 1, 'image loads from the reskin page');
+    } catch (e) { if (!/Cannot find (package|module) 'playwright'/.test(e.message)) throw e; }
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { srv.close(); await browser?.close(); }
+})();
 
 // In a browser at 390px: the menu is folded, the toggle opens and closes it.
 await (async () => {

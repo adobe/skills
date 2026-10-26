@@ -21,9 +21,12 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
 4. Render each sibling: `stream-render.mjs <slug> --register` (it stays
    `directed`, with the `prototypePath` migrate reads as its source).
 5. `reskin-preflight.mjs` exit 0 (§ The predicate).
-6. `migrate render --all` — archetypes at their own tier,
+6. `migrate render --all` with its default flags — archetypes at their own tier,
    same-type pages at the sibling tier; migrate merges `handoff.<type>.gates`
-   into each first sidecar's `gatesPassed` / `gateEvidence`.
+   into each first sidecar's `gatesPassed` / `gateEvidence`. Localized images
+   (`stream-render --localize-images`: `src="assets/img/…"`, files in
+   `stardust/prototypes/assets/img/` and mirrored beside the page) bundle from
+   the default `--proto-dir`; no `--proto-dir` / `--current` override.
 7. Sibling gate per migrated page (§ Sibling gate) →
    `reskin-ledger.mjs record <slug> --stage migrated`.
 8. `deploy` / `rollout`, unchanged; rollout re-checks the predicate.
