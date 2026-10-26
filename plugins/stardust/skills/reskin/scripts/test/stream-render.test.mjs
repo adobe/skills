@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { donorModulesEds } from '../figma/eds-map.mjs';
 import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
 import { advance } from '../../../stardust/scripts/state.mjs';
 
@@ -528,12 +529,30 @@ check('deployMap: one block per module, instances in page (model) order; blocks 
   assert.throws(() => deployMap(m, 'nope'), /mapping\.json has no pages\.nope/);
   assert.deepEqual(checkMapping({ blocks: { M1: 'Hero Block', M2: 'cards' }, pages: {} }), ['blocks.M1: "Hero Block" is not an EDS block name (lower-case letters, digits, hyphens)']);
 });
+check('deployMap: donor-modules.md EDS blocks (deploy Step 2) name the blocks; two modules on one block are its variants; default content gets none', () => {
+  const eds = donorModulesEds([
+    '| # | Module | EDS block | Where seen | Description |', '|---|---|---|---|---|',
+    '| M1 | Q&A | accordion | a | d |', '| M2 | Teaser | cards (teaser) | a | d |', '| M3 | Card | cards | a | d |', '| M4 | Button | default content | a | d |',
+  ].join('\n'));
+  const m = { blocks: { M3: 'columns' }, pages: { home: { slots: { s01: { module: 'M1' }, s02: { module: 'M2' }, s03: { module: 'M4' }, s04: { module: 'M3' }, s05: { module: 'M9' } } } } };
+  const r = deployMap(m, 'home', null, eds);
+  assert.deepEqual(r.blocks.map((b) => [b.block, b.slots, b.variants]), [['accordion', ['s01'], {}], ['cards', ['s02'], { M2: 'teaser' }], ['columns', ['s04'], {}], ['m9', ['s05'], {}]]);
+  assert.deepEqual(r.defaultContent, ['s03']);
+  delete m.blocks;
+  assert.deepEqual(deployMap(m, 'home', null, eds).blocks.find((b) => b.block === 'cards').modules, ['M2', 'M3']);
+  assert.equal(blockName({}, 'M4', eds), null); assert.equal(blockName({}, 'M1', eds), 'accordion');
+});
 check('--deploy-map CLI: prints the block-roundtrip arguments, writes nothing', () => {
   const root = project({ map: { blocks: { M2: 'form-feature' }, pages: { login: { slots: { s01: { module: 'M2' } } } } } });
   const r = spawnSync(process.execPath, [SCRIPT, 'login', '--deploy-map'], { cwd: root, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout.trim(), `--map 'form-feature=section[data-slot="s01"]'`);
   assert.match(r.stderr, /form-feature \(M2\): s01/);
+  writeFileSync(join(root, 'stardust', 'reskin', 'donor-modules.md'), '| # | Module | EDS block | Where seen | Description |\n|---|---|---|---|---|\n| M2 | Login | form (login) | a | d |\n');
+  writeFileSync(join(root, 'stardust', 'reskin', 'mapping.json'), JSON.stringify({ pages: { login: { slots: { s01: { module: 'M2' } } } } }));
+  const e = spawnSync(process.execPath, [SCRIPT, 'login', '--deploy-map'], { cwd: root, encoding: 'utf8' });
+  assert.equal(e.stdout.trim(), `--map 'form=section[data-slot="s01"]'`, e.stderr);
+  assert.match(e.stderr, /form \(M2: login\): s01/);
   assert.equal(existsSync(join(root, 'stardust', 'reskin', 'pages')), false);
   assert.equal(spawnSync(process.execPath, [SCRIPT, 'about', '--deploy-map'], { cwd: root, encoding: 'utf8' }).status, 2);
 });

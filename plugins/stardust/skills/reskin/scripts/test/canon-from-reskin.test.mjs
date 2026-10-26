@@ -157,6 +157,7 @@ check('--help in an empty cwd: exit 0, nothing written; no slug: exit 2', () => 
 write('stardust/state.json', JSON.stringify(state('directed')));
 write('stardust/reskin/donor-tokens.json', JSON.stringify({ palette: { accent: 'red' }, layout: { sectionPaddingY: '64px' } }));
 write('stardust/reskin/mapping.json', JSON.stringify({ chrome: { header: ['s01'] }, pages: { login: { template: 'login', slots: { s01: { module: 'M2', layout: 'media-band', width: 'narrow' } } } } }));
+write('stardust/reskin/donor-modules.md', '| # | Module | EDS block | Where seen | Description |\n|---|---|---|---|---|\n| M2 | Login | form (login) | a | d |\n');
 write('stardust/prototypes/login-proposed.html', page());
 check('refuses an archetype that is not approved (exit 1)', () => {
   const r = run(['login']); assert.equal(r.status, 1); assert.match(r.err, /refused: login is directed/);
@@ -170,6 +171,7 @@ check('full run: canon files, :root first in canon.css, DESIGN.json canon + modu
   assert.equal(d.source.kind, 'donor'); assert.equal(d.extensions.canon.sourceSlug, 'login');
   assert.deepEqual(Object.keys(d.extensions.canon.files), ['header', 'footer', 'css']);
   assert.equal(d.extensions.modules.find((m) => m.id === 'M2').canonicalRendering.path, 'stardust/canon/modules/M2.html');
+  assert.deepEqual(d.extensions.modules.find((m) => m.id === 'M2').eds, { block: 'form', variant: 'login' }, 'the EDS block of deploy Step 2, from donor-modules.md');
   const first = d.extensions.canon.history.at(-1); assert.equal(first.kind, 'first-approval');
   // captured when playwright and the replica scripts resolve; otherwise a finding, never a failure
   if (first.shot) assert.match(first.shot, /^stardust\/reskin\/approvals\/login\..*\.png$/); else assert.match(r.out, /FINDING visual record skipped/);

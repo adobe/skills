@@ -6,7 +6,7 @@
 // become its variants. Deterministic. Run: node --test <this file>.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { edsEquivalent, edsLabel, resolveVariants, safeBlockName, slugOf } from '../figma/eds-map.mjs';
+import { donorModulesEds, edsEquivalent, edsLabel, parseEdsLabel, resolveVariants, safeBlockName, slugOf } from '../figma/eds-map.mjs';
 
 const map = (n, o) => { const e = edsEquivalent(n, o); return [e.block, e.variant]; };
 
@@ -74,6 +74,21 @@ test('edsLabel / resolveVariants: several modules on one block become its varian
   assert.deepEqual(out.map((e) => [e.block, e.variant]), [['accordion', null], ['accordion', 'q-and-a'], ['accordion', 'faq'], ['cards', 'teaser'], [null, null], [null, null]]);
   assert.match(out[1].reason, /a variant of it/);
   assert.deepEqual(resolveVariants([{ key: 'a', figma: 'Teaser', eds: edsEquivalent('Teaser') }, { key: 'b', figma: 'Teaser', eds: edsEquivalent('Teaser') }]).map((e) => e.variant), ['teaser', 'teaser-2']);
+});
+
+test('parseEdsLabel inverts edsLabel; donorModulesEds reads the EDS block column, else Step 2 on the name', () => {
+  for (const e of [{ block: 'accordion', variant: null }, { block: 'cards', variant: 'teaser' }, { block: null, variant: null }]) {
+    assert.deepEqual(parseEdsLabel(edsLabel(e)), e);
+  }
+  assert.equal(parseEdsLabel('—'), null);
+  const md = [
+    '| # | Module | EDS block | Where seen | Description |', '|---|---|---|---|---|',
+    '| M1 | Q&A | accordion | a | d |', '| M2 | Hero \\| dark | hero (dark) | a | d |', '| M3 | Button | default content | a | d |', '| — | Related | — | a | d |',
+    '', '| # | Module | Where seen |', '|---|---|---|', '| M9 | FAQ | a |',
+  ].join('\n');
+  assert.deepEqual(Object.fromEntries(donorModulesEds(md)), {
+    M1: { block: 'accordion', variant: null }, M2: { block: 'hero', variant: 'dark' }, M3: { block: null, variant: null }, M9: { block: 'accordion', variant: null },
+  });
 });
 
 test('form fields are rows of the one Block Collection form, never variants', () => {

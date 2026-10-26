@@ -17,6 +17,8 @@
  *                                            (findings: mapped modules with no skeleton, modules the
  *                                            mapping composes more than one way)
  *   <root>/DESIGN.md, DESIGN.json            fresh from donor-tokens.json; extensions.canon / modules
+ *                                            (each module's eds: the EDS block it becomes, deploy Step 2 —
+ *                                            mapping.json blocks, else donor-modules.md's EDS block column)
  *   <dir>/direction.md                       "Active <ISO>": the direction is the donor (reskin has no direct)
  *   <dir>/dynamic-features.md                one F row per page with form controls (triage.md shape)
  *
@@ -60,6 +62,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { donorModulesEds } from './figma/eds-map.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HELP = `usage: node canon-from-reskin.mjs <archetype-slug> [--dir stardust] [--root .] [--tokens <file>]
@@ -399,9 +402,13 @@ async function main(argv) {
   const flat = [];
   (function walk(o, p) { for (const [k, v] of Object.entries(o || {})) { if (k.startsWith('_')) continue; const q = p ? `${p}.${k}` : k; if (v && typeof v === 'object') walk(v, q); else if (typeof v === 'string' || typeof v === 'number') flat.push([q, v]); } })(tokens, '');
   let moduleIds = Object.keys(moduleRefs);
-  if (existsSync(opt.modules)) moduleIds = [...new Set([...moduleIds, ...[...readFileSync(opt.modules, 'utf8').matchAll(/^(?:#+\s*|\|\s*)(M\d+)\b/gm)].map((m) => m[1])])];
+  const modulesMd = existsSync(opt.modules) ? readFileSync(opt.modules, 'utf8') : '';
+  if (modulesMd) moduleIds = [...new Set([...moduleIds, ...[...modulesMd.matchAll(/^(?:#+\s*|\|\s*)(M\d+)\b/gm)].map((m) => m[1])])];
+  // The EDS block each module becomes (deploy Step 2, recorded in donor-modules.md; mapping.json blocks wins).
+  const edsOf = donorModulesEds(modulesMd);
   const extModules = moduleIds.map((id) => ({
     id,
+    eds: typeof mapping.blocks?.[id] === 'string' ? { block: mapping.blocks[id], variant: null } : edsOf.get(id) ?? null,
     slots: Object.entries(mapping.pages || {}).flatMap(([ps, pm]) => Object.entries(pm.slots || {}).filter(([, s]) => s?.module === id).map(([s]) => ({ name: `${ps}:${s}`, type: 'stream', required: true }))),
     canonicalRendering: moduleRefs[id] || null,
   }));

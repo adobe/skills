@@ -43,8 +43,12 @@ other key not listed below is an error for `--check` (the renderer ignores it, s
 
 `{ "<module id>": "<eds block name>" }` — the EDS block each donor module becomes on the deployed leg
 (`deployed-leg.md` § Recipe). A name is lower-case letters, digits and hyphens. A module with no entry is
-the block named by its id lower-cased (`M4` → `m4`): the donor vocabulary has no EDS names of its own, so
-name the blocks here once and every page's `--deploy-map` uses them. Not read by the renderer.
+the EDS block `donor-modules.md` records for it — `deploy` Step 2
+([`../../deploy/SKILL.md` § 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code)) applied by `scripts/figma/eds-map.mjs`: Q&A → `accordion`, Teaser →
+`cards` (variant `teaser`), Button → default content (no block), Chips → `chips` — else its id lower-cased
+(`M4` → `m4`). Several modules on one block are its variants; set an entry only to override Step 2's
+choice. `canon-from-reskin` records the result per module in `DESIGN.json` `extensions.modules[].eds`. Not
+read by the renderer.
 
 ## `pages.<slug>`
 
