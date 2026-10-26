@@ -15,6 +15,7 @@ in the reskin page or only in EDS blocks.
 {
   "chrome": { "model": "stardust/reskin/content-model/_chrome", "header": ["s01"], "footer": ["s03"],
               "footerTone": "dark", "navAlign": "center" },
+  "blocks": { "M1": "hero", "M4": "cards" },
   "pages": {
     "home": { "template": "home",
       "slots": {
@@ -37,6 +38,13 @@ other key not listed below is an error for `--check` (the renderer ignores it, s
 | `footer` | string[] | chrome-model slot ids | each renders in `<footer data-canon="footer">`; zoned (brand, titled columns, social row) when its stream has headings and list items |
 | `footerTone` | string | `dark` \| `light` \| `accent`; default none | paints the footer from the palette |
 | `navAlign` | string | `start` \| `center` \| `end`; default the donor's `layout.navAlign`, else `end` | where a zoned header puts its menu |
+
+## `blocks` (optional)
+
+`{ "<module id>": "<eds block name>" }` — the EDS block each donor module becomes on the deployed leg
+(`deployed-leg.md` § Recipe). A name is lower-case letters, digits and hyphens. A module with no entry is
+the block named by its id lower-cased (`M4` → `m4`): the donor vocabulary has no EDS names of its own, so
+name the blocks here once and every page's `--deploy-map` uses them. Not read by the renderer.
 
 ## `pages.<slug>`
 
@@ -65,7 +73,7 @@ emits an unknown `layout` word as a class with no style; `--check` reports all o
 
 ## Readers
 
-`stream-render.mjs` (everything above); `canon-from-reskin.mjs` (`module`, `layout`, `width`, `tone`,
+`stream-render.mjs` (everything above; `blocks` only for `--deploy-map`); `canon-from-reskin.mjs` (`module`, `layout`, `width`, `tone`,
 `chrome.header` / `footer`); `reskin-preflight.mjs` (`module`).
 
 ## `--check`

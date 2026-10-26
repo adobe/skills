@@ -393,7 +393,9 @@ record` (e) copies `summary.json`'s `ledgerFragment` into `ledger.json`
 
 **(e) DEPLOYED ACCEPTANCE** (any donor; skipped outside an aem-boilerplate
 project) — the page `deploy` made, on its aem.page branch preview, after
-the local gates pass. Recipe (`deploy` Steps 1–9, push, `deploy-batch`),
+the local gates pass. Recipe (`deploy` Steps 1–9 on the gated reskin page,
+blocks and `block-roundtrip --map` from `stream-render <slug> --deploy-map`,
+push, `deploy-batch`; design changes go back to `mapping.json`),
 isolation, delta file, ledger and fix budget: `reference/deployed-leg.md`;
 bars: `reference/gates.md` § (e).
 

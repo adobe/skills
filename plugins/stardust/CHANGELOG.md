@@ -43,6 +43,11 @@ multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 wi
 - **Phase 4 registers what it renders.** `stream-render <slug> --register` (flow `reskin` only, exit 2 otherwise)
   sets the page's `prototypePath` and advances it to `prototyped` through `state.mjs` (a sibling of an approved
   type only to `directed`, migrate's sibling tier), so `reskin-ledger record`, the bridge and migrate find it.
+- **The deployed leg converts the gated reskin page.** `deployed-leg.md` § Recipe: deploy authors the content page
+  from `reskin/pages/<slug>.html`, one block per mapped module in page order; a design change found in review goes
+  back to `mapping.json` / donor tokens and is re-rendered, re-gated and re-deployed. `stream-render <slug>
+  --deploy-map` prints `block-roundtrip`'s `--map` arguments; block names come from `mapping.json` `blocks`, else
+  the module id lower-cased.
 
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 

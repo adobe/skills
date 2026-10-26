@@ -23,6 +23,7 @@
  * mapping.json (the only per-site input; schema and defaults: reference/mapping-json.md):
  *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent",
  *       "navAlign": "start|center|end" },
+ *     "blocks": { "M2": "<eds block name>" },   (optional; read by --deploy-map only, default the id lower-cased)
  *     "pages": { "<slug>": { "template": "<archetype slug>",
  *       "slots": { "s01": { "module": "M2", "layout": "stack|grid-2|media-band|split|cards (space-separated)",
  *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3,
@@ -61,6 +62,11 @@
  *     validates mapping.json (reference/mapping-json.md): unknown keys, values outside the enums above,
  *     slot ids the page's content model lacks, requested slugs without a pages entry — one problem per
  *     line on stdout, nothing rendered or written; exit 0 valid, 1 problems, 2 setup error.
+ *   node stream-render.mjs <slug> --deploy-map [--dir stardust] [--mapping <f>] [--model-dir <d>]
+ *     prints deploy's block-roundtrip arguments for the page (the deployed leg, reference/deployed-leg.md):
+ *     `--map '<block>=section[data-slot="sNN"],…'`, one per block, instances in page order. The block is
+ *     mapping.json blocks.<module id> when set, else the module id lower-cased; slots with no module are
+ *     listed on stderr. Nothing rendered or written.
  *
  * Reads:  <dir>/reskin/content-model/<slug>/content-model.json, <dir>/reskin/donor-tokens.json,
  *         the mapping, the chrome model when mapped.
@@ -77,6 +83,7 @@ import { rootTokens } from './render/root-tokens.mjs';
 const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--model-dir <d>] [--out <file>]
          [--localize-images] [--register]
        node stream-render.mjs --check [<slug>…] [--dir stardust] [--mapping <file>] [--model-dir <d>]
+       node stream-render.mjs <slug> --deploy-map [--dir stardust] [--mapping <file>] [--model-dir <d>]
 
 Render one page from <dir>/reskin/content-model/<slug>/content-model.json with the donor tokens in
 <dir>/reskin/donor-tokens.json and the slot mapping in <dir>/reskin/mapping.json.
@@ -90,6 +97,9 @@ Render one page from <dir>/reskin/content-model/<slug>/content-model.json with t
                        exit 2 before rendering): prototypePath = --out relative to the project root;
                        extracted/directed → prototyped, or → directed for a sibling of a type that has
                        an approved archetype (migrate's sibling tier); later statuses keep their status
+  --deploy-map         print block-roundtrip's --map arguments for <slug>: one block per mapped module
+                       (mapping.json blocks.<module>, else the module id lower-cased), its
+                       section[data-slot] instances in page order; nothing rendered or written
   --check              validate mapping.json only (unknown keys, bad values, slots missing from the
                        content model, requested <slug>s without a page entry): one problem per line on
                        stdout; renders and writes nothing. Exit 0 valid, 1 problems, 2 setup error.
@@ -717,7 +727,7 @@ ${css}
 // Every key render() reads, with its allowed values. Keys starting with `_` or `$` are annotations
 // ($schema, _note, _provenance) and are never read. Pure; exported for tests.
 export const MAPPING_SCHEMA = {
-  top: ['chrome', 'pages'],
+  top: ['chrome', 'pages', 'blocks'],
   chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign'],
   page: ['template', 'slots'],
   slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split'],
@@ -756,6 +766,10 @@ export function checkMapping(mapping, { models = {}, chromeModel = null, slugs =
       if (ch.navAlign !== undefined && !one(ch.navAlign, S.navAlign)) out.push(`chrome.navAlign: "${ch.navAlign}" is not ${S.navAlign.join(' | ')}`);
     }
   }
+  if (mapping.blocks !== undefined) {
+    if (!isObj(mapping.blocks)) out.push('blocks: must be an object { "<module id>": "<eds block name>" }');
+    else for (const [id, b] of Object.entries(mapping.blocks)) if (!annotation(id) && !(typeof b === 'string' && BLOCK_NAME.test(b))) out.push(`blocks.${id}: ${JSON.stringify(b)} is not an EDS block name (lower-case letters, digits, hyphens)`);
+  }
   const pages = mapping.pages;
   if (!isObj(pages)) { out.push('pages: must be an object { "<slug>": { template, slots } }'); return out; }
   for (const slug of slugs) if (!isObj(pages[slug])) out.push(`pages.${slug}: missing — the page was requested but mapping.json has no entry`);
@@ -788,6 +802,30 @@ export function checkMapping(mapping, { models = {}, chromeModel = null, slugs =
     }
   }
   return out;
+}
+
+// ---- --deploy-map: block-roundtrip's --map arguments (reference/deployed-leg.md § Recipe) ----------------
+const BLOCK_NAME = /^[a-z][a-z0-9-]*$/;
+// The EDS block a module becomes: mapping.json blocks.<module id>, else the module id lower-cased (M4 → m4).
+export const blockName = (mapping, module) => (isObj(mapping?.blocks) && typeof mapping.blocks[module] === 'string' ? mapping.blocks[module] : String(module).toLowerCase());
+// One block per mapped module of a page, its instances (section[data-slot]) in page order — the content
+// model's slot order when given, else the mapping's. Slots with no module (new-module, carried-invisible)
+// are listed apart: they are not a donor block. Pure; exported.
+export function deployMap(mapping, slug, model = null) {
+  const pm = mapping?.pages?.[slug];
+  if (!isObj(pm)) throw new SetupError(`mapping.json has no pages.${slug}`);
+  const slots = isObj(pm.slots) ? pm.slots : {};
+  const order = model ? (model.sections || []).map((x) => x.slot) : Object.keys(slots).filter((k) => !annotation(k));
+  const byBlock = new Map(); const unmapped = [];
+  for (const id of order) {
+    const m = slots[id];
+    if (!m?.module) { unmapped.push(id); continue; }
+    const b = blockName(mapping, m.module);
+    if (!byBlock.has(b)) byBlock.set(b, { block: b, modules: [], slots: [] });
+    const e = byBlock.get(b); e.slots.push(id); if (!e.modules.includes(m.module)) e.modules.push(m.module);
+  }
+  const blocks = [...byBlock.values()].map((e) => ({ ...e, selector: e.slots.map((id) => `section[data-slot="${id}"]`).join(',') }));
+  return { blocks, unmapped, args: blocks.map((e) => `--map '${e.block}=${e.selector}'`).join(' ') };
 }
 
 // ---- capture smells (used by capture-content) -----------------------------------------------------------
@@ -872,7 +910,7 @@ async function localize(urls, assetsDir, referer) {
 
 // argv → { pos[], flags }; a value flag needs a value, an unknown flag is a usage error.
 const VALUE_FLAGS = ['--dir', '--mapping', '--out', '--model-dir'];
-const BOOL_FLAGS = ['--localize-images', '--check', '--register', '--help', '-h'];
+const BOOL_FLAGS = ['--localize-images', '--check', '--register', '--deploy-map', '--help', '-h'];
 function parseArgs(argv) {
   const o = { pos: [], dir: 'stardust' };
   for (let i = 0; i < argv.length; i++) {
@@ -976,7 +1014,14 @@ async function main(argv) {
   if (o.check) return checkCli(o, mappingFile, modelDir);
   const slug = o.pos[0];
   if (!slug) { console.error(HELP); return 2; }
-  if (o.pos.length > 1) throw new SetupError(`one <slug> per render (got ${o.pos.join(', ')})`);
+  if (o.pos.length > 1) throw new SetupError(`one <slug> per ${o['deploy-map'] ? '--deploy-map' : 'render'} (got ${o.pos.join(', ')})`);
+  if (o['deploy-map']) {
+    const dm = deployMap(readJsonFile(mappingFile, 'mapping.json'), slug, optionalJson(join(modelDir, slug, 'content-model.json')));
+    console.log(dm.args);
+    for (const b of dm.blocks) console.error(`${b.block} (${b.modules.join(', ')}): ${b.slots.join(', ')}`);
+    if (dm.unmapped.length) console.error(`no module, not a donor block: ${dm.unmapped.join(', ')} — default content, or give the slot a module in mapping.json`);
+    return 0;
+  }
   const reg = o.register ? await registerSetup(dir) : null;
   const readJson = readJsonFile;
   const mapping = readJson(mappingFile, 'mapping.json');

@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureSmells, checkMapping, chromeTextMissing, contrast, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
 import { advance } from '../../../stardust/scripts/state.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
@@ -510,6 +510,30 @@ check('--register refuses outside flow reskin (exit 2, nothing rendered or writt
   const other = project({ state: reskinState([page('about', 'extracted')]) });
   const n = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: other, encoding: 'utf8' });
   assert.equal(n.status, 0); assert.match(n.stdout, /note: login is not a page in .*state\.json — not registered/);
+});
+
+
+// ---- --deploy-map (deployed-leg.md § Recipe) ----
+check('deployMap: one block per module, instances in page (model) order; blocks override; no-module slots apart', () => {
+  const m = { blocks: { M1: 'hero' }, pages: { home: { slots: { s04: { module: 'M4' }, s01: { module: 'M1' }, s02: { module: 'M4' }, s03: {}, s05: { module: 'M9' } } } } };
+  const mdl = { sections: ['s01', 's02', 's03', 's04', 's05'].map((slot) => ({ slot, ordered: [] })) };
+  const r = deployMap(m, 'home', mdl);
+  assert.deepEqual(r.blocks.map((b) => [b.block, b.slots]), [['hero', ['s01']], ['m4', ['s02', 's04']], ['m9', ['s05']]]);
+  assert.deepEqual(r.unmapped, ['s03']);
+  assert.equal(r.args, `--map 'hero=section[data-slot="s01"]' --map 'm4=section[data-slot="s02"],section[data-slot="s04"]' --map 'm9=section[data-slot="s05"]'`);
+  assert.deepEqual(deployMap(m, 'home').blocks.map((b) => b.slots), [['s04', 's02'], ['s01'], ['s05']], 'no model: mapping order');
+  assert.equal(blockName({ blocks: { M2: 'cards' } }, 'M2'), 'cards'); assert.equal(blockName({}, 'M12'), 'm12');
+  assert.throws(() => deployMap(m, 'nope'), /mapping\.json has no pages\.nope/);
+  assert.deepEqual(checkMapping({ blocks: { M1: 'Hero Block', M2: 'cards' }, pages: {} }), ['blocks.M1: "Hero Block" is not an EDS block name (lower-case letters, digits, hyphens)']);
+});
+check('--deploy-map CLI: prints the block-roundtrip arguments, writes nothing', () => {
+  const root = project({ map: { blocks: { M2: 'form-feature' }, pages: { login: { slots: { s01: { module: 'M2' } } } } } });
+  const r = spawnSync(process.execPath, [SCRIPT, 'login', '--deploy-map'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), `--map 'form-feature=section[data-slot="s01"]'`);
+  assert.match(r.stderr, /form-feature \(M2\): s01/);
+  assert.equal(existsSync(join(root, 'stardust', 'reskin', 'pages')), false);
+  assert.equal(spawnSync(process.execPath, [SCRIPT, 'about', '--deploy-map'], { cwd: root, encoding: 'utf8' }).status, 2);
 });
 
 // In a browser at 390px: the menu is folded, the toggle opens and closes it.
