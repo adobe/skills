@@ -54,7 +54,7 @@ If your MCP server documentation adds other error prefixes or codes with the sam
 
 1. **Ask the user** for their CAM project name or ID. Do not guess from the workspace or sample code.
 2. **Wait for explicit confirmation**, then call **`fetch-cam-bpa-findings-by-pattern`** (for code-transformer pattern flows) or **`fetch-cam-bpa-findings-by-importance`** (for "what are the critical/major findings?" requests) using the **confirmed** `projectId` (preferred) or `projectName`.
-3. For pattern flows: map the session's **single pattern** to the tool's `pattern` argument (`scheduler`, `assetApi`, `eventListener`, `resourceChangeListener`, `eventHandler`, or `all`). If you used `all`, filter `targets` to the active pattern.
+3. For pattern flows: map the session's **single pattern** to the tool's `pattern` argument (`scheduler`, `assetApi`, `eventListener`, `resourceChangeListener`, `eventHandler`, `guavaCache`, `inputStream`, `lui`, `luiCoral2`, `cdw`, or `all`). If you used `all`, filter `targets` to the active pattern.
 
 ## Tool: `fetch-cam-bpa-findings-by-pattern`
 
@@ -66,7 +66,8 @@ Pattern-axis tool registered by the server. It can also resolve a project name t
 {
   projectId?: string;   // CAM project ID; either this or projectName must be provided
   projectName?: string; // human-readable name; resolved to projectId via CAM /projects API
-  pattern?: "scheduler" | "assetApi" | "eventListener" | "resourceChangeListener" | "eventHandler" | "all";
+  pattern?: "scheduler" | "assetApi" | "eventListener" | "resourceChangeListener" | "eventHandler"
+    | "guavaCache" | "inputStream" | "lui" | "luiCoral2" | "cdw" | "all";
   environment?: "dev" | "stage" | "prod";  // defaults to "prod"
 }
 ```

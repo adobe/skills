@@ -37,19 +37,38 @@
  *                   dialogs, custom `cq:Widget` xtypes, static templates) is the
  *                   heuristic fallback when no BPA source is available. Routed to
  *                   migration Branches D / C, not code-assessment.
- *   'bpa-only'    — `guavaCache`: BPA/CAM/CSV only (subtype `custom.guava.cache`),
- *                   one finding per bundle. `identifier` on this subtype is a
+ *   'bpa-only'    — `guavaCache`, `oakIndex`: BPA/CAM/CSV only, no analyzer, no
+ *                   content-scan fallback.
+ *                     `guavaCache` (subtype `custom.guava.cache`): one finding
+ *                   per bundle. `identifier` on this subtype is a
  *                   Guava-internal class, not a customer class — BPA reports
  *                   every Guava-internal class reachable on a bundle's
  *                   classpath, so raw rows are deduped to the bundle named in
  *                   the message, not surfaced per row. No analyzer, no
  *                   content-scan — Guava cache usage does not occur in native
  *                   AEMaaCS code, so there is deliberately no compiled
- *                   detector for it. With no BPA source the pattern surfaces
- *                   in `needsLlmScan` like any other
- *                   unscanned pattern.
+ *                   detector for it.
+ *                     `oakIndex` (subtypes `index.rule.violation` /
+ *                   `standard.index.modification`, beta, Branch F): one
+ *                   finding per Oak index JCR path. Legacy `_oak_index/*.xml`
+ *                   layouts only exist in pre-cloud projects, so — like
+ *                   Dispatcher Conversion — this wraps Adobe's index-converter
+ *                   tool rather than a compiled detector.
+ *                     With no BPA source, either pattern surfaces in
+ *                   `needsLlmScan` like any other unscanned pattern.
+ *   'java-scan'   — `inputStream` (subtype `java.io.inputstream`). Same
+ *                   precedence as the cascade: BPA/CAM → CSV → local. With
+ *                   BPA rows, those classes define the scope; the scanner
+ *                   (input-stream-runner.js) resolves them to workspace files
+ *                   for line-level sites and collapses classes outside the
+ *                   workspace into one informational row per bundle (customer
+ *                   code kept elsewhere, platform-provided, or third-party).
+ *                   Without BPA rows it scans every `src/main/java` file. Each
+ *                   site is pre-classified (A–F + fix kind); one finding per
+ *                   file. The local scan is always available, so the pattern
+ *                   never needs the LLM tier.
  *
- * `html-scan`/`config-scan`/`content-scan` (fallback) findings are tagged `confidence: 'heuristic'` in the
+ * `html-scan`/`config-scan`/`content-scan` (fallback)/`java-scan` findings are tagged `confidence: 'heuristic'` in the
  * cache. Patterns no available strategy could scan (e.g. a cascade pattern
  * with no BPA source and no JDK) are returned in `needsLlmScan` for the agent.
  *
@@ -77,6 +96,7 @@ const { runVaultPackageScan } = require('./vault-package-scan-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runDispatcherScan } = require('./dispatcher-inventory.js');
+const { runInputStreamScan } = require('./input-stream-runner.js');
 
 // Canonical pattern taxonomy for the runbook — every pattern the migration
 // skill can address. Each declares a detection `strategy`:
@@ -85,10 +105,12 @@ const { runDispatcherScan } = require('./dispatcher-inventory.js');
 //   'config-scan'  — config-file heuristic scan (osgiConfig)
 //   'content-scan' — .content.xml / template / dispatcher-config scan (lui, cdw,
 //                    templateModernization, dispatcherConversion)
-//   'bpa-only'     — BPA/CAM/CSV only, no local fallback (guavaCache)
+//   'bpa-only'     — BPA/CAM/CSV only, no local fallback (guavaCache, oakIndex)
+//   'java-scan'    — BPA first; Java source scan only when BPA has none (inputStream)
 // `bpaSlugs` maps a pattern to its BPA subtype(s): the Java 'cascade' patterns,
-// plus replication (replication.agent), lui/cdw/templateModernization, and
-// guavaCache (com.google.common.cache). When a BPA source is present it is
+// plus replication (replication.agent), lui/cdw/templateModernization,
+// guavaCache (com.google.common.cache), and oakIndex (index.rule.violation /
+// standard.index.modification). When a BPA source is present it is
 // authoritative; html/config/content scans are the local fallback for the
 // patterns that have one. (inject-in-sling-model and outdated-dependencies
 // belong to code-assessment's own runbook, not the migration runbook, so they
@@ -225,6 +247,18 @@ const PATTERN_META = {
     promptPattern: 'guavaCache',
     sampleOverride: 'Use the migration skill: fix guavaCache findings using BPA CSV — swap Guava cache for Caffeine.',
   },
+  inputStream: {
+    label: 'java.io.InputStream Usage',
+    severity: 'medium',
+    strategy: 'java-scan',
+    // BPA first (CAM, then CSV): BPA rows define the scope and the scanner adds
+    // line-level sites for them. Local scan only when BPA has no inputStream rows.
+    bpaSlugs: ['inputStream'],
+    heuristic: true,
+    description: 'Custom Java code using `java.io.*InputStream` (BPA `DG` / `java.io.inputstream`, ADVISORY). Adobe documents the risk as binary data streamed through the JVM, with direct binary upload and CDN delivery as the fix. BPA findings come first (CAM, then a BPA CSV): the flagged classes are resolved to workspace files; the whole workspace is scanned only when BPA has no inputStream findings. One finding per file, ordered by risk. Each stream site is pre-classified: **F** `ObjectInputStream` deserialization, **E** binary streamed or processed in the JVM (DAM binary reads such as `asset.getOriginal().getStream()`, binaries proxied to responses, client uploads into the repository, native processes), **D** local-filesystem reads, **C** unbounded in-memory reads, **B** unclosed stream or undisposed JCR `Binary` (hygiene), **A** benign (informational). Fix kinds: `decision` (needs the user), `review` (confirm a read limit), `auto` (try-with-resources). BPA rows for classes outside the workspace collapse to one informational row per bundle: customer code kept elsewhere, platform-provided (AEM Forms add-on) or third-party.',
+    promptPattern: 'inputStream',
+    sampleOverride: 'Use the migration skill: fix inputStream (java.io.InputStream) findings — propose CDN delivery and direct binary upload where binaries pass through the JVM, and fix unclosed streams.',
+  },
   dispatcherConversion: {
     label: 'Dispatcher AMS/On-prem → AEMaaCS Conversion',
     severity: 'high',
@@ -234,6 +268,15 @@ const PATTERN_META = {
     description: 'An AMS or on-premise Dispatcher configuration convertible to AEM as a Cloud Service (Branch E). Detected heuristically; the conversion wraps Adobe\'s aem-cs-source-migration dispatcher-converter with mode detection, config generation, output verification, and validation.',
     promptPattern: 'dispatcher conversion',
     sampleOverride: 'Use the migration skill: convert my dispatcher configuration to AEM as a Cloud Service.',
+  },
+  oakIndex: {
+    label: 'Oak Index Migration',
+    severity: 'high',
+    strategy: 'bpa-only',
+    bpaSlugs: ['oakIndex'],
+    description: 'Legacy `_oak_index/*.xml` definitions (BPA subtypes `index.rule.violation` / `standard.index.modification`, category OID) convertible to AEM as a Cloud Service Oak index definitions (Branch F, beta). BPA is the sole source of truth — one finding per Oak index JCR path; there is no analyzer or content-scan fallback. Wraps Adobe\'s aem-cs-source-migration index-converter tool rather than re-implementing transformation rules.',
+    promptPattern: 'oakIndex',
+    sampleOverride: 'Use the migration skill: fix oakIndex findings using BPA CSV at ./reports/bpa.csv.',
   },
 };
 
@@ -359,6 +402,7 @@ async function gatherFindings(options = {}) {
 
   const cascadePatterns = CANONICAL_PATTERNS.filter(p => PATTERN_META[p].strategy === 'cascade');
   const bpaPatterns = CANONICAL_PATTERNS.filter(p => (PATTERN_META[p].bpaSlugs || []).length > 0);
+  const bpaTargetsByPattern = {};
   const scanWarnings = [];
 
   // ── BPA tier (MCP or CSV) — any pattern with bpaSlugs. When a BPA source is
@@ -379,6 +423,10 @@ async function gatherFindings(options = {}) {
           const targets = bpaSubtypeFilter
             ? res.targets.filter(t => bpaSubtypeFilter.includes(t.identifier))
             : res.targets;
+          if (PATTERN_META[pattern].strategy === 'java-scan') {
+            // Kept raw for the java-scan merge below (needs className/identifier/bundle).
+            (bpaTargetsByPattern[pattern] = bpaTargetsByPattern[pattern] || []).push(...targets);
+          }
           merged.push(...targets.map(normalizeBpaTarget));
           mergedRaw.push(...targets.map(t => rawBpaTarget(pattern, t)));
         } else if (res.availablePatterns) {
@@ -559,6 +607,27 @@ async function gatherFindings(options = {}) {
     }
   }
 
+  // ── Strategy 'java-scan': inputStream. Same precedence as the other BPA
+  //    patterns: when the BPA tier above returned inputStream rows (CAM or CSV),
+  //    BPA owns the pattern and the scanner only resolves those classes to
+  //    workspace files for line-level sites (classes outside the workspace
+  //    collapse to one informational row per bundle). Only when BPA has no
+  //    rows — no source, a failed fetch, or none reported — does the local
+  //    scan of every src/main/java file run. ──
+  if (workspaceRoot) {
+    for (const pattern of CANONICAL_PATTERNS) {
+      if (PATTERN_META[pattern].strategy !== 'java-scan') continue;
+      const bpaTargets = bpaTargetsByPattern[pattern] || [];
+      const res = runInputStreamScan(workspaceRoot, { bpaTargets });
+      if (res.warnings && res.warnings.length) scanWarnings.push(...res.warnings);
+      if (!res.ok) continue;
+      findingsByPattern[pattern] = res.findings;
+      rawFindingsByPattern[pattern] = res.rawFindings;
+      sourceByPattern[pattern] = bpaTargets.length > 0 ? bpaMode : 'source-scan';
+      scannedBy[pattern] = sourceByPattern[pattern];
+    }
+  }
+
   // ── Tier 4: anything still unscanned → LLM scan (agent handles it) ───────
   const needsLlmScan = CANONICAL_PATTERNS.filter(p => !scannedBy[p]);
 
@@ -725,6 +794,7 @@ const SOURCE_LABEL = {
   'html-scan': 'HTL scan',
   'config-scan': 'config scan',
   'content-scan': 'content scan',
+  'source-scan': 'Java source scan',
   llm: 'LLM scan',
 };
 

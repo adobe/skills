@@ -5,8 +5,8 @@
 `scripts/snapshot-forms.mjs` collects content-area `input/select/textarea` controls (chrome, search,
 consent, login excluded; forms inside dialogs included), groups radio/checkbox by name, reads label,
 section heading, required, options **after settle** (servers ship selects empty and fill them
-client-side — 53 states / 260 countries in one case), conditional visibility, the submit label and
-hidden field names, and flags `piiSignals`. Output `data/forms/<name>.json` with provenance. Forms
+client-side), conditional visibility, the submit label and hidden field names, and flags
+`piiSignals` and `protection`. Output `data/forms/<name>.json` with provenance. Forms
 the source has retired become the same notice, not a form.
 
 ## 2. Key the inventory on name + field signature, never on `action`
@@ -33,10 +33,13 @@ Definition-driven with no authored copy is a widget (`widgets/forms/<name>`, mou
 authored `Intro` / `Success` rows, or field rows, stays a block (optional `Action`). Either way:
 sections, selects with a placeholder option, choice groups, required marks, validation copy
 from live, dependent fields follow their controlling option, **empty submission refused**, honeypot
-instead of the source's anti-forgery token, posts `{ data, page, timestamp }` as JSON to `Action` or
-a per-page endpoint in `scripts/site-config.js` (empty = native post). Vendor-backed flows
-(marketing-automation token + antibot key) **cannot be replayed off-origin**: keep the token fetch
-client-side and let the owner name the vendor form id and field mapping.
+instead of the source's anti-forgery token; a recorded `protection` (captcha) renders the same
+widget in the same slot with the vendor's published always-pass test key and posts its response
+field with the data — the owner's real key, domain allowlist and server-side verify are one
+`needs-backend` decision row, **never a silent drop**; posts `{ data, page, timestamp }` as JSON to
+`Action` or a per-page endpoint in `scripts/site-config.js` (empty = native post). Vendor-backed
+flows **cannot be replayed off-origin**: keep the token fetch client-side and let the owner name the
+vendor form id and field mapping.
 
 ## 5. Regulated data — hard rule
 

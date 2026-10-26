@@ -5,7 +5,8 @@
 // report, delivery state preserved across re-runs, and a row added by `update-coverage.mjs --new`
 // (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it; a sidecar's
 // widgets[] through inventory → blocks.mjs (kind widget, code path, no document rows) → plan.mjs, and inherited
-// by content-pending siblings in archetypes-only mode.
+// by content-pending siblings in archetypes-only mode; a pinned row (first page first) keeps its
+// delivery across a re-render.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -132,6 +133,20 @@ check('once the migrated tree holds the slug, the migrated row replaces the mark
   assert.equal(json('rollout.json').lastRun.pages.total, 6);
 });
 
+// first page first: the page delivered on its own track is pinned; a re-render must not re-deliver it
+{ const pj = join(out, 'coverage', 'pages.json'); const pages = json('coverage/pages.json'); for (const p of pages.pages) { if (p.slug === 'home') p.delivery = { ...p.delivery, status: 'verified', verifiedAt: 'now', pinned: { by: 'first-page', table: 't', at: 'now' } }; if (p.slug === 'faq') p.delivery = { ...p.delivery, status: 'verified', verifiedAt: 'now' }; } writeFileSync(pj, JSON.stringify(pages)); }
+writeFileSync(join(migrated, 'index.html'), '<html><body><main>home, re-rendered</main></body></html>');
+writeFileSync(join(migrated, 'faq/index.html'), '<html><body><main>faq, re-rendered</main></body></html>');
+const pinRun = run();
+check('a pinned row whose migrated HTML changed keeps its delivery (not stale) and is named on the report; an unpinned one is re-flagged stale', () => {
+  assert.equal(pinRun.status, 0, pinRun.stderr);
+  const by = Object.fromEntries(json('coverage/pages.json').pages.map((p) => [p.slug, p]));
+  assert.equal(by.home.delivery.status, 'verified'); assert.equal(by.home.delivery.pinned.by, 'first-page');
+  assert.equal(by.faq.delivery.status, 'stale');
+  assert.match(pinRun.stdout, /^Pinned {6}1 row\(s\) whose migrated HTML changed kept their delivery .*: home$/m, pinRun.stdout);
+  assert.doesNotMatch(pinRun.stdout.match(/^To deliver.*$/m)[0], /\bhome\b/);
+});
+
 check('sourceUrl: the sidecar\'s source URL, else state.json\'s by slug, else null', () => {
   page('about.html', { slug: 'about', type: 'unique', source: { url: 'https://example.com/about-us' }, modules: [] });
   mkdirSync(join(root, 'stardust'), { recursive: true }); // run from a project root: stardust/state.json is read by default
@@ -149,6 +164,24 @@ check('archetypes-only mode: a content-pending sibling inherits the archetype\'s
   const fiji = JSON.parse(readFileSync(join(out2, 'coverage', 'pages.json'), 'utf8')).pages.find((p) => p.slug === 'tours-fiji');
   assert.equal(fiji.delivery.status, 'content-pending'); assert.deepEqual(fiji.blocks, ['hero', 'gallery']); assert.deepEqual(fiji.widgets, [{ id: 'tour-finder', href: '/widgets/tours/tour-finder.html?region=all' }]);
   assert.match(r.stdout, /^Widgets {5}1 distinct \(tour-finder\) on 2 pages/m, r.stdout);
+});
+
+check('scope: state.json site.totalDiscovered above the roster → rollout.json scope { capped: true } and a loud Scope line; equal → "the whole site"; no count → no line', () => {
+  const state = join(root, 'roster-scope.json');
+  const inv = (site, name) => {
+    writeFileSync(state, JSON.stringify({ site, pages: [{ slug: 'tours-fiji', url: 'https://example.com/tours/fiji/', type: 'tours-bali' }] }));
+    const o = join(root, name);
+    const r = spawnSync(process.execPath, [SCRIPT, '--migrated', migrated, '--out', o, '--state', state], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr);
+    return { r, cfg: JSON.parse(readFileSync(join(o, 'rollout.json'), 'utf8')) };
+  };
+  const capped = inv({ totalDiscovered: 400, pageCap: 100 }, 'rollout-capped');
+  const n = capped.cfg.lastRun.pages.total;
+  assert.deepEqual(capped.cfg.scope, { pages: n, discovered: 400, capped: true, pageCap: 100 });
+  assert.match(capped.r.stdout, new RegExp(`^Scope {7}${n} of 400 discovered pages in scope — a SUBSET: the other ${400 - n} are not delivered`, 'm'), capped.r.stdout);
+  const whole = inv({ totalDiscovered: n }, 'rollout-whole');
+  assert.equal(whole.cfg.scope.capped, false); assert.match(whole.r.stdout, /— the whole site$/m);
+  const none = inv({}, 'rollout-uncounted');
+  assert.equal(none.cfg.scope, null); assert.doesNotMatch(none.r.stdout, /^Scope/m);
 });
 
 rmSync(root, { recursive: true, force: true });
