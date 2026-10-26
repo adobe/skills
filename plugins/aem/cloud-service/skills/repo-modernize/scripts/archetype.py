@@ -97,6 +97,11 @@ def staleness_note(timeout: float = 4.0) -> Optional[str]:
         parts.append(f"AEM SDK {latest_sdk} (pinned: {PINNED_SDK_API})")
     if not parts:
         return None
-    return ("newer available -> " + "; ".join(parts)
-            + ".  Use --sdk-version latest for the SDK now, or run "
-            "scripts/refresh_archetype.py to update the pins.")
+    advice = []
+    if latest_sdk and latest_sdk != PINNED_SDK_API:
+        advice.append("add --sdk-version latest to --apply to build against the newest SDK")
+    if latest_arch and latest_arch != PINNED_ARCHETYPE:
+        advice.append(f"the module templates stay on archetype-{PINNED_ARCHETYPE} "
+                      "until the skill is updated")
+    text = "; ".join(advice)
+    return "newer available -> " + "; ".join(parts) + ".  " + text[:1].upper() + text[1:] + "."

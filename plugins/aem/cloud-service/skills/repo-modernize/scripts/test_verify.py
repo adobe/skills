@@ -253,7 +253,7 @@ class Main(unittest.TestCase):
             [str(d), "--config", str(cfg), "--inventory", str(inv), "--mvn"],
             run=lambda argv, **kw: _FakeProc(0, CLEAN_LOG))
         self.assertEqual(rc, 0)
-        self.assertIn("full Phase-2 success", out)
+        self.assertIn("full success", out)
 
     def test_structural_pass_with_core_compile_failure_is_handoff_not_failure(self):
         # The key Phase-2 distinction: structural PASS + a legacy-core Java compile break is a
@@ -267,7 +267,7 @@ class Main(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("code-assessment", out)
         self.assertIn("core", out)
-        self.assertNotIn("full Phase-2 success", out)
+        self.assertNotIn("full success", out)
         self.assertGreaterEqual(len(calls), 1)  # mvn WAS invoked (content-packages + install)
 
     def test_structural_pass_with_real_analyser_error_returns_three_not_handoff(self):
@@ -280,13 +280,13 @@ class Main(unittest.TestCase):
             [str(d), "--config", str(cfg), "--inventory", str(inv), "--mvn"],
             run=lambda argv, **kw: _FakeProc(1, ANALYSER_ERROR_LOG))
         self.assertEqual(rc, 3)
-        self.assertNotIn("full Phase-2 success", out)
+        self.assertNotIn("full success", out)
         # the verdict must explicitly disclaim the hand-off (not just omit it) and must
         # never print the hand-off phrasing used for a genuine compile-break verdict
         self.assertIn("NOT a code-assessment hand-off", out)
         self.assertNotIn("hand this compile break off", out)
         self.assertIn("aemanalyser", out)
-        self.assertIn("Phase-2 FAILURE", out)
+        self.assertIn("Cloud Service FAILURE", out)
 
     def test_structural_pass_with_modernized_module_pom_error_is_phase2_failure(self):
         # #6: a POM-model error in the CONTENT-modules build (which covers only
@@ -303,8 +303,8 @@ class Main(unittest.TestCase):
         self.assertEqual(rc, 4)
         self.assertIn("MODERNIZED content module", out)
         self.assertIn("Unknown packaging", out)
-        self.assertIn("Phase-2 FAILURE", out)
-        self.assertNotIn("full Phase-2 success", out)
+        self.assertIn("restructuring FAILURE", out)
+        self.assertNotIn("full success", out)
 
 
 if __name__ == "__main__":

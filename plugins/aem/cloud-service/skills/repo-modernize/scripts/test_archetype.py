@@ -86,6 +86,21 @@ class StalenessNote(unittest.TestCase):
              mock.patch.object(A, "resolve_latest_sdk_api", return_value=A.PINNED_SDK_API):
             self.assertIsNone(A.staleness_note())
 
+    def test_note_advises_the_user_not_maintainer_tooling(self):
+        with mock.patch.object(A, "resolve_latest_archetype", return_value="99"), \
+             mock.patch.object(A, "resolve_latest_sdk_api", return_value="2099.1.1.NEW"):
+            note = A.staleness_note()
+        self.assertIn("Add --sdk-version latest to --apply", note)
+        self.assertIn(f"stay on archetype-{A.PINNED_ARCHETYPE} until the skill is updated", note)
+        self.assertNotIn("refresh_archetype", note)
+
+    def test_sdk_only_note_has_no_archetype_advice(self):
+        with mock.patch.object(A, "resolve_latest_archetype", return_value=A.PINNED_ARCHETYPE), \
+             mock.patch.object(A, "resolve_latest_sdk_api", return_value="2099.1.1.NEW"):
+            note = A.staleness_note()
+        self.assertIn("Add --sdk-version latest", note)
+        self.assertNotIn("archetype", note)
+
 
 class RefactorPomsSdkFlag(unittest.TestCase):
     """The --sdk-version flag sets the module override the reactor step reads."""

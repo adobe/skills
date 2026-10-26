@@ -10,6 +10,8 @@ from typing import Iterator, List, Optional
 
 MANIFEST_DIR = ".modernize"
 DEFAULT_IGNORE = {".git", ".modernize", "target", "node_modules", ".idea"}
+SKILL_DIR = Path(__file__).resolve().parent.parent
+SKILLS_LOCK = "skills-lock.json"
 
 @dataclass(frozen=True)
 class Finding:
@@ -36,10 +38,35 @@ def sha256_file(path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-def iter_files(root, ignore=DEFAULT_IGNORE) -> Iterator[Path]:
+def agent_tooling_paths(root) -> List[Path]:
+    """What an agent's skill installer adds to a project that is not project content: the
+    folder holding this skill when it is installed inside `root` (a project-scope
+    `npx skills add` uses e.g. `.agents/skills/`, so sibling skills there count too) and the
+    installer's `skills-lock.json`. Absolute paths; the checks and the inventory skip them."""
+    root = Path(root).resolve()
+    holder = SKILL_DIR.parent if SKILL_DIR.parent.name == "skills" else SKILL_DIR
+    paths = [root / SKILLS_LOCK]
+    if root in holder.parents:
+        paths.append(holder)
+    return paths
+
+def iter_files(root, ignore=DEFAULT_IGNORE, exclude=()) -> Iterator[Path]:
+    """Files under `root`, skipping any path part named in `ignore` and anything at or
+    under a path in `exclude`."""
     root = Path(root)
+    base = root.resolve()
+    skip = []
+    for e in exclude:
+        try:
+            parts = Path(e).resolve().relative_to(base).parts
+        except ValueError:
+            continue
+        if parts:
+            skip.append(parts)
     for p in sorted(root.rglob("*")):
-        if p.is_file() and not any(part in ignore for part in p.relative_to(root).parts):
+        rel = p.relative_to(root).parts
+        if (p.is_file() and not any(part in ignore for part in rel)
+                and not any(rel[:len(s)] == s for s in skip)):
             yield p
 
 def _local(tag: str) -> str:

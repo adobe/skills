@@ -26,11 +26,11 @@ Restructures a legacy AEM Maven project into the AEM as a Cloud Service package 
 Not for: Dispatcher configs (`migration`, Dispatcher branch), Java API fixes (`code-assessment`), Oak index definitions (Adobe's index converter).
 
 ## Prerequisites
-- **git**, and **Python 3.9+ with `lxml`**: `python3 -m pip install -r requirements.txt` (from this skill's folder, or into a virtual environment). The apply step checks both and stops with instructions if anything is missing.
+- **git**, and **Python 3.9+ with `lxml`**. If `python3` lacks lxml, create a virtual environment in this skill's folder (never in the user's project): `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`, then use `.venv/bin/python` wherever `python3` appears below. The apply step checks both and stops with instructions if anything is missing.
 - **Optional build check:** Maven and JDK 11+.
-- A **clean working tree on a new branch**: `git checkout -b cloud-modernize`.
+- A **clean working tree on a new branch**: `git checkout -b cloud-modernize`. If this skill is installed inside the project (e.g. `.agents/skills/`), that folder and `skills-lock.json` are ignored.
 
-Run the scripts from this skill's folder (`scripts/...`), passing the project root.
+Run the scripts from this skill's folder (`scripts/...`), passing the project root. The project is changed in place; if the user wants a separate copy, run on a worktree instead: `git worktree add ../<project>-cloud -b cloud-modernize`.
 
 ## Workflow
 
@@ -69,7 +69,7 @@ Uses each reviewed `config.json` as-is (never re-inspects). Per unit, sub-projec
 ### 4. Review the result with the user
 - `git status` / `git diff --stat`: new modules, moved files (history kept), changed POMs.
 - Spot-check that `ui.apps`' filter holds only immutable roots, and compare a few `.cfg.json` files with their sources (in the diff).
-- Work through the findings below, then commit when the user agrees. `.modernize/` holds the plan and reports; leave it out of the commit unless the user wants the record.
+- Work through the findings below, then commit when the user agrees. `.modernize/` holds the plan and reports; leave it out of the commit unless the user wants the record. Never commit an in-project install of this skill or `skills-lock.json`.
 
 ## Findings — what to do with each
 Findings are in each unit's `.modernize/findings.json`. Present them by priority, then:
@@ -89,7 +89,7 @@ Findings are in each unit's `.modernize/findings.json`. Present them by priority
 | RM-908 NORMAL | Java compiler level raised to 11 | Code that no longer compiles goes to `code-assessment`. |
 
 ## Archetype and AEM SDK version
-Modules are scaffolded from bundled, pinned AEM archetype templates, so every run is deterministic and works offline. The plan step prints a notice when a newer archetype or SDK exists. `--sdk-version latest` writes the newest `aem-sdk-api` from Maven Central (falls back to the pinned version when offline); `scripts/refresh_archetype.py` updates the pins.
+No archetype is downloaded or generated: modules are scaffolded from bundled, pinned AEM archetype templates, so every run is deterministic and works offline. The plan step prints a notice when Maven Central has a newer archetype or SDK. `--sdk-version latest` writes the newest `aem-sdk-api` (falls back to the pinned version when offline). Newer archetype templates come with a skill update; maintainers refresh the pins with `scripts/refresh_archetype.py`.
 
 ## References
 - [references/config-schema.md](references/config-schema.md) — the plan file.

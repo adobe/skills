@@ -424,7 +424,8 @@ def capture_inventory(project_root) -> dict:
     root = Path(project_root)
     captured_at = (datetime.datetime.now(datetime.timezone.utc)
                    .replace(microsecond=0).isoformat().replace("+00:00", "Z"))
-    files = [{"path": str(p.relative_to(root)), "sha256": C.sha256_file(p)} for p in C.iter_files(root)]
+    files = [{"path": str(p.relative_to(root)), "sha256": C.sha256_file(p)}
+             for p in C.iter_files(root, exclude=C.agent_tooling_paths(root))]
     return {"capturedAt": captured_at, "files": files}
 
 

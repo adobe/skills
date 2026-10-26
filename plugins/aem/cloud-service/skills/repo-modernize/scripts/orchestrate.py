@@ -15,10 +15,10 @@
 Running without --plan/--apply only plans: nothing is restructured before review.
 
 `--apply` checks its prerequisites first (lxml for POM editing; with --git, a git
-work tree with no uncommitted changes outside `.modernize/`) and exits 2 with
-instructions if one is missing. Exit code: 0 when every legacy unit succeeded (and,
-with --verify, passed its structural gate); otherwise the first non-zero code.
-`<root>/.modernize/orchestration.json` records the plan/result per unit.
+work tree with no uncommitted changes outside `.modernize/` and an in-project install of
+this skill) and exits 2 with instructions if one is missing. Exit code: 0 when every legacy
+unit succeeded (and, with --verify, passed its structural gate); otherwise the first
+non-zero code. `<root>/.modernize/orchestration.json` records the plan/result per unit.
 """
 from __future__ import annotations
 
@@ -54,16 +54,21 @@ def lxml_problem() -> Optional[str]:
     try:
         import lxml  # noqa: F401
     except ImportError:
-        return ("lxml is not installed (needed to edit POMs). Install it with:\n"
-                f"  {sys.executable} -m pip install -r {_REQUIREMENTS}\n"
-                "or into a virtual environment:\n"
-                f"  python3 -m venv .venv && .venv/bin/pip install -r {_REQUIREMENTS}")
+        venv = C.SKILL_DIR / ".venv"
+        return ("lxml is not installed (needed to edit POMs). Install it into a virtual "
+                "environment in the skill's folder (outside your project's git status) and "
+                "run the scripts with its python:\n"
+                f"  python3 -m venv {venv} && {venv}/bin/pip install -r {_REQUIREMENTS}\n"
+                f"  {venv}/bin/python {Path(__file__).resolve()} <project-root> --apply ...\n"
+                "or, if this Python allows installing packages:\n"
+                f"  {sys.executable} -m pip install -r {_REQUIREMENTS}")
     return None
 
 
 def git_problem(root: str) -> Optional[str]:
     """None if `root` is in a git work tree with no uncommitted changes outside the
-    skill's own `.modernize/` folders; otherwise what is wrong."""
+    skill's own `.modernize/` folders and agent tooling (`C.agent_tooling_paths`: an
+    in-project install of this skill, `skills-lock.json`); otherwise what is wrong."""
     try:
         top = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=root,
                              capture_output=True, text=True)
@@ -71,10 +76,19 @@ def git_problem(root: str) -> Optional[str]:
         return "git is not installed (needed for --git)."
     if top.returncode != 0:
         return f"{root} is not inside a git repository (needed for --git)."
+    top_dir = Path(top.stdout.strip()).resolve()
+    tooling = C.agent_tooling_paths(root)
     status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all", "--", "."],
                             cwd=root, capture_output=True, text=True, check=True).stdout
-    dirty = [line[3:] for line in status.splitlines()
-             if line and ".modernize/" not in line[3:] and not line[3:].endswith(".modernize")]
+    dirty = []
+    for line in status.splitlines():
+        path = line[3:]
+        if not line or ".modernize/" in path or path.endswith(".modernize"):
+            continue
+        full = top_dir / path
+        if any(t == full or t in full.parents for t in tooling):
+            continue
+        dirty.append(path)
     if dirty:
         shown = "\n  ".join(dirty[:10]) + ("\n  ..." if len(dirty) > 10 else "")
         return ("the working tree has uncommitted changes; commit or stash them first so the "

@@ -170,7 +170,7 @@ def main(argv=None, run=subprocess.run) -> int:
     `run` is accepted purely so tests can inject a fake Maven process; real CLI invocations
     never need to pass it.
     """
-    ap = argparse.ArgumentParser(description="repo-modernize Phase-2 verification gate")
+    ap = argparse.ArgumentParser(description="repo-modernize verification gate")
     ap.add_argument("root")
     ap.add_argument("--config", required=True)
     ap.add_argument("--inventory")
@@ -178,14 +178,14 @@ def main(argv=None, run=subprocess.run) -> int:
                      help="also run mvn (content-packages build + full install) and report "
                           "the aemanalyser/compile result -- DOES affect the exit code: a "
                           "genuine aemanalyser ERROR-level finding makes main() return 3 "
-                          "(a real Phase-2 failure), while 0 covers both full success and a "
+                          "(a real Cloud Service failure), while 0 covers both full success and a "
                           "structural-PASS-with-legacy-core-compile-break-only hand-off to "
                           "code-assessment")
     a = ap.parse_args(argv)
 
     rc = structural_gate(a.root, a.config, a.inventory)
     if rc != 0:
-        print("VERDICT: structural FAIL -- Phase-2 restructuring is incorrect "
+        print("VERDICT: structural FAIL -- the restructuring is incorrect "
               "(filter-immutability / no-loss / pom-shape / embeds); fix before proceeding.")
         return rc
 
@@ -212,12 +212,12 @@ def main(argv=None, run=subprocess.run) -> int:
                               or full_result["compile_failed_module"])
 
     if content_result["ok"] and full_result["ok"]:
-        print("VERDICT: structural PASS + analyser clean -- full Phase-2 success.")
+        print("VERDICT: structural PASS + analyser clean -- full success.")
         return 0
 
     if analyser_errors:
         print("VERDICT: structural PASS, but aemanalyser reported ERROR-level findings -- "
-              "this IS a Phase-2 FAILURE (the analyser must stay green; this is NOT "
+              "this IS a Cloud Service FAILURE (the analyser must stay green; this is NOT "
               "a code-assessment hand-off, even if a compile break also occurred):")
         for line in analyser_errors:
             print(f"  {line}")
@@ -226,8 +226,8 @@ def main(argv=None, run=subprocess.run) -> int:
     if content_result["pom_model_errors"]:
         print("VERDICT: structural PASS, but a MODERNIZED content module's POM is malformed "
               "-- Maven cannot even read it (the content-modules build covers only "
-              "modernized/reactor modules, never legacy core). This IS a Phase-2 FAILURE "
-              "(the restructuring produced an unbuildable module), NOT a code-assessment "
+              "modernized/reactor modules, never legacy core). This IS a restructuring FAILURE "
+              "(it produced an unbuildable module), NOT a code-assessment "
               "hand-off -- fix before proceeding:")
         for line in content_result["pom_model_errors"]:
             print(f"  {line}")
@@ -237,7 +237,7 @@ def main(argv=None, run=subprocess.run) -> int:
         print(f"VERDICT: structural PASS, but the legacy code build (Java compile, Felix "
               f"SCR/bundle plugin or unit tests) failed in module '{compile_failed_module}' -- the "
               "restructuring itself is correct; hand this break off to the code-assessment "
-              "skill (this is NOT a Phase-2 failure).")
+              "skill (this is NOT a restructuring failure).")
         return 0
 
     print("VERDICT: structural PASS; mvn did not succeed for a reason this gate could "

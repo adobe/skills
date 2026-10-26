@@ -3,6 +3,9 @@
 reviewed, and a reviewed plan is used as-is (never re-inspected)."""
 import contextlib
 import io
+import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -11,6 +14,10 @@ from pathlib import Path
 from unittest import mock
 
 import orchestrate as O
+
+FIX = Path(os.environ.get("WKND_FIXTURE") or
+           Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/wknd-legacy")
+SKILL = Path(__file__).resolve().parent.parent
 
 
 def _pom(packaging="jar", modules=None, artifact="m"):
@@ -120,7 +127,86 @@ class Preflight(unittest.TestCase):
             msg = O.lxml_problem()
         self.assertIn("pip install -r", msg)
         self.assertIn("requirements.txt", msg)
+        self.assertIn(str(O.C.SKILL_DIR / ".venv"), msg)   # never a .venv inside the project
         self.assertIsNone(O.lxml_problem())
+
+    def test_in_project_skill_install_is_not_a_change(self):
+        """A project-scope `npx skills add` leaves this skill (and any sibling skills) under
+        `.agents/skills/` plus `skills-lock.json`, untracked. They are not project changes;
+        a real uncommitted change still blocks."""
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _commit_all(d)
+        for rel in (".agents/skills/repo-modernize/SKILL.md", ".agents/skills/other/SKILL.md",
+                    "skills-lock.json"):
+            (d / rel).parent.mkdir(parents=True, exist_ok=True)
+            (d / rel).write_text("x")
+        with mock.patch.object(O.C, "SKILL_DIR", (d / ".agents/skills/repo-modernize").resolve()):
+            self.assertIsNone(O.git_problem(str(d)))
+            (d / "notes.txt").write_text("user work")
+            problem = O.git_problem(str(d))
+        self.assertIn("notes.txt", problem)
+        self.assertNotIn(".agents", problem)
+        self.assertNotIn("skills-lock.json", problem)
+
+    def test_skill_outside_a_skills_folder_excludes_only_itself(self):
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _commit_all(d)
+        (d / "tools/repo-modernize").mkdir(parents=True)
+        (d / "tools/repo-modernize/SKILL.md").write_text("x")
+        (d / "tools/other.txt").write_text("x")
+        with mock.patch.object(O.C, "SKILL_DIR", (d / "tools/repo-modernize").resolve()):
+            problem = O.git_problem(str(d))
+        self.assertIn("tools/other.txt", problem)
+        self.assertNotIn("tools/repo-modernize", problem)
+
+    def test_inventory_skips_an_in_project_skill_install(self):
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        (d / ".agents/skills/repo-modernize").mkdir(parents=True)
+        (d / ".agents/skills/repo-modernize/SKILL.md").write_text("x")
+        (d / "skills-lock.json").write_text("{}")
+        with mock.patch.object(O.C, "SKILL_DIR", (d / ".agents/skills/repo-modernize").resolve()):
+            paths = [f["path"] for f in O.I.capture_inventory(d)["files"]]
+        self.assertIn("pom.xml", paths)
+        self.assertEqual([p for p in paths if p.startswith(".agents") or p == "skills-lock.json"], [])
+
+
+@unittest.skipUnless(FIX.is_dir(), f"test fixture not found at {FIX} (set WKND_FIXTURE)")
+class InProjectInstall(unittest.TestCase):
+    """End to end, as a user gets it from `npx skills add <skill-url> -y` (project scope): the
+    skill is copied into the project and run from there; plan and apply must work without
+    committing or stashing the install."""
+
+    def _run(self, script, *args):
+        env = {**os.environ, "REPO_MODERNIZE_NO_VERSION_CHECK": "1"}
+        return subprocess.run([sys.executable, str(script), *args],
+                              capture_output=True, text=True, env=env)
+
+    def test_plan_and_apply_from_an_in_project_copy(self):
+        d = Path(tempfile.mkdtemp()) / "proj"
+        shutil.copytree(FIX, d)
+        _commit_all(d)
+        installed = d / ".agents/skills/repo-modernize"
+        shutil.copytree(SKILL, installed, ignore=shutil.ignore_patterns("__pycache__", ".venv"))
+        (d / ".agents/skills/other-skill").mkdir()
+        (d / ".agents/skills/other-skill/SKILL.md").write_text("x")
+        (d / "skills-lock.json").write_text("{}\n")
+        script = installed / "scripts/orchestrate.py"
+
+        plan = self._run(script, str(d), "--plan")
+        self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
+        inventory = json.loads((d / ".modernize/inventory.json").read_text())["files"]
+        self.assertEqual([f["path"] for f in inventory
+                          if f["path"].startswith(".agents") or f["path"] == "skills-lock.json"], [])
+
+        applied = self._run(script, str(d), "--apply", "--git", "--verify")
+        self.assertEqual(applied.returncode, 0, applied.stdout + applied.stderr)
+        self.assertIn("structural PASS", applied.stdout)
+        self.assertTrue((d / "ui.config/pom.xml").is_file())
+        install_status = subprocess.run(
+            ["git", "status", "--porcelain", "--", ".agents", "skills-lock.json"],
+            cwd=d, capture_output=True, text=True, check=True).stdout.splitlines()
+        self.assertTrue(install_status)
+        self.assertTrue(all(line.startswith("??") for line in install_status), install_status)
 
 
 if __name__ == "__main__":

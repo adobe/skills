@@ -85,8 +85,9 @@ def main(argv=None) -> int:
               f"-DarchetypeArtifactId=aem-project-archetype -DarchetypeVersion={latest_arch} ...")
         print("  2. copy the generated module poms into assets/archetype-pom-templates/, "
               "re-parameterizing {{groupId}}/{{artifactId}}/{{appId}}/{{appTitle}}/{{version}};")
-        print("  3. run the full test suite (WKND_FIXTURE=... pytest) -- fix any transform that "
-              "the new template shape breaks; only accept the bump when green.")
+        print("  3. run the full test suite (plugins/aem/cloud-service/test/repo-modernize/"
+              "run-tests.sh) -- fix any transform that the new template shape breaks; only "
+              "accept the bump when green.")
     else:
         print("\nArchetype structure pin is already latest.")
     return 0
