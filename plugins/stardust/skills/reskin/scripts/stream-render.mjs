@@ -15,14 +15,18 @@
  *
  * Images are hot-linked to the source by default (the gates compare host+path). --localize-images
  * downloads each one to <dir>/prototypes/assets/img/<host>/<path> (the migrate bundler's root; a query
- * becomes a short hash on the file name so image-proxy URLs stay distinct), writes
- * src relative to --out and keeps data-source-src="<original>" — dom-equality and slot-coverage match
- * on it, so the gates hold on a localized page. A failed download (or two URLs landing on one local
- * file) keeps the remote src and is listed.
+ * becomes a short hash on the file name so image-proxy URLs stay distinct), copies it beside the page as
+ * <out dir>/assets/img/<host>/<path> and writes src="assets/img/<host>/<path>": the one ref form both a
+ * browser opening the page (the local gates) and migrate's bundler with its default --proto-dir resolve
+ * (its `assets/` prefix → <proto-dir>/assets/img/…), since the page and the proto dir sit at different
+ * depths. It keeps data-source-src="<original>" — dom-equality and slot-coverage match on it, so the gates
+ * hold on a localized page. A failed download (or two URLs landing on one local file) keeps the remote
+ * src and is listed.
  *
- * mapping.json (the only per-site input):
+ * mapping.json (the only per-site input; schema and defaults: reference/mapping-json.md):
  *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent",
  *       "navAlign": "start|center|end" },
+ *     "blocks": { "M2": "<eds block name>" },   (optional; read by --deploy-map only, default the id lower-cased)
  *     "pages": { "<slug>": { "template": "<archetype slug>",
  *       "slots": { "s01": { "module": "M2", "layout": "stack|grid-2|media-band|split|cards (space-separated)",
  *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3,
@@ -55,11 +59,29 @@
  *
  * Usage:
  *   node stream-render.mjs <slug> [--dir stardust] [--mapping <dir>/reskin/mapping.json]
- *     [--out <dir>/reskin/pages/<slug>.html] [--localize-images]
+ *     [--model-dir <dir>/reskin/content-model] [--out <dir>/reskin/pages/<slug>.html] [--localize-images] [--register]
+ *     --register (flow "reskin" only; any other flow is exit 2 before rendering) records the page in
+ *     <dir>/state.json through skills/stardust/scripts/state.mjs (history + _provenance writtenBy
+ *     stardust:reskin): prototypePath = --out relative to the project root (the parent of --dir), so
+ *     reskin-ledger, canon-from-reskin, preflight and migrate find it; an extracted/directed page advances
+ *     to prototyped — a sibling of a type with an approved/migrated archetype only to directed, the status
+ *     migrate renders at the sibling tier; a page at prototyped or later keeps its status. A slug not in
+ *     state.json is rendered and noted, not registered.
+ *   node stream-render.mjs --check [<slug>…] [--dir stardust] [--mapping <f>] [--model-dir <d>]
+ *     validates mapping.json (reference/mapping-json.md): unknown keys, values outside the enums above,
+ *     slot ids the page's content model lacks, requested slugs without a pages entry — one problem per
+ *     line on stdout, nothing rendered or written; exit 0 valid, 1 problems, 2 setup error.
+ *   node stream-render.mjs <slug> --deploy-map [--dir stardust] [--mapping <f>] [--model-dir <d>]
+ *     prints deploy's block-roundtrip arguments for the page (the deployed leg, reference/deployed-leg.md):
+ *     `--map '<block>=section[data-slot="sNN"],…'`, one per block, instances in page order. The block is
+ *     mapping.json blocks.<module id> when set, else the module id lower-cased; slots with no module are
+ *     listed on stderr. Nothing rendered or written.
  *
  * Reads:  <dir>/reskin/content-model/<slug>/content-model.json, <dir>/reskin/donor-tokens.json,
  *         the mapping, the chrome model when mapped.
- * Writes: --out (parent dirs created); with --localize-images also <dir>/prototypes/assets/img/**.
+ * Writes: --out (parent dirs created); with --localize-images also <dir>/prototypes/assets/img/** and
+ *         <out dir>/assets/img/**;
+ *         with --register <dir>/state.json.
  * Exit:   0 rendered, 1 render error (unknown node kind, label round-trip), 2 setup error.
  */
 import { createHash } from 'node:crypto';
@@ -68,15 +90,30 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rootTokens } from './render/root-tokens.mjs';
 
-const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--out <file>] [--localize-images]
+const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--model-dir <d>] [--out <file>]
+         [--localize-images] [--register]
+       node stream-render.mjs --check [<slug>…] [--dir stardust] [--mapping <file>] [--model-dir <d>]
+       node stream-render.mjs <slug> --deploy-map [--dir stardust] [--mapping <file>] [--model-dir <d>]
 
 Render one page from <dir>/reskin/content-model/<slug>/content-model.json with the donor tokens in
 <dir>/reskin/donor-tokens.json and the slot mapping in <dir>/reskin/mapping.json.
   --dir <d>            stardust state dir (default stardust)
-  --mapping <file>     mapping.json (default <dir>/reskin/mapping.json)
-  --out <file>         output HTML (default <dir>/reskin/pages/<slug>.html); to hand off to migrate,
-                       write <dir>/prototypes/<slug>-proposed.html
-  --localize-images    download images to <dir>/prototypes/assets/img/ and keep data-source-src
+  --mapping <file>     mapping.json (default <dir>/reskin/mapping.json; schema: reference/mapping-json.md)
+  --model-dir <d>      content models (default <dir>/reskin/content-model)
+  --out <file>         output HTML (default <dir>/reskin/pages/<slug>.html); --register hands it to
+                       the ledger, the canon bridge and migrate
+  --localize-images    download images to <dir>/prototypes/assets/img/ (migrate's root), copy them to
+                       <out dir>/assets/img/, src="assets/img/…", keep data-source-src
+  --register           record the page in <dir>/state.json through state.mjs (flow "reskin" only, else
+                       exit 2 before rendering): prototypePath = --out relative to the project root;
+                       extracted/directed → prototyped, or → directed for a sibling of a type that has
+                       an approved archetype (migrate's sibling tier); later statuses keep their status
+  --deploy-map         print block-roundtrip's --map arguments for <slug>: one block per mapped module
+                       (mapping.json blocks.<module>, else the module id lower-cased), its
+                       section[data-slot] instances in page order; nothing rendered or written
+  --check              validate mapping.json only (unknown keys, bad values, slots missing from the
+                       content model, requested <slug>s without a page entry): one problem per line on
+                       stdout; renders and writes nothing. Exit 0 valid, 1 problems, 2 setup error.
 Exit 0 rendered, 1 render error, 2 setup error.`;
 
 class SetupError extends Error {}
@@ -844,6 +881,111 @@ ${css}
   return { html, images, slots: model.sections.length, vars: vars.length, warnings };
 }
 
+// ---- mapping.json schema (reference/mapping-json.md) ----------------------------------------------------
+// Every key render() reads, with its allowed values. Keys starting with `_` or `$` are annotations
+// ($schema, _note, _provenance) and are never read. Pure; exported for tests.
+export const MAPPING_SCHEMA = {
+  top: ['chrome', 'pages', 'blocks'],
+  chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign'],
+  page: ['template', 'slots'],
+  slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split'],
+  layout: ['stack', 'grid-2', 'media-band', 'split', 'cards'],
+  width: ['narrow', 'wide'],
+  tone: ['dark', 'light', 'accent'],
+  heading: ['display', 'h2', 'h3', 'h4'],
+  navAlign: ['start', 'center', 'end'],
+};
+const isObj = (o) => !!o && typeof o === 'object' && !Array.isArray(o);
+const annotation = (k) => k.startsWith('_') || k.startsWith('$');
+
+// Validates a parsed mapping.json. models: { <slug>: content model | null } (null/absent: slot ids not
+// checked); chromeModel: the chrome content model or null; slugs: pages that must be present.
+// Returns ["<path>: <problem>", …]; empty when valid.
+export function checkMapping(mapping, { models = {}, chromeModel = null, slugs = [] } = {}) {
+  const S = MAPPING_SCHEMA; const out = [];
+  const one = (v, allowed) => allowed.includes(v);
+  const unknown = (o, allowed, at) => { for (const k of Object.keys(o)) if (!annotation(k) && !allowed.includes(k)) out.push(`${at}${k}: unknown key (allowed: ${allowed.join(', ')})`); };
+  if (!isObj(mapping)) return ['(root): mapping.json must be a JSON object'];
+  unknown(mapping, S.top, '');
+  const ch = mapping.chrome;
+  if (ch !== undefined) {
+    if (!isObj(ch)) out.push('chrome: must be an object');
+    else {
+      unknown(ch, S.chrome, 'chrome.');
+      if (ch.model !== undefined && (typeof ch.model !== 'string' || !ch.model)) out.push('chrome.model: must be a directory path holding a content-model.json');
+      for (const zone of ['header', 'footer']) {
+        const ids = ch[zone];
+        if (ids === undefined) continue;
+        if (!Array.isArray(ids) || ids.some((x) => typeof x !== 'string')) { out.push(`chrome.${zone}: must be an array of chrome-model slot ids`); continue; }
+        if (ids.length && !ch.model) out.push(`chrome.${zone}: set but chrome.model is missing — the ${zone} renders empty`);
+        if (chromeModel) for (const id of ids) if (!(chromeModel.sections || []).some((s) => s.slot === id)) out.push(`chrome.${zone}: no slot ${id} in the chrome model ${ch.model}`);
+      }
+      if (ch.footerTone !== undefined && !one(ch.footerTone, S.tone)) out.push(`chrome.footerTone: "${ch.footerTone}" is not ${S.tone.join(' | ')}`);
+      if (ch.navAlign !== undefined && !one(ch.navAlign, S.navAlign)) out.push(`chrome.navAlign: "${ch.navAlign}" is not ${S.navAlign.join(' | ')}`);
+    }
+  }
+  if (mapping.blocks !== undefined) {
+    if (!isObj(mapping.blocks)) out.push('blocks: must be an object { "<module id>": "<eds block name>" }');
+    else for (const [id, b] of Object.entries(mapping.blocks)) if (!annotation(id) && !(typeof b === 'string' && BLOCK_NAME.test(b))) out.push(`blocks.${id}: ${JSON.stringify(b)} is not an EDS block name (lower-case letters, digits, hyphens)`);
+  }
+  const pages = mapping.pages;
+  if (!isObj(pages)) { out.push('pages: must be an object { "<slug>": { template, slots } }'); return out; }
+  for (const slug of slugs) if (!isObj(pages[slug])) out.push(`pages.${slug}: missing — the page was requested but mapping.json has no entry`);
+  for (const [slug, pm] of Object.entries(pages)) {
+    if (annotation(slug)) continue;
+    const at = `pages.${slug}`;
+    if (!isObj(pm)) { out.push(`${at}: must be an object { template, slots }`); continue; }
+    unknown(pm, S.page, `${at}.`);
+    if (pm.template !== undefined && (typeof pm.template !== 'string' || !pm.template)) out.push(`${at}.template: must be the archetype slug (a string)`);
+    if (pm.slots === undefined) continue;
+    if (!isObj(pm.slots)) { out.push(`${at}.slots: must be an object { "<slot id>": { module, layout, … } }`); continue; }
+    const model = models[slug];
+    const have = model ? new Set((model.sections || []).map((s) => s.slot)) : null;
+    for (const [id, m] of Object.entries(pm.slots)) {
+      if (annotation(id)) continue;
+      const sat = `${at}.slots.${id}`;
+      if (have && !have.has(id)) out.push(`${sat}: no slot ${id} in the content model (slots: ${[...have].join(', ') || 'none'})`);
+      if (!isObj(m)) { out.push(`${sat}: must be an object`); continue; }
+      unknown(m, S.slot, `${sat}.`);
+      if (m.module !== undefined && (typeof m.module !== 'string' || !m.module.trim())) out.push(`${sat}.module: must be a donor module id (e.g. "M2")`);
+      if (m.layout !== undefined) {
+        const parts = typeof m.layout === 'string' ? m.layout.trim().split(/\s+/) : [];
+        const bad = parts.filter((l) => !S.layout.includes(l));
+        if (!parts.length || parts[0] === '' || bad.length) out.push(`${sat}.layout: "${m.layout}" is not space-separated ${S.layout.join(' | ')}`);
+      }
+      for (const k of ['width', 'tone', 'heading']) if (m[k] !== undefined && !one(m[k], S[k])) out.push(`${sat}.${k}: "${m[k]}" is not ${S[k].join(' | ')}`);
+      if (m.columns !== undefined && !(Number.isInteger(m.columns) && m.columns > 0)) out.push(`${sat}.columns: ${JSON.stringify(m.columns)} is not a positive integer`);
+      if (m.inset !== undefined && !(typeof m.inset === 'string' && /^\d+(\.\d+)?(px|rem|%)$/.test(m.inset))) out.push(`${sat}.inset: ${JSON.stringify(m.inset)} is not a length (px | rem | %)`);
+      if (m.split !== undefined && !(typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()))) out.push(`${sat}.split: ${JSON.stringify(m.split)} is not two column tracks (px | fr | %)`);
+    }
+  }
+  return out;
+}
+
+// ---- --deploy-map: block-roundtrip's --map arguments (reference/deployed-leg.md § Recipe) ----------------
+const BLOCK_NAME = /^[a-z][a-z0-9-]*$/;
+// The EDS block a module becomes: mapping.json blocks.<module id>, else the module id lower-cased (M4 → m4).
+export const blockName = (mapping, module) => (isObj(mapping?.blocks) && typeof mapping.blocks[module] === 'string' ? mapping.blocks[module] : String(module).toLowerCase());
+// One block per mapped module of a page, its instances (section[data-slot]) in page order — the content
+// model's slot order when given, else the mapping's. Slots with no module (new-module, carried-invisible)
+// are listed apart: they are not a donor block. Pure; exported.
+export function deployMap(mapping, slug, model = null) {
+  const pm = mapping?.pages?.[slug];
+  if (!isObj(pm)) throw new SetupError(`mapping.json has no pages.${slug}`);
+  const slots = isObj(pm.slots) ? pm.slots : {};
+  const order = model ? (model.sections || []).map((x) => x.slot) : Object.keys(slots).filter((k) => !annotation(k));
+  const byBlock = new Map(); const unmapped = [];
+  for (const id of order) {
+    const m = slots[id];
+    if (!m?.module) { unmapped.push(id); continue; }
+    const b = blockName(mapping, m.module);
+    if (!byBlock.has(b)) byBlock.set(b, { block: b, modules: [], slots: [] });
+    const e = byBlock.get(b); e.slots.push(id); if (!e.modules.includes(m.module)) e.modules.push(m.module);
+  }
+  const blocks = [...byBlock.values()].map((e) => ({ ...e, selector: e.slots.map((id) => `section[data-slot="${id}"]`).join(',') }));
+  return { blocks, unmapped, args: blocks.map((e) => `--map '${e.block}=${e.selector}'`).join(' ') };
+}
+
 // ---- capture smells (used by capture-content) -----------------------------------------------------------
 // The scope warnings capture-content prints, minus the known false positives: an all-whole ("!") scope
 // (chrome, a single-form page) is one slot per element by design and may not hold the h1; a slot that
@@ -924,21 +1066,127 @@ async function localize(urls, assetsDir, referer) {
   return { map, failed };
 }
 
+// argv → { pos[], flags }; a value flag needs a value, an unknown flag is a usage error.
+const VALUE_FLAGS = ['--dir', '--mapping', '--out', '--model-dir'];
+const BOOL_FLAGS = ['--localize-images', '--check', '--register', '--deploy-map', '--help', '-h'];
+function parseArgs(argv) {
+  const o = { pos: [], dir: 'stardust' };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (VALUE_FLAGS.includes(a)) {
+      const v = argv[++i];
+      if (v === undefined || v.startsWith('--')) throw new SetupError(`${a} needs a value`);
+      o[a.slice(2)] = v;
+    } else if (BOOL_FLAGS.includes(a)) o[a.replace(/^-+/, '')] = true;
+    else if (a.startsWith('-')) throw new SetupError(`unknown option ${a}`);
+    else o.pos.push(a);
+  }
+  return o;
+}
+
+function readJsonFile(p, what) {
+  if (!existsSync(p)) throw new SetupError(`missing ${what}: ${p}`);
+  try { return JSON.parse(readFileSync(p, 'utf8')); } catch (e) { throw new SetupError(`${what} is not valid JSON: ${p} (${e.message})`); }
+}
+const optionalJson = (p) => { try { return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null; } catch { return null; } };
+
+// --check: validate mapping.json against the schema and the content models on disk. No render, no writes.
+function checkCli(o, mappingFile, modelDir) {
+  let mapping;
+  try { mapping = JSON.parse(readFileSync(mappingFile, 'utf8')); } catch (e) {
+    if (!existsSync(mappingFile)) throw new SetupError(`missing mapping.json: ${mappingFile}`);
+    console.log(`${mappingFile}: not valid JSON (${e.message})`); return 1;
+  }
+  const slugs = o.pos;
+  const pageSlugs = isObj(mapping?.pages) ? Object.keys(mapping.pages).filter((k) => !annotation(k)) : [];
+  const models = {}; const unmodelled = [];
+  for (const slug of new Set([...slugs, ...pageSlugs])) {
+    models[slug] = optionalJson(join(modelDir, slug, 'content-model.json'));
+    if (!models[slug] && pageSlugs.includes(slug)) unmodelled.push(slug);
+  }
+  const chromeDir = isObj(mapping?.chrome) && typeof mapping.chrome.model === 'string' ? mapping.chrome.model : null;
+  const chromeModel = chromeDir ? optionalJson(join(chromeDir, 'content-model.json')) : null;
+  const problems = checkMapping(mapping, { models, chromeModel, slugs });
+  if (chromeDir && !chromeModel) problems.push(`chrome.model: no content-model.json under ${chromeDir}`);
+  if (unmodelled.length) console.error(`note: no content model under ${modelDir} for ${unmodelled.join(', ')} — their slot ids are not checked`);
+  for (const p of problems) console.log(p);
+  const slots = pageSlugs.reduce((n, s) => n + (isObj(mapping.pages[s]?.slots) ? Object.keys(mapping.pages[s].slots).length : 0), 0);
+  console.error(problems.length ? `${mappingFile}: ${problems.length} problem(s)` : `${mappingFile}: ok — ${pageSlugs.length} page(s), ${slots} slot(s)`);
+  return problems.length ? 1 : 0;
+}
+
+// ---- --register: the rendered page into state.json (flow reskin only) ----------------------------------
+const LIFECYCLE = ['extracted', 'directed', 'prototyped', 'approved', 'migrated'];
+// Which lifecycle move a rendered page gets; applies it to `state` through state.mjs's advance().
+// A page of a type that already has an approved/migrated archetype is a sibling: it goes no further than
+// `directed`, the status migrate renders at the sibling tier (Path A′; `prototyped` is skipped by
+// `migrate render --all`). Any other page behind `prototyped` advances to it (its history entry, stale
+// cleared). A page at `prototyped` or later only gets its path (a re-render is gated and recorded again;
+// preflight compares the recorded prototype sha). Returns { slug, from, to, role, changed } or null.
+export function registerRendered(state, slug, prototypePath, { advance, at }) {
+  const page = (state.pages || []).find((p) => p.slug === slug);
+  if (!page) return null;
+  const from = page.status; const i = LIFECYCLE.indexOf(from);
+  const sibling = !!page.type && state.pages.some((p) => p.slug !== slug && p.type === page.type && ['approved', 'migrated'].includes(p.status));
+  const role = sibling ? 'sibling' : 'page';
+  const to = i < 0 || i >= 2 ? from : sibling ? 'directed' : 'prototyped';
+  if (to !== from) { advance(state, [slug], { to, prototype: prototypePath, at }); return { slug, from, to, role, changed: true }; }
+  const changed = page.prototypePath !== prototypePath;
+  page.prototypePath = prototypePath;
+  return { slug, from, to, role, changed };
+}
+
+async function stateLib() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const file = [['..', '..', 'stardust', 'scripts', 'state.mjs'], ['..', 'stardust', 'state.mjs']].map((p) => join(here, ...p)).find((p) => existsSync(p));
+  if (!file) throw new SetupError('--register needs state.mjs (skills/stardust/scripts/state.mjs, or its project copy stardust/scripts/stardust/state.mjs)');
+  return import(pathToFileURL(file).href);
+}
+
+// Loads <dir>/state.json for --register and refuses outside flow reskin, before anything is rendered.
+async function registerSetup(dir) {
+  const lib = await stateLib();
+  let r; try { r = lib.readState(dir); } catch (e) { throw new SetupError(`--register: ${e.message}`); }
+  if (r.state.flow !== 'reskin') throw new SetupError(`--register: ${r.file} flow is ${r.state.flow ? `"${r.state.flow}"` : 'unset'} — only a flow "reskin" project registers reskin pages (render without --register)`);
+  return { lib, ...r };
+}
+
+function registerCli({ lib, state, file }, slug, out, dir) {
+  const root = dirname(resolve(dir));
+  const prototypePath = relative(root, out).split(sep).join('/');
+  const at = lib.nowIso();
+  const r = registerRendered(state, slug, prototypePath, { advance: lib.advance, at });
+  if (!r) { console.log(`note: ${slug} is not a page in ${file} — not registered`); return; }
+  if (r.changed) { state._provenance = lib.stampProvenance(state._provenance, 'stardust:reskin', at); lib.writeState(file, state); }
+  const move = r.to === r.from ? `stays ${r.from}` : `${r.from} → ${r.to}`;
+  console.log(`registered ${slug}: prototypePath ${prototypePath}, ${move}${r.role === 'sibling' ? ' (sibling of an approved archetype: migrate renders it at the sibling tier)' : ''}${r.changed ? '' : ' (unchanged)'}`);
+  if (['approved', 'migrated'].includes(r.from)) console.log(`note: ${slug} is ${r.from}; re-run its gates and reskin-ledger.mjs record ${slug} (preflight fails a prototype changed since it was recorded)`);
+}
+
 async function main(argv) {
-  if (argv.includes('--help') || argv.includes('-h')) { console.log(HELP); return 0; }
-  const flag = (n, d) => { const i = argv.indexOf(n); return i > -1 ? argv[i + 1] : d; };
-  const slug = argv[0];
-  if (!slug || slug.startsWith('--')) { console.error(HELP); return 2; }
-  const dir = flag('--dir', 'stardust');
-  const readJson = (p, what) => {
-    if (!existsSync(p)) throw new SetupError(`missing ${what}: ${p}`);
-    return JSON.parse(readFileSync(p, 'utf8'));
-  };
-  const mapping = readJson(flag('--mapping', join(dir, 'reskin', 'mapping.json')), 'mapping.json');
-  const model = readJson(join(dir, 'reskin', 'content-model', slug, 'content-model.json'), `content model for ${slug}`);
+  const o = parseArgs(argv);
+  if (o.help || o.h) { console.log(HELP); return 0; }
+  const { dir } = o;
+  const mappingFile = o.mapping || join(dir, 'reskin', 'mapping.json');
+  const modelDir = o['model-dir'] || join(dir, 'reskin', 'content-model');
+  if (o.check) return checkCli(o, mappingFile, modelDir);
+  const slug = o.pos[0];
+  if (!slug) { console.error(HELP); return 2; }
+  if (o.pos.length > 1) throw new SetupError(`one <slug> per ${o['deploy-map'] ? '--deploy-map' : 'render'} (got ${o.pos.join(', ')})`);
+  if (o['deploy-map']) {
+    const dm = deployMap(readJsonFile(mappingFile, 'mapping.json'), slug, optionalJson(join(modelDir, slug, 'content-model.json')));
+    console.log(dm.args);
+    for (const b of dm.blocks) console.error(`${b.block} (${b.modules.join(', ')}): ${b.slots.join(', ')}`);
+    if (dm.unmapped.length) console.error(`no module, not a donor block: ${dm.unmapped.join(', ')} — default content, or give the slot a module in mapping.json`);
+    return 0;
+  }
+  const reg = o.register ? await registerSetup(dir) : null;
+  const readJson = readJsonFile;
+  const mapping = readJson(mappingFile, 'mapping.json');
+  const model = readJson(join(modelDir, slug, 'content-model.json'), `content model for ${slug}`);
   const tokens = readJson(join(dir, 'reskin', 'donor-tokens.json'), 'donor-tokens.json');
   const chromeModel = mapping.chrome?.model ? readJson(join(mapping.chrome.model, 'content-model.json'), 'chrome content model') : null;
-  const out = resolve(flag('--out', join(dir, 'reskin', 'pages', `${slug}.html`)));
+  const out = resolve(o.out || join(dir, 'reskin', 'pages', `${slug}.html`));
   const input = { slug, model, tokens, mapping, chromeModel };
 
   let result = render(input);
@@ -955,24 +1203,37 @@ async function main(argv) {
       const to = join(target, ...u.split('/'));
       mkdirSync(dirname(to), { recursive: true });
       copyFileSync(from, to);
-      copied.set(u, to);
+      // The page's own assets/ mirror, as --localize-images keeps: src="assets/img/…" resolves from the page and,
+      // through migrate's `assets/` prefix, against its default --proto-dir (<dir>/prototypes).
+      const mirror = join(dirname(out), 'assets', relative(resolve(dir, 'prototypes', 'assets'), to));
+      if (resolve(mirror) !== resolve(to)) { mkdirSync(dirname(mirror), { recursive: true }); copyFileSync(to, mirror); }
+      copied.set(u, mirror);
     }
     const rel = (file) => relative(dirname(out), file).split(sep).join('/');
     result = render({ ...input, resolveImg: (u) => (copied.has(u) ? { src: rel(copied.get(u)), source: u } : { src: u }) });
     console.log(`figma assets: ${copied.size} copied → ${relative(process.cwd(), target)}/`);
     for (const u of missing) console.error(`WARN figma asset missing: ${u} (supply it under the model's assets/ and re-run figma-donor.mjs content)`);
   }
-  if (argv.includes('--localize-images')) {
+  if (o['localize-images']) {
     const assetsDir = resolve(dir, 'prototypes', 'assets');
     const loc = await localize(result.images, assetsDir, model.metadata?.canonical || model.url || undefined);
+    // The page's own assets/ mirror: src="assets/img/…" resolves from the page in a browser and, through
+    // migrate's `assets/` prefix, against its default --proto-dir (<dir>/prototypes).
+    const pageAssets = join(dirname(out), 'assets');
+    const local = new Map([...loc.map].map(([u, file]) => {
+      const mirror = join(pageAssets, relative(assetsDir, file));
+      if (resolve(mirror) !== resolve(file)) { mkdirSync(dirname(mirror), { recursive: true }); copyFileSync(file, mirror); }
+      return [u, mirror];
+    }));
     const rel = (file) => relative(dirname(out), file).split(sep).join('/');
-    result = render({ ...input, resolveImg: (u) => (loc.map.has(u) ? { src: rel(loc.map.get(u)), source: u } : { src: u }) });
+    result = render({ ...input, resolveImg: (u) => (local.has(u) ? { src: rel(local.get(u)), source: u } : { src: u }) });
     console.log(`localized ${loc.map.size}/${result.images.length} image(s) → ${relative(process.cwd(), assetsDir)}/img/`);
     for (const f of loc.failed) console.error(`WARN image kept remote: ${f.url} (${f.why})`);
   }
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, result.html);
   console.log(`rendered ${slug} → ${relative(process.cwd(), out)} (${result.slots} slot(s), ${result.vars} token vars)`);
+  if (reg) registerCli(reg, slug, out, dir);
   for (const w of result.warnings) console.log(`warning: ${w}`);
   if (!existsSync(join(dir, 'reskin', 'mapping.md'))) console.error('note: reskin/mapping.md (the human mapping brief) is missing — Phase 3 requires it');
   return 0;

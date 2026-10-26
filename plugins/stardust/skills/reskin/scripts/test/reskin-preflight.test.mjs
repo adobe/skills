@@ -146,6 +146,27 @@ check('a migrated page without a passing sibling gate warns', () => {
 });
 
 const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+check('deployed-coverage: warns when a type\'s migrated pages lack preview-deployed evidence (max(2, 10%), all below 2); never fails', () => {
+  const run = (n, deployed, other = {}) => {
+    const pages = [{ slug: 'login', type: 'form', status: 'approved' }, ...Array.from({ length: n }, (_, i) => ({ slug: `f${i}`, type: 'form', status: 'migrated' }))];
+    const L = JSON.parse(LEDGER);
+    for (let i = 0; i < deployed; i++) L.pages[`f${i}`] = { gates: { deployed: { regime: 'preview', content: 'PASS' } } };
+    Object.assign(L.pages, other);
+    const res = preflight(project({ 'stardust/state.json': JSON.stringify({ flow: 'reskin', pages }), 'stardust/reskin/ledger.json': JSON.stringify(L) }));
+    assert.ok(!fails(res).includes('deployed-coverage'));
+    return res.filter((r) => r.check === 'deployed-coverage');
+  };
+  let w = run(20, 1);
+  assert.equal(w.length, 1); assert.equal(w[0].level, 'warn');
+  assert.match(w[0].detail, /^form: 1 of 20 migrated page\(s\) have preview-deployed evidence, want 2 — run the deployed leg .*deployed-gate\.mjs all --page <slug>.* on 1 more, e\.g\. f1$/);
+  assert.deepEqual(run(20, 2), []);
+  assert.match(run(25, 2)[0].detail, /2 of 25 .* want 3/);
+  assert.deepEqual(run(25, 3), []);
+  assert.match(run(1, 0)[0].detail, /0 of 1 .* want 1/);
+  assert.deepEqual(run(1, 1), []);
+  assert.match(run(3, 0, { f0: { gates: { deployed: { regime: 'local' } } } })[0].detail, /0 of 3 .* want 2/, 'only regime preview counts');
+  assert.deepEqual(run(0, 0), [], 'no migrated pages: nothing to cover');
+});
 check('--help prints usage and exits 0 without reading the project', () => {
   const r = run(['--help'], mkdtempSync(join(tmpdir(), 'rp-')));
   assert.equal(r.status, 0); assert.match(r.stdout, /usage: node reskin-preflight\.mjs/);

@@ -25,15 +25,23 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
 
 ## Recipe
 
-1. **Deploy, preview-only.** `deploy` Steps 1–9 with `stardust/reskin/pages/<slug>.html` as the prototype: the content
-   page `content/<ns>/<slug>.html`, in a shared repo both chrome documents, and `eds-schema/<slug>.json` (Step 2b,
-   `qa-gate`'s input). `deploy` authors the content page (Step 9); generating it from the model is not built, so
-   its differences are declared in the delta file. This leg replaces only Step 10's automated reconciliation, the
-   reskin page its reference (step 7 keeps the rest).
-   `block-roundtrip`'s default `--map` (`section.<name>`, `[data-section]`, `.<name>`) cannot pair a reskin page:
-   `.cards` matches the inner grids, `.tabs` the tab row. Give one `--map <block>=section[data-slot=sNN][,section[data-slot=sMM]…]`
-   per block (Phase 4's `data-slot`, a class is not general), the instances in page order. It compares CTA text by
+1. **Deploy, preview-only.** `deploy` Steps 1–9 with `stardust/reskin/pages/<slug>.html` (the page Phase 5 gated) as
+   the prototype: the content page `content/<ns>/<slug>.html`, in a shared repo both chrome documents, and
+   `eds-schema/<slug>.json` (Step 2b, `qa-gate`'s input). The content page is `deploy`'s own conversion of that page's
+   `<main>`, no custom converter: one block per `section[data-slot]` in page order, named for its `mapping.json`
+   module — `blocks.<module id>`, else the id lower-cased (`mapping-json.md` § `blocks`); a slot with no module is
+   default content. What still differs from the source is declared in the delta file. This leg replaces only
+   Step 10's automated reconciliation, the reskin page its reference (step 7 keeps the rest).
+   `block-roundtrip`'s default `--map` (`section.<name>`, `[data-section]`, `.<name>`) cannot pair a reskin page
+   (`.cards` matches the inner grids, `.tabs` the tab row); pass the arguments
+   `node stardust/scripts/reskin/stream-render.mjs <slug> --deploy-map` prints — one
+   `--map '<block>=section[data-slot="sNN"],…'` per block, its instances in page order. It compares CTA text by
    `textContent`: a block that moves children into wrappers keeps a whitespace text node between them.
+   **A design change found in review** (the eyeball, a gate, the preview) is made in `mapping.json` or
+   `donor-tokens.json`, then the page re-rendered (`stream-render --register`), re-gated (Phase 5, `reskin-ledger
+   record`) and re-deployed — never in the EDS blocks or CSS alone: the reskin page is the reference every sibling
+   renders from, and `reskin-preflight` fails deployed evidence whose `codeStamp` no longer matches the code. A
+   block or CSS fix that makes EDS match the unchanged reskin page is a fix round (§ The fix budget).
 2. **Push the branch, force Code Sync** and poll until an edited block file is served
    (`../../deploy/da-deploy-protocol.md` § Deploy, step 0).
 3. **Write the documents to DA and preview them, never publish:**

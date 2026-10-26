@@ -82,7 +82,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <f> --rendered <u|f> [--deltas]`
 - `reskin/source-coverage.mjs` — gate (a′) — `--model <f> --target <u|f> [--declared <f>]`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
-- `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images]`
+- `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images] [--register]`; `--check [<slug>…]` validates mapping.json; `<slug> --deploy-map` prints block-roundtrip `--map`s
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`

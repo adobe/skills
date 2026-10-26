@@ -164,6 +164,29 @@ multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 wi
 - **Icon-font glyphs.** A lone lowercase word in an icon-font span (`material-icons|symbols`, `icon`) renders as
   a drawn glyph (word kept at font-size 0), so "east" no longer prints in a card. A card's trailing arrow is drawn
   at 28px in the accent; a card whose first line is only a link takes the h4 heading style.
+- **`mapping.json` is a Phase 3 deliverable with a schema and a check.** `reskin/reference/mapping-json.md` lists
+  every key `stream-render` reads (types, values, defaults); `stream-render --check [<slug>…]` reports unknown keys,
+  bad values, slots the content model lacks and missing pages, one per line, and writes nothing. SKILL Phase 3
+  writes `mapping.json` beside `mapping.md`; later per-section fixes go back to it.
+- **Phase 4 registers what it renders.** `stream-render <slug> --register` (flow `reskin` only, exit 2 otherwise)
+  sets the page's `prototypePath` and advances it to `prototyped` through `state.mjs` (a sibling of an approved
+  type only to `directed`, migrate's sibling tier), so `reskin-ledger record`, the bridge and migrate find it.
+- **The deployed leg converts the gated reskin page.** `deployed-leg.md` § Recipe: deploy authors the content page
+  from `reskin/pages/<slug>.html`, one block per mapped module in page order; a design change found in review goes
+  back to `mapping.json` / donor tokens and is re-rendered, re-gated and re-deployed. `stream-render <slug>
+  --deploy-map` prints `block-roundtrip`'s `--map` arguments; block names come from `mapping.json` `blocks`, else
+  the module id lower-cased.
+- **The handoff marks siblings ready for migrate.** Under flow `reskin`, `canon-from-reskin` advances each approved
+  type's `extracted` pages to `directed` through `state.mjs` (`direct` refuses under reskin, and `migrate` renders
+  siblings only from `directed`); stale and `prototyped` siblings are named, not moved; re-runs are no-ops.
+- **Localized images bundle in migrate with default flags.** `stream-render --localize-images` wrote
+  `../../prototypes/assets/img/…`, which migrate resolves against `--proto-dir` and so left unbundled (a run passed
+  `--proto-dir stardust/reskin/pages --current stardust/prototypes`). It now writes `src="assets/img/…"`, keeps the
+  files in `stardust/prototypes/assets/img/` and mirrors them beside the page, so the page displays them and
+  migrate bundles them with its defaults.
+- **Preflight warns on thin deployed-leg coverage.** `reskin-preflight` warns `deployed-coverage` for a type whose
+  migrated pages with preview-deployed evidence in the ledger number fewer than max(2, ⌈10 %⌉) of them (all below
+  2), naming the counts and the pages to run `deployed-gate all` on. A warning only in this release.
 
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 

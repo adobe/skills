@@ -5,14 +5,18 @@
 // heading alignment from type.display.textAlign (default left), resolveImg → data-source-src, localSubpath,
 // and an unknown stream node kind throws instead of dropping content. Run: node <this file>.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:http';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { captureSmells, chromeTextMissing, contrast, findRepeat, localSubpath, modelHasButton, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { advance } from '../../../stardust/scripts/state.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
+const LEDGER = join(dirname(fileURLToPath(import.meta.url)), '..', 'reskin-ledger.mjs');
+const MIGRATE = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'migrate', 'scripts', 'migrate.mjs');
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
@@ -457,6 +461,202 @@ check('0.42 main: an icon-font word is a glyph without the flag; a ledgered embe
   const plain = render({ ...base, slug: 'login', model: { sections: [{ slot: 's01', ordered }] } }).html;
   assert.doesNotMatch(plain, /<div class="embed-placeholder"/);
 });
+
+
+// ---- mapping.json --check (reference/mapping-json.md) ----
+const chromeM = { sections: [{ slot: 'h1', ordered: [] }, { slot: 'f1', ordered: [] }] };
+const goodMapping = {
+  $schema: 'stardust:reskin-mapping', _note: 'annotations are allowed',
+  chrome: { model: 'stardust/reskin/content-model/_chrome', header: ['h1'], footer: ['f1'], footerTone: 'dark', navAlign: 'center' },
+  pages: { login: { template: 'login', slots: { s01: { module: 'M2', layout: 'split cards', width: 'wide', tone: 'accent', columns: 3, heading: 'h3', inset: '80px', split: '531px 1fr' } } } },
+};
+check('checkMapping: a valid mapping (every key, annotations) has no problems', () => {
+  assert.deepEqual(checkMapping(goodMapping, { models: { login: model }, chromeModel: chromeM, slugs: ['login'] }), []);
+  assert.deepEqual(checkMapping(mapping, { models: { login: model } }), []);
+});
+check('checkMapping: unknown keys at every level', () => {
+  const m = structuredClone(goodMapping); m.extra = 1; m.chrome.logo = 'x'; m.pages.login.status = 'mapped'; m.pages.login.slots.s01.rationale = 'why';
+  const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM });
+  assert.deepEqual(p.map((x) => x.split(':')[0]), ['extra', 'chrome.logo', 'pages.login.status', 'pages.login.slots.s01.rationale']);
+  assert.ok(p.every((x) => /unknown key \(allowed: /.test(x)), p.join('\n'));
+});
+check('checkMapping: bad enums and malformed values, one problem each', () => {
+  const m = structuredClone(goodMapping);
+  Object.assign(m.chrome, { footerTone: 'neon', navAlign: 'left' });
+  Object.assign(m.pages.login.slots.s01, { layout: 'stack carousel', width: 'full', tone: 'blue', heading: 'h9', columns: 0, inset: '80;}', split: '1fr; color:red', module: '' });
+  const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM });
+  for (const k of ['chrome.footerTone', 'chrome.navAlign', '.layout', '.width', '.tone', '.heading', '.columns', '.inset', '.split', '.module']) assert.ok(p.some((x) => x.includes(`${k}:`)), `${k} reported\n${p.join('\n')}`);
+  assert.equal(p.length, 10);
+});
+check('checkMapping: slots the content model lacks, chrome slots the chrome model lacks, chrome without a model, requested pages missing', () => {
+  const m = structuredClone(goodMapping); m.pages.login.slots.s09 = { module: 'M1' }; m.chrome.header = ['h1', 'h7'];
+  const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM, slugs: ['login', 'about'] });
+  assert.ok(p.includes('pages.login.slots.s09: no slot s09 in the content model (slots: s01)'), p.join('\n'));
+  assert.ok(p.some((x) => /^chrome\.header: no slot h7 in the chrome model/.test(x)));
+  assert.ok(p.includes('pages.about: missing — the page was requested but mapping.json has no entry'));
+  assert.equal(p.length, 3);
+  assert.deepEqual(checkMapping({ chrome: { header: ['h1'] }, pages: {} }), ['chrome.header: set but chrome.model is missing — the header renders empty']);
+  assert.deepEqual(checkMapping(m, { models: {}, chromeModel: null }).filter((x) => /no slot/.test(x)), [], 'no model → slot ids not checked');
+  assert.deepEqual(checkMapping([]), ['(root): mapping.json must be a JSON object']);
+  assert.match(checkMapping({ pages: { login: { slots: [] } } })[0], /^pages\.login\.slots: must be an object/);
+});
+// A minimal reskin project: content model, tokens, mapping (and optional state) under <root>/stardust.
+function project({ map = mapping, state = null } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'sr-proj-'));
+  const d = join(root, 'stardust', 'reskin');
+  mkdirSync(join(d, 'content-model', 'login'), { recursive: true });
+  writeFileSync(join(d, 'content-model', 'login', 'content-model.json'), JSON.stringify(model));
+  writeFileSync(join(d, 'donor-tokens.json'), JSON.stringify(tokens));
+  writeFileSync(join(d, 'mapping.json'), JSON.stringify(map));
+  writeFileSync(join(d, 'mapping.md'), '# mapping\n');
+  if (state) writeFileSync(join(root, 'stardust', 'state.json'), JSON.stringify(state, null, 2));
+  return root;
+}
+check('--check CLI: valid exit 0 and writes nothing; problems exit 1 one per line; missing mapping exit 2', () => {
+  const root = project();
+  const ok = spawnSync(process.execPath, [SCRIPT, '--check', 'login'], { cwd: root, encoding: 'utf8' });
+  assert.equal(ok.status, 0, ok.stderr); assert.equal(ok.stdout, ''); assert.match(ok.stderr, /ok — 1 page\(s\), 1 slot\(s\)/);
+  assert.equal(existsSync(join(root, 'stardust', 'reskin', 'pages')), false, 'nothing rendered');
+  const badRoot = project({ map: { pages: { login: { slots: { s01: { tone: 'neon' }, s02: {} } } } } });
+  const bad = spawnSync(process.execPath, [SCRIPT, '--check', 'login', 'about'], { cwd: badRoot, encoding: 'utf8' });
+  assert.equal(bad.status, 1);
+  assert.deepEqual(bad.stdout.trim().split('\n').sort(), [
+    'pages.about: missing — the page was requested but mapping.json has no entry',
+    'pages.login.slots.s01.tone: "neon" is not dark | light | accent',
+    'pages.login.slots.s02: no slot s02 in the content model (slots: s01)',
+  ]);
+  assert.deepEqual(readdirSync(join(badRoot, 'stardust', 'reskin')).sort(), ['content-model', 'donor-tokens.json', 'mapping.json', 'mapping.md']);
+  const none = spawnSync(process.execPath, [SCRIPT, '--check', '--mapping', 'nope.json'], { cwd: root, encoding: 'utf8' });
+  assert.equal(none.status, 2); assert.match(none.stderr, /missing mapping\.json: nope\.json/);
+  const unk = spawnSync(process.execPath, [SCRIPT, 'login', '--bogus'], { cwd: root, encoding: 'utf8' });
+  assert.equal(unk.status, 2); assert.match(unk.stderr, /unknown option --bogus/);
+});
+check('CLI render is unchanged: the default out, the same bytes as render() bar the timestamp', () => {
+  const root = project();
+  const r = spawnSync(process.execPath, [SCRIPT, 'login'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const html = readFileSync(join(root, 'stardust', 'reskin', 'pages', 'login.html'), 'utf8');
+  const strip = (h) => h.replace(/writtenAt: +\S+/, 'writtenAt: T');
+  assert.equal(strip(html), strip(render({ ...base, now: 'T' }).html));
+});
+
+
+// ---- --register (state.json through state.mjs, flow reskin only) ----
+const page = (slug, status, type = 'form', extra = {}) => ({ slug, url: `https://example.test/${slug}`, type, status, history: [{ status, at: 'T0' }], ...extra });
+const reskinState = (pages) => ({ _provenance: { writtenBy: 'stardust:extract', writtenAt: 'T0' }, site: { originUrl: 'https://example.test/' }, flow: 'reskin', pages });
+check('registerRendered: behind → prototyped; a sibling of an approved type → directed; prototyped and later keep their status', () => {
+  const P = 'stardust/reskin/pages/x.html'; const opt = { advance, at: 'T1' };
+  let st = reskinState([page('login', 'extracted', 'form', { stale: true, staleReason: 'x' })]);
+  assert.deepEqual(registerRendered(st, 'login', P, opt), { slug: 'login', from: 'extracted', to: 'prototyped', role: 'page', changed: true });
+  assert.equal(st.pages[0].status, 'prototyped'); assert.equal(st.pages[0].prototypePath, P); assert.equal(st.pages[0].stale, false);
+  assert.deepEqual(st.pages[0].history.at(-1), { status: 'prototyped', at: 'T1' });
+  st = reskinState([page('a', 'approved'), page('b', 'extracted'), page('c', 'directed'), page('d', 'extracted', 'listing')]);
+  assert.equal(registerRendered(st, 'b', P, opt).to, 'directed');
+  assert.deepEqual(registerRendered(st, 'c', P, opt), { slug: 'c', from: 'directed', to: 'directed', role: 'sibling', changed: true });
+  assert.equal(st.pages[2].history.length, 1, 'path only: no history entry');
+  assert.equal(registerRendered(st, 'd', P, opt).to, 'prototyped', 'another type is not a sibling');
+  for (const s of ['prototyped', 'approved', 'migrated']) {
+    const one = reskinState([page('p', s)]); const r = registerRendered(one, 'p', P, opt);
+    assert.equal(r.to, s); assert.equal(one.pages[0].history.length, 1); assert.equal(one.pages[0].prototypePath, P);
+    assert.equal(registerRendered(one, 'p', P, opt).changed, false, 'idempotent');
+  }
+  assert.equal(registerRendered(st, 'nope', P, opt), null);
+});
+check('--register CLI: state gets prototypePath + prototyped (written by stardust:reskin); reskin-ledger record finds the prototype', () => {
+  const root = project({ state: reskinState([page('login', 'extracted')]) });
+  const r = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /registered login: prototypePath stardust\/reskin\/pages\/login\.html, extracted → prototyped/);
+  const st = JSON.parse(readFileSync(join(root, 'stardust', 'state.json'), 'utf8'));
+  assert.equal(st.pages[0].prototypePath, 'stardust/reskin/pages/login.html');
+  assert.equal(st.pages[0].status, 'prototyped');
+  assert.equal(st._provenance.writtenBy, 'stardust:reskin');
+  const rep = join(root, 'stardust', 'reskin', 'reports'); mkdirSync(rep, { recursive: true });
+  for (const f of ['content-gate', 'slot-coverage', 'donor-probe']) writeFileSync(join(rep, `login-${f}.md`), '**Overall: PASS**\n');
+  const led = spawnSync(process.execPath, [LEDGER, 'record', 'login'], { cwd: root, encoding: 'utf8' });
+  assert.equal(led.status, 0, led.stderr);
+  const L = JSON.parse(readFileSync(join(root, 'stardust', 'reskin', 'ledger.json'), 'utf8'));
+  assert.equal(L.pages.login.prototypePath, 'stardust/reskin/pages/login.html');
+  assert.match(L.pages.login.prototypeSha, /^[0-9a-f]{12}$/);
+  const again = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: root, encoding: 'utf8' });
+  assert.match(again.stdout, /stays prototyped \(unchanged\)/);
+});
+check('--register refuses outside flow reskin (exit 2, nothing rendered or written); a slug not in state is noted', () => {
+  const st = { ...reskinState([page('login', 'extracted')]), flow: 'redesign' };
+  const root = project({ state: st });
+  const before = readFileSync(join(root, 'stardust', 'state.json'), 'utf8');
+  const r = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 2); assert.match(r.stderr, /flow is "redesign" — only a flow "reskin" project registers/);
+  assert.equal(existsSync(join(root, 'stardust', 'reskin', 'pages')), false);
+  assert.equal(readFileSync(join(root, 'stardust', 'state.json'), 'utf8'), before);
+  const noState = project();
+  assert.equal(spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: noState, encoding: 'utf8' }).status, 2);
+  const other = project({ state: reskinState([page('about', 'extracted')]) });
+  const n = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: other, encoding: 'utf8' });
+  assert.equal(n.status, 0); assert.match(n.stdout, /note: login is not a page in .*state\.json — not registered/);
+});
+
+
+// ---- --deploy-map (deployed-leg.md § Recipe) ----
+check('deployMap: one block per module, instances in page (model) order; blocks override; no-module slots apart', () => {
+  const m = { blocks: { M1: 'hero' }, pages: { home: { slots: { s04: { module: 'M4' }, s01: { module: 'M1' }, s02: { module: 'M4' }, s03: {}, s05: { module: 'M9' } } } } };
+  const mdl = { sections: ['s01', 's02', 's03', 's04', 's05'].map((slot) => ({ slot, ordered: [] })) };
+  const r = deployMap(m, 'home', mdl);
+  assert.deepEqual(r.blocks.map((b) => [b.block, b.slots]), [['hero', ['s01']], ['m4', ['s02', 's04']], ['m9', ['s05']]]);
+  assert.deepEqual(r.unmapped, ['s03']);
+  assert.equal(r.args, `--map 'hero=section[data-slot="s01"]' --map 'm4=section[data-slot="s02"],section[data-slot="s04"]' --map 'm9=section[data-slot="s05"]'`);
+  assert.deepEqual(deployMap(m, 'home').blocks.map((b) => b.slots), [['s04', 's02'], ['s01'], ['s05']], 'no model: mapping order');
+  assert.equal(blockName({ blocks: { M2: 'cards' } }, 'M2'), 'cards'); assert.equal(blockName({}, 'M12'), 'm12');
+  assert.throws(() => deployMap(m, 'nope'), /mapping\.json has no pages\.nope/);
+  assert.deepEqual(checkMapping({ blocks: { M1: 'Hero Block', M2: 'cards' }, pages: {} }), ['blocks.M1: "Hero Block" is not an EDS block name (lower-case letters, digits, hyphens)']);
+});
+check('--deploy-map CLI: prints the block-roundtrip arguments, writes nothing', () => {
+  const root = project({ map: { blocks: { M2: 'form-feature' }, pages: { login: { slots: { s01: { module: 'M2' } } } } } });
+  const r = spawnSync(process.execPath, [SCRIPT, 'login', '--deploy-map'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), `--map 'form-feature=section[data-slot="s01"]'`);
+  assert.match(r.stderr, /form-feature \(M2\): s01/);
+  assert.equal(existsSync(join(root, 'stardust', 'reskin', 'pages')), false);
+  assert.equal(spawnSync(process.execPath, [SCRIPT, 'about', '--deploy-map'], { cwd: root, encoding: 'utf8' }).status, 2);
+});
+
+
+// --localize-images → --register → migrate render with its DEFAULT --proto-dir: the image is bundled, and the
+// reskin page still shows it from stardust/reskin/pages/ (src="assets/img/…", mirrored beside the page).
+await (async () => {
+  const name = 'localized images: src="assets/img/…" displays from reskin/pages and migrate bundles it with default flags';
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a1f3a2a40000000049454e44ae426082', 'hex');
+  const srv = createServer((q, r) => { r.writeHead(200, { 'content-type': 'image/png' }); r.end(PNG); }).listen(0, '127.0.0.1');
+  const run = (cwd, args) => new Promise((ok) => { const c = spawn(process.execPath, args, { cwd }); let out = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; }); c.on('close', (status) => ok({ status, out })); });
+  let browser;
+  try {
+    await new Promise((ok) => srv.on('listening', ok));
+    const src = `http://127.0.0.1:${srv.address().port}/media/a.png`;
+    const m = { metadata: { title: 'Sign in' }, sections: [{ slot: 's01', ordered: [{ kind: 'heading', level: 'h1', text: 'Hi' }, { kind: 'image', currentSrc: src, alt: 'A' }] }] };
+    const root = project({ state: { ...reskinState([page('login', 'extracted')]), site: { originUrl: 'https://example.test/' } } });
+    writeFileSync(join(root, 'stardust', 'reskin', 'content-model', 'login', 'content-model.json'), JSON.stringify(m));
+    mkdirSync(join(root, 'stardust', 'canon'), { recursive: true }); writeFileSync(join(root, 'stardust', 'canon', 'canon.css'), ':root { --x: 1; }\n');
+    const r = await run(root, [SCRIPT, 'login', '--localize-images', '--register']);
+    assert.equal(r.status, 0, r.out);
+    const html = readFileSync(join(root, 'stardust', 'reskin', 'pages', 'login.html'), 'utf8');
+    assert.match(html, /<img src="assets\/img\/127\.0\.0\.1\/media\/a\.png" data-source-src="http:\/\/127\.0\.0\.1:\d+\/media\/a\.png" alt="A">/);
+    for (const d of ['reskin/pages/assets', 'prototypes/assets']) assert.ok(existsSync(join(root, 'stardust', d, 'img', '127.0.0.1', 'media', 'a.png')), d);
+    const mg = await run(root, [MIGRATE, 'render', 'login']);
+    assert.equal(mg.status, 0, mg.out);
+    assert.match(readFileSync(join(root, 'stardust', 'migrated', 'login', 'index.html'), 'utf8'), /<img src="\.\.\/assets\/img\/127\.0\.0\.1\/media\/a\.png"/);
+    assert.ok(existsSync(join(root, 'stardust', 'migrated', 'assets', 'img', '127.0.0.1', 'media', 'a.png')), 'bundled into migrated/assets');
+    const st = JSON.parse(readFileSync(join(root, 'stardust', 'state.json'), 'utf8'));
+    assert.ok(st.migrate.bundledAssets.includes('img/127.0.0.1/media/a.png')); assert.deepEqual(st.migrate.missingAssets, []);
+    try {
+      const { chromium } = await import('playwright');
+      browser = await chromium.launch();
+      const pg = await browser.newPage();
+      await pg.goto(pathToFileURL(join(root, 'stardust', 'reskin', 'pages', 'login.html')).href);
+      assert.equal(await pg.evaluate(() => document.querySelector('main img').naturalWidth), 1, 'image loads from the reskin page');
+    } catch (e) { if (!/Cannot find (package|module) 'playwright'/.test(e.message)) throw e; }
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { srv.close(); await browser?.close(); }
+})();
 
 // In a browser at 390px: the menu is folded, the toggle opens and closes it.
 await (async () => {

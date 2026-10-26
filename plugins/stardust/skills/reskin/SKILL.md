@@ -274,12 +274,29 @@ Gates before any rendering:
 Composite source sections (one wrapper div holding two logical
 regions) are split into atomic slots in the brief — section ≠ slot.
 
+Then write `stardust/reskin/mapping.json` — the same decisions in the
+shape the renderer reads (`reference/mapping-json.md`): per page, per
+slot, the `module`, `layout`, `width`, `tone`, `heading`, `columns`,
+`inset` / `split`, plus the `chrome` zones (`header`, `footer`,
+`footerTone`, `navAlign`). Then
+
+```bash
+node stardust/scripts/reskin/stream-render.mjs --check <slug…>
+```
+
+must exit 0 (one problem per line otherwise: unknown keys, bad values,
+slots the content model lacks, pages missing). `mapping.md` is the
+brief, `mapping.json` the record: every later per-section decision —
+a gate fix, a review note, an EDS preview finding — is made in
+`mapping.json` (or `donor-tokens.json`), re-rendered and re-gated,
+never in the page or the EDS blocks alone.
+
 ### Phase 4 — PROGRAMMATIC RENDER
 
 The decisive validated rule: **the page is GENERATED from
 `content-model.json` — never retyped by hand.** The generic renderer
-`scripts/stream-render.mjs <slug> [--mapping <mapping.json>]
-[--localize-images]` covers any donor and site; write a per-archetype
+`scripts/stream-render.mjs <slug> --register [--localize-images]`
+covers any donor and site; write a per-archetype
 renderer (`stardust/reskin/renderers/<archetype>.mjs`) only where it
 falls short. Either way the renderer:
 
@@ -330,6 +347,19 @@ falls short. Either way the renderer:
   no `data-module`), in `mapping.md` order — the Figma join reads
   them (`reference/gates.md` § (d));
 - writes `stardust/reskin/pages/<slug>.html`, self-contained.
+
+`--localize-images` downloads each image to
+`stardust/prototypes/assets/img/` (migrate's root) and mirrors it beside
+the page, `src="assets/img/…"`: the page shows it from
+`stardust/reskin/pages/` and `migrate` bundles it with default flags.
+`--register` (flow `reskin` only) records the page in `state.json`
+through `state.mjs`: `prototypePath` set to the rendered file, the page
+advanced to `prototyped` — a same-type sibling of an approved archetype
+only to `directed`, the status `migrate` renders at the sibling tier.
+`reskin-ledger record`, the canon bridge, preflight and `migrate` then
+find it with no hand edit. Render the archetype candidates here; render
+siblings after the archetype is approved (Phase 6), so they register as
+`directed`.
 
 Renderers may parse a single node's text apart (split a list-item row
 into kicker/date/title) but must **fail loudly** (throw) when a parse
@@ -436,7 +466,9 @@ record` (e) copies `summary.json`'s `ledgerFragment` into `ledger.json`
 
 **(e) DEPLOYED ACCEPTANCE** (any donor; skipped outside an aem-boilerplate
 project) — the page `deploy` made, on its aem.page branch preview, after
-the local gates pass. Recipe (`deploy` Steps 1–9, push, `deploy-batch`),
+the local gates pass. Recipe (`deploy` Steps 1–9 on the gated reskin page,
+blocks and `block-roundtrip --map` from `stream-render <slug> --deploy-map`,
+push, `deploy-batch`; design changes go back to `mapping.json`),
 isolation, delta file, ledger and fix budget: `reference/deployed-leg.md`;
 bars: `reference/gates.md` § (e).
 
@@ -510,7 +542,9 @@ pipeline:
 - **Bridge, then check.** After the archetype is approved, run
   `scripts/canon-from-reskin.mjs <archetype-slug>` — it writes
   migrate's inputs (`canon/`, donor-sourced `DESIGN.*`, `direction.md`,
-  `dynamic-features.md`) and, on a re-run with `--force`, flags
+  `dynamic-features.md`), advances the approved type's `extracted`
+  siblings to `directed` (migrate's sibling tier; then render each with
+  `stream-render <slug> --register`) and, on a re-run with `--force`, flags
   approved/migrated pages stale where the canon change reaches them.
   A changed canon is captured to `stardust/reskin/approvals/` and
   pixel-compared with the previous approval (warn above
@@ -547,7 +581,10 @@ failing`), gate results, eyeball, residuals and the `handoff` record. In
 the core state machine (`../stardust/reference/state-machine.md`) it
 only stamps `flow` (Setup) and `designSource` (Phase 1: `extract
 --design-source` for URL and directory donors, `figma-donor.mjs stamp`
-for Figma) and writes `approved` on the archetype (Phase 6). The full
+for Figma), registers each rendered page (`prototypePath` and
+`prototyped`, or `directed` for a sibling — Phase 4 `--register`),
+writes `approved` on the archetype and, through the bridge, `directed`
+on its type's `extracted` siblings (Phase 6). The full
 handoff contract — predicate, approval, tier record, bounded inventory,
 sibling gate — is `reference/handoff.md`.
 
@@ -591,6 +628,7 @@ sibling gate — is `reference/handoff.md`.
 | `stardust/reskin/content-model/<slug>/content-model.json` | Byte-oriented per-page content model (+ source screenshot) |
 | `stardust/reskin/normalize/<slug>.mjs` | Per-page executable normalization ledger (shared capture ↔ gates) |
 | `stardust/reskin/mapping.md` | The mapping brief: every slot → donor module, status, rationale |
+| `stardust/reskin/mapping.json` | The per-section decisions the renderer reads (`reference/mapping-json.md`; `stream-render --check`) |
 | `stardust/reskin/renderers/<archetype>.mjs` | Programmatic renderers (model in, HTML out) |
 | `stardust/reskin/pages/<slug>.html` | Rendered reskin pages |
 | `stardust/reskin/reports/` | Per-page gate reports + screenshots |
@@ -615,6 +653,8 @@ sibling gate — is `reference/handoff.md`.
 - `reference/mapping-brief.md` — entry schema (the table form the
   Figma join reads), the ≥80% gate, new-module composition rules,
   casing policy.
+- `reference/mapping-json.md` — `mapping.json`: every key the
+  renderer reads, its values and defaults; `stream-render --check`.
 - `reference/gates.md` — the gates' commands, pass bars, tolerances,
   failure modes, residual logging; § (d) the Figma checks; § (e) the
   deployed bars.

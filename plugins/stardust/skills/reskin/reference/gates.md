@@ -20,7 +20,8 @@ siblings of `../reskin/`.
 
 - `skills/reskin/scripts/` → `reskin/`, recursively except `test/` (`deployed/`, `figma/`, `figma-gate/` and `render/`
   travel with it).
-- `skills/stardust/scripts/state.mjs` → `stardust/` (`figma-donor.mjs stamp` writes through it).
+- `skills/stardust/scripts/state.mjs` → `stardust/` (`figma-donor.mjs stamp`, `stream-render --register` and the
+  canon bridge write through it).
 - `skills/diff/scripts/` → `diff/`, all of it.
 - `skills/replica/scripts/` → `replica/`: `pixel-compare.mjs`, `run-capped.mjs`, `run-bg.mjs`, `stitch-shot.mjs`,
   `crop-compare.mjs`, `chrome-parity.mjs`, `cap-probe.mjs` (`pixel-compare` and `run-bg` import `run-capped`;

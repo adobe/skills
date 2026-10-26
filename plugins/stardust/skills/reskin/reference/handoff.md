@@ -7,19 +7,29 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
 
 ## The sequence
 
-1. Phase 5 gates per page → `reskin-ledger.mjs record <slug>` (+ `eyeball`,
-   `residual` for the two human judgments).
+1. Phase 4 renders with `stream-render.mjs <slug> --register` (state's
+   `prototypePath`), Phase 5 gates per page → `reskin-ledger.mjs record <slug>`
+   (+ `eyeball`, `residual` for the two human judgments).
 2. Approve the archetype (§ Approval) → `reskin-ledger.mjs record <archetype>`
    again, so `handoff.<type>` names it.
 3. `canon-from-reskin.mjs <archetype>` — canon, donor-sourced `DESIGN.*`,
-   `direction.md`, `dynamic-features.md`.
-4. `reskin-preflight.mjs` exit 0 (§ The predicate).
-5. `migrate render` — archetypes at their own tier, same-type pages at the
-   sibling tier; migrate merges `handoff.<type>.gates` into each first
-   sidecar's `gatesPassed` / `gateEvidence`.
-6. Sibling gate per migrated page (§ Sibling gate) →
+   `direction.md`, `dynamic-features.md` — and, per type with an approved
+   archetype, its `extracted` pages advanced to `directed` (the status `migrate`
+   renders at the sibling tier; `direct` refuses under reskin). It names the
+   siblings it left: stale ones, and `prototyped` ones (`migrate render --all`
+   skips them). Re-run it after approving another type's archetype.
+4. Render each sibling: `stream-render.mjs <slug> --register` (it stays
+   `directed`, with the `prototypePath` migrate reads as its source).
+5. `reskin-preflight.mjs` exit 0 (§ The predicate).
+6. `migrate render --all` with its default flags — archetypes at their own tier,
+   same-type pages at the sibling tier; migrate merges `handoff.<type>.gates`
+   into each first sidecar's `gatesPassed` / `gateEvidence`. Localized images
+   (`stream-render --localize-images`: `src="assets/img/…"`, files in
+   `stardust/prototypes/assets/img/` and mirrored beside the page) bundle from
+   the default `--proto-dir`; no `--proto-dir` / `--current` override.
+7. Sibling gate per migrated page (§ Sibling gate) →
    `reskin-ledger.mjs record <slug> --stage migrated`.
-7. `deploy` / `rollout`, unchanged; rollout re-checks the predicate.
+8. `deploy` / `rollout`, unchanged; rollout re-checks the predicate.
 
 ## The predicate (`flow: reskin`)
 
@@ -57,6 +67,14 @@ Plus the project-level checks (flow, canon `:root`, donor `DESIGN.json`, canon
 record drift, active direction, dynamics dispositions, canon skeleton per
 mapped module, approval honesty). A failing predicate blocks the type in
 `migrate` (sibling tier) and `rollout`; hands-off is not a bypass.
+
+Coverage of the deployed leg is a warning, not yet a condition: per type,
+`deployed-coverage` warns when fewer than max(2, ⌈10 %⌉) of its `migrated`
+pages (all of them when it has fewer than 2) carry preview evidence in the
+ledger (`pages.<slug>.gates.deployed`, regime `preview`) — one gated
+archetype does not show the blocks hold across the type. It names the count
+and the pages to run the leg on (`deployed-leg.md`, then `reskin-ledger.mjs
+record <slug>`).
 
 ## Approval (D3)
 
