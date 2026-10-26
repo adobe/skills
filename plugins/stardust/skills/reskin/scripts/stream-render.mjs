@@ -204,6 +204,10 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   const vars = tokenVars(tokens);
   const has = (name) => vars.some(([n]) => n === name);
   const v = (name, fallback) => (has(name) ? `var(${name})` : fallback);
+  // The optional contract tokens (render/root-tokens: --card-*, --button-height, --section-padding-mobile, --gutter-mobile)
+  // sit in the first :root block, the one canon keeps; absent, the literal fallback renders as before.
+  const rootNames = new Set(rootTokens(tokens).entries.map((e) => e.name));
+  const r = (name, fallback) => (rootNames.has(name) ? `var(${name})` : fallback);
   const val = (name) => vars.find(([n]) => n === name)?.[1];
   // An accent that fails 4.5:1 on the light grounds it sits on stays a decoration, never the text colour.
   const accentRatios = ['--palette-page-bg', '--palette-light-band-bg'].map((g) => contrast(val('--palette-accent'), val(g) ?? (g === '--palette-page-bg' ? '#fff' : null))).filter((r) => r != null);
@@ -565,7 +569,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .check { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .site-main .check input { flex: none; width: 20px; height: 20px; accent-color: ${v('--palette-accent', 'auto')}; }
   .site-main .actions { margin: 24px 0 0; }
-  .site-main .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; line-height: ${v('--buttons-primary-line-height', v('--type-body-line-height', 'inherit'))}; text-decoration: none; cursor: pointer; }
+  .site-main .btn { display: inline-flex; align-items: center; justify-content: center; min-height: ${r('--button-height', '40px')}; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; line-height: ${v('--buttons-primary-line-height', v('--type-body-line-height', 'inherit'))}; text-decoration: none; cursor: pointer; }
   .site-main .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
   .site-main .width-narrow .btn { width: 100%; }
 
@@ -577,7 +581,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .layout-split .panel { display: grid; grid-template-columns: var(--split-columns, 1fr 1fr); gap: ${v('--layout-column-gap', '40px')}; align-items: center; }
   .site-main .split-img { max-width: 100%; max-height: 520px; justify-self: end; }
   .site-main .cards { display: grid; grid-template-columns: repeat(var(--cards-columns, 3), minmax(0, 1fr)); gap: ${v('--layout-column-gap', '40px')}; margin: 16px 0; }
-  .site-main .card { background: ${v('--palette-light-band-bg', 'transparent')}; border-radius: ${v('--radii-card', '0')}; box-shadow: ${v('--shadows-card', 'none')}; padding: 40px; }
+  .site-main .card { background: ${r('--card-bg', v('--palette-light-band-bg', 'transparent'))}; border-radius: ${r('--card-radius', v('--radii-card', '0'))}; box-shadow: ${v('--shadows-card', 'none')}; padding: ${r('--card-padding', '40px')}; }${rootNames.has('--card-title-color') ? '\n  .site-main .card :is(h2, h3, h4, .heading) { color: var(--card-title-color); }' : ''}
   .site-main .card > :last-child { margin-bottom: 0; }
   .site-main .card > p.aux:first-child:has(> .link:only-child) .link { font-family: ${v('--type-heading-family', 'inherit')}; font-size: ${v('--type-h4-font-size', '1.5em')}; line-height: 1.25; color: ${v('--palette-accent', 'inherit')}; text-decoration: none; }
   .site-main .card > .glyph:last-child { display: flex; width: 28px; height: 28px; margin-top: 12px; color: ${v('--palette-accent', 'currentColor')}; position: relative; }
@@ -636,10 +640,10 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-header .brand-text { font-size: 14px; }
   }
   @media (max-width: 640px) {
-    .site-main section { padding-top: 24px; padding-bottom: 24px; }
+    .site-main section { padding-top: ${r('--section-padding-mobile', '24px')}; padding-bottom: ${r('--section-padding-mobile', '24px')}; }
     .site-main .layout-media-band .panel { padding: 24px; }
-    .site-main .inset > .container { padding: 0 20px; }
-    .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { padding: 32px 20px; }
+    .site-main .inset > .container { padding: 0 ${r('--gutter-mobile', '20px')}; }${rootNames.has('--gutter-mobile') ? '\n    .container { padding-left: var(--gutter-mobile); padding-right: var(--gutter-mobile); }' : ''}
+    .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { padding: 32px ${r('--gutter-mobile', '20px')}; }
     .site-footer ul { columns: 1; }
   }`;
 
