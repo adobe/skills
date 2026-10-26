@@ -45,6 +45,25 @@ function compare(a, b, out, timeout) {
   return { pct: j.pct, heightDelta: j.heightDelta, bands: (j.bands || []).filter((x) => x.pct > 0).slice(0, 6) };
 }
 
+// Figma exports transparent pixels where a frame or variant has no fill; the browser paints white there.
+// Composite the reference onto white (once per file, cached beside the diff) so alpha never counts as a difference.
+async function flattenOnWhite(src, dst) {
+  const { PNG } = await import('pngjs');
+  const p = PNG.sync.read(readFileSync(src));
+  let opaque = true;
+  for (let i = 3; i < p.data.length; i += 4) {
+    const a = p.data[i];
+    if (a !== 255) {
+      opaque = false;
+      for (let c = i - 3; c < i; c += 1) p.data[c] = Math.round((p.data[c] * a + 255 * (255 - a)) / 255);
+      p.data[i] = 255;
+    }
+  }
+  if (opaque) return src;
+  writeFileSync(dst, PNG.sync.write(p));
+  return dst;
+}
+
 async function pngSize(file) {
   const { PNG } = await import('pngjs');
   const p = PNG.sync.read(readFileSync(file));
@@ -91,7 +110,7 @@ export async function runExact({ dir, slug, url, bar = DEFAULT_BAR, heightTol = 
       const page = await ctx.newPage();
       await page.goto(toUrl(url), { waitUntil: 'load' });
       await settle(page);
-      const files = { figma: ref, page: join(out, `${f.breakpoint}.page.png`), diff: join(out, `${f.breakpoint}.diff.png`) };
+      const files = { figma: await flattenOnWhite(ref, join(out, `${f.breakpoint}.figma.png`)), page: join(out, `${f.breakpoint}.page.png`), diff: join(out, `${f.breakpoint}.diff.png`) };
       writeFileSync(files.page, await page.screenshot({ fullPage: true, animations: 'disabled' }));
       await ctx.close();
       const c = compare(files.figma, files.page, files.diff, timeout);
@@ -141,7 +160,7 @@ export async function runLibrary({ dir, urlPattern, blocks = null, bar = DEFAULT
         else await page.setViewportSize({ width: 1440, height: 900 });
         await el.scrollIntoViewIfNeeded();
         const stem = join(out, `${block}.${String(v.id).replace(/[^A-Za-z0-9]+/g, '-')}`);
-        const files = { figma: ref, page: `${stem}.page.png`, diff: `${stem}.diff.png` };
+        const files = { figma: await flattenOnWhite(ref, `${stem}.figma.png`), page: `${stem}.page.png`, diff: `${stem}.diff.png` };
         writeFileSync(files.page, await el.screenshot({ animations: 'disabled' }));
         const got = await pngSize(files.page);
         const c = compare(files.figma, files.page, files.diff, timeout);
