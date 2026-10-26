@@ -18,6 +18,8 @@ import orchestrate as O
 FIX = Path(os.environ.get("WKND_FIXTURE") or
            Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/wknd-legacy")
 SKILL = Path(__file__).resolve().parent.parent
+# The archetype templates the tests plan with (a templates folder: no Maven, no network).
+TEMPLATES = Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/archetype-templates"
 
 
 def _pom(packaging="jar", modules=None, artifact="m"):
@@ -83,7 +85,7 @@ class PlanApplyGate(unittest.TestCase):
     def test_cli_without_a_step_only_plans(self):
         d = _legacy_single(Path(tempfile.mkdtemp()))
         with mock.patch.object(O, "_run_unit_pipeline", side_effect=AssertionError("applied")):
-            rc = _quiet(O.main, [str(d)])
+            rc = _quiet(O.main, [str(d), "--archetype", str(TEMPLATES)])
         self.assertEqual(rc, 0)
         self.assertTrue((d / ".modernize/config.json").is_file())
         self.assertFalse((d / "ui.config").exists())
@@ -91,7 +93,7 @@ class PlanApplyGate(unittest.TestCase):
     def test_reviewed_plan_is_kept(self):
         """The real stages read the edited config.json, not a fresh inspection."""
         d = _legacy_single(Path(tempfile.mkdtemp()))
-        _quiet(O.main, [str(d), "--plan"])
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES)])
         cfg_path = d / ".modernize/config.json"
         cfg = O.C.load_json(cfg_path)
         cfg["appId"] = "reviewed-app"
@@ -108,8 +110,9 @@ class Preflight(unittest.TestCase):
         """.modernize/ never shows up in git status or a commit (like code-assessment's .autofix/)."""
         d = _legacy_single(Path(tempfile.mkdtemp()))
         _commit_all(d)
-        _quiet(O.main, [str(d), "--plan"])
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES)])
         self.assertTrue((d / ".modernize/config.json").is_file())
+        self.assertTrue((d / ".modernize/archetype-templates/pom.xml").is_file())
         self.assertIn("*", (d / ".modernize/.gitignore").read_text().splitlines())
         status = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=d,
                                 capture_output=True, text=True, check=True).stdout
@@ -184,38 +187,181 @@ class Preflight(unittest.TestCase):
         self.assertEqual([p for p in paths if p.startswith(".agents") or p == "skills-lock.json"], [])
 
 
-class ArchetypeOption(unittest.TestCase):
-    """--apply --archetype: templates generated from the customer's own archetype are used;
-    when usable templates can't be produced, nothing changes."""
-
-    BUNDLED = SKILL / "assets/archetype-pom-templates"
+class Archetype(unittest.TestCase):
+    """The plan prepares the archetype templates (default: the latest Adobe archetype) and
+    apply uses them; templates that can't be prepared or don't fit change nothing."""
 
     def _custom_templates(self) -> Path:
         d = Path(tempfile.mkdtemp()) / "templates"
-        shutil.copytree(self.BUNDLED, d)
+        shutil.copytree(TEMPLATES, d)
         all_pom = d / "all/pom.xml"
         all_pom.write_text(all_pom.read_text().replace(
             "<modelVersion>", "<!-- from the customer's archetype -->\n    <modelVersion>", 1))
         return d
 
-    def test_generated_templates_are_used(self):
+    def test_plan_prepares_the_templates(self):
+        import archetype_templates as AT
         d = _legacy_single(Path(tempfile.mkdtemp()))
-        _quiet(O.main, [str(d), "--plan"])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            rc = O.main([str(d), "--plan", "--archetype", str(TEMPLATES)])
+        self.assertEqual(rc, 0)
+        self.assertEqual(AT.load_dir(d / ".modernize/archetype-templates"), AT.load_dir(TEMPLATES))
+        info = O.C.load_json(d / ".modernize/archetype.json")
+        self.assertEqual((info["archetype"], info["source"]), (str(TEMPLATES), "templates folder"))
+        self.assertEqual(O.C.load_json(d / ".modernize/orchestration.json")["archetype"]["archetype"],
+                         str(TEMPLATES))
+        self.assertIn("archetype: " + str(TEMPLATES), out.getvalue())
+
+    def test_plan_defaults_to_the_latest_archetype(self):
+        import archetype_templates as AT
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        info = {"archetype": "com.adobe.aem:aem-project-archetype:58",
+                "source": "latest, from Maven Central", "aemSdkApi": "2099.1.1"}
+        with mock.patch.object(AT, "prepare", return_value=(AT.load_dir(TEMPLATES), dict(info))) as prep:
+            rc = _quiet(O.main, [str(d), "--plan"])
+        self.assertEqual(rc, 0)
+        prep.assert_called_once_with(None, None, fallback_sdk=None)   # AT.prepare's default: latest
+        self.assertEqual(O.C.load_json(d / ".modernize/archetype.json")["source"],
+                         "latest, from Maven Central")
+
+    def test_plan_reports_an_archetype_it_cannot_prepare(self):
+        import archetype_templates as AT
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        err = io.StringIO()
+        with mock.patch.object(AT, "prepare", side_effect=AT.ArchetypeError("Maven (mvn) and a JDK are needed")), \
+             contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            rc = O.main([str(d), "--plan"])
+        self.assertEqual(rc, 2)
+        self.assertIn("Maven (mvn) and a JDK are needed", err.getvalue())
+        self.assertIn("Apply needs them", err.getvalue())
+        self.assertTrue((d / ".modernize/config.json").is_file())   # the plan itself is written
+        self.assertFalse((d / ".modernize/archetype-templates").exists())
+
+    def test_a_failed_plan_leaves_no_templates_for_apply(self):
+        """Re-planning with an archetype that fails must not leave the previous plan's
+        templates for apply to use without notice."""
+        import archetype_templates as AT
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES)])
+        with mock.patch.object(AT, "prepare", side_effect=AT.ArchetypeError("could not generate")):
+            rc = _quiet(O.main, [str(d), "--plan", "--archetype", "com.acme:acme-archetype:3"])
+        self.assertEqual(rc, 2)
+        self.assertFalse((d / ".modernize/archetype-templates").exists())
+        self.assertFalse((d / ".modernize/archetype.json").exists())
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(O.main([str(d), "--apply"]), 2)
+        self.assertIn("run --plan first", err.getvalue())
+        self.assertFalse((d / "ui.config").exists())
+
+    def test_planning_again_offers_the_previous_sdk_as_the_offline_fallback(self):
+        import archetype_templates as AT
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES), "--sdk-version", "2099.7.7"])
+        info = {"archetype": "com.adobe.aem:aem-project-archetype:58",
+                "source": "latest, from local Maven repository", "aemSdkApi": "2099.7.7"}
+        with mock.patch.object(AT, "prepare", return_value=(AT.load_dir(TEMPLATES), dict(info))) as prep:
+            _quiet(O.main, [str(d), "--plan"])
+        prep.assert_called_once_with(None, None, fallback_sdk="2099.7.7")
+
+    def test_planning_again_from_the_prepared_templates_keeps_them(self):
+        import archetype_templates as AT
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES)])
+        rc = _quiet(O.main, [str(d), "--plan", "--archetype", str(d / ".modernize/archetype-templates")])
+        self.assertEqual(rc, 0)
+        self.assertEqual(AT.load_dir(d / ".modernize/archetype-templates"), AT.load_dir(TEMPLATES))
+
+    def test_a_plan_that_does_not_finish_leaves_no_templates(self):
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES)])
+        with mock.patch.object(O, "_plan_unit", side_effect=KeyboardInterrupt), \
+             self.assertRaises(KeyboardInterrupt):
+            _quiet(O.main, [str(d), "--plan"])
+        self.assertFalse((d / ".modernize/archetype-templates").exists())
+        self.assertFalse((d / ".modernize/archetype.json").exists())
+
+    def test_apply_uses_the_templates_the_plan_prepared(self):
+        d = _legacy_single(Path(tempfile.mkdtemp()))
         custom = self._custom_templates()
-        with mock.patch.object(O, "prepare_templates", return_value=str(custom)) as prep:
-            rc = _quiet(O.main, [str(d), "--apply", "--archetype", "com.acme:acme-archetype:3"])
-        prep.assert_called_once_with(str(d), "com.acme:acme-archetype:3", "pinned")
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(custom)])
+        rc = _quiet(O.main, [str(d), "--apply"])
         self.assertEqual(rc, 0)
         self.assertIn("from the customer's archetype", (d / "all/pom.xml").read_text())
-        self.assertEqual(O.C.load_json(d / ".modernize/orchestration.json")["archetype"],
-                         "com.acme:acme-archetype:3")
+        self.assertEqual(O.C.load_json(d / ".modernize/orchestration.json")["archetype"]["archetype"],
+                         str(custom.resolve()))
+
+    def test_apply_without_prepared_templates_changes_nothing(self):
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES)])
+        shutil.rmtree(d / ".modernize/archetype-templates")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            rc = O.main([str(d), "--apply"])
+        self.assertEqual(rc, 2)
+        self.assertIn("run --plan first", err.getvalue())
+        self.assertFalse((d / "ui.config").exists())
+
+    def test_apply_with_archetype_prepares_them_again(self):
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES)])
+        rc = _quiet(O.main, [str(d), "--apply", "--archetype", str(self._custom_templates())])
+        self.assertEqual(rc, 0)
+        self.assertIn("from the customer's archetype", (d / "all/pom.xml").read_text())
+
+    def test_apply_shows_the_archetype_it_uses(self):
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES)])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(O.main([str(d), "--apply"]), 0)
+        self.assertIn(f"archetype: {TEMPLATES} (templates folder); AEM SDK ", out.getvalue())
+
+    def test_apply_with_sdk_version_keeps_the_plans_archetype(self):
+        """--sdk-version alone changes only the SDK of the plan's templates: the reviewed
+        archetype stays, and nothing is generated (no Maven needed)."""
+        import archetype_templates as AT
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        custom = self._custom_templates()
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(custom)])
+        with mock.patch.object(AT, "prepare", side_effect=AssertionError("prepared again")):
+            rc = _quiet(O.main, [str(d), "--apply", "--sdk-version", "2099.5.5"])
+        self.assertEqual(rc, 0)
+        self.assertIn("from the customer's archetype", (d / "all/pom.xml").read_text())
+        info = O.C.load_json(d / ".modernize/archetype.json")
+        self.assertEqual((info["archetype"], info["aemSdkApi"]), (str(custom.resolve()), "2099.5.5"))
+        self.assertIn("<aem.sdk.api>2099.5.5</aem.sdk.api>",
+                      (d / ".modernize/archetype-templates/pom.xml").read_text())
+
+    def test_apply_with_archetype_keeps_the_plans_sdk(self):
+        d = _legacy_single(Path(tempfile.mkdtemp()))
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES), "--sdk-version", "2099.6.6"])
+        custom = self._custom_templates()
+        rc = _quiet(O.main, [str(d), "--apply", "--archetype", str(custom)])
+        self.assertEqual(rc, 0)
+        self.assertIn("from the customer's archetype", (d / "all/pom.xml").read_text())
+        info = O.C.load_json(d / ".modernize/archetype.json")
+        self.assertEqual((info["archetype"], info["aemSdkApi"]), (str(custom.resolve()), "2099.6.6"))
+
+    def test_nothing_to_restructure_needs_no_templates(self):
+        d = Path(tempfile.mkdtemp())
+        (d / "pom.xml").write_text(_pom("pom", ["app"]))
+        (d / "app").mkdir()
+        (d / "app/pom.xml").write_text(_pom("pom", ["all", "ui.apps.structure", "ui.config"]))
+        for m in ("all", "ui.apps.structure", "ui.config"):
+            (d / "app" / m).mkdir()
+            (d / "app" / m / "pom.xml").write_text(_pom("content-package", artifact=m))
+        self.assertEqual(_quiet(O.main, [str(d), "--plan"]), 0)
+        self.assertFalse((d / ".modernize/archetype-templates").exists())
+        self.assertEqual(_quiet(O.main, [str(d), "--apply"]), 0)
 
     def test_unusable_templates_change_nothing(self):
         import archetype_templates as AT
         d = _legacy_single(Path(tempfile.mkdtemp()))
-        _quiet(O.main, [str(d), "--plan"])
+        _quiet(O.main, [str(d), "--plan", "--archetype", str(TEMPLATES)])
         err = io.StringIO()
-        with mock.patch.object(AT, "build", side_effect=AT.TemplatesDoNotFit(
+        with mock.patch.object(AT, "prepare", side_effect=AT.TemplatesDoNotFit(
                 "ui.apps/pom.xml: no filevault-package-maven-plugin <configuration>")), \
              contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
             rc = O.main([str(d), "--apply", "--archetype", "58"])
@@ -223,21 +369,18 @@ class ArchetypeOption(unittest.TestCase):
         self.assertIn("ui.apps/pom.xml", err.getvalue())
         self.assertIn("Nothing was changed", err.getvalue())
         self.assertFalse((d / "ui.config").exists())
-        self.assertFalse((d / ".modernize/archetype-templates").exists())
 
     def test_prepare_templates_writes_them_into_modernize(self):
-        import archetype as A
         import archetype_templates as AT
         d = Path(tempfile.mkdtemp())
-        bundled = {rel: (self.BUNDLED / rel).read_text() for rel in AT.TEMPLATE_FILES}
-        with mock.patch.object(AT, "build", return_value=(bundled, ("com.acme", "acme-archetype", "3"))) as b:
-            out = _quiet(O.prepare_templates, str(d), "com.acme:acme-archetype:3", "pinned")
-        self.assertEqual(Path(out), d / ".modernize/archetype-templates")
-        spec, workdir, sdk = b.call_args.args
-        self.assertEqual((spec, sdk), ("com.acme:acme-archetype:3", A.PINNED_SDK_API))
-        self.assertFalse(Path(workdir).exists())                 # scratch project removed
-        for rel in AT.TEMPLATE_FILES:
-            self.assertEqual((Path(out) / rel).read_text(), bundled[rel])
+        templates = AT.load_dir(TEMPLATES)
+        info = {"archetype": "com.acme:acme-archetype:3", "source": "requested", "aemSdkApi": "1"}
+        with mock.patch.object(AT, "prepare", return_value=(templates, dict(info))) as prep:
+            out = _quiet(O.prepare_templates, str(d), "com.acme:acme-archetype:3", "2099.1.1")
+        prep.assert_called_once_with("com.acme:acme-archetype:3", "2099.1.1", fallback_sdk=None)
+        self.assertEqual(Path(out["templates"]), d / ".modernize/archetype-templates")
+        self.assertEqual(AT.load_dir(out["templates"]), templates)
+        self.assertTrue((d / ".modernize/.gitignore").is_file())
 
 
 @unittest.skipUnless(FIX.is_dir(), f"test fixture not found at {FIX} (set WKND_FIXTURE)")
@@ -270,7 +413,7 @@ class InProjectInstall(unittest.TestCase):
         before = self._digest(installed)
         script = d / ".claude/skills/repo-modernize/scripts/orchestrate.py"
 
-        plan = self._run(script, str(d), "--plan")
+        plan = self._run(script, str(d), "--plan", "--archetype", str(TEMPLATES))
         self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
         inventory = json.loads((d / ".modernize/inventory.json").read_text())["files"]
         self.assertEqual([f["path"] for f in inventory

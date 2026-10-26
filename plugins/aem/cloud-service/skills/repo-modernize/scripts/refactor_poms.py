@@ -26,7 +26,7 @@ repo-modernize.
 `refactor_content_pom` applies the content-package -> filevault conversion
 (`references/transform-rules.md` Sec.5, `manual-followups.md`) to a `ui.apps`
 or `ui.content` module pom, producing the archetype's own TWO-PLUGIN shape
-(verified byte-for-byte against `assets/archetype-pom-templates/
+(verified byte-for-byte against `.modernize/archetype-templates/
 {ui.apps,ui.content}/pom.xml`, both of which keep both plugins):
 
 1. The legacy `com.day.jcr.vault:content-package-maven-plugin` plugin is
@@ -124,6 +124,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 import re
 import tempfile
 import xml.etree.ElementTree as ET
@@ -134,14 +135,17 @@ from urllib.parse import unquote
 import pom_engine as E
 import rm_common as C
 
-_ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "archetype-pom-templates"
-# Set by `main --templates` for one run (e.g. templates generated from the customer's own
-# archetype); None means the bundled templates.
+# The archetype templates for this run: `main --templates` (default
+# `<root>/.modernize/archetype-templates`, prepared by `orchestrate.py --plan`). The skill
+# ships none.
 _templates_dir_override: Optional[str] = None
 
 
 def _templates_dir() -> Path:
-    return Path(_templates_dir_override) if _templates_dir_override else _ASSETS_DIR
+    if not _templates_dir_override:
+        raise RuntimeError("no archetype templates for this run: pass --templates (prepared by "
+                           "`orchestrate.py --plan`)")
+    return Path(_templates_dir_override)
 
 # A skill-original finding code (same pattern/rationale as convert_osgi.py's
 # `_REPOINIT_NOTE_CODE`): deliberately NOT `RM-108`, even though an earlier
@@ -427,7 +431,7 @@ def _extract_element_block(text: str, tag: str, start: int = 0) -> str:
 
 def _template_plugin_configuration_xml(module_key: str, config: dict) -> str:
     """The filevault plugin's `<configuration>` for `module_key`, sourced
-    VERBATIM from this skill's own `assets/archetype-pom-templates/<module>/
+    VERBATIM from this skill's own `.modernize/archetype-templates/<module>/
     pom.xml` -- never hand-built -- with only the `{{groupId}}`/
     `{{artifactId}}`/`{{version}}` placeholders substituted for the
     customer's real coordinates (`config["groupId"]`/`config["artifactId"]`/
@@ -610,7 +614,7 @@ def _drop_legacy_install_profiles(root) -> int:
     (`failOnMissingEmbed=true`, referencing the embed the main build
     conversion above just dropped) -- a legacy on-prem/AMS deployment
     mechanism Cloud Service has no equivalent of at all: neither archetype
-    template (`assets/archetype-pom-templates/{ui.apps,ui.content}/pom.xml`)
+    template (`.modernize/archetype-templates/{ui.apps,ui.content}/pom.xml`)
     has a `<profiles>` section, even though BOTH keep the (bare)
     `content-package-maven-plugin` itself for its `<extensions>true</
     extensions>` lifecycle binding (see `refactor_content_pom`'s own
@@ -753,7 +757,7 @@ def _drop_project_bundle_dependencies(tree, config: dict) -> None:
     `<parentArtifactId>.<bundle-dir>` naming (`_bundle_module_dir`), that
     `refactor_all_pom` already uses to EMBED these same bundles into `all`.
 
-    Neither archetype content template (`assets/archetype-pom-templates/
+    Neither archetype content template (`.modernize/archetype-templates/
     {ui.apps,ui.content}/pom.xml`) declares any such dependency: Cloud
     Service embeds a project's own bundle(s) into `all` ONLY (Task B4), not
     into a content package, and this same file's `refactor_content_pom`
@@ -801,7 +805,7 @@ def refactor_content_pom(pom_path, config: dict, module_key: str) -> List[C.Find
        (`<filterSource>`, `<group>`, and the `<embeddeds>` that embeds e.g.
        `core` at `/apps/<appId>/install`) is what drops the legacy embed.
        This plugin is NOT removed and NOT renamed: both archetype templates
-       (`assets/archetype-pom-templates/{ui.apps,ui.content}/pom.xml`) keep
+       (`.modernize/archetype-templates/{ui.apps,ui.content}/pom.xml`) keep
        it around, bare, purely so `<extensions>true</extensions>` is bound
        to SOME plugin -- without that, `<packaging>content-package</packaging>`
        (a non-standard Maven packaging value) has no lifecycle mapping and
@@ -1108,18 +1112,9 @@ def refactor_all_pom(pom_path, config: dict) -> List[C.Finding]:
 # Task B5: reactor/parent pom -- uber-jar->SDK, modules, analyser, index
 # ---------------------------------------------------------------------------
 
-# Sourced from assets/archetype-pom-templates/pom.xml's own <properties>
-# (see refactor_content_pom's own docstring pattern: pull the exact template
-# value rather than hand-guessing a plausible one). Hardcoded rather than
-# read from the template file at call time -- unlike
-# `_template_plugin_configuration_xml` (B3), which extracts a whole
-# `<configuration>` block VERBATIM because that block is too large/nested to
-# safely retype by hand, these are two single scalar strings the brief
-# itself already pins verbatim ("Template values" section) -- reading the
-# template file just to re-derive the same two literals it already hands us
-# would be indirection without benefit, and would make this function's
-# output depend on the template file's continued presence/shape for values
-# that never vary per customer project.
+# Defaults for direct calls (the unit tests); `main` sets these, and the
+# FileVault / content-package / analyser versions below, from the archetype
+# templates' reactor (`--templates`) for every run.
 _AEM_SDK_API_VERSION = "2026.10.29023.20261017T134015Z-260900"
 _AEMANALYSER_VERSION = "1.6.6"
 
@@ -1127,7 +1122,7 @@ _AEMANALYSER_VERSION = "1.6.6"
 # (deterministic, offline); `main`'s `--sdk-version latest|<version>` sets this to
 # the latest resolved from Maven Central (or an explicit value). Kept as a module
 # global so `refactor_reactor_pom` picks it up without a signature change (its
-# many unit tests call it directly and rely on the pinned default).
+# many unit tests call it directly and rely on the default).
 _sdk_api_version_override = None
 
 
@@ -1138,8 +1133,8 @@ _UBER_JAR = ("com.adobe.aem", "uber-jar")
 _AEM_SDK_API = ("com.adobe.aem", "aem-sdk-api")
 _AEMANALYSER_PLUGIN = ("com.adobe.aem", "aemanalyser-maven-plugin")
 
-# The archetype's own filevault-package-maven-plugin version (verified in
-# assets/archetype-pom-templates/pom.xml's <pluginManagement>). Used only when
+# The archetype's own filevault-package-maven-plugin version (its reactor's
+# <pluginManagement>; set by `main` from the templates). Used only when
 # the customer's legacy reactor has NO filevault entry to add extensions to --
 # an existing entry keeps its own version (see
 # `_ensure_filevault_extensions_binding`).
@@ -1163,7 +1158,7 @@ def _target_modules(config: dict) -> dict:
 
 # The same Maven POM namespace every fixture/template pom in this skill
 # declares on its own <project> root (verified: the WKND fixture's reactor
-# pom, and every assets/archetype-pom-templates/*/pom.xml). `_parse_fragment`
+# pom, and every .modernize/archetype-templates/*/pom.xml). `_parse_fragment`
 # below always builds its throwaway wrapper with this exact namespace, so an
 # Element pulled out of it already matches what `pretty_insert` expects to
 # graft into a REAL pom's tree without any re-namespacing step (unlike
@@ -1532,7 +1527,7 @@ def _ensure_index_definition_settings(root) -> None:
     (`all`, `ui.apps`, ...) a shared, inherited FileVault config, and this
     skill's own root archetype template already seeds a
     `filevault-package-maven-plugin` `<pluginManagement>` entry the exact
-    same way (`assets/archetype-pom-templates/pom.xml`, its own
+    same way (`.modernize/archetype-templates/pom.xml`, its own
     `<validatorsSettings><jackrabbit-nodetypes>`).
 
     A no-op if `<build>/<pluginManagement>` doesn't already exist (every
@@ -1767,47 +1762,56 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="repo-modernize POM refactor orchestration")
     ap.add_argument("root", help="target project root")
     ap.add_argument("--config", required=True, help="path to .modernize/config.json")
-    ap.add_argument("--sdk-version", default="pinned",
-                    help="AEM SDK API version to bake into the reactor: 'pinned' (default, "
-                         "deterministic/offline), 'latest' (resolve the newest from Maven "
-                         "Central; falls back to pinned when offline), or an explicit version.")
+    ap.add_argument("--sdk-version", default=None,
+                    help="AEM SDK API version to bake into the reactor: the archetype templates' "
+                         "(default), 'latest' (the newest from Maven Central or the local Maven "
+                         "repository), or an explicit version")
     ap.add_argument("--templates", default=None,
-                    help="module templates directory (default: the bundled archetype templates); "
-                         "its reactor pom.xml supplies the plugin versions")
+                    help="archetype templates directory (default: <root>/.modernize/"
+                         "archetype-templates, prepared by `orchestrate.py --plan`); its reactor "
+                         "pom.xml supplies the AEM SDK and plugin versions")
     a = ap.parse_args(argv)
 
+    templates = Path(a.templates) if a.templates else Path(a.root) / C.MANIFEST_DIR / "archetype-templates"
+    if not (templates / "pom.xml").is_file():
+        print(f"error: no archetype templates in {templates}: run `orchestrate.py --plan` "
+              "(it prepares them) or pass --templates", file=sys.stderr)
+        return 2
+    import archetype_templates as AT
+    pins = AT.pins((templates / "pom.xml").read_text(encoding="utf-8"))
+
     global _templates_dir_override, _AEMANALYSER_VERSION, _ARCHETYPE_FILEVAULT_VERSION
-    global _ARCHETYPE_CONTENT_PACKAGE_VERSION
+    global _ARCHETYPE_CONTENT_PACKAGE_VERSION, _AEM_SDK_API_VERSION, _sdk_api_version_override
     saved = (_templates_dir_override, _AEMANALYSER_VERSION, _ARCHETYPE_FILEVAULT_VERSION,
-             _ARCHETYPE_CONTENT_PACKAGE_VERSION)
-    if a.templates and Path(a.templates).resolve() != _ASSETS_DIR.resolve():
-        import archetype_templates as AT
-        pins = AT.pins((Path(a.templates) / "pom.xml").read_text(encoding="utf-8"))
-        _templates_dir_override = a.templates
-        _AEMANALYSER_VERSION = pins["aemanalyser.version"] or _AEMANALYSER_VERSION
-        _ARCHETYPE_FILEVAULT_VERSION = pins["filevault"] or _ARCHETYPE_FILEVAULT_VERSION
-        _ARCHETYPE_CONTENT_PACKAGE_VERSION = pins["content-package"] or _ARCHETYPE_CONTENT_PACKAGE_VERSION
+             _ARCHETYPE_CONTENT_PACKAGE_VERSION, _AEM_SDK_API_VERSION, _sdk_api_version_override)
+    _templates_dir_override = str(templates)
+    _AEM_SDK_API_VERSION = pins["aem.sdk.api"] or _AEM_SDK_API_VERSION
+    _AEMANALYSER_VERSION = pins["aemanalyser.version"] or _AEMANALYSER_VERSION
+    _ARCHETYPE_FILEVAULT_VERSION = pins["filevault"] or _ARCHETYPE_FILEVAULT_VERSION
+    _ARCHETYPE_CONTENT_PACKAGE_VERSION = pins["content-package"] or _ARCHETYPE_CONTENT_PACKAGE_VERSION
     try:
         return _refactor_all(a)
     finally:
         (_templates_dir_override, _AEMANALYSER_VERSION, _ARCHETYPE_FILEVAULT_VERSION,
-         _ARCHETYPE_CONTENT_PACKAGE_VERSION) = saved
+         _ARCHETYPE_CONTENT_PACKAGE_VERSION, _AEM_SDK_API_VERSION, _sdk_api_version_override) = saved
 
 
 def _refactor_all(a) -> int:
     """`main`'s body, run with the chosen templates in effect."""
     # Resolve the SDK version choice into the module override the reactor step reads.
     global _sdk_api_version_override
-    if a.sdk_version and a.sdk_version != "pinned":
-        if a.sdk_version == "latest":
-            import archetype as _arch
-            ver, _is_latest, note = _arch.sdk_api_version(prefer_latest=True)
-            _sdk_api_version_override = ver
-            if note:
-                print(f"refactor_poms: {note}")
+    if a.sdk_version == "latest":
+        import archetype as _arch
+        latest = _arch.resolve_latest_sdk_api()
+        if latest:
+            _sdk_api_version_override = latest
+            print(f"refactor_poms: using the latest AEM SDK {latest}")
         else:
-            _sdk_api_version_override = a.sdk_version
-            print(f"refactor_poms: using explicit AEM SDK {a.sdk_version}")
+            print(f"refactor_poms: the latest AEM SDK can't be found (offline?); using the "
+                  f"archetype's {_AEM_SDK_API_VERSION}")
+    elif a.sdk_version:
+        _sdk_api_version_override = a.sdk_version
+        print(f"refactor_poms: using explicit AEM SDK {a.sdk_version}")
 
     root = Path(a.root)
     config = C.load_json(a.config)

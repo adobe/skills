@@ -121,10 +121,10 @@ being a compile error.
 ## 6. Java breakage from the `uber-jar` → `aem-sdk-api` swap — hand off to `code-assessment`
 
 Dropping `com.adobe.aem:uber-jar` and relying on the archetype's pre-seeded `aem-sdk-api` (§6 of
-`transform-rules.md`) is a **pinned-version swap**, not an API-compatible one: `uber-jar` had no fixed
-relationship to any particular Cloud SDK release, and the archetype's `aem-sdk-api` is pinned to whatever
-version ships with the current archetype. Code written against `uber-jar` APIs can fail to compile against
-that pinned `aem-sdk-api` surface — removed/renamed classes, changed method signatures, deprecated-and-removed
+`transform-rules.md`) is a **version swap**, not an API-compatible one: `uber-jar` had no fixed
+relationship to any particular Cloud SDK release, and `aem-sdk-api` gets the version the plan's archetype
+templates carry (by default the latest AEM SDK). Code written against `uber-jar` APIs can fail to compile
+against that `aem-sdk-api` surface — removed/renamed classes, changed method signatures, deprecated-and-removed
 APIs.
 
 **Fixture:** `core/pom.xml` depends on `com.adobe.aem:uber-jar` directly; this is dropped, and
@@ -144,7 +144,7 @@ break on current JDKs), or that module's own unit tests (e.g. Mockito 1.x on Jav
 errors are never treated as a hand-off. A legacy compiler level below 11 is raised to 11 first
 (`RM-908`), so the build gets far enough to report the real code issues. This is the expected outcome on a legacy project like the
 `aem-guides-wknd-legacy` fixture, where `core` depends directly on `com.adobe.aem:uber-jar` (§6 of
-`transform-rules.md`) and is expected not to compile cleanly against the archetype's pinned
+`transform-rules.md`) and is expected not to compile cleanly against the archetype's
 `aem-sdk-api` without code changes. It is **not** treated as a `repo-modernize` failure. Only a genuine
 aem-analyser `ERROR`-level finding (exit `3`) is — see `SKILL.md` Stage 7.
 

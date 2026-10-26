@@ -4,8 +4,8 @@ Restructures a legacy AEM (6.x / AMS / on-prem) Maven project into the AEM as a 
 
 See [`SKILL.md`](./SKILL.md) for when to use it and the workflow (plan → review → apply → verify), and [`references/`](./references) for the transformation rules and follow-ups.
 
-**Requirements:** git, Python 3.9+ with `lxml` (`pip install -r requirements.txt`); Maven and JDK 11+ for the optional build check and for `--archetype`.
+**Requirements:** git, Python 3.9+ with `lxml` (`pip install -r requirements.txt`), and Maven with JDK 11+ (to generate the AEM project archetype, and for the optional build check).
 
-**Archetype templates:** generated from Adobe's AEM Project Archetype. To move to a newer release, a maintainer runs `scripts/refresh_archetype.py --update` (it generates, checks and re-pins the templates) and the tests, then opens a pull request. Users can generate them from their own archetype at apply time with `--archetype`.
+**Archetype:** none is shipped. Each plan generates the module templates from the latest AEM Project Archetype with Maven (or the archetype version, your own archetype, or a project you already generated from one, via `--archetype`) and checks they fit before anything changes. See `scripts/archetype_templates.py`.
 
-**Tests:** `plugins/aem/cloud-service/test/repo-modernize/run-tests.sh` (against an in-repo copy of the public `aem-guides-wknd-legacy` sample; with Maven on the PATH it also checks the bundled templates are exactly what the pinned archetype generates).
+**Tests:** `plugins/aem/cloud-service/test/repo-modernize/run-tests.sh` (against an in-repo copy of the public `aem-guides-wknd-legacy` sample and templates of archetype 58; with Maven on the PATH it also checks those templates are exactly what the archetype generates).

@@ -365,7 +365,7 @@ def _indent_unit(text: str) -> str:
 def write_structure_roots(project_root, config: dict, roots: List[str]) -> None:
     """Populate `ui.apps.structure/pom.xml`'s FileVault plugin config with `roots`.
 
-    The scaffolded template (`assets/archetype-pom-templates/ui.apps.structure/
+    The scaffolded template (`.modernize/archetype-templates/ui.apps.structure/
     pom.xml`, rendered verbatim by `scaffold_modules.scaffold`) holds a FileVault
     `<configuration>` with `cloudManagerTarget` inside a `<properties>` wrapper and a
     `<filters>` element: empty (`<filters />`) or listing the archetype's default roots.

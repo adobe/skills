@@ -476,28 +476,8 @@ def scan_findings(project_root, config) -> list:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="repo-modernize inspection (read-only)")
     ap.add_argument("root")
-    ap.add_argument("--no-version-check", action="store_true",
-                    help="skip the best-effort 'newer archetype/SDK available' notice")
     a = ap.parse_args(argv)
     root = Path(a.root)
-
-    # Best-effort staleness notice: tell the developer up front if the skill's pinned
-    # archetype/SDK is behind Maven Central's latest, so a run is never SILENTLY on a
-    # stale archetype. Offline-safe (skips silently on no network / timeout) and never
-    # blocks the run. Disabled by --no-version-check, the REPO_MODERNIZE_NO_VERSION_CHECK
-    # env var, or when running under pytest (so the test suite stays offline/fast).
-    import os as _os
-    _skip_vc = (a.no_version_check
-                or _os.environ.get("REPO_MODERNIZE_NO_VERSION_CHECK")
-                or "PYTEST_CURRENT_TEST" in _os.environ)
-    if not _skip_vc:
-        try:
-            import archetype as _arch
-            _note = _arch.staleness_note()
-            if _note:
-                print(f"repo-modernize: {_note}")
-        except Exception:
-            pass
 
     # MULTI shape: a root with NO reactor pom but WITH child projects (independent
     # projects side by side). There is no root config to build -- emit the unit plan

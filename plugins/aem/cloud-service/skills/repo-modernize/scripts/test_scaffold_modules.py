@@ -2,7 +2,7 @@
 import re, tempfile, unittest
 from pathlib import Path
 import scaffold_modules as S
-TPL = Path(__file__).resolve().parent.parent / "assets/archetype-pom-templates"
+TPL = Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/archetype-templates"
 
 CONFIG = {"schemaVersion": 1, "projectShape": "SINGLE", "groupId": "com.x", "artifactId": "acme",
           "appId": "acme", "appTitle": "ACME", "version": "1.0.0-SNAPSHOT",

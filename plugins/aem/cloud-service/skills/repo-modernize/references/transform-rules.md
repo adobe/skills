@@ -5,7 +5,7 @@ implement. It reproduces the outcome of Adobe's CAM Repository Modernizer, verif
 output on real projects (see `cam-validation.md`) — **minus its bugs**. Where this doc's rule differs from CAM's actual
 behavior, that is intentional; see §9. Every concrete example below is verified against this skill's own
 fixture, `aem-guides-wknd-legacy` (`groupId=com.adobe.aem.guides`, `appId=wknd`, `appTitle=WKND`), and
-against the bundled archetype templates this skill scaffolds from (§13). Do not re-derive these rules from
+against the archetype templates this skill scaffolds from (§13). Do not re-derive these rules from
 first principles — implement exactly what's written here, and if a script's behavior needs to diverge,
 update this file first.
 
@@ -119,7 +119,7 @@ Ancestor expansion + seeds yields exactly:
 ```
 Because `/oak:index` is present, `ui.apps.structure/pom.xml` also gets
 `<allowIndexDefinitions>true</allowIndexDefinitions>`. The template's `<filters>` (the archetype's default roots,
-`assets/archetype-pom-templates/ui.apps.structure/pom.xml`) is replaced with these roots; an
+`.modernize/archetype-templates/ui.apps.structure/pom.xml`) is replaced with these roots; an
 `allowIndexDefinitions` the template already sets is kept, never duplicated.
 
 Missing FileVault plugin block in the template is a hard failure, not a skip.
@@ -127,7 +127,7 @@ Missing FileVault plugin block in the template is a hard failure, not a skip.
 ## 5. `packageType` and `cloudManagerTarget`
 
 Both are **static values baked into the archetype templates**
-(`assets/archetype-pom-templates/*/pom.xml`) — no script computes them:
+(`.modernize/archetype-templates/*/pom.xml`) — no script computes them:
 
 | Module | `packageType` | `cloudManagerTarget` |
 |---|---|---|
@@ -162,7 +162,7 @@ There is no rewrite step. Two independent facts produce the swap:
 **Fixture:** `core/pom.xml` declares `<dependency><groupId>com.adobe.aem</groupId><artifactId>uber-jar</artifactId></dependency>` — dropped on copy. A bundle scaffolded from
 the archetype's own `core/pom.xml` already has `aem-sdk-api` waiting; nothing re-adds it.
 
-Because the API surfaces of `uber-jar` and the pinned `aem-sdk-api` version differ, code that compiled
+Because the API surfaces of `uber-jar` and the archetype's `aem-sdk-api` version differ, code that compiled
 against `uber-jar` may not compile against `aem-sdk-api` — that's a real hand-off, not a bug; see
 `manual-followups.md`.
 
@@ -326,7 +326,7 @@ those plugins are **left untouched** and an `RM-902` finding (HIGH) is raised �
 
 **`ui.apps`/`ui.content` poms — the content-package → filevault two-plugin pattern**
 (`refactor_content_pom`): the archetype's own `ui.apps`/`ui.content` templates keep **both** plugins,
-verified byte-for-byte against `assets/archetype-pom-templates/{ui.apps,ui.content}/pom.xml`, and this
+verified byte-for-byte against the archetype's `{ui.apps,ui.content}/pom.xml` templates, and this
 skill reproduces exactly that shape rather than replacing one plugin with the other. First, two in-place
 normalizations a real legacy content pom needs: **(a)** any `com.adobe.aem:uber-jar` `<dependency>` the
 content pom declares is **dropped** (same matcher as the bundle rule; a real project's `ui.apps`/
@@ -422,7 +422,7 @@ on already-modernized project state rather than just `config`:
 
 - `uber-jar` → `aem-sdk-api`: drop `com.adobe.aem:uber-jar` from `<dependencyManagement>`, add
   `com.adobe.aem:aem-sdk-api` (`scope=provided`, `version=${aem.sdk.api}`), and seed the `aem.sdk.api`
-  property (the archetype's own pinned value) if absent.
+  property (the archetype templates' value) if absent.
 - **Modules:** ensure **every** target module (`all`, `ui.apps.structure`, `ui.apps`, `ui.config`,
   `ui.content` — dir names from `config["targetModules"]`) is a live `<module>`, adding whichever is
   missing and never touching or duplicating one already listed. This is not just the three scaffolded
@@ -506,37 +506,57 @@ detail survived the refactor, not because either needs action. `RM-905` is, like
 actionable HIGH finding that routes to a human / the `code-assessment` skill — the tool deliberately
 does NOT auto-add the missing filter root (see `manual-followups.md` §7's ruling).
 
-## 13. Archetype templates (`assets/archetype-pom-templates/`, `archetype_templates.py`)
+## 13. Archetype templates (`archetype_templates.py`, prepared at plan time)
 
-The modules the skill adds, and the FileVault configuration it copies into existing `ui.apps` /
-`ui.content` POMs, come from templates generated from Adobe's AEM Project Archetype (version and AEM SDK
-pinned in `scripts/archetype.py`):
+The skill ships no archetype. The modules it adds, and the FileVault configuration it copies into existing
+`ui.apps` / `ui.content` POMs, come from templates the plan step prepares in `.modernize/archetype-templates/`:
 
-1. **Generate** — `mvn archetype:generate` with sentinel coordinates and `aemVersion=cloud`,
-   `frontendModule=none`, `includeDispatcherConfig=n`, `includeExamples=n`, `sdkVersion=<pin>`.
-2. **Templatize** — the sentinels become `{{groupId}}`, `{{artifactId}}`, `{{appId}}`, `{{appTitle}}`,
-   `{{version}}`; the archetype's sample `core` bundle is removed from `all`, `ui.apps` and `ui.content`
-   (the project's own bundles are embedded instead). Kept: the six POMs and `all`'s workspace filter
-   (`/apps/<appId>-packages`, `/apps/<appId>-vendor-packages`), without which `all` does not build.
-3. **Validate** — every shape the transforms rely on: packageType per module, `cloudManagerTarget=none`,
-   a FileVault `<configuration>` per module, `<filters>` in `ui.apps.structure`, the `all` embeds and
-   filter, no `uber-jar`, only plugins and properties `refactor_poms` manages, and the pinned versions in
-   the reactor.
+1. **Source.**
+   - `latest` (default): the newest Adobe AEM Project Archetype and AEM SDK. They come from Maven Central's
+     metadata, or from the newest in the local Maven repository when it can't be reached (`archetype.py`).
+     Generating the archetype only writes the SDK version into a POM, so offline the local repository may have
+     no `aem-sdk-api`: the plan then uses the previous plan's SDK version, else `TESTED_SDK`, and says so.
+   - A version, or `groupId:artifactId:version`: generated with `mvn archetype:generate`, local repository first.
+     Generation uses sentinel coordinates and `aemVersion=cloud`, `frontendModule=none`,
+     `includeDispatcherConfig=n`, `includeExamples=n`, `sdkVersion=<resolved>`.
+   - A path to a project the user generated from an archetype: no Maven needed. Its coordinates (root pom), app
+     id and title (`archetype.properties`, or inferred from `all` and the pom name) become placeholders by the XML
+     context each appears in: `<groupId>`/`<group>`, `<artifactId>`, package `<name>`s, parent and own
+     `<version>`, `/apps/<appId>` and `/content/dam/<appId>` paths, and titles in `<name>`/`<description>`.
+   - A path to a folder of templates: used as it is.
+2. **Templatize.** The placeholders are `{{groupId}}`, `{{artifactId}}`, `{{appId}}`, `{{appTitle}}` and
+   `{{version}}`. A dependency the archetype's reactor manages gets that version (the project's reactor doesn't
+   manage it). References to project modules the skill doesn't create (`core`, `ui.frontend`, `dispatcher`, ...)
+   are removed. Kept: the six POMs and `all`'s workspace filter (`/apps/<appId>-packages`,
+   `/apps/<appId>-vendor-packages`), without which `all` does not build.
+3. **Validate** every shape the transforms rely on:
+   - packageType per module and `cloudManagerTarget=none`;
+   - a FileVault `<configuration>` per module, and `<filters>` in `ui.apps.structure`;
+   - the reactor as each module's parent, and module artifactIds `{{artifactId}}.<module>`;
+   - the `all` embeds and filter;
+   - no `uber-jar`;
+   - only plugins and properties `refactor_poms` manages, and no dependency without a resolvable version;
+   - the AEM SDK, analyser, FileVault and content-package versions in the reactor, which `refactor_poms` writes
+     into the project.
 
-`refresh_archetype.py --update` regenerates the bundled set and rewrites the pins (a maintainer runs it
-with the test suite and opens a pull request), and a test checks that the bundled set is exactly what the
-pinned archetype generates. `orchestrate.py --apply
---archetype <spec>` runs the same three steps on the user's own archetype and stops (exit 2, nothing
-changed) if the result does not validate.
+If the latest archetype doesn't validate, the plan falls back to `TESTED_ARCHETYPE` (58, the version of the test
+fixture `test/repo-modernize/fixtures/archetype-templates`) and says so. Any other source that doesn't validate
+stops the plan with exit 2, and nothing changes. A plan that can't prepare templates also removes the previous
+plan's, so apply never uses templates the user didn't see. Apply prints the `archetype:` line it uses; there,
+`--archetype` or `--sdk-version` replaces only that part of the plan's choice (`.modernize/archetype.json`). With
+Maven available, the tests check two things: the fixture is exactly what archetype 58 generates, and a project
+generated from it with real coordinates gives the same templates.
 
-Compared with CAM's templates (archetype 56, reformatted by CAM): archetype 58 adds the Oak index settings
-Adobe's indexing documentation requires in `ui.apps` and `ui.apps.structure` (`allowIndexDefinitions`,
-`noIntermediateSaves`, the `/oak:index` structure root), and the module POMs keep the archetype's own
-formatting and `${project.version}` references. Filters, embeds and packageTypes are unchanged.
+Compared with CAM's templates (archetype 56, reformatted by CAM), archetype 58:
+- adds the Oak index settings Adobe's indexing documentation requires in `ui.apps` and `ui.apps.structure`
+  (`allowIndexDefinitions`, `noIntermediateSaves`, the `/oak:index` structure root);
+- keeps its own formatting and `${project.version}` references in the module POMs.
+
+Filters, embeds and packageTypes are unchanged.
 
 ## Source
 
 Rules reproduce the CAM Repository Modernizer's published behavior and its output on real projects
-(`cam-validation.md`), using the bundled archetype templates (`assets/archetype-pom-templates/`) and the
+(`cam-validation.md`), using the archetype templates prepared at plan time (§13) and the
 in-repo test fixture (`plugins/aem/cloud-service/test/repo-modernize/fixtures/wknd-legacy`).
 See `manual-followups.md` for what this skill deliberately detects-and-reports rather than transforms.

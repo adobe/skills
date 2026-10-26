@@ -1,6 +1,8 @@
 # scripts/scaffold_modules.py
 """Render the archetype POM templates and scaffold only the Cloud Service modules a
-project is missing — the repo-modernize "create structure" step (Phase 1).
+project is missing — the repo-modernize "create structure" step (Phase 1). The templates
+are the ones the plan prepared from the archetype (`<root>/.modernize/archetype-templates/`,
+see `archetype_templates.py`); the skill ships none.
 
 `render` is a tiny mustache-subset substitution: it replaces exactly the five known
 placeholders ({{groupId}}, {{artifactId}}, {{appId}}, {{appTitle}}, {{version}}) and
@@ -18,6 +20,7 @@ child modules (all, ui.apps, ui.apps.structure, ui.config, ui.content) are creat
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 from typing import Dict, List
 
@@ -99,11 +102,16 @@ def main(argv=None) -> int:
     ap.add_argument("--config", required=True, help="path to .modernize/config.json")
     ap.add_argument(
         "--templates",
-        default=str(Path(__file__).resolve().parent.parent / "assets/archetype-pom-templates"),
-        help="pinned archetype-pom-templates directory (default: the skill's own copy)",
+        help="archetype templates directory (default: <root>/.modernize/archetype-templates, "
+             "prepared by `orchestrate.py --plan`)",
     )
     a = ap.parse_args(argv)
-    created = scaffold(a.root, C.load_json(a.config), a.templates)
+    templates = Path(a.templates) if a.templates else Path(a.root) / C.MANIFEST_DIR / "archetype-templates"
+    if not (templates / "pom.xml").is_file():
+        print(f"error: no archetype templates in {templates}: run `orchestrate.py --plan` "
+              "(it prepares them) or pass --templates", file=sys.stderr)
+        return 2
+    created = scaffold(a.root, C.load_json(a.config), templates)
     print(f"scaffolded {len(created)} file(s): {created}")
     return 0
 

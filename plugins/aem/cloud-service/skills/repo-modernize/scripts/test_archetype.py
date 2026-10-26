@@ -1,12 +1,14 @@
-"""Tests for the archetype/SDK version resolution + refresh mechanism (offline-safe).
-
-Network calls are always mocked here, so these run offline and deterministically.
-"""
+"""archetype.py: which AEM project archetype and AEM SDK version a run uses -- Maven
+Central's newest release, else the newest in the local Maven repository. Network calls are
+always mocked, so these run offline."""
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import archetype as A
-
+import refactor_poms as RP
 
 _SDK_META = ('<metadata><versioning>'
              '<latest>2099.1.1.NEW</latest><release>2099.1.1.NEW</release>'
@@ -17,8 +19,21 @@ _ARCH_META = ('<metadata><versioning><latest>99</latest><release>99</release>'
               '</versioning></metadata>')
 
 
+def _local_repo(entries):
+    """A fake local Maven repository: {"group:artifact": {version: file suffix or None}}."""
+    root = Path(tempfile.mkdtemp())
+    for ga, versions in entries.items():
+        group, artifact = ga.split(":")
+        for version, suffix in versions.items():
+            d = root.joinpath(*group.split("."), artifact, version)
+            d.mkdir(parents=True)
+            if suffix:
+                (d / f"{artifact}-{version}{suffix}").write_text("x")
+    return root
+
+
 class LatestTag(unittest.TestCase):
-    def test_parses_latest(self):
+    def test_parses_release(self):
         self.assertEqual(A._latest_tag(_SDK_META), "2099.1.1.NEW")
         self.assertEqual(A._latest_tag(_ARCH_META), "99")
 
@@ -27,95 +42,83 @@ class LatestTag(unittest.TestCase):
         self.assertIsNone(A._latest_tag("<metadata/>"))
 
 
-class Resolvers(unittest.TestCase):
-    def test_resolve_latest_sdk(self):
-        with mock.patch.object(A, "_fetch", return_value=_SDK_META):
-            self.assertEqual(A.resolve_latest_sdk_api(), "2099.1.1.NEW")
-
-    def test_resolve_latest_archetype(self):
-        with mock.patch.object(A, "_fetch", return_value=_ARCH_META):
-            self.assertEqual(A.resolve_latest_archetype(), "99")
+class CentralLatest(unittest.TestCase):
+    def test_url_and_value(self):
+        with mock.patch.object(A, "_fetch", return_value=_ARCH_META) as fetch:
+            self.assertEqual(A.central_latest(*A.ARCHETYPE), "99")
+        self.assertEqual(fetch.call_args.args[0], "https://repo1.maven.org/maven2/com/adobe/aem/"
+                         "aem-project-archetype/maven-metadata.xml")
 
     def test_offline_returns_none_never_raises(self):
         with mock.patch.object(A, "_fetch", return_value=None):
+            self.assertIsNone(A.central_latest(*A.SDK_API))
+
+
+class LocalRepository(unittest.TestCase):
+    def test_newest_local_release(self):
+        repo = _local_repo({"com.adobe.aem:aem-project-archetype": {
+            "56": ".jar", "58": ".jar", "9": ".pom", "60-SNAPSHOT": ".jar", "61": None}})
+        with mock.patch.dict(os.environ, {"REPO_MODERNIZE_M2_REPO": str(repo)}):
+            self.assertEqual(A.newest_local(*A.ARCHETYPE), "58")      # 61 has no artifact
+            self.assertIsNone(A.newest_local(*A.SDK_API))
+
+    def test_sdk_versions_order_by_number(self):
+        repo = _local_repo({"com.adobe.aem:aem-sdk-api": {
+            "2026.4.25520.20260417T163942Z-260300": ".jar",
+            "2026.10.29023.20261017T134015Z-260900": ".jar",
+            "2026.9.28386.20260923T071724Z-260800": ".pom"}})
+        with mock.patch.dict(os.environ, {"REPO_MODERNIZE_M2_REPO": str(repo)}):
+            self.assertEqual(A.newest_local(*A.SDK_API), "2026.10.29023.20261017T134015Z-260900")
+
+    def test_settings_xml_local_repository(self):
+        home = Path(tempfile.mkdtemp())
+        (home / ".m2").mkdir()
+        (home / ".m2/settings.xml").write_text(
+            '<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">'
+            '<localRepository>${user.home}/maven-repo</localRepository></settings>')
+        env = {k: v for k, v in os.environ.items() if k != "REPO_MODERNIZE_M2_REPO"}
+        with mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(A.Path, "home", return_value=home):
+            self.assertEqual(A.local_repository(), home / "maven-repo")
+
+    def test_default_location(self):
+        home = Path(tempfile.mkdtemp())
+        env = {k: v for k, v in os.environ.items() if k != "REPO_MODERNIZE_M2_REPO"}
+        with mock.patch.dict(os.environ, env, clear=True), \
+             mock.patch.object(A.Path, "home", return_value=home):
+            self.assertEqual(A.local_repository(), home / ".m2/repository")
+
+
+class Latest(unittest.TestCase):
+    def test_central_first(self):
+        with mock.patch.object(A, "central_latest", return_value="99"), \
+             mock.patch.object(A, "newest_local", return_value="58"):
+            self.assertEqual(A.latest(*A.ARCHETYPE), ("99", "Maven Central"))
+
+    def test_local_when_central_unreachable(self):
+        with mock.patch.object(A, "central_latest", return_value=None), \
+             mock.patch.object(A, "newest_local", return_value="58"):
+            self.assertEqual(A.latest(*A.ARCHETYPE), ("58", "local Maven repository"))
+            self.assertEqual(A.resolve_latest_archetype(), "58")
+
+    def test_neither(self):
+        with mock.patch.object(A, "central_latest", return_value=None), \
+             mock.patch.object(A, "newest_local", return_value=None):
+            self.assertEqual(A.latest(*A.SDK_API), (None, ""))
             self.assertIsNone(A.resolve_latest_sdk_api())
-            self.assertIsNone(A.resolve_latest_archetype())
-            self.assertIsNone(A.staleness_note())
-
-
-class SdkApiVersion(unittest.TestCase):
-    def test_pinned_default_no_network(self):
-        # prefer_latest=False must never touch the network.
-        with mock.patch.object(A, "_fetch", side_effect=AssertionError("no network expected")):
-            ver, is_latest, note = A.sdk_api_version(prefer_latest=False)
-        self.assertEqual(ver, A.PINNED_SDK_API)
-        self.assertFalse(is_latest)
-        self.assertEqual(note, "")
-
-    def test_prefer_latest_uses_newest(self):
-        with mock.patch.object(A, "resolve_latest_sdk_api", return_value="2099.1.1.NEW"):
-            ver, is_latest, note = A.sdk_api_version(prefer_latest=True)
-        self.assertEqual(ver, "2099.1.1.NEW")
-        self.assertTrue(is_latest)
-        self.assertIn("2099.1.1.NEW", note)
-
-    def test_prefer_latest_offline_falls_back_to_pin(self):
-        with mock.patch.object(A, "resolve_latest_sdk_api", return_value=None):
-            ver, is_latest, note = A.sdk_api_version(prefer_latest=True)
-        self.assertEqual(ver, A.PINNED_SDK_API)
-        self.assertIn("could not reach", note)
-
-    def test_prefer_latest_already_pinned_no_note(self):
-        with mock.patch.object(A, "resolve_latest_sdk_api", return_value=A.PINNED_SDK_API):
-            ver, is_latest, note = A.sdk_api_version(prefer_latest=True)
-        self.assertEqual(ver, A.PINNED_SDK_API)
-        self.assertTrue(is_latest)
-        self.assertEqual(note, "")
-
-
-class StalenessNote(unittest.TestCase):
-    def test_note_when_behind(self):
-        with mock.patch.object(A, "resolve_latest_archetype", return_value="99"), \
-             mock.patch.object(A, "resolve_latest_sdk_api", return_value="2099.1.1.NEW"):
-            note = A.staleness_note()
-        self.assertIn("archetype-99", note)
-        self.assertIn("2099.1.1.NEW", note)
-
-    def test_no_note_when_current(self):
-        with mock.patch.object(A, "resolve_latest_archetype", return_value=A.PINNED_ARCHETYPE), \
-             mock.patch.object(A, "resolve_latest_sdk_api", return_value=A.PINNED_SDK_API):
-            self.assertIsNone(A.staleness_note())
-
-    def test_note_advises_the_user_not_maintainer_tooling(self):
-        with mock.patch.object(A, "resolve_latest_archetype", return_value="99"), \
-             mock.patch.object(A, "resolve_latest_sdk_api", return_value="2099.1.1.NEW"):
-            note = A.staleness_note()
-        self.assertIn("Add --sdk-version latest to --apply", note)
-        self.assertIn("add --archetype latest to --apply to use archetype-99 now", note)
-        self.assertNotIn("refresh_archetype", note)
-
-    def test_sdk_only_note_has_no_archetype_advice(self):
-        with mock.patch.object(A, "resolve_latest_archetype", return_value=A.PINNED_ARCHETYPE), \
-             mock.patch.object(A, "resolve_latest_sdk_api", return_value="2099.1.1.NEW"):
-            note = A.staleness_note()
-        self.assertIn("Add --sdk-version latest", note)
-        self.assertNotIn("archetype", note)
 
 
 class RefactorPomsSdkFlag(unittest.TestCase):
-    """The --sdk-version flag sets the module override the reactor step reads."""
+    """refactor_poms writes the archetype templates' SDK unless --sdk-version overrides it."""
 
-    def test_explicit_version_override(self):
-        import refactor_poms as RP
-        # simulate main()'s flag handling without running the whole pipeline
+    def test_override_wins_and_default_is_the_templates(self):
         RP._sdk_api_version_override = "2099.9.9.EXPLICIT"
         try:
             self.assertEqual(RP._effective_sdk_api_version(), "2099.9.9.EXPLICIT")
         finally:
             RP._sdk_api_version_override = None
-        # default reverts to the pin
         self.assertEqual(RP._effective_sdk_api_version(), RP._AEM_SDK_API_VERSION)
 
 
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()

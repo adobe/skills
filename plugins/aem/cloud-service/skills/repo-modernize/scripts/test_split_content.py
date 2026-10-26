@@ -23,7 +23,7 @@ def _config():
 
 def _structure_pom_xml():
     """A minimal archetype `ui.apps.structure/pom.xml` FileVault shape (see
-    assets/archetype-pom-templates/ui.apps.structure/pom.xml, rendered verbatim
+    .modernize/archetype-templates/ui.apps.structure/pom.xml, rendered verbatim
     by scaffold_modules.scaffold): cloudManagerTarget nested INSIDE <properties>,
     <filters /> shipped as an empty self-closing element. write_structure_roots
     must anchor on the empty <filters/>, NOT on cloudManagerTarget."""
@@ -387,17 +387,17 @@ class StructureRoots(unittest.TestCase):
     config's empty <filters/> -- NOT anchored on cloudManagerTarget (that lives
     inside <properties> in the archetype template; anchoring there would
     nest <filters> inside <properties> and leave a duplicate empty <filters/>
-    behind). See assets/archetype-pom-templates/ui.apps.structure/pom.xml for the
+    behind). See the archetype's ui.apps.structure/pom.xml template for the
     exact shape this fixture mirrors."""
 
-    def test_bundled_template_with_oak_root(self):
-        """The real bundled template (the archetype's default roots, allowIndexDefinitions
+    def test_archetype_template_with_oak_root(self):
+        """The real archetype template (the archetype's default roots, allowIndexDefinitions
         already set): roots replaced, one allowIndexDefinitions, the file's own indentation."""
         import scaffold_modules as SC
         d = Path(tempfile.mkdtemp()) / "proj"
         d.mkdir()
-        SC.scaffold(str(d), _config(), str(Path(SC.__file__).resolve().parent.parent
-                                         / "assets/archetype-pom-templates"))
+        SC.scaffold(str(d), _config(), str(Path(SC.__file__).resolve().parents[3]
+                                         / "test/repo-modernize/fixtures/archetype-templates"))
         SP.write_structure_roots(str(d), _config(), ["/apps", "/apps/wknd", "/oak:index"])
         text = (d / "ui.apps.structure/pom.xml").read_text()
         self.assertEqual(text.count("<allowIndexDefinitions>"), 1)

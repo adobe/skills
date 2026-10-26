@@ -30,7 +30,7 @@ FIX = Path(os.environ.get("WKND_FIXTURE") or
          Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/wknd-legacy")
 if not FIX.is_dir():
     raise unittest.SkipTest(f"test fixture not found at {FIX} (set WKND_FIXTURE)")
-TPL = Path(__file__).resolve().parent.parent / "assets/archetype-pom-templates"
+TPL = Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/archetype-templates"
 
 
 def _filter_roots(filter_xml: Path):

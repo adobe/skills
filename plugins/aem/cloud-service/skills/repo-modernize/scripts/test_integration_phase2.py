@@ -48,7 +48,7 @@ FIX = Path(os.environ.get("WKND_FIXTURE") or
          Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/wknd-legacy")
 if not FIX.is_dir():
     raise unittest.SkipTest(f"test fixture not found at {FIX} (set WKND_FIXTURE)")
-TPL = Path(__file__).resolve().parent.parent / "assets/archetype-pom-templates"
+TPL = Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/archetype-templates"
 
 # Run-mode folder names the legacy wknd fixture ships that are NOT valid AEM as a
 # Cloud Service run modes. Per CAM parity (the CAM tool is detect-only for run modes:
@@ -129,7 +129,7 @@ def _run_full_pipeline(d: Path):
     assert SC.main([str(d), "--config", cfg, "--templates", str(TPL)]) == 0, "scaffold_modules failed"
     assert SP.main([str(d), "--config", cfg, "--git"]) == 0, "split_content failed"
     assert OSGI.main([str(d), "--config", cfg, "--git"]) == 0, "convert_osgi failed"
-    assert RP.main([str(d), "--config", cfg]) == 0, "refactor_poms failed"
+    assert RP.main([str(d), "--config", cfg, "--templates", str(TPL)]) == 0, "refactor_poms failed"
 
     return cfg, inv
 

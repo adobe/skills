@@ -45,7 +45,9 @@ FIXTURE = Path(os.environ.get("WKND_FIXTURE") or
 if not FIXTURE.is_dir():
     raise unittest.SkipTest(f"test fixture not found at {FIXTURE} (set WKND_FIXTURE)")
 NS = "http://maven.apache.org/POM/4.0.0"
-TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "assets" / "archetype-pom-templates"
+TEMPLATES_DIR = Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/archetype-templates"
+# the archetype templates a run would prepare; refactor_poms functions called directly use them
+R._templates_dir_override = str(TEMPLATES_DIR)
 
 
 def _git_init_copy(src):
@@ -1567,7 +1569,7 @@ class MainCliOrchestrationTests(unittest.TestCase):
         shutil.rmtree(self.proj.parent, ignore_errors=True)
 
     def _run_main(self):
-        return R.main([str(self.proj), "--config", str(self.cfg_path)])
+        return R.main([str(self.proj), "--config", str(self.cfg_path), "--templates", str(TEMPLATES_DIR)])
 
     def test_custom_templates_dir_supplies_configuration_and_versions(self):
         """`--templates` (templates generated from the customer's own archetype): the
