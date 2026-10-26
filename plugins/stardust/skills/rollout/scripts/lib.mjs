@@ -5,6 +5,13 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// deploy Step 2 as reskin applies it (reskin/scripts/figma/eds-map.mjs): the plugin tree, else the project copy
+// (stardust/scripts/<skill>/). Absent (a partial copy) → the plain kebab name below.
+const HERE = dirname(fileURLToPath(import.meta.url));
+const EDS_MAP = [join(HERE, '..', '..', 'reskin', 'scripts', 'figma', 'eds-map.mjs'), join(HERE, '..', 'reskin', 'figma', 'eds-map.mjs')].find((p) => existsSync(p));
+const edsMap = EDS_MAP ? await import(pathToFileURL(EDS_MAP).href) : null;
 
 export function readJSON(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
@@ -119,9 +126,28 @@ export function rollupConfig(config, pages, blocks, now) {
   };
 }
 
-/** EDS block name from a block id: kebab + guard against reserved EDS classes (#15). */
-const RESERVED = new Set(['section', 'block', 'wrap', 'button']);
+/**
+ * The EDS block a block id becomes, by deploy Step 2 (../../deploy/SKILL.md § 2): a boilerplate or Block
+ * Collection pattern keeps that block's name (faq → accordion, teaser → cards with variant teaser), body
+ * copy and buttons are default content (block null), anything else its own kebab name. → { block, variant }.
+ */
+export function edsBlock(id) {
+  if (edsMap) {
+    const e = edsMap.edsEquivalent(String(id));
+    return { block: e.block, variant: e.variant ?? null };
+  }
+  return { block: kebabName(id), variant: null };
+}
+
+/** EDS block name from a block id (edsBlock): DEFAULT_CONTENT when deploy Step 2 makes it default content. */
 export function edsName(id) {
+  const { block } = edsBlock(id);
+  return block === null ? DEFAULT_CONTENT : block;
+}
+
+/** Kebab + guard against reserved EDS classes (#15); a chrome fragment keeps its own name (nav → fragments/nav.html). */
+const RESERVED = new Set(['section', 'block', 'wrap', 'button']);
+export function kebabName(id) {
   let n = String(id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (!n) n = 'block';
   if (RESERVED.has(n)) n = `blk-${n}`;

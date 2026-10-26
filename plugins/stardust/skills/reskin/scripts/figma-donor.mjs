@@ -108,7 +108,8 @@ curation-rules.json:
     "curations": [ { "path": "<token path>", "to": "<value>", "rule": "<proving rule>", "evidence": "<nodeId>" } ],
     "suspect": [ { "path": "<token path>", "why": "<text>" } ],
     "modules": [ { "id": "M1", "name": "<name>", "frame": "<frame or section nodeId>", "family": "<f>",
-                   "anatomy": "<slots>", "variants": [], "components": [], "status": "include" },
+                   "anatomy": "<slots>", "variants": [], "components": [], "status": "include",
+                   "eds": { "block": "<EDS block>|null", "variant": null } },
                  { "name": "<name>", "frame": "<nodeId>", "status": "excluded", "why": "<reason>" } ],
     "notesForReskin": "<casing, link glyphs, band rhythm>", "motifs": [ "<prose>" ],
     "design": { "displayName": "<name>", ... } }
@@ -123,6 +124,8 @@ curation-rules.json:
   params.paths scope; weightMap / familyEquivalence take params.map { from: to }; fontSmoothing
   takes params.value. Without radii.* or shadows.* roles every captured radius / shadow is listed,
   except paths marked absent.
+  A module's optional "eds" overrides the EDS block deploy Step 2 (D1/D11) gives its name
+  (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser, Button → null = default content).
 Figma as the CONTENT source (Figma-only sites, no live URL; reference/content-model.md
 § Figma-sourced models):
 init     writes <dir>/state.json when there is none: _provenance, site.contentSource {kind figma},

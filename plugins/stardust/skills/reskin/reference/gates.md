@@ -416,7 +416,11 @@ fetches `.plain.html` without a browser.
 - **Figma on a preview.** Sections are the preview's authored
   `.plain.html` sections, found again as `main > div:nth-child(k)` of the
   decorated page (decoration can prepend or drop sections; a moved slot
-  gets a note in `join.json`). An entry is measured by its
+  gets a note in `join.json`). Each slot whose authored section does not
+  hold the EDS block its module maps to (deploy Step 2,
+  [`../../deploy/SKILL.md` § 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code),
+  applied by `scripts/figma/eds-map.mjs`; a default-content module holds
+  none) gets an advisory `naming` line, never a FAIL. An entry is measured by its
   `previewSelector`, else its `selector`; no match is "unmeasurable", a
   FAIL. Evidence goes to `gates/<slug>/figma-preview/`, so a local run's
   `figma/` survives it.

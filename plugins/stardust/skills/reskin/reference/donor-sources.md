@@ -312,12 +312,27 @@ the flattened values. The probe asserts the flattened spec on
 maps onto. One row per module:
 
 ```markdown
-| # | Module | Where seen | Description |
-|---|--------|-----------|-------------|
-| M1 | Gradient hero | home top (screenshot slice ref) | anatomy: display headline + lede + primary/secondary CTA + media object right… |
+| # | Module | EDS block | Where seen | Description |
+|---|--------|-----------|-----------|-------------|
+| M1 | Gradient hero | hero (gradient) | home top (screenshot slice ref) | anatomy: display headline + lede + primary/secondary CTA + media object right… |
 ```
 
 Rules:
+
+- **EDS block, not the donor's name**: the module name is the donor's
+  word; the block it becomes is decided by
+  [`deploy` Step 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code)
+  (D1: default content when there is no repeating unit or bespoke
+  interactive structure; D11: a Block Collection pattern keeps that
+  block's name). A Figma donor applies it mechanically
+  (`scripts/figma/eds-map.mjs`; a module's `eds` in
+  `curation-rules.json` overrides): Q&A → `accordion`, Teaser →
+  `cards (teaser)`, Button → default content, Chips → `chips` (no EDS
+  match keeps the donor name), Input / Dropdown / Toggle → `form` (field
+  type rows of the Block Collection form, `Label | value | type | state`,
+  not variants; only a layout such as Login stays a class, `form (login)`).
+  Other modules sharing an EDS block are its variants, never a second
+  block.
 
 - **Evidence-bound**: every module cites the donor screenshot
   (`canon-source/assets/screenshots/…`) it was observed in. No module

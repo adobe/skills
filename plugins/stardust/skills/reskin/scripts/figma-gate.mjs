@@ -77,6 +77,10 @@ join     B0, the section join. Opens the page (a file path, a file: or localhost
          main > div:nth-child(3): ...") and an entry in join.json notes; a heading in no decorated div, a slot out of order
          there or two slots in one decorated div are "section drift: s02: anchor "..." not in any decorated main > div"
          and the like. join.json records regime "preview".
+         Advisory, never a failure: each slot whose authored <div> does not hold the EDS block deploy Step 2 names its
+         module (curation-rules.json modules[].eds, else figma/eds-map.mjs on the module name; ../deploy/SKILL.md § 2)
+         gets a "  naming: ..." line and an entry in join.json naming ("s02: M2 is the EDS block "cards" (deploy Step 2
+         D11) but plain section 2 authors columns"); a module that is default content (D1) must author no block.
 geometry B1. Runs the join first (drift stops here, exit 1), validates the checks file, then measures every
          geometry entry on the page (one page load per width) against the same measure taken from its Figma
          node (relative to the module root) or its token: width, height, left, right, top, gapX, gapY and
@@ -344,6 +348,7 @@ function logJoin(result, log) {
   if (!result.pass) { logDrift(result, log); return; }
   log(`PASS join: ${result.sections.length} section(s) joined to Figma modules (${result.sections.map((s) => `${s.slot} → ${s.module ?? 'new module'}`).join(', ')})`);
   for (const n of result.notes ?? []) log(`  note: ${n}`);
+  for (const n of result.naming ?? []) log(`  naming: ${n}`);
 }
 
 // The Target of a step's --url: the reskin page (local) or a deployed preview.

@@ -101,7 +101,10 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 ```
 
 - `blocks.mjs` collapses every block instance (per-page `modules` + chrome) into
-  the **distinct** set, assigns each a canonical `edsBlockName` (kebab,
+  the **distinct** set, assigns each a canonical `edsBlockName` by `deploy`
+  Step 2 ([`../deploy/SKILL.md` § 2](../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code),
+  applied by `reskin/scripts/figma/eds-map.mjs`: `faq` → `accordion`, `teaser` →
+  `cards` with `edsVariant: "teaser"`, `button` → `default-content`; else kebab,
   reserved-class-guarded per deploy #15), and records `usedByPages` /
   `instanceCount`. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
   authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In

@@ -140,7 +140,9 @@ Then author two reskin-owned donor artifacts (contracts in
 - `stardust/reskin/donor-modules.md` — the **enumerated module
   vocabulary** (M1..Mn): one row per donor module with where-seen
   screenshot evidence and an anatomy description. This is the closed
-  set the Phase 3 mapping brief maps onto.
+  set the Phase 3 mapping brief maps onto. Its EDS block column is a
+  proposal settled by [`deploy` Step 2](../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code)
+  (D1/D11) — `reference/donor-sources.md` § donor-modules.md.
 
 **The pin-one-reference-page rule (hard).** When donor pages
 disagree on a token, **pin ONE donor reference page per module

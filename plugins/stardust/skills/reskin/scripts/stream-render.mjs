@@ -26,7 +26,8 @@
  * mapping.json (the only per-site input; schema and defaults: reference/mapping-json.md):
  *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent",
  *       "navAlign": "start|center|end" },
- *     "blocks": { "M2": "<eds block name>" },   (optional; read by --deploy-map only, default the id lower-cased)
+ *     "blocks": { "M2": "<eds block name>" },   (optional; read by --deploy-map only, default the module's
+ *                                                donor-modules.md EDS block (deploy Step 2), else the id lower-cased)
  *     "pages": { "<slug>": { "template": "<archetype slug>",
  *       "slots": { "s01": { "module": "M2", "layout": "stack|grid-2|media-band|split|cards (space-separated)",
  *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3,
@@ -76,8 +77,9 @@
  *   node stream-render.mjs <slug> --deploy-map [--dir stardust] [--mapping <f>] [--model-dir <d>]
  *     prints deploy's block-roundtrip arguments for the page (the deployed leg, reference/deployed-leg.md):
  *     `--map '<block>=section[data-slot="sNN"],…'`, one per block, instances in page order. The block is
- *     mapping.json blocks.<module id> when set, else the module id lower-cased; slots with no module are
- *     listed on stderr. Nothing rendered or written.
+ *     mapping.json blocks.<module id> when set, else the module's EDS block in donor-modules.md (deploy
+ *     Step 2, figma/eds-map.mjs), else the module id lower-cased; slots with no module, and slots whose
+ *     module is default content, are listed on stderr. Nothing rendered or written.
  *
  * Reads:  <dir>/reskin/content-model/<slug>/content-model.json, <dir>/reskin/donor-tokens.json,
  *         the mapping, the chrome model when mapped.
@@ -91,6 +93,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeF
 import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rootTokens } from './render/root-tokens.mjs';
+import { donorModulesEds } from './figma/eds-map.mjs';
 
 const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--model-dir <d>] [--out <file>]
          [--localize-images] [--register]
@@ -110,9 +113,11 @@ Render one page from <dir>/reskin/content-model/<slug>/content-model.json with t
                        exit 2 before rendering): prototypePath = --out relative to the project root;
                        extracted/directed → prototyped, or → directed for a sibling of a type that has
                        an approved archetype (migrate's sibling tier); later statuses keep their status
-  --deploy-map         print block-roundtrip's --map arguments for <slug>: one block per mapped module
-                       (mapping.json blocks.<module>, else the module id lower-cased), its
-                       section[data-slot] instances in page order; nothing rendered or written
+  --deploy-map         print block-roundtrip's --map arguments for <slug>: one block per EDS block of the
+                       mapped modules (mapping.json blocks.<module>, else the module's EDS block in
+                       <dir>/reskin/donor-modules.md — deploy Step 2 — else the module id lower-cased), its
+                       section[data-slot] instances in page order; a module that is default content gets no
+                       block (listed on stderr); nothing rendered or written
   --check              validate mapping.json only (unknown keys, bad values, slots missing from the
                        content model, requested <slug>s without a page entry): one problem per line on
                        stdout; renders and writes nothing. Exit 0 valid, 1 problems, 2 setup error.
@@ -975,26 +980,36 @@ export function checkMapping(mapping, { models = {}, chromeModel = null, slugs =
 
 // ---- --deploy-map: block-roundtrip's --map arguments (reference/deployed-leg.md § Recipe) ----------------
 const BLOCK_NAME = /^[a-z][a-z0-9-]*$/;
-// The EDS block a module becomes: mapping.json blocks.<module id>, else the module id lower-cased (M4 → m4).
-export const blockName = (mapping, module) => (isObj(mapping?.blocks) && typeof mapping.blocks[module] === 'string' ? mapping.blocks[module] : String(module).toLowerCase());
-// One block per mapped module of a page, its instances (section[data-slot]) in page order — the content
-// model's slot order when given, else the mapping's. Slots with no module (new-module, carried-invisible)
-// are listed apart: they are not a donor block. Pure; exported.
-export function deployMap(mapping, slug, model = null) {
+// The EDS block a module becomes: mapping.json blocks.<module id>, else the module's EDS block in
+// donor-modules.md (eds: Map(id → { block, variant }), donorModulesEds — deploy Step 2, null = default content),
+// else the module id lower-cased (M4 → m4).
+export const blockName = (mapping, module, eds = null) => {
+  if (isObj(mapping?.blocks) && typeof mapping.blocks[module] === 'string') return mapping.blocks[module];
+  const e = eds?.get?.(module);
+  return e ? e.block : String(module).toLowerCase();
+};
+// One block per EDS block of a page's mapped modules (several modules → one block, each its variant), its
+// instances (section[data-slot]) in page order — the content model's slot order when given, else the
+// mapping's. Slots with no module (new-module, carried-invisible) are listed apart: they are not a donor
+// block; so are slots whose module deploy Step 2 makes default content (defaultContent). Pure; exported.
+export function deployMap(mapping, slug, model = null, eds = null) {
   const pm = mapping?.pages?.[slug];
   if (!isObj(pm)) throw new SetupError(`mapping.json has no pages.${slug}`);
   const slots = isObj(pm.slots) ? pm.slots : {};
   const order = model ? (model.sections || []).map((x) => x.slot) : Object.keys(slots).filter((k) => !annotation(k));
-  const byBlock = new Map(); const unmapped = [];
+  const byBlock = new Map(); const unmapped = []; const defaultContent = [];
   for (const id of order) {
     const m = slots[id];
     if (!m?.module) { unmapped.push(id); continue; }
-    const b = blockName(mapping, m.module);
-    if (!byBlock.has(b)) byBlock.set(b, { block: b, modules: [], slots: [] });
+    const b = blockName(mapping, m.module, eds);
+    if (b === null) { defaultContent.push(id); continue; }
+    if (!byBlock.has(b)) byBlock.set(b, { block: b, modules: [], slots: [], variants: {} });
     const e = byBlock.get(b); e.slots.push(id); if (!e.modules.includes(m.module)) e.modules.push(m.module);
+    const v = typeof mapping?.blocks?.[m.module] === 'string' ? null : eds?.get?.(m.module)?.variant;
+    if (v) e.variants[m.module] = v;
   }
   const blocks = [...byBlock.values()].map((e) => ({ ...e, selector: e.slots.map((id) => `section[data-slot="${id}"]`).join(',') }));
-  return { blocks, unmapped, args: blocks.map((e) => `--map '${e.block}=${e.selector}'`).join(' ') };
+  return { blocks, unmapped, defaultContent, args: blocks.map((e) => `--map '${e.block}=${e.selector}'`).join(' ') };
 }
 
 // ---- capture smells (used by capture-content) -----------------------------------------------------------
@@ -1185,9 +1200,12 @@ async function main(argv) {
   if (!slug) { console.error(HELP); return 2; }
   if (o.pos.length > 1) throw new SetupError(`one <slug> per ${o['deploy-map'] ? '--deploy-map' : 'render'} (got ${o.pos.join(', ')})`);
   if (o['deploy-map']) {
-    const dm = deployMap(readJsonFile(mappingFile, 'mapping.json'), slug, optionalJson(join(modelDir, slug, 'content-model.json')));
+    const modulesMd = join(dir, 'reskin', 'donor-modules.md');
+    const eds = existsSync(modulesMd) ? donorModulesEds(readFileSync(modulesMd, 'utf8')) : null;
+    const dm = deployMap(readJsonFile(mappingFile, 'mapping.json'), slug, optionalJson(join(modelDir, slug, 'content-model.json')), eds);
     console.log(dm.args);
-    for (const b of dm.blocks) console.error(`${b.block} (${b.modules.join(', ')}): ${b.slots.join(', ')}`);
+    for (const b of dm.blocks) console.error(`${b.block} (${b.modules.map((m) => (b.variants[m] ? `${m}: ${b.variants[m]}` : m)).join(', ')}): ${b.slots.join(', ')}`);
+    if (dm.defaultContent.length) console.error(`default content (deploy Step 2 D1), no block: ${dm.defaultContent.join(', ')}`);
     if (dm.unmapped.length) console.error(`no module, not a donor block: ${dm.unmapped.join(', ')} — default content, or give the slot a module in mapping.json`);
     return 0;
   }

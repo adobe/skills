@@ -29,8 +29,9 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
    the prototype: the content page `content/<ns>/<slug>.html`, in a shared repo both chrome documents, and
    `eds-schema/<slug>.json` (Step 2b, `qa-gate`'s input). The content page is `deploy`'s own conversion of that page's
    `<main>`, no custom converter: one block per `section[data-slot]` in page order, named for its `mapping.json`
-   module — `blocks.<module id>`, else the id lower-cased (`mapping-json.md` § `blocks`); a slot with no module is
-   default content. What still differs from the source is declared in the delta file. This leg replaces only
+   module — `blocks.<module id>`, else the module's EDS block in `donor-modules.md` (`deploy` Step 2,
+   [`../../deploy/SKILL.md` § 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code)), else the id lower-cased (`mapping-json.md` § `blocks`); a slot with no
+   module, or whose module Step 2 makes default content, is default content. What still differs from the source is declared in the delta file. This leg replaces only
    Step 10's automated reconciliation, the reskin page its reference (step 7 keeps the rest).
    `block-roundtrip`'s default `--map` (`section.<name>`, `[data-section]`, `.<name>`) cannot pair a reskin page
    (`.cards` matches the inner grids, `.tabs` the tab row); pass the arguments
