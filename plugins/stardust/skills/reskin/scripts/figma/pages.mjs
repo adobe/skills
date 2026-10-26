@@ -18,14 +18,19 @@
 //              component sets (and lone components) within kit.depth are the block's sets: public ones are
 //              its variants (a class from the set name when the canvas holds several), names starting "."
 //              or "_" are its internal parts. Each block is one donor module (M1… in canvas order), its main
-//              set the frame capture renders for it.
+//              set the frame capture renders for it. The library is a PROPOSAL: its keys are Figma names; the
+//              EDS name of each block (block.eds) is deploy Step 2's (figma/eds-map.mjs edsEquivalent: Q&A →
+//              accordion, Teaser → cards teaser, Button → null = default content, Chips → chips), several kit
+//              blocks on one EDS block become its variants.
 //   kit        a page frame's instances (wrappers descended, hidden skipped) bind to the block whose canvas
 //              holds the set (or lone component) they instance — variant classes from the set and its
 //              non-breakpoint properties (Default/None and bare breakpoint values dropped). A page uses only
-//              the blocks it instances; a set found on no kit canvas becomes an off-kit block of its own.
-//              So a page's sections are formed from the kit's template sections and components, never
-//              re-invented per page.
+//              the blocks it instances. Bindings carry the EDS block and variant (kit: the kit key); a set found
+//              on no kit canvas is off-kit: a variant of the EDS block it maps to when one exists (kit or
+//              boilerplate / Block Collection), else default content — never a new block. So a page's
+//              sections are formed from the kit's template sections and components, never re-invented per page.
 import { safeClassToken, safeId } from './content.mjs';
+import { edsClasses, edsEquivalent, isEdsBlock, resolveVariants, STEP2 } from './eds-map.mjs';
 
 export const PAGES_VERSION = 1;
 export const GROUPS = ['foundation', 'component', 'template', 'pages'];
@@ -55,6 +60,8 @@ const box = (n) => n?.absoluteBoundingBox || { x: 0, y: 0, width: 0, height: 0 }
 const visible = (n) => n && n.visible !== false;
 
 // "❖ Button" → "button"; "--- Login & Registration" → "login registration"; emoji and glyphs dropped.
+// A Figma name as drawn, its canvas glyph dropped ("❖ Q&A" → "Q&A"): what deploy Step 2 reads.
+export const figmaName = (s) => norm(String(s ?? '').normalize('NFKC').replace(/^[^\p{L}\p{N}]+/u, ''));
 export const markerName = (s) => norm(String(s ?? '').normalize('NFKC').replace(/[^\p{L}\p{N}\s]/gu, ' ')).toLowerCase();
 
 export function compileKit(rules = {}) {
@@ -255,7 +262,7 @@ export function kitLibrary(kitCanvasNodes, kit) {
       const members = g.members.map((x) => ({ ...x, class: x.part || multi ? setClass(x.name, block) : null }));
       for (const x of members) index[x.id] = { block, class: x.class, part: x.part };
       blocks.push({
-        block, module: null, canvas: { id: canvas.id, name: canvas.name }, group: canvas.group, home,
+        block, figma: figmaName(g.base) || g.main.name, module: null, canvas: { id: canvas.id, name: canvas.name }, group: canvas.group, home,
         set: { id: g.main.id, name: g.main.name, kind: g.main.kind },
         sets: members.filter((x) => !x.part).map(({ id, name: n, kind, count, props, class: c }) => ({ id, name: n, kind, count, props, class: c })),
         parts: members.filter((x) => x.part).map(({ id, name: n, kind, count, class: c }) => ({ id, name: n, kind, count, class: c })),
@@ -263,7 +270,15 @@ export function kitLibrary(kitCanvasNodes, kit) {
       });
     }
   }
+  libraryEds(blocks).forEach((e, i) => { blocks[i].eds = e; });
   return { blocks, index, empty };
+}
+
+// deploy Step 2 on the library, in kit order: each block's eds (kept when it has one) or edsEquivalent of its
+// Figma name, several blocks on one EDS block made its variants (figma/eds-map.mjs resolveVariants).
+export function libraryEds(blocks) {
+  const figmaOf = (b) => b.figma || figmaName(b.canvas?.name || b.set?.name) || b.block;
+  return resolveVariants(blocks.map((b) => ({ key: b.block, figma: figmaOf(b), eds: b.eds || edsEquivalent(figmaOf(b)) })));
 }
 
 // pages[] + per-page frame responses + the library (+ homes for sets outside it) → the registry: every library
@@ -287,7 +302,9 @@ export function buildKitRegistry({ pages, frameOf, homes = {}, kit, library = nu
         if (names.has(block)) block = `${block}-${home?.group || 'kit'}`;
         for (let i = 2; names.has(block); i += 1) block = `${blockNameOf(k.set || k.component, k.key)}-${i}`;
         names.add(block);
-        const b = { block, module: null, canvas: home ? { id: home.canvasId, name: home.canvasName } : null, group: home?.group ?? null, home, set: { id: k.key, name: k.set || k.component, kind: k.setId ? 'COMPONENT_SET' : 'COMPONENT' }, sets: [{ id: k.key, name: k.set || k.component, kind: k.setId ? 'COMPONENT_SET' : 'COMPONENT', class: null }], parts: [], variants: [], used: false, usedBy: [], instances: 0, offKit: true };
+        const figma = norm(k.set || k.component);
+        const b = { block, figma, module: null, canvas: home ? { id: home.canvasId, name: home.canvasName } : null, group: home?.group ?? null, home, set: { id: k.key, name: k.set || k.component, kind: k.setId ? 'COMPONENT_SET' : 'COMPONENT' }, sets: [{ id: k.key, name: k.set || k.component, kind: k.setId ? 'COMPONENT_SET' : 'COMPONENT', class: null }], parts: [], variants: [], used: false, usedBy: [], instances: 0, offKit: true };
+        b.eds = offKitEds(figma, block, blocks);
         blocks.push(b);
         byName.set(block, b);
         index[k.key] = { block, class: null, part: false };
@@ -301,12 +318,22 @@ export function buildKitRegistry({ pages, frameOf, homes = {}, kit, library = nu
       if (!b.usedBy.includes(p.slug)) b.usedBy.push(p.slug);
       b.used = true;
       b.instances += 1;
-      return { node: n.id, name: norm(n.name), block: b.block, variant, setId: k.key, component: k.component, ...(e.part ? { part: true } : {}) };
+      return { node: n.id, name: norm(n.name), block: b.eds ? b.eds.block : b.block, variant: b.eds ? edsClasses(b.eds, variant) : variant, kit: b.block, setId: k.key, component: k.component, ...(e.part ? { part: true } : {}), ...(b.eds?.block === null ? { defaultContent: true } : {}) };
     });
   }
   blocks.forEach((b, i) => { b.module = `M${i + 1}`; });
-  for (const list of Object.values(bindings)) for (const x of list || []) if (x.block) x.module = byName.get(x.block).module;
+  for (const list of Object.values(bindings)) for (const x of list || []) if (x.kit) x.module = byName.get(x.kit).module;
   return { blocks, bindings, offKit, index };
+}
+
+// An off-kit set (no kit canvas holds it): a variant of the EDS block deploy Step 2 maps it to when the library
+// or EDS (boilerplate, Block Collection) has that block; else default content — a page never adds a block.
+export function offKitEds(figma, key, blocks) {
+  const eds = edsEquivalent(figma);
+  const lib = blocks.filter((x) => x.eds && x.eds.block !== null);
+  if (eds.block === null) return eds;
+  if (!isEdsBlock(eds.block) && !lib.some((x) => x.eds.block === eds.block)) return { block: null, variant: null, reason: `${STEP2}: off-kit "${figma}" matches no kit block and no EDS block — default content, never a new block` };
+  return resolveVariants([...lib.map((x) => ({ key: x.block, figma: x.figma, eds: x.eds })), { key, figma, eds }]).at(-1);
 }
 
 // curation-rules.json modules[] rows, one per block of the library (curate validates them against the capture).
@@ -326,13 +353,14 @@ export function moduleSeed(blocks) {
       components: [],
       status: 'include',
       block: b.block,
+      ...(b.eds ? { eds: { block: b.eds.block, variant: b.eds.variant ?? null } } : {}),
       used: b.used,
     };
   });
 }
 
 // Library blocks no page instances (they ship in the block library all the same).
-export const unusedKit = (blocks) => blocks.filter((b) => !b.used).map((b) => ({ block: b.block, module: b.module, canvas: b.canvas?.name ?? null, group: b.group }));
+export const unusedKit = (blocks) => blocks.filter((b) => !b.used).map((b) => ({ block: b.block, module: b.module, canvas: b.canvas?.name ?? null, group: b.group, ...(b.eds ? { eds: { block: b.eds.block, variant: b.eds.variant ?? null } } : {}) }));
 
 // The page that carries the site chrome: the most common header variant, first page wins ties.
 export function chromeSource(pages, bindings) {

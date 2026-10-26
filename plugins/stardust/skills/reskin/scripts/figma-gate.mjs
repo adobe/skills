@@ -37,7 +37,7 @@ export const HELP = `Usage:
   node figma-gate.mjs register --page <slug> [--target preview] [--dir stardust]
   node figma-gate.mjs all --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs exact --page <slug> --url <url|file> [--bar 3] [--height-tol 8] [--dir stardust]
-  node figma-gate.mjs library --url-pattern <url with {block}> [--block a,b] [--bar 3] [--size-tol 2] [--dir stardust]
+  node figma-gate.mjs library --url-pattern <url with {block}|{page}> [--block a,b] [--bar 3] [--size-tol 2] [--dir stardust] [--out <dir>]
   (geometry, ramp, pixel and all take --target preview --reskin <file> like join;
    register takes --target preview alone, to read the preview run's files;
    geometry, ramp, pixel, register and all take --waiver-budget <pct>)
@@ -240,14 +240,15 @@ exact    (f) EXACT FIDELITY, Figma-only sites: the page against Figma's own rend
          --height-tol px (default 8); one FAIL row exits 1. Prints a row per breakpoint and the page's
          similarity (100 − mean share). Writes <dir>/.work/reskin/gates/<slug>/exact/ (page, diff PNGs,
          summary.json).
-library  (f) the block library, every block used on a page or not: --url-pattern's {block} is each
-         block's library page (e.g. http://localhost:3000/library/{block}); on it every Figma variant of
-         the block is the element [data-kit-component="<variant id>"] (its .<block> child when it holds
-         one), screenshot at 1440 (a mobile/tablet variant at its own width) against the variant's
+library  (f) the block library, every block used on a page or not: --url-pattern's {block} is each kit
+         block's key, {page} its EDS library page (figma-renders.json library.<key>.eds.page: the EDS block
+         deploy Step 2 names it, e.g. http://localhost:3000/library/{page} → /library/cards for Teaser); on it
+         every Figma variant of the block is the element [data-kit-component="<variant id>"] (its .<EDS
+         block> child when it holds one; the whole element for default content), screenshot at 1440 (a mobile/tablet variant at its own width) against the variant's
          render. PASS when share ≤ --bar and |width|, |height| delta ≤ --size-tol px (default 2); a
          variant missing from the page, or a page that does not load, is FAIL. --block limits the run.
          Prints per block "PASS|FAIL <block> <n>/<m> variants · similarity <pct>%", then failing rows.
-         Writes <dir>/.work/reskin/gates/_library/summary.json.
+         Writes <dir>/.work/reskin/gates/_library/summary.json (--out another directory).
 Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing input or capture)
             · 3 bot challenge on a live target · 124 no verdict: a step crashed or timed out; re-run once, the
             same 124 twice is a residual (needs-owner), never a fix iteration.`;
@@ -257,7 +258,7 @@ const TARGET_VALUES = ['--target', '--reskin'];
 
 const SPEC = {
   exact: { values: ['--page', '--url', '--bar', '--height-tol', '--dir'], bools: [], positional: [] },
-  library: { values: ['--url-pattern', '--block', '--bar', '--size-tol', '--dir'], bools: [], positional: [] },
+  library: { values: ['--url-pattern', '--block', '--bar', '--size-tol', '--dir', '--out'], bools: [], positional: [] },
   boxes: { values: ['--module', '--node', '--depth', '--dir'], bools: [], positional: [] },
   join: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
   geometry: { values: ['--page', '--url', ...TARGET_VALUES, '--waiver-budget', '--dir'], bools: [], positional: [] },
@@ -632,10 +633,10 @@ async function exactStep({ dir, opts, log, UsageError }) {
 }
 
 async function libraryStep({ dir, opts, log, UsageError }) {
-  if (!opts['url-pattern']) throw new UsageError('library needs --url-pattern <url with {block}>');
+  if (!opts['url-pattern']) throw new UsageError('library needs --url-pattern <url with {block} or {page}>');
   const { runLibrary, gateRow, DEFAULT_BAR, DEFAULT_SIZE_TOL } = await helper('exact');
   const blocks = opts.block ? opts.block.split(',').map((x) => x.trim()).filter(Boolean) : null;
-  const s = await runLibrary({ dir, urlPattern: opts['url-pattern'], blocks, bar: numOpt(opts, 'bar', DEFAULT_BAR, UsageError), sizeTol: numOpt(opts, 'size-tol', DEFAULT_SIZE_TOL, UsageError), out: join(dir, '.work', 'reskin', 'gates', '_library') });
+  const s = await runLibrary({ dir, urlPattern: opts['url-pattern'], blocks, bar: numOpt(opts, 'bar', DEFAULT_BAR, UsageError), sizeTol: numOpt(opts, 'size-tol', DEFAULT_SIZE_TOL, UsageError), out: opts.out || join(dir, '.work', 'reskin', 'gates', '_library') });
   for (const [b, e] of Object.entries(s.blocks)) {
     log(`${e.pass ? 'PASS' : 'FAIL'} ${b} ${e.rows.filter((r) => r.verdict === 'PASS').length}/${e.rows.length} variants · similarity ${e.similarity ?? 'n/a'}%`);
     for (const r of e.rows.filter((x) => x.verdict !== 'PASS')) log(`  ${gateRow(r)}`);

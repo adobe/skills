@@ -229,13 +229,22 @@ node stardust/scripts/reskin/figma-donor.mjs content <figma-url> --all [--only a
 `pages` writes `reskin/figma-pages.json`: every page of the FULL PAGES
 canvases (one per page-set `Type`, its desktop frame plus the responsive
 one; "Page: …" documentation frames skipped) and the **block library** —
-every TEMPLATE SECTIONS (❏) and COMPONENTS (❖) canvas is one EDS block and
+every TEMPLATE SECTIONS (❏) and COMPONENTS (❖) canvas is one kit block and
 one donor module, *whether a page uses it or not* (its public sets are
-variant classes, its `.` sets parts). Each page binds only the blocks it
-instances. `content --all` models every page (chrome once, from the page
-with the commonest header), binds each section to its kit block
-(`section.kit`) and writes `reskin/mapping.seed.json` — the slot → block
-map plus `library`, the full block list deploy builds. Canvas grouping,
+variant classes, its `.` sets parts). The kit library is a **proposal**:
+block names, and block vs default content, are decided by
+[`deploy` Step 2](../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code) (D1/D11),
+applied by `figma/eds-map.mjs` `edsEquivalent` — Q&A → `accordion`, Teaser →
+`cards` (variant `teaser`), Button → default content (no block), Chips →
+`chips` (no EDS match keeps its name), Input / Dropdown → `form` (field
+type rows of the Block Collection form, never variants). Several other
+canvases on one EDS block become its variants, never `-2` copies. Each page binds only the blocks it instances, by EDS block and
+variant; a section matching no kit block and no EDS block is default
+content, never a new block. `content --all` models every page (chrome once,
+from the page with the commonest header), binds each section to its EDS
+block (`section.kit`) and writes `reskin/mapping.seed.json` — the slot →
+block map, the default-content slots, plus `library`: per kit block
+`{ figma, block, variant, reason }`, the block list deploy builds. Canvas grouping,
 granularity (`kit.blockPer: "canvas" | "set"`) and read depth are
 `content-rules.json` `kit` overrides: `reference/content-model.md` § Pages
 and the kit library.
@@ -243,8 +252,8 @@ and the kit library.
 "Exactly as in Figma" is the bar for these sites: `figma-donor.mjs renders
 <url>` fetches the PNG of every page breakpoint frame and every library
 variant (with its copy) into `reskin/figma-renders.json`. Deploy builds every
-library block, plus `/library/<block>`, a page per block that shows each
-variant as a section with `data-kit-component="<variant id>"`. Phase 5 (f)
+library EDS block, plus `/library/<page>`, a page per EDS block (`library.<key>.eds.page`)
+that shows each variant as a section with `data-kit-component="<variant id>"`. Phase 5 (f)
 gates pages and library against those renders.
 
 A single frame still runs on its own:
@@ -507,7 +516,7 @@ offline). The library is the whole kit, used on a page or not
 
 ```bash
 node stardust/scripts/reskin/figma-gate.mjs exact --page <slug> --url <page>
-node stardust/scripts/reskin/figma-gate.mjs library --url-pattern 'http://localhost:3000/library/{block}'
+node stardust/scripts/reskin/figma-gate.mjs library --url-pattern 'http://localhost:3000/library/{page}'
 ```
 
 **(e) DEPLOYED ACCEPTANCE** (any donor; skipped outside an aem-boilerplate

@@ -6,7 +6,7 @@
 // become its variants. Deterministic. Run: node --test <this file>.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { donorModulesEds, edsEquivalent, edsLabel, parseEdsLabel, resolveVariants, safeBlockName, slugOf } from '../figma/eds-map.mjs';
+import { donorModulesEds, edsClasses, edsEquivalent, edsLabel, edsPage, isEdsBlock, parseEdsLabel, resolveVariants, safeBlockName, slugOf } from '../figma/eds-map.mjs';
 
 const map = (n, o) => { const e = edsEquivalent(n, o); return [e.block, e.variant]; };
 
@@ -89,6 +89,14 @@ test('parseEdsLabel inverts edsLabel; donorModulesEds reads the EDS block column
   assert.deepEqual(Object.fromEntries(donorModulesEds(md)), {
     M1: { block: 'accordion', variant: null }, M2: { block: 'hero', variant: 'dark' }, M3: { block: null, variant: null }, M9: { block: 'accordion', variant: null },
   });
+});
+
+test('isEdsBlock / edsPage / edsClasses: EDS-known blocks, the library page, binding classes', () => {
+  assert.ok(isEdsBlock('cards') && isEdsBlock('accordion') && !isEdsBlock('chips'));
+  assert.equal(edsPage({ block: 'cards', variant: 'teaser' }, 'teaser'), 'cards');
+  assert.equal(edsPage({ block: null }, 'button'), 'button');
+  assert.deepEqual(edsClasses({ block: 'cards', variant: 'teaser' }, ['card', 'teaser']), ['teaser', 'card']);
+  assert.deepEqual(edsClasses(null, ['a']), ['a']);
 });
 
 test('form fields are rows of the one Block Collection form, never variants', () => {

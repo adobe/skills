@@ -153,11 +153,14 @@ pages    discovers every page of a design-system file, not only the linked node.
          or tablet variant is its responsive frame) — without a set, top-level frames are pages, paired
          by name with breakpoint words stripped. Frames beside a set and names like "Page: …", "Cover"
          are documentation, listed as skipped. The block library is every template and component
-         canvas (read to kit.depth, default 5), used by a page or not: one EDS block per canvas (name
-         from the canvas, its public sets variant classes, its "." sets parts; kit.blockPer "set" for
-         one block per public set) and one donor module (M1… in canvas order). Each page binds only the
-         blocks it instances (variant classes from the set's non-breakpoint properties); a set no kit
-         canvas holds becomes an off-kit block. Writes reskin/figma-pages.json: pages, skipped,
+         canvas (read to kit.depth, default 5), used by a page or not — a PROPOSAL: one kit block per
+         canvas (key from the canvas, its public sets variant classes, its "." sets parts; kit.blockPer
+         "set" for one block per public set) and one donor module (M1… in canvas order), whose EDS name
+         (block.eds) is deploy Step 2's (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser,
+         Button → default content, Chips → chips; several canvases on one EDS block are its variants).
+         Each page binds only the blocks it instances, by EDS block and variant (variant classes from
+         the set's non-breakpoint properties); a set no kit canvas holds is off-kit: a variant of the
+         EDS block it maps to, else default content — never a new block. Writes reskin/figma-pages.json: pages, skipped,
          kit {blockPer, blocks, index, offKit, unused, emptyCanvases}, chromeSource (the commonest header),
          links (every variant id → slug), captureFrames (every block's main set, for capture --frames;
          raise --max-frames past their count) and modules
@@ -170,15 +173,17 @@ renders  fetches the references the exact-fidelity gates compare against (figma-
          every variant of every kit block's public sets — the whole library, used on a page or not — at
          --scale (default 1), cached under <dir>/.work/reskin/figma/<file-key>/_pages/<version>/png/.
          Writes reskin/figma-renders.json: pages.<slug>[] { breakpoint, id, png }, library.<block>
-         { module, used, variants[] { id, set, setClass, name, classes, breakpoint, w, h, texts, png } } —
+         { module, used, eds { block, variant, page } (the EDS block, null = default content, and its
+         library page), variants[] { id, set, setClass, name, classes, breakpoint, w, h, texts, png } } —
          texts is the variant's copy in reading order, the content its library page must show. --only
          limits it to pages or blocks (merged into an existing file).
 content --all  runs content for every page of figma-pages.json (--only a subset): the chrome page
          first (its chrome becomes _chrome), the others --no-chrome, NODE links resolved through the
          page map, each section bound to its kit block (section.kit; kit.unbound / kit.mixed flags
          when a section has no kit instance or several blocks), then reskin/mapping.seed.json — the
-         mapping.json shape with module / block / variant / instance per slot (mapping.json itself is
-         never written). A page that fails is reported and the others still run.
+         mapping.json shape with module / block / variant / instance per slot, block the EDS block, the
+         default-content slots under pages.<slug>.defaultContent, and library[] { figma, block, variant,
+         reason } per kit block (mapping.json itself is never written). A page that fails is reported and the others still run.
 blocklist exits 1 while any block|review item of the slugs (default: every figma page) is open.
 ack      records an acknowledgement for open items (key "<flag id>@<node>", or a flag id), with --why.
          A placeholder-only page cannot be acknowledged.
@@ -346,7 +351,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const r = await runPages({ dir, url: positional[0], client, at, refresh: Boolean(opts.refresh), confidential, warn });
     const m = r.manifest;
     log(`pages: ${m.pages.length} page(s) on ${m.canvases.filter((c) => c.group === 'pages').length} pages canvas(es), ${m.skipped.length} skipped · ${r.fetched} frame(s) fetched → ${r.file}`);
-    for (const p of m.pages) log(`  ${p.slug} ← ${p.frame}${p.responsive ? ` (+${p.responsive})` : ''} · ${(p.bindings || []).map((b) => b.block || '?').join(' + ') || 'no kit instance'}`);
+    for (const p of m.pages) log(`  ${p.slug} ← ${p.frame}${p.responsive ? ` (+${p.responsive})` : ''} · ${(p.bindings || []).map((b) => b.block || (b.defaultContent ? 'default content' : '?')).join(' + ') || 'no kit instance'}`);
     const used = m.kit.blocks.filter((b) => b.used);
     log(`kit library: ${m.kit.blocks.length} block(s), ${used.length} used on pages, ${m.kit.unused.length} library-only`);
     log(`  used: ${used.map((b) => `${b.block} ${b.module} [${b.group || 'off-kit'}] ×${b.instances}`).join(', ') || 'none'}`);
@@ -383,7 +388,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     for (const [slug, x] of Object.entries(r.results)) {
       const c = x.report.counts;
       open += c.open;
-      const bound = x.model.sections.map((s) => s.kit?.block || (s.kit?.mixed ? 'mixed' : '—')).join(' + ');
+      const bound = x.model.sections.map((s) => s.kit?.block || (s.kit?.defaultContent ? 'default content' : s.kit?.mixed ? 'mixed' : '—')).join(' + ');
       log(`content: ${slug} · ${x.model.sections.length} section(s) [${bound}], ${x.images.got} image(s)${x.images.missing ? `, ${x.images.missing} missing` : ''} · ${c.open} open${x.placeholderOnly ? ' · PLACEHOLDER-ONLY' : ''}${x.chrome ? ' · chrome' : ''}`);
     }
     for (const f of r.failed) warn(`content: ${f.slug} failed: ${f.why}`);

@@ -9,7 +9,8 @@
 import { mkdirSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { safeId } from './content.mjs';
-import { compileKit, parseVariant, setClass, variantClasses } from './pages.mjs';
+import { compileKit, libraryEds, parseVariant, setClass, variantClasses } from './pages.mjs';
+import { edsPage } from './eds-map.mjs';
 import { cacheFor } from './cache.mjs';
 import { readJsonIf, writeFileAtomic, writeJson } from './io.mjs';
 import { UsageError } from './errors.mjs';
@@ -33,7 +34,8 @@ export function textsOf(node) {
   return out.sort((a, b) => (Math.abs(a.b.y - b.b.y) > 4 ? a.b.y - b.b.y : a.b.x - b.b.x)).map((x) => x.t);
 }
 
-// pages: [{ slug, breakpoint, id }]; library: [{ block, module, set, setId, setClass, id, name, classes, breakpoint }]
+// pages: [{ slug, breakpoint, id }]; library: [{ block, eds, module, set, setId, setClass, id, name, classes, breakpoint }]
+// (block the kit key; eds { block, variant, page }: the EDS block deploy Step 2 names it, null = default content)
 // from the manifest and the full documents of each block's public sets (setDocs: { setId: document }).
 export function renderTargets(manifest, setDocs, kit = compileKit({})) {
   const pages = [];
@@ -41,7 +43,9 @@ export function renderTargets(manifest, setDocs, kit = compileKit({})) {
   if (!pages.length) for (const p of manifest.pages || []) pages.push({ slug: p.slug, breakpoint: 'desktop', id: p.frame });
   const library = [];
   const missing = [];
-  for (const b of manifest.kit?.blocks || []) {
+  const eds = libraryEds(manifest.kit?.blocks || []);
+  for (const [i, b] of (manifest.kit?.blocks || []).entries()) {
+    const e = { block: eds[i].block, variant: eds[i].variant ?? null, page: edsPage(eds[i], b.block) };
     for (const s of b.sets?.length ? b.sets : [b.set]) {
       const doc = setDocs[s.id];
       if (!doc) { missing.push({ block: b.block, set: s.name, id: s.id }); continue; }
@@ -51,7 +55,7 @@ export function renderTargets(manifest, setDocs, kit = compileKit({})) {
         const props = doc.type === 'COMPONENT_SET' ? parseVariant(c.name) || [] : [];
         const bpProp = props.find(([k]) => kit.breakpointProp.test(k));
         library.push({
-          block: b.block, module: b.module, used: Boolean(b.used), set: s.name, setId: s.id, setClass: cls, id: c.id, name: c.name,
+          block: b.block, eds: e, module: b.module, used: Boolean(b.used), set: s.name, setId: s.id, setClass: cls, id: c.id, name: c.name,
           classes: [...(cls ? [cls] : []), ...variantClasses(props, kit)], breakpoint: bpProp ? String(bpProp[1]).toLowerCase() : null,
           w: box(c)?.width ?? null, h: box(c)?.height ?? null, texts: textsOf(c),
         });
@@ -117,7 +121,7 @@ export async function runRenders({ dir, url, client, at, scale = 1, refresh = fa
   const byPage = {};
   for (const p of pages) (byPage[p.slug] ||= []).push({ breakpoint: p.breakpoint, id: p.id, png: rel(p.id) });
   const byBlock = {};
-  for (const v of library) (byBlock[v.block] ||= { module: v.module, used: v.used, variants: [] }).variants.push({ ...v, block: undefined, module: undefined, used: undefined, png: rel(v.id) });
+  for (const v of library) (byBlock[v.block] ||= { module: v.module, used: v.used, eds: v.eds, variants: [] }).variants.push({ ...v, block: undefined, eds: undefined, module: undefined, used: undefined, png: rel(v.id) });
   const out = {
     _provenance: { writtenBy: 'stardust:reskin/figma-donor.mjs', command: 'renders', at, source: { fileKeyHash: manifest._provenance?.source?.fileKeyHash ?? null, fileVersion: version }, scale, note: 'Figma PNG renders the exact and library gates compare against; library variants carry the copy the block must show' },
     version: RENDERS_VERSION, scale, pages: byPage, library: byBlock, failed,

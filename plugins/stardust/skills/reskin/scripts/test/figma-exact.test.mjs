@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { renderTargets, runRenders, textsOf } from '../figma/renders.mjs';
-import { gateRow, similarity, verdict } from '../figma-gate/exact.mjs';
+import { gateRow, libraryTarget, similarity, verdict } from '../figma-gate/exact.mjs';
 import { main as gateMain } from '../figma-gate.mjs';
 import { main as donorMain } from '../figma-donor.mjs';
 
@@ -56,6 +56,8 @@ await test('renderTargets: every page breakpoint, every visible variant of every
   assert.deepEqual(t.library.find((v) => v.id === 'b1').texts, ['Button']);
   assert.deepEqual([t.library[0].w, t.library[0].h], [120, 48]);
   assert.deepEqual(t.missing, [{ block: 'toggle', set: 'Toggle group', id: 'GONE' }]);
+  assert.deepEqual(t.library.find((v) => v.id === 't1').eds, { block: 'form', variant: null, page: 'form' }, 'deploy Step 2: Toggle → form (a field type row, not a variant)');
+  assert.deepEqual(t.library[0].eds, { block: null, variant: null, page: 'button' }, 'Button → default content, shown on its own page');
   assert.deepEqual(renderTargets({ ...MANIFEST, pages: [{ slug: 'x', frame: 'f', variants: {} }] }, SETS).pages, [{ slug: 'x', breakpoint: 'desktop', id: 'f' }]);
 });
 
@@ -84,6 +86,8 @@ await test('runRenders: one PNG per id, cached; figma-renders.json indexes pages
     const out = JSON.parse(readFileSync(join(dir, 'reskin', 'figma-renders.json'), 'utf8'));
     assert.deepEqual(Object.keys(out.library), ['button', 'header', 'footer', 'toggle']);
     assert.equal(out.library.toggle.used, false);
+    assert.deepEqual([out.library.toggle.eds, out.library.header.eds], [{ block: 'form', variant: null, page: 'form' }, { block: 'header', variant: null, page: 'header' }]);
+    assert.equal(out.library.toggle.variants[0].eds, undefined);
     assert.match(out.pages['login-landing'][0].png, /_pages\/7\/png\/.*@1x\.frame\.png$/, 'a page frame is rendered at its own bounds');
     assert.ok(existsSync(join(dir, out.library.button.variants[0].png)));
     assert.equal(out.library.header.variants.find((v) => v.id === 'h2').png, null);
@@ -120,13 +124,21 @@ await test('CLIs: exact / library / renders argument handling', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'fx-'));
   try {
     await assert.rejects(gateMain(['exact', '--url', 'x.html', '--dir', dir], { log }), /exact needs --page/);
-    await assert.rejects(gateMain(['library', '--url-pattern', 'http://h/library', '--dir', dir], { log }), /needs \{block\}/);
+    await assert.rejects(gateMain(['library', '--url-pattern', 'http://h/library', '--dir', dir], { log }), /needs \{block\} or \{page\}/);
+    await assert.rejects(gateMain(['library', '--url-pattern', 'http://h/{page}', '--bar', 'x', '--dir', dir], { log }), /--bar is a non-negative number/, '{page} is a valid pattern');
     await assert.rejects(gateMain(['library', '--url-pattern', 'http://h/{block}', '--bar', 'x', '--dir', dir], { log }), /--bar is a non-negative number/);
     await assert.rejects(gateMain(['exact', '--page', 'a', '--url', 'x.html', '--dir', dir], { log }), /figma-renders\.json is missing/);
     lines.length = 0;
     assert.equal(await donorMain(['--help'], { log }), 0);
     assert.match(lines.join('\n'), /renders <figma-url>/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+await test('libraryTarget: {page} is the EDS library page, the EDS block the measured class; default content the whole element', () => {
+  const p = 'http://h/library/{page}';
+  assert.deepEqual(libraryTarget(p, 'teaser', { eds: { block: 'cards', variant: 'teaser', page: 'cards' } }), { url: 'http://h/library/cards', cls: 'cards' });
+  assert.deepEqual(libraryTarget(p, 'button', { eds: { block: null, variant: null, page: 'button' } }), { url: 'http://h/library/button', cls: null });
+  assert.deepEqual(libraryTarget('http://h/{block}', 'chips', {}), { url: 'http://h/chips', cls: 'chips' }, 'no eds (an older renders file): the kit key');
 });
 
 console.log(`\n${passes} passed, ${failures} failed`);

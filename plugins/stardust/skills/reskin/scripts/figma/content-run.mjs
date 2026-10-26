@@ -16,18 +16,21 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildContentModel, safeId, titleFromName } from './content.mjs';
-import { compileKit, instanceKit, variantClasses } from './pages.mjs';
+import { compileKit, instanceKit, libraryEds, variantClasses } from './pages.mjs';
+import { edsClasses } from './eds-map.mjs';
 import { cacheFor, readCurrent } from './cache.mjs';
 import { readJsonIf, writeJson } from './io.mjs';
 import { UsageError } from './errors.mjs';
 import { parseFigmaUrl, canonicalFigmaUrl } from './url.mjs';
 
 // The kit registry (reskin/figma-pages.json kit, from figma-donor.mjs pages) as content.mjs's kit.of(instance):
-// the set (or lone component) it instances → its library block, module and variant classes (the set's class
+// the set (or lone component) it instances → the EDS block deploy Step 2 makes of its library block (block
+// null = default content; kit: the library key), module and variant classes (the EDS variant, the set's class
 // inside the block, then its non-breakpoint properties).
 export function kitResolver(registry, maps = {}, rulesFile = {}) {
   const k = compileKit(rulesFile);
   const byName = new Map((registry?.blocks || []).map((b) => [b.block, b]));
+  const eds = new Map(libraryEds(registry?.blocks || []).map((e, i) => [registry.blocks[i].block, e]));
   const index = registry?.index || Object.fromEntries((registry?.blocks || []).map((b) => [b.set.id, { block: b.block, class: null }]));
   return {
     registry: registry?.version ?? null,
@@ -36,7 +39,8 @@ export function kitResolver(registry, maps = {}, rulesFile = {}) {
       const e = id.key && index[id.key];
       const b = e && byName.get(e.block);
       if (!b) return null;
-      return { block: b.block, module: b.module, variant: [...(e.class ? [e.class] : []), ...variantClasses(id.props, k)], set: id.set || id.component, setId: id.key, group: b.group, home: b.home?.canvasName ?? null, ...(e.part ? { part: true } : {}) };
+      const x = eds.get(b.block);
+      return { block: x.block, kit: b.block, module: b.module, variant: edsClasses(x, [...(e.class ? [e.class] : []), ...variantClasses(id.props, k)]), set: id.set || id.component, setId: id.key, group: b.group, home: b.home?.canvasName ?? null, ...(e.part ? { part: true } : {}) };
     },
   };
 }

@@ -12,8 +12,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  blockNameOf, breakpointOf, buildKitRegistry, chromeSource, classifyCanvases, compileKit, discoverPages, homesFrom,
-  instanceKit, KIT_GROUPS, kitLibrary, linkMap, markerName, moduleSeed, pageSlug, parseVariant, setClass, topInstances,
+  blockNameOf, breakpointOf, buildKitRegistry, chromeSource, classifyCanvases, compileKit, discoverPages, figmaName, homesFrom,
+  instanceKit, KIT_GROUPS, kitLibrary, libraryEds, linkMap, markerName, moduleSeed, offKitEds, pageSlug, parseVariant, setClass, topInstances,
   unusedKit, variantClasses,
 } from '../figma/pages.mjs';
 import { buildContentModel } from '../figma/content.mjs';
@@ -196,6 +196,27 @@ await test('kitLibrary: every template/component canvas is a block — public se
   assert.equal(setClass('Header', 'header'), null);
 });
 
+await test('kitLibrary: each kit block carries its EDS name (deploy Step 2); several canvases on one EDS block are its variants', () => {
+  const lib = libraryOf();
+  assert.deepEqual(lib.blocks.map((b) => `${b.figma}→${b.eds.block}${b.eds.variant ? `(${b.eds.variant})` : ''}`), ['Button→null', 'Modal→modal', 'Tabs→tabs', 'Header→header', 'Footer→footer', 'Block Content→null']);
+  const canvas = (id, name) => ({ canvas: { id, name, group: 'component', marker: false }, document: F(`${id}d`, 'docs', 0, 0, 1, 1, [SET(`S${id}`, name.replace(/^\W+/, ''), ['State=On'])]) });
+  const kitd = kitLibrary([canvas('5:1', '❖ Q&A'), canvas('5:2', '❖ Teaser'), canvas('5:3', '❖ Input'), canvas('5:4', '❖ Dropdown'), canvas('5:5', '❖ Chips'), canvas('5:6', '❖ Card'), canvas('5:7', '❖ Cards')], kit).blocks;
+  assert.deepEqual(kitd.map((b) => [b.block, b.eds.block, b.eds.variant]), [
+    ['q-a', 'accordion', null], ['teaser', 'cards', 'teaser'], ['input', 'form', null], ['dropdown', 'form', null], ['chips', 'chips', null], ['card', 'cards', null], ['cards', 'cards', 'cards'],
+  ], 'Q&A → accordion, Teaser → cards (teaser), Input/Dropdown → form (field rows, no variant), Chips keeps its name; a second plain cards becomes a variant, never cards-2');
+  assert.equal(figmaName('❖ Q&A'), 'Q&A');
+  assert.deepEqual(libraryEds([{ block: 'x', eds: { block: 'tabs', variant: 'nav', reason: 'r' } }]), [{ block: 'tabs', variant: 'nav', reason: 'r' }], 'a recorded eds is kept');
+});
+
+await test('offKitEds: an off-kit set joins the EDS block it maps to (kit or EDS), else default content — never a new block', () => {
+  const blocks = kitLibrary([{ canvas: { id: '6:1', name: '❖ Teaser', group: 'component', marker: false }, document: F('6:1d', 'docs', 0, 0, 1, 1, [SET('T6', 'Teaser', ['State=On'])]) }], kit).blocks;
+  assert.deepEqual(offKitEds('Product Card', 'product-card', blocks), { block: 'cards', variant: 'product-card', reason: offKitEds('Product Card', 'product-card', blocks).reason });
+  assert.equal(offKitEds('FAQ', 'faq', blocks).block, 'accordion', 'a Block Collection block the kit lacks');
+  assert.equal(offKitEds('Promo Ribbon', 'promo-ribbon', blocks).block, null);
+  assert.equal(offKitEds('Link', 'link', blocks).block, null);
+  assert.equal(offKitEds('Teaser', 'teaser-2', blocks).variant, 'teaser-2', 'the same EDS variant again: a distinct variant');
+});
+
 await test('kitLibrary: blockPer "set" makes one block per public set; bad blockPer/depth refused', () => {
   const perSet = compileKit({ kit: { blockPer: 'set' } });
   assert.deepEqual(libraryOf(classified(), perSet).blocks.map((b) => b.block), ['button', 'modal', 'tabs', 'header', 'footer', 'block-content'], 'one public set per canvas: unchanged');
@@ -207,7 +228,7 @@ await test('kitLibrary: blockPer "set" makes one block per public set; bad block
   assert.throws(() => compileKit({ kit: { depth: 40 } }), /depth/);
 });
 
-await test('buildKitRegistry: the whole library ships, pages bind only what they instance, off-kit sets become their own block', () => {
+await test('buildKitRegistry: the whole library ships, pages bind only what they instance — by EDS block (deploy Step 2), off-kit sets to default content', () => {
   const fx = fixture();
   MAPS.components.x = { name: 'Loose' };
   fx.forgot.children.push(I('12:7', 'Loose', 'x', 0, 700, 100, 100, [T('12:8', 'Loose', 0, 700, 50, 20)]));
@@ -220,10 +241,16 @@ await test('buildKitRegistry: the whole library ships, pages bind only what they
   assert.deepEqual(h.variants, [['full'], ['registration']]);
   assert.deepEqual(h.usedBy, ['login-landing', 'registration', 'forgot-password']);
   assert.equal(reg.blocks.find((b) => b.block === 'block-content').instances, 4);
-  assert.deepEqual(reg.bindings.registration.map((b) => `${b.block}/${b.module}`), ['header/M4', 'block-content/M6', 'block-content/M6', 'footer/M5']);
+  assert.deepEqual(reg.bindings.registration.map((b) => `${b.block ?? 'default content'}/${b.module}`), ['header/M4', 'default content/M6', 'default content/M6', 'footer/M5'], 'Block Content is default content (D1): no block');
+  assert.deepEqual(reg.bindings.registration.map((b) => b.kit), ['header', 'block-content', 'block-content', 'footer']);
+  assert.ok(reg.bindings.registration[1].defaultContent);
   assert.deepEqual(reg.bindings.inactivity.map((b) => `${b.block}:${b.variant.join(' ')}`), ['modal:text-only horizontal']);
+  assert.deepEqual(reg.blocks.map((b) => b.eds.block), [null, 'modal', 'tabs', 'header', 'footer', null, null], 'Button, Block Content: D1; Loose: off-kit, no EDS match');
   assert.deepEqual(reg.offKit.map((o) => o.block), ['loose']);
   assert.match(reg.offKit[0].why, /WELCOME/);
+  assert.match(reg.blocks.at(-1).eds.reason, /never a new block/);
+  const loose = reg.bindings['forgot-password'].find((b) => b.kit === 'loose');
+  assert.deepEqual([loose.block, loose.defaultContent], [null, true]);
 });
 
 await test('buildKitRegistry: a used "." part binds to its block with the part class', () => {
@@ -235,7 +262,7 @@ await test('buildKitRegistry: a used "." part binds to its block with the part c
   const reg = buildKitRegistry({ pages: pages.filter((p) => p.slug === 'registration'), frameOf: (id) => locate([r], id), kit, library: libraryOf() });
   delete MAPS.components['bc:c'];
   const b = reg.bindings.registration.find((x) => x.node === '11:9');
-  assert.deepEqual([b.block, b.variant, b.part], ['block-content', ['buttons-collage', 'center'], true]);
+  assert.deepEqual([b.block, b.kit, b.variant, b.part, b.defaultContent], [null, 'block-content', ['buttons-collage', 'center'], true, true]);
 });
 
 await test('moduleSeed / unusedKit / chromeSource: a module per library block, unused ones marked', () => {
@@ -246,7 +273,8 @@ await test('moduleSeed / unusedKit / chromeSource: a module per library block, u
   const seed = moduleSeed(reg.blocks);
   assert.equal(seed.length, 6);
   const h = seed.find((x) => x.block === 'header');
-  assert.deepEqual({ ...h, anatomy: null }, { id: 'M4', name: 'Header', frame: 'H', family: 'template', anatomy: null, variants: ['full', 'registration'], components: [], status: 'include', block: 'header', used: true });
+  assert.deepEqual({ ...h, anatomy: null }, { id: 'M4', name: 'Header', frame: 'H', family: 'template', anatomy: null, variants: ['full', 'registration'], components: [], status: 'include', block: 'header', eds: { block: 'header', variant: null }, used: true });
+  assert.deepEqual(seed.find((x) => x.block === 'block-content').eds, { block: null, variant: null });
   assert.match(h.anatomy, /parts \.Header \/ Actions; instanced 3× on 3 page/);
   assert.match(seed.find((x) => x.block === 'tabs').anatomy, /on no page \(library block\)/);
   assert.deepEqual(unusedKit(reg.blocks).map((u) => u.block), ['button', 'tabs']);
@@ -272,7 +300,7 @@ await test('content kit: each band binds to its instance; chrome binds to header
   assert.equal(plain.model.sections.length, bound.model.sections.length);
   assert.ok(plain.model.sections.every((s) => s.kit === undefined));
   assert.equal(plain.model._provenance.kit, undefined);
-  assert.deepEqual(bound.model.sections.map((s) => `${s.kit.block}@${s.kit.instance}`), ['block-content@11:3', 'block-content@11:4']);
+  assert.deepEqual(bound.model.sections.map((s) => [s.kit.block, s.kit.defaultContent, s.kit.kit, s.kit.instances]), [[null, true, 'block-content', ['11:3']], [null, true, 'block-content', ['11:4']]], 'Block Content: default content, no block');
   assert.equal(bound.model.sections[0].kit.module, 'M6');
   assert.deepEqual(bound.chrome.map((c) => c.kit?.block), ['header', 'footer']);
   assert.deepEqual(bound.flags.filter((f) => f.id.startsWith('kit.')), []);
@@ -294,13 +322,16 @@ await test('content kit: kit.unbound for a section outside the kit, kit.mixed fo
   fx.reg.children.splice(2, 0, F('11:7', 'Loose', 120, 800, 600, 60, [T('11:8', 'Drawn by hand', 130, 810, 300, 30)]));
   fx.forgot.children[1].children.push(I('12:6', 'Modal', 'm:d', 800, 200, 300, 200, [T('12:7', 'Inline modal', 810, 210, 200, 30)]));
   const r2 = responseFor([fx.reg, fx.forgot]);
+  const one = model(fx.forgot, r2, reg).model.sections.find((s) => s.kit?.block === 'modal' && s.kit.instance === '12:6');
+  assert.ok(one, 'a default-content instance beside a modal leaves the section the modal (not mixed)');
+  fx.forgot.children[1].children.push(I('12:10', 'Header', 'h:full', 400, 220, 300, 60, [T('12:11', 'Inline header', 410, 230, 200, 30)]));
   const a = model(fx.reg, r2, reg);
   assert.ok(a.flags.some((f) => f.id === 'kit.unbound' && f.severity === 'review'));
   assert.equal(a.model.sections.find((s) => s.kit === null)?.slot !== undefined, true);
   const m = model(fx.forgot, r2, reg);
   const mixed = m.model.sections.find((s) => s.kit?.mixed);
   assert.ok(mixed, 'a mixed section');
-  assert.deepEqual(mixed.kit.mixed.map((x) => x.block).sort(), ['block-content', 'modal']);
+  assert.deepEqual(mixed.kit.mixed.map((x) => x.block).sort(), ['header', 'modal']);
   assert.ok(m.flags.some((f) => f.id === 'kit.mixed' && f.severity === 'review'));
 });
 
@@ -391,11 +422,14 @@ await test('runContentAll: every page modelled from the cached frames, chrome on
     const chrome = JSON.parse(readFileSync(join(dir, 'reskin', 'content-model', '_chrome', 'content-model.json'), 'utf8'));
     assert.equal(chrome._provenance.source.figma.node, '11:1');
     const seed = JSON.parse(readFileSync(join(dir, 'reskin', 'mapping.seed.json'), 'utf8'));
-    assert.deepEqual(Object.values(seed.pages.registration.slots).map((s) => s.block), ['block-content', 'block-content']);
+    assert.deepEqual(seed.pages.registration.slots, {}, 'Block Content is default content: no slot block');
+    assert.deepEqual(Object.values(seed.pages.registration.defaultContent).map((s) => s.module), ['M6', 'M6']);
     assert.equal(seed.pages.registration.template, 'login-and-registration');
     assert.equal(Object.values(seed.pages.inactivity.slots)[0].block, 'modal');
     assert.deepEqual(Object.values(seed.chrome.kit).map((k) => k.block), ['header', 'footer']);
-    assert.deepEqual(seed.library.map((b) => `${b.block}:${b.used}`), ['button:false', 'modal:true', 'tabs:false', 'header:true', 'footer:true', 'block-content:true'], 'the seed carries the whole library');
+    assert.deepEqual(seed.library.map((b) => `${b.figma}→${b.block}:${b.used}`), ['Button→null:false', 'Modal→modal:true', 'Tabs→tabs:false', 'Header→header:true', 'Footer→footer:true', 'Block Content→null:true'], 'the seed carries the whole library, each kit block with its EDS name');
+    assert.match(seed.library[0].reason, /deploy Step 2 D1/);
+    assert.equal(seed.library[5].key, 'block-content');
     assert.ok(!existsSync(join(dir, 'reskin', 'mapping.json')), 'mapping.json is never written');
     const st = JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8'));
     assert.equal(st.pages.length, 4);

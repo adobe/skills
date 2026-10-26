@@ -15,7 +15,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { safeId } from './content.mjs';
-import { buildKitRegistry, chromeSource, classifyCanvases, compileKit, discoverPages, homesFrom, instanceKit, KIT_GROUPS, kitLibrary, linkMap, moduleSeed, PAGES_VERSION, topInstances, unusedKit } from './pages.mjs';
+import { buildKitRegistry, chromeSource, classifyCanvases, compileKit, discoverPages, homesFrom, instanceKit, KIT_GROUPS, kitLibrary, libraryEds, linkMap, moduleSeed, PAGES_VERSION, topInstances, unusedKit } from './pages.mjs';
 import { cacheFor } from './cache.mjs';
 import { locate, runContent } from './content-run.mjs';
 import { readJsonIf, writeJson } from './io.mjs';
@@ -110,12 +110,22 @@ export async function runPages({ dir, url, client, at, refresh = false, confiden
 
 // mapping.json's shape, seeded from the content models' kit bindings (mapping.json itself is never written).
 export function mappingSeed(dir, manifest, models) {
-  const out = { _provenance: { writtenBy: 'stardust:reskin/figma-donor.mjs', command: 'content --all', note: 'copy to mapping.json and add layout/width/tone per slot; module/block/variant come from the Figma kit; library lists every kit block to build, used on a page or not' }, library: (manifest.kit?.blocks || []).map((b) => ({ block: b.block, module: b.module, group: b.group, set: b.set.id, variants: b.variants, used: b.used })), chrome: null, pages: {} };
+  const eds = libraryEds(manifest.kit?.blocks || []);
+  const out = {
+    _provenance: { writtenBy: 'stardust:reskin/figma-donor.mjs', command: 'content --all', note: 'copy to mapping.json and add layout/width/tone per slot; module/block/variant: the Figma kit as EDS blocks (deploy Step 2, figma/eds-map.mjs); library lists every kit block, used on a page or not — figma its Figma name, block the EDS block to build (null: default content, nothing to build), variant its variant of that block; defaultContent per page: the slots that are no block' },
+    library: (manifest.kit?.blocks || []).map((b, i) => ({ figma: b.figma || b.set?.name || b.block, block: eds[i].block, variant: eds[i].variant ?? null, reason: eds[i].reason, module: b.module, key: b.block, group: b.group, set: b.set.id, variants: b.variants, used: b.used })),
+    chrome: null,
+    pages: {},
+  };
   for (const [slug, m] of Object.entries(models)) {
     const page = manifest.pages.find((p) => p.slug === slug);
     const slots = {};
-    for (const s of m.model.sections) if (s.kit?.block) slots[s.slot] = { module: s.kit.module, block: s.kit.block, variant: s.kit.variant || [], ...(s.kit.instance ? { instance: s.kit.instance } : {}) };
-    out.pages[slug] = { template: page?.template || null, slots };
+    const defaultContent = {};
+    for (const s of m.model.sections) {
+      if (s.kit?.block) slots[s.slot] = { module: s.kit.module, block: s.kit.block, variant: s.kit.variant || [], ...(s.kit.instance ? { instance: s.kit.instance } : {}) };
+      else if (s.kit?.defaultContent) defaultContent[s.slot] = { module: s.kit.module, figma: s.kit.set ?? null };
+    }
+    out.pages[slug] = { template: page?.template || null, slots, ...(Object.keys(defaultContent).length ? { defaultContent } : {}) };
     if (m.chrome) {
       const chromeKit = (role) => Object.fromEntries((m.chromeSections || []).filter((c) => c.role === role && c.kit?.block).map((c) => [c.slot, { module: c.kit.module, block: c.kit.block, variant: c.kit.variant || [] }]));
       out.chrome = { model: join(dir, 'reskin', 'content-model', '_chrome'), header: m.chrome.header, footer: m.chrome.footer, kit: { ...chromeKit('header'), ...chromeKit('footer') } };

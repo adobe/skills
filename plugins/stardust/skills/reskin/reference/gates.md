@@ -439,10 +439,12 @@ breakpoint frame and of every variant of every kit block, used or not) into
 | Step | Unit | Asserts | Bar (default) |
 |---|---|---|---|
 | `figma-gate.mjs exact --page <slug> --url <page>` | page × breakpoint frame | full-height screenshot in a viewport of the frame's width × height (a frame is a screen: 100vh layouts and frames shorter than a laptop screen measure true) against the frame PNG | differing-pixel share ≤ `--bar` 3 %, \|height Δ\| ≤ `--height-tol` 8 px |
-| `figma-gate.mjs library --url-pattern <…/{block}>` | block × variant | `[data-kit-component="<variant id>"]` on the block's library page (its `.<block>`) against the variant PNG | share ≤ `--bar` 3 %, \|width Δ\|, \|height Δ\| ≤ `--size-tol` 2 px |
+| `figma-gate.mjs library --url-pattern <…/{page}>` | block × variant | `[data-kit-component="<variant id>"]` on the block's library page (its `.<EDS block>`; the whole element for default content) against the variant PNG | share ≤ `--bar` 3 %, \|width Δ\|, \|height Δ\| ≤ `--size-tol` 2 px |
 
 - **The library is the whole kit.** Every block in `figma-pages.json` `kit.blocks` has a library page
-  (deploy's `/library/<block>`) showing every variant of every public set, with the variant's copy
+  (deploy's `/library/<page>`: `figma-renders.json` `library.<key>.eds.page`, the EDS block
+  [`deploy` Step 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code) names it — Teaser → `/library/cards`;
+  `{block}` in `--url-pattern` is the kit key; `--out` moves the report) showing every variant of every public set, with the variant's copy
   (`figma-renders.json` `texts`), one section per variant carrying `data-kit-component`. A missing
   variant, or a library page that does not load, is FAIL, so an unused block cannot be skipped.
 - **Transparent reference pixels** (a frame or variant with no fill) are composited onto white before

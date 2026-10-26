@@ -524,14 +524,34 @@ mapping, `stream-render`, `slot-coverage` and the handoff read it unchanged. Wha
   are parts. `"set"` makes each public set of a multi-set canvas its own block. Every block is a
   module (`M1…` in canvas order) and a capture frame, used or not; `kit.unused` lists those no page
   instances.
-- **Binding.** A page's top-level instances resolve, through `kit.index` (set id → block, class,
-  part), to their block; variant classes are the set's class then its non-breakpoint property values.
-  A set no kit canvas holds becomes an off-kit block (`kit.offKit`, home canvas named). In the content
-  model a section binds to the outermost kit instance enclosing its nodes (`section.kit {block,
-  module, variant, set, instance}`); none → `kit.unbound` (review), several blocks in one band →
-  `kit.mixed` (review). Chrome slots bind the same way.
-- **Seed.** `reskin/mapping.seed.json` holds `library` (every block, used flag), `chrome.kit` and
-  per page `template` plus `slots.<sNN> {module, block, variant, instance}`. `mapping.json` is never
+- **EDS names.** The library is a proposal: its keys (`block`) are Figma names. What each becomes is
+  [`deploy` Step 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code) (D1 default content vs block,
+  D11 a boilerplate / Block Collection name), applied by `figma/eds-map.mjs` `edsEquivalent` and
+  recorded as `block.eds {block, variant, reason}` (`null` block = default content). Several kit
+  blocks on one EDS block are its variants, in canvas order — except form field modules, which all
+  share the plain `form` block (field types are rows, `Label | value | type | state`, not classes).
+  Worked example:
+
+  | Figma canvas | EDS (`block.eds`) | Step 2 |
+  |---|---|---|
+  | ❖ Q&A | `accordion` | D11 Block Collection |
+  | ❖ Teaser | `cards` (variant `teaser`) | D11 boilerplate |
+  | ❖ Button | default content | D1 |
+  | ❖ Chips | `chips` | no EDS match: keeps its name |
+  | ❖ Input, ❖ Dropdown | `form` (no variant) | D11 Block Collection: field type rows |
+- **Binding.** A page's top-level instances resolve, through `kit.index` (set id → kit block, class,
+  part), to their EDS block (`kit`: the kit key); variant classes are the EDS variant, the set's class,
+  then its non-breakpoint property values. A set no kit canvas holds is off-kit (`kit.offKit`, home
+  canvas named): a variant of the EDS block Step 2 maps it to when the kit or EDS has it, else default
+  content — never a new block. In the content model a section binds to the outermost kit instance
+  enclosing its nodes (`section.kit {block, kit, module, variant, set, instance}`); instances that are
+  default content bind `{block: null, defaultContent: true}` and do not count as a second block; none
+  → `kit.unbound` (review), several EDS blocks in one band → `kit.mixed` (review). Chrome slots bind
+  the same way.
+- **Seed.** `reskin/mapping.seed.json` holds `library` (per kit block `{figma, block, variant,
+  reason, module, key, used}`; `block` null = default content, nothing to build), `chrome.kit` and per
+  page `template`, `slots.<sNN> {module, block, variant, instance}` and `defaultContent.<sNN> {module,
+  figma}`. `mapping.json` is never
   written; it is authored from the seed. `stream-render` emits `data-block`, `data-block-variant`
   and `data-kit-instance` on each section whose slot names them.
 

@@ -482,7 +482,8 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
   // ---- page -----------------------------------------------------------------------------------------------
   // The Figma kit (figma-donor.mjs pages): a section is the template section or component it instances —
   // the outermost instance above its nodes (segmentation may have descended into one), else the instances
-  // inside them. kit.of(instance) → { block, module, variant, set, group, home } or null.
+  // inside them. kit.of(instance) → { block, kit, module, variant, set, group, home } or null; block is the EDS
+  // block deploy Step 2 names it, null for default content (no block: buttons, links, body copy).
   const parents = new Map();
   if (kit) (function index(n) { for (const c of n.children || []) { parents.set(c.id, n); index(c); } }(frame));
   const outerInstance = (n) => { let hit = null; for (let x = n; x && x.id !== frame.id; x = parents.get(x.id)) if (x.type === 'INSTANCE') hit = x; return hit; };
@@ -493,10 +494,15 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
       if (up) { if (!inst.includes(up)) inst.push(up); continue; }
       (function down(x) { for (const c of (x.children || []).filter(visible)) { if (c.type === 'INSTANCE') { if (!inst.includes(c)) inst.push(c); } else down(c); } }(n));
     }
-    const bound = inst.map((n) => ({ n, b: kit.of(n) })).filter((x) => x.b);
-    if (!bound.length) {
-      if (!chrome) flag('kit.unbound', 'review', nodes[0]?.id, 'no template-section or component instance: the section is drawn outside the Figma kit — map it to a new module composed from donor tokens, or rebuild it from the kit in Figma', slot);
+    const all = inst.map((n) => ({ n, b: kit.of(n) })).filter((x) => x.b);
+    if (!all.length) {
+      if (!chrome) flag('kit.unbound', 'review', nodes[0]?.id, 'no template-section or component instance: the section is drawn outside the Figma kit — author it as default content, or as the EDS block deploy Step 2 maps it to (never a new block), or rebuild it from the kit in Figma', slot);
       return null;
+    }
+    const bound = all.filter((x) => x.b.block !== null);
+    if (!bound.length) {
+      const d = all[0].b;
+      return { block: null, defaultContent: true, kit: d.kit ?? null, module: d.module, set: d.set, group: d.group, home: d.home, instances: all.map((x) => x.n.id) };
     }
     const blocks = [...new Set(bound.map((x) => x.b.block))];
     if (blocks.length > 1) {
@@ -504,7 +510,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
       return { block: null, mixed: bound.map((x) => ({ block: x.b.block, module: x.b.module, instance: x.n.id })) };
     }
     const b = bound[0].b;
-    return { block: b.block, module: b.module, variant: b.variant, set: b.set, group: b.group, home: b.home, instance: bound.length === 1 ? bound[0].n.id : null, instances: bound.map((x) => x.n.id) };
+    return { block: b.block, kit: b.kit ?? null, module: b.module, variant: b.variant, set: b.set, group: b.group, home: b.home, instance: bound.length === 1 ? bound[0].n.id : null, instances: bound.map((x) => x.n.id) };
   }
   const seg = segment(frame, rules);
   const sections = seg.sections.map((band, i) => {
