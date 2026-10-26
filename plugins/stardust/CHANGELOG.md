@@ -40,6 +40,9 @@ multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 wi
   every key `stream-render` reads (types, values, defaults); `stream-render --check [<slug>…]` reports unknown keys,
   bad values, slots the content model lacks and missing pages, one per line, and writes nothing. SKILL Phase 3
   writes `mapping.json` beside `mapping.md`; later per-section fixes go back to it.
+- **Phase 4 registers what it renders.** `stream-render <slug> --register` (flow `reskin` only, exit 2 otherwise)
+  sets the page's `prototypePath` and advances it to `prototyped` through `state.mjs` (a sibling of an approved
+  type only to `directed`, migrate's sibling tier), so `reskin-ledger record`, the bridge and migrate find it.
 
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 

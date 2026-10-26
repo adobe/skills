@@ -49,7 +49,14 @@
  *
  * Usage:
  *   node stream-render.mjs <slug> [--dir stardust] [--mapping <dir>/reskin/mapping.json]
- *     [--model-dir <dir>/reskin/content-model] [--out <dir>/reskin/pages/<slug>.html] [--localize-images]
+ *     [--model-dir <dir>/reskin/content-model] [--out <dir>/reskin/pages/<slug>.html] [--localize-images] [--register]
+ *     --register (flow "reskin" only; any other flow is exit 2 before rendering) records the page in
+ *     <dir>/state.json through skills/stardust/scripts/state.mjs (history + _provenance writtenBy
+ *     stardust:reskin): prototypePath = --out relative to the project root (the parent of --dir), so
+ *     reskin-ledger, canon-from-reskin, preflight and migrate find it; an extracted/directed page advances
+ *     to prototyped — a sibling of a type with an approved/migrated archetype only to directed, the status
+ *     migrate renders at the sibling tier; a page at prototyped or later keeps its status. A slug not in
+ *     state.json is rendered and noted, not registered.
  *   node stream-render.mjs --check [<slug>…] [--dir stardust] [--mapping <f>] [--model-dir <d>]
  *     validates mapping.json (reference/mapping-json.md): unknown keys, values outside the enums above,
  *     slot ids the page's content model lacks, requested slugs without a pages entry — one problem per
@@ -57,7 +64,8 @@
  *
  * Reads:  <dir>/reskin/content-model/<slug>/content-model.json, <dir>/reskin/donor-tokens.json,
  *         the mapping, the chrome model when mapped.
- * Writes: --out (parent dirs created); with --localize-images also <dir>/prototypes/assets/img/**.
+ * Writes: --out (parent dirs created); with --localize-images also <dir>/prototypes/assets/img/**;
+ *         with --register <dir>/state.json.
  * Exit:   0 rendered, 1 render error (unknown node kind, label round-trip), 2 setup error.
  */
 import { createHash } from 'node:crypto';
@@ -66,7 +74,8 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rootTokens } from './render/root-tokens.mjs';
 
-const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--model-dir <d>] [--out <file>] [--localize-images]
+const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--model-dir <d>] [--out <file>]
+         [--localize-images] [--register]
        node stream-render.mjs --check [<slug>…] [--dir stardust] [--mapping <file>] [--model-dir <d>]
 
 Render one page from <dir>/reskin/content-model/<slug>/content-model.json with the donor tokens in
@@ -74,9 +83,13 @@ Render one page from <dir>/reskin/content-model/<slug>/content-model.json with t
   --dir <d>            stardust state dir (default stardust)
   --mapping <file>     mapping.json (default <dir>/reskin/mapping.json; schema: reference/mapping-json.md)
   --model-dir <d>      content models (default <dir>/reskin/content-model)
-  --out <file>         output HTML (default <dir>/reskin/pages/<slug>.html); to hand off to migrate,
-                       write <dir>/prototypes/<slug>-proposed.html
+  --out <file>         output HTML (default <dir>/reskin/pages/<slug>.html); --register hands it to
+                       the ledger, the canon bridge and migrate
   --localize-images    download images to <dir>/prototypes/assets/img/ and keep data-source-src
+  --register           record the page in <dir>/state.json through state.mjs (flow "reskin" only, else
+                       exit 2 before rendering): prototypePath = --out relative to the project root;
+                       extracted/directed → prototyped, or → directed for a sibling of a type that has
+                       an approved archetype (migrate's sibling tier); later statuses keep their status
   --check              validate mapping.json only (unknown keys, bad values, slots missing from the
                        content model, requested <slug>s without a page entry): one problem per line on
                        stdout; renders and writes nothing. Exit 0 valid, 1 problems, 2 setup error.
@@ -859,7 +872,7 @@ async function localize(urls, assetsDir, referer) {
 
 // argv → { pos[], flags }; a value flag needs a value, an unknown flag is a usage error.
 const VALUE_FLAGS = ['--dir', '--mapping', '--out', '--model-dir'];
-const BOOL_FLAGS = ['--localize-images', '--check', '--help', '-h'];
+const BOOL_FLAGS = ['--localize-images', '--check', '--register', '--help', '-h'];
 function parseArgs(argv) {
   const o = { pos: [], dir: 'stardust' };
   for (let i = 0; i < argv.length; i++) {
@@ -906,6 +919,54 @@ function checkCli(o, mappingFile, modelDir) {
   return problems.length ? 1 : 0;
 }
 
+// ---- --register: the rendered page into state.json (flow reskin only) ----------------------------------
+const LIFECYCLE = ['extracted', 'directed', 'prototyped', 'approved', 'migrated'];
+// Which lifecycle move a rendered page gets; applies it to `state` through state.mjs's advance().
+// A page of a type that already has an approved/migrated archetype is a sibling: it goes no further than
+// `directed`, the status migrate renders at the sibling tier (Path A′; `prototyped` is skipped by
+// `migrate render --all`). Any other page behind `prototyped` advances to it (its history entry, stale
+// cleared). A page at `prototyped` or later only gets its path (a re-render is gated and recorded again;
+// preflight compares the recorded prototype sha). Returns { slug, from, to, role, changed } or null.
+export function registerRendered(state, slug, prototypePath, { advance, at }) {
+  const page = (state.pages || []).find((p) => p.slug === slug);
+  if (!page) return null;
+  const from = page.status; const i = LIFECYCLE.indexOf(from);
+  const sibling = !!page.type && state.pages.some((p) => p.slug !== slug && p.type === page.type && ['approved', 'migrated'].includes(p.status));
+  const role = sibling ? 'sibling' : 'page';
+  const to = i < 0 || i >= 2 ? from : sibling ? 'directed' : 'prototyped';
+  if (to !== from) { advance(state, [slug], { to, prototype: prototypePath, at }); return { slug, from, to, role, changed: true }; }
+  const changed = page.prototypePath !== prototypePath;
+  page.prototypePath = prototypePath;
+  return { slug, from, to, role, changed };
+}
+
+async function stateLib() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const file = [['..', '..', 'stardust', 'scripts', 'state.mjs'], ['..', 'stardust', 'state.mjs']].map((p) => join(here, ...p)).find((p) => existsSync(p));
+  if (!file) throw new SetupError('--register needs state.mjs (skills/stardust/scripts/state.mjs, or its project copy stardust/scripts/stardust/state.mjs)');
+  return import(pathToFileURL(file).href);
+}
+
+// Loads <dir>/state.json for --register and refuses outside flow reskin, before anything is rendered.
+async function registerSetup(dir) {
+  const lib = await stateLib();
+  let r; try { r = lib.readState(dir); } catch (e) { throw new SetupError(`--register: ${e.message}`); }
+  if (r.state.flow !== 'reskin') throw new SetupError(`--register: ${r.file} flow is ${r.state.flow ? `"${r.state.flow}"` : 'unset'} — only a flow "reskin" project registers reskin pages (render without --register)`);
+  return { lib, ...r };
+}
+
+function registerCli({ lib, state, file }, slug, out, dir) {
+  const root = dirname(resolve(dir));
+  const prototypePath = relative(root, out).split(sep).join('/');
+  const at = lib.nowIso();
+  const r = registerRendered(state, slug, prototypePath, { advance: lib.advance, at });
+  if (!r) { console.log(`note: ${slug} is not a page in ${file} — not registered`); return; }
+  if (r.changed) { state._provenance = lib.stampProvenance(state._provenance, 'stardust:reskin', at); lib.writeState(file, state); }
+  const move = r.to === r.from ? `stays ${r.from}` : `${r.from} → ${r.to}`;
+  console.log(`registered ${slug}: prototypePath ${prototypePath}, ${move}${r.role === 'sibling' ? ' (sibling of an approved archetype: migrate renders it at the sibling tier)' : ''}${r.changed ? '' : ' (unchanged)'}`);
+  if (['approved', 'migrated'].includes(r.from)) console.log(`note: ${slug} is ${r.from}; re-run its gates and reskin-ledger.mjs record ${slug} (preflight fails a prototype changed since it was recorded)`);
+}
+
 async function main(argv) {
   const o = parseArgs(argv);
   if (o.help || o.h) { console.log(HELP); return 0; }
@@ -916,6 +977,7 @@ async function main(argv) {
   const slug = o.pos[0];
   if (!slug) { console.error(HELP); return 2; }
   if (o.pos.length > 1) throw new SetupError(`one <slug> per render (got ${o.pos.join(', ')})`);
+  const reg = o.register ? await registerSetup(dir) : null;
   const readJson = readJsonFile;
   const mapping = readJson(mappingFile, 'mapping.json');
   const model = readJson(join(modelDir, slug, 'content-model.json'), `content model for ${slug}`);
@@ -936,6 +998,7 @@ async function main(argv) {
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, result.html);
   console.log(`rendered ${slug} → ${relative(process.cwd(), out)} (${result.slots} slot(s), ${result.vars} token vars)`);
+  if (reg) registerCli(reg, slug, out, dir);
   for (const w of result.warnings) console.log(`warning: ${w}`);
   if (!existsSync(join(dir, 'reskin', 'mapping.md'))) console.error('note: reskin/mapping.md (the human mapping brief) is missing — Phase 3 requires it');
   return 0;

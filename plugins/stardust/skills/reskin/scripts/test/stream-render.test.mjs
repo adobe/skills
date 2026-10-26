@@ -10,9 +10,11 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureSmells, checkMapping, chromeTextMissing, contrast, findRepeat, localSubpath, modelHasButton, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { captureSmells, checkMapping, chromeTextMissing, contrast, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { advance } from '../../../stardust/scripts/state.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
+const LEDGER = join(dirname(fileURLToPath(import.meta.url)), '..', 'reskin-ledger.mjs');
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
@@ -452,6 +454,62 @@ check('CLI render is unchanged: the default out, the same bytes as render() bar 
   const html = readFileSync(join(root, 'stardust', 'reskin', 'pages', 'login.html'), 'utf8');
   const strip = (h) => h.replace(/writtenAt: +\S+/, 'writtenAt: T');
   assert.equal(strip(html), strip(render({ ...base, now: 'T' }).html));
+});
+
+
+// ---- --register (state.json through state.mjs, flow reskin only) ----
+const page = (slug, status, type = 'form', extra = {}) => ({ slug, url: `https://example.test/${slug}`, type, status, history: [{ status, at: 'T0' }], ...extra });
+const reskinState = (pages) => ({ _provenance: { writtenBy: 'stardust:extract', writtenAt: 'T0' }, site: { originUrl: 'https://example.test/' }, flow: 'reskin', pages });
+check('registerRendered: behind → prototyped; a sibling of an approved type → directed; prototyped and later keep their status', () => {
+  const P = 'stardust/reskin/pages/x.html'; const opt = { advance, at: 'T1' };
+  let st = reskinState([page('login', 'extracted', 'form', { stale: true, staleReason: 'x' })]);
+  assert.deepEqual(registerRendered(st, 'login', P, opt), { slug: 'login', from: 'extracted', to: 'prototyped', role: 'page', changed: true });
+  assert.equal(st.pages[0].status, 'prototyped'); assert.equal(st.pages[0].prototypePath, P); assert.equal(st.pages[0].stale, false);
+  assert.deepEqual(st.pages[0].history.at(-1), { status: 'prototyped', at: 'T1' });
+  st = reskinState([page('a', 'approved'), page('b', 'extracted'), page('c', 'directed'), page('d', 'extracted', 'listing')]);
+  assert.equal(registerRendered(st, 'b', P, opt).to, 'directed');
+  assert.deepEqual(registerRendered(st, 'c', P, opt), { slug: 'c', from: 'directed', to: 'directed', role: 'sibling', changed: true });
+  assert.equal(st.pages[2].history.length, 1, 'path only: no history entry');
+  assert.equal(registerRendered(st, 'd', P, opt).to, 'prototyped', 'another type is not a sibling');
+  for (const s of ['prototyped', 'approved', 'migrated']) {
+    const one = reskinState([page('p', s)]); const r = registerRendered(one, 'p', P, opt);
+    assert.equal(r.to, s); assert.equal(one.pages[0].history.length, 1); assert.equal(one.pages[0].prototypePath, P);
+    assert.equal(registerRendered(one, 'p', P, opt).changed, false, 'idempotent');
+  }
+  assert.equal(registerRendered(st, 'nope', P, opt), null);
+});
+check('--register CLI: state gets prototypePath + prototyped (written by stardust:reskin); reskin-ledger record finds the prototype', () => {
+  const root = project({ state: reskinState([page('login', 'extracted')]) });
+  const r = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /registered login: prototypePath stardust\/reskin\/pages\/login\.html, extracted → prototyped/);
+  const st = JSON.parse(readFileSync(join(root, 'stardust', 'state.json'), 'utf8'));
+  assert.equal(st.pages[0].prototypePath, 'stardust/reskin/pages/login.html');
+  assert.equal(st.pages[0].status, 'prototyped');
+  assert.equal(st._provenance.writtenBy, 'stardust:reskin');
+  const rep = join(root, 'stardust', 'reskin', 'reports'); mkdirSync(rep, { recursive: true });
+  for (const f of ['content-gate', 'slot-coverage', 'donor-probe']) writeFileSync(join(rep, `login-${f}.md`), '**Overall: PASS**\n');
+  const led = spawnSync(process.execPath, [LEDGER, 'record', 'login'], { cwd: root, encoding: 'utf8' });
+  assert.equal(led.status, 0, led.stderr);
+  const L = JSON.parse(readFileSync(join(root, 'stardust', 'reskin', 'ledger.json'), 'utf8'));
+  assert.equal(L.pages.login.prototypePath, 'stardust/reskin/pages/login.html');
+  assert.match(L.pages.login.prototypeSha, /^[0-9a-f]{12}$/);
+  const again = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: root, encoding: 'utf8' });
+  assert.match(again.stdout, /stays prototyped \(unchanged\)/);
+});
+check('--register refuses outside flow reskin (exit 2, nothing rendered or written); a slug not in state is noted', () => {
+  const st = { ...reskinState([page('login', 'extracted')]), flow: 'redesign' };
+  const root = project({ state: st });
+  const before = readFileSync(join(root, 'stardust', 'state.json'), 'utf8');
+  const r = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 2); assert.match(r.stderr, /flow is "redesign" — only a flow "reskin" project registers/);
+  assert.equal(existsSync(join(root, 'stardust', 'reskin', 'pages')), false);
+  assert.equal(readFileSync(join(root, 'stardust', 'state.json'), 'utf8'), before);
+  const noState = project();
+  assert.equal(spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: noState, encoding: 'utf8' }).status, 2);
+  const other = project({ state: reskinState([page('about', 'extracted')]) });
+  const n = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: other, encoding: 'utf8' });
+  assert.equal(n.status, 0); assert.match(n.stdout, /note: login is not a page in .*state\.json — not registered/);
 });
 
 // In a browser at 390px: the menu is folded, the toggle opens and closes it.

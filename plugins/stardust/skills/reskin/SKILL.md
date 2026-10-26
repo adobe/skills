@@ -247,8 +247,8 @@ never in the page or the EDS blocks alone.
 
 The decisive validated rule: **the page is GENERATED from
 `content-model.json` — never retyped by hand.** The generic renderer
-`scripts/stream-render.mjs <slug> [--mapping <mapping.json>]
-[--localize-images]` covers any donor and site; write a per-archetype
+`scripts/stream-render.mjs <slug> --register [--localize-images]`
+covers any donor and site; write a per-archetype
 renderer (`stardust/reskin/renderers/<archetype>.mjs`) only where it
 falls short. Either way the renderer:
 
@@ -292,6 +292,15 @@ falls short. Either way the renderer:
   no `data-module`), in `mapping.md` order — the Figma join reads
   them (`reference/gates.md` § (d));
 - writes `stardust/reskin/pages/<slug>.html`, self-contained.
+
+`--register` (flow `reskin` only) records the page in `state.json`
+through `state.mjs`: `prototypePath` set to the rendered file, the page
+advanced to `prototyped` — a same-type sibling of an approved archetype
+only to `directed`, the status `migrate` renders at the sibling tier.
+`reskin-ledger record`, the canon bridge, preflight and `migrate` then
+find it with no hand edit. Render the archetype candidates here; render
+siblings after the archetype is approved (Phase 6), so they register as
+`directed`.
 
 Renderers may parse a single node's text apart (split a list-item row
 into kicker/date/title) but must **fail loudly** (throw) when a parse
@@ -489,7 +498,9 @@ failing`), gate results, eyeball, residuals and the `handoff` record. In
 the core state machine (`../stardust/reference/state-machine.md`) it
 only stamps `flow` (Setup) and `designSource` (Phase 1: `extract
 --design-source` for URL and directory donors, `figma-donor.mjs stamp`
-for Figma) and writes `approved` on the archetype (Phase 6). The full
+for Figma), registers each rendered page (`prototypePath` and
+`prototyped`, or `directed` for a sibling — Phase 4 `--register`) and
+writes `approved` on the archetype (Phase 6). The full
 handoff contract — predicate, approval, tier record, bounded inventory,
 sibling gate — is `reference/handoff.md`.
 

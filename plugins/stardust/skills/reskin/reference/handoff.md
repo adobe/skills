@@ -7,8 +7,9 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
 
 ## The sequence
 
-1. Phase 5 gates per page → `reskin-ledger.mjs record <slug>` (+ `eyeball`,
-   `residual` for the two human judgments).
+1. Phase 4 renders with `stream-render.mjs <slug> --register` (state's
+   `prototypePath`), Phase 5 gates per page → `reskin-ledger.mjs record <slug>`
+   (+ `eyeball`, `residual` for the two human judgments).
 2. Approve the archetype (§ Approval) → `reskin-ledger.mjs record <archetype>`
    again, so `handoff.<type>` names it.
 3. `canon-from-reskin.mjs <archetype>` — canon, donor-sourced `DESIGN.*`,
