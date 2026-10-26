@@ -3,7 +3,7 @@
 // nodes it drops at which width. A bare count would let a container waiver hide a whole page area.
 // Pure: boxes are the loaded box trees (loadBoxes), the section is validateChecks' output for it.
 import { findBox } from './boxes.mjs';
-import { mobileCandidates, mobileVariants, textStyles } from './checks.mjs';
+import { desktopRoot, mobileCandidates, textStyles } from './checks.mjs';
 
 const textNodes = (box) => (box.text ? 1 : 0) + box.children.reduce((n, c) => n + textNodes(c), 0);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -12,14 +12,6 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 const dropsText = (drops) => (drops.length
   ? drops.map((d) => `${plural(d.styles, 'text style')} (${plural(d.nodes, 'text node')}) at ${d.width}px`).join('; ')
   : '0 text styles (0 text nodes)');
-
-// What a { width: "desktop" } waiver stands for in the module frame: its first component or instance named desktop and
-// wider than 480, else the frame itself when it holds no mobile variant (a page section is the desktop), else null.
-function desktopRoot(frame) {
-  const find = (b) => b.children.reduce((hit, c) => hit
-    ?? (((c.type === 'COMPONENT' || c.type === 'INSTANCE') && /\bdesktop\b/i.test(c.name) && c.w > 480) ? c : find(c)), null);
-  return find(frame) ?? (frame.w > 480 && mobileVariants(frame).length === 0 ? frame : null);
-}
 
 // → [{ check, node, why, detail }], one per waiver of the section (a skip last). joined is the join's section (its
 // module frame holds the mobile variants); a waiver whose frame is not loaded drops nothing it can count.

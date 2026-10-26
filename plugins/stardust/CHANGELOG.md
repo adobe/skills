@@ -161,6 +161,15 @@ with exit 2. This release adds no site auth: the gates send no Authorization hea
 - **Honest coverage.** `parity` compares main to main and says what it left out; an unserved font is recorded, never a
   failure; B4 `conflict` scans the checked roots, composites alpha and lists texts with no opaque ground as "Contrast not
   assessed" (`register.unassessable`), neither a class nor a PASS.
+- **Optional tokens.** `render/root-tokens.mjs` emits `--card-bg`, `--card-radius`, `--card-padding`,
+  `--card-title-color`, `--button-height`, `--section-padding-mobile` and `--gutter-mobile` when the sheet carries
+  `cards.primary.*`, `buttons.primary.height` or `layout.mobile.*`; `tokens` asserts them. Without them the block is unchanged.
+- **Section heights.** `parity` adds a `section-height` row per width: the reskin page's slots paired in order with the
+  preview's non-empty sections, the worst |Δh| ≤ 10% (naming the slot), n/a when the counts differ.
+- **Stale evidence.** `deployed-gate all` records a `codeStamp` (the project's `blocks/`, `styles/`, `scripts/`,
+  `head.html`) in `summary.json` and the ledger fragment; `deployed-gate stamp` says `current` or `stale` (exit 1).
+- **Waiver budget.** `figma-gate` refuses a checks file whose waivers and skips excuse over 25% of the floor, or
+  every mobile root it requires (exit 2); `--waiver-budget <pct>` raises the share and is recorded.
 - **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
   checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`.
 - **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The
@@ -187,6 +196,11 @@ longer emits radii or shadows the rules mark absent.
   so values come from the children; a button's paint often sits on a same-size wrapper frame, so each property cites the
   layer that paints it. One MCP export capped renders at 1024px and rate limits follow the file's plan: REST with a cached
   file version is the primary path. The capture recipes and curation method come from #315, kept open as the reference.
+- **Optional card, button-height and mobile layout roles.** Curation accepts a `cards` group and seven recommended paths
+  (`cards.primary.background|borderRadius|padding|titleColor`, `buttons.primary.height`,
+  `layout.mobile.sectionPaddingY|gutter`) with role candidates from card components, button box heights and frames
+  narrower than 600px. They never block: `curate` notes each one left unmapped and lists them in
+  `coverage.recommended`.
 
 ## 0.32.1 — spec knowledge, wave 4: what a reviewing client had to guess
 

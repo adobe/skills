@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { cacheFor, readCurrent } from './cache.mjs';
 import { buildBrandExtraction, buildDesign } from './design.mjs';
 import { RulesError, UsageError } from './errors.mjs';
-import { FOUNDATION_FILES, PROBE_PATHS } from './foundation.mjs';
+import { FOUNDATION_FILES, PROBE_PATHS, RECOMMENDED_PATHS } from './foundation.mjs';
 import { mdProvenance, provenance, readJson, writeFileAtomic, writeJson } from './io.mjs';
 import { deletePath, getPath, setPath, validateRules } from './rules.mjs';
 import { canonicalFigmaUrl } from './url.mjs';
@@ -22,7 +22,7 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
   if (stale.length) throw new RulesError([`screenshots ${stale.join(', ')} are not from capture version ${manifest.version}: re-run capture --refresh`]);
   const r = validateRules(rules, { foundation, moduleCandidates, screenshotIndex });
 
-  const tokens = { palette: {}, type: {}, layout: {}, buttons: {}, radii: {}, shadows: {} };
+  const tokens = { palette: {}, type: {}, layout: {}, buttons: {}, cards: {}, radii: {}, shadows: {} };
   const nodeRefs = {};
   for (const a of r.assignments) {
     setPath(tokens, a.path, structuredClone(a.value));
@@ -86,6 +86,11 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
   motifs.push(...(Array.isArray(rules.motifs) ? rules.motifs.filter((m) => typeof m === 'string') : []));
 
   const asserted = PROBE_PATHS.filter((p) => typeof getPath(tokens, p) === 'string').length;
+  const curatedRecommended = RECOMMENDED_PATHS.filter((p) => typeof getPath(tokens, p) === 'string');
+  const recommended = {
+    curated: curatedRecommended,
+    missing: RECOMMENDED_PATHS.filter((p) => !curatedRecommended.includes(p) && !r.absent.some((a) => p === a.path || p.startsWith(`${a.path}.`))),
+  };
   const pins = r.reference.map((p) => `${p.family}: ${p.name} (node ${p.frame}${p.breakpoint ? `, ${p.breakpoint}px` : ''}${p.mode ? `, mode ${p.mode}` : ''})`);
   const readArtifacts = [`${dir}/reskin/curation-rules.json`, `${dir}/canon-source/foundation/`, `${dir}/canon-source/module-candidates.json`, `${dir}/canon-source/assets/screenshots/index.json`];
 
@@ -97,7 +102,7 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
     ...tokens,
     motifs,
     nodeRefs,
-    coverage: { asserted, absent: r.absent, suspect: r.suspect },
+    coverage: { asserted, absent: r.absent, suspect: r.suspect, recommended },
   };
 
   const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ');

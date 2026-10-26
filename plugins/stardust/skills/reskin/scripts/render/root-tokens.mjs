@@ -22,6 +22,14 @@ export const ROOT_MAP = [
   { name: '--section-padding', paths: ['layout.sectionPaddingY'] },
   { name: '--max-width', paths: ['layout.containerMaxWidth'] },
   { name: '--radius', paths: ['radii.primary', 'buttons.primary.borderRadius'] },
+  // Optional: emitted when the sheet carries the path, never listed as absent.
+  { name: '--card-bg', paths: ['cards.primary.background'], optional: true },
+  { name: '--card-radius', paths: ['cards.primary.borderRadius'], optional: true },
+  { name: '--card-padding', paths: ['cards.primary.padding'], optional: true },
+  { name: '--card-title-color', paths: ['cards.primary.titleColor'], optional: true },
+  { name: '--button-height', paths: ['buttons.primary.height'], optional: true },
+  { name: '--section-padding-mobile', paths: ['layout.mobile.sectionPaddingY'], optional: true },
+  { name: '--gutter-mobile', paths: ['layout.mobile.gutter'], optional: true },
 ];
 
 const TYPE_PROPS = [['size', 'fontSize'], ['line-height', 'lineHeight'], ['weight', 'fontWeight'], ['letter-spacing', 'letterSpacing']];
@@ -41,10 +49,10 @@ export function rootTokens(donorTokens) {
   const tokens = isObject(donorTokens) ? donorTokens : {};
   const entries = [];
   const absent = [];
-  for (const { name, paths } of ROOT_MAP) {
+  for (const { name, paths, optional } of ROOT_MAP) {
     const from = paths.find((p) => present(lookup(tokens, p)));
     if (from) entries.push({ name, value: checked(lookup(tokens, from), from), from });
-    else absent.push({ name, paths });
+    else if (!optional) absent.push({ name, paths });
   }
   if (isObject(tokens.type)) {
     for (const [key, group] of Object.entries(tokens.type)) {

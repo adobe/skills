@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildFoundation, PROBE_PATHS } from '../figma/foundation.mjs';
+import { buildFoundation, PROBE_PATHS, RECOMMENDED_PATHS } from '../figma/foundation.mjs';
 import { curate } from '../figma/curate.mjs';
 import { validateRules } from '../figma/rules.mjs';
 import { RulesError } from '../figma/errors.mjs';
@@ -48,7 +48,7 @@ check('probe values are the computed-style strings the probe asserts', () => {
   );
 });
 check('key order and provenance', () => {
-  assert.deepEqual(Object.keys(t), ['_provenance', 'donor', 'curatedFrom', 'note', 'palette', 'type', 'layout', 'buttons', 'radii', 'shadows', 'motifs', 'nodeRefs', 'coverage']);
+  assert.deepEqual(Object.keys(t), ['_provenance', 'donor', 'curatedFrom', 'note', 'palette', 'type', 'layout', 'buttons', 'cards', 'radii', 'shadows', 'motifs', 'nodeRefs', 'coverage']);
   assert.equal(t._provenance.writtenBy, 'stardust:reskin/figma-donor.mjs');
   assert.equal(t._provenance.writtenAt, '2026-01-02T03:04:05Z');
   assert.equal(t.donor, donorUrl);
@@ -100,6 +100,48 @@ check('a button leaf can come from a single-value record (the fallback for unusu
   assert.equal(t2.buttons.primary.borderRadius, '8px');
   assert.equal(t2.coverage.asserted, 13);
   rulesError(() => curate(inputs(rules((r) => { r.roles['palette.pageBg'] = { from: 'colors/brand-navy', field: 'background' }; return r; }))), /single value/);
+});
+check('recommended paths are optional: the unmapped ones are listed as missing, curate still succeeds', () => {
+  assert.equal(RECOMMENDED_PATHS.length, 7);
+  assert.equal(t.buttons.primary.height, '48px', 'buttons.primary from a component carries its box height');
+  assert.equal(t.nodeRefs['buttons.primary.height'].node, '1:20');
+  assert.deepEqual(t.cards, {});
+  assert.deepEqual(t.coverage.recommended, {
+    curated: ['buttons.primary.height'],
+    missing: ['cards.primary.background', 'cards.primary.borderRadius', 'cards.primary.padding', 'cards.primary.titleColor', 'layout.mobile.sectionPaddingY', 'layout.mobile.gutter'],
+  });
+  const t2 = curate(inputs(rules((r) => { r.roles['cards.primary'] = { absent: 'the kit has no card component' }; r.roles['layout.mobile.gutter'] = { absent: 'no mobile frame' }; return r; }))).donorTokens;
+  assert.deepEqual(t2.coverage.recommended.missing, ['layout.mobile.sectionPaddingY']);
+  assert.equal(t2.coverage.asserted, 13);
+});
+check('cards is a group: cards.primary from a component resolves like buttons.primary, titleColor from its label color', () => {
+  // The fixture kit has no card component; link-cta stands in for one.
+  const o2 = curate(inputs(rules((r) => {
+    r.roles['cards.primary'] = { component: 'link-cta', evidence: '2:9' };
+    r.roles['layout.mobile.sectionPaddingY'] = { from: 'spacing/pad-64', evidence: '1:7' };
+    r.roles['layout.mobile.gutter'] = { from: 'spacing/pad-24', evidence: '1:7' };
+    return r;
+  })));
+  const t2 = o2.donorTokens;
+  assert.match(o2.designMd, /\n {2}card-primary:\n {4}backgroundColor: .+\n {4}textColor: .+\n {4}rounded: "4px"\n {4}padding: "8px 16px"\n/);
+  assert.match(o2.designMd, /\n {2}button-primary:\n(?: {4}.+\n)* {4}height: "48px"\n/);
+  assert.deepEqual(
+    [t2.cards.primary.background, t2.cards.primary.borderRadius, t2.cards.primary.padding, t2.cards.primary.titleColor],
+    ['rgb(26, 26, 26)', '4px', '8px 16px', 'rgb(255, 255, 255)'],
+  );
+  assert.equal(t2.nodeRefs['cards.primary.titleColor'].node, 'I2:9;6:3');
+  assert.equal(t2.nodeRefs['cards.primary.padding'].node, 'I2:9;6:2');
+  assert.deepEqual([t2.layout.mobile.sectionPaddingY, t2.layout.mobile.gutter], ['64px', '24px']);
+  assert.deepEqual(t2.coverage.recommended, { curated: RECOMMENDED_PATHS, missing: [] });
+  const leaf = curate(inputs(rules((r) => {
+    r.roles['cards.primary.titleColor'] = { from: 'components/link-cta', evidence: '2:9' };
+    r.roles['cards.primary.background'] = { from: 'colors/rgb-247-247-245', evidence: '1:7' };
+    return r;
+  }))).donorTokens;
+  assert.equal(leaf.cards.primary.titleColor, 'rgb(255, 255, 255)');
+  assert.equal(leaf.cards.primary.background, 'rgb(247, 247, 245)');
+  rulesError(() => curate(inputs(rules((r) => { r.roles['cards.primary.titleColor'] = { from: 'typography/body-regular' }; return r; }))), /cards\.primary\.titleColor.*has no color \(cards\.primary\.titleColor reads the record's color; set "field"/);
+  rulesError(() => curate(inputs(rules((r) => { r.roles['tiles.primary'] = { component: 'link-cta' }; return r; }))), /cards/);
 });
 check('curations[] overrides value and records nodeRefs[path].curated', () => {
   const t2 = curate(inputs(rules((r) => { r.curations = [{ path: 'type.h2.fontWeight', to: '600', rule: 'kit spec table: h2 is semibold', evidence: '2:6' }]; return r; }))).donorTokens;

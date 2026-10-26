@@ -5,7 +5,10 @@
 //                                         top and bottom padding on every non-empty `main > .section` (donor-probe
 //                                         match "all", ±16px: the empty metadata section the pipeline leaves is
 //                                         skipped; the token must be a px length, else a UsageError), then each :root
-//                                         token verbatim. A token the sheet does not carry has no entry.
+//                                         token verbatim (the optional curated names too, when the sheet carries
+//                                         them). A token the sheet does not carry has no entry. The probe loads the
+//                                         preview at 1440px only, so layout.mobile.sectionPaddingY is asserted as
+//                                         :root --section-padding-mobile, not on the sections.
 //                                         layout.containerMaxWidth is not asserted here (A3's cap-probe measures it:
 //                                         EDS wrappers are full-width by design).
 //   runTokens({ dir, slug, preview, env, donorProbe })  writes tokens-spec.json, runs donor-probe on the preview,

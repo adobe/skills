@@ -98,8 +98,12 @@ Applied entries are reported (a "Declared deltas" section, a `deltas applied:` l
 ```json
 { "regime": "preview", "url": "<preview url>", "content": "PASS", "tokens": "PASS", "parity": "FAIL 1/8",
   "sanity": { "verdict": "PASS", "hard": true }, "inherited": "PASS", "figma": { "regime": "preview" },
-  "invocation": "deployed-gate.mjs all --page <slug> …" }
+  "codeStamp": "<16 hex>", "invocation": "deployed-gate.mjs all --page <slug> …" }
 ```
+
+`codeStamp` hashes the project's `blocks/`, `styles/`, `scripts/` and `head.html` as the run starts. Before handoff,
+`deployed-gate stamp --page <slug>` prints `current`, or `stale: summary <a>, now <b>` (exit 1): a block or CSS change
+after review invalidates the evidence, so re-run the leg (step 6).
 
 The test hook `DEPLOY_VERIFY_ORIGIN` is recorded as `originOverride: { env, origin }` in `preview.json`, `summary.json` and
 the fragment.
