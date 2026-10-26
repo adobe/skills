@@ -4,7 +4,10 @@
 // carry previewSelector, the selector of the deployed DOM (selectorFor picks it on a preview). The coverage floor
 // is computed from Figma, not from the file: every text style of a root needs a type entry at that width, a module
 // that documents a mobile variant needs a mobile root, and only a waiver (node or width "mobile", with a why)
-// or a skip lowers it; validateChecks returns the per-section coverage that floor left.
+// or a skip lowers it; validateChecks returns the per-section coverage that floor left. The waiver budget holds per
+// file: waivers and skips excuse at most WAIVER_BUDGET_PCT% of the floor's items (text styles per root, those of a
+// waived mobile or desktop root and of a skipped section included; waiverBudget raises it), and never every
+// mobile root the floor requires.
 // Pure: boxes come from loadBoxes/buildBoxes (rootsNamed lists the roots to load), no I/O here.
 import { findBox, hexOf, round1 } from './boxes.mjs';
 
@@ -14,6 +17,7 @@ const PADDING = { paddingTop: 0, paddingRight: 1, paddingBottom: 2, paddingLeft:
 const PIXEL_MODES = ['auto', 'fixture', 'off'];
 const PX = /^-?\d+(\.\d+)?px$/;
 const MAX_VARIANTS_SHOWN = 6;
+export const WAIVER_BUDGET_PCT = 25;
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = (v) => typeof v === 'string' && v.trim() !== '';
@@ -182,6 +186,14 @@ export function mobileCandidates(moduleBox, desktopBox) {
   return { list: same.length ? same : variants, apart: same.length > 0, total: variants.length };
 }
 
+// What a { width: "desktop" } waiver stands for in the module frame: its first component or instance named desktop and
+// wider than 480, else the frame itself when it holds no mobile variant (a page section is the desktop), else null.
+export function desktopRoot(frame) {
+  const find = (b) => b.children.reduce((hit, c) => hit
+    ?? (((c.type === 'COMPONENT' || c.type === 'INSTANCE') && /\bdesktop\b/i.test(c.name) && c.w > 480) ? c : find(c)), null);
+  return find(frame) ?? (frame.w > 480 && mobileVariants(frame).length === 0 ? frame : null);
+}
+
 // A section's waive list, as { node, why } or { width: 'mobile', why } entries; every malformed entry is a problem.
 function readWaivers(slot, list, inRoots, problems) {
   if (list === undefined) return [];
@@ -203,11 +215,13 @@ function readWaivers(slot, list, inRoots, problems) {
 }
 
 // The coverage floor of one section: at every width it is checked at, each text style of that width's root (less
-// the waived) needs a type entry at that width whose node has the style. → { covered, total } over (width, style).
+// the waived) needs a type entry at that width whose node has the style. → { covered, total, excused } over (width,
+// style): excused counts the styles a node waiver takes out that no type entry covers.
 // The base width goes first, and its first style problem takes `hint` (the root is the whole module frame).
 function floorOf({ slot, roots, rootBox, type, waivedIds, enforce, problems, baseWidth, hint = '' }) {
   let covered = 0;
   let total = 0;
+  let excused = 0;
   let hinted = false;
   const widths = Object.entries(roots).sort(([a], [b]) => (a === baseWidth ? -1 : b === baseWidth ? 1 : 0));
   for (const [w, node] of widths) {
@@ -220,15 +234,17 @@ function floorOf({ slot, roots, rootBox, type, waivedIds, enforce, problems, bas
     const every = textStyles(root);
     total += every.size;
     covered += [...every.keys()].filter((k) => have.has(k)).length;
+    const kept = textStyles(root, waivedIds);
+    excused += [...every.keys()].filter((k) => !kept.has(k) && !have.has(k)).length;
     if (!enforce) continue;
-    for (const [key, s] of textStyles(root, waivedIds)) {
+    for (const [key, s] of kept) {
       if (have.has(key)) continue;
       const tail = hint && !hinted && w === baseWidth ? hint : '';
       hinted = hinted || Boolean(tail);
       problems.push(`${slot} @${w}: text style ${s.label} ("${s.sample}", node ${s.nodes[0]}) has no type entry or waiver${tail}`);
     }
   }
-  return { covered, total };
+  return { covered, total, excused };
 }
 
 // Why a root is not the joined module frame or an outermost COMPONENT/INSTANCE inside it, or null. A root that is
@@ -259,11 +275,14 @@ function validatePixel(slot, pixel, problems) {
   return { ...(isObject(pixel) ? pixel : {}), mode };
 }
 
-export function validateChecks(checks, { join, boxes, tokens }) {
+// waiverBudget: the share of the floor (percent, 0–100) waivers may excuse, WAIVER_BUDGET_PCT unless raised. → also budget:
+// { limitPct, required, excused, mobileRequired, mobileExcused }.
+export function validateChecks(checks, { join, boxes, tokens, waiverBudget = WAIVER_BUDGET_PCT }) {
   const problems = [];
   const sections = {};
   const coverage = {};
-  if (!isObject(checks)) return { sections, problems: ['the checks file must be a JSON object'], coverage };
+  const budget = { limitPct: waiverBudget, required: 0, excused: 0, mobileRequired: 0, mobileExcused: 0 };
+  if (!isObject(checks)) return { sections, problems: ['the checks file must be a JSON object'], coverage, budget };
   if (checks.version !== 1) problems.push('version must be 1');
   if (!text(checks.page)) problems.push('page must be a slug');
   const file = isObject(checks.sections) ? checks.sections : {};
@@ -374,7 +393,9 @@ export function validateChecks(checks, { join, boxes, tokens }) {
     const frame = !j.node || j.node === root ? base : rootBox(j.node);
     const hint = j.node && roots[width] === j.node ? '; name the desktop instance in "node"' : '';
     const waivedIds = waive.flatMap((w) => (w.node ? [w.node] : []));
-    const styles = floorOf({ slot, roots, rootBox, type, waivedIds, enforce: !skipped, problems, baseWidth: String(width), hint });
+    const { excused, ...styles } = floorOf({ slot, roots, rootBox, type, waivedIds, enforce: !skipped, problems, baseWidth: String(width), hint });
+    budget.required += styles.total;
+    budget.excused += skipped ? styles.total : excused;
     if (j.node && !frame && !skipped) problems.push(`${slot}: module frame ${j.node} is not in the loaded boxes`);
     // The base node is checked too when roots[<its width>] replaces it: it must not hide behind the replacement.
     const checked = Object.entries(roots);
@@ -388,10 +409,25 @@ export function validateChecks(checks, { join, boxes, tokens }) {
       if (Number(w) > 0 && box.w < Number(w) / 2) refuse(`is ${box.w} wide, under half of ${w}`);
       if (!skipped && moduleHasText && textStyles(box, waivedIds).size === 0) refuse('holds no text style to check (after waivers) and the module frame has some');
     }
+    const mobile = Object.entries(roots).filter(([w]) => Number(w) <= 480);
+    const desktopNode = roots[width] && Number(width) > 480 ? roots[width] : Object.entries(roots).find(([w]) => Number(w) > 480)?.[1];
+    const { list: variants, apart, total } = frame ? mobileCandidates(frame, desktopNode ? rootBox(desktopNode) : null) : { list: [], apart: true, total: 0 };
+    const variantRooted = mobile.some(([, node]) => variants.some((v) => v.id === node));
+    if (variants.length) {
+      budget.mobileRequired += 1;
+      if (skipped || (!variantRooted && waive.some((x) => x.width === 'mobile'))) budget.mobileExcused += 1;
+    }
+    // A waived mobile or desktop root takes its text styles out of the floor; a skipped section's are counted above.
+    if (!skipped && frame) {
+      const variant = variants[0] && findBox(frame, variants[0].id);
+      const waivedRoot = (w) => (w === 'mobile' ? (variant && !variantRooted ? variant : null) : (mobile.length === Object.keys(roots).length ? desktopRoot(frame) : null));
+      for (const w of new Set(waive.filter((x) => x.width).map((x) => x.width))) {
+        const n = waivedRoot(w) ? textStyles(waivedRoot(w)).size : 0;
+        budget.required += n;
+        budget.excused += n;
+      }
+    }
     if (!skipped) {
-      const mobile = Object.entries(roots).filter(([w]) => Number(w) <= 480);
-      const desktopNode = roots[width] && Number(width) > 480 ? roots[width] : Object.entries(roots).find(([w]) => Number(w) > 480)?.[1];
-      const { list: variants, apart, total } = frame ? mobileCandidates(frame, desktopNode ? rootBox(desktopNode) : null) : { list: [], apart: true, total: 0 };
       // With several variants in the frame a name alone does not say which: the id and the parent's name do.
       const which = (v) => (total > 1 ? `, ${v.id}, in ${v.parent.name}` : '');
       if (!waive.some((w) => w.width === 'desktop') && mobile.length === Object.keys(roots).length) {
@@ -413,5 +449,12 @@ export function validateChecks(checks, { join, boxes, tokens }) {
     coverage[slot] = { styles, widths: Object.keys(roots).map(Number).filter(Number.isFinite).sort((a, b) => a - b), waived: waive.length + (skipped ? 1 : 0) };
     sections[slot] = { root: roots[width], width, roots, geometry, type, waive, pixel: validatePixel(slot, section.pixel, problems), ...(skipped ? { skip: section.skip } : {}) };
   }
-  return { sections, problems, coverage };
+  if (budget.required && budget.excused * 100 > budget.limitPct * budget.required) {
+    const pct = ((budget.excused / budget.required) * 100).toFixed(1);
+    problems.push(`waiver budget: waivers and skips excuse ${budget.excused} of ${budget.required} floor items (${pct}%), over the ${budget.limitPct}% a checks file may waive: add type entries or roots, or raise the budget with --waiver-budget <pct> (recorded)`);
+  }
+  if (budget.mobileRequired && budget.mobileExcused === budget.mobileRequired) {
+    problems.push(`waiver budget: all ${budget.mobileRequired} mobile root(s) the floor requires are waived or skipped: check at least one at its variant's width (roots["<w>"] ≤ 480)`);
+  }
+  return { sections, problems, coverage, budget };
 }

@@ -35,7 +35,8 @@ export const HELP = `Usage:
   node figma-gate.mjs register --page <slug> [--target preview] [--dir stardust]
   node figma-gate.mjs all --page <slug> --url <url|file> [--dir stardust]
   (geometry, ramp, pixel and all take --target preview --reskin <file> like join;
-   register takes --target preview alone, to read the preview run's files)
+   register takes --target preview alone, to read the preview run's files;
+   geometry, ramp, pixel, register and all take --waiver-budget <pct>)
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
 
@@ -157,19 +158,23 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          other steps still run).
          Writes <dir>/.work/reskin/gates/<slug>/figma/summary.json (figma-preview/ on --target preview):
            { _provenance, page, url, regime, figma: { version }, steps: { <step>: { verdict, exit, detail } },
-             ledgerFragment, invocation }
+             waiverBudget: { limitPct, required, excused, mobileRequired, mobileExcused, raised }, ledgerFragment,
+             invocation }
          ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.figma (never a file key); with
          --target preview its regime is "preview" and it goes to pages.<slug>.gates.deployed.figma, and the recorded
          invocation names --target preview and --reskin:
            { regime, figmaVersion, join: PASS | FAIL, geometry: "PASS n/n" | "FAIL k/n", ramp (the same over
              asserted results, " (k unasserted)" appended), pixel: "<slot> <pct>%, <slot> n/a: <why>, ...",
              register: the counts line, coverage: "text styles <covered>/<total> · widths <w1>,<w2> · waived <n>"
-             (over every module section; a section skip counts as a waiver), literals: <token literals outside :root>, invocation }
+             (over every module section; a section skip counts as a waiver), literals: <token literals outside :root>,
+             waiverBudget?: <pct, only when --waiver-budget is given>, invocation }
          A step that did not run carries its verdict instead ("not run: section drift", "CRASH: <message>").
          Run it under run-bg when it may exceed a shell's limit:
            run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node <scripts>/figma-gate.mjs all --page <slug> --url <url|file>
            run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg
 --dir <d>  the stardust directory (default stardust).
+--waiver-budget <pct>  the share of the coverage floor waivers may excuse, 0 to 100 (default 25); recorded in summary.json,
+         the ledger fragment and the invocation.
 --target local|preview  the regime of --url (default local: the reskin page). preview is a deployed (aem.page) page and takes
          every step with a --url (join, geometry, ramp, pixel, all; register takes it only to say which run to read). A
          preview run keeps its files in <slug>/figma-preview/ beside the local run's <slug>/figma/, so neither
@@ -213,8 +218,11 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
   width such as 360: geometry and type would be held to a width the variant was not drawn at), and some root is
   checked wider than 480. waive is the only way below the floor, and needs a why: { node } on a frame drops that subtree
   (a documentation panel, notation text), on a TEXT node waives that style; { width: "mobile" } waives the mobile root,
-  { width: "desktop" } the root above 480. A module frame that is itself the root holds its documentation frames and
-  every variant: name the desktop instance in "node".
+  { width: "desktop" } the root above 480. Waiver budget, per checks file: waivers and skips excuse at most 25% of the
+  floor's items (each root's text styles, plus those of a waived mobile or desktop root and of a skipped section;
+  --waiver-budget raises it), and never every mobile root the floor requires: over it is a problem (exit 2).
+  A module frame that is itself the root holds its documentation frames and every variant: name the desktop instance
+  in "node".
 Writes go only under <dir>/.work/reskin/gates/. After a capture --confidential, every subcommand first
 asserts that <dir>/.work/ and <dir>/reskin/figma-checks/ are git-ignored (exit 2 with the lines to add).
 Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing input or capture)
@@ -227,11 +235,11 @@ const TARGET_VALUES = ['--target', '--reskin'];
 const SPEC = {
   boxes: { values: ['--module', '--node', '--depth', '--dir'], bools: [], positional: [] },
   join: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
-  geometry: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
-  ramp: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
-  pixel: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
-  register: { values: ['--page', '--target', '--dir'], bools: [], positional: [] },
-  all: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
+  geometry: { values: ['--page', '--url', ...TARGET_VALUES, '--waiver-budget', '--dir'], bools: [], positional: [] },
+  ramp: { values: ['--page', '--url', ...TARGET_VALUES, '--waiver-budget', '--dir'], bools: [], positional: [] },
+  pixel: { values: ['--page', '--url', ...TARGET_VALUES, '--waiver-budget', '--dir'], bools: [], positional: [] },
+  register: { values: ['--page', '--target', '--waiver-budget', '--dir'], bools: [], positional: [] },
+  all: { values: ['--page', '--url', ...TARGET_VALUES, '--waiver-budget', '--dir'], bools: [], positional: [] },
 };
 
 // The name of an unknown flag, cut at the first character that cannot be part of one (`--flag=<value>`).
@@ -338,7 +346,7 @@ async function geometryStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('geometry needs --page <slug>');
   if (!opts.url) throw new UsageError('geometry needs --url <url|file>: the page to measure');
   const [{ prepare }, { runGeometry }] = await Promise.all([helper('prepare'), helper('geometry')]);
-  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts) });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts), waiverBudget: opts.waiverBudget });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -354,7 +362,7 @@ async function rampStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('ramp needs --page <slug>');
   if (!opts.url) throw new UsageError('ramp needs --url <url|file>: the page to probe');
   const [{ prepare }, { runRamp }] = await Promise.all([helper('prepare'), helper('ramp')]);
-  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts) });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts), waiverBudget: opts.waiverBudget });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -378,7 +386,7 @@ async function pixelStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('pixel needs --page <slug>');
   if (!opts.url) throw new UsageError('pixel needs --url <url|file>: the page to screenshot');
   const [{ prepare }, { pixelHeadline, runPixel }] = await Promise.all([helper('prepare'), helper('pixel')]);
-  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts) });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts), waiverBudget: opts.waiverBudget });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -413,7 +421,7 @@ async function registerStep({ dir, opts, log, UsageError, ready: given }) {
   }
   const inputs = readInputs(dir, opts.page, ['mapping', 'ledger', 'checks', 'donorTokens']);
   // The waivers and coverage of the checks file as it stands; a drifted join has no sections to check.
-  const prepared = joinResult.pass === false ? null : given && !given.drift ? given : checksFor({ dir, slug: opts.page, inputs, join: joinResult, out });
+  const prepared = joinResult.pass === false ? null : given && !given.drift ? given : checksFor({ dir, slug: opts.page, inputs, join: joinResult, out, waiverBudget: opts.waiverBudget });
   const current = readCurrent(dir);
   const sectionNodes = [...new Set((joinResult.sections || []).map((s) => s.node).filter(Boolean))];
   const boxes = prepared?.boxes ?? (sectionNodes.length ? loadBoxes(dir, sectionNodes) : { roots: {} });
@@ -511,7 +519,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
 
   let ready = null;
   try {
-    ready = await prepare({ dir, slug: opts.page, url: opts.url, target });
+    ready = await prepare({ dir, slug: opts.page, url: opts.url, target, waiverBudget: opts.waiverBudget });
     const detail = [];
     logJoin(ready.join, (m) => { detail.push(m); log(m); });
     record('join', ready.join.pass ? 'PASS' : 'FAIL', ready.join.pass ? 0 : 1, detail);
@@ -539,7 +547,8 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
   const fragmentOf = (name, make) => (/^(CRASH|CHALLENGE)/.test(recorded[name].verdict) || recorded[name].exit === null || !files[name] ? recorded[name].verdict : make(files[name]));
   const current = readCurrent(dir);
   const preview = regime === 'preview' ? ` --target preview --reskin ${opts.reskin}` : '';
-  const invocation = `figma-gate.mjs all --page ${opts.page} --url ${opts.url}${preview} --dir ${dir}`;
+  const raised = opts.waiverBudget === undefined ? '' : ` --waiver-budget ${opts.waiverBudget}`;
+  const invocation = `figma-gate.mjs all --page ${opts.page} --url ${opts.url}${preview}${raised} --dir ${dir}`;
   const ledgerFragment = {
     regime: ready?.join.regime ?? regime,
     figmaVersion: current?.version ?? null,
@@ -550,6 +559,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
     register: fragmentOf('register', (f) => countsLine(f.counts)),
     coverage: runnable ? coverageLine(ready.coverage) : ready ? NOT_RUN_DRIFT : joinStopped,
     literals: files.ramp ? files.ramp.literals?.length ?? 0 : null,
+    ...(raised ? { waiverBudget: opts.waiverBudget } : {}),
     invocation,
   };
   writeJson(join(out, 'summary.json'), {
@@ -559,6 +569,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
     regime: ledgerFragment.regime,
     figma: { version: ledgerFragment.figmaVersion },
     steps: recorded,
+    ...(ready?.budget ? { waiverBudget: { ...ready.budget, raised: Boolean(raised) } } : {}),
     ledgerFragment,
     invocation,
   });
@@ -583,6 +594,11 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
   checkTarget(opts, UsageError);
+  if (opts['waiver-budget'] !== undefined) {
+    const pct = /^\d+(\.\d+)?$/.test(opts['waiver-budget']) ? Number(opts['waiver-budget']) : NaN;
+    if (!(pct >= 0 && pct <= 100)) throw new UsageError(`--waiver-budget is a percentage from 0 to 100, got "${opts['waiver-budget']}"`);
+    opts.waiverBudget = pct;
+  }
   const table = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, all: allStep, ...steps };
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);

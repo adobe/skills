@@ -43,6 +43,8 @@ with exit 2. This release adds no site auth: the gates send no Authorization hea
   preview's non-empty sections, the worst |Δh| ≤ 10% (naming the slot), n/a when the counts differ.
 - **Stale evidence.** `deployed-gate all` records a `codeStamp` (the project's `blocks/`, `styles/`, `scripts/`,
   `head.html`) in `summary.json` and the ledger fragment; `deployed-gate stamp` says `current` or `stale` (exit 1).
+- **Waiver budget.** `figma-gate` refuses a checks file whose waivers and skips excuse over 25% of the floor, or
+  every mobile root it requires (exit 2); `--waiver-budget <pct>` raises the share and is recorded.
 - **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
   checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`.
 - **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The

@@ -20,7 +20,12 @@ const ctx = { join: join2, boxes, tokens: {} };
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 const skipped = { skip: 'not under test', geometry: [], type: [] };
-const problemsOf = (sections, extra = ctx) => validateChecks({ version: 1, page: 'home', sections: { s01: skipped, ...sections } }, extra).problems.join('\n');
+// The checks below test other rules over files that skip or waive much of a small kit: they raise the waiver budget (as
+// --waiver-budget 100 would) and set aside the mobile-root budget line, which the waiver-budget checks assert.
+const RAISED = { ...ctx, waiverBudget: 100 };
+const MOBILE_BUDGET = /^waiver budget: all \d+ mobile root/;
+const lenient = (r) => ({ ...r, problems: r.problems.filter((p) => !MOBILE_BUDGET.test(p)) });
+const problemsOf = (sections, extra = RAISED) => validateChecks({ version: 1, page: 'home', sections: { s01: skipped, ...sections } }, extra).problems.join('\n');
 // The four text styles of M2's frame (1:7): section title, feature copy, card label, card button label.
 const typeS02 = [
   { id: 't1', selector: 'h2', node: 'I1:7;5:2' },
@@ -84,7 +89,7 @@ check('measures: the list, unknown measure, tolerance rules', () => {
 });
 
 check('tokens: a px value is accepted, anything else is a problem', () => {
-  const t = (tokens, token = 'layout.pad') => problemsOf(geo({ token, measure: 'paddingLeft' }), { ...ctx, tokens });
+  const t = (tokens, token = 'layout.pad') => problemsOf(geo({ token, measure: 'paddingLeft' }), { ...RAISED, tokens });
   assert.equal(t({ layout: { pad: '24px' } }), '');
   assert.equal(t({ layout: { pad: '-1.5px' } }), '');
   assert.match(t({ layout: { pad: '2rem' } }), /x: token layout.pad is not a px value in donor-tokens.json/);
@@ -194,7 +199,7 @@ const floorNodes = { nodes: { 'F:0': { document: shape('F:0', 'Page', 'FRAME', 1
 ]) } } };
 const floorBoxes = buildBoxes({ nodes: floorNodes, roots: ['F:1', 'F:2', 'F:10', 'F:11', 'F:14', 'F:18', 'F:20', 'F:30', 'F:31', 'F:40', 'F:50', 'F:60', 'F:62', 'F:64', 'G:1', 'H:1', 'K:1', 'K:3', 'K:5', 'K:11', 'K:13'] });
 const floorJoin = { sections: [{ slot: 's03', module: 'M3', node: 'F:1' }, { slot: 's04', module: 'M4', node: 'G:1' }] };
-const floorCtx = { join: floorJoin, boxes: floorBoxes, tokens: {} };
+const floorCtx = { join: floorJoin, boxes: floorBoxes, tokens: {}, waiverBudget: 100 };
 const s04 = { geometry: [{ id: 'g1', selector: 'h2', node: 'G:2', measure: 'width' }], type: [{ id: 't1', selector: 'h2', node: 'G:2' }, { id: 't2', selector: 'p', node: 'G:4' }] };
 const at382 = [{ id: 't4', selector: 'h3', node: 'F:31', width: 382 }, { id: 't5', selector: 'p', node: 'F:32', width: 382 }];
 const s03 = (over = {}) => ({
@@ -204,7 +209,7 @@ const s03 = (over = {}) => ({
   type: [{ id: 't1', selector: 'h3', node: 'F:11' }, { id: 't2', selector: 'p', node: 'F:13' }, { id: 't3', selector: '.legal', node: 'F:15' }, ...at382],
   ...over,
 });
-const floor = (section, extra = {}) => validateChecks({ version: 1, page: 'home', sections: { s03: section, s04, ...extra } }, floorCtx);
+const floor = (section, extra = {}) => lenient(validateChecks({ version: 1, page: 'home', sections: { s03: section, s04, ...extra } }, floorCtx));
 const floorProblems = (section) => floor(section).problems;
 const withoutType = (...ids) => s03().type.filter((e) => !ids.includes(e.id));
 const MOBILE_LINE = 's03: module has a mobile variant (Card, Device=Mobile, 382 wide) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver';
@@ -320,14 +325,14 @@ check('coverage floor: a module with a mobile variant needs a mobile root or a {
 
 // A module frame that holds several variant sets (a card and a hero, each with a desktop and a mobile variant): the mobile
 // root is the one of the desktop root's own set.
-const setsCtx = { join: { sections: [{ slot: 's05', module: 'M5', node: 'K:1' }] }, boxes: floorBoxes, tokens: {} };
+const setsCtx = { join: { sections: [{ slot: 's05', module: 'M5', node: 'K:1' }] }, boxes: floorBoxes, tokens: {}, waiverBudget: 100 };
 const s05 = (over = {}) => ({
   node: 'K:11',
   geometry: [{ id: 'g1', selector: '.hero', node: 'K:12', measure: 'width' }],
   type: [{ id: 't1', selector: 'h1', node: 'K:12' }, { id: 't2', selector: '.kicker', node: 'K:15' }],
   ...over,
 });
-const inSets = (section) => validateChecks({ version: 1, page: 'home', sections: { s05: section } }, setsCtx);
+const inSets = (section) => lenient(validateChecks({ version: 1, page: 'home', sections: { s05: section } }, setsCtx));
 const mobileType = [{ id: 't3', selector: 'h1', node: 'K:14', width: 414 }];
 
 check('coverage floor: with several variant sets in the frame the mobile root is the one of the desktop root\'s own set, and a miss names it, with its parent, not an unrelated one', () => {
@@ -446,7 +451,7 @@ check('roots (b): at least one root is checked wider than 480, the base root cou
   assert.deepEqual(floorProblems(s03()), [], 'the desktop instance as node: its width, 1440, is a non-mobile root');
   const wide = floorProblems(mobileOnly({ roots: { 1200: 'F:62' }, type: [...at382, { id: 't6', selector: 'p', node: 'F:63', width: 1200 }] }));
   assert.deepEqual(wide, [], 'a roots[w] above 480 counts as well as the base root');
-  assert.deepEqual(validateChecks({ version: 1, page: 'home', sections: { s03: { ...mobileOnly(), skip: 'static', waive: undefined }, s04 } }, floorCtx).problems, [], 'a skipped section has no floor');
+  assert.deepEqual(lenient(validateChecks({ version: 1, page: 'home', sections: { s03: { ...mobileOnly(), skip: 'static', waive: undefined }, s04 } }, floorCtx)).problems, [], 'a skipped section has no floor');
 });
 
 check('roots (c): a root with no visible text style after waivers is a problem unless the module frame has none', () => {
@@ -460,7 +465,7 @@ check('roots (c): a root with no visible text style after waivers is a problem u
   const check5 = (section) => validateChecks({ version: 1, page: 'home', sections: { s05: section } }, imageOnly);
   assert.deepEqual(check5({ geometry: [{ id: 'g1', selector: 'img', node: 'H:2', measure: 'width' }], type: [] }).problems, ['s05 has no type checks: add one or "skip": "<why>"'], 'no text style anywhere: nothing to find at the root');
   assert.deepEqual(check5({ skip: 'an image-only module', geometry: [], type: [] }).problems, []);
-  const skipped = validateChecks({ version: 1, page: 'home', sections: { s03: { skip: 'static banner', node: 'F:40', width: 1440, geometry: [], type: [] }, s04 } }, floorCtx);
+  const skipped = lenient(validateChecks({ version: 1, page: 'home', sections: { s03: { skip: 'static banner', node: 'F:40', width: 1440, geometry: [], type: [] }, s04 } }, floorCtx));
   assert.deepEqual(skipped.problems, [], 'a skipped section has no floor');
 });
 
@@ -482,9 +487,42 @@ check('roots (d): the base node is checked even when roots[<its width>] replaces
 });
 
 check('coverage floor: skip waives the floor and is counted as a waiver; coverage still reports what the root holds', () => {
-  const skippedAll = validateChecks({ version: 1, page: 'home', sections: { s03: { skip: 'static banner', node: 'F:10', geometry: [], type: [] }, s04 } }, floorCtx);
+  const skippedAll = lenient(validateChecks({ version: 1, page: 'home', sections: { s03: { skip: 'static banner', node: 'F:10', geometry: [], type: [] }, s04 } }, floorCtx));
   assert.deepEqual(skippedAll.problems, []);
   assert.deepEqual(skippedAll.coverage.s03, { styles: { covered: 0, total: 3 }, widths: [1440], waived: 1 });
+});
+
+// The waiver budget at its default: s03 (3 styles at 1440, 2 at 382) and s04 (2) are 7 floor items.
+const budgeted = (section, waiverBudget) => validateChecks({ version: 1, page: 'home', sections: { s03: section, s04 } }, { join: floorJoin, boxes: floorBoxes, tokens: {}, ...(waiverBudget === undefined ? {} : { waiverBudget }) });
+const OVER = (n, of, pct, limit) => `waiver budget: waivers and skips excuse ${n} of ${of} floor items (${pct}%), over the ${limit}% a checks file may waive: add type entries or roots, or raise the budget with --waiver-budget <pct> (recorded)`;
+const ALL_MOBILE = 'waiver budget: all 1 mobile root(s) the floor requires are waived or skipped: check at least one at its variant\'s width (roots["<w>"] ≤ 480)';
+
+check('waiver budget: waivers within 25% of the floor pass, and the count is returned', () => {
+  const ok = budgeted(s03({ type: withoutType('t3'), waive: [{ node: 'F:15', why: 'legal line' }] }));
+  assert.deepEqual(ok.problems, []);
+  assert.deepEqual(ok.budget, { limitPct: 25, required: 7, excused: 1, mobileRequired: 1, mobileExcused: 0 });
+  assert.equal(budgeted(s03({ waive: [{ node: 'F:15', why: 'covered anyway' }] })).budget.excused, 0, 'a waived style a type entry covers excuses nothing');
+});
+
+check('waiver budget: waivers that excuse more than 25% of the floor are a problem naming the counts and the rule', () => {
+  const over = budgeted(s03({ type: withoutType('t1', 't2'), waive: [{ node: 'F:11', why: 'title' }, { node: 'F:13', why: 'body' }] }));
+  assert.deepEqual(over.problems, [OVER(2, 7, '28.6', 25)]);
+  const desktop = budgeted({ node: 'F:30', width: 382, geometry: [{ id: 'g1', selector: '.card', node: 'F:31', measure: 'width' }], type: at382, waive: [{ width: 'desktop', why: 'phone only' }] });
+  assert.deepEqual(desktop.problems, [OVER(3, 7, '42.9', 25)], 'a waived desktop root counts its text styles');
+});
+
+check('waiver budget: waiving or skipping every mobile root the floor requires is a problem at any budget', () => {
+  const noMobile = { roots: undefined, type: withoutType('t4', 't5'), waive: [{ width: 'mobile', why: 'desktop-only card' }] };
+  assert.deepEqual(budgeted(s03(noMobile), 100).problems, [ALL_MOBILE]);
+  assert.deepEqual(budgeted(s03(noMobile)).problems, [OVER(2, 7, '28.6', 25), ALL_MOBILE], 'the waived mobile root\'s styles count against the budget too');
+  assert.deepEqual(budgeted({ ...s03(), skip: 'static banner' }, 100).problems, [ALL_MOBILE], 'a skip excuses the section\'s mobile root');
+  assert.deepEqual(budgeted(s03(), 0).problems, [], 'a checked mobile root and no waiver: nothing to budget');
+});
+
+check('waiver budget: waiverBudget 50 (--waiver-budget 50) allows 28.6% and is recorded in the returned budget', () => {
+  const raised = budgeted(s03({ type: withoutType('t1', 't2'), waive: [{ node: 'F:11', why: 'title' }, { node: 'F:13', why: 'body' }] }), 50);
+  assert.deepEqual(raised.problems, []);
+  assert.deepEqual(raised.budget, { limitPct: 50, required: 7, excused: 2, mobileRequired: 1, mobileExcused: 0 });
 });
 
 const S = 'main section[data-slot="s02"]';

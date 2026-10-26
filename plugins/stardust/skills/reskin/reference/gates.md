@@ -264,6 +264,12 @@ A miss is exit 2, every one listed, in `floor-problems.txt` too (the error's
 last line, for `run-bg wait`). A `boxes` TEXT line prints the colour and
 letter spacing a style is keyed by.
 
+**Waiver budget.** Per checks file, waivers and skips may excuse at most 25%
+of the floor's items (each root's text styles, plus a waived mobile or
+desktop root's and a skipped section's), and never every mobile root the
+floor requires. Over it is a floor problem (exit 2). `--waiver-budget <pct>`
+raises the share; `summary.json` and the fragment record it.
+
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
 | B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading | exact; drift names the slot |
