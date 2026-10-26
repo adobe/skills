@@ -108,7 +108,7 @@ check('header row without a menu list: plain entries are the menu, source button
     ],
   }] };
   const html = render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], navAlign: 'center' } } }).html;
-  assert.match(html, /<nav><span class="nav-text">Products<\/span><\/nav>\s*<div class="nav-actions"><a class="btn btn-secondary" href="https:\/\/example\.test\/login">Login<\/a><button class="btn" type="button">Start free<\/button><button class="icon-btn nav-toggle"/);
+  assert.match(html, /<nav id="site-nav"><span class="nav-text">Products<\/span><\/nav>\s*<div class="nav-actions"><a class="btn btn-secondary" href="https:\/\/example\.test\/login">Login<\/a><button class="btn" type="button">Start free<\/button><button class="icon-btn nav-toggle"/);
   assert.match(html, /:is\(\.site-main, \.site-header\) \.btn \{/);
 });
 check('slot options: bleed paints the band, align centres, a leading image goes first, heading roles size sub-headings', () => {
