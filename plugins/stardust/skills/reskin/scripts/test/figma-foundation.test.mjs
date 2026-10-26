@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildFoundation, PROBE_PATHS, PROBE_SOURCES } from '../figma/foundation.mjs';
+import { buildFoundation, PROBE_PATHS, PROBE_SOURCES, RECOMMENDED_PATHS, RECOMMENDED_SOURCES } from '../figma/foundation.mjs';
 
 const KIT = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figma-kit');
 const file = JSON.parse(readFileSync(join(KIT, 'file.json'), 'utf8'));
@@ -56,10 +56,28 @@ check('typography keeps the raw Figma style for later normalizations', () => {
   assert.equal(t.figma.letterSpacing, -1.12);
   assert.equal(t.value.letterSpacing, '-1.12px');
 });
-check('13 probe paths present as keys, in PROBE_PATHS order', () => {
+check('13 probe paths then the 7 recommended paths present as keys, in order', () => {
   assert.equal(PROBE_PATHS.length, 13);
-  assert.deepEqual(Object.keys(roleCandidates), PROBE_PATHS);
+  assert.deepEqual(Object.keys(roleCandidates), [...PROBE_PATHS, ...RECOMMENDED_PATHS]);
   for (const p of PROBE_PATHS) assert.ok(PROBE_SOURCES[p], `no source for ${p}`);
+  for (const p of RECOMMENDED_PATHS) assert.ok(RECOMMENDED_SOURCES[p], `no source for ${p}`);
+  assert.deepEqual(roleCandidates['buttons.primary.height'], roleCandidates['buttons.primary.background']);
+  assert.deepEqual(roleCandidates['cards.primary.background'], [], 'the kit has no card component');
+});
+check('card components are records and card candidates (not button candidates); mobile frames give mobile candidates', () => {
+  const fill = (r, g, b) => [{ type: 'SOLID', color: { r, g, b, a: 1 } }];
+  const text = (id, y) => ({ id, name: 'Title', type: 'TEXT', absoluteBoundingBox: { x: 16, y, width: 200, height: 24 }, fills: fill(0, 0, 0), characters: 'Hi', style: { fontFamily: 'Inter', fontSize: 20, fontWeight: 700, lineHeightPx: 24, lineHeightUnit: 'PIXELS' } });
+  const card = { id: '9:3', name: 'Card', type: 'INSTANCE', componentId: 'C:card', absoluteBoundingBox: { x: 16, y: 40, width: 343, height: 200 }, fills: fill(1, 1, 1), cornerRadius: 12, layoutMode: 'VERTICAL', paddingTop: 20, paddingRight: 20, paddingBottom: 20, paddingLeft: 20, children: [text('9:4', 60)] };
+  const doc = { id: '9:1', name: 'Mobile', type: 'FRAME', absoluteBoundingBox: { x: 0, y: 0, width: 375, height: 800 }, fills: fill(1, 1, 1), children: [
+    { id: '9:2', name: 'Band', type: 'FRAME', layoutMode: 'VERTICAL', paddingTop: 48, paddingBottom: 48, paddingLeft: 16, paddingRight: 16, absoluteBoundingBox: { x: 0, y: 0, width: 375, height: 300 }, fills: [], children: [card] },
+  ] };
+  const r = buildFoundation({ file: { document: { children: [] } }, nodes: { nodes: { '9:1': { document: doc, components: { 'C:card': { name: 'Card' } } } } }, frameIds: ['9:1'] });
+  const c = r.foundation.components.card;
+  assert.deepEqual([c.value.background, c.value.borderRadius, c.value.padding, c.value.color], ['rgb(255, 255, 255)', '12px', '20px', 'rgb(0, 0, 0)']);
+  assert.deepEqual(r.roleCandidates['cards.primary.titleColor'].map((x) => x.from), ['components/card']);
+  assert.deepEqual(r.roleCandidates['buttons.primary.background'], []);
+  assert.deepEqual(r.roleCandidates['layout.mobile.sectionPaddingY'].map((x) => x.from), ['spacing/pad-48']);
+  assert.deepEqual(r.roleCandidates['layout.mobile.gutter'].map((x) => x.from), ['spacing/pad-16']);
 });
 check('candidates: ≤ 5 per path, each from a foundation record that exists', () => {
   for (const [p, list] of Object.entries(roleCandidates)) {
@@ -103,6 +121,12 @@ check('a padded label wrapper inside a padded filled button: padding is the butt
   const b = foundation.components['button-primary'];
   assert.equal(b.value.padding, '12px 24px');
   assert.equal(b.figma.fields.padding.node, '1:20');
+});
+check('a component\'s height is its painted box, not a full-width row around it', () => {
+  assert.equal(foundation.components['button-primary'].value.height, '48px');
+  const row = foundation.components['cta-row'];
+  assert.equal(row.value.height, '42px');
+  assert.equal(row.figma.fields.height.node, 'I2:10;6:7');
 });
 check('container candidates: desktop-scale widths rank before narrower text measures, whatever their count', () => {
   const text = (id, mw) => ({ id, name: 'Copy', type: 'TEXT', maxWidth: mw, absoluteBoundingBox: { x: 0, y: 0, width: mw, height: 20 }, fills: [], characters: 'x', style: { fontFamily: 'Inter', fontSize: 16, fontWeight: 400, lineHeightPx: 24, lineHeightUnit: 'PIXELS' } });

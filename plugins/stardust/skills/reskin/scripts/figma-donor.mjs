@@ -59,7 +59,7 @@ capture  reads one version of the file over the Figma REST API (files depth=2, t
 curate   offline and deterministic: canon-source/foundation + module-candidates.json + the agent-
          authored <dir>/reskin/curation-rules.json → <dir>/reskin/donor-tokens.json (reskin's token
          sheet; nodeRefs cite the Figma node behind every value; coverage lists asserted, absent and
-         suspect paths), <dir>/reskin/donor-modules.md (the module vocabulary, one screenshot and
+         suspect paths and recommended { curated, missing }), <dir>/reskin/donor-modules.md (the module vocabulary, one screenshot and
          node per row) and the descriptive design files direct reads: <dir>/canon-source/DESIGN.json,
          DESIGN.md and _brand-extraction.json (prose only from rules.design). Every rule problem is
          listed at once (exit 1). Re-run after any capture or rules change.
@@ -96,12 +96,14 @@ curation-rules.json:
                  { "name": "<name>", "frame": "<nodeId>", "status": "excluded", "why": "<reason>" } ],
     "notesForReskin": "<casing, link glyphs, band rhythm>", "motifs": [ "<prose>" ],
     "design": { "displayName": "<name>", ... } }
-  groups: palette, type, layout, buttons, radii, shadows. Roles apply shallow first; an object
+  groups: palette, type, layout, buttons, cards, radii, shadows. Roles apply shallow first; an object
   record (typography, components) gives its field named by "field", by the probe path, or by the
   path's last segment, else its whole object. The 13 default-probe paths (palette.pageBg|bodyFg|
   headingFg, type.family, type.body.fontSize, type.display.fontWeight, buttons.primary.background|
   color|borderRadius|padding|fontSize, layout.containerMaxWidth|sectionPaddingY) must each resolve
-  to a string or be marked absent with a why. lineHeightUnitless / letterSpacingEm take an optional
+  to a string or be marked absent with a why. Optional, noted when unmapped: cards.primary.background|
+  borderRadius|padding|titleColor (a component's color), buttons.primary.height,
+  layout.mobile.sectionPaddingY|gutter. lineHeightUnitless / letterSpacingEm take an optional
   params.paths scope; weightMap / familyEquivalence take params.map { from: to }; fontSmoothing
   takes params.value. Without radii.* or shadows.* roles every captured radius / shadow is listed,
   except paths marked absent.
@@ -221,6 +223,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const excluded = mods.filter((m) => m.status === 'excluded').length;
     log(`curate: ${c.asserted}/13 probe paths asserted (${c.absent.filter((a) => a.probe).length} absent, ${c.suspect.length} suspect) · ${mods.length - excluded} module(s), ${excluded} excluded → ${written.join(', ')}`);
     for (const a of c.absent.filter((x) => x.probe)) log(`  absent ${a.path}: ${a.why}`);
+    for (const p of c.recommended.missing) log(`note: recommended token not curated: ${p} (map it, or mark it absent with a why)`);
     return 0;
   }
 

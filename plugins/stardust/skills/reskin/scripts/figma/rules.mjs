@@ -2,28 +2,30 @@
 // curate. resolveRules checks the file against the capture and resolves every role to a value with
 // its citation; validateRules throws one RulesError listing every problem. Pure.
 //
-// roles["<group>.<path>"] (groups: palette, type, layout, buttons, radii, shadows):
+// roles["<group>.<path>"] (groups: palette, type, layout, buttons, cards, radii, shadows):
 //   { from: "<foundationFile>/<key>", field?, evidence }  one foundation record; for an object record
-//       (typography, components) the field is `field`, else the probe path's field, else the path's
+//       (typography, components) the field is `field`, else the probe or recommended path's field
+//       (cards.primary.titleColor reads a component's color), else the path's
 //       last segment when the record has it, else the whole object (only its non-null CSS fields)
 //   { component: "<componentsKey>", evidence }  same as from: "components/<key>"
 //   { absent: "<why>" }  the value is not asserted (wins over an ancestor's object)
 // Roles apply shallow first, so "buttons.primary.padding" overrides "buttons.primary"'s padding.
-// Each of the 13 default-probe paths must end up a string or be marked absent with a why.
+// Each of the 13 default-probe paths must end up a string or be marked absent with a why; the 7
+// RECOMMENDED_PATHS are optional (curate notes the ones left unmapped).
 // normalizations[] apply to typography and component values as they are resolved:
 //   lineHeightUnitless (lineHeightPx / fontSize), letterSpacingEm (px / fontSize): params.paths
 //   optionally scopes them to role paths and their children; weightMap / familyEquivalence:
 //   params.map { from: to }; fontSmoothing: params.value (written to type.fontSmoothing).
 import { RulesError } from './errors.mjs';
-import { FOUNDATION_FILES, PROBE_PATHS, PROBE_SOURCES } from './foundation.mjs';
+import { FOUNDATION_FILES, PROBE_PATHS, PROBE_SOURCES, RECOMMENDED_SOURCES } from './foundation.mjs';
 import { letterSpacingCss, lineHeightCss } from './normalize.mjs';
 
-export const TOKEN_GROUPS = ['palette', 'type', 'layout', 'buttons', 'radii', 'shadows'];
+export const TOKEN_GROUPS = ['palette', 'type', 'layout', 'buttons', 'cards', 'radii', 'shadows'];
 export const TOP_KEYS = ['version', 'reference', 'roles', 'normalizations', 'curations', 'suspect', 'modules', 'notesForReskin', 'motifs', 'design'];
 export const NORMALIZATION_KINDS = ['lineHeightUnitless', 'letterSpacingEm', 'weightMap', 'familyEquivalence', 'fontSmoothing'];
 const CSS_FIELDS = {
   typography: ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing'],
-  components: ['background', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'borderRadius', 'padding', 'border', 'boxShadow'],
+  components: ['background', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'borderRadius', 'padding', 'border', 'boxShadow', 'height'],
 };
 
 const isObj = (x) => x && typeof x === 'object' && !Array.isArray(x);
@@ -143,12 +145,14 @@ export function resolveRules(rules, { foundation, moduleCandidates, screenshotIn
       const { value, by } = normalized(file, record, path, norm);
       const last = path.split('.').at(-1);
       // An explicit field must fit an object record; implied fields apply only to object records.
-      const field = role.field ?? (isObj(value) ? PROBE_SOURCES[path]?.field ?? (last in value ? last : null) : null);
+      const implied = PROBE_SOURCES[path] ?? RECOMMENDED_SOURCES[path];
+      const field = role.field ?? (isObj(value) ? implied?.field ?? (last in value ? last : null) : null);
       if (field) {
         if (!isObj(value)) { problems.push(`roles["${path}"]: ${src} is a single value; drop field "${field}"`); return; }
         if (value[field] == null) {
           const kind = field === 'background' && value.backgroundKind ? ` (backgroundKind ${value.backgroundKind})` : '';
-          problems.push(`roles["${path}"]: ${src} has no ${field}${kind}; map another source or mark it absent`);
+          const reads = !role.field && field !== last ? ` (${path} reads the record's ${field}; set "field", or map a single-value record such as colors/<key>)` : '';
+          problems.push(`roles["${path}"]: ${src} has no ${field}${kind}${reads}; map another source or mark it absent`);
           return;
         }
         assignments.push({ path, value: value[field], refs: { [path]: ref(file, record, field, by) } });
@@ -161,6 +165,13 @@ export function resolveRules(rules, { foundation, moduleCandidates, screenshotIn
         if (value[k] == null) { nullFields.set(`${path}.${k}`, { src, kind: k === 'background' ? value.backgroundKind : null }); continue; }
         obj[k] = value[k];
         refs[`${path}.${k}`] = ref(file, record, k, by);
+      }
+      // Named children that read another field (cards.primary.titleColor ← color) come along too.
+      for (const [p, s] of Object.entries(RECOMMENDED_SOURCES)) {
+        const leaf = p.slice(path.length + 1);
+        if (!p.startsWith(`${path}.`) || leaf.includes('.') || s.file !== file || leaf in obj || obj[s.field] == null) continue;
+        obj[leaf] = obj[s.field];
+        refs[p] = ref(file, record, s.field, by);
       }
       assignments.push({ path, value: obj, refs });
     });
