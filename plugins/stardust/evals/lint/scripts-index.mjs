@@ -33,7 +33,7 @@ for (const skill of readdirSync(ROOT).sort()) {
 const rel = relative(process.cwd(), INDEX);
 const findings = [];
 if (!existsSync(INDEX)) { console.error(`scripts-index lint: ${rel} is missing`); process.exit(1); }
-const text = readFileSync(INDEX, 'utf8');
+const text = readFileSync(INDEX, 'utf8').replace(/\r\n/g, '\n');
 const seen = new Map();
 text.split('\n').forEach((line, i) => {
   if (!line.startsWith('- `')) return;
