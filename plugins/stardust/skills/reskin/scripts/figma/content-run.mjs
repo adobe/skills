@@ -16,10 +16,30 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildContentModel, safeId, titleFromName } from './content.mjs';
+import { compileKit, instanceKit, variantClasses } from './pages.mjs';
 import { cacheFor, readCurrent } from './cache.mjs';
 import { readJsonIf, writeJson } from './io.mjs';
 import { UsageError } from './errors.mjs';
 import { parseFigmaUrl, canonicalFigmaUrl } from './url.mjs';
+
+// The kit registry (reskin/figma-pages.json kit, from figma-donor.mjs pages) as content.mjs's kit.of(instance):
+// the set (or lone component) it instances → its library block, module and variant classes (the set's class
+// inside the block, then its non-breakpoint properties).
+export function kitResolver(registry, maps = {}, rulesFile = {}) {
+  const k = compileKit(rulesFile);
+  const byName = new Map((registry?.blocks || []).map((b) => [b.block, b]));
+  const index = registry?.index || Object.fromEntries((registry?.blocks || []).map((b) => [b.set.id, { block: b.block, class: null }]));
+  return {
+    registry: registry?.version ?? null,
+    of(n) {
+      const id = instanceKit(n, maps);
+      const e = id.key && index[id.key];
+      const b = e && byName.get(e.block);
+      if (!b) return null;
+      return { block: b.block, module: b.module, variant: [...(e.class ? [e.class] : []), ...variantClasses(id.props, k)], set: id.set || id.component, setId: id.key, group: b.group, home: b.home?.canvasName ?? null, ...(e.part ? { part: true } : {}) };
+    },
+  };
+}
 
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const OPEN = new Set(['block', 'review']);
@@ -56,7 +76,7 @@ export function locate(responses, id) {
       if (hit) {
         const comps = Object.assign({}, ...responses.flatMap((x) => Object.values(x?.nodes || {}).map((y) => y?.components || {})));
         const sets = Object.assign({}, ...responses.flatMap((x) => Object.values(x?.nodes || {}).map((y) => y?.componentSets || {})));
-        return { frame: hit, lookup: { component: (n) => comps[n.componentId]?.name, componentSet: (n) => sets[comps[n.componentId]?.componentSetId]?.name } };
+        return { frame: hit, maps: { components: comps, componentSets: sets }, lookup: { component: (n) => comps[n.componentId]?.name, componentSet: (n) => sets[comps[n.componentId]?.componentSetId]?.name } };
       }
     }
   }
@@ -134,7 +154,7 @@ export function runInit({ dir, url, confidential, stateLib, at }) {
 }
 
 // ---- content -------------------------------------------------------------------------------------------------
-export async function runContent({ dir, url, frameId, slug, responsiveId = null, pages = {}, noChrome = false, force = false, confidential = false, client = null, stateLib, at, warn = () => {} }) {
+export async function runContent({ dir, url, frameId, slug, responsiveId = null, pages = {}, noChrome = false, force = false, confidential = false, client = null, stateLib, at, warn = () => {}, preloaded = [], kit = null }) {
   if (!SLUG_RE.test(slug)) throw new UsageError(`--slug must match ${SLUG_RE} (it becomes a path), got "${slug}"`);
   const { fileKey } = parseFigmaUrl(url);
   const statePath = join(dir, 'state.json');
@@ -147,6 +167,7 @@ export async function runContent({ dir, url, frameId, slug, responsiveId = null,
   const v = version ? cache.version(version) : null;
   const responses = [];
   const add = (r) => { if (r) responses.push(r); };
+  for (const r of preloaded) add(r);
   if (v) {
     add(v.read('nodes.json'));
     for (const id of [frameId, responsiveId].filter(Boolean)) add(v.read(`content-nodes-${safeId(id)}.json`));
@@ -176,7 +197,7 @@ export async function runContent({ dir, url, frameId, slug, responsiveId = null,
   const rules = { ...rulesFile, pages: { ...(rulesFile.pages || {}), ...pages } };
 
   // pass 1: what images the frame needs; then bytes (supplied file → REST) ; pass 2: the model
-  const args = { frame: hit.frame, fileKey, version: version || 'current', slug, tokens, rules, lookup: hit.lookup, capturedAt: at, responsive, pageName: hit.frame.name };
+  const args = { frame: hit.frame, fileKey, version: version || 'current', slug, tokens, rules, lookup: hit.lookup, capturedAt: at, responsive, pageName: hit.frame.name, kit: kit ? kitResolver(kit, hit.maps, rulesFile) : null };
   const first = buildContentModel(args);
   const assetsDir = join(out, 'assets');
   const supplied = existsSync(assetsDir) ? readdirSync(assetsDir) : [];

@@ -212,7 +212,40 @@ experiment's top two failure modes:
 
 ### Phase 2′ — CONTENT FROM FIGMA (Figma-only projects)
 
-No live site, so no `capture-content`. Per page frame:
+No live site, so no `capture-content`. A Figma URL names the **file**, not
+the page set: the linked node is only where the user was looking. Discover
+every page and the kit first:
+
+```bash
+node stardust/scripts/reskin/figma-donor.mjs pages <figma-url> [--refresh] [--confidential]
+node stardust/scripts/reskin/figma-donor.mjs capture <figma-url> \
+  --frames <foundation frames>,<captureFrames> --max-frames <count + 10>
+# add figma-pages.json modules[] to curation-rules.json modules, then curate + stamp
+node stardust/scripts/reskin/figma-donor.mjs content <figma-url> --all [--only a,b]
+```
+
+`pages` writes `reskin/figma-pages.json`: every page of the FULL PAGES
+canvases (one per page-set `Type`, its desktop frame plus the responsive
+one; "Page: …" documentation frames skipped) and the **block library** —
+every TEMPLATE SECTIONS (❏) and COMPONENTS (❖) canvas is one EDS block and
+one donor module, *whether a page uses it or not* (its public sets are
+variant classes, its `.` sets parts). Each page binds only the blocks it
+instances. `content --all` models every page (chrome once, from the page
+with the commonest header), binds each section to its kit block
+(`section.kit`) and writes `reskin/mapping.seed.json` — the slot → block
+map plus `library`, the full block list deploy builds. Canvas grouping,
+granularity (`kit.blockPer: "canvas" | "set"`) and read depth are
+`content-rules.json` `kit` overrides: `reference/content-model.md` § Pages
+and the kit library.
+
+"Exactly as in Figma" is the bar for these sites: `figma-donor.mjs renders
+<url>` fetches the PNG of every page breakpoint frame and every library
+variant (with its copy) into `reskin/figma-renders.json`. Deploy builds every
+library block, plus `/library/<block>`, a page per block that shows each
+variant as a section with `data-kit-component="<variant id>"`. Phase 5 (f)
+gates pages and library against those renders.
+
+A single frame still runs on its own:
 
 ```bash
 node stardust/scripts/reskin/figma-donor.mjs content <figma-url> \
@@ -463,6 +496,17 @@ is no verdict: re-run once, never a fix iteration (the other exits and
 the residual classes: `reference/gates.md` § (d)). `reskin-ledger.mjs
 record` (e) copies `summary.json`'s `ledgerFragment` into `ledger.json`
 `pages.<slug>.gates.figma`.
+
+**(f) EXACT FIDELITY** (Figma-only sites, blocking) — every page at every
+breakpoint frame, and every variant of every kit block on its library page,
+against Figma's own render (`figma-donor.mjs renders <url>` once, then
+offline). The library is the whole kit, used on a page or not
+(`reference/gates.md` § (f)):
+
+```bash
+node stardust/scripts/reskin/figma-gate.mjs exact --page <slug> --url <page>
+node stardust/scripts/reskin/figma-gate.mjs library --url-pattern 'http://localhost:3000/library/{block}'
+```
 
 **(e) DEPLOYED ACCEPTANCE** (any donor; skipped outside an aem-boilerplate
 project) — the page `deploy` made, on its aem.page branch preview, after

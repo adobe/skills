@@ -14,6 +14,8 @@
 //          frame's copy is the page's copy (replica's pixel-compare.mjs).
 //   register  B4: the divergence register of the step results already on disk (no browser).
 //   all    join → geometry → ramp → pixel → register in one run, with summary.json and the ledger fragment.
+//   exact  (f) Figma-only: the whole page at every breakpoint frame against Figma's render, blocking bar.
+//   library  (f) Figma-only: every variant of every kit block on its library page, blocking bar.
 // Writes go only under <dir>/.work/reskin/gates/. Under a sticky --confidential capture, every
 // subcommand first checks that .work/ and reskin/figma-checks/ are git-ignored.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
@@ -34,6 +36,8 @@ export const HELP = `Usage:
   node figma-gate.mjs pixel --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs register --page <slug> [--target preview] [--dir stardust]
   node figma-gate.mjs all --page <slug> --url <url|file> [--dir stardust]
+  node figma-gate.mjs exact --page <slug> --url <url|file> [--bar 3] [--height-tol 8] [--dir stardust]
+  node figma-gate.mjs library --url-pattern <url with {block}> [--block a,b] [--bar 3] [--size-tol 2] [--dir stardust]
   (geometry, ramp, pixel and all take --target preview --reskin <file> like join;
    register takes --target preview alone, to read the preview run's files;
    geometry, ramp, pixel, register and all take --waiver-budget <pct>)
@@ -225,6 +229,21 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
   in "node".
 Writes go only under <dir>/.work/reskin/gates/. After a capture --confidential, every subcommand first
 asserts that <dir>/.work/ and <dir>/reskin/figma-checks/ are git-ignored (exit 2 with the lines to add).
+exact    (f) EXACT FIDELITY, Figma-only sites: the page against Figma's own render of each of its
+         breakpoint frames (reskin/figma-renders.json, written by figma-donor.mjs renders). Per frame: a
+         viewport at the frame's width, lazy content scrolled in, a full-height screenshot, replica's
+         pixel-compare. PASS when the differing-pixel share ≤ --bar (default 3) and |height delta| ≤
+         --height-tol px (default 8); one FAIL row exits 1. Prints a row per breakpoint and the page's
+         similarity (100 − mean share). Writes <dir>/.work/reskin/gates/<slug>/exact/ (page, diff PNGs,
+         summary.json).
+library  (f) the block library, every block used on a page or not: --url-pattern's {block} is each
+         block's library page (e.g. http://localhost:3000/library/{block}); on it every Figma variant of
+         the block is the element [data-kit-component="<variant id>"] (its .<block> child when it holds
+         one), screenshot at 1440 (a mobile/tablet variant at its own width) against the variant's
+         render. PASS when share ≤ --bar and |width|, |height| delta ≤ --size-tol px (default 2); a
+         variant missing from the page, or a page that does not load, is FAIL. --block limits the run.
+         Prints per block "PASS|FAIL <block> <n>/<m> variants · similarity <pct>%", then failing rows.
+         Writes <dir>/.work/reskin/gates/_library/summary.json.
 Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing input or capture)
             · 3 bot challenge on a live target · 124 no verdict: a step crashed or timed out; re-run once, the
             same 124 twice is a residual (needs-owner), never a fix iteration.`;
@@ -233,6 +252,8 @@ Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing inp
 const TARGET_VALUES = ['--target', '--reskin'];
 
 const SPEC = {
+  exact: { values: ['--page', '--url', '--bar', '--height-tol', '--dir'], bools: [], positional: [] },
+  library: { values: ['--url-pattern', '--block', '--bar', '--size-tol', '--dir'], bools: [], positional: [] },
   boxes: { values: ['--module', '--node', '--depth', '--dir'], bools: [], positional: [] },
   join: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
   geometry: { values: ['--page', '--url', ...TARGET_VALUES, '--waiver-budget', '--dir'], bools: [], positional: [] },
@@ -587,6 +608,38 @@ function checkTarget(opts, UsageError) {
   if (opts.reskin !== undefined) throw new UsageError('--reskin applies to --target preview');
 }
 
+const numOpt = (opts, name, dflt, UsageError) => {
+  if (opts[name] === undefined) return dflt;
+  const n = /^\d+(\.\d+)?$/.test(opts[name]) ? Number(opts[name]) : NaN;
+  if (!(n >= 0)) throw new UsageError(`--${name} is a non-negative number, got "${opts[name]}"`);
+  return n;
+};
+
+async function exactStep({ dir, opts, log, UsageError }) {
+  if (!opts.page) throw new UsageError('exact needs --page <slug>');
+  if (!opts.url) throw new UsageError('exact needs --url <url|file>: the page to screenshot');
+  const { runExact, gateRow, DEFAULT_BAR, DEFAULT_HEIGHT_TOL } = await helper('exact');
+  const s = await runExact({ dir, slug: opts.page, url: opts.url, bar: numOpt(opts, 'bar', DEFAULT_BAR, UsageError), heightTol: numOpt(opts, 'height-tol', DEFAULT_HEIGHT_TOL, UsageError), out: join(dir, '.work', 'reskin', 'gates', opts.page, 'exact') });
+  log(`${s.pass ? 'PASS' : 'FAIL'} exact ${opts.page}: similarity ${s.similarity ?? 'n/a'}% over ${s.rows.length} breakpoint(s), bar ${s.bar}%`);
+  for (const r of s.rows) log(`  ${gateRow(r)}`);
+  if (s.rows.some((r) => r.verdict === 'NO VERDICT')) return 124;
+  return s.pass ? 0 : 1;
+}
+
+async function libraryStep({ dir, opts, log, UsageError }) {
+  if (!opts['url-pattern']) throw new UsageError('library needs --url-pattern <url with {block}>');
+  const { runLibrary, gateRow, DEFAULT_BAR, DEFAULT_SIZE_TOL } = await helper('exact');
+  const blocks = opts.block ? opts.block.split(',').map((x) => x.trim()).filter(Boolean) : null;
+  const s = await runLibrary({ dir, urlPattern: opts['url-pattern'], blocks, bar: numOpt(opts, 'bar', DEFAULT_BAR, UsageError), sizeTol: numOpt(opts, 'size-tol', DEFAULT_SIZE_TOL, UsageError), out: join(dir, '.work', 'reskin', 'gates', '_library') });
+  for (const [b, e] of Object.entries(s.blocks)) {
+    log(`${e.pass ? 'PASS' : 'FAIL'} ${b} ${e.rows.filter((r) => r.verdict === 'PASS').length}/${e.rows.length} variants · similarity ${e.similarity ?? 'n/a'}%`);
+    for (const r of e.rows.filter((x) => x.verdict !== 'PASS')) log(`  ${gateRow(r)}`);
+  }
+  log(`library: ${Object.values(s.blocks).filter((e) => e.pass).length}/${Object.keys(s.blocks).length} block(s) pass · similarity ${s.similarity ?? 'n/a'}% · bar ${s.bar}%`);
+  if (s.rows.some((r) => r.verdict === 'NO VERDICT')) return 124;
+  return s.pass ? 0 : 1;
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
@@ -599,7 +652,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     if (!(pct >= 0 && pct <= 100)) throw new UsageError(`--waiver-budget is a percentage from 0 to 100, got "${opts['waiver-budget']}"`);
     opts.waiverBudget = pct;
   }
-  const table = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, all: allStep, ...steps };
+  const table = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, all: allStep, exact: exactStep, library: libraryStep, ...steps };
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
   return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });

@@ -27,6 +27,7 @@ export const SCHEMES = ['http:', 'https:', 'mailto:', 'tel:'];
 export const ORDER_RULE = 'auto-layout: child order (absolute children after, geometric); otherwise geometric: rows by vertical overlap >= 50%, then x';
 export const VISIBILITY_RULE = 'effective: hidden when the node or any ancestor is visible:false';
 export const SEGMENT_RULE = 'top-level children by y; chrome by name leaves the body; content-less layers fold; overlapping bands merge; a single wrapper with >= 2 content bands is descended';
+export const KIT_RULE = 'a section is the outermost template-section or component instance above its nodes, else the instances inside them; one block per section (kit.mixed when several, kit.unbound when none)';
 
 export const DEFAULT_RULES = {
   chrome: { header: '^(page )?header$|^nav(igation)?( bar)?$|^top ?bar$|^site header$', footer: '^(page )?footer$|^site footer$' },
@@ -212,7 +213,7 @@ export function textRuns(n) {
 }
 
 // ---- the builder ---------------------------------------------------------------------------------------------
-export function buildContentModel({ frame, fileKey, version, slug, tokens = null, rules: rawRules = {}, lookup = {}, assets = () => null, capturedAt, responsive = null, pageName = null }) {
+export function buildContentModel({ frame, fileKey, version, slug, tokens = null, rules: rawRules = {}, lookup = {}, assets = () => null, capturedAt, responsive = null, pageName = null, kit = null }) {
   if (!frame?.children) throw new Error(`frame ${frame?.id ?? '(none)'} has no children: pass a page frame`);
   const rules = compileRules(rawRules);
   const flags = [];
@@ -479,6 +480,32 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
   }
 
   // ---- page -----------------------------------------------------------------------------------------------
+  // The Figma kit (figma-donor.mjs pages): a section is the template section or component it instances —
+  // the outermost instance above its nodes (segmentation may have descended into one), else the instances
+  // inside them. kit.of(instance) → { block, module, variant, set, group, home } or null.
+  const parents = new Map();
+  if (kit) (function index(n) { for (const c of n.children || []) { parents.set(c.id, n); index(c); } }(frame));
+  const outerInstance = (n) => { let hit = null; for (let x = n; x && x.id !== frame.id; x = parents.get(x.id)) if (x.type === 'INSTANCE') hit = x; return hit; };
+  function kitBinding(nodes, slot, chrome = false) {
+    const inst = [];
+    for (const n of nodes) {
+      const up = outerInstance(n);
+      if (up) { if (!inst.includes(up)) inst.push(up); continue; }
+      (function down(x) { for (const c of (x.children || []).filter(visible)) { if (c.type === 'INSTANCE') { if (!inst.includes(c)) inst.push(c); } else down(c); } }(n));
+    }
+    const bound = inst.map((n) => ({ n, b: kit.of(n) })).filter((x) => x.b);
+    if (!bound.length) {
+      if (!chrome) flag('kit.unbound', 'review', nodes[0]?.id, 'no template-section or component instance: the section is drawn outside the Figma kit — map it to a new module composed from donor tokens, or rebuild it from the kit in Figma', slot);
+      return null;
+    }
+    const blocks = [...new Set(bound.map((x) => x.b.block))];
+    if (blocks.length > 1) {
+      flag('kit.mixed', 'review', nodes[0]?.id, `instances of ${blocks.join(', ')} share one section: split the slot in the mapping brief, or confirm one block`, slot);
+      return { block: null, mixed: bound.map((x) => ({ block: x.b.block, module: x.b.module, instance: x.n.id })) };
+    }
+    const b = bound[0].b;
+    return { block: b.block, module: b.module, variant: b.variant, set: b.set, group: b.group, home: b.home, instance: bound.length === 1 ? bound[0].n.id : null, instances: bound.map((x) => x.n.id) };
+  }
   const seg = segment(frame, rules);
   const sections = seg.sections.map((band, i) => {
     const slot = `s${String(i + 1).padStart(2, '0')}`;
@@ -490,7 +517,9 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     bandTexts = textBoxesIn(band.nodes);
     const stream = ordered.flatMap((n) => emit(n, 'body', null));
     for (const f of flags.slice(before)) f.slot = slot;
-    return finishSection(slot, stream, band.nodes.map((n) => n.id));
+    const sec = finishSection(slot, stream, band.nodes.map((n) => n.id));
+    if (kit) sec.kit = kitBinding(band.nodes, slot);
+    return sec;
   });
 
   // headings: the first is the page h1, one h1 only, no skipped levels
@@ -524,6 +553,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
           ctas: texts.filter((t) => !isPara(t)).map((t) => ({ text: t.text, href: t.href || '#', absHref: t.href || '#', classes: 'link' })),
           images: flat.filter((x) => x.kind === 'image').map(({ currentSrc, alt, w, h }) => ({ currentSrc, alt, w, h })), formControls: [], leftovers: [], ordered: stream, orderedVerified: true };
         for (const t of texts.filter((x) => !isPara(x) && !x.href)) flag('link.unresolved', 'info', t.node, `chrome "${t.text.slice(0, 40)}" has no link target in the design`, slot.slot);
+        if (kit) slot.kit = kitBinding([r], slot.slot, true);
         chromeSlots.push(slot);
       }
     }
@@ -572,6 +602,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
       readingOrder: { rule: ORDER_RULE, frames: orderLog.rules, ambiguous: orderLog.ambiguous },
       segmentation: { rule: SEGMENT_RULE, sections: seg.sections.map((b, i) => ({ slot: `s${String(i + 1).padStart(2, '0')}`, y: Math.round(b.y - fb.y), h: Math.round(b.h), nodes: b.nodes.map((n) => n.id) })), chrome: { header: seg.chrome.header.map((n) => n.id), footer: seg.chrome.footer.map((n) => n.id) }, folded: seg.folded, descended: seg.descended },
       responsive: responsive?.frame ? { node: responsive.frame.id, name: norm(responsive.frame.name) } : null,
+      ...(kit ? { kit: { rule: KIT_RULE, registry: kit.registry || null } } : {}),
       decorative,
     },
     metadata: { title, description: '', canonical: null, ogTags: {}, twitterTags: {}, jsonLd: [], lang: 'en', favicon: null, declaredAbsent: ['description', 'canonical', 'ogTags', 'twitterTags', 'jsonLd'], derived: { title: 'frame name' } },

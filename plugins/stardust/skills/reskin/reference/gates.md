@@ -422,6 +422,34 @@ fetches `.plain.html` without a browser.
   `figma/` survives it.
 - **No verdict, exit 3.** As (d); the budget is in `deployed-leg.md`.
 
+## (f) Exact fidelity (Figma-only sites)
+
+On a Figma-only site the design *is* the page: content and layout come from the same frames, so the
+measure is the frame itself, not a donor's look. B2 stays advisory for donor reskins; (f) is the
+blocking pixel gate for `flowSource: "figma-only"`, run after (d) and before (e).
+
+`figma-donor.mjs renders <url>` fetches the references once (Figma's own PNG render of every page
+breakpoint frame and of every variant of every kit block, used or not) into
+`reskin/figma-renders.json`; both steps then run offline.
+
+| Step | Unit | Asserts | Bar (default) |
+|---|---|---|---|
+| `figma-gate.mjs exact --page <slug> --url <page>` | page × breakpoint frame | full-height screenshot at the frame's width against the frame PNG | differing-pixel share ≤ `--bar` 3 %, \|height Δ\| ≤ `--height-tol` 8 px |
+| `figma-gate.mjs library --url-pattern <…/{block}>` | block × variant | `[data-kit-component="<variant id>"]` on the block's library page (its `.<block>`) against the variant PNG | share ≤ `--bar` 3 %, \|width Δ\|, \|height Δ\| ≤ `--size-tol` 2 px |
+
+- **The library is the whole kit.** Every block in `figma-pages.json` `kit.blocks` has a library page
+  (deploy's `/library/<block>`) showing every variant of every public set, with the variant's copy
+  (`figma-renders.json` `texts`), one section per variant carrying `data-kit-component`. A missing
+  variant, or a library page that does not load, is FAIL, so an unused block cannot be skipped.
+- **Similarity** is 100 − the mean differing-pixel share over the compared rows, per page, per block
+  and overall; the report quotes it beside the PASS/FAIL count, never instead of it.
+- **Residuals.** Font rasterisation and anti-aliasing differ between Figma's renderer and Chromium;
+  the default bar leaves room for that and nothing more. A row over the bar is one fix iteration
+  (§ below), then a residual with its diff PNG under `.work/reskin/gates/<slug>/exact/` or
+  `.work/reskin/gates/_library/`. Raising `--bar` is recorded in `direction.md` as a named deviation.
+- Exit codes are figma-gate's: 1 a FAIL row, 2 usage (no `figma-renders.json`), 124 a comparison
+  past its deadline (re-run once).
+
 ## One fix iteration per gate family, then residuals
 
 The budget is **one fix iteration per gate family**: one for the

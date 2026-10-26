@@ -503,3 +503,35 @@ mapping, `stream-render`, `slot-coverage` and the handoff read it unchanged. Wha
   is a block flag; a page whose body is all placeholder is `placeholderOnly` and `content` exits 1.
 - Design strings are untrusted: the model keeps them raw, every renderer escapes them, and layer names
   become class tokens only when they pass block-name validation.
+
+### Pages and the kit library
+
+`figma-donor.mjs pages <url>` reads the whole file (`files?depth=1`), groups canvases and writes
+`reskin/figma-pages.json`; `content --all` runs `content` for each page it lists.
+
+- **Canvas groups.** Marker canvases (`FOUNDATIONS`, `COMPONENTS`, `TEMPLATE SECTIONS`, `FULL PAGES`,
+  matched by `kit.markers`) open a group; the canvases after one belong to it. Prefix glyphs override
+  (`❖` component, `❏` template, `↪` foundation, via `kit.prefixes`); `kit.canvases {id: group}` pins one.
+- **Pages.** On a pages canvas each COMPONENT_SET is a page family: variant `Type=X` is page `x`,
+  `Breakpoint=Desktop` its frame, Tablet/Mobile its responsive frame (`kit.breakpointProp`). Without
+  a set, top-level frames are pages paired by name. Frames named `Page: …`, `Cover`, or matching
+  `kit.exclude` are documentation and listed under `skipped`. The template slug is the set name.
+- **The library.** Every non-marker template and component canvas is read to `kit.depth` (default 5;
+  a canvas with no set inside that depth is listed in `kit.emptyCanvases`). With `kit.blockPer:
+  "canvas"` (default) the canvas is one block, named from the canvas (`❖ Checkbox & Radio` →
+  `checkbox-radio`); its first public set is the module frame, each public set becomes a variant
+  class when there are several (`Teaser / Card` → `card`), and sets named with a leading `.` or `_`
+  are parts. `"set"` makes each public set of a multi-set canvas its own block. Every block is a
+  module (`M1…` in canvas order) and a capture frame, used or not; `kit.unused` lists those no page
+  instances.
+- **Binding.** A page's top-level instances resolve, through `kit.index` (set id → block, class,
+  part), to their block; variant classes are the set's class then its non-breakpoint property values.
+  A set no kit canvas holds becomes an off-kit block (`kit.offKit`, home canvas named). In the content
+  model a section binds to the outermost kit instance enclosing its nodes (`section.kit {block,
+  module, variant, set, instance}`); none → `kit.unbound` (review), several blocks in one band →
+  `kit.mixed` (review). Chrome slots bind the same way.
+- **Seed.** `reskin/mapping.seed.json` holds `library` (every block, used flag), `chrome.kit` and
+  per page `template` plus `slots.<sNN> {module, block, variant, instance}`. `mapping.json` is never
+  written; it is authored from the seed. `stream-render` emits `data-block`, `data-block-variant`
+  and `data-kit-instance` on each section whose slot names them.
+

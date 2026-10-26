@@ -31,7 +31,9 @@
  *       "slots": { "s01": { "module": "M2", "layout": "stack|grid-2|media-band|split|cards (space-separated)",
  *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3,
  *         "heading": "display|h2|h3|h4", "inset": "80px", "split": "531px 1fr", "bleed": true,
- *         "align": "center" } } } } }
+ *         "align": "center", "block": "<kit block>", "variant": ["<class>"], "instance": "<node id>" } } } } }
+ *   block / variant / instance (Figma-only sites, seeded by figma-donor.mjs content --all from the Figma kit):
+ *   the EDS block the slot becomes, emitted as data-block / data-block-variant / data-kit-instance.
  *   chrome.navAlign: where a branded header row (logo + menu list) puts its menu between the logo and the
  *   actions; an override of the donor's layout.navAlign (a Figma donor's curate measures it), default end.
  *   layout stack: the stream in order; grid-2: form fields two-up; media-band: the slot's first image as a
@@ -120,6 +122,15 @@ class SetupError extends Error {}
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const unesc = (s) => s.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+// A Figma-kit slot (mapping slot `block`, from figma-donor.mjs pages + content --all): the EDS block it becomes,
+// its variant classes and the kit instance it belongs to (slots sharing one instance are one block).
+// Names are design input: only block-name-valid tokens are emitted.
+const BLOCK_TOKEN = /^[a-z][a-z0-9-]{0,63}$/;
+export function kitAttrs(m) {
+  if (!m?.block || !BLOCK_TOKEN.test(m.block)) return '';
+  const variant = (Array.isArray(m.variant) ? m.variant : []).filter((t) => BLOCK_TOKEN.test(t));
+  return ` data-block="${m.block}"${variant.length ? ` data-block-variant="${variant.join(' ')}"` : ''}${m.instance && /^I?\d+:\d+(?:;\d+:\d+)*$/.test(m.instance) ? ` data-kit-instance="${m.instance}"` : ''}`;
+}
 const url = (n) => esc(n.absHref || n.href);
 const SKIP = new Set(['donor', 'curatedFrom', 'note', 'nodeRefs', 'coverage', 'motifs', '_provenance', 'familyNote']);
 
@@ -619,7 +630,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     if (m.cardTone && !cardTone) warnings.push(`${s.slot}: unknown cardTone "${m.cardTone}" (dark | light | accent) — ignored`);
     const cls = ['band', ...layout.map((l) => `layout-${l}`), ...(cardTone ? [`cards-${cardTone}`] : []), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []), ...(tone && m.bleed === true ? ['bleed'] : []), ...(m.align === 'center' ? ['align-center'] : []), ...(mediaFirst ? ['media-first'] : [])].join(' ');
     const media = ctx.bandImage ? `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(ctx.bandImage.currentSrc || ctx.bandImage.src)} alt="${esc(ctx.bandImage.alt)}">` : '';
-    return `<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}>
+    return `<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}${kitAttrs(m)}>
       ${ctx.split ? '' : media}
       <div class="container"><div class="panel"><div class="flow" data-slot-body>
           ${inner}
