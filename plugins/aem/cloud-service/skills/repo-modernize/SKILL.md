@@ -23,7 +23,7 @@ Restructures a legacy AEM Maven project into the AEM as a Cloud Service package 
 - A content package deploys both `/apps` and mutable paths (`/content`, `/conf`, `/etc`, ...), or the project has no `ui.apps` / `ui.content` / `ui.config` / `all` split.
 - Before the `migration` skill's per-pattern fixes, when the project is not yet in the Cloud Service layout.
 
-Not for: Dispatcher configs (`migration`, Dispatcher branch), Java API fixes (`code-assessment`), Oak index definitions (Adobe's index converter).
+Not for: Dispatcher configs (`migration`, Dispatcher branch), Java API fixes (`code-assessment`), Oak index definitions (`migration`, Oak index branch).
 
 ## Prerequisites
 - **git**, and **Python 3.9+ with `lxml`**. If `python3` lacks lxml, create a virtual environment in this skill's folder (never in the user's project): `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`, then use `.venv/bin/python` wherever `python3` appears below. The apply step checks both and stops with instructions if anything is missing.
@@ -83,7 +83,7 @@ Findings are in each unit's `.modernize/findings.json`. Present them by priority
 | RM-902 HIGH | Bundle uses Felix SCR / `maven-bundle-plugin` | Hand to `code-assessment` (SCR → OSGi DS annotations, `bnd-maven-plugin`). |
 | RM-903 NORMAL | ACLs in a content package; `accessControlHandling=merge_preserve` set | Confirm with the user. |
 | RM-904 NORMAL | Existing third-party embed kept in `all` | Confirm it is still needed. |
-| RM-905 HIGH | Oak index defined but not covered by any filter root | If the user wants it deployed, add `<filter root="/oak:index/<name>"/>` to `ui.apps`' filter and review index naming. [manual-followups §7](references/manual-followups.md) |
+| RM-905 HIGH | Oak index defined but not covered by any filter root | If the user wants it deployed, add `<filter root="/oak:index/<name>"/>` to `ui.apps`' filter and review index naming; the `migration` skill's Oak index branch converts legacy index definitions. [manual-followups §7](references/manual-followups.md) |
 | RM-906 NORMAL / HIGH | Same OSGi PID in several app folders | NORMAL: identical copies, deduplicated. HIGH: conflicting copies — the second stayed in `ui.apps`; ask the user which values apply, then move it. |
 | RM-907 NORMAL / HIGH | OSGi value conversion note | NORMAL: a property AEM never applied (e.g. a `{Path}` value) was not carried over; the source value is in the finding — re-add only if wanted. HIGH: a value or whole file was invalid and left as-is — fix it with the user and convert per [transform-rules §10](references/transform-rules.md). |
 | RM-908 NORMAL | Java compiler level raised to 11 | Code that no longer compiles goes to `code-assessment`. |

@@ -76,21 +76,22 @@ dispatcher config itself converted/validated for Cloud Service, that's a job for
 skill (`aem-cloud-service:dispatcher`) as a separate, explicit step — not something `repo-modernize` triggers
 automatically.
 
-## 4. Oak index definitions — detect and report, hand off to `index-converter`
+## 4. Oak index definitions — detect and report, hand off to the `migration` skill's Oak index branch
 
 Index definitions under `/oak:index` are mechanically routed like any other immutable content (§1 of
 `transform-rules.md` — top-level folder `_oak_index` → `ui.apps`), and their filter roots correctly drive
 `allowIndexDefinitions` on `ui.apps.structure` (§4). What this skill does **not** do is evaluate whether the
 index *definitions themselves* are Cloud-Service-compatible (Oak index conversion — property types, sizing,
-Lucene vs. elastic, etc., is its own, separate concern with its own tool, `index-converter`).
+Lucene vs. elastic, etc., is its own, separate concern: the `migration` skill's Oak index branch, which
+wraps Adobe's index converter).
 
 **Fixture:** `oak-indexes/src/main/content/jcr_root/_oak_index/` with filter roots
 `/oak:index/damAssetLucene` and `/oak:index/wkndId` — these move correctly, but their index *definitions*
 are only detected and reported, never inspected for correctness.
 
 **Action:** report the presence and location of moved index definitions; hand off the actual
-definition-level review/conversion to `index-converter`. Do not attempt to validate or rewrite index
-definition content in this skill.
+definition-level review/conversion to the `migration` skill's Oak index branch. Do not attempt to validate
+or rewrite index definition content in this skill.
 
 See also §7 below — a THIRD `oak:QueryIndexDefinition` node in the same fixture directory
 (`wkndTerminationDate`) has no filter root at all, which is a distinct, more acute problem than
