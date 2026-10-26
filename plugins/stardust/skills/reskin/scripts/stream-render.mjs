@@ -348,10 +348,11 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const brandTexts = actions.filter((h) => h.startsWith('<span class="nav-text">'));
     const rest = actions.filter((h) => !brandTexts.includes(h));
     const brand = `<div class="brand">${logos}${brandTexts.length ? `<div class="brand-text">${brandTexts.join('')}</div>` : ''}</div>`;
-    const toggle = menu.length ? '<button class="icon-btn nav-toggle" type="button" aria-label="Menu"><span class="glyph glyph-menu" aria-hidden="true"></span></button>' : '';
+    // The toggle opens the folded menu below 900px: the page script flips aria-expanded and .nav-open on the header.
+    const toggle = menu.length ? '<button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="site-nav"><span class="glyph glyph-menu" aria-hidden="true"></span></button>' : '';
     return `${util.length ? `<div class="utility-bar"><div class="container">${util.join('')}</div></div>` : ''}<div class="chrome-row nav-align-${align}"><div class="container">
       ${brand}
-      <nav>${menu.join('')}</nav>
+      <nav${toggle ? ' id="site-nav"' : ''}>${menu.join('')}</nav>
       <div class="nav-actions">${rest.join('')}${toggle}</div>
     </div></div>`;
   }
@@ -401,7 +402,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       }
       col = null;
       if (n.kind === 'image' || (n.kind === 'cta' && !(n.text || '').trim())) continue;
-      if (n.kind === 'cta') { cols.push({ title: null, items: [`<li>${leaf(n)}</li>`] }); continue; }
+      if (n.kind === 'cta') { cols.push({ title: null, items: [`<li><a href="${url(n)}">${leaf(n)}</a></li>`] }); continue; }
       if ((n.text || '').trim()) brand.push(`<p class="footer-prose">${leaf(n)}</p>`);
     }
     const logos = s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
@@ -635,6 +636,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-header nav { display: none; }
     .site-header .utility-bar { display: none; }
     .site-header .nav-toggle { display: inline-flex; }
+    .site-header.nav-open .chrome-row .container { flex-wrap: wrap; }
+    .site-header.nav-open nav { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; flex-basis: 100%; order: 3; margin: 0; padding: 8px 0 16px; }
     .site-header .chrome-row .container { flex-wrap: nowrap; min-height: 64px; }
     .site-header .brand .logo { height: ${v('--header-logo-height-mobile', '40px')}; }
     .site-header .brand-text { font-size: 14px; }
@@ -647,6 +650,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-footer ul { columns: 1; }
   }`;
 
+  const headerHtml = chromeHtml(mapping.chrome?.header || [], 'header');
   const html = `<!doctype html>
 <html lang="${esc(md.lang || 'en')}">
 <head>
@@ -672,14 +676,15 @@ ${css}
 </head>
 <body>
 <header class="site-header" data-canon="header">
-  ${chromeHtml(mapping.chrome?.header || [], 'header')}
+  ${headerHtml}
 </header>
 <main class="site-main" data-template="${esc(pageMap.template || slug)}">
   ${sections.join('\n  ')}
 </main>
 <footer class="site-footer${['dark', 'light', 'accent'].includes(mapping.chrome?.footerTone) ? ` tone-${mapping.chrome.footerTone}` : ''}" data-canon="footer">
   ${chromeHtml(mapping.chrome?.footer || [], 'footer')}
-</footer>
+</footer>${headerHtml.includes('class="icon-btn nav-toggle"') ? `
+<script>document.addEventListener('click', (e) => { const b = e.target.closest('.nav-toggle'); if (!b) return; const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); b.closest('.site-header').classList.toggle('nav-open', open); });</script>` : ''}
 </body>
 </html>
 `;
