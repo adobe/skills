@@ -56,6 +56,9 @@ multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 wi
   `--proto-dir stardust/reskin/pages --current stardust/prototypes`). It now writes `src="assets/img/…"`, keeps the
   files in `stardust/prototypes/assets/img/` and mirrors them beside the page, so the page displays them and
   migrate bundles them with its defaults.
+- **Preflight warns on thin deployed-leg coverage.** `reskin-preflight` warns `deployed-coverage` for a type whose
+  migrated pages with preview-deployed evidence in the ledger number fewer than max(2, ⌈10 %⌉) of them (all below
+  2), naming the counts and the pages to run `deployed-gate all` on. A warning only in this release.
 
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 

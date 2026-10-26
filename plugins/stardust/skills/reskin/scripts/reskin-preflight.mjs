@@ -20,6 +20,9 @@
  *         its deployed evidence's codeStamp still the project's code (deployed-gate stamp) —
  *         gates PASS or residual accepted, no open residual, eyeball pass, prototype unchanged, M2 figma/deployed families PASS when recorded
  *   WARN  migrated pages whose migrate output has no passing sibling gate (reskin-ledger.mjs record --stage migrated)
+ *   WARN  deployed-coverage: a type whose migrated pages with preview-deployed evidence (ledger
+ *         pages.<slug>.gates.deployed, regime preview) number fewer than max(2, ceil(10% of them)) — all of
+ *         them when the type has fewer than 2 migrated pages; never a FAIL in this release
  *   WARN  pages without a type (migrate renders them Path A, never from an archetype)
  *   WARN  stale pages (re-approve / re-migrate them, or migrate stale output knowingly)
  *   WARN  feature rows still awaiting an owner decision
@@ -42,6 +45,8 @@ prepare-migration or direct — run canon-from-reskin.mjs, then this, then migra
 Exit 0 ready (warnings allowed), 1 not ready, 2 usage.`;
 
 const sha = (s) => createHash('sha1').update(s).digest('hex').slice(0, 12);
+// Share of a type's migrated pages the deployed leg should cover (at least 2, or all of them below 2).
+export const DEPLOYED_SHARE = 0.1;
 
 // Pure over a file reader: read(rel) → string | null. Returns [{ level: 'ok'|'fail'|'warn', check, detail }].
 // stamp(): the project's current code stamp (deployed/stamp.mjs codeStamp of the parent of dir), or null to skip the check.
@@ -107,6 +112,17 @@ export function preflight(read, { dir = 'stardust', stamp = null } = {}) {
   }
   const ungated = state.pages.filter((p) => p.status === 'migrated' && ledger?.pages?.[p.slug]?.migratedStatus !== 'gated');
   if (ungated.length) warn('sibling-gates', `migrated page(s) without a passing gate on migrate's output: ${ungated.map((p) => p.slug).join(', ')} — gate them (reskin/gates/<slug>/migrated/) and reskin-ledger.mjs record <slug> --stage migrated`);
+
+  // Deployed-leg coverage (A2): per type, the migrated pages with preview evidence in the ledger
+  // (pages.<slug>.gates.deployed, regime preview) against max(2, ceil(10%)) of them (all of them below 2). WARN only.
+  for (const [t, ps] of types) {
+    const migrated = ps.filter((p) => p.status === 'migrated');
+    if (!migrated.length) continue;
+    const need = Math.min(migrated.length, Math.max(2, Math.ceil(migrated.length * DEPLOYED_SHARE)));
+    const without = migrated.filter((p) => ledger?.pages?.[p.slug]?.gates?.deployed?.regime !== 'preview');
+    const have = migrated.length - without.length;
+    if (have < need) warn('deployed-coverage', `${t}: ${have} of ${migrated.length} migrated page(s) have preview-deployed evidence, want ${need} — run the deployed leg (reference/deployed-leg.md: deployed-gate.mjs all --page <slug>, then reskin-ledger.mjs record <slug>) on ${need - have} more, e.g. ${without.slice(0, need - have).map((p) => p.slug).join(', ')}`);
+  }
 
   const untyped = state.pages.filter((p) => !p.type);
   if (untyped.length) warn('untyped', `${untyped.map((p) => p.slug).join(', ')} — migrate renders untyped pages Path A`);

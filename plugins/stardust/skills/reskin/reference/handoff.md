@@ -68,6 +68,14 @@ record drift, active direction, dynamics dispositions, canon skeleton per
 mapped module, approval honesty). A failing predicate blocks the type in
 `migrate` (sibling tier) and `rollout`; hands-off is not a bypass.
 
+Coverage of the deployed leg is a warning, not yet a condition: per type,
+`deployed-coverage` warns when fewer than max(2, ⌈10 %⌉) of its `migrated`
+pages (all of them when it has fewer than 2) carry preview evidence in the
+ledger (`pages.<slug>.gates.deployed`, regime `preview`) — one gated
+archetype does not show the blocks hold across the type. It names the count
+and the pages to run the leg on (`deployed-leg.md`, then `reskin-ledger.mjs
+record <slug>`).
+
 ## Approval (D3)
 
 `approved` means a human accepted the archetype. `state.mjs advance <slug>
