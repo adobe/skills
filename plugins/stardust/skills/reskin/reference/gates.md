@@ -434,13 +434,15 @@ breakpoint frame and of every variant of every kit block, used or not) into
 
 | Step | Unit | Asserts | Bar (default) |
 |---|---|---|---|
-| `figma-gate.mjs exact --page <slug> --url <page>` | page × breakpoint frame | full-height screenshot at the frame's width against the frame PNG | differing-pixel share ≤ `--bar` 3 %, \|height Δ\| ≤ `--height-tol` 8 px |
+| `figma-gate.mjs exact --page <slug> --url <page>` | page × breakpoint frame | full-height screenshot in a viewport of the frame's width × height (a frame is a screen: 100vh layouts and frames shorter than a laptop screen measure true) against the frame PNG | differing-pixel share ≤ `--bar` 3 %, \|height Δ\| ≤ `--height-tol` 8 px |
 | `figma-gate.mjs library --url-pattern <…/{block}>` | block × variant | `[data-kit-component="<variant id>"]` on the block's library page (its `.<block>`) against the variant PNG | share ≤ `--bar` 3 %, \|width Δ\|, \|height Δ\| ≤ `--size-tol` 2 px |
 
 - **The library is the whole kit.** Every block in `figma-pages.json` `kit.blocks` has a library page
   (deploy's `/library/<block>`) showing every variant of every public set, with the variant's copy
   (`figma-renders.json` `texts`), one section per variant carrying `data-kit-component`. A missing
   variant, or a library page that does not load, is FAIL, so an unused block cannot be skipped.
+- **Transparent reference pixels** (a frame or variant with no fill) are composited onto white before
+  comparing, as the browser paints them; alpha is never a difference.
 - **Similarity** is 100 − the mean differing-pixel share over the compared rows, per page, per block
   and overall; the report quotes it beside the PASS/FAIL count, never instead of it.
 - **Residuals.** Font rasterisation and anti-aliasing differ between Figma's renderer and Chromium;
