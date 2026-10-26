@@ -1,6 +1,6 @@
 # CAM / MCP (Cloud Adoption Service)
 
-Read this file when **fetching BPA targets via MCP** instead of a CSV or cached collection. Parent skill: `../SKILL.md`.
+Read this file when **fetching BPA targets via MCP** instead of a CSV or cached collection, or when **submitting a Branch G validation outcome** ([`submit-migration-validation-result`](#tool-submit-migration-validation-result)). Parent skill: `../SKILL.md`.
 
 ## Happy path (what the user should see)
 
@@ -179,6 +179,75 @@ A 404 from the backend (no BPA report uploaded yet) is mapped to `success: true`
 
 ---
 
+## Tool: `submit-migration-validation-result`
+
+Records a **Branch G** validation outcome ([validate-migration.md](validation/validate-migration.md))
+against a CAM project. Call it only when a project is linked: the nearest
+`migration-runbook.json` (`project.id`) or an explicit `--project-id` / `--project-name`
+(explicit wins). The [project name and ID rules](#project-name-and-id--non-negotiable) still
+apply. With no linked project, validation stays local; do not ask for a project just to submit.
+
+Do not build the payload by hand. `check.js --stage verify` prints it between
+`=== submit-migration-validation-result payload ===` markers (one payload per template for
+`custom-templates`). Forward each payload unchanged, **once**, on the final verification
+attempt, including failed validations.
+
+**Request (illustrative — confirm against live MCP tool schema):**
+
+```typescript
+{
+  run_id: string;              // "vm-<timestamp>"
+  project_id?: string;         // either this or project_name must be provided
+  project_name?: string;
+  skill_pattern: string;       // validator pattern(s), e.g. "scheduler" or "scheduler+replication"
+  skill_version: string;       // validator package version
+  result: "pass" | "fail";
+  verification_level: "runtime" | "source-only";
+  started_at: string;          // ISO 8601
+  finished_at: string;         // ISO 8601
+  summary: { classes_total: number; classes_pass: number; classes_fail: number };
+  bundle?: {
+    symbolic_name: string;
+    state: "Installed" | "Resolved" | "Active" | "Fragment" | "Unknown";
+  };
+  classes: Array<{
+    class_name: string;        // Java FQCN, editable template path, or "(<pattern>)"
+    result: "pass" | "fail";
+    failure_class?: string;    // one of scripts/validate-migration/failure-classes.js
+    bundle_state?: string;
+    component_state?: string;
+    evidence?: string;         // credential-free, at most 2048 characters
+    checks?: Record<string, string | number | boolean>;  // flat; keys contain no "."
+  }>;
+}
+```
+
+**Success response:**
+
+```typescript
+{
+  ok: true;
+  run_id: string;       // must equal the submitted run_id
+  stored_at: string;    // when the outcome was stored
+  duplicate?: boolean;  // true when this run_id was already recorded
+}
+```
+
+Anything else (an error, `ok: false`, or a missing or different `run_id`) is a failed
+submission. An acknowledgement confirms the outcome was stored, not any downstream delivery.
+
+**Agent rules:**
+
+1. Confirm the tool is listed in your tools; never call it with a test or fabricated outcome.
+2. Say "outcome recorded" only after `ok: true` with the matching `run_id`.
+3. Save the receipt and run `--stage finalize` per [validate-migration.md](validation/validate-migration.md)
+   steps 5–6, including after a failed submission.
+4. **Do not retry automatically** — not even on network errors or 5xx. Reporting stays
+   incomplete until the user decides. Enablement restriction errors are still shown
+   [verbatim](#enablement-restriction-errors-mandatory-handling).
+
+---
+
 ## Batching
 
 The migration skill processes BPA findings in **batches of 5** by default. Batching is
@@ -215,7 +284,7 @@ helper caches the response to disk and slices from the cache on subsequent calls
 
 ## Retries and agent behavior
 
-**MCP tool:** The server implements its own retry and timeout logic internally. Do not add agent-side retries on top unless the table below says otherwise.
+**MCP tool:** The server implements its own retry and timeout logic internally. Do not add agent-side retries on top unless the table below says otherwise. The table covers the `fetch-…` tools; `submit-migration-validation-result` is never retried automatically (see [its rules](#tool-submit-migration-validation-result)).
 
 **Agent:**
 
