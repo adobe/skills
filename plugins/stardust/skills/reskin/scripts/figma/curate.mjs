@@ -12,6 +12,7 @@ import { FOUNDATION_FILES, PROBE_PATHS, RECOMMENDED_PATHS } from './foundation.m
 import { mdProvenance, provenance, readJson, writeFileAtomic, writeJson } from './io.mjs';
 import { deletePath, getPath, setPath, validateRules } from './rules.mjs';
 import { canonicalFigmaUrl } from './url.mjs';
+import { edsEquivalent, edsLabel } from './eds-map.mjs';
 
 const FAMILY_NOTE = 'adopted as a token string with a local fallback; no font files from Figma';
 
@@ -89,19 +90,21 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
   const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ');
   const rows = r.modules.map((m) => {
     const where = `canon-source/assets/screenshots/${m.slug}.png · node ${m.frame}`;
-    if (m.status === 'excluded') return `| — | ${cell(m.name)} | ${where} | excluded — do not develop: ${cell(m.why)} |`;
+    if (m.status === 'excluded') return `| — | ${cell(m.name)} | — | ${where} | excluded — do not develop: ${cell(m.why)} |`;
+    // The EDS block a module becomes is deploy Step 2's decision (D1/D11), not the Figma name: eds-map.mjs.
+    const eds = m.eds && typeof m.eds === 'object' && 'block' in m.eds ? m.eds : edsEquivalent(m.name);
     const parts = [`anatomy: ${m.anatomy}`];
     if (m.variants?.length) parts.push(`variants: ${m.variants.join(', ')}`);
     if (m.components?.length) parts.push(`components: ${m.components.join(', ')}`);
-    return `| ${m.id} | ${cell(m.name)} | ${where} | ${cell(parts.join('; '))} |`;
+    return `| ${m.id} | ${cell(m.name)} | ${cell(edsLabel(eds))} | ${where} | ${cell(parts.join('; '))} |`;
   });
   const donorModulesMd = [
     mdProvenance(provenance({ at: manifest.capturedAt, readArtifacts: [`${dir}/reskin/curation-rules.json`, `${dir}/canon-source/module-candidates.json`] })),
     '',
     `# Donor modules — ${rules.design?.displayName || donorUrl}`,
     '',
-    '| # | Module | Where seen | Description |',
-    '|---|--------|-----------|-------------|',
+    '| # | Module | EDS block | Where seen | Description |',
+    '|---|--------|-----------|-----------|-------------|',
     ...rows,
     '',
     `**Notes for reskin:** ${rules.notesForReskin || '(none recorded)'}`,
