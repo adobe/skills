@@ -2,7 +2,7 @@
 name: reskin
 description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, local static HTML prototypes, or a Figma file read headlessly over the REST API. Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", "use this Figma design for my site", "build my site from these Figma pages" (Figma-only: the frames hold the content, no live site), or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project's stardust/ scripts, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:reskin — same content, donor design
@@ -72,13 +72,26 @@ regression check instead of a debugging tool.
    (`../stardust/reference/state-machine.md` § Flow keys); if another
    flow is set, print it and the switch command
    (`$stardust reskin --switch-flow`) instead of running.
-2. **Import-resolvability probe** — same contract as
-   `../extract/SKILL.md` § Setup:
-   `node -e "Promise.all(['playwright','pixelmatch','pngjs'].map(m=>import(m))).then(()=>process.exit(0),()=>process.exit(1))"`
-   from the project root; on failure
-   `npm i -D playwright pixelmatch pngjs --legacy-peer-deps` (never
-   `--no-save`: a later real `npm i` prunes it). Re-run the probe at
-   the start of every phase that renders.
+2. **Node and import-resolvability probe.** `node --version` must be
+   22 or later (the scripts use Node 22 APIs); stop and say so
+   otherwise. Then, from `stardust/` (`mkdir -p stardust` first):
+   `node -e "Promise.all(['playwright','pixelmatch','pngjs'].map(m=>import(m))).then(()=>process.exit(0),()=>process.exit(1))"`.
+   The copied scripts (step 3) live under `stardust/scripts/` and ESM
+   resolves `import('playwright')` upward from the script's directory,
+   so a probe from `stardust/` sees both `stardust/node_modules` and
+   the project's own `node_modules`. On failure install into
+   `stardust/` — its own package root — never into the project:
+   `cd stardust && { [ -f package.json ] || echo '{"private":true}' > package.json; } && npm i -D playwright pixelmatch pngjs`,
+   and add `stardust/node_modules/` to `.gitignore`. This leaves the
+   project's `package.json` and `package-lock.json` untouched; an
+   install at the project root (and above all with
+   `--legacy-peer-deps`) can rewrite the lockfile and prune the
+   project's own dev tooling (on the EDS boilerplate it dropped
+   `@babel/core` and broke eslint). Never `--no-save` (a later real
+   `npm i` prunes it). After any install, `git diff --stat
+   package-lock.json` must be empty; if it is not, `git checkout
+   package.json package-lock.json` and install into `stardust/`.
+   Re-run the probe at the start of every phase that renders.
 3. **Copy the scripts into the project and run the copies.** ESM
    resolves `import('playwright')` from the *script's* directory and
    the plugin tree ships no `node_modules`. Copy, byte-identical, into
@@ -339,7 +352,7 @@ never in the page or the EDS blocks alone.
 
 The decisive validated rule: **the page is GENERATED from
 `content-model.json` — never retyped by hand.** The generic renderer
-`scripts/stream-render.mjs <slug> --register [--localize-images]`
+`scripts/stream-render.mjs <slug> --register --type <page type> [--localize-images]`
 covers any donor and site; write a per-archetype
 renderer (`stardust/reskin/renderers/<archetype>.mjs`) only where it
 falls short. Either way the renderer:
@@ -400,6 +413,11 @@ the page, `src="assets/img/…"`: the page shows it from
 through `state.mjs`: `prototypePath` set to the rendered file, the page
 advanced to `prototyped` — a same-type sibling of an approved archetype
 only to `directed`, the status `migrate` renders at the sibling tier.
+`--type <page type>` (with `--register`) also writes the page's `type`
+— the archetype name its pages share (`form`, `article`, …), the key
+preflight's `archetypes` check, the sibling role and `migrate`'s sibling
+tier group by; pass it on every render of a page that has none, or
+preflight fails "no page has a type" and no sibling migrates.
 `reskin-ledger record`, the canon bridge, preflight and `migrate` then
 find it with no hand edit. Render the archetype candidates here; render
 siblings after the archetype is approved (Phase 6), so they register as
@@ -558,7 +576,8 @@ and 3 and the fix budget: `reference/deployed-leg.md` § The fix budget.
 `all` replaces only `deploy` Step 10's automated reconcile: its deployed
 desktop/mobile eyeball, delayed-font/nav CLS probe (CLS < 0.1) and the
 header-behavior checks `chrome` (A6) does not cover stay mandatory before handoff, their results or an
-explicit `unresolved` in the ledger (`reference/deployed-leg.md` § Recipe, step 7).
+explicit `unresolved` in the ledger through `reskin-ledger.mjs step10`
+(`reference/deployed-leg.md` § Recipe, step 7, and § The ledger).
 
 **One fix iteration per gate family** (content; design-adoption/sanity;
 Figma fidelity): fix once, re-run all gates; (e) has its own budget
@@ -573,6 +592,7 @@ node stardust/scripts/reskin/reskin-ledger.mjs record <slug>
 node stardust/scripts/reskin/reskin-ledger.mjs eyeball <slug> --verdict pass --note "…"
 node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked [--by <owner>]
 node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --remove | --rename-cause "…" [--by <who>]
+node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass --cls 0.04 --header "n/a: <why>" --by user   # (e) only
 ```
 
 `record` reads the three gate reports (`reports/<slug>-{content-gate,
@@ -592,7 +612,9 @@ one needs `--by <owner>`, and `eyeball --verdict pass` is refused while
 `deployed.chrome` fails. On an approved page it fills
 `handoff.<type>` — the archetype, its prototype sha and the tier record
 (gates passed, prototype gates waived) — which `reskin-preflight` and
-`migrate` read. Re-run `record` after the approval and after every fix.
+`migrate` read. Re-run `record` after the approval and after every fix;
+it keeps the `gates.step10` receipts `step10` wrote (CLS < 0.1 passes; a
+value `"unresolved: <why>"` records NOT-RUN and a `needs-owner` residual).
 
 ### Phase 6 — HANDOFF
 
@@ -611,7 +633,7 @@ pipeline:
   migrate's inputs (`canon/`, donor-sourced `DESIGN.*`, `direction.md`,
   `dynamic-features.md`), advances the approved type's `extracted`
   siblings to `directed` (migrate's sibling tier; then render each with
-  `stream-render <slug> --register`) and, on a re-run with `--force`, flags
+  `stream-render <slug> --register --type <archetype type>`) and, on a re-run with `--force`, flags
   approved/migrated pages stale where the canon change reaches them.
   A changed canon is captured to `stardust/reskin/approvals/` and
   pixel-compared with the previous approval (warn above
@@ -629,7 +651,9 @@ pipeline:
   first-class token-sourcing paths).
   Same-type sibling pages render at the **sibling tier** against the
   gated archetype; gate each migrated page (the three gates on
-  migrate's output, reports in `reskin/gates/<slug>/migrated/`) and
+  migrate's output, reports in `reskin/gates/<slug>/migrated/`, with
+  `--deltas` ignoring the `canonical` / `og:url` migrate rewrites to the
+  deploy host: `reference/handoff.md` § Sibling gate) and
   `reskin-ledger.mjs record <slug> --stage migrated`. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // skills/reskin/scripts/test/canon-from-reskin.test.mjs — the reskin → migrate bridge. Pure part: CSS lift
-// (:root kept separately, class-based rules and @media lifted, element rules left), module skeletons
+// (every :root block merged into one, kept separately; class-based rules and @media lifted, element rules left), module skeletons
 // (slot body emptied, band image blanked), compositional moves, canon delta and content-aware stale
 // flags. CLI part (temp dir; pins are skipped when playwright is absent): --help before any I/O,
 // refusals, a full run writes canon/ + DESIGN.* with :root first and a first-approval history entry
@@ -43,6 +43,22 @@ check('liftCss: :root separate; class-based rules and @media inner rules lifted;
   assert.ok(r.lifted.some((l) => l.startsWith('.site-main .btn')));
   assert.ok(r.lifted.some((l) => /^@media \(max-width: 640px\) \{\n {2}\.site-main \.btn/.test(l) && !l.includes('main p')));
   assert.deepEqual(r.leftBehind, ['h1', '@media (max-width: 640px) main p', '@font-face']);
+});
+check('liftCss: every :root block is merged into the one rootBlock (stream-render emits two); a later name wins in place', () => {
+  const r = liftCss(`:root {
+  --max-width: 1200px;
+  /* absent in donor-tokens.json: --radius */
+}
+:root {
+  --palette-accent: #c00;
+  --max-width: 1140px;
+  --type-family: "A; B", sans-serif;
+  --bg: url(data:image/png;base64,AA==);
+}
+.site-main .btn { color: var(--palette-accent); max-width: var(--max-width); }`);
+  assert.equal(r.rootBlock, ':root {\n  --max-width: 1140px;\n  --palette-accent: #c00;\n  --type-family: "A; B", sans-serif;\n  --bg: url(data:image/png;base64,AA==);\n}');
+  assert.deepEqual(r.lifted, ['.site-main .btn { color: var(--palette-accent); max-width: var(--max-width); }']);
+  assert.equal(liftCss('.x { color: red; }').rootBlock, null);
 });
 check('moduleSkeletons: slot body emptied, band image blanked, per-page content gone', () => {
   const { modules, findings } = moduleSkeletons(page());

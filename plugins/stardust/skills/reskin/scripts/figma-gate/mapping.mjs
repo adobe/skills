@@ -5,11 +5,23 @@ import { UsageError } from '../figma/errors.mjs';
 const SLOT = /^s\d+(-[a-z0-9-]+)?$/;
 export const STATUSES = ['mapped', 'new-module', 'chrome', 'carried-invisible'];
 const NONE = new Set(['', '—', '–', '-']);
-// Rows of a markdown table: runs of consecutive lines starting with "|".
-const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+// Rows of a markdown table: runs of consecutive lines starting with "|". A cell ends at an unescaped "|"; an escaped
+// "\\|" (a pipe inside a module name) is cell text, read as "|".
+export const cells = (line) => line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').trim());
 const plain = (c) => c.replace(/[`*_]/g, '').trim();
 // "M3 (Card Row)": the id, with the module's name after it in parentheses.
 const moduleId = (c) => plain(c).replace(/\s*\(.*\)$/, '');
+// The page chrome a chrome row stands for, from its slot id, then its Donor module cell (the module's name), then its
+// Content, the first word in each that names one: header (header, nav, navigation, masthead) or footer; null for other
+// chrome (a banner).
+const CHROME_WORD = /\b(header|nav|navigation|masthead|footer)\b/i;
+export const chromePart = (...texts) => {
+  for (const t of texts) {
+    const word = CHROME_WORD.exec(plain(String(t ?? '')).replace(/[-_]/g, ' '))?.[1].toLowerCase();
+    if (word) return word === 'footer' ? 'footer' : 'header';
+  }
+  return null;
+};
 
 export const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
@@ -26,6 +38,7 @@ export function parseMapping(md, page) {
     const modCol = head.indexOf('donor module');
     const statusCol = head.indexOf('status');
     const pageCol = head.indexOf('page');
+    const contentCol = head.indexOf('content');
     if (modCol >= 0 && statusCol >= 0) {
       if (pageCol >= 0 && !page) throw new UsageError('mapping.md has a Page column: pass --page <slug>');
       const slotCol = pageCol === 0 ? 1 : 0;
@@ -38,13 +51,32 @@ export function parseMapping(md, page) {
         const module = moduleId(row[modCol] ?? '');
         const status = plain(row[statusCol] ?? '').toLowerCase();
         if (!STATUSES.includes(status)) throw new UsageError(`mapping.md: ${slot} has Status "${status}"; use one of ${STATUSES.join(' | ')}`);
-        rows.push({ slot, module: NONE.has(module) ? null : module, status });
+        const entry = { slot, module: NONE.has(module) ? null : module, status };
+        if (status === 'chrome') entry.part = chromePart(slot, row[modCol], contentCol >= 0 ? row[contentCol] : '');
+        rows.push(entry);
       }
       return rows;
     }
     i = end;
   }
   throw new UsageError('mapping.md has no slot table: use the table form of reference/mapping-brief.md § Entry schema');
+}
+
+// An image's file name: the last path segment of its URL, lower case, without query or fragment.
+export const imageFile = (src) => {
+  const path = String(src ?? '').split(/[?#]/)[0];
+  const file = path.slice(path.lastIndexOf('/') + 1);
+  try { return decodeURIComponent(file).toLowerCase(); } catch { return file.toLowerCase(); }
+};
+
+// What an image-only slot is recognised by when it has no text: its images' alt texts and file names, in order.
+export function imageAnchors(model) {
+  const out = new Map();
+  for (const s of model?.sections || []) {
+    const list = (s.images || []).map((i) => ({ alt: norm(i.alt), file: imageFile(i.currentSrc ?? i.src) })).filter((i) => i.alt || i.file);
+    if (list.length) out.set(s.slot, list);
+  }
+  return out;
 }
 
 const TEXT_KINDS = new Set(['heading', 'text', 'paragraph', 'listItem', 'cta']);

@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { donorModulesEds } from '../figma/eds-map.mjs';
-import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, socialNetwork, tokenVars } from '../stream-render.mjs';
+import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, MAPPING_SCHEMA, modelHasButton, registerRendered, render, rendersButton, socialNetwork, tokenVars } from '../stream-render.mjs';
 import { advance } from '../../../stardust/scripts/state.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
@@ -564,6 +564,21 @@ check('checkMapping: a valid mapping (every key, annotations) has no problems', 
   assert.deepEqual(checkMapping(goodMapping, { models: { login: model }, chromeModel: chromeM, slugs: ['login'] }), []);
   assert.deepEqual(checkMapping(mapping, { models: { login: model } }), []);
 });
+check('checkMapping: --check allows every mapping key the renderer and --deploy-map read (no documented key rejected)', () => {
+  const reads = { top: new Set(), chrome: new Set(), page: new Set(), slot: new Set() };
+  const track = (o, set) => new Proxy(o, { get(t, k, r) { if (typeof k === 'string') set.add(k); return Reflect.get(t, k, r); } });
+  const m = structuredClone(goodMapping); m.blocks = { M2: 'hero' };
+  const slots = Object.fromEntries(Object.entries(m.pages.login.slots).map(([id, s]) => [id, track(s, reads.slot)]));
+  const mapped = track({ ...m, chrome: track(m.chrome, reads.chrome), pages: { login: track({ ...m.pages.login, slots }, reads.page) } }, reads.top);
+  render({ ...base, mapping: mapped, chromeModel: { sections: chromeM.sections.map((x) => ({ ...x, ctas: [], images: [], ordered: [{ kind: 'text', text: 'Chrome' }] })) } });
+  deployMap(mapped, 'login', model);
+  const S = MAPPING_SCHEMA; const ok = (k, allowed) => allowed.includes(k) || /^[_$]/.test(k) || k === 'toJSON';
+  for (const [level, allowed] of [['top', S.top], ['chrome', S.chrome], ['page', S.page], ['slot', S.slot]]) {
+    const extra = [...reads[level]].filter((k) => !ok(k, allowed));
+    assert.deepEqual(extra, [], `${level} keys the renderer reads but --check rejects: ${extra.join(', ')}`);
+  }
+  assert.ok(reads.slot.has('inset') && reads.chrome.has('model') && reads.top.has('blocks'), 'the audit saw the reads');
+});
 check('checkMapping: unknown keys at every level', () => {
   const m = structuredClone(goodMapping); m.extra = 1; m.chrome.logo = 'x'; m.pages.login.status = 'mapped'; m.pages.login.slots.s01.rationale = 'why';
   const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM });
@@ -629,6 +644,19 @@ check('CLI render is unchanged: the default out, the same bytes as render() bar 
   const strip = (h) => h.replace(/writtenAt: +\S+/, 'writtenAt: T');
   assert.equal(strip(html), strip(render({ ...base, now: 'T' }).html));
 });
+check('clamped stream nodes: one .clamp box per clamp group with the source line count; the CSS rule only when used', () => {
+  const ordered = [
+    { kind: 'heading', level: 'h3', text: 'Post' },
+    { kind: 'text', parentTag: 'div', text: 'Long body', lineClamp: 3, clampGroup: 1 },
+    { kind: 'cta', text: 'https://feed.test/p', absHref: 'https://feed.test/p', lineClamp: 3, clampGroup: 1, sep: ' ' },
+    { kind: 'paragraph', text: 'Teaser', lineClamp: 2, clampGroup: 2 },
+    { kind: 'paragraph', text: 'Plain' },
+  ];
+  const html = render({ ...base, model: { sections: [{ slot: 's01', ordered }] } }).html;
+  assert.match(html, /<h3 class="heading">Post<\/h3>\n {8}<div class="clamp" style="-webkit-line-clamp: 3"><p class="text">Long body<\/p><p class="aux"><a class="link" href="https:\/\/feed\.test\/p">https:\/\/feed\.test\/p<\/a><\/p><\/div>\n {8}<div class="clamp" style="-webkit-line-clamp: 2"><p class="lead">Teaser<\/p><\/div>\n {8}<p class="lead">Plain<\/p>/);
+  assert.match(html, /\n {2}\.site-main \.clamp \{ display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; \}\n/);
+  assert.doesNotMatch(render(base).html, /clamp/, 'no clamped node: no box, no rule');
+});
 
 
 // ---- --register (state.json through state.mjs, flow reskin only) ----
@@ -670,6 +698,36 @@ check('--register CLI: state gets prototypePath + prototyped (written by stardus
   assert.match(L.pages.login.prototypeSha, /^[0-9a-f]{12}$/);
   const again = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: root, encoding: 'utf8' });
   assert.match(again.stdout, /stays prototyped \(unchanged\)/);
+});
+check('registerRendered --type: the type is written before the role is decided; re-typing is a change, the same type is not', () => {
+  const P = 'stardust/reskin/pages/x.html'; const opt = { advance, at: 'T1' };
+  const st = reskinState([page('a', 'approved', 'form'), page('b', 'extracted', null), page('c', 'extracted', null)]);
+  assert.deepEqual(registerRendered(st, 'b', P, { ...opt, type: 'form' }), { slug: 'b', from: 'extracted', to: 'directed', role: 'sibling', changed: true, typed: { from: null, to: 'form' } });
+  assert.equal(st.pages[1].type, 'form'); assert.equal(st.pages[1].prototypePath, P);
+  assert.equal(registerRendered(st, 'c', P, { ...opt, type: 'landing' }).to, 'prototyped', 'a new type is no sibling');
+  assert.equal(registerRendered(st, 'c', P, { ...opt, type: 'landing' }).changed, false, 'same type, same path: unchanged');
+  const r = registerRendered(st, 'c', P, { ...opt, type: 'article' });
+  assert.deepEqual([r.changed, r.typed, st.pages[2].type], [true, { from: 'landing', to: 'article' }, 'article']);
+});
+check('--register --type CLI: type and prototypePath land in state.json; preflight sees a typed page; --type alone and a conflicting re-type are exit 2', () => {
+  const root = project({ state: reskinState([page('login', 'extracted', null)]) });
+  const r = spawnSync(process.execPath, [SCRIPT, 'login', '--register', '--type', 'form'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /registered login: prototypePath stardust\/reskin\/pages\/login\.html, type form, extracted → prototyped/);
+  const st = JSON.parse(readFileSync(join(root, 'stardust', 'state.json'), 'utf8'));
+  assert.deepEqual([st.pages[0].type, st.pages[0].prototypePath, st.pages[0].status, st._provenance.writtenBy], ['form', 'stardust/reskin/pages/login.html', 'prototyped', 'stardust:reskin']);
+  const pf = spawnSync(process.execPath, [join(dirname(SCRIPT), 'reskin-preflight.mjs'), '--json'], { cwd: root, encoding: 'utf8' });
+  const arche = JSON.parse(pf.stdout).checks.find((c) => c.check === 'archetypes');
+  assert.doesNotMatch(arche.detail, /no page has a type/); assert.match(arche.detail, /no approved archetype for form \(login\)/);
+  const alone = spawnSync(process.execPath, [SCRIPT, 'login', '--type', 'form'], { cwd: root, encoding: 'utf8' });
+  assert.equal(alone.status, 2); assert.match(alone.stderr, /--type needs --register/);
+  assert.equal(spawnSync(process.execPath, [SCRIPT, 'login', '--register', '--type', 'a b'], { cwd: root, encoding: 'utf8' }).status, 2);
+  const approved = project({ state: reskinState([page('login', 'approved', 'form')]) });
+  const before = readFileSync(join(approved, 'stardust', 'state.json'), 'utf8');
+  const re = spawnSync(process.execPath, [SCRIPT, 'login', '--register', '--type', 'landing'], { cwd: approved, encoding: 'utf8' });
+  assert.equal(re.status, 2); assert.match(re.stderr, /login is approved as type "form"/);
+  assert.equal(readFileSync(join(approved, 'stardust', 'state.json'), 'utf8'), before);
+  assert.equal(existsSync(join(approved, 'stardust', 'reskin', 'pages')), false, 'refused before rendering');
 });
 check('--register refuses outside flow reskin (exit 2, nothing rendered or written); a slug not in state is noted', () => {
   const st = { ...reskinState([page('login', 'extracted')]), flow: 'redesign' };

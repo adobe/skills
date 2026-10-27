@@ -13,7 +13,7 @@ import fs, { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSy
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { startFakeFigma } from './fixtures/figma-kit/fake-figma.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +54,46 @@ await check('--help: exit 0, usage, nothing written, no network', async () => {
   for (const s of ['capture', '--frames', '--max-frames', '--refresh', '--list', '--max-wait', '--dir', 'FIGMA_TOKEN', 'Exit codes']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
   assert.deepEqual(walk(cwd), []);
   assert.equal(fake.requests.length, 0);
+});
+
+const donor = await import('../figma-donor.mjs');
+await check('--help piped: the whole text reaches the reader, even a slow one', async () => {
+  const r = await run(['--help']);
+  assert.equal(r.code, 0, r.stderr);
+  assert.equal(r.stdout, `${donor.HELP}\n`);
+  const slow = spawnSync('sh', ['-c', `"${process.execPath}" "${SCRIPT}" --help | (sleep 1; cat)`], { encoding: 'utf8' });
+  assert.equal(slow.status, 0, slow.stderr);
+  assert.equal(slow.stdout, `${donor.HELP}\n`);
+  assert.match(slow.stdout, /Exit codes: 0 ok[\s\S]*5xx after retries\)\.\n$/);
+});
+await check('exitAfterFlush: exits with the code only after stdout, then stderr, flush', async () => {
+  const order = [];
+  const pending = [];
+  const stream = (name) => ({ write: (s, cb) => { order.push(`${name} write`); pending.push(() => { order.push(`${name} flushed`); cb(); }); return false; } });
+  const saved = process.exitCode;
+  try {
+    donor.exitAfterFlush(3, { stdout: stream('stdout'), stderr: stream('stderr'), exit: (c) => order.push(`exit ${c}`) });
+    assert.equal(process.exitCode, 3);
+    assert.deepEqual(order, ['stdout write']);
+    while (pending.length) pending.shift()();
+    assert.deepEqual(order, ['stdout write', 'stdout flushed', 'stderr write', 'stderr flushed', 'exit 3']);
+  } finally { process.exitCode = saved; }
+});
+await check('nodeVersionProblem: Node 22+ passes; older names the version found', async () => {
+  assert.equal(donor.nodeVersionProblem('22.14.0'), null);
+  assert.equal(donor.nodeVersionProblem('v24.1.0'), null);
+  assert.equal(donor.nodeVersionProblem(process.versions.node), null);
+  assert.equal(donor.nodeVersionProblem('18.20.4'), 'reskin needs Node 22+, found v18.20.4');
+  assert.equal(donor.nodeVersionProblem('v20.0.0'), 'reskin needs Node 22+, found v20.0.0');
+  assert.match(donor.nodeVersionProblem('garbage'), /needs Node 22\+/);
+  assert.match(donor.HELP, /Needs Node 22\+/);
+});
+await check('an old Node stops at startup with exit 2 and one line', async () => {
+  const shim = `Object.defineProperty(process.versions, 'node', { value: '18.20.4' }); process.argv.splice(1, 0, ${JSON.stringify(SCRIPT)}); await import(${JSON.stringify(pathToFileURL(SCRIPT).href)});`;
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', shim, 'curate'], { encoding: 'utf8', cwd: scratch });
+  assert.equal(r.status, 2, r.stderr);
+  assert.equal(r.stderr, 'figma-donor: reskin needs Node 22+, found v18.20.4\n');
+  assert.equal(r.stdout, '');
 });
 
 const P1 = project();

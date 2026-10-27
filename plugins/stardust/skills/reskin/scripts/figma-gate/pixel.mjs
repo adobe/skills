@@ -63,7 +63,7 @@ export function comparePngs(figmaPng, pagePng, { out, textBoxes: boxesFile, time
 
 async function loadPng() {
   try { return (await import('pngjs')).PNG; } catch {
-    throw new UsageError('pngjs is not importable from the reskin scripts: run npm i -D pngjs pixelmatch --legacy-peer-deps in the project (reskin SKILL.md § Setup)');
+    throw new UsageError('pngjs is not importable from the reskin scripts: run npm i -D pngjs pixelmatch in stardust/, its own package root, not the project (reskin SKILL.md § Setup step 2)');
   }
 }
 
@@ -144,9 +144,10 @@ export async function runPixel({ target, join: joined, checks, boxes, dir, out, 
       const rect = cropRect(root, frame);
       if (rect.na) { done(na(rect.na)); continue; }
 
-      // A fixture is a hand-made local page: its section is found by data-slot, whatever regime the target has.
+      // A fixture is a hand-made local page: its section is found by data-slot (a chrome section by the join's header /
+      // footer selector), whatever regime the target has.
       const pageTarget = mode === 'fixture' ? localTarget(cfg.pixel.fixtureUrl) : target;
-      const selector = mode === 'fixture' ? localAttributes.selector(slot) : section.selector;
+      const selector = mode === 'fixture' && !section.chrome ? localAttributes.selector(slot) : section.selector;
       const page = await pageFor(pageTarget, cfg.width);
       const locator = page.locator(selector);
       if (await locator.count() === 0) { done(na(`${selector} matched nothing on ${pageTarget.url}`)); continue; }

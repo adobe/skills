@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // skills/reskin/scripts/test/reskin-preflight.test.mjs — reskin → migrate readiness. Pure part: a ready
-// project passes, each FAIL check trips on its own (flow, archetype per type, canon :root, donor DESIGN,
+// project passes, each FAIL check trips on its own (flow, archetype per type, canon :root, canon tokens, donor DESIGN,
 // canon record drift, direction, dispositions), stale / untyped / awaiting rows only warn. CLI part:
 // --help before any I/O, exit 2 on usage errors, exit 0 / 1 on a temp project. Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -57,6 +57,28 @@ check('canon.css not opening with :root fails (comments ignored)', () => {
   const css = '/* x */ .a { color: red; }\n:root { --a: red; }';
   assert.deepEqual(levels(preflight(project({ 'stardust/canon/canon.css': css })), 'canon'), ['fail']);
   assert.deepEqual(levels(preflight(project({ 'stardust/canon/canon.css': `/* stamp */\n${CSS}` })), 'canon'), ['ok']);
+});
+check('canon-tokens: a var read without a fallback and defined nowhere fails and is named; fallback-only ones warn; markup and renderer vars count as defined', () => {
+  const css = `:root {
+  --a: red;
+}
+.site-main .btn { color: var(--a); background: var(--palette-accent); border-color: var(--palette-accent, #000); }
+.site-main .card { padding: var(--card-pad, 8px); font: var(--type-body-font-size) var(--gap); --gap: 4px; }
+.site-main .inset > .container { padding: 0 var(--band-inset); }
+.site-main .hero { margin: var(--hero-m); }`;
+  const mod = '<section class="hero" style="color: red; --hero-m: 2px" data-module="M1"></section>';
+  const d = JSON.parse(project()('DESIGN.json'));
+  d.extensions.modules = [{ id: 'M1', canonicalRendering: { path: 'stardust/canon/modules/M1.html', sha: 'x' } }];
+  const res = preflight(project({ 'stardust/canon/canon.css': css, 'DESIGN.json': JSON.stringify(d), 'stardust/canon/modules/M1.html': mod }));
+  assert.deepEqual(levels(res, 'canon-tokens'), ['fail', 'warn']);
+  const [f, w] = res.filter((r) => r.check === 'canon-tokens');
+  assert.match(f.detail, /2 custom properties defined nowhere, without a fallback: --palette-accent, --type-body-font-size/);
+  assert.match(w.detail, /1 custom property defined nowhere, only with a fallback.*: --card-pad$/);
+  assert.deepEqual(levels(preflight(project()), 'canon-tokens'), ['ok']);
+});
+check('canon-tokens: a canon.css from two merged :root blocks (stream-render shape) passes', () => {
+  const css = ':root {\n  --max-width: 1140px;\n  --palette-accent: #c00;\n}\n.container { max-width: var(--max-width); }\n.link { color: var(--palette-accent); }\n';
+  assert.deepEqual(levels(preflight(project({ 'stardust/canon/canon.css': css })), 'canon-tokens'), ['ok']);
 });
 check('DESIGN.json not donor-sourced fails', () => {
   const d = JSON.parse(project()('DESIGN.json')); d.source.kind = 'direction';

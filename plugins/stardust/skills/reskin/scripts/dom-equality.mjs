@@ -144,7 +144,7 @@ let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
   console.error('[dom-equality] playwright not importable from this script\'s directory.');
   console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright pixelmatch pngjs --legacy-peer-deps  (reskin SKILL.md § Setup)');
+  console.error('run in stardust/ (its own package root, not the project): npm i -D playwright pixelmatch pngjs  (reskin SKILL.md § Setup step 2)');
   process.exit(2);
 }
 

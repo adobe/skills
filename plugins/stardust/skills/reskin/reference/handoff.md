@@ -7,8 +7,10 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
 
 ## The sequence
 
-1. Phase 4 renders with `stream-render.mjs <slug> --register` (state's
-   `prototypePath`), Phase 5 gates per page → `reskin-ledger.mjs record <slug>`
+1. Phase 4 renders with `stream-render.mjs <slug> --register --type <type>`
+   (state's `prototypePath`, and the page `type` — the archetype name its
+   pages share; untyped pages fail preflight's `archetypes` and never
+   migrate at the sibling tier), Phase 5 gates per page → `reskin-ledger.mjs record <slug>`
    (+ `eyeball`, `residual` for the two human judgments).
 2. Approve the archetype (§ Approval) → `reskin-ledger.mjs record <archetype>`
    again, so `handoff.<type>` names it.
@@ -18,8 +20,8 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
    renders at the sibling tier; `direct` refuses under reskin). It names the
    siblings it left: stale ones, and `prototyped` ones (`migrate render --all`
    skips them). Re-run it after approving another type's archetype.
-4. Render each sibling: `stream-render.mjs <slug> --register` (it stays
-   `directed`, with the `prototypePath` migrate reads as its source).
+4. Render each sibling: `stream-render.mjs <slug> --register --type <type>`
+   (the archetype's type; it stays `directed`, with the `prototypePath` migrate reads as its source).
 5. `reskin-preflight.mjs` exit 0 (§ The predicate).
 6. `migrate render --all` with its default flags — archetypes at their own tier,
    same-type pages at the sibling tier; migrate merges `handoff.<type>.gates`
@@ -99,7 +101,7 @@ waived, so `approved` is never read as "the full prototype stack passed":
 | content fidelity (`dom-equality`) | **run** — `reskin-dom-equality` |
 | slot coverage | **run** — `reskin-slot-coverage` |
 | design adoption (`donor-probe`, incl. 1440/360 overflow) | **run** — `reskin-donor-probe` |
-| mobile-adapt static (viewport, a `max-width` rule ≤640px) | **run** — `mobile-adapt-static` |
+| mobile-adapt static (viewport, a `max-width` or range `(width <= …)` / `(width < …)` rule ≤640px) | **run** — `mobile-adapt-static` |
 | mobile-adapt runtime (`mobile-nav-audit.mjs`, 360px) | **run** — `mobile-adapt-runtime` (NOT-RUN without Playwright → blocks unless accepted) |
 | side-by-side donor eyeball | **run** — human / hands-off judgment, `eyeball` |
 | critique, audit, anti-template, content-sourcing, motion-validation | **waived** — they judge a design authored from intent; the design here is the donor's and the content is byte-gated |
@@ -137,6 +139,38 @@ three gates against the source URL, reports in
 (`pages[slug].migratedStatus`, `handoff.<type>.siblings`). Preflight warns
 (`sibling-gates`) on migrated pages without a passing one; rollout does not
 publish them.
+
+When `state.json` `site.deployUrl` is set, `migrate` rewrites the page's
+`canonical` and `og:url` to the deploy host, so the source's values no longer
+match by design: the content gates read a delta file that ignores exactly
+those two (`reference/deployed-leg.md` § The delta file), or slot-coverage
+fails a healthy page on metadata. Without a deploy host, leave `--deltas` out.
+
+```bash
+# stardust/reskin/deltas/<slug>.migrated.json
+# { "version": 1, "metadata": { "ignore": ["canonical", "og:url"] } }
+node stardust/scripts/reskin/dom-equality.mjs \
+  --source <page-url> --source-scope '<declared scope>' \
+  --normalize stardust/reskin/normalize/<slug>.mjs \
+  --rendered stardust/migrated/<outputPath> --rendered-scope main \
+  --deltas stardust/reskin/deltas/<slug>.migrated.json \
+  --report stardust/reskin/gates/<slug>/migrated/dom-equality.md
+node stardust/scripts/reskin/slot-coverage.mjs \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --rendered stardust/migrated/<outputPath> \
+  --deltas stardust/reskin/deltas/<slug>.migrated.json \
+  --report stardust/reskin/gates/<slug>/migrated/slot-coverage.md
+node stardust/scripts/reskin/donor-probe.mjs \
+  --tokens stardust/reskin/donor-tokens.json \
+  --rendered stardust/migrated/<outputPath> \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --report stardust/reskin/gates/<slug>/migrated/donor-probe.md
+node stardust/scripts/reskin/reskin-ledger.mjs record <slug> --stage migrated
+```
+
+`<outputPath>` is the page's path under `stardust/migrated/` (its sidecar,
+`_meta.json` or `<name>._meta.json`, sits beside it). Keep the file to those two keys: any other
+difference on migrate's output is a finding, not a delta.
 
 ## Switching away
 

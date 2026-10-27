@@ -240,7 +240,7 @@ check('donor-modules.md: provenance first, table, excluded row and Notes line; e
   assert.ok(md.includes('| M1 | Gradient hero | hero (gradient) | canon-source/assets/screenshots/home.png · node 1:3 | anatomy: display headline + lede + primary and secondary CTA; components: Button |'));
   assert.ok(md.includes('| M2 | Feature grid | feature-grid | canon-source/assets/screenshots/home.png · node 1:7 | anatomy: section title + feature copy + card (label, CTA); variants: Show heading; components: Feature Grid, Button |'));
   assert.ok(md.includes('| — | Related | — | canon-source/assets/screenshots/article.png · node 2:8 | excluded — do not develop: a second instance of the feature grid; M2 covers it |'));
-  for (const row of lines.filter((l) => /^\| (M\d+|—) \|/.test(l))) assert.match(row, /screenshots\/[a-z0-9-]+\.png · node I?\d+:\d+/);
+  for (const row of lines.filter((l) => /^\| (M\d+[a-z]?|—) \|/.test(l))) assert.match(row, /screenshots\/[a-z0-9-]+\.png · node I?\d+:\d+/);
   assert.equal(lines.at(-1), '**Notes for reskin:** sentence-case headings; navy and off-white bands alternate; buttons are 8px rounded with semibold labels');
 });
 check('donor-modules.md: the EDS block column is deploy Step 2 (eds-map.mjs) unless a module pins eds', () => {
@@ -253,6 +253,23 @@ check('a module without a screenshot or with a bad frame → RulesError (evidenc
   rulesError(() => curate(inputs(rules(), { screenshotIndex: { ...screenshotIndex, article: { ...screenshotIndex.article, renderable: false } } })), /M4.*screenshot/);
   rulesError(() => curate(inputs(rules((r) => { r.modules[0].frame = '9:9'; return r; }))), /M1.*9:9/);
   rulesError(() => curate(inputs(rules((r) => { r.modules[1].id = 'M1'; return r; }))), /duplicate.*M1/);
+});
+check('a module whose frame holds only childless instances is recorded hollow in coverage and its row', () => {
+  assert.equal(t.coverage.hollow, undefined);
+  assert.ok(!out.donorModulesMd.includes('hollow'));
+  const mc = structuredClone(moduleCandidates);
+  for (const f of mc.frames) for (const s of f.sections) if (s.node === '1:10') s.hollow = true;
+  const o = curate(inputs(rules(), { moduleCandidates: mc }));
+  assert.deepEqual(o.donorTokens.coverage.hollow.map((h) => [h.id, h.name, h.frame]), [['M3', 'Footer band', '1:10']]);
+  assert.match(o.donorTokens.coverage.hollow[0].why, /childless instances \(likely remote-library components/);
+  assert.match(o.donorModulesMd, /\| M3 \| Footer band \|[^\n]*anatomy: single note line on a dark band; hollow: the frame holds only childless instances/);
+  assert.equal(o.donorModulesMd.match(/hollow:/g).length, 1);
+});
+check('module ids: M1 and composition variants such as M1b; anything else is a RulesError', () => {
+  const md = curate(inputs(rules((r) => { r.modules[1].id = 'M1b'; r.modules[1].variantOf = 'M1'; return r; }))).donorModulesMd;
+  assert.ok(md.includes('| M1b | Feature grid | feature-grid | canon-source'), md);
+  for (const bad of ['m1', 'M', 'M1B', 'M1bc', 'M1-b', 'Mb']) rulesError(() => curate(inputs(rules((r) => { r.modules[1].id = bad; return r; }))), /needs an id like M1 \(or M1b/);
+  rulesError(() => curate(inputs(rules((r) => { r.modules[1].id = 'M1b'; r.modules[2].id = 'M1b'; return r; }))), /duplicate module id M1b/);
 });
 check('unknown top-level key or role group → RulesError', () => {
   rulesError(() => curate(inputs(rules((r) => { r.colours = {}; return r; }))), /colours/);

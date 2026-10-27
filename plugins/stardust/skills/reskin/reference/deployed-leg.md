@@ -65,7 +65,7 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
 7. **Step 10's deployed checks stay mandatory before handoff**, run as `deploy` specifies, not re-built here: the
    desktop and mobile eyeball, the delayed-font/nav CLS probe (CLS < 0.1; `deployed-gate` and `qa-gate` measure settled
    pages) and the header-behavior checks `chrome` (A6) does not cover. Record each result, or `unresolved: <why>`, under
-   `gates.step10` (§ The ledger). An eyeball `pass` is refused while `deployed.chrome` fails.
+   `gates.step10` with `reskin-ledger.mjs step10` (§ The ledger). An eyeball `pass` is refused while `deployed.chrome` fails.
 
 The preview must be reachable without auth: a protected preview is out of scope. `preview` stops with exit 2 on a
 401 or 403 rather than poll, and the gates send no Authorization header. A sandbox repo's preview is public by
@@ -124,9 +124,15 @@ after review invalidates the evidence, so re-run the leg (step 6).
 The test hook `DEPLOY_VERIFY_ORIGIN` is recorded as `originOverride: { env, origin }` in `preview.json`, `summary.json` and
 the fragment.
 
-Step 7's results go beside the fragment, in `pages.<slug>.gates.step10`, e.g.
-`{ "eyeball": "adopted", "cls": "0.04", "header": "n/a: no header contract" }`; a check not run is
-`unresolved: <why>` and a `residuals[]` entry (`needs-owner`).
+Step 7's results go beside the fragment, in `pages.<slug>.gates.step10`, written by
+`node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass|fail --cls <n> --header pass|fail|"n/a: <why>" [--note "…"] [--by <who>]`
+(`--header-toggle` is an alias of `--header`), e.g.
+`{ "eyeball": "pass", "cls": "0.04", "header": "n/a: no header contract", "verdict": "PASS", "note": null, "by": "user", "at": "…" }`.
+A check not run is `unresolved: <why>` (any of the three): the verdict is NOT-RUN and the command adds a
+`residuals[]` entry on `step10` (`needs-owner`, `source: "step10"`), which a later `step10` with nothing unresolved
+removes. `verdict` is FAIL on an eyeball `fail`, a CLS ≥ 0.1 or a header `fail`, else NOT-RUN on an unresolved check,
+else PASS; like any gate it blocks the predicate unless PASS or covered by an accepted residual. `record` keeps an
+existing `gates.step10` (it is entered, never read from a report).
 
 A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s
 `steps.<step>.detail`), `FAIL k/n`, `FAIL stalled decoration: <what>` (a gate stalled on the preview's decoration and
@@ -134,9 +140,10 @@ measured nothing: the step fails and the run goes on, `sanity` records its own h
 `ADVISORY <gates> (deltas.blocking false)`, `not run: <why>` or
 `ERROR (exit N): <why>`; `figma` is figma-gate's own fragment, or one of those (`not run: no figma checks`).
 `invocation` is the exact argument list. A residual's `class` is
-`deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited` or `.chrome` (M2b's are `figma.*`); a
-`deployed.sanity` or `deployed.chrome` residual is never `accepted`, and a header or footer one (`step10.header`, …)
-only with `--by <owner>`, never an agent's name (`reskin-ledger.mjs` refuses; a hands-off run records `needs-owner`).
+`deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited` or `.chrome` (M2b's are `figma.*`; a font declared
+but not served — `tokens`' `font.unserved` line or an UNSERVED ramp result — is `font.unserved`); a `deployed.sanity` or `deployed.chrome` residual is never `accepted`, and a header or footer
+one (`step10.header`, …) only with `--by <owner>`, never an agent's name (`reskin-ledger.mjs` refuses; a hands-off run
+records `needs-owner`).
 
 ## The fix budget
 
@@ -165,4 +172,6 @@ verdict (exit 124, or an instrument that did not run) does not count: re-run onc
   second family at `size-adjust: 100%`, unless the user supplies files (`deploy`'s own rule). `tokens` asserts every
   `:root` token verbatim, so `--body-font-family` / `--heading-font-family` stay the token string and the rendered stack
   (`"<Brand>", "<brand>-fallback", <generic>`) goes in its own property, e.g. `--font-stack`. "Font not served" is a
-  declared difference, never a failure: `tokens` compares the first family, the Figma pixel check records `served: false`.
+  declared difference, never a failure, and never a silent pass: `tokens` compares the first family and prints an
+  `ADVISORY tokens font.unserved` line when the preview renders it from a fallback, the Figma ramp makes it `UNSERVED`
+  and the pixel check records `served: false`; each is a `font.unserved` residual.

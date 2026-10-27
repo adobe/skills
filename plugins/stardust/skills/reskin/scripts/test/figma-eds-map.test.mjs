@@ -47,6 +47,25 @@ test('D11: Figma spellings of Block Collection patterns take the EDS name', () =
   assert.match(edsEquivalent('Teaser').reason, /boilerplate cards block \(variant teaser\)/);
 });
 
+test('D11: a pattern word anywhere in the name — table, accordion, image-top and stacked columns', () => {
+  for (const n of ['Accordion Item', 'Accordion – Open', 'FAQ Section', 'FAQs List', 'Disclosure Panel', 'Q&A Section', 'Collapsible Group']) assert.deepEqual(map(n), ['accordion', null], n);
+  for (const n of ['Table Row', 'Tables / Comparison', 'Comparison Table', 'Pricing Table v2', 'Data Table Header']) assert.deepEqual(map(n), ['table', null], n);
+  assert.deepEqual(map('Table – Striped'), ['table', 'striped']);
+  assert.deepEqual(map('Bordered Data Table'), ['table', 'bordered']);
+  assert.deepEqual(map('Table (no header)'), ['table', 'no-header']);
+  for (const n of ['Image Top Columns', 'Columns – Image Top', 'Image-on-top Column', '2-col image top', '3 Column / Top Image', 'Image Top']) assert.deepEqual(map(n), ['columns', 'image-top'], n);
+  assert.deepEqual(map('Stacked Columns'), ['columns', 'stacked']);
+  assert.deepEqual(map('3 Columns'), ['columns', null]);
+  assert.deepEqual(map('Column Layout'), ['columns', null]);
+  assert.deepEqual(map('Feature Columns'), ['columns', 'feature']);
+  assert.match(edsEquivalent('Image Top Columns').reason, /matches the boilerplate columns block \(variant image-top\)/);
+  assert.match(edsEquivalent('Accordion Item').reason, /matches the Block Collection accordion block$/);
+  // Not patterns: a table of contents, a tablet frame; exact and last-token rules still win first.
+  assert.deepEqual(map('Table of Contents'), ['table-of-contents', null]);
+  assert.deepEqual(map('Tablet Hero'), ['hero', 'tablet']);
+  assert.deepEqual(map('FAQ Card'), ['cards', 'faq-card']);
+});
+
 test('D1: buttons, links and body copy are default content unless they carry structure', () => {
   for (const n of ['Button', 'Btn', 'Links', 'Heading', 'Title Text', 'Rich Text', 'Block Content', 'Email']) assert.deepEqual(map(n), [null, null], n);
   assert.match(edsEquivalent('Button').reason, /D1: "Button" is default content/);

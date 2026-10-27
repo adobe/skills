@@ -28,6 +28,10 @@
  *   SVG <title>/<desc> a11y labels ("Arrow right", "Play") and other
  *   innerText-invisible text never become ghost nodes that a spec-compliant
  *   renderer would emit and fail the gate on.
+ *   A node whose source text is line-clamped (computed -webkit-line-clamp
+ *   on a vertical -webkit-box, or line-clamp — on its element or a
+ *   transparent wrapper) carries lineClamp + clampGroup, so the target
+ *   clamps it too (content-model.md § The ordered stream).
  *
  * Live navigation is hardened via the shared diff live-session module
  * (real-Chrome UA + the standard request headers — UA alone still 403s on
@@ -131,7 +135,7 @@ let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
   console.error('[capture-content] playwright not importable from this script\'s directory.');
   console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright pixelmatch pngjs --legacy-peer-deps  (reskin SKILL.md § Setup)');
+  console.error('run in stardust/ (its own package root, not the project): npm i -D playwright pixelmatch pngjs  (reskin SKILL.md § Setup step 2)');
   process.exit(2);
 }
 
@@ -296,6 +300,20 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
     if (st.display === 'none' || st.visibility === 'hidden') return false;
     const r = el.getBoundingClientRect();
     return r.width > 0 || r.height > 0 || el.offsetParent !== null;
+  };
+  // The number of lines an element clamps its text to, or null: a computed
+  // -webkit-line-clamp on a vertical -webkit-box (the legacy clamp; Chrome
+  // computes that display as flow-root / inline-block) or a standard
+  // line-clamp. A -webkit-line-clamp on any other box clamps nothing. A card
+  // that clamps a post body in the source clamps it in the target too
+  // (content-model.md § The ordered stream, lineClamp).
+  const linesClamped = (el) => {
+    const st = getComputedStyle(el);
+    const std = parseInt(st.getPropertyValue('line-clamp'), 10);
+    if (std > 0) return std;
+    const n = parseInt(st.webkitLineClamp || st.getPropertyValue('-webkit-line-clamp'), 10);
+    const box = /^(-webkit-box|-webkit-inline-box|flow-root|inline-block)$/.test(st.display) && st.webkitBoxOrient === 'vertical';
+    return n > 0 && box ? n : null;
   };
   // Shared image predicate — the SAME code dom-equality.mjs runs at gate
   // time (source-normalize.mjs IMG_VISIBLE), so capture and gate can never
@@ -466,7 +484,14 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
     // (inline zero-separator runs), ' ' when whitespace separates them.
     // Renderers consume this; they no longer reconstruct order from
     // visibleText as an oracle.
-    function nodeFor(el) {
+    // Clamped text: a node whose element clamps (or that sits in a clamped
+    // transparent wrapper) carries lineClamp + clampGroup; nodes sharing a
+    // group came from one clamped element, and the renderer clamps them
+    // together. Groups are numbered per slot.
+    let clampSeq = 0;
+    const clampOf = (el) => { const n = linesClamped(el); return n ? { lines: n, group: ++clampSeq } : null; };
+    const withClamp = (n, c) => (c ? Object.assign(n, { lineClamp: c.lines, clampGroup: c.group }) : n);
+    function nodeFor(el, inherited = null) {
       const kind = kindOf(el);
       if (kind === 'image') {
         if (!imgVisible(el)) return null;
@@ -494,6 +519,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       }
       if (!isVisible(el)) return null;
       const n = { kind, text: norm(el.innerText), display: getComputedStyle(el).display };
+      withClamp(n, clampOf(el) || inherited);
       if (kind === 'heading') n.level = el.tagName.toLowerCase();
       if (kind === 'cta') {
         n.href = el.getAttribute('href') || '';
@@ -515,9 +541,9 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       if (!n.text && !(n.children && n.children.length)) return null;
       return n;
     }
-    function streamOf(rootEl) {
+    function streamOf(rootEl, rootClamp = null) {
       const out = [];
-      (function walk(el) {
+      (function walk(el, clamp) {
         for (const node of el.childNodes) {
           if (node.nodeType === Node.TEXT_NODE) {
             let t = norm(node.textContent);
@@ -538,7 +564,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
               const slice = ciFind(pInner, t);
               if (slice === null) continue; // absent from innerText → not in the byte reference → not a stream node
               t = slice;
-              out.push({
+              out.push(withClamp({
                 kind: 'text',
                 text: t,
                 parentTag: el.tagName.toLowerCase(),
@@ -547,7 +573,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
                 ...(el.tagName !== 'BUTTON' && el.closest('button') ? { inButton: true } : {}),
                 ...(isGlyph(el, t) ? { glyph: true } : {}),
                 ...(isSrOnly(el) ? { srOnly: true } : {}),
-              });
+              }, clamp));
               discl(out[out.length - 1], el);
             }
             continue;
@@ -555,13 +581,13 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
           if (node.nodeType !== Node.ELEMENT_NODE) continue;
           if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(node.tagName)) continue;
           if (kindOf(node)) {
-            const n = nodeFor(node);
+            const n = nodeFor(node, clamp);
             if (n) out.push(discl(n, node));
             continue;
           }
-          walk(node); // transparent wrapper — descend
+          walk(node, clampOf(node) || clamp); // transparent wrapper — descend
         }
-      })(rootEl);
+      })(rootEl, rootClamp);
       return out;
     }
     // Assign `sep` flags by tiling each parent's normalized text with its
@@ -584,7 +610,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       return ok;
     }
     const visibleText = norm(sec.innerText);
-    const ordered = kindOf(sec) ? [nodeFor(sec)].filter(Boolean) : streamOf(sec);
+    const ordered = kindOf(sec) ? [nodeFor(sec)].filter(Boolean) : streamOf(sec, clampOf(sec));
     const orderedVerified = assignSeps(visibleText, ordered);
     return {
       slot: `s${String(i + 1).padStart(2, '0')}`,

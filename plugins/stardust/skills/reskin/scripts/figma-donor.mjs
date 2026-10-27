@@ -20,8 +20,10 @@
 // Foundation records: { value, figma, node, count, nodes } (value = normalized CSS; typography and
 // components carry an object of CSS strings) — see figma/foundation.mjs for keys and heuristics.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
-// Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or 404 · 3 blocked
-// (401/403, a 429 wait over --max-wait, 5xx after retries).
+// Node older than 22 stops at startup with one line (exit 2). The process exits only after stdout
+// and stderr flush, so piped output (--help | less) is never cut short.
+// Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup (Node < 22) or 404 ·
+// 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -71,13 +73,18 @@ capture  reads one version of the file over the Figma REST API (files depth=2, t
          itself is cut short, readers (curate, stamp) still get that capture from its backup and
          the next capture restores it.
          --max-wait <s>: the longest Retry-After a 429 may impose before stopping (default 60).
+         A frame or section holding only childless instances (remote-library components the REST
+         payload did not expand) is marked hollow: true in module-candidates.json and warned on
+         stderr: nothing inside it is measured; capture the library's own file for its components.
 curate   offline and deterministic: canon-source/foundation + module-candidates.json + the agent-
          authored <dir>/reskin/curation-rules.json → <dir>/reskin/donor-tokens.json (reskin's token
          sheet; nodeRefs cite the Figma node behind every value; coverage lists asserted, absent and
-         suspect paths and recommended { curated, missing }), <dir>/reskin/donor-modules.md (the module vocabulary, one screenshot and
-         node per row) and the descriptive design files direct reads: <dir>/canon-source/DESIGN.json,
-         DESIGN.md and _brand-extraction.json (prose only from rules.design). Every rule problem is
-         listed at once (exit 1). Re-run after any capture or rules change.
+         suspect paths, recommended { curated, missing } and, when any, hollow: included modules
+         whose frame holds only childless instances, warned on stderr), <dir>/reskin/donor-modules.md
+         (the module vocabulary, one screenshot and node per row) and the descriptive design files
+         direct reads: <dir>/canon-source/DESIGN.json, DESIGN.md and _brand-extraction.json (prose
+         only from rules.design). Every rule problem is listed at once (exit 1). Re-run after any
+         capture or rules change.
 stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/canon-source/" } and
          nothing else, through the master skill's state.mjs (beside the scripts: the plugin tree, or
          stardust/scripts/stardust/state.mjs in a project copy). Needs state.json (from
@@ -124,8 +131,11 @@ curation-rules.json:
   params.paths scope; weightMap / familyEquivalence take params.map { from: to }; fontSmoothing
   takes params.value. Without radii.* or shadows.* roles every captured radius / shadow is listed,
   except paths marked absent.
+  Module ids are M1, M2, …; a composition variant of a module takes a letter suffix (M1b, a variant of M1).
   A module's optional "eds" overrides the EDS block deploy Step 2 (D1/D11) gives its name
-  (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser, Button → null = default content).
+  (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser, Button → null = default content; a pattern
+  word anywhere counts: Accordion Item → accordion, Table – Striped → table striped, Image Top Columns →
+  columns image-top).
 Figma as the CONTENT source (Figma-only sites, no live URL; reference/content-model.md
 § Figma-sourced models):
 init     writes <dir>/state.json when there is none: _provenance, site.contentSource {kind figma},
@@ -187,8 +197,9 @@ content --all  runs content for every page of figma-pages.json (--only a subset)
 blocklist exits 1 while any block|review item of the slugs (default: every figma page) is open.
 ack      records an acknowledgement for open items (key "<flag id>@<node>", or a flag id), with --why.
          A placeholder-only page cannot be acknowledged.
-Exit codes: 0 ok · 1 validation or curate assertion failed, open blocklist · 2 usage, setup or not found (404)
-            · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
+Needs Node 22+ (an older Node stops at once with exit 2).
+Exit codes: 0 ok · 1 validation or curate assertion failed, open blocklist · 2 usage, setup (Node < 22) or
+            not found (404) · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
 
 const SPEC = {
   capture: { values: ['--frames', '--max-frames', '--max-wait', '--dir'], bools: ['--refresh', '--confidential', '--list'], positional: ['<figma-url>'] },
@@ -314,6 +325,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     log(`curate: ${c.asserted}/13 probe paths asserted (${c.absent.filter((a) => a.probe).length} absent, ${c.suspect.length} suspect) · ${mods.length - excluded} module(s), ${excluded} excluded → ${written.join(', ')}`);
     for (const a of c.absent.filter((x) => x.probe)) log(`  absent ${a.path}: ${a.why}`);
     for (const p of c.recommended.missing) log(`note: recommended token not curated: ${p} (map it, or mark it absent with a why)`);
+    for (const h of c.hollow || []) warn(`warning: module ${h.id} (${h.name}, frame ${h.frame}) is hollow: ${h.why}`);
     return 0;
   }
 
@@ -452,12 +464,32 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
   return 2;
 }
 
+// The scripts use Node 22 APIs; an older runtime gets one clear line (exit 2) instead of a stack trace.
+export const MIN_NODE = 22;
+export function nodeVersionProblem(version = process.versions.node) {
+  const major = Number.parseInt(String(version).replace(/^v/, ''), 10);
+  return Number.isInteger(major) && major >= MIN_NODE ? null : `reskin needs Node ${MIN_NODE}+, found v${String(version).replace(/^v/, '')}`;
+}
+
+// Exit only once stdout and stderr have flushed: piped stdout is asynchronous on macOS, and an
+// immediate process.exit cut --help short. A write's callback fires after every earlier write.
+export function exitAfterFlush(code, { stdout = process.stdout, stderr = process.stderr, exit = process.exit } = {}) {
+  process.exitCode = code;
+  stdout.write('', () => stderr.write('', () => exit(code)));
+}
+
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && SELF === safeRealpath(process.argv[1])) {
-  main(process.argv.slice(2)).then((code) => process.exit(code), (e) => {
-    const token = process.env.FIGMA_TOKEN;
-    const msg = String(e?.message ?? e);
-    console.error(`figma-donor: ${token ? msg.split(token).join('[redacted]') : msg}`);
-    process.exit(e?.exitCode ?? (Number.isInteger(e?.code) ? e.code : 1));
-  });
+  const tooOld = nodeVersionProblem();
+  if (tooOld) {
+    console.error(`figma-donor: ${tooOld}`);
+    exitAfterFlush(2);
+  } else {
+    main(process.argv.slice(2)).then((code) => exitAfterFlush(code), (e) => {
+      const token = process.env.FIGMA_TOKEN;
+      const msg = String(e?.message ?? e);
+      console.error(`figma-donor: ${token ? msg.split(token).join('[redacted]') : msg}`);
+      exitAfterFlush(e?.exitCode ?? (Number.isInteger(e?.code) ? e.code : 1));
+    });
+  }
 }
