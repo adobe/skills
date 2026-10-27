@@ -113,7 +113,11 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
          a crop is "n/a: reskin page renders no chrome" where the reskin page has no such element, and a FAIL,
          "preview renders no <header>", where only the preview has none. A header or footer the reskin page does
          not render at that width is left out of the preview's capture (stitch-shot --hide), so pixel and height
-         compare main to main and their detail says what was excluded. At 1440 also:
+         compare main to main and their detail says what was excluded. On a --sandbox preview (preview.json
+         sandbox: true) the preview's header or footer is the boilerplate's own: each part <dir>/reskin/mapping.md
+         maps no chrome row to is hidden on both sides, left out of chrome-parity, and its crop is "n/a: sandbox
+         preview renders the boilerplate's header: mapping.md maps no header chrome"; parity.json records
+         ignored: { parts, reason }. Without mapping.md nothing is ignored. At 1440 also:
            chrome-parity  computed-style parity of the regions the reskin page has: ADVISORY, never a FAIL
            cap-probe      the reskin page's content caps, captured to design.json, against the preview's: a
                           cap outside ±20px, or missing, is a FAIL
@@ -122,7 +126,7 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
          failing row (a finding of the instrument below it), then an "ADVISORY …" line per advisory row and one
          "n/a: <reason> (<rows>)" line per reason; "ERROR (exit 124) parity: <n> checks gave no verdict" and a line
          per row in error when an instrument gave no verdict (exit 124, 1 or another: re-run once). Writes
-         parity.json ({ verdict, rows: [{ check, width, value, bar, status, artifact, detail }] }), the captures and
+         parity.json ({ verdict, rows: [{ check, width, value, bar, status, artifact, detail }], ignored? }), the captures and
          diffs under parity/ and design.json beside preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124
          on a row in error (the rows measured stay in parity.json).
 sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: no delta file, no residual
