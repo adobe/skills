@@ -89,7 +89,10 @@ tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through don
          <dir>/reskin/donor-tokens.json and the runtime contract stardust/runtime-contract.json at the project
          root (missing either is exit 2). layout.sectionPaddingY, when the sheet carries it (a px length, else exit
          2), is asserted as the top and bottom padding of every non-empty main > .section, each within 16px (a
-         failure names the match: "match 4 of 7: 80px"). layout.containerMaxWidth (measured by parity's
+         failure names the match: "match 4 of 7: 80px"), unless the page has a Figma checks file
+         (<dir>/reskin/figma-checks/<slug>.json): a Figma kit pads per module, so the section rows are left to the
+         figma step's geometry and a SKIP line says how many sections its checks hold to their module's padding.
+         layout.containerMaxWidth (measured by parity's
          cap-probe) is not asserted: it prints a SKIP line. The font family is compared on its first family and must
          be served: one the preview declares but renders from a fallback (no loaded @font-face of it for the body's
          weight and style, not installed) prints "ADVISORY tokens font.unserved: font-family token string: declared

@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { readJson } from '../figma/io.mjs';
 import { main } from '../deployed-gate.mjs';
-import { edsSpec, runTokens } from '../deployed/eds-spec.mjs';
+import { edsSpec, figmaPaddingSkip, runTokens } from '../deployed/eds-spec.mjs';
 import { deployedDir } from '../deployed/io.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { fixturePath, startPreviewServer } from './fixtures/deployed/servers.mjs';
@@ -128,6 +128,21 @@ await check('edsSpec: layout.sectionPaddingY becomes top and bottom padding asse
   assert.ok(!edsSpec({ tokens: t, runtimeContract: contract() }).some((e) => e.selector === SECTIONS), 'a sheet without the token has no section entry');
 });
 
+await check('edsSpec with the page\'s Figma checks file leaves the section padding rows to figma-gate (a kit pads per module); figmaPaddingSkip names how many sections the checks hold to their module', () => {
+  const checks = { version: 1, page: 'home', sections: {
+    s01: { geometry: [{ id: 'g1', selector: ':scope', node: '1:3', measure: 'paddingTop' }], type: [] },
+    s02: { geometry: [{ id: 'g1', selector: '.card', node: '1:8', measure: 'width' }], type: [] },
+    s03: { skip: 'not drawn' },
+  } };
+  const spec = edsSpec({ tokens: sheet(), runtimeContract: contract(), figmaChecks: checks });
+  const SECTIONS = 'main > .section:not(:empty)';
+  assert.ok(!spec.some((e) => e.selector === SECTIONS), 'no uniform section padding against a per-module kit');
+  assert.ok(spec.some((e) => e.label === ':root --section-padding'), 'the token itself is still asserted verbatim');
+  assert.equal(figmaPaddingSkip(checks), 'layout.sectionPaddingY: a Figma donor pads per module; figma checks hold the padding of 1 of 2 section(s) to their module (deployed-gate figma)');
+  assert.equal(figmaPaddingSkip(null), null);
+  assert.ok(edsSpec({ tokens: sheet(), runtimeContract: contract(), figmaChecks: null }).some((e) => e.selector === SECTIONS), 'without a checks file: every section, as before');
+});
+
 await check('edsSpec: the optional curated paths (cards.primary.*, buttons.primary.height, layout.mobile.*) are asserted as :root entries when present, and add nothing when absent', () => {
   const t = sheet();
   const base = edsSpec({ tokens: t, runtimeContract: contract() });
@@ -231,6 +246,18 @@ await check('runTokens hands donor-probe the spec, the preview URL and --wait-ed
   assert.equal(r.exit, 0);
   assert.equal(r.total, 1);
   assert.deepEqual(recordOf(root), { verdict: 'PASS', exit: 0, report: r.report, json: r.json, skipped: r.skipped });
+});
+
+await check('runTokens with a Figma checks file: no section padding row in the spec, and a SKIP line naming the figma step in the record', async () => {
+  const root = project('stub-figma');
+  mkdirSync(join(root, 'stardust', 'reskin', 'figma-checks'), { recursive: true });
+  writeFileSync(join(root, 'stardust', 'reskin', 'figma-checks', 'home.json'), JSON.stringify({ version: 1, page: 'home', sections: { s01: { geometry: [{ id: 'g1', selector: ':scope', node: '1:3', measure: 'paddingBottom' }], type: [] } } }));
+  const stub = stubProbe('probe-figma', { exit: 0, json: PASSING });
+  const r = await runTokens({ dir: join(root, 'stardust'), slug: 'home', preview: readJson(join(outOf(root), 'preview.json')), donorProbe: stub.file });
+  assert.ok(!readJson(join(outOf(root), 'tokens-spec.json')).some((e) => e.selector === 'main > .section:not(:empty)'));
+  assert.deepEqual(r.skipped, ['layout.containerMaxWidth: measured by parity cap-probe', 'layout.sectionPaddingY: a Figma donor pads per module; figma checks hold the padding of 1 of 1 section(s) to their module (deployed-gate figma)']);
+  writeFileSync(join(root, 'stardust', 'reskin', 'figma-checks', 'home.json'), '{ not json');
+  await assert.rejects(runTokens({ dir: join(root, 'stardust'), slug: 'home', preview: readJson(join(outOf(root), 'preview.json')), donorProbe: stub.file }), (e) => e instanceof UsageError && /figma-checks/.test(e.message));
 });
 
 await check('runTokens: donor-probe exit 1 with its JSON is the FAIL verdict with one line per failing assertion; the record says so', async () => {
