@@ -128,6 +128,32 @@ check('a component\'s height is its painted box, not a full-width row around it'
   assert.equal(row.value.height, '42px');
   assert.equal(row.figma.fields.height.node, 'I2:10;6:7');
 });
+check('a button set\'s text-link variant is not a button candidate; a Link CTA or Link button still is', () => {
+  const fill = (r, g, b) => [{ type: 'SOLID', color: { r, g, b, a: 1 } }];
+  const label = (id) => ({ id, name: 'Label', type: 'TEXT', absoluteBoundingBox: { x: 0, y: 0, width: 80, height: 20 }, fills: fill(0, 0, 0), characters: 'Go', style: { fontFamily: 'Inter', fontSize: 16, fontWeight: 600, lineHeightPx: 20, lineHeightUnit: 'PIXELS' } });
+  const inst = (id, componentId, y, props = {}) => ({
+    id, name: 'Button', type: 'INSTANCE', componentId, absoluteBoundingBox: { x: 0, y, width: 120, height: 40 }, fills: fill(0, 0, 1),
+    componentProperties: Object.fromEntries(Object.entries(props).map(([k, v]) => [k, { type: 'VARIANT', value: v }])), children: [label(`${id}-t`)],
+  });
+  const doc = { id: '8:1', name: 'Kit', type: 'FRAME', absoluteBoundingBox: { x: 0, y: 0, width: 1440, height: 800 }, fills: fill(1, 1, 1), children: [
+    inst('8:2', 'C:btn', 0, { Type: 'Button' }),
+    inst('8:3', 'C:link', 50, { Type: 'Link' }),
+    inst('8:4', 'C:textlink', 100),
+    inst('8:5', 'C:linkflag', 150, { 'Link#1:2': 'True' }),
+    inst('8:6', 'C:linkbtn', 200, { Type: 'Link button' }),
+    inst('8:7', 'C:linkcta', 250),
+  ] };
+  const components = {
+    'C:btn': { name: 'Type=Button', componentSetId: 'S:1' }, 'C:link': { name: 'Type=Link', componentSetId: 'S:1' },
+    'C:textlink': { name: 'Text link' }, 'C:linkflag': { name: 'Link=True', componentSetId: 'S:2' },
+    'C:linkbtn': { name: 'Type=Link button', componentSetId: 'S:1' }, 'C:linkcta': { name: 'Link CTA' },
+  };
+  const componentSets = { 'S:1': { name: 'Button' }, 'S:2': { name: 'Button' } };
+  const r = buildFoundation({ file: { document: { children: [] } }, nodes: { nodes: { '8:1': { document: doc, components, componentSets } } }, frameIds: ['8:1'] });
+  const ids = Object.values(r.foundation.components).map((c) => c.figma.componentId);
+  assert.deepEqual(ids, ['C:btn', 'C:linkbtn', 'C:linkcta']);
+  assert.deepEqual(r.roleCandidates['buttons.primary.background'].flatMap((c) => c.evidence), ['8:2', '8:6', '8:7']);
+});
 check('container candidates: desktop-scale widths rank before narrower text measures, whatever their count', () => {
   const text = (id, mw) => ({ id, name: 'Copy', type: 'TEXT', maxWidth: mw, absoluteBoundingBox: { x: 0, y: 0, width: mw, height: 20 }, fills: [], characters: 'x', style: { fontFamily: 'Inter', fontSize: 16, fontWeight: 400, lineHeightPx: 24, lineHeightUnit: 'PIXELS' } });
   const doc = { id: '8:1', name: 'Kit page', type: 'FRAME', absoluteBoundingBox: { x: 0, y: 0, width: 1440, height: 900 }, fills: [], children: [
