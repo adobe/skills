@@ -1,8 +1,8 @@
 'use strict';
 // Test inputs for the Branch H tests, kept in this one file instead of fixture folders.
 // PROJECT_FILES is a minimal customer project (ui.apps / ui.content / all, the layout the tool scans);
-// TOOL_WRITTEN and TOOL_DELETED are what wf-migrator 0.6.0 wrote and deleted when run on it, so the
-// fixer and verify tests need no Java. asset-workflow-e2e.test.js (ASSET_WF_E2E=1) checks them
+// TOOL_WRITTEN and TOOL_DELETED are what wf-migrator 0.7.0 wrote and deleted when run on it, and TOOL_REPORT
+// is the migration-report.md it wrote, so the follow-up and verify tests need no Java. asset-workflow-e2e.test.js (ASSET_WF_E2E=1) checks them
 // against the real JAR; update them when the pinned tool version changes.
 const fs = require('fs');
 const os = require('os');
@@ -138,9 +138,9 @@ const PROJECT_FILES = {
 `,
   'pom.xml': `<?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Minimal AEM 6.5 project for the asset workflow migration tests. It reproduces every case the
-  skill fixes after Adobe's Asset Workflow Migration Tool (wf-migrator) runs; see
-  ../../../asset-workflow-fix.test.js for the expected outcome of each file.
+  Minimal AEM 6.5 project for the asset workflow migration tests. It reproduces the cases the
+  skill checks after Adobe's Asset Workflow Migration Tool (wf-migrator) runs; see
+  ../../../asset-workflow-followup.test.js for the expected outcome.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -650,7 +650,7 @@ const TOOL_WRITTEN = {
                 <configuration>
                     <group>aem-cloud-migration</group>
                     <name>migration-apps</name>
-                    <packageType>application</packageType>
+                    <packageType>container</packageType>
                     <properties>
                         <cloudManagerTarget>none</cloudManagerTarget>
                     </properties>
@@ -670,14 +670,22 @@ const TOOL_WRITTEN = {
 
 </project>
 `,
-  'aem-cloud-migration.apps/src/main/content/META-INF/vault/filter.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+  'aem-cloud-migration.apps/src/main/content/META-INF/vault/filter.xml': `<?xml version="1.0" encoding="UTF-8"?>
 <workspaceFilter version="1.0">
     <filter root="/apps/aem-cloud-migration"/>
-    <filter root="/apps/aem-cloud-migration/config"/>
+    <filter root="/apps/aem-cloud-migration/config.author"/>
 </workspaceFilter>
 `,
-  'aem-cloud-migration.apps/src/main/content/jcr_root/apps/aem-cloud-migration/config/com.adobe.cq.dam.processor.nui.impl.workflow.CustomDamWorkflowRunnerImpl.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" jcr:primaryType="sling:OsgiConfig" postProcWorkflowsByExpression="[/content/dam/wfmin(/.*):/var/workflow/models/dam/update_asset,/content/dam/wfmin/marketing(/.*):/var/workflow/models/wfmin-marketing]"/>
+  'aem-cloud-migration.apps/src/main/content/jcr_root/apps/aem-cloud-migration/config.author/com.adobe.cq.dam.processor.nui.impl.workflow.CustomDamWorkflowRunnerImpl.cfg.json': `{
+  "postProcWorkflowsByPath": [
+    "/content/dam/wfmin/brand:/var/workflow/models/wfmin-brand"
+  ],
+  "postProcWorkflowsByExpression": [
+    "/content/dam/(wfmin-campaigns|wfmin-events)/.*:/var/workflow/models/wfmin-campaigns",
+    "/content/dam/wfmin(/.*):/var/workflow/models/dam/update_asset",
+    "/content/dam/wfmin/marketing(/.*):/var/workflow/models/wfmin-marketing"
+  ]
+}
 `,
   'aem-cloud-migration.content/pom.xml': `<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -727,9 +735,10 @@ const TOOL_WRITTEN = {
 
 </project>
 `,
-  'aem-cloud-migration.content/src/main/content/META-INF/vault/filter.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+  'aem-cloud-migration.content/src/main/content/META-INF/vault/filter.xml': `<?xml version="1.0" encoding="UTF-8"?>
 <workspaceFilter version="1.0">
-    <filter root="conf/global/settings/dam/processing"/>
+    <filter root="/conf/global/settings/dam/processing/jcr:content"/>
+    <filter root="/conf/global/settings/dam/processing/migrated_from_update_asset"/>
 </workspaceFilter>
 `,
   'aem-cloud-migration.content/src/main/content/jcr_root/conf/global/settings/dam/.content.xml': `<?xml version="1.0" encoding="UTF-8"?>
@@ -745,7 +754,6 @@ const TOOL_WRITTEN = {
     <jcr:content
         jcr:primaryType="nt:unstructured"
         mergeList="{Boolean}true"/>
-    <custom/>
 </jcr:root>
 `,
   'aem-cloud-migration.content/src/main/content/jcr_root/conf/global/settings/dam/processing/migrated_from_update_asset/.content.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
@@ -753,13 +761,20 @@ const TOOL_WRITTEN = {
     <jcr:content jcr:primaryType="nt:unstructured" jcr:title="Migrated from update_asset" sling:resourceType="dam/processing/profile"/>
 </jcr:root>
 `,
+  'aem-cloud-migration.content/src/main/content/jcr_root/conf/global/settings/dam/processing/migrated_from_update_asset/cq5dam_print_1200_1200/.content.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:nt="http://www.jcp.org/jcr/nt/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" jcr:primaryType="cq:Page">
+    <jcr:content excludeMimeTypes="video/.*" fmt="jpeg" hei="1200" includeMimeTypes="image/png,image/tiff" jcr:primaryType="nt:unstructured" name="cq5dam.print.1200.1200.jpeg" sling:resourceType="dam/processing/profile/rendition" wid="1200"/>
+</jcr:root>
+`,
   'aem-cloud-migration.content/src/main/content/jcr_root/conf/global/settings/dam/processing/migrated_from_update_asset/thumbnail/.content.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:nt="http://www.jcp.org/jcr/nt/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" jcr:primaryType="cq:Page">
     <jcr:content excludeMimeTypes="video/.*" fmt="png" hei="600" includeMimeTypes="image/.*" jcr:primaryType="nt:unstructured" name="cq5dam.thumbnail.600.600.png" sling:resourceType="dam/processing/profile/rendition" wid="600"/>
 </jcr:root>
 `,
-  'all/pom.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  'all/pom.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
         <groupId>com.example.wfmin</groupId>
@@ -770,6 +785,7 @@ const TOOL_WRITTEN = {
     <artifactId>wfmin.all</artifactId>
     <packaging>content-package</packaging>
     <name>WF Min - All</name>
+
     <build>
         <plugins>
             <plugin>
@@ -808,6 +824,7 @@ const TOOL_WRITTEN = {
             </plugin>
         </plugins>
     </build>
+
     <dependencies>
         <dependency>
             <groupId>com.example.wfmin</groupId>
@@ -836,20 +853,28 @@ const TOOL_WRITTEN = {
     </dependencies>
 </project>
 `,
-  'all/src/main/content/META-INF/vault/filter.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+  'all/src/main/content/META-INF/vault/filter.xml': `<?xml version="1.0" encoding="UTF-8"?>
 <workspaceFilter version="1.0">
     <filter root="/apps/wfmin-packages"/>
     <filter root="/apps/aem-cloud-migration-packages"/>
 </workspaceFilter>
 `,
-  'pom.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  'pom.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Minimal AEM 6.5 project for the asset workflow migration tests. It reproduces the cases the
+  skill checks after Adobe's Asset Workflow Migration Tool (wf-migrator) runs; see
+  ../../../asset-workflow-followup.test.js for the expected outcome.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.example.wfmin</groupId>
     <artifactId>wfmin</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>WF Min - Reactor</name>
+
     <modules>
         <module>ui.apps</module>
         <module>ui.content</module>
@@ -857,6 +882,7 @@ const TOOL_WRITTEN = {
         <module>aem-cloud-migration.content</module>
         <module>aem-cloud-migration.apps</module>
     </modules>
+
     <build>
         <pluginManagement>
             <plugins>
@@ -870,55 +896,173 @@ const TOOL_WRITTEN = {
     </build>
 </project>
 `,
-  'ui.content/src/main/content/META-INF/vault/filter.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+  'ui.content/src/main/content/META-INF/vault/filter.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<!-- Packaging /var/workflow is what the tool (and the gate) removes. -->
 <workspaceFilter version="1.0">
     <filter root="/conf/global/settings/workflow"/>
 </workspaceFilter>
 `,
-  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config/update_asset_create/.content.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" condition="" conditions="[jcr:content/jcr:mimeType!=video/.*]" description="Update Asset - Create" enabled="{Boolean}false" eventType="{Long}1" excludeList="event-user-data:changedByWorkflowProcess" glob="/content/dam/wfmin(/.*/)renditions/original" jcr:primaryType="cq:WorkflowLauncher" nodetype="nt:file" runModes="author" workflow="/var/workflow/models/dam/update_asset"/>
+  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config/update_asset_create/.content.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<jcr:root xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:jcr="http://www.jcp.org/jcr/1.0"
+    jcr:primaryType="cq:WorkflowLauncher"
+    condition=""
+    conditions="[jcr:content/jcr:mimeType!=video/.*]"
+    description="Update Asset - Create"
+    enabled="{Boolean}false"
+    eventType="{Long}1"
+    excludeList="event-user-data:changedByWorkflowProcess"
+    glob="/content/dam/wfmin(/.*/)renditions/original"
+    nodetype="nt:file"
+    runModes="author"
+    workflow="/var/workflow/models/dam/update_asset"/>
 `,
-  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config/update_asset_mod/.content.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" condition="" conditions="[jcr:content/jcr:mimeType!=video/.*]" description="Update Asset - Modification" enabled="{Boolean}false" eventType="{Long}16" excludeList="event-user-data:changedByWorkflowProcess" glob="/content/dam/wfmin(/.*/)renditions/original" jcr:primaryType="cq:WorkflowLauncher" nodetype="nt:file" runModes="author" workflow="/var/workflow/models/dam/update_asset"/>
+  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config/update_asset_mod/.content.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<jcr:root xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:jcr="http://www.jcp.org/jcr/1.0"
+    jcr:primaryType="cq:WorkflowLauncher"
+    condition=""
+    conditions="[jcr:content/jcr:mimeType!=video/.*]"
+    description="Update Asset - Modification"
+    enabled="{Boolean}false"
+    eventType="{Long}16"
+    excludeList="event-user-data:changedByWorkflowProcess"
+    glob="/content/dam/wfmin(/.*/)renditions/original"
+    nodetype="nt:file"
+    runModes="author"
+    workflow="/var/workflow/models/dam/update_asset"/>
 `,
-  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config/wfmin-campaigns/.content.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" condition="" conditions="[]" description="WF Min campaign and event assets" enabled="{Boolean}false" eventType="{Long}1" excludeList="event-user-data:changedByWorkflowProcess" glob="/content/dam/(wfmin-campaigns|wfmin-events)/.*/renditions/original" jcr:primaryType="cq:WorkflowLauncher" nodetype="nt:file" runModes="author" workflow="/var/workflow/models/wfmin-campaigns"/>
+  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config/wfmin-campaigns/.content.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<jcr:root xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:jcr="http://www.jcp.org/jcr/1.0"
+    jcr:primaryType="cq:WorkflowLauncher"
+    condition=""
+    conditions="[]"
+    description="WF Min campaign and event assets"
+    enabled="{Boolean}false"
+    eventType="{Long}1"
+    excludeList="event-user-data:changedByWorkflowProcess"
+    glob="/content/dam/(wfmin-campaigns|wfmin-events)/.*/renditions/original"
+    nodetype="nt:file"
+    runModes="author"
+    workflow="/var/workflow/models/wfmin-campaigns"/>
 `,
-  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config/wfmin-marketing/.content.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" condition="" conditions="[]" description="WF Min marketing assets" enabled="{Boolean}false" eventType="{Long}1" excludeList="event-user-data:changedByWorkflowProcess" glob="/content/dam/wfmin/marketing(/.*/)renditions/original" jcr:primaryType="cq:WorkflowLauncher" nodetype="nt:file" runModes="author" workflow="/var/workflow/models/wfmin-marketing"/>
+  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config/wfmin-marketing/.content.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<jcr:root xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:jcr="http://www.jcp.org/jcr/1.0"
+    jcr:primaryType="cq:WorkflowLauncher"
+    condition=""
+    conditions="[]"
+    description="WF Min marketing assets"
+    enabled="{Boolean}false"
+    eventType="{Long}1"
+    excludeList="event-user-data:changedByWorkflowProcess"
+    glob="/content/dam/wfmin/marketing(/.*/)renditions/original"
+    nodetype="nt:file"
+    runModes="author"
+    workflow="/var/workflow/models/wfmin-marketing"/>
 `,
-  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/models/dam/update_asset/.content.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:nt="http://www.jcp.org/jcr/nt/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" jcr:primaryType="cq:Page">
-    <jcr:content cq:template="/libs/cq/workflow/templates/model" jcr:primaryType="cq:PageContent" jcr:title="DAM Update Asset" sling:resourceType="cq/workflow/components/pages/model" transient="true">
-        <flow jcr:primaryType="nt:unstructured" sling:resourceType="foundation/components/parsys">
-            <damupdateassetworkflowcompletedprocess jcr:primaryType="nt:unstructured" jcr:title="DAM Update Asset Workflow Completed" sling:resourceType="dam/components/workflow/damupdateassetworkflowcompletedprocess">
-                <metaData PROCESS="com.day.cq.dam.core.impl.process.DamUpdateAssetWorkflowCompletedProcess" PROCESS_AUTO_ADVANCE="true" jcr:primaryType="nt:unstructured"/>
-            </damupdateassetworkflowcompletedprocess>
-            <watermark jcr:primaryType="nt:unstructured" jcr:title="Watermark" sling:resourceType="cq/workflow/components/model/process">
-                <metaData PROCESS="com.example.wfmin.core.workflow.WatermarkProcess" PROCESS_AUTO_ADVANCE="true" jcr:primaryType="nt:unstructured"/>
+  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/models/dam/update_asset/.content.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<!-- Overlaid OOTB model. Completed is not last; CommandLineProcess is UNSUPPORTED
+     with one standard thumbnail, one mappable rendition and one that needs a custom worker. -->
+<jcr:root xmlns:sling="http://sling.apache.org/jcr/sling/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:nt="http://www.jcp.org/jcr/nt/1.0"
+    jcr:primaryType="cq:Page">
+    <jcr:content
+        cq:template="/libs/cq/workflow/templates/model"
+        jcr:primaryType="cq:PageContent"
+        jcr:title="DAM Update Asset"
+        sling:resourceType="cq/workflow/components/pages/model"
+        transient="true">
+        <flow
+            jcr:primaryType="nt:unstructured"
+            sling:resourceType="foundation/components/parsys">
+            <watermark
+                jcr:primaryType="nt:unstructured"
+                jcr:title="Watermark"
+                sling:resourceType="cq/workflow/components/model/process">
+                <metaData
+                    jcr:primaryType="nt:unstructured"
+                    PROCESS="com.example.wfmin.core.workflow.WatermarkProcess"
+                    PROCESS_AUTO_ADVANCE="true"/>
             </watermark>
+            <damupdateassetworkflowcompletedprocess
+                jcr:primaryType="nt:unstructured"
+                jcr:title="DAM Update Asset Workflow Completed"
+                sling:resourceType="dam/components/workflow/damupdateassetworkflowcompletedprocess">
+                <metaData
+                    jcr:primaryType="nt:unstructured"
+                    PROCESS="com.day.cq.dam.core.impl.process.DamUpdateAssetWorkflowCompletedProcess"
+                    PROCESS_AUTO_ADVANCE="true"/>
+            </damupdateassetworkflowcompletedprocess>
         </flow>
     </jcr:content>
 </jcr:root>
 `,
-  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/models/wfmin-marketing/.content.xml': `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:nt="http://www.jcp.org/jcr/nt/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" jcr:primaryType="cq:Page">
-    <jcr:content cq:template="/libs/cq/workflow/templates/model" jcr:primaryType="cq:PageContent" jcr:title="WF Min Marketing" sling:resourceType="cq/workflow/components/pages/model" transient="true">
-        <flow jcr:primaryType="nt:unstructured" sling:resourceType="foundation/components/parsys">
-            <or branches="2" jcr:primaryType="nt:unstructured" jcr:title="Upload to Scene7?" orSplit="true" script1="function check() {&#13;&#10;    return workflowData.getPayload().toString().indexOf(&quot;/s7/&quot;) &gt; -1;&#13;&#10;}" script2="function check() {&#13;&#10;    return true;&#13;&#10;}" sling:resourceType="cq/workflow/components/model/or">
-                <_x0031_ jcr:primaryType="nt:unstructured" sling:resourceType="cq/flow/components/parsys">
-                    <scene7upload jcr:primaryType="nt:unstructured" jcr:title="Scene7" sling:resourceType="dam/components/scene7/scene7upload">
-                        <metaData EXTERNAL_PROCESS="com.day.cq.dam.scene7.impl.process.Scene7UploadProcess" PROCESS_AUTO_ADVANCE="true" jcr:primaryType="nt:unstructured"/>
-                    </scene7upload>
+  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/models/wfmin-campaigns/.content.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<!-- Custom model whose only real work is inside an AND split: the tool disables its launcher but
+     does not wire it. Non-transient on purpose. -->
+<jcr:root xmlns:sling="http://sling.apache.org/jcr/sling/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:nt="http://www.jcp.org/jcr/nt/1.0"
+    jcr:primaryType="cq:Page">
+    <jcr:content
+        cq:template="/libs/cq/workflow/templates/model"
+        jcr:primaryType="cq:PageContent"
+        jcr:title="WF Min Campaigns"
+        sling:resourceType="cq/workflow/components/pages/model"
+        transient="false">
+        <flow
+            jcr:primaryType="nt:unstructured"
+            sling:resourceType="foundation/components/parsys">
+            <and
+                jcr:primaryType="nt:unstructured"
+                jcr:title="Tag and gate"
+                sling:resourceType="cq/workflow/components/model/and"
+                branches="2">
+                <_x0031_
+                    jcr:primaryType="nt:unstructured"
+                    sling:resourceType="cq/flow/components/parsys">
+                    <tagbyfolder
+                        jcr:primaryType="nt:unstructured"
+                        jcr:title="Tag by folder"
+                        sling:resourceType="cq/workflow/components/model/process">
+                        <metaData
+                            jcr:primaryType="nt:unstructured"
+                            PROCESS="com.example.wfmin.core.workflow.TagByFolderProcess"
+                            PROCESS_AUTO_ADVANCE="true"/>
+                    </tagbyfolder>
                 </_x0031_>
-                <_x0032_ jcr:primaryType="nt:unstructured" sling:resourceType="cq/flow/components/parsys">
-                    <noop jcr:primaryType="nt:unstructured" jcr:title="No operation" sling:resourceType="cq/workflow/components/model/process">
+                <_x0032_
+                    jcr:primaryType="nt:unstructured"
+                    sling:resourceType="cq/flow/components/parsys">
+                    <noopprocess jcr:primaryType="nt:unstructured" jcr:title="No Operation" sling:resourceType="cq/workflow/components/workflow/noopprocess">
                         <metaData PROCESS="/libs/workflow/scripts/noop.ecma" PROCESS_AUTO_ADVANCE="true" jcr:primaryType="nt:unstructured"/>
-                    </noop>
+                    </noopprocess>
                 </_x0032_>
-            </or>
-            <autopublish jcr:primaryType="nt:unstructured" jcr:title="Auto publish" sling:resourceType="cq/workflow/components/model/process">
-                <metaData PROCESS="com.example.wfmin.core.workflow.AutoPublishProcess" PROCESS_AUTO_ADVANCE="true" jcr:primaryType="nt:unstructured"/>
+            </and>
+            <damupdateassetworkflowcompletedprocess jcr:description="This process will send DamEvent.Type.DAM_UPDATE_ASSET_WORKFLOW_COMPLETED event when DAM update asset workflow is completed" jcr:primaryType="nt:unstructured" jcr:title="DAM Update Asset Workflow Completed" sling:resourceType="dam/components/workflow/damupdateassetworkflowcompletedprocess">
+                <metaData PROCESS="com.day.cq.dam.core.impl.process.DamUpdateAssetWorkflowCompletedProcess" PROCESS_AUTO_ADVANCE="true" jcr:primaryType="nt:unstructured"/>
+            </damupdateassetworkflowcompletedprocess>
+        </flow>
+    </jcr:content>
+</jcr:root>
+`,
+  'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/models/wfmin-marketing/.content.xml': `<?xml version="1.0" encoding="UTF-8"?>
+<!-- Custom model. The OR split holds only Dynamic Media (DMS7_OOTB) and a noop branch, so it has no
+     work left; there is no Completed step. -->
+<jcr:root xmlns:sling="http://sling.apache.org/jcr/sling/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:nt="http://www.jcp.org/jcr/nt/1.0"
+    jcr:primaryType="cq:Page">
+    <jcr:content
+        cq:template="/libs/cq/workflow/templates/model"
+        jcr:primaryType="cq:PageContent"
+        jcr:title="WF Min Marketing"
+        sling:resourceType="cq/workflow/components/pages/model"
+        transient="true">
+        <flow
+            jcr:primaryType="nt:unstructured"
+            sling:resourceType="foundation/components/parsys">
+            <autopublish
+                jcr:primaryType="nt:unstructured"
+                jcr:title="Auto publish"
+                sling:resourceType="cq/workflow/components/model/process">
+                <metaData
+                    jcr:primaryType="nt:unstructured"
+                    PROCESS="com.example.wfmin.core.workflow.AutoPublishProcess"
+                    PROCESS_AUTO_ADVANCE="true"/>
             </autopublish>
             <damupdateassetworkflowcompletedprocess jcr:description="This process will send DamEvent.Type.DAM_UPDATE_ASSET_WORKFLOW_COMPLETED event when DAM update asset workflow is completed" jcr:primaryType="nt:unstructured" jcr:title="DAM Update Asset Workflow Completed" sling:resourceType="dam/components/workflow/damupdateassetworkflowcompletedprocess">
                 <metaData PROCESS="com.day.cq.dam.core.impl.process.DamUpdateAssetWorkflowCompletedProcess" PROCESS_AUTO_ADVANCE="true" jcr:primaryType="nt:unstructured"/>
@@ -930,14 +1074,113 @@ const TOOL_WRITTEN = {
 };
 
 const TOOL_DELETED = [
+  'ui.apps/src/main/content/jcr_root/apps/wfmin/osgiconfig/config.author/com.adobe.cq.dam.processor.nui.impl.workflow.CustomDamWorkflowRunnerImpl.xml',
   'ui.content/src/main/content/jcr_root/var/workflow/models/dam/update_asset.xml',
   'ui.content/src/main/content/jcr_root/var/workflow/models/wfmin-campaigns.xml',
   'ui.content/src/main/content/jcr_root/var/workflow/models/wfmin-legacy.xml',
   'ui.content/src/main/content/jcr_root/var/workflow/models/wfmin-marketing.xml'
 ];
 
+// The tool's migration-report.md for the same run.
+const TOOL_REPORT = [
+  "# AEM Assets as a Cloud Service - Workflow Migration Report\n",
+  "This report contains the changes that have been made to your Maven project by the workflow migration tool.  After reviewing these changes, you should be able to simply run a `mvn clean install` command against your reactor POM file to build your project with these changes in place.  After validating these changes on a local developer environment, check these changes into your source control repository and run a Cloud Manager build to deploy these changes to your AEM in the Cloud environments.\n",
+  "\n",
+  "## Maven Projects Added and Modified\n",
+  "Changes to your workflow models and launchers have been made in-place.  We have also added the following new Maven projects:\n",
+  "\n",
+  "| Action | Project |\n",
+  "| ------ | ------- |\n",
+  "| Created | aem-cloud-migration.content |\n",
+  "| Created | aem-cloud-migration.apps |\n",
+  "\n",
+  "These projects have been added as modules to your reactor POM.  If you have already migrated your Maven projects to the new mutable/immutable content structures, we have also added these projects to embedded packages and dependencies in your project's container content package.\n",
+  "\n",
+  "If you have not yet migrated your Maven projects to this new paradigm or are unsure what this means, please see [Understand the Structure of a Project Content Package in Adobe Experience Manager Cloud Service](https://docs.adobe.com/content/help/en/experience-manager-cloud-service/implementing/developing/aem-project-content-package-structure.html) for more information.\n",
+  "\n",
+  "## Workflow Launchers\n",
+  "We have disabled some workflow launchers.  Depending on your source code, these will either be located under `/conf/global/settings/workflow/launcher/config` or `/etc/workflow/launcher/config`.  The Asset Compute Service will handle most asset processing in the cloud and any remaining custom workflow steps to be executed will be handled via the Custom Workflow Runner service.  We have disabled the following launchers:\n",
+  "\n",
+  "| Action | Launcher |\n",
+  "| ------ | -------- |\n",
+  "| Disabled | `wfmin-campaigns` |\n",
+  "| Disabled | `update_asset_mod` |\n",
+  "| Disabled | `update_asset_create` |\n",
+  "| Disabled | `wfmin-marketing` |\n",
+  "\n",
+  "Note that in AEM Assets as a Cloud Service environments, out-of-the-box workflow launchers for DAM Update Asset and DAM Metadata Writeback workflows are disabled by default.\n",
+  "\n",
+  "## Custom Workflow Runner configuration\n",
+  "We have created an author configuration for the Custom Workflow Runner service in the `aem-cloud-migration.apps` project, at `/apps/aem-cloud-migration/config.author/com.adobe.cq.dam.processor.nui.impl.workflow.CustomDamWorkflowRunnerImpl.cfg.json`.  This service replaces the role of traditional workflow launchers for asset processing workflows in AEM Assets as a Cloud Service deployments.  Since the Asset Compute Service will be processing all of our image renditions, we can no longer rely on a simple JCR event to execute our workflows.  Instead, this service will be invoked when the Asset Compute Service has completed processing and the assets are ready for custom steps to be executed against them.  If you use Dynamic Media, note that we will upload assets to Dynamic Media before executing these workflows.  We have configured the following workflows:\n",
+  "\n",
+  "| Action | Glob Pattern | Workflow Model |\n",
+  "| ------ | ------------ | -------------- |\n",
+  "| Created | `/content/dam/(wfmin-campaigns|wfmin-events)/.*` | `/var/workflow/models/wfmin-campaigns` |\n",
+  "| Created | `/content/dam/wfmin(/.*)` | `/var/workflow/models/dam/update_asset` |\n",
+  "| Created | `/content/dam/wfmin/marketing(/.*)` | `/var/workflow/models/wfmin-marketing` |\n",
+  "\n",
+  "Only one configuration of this service can be active, so we have merged the entries of the following existing configurations into it and removed them:\n",
+  "\n",
+  "* `ui.apps/src/main/content/jcr_root/apps/wfmin/osgiconfig/config.author/com.adobe.cq.dam.processor.nui.impl.workflow.CustomDamWorkflowRunnerImpl.xml`\n",
+  "\n",
+  "Note that when using the `postProcWorkflowsByExpression` method of configuring this service, the glob patterns used will differ slightly from the patterns used for workflow launchers.  This is due to the fact that while workflow launchers usually target the original asset binary, the Custom Workflow Runner targets the asset itself.\n",
+  "\n",
+  "## Workflow Model Updates\n",
+  "Many workflow models will combine Adobe-provided asset processing steps with custom customer-defined steps.  In these cases, we have removed most of the Adobe-provided steps from the workflow and configured the workflow to be executed by the Custom Workflow Runner.  When executing workflows via the Custom Workflow Runner service, we require that the workflow end with the DAM Update Asset Completed Process workflow step.  This will mark the asset as _Complete_.  As a result, we have added this step in any workflows where it was missing. \n",
+  "\n",
+  "We have made changes to the following workflow models:\n",
+  "\n",
+  "### /conf/global/settings/workflow/models/wfmin-campaigns\n",
+  "\n",
+  "| Action | Step | Reason |\n",
+  "| ------ | ---- | ------ |\n",
+  "| Removed | `com.day.cq.dam.core.process.GateKeeperProcess` | This process is not necessary in AEM Assets as a Cloud Service. |\n",
+  "| Added | `com.day.cq.dam.core.impl.process.DamUpdateAssetWorkflowCompletedProcess` | Required step added to the workflow. |\n",
+  "\n",
+  "### /conf/global/settings/workflow/models/wfmin-marketing\n",
+  "\n",
+  "| Action | Step | Reason |\n",
+  "| ------ | ---- | ------ |\n",
+  "| Removed | `com.day.cq.dam.scene7.impl.process.Scene7UploadProcess` | This functionality is provided by our OOTB Dynamic Media connectors. |\n",
+  "| Added | `com.day.cq.dam.core.impl.process.DamUpdateAssetWorkflowCompletedProcess` | Required step added to the workflow. |\n",
+  "\n",
+  "### /conf/global/settings/workflow/models/dam/update_asset\n",
+  "\n",
+  "| Action | Step | Reason |\n",
+  "| ------ | ---- | ------ |\n",
+  "| Removed | `com.day.cq.dam.core.process.MetadataProcessorProcess` | This functionality is provided by the Asset Compute Service. |\n",
+  "| Removed | `com.day.cq.dam.core.process.ThumbnailProcess` | This configuration has been migrated to a processing profile for the Asset Compute Service. |\n",
+  "| Removed | `com.day.cq.dam.core.process.CommandLineProcess` | This configuration has been migrated to a processing profile for the Asset Compute Service. |\n",
+  "| Added | `com.day.cq.dam.core.impl.process.DamUpdateAssetWorkflowCompletedProcess` | Required step added to the workflow. |\n",
+  "\n",
+  "\n",
+  "## Paths Deleted\n",
+  "Workflow nodes under /var paths are no longer required for deployment to AEM as a Cloud Service.  These nodes will automatically be generated at system startup for any workflow models that have previously been synced.  In order to prevent potential deployment issues, the following /var paths have been removed from your Maven projects and filter files:\n",
+  "\n",
+  "| Action | Path |\n",
+  "| ------ | ------- |\n",
+  "| Deleted | /var/folders/50/kfpg24ds1vvf9bfvkwffbr580000gq/T/regen-2vH6nw/project/ui.content/src/main/content/jcr_root/var |\n",
+  "\n",
+  "## Asset Compute Service Processing Profiles\n",
+  "By inspecting your workflow step configurations, we were able to automatically generate processing profiles for the Asset Compute Service to encompass configurations that you have customized.  These configurations can be found in the (`aem-cloud-migration.content`) project.\n",
+  "\n",
+  "| Action | Profile |\n",
+  "| ------ | ------- |\n",
+  "| Created | Migrated from update_asset |\n",
+  "\n",
+  "Note that while we have created processing profiles from your workflow model configurations, we are unable to attach these profiles to your existing content structures.  After deploying these profiles to your environment, please visit /mnt/overlay/dam/gui/content/processingprofiles/processingprofiles.html to attach these configurations to one or more folders in your repository.\n",
+  "\n",
+  "## Migration Issues\n",
+  "These issues were encountered while migrating the project by workflow migration tool.\n",
+  "\n",
+  "| Action | Step | Reason |\n",
+  "| ------ | ---- | ------ |\n",
+  "| Failed | Command 'convert -resize 25% ${filename} cq5dam.preview-25.png' in update_asset | Not migrated to a processing profile because the geometry 25% is not supported, processing profiles only support WIDTHxHEIGHT. A custom Asset Compute worker is required. |\n",
+  "\n",
+].join('');
+
 // A read-only copy of the project for tests that only read it; removed when the process exits.
 const PROJECT = materializeProject(fs.mkdtempSync(path.join(os.tmpdir(), 'awf-project-')));
 process.on('exit', () => fs.rmSync(PROJECT, { recursive: true, force: true }));
 
-module.exports = { PROJECT, listFiles, copyDir, materializeProject, materializeToolOutput, diffAgainstSnapshot };
+module.exports = { PROJECT, TOOL_REPORT, listFiles, copyDir, materializeProject, materializeToolOutput, diffAgainstSnapshot };

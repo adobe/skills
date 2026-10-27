@@ -1,13 +1,14 @@
 'use strict';
 // Branch H end to end with the real wf-migrator JAR. Opt in with ASSET_WF_E2E=1 (needs Java 11+ and git;
 // the catalog check also needs unzip).
-//   ASSET_WF_JAR=<path>     use a local wf-migrator-0.6.0.jar instead of downloading the pinned release
+//   ASSET_WF_JAR=<path>     use a local wf-migrator jar instead of downloading the pinned release
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs'); const os = require('os'); const path = require('path');
 const { spawnSync } = require('child_process');
 const RUN = require('./asset-workflow-run.js');
 const CAT = require('./asset-workflow-catalog.js');
+const F = require('./asset-workflow-followup.js');
 const T = require('./fixtures/asset-workflow.js');
 
 function skipReason() {
@@ -55,27 +56,30 @@ test('E2E: wf-migrator output still matches the recorded output the unit tests u
   const run = RUN.runMigrator(project, path.join(d, 'report'), jar());
   assert.ok(run.ok, `${run.error}\n${run.stdout}`);
   assert.deepStrictEqual(T.diffAgainstSnapshot(project), [], 'the tool output changed; update TOOL_WRITTEN / TOOL_DELETED in fixtures/asset-workflow.js');
+  assert.deepStrictEqual(F.parseToolIssues(fs.readFileSync(run.reportPath, 'utf8')), F.parseToolIssues(T.TOOL_REPORT), 'update TOOL_REPORT in fixtures/asset-workflow.js');
 }));
 
-test('E2E: migrate runs the tool, applies the fixes and passes verification; a fix-only re-run is a no-op', { skip: SKIP }, () => withTmp(d => {
+test('E2E: migrate runs the tool and passes verification; a verify-only re-run agrees', { skip: SKIP }, () => withTmp(d => {
   const project = T.materializeProject(path.join(d, 'project'));
   git(project, 'init', '-q');
   git(project, 'add', '-A');
   git(project, 'commit', '-q', '-m', 'baseline');
-  const args = [project, '--jar', jar(), '--acknowledge', 'CommandLineProcess,/var/workflow/models/wfmin-legacy', '--rename-ootb-models', '--emit-repoinit'];
+  const args = [project, '--jar', jar(), '--acknowledge', 'CommandLineProcess,/var/workflow/models/wfmin-legacy'];
 
   const lines = [];
   assert.strictEqual(RUN.main(args, l => lines.push(l)), 0, lines.join('\n'));
   const reportDir = path.join(project, 'target', 'asset-workflow-migration');
   const result = JSON.parse(fs.readFileSync(path.join(reportDir, 'asset-workflow-result.json'), 'utf8'));
   assert.ok(result.tool.ok && result.verify.ok);
-  assert.strictEqual(result.tool.version, RUN.TOOL_VERSION);
+  if (!process.env.ASSET_WF_JAR) assert.strictEqual(result.tool.version, RUN.TOOL_VERSION);
   assert.ok(fs.existsSync(path.join(reportDir, 'tool', 'migration-report.md')));
   assert.ok(fs.existsSync(path.join(reportDir, 'asset-workflow-report.md')));
-  const changed = git(project, 'status', '--porcelain', '--', '.', ':(exclude)target').split('\n').filter(Boolean);
+  const changed = git(project, 'status', '--porcelain', '-uall', '--', '.', ':(exclude)target').split('\n').filter(Boolean);
   assert.ok(changed.some(l => l.includes('CustomDamWorkflowRunnerImpl.cfg.json')), changed.join('\n'));
 
-  const again = RUN.migrate(RUN.parseArgs([...args, '--fix-only']));
+  assert.ok(result.followUps.manual.some(m => m.code === 'needs-custom-worker'), 'issues from the tool report reach the checklist');
+
+  const again = RUN.migrate(RUN.parseArgs([...args, '--verify-only']));
   assert.strictEqual(again.exitCode, 0, again.error);
-  assert.deepStrictEqual(again.fix.changedFiles, []);
+  assert.ok(again.verify.ok);
 }));

@@ -1,11 +1,11 @@
 'use strict';
 // Branch H one-command runner: pre-flight → gate → baseline → Adobe wf-migrator (pinned JAR) →
-// fixers → verification → report. Exit codes: 0 verified, 1 verification or tool failure,
-// 2 stopped before changing anything (pre-flight failure or unacknowledged unsupported steps).
+// verification → follow-ups → report. The tool makes every change; this runner only orchestrates,
+// gates and checks. Exit codes: 0 verified, 1 verification or tool failure, 2 stopped before
+// changing anything (pre-flight failure or unacknowledged unsupported steps).
 //
-//   node asset-workflow-run.js <projectRoot> [--dry-run] [--fix-only] [--baseline <dir>]
-//     [--acknowledge <step,...|all>] [--rename-ootb-models] [--emit-repoinit]
-//     [--report-dir <dir>] [--jar <path>] [--allow-dirty] [--json]
+//   node asset-workflow-run.js <projectRoot> [--dry-run] [--verify-only] [--baseline <dir>]
+//     [--acknowledge <step,...|all>] [--report-dir <dir>] [--jar <path>] [--allow-dirty] [--json]
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -13,14 +13,15 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const C = require('./asset-workflow-catalog.js');
 const I = require('./asset-workflow-inventory.js');
-const F = require('./asset-workflow-fix.js');
+const F = require('./asset-workflow-followup.js');
 const V = require('./asset-workflow-verify.js');
 const R = require('./asset-workflow-report.js');
 
-const TOOL_VERSION = '0.6.0';
+const TOOL_VERSION = '0.7.0';
 const TOOL_JAR = `wf-migrator-${TOOL_VERSION}.jar`;
 const TOOL_URL = `https://github.com/adobe/aem-cloud-migration/releases/download/v${TOOL_VERSION}/${TOOL_JAR}`;
-const TOOL_SHA256 = 'edc8bbf1d95a1ac0b504d5ca78cf9e8b8d1bd4b56423b40cc55eb754a4f77699';
+// Set once the v0.7.0 release is published; until then the jar is never downloaded and --jar is required.
+const TOOL_SHA256 = null;
 const TOOL_DIR = path.join(__dirname, 'asset-workflow-tool');
 const MIN_JAVA = 11;
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'target', 'dist', '.idea', '.vscode']);
@@ -78,12 +79,13 @@ const toolJarPath = toolDir => path.join(toolDir || TOOL_DIR, TOOL_JAR);
 
 function isToolInstalled(toolDir) {
   const jar = toolJarPath(toolDir);
-  return isFile(jar) && sha256(jar) === TOOL_SHA256;
+  return !!TOOL_SHA256 && isFile(jar) && sha256(jar) === TOOL_SHA256;
 }
 
 function ensureToolInstalled(toolDir) {
   toolDir = toolDir || TOOL_DIR;
   const jar = toolJarPath(toolDir);
+  if (!TOOL_SHA256) return { installed: false, jar, error: `the checksum of ${TOOL_JAR} is not pinned yet; build or download the jar and pass --jar <path>.` };
   if (isToolInstalled(toolDir)) return { installed: true, alreadyPresent: true, jar };
   fs.mkdirSync(toolDir, { recursive: true });
   const tmp = `${jar}.part`;
@@ -158,7 +160,7 @@ function resetBaseline(dir) {
   fs.writeFileSync(path.join(dir, BASELINE_MARKER), 'Created by asset-workflow-run.js; emptied on every run.\n');
   return { ok: true };
 }
-// Copies only the files the inventory, fixers and verification read (XML, JSON, OSGi configs).
+// Copies only the files the inventory and verification read (XML, JSON, OSGi configs).
 function copyTree(src, dest, exclude) {
   const skip = new Set((exclude || []).map(p => path.resolve(p)));
   let copied = 0;
@@ -178,7 +180,7 @@ function copyTree(src, dest, exclude) {
   return copied;
 }
 
-// --fix-only without --baseline: the committed tree (HEAD) is the state before the tool ran.
+// --verify-only without --baseline: the committed tree (HEAD) is the state before the tool ran.
 function baselineFromGit(root, dest) {
   const prefix = spawnSync('git', ['rev-parse', '--show-prefix'], { cwd: root, encoding: 'utf8' });
   if (prefix.error || prefix.status !== 0) return { ok: false, error: `${root} is not in a git repository; pass --baseline <dir> with the project as it was before the tool ran.` };
@@ -196,34 +198,18 @@ function baselineFromGit(root, dest) {
 
 const ackMatches = (acks, process) => acks.includes('all') || acks.includes(process) || acks.includes(C.shortName(process));
 
-// Workflows the migration has to handle: rewritten by the tool, wired by the split fixer, or
-// renditions-only (steps whose renditions move to a processing profile).
-function affectedWorkflows(pre) {
-  const seen = new Set();
-  return pre.workflows.filter(w => {
-    if (!I.isAffected(w)) return false;
-    const k = `${w.module}|${w.model.confPath}`;
-    if (seen.has(k)) return false;
-    seen.add(k);
-    return true;
-  });
-}
+const affectedWorkflows = I.affectedWorkflows;
 
-// Steps whose renditions would be lost (UNSUPPORTED steps, rendition steps inside a split). Steps
-// whose output all maps to processing-profile or standard renditions are safe; anything else must
-// be acknowledged before the run changes the project.
+// Steps the tool removes without a sure replacement (UNSUPPORTED ones, and command lines, of which it maps
+// only simple ImageMagick conversions to processing-profile renditions). Each must be acknowledged before the run
+// changes the project.
 function gateUnsupported(pre, acknowledge) {
   const acks = (acknowledge || []).map(String);
   const steps = [];
   for (const w of affectedWorkflows(pre)) {
-    const need = w.model.flat.filter(x => x.kind === 'process' && I.needsRenditionMapping(x));
-    C.mapSteps(need).forEach((maps, k) => {
-      const s = need[k];
-      const fullyMapped = maps.length > 0 && maps.every(m => m.status !== 'custom');
-      const acknowledged = fullyMapped || ackMatches(acks, s.process);
-      steps.push({ model: w.model.confPath, path: s.path, process: s.process, fullyMapped, acknowledged,
-        custom: maps.filter(m => m.status === 'custom').map(m => `${m.command} — ${m.reason}`), remediation: C.remediationFor(s) });
-    });
+    for (const s of w.model.flat.filter(x => x.kind === 'process' && C.requiresAck(x.process))) {
+      steps.push({ model: w.model.confPath, path: s.path, process: s.process, acknowledged: ackMatches(acks, s.process), remediation: C.remediationFor(s) });
+    }
   }
   const pending = steps.filter(s => !s.acknowledged);
   // The tool deletes every packaged /var/workflow node, so a runtime model without a design-time
@@ -251,14 +237,12 @@ function planPreview(pre) {
 // ── CLI ───────────────────────────────────────────────────────────────
 
 function parseArgs(argv) {
-  const o = { root: null, dryRun: false, fixOnly: false, baseline: null, acknowledge: [], renameOotbModels: false, emitRepoinit: false, reportDir: null, jar: null, allowDirty: false, json: false };
+  const o = { root: null, dryRun: false, verifyOnly: false, baseline: null, acknowledge: [], reportDir: null, jar: null, allowDirty: false, json: false };
   const take = (i, name) => { if (i + 1 >= argv.length) throw new Error(`${name} needs a value`); return argv[i + 1]; };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--dry-run') o.dryRun = true;
-    else if (a === '--fix-only') o.fixOnly = true;
-    else if (a === '--rename-ootb-models') o.renameOotbModels = true;
-    else if (a === '--emit-repoinit') o.emitRepoinit = true;
+    else if (a === '--verify-only') o.verifyOnly = true;
     else if (a === '--allow-dirty') o.allowDirty = true;
     else if (a === '--json') o.json = true;
     else if (a === '--baseline') o.baseline = take(i++, a);
@@ -269,7 +253,7 @@ function parseArgs(argv) {
     else if (!o.root) o.root = a;
     else throw new Error(`unexpected argument ${a}`);
   }
-  if (!o.root) throw new Error('usage: node asset-workflow-run.js <projectRoot> [--dry-run] [--fix-only] [--baseline <dir>] [--acknowledge <step,...|all>] [--rename-ootb-models] [--emit-repoinit] [--report-dir <dir>] [--jar <path>] [--allow-dirty] [--json]');
+  if (!o.root) throw new Error('usage: node asset-workflow-run.js <projectRoot> [--dry-run] [--verify-only] [--baseline <dir>] [--acknowledge <step,...|all>] [--report-dir <dir>] [--jar <path>] [--allow-dirty] [--json]');
   return o;
 }
 
@@ -291,7 +275,7 @@ function runMigration(o, temps) {
   if (!rd.ok) return stop('preflight', rd.error);
 
   let baseline = o.baseline ? path.resolve(o.baseline) : null;
-  if (o.fixOnly && !baseline) {
+  if (o.verifyOnly && !baseline) {
     if (o.dryRun) {
       baseline = fs.mkdtempSync(path.join(os.tmpdir(), 'asset-workflow-baseline-'));
       temps.push(baseline);
@@ -306,20 +290,20 @@ function runMigration(o, temps) {
   }
   if (baseline && !isFile(path.join(baseline, 'pom.xml'))) return stop('baseline', `baseline ${baseline} has no pom.xml.`);
 
-  const pre = I.buildInventory(o.fixOnly ? baseline : root);
+  const pre = I.buildInventory(o.verifyOnly ? baseline : root);
   result.plan = planPreview(pre);
   const gate = gateUnsupported(pre, o.acknowledge);
   result.gate = gate;
   if (o.dryRun) return Object.assign(result, { stage: 'dry-run', ok: true, exitCode: 0 });
   if (!gate.ok) {
     const why = [];
-    if (gate.pending.length) why.push(`${gate.pending.length} step(s) would be removed without a replacement — handle them (see remediation) and re-run with --acknowledge <step,...>`);
+    if (gate.pending.length) why.push(`${gate.pending.length} unsupported step(s) would be removed — handle what they produced (see remediation) and re-run with --acknowledge <step,...>`);
     if (gate.pendingOrphans.length) why.push(`${gate.pendingOrphans.length} runtime model(s) under /var/workflow have no design-time model and the tool deletes them — export them into /conf/global/settings/workflow/models first, or --acknowledge <runtime path>`);
     return stop('gate', `${why.join('; ')}.`);
   }
 
   let tool = { skipped: true };
-  if (!o.fixOnly) {
+  if (!o.verifyOnly) {
     const java = checkJava();
     result.java = java;
     if (!java.ok) return stop('preflight', java.error);
@@ -352,14 +336,15 @@ function runMigration(o, temps) {
     if (!run.ok) return Object.assign(result, { ok: false, exitCode: 1, error: `wf-migrator failed: ${run.error}. See ${path.join(reportDir, 'tool', 'wf-migrator.log')}; the project may be partly changed (git checkout . to undo).` });
   }
 
-  result.stage = 'fix';
-  const fix = F.applyFixes(root, baseline, { acknowledge: o.acknowledge, renameOotbModels: o.renameOotbModels, emitRepoinit: o.emitRepoinit });
-  const post = I.buildInventory(root);
   result.stage = 'verify';
-  const verify = V.verifyMigration(pre, post, { fix, acknowledge: o.acknowledge });
-  const md = R.renderReport({ pre, post, fix, verify, tool, opts: o, gate });
+  const post = I.buildInventory(root);
+  const toolReport = path.join(reportDir, 'tool', 'migration-report.md');
+  if (tool.skipped && isFile(toolReport)) tool.reportPath = toolReport;
+  const followUps = F.collectFollowUps({ pre, post, acknowledge: o.acknowledge, toolReport: isFile(toolReport) ? fs.readFileSync(toolReport, 'utf8') : '' });
+  const verify = V.verifyMigration(pre, post, { followUps, acknowledge: o.acknowledge });
+  const md = R.renderReport({ pre, post, followUps, verify, tool, gate });
   result.report = R.writeReport(reportDir, md);
-  Object.assign(result, { stage: 'done', ok: verify.ok, exitCode: verify.ok ? 0 : 1, tool, fix: { changedFiles: fix.changedFiles, deletedFiles: fix.deletedFiles, actions: fix.actions.length, manual: fix.manual.length, workflows: fix.workflows.map(w => w.confPath), runner: fix.runner }, verify });
+  Object.assign(result, { stage: 'done', ok: verify.ok, exitCode: verify.ok ? 0 : 1, tool, followUps: { workflows: followUps.workflows.map(w => w.confPath), manual: followUps.manual, runner: followUps.runner }, verify });
   fs.writeFileSync(path.join(reportDir, 'asset-workflow-result.json'), JSON.stringify(result, null, 2) + '\n');
   return result;
 }
@@ -368,7 +353,7 @@ function printText(r, log) {
   if (r.plan) {
     log(`Asset workflows to migrate: ${r.plan.length}`);
     for (const p of r.plan) {
-      const how = p.renditionsOnly ? ' (renditions only: launcher disabled, no post-processing workflow)' : p.toolWillMigrate ? '' : ' (wired by this skill: real work only inside a split)';
+      const how = p.renditionsOnly ? ' (not migrated: launcher disabled, renditions from a processing profile)' : '';
       log(`  ${p.model}${p.synthetic ? ' (OOTB default, overlaid)' : ''}${how}`);
       for (const l of p.launchers) log(`    launcher ${l.id}: ${l.glob}${l.conditions.length ? ` [conditions: ${l.conditions.join(' AND ')}]` : ''}`);
       log(`    keep:   ${p.keep.map(s => `${s.step}${s.inSplit ? '*' : ''}`).join(', ') || '—'}`);
@@ -377,15 +362,14 @@ function printText(r, log) {
   }
   if (r.gate) {
     for (const s of r.gate.steps) {
-      log(`  ${s.acknowledged ? 'ok  ' : 'STOP'} ${C.shortName(s.process)} in ${s.model} — ${s.fullyMapped ? 'everything it produced maps to processing-profile or standard renditions' : s.acknowledged ? 'acknowledged' : 'needs --acknowledge'}`);
-      for (const c of s.custom) log(`         ${c}`);
+      log(`  ${s.acknowledged ? 'ok  ' : 'STOP'} ${C.shortName(s.process)} in ${s.model} — ${s.acknowledged ? 'acknowledged' : 'needs --acknowledge'}`);
       if (!s.acknowledged && s.remediation) log(`         ${s.remediation}`);
     }
     for (const o of r.gate.orphans) log(`  ${o.acknowledged ? 'ok  ' : 'STOP'} ${o.path} has no design-time model — the tool deletes it${o.acknowledged ? ' (acknowledged)' : ''}`);
   }
   if (r.error) log(`\n${r.stage}: ${r.error}`);
   if (r.verify) {
-    log(`\nChanged ${r.fix.changedFiles.length} file(s), ${r.fix.actions} fix(es), ${r.fix.manual} follow-up(s).`);
+    log(`\n${r.followUps.manual.length} follow-up(s) for after deploy.`);
     log(`Verification: ${r.verify.ok ? 'PASS' : `FAIL (${r.verify.failures.length})`}`);
     for (const f of r.verify.failures) log(`  ${f.category}: ${f.detail}`);
   }

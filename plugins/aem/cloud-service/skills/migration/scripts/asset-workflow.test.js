@@ -1,5 +1,5 @@
 'use strict';
-// Branch H (asset workflow migration): catalog, XML, inventory, verification and runner helpers.
+// Branch H (asset workflow migration): catalog, XML reading, inventory, verification and runner helpers.
 // No Java needed — the tool's output is recorded in fixtures/asset-workflow.js.
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -8,7 +8,6 @@ const { spawnSync } = require('child_process');
 const C = require('./asset-workflow-catalog.js');
 const X = require('./asset-workflow-xml.js');
 const I = require('./asset-workflow-inventory.js');
-const F = require('./asset-workflow-fix.js');
 const V = require('./asset-workflow-verify.js');
 const RUN = require('./asset-workflow-run.js');
 const T = require('./fixtures/asset-workflow.js');
@@ -21,7 +20,8 @@ const categories = r => [...new Set(r.failures.map(f => f.category))].sort();
 // ── Catalog ───────────────────────────────────────────────────────────
 
 test('catalog: classifies steps like workflowSteps.properties, plus custom, script and noop', () => {
-  assert.strictEqual(C.classifyStep('com.day.cq.dam.core.process.CommandLineProcess'), 'UNSUPPORTED');
+  assert.strictEqual(C.classifyStep('com.day.cq.dam.core.process.CommandLineProcess'), 'NUI_MIGRATED');
+  assert.strictEqual(C.classifyStep('com.day.cq.dam.core.process.CreateSubAssetsProcess'), 'UNSUPPORTED');
   assert.strictEqual(C.classifyStep('com.day.cq.dam.core.process.ThumbnailProcess'), 'NUI_MIGRATED');
   assert.strictEqual(C.classifyStep('com.day.cq.dam.core.process.MetadataProcessorProcess'), 'NUI_OOTB');
   assert.strictEqual(C.classifyStep('com.day.cq.dam.scene7.impl.process.Scene7UploadProcess'), 'DMS7_OOTB');
@@ -39,31 +39,25 @@ test('catalog: real work is SUPPORTED, CUSTOM or SCRIPT; NOOP is kept but is not
   assert.ok(C.isKept('NOOP') && C.isKept('CUSTOM') && !C.isKept('UNSUPPORTED'));
   assert.ok(C.triggersMigration('CUSTOM') && !C.triggersMigration('REQUIRED') && !C.triggersMigration('NOOP'));
   assert.strictEqual(C.shortName('com.day.cq.dam.core.process.CommandLineProcess'), 'CommandLineProcess');
+});
+
+test('catalog: steps the tool may drop without a replacement need acknowledging: UNSUPPORTED ones and command lines', () => {
+  assert.ok(C.requiresAck('com.day.cq.dam.core.process.CommandLineProcess'), 'only simple ImageMagick commands become renditions');
+  assert.ok(C.requiresAck('com.day.cq.dam.core.process.CreateSubAssetsProcess'));
+  for (const p of ['com.day.cq.dam.core.process.ThumbnailProcess', 'com.example.MyProcess', C.COMPLETED_PROCESS, null]) assert.ok(!C.requiresAck(p), p);
   assert.strictEqual(C.shortName('/apps/x/step.ecma'), '/apps/x/step.ecma');
 });
 
 // ── XML ───────────────────────────────────────────────────────────────
 
-test('xml: multi-value round trip keeps commas inside values escaped', () => {
+test('xml: multi-value properties keep commas inside values escaped', () => {
   assert.deepStrictEqual(X.parseMultiValue('[a,b\\,c]'), ['a', 'b,c']);
   assert.deepStrictEqual(X.parseMultiValue('[]'), []);
-  assert.deepStrictEqual(X.parseMultiValue(X.formatMultiValue(['a', 'b,c'])), ['a', 'b,c']);
 });
 
-test('xml: inserting a template child indents every line to the sibling level', () => {
-  const text = '<a>\n    <flow>\n        <x/>\n    </flow>\n</a>\n';
-  const doc = X.parseXml(text);
-  const flow = X.child(X.rootElement(doc), 'flow');
-  const out = X.applyEdits(text, [X.insertChildEdit(text, flow, '<y\n    k="v">\n    <m/>\n</y>')]);
-  assert.strictEqual(out, '<a>\n    <flow>\n        <x/>\n        <y\n            k="v">\n            <m/>\n        </y>\n    </flow>\n</a>\n');
-});
-
-test('xml: a formatting-only rewrite is restored to the original text', () => {
-  const a = '<?xml version="1.0" encoding="UTF-8"?>\n<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0"\n    jcr:primaryType="nt:unstructured"\n    b="2"/>\n';
-  const b = '<?xml version="1.0" encoding="UTF-8" standalone="no"?><jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" b="2" jcr:primaryType="nt:unstructured"/>';
-  const r = X.minimizeDiff(a, b);
-  assert.ok(r.minimized && r.identical);
-  assert.strictEqual(r.text, a);
+test('xml: only the read and check helpers remain; the skill does not edit XML', () => {
+  for (const fn of ['parseXml', 'rootElement', 'child', 'getAttr', 'parseMultiValue', 'unboundPrefixes']) assert.strictEqual(typeof X[fn], 'function', fn);
+  for (const fn of ['applyEdits', 'minimizeDiff', 'insertChildEdit', 'setAttrEdit']) assert.strictEqual(X[fn], undefined, fn);
 });
 
 // ── Inventory ─────────────────────────────────────────────────────────
@@ -81,16 +75,15 @@ test('inventory: reads models, launchers, runtime models and the legacy runner c
   assert.deepStrictEqual(rc.byPath.map(e => [e.match, e.model]), [['/content/dam/wfmin/brand', '/var/workflow/models/wfmin-brand']]);
 });
 
-test('inventory: predicts which workflows the tool migrates (top-level real work only)', () => {
+test('inventory: predicts which workflows the tool migrates (real work anywhere, splits included)', () => {
   const inv = I.buildInventory(T.PROJECT);
   const wf = name => inv.workflows.find(w => w.model && w.model.confPath === `${MODELS}/${name}`);
   assert.strictEqual(inv.workflows.length, 3);
   assert.strictEqual(wf('dam/update_asset').launchers.length, 2);
   assert.ok(wf('dam/update_asset').toolWillMigrate);
   assert.ok(wf('wfmin-marketing').toolWillMigrate);
-  // Only an AND split holds the custom step: the tool skips it, but it still has real work.
-  assert.ok(!wf('wfmin-campaigns').toolWillMigrate);
-  assert.ok(wf('wfmin-campaigns').summary.hasRealWork);
+  // Only an AND split holds the custom step; the tool looks inside splits.
+  assert.ok(wf('wfmin-campaigns').toolWillMigrate);
   const s = wf('dam/update_asset').summary;
   assert.ok(s.completed.present && !s.completed.last);
   assert.deepStrictEqual(s.unsupported.map(u => C.shortName(u.process)), ['CommandLineProcess']);
@@ -154,46 +147,46 @@ test('inventory: Felix .config arrays keep brackets inside quoted values; a brok
   assert.match(String(I.readRunnerConfig(f, jcr).error), /postProcWorkflowsByPath/);
 }));
 
-test('verify: the raw tool output fails on every problem the fixture reproduces', () => withTmp('awv-', d => {
+test('verify: the tool output fails only on what needs a decision: removed unsupported steps and runtime-only models', () => withTmp('awv-', d => {
   T.materializeToolOutput(d);
   const v = V.verifyMigration(I.buildInventory(T.PROJECT), I.buildInventory(d), {});
   assert.ok(!v.ok);
-  assert.deepStrictEqual(categories(v), [
-    'completed-step-not-last', 'custom-workflow-not-wired', 'filter-root-not-absolute', 'missing-completed-step',
-    'runner-config-duplicate-pid', 'runtime-model-without-design-time', 'split-contains-unsupported-step', 'unsupported-step-removed',
-  ]);
+  assert.deepStrictEqual(categories(v), ['runtime-model-without-design-time', 'unsupported-step-removed']);
 }));
 
-test('verify: the fixed output passes, and the orphan runtime model is a failure until acknowledged', () => withTmp('awv-', d => {
+test('verify: the tool output passes once acknowledged, with warnings for what to check', () => withTmp('awv-', d => {
   T.materializeToolOutput(d);
-  const fix = F.applyFixes(d, T.PROJECT, { acknowledge: ['CommandLineProcess'], renameOotbModels: true });
   const pre = I.buildInventory(T.PROJECT); const post = I.buildInventory(d);
-  const v = V.verifyMigration(pre, post, { fix, acknowledge: ['CommandLineProcess'] });
-  assert.deepStrictEqual(categories(v), ['runtime-model-without-design-time']);
-  const ok = V.verifyMigration(pre, post, { fix, acknowledge: ['CommandLineProcess', '/var/workflow/models/wfmin-legacy'] });
+  assert.deepStrictEqual(categories(V.verifyMigration(pre, post, { acknowledge: ['CommandLineProcess'] })), ['runtime-model-without-design-time']);
+  assert.deepStrictEqual(categories(V.verifyMigration(pre, post, { acknowledge: ['/var/workflow/models/wfmin-legacy'] })), ['unsupported-step-removed']);
+  const ok = V.verifyMigration(pre, post, { acknowledge: ['CommandLineProcess', '/var/workflow/models/wfmin-legacy'] });
   assert.ok(ok.ok, JSON.stringify(ok.failures));
   assert.ok(ok.warnings.some(w => w.category === 'runner-model-not-in-project'));
   assert.ok(ok.warnings.some(w => w.category === 'model-not-transient'));
 }));
 
-test('verify: an unacknowledged custom ImageMagick command fails the gate', () => withTmp('awv-', d => {
+test('verify: catches what a broken tool run would leave behind', () => withTmp('awv-', d => {
+  // Simulate the 0.6.0 behaviour: update_asset left as it was and the old runner config kept next to the new one.
   T.materializeToolOutput(d);
-  const fix = F.applyFixes(d, T.PROJECT, {});
-  const v = V.verifyMigration(I.buildInventory(T.PROJECT), I.buildInventory(d), { fix, acknowledge: ['/var/workflow/models/wfmin-legacy'] });
-  assert.deepStrictEqual(categories(v), ['unsupported-step-removed']);
+  const model = 'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/models/dam/update_asset/.content.xml';
+  const runner = 'ui.apps/src/main/content/jcr_root/apps/wfmin/osgiconfig/config.author/com.adobe.cq.dam.processor.nui.impl.workflow.CustomDamWorkflowRunnerImpl.xml';
+  for (const f of [model, runner]) { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.copyFileSync(path.join(T.PROJECT, f), path.join(d, f)); }
+  const c = categories(V.verifyMigration(I.buildInventory(T.PROJECT), I.buildInventory(d), { acknowledge: ['all'] }));
+  for (const k of ['completed-step-not-last', 'runner-config-duplicate-pid']) assert.ok(c.includes(k), c.join());
 }));
 
 // ── Runner helpers ────────────────────────────────────────────────────
 
 test('run: parseArgs reads flags and comma-separated acknowledgements', () => {
-  const o = RUN.parseArgs(['proj', '--dry-run', '--acknowledge', 'CommandLineProcess, /var/workflow/models/x', '--acknowledge', 'all', '--rename-ootb-models', '--emit-repoinit', '--report-dir', 'r', '--jar', 'j.jar', '--allow-dirty', '--json']);
+  const o = RUN.parseArgs(['proj', '--dry-run', '--acknowledge', 'CommandLineProcess, /var/workflow/models/x', '--acknowledge', 'all', '--verify-only', '--report-dir', 'r', '--jar', 'j.jar', '--allow-dirty', '--json']);
   assert.strictEqual(o.root, 'proj');
   assert.deepStrictEqual(o.acknowledge, ['CommandLineProcess', '/var/workflow/models/x', 'all']);
-  assert.ok(o.dryRun && o.renameOotbModels && o.emitRepoinit && o.allowDirty && o.json);
+  assert.ok(o.dryRun && o.verifyOnly && o.allowDirty && o.json);
   assert.strictEqual(o.reportDir, 'r');
   assert.strictEqual(o.jar, 'j.jar');
   assert.throws(() => RUN.parseArgs([]), /usage/);
   assert.throws(() => RUN.parseArgs(['p', '--nope']), /unknown option/);
+  for (const gone of ['--fix-only', '--rename-ootb-models', '--emit-repoinit']) assert.throws(() => RUN.parseArgs(['p', gone]), /unknown option/, gone);
   assert.throws(() => RUN.parseArgs(['p', '--jar']), /needs a value/);
   assert.throws(() => RUN.parseArgs(['p', 'q']), /unexpected argument/);
 });
@@ -206,10 +199,17 @@ test('run: parseJavaVersion handles modern and 1.x version strings', () => {
 });
 
 test('run: pinned tool coordinates', () => {
-  assert.strictEqual(RUN.TOOL_VERSION, '0.6.0');
-  assert.strictEqual(RUN.TOOL_URL, 'https://github.com/adobe/aem-cloud-migration/releases/download/v0.6.0/wf-migrator-0.6.0.jar');
-  assert.match(RUN.TOOL_SHA256, /^[0-9a-f]{64}$/);
+  assert.strictEqual(RUN.TOOL_VERSION, '0.7.0');
+  assert.strictEqual(RUN.TOOL_URL, 'https://github.com/adobe/aem-cloud-migration/releases/download/v0.7.0/wf-migrator-0.7.0.jar');
+  if (RUN.TOOL_SHA256 !== null) assert.match(RUN.TOOL_SHA256, /^[0-9a-f]{64}$/);
 });
+
+test('run: without a pinned checksum the tool is never downloaded; --jar is required', { skip: RUN.TOOL_SHA256 !== null }, () => withTmp('awt-', d => {
+  const r = RUN.ensureToolInstalled(d);
+  assert.ok(!r.installed);
+  assert.match(r.error, /--jar/);
+  assert.deepStrictEqual(fs.readdirSync(d), []);
+}));
 
 test('run: checkProject needs a multi-module project with a content package', () => withTmp('awp-', d => {
   const ok = RUN.checkProject(T.PROJECT);
@@ -220,12 +220,12 @@ test('run: checkProject needs a multi-module project with a content package', ()
   assert.match(RUN.checkProject(d).error, /no <modules>/);
 }));
 
-test('run: the gate stops on custom commands and runtime-only models until acknowledged', () => {
+test('run: the gate stops on unsupported steps and runtime-only models until acknowledged', () => {
   const pre = I.buildInventory(T.PROJECT);
   const g = RUN.gateUnsupported(pre, []);
   assert.ok(!g.ok);
-  assert.deepStrictEqual(g.pending.map(s => C.shortName(s.process)), ['CommandLineProcess']);
-  assert.ok(g.pending[0].custom.some(c => /25%/.test(c)));
+  assert.deepStrictEqual(g.pending.map(s => [C.shortName(s.process), s.model]), [['CommandLineProcess', `${MODELS}/dam/update_asset`]]);
+  assert.match(g.pending[0].remediation, /Asset Compute custom worker/);
   assert.deepStrictEqual(g.pendingOrphans.map(o => o.path), ['/var/workflow/models/wfmin-legacy']);
   assert.ok(!RUN.gateUnsupported(pre, ['CommandLineProcess']).ok);
   assert.ok(RUN.gateUnsupported(pre, ['CommandLineProcess', '/var/workflow/models/wfmin-legacy']).ok);
@@ -238,8 +238,8 @@ test('run: planPreview lists what each workflow keeps and loses', () => {
   const p = name => plan.find(x => x.model === `${MODELS}/${name}`);
   assert.strictEqual(plan.length, 3);
   assert.deepStrictEqual(p('dam/update_asset').keep.map(s => s.step), ['DamUpdateAssetWorkflowCompletedProcess', 'WatermarkProcess']);
-  assert.deepStrictEqual(p('dam/update_asset').remove.map(s => s.category), ['NUI_OOTB', 'NUI_MIGRATED', 'UNSUPPORTED']);
-  assert.ok(!p('wfmin-campaigns').toolWillMigrate);
+  assert.deepStrictEqual(p('dam/update_asset').remove.map(s => s.category), ['NUI_OOTB', 'NUI_MIGRATED', 'NUI_MIGRATED']);
+  assert.ok(p('wfmin-campaigns').toolWillMigrate);
   assert.deepStrictEqual(p('wfmin-marketing').remove.map(s => [s.step, s.inSplit]), [['Scene7UploadProcess', true]]);
 });
 
@@ -270,11 +270,14 @@ test('run: --dry-run and a gate stop leave the project untouched', () => withTmp
   assert.deepStrictEqual(T.listFiles(d), before);
 }));
 
-test('run: --fix-only with --baseline runs fixers, verification and the report without Java', () => withTmp('awr-', d => {
+test('run: --verify-only with --baseline checks the tool output and writes the report without Java', () => withTmp('awr-', d => {
   const root = path.join(d, 'p'); const reportDir = path.join(d, 'report');
   T.materializeToolOutput(root);
   const lines = [];
-  const code = RUN.main([root, '--fix-only', '--baseline', T.PROJECT, '--acknowledge', 'CommandLineProcess,/var/workflow/models/wfmin-legacy', '--rename-ootb-models', '--report-dir', reportDir], l => lines.push(l));
+  fs.mkdirSync(path.join(reportDir, 'tool'), { recursive: true });
+  fs.writeFileSync(path.join(reportDir, 'tool', 'migration-report.md'), T.TOOL_REPORT);
+  const before = T.listFiles(root).map(f => [f, fs.readFileSync(path.join(root, f), 'utf8')]);
+  const code = RUN.main([root, '--verify-only', '--baseline', T.PROJECT, '--acknowledge', 'CommandLineProcess,/var/workflow/models/wfmin-legacy', '--report-dir', reportDir], l => lines.push(l));
   assert.strictEqual(code, 0, lines.join('\n'));
   assert.ok(lines.some(l => /Verification: PASS/.test(l)));
   const result = JSON.parse(fs.readFileSync(path.join(reportDir, 'asset-workflow-result.json'), 'utf8'));
@@ -283,21 +286,19 @@ test('run: --fix-only with --baseline runs fixers, verification and the report w
   const md = fs.readFileSync(path.join(reportDir, 'asset-workflow-report.md'), 'utf8');
   assert.match(md, /\*\*PASS\*\*/);
   assert.match(md, /Re-create deleted runtime-only models[\s\S]*\/var\/workflow\/models\/wfmin-legacy/);
-  // Second pass over the fixed project is a no-op.
-  const again = RUN.migrate(RUN.parseArgs([root, '--fix-only', '--baseline', T.PROJECT, '--acknowledge', 'all', '--rename-ootb-models', '--report-dir', reportDir]));
-  assert.strictEqual(again.exitCode, 0);
-  assert.deepStrictEqual(again.fix.changedFiles, []);
+  assert.match(md, /-resize 25%/, 'issues from the tool report are carried into the checklist');
+  assert.deepStrictEqual(T.listFiles(root).map(f => [f, fs.readFileSync(path.join(root, f), 'utf8')]), before, 'the project is not changed');
 }));
 
 test('run: a --report-dir that is or contains the project is refused before anything is deleted', () => withTmp('awr-', d => {
   const root = path.join(d, 'baseline');
   T.materializeToolOutput(root);
   const before = T.listFiles(root);
-  const r = RUN.migrate(RUN.parseArgs([root, '--fix-only', '--report-dir', d]));
+  const r = RUN.migrate(RUN.parseArgs([root, '--verify-only', '--report-dir', d]));
   assert.strictEqual(r.exitCode, 2);
   assert.strictEqual(r.stage, 'preflight');
   assert.match(r.error, /--report-dir/);
-  assert.strictEqual(RUN.migrate(RUN.parseArgs([root, '--fix-only', '--baseline', T.PROJECT, '--report-dir', root])).exitCode, 2);
+  assert.strictEqual(RUN.migrate(RUN.parseArgs([root, '--verify-only', '--baseline', T.PROJECT, '--report-dir', root])).exitCode, 2);
   assert.deepStrictEqual(T.listFiles(root), before);
 }));
 
@@ -306,21 +307,21 @@ test('run: an existing baseline folder the runner did not create is never delete
   T.materializeToolOutput(root);
   fs.mkdirSync(kept, { recursive: true });
   fs.writeFileSync(path.join(kept, 'keep.txt'), 'mine');
-  const r = RUN.migrate(RUN.parseArgs([root, '--fix-only', '--report-dir', path.join(d, 'report')]));
+  const r = RUN.migrate(RUN.parseArgs([root, '--verify-only', '--report-dir', path.join(d, 'report')]));
   assert.strictEqual(r.exitCode, 2);
   assert.strictEqual(r.stage, 'baseline');
   assert.match(r.error, /not created by/);
   assert.strictEqual(fs.readFileSync(path.join(kept, 'keep.txt'), 'utf8'), 'mine');
 }));
 
-test('run: --fix-only --dry-run reads HEAD into a temporary folder and leaves the report baseline alone', () => withTmp('awr-', d => {
+test('run: --verify-only --dry-run reads HEAD into a temporary folder and leaves the report baseline alone', () => withTmp('awr-', d => {
   const root = path.join(d, 'p'); const reportDir = path.join(d, 'report'); const kept = path.join(reportDir, 'baseline');
   T.materializeProject(root);
   const git = (...a) => { const r = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...a], { cwd: root, encoding: 'utf8' }); assert.strictEqual(r.status, 0, r.stderr); };
   git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'init');
   fs.mkdirSync(kept, { recursive: true });
   fs.writeFileSync(path.join(kept, RUN.BASELINE_MARKER), ''); fs.writeFileSync(path.join(kept, 'sentinel.txt'), 'x');
-  const r = RUN.migrate(RUN.parseArgs([root, '--fix-only', '--dry-run', '--report-dir', reportDir]));
+  const r = RUN.migrate(RUN.parseArgs([root, '--verify-only', '--dry-run', '--report-dir', reportDir]));
   assert.strictEqual(r.exitCode, 0, r.error);
   assert.strictEqual(r.stage, 'dry-run');
   assert.strictEqual(r.plan.length, 3);

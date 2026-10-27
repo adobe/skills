@@ -1,6 +1,6 @@
 'use strict';
 // Verification gates for Branch H (asset workflow migration). Compares the pre-run inventory of the
-// project (baseline) with the post-fix inventory and fails on anything that would silently lose
+// project (baseline) with the inventory after wf-migrator ran and fails on anything that would silently lose
 // work or break on AEM as a Cloud Service. Read-only.
 const fs = require('fs');
 const path = require('path');
@@ -32,23 +32,16 @@ function unboundIn(file) {
 
 function acknowledgedSet(opts) {
   const set = new Set((opts.acknowledge || []).map(String));
-  for (const m of (opts.fix && opts.fix.manual) || []) {
-    if (m.code === 'unsupported-step-removed' && m.acknowledged) set.add(m.path ? `${m.model}|${m.process}|${m.path}` : `${m.model}|${m.process}`);
+  for (const m of (opts.followUps && opts.followUps.manual) || []) {
+    if (m.code === 'unsupported-step-removed' && m.acknowledged) set.add(`${m.model}|${m.process}|${m.path}`);
   }
   return set;
 }
 
-// One step is acknowledged by name (all of that process), or by the fixer for that step only.
+// A step is acknowledged by name (all of that process), or through the follow-ups for that step only.
 const isAcked = (set, model, process, stepPath) => set.has('all') || set.has(process) || set.has(C.shortName(process))
-  || set.has(`${model}|${process}`) || (!!stepPath && set.has(`${model}|${process}|${stepPath}`));
+  || set.has(`${model}|${process}|${stepPath}`);
 const lostWhy = s => `not everything it produced has a replacement. ${C.remediationFor(s) || ''} Re-run with --acknowledge ${C.shortName(s.process)} once handled.`;
-
-// Old conf path → new conf path, for models the fixer renamed.
-function renameMap(opts) {
-  const m = new Map();
-  for (const w of (opts.fix && opts.fix.workflows) || []) if (w.renamedFrom) m.set(w.renamedFrom, w.confPath);
-  return m;
-}
 
 function processCounts(steps, pred) {
   const out = new Map();
@@ -62,7 +55,6 @@ function verifyMigration(pre, post, opts) {
   const fail = (category, detail, file) => failures.push({ category, detail, file: file || null });
   const warn = (category, detail, file) => warnings.push({ category, detail, file: file || null });
   const acks = acknowledgedSet(opts);
-  const renames = renameMap(opts);
 
   // ── Runner configuration ──
   const authorCfgs = post.runnerConfigs.filter(isAuthorScoped);
@@ -96,8 +88,8 @@ function verifyMigration(pre, post, opts) {
     const key = `${w.module}|${w.model.confPath}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const confPath = renames.get(w.model.confPath) || w.model.confPath;
-    const pm = post.models.find(m => m.confPath === confPath && (m.module === w.module || renames.has(w.model.confPath)));
+    const confPath = w.model.confPath;
+    const pm = post.models.find(m => m.confPath === confPath && m.module === w.module);
     if (!pm) { fail('custom-step-loss', `${w.model.confPath}: model was deleted but it had steps that must keep running.`, w.model.file); continue; }
 
     // Every step with real work (custom, script, supported, optional) must survive, at any depth.
@@ -120,26 +112,25 @@ function verifyMigration(pre, post, opts) {
       fail(s.split ? 'split-contains-unsupported-step' : 'non-runnable-step-remains', `${confPath}: ${C.shortName(s.process)} (${s.category}) at ${s.path} cannot run in a post-processing workflow.`, pm.file);
     }
 
-    for (const s of w.model.flat.filter(x => x.kind === 'process' && I.needsRenditionMapping(x))) {
+    for (const s of w.model.flat.filter(x => x.kind === 'process' && C.requiresAck(x.process))) {
       const still = pm.flat.some(x => x.process === s.process);
-      if (!still && !isAcked(acks, confPath, s.process, s.path) && !isAcked(acks, w.model.confPath, s.process, s.path)) {
+      if (!still && !isAcked(acks, confPath, s.process, s.path)) {
         fail('unsupported-step-removed', `${w.model.confPath}: ${C.shortName(s.process)} at ${s.path} was removed and ${lostWhy(s)}`.replace(/\s+/g, ' ').trim(), pm.file);
       }
     }
     if (!pm.transient) warn('model-not-transient', `${confPath}: Adobe recommends transient post-processing workflows.`, pm.file);
   }
 
-  // Renditions-only workflows are not migrated: the tool disables their launchers, so their rendition
-  // steps stop running even though they are still in the (now unused) model. Each one needs everything
-  // it produced mapped to a processing-profile rendition, or an acknowledgement.
+  // Renditions-only workflows are not migrated: the tool disables their launchers, so their unsupported
+  // steps stop running even though they are still in the (now unused) model. Each needs an acknowledgement.
   const seenRo = new Set();
   for (const w of pre.workflows.filter(I.isRenditionsOnly)) {
     const key = `${w.module}|${w.model.confPath}`;
     if (seen.has(key) || seenRo.has(key)) continue;
     seenRo.add(key);
     const pm = post.models.find(m => m.confPath === w.model.confPath && m.module === w.module);
-    for (const s of w.model.flat.filter(x => x.kind === 'process' && I.needsRenditionMapping(x))) {
-      if (isAcked(acks, w.model.confPath, s.process, s.path) || isAcked(acks, renames.get(w.model.confPath) || w.model.confPath, s.process, s.path)) continue;
+    for (const s of w.model.flat.filter(x => x.kind === 'process' && C.requiresAck(x.process))) {
+      if (isAcked(acks, w.model.confPath, s.process, s.path)) continue;
       fail('unsupported-step-removed', `${w.model.confPath}: ${C.shortName(s.process)} at ${s.path} no longer runs (the launcher is disabled and the model is not migrated) and ${lostWhy(s)}`.replace(/\s+/g, ' ').trim(), (pm || w.model).file);
     }
   }
@@ -172,17 +163,15 @@ function verifyMigration(pre, post, opts) {
   // The tool deletes every packaged /var/workflow node; a runtime model is only safe to drop when its
   // design-time model is still in the project (Sync regenerates it on AEM as a Cloud Service).
   const designIds = new Set(post.models.map(m => I.modelIdOf(m.confPath)));
-  for (const [from, to] of renames) if (designIds.has(I.modelIdOf(to))) designIds.add(I.modelIdOf(from));
   for (const r of pre.runtimeModels || []) {
     if ((post.runtimeModels || []).some(p => p.path === r.path)) continue;
     if (!designIds.has(I.modelIdOf(r.path)) && !acks.has('all') && !acks.has(r.path)) fail('runtime-model-without-design-time', `${r.path} was deleted and the project has no design-time model for it; export the model from the source system into /conf/global/settings/workflow/models/${I.modelIdOf(r.path)}.`, r.file);
   }
 
-  // ── Manual follow-ups from the fixer ──
-  for (const m of (opts.fix && opts.fix.manual) || []) {
+  // ── Post-deploy follow-ups ──
+  for (const m of (opts.followUps && opts.followUps.manual) || []) {
     if (m.code === 'unsupported-step-removed' || m.code === 'overlapping-workflows') continue;
-    if (m.code === 'runner-config-missing' || m.code === 'runner-config-unparseable' || m.code === 'profile-module-missing') fail(m.code, `${m.model ? m.model + ': ' : ''}${m.detail}`);
-    else warn(m.code, `${m.model ? m.model + ': ' : ''}${m.detail}`);
+    warn(m.code, `${m.model ? m.model + ': ' : ''}${m.detail}`);
   }
   for (const wmsg of post.warnings || []) warn('inventory', wmsg);
 

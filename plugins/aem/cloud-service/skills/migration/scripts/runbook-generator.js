@@ -285,7 +285,7 @@ const PATTERN_META = {
     strategy: 'content-scan',
     bpaSlugs: [],
     heuristic: true,
-    description: 'Enabled DAM workflow launchers whose models do custom work (custom/unsupported steps or splits). On AEMaaCS, renditions and metadata come from Asset Compute processing profiles and the rest runs as a post-processing workflow. Branch H wraps Adobe\'s aem-cloud-migration wf-migrator with a gate for removed steps, follow-up fixes, verification and a post-deploy checklist.',
+    description: 'Enabled DAM workflow launchers whose models do custom work (custom/unsupported steps or splits). On AEMaaCS, renditions and metadata come from Asset Compute processing profiles and the rest runs as a post-processing workflow. Branch H wraps Adobe\'s aem-cloud-migration wf-migrator with a gate for removed steps, verification and a post-deploy checklist.',
     promptPattern: 'asset workflow migration',
     sampleOverride: 'Use the migration skill: migrate my DAM asset workflows to AEM as a Cloud Service post-processing workflows and processing profiles.',
   },

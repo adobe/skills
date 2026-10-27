@@ -1,8 +1,8 @@
 'use strict';
 // Inventory of asset-processing workflow configuration in an AEM Maven project.
-// Mirrors how adobe/aem-cloud-migration (wf-migrator 0.6.0) discovers workflows, so the
+// Mirrors how adobe/aem-cloud-migration (wf-migrator 0.7.0) discovers workflows, so the
 // pre-run inventory predicts what the tool will touch and the post-run inventory feeds the
-// fixers and verification gates. Read-only.
+// follow-ups and verification gates. Read-only.
 const fs = require('fs');
 const path = require('path');
 const X = require('./asset-workflow-xml.js');
@@ -429,27 +429,33 @@ function predictWorkflows(inv) {
   return out;
 }
 
-// ModelTransformer only looks at top-level process steps: one enabled step that isn't OPTIONAL/REQUIRED
-// (unknown classes and scripts count as enabled) makes the workflow migrate.
+// The tool (0.7.0+) looks at every process step, including those inside splits: one enabled step that
+// isn't OPTIONAL/REQUIRED (unknown classes and scripts count as enabled) makes the workflow migrate.
 function toolWouldMigrate(model) {
-  return model.steps.some(s => s.kind === 'process' && ['SUPPORTED', 'CUSTOM', 'SCRIPT', 'NOOP'].includes(s.category));
+  return model.flat.some(s => s.kind === 'process' && ['SUPPORTED', 'CUSTOM', 'SCRIPT', 'NOOP'].includes(s.category));
 }
 
-// Asset workflows the migration has to handle: the tool rewrites them, they keep real work only
-// inside a split, or they have steps whose renditions are lost once the tool disables their launcher
-// (UNSUPPORTED steps such as ImageMagick command lines, rendition steps inside a split, top-level
-// rendition steps whose renditions only come back once the tool's processing profile is attached).
+// Asset workflows the migration has to handle: the tool rewrites them, or they have steps whose output
+// is lost once the tool disables their launcher (UNSUPPORTED steps such as ImageMagick command lines,
+// rendition steps that only come back once the tool's processing profile is attached).
 const isAffected = w => !!(w.model && w.summary && (w.toolWillMigrate || w.summary.hasRealWork || w.summary.unsupported.length
-  || (w.summary.nestedRenditions || []).length || (w.summary.profileRenditions || []).length));
+  || (w.summary.renditions || []).length));
 
 // Affected only through those steps: nothing is left to run in a post-processing workflow, but
-// their renditions have to move to a processing profile or be acknowledged.
-const isRenditionsOnly = w => isAffected(w) && !w.toolWillMigrate && !w.summary.hasRealWork;
+// their renditions have to come from a processing profile or be acknowledged.
+const isRenditionsOnly = w => isAffected(w) && !w.toolWillMigrate;
 
-// Removed steps whose output the skill maps to processing-profile renditions or flags: UNSUPPORTED
-// steps, and NUI_MIGRATED rendition steps inside a split (the tool maps only top-level ones).
-const needsRenditionMapping = s => (!s.kind || s.kind === 'process')
-  && (s.category === 'UNSUPPORTED' || (s.category === 'NUI_MIGRATED' && !!(s.split || s.inSplit)));
+// Affected workflows, one per design-time model (several launchers can point at the same model).
+function affectedWorkflows(inv) {
+  const seen = new Set();
+  return inv.workflows.filter(w => {
+    if (!isAffected(w)) return false;
+    const k = `${w.module}|${w.model.confPath}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
 
 function summarizeModel(model) {
   const counts = {};
@@ -462,9 +468,8 @@ function summarizeModel(model) {
     id: model.id,
     counts,
     custom: proc.filter(s => s.category === 'CUSTOM' || s.category === 'SCRIPT').map(s => ({ path: s.path, process: s.process, inSplit: !!s.split })),
-    unsupported: proc.filter(s => s.category === 'UNSUPPORTED').map(s => ({ path: s.path, process: s.process, inSplit: !!s.split })),
-    nestedRenditions: proc.filter(s => s.category === 'NUI_MIGRATED' && s.split).map(s => ({ path: s.path, process: s.process, inSplit: true })),
-    profileRenditions: C.profileRenditionSteps(top).map(s => ({ path: s.path, process: s.process, inSplit: false })),
+    unsupported: proc.filter(s => C.requiresAck(s.process)).map(s => ({ path: s.path, process: s.process, inSplit: !!s.split })),
+    renditions: proc.filter(s => s.category === 'NUI_MIGRATED').map(s => ({ path: s.path, process: s.process, inSplit: !!s.split })),
     removedByCatalog: proc.filter(s => !C.isKept(s.category)).map(s => ({ path: s.path, process: s.process, category: s.category, inSplit: !!s.split })),
     splits: model.flat.filter(s => s.kind === 'or' || s.kind === 'and').map(s => ({ path: s.path, kind: s.kind, branches: s.branches.length })),
     others: model.flat.filter(s => s.kind === 'other').map(s => ({ path: s.path, resourceType: s.resourceType, participant: s.participant })),
@@ -508,15 +513,14 @@ function runAssetWorkflowScan(workspaceRoot) {
       const parts = [];
       if (s.custom.length) parts.push(`${s.custom.length} custom step(s)`);
       if (s.unsupported.length) parts.push(`${s.unsupported.length} unsupported step(s)`);
-      if (s.nestedRenditions.length) parts.push(`${s.nestedRenditions.length} rendition step(s) inside a split`);
-      if (s.profileRenditions.length) parts.push(`${s.profileRenditions.length} rendition step(s) whose renditions move to a processing profile`);
+      if (s.renditions.length) parts.push(`${s.renditions.length} rendition step(s) whose renditions move to a processing profile`);
       if (s.splits.length) parts.push(`${s.splits.length} split(s)`);
       const launchers = w.launchers.map(l => l.id).join(', ');
       const target = isRenditionsOnly(w) ? 'processing-profile renditions only' : 'post-processing workflow + processing profile';
       findings.push({
         location: path.relative(workspaceRoot, w.model.file) || w.model.file,
         detail: `Asset workflow ${w.model.confPath} (launchers: ${launchers})${parts.length ? ' — ' + parts.join(', ') : ''} → ${target} (Branch H)`,
-        severity: s.custom.length || s.unsupported.length || s.nestedRenditions.length ? 'high' : 'medium',
+        severity: s.custom.length || s.unsupported.length ? 'high' : 'medium',
       });
       rawFindings.push({ pattern: 'assetWorkflowMigration', file: w.model.file, line: null, snippet: `model=${w.model.confPath} migrate=${w.toolWillMigrate}` });
     }
@@ -526,7 +530,7 @@ function runAssetWorkflowScan(workspaceRoot) {
 
 module.exports = {
   RUNNER_PID, MIGRATION_APPS, MIGRATION_CONTENT, JCR_ROOT_REL, FILTER_REL, DEFAULT_ENABLED_MODELS,
-  buildInventory, summarizeModel, toolWouldMigrate, isAffected, isRenditionsOnly, needsRenditionMapping, runAssetWorkflowScan, findProjectRoots, findModules, readPom,
+  buildInventory, summarizeModel, toolWouldMigrate, isAffected, isRenditionsOnly, affectedWorkflows, runAssetWorkflowScan, findProjectRoots, findModules, readPom,
   readFilter, readLauncher, readModel, readRunnerConfig, readProfiles, parseStep, flattenSteps,
   repoPathOf, confPathFor, runtimePathFor, modelIdOf, globToRunnerEntry, isAssetGlob, parseRunnerEntries, walkFiles, coveredBy,
   runnerEntryRegex, sampleAssetPath, runnerOverlaps, orderMostSpecificFirst,
