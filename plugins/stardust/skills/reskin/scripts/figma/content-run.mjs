@@ -178,7 +178,7 @@ export async function runContent({ dir, url, frameId, slug, responsiveId = null,
   }
   let hit = locate(responses, frameId);
   if (!hit || (responsiveId && !locate(responses, responsiveId))) {
-    if (!client?.hasToken) throw new UsageError(`frame ${!hit ? frameId : responsiveId} is not in the cache under ${cache.root} and FIGMA_TOKEN is not set: capture it (capture <url> --frames ${[frameId, responsiveId].filter(Boolean).join(',')}) or export FIGMA_TOKEN`);
+    if (!client?.hasToken) throw new UsageError(`frame ${!hit ? frameId : responsiveId} is not in the cache under ${cache.root} and FIGMA_TOKEN is not set: export FIGMA_TOKEN, or capture the whole file first (capture <url>, every top-level frame; --refresh over a narrowed capture)`);
     const ids = [frameId, responsiveId].filter(Boolean).join(',');
     const res = await client.getJson(`/v1/files/${fileKey}/nodes`, { ids, ...(version ? { version } : {}) });
     const ver = version || res.version || 'current';

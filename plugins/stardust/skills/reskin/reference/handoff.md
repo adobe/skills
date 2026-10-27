@@ -68,7 +68,7 @@ residual` refuses it.
 
 Plus the project-level checks (flow, canon `:root`, donor `DESIGN.json`, canon
 record drift, active direction, dynamics dispositions, canon skeleton per
-mapped module, approval honesty). A failing predicate blocks the type in
+mapped module, approval honesty, an uncapped inventory: § Full inventory). A failing predicate blocks the type in
 `migrate` (sibling tier) and `rollout`; hands-off is not a bypass.
 
 Coverage of the deployed leg is a warning, not yet a condition: per type,
@@ -117,6 +117,15 @@ junk-filtered page of the content site in `state.json`, each typed by reskin
 (SKILL.md § Phase 1). Never extract's capped discovery mode, never only the
 pages the user named; `--pages` narrows the archetype capture, not the
 inventory, and a capped crawl is a setup error (SKILL.md § Setup step 5).
+A Figma-only project's inventory is every page `figma-donor.mjs pages`
+finds.
+
+`reskin-preflight` checks it as `inventory`: FAIL when the crawl was capped
+(`state.json` `site.pageCap` a positive number with `site.totalDiscovered`
+above the inventory's page count, or a `below cap` row in
+`stardust/current/_crawl-log.json#discovery.cut`), a WARN instead under a
+user-requested archetypes-only delivery (below); `untyped` warns for every
+inventory page without a `type`.
 
 Reskin does not run `extract --prep --dynamics`: `dynamic-features.md` is
 derived by the bridge from the content models — **form controls only**. That

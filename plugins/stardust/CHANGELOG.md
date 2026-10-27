@@ -15,6 +15,12 @@ EDS, 7 pages × 1440/390). This carries them onto the renderer 0.38–0.41 grew,
 - **Footer zones** take the social row from `iconLinks` (0.38).
 - **Card tones** (`cardTone` dark/accent/light, 0.41) and `tone-dark` cards drop the card border.
 - **Mobile tables** (0.41) pad cells 8px at ≤640px.
+- **The whole site, the whole file.** A 52-page site run captured 25 pages: Phase 1 ran `extract <content-url>`, the
+  capped discovery mode. `reskin-preflight` adds `inventory`: FAIL when the crawl was capped (`state.json`
+  `site.pageCap` set with `site.totalDiscovered` above the inventory, or a `below cap` cut in
+  `current/_crawl-log.json`), a WARN only under a user-requested archetypes-only delivery (`ledger.json#delivery`);
+  `untyped` names the Phase 1 typing. Phase 2′ captures the whole Figma file (its kit's `captureFrames` are in it),
+  not `--frames <foundation>,<captureFrames> --max-frames`, and `figma-donor.mjs init`, `pages` and `content` hint so.
 
 ## 0.41.0 — the target keeps the source's structure
 

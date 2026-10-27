@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // skills/reskin/scripts/test/reskin-preflight.test.mjs — reskin → migrate readiness. Pure part: a ready
 // project passes, each FAIL check trips on its own (flow, archetype per type, canon :root, canon tokens, donor DESIGN,
-// canon record drift, direction, dispositions), stale / untyped / awaiting rows only warn. CLI part:
+// canon record drift, direction, dispositions, a capped inventory), stale / untyped / awaiting rows only warn, and
+// so does a capped inventory under a user-requested archetypes-only delivery. CLI part:
 // --help before any I/O, exit 2 on usage errors, exit 0 / 1 on a temp project. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -98,6 +99,40 @@ check('stale and untyped pages warn but do not fail', () => {
   const res = preflight(project({ 'stardust/state.json': st }));
   assert.deepEqual(fails(res), []); assert.deepEqual(levels(res, 'stale'), ['warn']); assert.deepEqual(levels(res, 'untyped'), ['warn']);
   assert.match(res.find((r) => r.check === 'stale').detail, /login: canon changed/);
+});
+check('inventory: an uncapped crawl passes (no pageCap, or a cap that cut nothing, and no "below cap" row)', () => {
+  const pages = [{ slug: 'login', type: 'form', status: 'approved' }, { slug: 'registration', type: 'form', status: 'extracted' }];
+  for (const site of [undefined, { pageCap: null, totalDiscovered: 52 }, { pageCap: 0, totalDiscovered: 52 }, { pageCap: 25, totalDiscovered: 2 }]) {
+    const st = JSON.stringify({ flow: 'reskin', ...(site ? { site } : {}), pages });
+    const log = JSON.stringify({ discovery: { cut: [{ url: 'https://example.com/test/', reason: 'junk' }] } });
+    const res = preflight(project({ 'stardust/state.json': st, 'stardust/current/_crawl-log.json': log }));
+    assert.deepEqual(levels(res, 'inventory'), ['ok'], JSON.stringify(site)); assert.deepEqual(fails(res), []);
+  }
+});
+check('inventory: a capped crawl fails — state.json pageCap below totalDiscovered, or a "below cap" cut in the crawl log', () => {
+  const pages = [{ slug: 'login', type: 'form', status: 'approved' }, { slug: 'registration', type: 'form', status: 'extracted' }];
+  const st = JSON.stringify({ flow: 'reskin', site: { pageCap: 25, totalDiscovered: 52, crawled: 2 }, pages });
+  const r = preflight(project({ 'stardust/state.json': st })).find((x) => x.check === 'inventory');
+  assert.equal(r.level, 'fail'); assert.match(r.detail, /pageCap 25: 52 page\(s\) discovered, 2 in the inventory/); assert.match(r.detail, /extract <content-url> --all/);
+  const log = JSON.stringify({ discovery: { cut: [{ url: 'https://example.com/news/', slug: 'news', reason: 'below cap' }] } });
+  const r2 = preflight(project({ 'stardust/current/_crawl-log.json': log })).find((x) => x.check === 'inventory');
+  assert.equal(r2.level, 'fail'); assert.match(r2.detail, /cut 1 page\(s\) below cap \(news\)/);
+  const agent = JSON.stringify({ ...JSON.parse(LEDGER), delivery: { scope: 'archetypes-only', requestedBy: 'agent', reason: 'faster', at: '2026-10-27T00:00:00Z' } });
+  const r3 = preflight(project({ 'stardust/state.json': st, 'stardust/reskin/ledger.json': agent })).find((x) => x.check === 'inventory');
+  assert.equal(r3.level, 'fail'); assert.match(r3.detail, /requestedBy is "agent", not "user"/);
+});
+check('inventory: a capped crawl only warns under a user-requested archetypes-only delivery', () => {
+  const st = JSON.stringify({ flow: 'reskin', site: { pageCap: 25, totalDiscovered: 52 }, pages: [{ slug: 'login', type: 'form', status: 'approved' }] });
+  const ledger = JSON.stringify({ ...JSON.parse(LEDGER), delivery: { scope: 'archetypes-only', requestedBy: 'user', reason: 'pilot: archetypes first', at: '2026-10-27T00:00:00Z' } });
+  const res = preflight(project({ 'stardust/state.json': st, 'stardust/reskin/ledger.json': ledger }));
+  assert.deepEqual(levels(res, 'inventory'), ['warn']); assert.deepEqual(fails(res), []);
+  assert.match(res.find((x) => x.check === 'inventory').detail, /user-requested archetypes-only delivery \(ledger\.json#delivery: pilot: archetypes first\)/);
+});
+check('inventory: pages without a type warn (untyped) and name the Phase 1 typing', () => {
+  const st = JSON.stringify({ flow: 'reskin', pages: [{ slug: 'login', type: 'form', status: 'approved' }, { slug: 'news', status: 'extracted' }, { slug: 'about', status: 'extracted' }] });
+  const res = preflight(project({ 'stardust/state.json': st }));
+  assert.deepEqual(levels(res, 'untyped'), ['warn']); assert.deepEqual(fails(res), []);
+  assert.match(res.find((x) => x.check === 'untyped').detail, /^news, about — reskin types every inventory page/);
 });
 check('a mapped module with no canon skeleton fails canon-modules; untyped pages are ignored', () => {
   const d = JSON.parse(project()('DESIGN.json'));

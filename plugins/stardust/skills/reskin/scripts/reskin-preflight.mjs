@@ -8,6 +8,10 @@
  * equivalent of prepare-migration's phase-complete test.
  *
  *   FAIL  state.json flow is "reskin"
+ *   FAIL  inventory: the content crawl was uncapped — not state.json site.pageCap > 0 with site.totalDiscovered
+ *         above the inventory's page count, no "below cap" row in current/_crawl-log.json discovery.cut; a WARN
+ *         instead under a user-requested archetypes-only delivery (reskin/ledger.json delivery
+ *         { scope: "archetypes-only", requestedBy: "user" })
  *   FAIL  every typed page's type has an approved (or migrated) archetype
  *   FAIL  canon/canon.css exists and its first block is :root (migrate strict 1)
  *   FAIL  canon-tokens: every custom property canon.css reads without a fallback is defined — in canon.css
@@ -26,7 +30,7 @@
  *   WARN  deployed-coverage: a type whose migrated pages with preview-deployed evidence (ledger
  *         pages.<slug>.gates.deployed, regime preview) number fewer than max(2, ceil(10% of them)) — all of
  *         them when the type has fewer than 2 migrated pages; never a FAIL in this release
- *   WARN  pages without a type (migrate renders them Path A, never from an archetype)
+ *   WARN  pages without a type (reskin types every inventory page; migrate renders them Path A, never from an archetype)
  *   WARN  stale pages (re-approve / re-migrate them, or migrate stale output knowingly)
  *   WARN  feature rows still awaiting an owner decision
  *
@@ -43,8 +47,8 @@ import { MARKUP_VARS } from './stream-render.mjs';
 
 const HELP = `usage: node reskin-preflight.mjs [--dir stardust] [--root .] [--json]
 
-Read-only readiness check for migrating a reskin project: flow, approved archetypes per type, canon,
-donor DESIGN.*, direction, dynamic features, stale pages. Under flow "reskin" never run
+Read-only readiness check for migrating a reskin project: flow, an uncapped inventory, approved
+archetypes per type, canon, donor DESIGN.*, direction, dynamic features, stale pages. Under flow "reskin" never run
 prepare-migration or direct — run canon-from-reskin.mjs, then this, then migrate.
 Exit 0 ready (warnings allowed), 1 not ready, 2 usage.`;
 
@@ -147,8 +151,27 @@ export function preflight(read, { dir = 'stardust', stamp = null } = {}) {
     if (have < need) warn('deployed-coverage', `${t}: ${have} of ${migrated.length} migrated page(s) have preview-deployed evidence, want ${need} — run the deployed leg (reference/deployed-leg.md: deployed-gate.mjs all --page <slug>, then reskin-ledger.mjs record <slug>) on ${need - have} more, e.g. ${without.slice(0, need - have).map((p) => p.slug).join(', ')}`);
   }
 
+  // A reskin migrates the whole site (SKILL.md § Setup step 5): the content crawl is extract --all. A capped
+  // crawl fails; a delivery the user asked to keep to the archetypes (ledger.json#delivery) makes it a WARN.
+  const site = state.site || {};
+  const capped = [];
+  if (typeof site.pageCap === 'number' && site.pageCap > 0 && typeof site.totalDiscovered === 'number' && site.totalDiscovered > state.pages.length) {
+    capped.push(`state.json site.pageCap ${site.pageCap}: ${site.totalDiscovered} page(s) discovered, ${state.pages.length} in the inventory`);
+  }
+  const cut = json(`${dir}/current/_crawl-log.json`)?.discovery?.cut;
+  const belowCap = (Array.isArray(cut) ? cut : []).filter((c) => c?.reason === 'below cap');
+  if (belowCap.length) capped.push(`${dir}/current/_crawl-log.json cut ${belowCap.length} page(s) below cap (${belowCap.slice(0, 5).map((c) => c.slug || c.url).join(', ')}${belowCap.length > 5 ? ', …' : ''})`);
+  const delivery = ledger?.delivery;
+  if (!capped.length) ok('inventory', `${state.pages.length} page(s), uncapped`);
+  else if (delivery?.scope === 'archetypes-only' && delivery.requestedBy === 'user') {
+    warn('inventory', `capped crawl: ${capped.join('; ')} — kept for the user-requested archetypes-only delivery (ledger.json#delivery${delivery.reason ? `: ${delivery.reason}` : ''}); a full-site rollout re-crawls with extract --all first`);
+  } else {
+    const why = delivery?.scope === 'archetypes-only' ? ` (ledger.json#delivery is archetypes-only, but requestedBy is ${delivery.requestedBy ? `"${delivery.requestedBy}"` : 'unset'}, not "user")` : '';
+    fail('inventory', `capped crawl: ${capped.join('; ')}${why} — a reskin migrates the whole site: re-crawl with $stardust extract <content-url> --all (reskin SKILL.md § Setup step 5), or, only when the user asked for it, record ledger.json#delivery = { scope: "archetypes-only", requestedBy: "user", reason, at }`);
+  }
+
   const untyped = state.pages.filter((p) => !p.type);
-  if (untyped.length) warn('untyped', `${untyped.map((p) => p.slug).join(', ')} — migrate renders untyped pages Path A`);
+  if (untyped.length) warn('untyped', `${untyped.map((p) => p.slug).join(', ')} — reskin types every inventory page (SKILL.md § Phase 1); migrate renders untyped pages Path A`);
 
   const css = read(`${dir}/canon/canon.css`);
   if (css == null) fail('canon', `${dir}/canon/canon.css is missing — run canon-from-reskin.mjs <archetype>`);

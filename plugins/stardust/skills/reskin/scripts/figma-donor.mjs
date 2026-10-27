@@ -173,8 +173,8 @@ pages    discovers every page of a design-system file, not only the linked node.
          the set's non-breakpoint properties); a set no kit canvas holds is off-kit: a variant of the
          EDS block it maps to, else default content — never a new block. Writes reskin/figma-pages.json: pages, skipped,
          kit {blockPer, blocks, index, offKit, unused, emptyCanvases}, chromeSource (the commonest header),
-         links (every variant id → slug), captureFrames (every block's main set, for capture --frames;
-         raise --max-frames past their count) and modules
+         links (every variant id → slug), captureFrames (every block's main set: a whole-file capture
+         holds them; pass them with --frames only to give a nested set a frame of its own) and modules
          (the curation-rules.json modules[] seed). Frames are cached under
          <dir>/.work/reskin/figma/<file-key>/_pages/<version>/. Overrides: content-rules.json kit
          { markers:{group:regex}, prefixes:{glyph:group}, canvases:{id:group}, breakpointProp, exclude,
@@ -352,7 +352,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const { runInit } = await helper('content-run');
     const { state, created } = runInit({ dir, url: positional[0], confidential: Boolean(opts.confidential), stateLib: await stateLib(), at });
     log(created ? `init: ${dir}/state.json → flow reskin, content source ${state.site.contentSource.url}, 0 pages` : `init: ${dir}/state.json is already a Figma-only reskin project (nothing written)`);
-    log('next: pages <figma-url> (every page + the kit), capture --frames <foundation + captureFrames>, curate, then content <figma-url> --all');
+    log('next: pages <figma-url> (every page + the kit), capture <figma-url> (the whole file), curate, then content <figma-url> --all');
     return 0;
   }
 
@@ -372,7 +372,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     if (m.kit.offKit.length) log(`  off-kit: ${m.kit.offKit.map((o) => `${o.block} (${o.why})`).join('; ')}`);
     if (m.kit.emptyCanvases?.length) log(`  empty kit canvases: ${m.kit.emptyCanvases.map((e) => `${e.name} (${e.why})`).join('; ')}`);
     log(`chrome from ${m.chromeSource}`);
-    log(`next: capture <figma-url> --frames <foundation frames>,${m.captureFrames.join(',')} --max-frames ${m.captureFrames.length + 10}; add figma-pages.json modules[] to curation-rules.json; curate; stamp; content <figma-url> --all`);
+    log(`next: capture <figma-url> (the whole file: the foundation frames, the pages and the kit's ${m.captureFrames.length} main set(s) are in it); add figma-pages.json modules[] to curation-rules.json; curate; stamp; content <figma-url> --all`);
     return 0;
   }
 

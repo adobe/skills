@@ -112,7 +112,10 @@ regression check instead of a debugging tool.
    discovery-mode extract, a `--cap` run, a 25-page `crawl.mjs`
    default — is a setup error: re-crawl the content site with `--all`
    (Phase 1) before going on. A failed page is retried or recorded,
-   never dropped.
+   never dropped. `reskin-preflight` fails `inventory` on the same
+   evidence (a WARN only under a user-requested archetypes-only
+   delivery, Phase 6). A Figma-only project has no crawl: its inventory
+   is every page `figma-donor.mjs pages` finds (Phase 2′).
 
 ## Procedure
 
@@ -262,11 +265,20 @@ every page and the kit first:
 
 ```bash
 node stardust/scripts/reskin/figma-donor.mjs pages <figma-url> [--refresh] [--confidential]
-node stardust/scripts/reskin/figma-donor.mjs capture <figma-url> \
-  --frames <foundation frames>,<captureFrames> --max-frames <count + 10>
+node stardust/scripts/reskin/figma-donor.mjs capture <figma-url>   # the whole file
 # add figma-pages.json modules[] to curation-rules.json modules, then curate + stamp
 node stardust/scripts/reskin/figma-donor.mjs content <figma-url> --all [--only a,b]
 ```
+
+`capture` takes the whole file, every page's top-level frames, sections,
+components and component sets with their subtrees, so the foundation
+frames, the page frames and the kit's main sets (`figma-pages.json`
+`captureFrames`) are already in it. A main set nested inside a section is
+in that section's node data, which `figma-gate` reads; pass `--frames`
+only to give such a set a frame of its own, and then list the whole
+selection with it (`_crawl-log.json#discovery.selected` plus the nested
+sets), because `--frames` replaces the selection and never adds to it.
+No `--max-frames`: a large file warns on stderr and is captured whole.
 
 `pages` writes `reskin/figma-pages.json`: every page of the FULL PAGES
 canvases (one per page-set `Type`, its desktop frame plus the responsive
