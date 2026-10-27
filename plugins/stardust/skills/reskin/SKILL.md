@@ -425,7 +425,8 @@ and 3 and the fix budget: `reference/deployed-leg.md` § The fix budget.
 `all` replaces only `deploy` Step 10's automated reconcile: its deployed
 desktop/mobile eyeball, delayed-font/nav CLS probe (CLS < 0.1) and applicable
 header-behavior checks stay mandatory before handoff, their results or an
-explicit `unresolved` in the ledger (`reference/deployed-leg.md` § Recipe, step 7).
+explicit `unresolved` in the ledger through `reskin-ledger.mjs step10`
+(`reference/deployed-leg.md` § Recipe, step 7, and § The ledger).
 
 **One fix iteration per gate family** (content; design-adoption/sanity;
 Figma fidelity): fix once, re-run all gates; (e) has its own budget
@@ -439,6 +440,7 @@ Figma fidelity): fix once, re-run all gates; (e) has its own budget
 node stardust/scripts/reskin/reskin-ledger.mjs record <slug>
 node stardust/scripts/reskin/reskin-ledger.mjs eyeball <slug> --verdict pass --note "…"
 node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked
+node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass --cls 0.04 --header "n/a: <why>" --by user   # (e) only
 ```
 
 `record` reads the three gate reports (`reports/<slug>-{content-gate,
@@ -452,7 +454,9 @@ with no figma fragment records `figma.*` NOT-RUN. A residual's `--gate`
 for a Figma family is its class (`figma.geometry`, …). On an approved page it fills
 `handoff.<type>` — the archetype, its prototype sha and the tier record
 (gates passed, prototype gates waived) — which `reskin-preflight` and
-`migrate` read. Re-run `record` after the approval and after every fix.
+`migrate` read. Re-run `record` after the approval and after every fix;
+it keeps the `gates.step10` receipts `step10` wrote (CLS < 0.1 passes; a
+value `"unresolved: <why>"` records NOT-RUN and a `needs-owner` residual).
 
 ### Phase 6 — HANDOFF
 

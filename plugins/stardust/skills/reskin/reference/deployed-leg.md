@@ -59,7 +59,7 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
 7. **Step 10's deployed checks stay mandatory before handoff**, run as `deploy` specifies, not re-built here: the
    desktop and mobile eyeball, the delayed-font/nav CLS probe (CLS < 0.1; `deployed-gate` and `qa-gate` measure settled
    pages) and the applicable header-behavior checks. Record each result, or `unresolved: <why>`, under `gates.step10`
-   (§ The ledger).
+   with `reskin-ledger.mjs step10` (§ The ledger).
 
 The preview must be reachable without auth: a protected preview is out of scope. `preview` stops with exit 2 on a
 401 or 403 rather than poll, and the gates send no Authorization header. A sandbox repo's preview is public by
@@ -117,9 +117,15 @@ after review invalidates the evidence, so re-run the leg (step 6).
 The test hook `DEPLOY_VERIFY_ORIGIN` is recorded as `originOverride: { env, origin }` in `preview.json`, `summary.json` and
 the fragment.
 
-Step 7's results go beside the fragment, in `pages.<slug>.gates.step10`, e.g.
-`{ "eyeball": "adopted", "cls": "0.04", "header": "n/a: no header contract" }`; a check not run is
-`unresolved: <why>` and a `residuals[]` entry (`needs-owner`).
+Step 7's results go beside the fragment, in `pages.<slug>.gates.step10`, written by
+`node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass|fail --cls <n> --header pass|fail|"n/a: <why>" [--note "…"] [--by <who>]`
+(`--header-toggle` is an alias of `--header`), e.g.
+`{ "eyeball": "pass", "cls": "0.04", "header": "n/a: no header contract", "verdict": "PASS", "note": null, "by": "user", "at": "…" }`.
+A check not run is `unresolved: <why>` (any of the three): the verdict is NOT-RUN and the command adds a
+`residuals[]` entry on `step10` (`needs-owner`, `source: "step10"`), which a later `step10` with nothing unresolved
+removes. `verdict` is FAIL on an eyeball `fail`, a CLS ≥ 0.1 or a header `fail`, else NOT-RUN on an unresolved check,
+else PASS; like any gate it blocks the predicate unless PASS or covered by an accepted residual. `record` keeps an
+existing `gates.step10` (it is entered, never read from a report).
 
 A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s
 `steps.<step>.detail`), `FAIL k/n`, `FAIL stalled decoration: <what>` (a gate stalled on the preview's decoration and

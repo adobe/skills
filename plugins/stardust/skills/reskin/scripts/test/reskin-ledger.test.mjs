@@ -2,14 +2,14 @@
 // skills/reskin/scripts/test/reskin-ledger.test.mjs — the ledger writer. Pure part: overall-verdict
 // parsing, the mobile-adapt static rules, applyRecord (status, accepted residuals, handoff archetype
 // and tier, PASS-only gates for migrate, sibling stage). CLI part on a temp project: --help, usage
-// errors, refusal on missing reports, record → eyeball → residual → show. Run: node <this file>.
+// errors, refusal on missing reports, record → eyeball → residual → show → step10 → record (kept). step10's verdicts. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyRecord, fragmentVerdict, gateVerdicts, mobileStatic, overall, WAIVED } from '../reskin-ledger.mjs';
+import { applyRecord, applyStep10, fragmentVerdict, gateVerdicts, mobileStatic, overall, step10Verdict, WAIVED } from '../reskin-ledger.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'reskin-ledger.mjs');
 let failed = 0;
@@ -76,6 +76,26 @@ check('M2 fragments: verdict strings, flattening, figmaRequired, kept fragment, 
   const withClass = applyRecord({ pages: { login: { residuals: [{ gate: 'figma', class: 'figma.geometry', verdict: 'accepted' }] } } }, { ...base, m2: { figma: fig } });
   assert.equal(withClass.pages.login.status, 'gated', 'a residual names its family by class (M2b SKILL)');
 });
+check('step10: verdicts (FAIL beats NOT-RUN beats PASS), unresolved adds a needs-owner residual, record keeps gates.step10', () => {
+  assert.equal(step10Verdict({ eyeball: 'pass', cls: '0.04', header: 'n/a: no header contract' }), 'PASS');
+  assert.equal(step10Verdict({ eyeball: 'pass', cls: '0.1', header: 'pass' }), 'FAIL');
+  assert.equal(step10Verdict({ eyeball: 'fail', cls: 'unresolved: no probe', header: 'pass' }), 'FAIL');
+  assert.equal(step10Verdict({ eyeball: 'pass', cls: 'unresolved: no probe', header: 'pass' }), 'NOT-RUN');
+  assert.equal(step10Verdict({ eyeball: 'adopted', cls: '0', header: 'pass' }), 'UNKNOWN');
+  const base = { state, slug: 'login', reports: R('PASS'), mobile: mob(), prototypeSha: 'x', at: 't' };
+  let L = applyRecord({}, base);
+  L = applyStep10(L, { slug: 'login', eyeball: 'pass', cls: 'unresolved: probe not run', header: 'PASS', by: 'user', at: 't2' });
+  assert.equal(L.pages.login.gates.step10.verdict, 'NOT-RUN'); assert.equal(L.pages.login.gates.step10.header, 'pass');
+  assert.equal(L.pages.login.status, 'failing');
+  assert.deepEqual(L.pages.login.residuals.map((r) => [r.gate, r.verdict, r.cause]), [['step10', 'needs-owner', 'cls unresolved: probe not run']]);
+  L = applyStep10(L, { slug: 'login', eyeball: 'pass', cls: '0.02', header: 'n/a: static header', at: 't3' });
+  assert.equal(L.pages.login.gates.step10.verdict, 'PASS'); assert.deepEqual(L.pages.login.residuals, []); assert.equal(L.pages.login.status, 'gated');
+  const re = applyRecord(L, { ...base, at: 't4' });
+  assert.deepEqual(re.pages.login.gates.step10, L.pages.login.gates.step10, 'a re-record keeps the step10 receipts');
+  assert.equal(re.pages.login.status, 'gated');
+  assert.equal(applyRecord(applyStep10(L, { slug: 'login', eyeball: 'pass', cls: '0.3', header: 'pass', at: 't5' }), base).pages.login.status, 'failing');
+  assert.deepEqual(gateVerdicts({ step10: { eyeball: 'pass', cls: '0.04', header: 'n/a: none' } }).map((v) => v.verdict), ['PASS'], 'a hand-written step10 without a verdict is computed');
+});
 const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
 check('--help exits 0; usage errors exit 2', () => {
   const r = run(['--help'], mkdtempSync(join(tmpdir(), 'rl-'))); assert.equal(r.status, 0); assert.match(r.stdout, /usage: node reskin-ledger\.mjs/);
@@ -96,6 +116,13 @@ check('CLI: refuses without reports, then record → eyeball → residual → sh
   assert.equal(L.pages.login.eyeball.verdict, 'pass'); assert.equal(L.pages.login.residuals[0].verdict, 'accepted'); assert.ok(L.pages.login.gates['reskin-dom-equality']);
   assert.equal(L.handoff.form.archetype, 'login');
   assert.match(run(['show', 'login'], root).stdout, /"eyeball"/);
+  assert.equal(run(['step10', 'login', '--eyeball', 'pass', '--cls', 'low', '--header', 'pass'], root).status, 2);
+  assert.equal(run(['step10', 'login', '--eyeball', 'pass', '--cls', '0.01'], root).status, 2);
+  const s10 = run(['step10', 'login', '--eyeball', 'pass', '--cls', '0.01', '--header-toggle', 'pass', '--note', 'burger toggles at 360', '--by', 'user'], root);
+  assert.equal(s10.status, 0, s10.stderr); assert.match(s10.stdout, /step10 login: PASS/);
+  assert.equal(run(['record', 'login'], root).status, 0);
+  const L2 = JSON.parse(readFileSync(join(root, 'stardust/reskin/ledger.json'), 'utf8'));
+  assert.deepEqual([L2.pages.login.gates.step10.verdict, L2.pages.login.gates.step10.header, L2.pages.login.gates.step10.by], ['PASS', 'pass', 'user']);
 });
 
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
