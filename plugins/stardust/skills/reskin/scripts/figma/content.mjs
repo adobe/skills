@@ -22,7 +22,7 @@
 //   opacity      an image fill layer's node opacity × its image fill's opacity is the image node's opacity (< 1
 //                only), over its backdrop: the solid fill under the image in the layer's fill stack, else the
 //                nearest ancestor's solid fill (CSS colour); the renderer paints both.
-//   links        per-run hyperlink (URL or NODE) and prototype interactions (URL, NODE): http(s), mailto,
+//   links        per-run hyperlink (URL or NODE; in a heading too, as its children) and prototype interactions (URL, NODE): http(s), mailto,
 //                tel or a root-relative path only; NODE targets resolve to a page slug; anything else is
 //                flagged and left as "#". Nothing is invented: SEO, alt text and link targets are flagged.
 // Design strings are untrusted: the model keeps them raw and every renderer escapes them; layer names
@@ -385,7 +385,13 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     const h = where === 'body' ? headingOf(n) : null;
     const linkWhole = linkOf(n, where);
     if (linkWhole) return [{ ...ctaNode(norm(applyCase(chars, caseOf)), linkWhole.href, n), sep: ' ', ...side(chars, caseOf), ...trunc }];
-    if (h) return [{ kind: 'heading', level: `h${h.level}`, role: h.role, text: norm(applyCase(chars, caseOf)), node: n.id, sep: ' ', ...side(chars, caseOf), ...trunc }];
+    if (h) {
+      const head = { kind: 'heading', level: `h${h.level}`, role: h.role, text: norm(applyCase(chars, caseOf)), node: n.id, sep: ' ', ...side(chars, caseOf), ...trunc };
+      // A hyperlink run inside a heading stays a link: the runs become the heading's children.
+      const kids = runs.some((r) => r.hyperlink) ? runNodes(runs) : [];
+      if (kids.some((k) => k.kind === 'cta')) head.children = kids;
+      return [head];
+    }
     // A paragraph break (\n) inside one TEXT node: one paragraph per non-empty line, in order.
     if (chars.includes('\n')) {
       const out = [];

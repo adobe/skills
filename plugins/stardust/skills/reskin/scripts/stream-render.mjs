@@ -423,7 +423,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
           // A sub-heading whose donor type role differs from display is sized by that role, so drifting DOM
           // levels (h3/h4/h5 on visually equal card titles) render alike.
           const r = /^h[2-6]$/.test(n.role || '') && has(`--type-${n.role}-font-size`) ? ` role-${n.role}` : '';
-          out.push(`<${n.level || 'h2'} class="heading${r}">${txt(n)}</${n.level || 'h2'}>`); break;
+          // A heading holding a link (a Figma hyperlink run, a live h2 > a) keeps the link.
+          out.push(`<${n.level || 'h2'} class="heading${r}">${n.children?.some((c) => c.kind === 'cta') ? inlineHtml(n.children) : txt(n)}</${n.level || 'h2'}>`); break;
         }
         case 'paragraph':
           // A paragraph holding only images, one of them content-sized, is a figure (a model captured

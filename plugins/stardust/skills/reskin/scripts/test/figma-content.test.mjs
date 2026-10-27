@@ -393,6 +393,21 @@ await test('buttons: a Link variant is a link, never a button; a heading-styled 
   assert.deepEqual(of('b5').map((o) => [o.kind, o.text]), [['text', 'Apply today']], 'equal-size texts stay one label');
 });
 
+await test('headings keep a hyperlink run as a link (children), rendered as <a> inside the heading; the reference still matches', () => {
+  const head = T('hl', 'Read our annual report', 0, 120, 600, 56, { fontSize: 46 }, { characterStyleOverrides: [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], styleOverrideTable: { 1: { hyperlink: { type: 'URL', url: 'https://example.test/report' } } } });
+  const frame = page([F('hb', 'Body', 0, 100, 1440, 400, [head, T('hp', 'Real intro copy for people.', 0, 200, 600, 24)])]);
+  const m = build(frame);
+  const h = m.sections.flatMap((s) => s.ordered).find((o) => o.kind === 'heading');
+  assert.equal(h.text, 'Read our annual report');
+  assert.deepEqual(h.children.map((k) => [k.kind, k.text, k.href || null]), [['text', 'Read our', null], ['cta', 'annual report', 'https://example.test/report']]);
+  assert.ok(m.sections.flatMap((s) => s.ctas).some((c) => c.href === 'https://example.test/report'));
+  const html = render({ slug: 'p', model: m, tokens: {}, mapping: { pages: { p: { slots: {} } } } }).html;
+  assert.match(html, /<h1 class="heading">Read our <a class="link" href="https:\/\/example\.test\/report">annual report<\/a><\/h1>/);
+  assert.equal(compareText(textReference(frame), { text: 'Read our annual report Real intro copy for people.', attrs: [] }).verdict, 'PASS');
+  const plain = build(page([F('hb', 'Body', 0, 100, 1440, 400, [T('hl', 'Read our annual report', 0, 120, 600, 56, { fontSize: 46 })])])).sections.flatMap((s) => s.ordered).find((o) => o.kind === 'heading');
+  assert.equal(plain.children, undefined, 'no link: no children');
+});
+
 await test('image opacity: node × fill opacity and the solid fill under it (else the nearest ancestor fill) are carried; opaque images unchanged', () => {
   const black = { type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } };
   const stacked = { id: 'i1', type: 'RECTANGLE', name: 'Hero', fills: [black, { type: 'IMAGE', imageRef: 'a', opacity: 0.75 }], ...bb(0, 100, 600, 400) };

@@ -496,7 +496,8 @@ mapping, `stream-render`, `slot-coverage` and the handoff read it unchanged. Wha
   stack, else the nearest ancestor's solid fill); the renderer sets the opacity on the `<img>` and the
   backdrop on its wrapper (`figure`, the media band's section, a split's `.img-backdrop`).
 - Headings come from the donor's type roles (`donor-tokens.json` `type.display|h1…h6`); the first is
-  the page h1. Links come from per-run hyperlinks and prototype interactions and pass the allowlist
+  the page h1 (a hyperlink run inside a heading stays a link: the heading's `children`, rendered as
+  `<a>` inside it). Links come from per-run hyperlinks and prototype interactions and pass the allowlist
   (http(s), mailto, tel, root-relative); a NODE link resolves to a slug via `--pages <id>=<slug>` or
   `reskin/content-rules.json` `pages`. Drawn fields become `formControls` with the drawn placeholder.
   A button component (layer, component or set named button / btn / cta) is a button unless its
