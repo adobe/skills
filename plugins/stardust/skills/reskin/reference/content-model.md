@@ -496,6 +496,10 @@ mapping, `stream-render`, `slot-coverage` and the handoff read it unchanged. Wha
   the page h1. Links come from per-run hyperlinks and prototype interactions and pass the allowlist
   (http(s), mailto, tel, root-relative); a NODE link resolves to a slug via `--pages <id>=<slug>` or
   `reskin/content-rules.json` `pages`. Drawn fields become `formControls` with the drawn placeholder.
+  A button component (layer, component or set named button / btn / cta) is a button unless its
+  visible variant says link (a VARIANT value or its main component's `Key=Link` name; an icon property
+  aside): then it is a link (`cta`, `href "#"` and `link.unresolved` without a target). A text inside it
+  larger than its smallest text (≥ 1.2×) is its own heading or paragraph, never part of the label.
 - `metadata` holds only the title derived from the frame name; `declaredAbsent` lists description,
   canonical, OG, Twitter and JSON-LD. Nothing is invented: SEO, alt text and link targets are flags.
 - Side files: `text-ops.json` (per-node text ops `caseless | attr | omit | replace`, chrome outside

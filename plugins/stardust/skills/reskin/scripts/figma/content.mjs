@@ -39,7 +39,7 @@ export const KIT_RULE = 'a section is the outermost template-section or componen
 export const DEFAULT_RULES = {
   chrome: { header: '^(page )?header$|^nav(igation)?( bar)?$|^top ?bar$|^site header$', footer: '^(page )?footer$|^site footer$' },
   kinds: [
-    { match: '\\b(button|btn|cta)\\b', kind: 'button' },
+    { match: '\\b(button|btn|cta)\\b', kind: 'button' }, // its link variant is kind link (linkVariant)
     { match: '\\b(checkbox|radio|toggle|switch)\\b', kind: 'check' },
     { match: '\\b(select|dropdown|combo ?box)\\b', kind: 'select' },
     { match: '\\b(input|text ?field|text ?area|search ?field)\\b', kind: 'field' },
@@ -113,8 +113,21 @@ const cleanName = (s) => norm(String(s ?? '').replace(/^[.\s_]+/, '').replace(/[
 export function kindOf(n, rules, lookup = {}) {
   if (!n || isText(n)) return null;
   const names = [n.name, lookup.componentSet?.(n), lookup.component?.(n)].filter(Boolean).map(cleanName);
-  for (const k of rules.kinds) if (names.some((nm) => k.re.test(nm))) return k.kind;
+  for (const k of rules.kinds) if (names.some((nm) => k.re.test(nm))) return k.kind === 'button' && linkVariant(n, lookup) ? 'link' : k.kind;
   return null;
+}
+
+// A button component drawn as its link variant: a VARIANT property value (the instance's componentProperties,
+// or the "Key=Value, …" name of its main component) or the instance's own name says link; an icon property
+// ("Icon=Link") does not.
+export function linkVariant(n, lookup = {}) {
+  const LINK = /\b(link|hyperlink)\b/i;
+  const values = Object.entries(n.componentProperties || {}).filter(([, p]) => p?.type === 'VARIANT').map(([k, p]) => [k, String(p.value ?? '')]);
+  for (const pair of String(lookup.component?.(n) || '').split(',')) {
+    const m = pair.match(/^\s*([^=]+)=\s*(.+?)\s*$/);
+    if (m) values.push([m[1], m[2]]);
+  }
+  return values.some(([k, v]) => !/icon/i.test(k) && LINK.test(v)) || LINK.test(cleanName(n.name).replace(/\b(button|btn|cta)\b/gi, ''));
 }
 
 export function chromeRole(n, rules) {
@@ -438,7 +451,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
       flag('image.alt', 'info', n.id, 'logo: alt text from the brand name is the author\'s call');
       return [...out, link ? ctaNode('', link.href, n, { children: [img] }) : img];
     }
-    const art = kind === 'button' || fill ? null : artOf(n);
+    const art = kind === 'button' || kind === 'link' || fill ? null : artOf(n);
     if (art === 'backdrop') {
       decorative.push(n.id);
       flag('image.decorative', 'info', n.id, `"${cleanName(n.name)}" sits behind text or bleeds past the frame: a backdrop motif, left to the band's CSS`);
@@ -450,12 +463,31 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
       flag('image.alt', where === 'chrome' ? 'info' : 'review', n.id, 'no alt text in Figma: write it or mark the image decorative');
       return [...out, link ? ctaNode('', link.href, n, { children: [img] }) : img];
     }
-    const nestedButtons = kind === 'button' && orderedChildren(n).filter((c) => hasText(c) && kindOf(c, rules, lookup) === 'button').length > 1;
-    if (kind === 'button' && !nestedButtons) {
-      const label = norm(textsIn(n).map(caseText).join(' '));
+    const pressable = (k) => k === 'button' || k === 'link';
+    const nestedButtons = pressable(kind) && orderedChildren(n).filter((c) => hasText(c) && pressable(kindOf(c, rules, lookup))).length > 1;
+    if (pressable(kind) && !nestedButtons) {
+      // A heading-styled text inside the instance (larger than its smallest text) is its own heading, never
+      // part of the label: only the remaining texts name the button or link.
+      const texts = textsIn(n);
+      const sizes = texts.map((t) => t.style?.fontSize || 0);
+      const min = Math.min(...sizes.filter((x) => x > 0));
+      const lettered = (t) => /\p{L}/u.test(t.characters) && !/icon|symbol/i.test(t.style?.fontFamily || '');
+      const heads = texts.filter((t, i) => texts.length > 1 && sizes[i] > 0 && sizes[i] >= 1.2 * min && lettered(t));
+      const rest = texts.filter((t) => !heads.includes(t));
+      const labels = heads.length && rest.some(lettered) ? rest : texts;
+      const split = labels !== texts;
+      const label = norm(labels.map(caseText).join(' '));
       if (!label) { decorative.push(n.id); return out; }
-      if (link) return [...out, ctaNode(label, link.href, n, { buttonLike: true, sep: ' ' })];
-      return [...out, { kind: 'text', text: label, parentTag: 'button', parentClass: '', inButton: true, node: n.id, sep: ' ' }];
+      let item;
+      if (kind === 'link') {
+        if (!link) flag('link.unresolved', where === 'chrome' ? 'info' : 'review', n.id, `"${label.slice(0, 40)}" is drawn as a link with no target`);
+        item = ctaNode(label, link ? link.href : '#', n, { sep: ' ' });
+      } else if (link) item = ctaNode(label, link.href, n, { buttonLike: true, sep: ' ' });
+      else item = { kind: 'text', text: label, parentTag: 'button', parentClass: '', inButton: true, node: n.id, sep: ' ' };
+      if (!split) return [...out, item];
+      const first = texts.indexOf(labels[0]);
+      const headNodes = (list) => list.flatMap((t) => textNodes(t, where, nextGround));
+      return [...out, ...headNodes(heads.filter((t) => texts.indexOf(t) < first)), item, ...headNodes(heads.filter((t) => texts.indexOf(t) > first))];
     }
     if (kind === 'check') {
       const label = norm(textsIn(n).map(caseText).join(' '));

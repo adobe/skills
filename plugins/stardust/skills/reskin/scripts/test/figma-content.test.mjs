@@ -353,6 +353,28 @@ await test('--help first: figma-donor, figma-text-gate, slot-coverage', () => {
 });
 
 const { render } = await import('../stream-render.mjs');
+await test('buttons: a Link variant is a link, never a button; a heading-styled text in a button is its own heading', () => {
+  const I = (id, name, y, kids, extra = {}) => ({ id, type: 'INSTANCE', name, componentId: `c-${id}`, children: kids, ...bb(0, y, 400, 60), ...extra });
+  const go = { interactions: [{ trigger: { type: 'ON_CLICK' }, actions: [{ type: 'URL', url: 'https://example.test/report' }] }] };
+  const linkProp = I('b1', 'Button', 100, [T('b1t', 'Read the report', 0, 110, 200, 24)], { componentProperties: { Type: { type: 'VARIANT', value: 'Link' } }, ...go });
+  const linkName = I('b2', 'Button', 200, [T('b2t', 'See all news', 0, 210, 200, 24)]);
+  const iconProp = I('b3', 'Button', 300, [T('b3t', 'Download now', 0, 310, 200, 24)], { componentProperties: { Icon: { type: 'VARIANT', value: 'Link' } } });
+  const headed = I('b4', 'Card CTA button', 400, [T('b4h', 'Find a school', 0, 400, 300, 40, { fontSize: 32 }), T('b4t', 'Search', 0, 450, 100, 20)], go);
+  const even = I('b5', 'Button', 500, [T('b5a', 'Apply', 0, 510, 60, 20), T('b5b', 'today', 70, 510, 60, 20)]);
+  const lookup = { component: (n) => ({ 'c-b2': 'Type=Link, Size=Small' }[n.componentId]), componentSet: () => 'Button' };
+  const m = build(page([F('bb', 'Body', 0, 100, 1440, 600, [linkProp, linkName, iconProp, headed, even])]), { lookup });
+  const ord = m.sections.flatMap((s) => s.ordered);
+  const of = (id) => ord.filter((o) => o.node === id || o.node?.startsWith?.(`${id}`));
+  assert.deepEqual(of('b1').map((o) => [o.kind, o.text, o.classes, o.href, !!o.buttonLike]), [['cta', 'Read the report', 'link', 'https://example.test/report', false]]);
+  assert.deepEqual(of('b2').map((o) => [o.kind, o.text, o.classes, o.href]), [['cta', 'See all news', 'link', '#']]);
+  assert.ok(m.flags.some((f) => f.id === 'link.unresolved' && f.node === 'b2'));
+  assert.deepEqual(of('b3').map((o) => [o.kind, o.text, !!o.inButton]), [['text', 'Download now', true]], 'an icon property is not the link variant');
+  const b4 = ord.filter((o) => ['b4', 'b4h'].includes(o.node));
+  assert.deepEqual(b4.map((o) => [o.kind, o.text]), [['heading', 'Find a school'], ['cta', 'Search']]);
+  assert.equal(b4[1].buttonLike, true);
+  assert.deepEqual(of('b5').map((o) => [o.kind, o.text]), [['text', 'Apply today']], 'equal-size texts stay one label');
+});
+
 await test('image opacity: node × fill opacity and the solid fill under it (else the nearest ancestor fill) are carried; opaque images unchanged', () => {
   const black = { type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } };
   const stacked = { id: 'i1', type: 'RECTANGLE', name: 'Hero', fills: [black, { type: 'IMAGE', imageRef: 'a', opacity: 0.75 }], ...bb(0, 100, 600, 400) };
