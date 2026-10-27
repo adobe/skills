@@ -21,7 +21,8 @@
  * (its `assets/` prefix → <proto-dir>/assets/img/…), since the page and the proto dir sit at different
  * depths. It keeps data-source-src="<original>" — dom-equality and slot-coverage match on it, so the gates
  * hold on a localized page. A failed download (or two URLs landing on one local file) keeps the remote
- * src and is listed.
+ * src and is listed. On a Figma-sourced model the Figma asset mapping (assets/img/figma/<slug>/…) is kept:
+ * the localizer only resolves the remote URLs and falls back to it.
  *
  * mapping.json (the only per-site input; schema and defaults: reference/mapping-json.md):
  *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent",
@@ -1365,6 +1366,8 @@ async function main(argv) {
   const input = { slug, model, tokens, mapping, chromeModel };
 
   let result = render(input);
+  // The image resolvers compose: the Figma asset mapping first, then --localize-images for remote URLs.
+  let resolveImg = (u) => ({ src: u });
   // Figma-sourced models reference their own cached bytes (assets/<node>.<ext> beside the model): copy them
   // under prototypes/assets/img/figma/<slug>/ (the migrate/deploy bundler root) and keep data-source-src.
   const relSrc = (u) => u && !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(u) && !u.startsWith('/');
@@ -1385,7 +1388,8 @@ async function main(argv) {
       copied.set(u, mirror);
     }
     const rel = (file) => relative(dirname(out), file).split(sep).join('/');
-    result = render({ ...input, resolveImg: (u) => (copied.has(u) ? { src: rel(copied.get(u)), source: u } : { src: u }) });
+    resolveImg = (u) => (copied.has(u) ? { src: rel(copied.get(u)), source: u } : { src: u });
+    result = render({ ...input, resolveImg });
     console.log(`figma assets: ${copied.size} copied → ${relative(process.cwd(), target)}/`);
     for (const u of missing) console.error(`WARN figma asset missing: ${u} (supply it under the model's assets/ and re-run figma-donor.mjs content)`);
   }
@@ -1401,7 +1405,9 @@ async function main(argv) {
       return [u, mirror];
     }));
     const rel = (file) => relative(dirname(out), file).split(sep).join('/');
-    result = render({ ...input, resolveImg: (u) => (local.has(u) ? { src: rel(local.get(u)), source: u } : { src: u }) });
+    const figmaResolve = resolveImg;
+    resolveImg = (u) => (local.has(u) ? { src: rel(local.get(u)), source: u } : figmaResolve(u));
+    result = render({ ...input, resolveImg });
     console.log(`localized ${loc.map.size}/${result.images.length} image(s) → ${relative(process.cwd(), assetsDir)}/img/`);
     for (const f of loc.failed) console.error(`WARN image kept remote: ${f.url} (${f.why})`);
   }
