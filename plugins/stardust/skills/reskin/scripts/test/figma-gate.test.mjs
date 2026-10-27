@@ -81,6 +81,17 @@ check('every setup hint in figma-gate installs to keep: no --no-save (a later np
   assert.deepEqual(offenders, []);
 });
 
+check('no reskin setup hint installs with --legacy-peer-deps or into the project root (it rewrites the lockfile, Setup step 2)', () => {
+  const root = join(HERE, '..', '..');
+  const sources = [join(root, 'SKILL.md'), ...walk(join(root, 'reference')), ...walk(join(HERE, '..')).filter((p) => !p.includes(`${join('scripts', 'test')}`))]
+    .filter((p) => /\.(mjs|md)$/.test(p));
+  const offenders = sources.filter((p) => /npm i[^\n]*--legacy-peer-deps/.test(readFileSync(p, 'utf8'))).map((p) => p.slice(root.length + 1));
+  assert.deepEqual(offenders, []);
+  const skill = readFileSync(join(root, 'SKILL.md'), 'utf8');
+  assert.match(skill, /git diff --stat\s+package-lock\.json/);
+  assert.ok(!/^compatibility:.*playwright-cli/m.test(skill), 'no reskin script uses playwright-cli');
+});
+
 check('an unknown subcommand, no subcommand and boxes --module without a value exit 2', () => {
   const cwd = join(scratch, 'empty');
   assert.equal(run(['frobnicate'], cwd).status, 2);

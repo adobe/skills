@@ -2,7 +2,7 @@
 name: reskin
 description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, local static HTML prototypes, or a Figma file read headlessly over the REST API. Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", "use this Figma design for my site", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project's stardust/ scripts, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:reskin — same content, donor design
@@ -64,13 +64,26 @@ regression check instead of a debugging tool.
    (`../stardust/reference/state-machine.md` § Flow keys); if another
    flow is set, print it and the switch command
    (`$stardust reskin --switch-flow`) instead of running.
-2. **Import-resolvability probe** — same contract as
-   `../extract/SKILL.md` § Setup:
-   `node -e "Promise.all(['playwright','pixelmatch','pngjs'].map(m=>import(m))).then(()=>process.exit(0),()=>process.exit(1))"`
-   from the project root; on failure
-   `npm i -D playwright pixelmatch pngjs --legacy-peer-deps` (never
-   `--no-save`: a later real `npm i` prunes it). Re-run the probe at
-   the start of every phase that renders.
+2. **Node and import-resolvability probe.** `node --version` must be
+   22 or later (the scripts use Node 22 APIs); stop and say so
+   otherwise. Then, from `stardust/` (`mkdir -p stardust` first):
+   `node -e "Promise.all(['playwright','pixelmatch','pngjs'].map(m=>import(m))).then(()=>process.exit(0),()=>process.exit(1))"`.
+   The copied scripts (step 3) live under `stardust/scripts/` and ESM
+   resolves `import('playwright')` upward from the script's directory,
+   so a probe from `stardust/` sees both `stardust/node_modules` and
+   the project's own `node_modules`. On failure install into
+   `stardust/` — its own package root — never into the project:
+   `cd stardust && { [ -f package.json ] || echo '{"private":true}' > package.json; } && npm i -D playwright pixelmatch pngjs`,
+   and add `stardust/node_modules/` to `.gitignore`. This leaves the
+   project's `package.json` and `package-lock.json` untouched; an
+   install at the project root (and above all with
+   `--legacy-peer-deps`) can rewrite the lockfile and prune the
+   project's own dev tooling (on the EDS boilerplate it dropped
+   `@babel/core` and broke eslint). Never `--no-save` (a later real
+   `npm i` prunes it). After any install, `git diff --stat
+   package-lock.json` must be empty; if it is not, `git checkout
+   package.json package-lock.json` and install into `stardust/`.
+   Re-run the probe at the start of every phase that renders.
 3. **Copy the scripts into the project and run the copies.** ESM
    resolves `import('playwright')` from the *script's* directory and
    the plugin tree ships no `node_modules`. Copy, byte-identical, into
