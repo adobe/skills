@@ -11,7 +11,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseFigmaUrl, canonicalFigmaUrl } from '../figma/url.mjs';
-import { createClient, redact } from '../figma/client.mjs';
+import { createClient, describeToken, redact } from '../figma/client.mjs';
 import { FigmaError, UsageError } from '../figma/errors.mjs';
 import { startFakeFigma } from './fixtures/figma-kit/fake-figma.mjs';
 
@@ -92,6 +92,26 @@ await check('403 from the fake on a wrong token → exit 3', async () => {
     assert.equal(e.exitCode, 3);
     assert.equal(e.status, 403);
   });
+});
+await check('401/403 name the token source, its length and prefix shape, never its characters', async () => {
+  reset();
+  fake.behaviors[FILE] = { status: 401, body: { status: 401, err: 'Unauthorized' } };
+  await rejects(client().getJson(FILE), (e) => {
+    assert.match(e.message, new RegExp(`the token came from FIGMA_TOKEN \\(${TOKEN.length} characters; unexpected prefix: Figma personal access tokens start with figd_\\)`));
+    assert.ok(!e.message.includes(TOKEN) && !e.message.includes(TOKEN.slice(4, 12)));
+  });
+  reset();
+  const pat = `figd_${randomBytes(16).toString('hex')}`;
+  await rejects(createClient({ token: pat, base: fake.base, sleep: async () => {} }).getJson(FILE), (e) => {
+    assert.equal(e.status, 403);
+    assert.match(e.message, new RegExp(`the token came from FIGMA_TOKEN \\(${pat.length} characters; prefix looks like a Figma personal access token\\)`));
+    assert.ok(!e.message.includes(pat.slice(5, 13)), 'no token characters past the prefix');
+  });
+  reset();
+  await rejects(createClient({ token: `${pat}\n`, tokenSource: 'MY_FIGMA_PAT', base: fake.base, sleep: async () => {} }).getJson(FILE), (e) => {
+    assert.match(e.message, /came from MY_FIGMA_PAT \(\d+ characters; prefix looks like a Figma personal access token; it has leading or trailing whitespace\)\. Check that MY_FIGMA_PAT holds/);
+  });
+  assert.equal(describeToken('abc'), 'the token came from FIGMA_TOKEN (3 characters; unexpected prefix: Figma personal access tokens start with figd_)');
 });
 await check('404 → exit 2 naming the file key and node-id', async () => {
   reset();
