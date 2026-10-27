@@ -239,7 +239,9 @@ exact    (f) EXACT FIDELITY, Figma-only sites: the page against Figma's own rend
          pixel-compare. PASS when the differing-pixel share ≤ --bar (default 3) and |height delta| ≤
          --height-tol px (default 8); one FAIL row exits 1. Prints a row per breakpoint and the page's
          similarity (100 − mean share). Writes <dir>/.work/reskin/gates/<slug>/exact/ (page, diff PNGs,
-         summary.json).
+         summary.json with the ledger fragment reskin-ledger record copies to gates.exact). It also checks
+         that the donor's font families (donor-tokens.json type) render on the page; a FAIL while one is not
+         served is classed font.unserved, a residual an agent may accept after reading the diff.
 library  (f) the block library, every block used on a page or not: --url-pattern's {block} is each kit
          block's key, {page} its EDS library page (figma-renders.json library.<key>.eds.page: the EDS block
          deploy Step 2 names it, e.g. http://localhost:3000/library/{page} → /library/cards for Teaser); on it
@@ -628,6 +630,7 @@ async function exactStep({ dir, opts, log, UsageError }) {
   const s = await runExact({ dir, slug: opts.page, url: opts.url, bar: numOpt(opts, 'bar', DEFAULT_BAR, UsageError), heightTol: numOpt(opts, 'height-tol', DEFAULT_HEIGHT_TOL, UsageError), out: join(dir, '.work', 'reskin', 'gates', opts.page, 'exact') });
   log(`${s.pass ? 'PASS' : 'FAIL'} exact ${opts.page}: similarity ${s.similarity ?? 'n/a'}% over ${s.rows.length} breakpoint(s), bar ${s.bar}%`);
   for (const r of s.rows) log(`  ${gateRow(r)}`);
+  if (s.fonts?.unserved?.length) log(`  donor font not served by the page: ${s.fonts.unserved.join(', ')}${s.pass ? '' : ' — residual class font.unserved (reskin-ledger residual --gate exact --cause font.unserved)'}`);
   if (s.rows.some((r) => r.verdict === 'NO VERDICT')) return 124;
   return s.pass ? 0 : 1;
 }

@@ -22,13 +22,17 @@
  *       records figma.* NOT-RUN. Blocking: figma join/geometry/ramp; deployed content/tokens/parity/
  *       sanity/inherited/chrome and its figma re-run. A deployed.sanity or deployed.chrome residual is never
  *       accepted (M2a D7): a broken page or broken chrome is fixed, not waived.
+ *       (f) evidence: <dir>/.work/reskin/gates/<slug>/exact/summary.json (figma-gate exact, Figma-only sites) —
+ *       its ledgerFragment becomes gates.exact (blocking), kept from the ledger without fresh evidence.
  *       migrated: reads <dir>/reskin/gates/<slug>/migrated/*.md — the sibling gate on migrate's output —
  *       into pages[slug].migratedGates and handoff.<type>.siblings.<slug>.
  *   eyeball <slug> --verdict pass|fail [--note "…"]     the side-by-side donor judgment (Phase 5); pass is
  *       refused while the page's deployed.chrome fragment fails
  *   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <owner>]
  *       a header, footer or chrome gate (step10.header, footer, …) is accepted only with --by naming the site
- *       owner, never an agent; a hands-off run records it needs-owner
+ *       owner, never an agent; a hands-off run records it needs-owner. A residual class (RESIDUAL_CLASSES:
+ *       --cause font.unserved on gate exact) is accepted only when the gate's recorded evidence carries that
+ *       cause; an agent may accept it (it is not chrome)
  *   show [<slug>]
  *
  * Exit 0 ok, 1 refused (missing page, report or prototype), 2 usage.
@@ -48,7 +52,8 @@ human judgments. reskin-preflight and migrate read it.
   eyeball <slug> --verdict pass|fail [--note "…"]   pass refused while deployed.chrome fails
   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <owner>]
       deployed.sanity and deployed.chrome are never accepted; a header, footer or chrome gate
-      (step10.header, footer, …) is accepted only --by the site owner, never an agent
+      (step10.header, footer, …) is accepted only --by the site owner, never an agent; a residual
+      class (--gate exact --cause font.unserved) only when the recorded gate evidence names it
   show [<slug>]
 
 Exit 0 ok, 1 refused, 2 usage.`;
@@ -74,6 +79,18 @@ export const NEVER_ACCEPTED = ['deployed.sanity', 'deployed.chrome'];
 // Every page inherits the chrome, so a header or footer residual is the site owner's to accept, never an agent's.
 export const CHROME_GATE = /(^|\.)(header|footer|chrome|nav)(\b|$)/i;
 export const AGENT = /\b(agents?|assistant|stardust|claude|codex|copilot|gpt[\w.-]*|gemini|bot|auto|autopilot|auto-mode|hands-off|ai)\b/i;
+// Residual classes a gate's evidence names (its fragment's cause): accepted only on that evidence, by anyone (agent
+// included). font.unserved: figma-gate exact failed while a donor font family was not served (Figma rasterises the
+// licensed font, the page a fallback).
+export const RESIDUAL_CLASSES = { 'font.unserved': { gates: ['exact'], why: 'donor font not served: the Figma render and the page differ in glyphs' } };
+export function classRefusal(ledger, slug, gate, cause) {
+  const c = RESIDUAL_CLASSES[cause];
+  if (!c) return null;
+  if (!c.gates.includes(gate)) return `residual class ${cause} applies to gate ${c.gates.join(' | ')}, not ${gate}`;
+  const ev = ledger?.pages?.[slug]?.gates?.[gate];
+  if (ev?.cause !== cause) return `the recorded ${gate} evidence does not name ${cause}${ev ? ` (${ev.detail || ev.verdict})` : ' (no evidence: run figma-gate exact, then record)'}`;
+  return null;
+}
 export const ownerAccepted = (r) => r.verdict === 'accepted' && (!CHROME_GATE.test(r.gate || '') || (typeof r.by === 'string' && r.by.trim() !== '' && !AGENT.test(r.by)));
 export function fragmentVerdict(v) {
   const s = typeof v === 'string' ? v : v?.verdict;
@@ -135,6 +152,8 @@ export function applyRecord(ledger, { state, slug, stage = 'prototype', reports,
     if (fig) gates.figma = fig; else if (m2.figmaRequired) gates.figma = { missing: 'figma-gate all not run (Phase 5 (d))' };
     const dep = m2.deployed ?? entry.gates?.deployed;
     if (dep) gates.deployed = dep;
+    const ex = m2.exact ?? entry.gates?.exact;
+    if (ex) gates.exact = ex;
   }
   const accepted = (g) => entry.residuals.some((r) => residualCovers(r, g) && ownerAccepted(r) && !NEVER_ACCEPTED.includes(g));
   const ok = gateVerdicts(gates).every(({ gate, verdict }) => verdict === 'PASS' || accepted(gate));
@@ -224,6 +243,8 @@ export function main(argv) {
     if (!o.gate || !o.cause || !VERDICTS.includes(o.verdict)) { console.error(`reskin-ledger: residual needs --gate, --cause and --verdict ${VERDICTS.join('|')}`); return 2; }
     if (o.verdict === 'accepted' && NEVER_ACCEPTED.includes(o.gate)) { console.error(`reskin-ledger: a ${o.gate} residual cannot be accepted (hard): fix the page and re-run deployed-gate`); return 1; }
     if (o.verdict === 'accepted' && !ownerAccepted({ gate: o.gate, verdict: o.verdict, by: o.by })) { console.error(`reskin-ledger: a ${o.gate} residual is the site owner's to accept: pass --by <owner> (never an agent), or record it needs-owner`); return 1; }
+    const refused = o.verdict === 'accepted' && classRefusal(ledger, slug, o.gate, o.cause);
+    if (refused) { console.error(`reskin-ledger: ${refused}`); return 1; }
     const cls = /^(figma|deployed)\./.test(o.gate) ? { class: o.gate } : {};
     const by = o.by ? { by: o.by } : {};
     const e = { ...(ledger.pages[slug] || {}) }; e.residuals = [...(e.residuals || []).filter((r) => r.gate !== o.gate), { gate: o.gate, ...cls, cause: o.cause, verdict: o.verdict, ...by, note: o.note || null, at }];
@@ -250,9 +271,10 @@ export function main(argv) {
   const m2 = {};
   if (stage === 'prototype') {
     const ev = (kind) => { const f = join(o.dir, '.work', 'reskin', 'gates', slug, kind, 'summary.json'); try { return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')).ledgerFragment || null : null; } catch { return null; } };
-    const fig = ev('figma'); const dep = ev('deployed');
+    const fig = ev('figma'); const dep = ev('deployed'); const ex = ev('exact');
     if (fig && fig.regime !== 'preview') m2.figma = fig;
     if (dep) m2.deployed = dep;
+    if (ex) m2.exact = ex;
     m2.figmaRequired = existsSync(join(o.dir, 'reskin', 'curation-rules.json')) && existsSync(join(o.dir, 'scripts', 'reskin', 'figma-gate.mjs'));
   }
   const next = applyRecord(ledger, { state, slug, stage, reports, mobile, prototypeSha, at, m2 });

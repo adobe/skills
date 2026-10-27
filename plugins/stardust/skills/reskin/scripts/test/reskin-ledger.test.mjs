@@ -148,5 +148,32 @@ check('CLI: chrome residuals and the eyeball refuse what an agent may not waive'
   assert.equal(run(['eyeball', 'login', '--verdict', 'pass'], root).status, 0);
 });
 
+check('CLI: figma-gate exact evidence is gates.exact; a font.unserved failure is a residual class an agent may accept, only on that evidence', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rl-'));
+  const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
+  w('stardust/state.json', JSON.stringify(state)); w('stardust/prototypes/login-proposed.html', MOBILE_OK);
+  for (const f of ['dom-equality', 'slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  const exact = (frag) => w('stardust/.work/reskin/gates/login/exact/summary.json', JSON.stringify({ gate: 'exact', ledgerFragment: frag }));
+  const file = join(root, 'stardust/reskin/ledger.json');
+  const page = () => JSON.parse(readFileSync(file, 'utf8')).pages.login;
+  const res = (cause, ...a) => run(['residual', 'login', '--gate', 'exact', '--cause', cause, ...a], root);
+  exact({ verdict: 'FAIL', detail: '1/2 breakpoint(s): login@desktop' });
+  assert.equal(run(['record', 'login'], root).status, 0);
+  assert.equal(page().status, 'failing');
+  const noEv = res('font.unserved', '--verdict', 'accepted', '--by', 'copilot');
+  assert.equal(noEv.status, 1); assert.match(noEv.stderr, /evidence does not name font\.unserved/);
+  assert.match(run(['residual', 'login', '--gate', 'figma.join', '--cause', 'font.unserved', '--verdict', 'accepted'], root).stderr, /applies to gate exact/);
+  exact({ verdict: 'FAIL', detail: '2/2 — residual class font.unserved', cause: 'font.unserved', unserved: ['Licensed Sans'] });
+  run(['record', 'login'], root);
+  assert.equal(page().gates.exact.cause, 'font.unserved');
+  assert.equal(res('font.unserved', '--verdict', 'accepted', '--by', 'copilot', '--note', 'diff is glyph shapes only').status, 0, 'an agent may accept font.unserved');
+  assert.equal(run(['residual', 'login', '--gate', 'mobile-adapt-runtime', '--cause', 'no Playwright', '--verdict', 'accepted'], root).status, 0);
+  run(['record', 'login'], root);
+  assert.equal(page().status, 'gated');
+  exact({ verdict: 'PASS', detail: '2 breakpoint(s)' });
+  run(['record', 'login'], root);
+  assert.equal(page().gates.exact.verdict, 'PASS');
+});
+
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nall checks passed');

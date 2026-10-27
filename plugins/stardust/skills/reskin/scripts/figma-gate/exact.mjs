@@ -7,6 +7,11 @@
 //            PNG — share ≤ bar, |width delta| and |height delta| ≤ sizeTol; a variant the page does not
 //            show fails: the library is the whole kit, used on a page or not
 // Comparison is replica's pixel-compare (overlap, per-band breakdown). verdict and gateRow are pure.
+// Fonts: the page is measured with the fonts it serves. exact also probes, at each breakpoint, whether the donor's
+// declared families (donor-tokens.json type.family / type.*.fontFamily) render (a loaded @font-face or an
+// installed face); a FAIL row on a page whose donor family is not served is classed font.unserved (Figma
+// rasterises the licensed font, the browser a fallback: heading glyphs alone exceed the bar), a residual class
+// an agent may accept after reading the diff (reskin-ledger RESIDUAL_CLASSES), unlike chrome.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -64,6 +69,44 @@ async function flattenOnWhite(src, dst) {
   return dst;
 }
 
+// The donor's declared font families (first family of each type.family / type.*.fontFamily stack), generic
+// families aside. Pure.
+const GENERIC = /^(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-[a-z-]+|emoji|math|fangsong|inherit|initial|unset|-apple-system|blinkmacsystemfont)$/i;
+export function donorFamilies(tokens) {
+  const out = [];
+  (function walk(o, k) {
+    if (typeof o === 'string') {
+      if (!/^(family|fontFamily)$/.test(k)) return;
+      const first = o.split(',')[0].trim().replace(/^["']|["']$/g, '').trim();
+      if (first && !GENERIC.test(first) && !/^var\(/.test(first) && !out.includes(first)) out.push(first);
+      return;
+    }
+    if (o && typeof o === 'object' && !Array.isArray(o)) for (const [kk, v] of Object.entries(o)) if (!/^(_provenance|nodeRefs|familyNote)$/.test(kk)) walk(v, kk);
+  }(tokens?.type, 'type'));
+  return out;
+}
+
+// In the page: the families that do not render — no loaded @font-face of that name, and text set in it measures
+// as each generic fallback does (not installed). Serialized into the page.
+export const fontProbe = async (families) => {
+  await document.fonts?.ready;
+  const loaded = new Set([...(document.fonts || [])].filter((f) => f.status === 'loaded').map((f) => f.family.replace(/^["']|["']$/g, '').toLowerCase()));
+  const c = document.createElement('canvas').getContext('2d');
+  const w = (font) => { c.font = font; return c.measureText('mmmmmmmmmmlli WQ@#0123 Agx').width; };
+  const generic = /^(serif|sans-serif|monospace|cursive|fantasy|system-ui|ui-[a-z-]+|emoji|math|fangsong)$/i;
+  return families.filter((f) => !generic.test(f) && !loaded.has(f.toLowerCase()) && ['monospace', 'serif', 'sans-serif'].every((g) => w(`72px ${g}`) === w(`72px "${f}", ${g}`)));
+};
+
+// The ledger fragment of an exact run: PASS, FAIL (with the font.unserved class when a donor family was not served)
+// or NOT-RUN when a comparison had no verdict. Pure.
+export function exactFragment(rows, unserved = []) {
+  const failed = rows.filter((r) => r.verdict === 'FAIL');
+  if (rows.some((r) => r.verdict === 'NO VERDICT')) return { verdict: 'NOT-RUN', detail: 'pixel-compare past its deadline: re-run exact' };
+  if (!failed.length) return { verdict: 'PASS', detail: `${rows.length} breakpoint(s)` };
+  const cls = unserved.length ? { cause: 'font.unserved', unserved } : {};
+  return { verdict: 'FAIL', detail: `${failed.length}/${rows.length} breakpoint(s): ${failed.map((r) => r.key).join(', ')}${unserved.length ? ` — residual class font.unserved (donor font ${unserved.map((f) => `"${f}"`).join(', ')} not served)` : ''}`, ...cls };
+}
+
 async function pngSize(file) {
   const { PNG } = await import('pngjs');
   const p = PNG.sync.read(readFileSync(file));
@@ -95,6 +138,8 @@ async function withBrowser(fn) {
 // → { rows: [{ key, breakpoint, width, verdict, pct, heightDelta, why, files }], similarity }
 export async function runExact({ dir, slug, url, bar = DEFAULT_BAR, heightTol = DEFAULT_HEIGHT_TOL, timeout = 120, out }) {
   const renders = loadRenders(dir);
+  const families = donorFamilies(readJsonIf(join(dir, 'reskin', 'donor-tokens.json')));
+  const unserved = [];
   const frames = (renders.pages?.[slug] || []).slice().sort((a, b) => (BP_ORDER[a.breakpoint] ?? 9) - (BP_ORDER[b.breakpoint] ?? 9));
   if (!frames.length) throw new UsageError(`figma-renders.json has no frames for page "${slug}" (pages: ${Object.keys(renders.pages || {}).join(', ')})`);
   mkdirSync(out, { recursive: true });
@@ -112,15 +157,19 @@ export async function runExact({ dir, slug, url, bar = DEFAULT_BAR, heightTol = 
       const page = await ctx.newPage();
       await page.goto(toUrl(url), { waitUntil: 'load' });
       await settle(page);
+      const missingFonts = families.length ? await page.evaluate(fontProbe, families) : [];
+      for (const fam of missingFonts) if (!unserved.includes(fam)) unserved.push(fam);
       const files = { figma: await flattenOnWhite(ref, join(out, `${f.breakpoint}.figma.png`)), page: join(out, `${f.breakpoint}.page.png`), diff: join(out, `${f.breakpoint}.diff.png`) };
       writeFileSync(files.page, await page.screenshot({ fullPage: true, animations: 'disabled' }));
       await ctx.close();
       const c = compare(files.figma, files.page, files.diff, timeout);
       if (c.exit === DEADLINE_EXIT) { rows.push({ key, breakpoint: f.breakpoint, width, verdict: 'NO VERDICT', why: [`pixel-compare hit its ${timeout}s deadline`] }); continue; }
-      rows.push({ key, breakpoint: f.breakpoint, width, ...c, ...verdict(c, { bar, heightTol }), files });
+      const v = verdict(c, { bar, heightTol });
+      if (v.verdict === 'FAIL' && missingFonts.length) { v.why.push(`donor font ${missingFonts.map((x) => `"${x}"`).join(', ')} not served (residual class font.unserved)`); v.cause = 'font.unserved'; }
+      rows.push({ key, breakpoint: f.breakpoint, width, ...c, ...v, files });
     }
   });
-  const summary = { gate: 'exact', page: slug, url, bar, heightTol, rows, similarity: similarity(rows), pass: rows.every((r) => r.verdict === 'PASS') };
+  const summary = { gate: 'exact', page: slug, url, bar, heightTol, fonts: { declared: families, unserved }, rows, similarity: similarity(rows), pass: rows.every((r) => r.verdict === 'PASS'), ledgerFragment: exactFragment(rows, unserved) };
   writeFileSync(join(out, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
   return summary;
 }

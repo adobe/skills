@@ -455,6 +455,16 @@ breakpoint frame and of every variant of every kit block, used or not) into
   the default bar leaves room for that and nothing more. A row over the bar is one fix iteration
   (§ below), then a residual with its diff PNG under `.work/reskin/gates/<slug>/exact/` or
   `.work/reskin/gates/_library/`. Raising `--bar` is recorded in `direction.md` as a named deviation.
+- **Unserved donor font.** `exact` measures with the fonts the page serves and probes whether the
+  donor's families (`donor-tokens.json` `type.family`, `type.*.fontFamily`) render there (a loaded
+  `@font-face` or an installed face). A licensed font that is not served fails the bar by construction
+  (Figma rasterises it, the page a fallback: heading glyphs alone exceed 3 %), so a FAIL while a donor
+  family is unserved carries the residual class `font.unserved` (the row's `why`, `summary.json`
+  `fonts.unserved` and its `ledgerFragment` `cause`). `reskin-ledger.mjs record` copies the fragment
+  to `gates.exact` (blocking); `residual <slug> --gate exact --cause font.unserved --verdict accepted`
+  is refused unless that recorded evidence names the class, and an agent may accept it (it is not
+  chrome) after checking the diff PNG shows glyph shapes, not layout. Serve the font (or a licensed
+  web font) to clear it instead.
 - Exit codes are figma-gate's: 1 a FAIL row, 2 usage (no `figma-renders.json`), 124 a comparison
   past its deadline (re-run once).
 

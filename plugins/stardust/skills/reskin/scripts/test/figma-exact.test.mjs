@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { renderTargets, runRenders, textsOf } from '../figma/renders.mjs';
-import { gateRow, libraryTarget, similarity, verdict } from '../figma-gate/exact.mjs';
+import { donorFamilies, exactFragment, fontProbe, gateRow, libraryTarget, similarity, verdict } from '../figma-gate/exact.mjs';
 import { main as gateMain } from '../figma-gate.mjs';
 import { main as donorMain } from '../figma-donor.mjs';
 
@@ -139,6 +139,26 @@ await test('libraryTarget: {page} is the EDS library page, the EDS block the mea
   assert.deepEqual(libraryTarget(p, 'teaser', { eds: { block: 'cards', variant: 'teaser', page: 'cards' } }), { url: 'http://h/library/cards', cls: 'cards' });
   assert.deepEqual(libraryTarget(p, 'button', { eds: { block: null, variant: null, page: 'button' } }), { url: 'http://h/library/button', cls: null });
   assert.deepEqual(libraryTarget('http://h/{block}', 'chips', {}), { url: 'http://h/chips', cls: 'chips' }, 'no eds (an older renders file): the kit key');
+});
+
+await test('exact fonts: donor families from the type sheet; the fragment classes a failure font.unserved when one is not served', async () => {
+  const tokens = { type: { family: '"Licensed Sans", Arial, sans-serif', familyNote: 'x', display: { fontFamily: 'Licensed Serif, serif' }, body: { fontFamily: 'sans-serif' }, h2: { fontFamily: 'var(--x)' } } };
+  assert.deepEqual(donorFamilies(tokens), ['Licensed Sans', 'Licensed Serif']);
+  assert.deepEqual(donorFamilies(null), []);
+  const rows = [{ key: 'a@desktop', verdict: 'FAIL' }, { key: 'a@mobile', verdict: 'PASS' }];
+  assert.deepEqual(exactFragment(rows, ['Licensed Sans']), { verdict: 'FAIL', detail: '1/2 breakpoint(s): a@desktop — residual class font.unserved (donor font "Licensed Sans" not served)', cause: 'font.unserved', unserved: ['Licensed Sans'] });
+  assert.deepEqual(exactFragment(rows), { verdict: 'FAIL', detail: '1/2 breakpoint(s): a@desktop' });
+  assert.equal(exactFragment([{ key: 'a', verdict: 'PASS' }], ['X']).verdict, 'PASS');
+  assert.equal(exactFragment([{ key: 'a', verdict: 'NO VERDICT' }]).verdict, 'NOT-RUN');
+  let pw = null;
+  try { pw = await import('playwright'); } catch { /* no browser here */ }
+  if (!pw) return;
+  const browser = await pw.chromium.launch();
+  try {
+    const page = await browser.newPage();
+    await page.setContent('<p style="font-family: monospace">x</p>');
+    assert.deepEqual(await page.evaluate(fontProbe, ['No Such Family Xq', 'monospace']), ['No Such Family Xq']);
+  } finally { await browser.close(); }
 });
 
 console.log(`\n${passes} passed, ${failures} failed`);
