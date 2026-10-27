@@ -4,6 +4,38 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.33.0 — reskin takes a Figma donor: headless capture and deterministic curation
+
+`reskin --donor-figma <url>` replaces the "not yet implemented" stop. The new `reskin/figma-donor.mjs` reads the file over
+the Figma REST API with a personal access token (`FIGMA_TOKEN`); no browser, no MCP server. `capture` pins one file
+version, caches the raw responses and writes `canon-source/` foundation, role and module candidates and frame screenshots,
+every value citing its node id. `curate` turns the agent-authored `reskin/curation-rules.json` into `donor-tokens.json`,
+`donor-modules.md`, `DESIGN.{md,json}` and `_brand-extraction.json`, byte-identical for the same inputs. `stamp` sets
+`state.json.designSource`. `donor-sources.md` §3 is now the recipe, with `figma-rest` provenance. `--confidential`
+refuses to write anything git would track and redacts the stamped URL. `capture` takes the whole file by default: every
+visible top-level frame, section, component and component set of every page. A shared link names whichever page the
+designer had open (a kit's cover), so the URL's node-id is recorded as `linked` and never narrows; `--frames` narrows,
+`--max-frames` only caps when passed, and a frame Figma cannot render is recorded as not renderable. Four review fixes: a failed `--refresh` no longer overwrites the last
+complete capture of the same file version (a capture is staged and swapped in whole); `--confidential` checks every
+output and cache path, not one per directory; an API error reason is redacted before it is truncated; `curate` no
+longer emits radii or shadows the rules mark absent.
+
+- **Field learnings.** Instance children carry the resolved overrides and `overrides[]` was empty on every instance sampled,
+  so values come from the children; a button's paint often sits on a same-size wrapper frame, so each property cites the
+  layer that paints it. One MCP export capped renders at 1024px and rate limits follow the file's plan: REST with a cached
+  file version is the primary path. The capture recipes and curation method come from #315, kept open as the reference.
+- **Optional card, button-height and mobile layout roles.** Curation accepts a `cards` group and seven recommended paths
+  (`cards.primary.background|borderRadius|padding|titleColor`, `buttons.primary.height`,
+  `layout.mobile.sectionPaddingY|gutter`) with role candidates from card components, button box heights and frames
+  narrower than 600px. They never block: `curate` notes each one left unmapped and lists them in
+  `coverage.recommended`.
+- **A reskin migrates the whole site.** Phase 1 ran `extract <content-url>`, extract's capped discovery mode, so a 60-page
+  school site came back with 25 pages. Every content crawl is now `--all` (not `--prep`: reskin never runs the
+  prepare-migration cascade), reskin types every inventory page itself, and Setup step 5 treats a capped crawl
+  (`site.pageCap` set, a `below cap` row in `_crawl-log.json#discovery.cut`) as a setup error to re-crawl. `--pages`
+  restricts the archetype capture, never the inventory. Phase 6 migrates and ships every page by default;
+  archetypes-only delivery is an opt-out the user asks for, recorded in `ledger.json#delivery`.
+
 ## 0.32.1 — spec knowledge, wave 4: what a reviewing client had to guess
 
 Wave 4 of how clients use a spec's `stardust/spec/knowledge/`. A spec viewer that lets people review the spec

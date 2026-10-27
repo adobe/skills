@@ -1,0 +1,46 @@
+{
+  "name": "Sample Kit",
+  "lastModified": "2026-01-01T00:00:00Z",
+  "version": "v1",
+  "role": "viewer",
+  "editorType": "figma",
+  "document": {
+    "id": "0:0",
+    "name": "Document",
+    "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "0:1",
+        "name": "Pages",
+        "type": "CANVAS",
+        "children": [
+          { "id": "1:2", "name": "Home", "type": "FRAME", "absoluteBoundingBox": { "x": 0, "y": 0, "width": 1440, "height": 1840 } },
+          { "id": "1:9", "name": "Article", "type": "FRAME", "absoluteBoundingBox": { "x": 1600, "y": 0, "width": 1440, "height": 1800 } }
+        ]
+      },
+      {
+        "id": "0:2",
+        "name": "Components",
+        "type": "CANVAS",
+        "children": [
+          { "id": "3:1", "name": "Button", "type": "COMPONENT_SET", "absoluteBoundingBox": { "x": 0, "y": 0, "width": 400, "height": 120 } }
+        ]
+      }
+    ]
+  },
+  "components": {
+    "3:2": { "key": "ck-primary", "name": "Variant=Primary", "description": "", "remote": false, "componentSetId": "3:1" },
+    "3:3": { "key": "ck-secondary", "name": "Variant=Secondary", "description": "", "remote": false, "componentSetId": "3:1" }
+  },
+  "componentSets": {
+    "3:1": { "key": "cs-button", "name": "Button", "description": "", "remote": false }
+  },
+  "styles": {
+    "S:navy": { "key": "sk-navy", "name": "Brand/Navy", "styleType": "FILL", "remote": false, "description": "" },
+    "S:ink": { "key": "sk-ink", "name": "Text/Ink", "styleType": "FILL", "remote": false, "description": "" },
+    "S:display": { "key": "sk-display", "name": "Display/Large", "styleType": "TEXT", "remote": false, "description": "" },
+    "S:body": { "key": "sk-body", "name": "Body/Regular", "styleType": "TEXT", "remote": false, "description": "" },
+    "S:elevation": { "key": "sk-elevation", "name": "Elevation/Card", "styleType": "EFFECT", "remote": false, "description": "" }
+  },
+  "schemaVersion": 0
+}

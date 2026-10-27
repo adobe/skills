@@ -51,6 +51,17 @@ rescoping before the suite is run against 0.14.0:
   merge-by-slug parallelism contract; new evals are needed rather than
   rescoped ones.
 
+### 0.33.0 notes
+
+- **`reskin-content-fidelity` uses a live-URL donor**, so
+  `donor_ingestion_design_source` and `provenance` stay correct for it.
+  A Figma-donor run would be scored on `figma-donor.mjs capture` and
+  node-id provenance instead (`donor-tokens.json#nodeRefs`,
+  `fetchTechnique: "figma-rest"` in `canon-source/_crawl-log.json`).
+- **No Figma-donor eval yet.** It waits for a synthetic Figma server the
+  runner can start; the script's own tests use one
+  (`skills/reskin/scripts/test/fixtures/figma-kit/fake-figma.mjs`).
+
 Evaluation suite for the four-phase redesign pipeline plus the
 "open and reasoned" intent-reasoning principle that governs the
 master skill.

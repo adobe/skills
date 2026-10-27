@@ -1,6 +1,6 @@
 ---
 name: reskin
-description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, or local static HTML prototypes (Figma donors are contract-defined, not yet implemented). Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
+description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, local static HTML prototypes, or a Figma file read headlessly over the REST API. Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", "use this Figma design for my site", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
@@ -9,7 +9,7 @@ compatibility: Requires Node 22+, Playwright with Chromium resolvable from the p
 
 The user has a site (the **content source**) and a design that already
 exists somewhere else (the **donor**: another live site, or a directory
-of static HTML prototypes; Figma is future scope). Reskin rebuilds the
+of static HTML prototypes, or a Figma file). Reskin rebuilds the
 content site's pages so that every visible byte of content survives —
 text, ordered images, CTAs, SEO metadata — while the surface comes
 entirely from the donor's tokens and module vocabulary.
@@ -41,19 +41,18 @@ regression check instead of a debugging tool.
     prototypes (claude-design / Mobirise / Relume / Lovable / v0 /
     hand-coded). Served on localhost and captured through the same
     path — recipe in `reference/donor-sources.md` § Local prototypes.
-  - `--donor-figma <url>` — **not yet implemented.** The contract is
-    defined (`reference/donor-sources.md` § Figma) but the adapter is
-    future scope. Tell the user exactly this: *"Figma donors are not
-    implemented yet. Export the frames as static HTML prototypes (or
-    point me at a live staging URL of the design) and re-run with
-    `--donor-dir` / `--donor`. The Figma adapter — variables→palette,
-    text styles→type, frame screenshots→vision references, provenance
-    class `figma-mcp` — is specced in
-    `skills/reskin/reference/donor-sources.md` and will land in a
-    later release."* Do not improvise a partial Figma capture.
+  - `--donor-figma <url>` — a Figma file (a design, file, proto or
+    branch URL; the whole file is read, a `node-id` only recorded), read
+    headlessly over the REST API. Needs `FIGMA_TOKEN`, a personal
+    access token with `file_content:read`. Optional `--frames <ids>`
+    and `--confidential` (refuses to write anything git would track;
+    sticky for `curate` and `stamp`).
+    Flags, file schemas and exit codes: `figma-donor.mjs --help`.
 - `--pages <slug,slug,...>` — optional. Restrict the content capture
-  to specific pages. Default: the archetype set (one page per page
-  family; a spec's `archetypes.json` names them; scale to siblings happens in Phase 6 via `migrate`).
+  (Phases 2–5) to specific pages. Default: the archetype set (one page
+  per page type; a spec's `archetypes.json` names them; scale to
+  siblings happens in Phase 6 via `migrate`). Never restricts the
+  inventory: Phase 1 still crawls the whole site.
 - `--scope <selectors>` — optional. Pre-declare the content-root
   scope for a single-page run (comma-separated, `!` suffix keeps a
   scope whole; see `reference/content-model.md` § Scope declaration).
@@ -76,10 +75,11 @@ regression check instead of a debugging tool.
    install is pruned by any later real `npm i`.
 3. **Copy the scripts into the project.** ESM resolves
    `import('playwright')` from the *script's* directory and the plugin
-   tree ships no `node_modules`. Copy `skills/reskin/scripts/*` (all
-   five files — `capture-content.mjs` and `dom-equality.mjs` import
-   `source-normalize.mjs` as a sibling) byte-identical to
-   `stardust/scripts/reskin/`, **and** `skills/diff/scripts/
+   tree ships no `node_modules`. Copy `skills/reskin/scripts/`
+   recursively except `test/` (sibling imports and the `figma/`
+   helpers travel with it) byte-identical to `stardust/scripts/reskin/`,
+   `skills/stardust/scripts/state.mjs` to `stardust/scripts/stardust/`
+   (`figma-donor.mjs stamp` writes through it), **and** `skills/diff/scripts/
    live-session.mjs` to `stardust/scripts/diff/` — every reskin gate
    script (capture-content, dom-equality, donor-probe, **and**
    slot-coverage) imports it unconditionally at startup, regardless
@@ -92,18 +92,36 @@ regression check instead of a debugging tool.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
+5. **Full-inventory check** — on resume, and again after Phase 1's
+   crawl, before Phase 2. The crawl is uncapped when
+   `state.json.site.pageCap` is `0` or null and
+   `stardust/current/_crawl-log.json#discovery.cut[]` holds no
+   `below cap` row (so `site.crawled` + `crawl.failures[]` equals
+   `discovery.filteredCount`). Anything else — an earlier
+   discovery-mode extract, a `--cap` run, a 25-page `crawl.mjs`
+   default — is a setup error: re-crawl the content site with `--all`
+   (Phase 1) before going on. A failed page is retried or recorded,
+   never dropped.
 
 ## Procedure
 
 ### Phase 1 — INGEST DONOR
 
 The donor's design system is captured **separately** from the content
-site, into `stardust/canon-source/`. Full recipes per donor type in
+site, into `stardust/canon-source/`. The same extract run crawls the
+content site, and **a reskin migration covers the whole site**: the
+content crawl is always `--all`, the full junk-filtered inventory.
+Extract's discovery cap (5; `crawl.mjs --max` 25) never applies to
+the content site, and a capped crawl is a setup error (Setup step 5).
+Not `--prep`: that is `prepare-migration`'s cascade, and reskin never
+runs `direct --prep` or `prepare-migration`. `--all` scopes the
+content inventory only; the donor keeps its own cap
+(`reference/donor-sources.md` § 1). Full recipes per donor type in
 `reference/donor-sources.md`; summary:
 
 - **Live URL** (`--donor <url>`): invoke
-  `$stardust extract <content-url> --design-source <donor-url>` — the
-  existing skill, unchanged. It lands in `stardust/canon-source/`: the
+  `$stardust extract <content-url> --all --design-source <donor-url>`
+  — the existing skill, unchanged. It lands in `stardust/canon-source/`: the
   donor's `pages/`, `assets/` (screenshots included),
   `_brand-extraction.json`, `_crawl-log.json`, and a descriptive
   `DESIGN.md` + `DESIGN.json`, and stamps
@@ -116,11 +134,30 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
   `<path>`) in `canon-source/_crawl-log.json`. Recipe details —
   page listing, index-less directories, port hygiene — in
   `reference/donor-sources.md` § Local prototypes.
-- **Figma** (`--donor-figma`): FUTURE. Surface the exact message from
-  § Inputs and stop.
+- **Figma** (`--donor-figma <url>`): no browser, no donor crawl. Run
+  `$stardust extract <content-url> --all` (it creates `state.json`), then
+  `node stardust/scripts/reskin/figma-donor.mjs capture <figma-url>`
+  (the whole file: every page's frames, components and component
+  sets, whichever page the URL names; `--frames` narrows);
+  author `stardust/reskin/curation-rules.json` from
+  `canon-source/role-candidates.json`, `module-candidates.json` and
+  the frame screenshots (pin one reference frame, mode and breakpoint
+  per module family; map the 13 probe paths or mark each absent with
+  a why; list section-level modules, not atoms); then `curate` and
+  `stamp`. Judge the result against the screenshots and fix the
+  rules, not the outputs. Recipe: `reference/donor-sources.md` § Figma.
+
+**Type every inventory page.** `--all` leaves `state.json.pages[].type`
+null (only `--prep` types). Reskin types each page itself, before
+Phase 2: from a spec's `archetypes.json` when present, else inferred
+from URL pattern and content shape over the catalog in
+`../stardust/reference/state-machine.md` § Page types (the rule in
+`../extract/reference/prep-mode.md` § 2). One archetype per type is
+the default `--pages` set; `migrate` groups siblings by this field.
+Print the count per type with its archetype.
 
 Then author two reskin-owned donor artifacts (contracts in
-`reference/donor-sources.md`):
+`reference/donor-sources.md`; for a Figma donor `curate` writes both):
 
 - `stardust/reskin/donor-tokens.json` — the **curated, probe-able
   token sheet**: palette roles, type ramp, layout metrics, button
@@ -138,7 +175,9 @@ Then author two reskin-owned donor artifacts (contracts in
 - `stardust/reskin/donor-modules.md` — the **enumerated module
   vocabulary** (M1..Mn): one row per donor module with where-seen
   screenshot evidence and an anatomy description. This is the closed
-  set the Phase 3 mapping brief maps onto.
+  set the Phase 3 mapping brief maps onto. Its EDS block column is a
+  proposal settled by [`deploy` Step 2](../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code)
+  (D1/D11) — `reference/donor-sources.md` § donor-modules.md.
 
 **The pin-one-reference-page rule (hard).** Real donors run multiple
 design systems concurrently — the experiment's donor served radius-4px
@@ -346,6 +385,9 @@ Then the **side-by-side judgment**: open the rendered page next to the
 donor reference-page screenshots (`canon-source/assets/screenshots/`)
 and judge adoption with your eyes — the probe proves tokens, the
 eyeball proves the page *reads as* the donor. Record the verdict.
+Paths in `donor-tokens.json` `coverage.absent` are SKIPs in
+`donor-probe` and never fail it, so copy each into every page's
+`flags[]` in `ledger.json`.
 
 **(c) Sanity** — no horizontal overflow at 1440 and 360 (donor-probe
 runs this automatically; `--widths` to override).
@@ -365,19 +407,29 @@ per-family keeps the loop bounded without absorbing real failures.)
 ### Phase 6 — HANDOFF
 
 Reskin owns the archetype pages; scale and shipping are the existing
-pipeline, unchanged:
+pipeline, unchanged. **The default is the whole site:** once every
+archetype is gated (residuals logged), every page of the Phase 1
+inventory is migrated and shipped — archetypes are the means, not the
+delivery. Archetypes-only delivery (`rollout` archetypes-only mode,
+the rest `content-pending`) is an opt-out the user asks for in
+words; record it as `ledger.json#delivery = { scope:
+"archetypes-only", requestedBy: "user", reason, at }` (default
+`scope: "full-site"`) and name it in the handoff report.
 
 - **Scale via the stardust `migrate` skill** (`../migrate/SKILL.md`) with the
   donor-pinned target (the `state.json.designSource` stamp Phase 1
-  wrote is exactly what `direct`/`migrate` read for donor pinning;
+  wrote is what `direct` reads for donor pinning;
   a bounded donor capture wrote no stamp — record the donor origin
   in the handoff instead, `reference/donor-sources.md` § Two
   first-class token-sourcing paths).
-  Same-type sibling pages render at the **sibling tier** against the
-  gated archetype. Content rules are the ones reskin already
+  Every non-archetype inventory page renders at the **sibling tier**
+  against its type's gated archetype; a page whose type has no
+  archetype gets one (Phases 2–5) or the unique-render branch, never a skip.
+  Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.
-- **Ship via the stardust `deploy` and `rollout` skills**, unchanged. Blocks
+- **Ship via the stardust `deploy` and `rollout` skills**, unchanged —
+  `rollout` over the full migrated tree. Blocks
   written for donor modules obey the Experience Workspace editability
   contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW gate
   (`block-roundtrip --ew`) before they are done.
@@ -385,9 +437,10 @@ pipeline, unchanged:
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`
 holds per-page status (`captured → mapped → rendered → gated`), gate
 results, and residuals. It makes **no changes to the core state
-machine** (`../stardust/reference/state-machine.md`); the only
-`state.json` touch is the `designSource` stamp that extract itself
-writes in Phase 1.
+machine** (`../stardust/reference/state-machine.md`): Setup stamps
+`flow`, and Phase 1 stamps `designSource` (`extract --design-source`
+for URL and directory donors, `figma-donor.mjs stamp` for Figma) and
+fills `pages[].type`.
 
 ## What reskin never does
 
@@ -403,6 +456,8 @@ writes in Phase 1.
 - **No silent slot drops.** Anything excluded from the gate scope is a
   declared chrome delta or a ledger normalization — declared in
   `mapping.md`, executable in the normalize module.
+- **No partial site.** No capped content crawl, and no page of the
+  inventory left unmigrated unless the user opted out (Phase 6).
 
 ## Stop conditions
 
@@ -414,13 +469,16 @@ writes in Phase 1.
 - **Scope undecidable** — the content page's visible content cannot be
   covered by any selector set (heavy shadow-DOM, iframe-embedded
   content). Surface with the screenshot evidence.
-- **Figma donor requested** — future scope; exact message in § Inputs.
+- **Figma capture blocked** (exit 3: token, access, or a long
+  rate-limit wait) — surface the script's checklist verbatim.
 
 ## Outputs
 
 | Path | Purpose |
 |---|---|
-| `stardust/canon-source/` | Donor capture + descriptive DESIGN.md/json (extract `--design-source`, unchanged) |
+| `stardust/canon-source/` | Donor capture + descriptive DESIGN.md/json (extract `--design-source`, unchanged; or `figma-donor.mjs` for Figma) |
+| `stardust/canon-source/foundation/`, `{role,module}-candidates.json`, `spec-tables.json` | Figma donor only: normalized Figma values with node ids, and the candidates the agent curates from |
+| `stardust/reskin/curation-rules.json` | Figma donor only: the authored rules, the one non-mechanical `curate` input |
 | `stardust/reskin/donor-tokens.json` | Curated probe-able token sheet, pinned to one reference page |
 | `stardust/reskin/donor-modules.md` | Enumerated donor module vocabulary (M1..Mn) with screenshot evidence |
 | `stardust/reskin/content-model/<slug>/content-model.json` | Byte-oriented per-page content model (+ source screenshot) |
@@ -430,13 +488,14 @@ writes in Phase 1.
 | `stardust/reskin/pages/<slug>.html` | Rendered reskin pages |
 | `stardust/reskin/reports/` | Per-page gate reports + screenshots |
 | `stardust/reskin/ledger.json` | Per-page status, gate results, residuals |
-| `stardust/scripts/reskin/` | Project-local copies of the five skill scripts |
+| `stardust/scripts/reskin/` | Project-local copies of the skill scripts |
+| `stardust/.work/reskin/figma/` | Figma donor only: raw REST cache and frame PNGs (git-ignored) |
 
 ## References
 
 - `reference/donor-sources.md` — the three donor types and their
   capture recipes; pin-one-reference-page; `donor-tokens.json` and
-  `donor-modules.md` contracts; the Figma future contract.
+  `donor-modules.md` contracts; the Figma adapter (REST).
 - `reference/content-model.md` — the capture contract: slot taxonomy,
   the ordered stream (the render surface), scope-discovery procedure,
   normalization ledger format, provenance.
