@@ -249,7 +249,7 @@ never in the page or the EDS blocks alone.
 
 The decisive validated rule: **the page is GENERATED from
 `content-model.json` — never retyped by hand.** The generic renderer
-`scripts/stream-render.mjs <slug> --register [--localize-images]`
+`scripts/stream-render.mjs <slug> --register --type <page type> [--localize-images]`
 covers any donor and site; write a per-archetype
 renderer (`stardust/reskin/renderers/<archetype>.mjs`) only where it
 falls short. Either way the renderer:
@@ -303,6 +303,11 @@ the page, `src="assets/img/…"`: the page shows it from
 through `state.mjs`: `prototypePath` set to the rendered file, the page
 advanced to `prototyped` — a same-type sibling of an approved archetype
 only to `directed`, the status `migrate` renders at the sibling tier.
+`--type <page type>` (with `--register`) also writes the page's `type`
+— the archetype name its pages share (`form`, `article`, …), the key
+preflight's `archetypes` check, the sibling role and `migrate`'s sibling
+tier group by; pass it on every render of a page that has none, or
+preflight fails "no page has a type" and no sibling migrates.
 `reskin-ledger record`, the canon bridge, preflight and `migrate` then
 find it with no hand edit. Render the archetype candidates here; render
 siblings after the archetype is approved (Phase 6), so they register as
@@ -475,7 +480,7 @@ pipeline:
   migrate's inputs (`canon/`, donor-sourced `DESIGN.*`, `direction.md`,
   `dynamic-features.md`), advances the approved type's `extracted`
   siblings to `directed` (migrate's sibling tier; then render each with
-  `stream-render <slug> --register`) and, on a re-run with `--force`, flags
+  `stream-render <slug> --register --type <archetype type>`) and, on a re-run with `--force`, flags
   approved/migrated pages stale where the canon change reaches them.
   A changed canon is captured to `stardust/reskin/approvals/` and
   pixel-compared with the previous approval (warn above

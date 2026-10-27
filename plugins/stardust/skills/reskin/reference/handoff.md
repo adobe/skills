@@ -7,8 +7,10 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
 
 ## The sequence
 
-1. Phase 4 renders with `stream-render.mjs <slug> --register` (state's
-   `prototypePath`), Phase 5 gates per page → `reskin-ledger.mjs record <slug>`
+1. Phase 4 renders with `stream-render.mjs <slug> --register --type <type>`
+   (state's `prototypePath`, and the page `type` — the archetype name its
+   pages share; untyped pages fail preflight's `archetypes` and never
+   migrate at the sibling tier), Phase 5 gates per page → `reskin-ledger.mjs record <slug>`
    (+ `eyeball`, `residual` for the two human judgments).
 2. Approve the archetype (§ Approval) → `reskin-ledger.mjs record <archetype>`
    again, so `handoff.<type>` names it.
@@ -18,8 +20,8 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
    renders at the sibling tier; `direct` refuses under reskin). It names the
    siblings it left: stale ones, and `prototyped` ones (`migrate render --all`
    skips them). Re-run it after approving another type's archetype.
-4. Render each sibling: `stream-render.mjs <slug> --register` (it stays
-   `directed`, with the `prototypePath` migrate reads as its source).
+4. Render each sibling: `stream-render.mjs <slug> --register --type <type>`
+   (the archetype's type; it stays `directed`, with the `prototypePath` migrate reads as its source).
 5. `reskin-preflight.mjs` exit 0 (§ The predicate).
 6. `migrate render --all` with its default flags — archetypes at their own tier,
    same-type pages at the sibling tier; migrate merges `handoff.<type>.gates`

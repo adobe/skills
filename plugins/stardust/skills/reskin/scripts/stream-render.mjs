@@ -54,14 +54,18 @@
  *
  * Usage:
  *   node stream-render.mjs <slug> [--dir stardust] [--mapping <dir>/reskin/mapping.json]
- *     [--model-dir <dir>/reskin/content-model] [--out <dir>/reskin/pages/<slug>.html] [--localize-images] [--register]
+ *     [--model-dir <dir>/reskin/content-model] [--out <dir>/reskin/pages/<slug>.html] [--localize-images]
+ *     [--register [--type <archetype type>]]
  *     --register (flow "reskin" only; any other flow is exit 2 before rendering) records the page in
  *     <dir>/state.json through skills/stardust/scripts/state.mjs (history + _provenance writtenBy
  *     stardust:reskin): prototypePath = --out relative to the project root (the parent of --dir), so
  *     reskin-ledger, canon-from-reskin, preflight and migrate find it; an extracted/directed page advances
  *     to prototyped — a sibling of a type with an approved/migrated archetype only to directed, the status
  *     migrate renders at the sibling tier; a page at prototyped or later keeps its status. A slug not in
- *     state.json is rendered and noted, not registered.
+ *     state.json is rendered and noted, not registered. --type <t> (with --register only) also writes the
+ *     page's `type` — the page type its archetype is gated for, which reskin-preflight's archetypes check,
+ *     the sibling role and migrate's sibling tier read; set before the sibling role is decided. An
+ *     approved/migrated page whose type differs is refused (exit 2, before rendering).
  *   node stream-render.mjs --check [<slug>…] [--dir stardust] [--mapping <f>] [--model-dir <d>]
  *     validates mapping.json (reference/mapping-json.md): unknown keys, values outside the enums above,
  *     slot ids the page's content model lacks, requested slugs without a pages entry — one problem per
@@ -88,7 +92,7 @@ import { rootTokens } from './render/root-tokens.mjs';
 import { donorModulesEds } from './figma/eds-map.mjs';
 
 const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--model-dir <d>] [--out <file>]
-         [--localize-images] [--register]
+         [--localize-images] [--register [--type <t>]]
        node stream-render.mjs --check [<slug>…] [--dir stardust] [--mapping <file>] [--model-dir <d>]
        node stream-render.mjs <slug> --deploy-map [--dir stardust] [--mapping <file>] [--model-dir <d>]
 
@@ -105,6 +109,9 @@ Render one page from <dir>/reskin/content-model/<slug>/content-model.json with t
                        exit 2 before rendering): prototypePath = --out relative to the project root;
                        extracted/directed → prototyped, or → directed for a sibling of a type that has
                        an approved archetype (migrate's sibling tier); later statuses keep their status
+  --type <t>           with --register: also set the page's type in state.json (the page type = its
+                       archetype's type, which preflight and migrate's sibling tier group by); refused
+                       (exit 2) on an approved/migrated page of another type
   --deploy-map         print block-roundtrip's --map arguments for <slug>: one block per EDS block of the
                        mapped modules (mapping.json blocks.<module>, else the module's EDS block in
                        <dir>/reskin/donor-modules.md — deploy Step 2 — else the module id lower-cased), its
@@ -933,7 +940,7 @@ async function localize(urls, assetsDir, referer) {
 }
 
 // argv → { pos[], flags }; a value flag needs a value, an unknown flag is a usage error.
-const VALUE_FLAGS = ['--dir', '--mapping', '--out', '--model-dir'];
+const VALUE_FLAGS = ['--dir', '--mapping', '--out', '--model-dir', '--type'];
 const BOOL_FLAGS = ['--localize-images', '--check', '--register', '--deploy-map', '--help', '-h'];
 function parseArgs(argv) {
   const o = { pos: [], dir: 'stardust' };
@@ -988,19 +995,25 @@ const LIFECYCLE = ['extracted', 'directed', 'prototyped', 'approved', 'migrated'
 // `directed`, the status migrate renders at the sibling tier (Path A′; `prototyped` is skipped by
 // `migrate render --all`). Any other page behind `prototyped` advances to it (its history entry, stale
 // cleared). A page at `prototyped` or later only gets its path (a re-render is gated and recorded again;
-// preflight compares the recorded prototype sha). Returns { slug, from, to, role, changed } or null.
-export function registerRendered(state, slug, prototypePath, { advance, at }) {
+// preflight compares the recorded prototype sha). `type`, when given, is written to the page first (it decides
+// the sibling role). Returns { slug, from, to, role, changed, typed? } or null.
+export function registerRendered(state, slug, prototypePath, { advance, at, type = null }) {
   const page = (state.pages || []).find((p) => p.slug === slug);
   if (!page) return null;
+  let typed = null;
+  if (type && page.type !== type) { typed = { from: page.type || null, to: type }; page.type = type; }
   const from = page.status; const i = LIFECYCLE.indexOf(from);
   const sibling = !!page.type && state.pages.some((p) => p.slug !== slug && p.type === page.type && ['approved', 'migrated'].includes(p.status));
   const role = sibling ? 'sibling' : 'page';
   const to = i < 0 || i >= 2 ? from : sibling ? 'directed' : 'prototyped';
-  if (to !== from) { advance(state, [slug], { to, prototype: prototypePath, at }); return { slug, from, to, role, changed: true }; }
-  const changed = page.prototypePath !== prototypePath;
+  const t = typed ? { typed } : {};
+  if (to !== from) { advance(state, [slug], { to, prototype: prototypePath, at }); return { slug, from, to, role, changed: true, ...t }; }
+  const changed = page.prototypePath !== prototypePath || !!typed;
   page.prototypePath = prototypePath;
-  return { slug, from, to, role, changed };
+  return { slug, from, to, role, changed, ...t };
 }
+
+export const PAGE_TYPE = /^[a-z0-9][a-z0-9_-]*$/i;
 
 async function stateLib() {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -1010,22 +1023,26 @@ async function stateLib() {
 }
 
 // Loads <dir>/state.json for --register and refuses outside flow reskin, before anything is rendered.
-async function registerSetup(dir) {
+async function registerSetup(dir, slug, type = null) {
   const lib = await stateLib();
   let r; try { r = lib.readState(dir); } catch (e) { throw new SetupError(`--register: ${e.message}`); }
   if (r.state.flow !== 'reskin') throw new SetupError(`--register: ${r.file} flow is ${r.state.flow ? `"${r.state.flow}"` : 'unset'} — only a flow "reskin" project registers reskin pages (render without --register)`);
-  return { lib, ...r };
+  const page = r.state.pages.find((p) => p.slug === slug);
+  if (type && page?.type && page.type !== type && ['approved', 'migrated'].includes(page.status)) {
+    throw new SetupError(`--type: ${slug} is ${page.status} as type "${page.type}" — re-typing it would move its archetype/sibling role; change it deliberately with state.json, then re-gate and re-approve`);
+  }
+  return { lib, ...r, type };
 }
 
-function registerCli({ lib, state, file }, slug, out, dir) {
+function registerCli({ lib, state, file, type }, slug, out, dir) {
   const root = dirname(resolve(dir));
   const prototypePath = relative(root, out).split(sep).join('/');
   const at = lib.nowIso();
-  const r = registerRendered(state, slug, prototypePath, { advance: lib.advance, at });
+  const r = registerRendered(state, slug, prototypePath, { advance: lib.advance, at, type });
   if (!r) { console.log(`note: ${slug} is not a page in ${file} — not registered`); return; }
   if (r.changed) { state._provenance = lib.stampProvenance(state._provenance, 'stardust:reskin', at); lib.writeState(file, state); }
   const move = r.to === r.from ? `stays ${r.from}` : `${r.from} → ${r.to}`;
-  console.log(`registered ${slug}: prototypePath ${prototypePath}, ${move}${r.role === 'sibling' ? ' (sibling of an approved archetype: migrate renders it at the sibling tier)' : ''}${r.changed ? '' : ' (unchanged)'}`);
+  console.log(`registered ${slug}: prototypePath ${prototypePath}${r.typed ? `, type ${r.typed.from ? `${r.typed.from} → ` : ''}${r.typed.to}` : ''}, ${move}${r.role === 'sibling' ? ' (sibling of an approved archetype: migrate renders it at the sibling tier)' : ''}${r.changed ? '' : ' (unchanged)'}`);
   if (['approved', 'migrated'].includes(r.from)) console.log(`note: ${slug} is ${r.from}; re-run its gates and reskin-ledger.mjs record ${slug} (preflight fails a prototype changed since it was recorded)`);
 }
 
@@ -1035,6 +1052,8 @@ async function main(argv) {
   const { dir } = o;
   const mappingFile = o.mapping || join(dir, 'reskin', 'mapping.json');
   const modelDir = o['model-dir'] || join(dir, 'reskin', 'content-model');
+  if (o.type !== undefined && !o.register) throw new SetupError('--type needs --register (it writes the page type in state.json)');
+  if (o.type !== undefined && !PAGE_TYPE.test(o.type)) throw new SetupError(`--type "${o.type}" is not a page type name (letters, digits, - and _)`);
   if (o.check) return checkCli(o, mappingFile, modelDir);
   const slug = o.pos[0];
   if (!slug) { console.error(HELP); return 2; }
@@ -1049,7 +1068,7 @@ async function main(argv) {
     if (dm.unmapped.length) console.error(`no module, not a donor block: ${dm.unmapped.join(', ')} — default content, or give the slot a module in mapping.json`);
     return 0;
   }
-  const reg = o.register ? await registerSetup(dir) : null;
+  const reg = o.register ? await registerSetup(dir, slug, o.type || null) : null;
   const readJson = readJsonFile;
   const mapping = readJson(mappingFile, 'mapping.json');
   const model = readJson(join(modelDir, slug, 'content-model.json'), `content model for ${slug}`);

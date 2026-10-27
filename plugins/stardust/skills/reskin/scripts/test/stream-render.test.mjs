@@ -515,6 +515,36 @@ check('--register CLI: state gets prototypePath + prototyped (written by stardus
   const again = spawnSync(process.execPath, [SCRIPT, 'login', '--register'], { cwd: root, encoding: 'utf8' });
   assert.match(again.stdout, /stays prototyped \(unchanged\)/);
 });
+check('registerRendered --type: the type is written before the role is decided; re-typing is a change, the same type is not', () => {
+  const P = 'stardust/reskin/pages/x.html'; const opt = { advance, at: 'T1' };
+  const st = reskinState([page('a', 'approved', 'form'), page('b', 'extracted', null), page('c', 'extracted', null)]);
+  assert.deepEqual(registerRendered(st, 'b', P, { ...opt, type: 'form' }), { slug: 'b', from: 'extracted', to: 'directed', role: 'sibling', changed: true, typed: { from: null, to: 'form' } });
+  assert.equal(st.pages[1].type, 'form'); assert.equal(st.pages[1].prototypePath, P);
+  assert.equal(registerRendered(st, 'c', P, { ...opt, type: 'landing' }).to, 'prototyped', 'a new type is no sibling');
+  assert.equal(registerRendered(st, 'c', P, { ...opt, type: 'landing' }).changed, false, 'same type, same path: unchanged');
+  const r = registerRendered(st, 'c', P, { ...opt, type: 'article' });
+  assert.deepEqual([r.changed, r.typed, st.pages[2].type], [true, { from: 'landing', to: 'article' }, 'article']);
+});
+check('--register --type CLI: type and prototypePath land in state.json; preflight sees a typed page; --type alone and a conflicting re-type are exit 2', () => {
+  const root = project({ state: reskinState([page('login', 'extracted', null)]) });
+  const r = spawnSync(process.execPath, [SCRIPT, 'login', '--register', '--type', 'form'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /registered login: prototypePath stardust\/reskin\/pages\/login\.html, type form, extracted → prototyped/);
+  const st = JSON.parse(readFileSync(join(root, 'stardust', 'state.json'), 'utf8'));
+  assert.deepEqual([st.pages[0].type, st.pages[0].prototypePath, st.pages[0].status, st._provenance.writtenBy], ['form', 'stardust/reskin/pages/login.html', 'prototyped', 'stardust:reskin']);
+  const pf = spawnSync(process.execPath, [join(dirname(SCRIPT), 'reskin-preflight.mjs'), '--json'], { cwd: root, encoding: 'utf8' });
+  const arche = JSON.parse(pf.stdout).checks.find((c) => c.check === 'archetypes');
+  assert.doesNotMatch(arche.detail, /no page has a type/); assert.match(arche.detail, /no approved archetype for form \(login\)/);
+  const alone = spawnSync(process.execPath, [SCRIPT, 'login', '--type', 'form'], { cwd: root, encoding: 'utf8' });
+  assert.equal(alone.status, 2); assert.match(alone.stderr, /--type needs --register/);
+  assert.equal(spawnSync(process.execPath, [SCRIPT, 'login', '--register', '--type', 'a b'], { cwd: root, encoding: 'utf8' }).status, 2);
+  const approved = project({ state: reskinState([page('login', 'approved', 'form')]) });
+  const before = readFileSync(join(approved, 'stardust', 'state.json'), 'utf8');
+  const re = spawnSync(process.execPath, [SCRIPT, 'login', '--register', '--type', 'landing'], { cwd: approved, encoding: 'utf8' });
+  assert.equal(re.status, 2); assert.match(re.stderr, /login is approved as type "form"/);
+  assert.equal(readFileSync(join(approved, 'stardust', 'state.json'), 'utf8'), before);
+  assert.equal(existsSync(join(approved, 'stardust', 'reskin', 'pages')), false, 'refused before rendering');
+});
 check('--register refuses outside flow reskin (exit 2, nothing rendered or written); a slug not in state is noted', () => {
   const st = { ...reskinState([page('login', 'extracted')]), flow: 'redesign' };
   const root = project({ state: st });
