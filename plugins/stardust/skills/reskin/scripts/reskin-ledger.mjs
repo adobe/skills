@@ -33,6 +33,10 @@
  *       owner, never an agent; a hands-off run records it needs-owner. A residual class (RESIDUAL_CLASSES:
  *       --cause font.unserved on gate exact) is accepted only when the gate's recorded evidence carries that
  *       cause; an agent may accept it (it is not chrome)
+ *   residual <slug> --gate <g> --cause <c> --remove [--by <who>] [--note "…"]
+ *   residual <slug> --gate <g> --cause <c> --rename-cause <new> [--by <who>] [--note "…"]
+ *       drop or rename the residual on <g> with cause <c> (exit 1 when there is none); each edit is appended to
+ *       pages[slug].residualHistory { at, action, gate, cause, to?, by, note } — no hand edits of ledger.json
  *   show [<slug>]
  *
  * Exit 0 ok, 1 refused (missing page, report or prototype), 2 usage.
@@ -54,6 +58,8 @@ human judgments. reskin-preflight and migrate read it.
       deployed.sanity and deployed.chrome are never accepted; a header, footer or chrome gate
       (step10.header, footer, …) is accepted only --by the site owner, never an agent; a residual
       class (--gate exact --cause font.unserved) only when the recorded gate evidence names it
+  residual <slug> --gate <g> --cause <c> --remove | --rename-cause <new> [--by <who>] [--note "…"]
+      drop or rename that residual (exit 1 when there is none); the edit is kept in residualHistory
   show [<slug>]
 
 Exit 0 ok, 1 refused, 2 usage.`;
@@ -180,7 +186,8 @@ function parse(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') o.help = true;
-    else if (['--dir', '--stage', '--verdict', '--note', '--gate', '--cause', '--by'].includes(a)) {
+    else if (a === '--remove') o.remove = true;
+    else if (['--dir', '--stage', '--verdict', '--note', '--gate', '--cause', '--by', '--rename-cause'].includes(a)) {
       const v = argv[++i]; if (v === undefined || v.startsWith('--')) throw new Error(`${a} needs a value`); o[a.slice(2)] = v;
     } else if (a.startsWith('--')) throw new Error(`unknown option ${a}`);
     else o.pos.push(a);
@@ -238,6 +245,23 @@ export function main(argv) {
     if (o.verdict === 'pass' && chrome === 'FAIL') { console.error(`reskin-ledger: eyeball pass refused: deployed.chrome fails for ${slug} (${JSON.stringify(ledger.pages[slug].gates.deployed.chrome)}); fix the header or footer and re-run deployed-gate`); return 1; }
     ledger.pages[slug] = { ...(ledger.pages[slug] || {}), eyeball: { verdict: o.verdict, note: o.note || null, at } };
     save(ledgerFile, ledger); console.log(`eyeball ${slug}: ${o.verdict}`); return 0;
+  }
+  if (cmd === 'residual' && (o.remove || o['rename-cause'])) {
+    if (!o.gate || !o.cause || (o.remove && o['rename-cause']) || o.verdict) { console.error('reskin-ledger: residual --remove | --rename-cause <new> needs --gate and --cause (not both, no --verdict)'); return 2; }
+    const e = { ...(ledger.pages[slug] || {}) };
+    const list = e.residuals || [];
+    const i = list.findIndex((r) => r.gate === o.gate && r.cause === o.cause);
+    if (i < 0) { console.error(`reskin-ledger: no residual on ${o.gate} with cause "${o.cause}" for ${slug} (have: ${list.map((r) => `${r.gate}:${r.cause}`).join(', ') || 'none'})`); return 1; }
+    const to = o['rename-cause'];
+    if (to) {
+      const refused = list[i].verdict === 'accepted' && classRefusal(ledger, slug, o.gate, to);
+      if (refused) { console.error(`reskin-ledger: ${refused}`); return 1; }
+    }
+    e.residuals = to ? list.map((r, k) => (k === i ? { ...r, cause: to } : r)) : list.filter((_, k) => k !== i);
+    e.residualHistory = [...(e.residualHistory || []), { at, action: to ? 'rename-cause' : 'remove', gate: o.gate, cause: o.cause, ...(to ? { to } : {}), verdict: list[i].verdict, by: o.by || null, note: o.note || null }];
+    ledger.pages[slug] = e; save(ledgerFile, ledger);
+    console.log(`residual ${slug}: ${o.gate} ${to ? `cause "${o.cause}" → "${to}"` : `"${o.cause}" removed`} (re-run record for the page status)`);
+    return 0;
   }
   if (cmd === 'residual') {
     if (!o.gate || !o.cause || !VERDICTS.includes(o.verdict)) { console.error(`reskin-ledger: residual needs --gate, --cause and --verdict ${VERDICTS.join('|')}`); return 2; }

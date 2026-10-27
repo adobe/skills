@@ -175,5 +175,30 @@ check('CLI: figma-gate exact evidence is gates.exact; a font.unserved failure is
   assert.equal(page().gates.exact.verdict, 'PASS');
 });
 
+check('CLI: residual --remove and --rename-cause edit a residual through the CLI and keep who/when in residualHistory', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rl-'));
+  const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
+  w('stardust/state.json', JSON.stringify(state)); w('stardust/prototypes/login-proposed.html', MOBILE_OK);
+  for (const f of ['dom-equality', 'slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  assert.equal(run(['record', 'login'], root).status, 0);
+  const res = (...a) => run(['residual', 'login', ...a], root);
+  assert.equal(res('--gate', 'mobile-adapt-runtime', '--cause', 'no Playwrite', '--verdict', 'accepted').status, 0);
+  assert.equal(res('--gate', 'figma.pixel', '--cause', 'anti-aliasing', '--verdict', 'needs-owner').status, 0);
+  assert.equal(res('--gate', 'figma.pixel', '--cause', 'x', '--remove', '--rename-cause', 'y').status, 2, 'not both');
+  assert.equal(res('--gate', 'figma.pixel', '--remove').status, 2, 'needs --cause');
+  assert.equal(res('--gate', 'figma.pixel', '--cause', 'x', '--remove', '--verdict', 'accepted').status, 2);
+  const none = res('--gate', 'figma.pixel', '--cause', 'nope', '--remove'); assert.equal(none.status, 1); assert.match(none.stderr, /no residual on figma\.pixel with cause "nope".*figma\.pixel:anti-aliasing/);
+  assert.equal(res('--gate', 'mobile-adapt-runtime', '--cause', 'no Playwrite', '--rename-cause', 'no Playwright', '--by', 'reviewer').status, 0);
+  assert.equal(res('--gate', 'figma.pixel', '--cause', 'anti-aliasing', '--remove', '--by', 'reviewer', '--note', 'fixed in the CSS').status, 0);
+  assert.match(res('--gate', 'mobile-adapt-runtime', '--cause', 'no Playwright', '--rename-cause', 'font.unserved').stderr, /applies to gate exact/, 'an accepted residual renamed into a class needs its evidence');
+  const p = JSON.parse(readFileSync(join(root, 'stardust/reskin/ledger.json'), 'utf8')).pages.login;
+  assert.deepEqual(p.residuals.map((r) => [r.gate, r.cause, r.verdict]), [['mobile-adapt-runtime', 'no Playwright', 'accepted']]);
+  assert.deepEqual(p.residualHistory.map(({ at, ...r }) => r), [
+    { action: 'rename-cause', gate: 'mobile-adapt-runtime', cause: 'no Playwrite', to: 'no Playwright', verdict: 'accepted', by: 'reviewer', note: null },
+    { action: 'remove', gate: 'figma.pixel', cause: 'anti-aliasing', verdict: 'needs-owner', by: 'reviewer', note: 'fixed in the CSS' },
+  ]);
+  assert.ok(p.residualHistory.every((h) => /^\d{4}-\d\d-\d\dT/.test(h.at)));
+});
+
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nall checks passed');

@@ -564,6 +564,7 @@ Figma fidelity): fix once, re-run all gates; (e) has its own budget
 node stardust/scripts/reskin/reskin-ledger.mjs record <slug>
 node stardust/scripts/reskin/reskin-ledger.mjs eyeball <slug> --verdict pass --note "…"
 node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked [--by <owner>]
+node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --remove | --rename-cause "…" [--by <who>]
 ```
 
 `record` reads the three gate reports (`reports/<slug>-{content-gate,
@@ -572,9 +573,12 @@ slot-coverage,donor-probe}.md`, `**Overall: PASS|FAIL**`), runs the
 prototype's mobile-adapt audit (static rules + `mobile-nav-audit.mjs`),
 reads (d)'s `.work/reskin/gates/<slug>/figma/summary.json` into
 `gates.figma` (and M2a's `…/deployed/summary.json` into
-`gates.deployed`), and sets the page `gated` or `failing`. A Figma donor
+`gates.deployed`; (f)'s `…/exact/summary.json` into `gates.exact`), and sets the page `gated` or `failing`. A Figma donor
 with no figma fragment records `figma.*` NOT-RUN. A residual's `--gate`
-for a Figma family is its class (`figma.geometry`, …). Chrome is never waived by an
+for a Figma family is its class (`figma.geometry`, …). An exact failure whose evidence names
+`font.unserved` (the donor font is not served) is a residual an agent may accept
+(`--gate exact --cause font.unserved`); `--remove` and `--rename-cause` edit a residual, kept in
+`residualHistory`. Chrome is never waived by an
 agent: `deployed.sanity`/`deployed.chrome` residuals are refused, a header or footer
 one needs `--by <owner>`, and `eyeball --verdict pass` is refused while
 `deployed.chrome` fails. On an approved page it fills
