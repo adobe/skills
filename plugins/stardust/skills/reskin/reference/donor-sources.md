@@ -13,16 +13,18 @@ donor type produced them.
 The proven path — delegate entirely to the existing skill:
 
 ```
-$stardust extract <content-url> --design-source <donor-url>
+$stardust extract <content-url> --all --design-source <donor-url>
 ```
 
-This captures the donor to `stardust/canon-source/` (pages, assets,
+This crawls the whole content site (`--all`: the migration inventory,
+never capped — `../SKILL.md` § Phase 1), captures the donor to
+`stardust/canon-source/` (pages, assets,
 screenshots, `_brand-extraction.json`, `_crawl-log.json`, descriptive
 `DESIGN.md`/`DESIGN.json`) and stamps `state.json.designSource`.
 Everything in extract applies unchanged — bot-management fallback,
-consent dismissal, vision verification, the default 5-page cap.
-Widen the cap when the donor's module vocabulary looks thin: more
-donor pages = more modules for the mapping brief to map onto (and
+consent dismissal, vision verification. The donor keeps the default
+5-page cap: widen it when the donor's module vocabulary looks thin —
+more donor pages = more modules for the mapping brief to map onto (and
 the ≥80% gate to clear).
 
 ### Two first-class token-sourcing paths
@@ -127,7 +129,7 @@ python3 -m http.server 8793 --directory <path> &
 #    open http://localhost:8793/  — or curl -sI http://localhost:8793/
 
 # 3. Same capture path as a live donor
-$stardust extract <content-url> --design-source http://localhost:8793/
+$stardust extract <content-url> --all --design-source http://localhost:8793/
 ```
 
 Recipe notes:
@@ -155,8 +157,8 @@ API: no browser, no crawl, no MCP server. The token is `FIGMA_TOKEN`
 (a personal access token with `file_content:read`), from the
 environment only. Recipe:
 
-1. `$stardust extract <content-url>` — the content site, as for the
-   other donors (it creates `state.json`).
+1. `$stardust extract <content-url> --all` — the whole content site,
+   uncapped, as for the other donors (it creates `state.json`).
 2. `figma-donor.mjs capture <figma-url>` — one file version (every
    call pinned with `version=`), raw responses cached under
    `.work/reskin/figma/` (swapped in whole: a failed `--refresh` keeps the

@@ -12,7 +12,7 @@ export const REDACTED_URL = 'figma:redacted';
 
 export function stampDesignSource({ dir = 'stardust', donorUrl, capturedAt, confidential = false, stateLib, cwd = process.cwd() }) {
   if (!existsSync(join(dir, 'state.json'))) {
-    throw new UsageError(`${dir}/state.json does not exist: run $stardust extract <content-url> first (reskin Phase 1 extracts the content site before the Figma capture); stamp never creates state.json`);
+    throw new UsageError(`${dir}/state.json does not exist: run $stardust extract <content-url> --all first (reskin Phase 1 crawls the whole content site before the Figma capture); stamp never creates state.json`);
   }
   for (const f of ['DESIGN.md', 'DESIGN.json']) {
     if (!existsSync(join(dir, 'canon-source', f))) throw new UsageError(`${dir}/canon-source/${f} is missing: run figma-donor.mjs curate before stamp`);
