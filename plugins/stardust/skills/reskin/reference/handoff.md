@@ -31,7 +31,8 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
    the default `--proto-dir`; no `--proto-dir` / `--current` override.
 7. Sibling gate per migrated page (§ Sibling gate) →
    `reskin-ledger.mjs record <slug> --stage migrated`.
-8. `deploy` / `rollout`, unchanged; rollout re-checks the predicate.
+8. `deploy` / `rollout`, unchanged; `rollout` over the whole migrated site
+   (§ Full inventory) re-checks the predicate.
 
 ## The predicate (`flow: reskin`)
 
@@ -109,16 +110,27 @@ waived, so `approved` is never read as "the full prototype stack passed":
 `tier.claimed` is `reskin-archetype`; `tier.passed[]` lists the gates that
 were PASS at record time; `tier.waived[]` the list above.
 
-## Bounded inventory (Q6)
+## Full inventory (Q6)
 
-Reskin does not run `extract --prep --dynamics` over the whole site. The
-inventory is the roster in `state.json` (the pages the user named or the
-capture listed), and `dynamic-features.md` is derived by the bridge from the
-content models — **form controls only**. That is enough for the pages reskin
-gates; it is not a site inventory. Before `rollout` fans out beyond the
-roster, run the `dynamics` skill (Phases 1–3) on the project so scripts,
-embeds, search and listings get dispositions; the bridge's file says the same
-in its header.
+The inventory is the full uncapped crawl of Phase 1's `extract --all`: every
+junk-filtered page of the content site in `state.json`, each typed by reskin
+(SKILL.md § Phase 1). Never extract's capped discovery mode, never only the
+pages the user named; `--pages` narrows the archetype capture, not the
+inventory, and a capped crawl is a setup error (SKILL.md § Setup step 5).
+
+Reskin does not run `extract --prep --dynamics`: `dynamic-features.md` is
+derived by the bridge from the content models — **form controls only**. That
+is enough for the pages reskin gates; it is not the site's dynamic surface.
+Before `rollout` fans out beyond the gated archetypes, run the `dynamics`
+skill (Phases 1–3) on the project so scripts, embeds, search and listings get
+dispositions; the bridge's file says the same in its header.
+
+Full-site handoff is the default: every inventory page is migrated (at the
+sibling tier against its type's archetype, or as an archetype of its own) and
+shipped. Archetypes-only delivery (`rollout` archetypes-only mode, the rest
+`content-pending`) happens only when the user asks for it, recorded as
+`ledger.json#delivery = { scope: "archetypes-only", requestedBy: "user",
+reason, at }` (default `scope: "full-site"`) and named in the handoff report.
 
 ## Archetype set
 

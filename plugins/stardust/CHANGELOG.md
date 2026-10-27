@@ -59,6 +59,10 @@ multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 wi
 - **Preflight warns on thin deployed-leg coverage.** `reskin-preflight` warns `deployed-coverage` for a type whose
   migrated pages with preview-deployed evidence in the ledger number fewer than max(2, ⌈10 %⌉) of them (all below
   2), naming the counts and the pages to run `deployed-gate all` on. A warning only in this release.
+- **The handoff takes the full inventory.** Aligned with 0.33.0: `handoff.md` § Bounded inventory, which read the
+  inventory as the pages the user named, is § Full inventory: the uncapped `extract --all` crawl, every page typed,
+  full-site handoff by default and archetypes-only only on a user request recorded in `ledger.json#delivery`. Phase 6
+  migrates every non-archetype inventory page at the sibling tier, never a skip.
 
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 

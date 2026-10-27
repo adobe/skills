@@ -635,7 +635,7 @@ sibling gate — is `reference/handoff.md`.
 ## References
 
 - `reference/handoff.md` — reskin → migrate/rollout: the predicate,
-  approval (D3), tier record (D4), bounded inventory, sibling gate.
+  approval (D3), tier record (D4), full inventory, sibling gate.
 - `reference/donor-sources.md` — the three donor types and their
   capture recipes; pin-one-reference-page; `donor-tokens.json` and
   `donor-modules.md` contracts; the Figma adapter (REST).
