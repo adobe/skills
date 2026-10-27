@@ -50,7 +50,8 @@
  *   source keeps its h2/h3; the donor's card title is one role). The style opens with the token-contract :root block (render/root-tokens,
  *   M2b D10) that figma-gate's ramp asserts, then the flattened donor variables. --max-width is the
  *   content width (the container pads outside it, as a Figma container does); grid-2, split and cards
- *   share layout.columnGap (default 40px).
+ *   share layout.columnGap (default 40px). Stream nodes the source clamps (capture's lineClamp/clampGroup)
+ *   render in one `.clamp` box per group with the source's line count; the `.clamp` rule is emitted only then.
  *
  * Usage:
  *   node stream-render.mjs <slug> [--dir stardust] [--mapping <dir>/reskin/mapping.json]
@@ -310,10 +311,28 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   }
   // The first button of a slot is primary; later ones take the donor's secondary spec (when it exists).
   const btnClass = (ctx) => (ctx.buttons++ === 0 ? 'btn' : 'btn btn-secondary');
+  // Source-clamped text (capture's lineClamp/clampGroup, content-model.md): the HTML of consecutive top-level
+  // nodes of one clamp group goes in one .clamp box with the source's line count; the text stays whole in the DOM.
+  let clamped = false;
+  function clampJoin(out, tags) {
+    if (!tags.some(Boolean)) return out.join('\n        ');
+    clamped = true;
+    const parts = [];
+    for (let k = 0; k < out.length;) {
+      const t = tags[k]; let e = k + 1;
+      if (t) while (e < out.length && tags[e]?.group === t.group) e++;
+      parts.push(t ? `<div class="clamp" style="-webkit-line-clamp: ${t.lines}">${out.slice(k, e).join('')}</div>` : out[k]);
+      k = e;
+    }
+    return parts.join('\n        ');
+  }
   function streamHtml(ordered, ctx) {
-    const out = [];
+    const out = []; const tags = []; let cur = null;
+    const tag = () => { while (tags.length < out.length) tags.push(cur); };
     for (let i = 0; i < ordered.length; i++) {
+      tag();
       const n = ordered[i]; const next = ordered[i + 1];
+      cur = Number.isInteger(n.lineClamp) && n.lineClamp > 0 ? { lines: n.lineClamp, group: n.clampGroup ?? `n${i}` } : null;
       switch (n.kind) {
         case 'heading': out.push(`<${n.level || 'h2'} class="heading">${esc(n.text)}</${n.level || 'h2'}>`); break;
         case 'paragraph': out.push(`<p class="${n.children?.some((c) => c.kind === 'cta') ? 'aux' : 'lead'}">${n.children ? inlineHtml(n.children) : esc(n.text)}</p>`); break;
@@ -353,7 +372,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
         default: throw new Error(`unhandled stream node kind "${n.kind}" in ${slug} — extend stream-render, never drop content`);
       }
     }
-    return out.join('\n        ');
+    tag();
+    return clampJoin(out, tags);
   }
 
   // ---- chrome (donor shell carrying the source's links: a declared delta, outside the content gate) -----
@@ -555,7 +575,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   ${vars.map(([n, val]) => `  ${n}: ${val};`).join('\n')}
   }
   :where(.site-header, .site-main, .site-footer), :where(.site-header, .site-main, .site-footer) *, :where(.site-header, .site-main, .site-footer) *::before, :where(.site-header, .site-main, .site-footer) *::after { box-sizing: border-box; }
-  body:has(> .site-header, > .site-main, > .site-footer) { margin: 0; background: ${v('--palette-page-bg', '#fff')}; color: ${v('--palette-body-fg', 'inherit')}; font-family: ${v('--type-family', 'sans-serif')}; font-size: ${v('--type-body-font-size', '16px')}; line-height: ${v('--type-body-line-height', '1.5')}; }
+  body:has(> .site-header, > .site-main, > .site-footer) { margin: 0; background: ${v('--palette-page-bg', '#fff')}; color: ${v('--palette-body-fg', 'inherit')}; font-family: ${v('--type-family', 'sans-serif')}; font-size: ${v('--type-body-font-size', '16px')}; line-height: ${v('--type-body-line-height', '1.5')}; }${clamped ? `
+  .site-main .clamp { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }` : ''}
   .container { box-sizing: content-box; max-width: ${v('--layout-container-max-width', '1200px')}; margin: 0 auto; padding: ${v('--layout-container-padding', '0 24px')}; }
   :where(.site-header, .site-main, .site-footer) a { color: inherit; }
   .link { ${accentText ? `color: ${v('--palette-accent', 'inherit')}; text-decoration: underline;` : `color: inherit; text-decoration: underline; text-decoration-color: var(--palette-accent); text-decoration-thickness: 2px; text-underline-offset: 3px;`} }

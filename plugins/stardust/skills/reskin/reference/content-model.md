@@ -170,6 +170,17 @@ Node shape:
   tokens, never flattened to plain text and never dropped.
 - `display` — the computed display value, so the renderer knows an
   inline `li` run from a block list without guessing.
+- `lineClamp` / `clampGroup` — present when the source clamps the
+  node's text: its element (or the transparent wrapper it sits in) has
+  a computed `-webkit-line-clamp` on a vertical `-webkit-box` (Chrome
+  computes that display as `flow-root` / `inline-block`) or a standard
+  `line-clamp`. `lineClamp` is the line count; `clampGroup` numbers
+  the clamped element within the slot, so a post body's text run and
+  the raw URL link inside it share one group. `stream-render` puts the
+  top-level nodes of one group in a single
+  `<div class="clamp" style="-webkit-line-clamp: N">`: the text stays
+  whole in the DOM (and in `innerText`, so the byte gate is unchanged),
+  only its painting is clamped, as in the source.
 - `children` — present when the node contains structure of its own:
   a hero `<a>` wrapping its `<h2>` is a `cta` node with a `heading`
   child; a news `<h3>` wrapping its link is the reverse. Pure-text

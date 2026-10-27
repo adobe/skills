@@ -473,6 +473,19 @@ check('CLI render is unchanged: the default out, the same bytes as render() bar 
   const strip = (h) => h.replace(/writtenAt: +\S+/, 'writtenAt: T');
   assert.equal(strip(html), strip(render({ ...base, now: 'T' }).html));
 });
+check('clamped stream nodes: one .clamp box per clamp group with the source line count; the CSS rule only when used', () => {
+  const ordered = [
+    { kind: 'heading', level: 'h3', text: 'Post' },
+    { kind: 'text', parentTag: 'div', text: 'Long body', lineClamp: 3, clampGroup: 1 },
+    { kind: 'cta', text: 'https://feed.test/p', absHref: 'https://feed.test/p', lineClamp: 3, clampGroup: 1, sep: ' ' },
+    { kind: 'paragraph', text: 'Teaser', lineClamp: 2, clampGroup: 2 },
+    { kind: 'paragraph', text: 'Plain' },
+  ];
+  const html = render({ ...base, model: { sections: [{ slot: 's01', ordered }] } }).html;
+  assert.match(html, /<h3 class="heading">Post<\/h3>\n {8}<div class="clamp" style="-webkit-line-clamp: 3"><p class="text">Long body<\/p><p class="aux"><a class="link" href="https:\/\/feed\.test\/p">https:\/\/feed\.test\/p<\/a><\/p><\/div>\n {8}<div class="clamp" style="-webkit-line-clamp: 2"><p class="lead">Teaser<\/p><\/div>\n {8}<p class="lead">Plain<\/p>/);
+  assert.match(html, /\n {2}\.site-main \.clamp \{ display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; \}\n/);
+  assert.doesNotMatch(render(base).html, /clamp/, 'no clamped node: no box, no rule');
+});
 
 
 // ---- --register (state.json through state.mjs, flow reskin only) ----
