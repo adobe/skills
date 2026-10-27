@@ -99,7 +99,7 @@ waived, so `approved` is never read as "the full prototype stack passed":
 | content fidelity (`dom-equality`) | **run** — `reskin-dom-equality` |
 | slot coverage | **run** — `reskin-slot-coverage` |
 | design adoption (`donor-probe`, incl. 1440/360 overflow) | **run** — `reskin-donor-probe` |
-| mobile-adapt static (viewport, a `max-width` rule ≤640px) | **run** — `mobile-adapt-static` |
+| mobile-adapt static (viewport, a `max-width` or range `(width <= …)` / `(width < …)` rule ≤640px) | **run** — `mobile-adapt-static` |
 | mobile-adapt runtime (`mobile-nav-audit.mjs`, 360px) | **run** — `mobile-adapt-runtime` (NOT-RUN without Playwright → blocks unless accepted) |
 | side-by-side donor eyeball | **run** — human / hands-off judgment, `eyeball` |
 | critique, audit, anti-template, content-sourcing, motion-validation | **waived** — they judge a design authored from intent; the design here is the donor's and the content is byte-gated |

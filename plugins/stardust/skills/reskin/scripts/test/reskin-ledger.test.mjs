@@ -23,11 +23,15 @@ const mob = (pass = true) => ({ static: { pass, issues: pass ? [] : ['no @media'
 check('overall reads the report verdict', () => {
   assert.equal(overall('# x\n\n**Overall: PASS**\n'), 'PASS'); assert.equal(overall('**Overall: FAIL** (2)'), 'FAIL'); assert.equal(overall('nothing'), null);
 });
-check('mobileStatic: viewport, a max-width rule, one at ≤640px', () => {
+check('mobileStatic: viewport, a max-width rule (or media range syntax), one at ≤640px', () => {
   assert.equal(mobileStatic(MOBILE_OK).pass, true);
   assert.match(mobileStatic('<style>@media (max-width:640px){}</style>').issues.join(), /viewport/);
   assert.match(mobileStatic('<meta name="viewport" content="width=device-width">').issues.join(), /desktop-only/);
   assert.match(mobileStatic('<meta name="viewport" content="width=device-width"><style>@media (max-width: 900px){}</style>').issues.join(), /900px/);
+  const VP = '<meta name="viewport" content="width=device-width">';
+  for (const q of ['(width <= 640px)', '(width < 641px)', 'screen and (640px >= width)', '(400px <= width <= 600px)']) assert.equal(mobileStatic(`${VP}<style>@media ${q}{}</style>`).pass, true, q);
+  assert.match(mobileStatic(`${VP}<style>@media (width < 900px){}</style>`).issues.join(), /899px/);
+  assert.match(mobileStatic(`${VP}<style>@media (width >= 641px){}</style>`).issues.join(), /desktop-only/);
 });
 check('record on an approved page: gated, handoff archetype with tier, PASS-only gates for migrate', () => {
   const L = applyRecord({}, { state, slug: 'login', reports: R('PASS'), mobile: mob(), prototypeSha: 'abc', at: 't' });

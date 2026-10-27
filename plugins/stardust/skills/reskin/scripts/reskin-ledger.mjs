@@ -126,14 +126,26 @@ export const residualCovers = (r, gate) => {
 const sha = (s) => createHash('sha1').update(s).digest('hex').slice(0, 12);
 export const overall = (md) => { const m = String(md || '').match(/\*\*Overall:\s*(PASS|FAIL)/i); return m ? m[1].toUpperCase() : null; };
 
-// prototype SKILL § Mobile-adapt audit, the three rules that need no render.
+// prototype SKILL § Mobile-adapt audit, the three rules that need no render. A narrow breakpoint is
+// `@media (max-width: Npx)` or the range syntax `(width <= Npx)` / `(width < Npx)` (and `Npx >= width`),
+// a `<` bound counting as N − 1px.
+export function mediaMaxWidths(html) {
+  const out = [];
+  for (const m of String(html).matchAll(/@media([^{]*)\{/gi)) {
+    const q = m[1];
+    for (const x of q.matchAll(/max-width\s*:\s*(\d+(?:\.\d+)?)px/gi)) out.push(Number(x[1]));
+    for (const x of q.matchAll(/\bwidth\s*(<=?)\s*(\d+(?:\.\d+)?)px/gi)) out.push(Number(x[2]) - (x[1] === '<' ? 1 : 0));
+    for (const x of q.matchAll(/(\d+(?:\.\d+)?)px\s*(>=?)\s*width\b/gi)) out.push(Number(x[1]) - (x[2] === '>' ? 1 : 0));
+  }
+  return out;
+}
 export function mobileStatic(html) {
   const issues = [];
   const vp = String(html).match(/<meta\b[^>]*name\s*=\s*["']viewport["'][^>]*>/i);
   const content = vp && (vp[0].match(/content\s*=\s*["']([^"']*)/i) || [])[1];
   if (!content || !/width\s*=\s*device-width/i.test(content)) issues.push('viewport meta missing or not width=device-width');
-  const widths = [...String(html).matchAll(/@media[^{]*max-width\s*:\s*(\d+(?:\.\d+)?)px/gi)].map((m) => Number(m[1]));
-  if (!widths.length) issues.push('no @media (max-width) rule: desktop-only');
+  const widths = mediaMaxWidths(html);
+  if (!widths.length) issues.push('no @media (max-width) / (width <= …) rule: desktop-only');
   else if (Math.min(...widths) > 640) issues.push(`narrowest max-width breakpoint is ${Math.min(...widths)}px; needs one at ≤640px`);
   return { pass: issues.length === 0, issues };
 }
