@@ -206,7 +206,7 @@ against the local reskin page (Phase 5) and again on the aem.page preview
 | Check | Reads | Bar |
 |---|---|---|
 | S1 residue carried | `residue[]` (not `chrome`) | each region ≥ `--min-chars` (20): one target element outside header/footer, ≤ 3× its text, holds ≥ 60% of its text lines — else declared, else **FAIL**; shorter regions are `info` |
-| S2 settled | `_provenance.settle` | missing (pre-0.40 model) or `stable: false` is **WARN**: re-capture; never fails |
+| S2 settled | `_provenance.settle` | missing (pre-0.40 model) or `stable: false` is **WARN**: re-capture; never fails; `n/a` on a Figma-sourced model (`_provenance.source.kind: figma`: no settle step) |
 | S3 tone carried | `sections[].tone` | a `dark` slot's first heading (else text) sits on a dark background in the target — else declared, else **FAIL** (also when the probe text is gone); `tinted` → other is WARN; `page` is not checked |
 
 The target is settled the same way as the source (scroll, then text stable

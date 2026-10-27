@@ -87,6 +87,12 @@ await check('S2: a model without a settle record, or captured unstable, WARNs an
   assert.match(judge(unstable, { regions: [1, 1], slotTones: { s01: 'dark', s02: 'tinted' } }, NONE, 20).rows.find((x) => x.check === 'S2').detail, /CAPTURE_SETTLE_CAP_MS/);
 });
 
+await check('S2: a Figma-sourced model (no settle step) is n/a, not a stale-capture warning', () => {
+  const figma = { ...MODEL, _provenance: { source: { kind: 'figma' } } };
+  const s2 = judge(figma, { regions: {}, slotTones: {} }, { residue: [], tones: [], blocking: true }, 80).rows.find((r) => r.check === 'S2');
+  assert.equal(s2.verdict, 'n/a');
+  assert.match(s2.detail, /^n\/a: Figma-sourced model/);
+});
 await check('blocking false turns a FAIL into ADVISORY', () => {
   const d = readDeclared({ version: 1, blocking: false }).declared;
   assert.match(judge(MODEL, { regions: [0, 0], slotTones: {} }, d, 20).verdict, /^ADVISORY 2\//);

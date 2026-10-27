@@ -12,7 +12,8 @@
  *                   its text lines) or declared dropped. kind `chrome` (header/footer) is A6's.
  *   S2 time       — content rendered after first paint (an XHR feed). The capture now settles until
  *                   the page text stops growing (`_provenance.settle`); a model without that record,
- *                   or one captured unstable, is reported — re-capture. The target is settled the
+ *                   or one captured unstable, is reported — re-capture (n/a on a Figma-sourced model:
+ *                   nothing renders late in a design file). The target is settled the
  *                   same way before it is measured, so a client-rendered block is read rendered.
  *   S3 attribute  — the band tone behind each slot (`sections[].tone`: dark | tinted | page,
  *                   measured from the painted background). A source dark band whose heading does not
@@ -90,7 +91,9 @@ export function judge(model, target, declared, minChars) {
   });
 
   const settle = model._provenance?.settle;
-  if (!settle) rows.push({ check: 'S2', verdict: 'WARN', detail: 'model has no settle record (captured before stardust 0.40) — late-rendered content may be missing from the reference; re-capture' });
+  // A Figma-sourced model is read from the design file, not a live page: there is nothing to settle.
+  if (model._provenance?.source?.kind === 'figma') rows.push({ check: 'S2', verdict: 'n/a', detail: 'n/a: Figma-sourced model (read from the design file; no late-rendered content)' });
+  else if (!settle) rows.push({ check: 'S2', verdict: 'WARN', detail: 'model has no settle record (captured before stardust 0.40) — late-rendered content may be missing from the reference; re-capture' });
   else if (!settle.stable) rows.push({ check: 'S2', verdict: 'WARN', detail: `source text still growing at the settle cap (${settle.waitedMs}ms) — re-capture with a higher CAPTURE_SETTLE_CAP_MS` });
   else rows.push({ check: 'S2', verdict: 'ok', detail: `settled in ${settle.waitedMs}ms, ${settle.lateChars} late chars captured` });
 
