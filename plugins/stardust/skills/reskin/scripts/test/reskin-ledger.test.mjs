@@ -195,6 +195,7 @@ check('CLI: figma-gate exact evidence is gates.exact; a font.unserved failure is
   const noEv = res('font.unserved', '--verdict', 'accepted', '--by', 'copilot');
   assert.equal(noEv.status, 1); assert.match(noEv.stderr, /evidence does not name font\.unserved/);
   assert.match(run(['residual', 'login', '--gate', 'figma.join', '--cause', 'font.unserved', '--verdict', 'accepted'], root).stderr, /applies to gate exact/);
+  assert.equal(run(['residual', 'login', '--gate', 'figma.ramp', '--cause', 'font.unserved', '--verdict', 'accepted', '--by', 'copilot'], root).status, 0, 'an UNSERVED ramp result needs no failing evidence');
   exact({ verdict: 'FAIL', detail: '2/2 — residual class font.unserved', cause: 'font.unserved', unserved: ['Licensed Sans'] });
   run(['record', 'login'], root);
   assert.equal(page().gates.exact.cause, 'font.unserved');

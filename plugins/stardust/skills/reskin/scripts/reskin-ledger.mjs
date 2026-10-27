@@ -37,8 +37,8 @@
  *   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <owner>]
  *       a header, footer or chrome gate (step10.header, footer, …) is accepted only with --by naming the site
  *       owner, never an agent; a hands-off run records it needs-owner. A residual class (RESIDUAL_CLASSES:
- *       --cause font.unserved on gate exact) is accepted only when the gate's recorded evidence carries that
- *       cause; an agent may accept it (it is not chrome)
+ *       --cause font.unserved on exact, figma.ramp, figma.pixel or deployed.tokens) may be accepted by an agent
+ *       (it is not chrome); on exact only when the gate's recorded evidence carries that cause
  *   residual <slug> --gate <g> --cause <c> --remove [--by <who>] [--note "…"]
  *   residual <slug> --gate <g> --cause <c> --rename-cause <new> [--by <who>] [--note "…"]
  *       drop or rename the residual on <g> with cause <c> (exit 1 when there is none); each edit is appended to
@@ -66,7 +66,7 @@ human judgments. reskin-preflight and migrate read it.
   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <owner>]
       deployed.sanity and deployed.chrome are never accepted; a header, footer or chrome gate
       (step10.header, footer, …) is accepted only --by the site owner, never an agent; a residual
-      class (--gate exact --cause font.unserved) only when the recorded gate evidence names it
+      class (--cause font.unserved; on --gate exact only when the recorded evidence names it)
   residual <slug> --gate <g> --cause <c> --remove | --rename-cause <new> [--by <who>] [--note "…"]
       drop or rename that residual (exit 1 when there is none); the edit is kept in residualHistory
   show [<slug>]
@@ -94,14 +94,16 @@ export const NEVER_ACCEPTED = ['deployed.sanity', 'deployed.chrome'];
 // Every page inherits the chrome, so a header or footer residual is the site owner's to accept, never an agent's.
 export const CHROME_GATE = /(^|\.)(header|footer|chrome|nav)(\b|$)/i;
 export const AGENT = /\b(agents?|assistant|stardust|claude|codex|copilot|gpt[\w.-]*|gemini|bot|auto|autopilot|auto-mode|hands-off|ai)\b/i;
-// Residual classes a gate's evidence names (its fragment's cause): accepted only on that evidence, by anyone (agent
-// included). font.unserved: figma-gate exact failed while a donor font family was not served (Figma rasterises the
-// licensed font, the page a fallback).
-export const RESIDUAL_CLASSES = { 'font.unserved': { gates: ['exact'], why: 'donor font not served: the Figma render and the page differ in glyphs' } };
+// Residual classes (reference/gates.md § Unserved donor font): the gates a cause applies to, and those whose recorded
+// evidence must name it before it is accepted (by anyone, agent included: it is not chrome). font.unserved: a donor
+// font the page renders from a fallback — UNSERVED in donor-probe/tokens and the ramp, served:false in pixel (never a
+// FAIL there), and a figma-gate exact FAIL whose fragment cause names it (Figma rasterises the licensed font).
+export const RESIDUAL_CLASSES = { 'font.unserved': { gates: ['exact', 'figma.ramp', 'figma.pixel', 'deployed.tokens', 'deployed.figma.ramp'], evidence: ['exact'], why: 'donor font not served: the Figma render and the page differ in glyphs' } };
 export function classRefusal(ledger, slug, gate, cause) {
   const c = RESIDUAL_CLASSES[cause];
   if (!c) return null;
   if (!c.gates.includes(gate)) return `residual class ${cause} applies to gate ${c.gates.join(' | ')}, not ${gate}`;
+  if (!c.evidence.includes(gate)) return null;
   const ev = ledger?.pages?.[slug]?.gates?.[gate];
   if (ev?.cause !== cause) return `the recorded ${gate} evidence does not name ${cause}${ev ? ` (${ev.detail || ev.verdict})` : ' (no evidence: run figma-gate exact, then record)'}`;
   return null;

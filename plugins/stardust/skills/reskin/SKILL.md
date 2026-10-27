@@ -605,7 +605,7 @@ reads (d)'s `.work/reskin/gates/<slug>/figma/summary.json` into
 with no figma fragment records `figma.*` NOT-RUN. A residual's `--gate`
 for a Figma family is its class (`figma.geometry`, …). An exact failure whose evidence names
 `font.unserved` (the donor font is not served) is a residual an agent may accept
-(`--gate exact --cause font.unserved`); `--remove` and `--rename-cause` edit a residual, kept in
+(`--gate exact --cause font.unserved`; every gate's view of it: `reference/gates.md` § Unserved donor font); `--remove` and `--rename-cause` edit a residual, kept in
 `residualHistory`. Chrome is never waived by an
 agent: `deployed.sanity`/`deployed.chrome` residuals are refused, a header or footer
 one needs `--by <owner>`, and `eyeball --verdict pass` is refused while

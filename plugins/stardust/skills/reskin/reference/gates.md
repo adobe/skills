@@ -397,8 +397,7 @@ raises the share; `summary.json` and the fragment record it.
   family, or a generic one). A declared family rendered from a fallback is
   `UNSERVED` (`declared Inter, served fallback`): no PASS, no FAIL, left
   out of `ramp PASS n/n` and counted as `(j unserved)`; log each as a
-  `font.unserved` residual (`accepted` when the donor supplies no font
-  files, `needs-owner` when the licensed font is meant to be served).
+  `font.unserved` residual (§ Unserved donor font).
 - **Conflicts.** `conflict` is a Figma text colour below WCAG contrast (4.5, 3
   for large text) in a root the section's checks name, its alpha composited over
   the solid ground behind it; gradient and image grounds are skipped. A
@@ -484,16 +483,29 @@ breakpoint frame and of every variant of every kit block, used or not) into
   the default bar leaves room for that and nothing more. A row over the bar is one fix iteration
   (§ below), then a residual with its diff PNG under `.work/reskin/gates/<slug>/exact/` or
   `.work/reskin/gates/_library/`. Raising `--bar` is recorded in `direction.md` as a named deviation.
-- **Unserved donor font.** `exact` measures with the fonts the page serves and probes whether the
-  donor's families (`donor-tokens.json` `type.family`, `type.*.fontFamily`) render there (a loaded
-  `@font-face` or an installed face). A licensed font that is not served fails the bar by construction
-  (Figma rasterises it, the page a fallback: heading glyphs alone exceed 3 %), so a FAIL while a donor
-  family is unserved carries the residual class `font.unserved` (the row's `why`, `summary.json`
-  `fonts.unserved` and its `ledgerFragment` `cause`). `reskin-ledger.mjs record` copies the fragment
-  to `gates.exact` (blocking); `residual <slug> --gate exact --cause font.unserved --verdict accepted`
-  is refused unless that recorded evidence names the class, and an agent may accept it (it is not
-  chrome) after checking the diff PNG shows glyph shapes, not layout. Serve the font (or a licensed
-  web font) to clear it instead.
+- **Unserved donor font.** `exact` also probes whether the donor's families (`donor-tokens.json`
+  `type.family`, `type.*.fontFamily`) render on the page; a FAIL while one does not is `font.unserved`
+  (below).
+
+### Unserved donor font (`font.unserved`)
+
+One cause name for a font the donor declares and the page renders from a fallback (no loaded
+`@font-face` covering the weight and style, not installed, not generic). Every gate that sees it says
+so instead of passing silently:
+
+| Gate | Shows it as | Verdict effect |
+|---|---|---|
+| `donor-probe` / deployed `tokens` (A2) | status `UNSERVED`, `ADVISORY tokens font.unserved: …` | none: left out of n, never a FAIL |
+| figma `ramp` (B3) | `UNSERVED` (`declared Inter, served fallback`), `(j unserved)` | none: neither PASS nor FAIL |
+| figma `pixel` (B2) | `served: false` per font | advisory |
+| `figma-gate exact` (f) | the row's `why`, `summary.json` `fonts.unserved`, `ledgerFragment.cause` | a FAIL stays blocking (`gates.exact`) until the residual is accepted: Figma rasterises the licensed font, the page a fallback, and heading glyphs alone exceed 3 % |
+
+Record it once per gate: `reskin-ledger.mjs residual <slug> --gate <exact | figma.ramp | figma.pixel |
+deployed.tokens> --cause font.unserved --verdict accepted|needs-owner` — `accepted` when the donor
+supplies no font files (an agent may accept it: it is not chrome), `needs-owner` when the licensed font
+is meant to be served. On `exact` the ledger refuses `accepted` unless the recorded `gates.exact`
+evidence names `font.unserved`; check the diff PNG shows glyph shapes, not layout. Serving the font
+clears it.
 - Exit codes are figma-gate's: 1 a FAIL row, 2 usage (no `figma-renders.json`), 124 a comparison
   past its deadline (re-run once).
 
@@ -534,7 +546,7 @@ budget would push independent cheap fixes into residuals.
 ```
 
 A Figma residual also carries `class` (`figma.join` | `figma.geometry` |
-`figma.ramp` | `font.unserved`, an UNSERVED ramp result or tokens line); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
+`figma.ramp`); an unserved font is the cause `font.unserved` on its gate (§ Unserved donor font); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
 each names the gate, the check, and a human-readable verdict (`accepted` | `needs-owner` |
 `blocked`). The Phase 6 handoff report lists every residual and flag.
 

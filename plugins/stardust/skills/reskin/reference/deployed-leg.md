@@ -141,7 +141,8 @@ measured nothing: the step fails and the run goes on, `sanity` records its own h
 `ERROR (exit N): <why>`; `figma` is figma-gate's own fragment, or one of those (`not run: no figma checks`).
 `invocation` is the exact argument list. A residual's `class` is
 `deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited` or `.chrome` (M2b's are `figma.*`; a font declared
-but not served — `tokens`' `font.unserved` line or an UNSERVED ramp result — is `font.unserved`); a `deployed.sanity` or `deployed.chrome` residual is never `accepted`, and a header or footer
+but not served — `tokens`' `font.unserved` line or an UNSERVED ramp result — has the cause `font.unserved`, gates.md
+§ Unserved donor font); a `deployed.sanity` or `deployed.chrome` residual is never `accepted`, and a header or footer
 one (`step10.header`, …) only with `--by <owner>`, never an agent's name (`reskin-ledger.mjs` refuses; a hands-off run
 records `needs-owner`).
 
@@ -174,4 +175,4 @@ verdict (exit 124, or an instrument that did not run) does not count: re-run onc
   (`"<Brand>", "<brand>-fallback", <generic>`) goes in its own property, e.g. `--font-stack`. "Font not served" is a
   declared difference, never a failure, and never a silent pass: `tokens` compares the first family and prints an
   `ADVISORY tokens font.unserved` line when the preview renders it from a fallback, the Figma ramp makes it `UNSERVED`
-  and the pixel check records `served: false`; each is a `font.unserved` residual.
+  and the pixel check records `served: false`; each is a `font.unserved` residual (`gates.md` § Unserved donor font).
