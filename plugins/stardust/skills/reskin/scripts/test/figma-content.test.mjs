@@ -352,6 +352,44 @@ await test('--help first: figma-donor, figma-text-gate, slot-coverage', () => {
   }
 });
 
+const { render } = await import('../stream-render.mjs');
+await test('image opacity: node × fill opacity and the solid fill under it (else the nearest ancestor fill) are carried; opaque images unchanged', () => {
+  const black = { type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } };
+  const stacked = { id: 'i1', type: 'RECTANGLE', name: 'Hero', fills: [black, { type: 'IMAGE', imageRef: 'a', opacity: 0.75 }], ...bb(0, 100, 600, 400) };
+  const faded = { id: 'i2', type: 'RECTANGLE', name: 'Photo', opacity: 0.5, fills: [{ type: 'IMAGE', imageRef: 'b' }], ...bb(0, 600, 600, 400) };
+  const plain = { id: 'i3', type: 'RECTANGLE', name: 'Plain', fills: [{ type: 'IMAGE', imageRef: 'c' }], ...bb(0, 1100, 600, 400) };
+  const navy = F('bg', 'Band', 0, 600, 1440, 400, [faded], { fills: [{ type: 'SOLID', color: { r: 0, g: 0, b: 0.5, a: 1 } }] });
+  const m = build(page([F('ob', 'Body', 0, 100, 1440, 1500, [stacked, navy, plain, T('oc', 'Caption copy text', 0, 1550, 300, 24)])]));
+  const imgs = m.sections.flatMap((s) => s.ordered).filter((o) => o.kind === 'image');
+  const by = Object.fromEntries(imgs.map((o) => [o.node, o]));
+  assert.equal(by.i1.opacity, 0.75); assert.equal(by.i1.backdrop, 'rgb(0, 0, 0)');
+  assert.equal(by.i2.opacity, 0.5); assert.equal(by.i2.backdrop, 'rgb(0, 0, 128)');
+  assert.ok(!('opacity' in by.i3) && !('backdrop' in by.i3));
+  const html = render({ slug: 'p', model: m, tokens: {}, mapping: { pages: { p: { slots: {} } } } }).html;
+  assert.match(html, /<figure class="media" style="background-color: rgb\(0, 0, 0\)"><img src="assets\/i1\.png" alt="" style="opacity: 0\.75"><\/figure>/);
+  assert.match(html, /<figure class="media"><img src="assets\/i3\.png" alt=""><\/figure>/);
+  const band = render({ slug: 'p', model: m, tokens: {}, mapping: { pages: { p: { slots: { s01: { layout: 'media-band' } } } } } }).html;
+  assert.match(band, /<section class="band layout-media-band[^"]*" style="background-color: rgb\(0, 0, 0\)"[^>]*>\s*<img class="band-img" src="assets\/i1\.png" alt="" style="opacity: 0\.75">/);
+  const split = render({ slug: 'p', model: m, tokens: {}, mapping: { pages: { p: { slots: { s01: { layout: 'split' } } } } } }).html;
+  assert.match(split, /<span class="split-img img-backdrop" style="background-color: rgb\(0, 0, 0\)"><img src="assets\/i1\.png" alt="" style="opacity: 0\.75"><\/span>/);
+  assert.match(split, /\.site-main \.img-backdrop \{ display: block; \}/);
+});
+
+await test('paragraphs: \\n-separated lines are separate paragraphs; a line separator (U+2028) is a <br>; the reference still matches', () => {
+  const frame = page([F('pb', 'Body', 0, 100, 1440, 400, [T('p1', 'First paragraph here.\n\nSecond paragraph here.', 0, 100, 600, 96), T('p2', 'Line one\u2028line two', 0, 300, 600, 48)])]);
+  const m = build(frame);
+  const ord = m.sections.flatMap((s) => s.ordered);
+  assert.deepEqual(ord.filter((o) => o.kind === 'paragraph').map((o) => o.text), ['First paragraph here.', 'Second paragraph here.', 'Line one line two']);
+  const br = ord.find((o) => o.node === 'p2');
+  assert.deepEqual(br.children.map((k) => [k.text, !!k.br]), [['Line one', false], ['line two', true]]);
+  const html = render({ slug: 'p', model: m, tokens: {}, mapping: { pages: { p: { slots: {} } } } }).html;
+  assert.match(html, /<p class="lead">First paragraph here\.<\/p>\s*<p class="lead">Second paragraph here\.<\/p>/);
+  assert.match(html, /<p class="lead">Line one<br>line two<\/p>/);
+  const refs = textReference(frame).map((r) => r.text);
+  assert.deepEqual(refs, ['First paragraph here. Second paragraph here.', 'Line one line two']);
+  assert.equal(compareText(textReference(frame), { text: 'First paragraph here.\n\nSecond paragraph here.\nLine one\nline two', attrs: [] }).verdict, 'PASS');
+});
+
 // ---- the renderer on a Figma-sourced model ---------------------------------------------------------------------
 const RTOKENS = { palette: { pageBg: 'rgb(255, 255, 255)' }, type: { family: 'Inter' } };
 const RMAP = { pages: { p: { template: 'p', slots: { s01: { module: 'M1', layout: 'stack', width: 'narrow' }, s02: { module: 'M1', layout: 'stack', width: 'narrow' } } } } };
@@ -360,7 +398,6 @@ const figmaFrame = page([F('w', 'Wrapper', 0, 100, 1440, 900, [
   F('b1', 'Band one', 0, 100, 1440, 300, [T('r1', `Title ${evil}`, 0, 120, 600, 56, { fontSize: 46 }), T('r2', 'shout this', 0, 200, 300, 24, { textCase: 'UPPER' }), T('r3', 'title case me', 0, 240, 300, 24, { textCase: 'TITLE' })]),
   F('b2', 'Band two', 0, 500, 1440, 300, [T('r4', 'A long clamped paragraph whose every word must stay in the innerText even when CSS clamps it to one line on screen', 0, 520, 200, 24, { textTruncation: 'ENDING', maxLines: 1 })]),
 ])]);
-const { render } = await import('../stream-render.mjs');
 const rendered = render({ slug: 'p', model: build(figmaFrame), tokens: RTOKENS, mapping: RMAP, now: '2026-01-01T00:00:00Z' }).html;
 
 await test('renderer: figma strings escaped; casing via CSS on the raw characters; truncation via a clamp span', () => {

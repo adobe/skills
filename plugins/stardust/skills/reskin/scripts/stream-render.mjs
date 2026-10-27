@@ -363,9 +363,13 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     return txt(n);
   }
   const toggleId = (n) => n.toggle || (n.kind === 'heading' ? n.children?.find((c) => c.toggle)?.toggle : null) || null;
+  // A translucent Figma image fill (model opacity < 1) keeps its opacity, over its backdrop colour on the wrapper.
+  const fade = (n) => n?.opacity != null && n.opacity < 1;
+  const imgOpacity = (n) => (fade(n) ? ` style="opacity: ${Number(n.opacity)}"` : '');
+  const backdropCss = (n) => (fade(n) && n.backdrop ? `background-color: ${esc(n.backdrop)}` : '');
   function inlineHtml(nodes) {
     return nodes.map((n) => {
-      const sep = n.sep ?? '';
+      const sep = n.br ? '<br>' : n.sep ?? '';
       if (n.kind === 'cta') return `${sep}<a class="link${n.srOnly ? ' sr-only' : ''}" href="${url(n)}">${n.children ? inlineHtml(n.children) : txt(n)}</a>`;
       // An image inside a link or paragraph (arrow, social badge) is content: it stays, inline; a content-sized
       // one (rendered ≥ 200px wide) keeps its size.
@@ -439,9 +443,9 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
           // A run of 3+ bare images (partner logos, badges) is one row, not a column of figures.
           const run = [n]; while (ordered[i + run.length]?.kind === 'image') run.push(ordered[i + run.length]);
           if (run.length >= 3) {
-            out.push(`<div class="logos">${run.map((im) => `<img ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}</div>`);
+            out.push(`<div class="logos">${run.map((im) => `<img ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}"${imgOpacity(im)}>`).join('')}</div>`);
             i += run.length - 1;
-          } else out.push(`<figure class="media"><img ${img(n.currentSrc || n.src)} alt="${esc(n.alt)}"></figure>`);
+          } else out.push(`<figure class="media"${backdropCss(n) ? ` style="${backdropCss(n)}"` : ''}><img ${img(n.currentSrc || n.src)} alt="${esc(n.alt)}"${imgOpacity(n)}></figure>`);
           break;
         }
         case 'formControl': {
@@ -765,11 +769,13 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     if (m.inset && !inset) warnings.push(`${s.slot}: inset "${m.inset}" is not a length (px | rem | %) — ignored`);
     const split = typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()) ? m.split.trim() : null;
     if (m.split && !split) warnings.push(`${s.slot}: split "${m.split}" is not two column tracks (px | fr | %) — ignored`);
-    const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : [])];
+    const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : []), ...(ctx.band && backdropCss(ctx.bandImage) ? [backdropCss(ctx.bandImage)] : [])];
     const cardTone = ['dark', 'light', 'accent'].includes(m.cardTone) ? m.cardTone : null;
     if (m.cardTone && !cardTone) warnings.push(`${s.slot}: unknown cardTone "${m.cardTone}" (dark | light | accent) — ignored`);
     const cls = ['band', ...layout.map((l) => `layout-${l}`), ...(cardTone ? [`cards-${cardTone}`] : []), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []), ...(tone && m.bleed === true ? ['bleed'] : []), ...(m.align === 'center' ? ['align-center'] : []), ...(mediaFirst ? ['media-first'] : [])].join(' ');
-    const media = ctx.bandImage ? `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(ctx.bandImage.currentSrc || ctx.bandImage.src)} alt="${esc(ctx.bandImage.alt)}">` : '';
+    const bi = ctx.bandImage;
+    const media = !bi ? '' : ctx.split && backdropCss(bi) ? `<span class="split-img img-backdrop" style="${backdropCss(bi)}"><img ${img(bi.currentSrc || bi.src)} alt="${esc(bi.alt)}"${imgOpacity(bi)}></span>`
+      : `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(bi.currentSrc || bi.src)} alt="${esc(bi.alt)}"${imgOpacity(bi)}>`;
     return `<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}${kitAttrs(m)}>
       ${ctx.split ? '' : media}
       <div class="container"><div class="panel"><div class="flow" data-slot-body>
@@ -990,7 +996,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-main .table :is(th, td) { padding: 8px; }
     .site-main :is(.heading, .heading-display .heading) { font-size: min(${v('--type-display-font-size', '2em')}, 11vw); }
     .site-main .heading { overflow-wrap: break-word; }
-  }${footerHtml.includes('footer-zoned') ? `
+  }${sections.some((h) => h.includes('img-backdrop')) ? `
+  .site-main .img-backdrop { display: block; } .site-main .img-backdrop > img { display: block; width: 100%; height: auto; }` : ''}${footerHtml.includes('footer-zoned') ? `
   .site-footer .footer-brand .logo { height: ${v('--footer-logo-height', v('--header-logo-height', '48px'))}; min-height: 48px; }` : ''}${footerHtml.includes('class="social-icon"') ? `
   .site-footer .social-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
   .site-footer .social-icon svg { width: 24px; height: 24px; fill: currentcolor; }` : ''}`;

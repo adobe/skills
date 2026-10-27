@@ -16,11 +16,18 @@
 //                unchanged); characters and textCase stay as side fields for the renderer.
 //   headings     from the donor's type roles (donor-tokens.json type.display|h1…h6 fontSize); a size above
 //                the body that matches no role is flagged; the first heading is the page h1.
+//   paragraphs   a TEXT node's \n-separated lines are separate paragraphs; a line separator (U+2028) is a
+//                line break inside one (the next run carries br: true, rendered <br>).
+//   opacity      an image fill layer's node opacity × its image fill's opacity is the image node's opacity (< 1
+//                only), over its backdrop: the solid fill under the image in the layer's fill stack, else the
+//                nearest ancestor's solid fill (CSS colour); the renderer paints both.
 //   links        per-run hyperlink (URL or NODE) and prototype interactions (URL, NODE): http(s), mailto,
 //                tel or a root-relative path only; NODE targets resolve to a page slug; anything else is
 //                flagged and left as "#". Nothing is invented: SEO, alt text and link targets are flagged.
 // Design strings are untrusted: the model keeps them raw and every renderer escapes them; layer names
 // never become class tokens unless they pass block-name validation (safeClassToken).
+
+import { colorToCss } from './normalize.mjs';
 
 export const MODEL_VERSION = 2;
 export const SCHEMES = ['http:', 'https:', 'mailto:', 'tel:'];
@@ -263,7 +270,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
   }
   const ctaNode = (text, href, n, extra = {}) => ({ kind: 'cta', text, href, absHref: href, classes: extra.buttonLike ? 'button' : 'link', node: n.id, ...extra });
 
-  function imageNode(n, { svg = false } = {}) {
+  function imageNode(n, { svg = false, backdrop = null } = {}) {
     const fill = svg ? null : imageFill(n);
     const key = svg ? `svg:${n.id}` : fill.imageRef;
     if (!needs.has(key)) needs.set(key, { key, kind: svg ? 'svg' : 'fill', node: n.id, imageRef: fill?.imageRef ?? null, name: safeId(n.id) });
@@ -273,6 +280,16 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     if (fill) {
       node.scaleMode = fill.scaleMode || 'FILL';
       if (fill.imageTransform) { node.imageTransform = fill.imageTransform; flag('image.crop', 'info', n.id, 'the frame crops this image (imageTransform); the uncropped bytes are used with a CSS cover fit'); }
+    }
+    // A translucent image fill shows what is under it: carry the opacity and that backdrop colour (the fill's raw
+    // bytes carry neither; an exported render — svg — already has the layer's opacity).
+    const opacity = fill ? (n.opacity ?? 1) * (fill.opacity ?? 1) : 1;
+    if (opacity < 1) {
+      node.opacity = Math.round(opacity * 1000) / 1000;
+      const fills = (n.fills || []).filter((f) => f.visible !== false);
+      const under = fill ? fills.slice(0, fills.indexOf(fill)).reverse().find((f) => f.type === 'SOLID' && (f.opacity ?? 1) > 0) : null;
+      const bd = under ? colorToCss(under.color, under.opacity ?? 1) : backdrop;
+      if (bd) node.backdrop = bd;
     }
     if (!got) node.missing = true;
     return node;
@@ -290,17 +307,23 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     const lines = n.lineTypes && n.lineTypes.some((t) => t && t !== 'NONE') ? n.lineTypes : null;
     const side = (s, tc) => (tc && tc !== 'ORIGINAL' ? { characters: norm(s), textCase: tc } : {});
     const trunc = base.textTruncation === 'ENDING' ? { truncation: { maxLines: base.maxLines ?? 1 } } : {};
+    // A line separator (U+2028) inside a run splits it: the part after it starts a new line (br: true).
+    const lineParts = (rs) => rs.flatMap((r) => r.chars.split('\u2028').map((chars, i) => ({ ...r, chars, ...(i ? { brBefore: true } : {}) })));
     const runNodes = (rs) => {
       const out = [];
-      for (const r of rs) {
+      let br = false;
+      for (const r of lineParts(rs)) {
+        br ||= Boolean(r.brBefore);
         const text = norm(applyCase(r.chars, r.textCase));
         if (!text) continue;
         const prev = out[out.length - 1];
-        const sep = prev && (/^\s/.test(r.chars) || /\s$/.test(prev._raw)) ? ' ' : '';
+        const sep = prev && (br || /^\s/.test(r.chars) || /\s$/.test(prev._raw)) ? ' ' : '';
+        const brk = prev && br ? { br: true } : {};
+        br = false;
         if (r.hyperlink) {
           const { href } = resolveLink(r.hyperlink, n, where);
-          out.push({ ...ctaNode(text, href, n), sep, _raw: r.chars, ...side(r.chars, r.textCase) });
-        } else out.push({ kind: 'text', text, parentTag: 'span', parentClass: '', sep, _raw: r.chars, ...side(r.chars, r.textCase) });
+          out.push({ ...ctaNode(text, href, n), sep, ...brk, _raw: r.chars, ...side(r.chars, r.textCase) });
+        } else out.push({ kind: 'text', text, parentTag: 'span', parentClass: '', sep, ...brk, _raw: r.chars, ...side(r.chars, r.textCase) });
       }
       for (const o of out) delete o._raw;
       if (out.length) out[0].sep = '';
@@ -312,7 +335,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
       const text = norm(kids.map((k, i) => (i ? k.sep : '') + k.text).join(''));
       if (kids.length === 1 && kids[0].kind === 'cta') return { ...kids[0], ...extra, sep: ' ' };
       const node = { kind, text, node: n.id, sep: ' ', ...extra };
-      if (kids.some((k) => k.kind === 'cta')) node.children = kids;
+      if (kids.some((k) => k.kind === 'cta' || k.br)) node.children = kids;
       else if (kids.length === 1) Object.assign(node, side(rs.map((r) => r.chars).join(''), kids[0].textCase));
       else if (rs.every((r) => r.textCase === rs[0].textCase) && rs[0].textCase) Object.assign(node, side(rs.map((r) => r.chars).join(''), rs[0].textCase));
       else if (kids.some((k) => k.textCase)) node.children = kids;
@@ -335,6 +358,17 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     const linkWhole = linkOf(n, where);
     if (linkWhole) return [{ ...ctaNode(norm(applyCase(chars, caseOf)), linkWhole.href, n), sep: ' ', ...side(chars, caseOf), ...trunc }];
     if (h) return [{ kind: 'heading', level: `h${h.level}`, role: h.role, text: norm(applyCase(chars, caseOf)), node: n.id, sep: ' ', ...side(chars, caseOf), ...trunc }];
+    // A paragraph break (\n) inside one TEXT node: one paragraph per non-empty line, in order.
+    if (chars.includes('\n')) {
+      const out = [];
+      let at = 0;
+      for (const line of chars.split('\n')) {
+        const node = fromRuns(slice(at, at + line.length), 'paragraph', trunc);
+        at += line.length + 1;
+        if (node) out.push(node);
+      }
+      return out;
+    }
     const p = fromRuns(runs, 'paragraph', trunc);
     return p ? [p] : [];
   }
@@ -380,15 +414,17 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     return out;
   }
 
-  function emit(n, where, ground) {
+  function emit(n, where, ground, backdrop = null) {
     if (!visible(n)) return [];
     if (isText(n)) return textNodes(n, where, ground);
     const out = [];
     const fill = imageFill(n);
     const kind = kindOf(n, rules, lookup);
     const nextGround = solidFill(n) ? 'solid' : fill ? 'image' : ground;
+    const own = solidFill(n);
+    const nextBackdrop = own ? colorToCss(own.color, own.opacity ?? 1) : backdrop;
     if (fill && kind !== 'icon' && kind !== 'logo') {
-      out.push(imageNode(n));
+      out.push(imageNode(n, { backdrop }));
       flag('image.alt', where === 'chrome' ? 'info' : 'review', n.id, 'no alt text in Figma: write it or mark the image decorative');
     }
     const link = linkOf(n, where);
@@ -398,7 +434,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
       return out;
     }
     if (kind === 'logo') {
-      const img = imageNode(n, { svg: !fill });
+      const img = imageNode(n, { svg: !fill, backdrop });
       flag('image.alt', 'info', n.id, 'logo: alt text from the brand name is the author\'s call');
       return [...out, link ? ctaNode('', link.href, n, { children: [img] }) : img];
     }
@@ -428,7 +464,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     }
     if (kind === 'field' || kind === 'select') return [...out, ...fieldNodes(n, kind)];
     if (kind === 'interactive') flag('interactive.flatten', 'review', n.id, `"${cleanName(n.name)}" looks interactive: its default state is the content, other states are declared deltas (keep vs flatten is the author's call)`);
-    const kids = orderedChildren(n, log).flatMap((c) => emit(c, where, nextGround));
+    const kids = orderedChildren(n, log).flatMap((c) => emit(c, where, nextGround, nextBackdrop));
     if (link && kids.length) {
       const text = norm(kids.map((k) => k.text || '').join(' '));
       return [...out, ctaNode(text, link.href, n, { buttonLike: Boolean(solidFill(n) || (n.strokes || []).length), children: kids.map((k) => ({ ...k })) })];

@@ -486,6 +486,12 @@ mapping, `stream-render`, `slot-coverage` and the handoff read it unchanged. Wha
 - Text is the rendered case (`textCase` applied); `characters` and `textCase` stay beside it so the
   renderer sets the CSS (`text-transform`, `font-variant-caps`) on the raw characters. A truncated
   layer keeps the full string with `truncation: { maxLines }`; the renderer clamps it in CSS.
+  A TEXT layer's `\n`-separated lines are separate paragraphs; a line separator (U+2028) stays inside
+  one paragraph as a break (the run after it carries `br: true`, rendered `<br>`).
+- An image fill drawn translucent carries `opacity` (node opacity × image-fill opacity, only when
+  < 1) and `backdrop`, the CSS colour under it (the solid fill below the image in the layer's fill
+  stack, else the nearest ancestor's solid fill); the renderer sets the opacity on the `<img>` and the
+  backdrop on its wrapper (`figure`, the media band's section, a split's `.img-backdrop`).
 - Headings come from the donor's type roles (`donor-tokens.json` `type.display|h1…h6`); the first is
   the page h1. Links come from per-run hyperlinks and prototype interactions and pass the allowlist
   (http(s), mailto, tel, root-relative); a NODE link resolves to a slug via `--pages <id>=<slug>` or
