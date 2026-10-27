@@ -14,32 +14,42 @@ import { assertIgnored } from './guard.mjs';
 import { readJsonIf, provenance, writeFileAtomic, writeJson } from './io.mjs';
 import { parseFigmaUrl } from './url.mjs';
 
-const FRAME_TYPES = new Set(['FRAME', 'SECTION', 'INSTANCE', 'COMPONENT']);
+const FRAME_TYPES = new Set(['FRAME', 'SECTION', 'INSTANCE', 'COMPONENT', 'COMPONENT_SET']);
 const NOT_RENDERED = 'authored from Figma REST node data, not browser-rendered';
 const LARGE_BYTES = 5 * 1024 * 1024;
+// Past this many frames a capture says how many it is taking (it never stops for it).
+const LARGE_SELECTION = 25;
 // Frames per nodes / images request: a page frame is ~1 MB of node data and a large render.
 export const BATCH = 5;
 const batches = (ids) => Array.from({ length: Math.ceil(ids.length / BATCH) }, (_, i) => ids.slice(i * BATCH, (i + 1) * BATCH));
 
-// --frames wins; else the URL's node (a page → its top-level frames; anything else → itself); else
-// every top-level frame of every page, in document order.
+// --frames wins; else every visible top-level frame, section, instance, component and component set
+// of every page, in document order: a kit's modules, components and template sections all sit at the
+// top level of its pages, and a shared link names whatever page the designer had open. The URL's
+// node-id never narrows: it is recorded as the linked node and its page, and a top-level node it names
+// is captured whatever its type.
 function selectFrames(file, nodeId, frames) {
   const pages = (file.document?.children || []).filter((p) => p.type === 'CANVAS');
-  const tops = (page) => (page.children || []).filter((c) => c.visible !== false && FRAME_TYPES.has(c.type)).map((c) => c.id);
-  if (frames?.length) return { all: frames, discovered: frames.length };
-  if (nodeId) {
-    const page = pages.find((p) => p.id === nodeId);
-    const all = page ? tops(page) : [nodeId];
-    return { all, discovered: all.length };
-  }
-  const all = pages.flatMap(tops);
-  return { all, discovered: all.length };
+  const tops = (page) => (page.children || []).filter((c) => c.visible !== false && (FRAME_TYPES.has(c.type) || c.id === nodeId)).map((c) => c.id);
+  const page = nodeId ? pages.find((p) => p.id === nodeId || (p.children || []).some((c) => c.id === nodeId)) : null;
+  const linked = nodeId ? { node: nodeId, page: page ? { node: page.id, name: page.name } : null } : null;
+  const all = frames?.length ? frames : pages.flatMap(tops);
+  return { all, discovered: all.length, linked, pages: pages.length };
 }
 
-export async function runCapture({ url, frames = null, maxFrames = 25, refresh = false, confidential = false, dir = 'stardust', client, now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), warn = (m) => process.stderr.write(`${m}\n`) }) {
+// The selection a cached capture answers for; the node-id is not part of it. Older caches also
+// recorded the node-id, so they never match and ask for --refresh.
+const describe = (r = {}) => `${'nodeId' in r ? `node ${r.nodeId ?? 'none'}, ` : ''}frames ${r.frames?.join(',') ?? 'all'}, max ${r.maxFrames ?? 'none'}`;
+
+// A frame Figma cannot render (a render timeout on a huge component set) is recorded and skipped; a
+// failed batch is retried one frame at a time. Blocked (401/403/429), 404 and network stay fatal, and
+// so does a 5xx on a single frame: the run stops resumable instead of caching a gap.
+const renderFailure = (e, single) => e instanceof FigmaError && (e.status === 400 || (e.status >= 500 && !single));
+
+export async function runCapture({ url, frames = null, maxFrames = null, refresh = false, confidential = false, dir = 'stardust', client, now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), warn = (m) => process.stderr.write(`${m}\n`) }) {
   const { fileKey, mainFileKey, nodeId } = parseFigmaUrl(url);
   const cache = cacheFor(dir, fileKey);
-  const request = { nodeId, frames, maxFrames };
+  const request = { frames, maxFrames };
   const latest = cache.latest();
   // --confidential: the CLI checks the fixed outputs before any request; every other destination — a
   // capture parked or put back by a swap, and what depends on the file version, the frames and their
@@ -54,7 +64,7 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
     const manifest = v.read('manifest.json');
     if (!manifest) throw new UsageError(`the cache at ${cache.root} has no manifest for version ${latest.version}; re-run with --refresh`);
     if (JSON.stringify(manifest.request) !== JSON.stringify(request)) {
-      throw new UsageError(`the cache at ${cache.root} holds a different selection (node ${manifest.request.nodeId ?? 'none'}, frames ${manifest.request.frames?.join(',') ?? 'default'}, max ${manifest.request.maxFrames}); re-run with --refresh to fetch this one`);
+      throw new UsageError(`the cache at ${cache.root} holds a different selection (${describe(manifest.request)}; this run: ${describe(request)}); re-run with --refresh to fetch this one`);
     }
     const problem = cacheProblem(v, manifest);
     if (problem) throw new UsageError(`the cache at ${v.dir} is inconsistent: ${problem}. Re-run with --refresh to rebuild it.`);
@@ -73,17 +83,13 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   if (!version) throw new FigmaError(`Figma returned no version for file ${fileKey}`, { exitCode: 3 });
   endpoints.push({ name: 'files', status: 'ok' });
 
-  const { all, discovered } = selectFrames(file, nodeId, frames);
-  if (!all.length) throw new UsageError('no top-level frames to capture: pass --frames <id,id> or a URL with a node-id');
-  // A whole file is only captured when it fits: a component kit has hundreds of documentation frames,
-  // and its first ones in document order are covers and trackers, not modules.
-  if (!frames?.length && !nodeId && all.length > maxFrames) {
-    const pages = (file.document?.children || []).length;
-    throw new UsageError(`${all.length} top-level frames across ${pages} pages, more than --max-frames ${maxFrames}: list them with capture <figma-url> --list, then pass the foundation frames and one representative frame per module with --frames <id,id> (or use a page's node-id URL)`);
-  }
-  const selected = all.slice(0, maxFrames);
-  const cut = all.slice(maxFrames);
+  const { all, discovered, linked, pages } = selectFrames(file, nodeId, frames);
+  if (!all.length) throw new UsageError('the file has no visible top-level frame, section, component or component set: pass --frames <id,id>');
+  // Only an explicit --max-frames caps the selection; the rest are listed as cut.
+  const selected = maxFrames ? all.slice(0, maxFrames) : all;
+  const cut = maxFrames ? all.slice(maxFrames) : [];
   if (cut.length) warn(`figma-donor: ${discovered} top-level frames; capturing the first ${selected.length} (--max-frames ${maxFrames}). Cut: ${cut.join(', ')}`);
+  else if (!frames?.length && selected.length > LARGE_SELECTION) warn(`figma-donor: capturing all ${selected.length} top-level frames across ${pages} pages (nodes and images in batches of ${BATCH}); --frames narrows, --max-frames caps`);
   // Everything below lands in staging; the version's complete capture, if any, stays as it was until
   // the manifest is written and the staging dir is promoted.
   const v = cache.staging(version, selected);
@@ -136,24 +142,37 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   const imageMap = {};
   const pending = renderable.filter((id) => !(resume && v.has(v.imageFile(id))));
   let imageCalls = 0;
-  for (const ids of batches(pending)) {
-    const res = await client.getJson(`/v1/images/${fileKey}`, { ids, scale: 1, format: 'png', version });
+  const renderErrors = {};
+  const render = async (ids) => {
+    let res;
     imageCalls += 1;
-    if (res.err) throw new FigmaError(`Figma could not render the frames: ${res.err}`, { exitCode: 3 });
+    try { res = await client.getJson(`/v1/images/${fileKey}`, { ids, scale: 1, format: 'png', version }); } catch (e) {
+      if (!renderFailure(e, ids.length === 1)) throw e;
+      res = { err: e.message };
+    }
+    if (res.err) {
+      if (ids.length > 1) { for (const id of ids) await render([id]); return; }
+      renderErrors[ids[0]] = String(res.err).slice(0, 300);
+      return;
+    }
     for (const id of ids) {
       const signed = res.images?.[id];
       if (signed) writeFileAtomic(v.path(v.imageFile(id)), await client.getBytes(signed));
     }
-  }
+  };
+  for (const ids of batches(pending)) await render(ids);
   for (const id of renderable) imageMap[id] = v.has(v.imageFile(id)) ? v.imageFile(id) : null;
   v.write('images.json', imageMap);
   endpoints.push({ name: 'images', status: 'ok', calls: imageCalls });
   const notRenderable = renderable.filter((id) => !imageMap[id]);
-  if (notRenderable.length) warn(`figma-donor: Figma rendered no image for ${notRenderable.join(', ')} (empty or invisible frames)`);
+  const failedIds = Object.keys(renderErrors);
+  if (failedIds.length) warn(`figma-donor: Figma could not render ${failedIds.map((id) => `${id} (${renderErrors[id]})`).join(', ')}; recorded as not renderable, capture continues`);
+  const blank = notRenderable.filter((id) => !(id in renderErrors));
+  if (blank.length) warn(`figma-donor: Figma rendered no image for ${blank.join(', ')} (empty or invisible frames)`);
 
   const manifest = {
-    fileKey, mainFileKey, nodeId, version, capturedAt: now(),
-    request, frames: selected, cut, missing, totalDiscovered: discovered,
+    fileKey, mainFileKey, nodeId, linked, version, capturedAt: now(),
+    request, frames: selected, cut, missing, renderErrors, totalDiscovered: discovered,
     endpoints, planTier: client.planTier ?? null,
   };
   v.write('manifest.json', manifest);
@@ -238,6 +257,8 @@ function writeOutputs({ dir, manifest, v, confidential = false, guard = () => {}
       selected: manifest.frames,
       cut: manifest.cut,
       missing: manifest.missing,
+      linked: manifest.linked ?? null,
+      renderErrors: manifest.renderErrors ?? {},
     },
     consent: null,
     crawl: { endpoints: manifest.endpoints, planTier: manifest.planTier },

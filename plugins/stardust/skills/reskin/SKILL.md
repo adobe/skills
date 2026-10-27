@@ -42,7 +42,7 @@ regression check instead of a debugging tool.
     hand-coded). Served on localhost and captured through the same
     path — recipe in `reference/donor-sources.md` § Local prototypes.
   - `--donor-figma <url>` — a Figma file (a design, file, proto or
-    branch URL; a `node-id` scopes it to a page or frame), read
+    branch URL; the whole file is read, a `node-id` only recorded), read
     headlessly over the REST API. Needs `FIGMA_TOKEN`, a personal
     access token with `file_content:read`. Optional `--frames <ids>`
     and `--confidential` (refuses to write anything git would track;
@@ -117,8 +117,8 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
 - **Figma** (`--donor-figma <url>`): no browser, no crawl. Run
   `$stardust extract <content-url>` (it creates `state.json`), then
   `node stardust/scripts/reskin/figma-donor.mjs capture <figma-url>`
-  (for a component kit, `--list` first, then `--frames` with the
-  foundation frames and one frame per module page);
+  (the whole file: every page's frames, components and component
+  sets, whichever page the URL names; `--frames` narrows);
   author `stardust/reskin/curation-rules.json` from
   `canon-source/role-candidates.json`, `module-candidates.json` and
   the frame screenshots (pin one reference frame, mode and breakpoint

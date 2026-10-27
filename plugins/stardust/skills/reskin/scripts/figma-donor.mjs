@@ -25,7 +25,7 @@ const SELF = fileURLToPath(import.meta.url);
 const HERE = dirname(SELF);
 
 export const HELP = `Usage:
-  node figma-donor.mjs capture <figma-url> [--list] [--frames <id,id>] [--max-frames 25] [--refresh]
+  node figma-donor.mjs capture <figma-url> [--list] [--frames <id,id>] [--max-frames <n>] [--refresh]
                        [--max-wait 60] [--confidential] [--dir stardust]
   node figma-donor.mjs curate [--confidential] [--dir stardust]
   node figma-donor.mjs stamp [--confidential] [--dir stardust]
@@ -43,13 +43,14 @@ capture  reads one version of the file over the Figma REST API (files depth=2, t
            assets/screenshots/<frame-slug>.png + index.json   _crawl-log.json
          <figma-url>: https://www.figma.com/design/<file-key>/<name>[?node-id=<a-b>] (also /file/,
          /proto/, /design/<key>/branch/<branch-key>/) or a bare file key.
-         Frames: --frames <id,id> (12:34 or 12-34) wins; else the URL's node-id (a page → its
-         top-level frames; a frame → itself); else every top-level frame of every page, only when
-         that fits --max-frames (default 25; past it capture stops with exit 2). From a page, at
-         most --max-frames are captured; the rest are listed as cut on stderr and in the log.
-         --list prints every page and its top-level nodes (id, type, size, name) and writes no
-         output: for a component kit, pick the foundation frames (colour, type, spacing, the button
-         set) and one representative frame per module page, then capture them with --frames.
+         Frames: every visible top-level frame, section, instance, component and component set of
+         every page, in document order: the whole file, whichever page or frame the URL's node-id
+         names (it is recorded as the linked node and its page, never used to drop frames). Large
+         selections and node responses warn on stderr; nodes and images go in batches of 5, and a
+         frame Figma cannot render is recorded as not renderable, not fatal. --frames <id,id>
+         (12:34 or 12-34) narrows to those nodes. --max-frames <n> caps at the first n; the rest
+         are listed as cut on stderr and in the log. --list prints every page and its top-level
+         nodes (id, type, size, name) and writes no output.
          A re-run without --refresh rebuilds every output from the cache: no network, no token; it
          refuses (exit 2) a cache whose manifest, saved selection and nodes disagree.
          --refresh fetches the file's current version into a staging dir and swaps it in only when
@@ -207,7 +208,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
       const bad = frames.find((id) => !/^I?\d+:\d+(?:;\d+:\d+)*$/.test(id));
       if (bad || !frames.length) throw new UsageError(`--frames takes node ids like 12:34 or 12-34, got "${opts.frames}"`);
     }
-    const maxFrames = intFlag(opts, 'max-frames', 25, UsageError);
+    const maxFrames = intFlag(opts, 'max-frames', null, UsageError);
     const maxWaitSec = intFlag(opts, 'max-wait', 60, UsageError);
     // --list writes nothing, so --confidential has nothing to check for it.
     if (opts.list) {
@@ -215,7 +216,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
       const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
       const { lines } = await listInventory({ url: positional[0], refresh: Boolean(opts.refresh), dir, client });
       for (const l of lines) log(l);
-      log('next: capture <figma-url> --frames <id,id,…> with the foundation frames and one representative frame per module');
+      log('next: capture <figma-url> takes every frame, component and component set listed above; --frames <id,id,…> narrows it');
       return 0;
     }
     const confidential = await confidentialMode(dir, opts, log);
