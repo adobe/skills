@@ -4,6 +4,32 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.37.0 — a resumed run keeps its gate verdicts, not its pictures (#150)
+
+Field learning (a recorded 550-page site-scope replica run in a 20 GB container): the disk filled after every page
+was published. The tracked tree was 5.3 GiB, 82 % PNG: gate captures and diffs of every page (3.3 GiB, a fifth of
+them extra captures left beside a page's own) and extract screenshots (0.76 GiB). A harness that commits all of
+`stardust/` so a restart finds the same files pays each byte twice (worktree and `.git`); it could not follow the
+ignore file instead, because that dropped whole folders a resumed run reads. Design note:
+`notes/disk-lifecycle/README.md`.
+
+- **`stardust/reference/stardust.gitignore`:** ignores gate images, not gate folders — `**/gates/**/*.png` (a frozen
+  `baseline.png` stays; `first-page/gates/` is covered too) — and tracks `current/assets/` except its screenshots.
+  On that run: 0.5 GiB tracked instead of 5.3 GiB. Existing projects keep their copy (Setup step 6 never edits it):
+  replace its `current/assets/` and `replica/gates/` lines with the two gate lines to adopt it.
+- **`replica/scripts/gate-all.mjs`:** a page that passes keeps its records, not its PNGs. Every PNG in its dir is
+  deleted (an extra capture too) and `pixel.json` records the drop with the masks and eds URL it was measured with;
+  `--skip-existing` and `--compare-only` reuse that pass without a capture while both hold. A failed or
+  override-delivered page keeps its captures for the fix round.
+- **`replica/scripts/gate.sh`:** a round deletes earlier rounds' `diff-*.png` and `vdiff-*/` before comparing; their
+  text and JSON evidence stay.
+- **Docs:** `artifact-map.md` § Versioning rows, `stardust/SKILL.md` § Versioning, the state report consequences in
+  `state-machine.md`, `source-fidelity-gate.md` § all-pages gate, the README; `replica/SKILL.md`'s copy of the
+  delivery-gate file list folds to a pointer at `gate-all.mjs --help`.
+- Tests: `gate-all.test.mjs` — `dropPassedCaptures`, `droppedPass`, and a run with stub instruments (a passed page
+  loses its PNGs, a failed one keeps them; reuse without a capture; a changed mask re-captures); `gate.test.mjs` — a
+  round keeps only its own diff image and vdiff dir.
+
 ## 0.36.0 — first page first: one page is delivered while the site scope is still being defined (#149)
 
 A recorded hands-off replica run ran every phase in sequence and published no content page in five hours, though

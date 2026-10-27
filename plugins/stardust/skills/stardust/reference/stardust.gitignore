@@ -6,9 +6,10 @@
 # to produce or captured a site that will not exist after launch.
 
 # Heavy regenerable captures, not tracked by default. Delete a line or add
-# a negation below it to track one in this project.
-current/assets/
-replica/gates/
+# a negation below it to track one in this project. Gate folders keep their
+# JSON and text (a resumed run reads them) and a frozen origin baseline.
+**/gates/**/*.png
+!**/gates/**/baseline.png
 migrated/assets/
 rollout/qa/
 

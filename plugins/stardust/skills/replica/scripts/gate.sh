@@ -100,7 +100,8 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, overflow-<label>.txt; under
+# (live.png, build.png, diff-<label>.png, overflow-<label>.txt — a round deletes earlier rounds'
+# diff-*.png and vdiff-*/ dirs, their text and JSON stay (#150, disk); under
 # --gate-against-baseline also live.json, beside the frozen baseline.png + baseline.json; a
 # live capture also leaves live.capture.json, stitch-shot's record).
 #
@@ -355,6 +356,10 @@ OVER=$(grep -oE 'OVERFLOW \+[0-9]+px' "$OVF" | head -1 | grep -oE '[0-9]+')
 SW=$(grep -oE 'scrollWidth +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
 VP=$(grep -oE 'viewport +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
 [ -z "$SW" ] && { echo "gate.sh: overflow probe printed no root line ($OVF) — re-copy measure.mjs from the plugin; the assert needs its root line" >&2; exit 1; }
+
+# Disk (#150): only this round's diff image and vdiff dir stay; earlier rounds keep their text and JSON evidence.
+find "$DIR" -maxdepth 1 -name 'diff-*.png' ! -name "diff-$LBL.png" -delete
+find "$DIR" -mindepth 1 -maxdepth 1 -type d -name 'vdiff-*' ! -name "vdiff-$LBL" -exec rm -r {} +
 
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"

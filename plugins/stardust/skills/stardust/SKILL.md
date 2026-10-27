@@ -380,11 +380,10 @@ script copies, drafts — go under `stardust/.work/<skill>/`; the root
 bug in that skill.
 
 **Versioning.** Everything under `stardust/` is committed except what
-`reference/stardust.gitignore` lists: screenshots, four heavy folders
-(`current/assets/`, `replica/gates/`, `migrated/assets/`, `rollout/qa/`),
-`.work/`, run residue, session state. Per-directory table and what a clone
-without `current/assets/` can and cannot do: `reference/artifact-map.md`
-§ Versioning.
+`reference/stardust.gitignore` lists: screenshots, gate images, two heavy
+folders (`migrated/assets/`, `rollout/qa/`), `.work/`, run residue, session
+state. Per-directory table and what a clone can and cannot do:
+`reference/artifact-map.md` § Versioning.
 
 ## Provenance
 
