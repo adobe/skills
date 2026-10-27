@@ -346,7 +346,10 @@ fetches `.plain.html` without a browser.
 - **Figma on a preview.** Sections are the preview's authored
   `.plain.html` sections, found again as `main > div:nth-child(k)` of the
   decorated page (decoration can prepend or drop sections; a moved slot
-  gets a note in `join.json`). Each slot whose authored section does not
+  gets a note in `join.json`). A slot is found by its first heading; an
+  image-only slot (no text in the content model) by its image (alt text
+  or file name) among the free sections between its neighbours, else by
+  document order there, with a note. Each slot whose authored section does not
   hold the EDS block its module maps to (deploy Step 2,
   [`../../deploy/SKILL.md` § 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code),
   applied by `scripts/figma/eds-map.mjs`; a default-content module holds

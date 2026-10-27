@@ -7,7 +7,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { edsModules, includedModules } from './io.mjs';
-import { anchors, norm, parseMapping } from './mapping.mjs';
+import { anchors, imageAnchors, norm, parseMapping } from './mapping.mjs';
 import { loadChromium, loadMeasureLive, localAttributes } from './target.mjs';
 
 // Statuses that put a section on the page; chrome and carried-invisible slots live outside the join.
@@ -111,6 +111,7 @@ export async function runJoin({ target, inputs, out }) {
     dom,
     mapping,
     anchors: anchors(inputs.contentModel),
+    images: imageAnchors(inputs.contentModel),
     modules,
     eds: edsModules(inputs.rules),
     selector: target.join.selector,

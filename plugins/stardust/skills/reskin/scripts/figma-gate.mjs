@@ -71,7 +71,11 @@ join     B0, the section join. Opens the page (a file path, a file: or localhost
          decorates is exit 124 "stalled decoration: ..."). The reskin page is joined to mapping.md as above; then each slot
          is found in the preview's authored form (<url>.plain.html, read as text) as the first non-empty top-level <div>
          after the previous slot's whose text holds the slot's first heading (a split sub-slot has its parent's and may
-         share one). A <div> holding nothing, or only a metadata or section-metadata block, is empty and keeps its index.
+         share one). A slot with no text in content-model.json (an image-only slot) is placed after the others: the
+         first non-empty <div> no slot took between its previous and next slots' that holds one of its images (same alt
+         text or file name), else the first such <div> by document order, with a "  note: s03: no anchor text in
+         content-model.json: placed by ..." line; none free is drift ("s03 has no anchor text and no free plain section
+         after s02 and before s04 in .plain.html"). A <div> holding nothing, or only a metadata or section-metadata block, is empty and keeps its index.
          A slot with no authored section, a slot found before the previous one and a non-empty authored section no slot
          took are "section drift: ..." ("section drift: plain section 3 matches no slot"). Each slot is then found the same
          way in the decorated page, and its selector is "main > div:nth-child(k)" of the decorated div holding its heading

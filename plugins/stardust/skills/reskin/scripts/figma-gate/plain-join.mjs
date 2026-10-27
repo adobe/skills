@@ -5,16 +5,16 @@
 // checks measure. The selector comes from the decorated page, never from the authored position: decoration prepends a
 // section (stock buildHeroBlock) or drops an empty one, so the two lists need not line up one to one. No browser:
 // the authored form is parsed as text, and the decorated sections' text is read by previewTarget's collect.
-//   plainSections(html)  → [{ index, text, empty, blocks }], one per top-level <div> of <main>: its position, its text
-//                          (tags off, entities decoded, whitespace collapsed, lower case), whether it holds nothing and
-//                          the blocks authored in it (metadata blocks aside)
-//   plainJoin({ local, plain, decorated, mapping, anchors, modules, eds })  → { pass, sections, problems, notes, naming },
+//   plainSections(html)  → [{ index, text, empty, blocks, images }], one per top-level <div> of <main>: its position, its
+//                          text (tags off, entities decoded, whitespace collapsed, lower case), whether it holds nothing,
+//                          the blocks authored in it (metadata blocks aside) and its images ({ alt, file })
+//   plainJoin({ local, plain, decorated, mapping, anchors, images, modules, eds })  → { pass, sections, problems, notes, naming },
 //                          matchSections' result with each section's selector and index (its position in the
 //                          decorated main) taken from the decorated page, a note for each slot decoration moved and,
 //                          advisory, a naming line for each slot not authored as the EDS block deploy Step 2 names its
 //                          module (eds: id → { block }, block null = default content; io.mjs edsModules)
 import { matchSections } from './join.mjs';
-import { norm } from './mapping.mjs';
+import { imageFile, norm } from './mapping.mjs';
 
 const TAG = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:"[^"]*"|'[^']*'|[^>"'])*)>/g;
 // A block-level tag ends a word; an inline one does not ("wor<strong>d</strong>s" is one word).
@@ -72,6 +72,13 @@ const classOf = (attrs) => {
 // A block's name is its first class, as the EDS decoration reads it.
 const blockName = (attrs) => classOf(attrs).trim().split(/\s+/)[0].toLowerCase();
 
+const attrOf = (attrs, name) => {
+  for (const m of attrs.matchAll(ATTR)) if (m[1].toLowerCase() === name) return decode(m[2] ?? m[3] ?? m[4] ?? '');
+  return '';
+};
+const IMG = /<img\b((?:"[^"]*"|'[^']*'|[^>"'])*)>/gi;
+const imagesOf = (html) => [...html.matchAll(IMG)].map((m) => ({ alt: norm(attrOf(m[1], 'alt')), file: imageFile(attrOf(m[1], 'src')) }));
+
 const textOf = (html) => norm(decode(html.replace(TAG, (_, __, name) => (BLOCK.has(name.toLowerCase()) ? ' ' : ''))));
 
 export function plainSections(html) {
@@ -84,7 +91,7 @@ export function plainSections(html) {
     }
     const text = textOf(inner);
     const blocks = topDivs(inner).map((d) => blockName(d.attrs)).filter(Boolean);
-    return { index, text, empty: !text && !MEDIA.test(inner), blocks };
+    return { index, text, empty: !text && !MEDIA.test(inner), blocks, images: imagesOf(inner) };
   });
 }
 
@@ -124,6 +131,36 @@ function place(slots, list, { where, missing, at, unit }) {
   return { found, claimed, problems };
 }
 
+// A slot with no anchor text (an image-only slot) is placed after the anchored ones, by document order: it takes a
+// non-empty section no slot took, after its previous slot's and before its next slot's; of those, the first holding one
+// of its images (same alt text or file name, `hints`), else the first. → place's result plus how: Map(slot → 'image' |
+// 'order').
+function placeAll(slots, list, phrasing) {
+  const anchored = place(slots.filter((s) => s.anchor), list, phrasing);
+  const { found, claimed, problems } = anchored;
+  const how = new Map();
+  slots.forEach(({ slot, anchor, hints = [] }, i) => {
+    if (anchor) return;
+    const prev = slots.slice(0, i).reverse().find((s) => found.has(s.slot));
+    const next = slots.slice(i + 1).find((s) => s.anchor && found.has(s.slot));
+    const lo = prev ? found.get(prev.slot) : -1;
+    const hi = next ? found.get(next.slot) : Infinity;
+    const free = list.filter((s) => !s.empty && !claimed.has(s.index) && s.index > lo && s.index < hi);
+    const holds = (s) => (s.images ?? []).some((img) => hints.some((h) => (h.alt && img.alt === h.alt) || (h.file && img.file === h.file)));
+    const byImage = free.find(holds);
+    const hit = byImage ?? free[0];
+    if (!hit) {
+      const between = [prev ? `after ${prev.slot}` : null, next ? `before ${next.slot}` : null].filter(Boolean).join(' and ');
+      problems.push(`${slot} has no anchor text and no free ${phrasing.unit}${between ? ` ${between}` : ''} in ${phrasing.where}`);
+      return;
+    }
+    found.set(slot, hit.index);
+    claimed.add(hit.index);
+    how.set(slot, byImage ? 'image' : 'order');
+  });
+  return { found, claimed, problems, how };
+}
+
 const AUTHORED = { where: '.plain.html', missing: '.plain.html section', at: (i) => `plain section ${i}`, unit: 'plain section' };
 const DECORATED = { where: 'the decorated main', missing: 'decorated main > div', at: (i) => `main > div:nth-child(${i + 1})`, unit: 'decorated section' };
 
@@ -135,28 +172,33 @@ const DECORATED = { where: 'the decorated main', missing: 'decorated main > div'
 // there, out of order or sharing a div (two slots would be measured in one section) is drift too. Decoration may add
 // or drop whole sections, so k need not be the authored position: each slot where it differs gets a note. A slot the
 // authored form lacks is reported once and not looked for in the decorated page.
-export function plainJoin({ local, plain, decorated, mapping, anchors: anchorOf, modules, eds = new Map() }) {
+export function plainJoin({ local, plain, decorated, mapping, anchors: anchorOf, images: imagesOf = new Map(), modules, eds = new Map() }) {
   const matched = matchSections({ dom: local, mapping, anchors: anchorOf, modules });
   const problems = [...matched.problems];
   const drift = (msg) => problems.push(`section drift: ${msg}`);
   const slots = [];
   for (const s of [...matched.sections].sort((x, y) => x.index - y.index)) {
     const anchor = anchorOf.get(s.slot) ?? (parentOf(s.slot) && anchorOf.get(parentOf(s.slot)));
-    if (anchor) slots.push({ slot: s.slot, anchor });
-    else drift(`${s.slot} has no anchor text in content-model.json: it cannot be found in .plain.html`);
+    slots.push({ slot: s.slot, anchor: anchor || null, hints: imagesOf.get(s.slot) ?? imagesOf.get(parentOf(s.slot)) ?? [] });
   }
-  const authored = place(slots, plain, AUTHORED);
+  const authored = placeAll(slots, plain, AUTHORED);
   authored.problems.forEach(drift);
   for (const p of plain) if (!p.empty && !authored.claimed.has(p.index)) drift(`plain section ${p.index} matches no slot`);
 
+  // A decorated section is the innerText of a main > div, or { text, images } (previewTarget's collect).
   const decoratedSections = decorated.map((raw, index) => {
-    const text = norm(raw);
-    return { index, text, empty: !text };
+    const text = norm(typeof raw === 'string' ? raw : raw?.text);
+    const pics = typeof raw === 'string' ? [] : (raw?.images ?? []).map((i) => ({ alt: norm(i.alt), file: imageFile(i.src) }));
+    return { index, text, empty: !text && !pics.length, images: pics };
   });
-  const rendered = place(slots.filter((s) => authored.found.has(s.slot)), decoratedSections, DECORATED);
+  const rendered = placeAll(slots.filter((s) => authored.found.has(s.slot)), decoratedSections, DECORATED);
   rendered.problems.forEach(drift);
 
   const notes = [];
+  for (const { slot } of slots) {
+    const by = rendered.how.get(slot) ?? authored.how.get(slot);
+    if (by) notes.push(`${slot}: no anchor text in content-model.json: placed by ${by === 'image' ? 'its image' : 'document order between its neighbours'}`);
+  }
   const naming = [];
   const sections = matched.sections.filter((s) => rendered.found.has(s.slot)).map((s) => {
     const index = rendered.found.get(s.slot);

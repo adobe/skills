@@ -56,6 +56,23 @@ export function parseMapping(md) {
   throw new UsageError('mapping.md has no slot table: use the table form of reference/mapping-brief.md § Entry schema');
 }
 
+// An image's file name: the last path segment of its URL, lower case, without query or fragment.
+export const imageFile = (src) => {
+  const path = String(src ?? '').split(/[?#]/)[0];
+  const file = path.slice(path.lastIndexOf('/') + 1);
+  try { return decodeURIComponent(file).toLowerCase(); } catch { return file.toLowerCase(); }
+};
+
+// What an image-only slot is recognised by when it has no text: its images' alt texts and file names, in order.
+export function imageAnchors(model) {
+  const out = new Map();
+  for (const s of model?.sections || []) {
+    const list = (s.images || []).map((i) => ({ alt: norm(i.alt), file: imageFile(i.currentSrc ?? i.src) })).filter((i) => i.alt || i.file);
+    if (list.length) out.set(s.slot, list);
+  }
+  return out;
+}
+
 const TEXT_KINDS = new Set(['heading', 'text', 'paragraph', 'listItem', 'cta']);
 
 // The text a slot is recognised by: its first heading, else its first ordered text node, else the first
