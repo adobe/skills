@@ -481,8 +481,11 @@ mapping, `stream-render`, `slot-coverage` and the handoff read it unchanged. Wha
   (`fileKey` is `"redacted"` under `--confidential`; the overwrite guard compares `fileKeyHash`). It
   also records the rules applied: `visibility` (effective: a hidden ancestor hides), `readingOrder`
   (auto-layout child order, else geometric rows by ≥ 50 % vertical overlap then x; overlapping text is
-  listed as ambiguous), `segmentation` (top-level children by y; chrome by name; content-less layers
-  fold; one wrapper with ≥ 2 bands is descended), `responsive` and `decorative`.
+  listed as ambiguous), `segmentation` (top-level children by y; chrome by name — `Header`, `Nav bar`,
+  `Top bar`, `Footer` anywhere, or the word in the name's last path segment, e.g. "Market Specific
+  Header", for the outermost content layer at the top / bottom, so a "Section Header" below it stays
+  body; `content-rules.json` `chrome.header|footer|headerWord|footerWord` override the patterns;
+  content-less layers fold; one wrapper with ≥ 2 bands is descended), `responsive` and `decorative`.
 - Text is the rendered case (`textCase` applied); `characters` and `textCase` stay beside it so the
   renderer sets the CSS (`text-transform`, `font-variant-caps`) on the raw characters. A truncated
   layer keeps the full string with `truncation: { maxLines }`; the renderer clamps it in CSS.

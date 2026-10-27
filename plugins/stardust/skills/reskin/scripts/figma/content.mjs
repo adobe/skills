@@ -9,8 +9,9 @@
 //   order        auto-layout frames: child order (absolutely positioned children after, geometric);
 //                other frames: geometric (rows by vertical overlap ≥ 50 %, then x). Overlapping text in a
 //                geometric frame is listed as ambiguous for a human to confirm.
-//   segmentation the page frame's top-level children sorted by y; chrome (header, nav, footer by name)
-//                leaves the body; content-less layers fold away; overlapping bands merge; a body of one
+//   segmentation the page frame's top-level children sorted by y; chrome (header, nav, footer by name:
+//                the exact names anywhere, the word in the name's last path segment for the outermost
+//                content layer at the top / bottom) leaves the body; content-less layers fold away; overlapping bands merge; a body of one
 //                wrapper whose content children form ≥ 2 bands is descended.
 //   casing       text = characters with textCase applied (UPPER, LOWER, TITLE; SMALL_CAPS leaves innerText
 //                unchanged); characters and textCase stay as side fields for the renderer.
@@ -33,11 +34,15 @@ export const MODEL_VERSION = 2;
 export const SCHEMES = ['http:', 'https:', 'mailto:', 'tel:'];
 export const ORDER_RULE = 'auto-layout: child order (absolute children after, geometric); otherwise geometric: rows by vertical overlap >= 50%, then x';
 export const VISIBILITY_RULE = 'effective: hidden when the node or any ancestor is visible:false';
-export const SEGMENT_RULE = 'top-level children by y; chrome by name leaves the body; content-less layers fold; overlapping bands merge; a single wrapper with >= 2 content bands is descended';
+export const SEGMENT_RULE = 'top-level children by y; chrome by name (exact, or the header/footer word at the frame edge) leaves the body; content-less layers fold; overlapping bands merge; a single wrapper with >= 2 content bands is descended';
 export const KIT_RULE = 'a section is the outermost template-section or component instance above its nodes, else the instances inside them; one block per section (kit.mixed when several, kit.unbound when none)';
 
 export const DEFAULT_RULES = {
-  chrome: { header: '^(page )?header$|^nav(igation)?( bar)?$|^top ?bar$|^site header$', footer: '^(page )?footer$|^site footer$' },
+  // header/footer: the exact names, chrome wherever they sit. headerWord/footerWord: the word anywhere in the
+  // name's last path segment ("Market Specific Header", "Specific Footer"), chrome only as the frame's outermost
+  // content layer — nothing but exact-name chrome above a header, below a footer — so a "Section header" under
+  // the header stays body and a "Header / Navigation Item" sub-component path is not the header.
+  chrome: { header: '^(page )?header$|^nav(igation)?( bar)?$|^top ?bar$|^site header$', footer: '^(page )?footer$|^site footer$', headerWord: '\\bheader\\b|\\bnav(igation)? ?bar\\b|\\btop ?bar\\b', footerWord: '\\bfooter\\b' },
   kinds: [
     { match: '\\b(button|btn|cta)\\b', kind: 'button' }, // its link variant is kind link (linkVariant)
     { match: '\\b(checkbox|radio|toggle|switch)\\b', kind: 'check' },
@@ -103,6 +108,8 @@ export function compileRules(rules = {}) {
   return {
     header: new RegExp(r.chrome.header, 'i'),
     footer: new RegExp(r.chrome.footer, 'i'),
+    headerWord: new RegExp(r.chrome.headerWord, 'i'),
+    footerWord: new RegExp(r.chrome.footerWord, 'i'),
     kinds,
     linkName: new RegExp(r.linkNames, 'i'),
     pages: r.pages || {},
@@ -130,10 +137,14 @@ export function linkVariant(n, lookup = {}) {
   return values.some(([k, v]) => !/icon/i.test(k) && LINK.test(v)) || LINK.test(cleanName(n.name).replace(/\b(button|btn|cta)\b/gi, ''));
 }
 
-export function chromeRole(n, rules) {
+// pos { top, bottom }: no content above / below the node among the frame's top-level children but exact-name chrome.
+export function chromeRole(n, rules, pos = null) {
   const nm = cleanName(n.name).toLowerCase();
   if (rules.header.test(nm)) return 'header';
   if (rules.footer.test(nm)) return 'footer';
+  const leaf = cleanName(String(n.name ?? '').split('/').pop()).toLowerCase();
+  if (pos?.top && rules.headerWord?.test(leaf)) return 'header';
+  if (pos?.bottom && rules.footerWord?.test(leaf)) return 'footer';
   return null;
 }
 
@@ -184,8 +195,12 @@ export function segment(frame, rules) {
   const chrome = { header: [], footer: [] };
   let body = [];
   const folded = [];
-  for (const k of tops) {
-    const role = chromeRole(k, rules);
+  // The word match is the outermost content layer only: the first one from the top (a header), the last (a footer).
+  const strict = (k) => chromeRole(k, rules) !== null;
+  const bodyAt = (j) => hasContent(tops[j]) && !strict(tops[j]);
+  for (const [i, k] of tops.entries()) {
+    const pos = { top: !tops.slice(0, i).some((_, j) => bodyAt(j)), bottom: !tops.slice(i + 1).some((_, j) => bodyAt(i + 1 + j)) };
+    const role = chromeRole(k, rules, pos);
     if (role) chrome[role].push(k);
     else if (hasContent(k)) body.push(k);
     else folded.push(k.id);

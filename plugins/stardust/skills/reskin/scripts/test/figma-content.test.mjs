@@ -236,6 +236,24 @@ await test('hostile strings stay raw in the model (renderers escape); layer name
   assert.ok(!JSON.stringify(m.sections.map((s) => s.rootClass)).includes('script'));
 });
 
+await test('chrome names: the header/footer word at the frame edge is chrome; mid-page or a sub-component path stays body', () => {
+  const frame = F('2:1', 'Page', 0, 0, 1440, 2400, [
+    F('mh', 'Market Specific Header', 0, 0, 1440, 80, [T('mht', 'Brand', 20, 20, 100, 24)]),
+    F('sh', 'Section Header', 0, 200, 1440, 100, [T('sht', 'Our programs', 20, 220, 300, 40)]),
+    F('nv', 'Header / Navigation Item', 0, 400, 1440, 60, [T('nvt', 'Enrolment', 20, 410, 100, 24)]),
+    F('bd', 'Body', 0, 600, 1440, 400, [T('bdt', 'Real intro copy for people.', 20, 620, 400, 24)]),
+    F('sf', 'Specific Footer', 0, 2200, 1440, 200, [T('sft', 'Legal line', 20, 2220, 200, 20)]),
+  ]);
+  const m = build(frame);
+  assert.deepEqual(m._provenance.segmentation.chrome, { header: ['mh'], footer: ['sf'] });
+  assert.ok(allText(m).includes('Our programs') && allText(m).includes('Enrolment'), allText(m));
+  assert.ok(!allText(m).includes('Brand') && !allText(m).includes('Legal line'));
+  const notTop = build(F('2:2', 'Page', 0, 0, 1440, 900, [F('b0', 'Banner', 0, 0, 1440, 80, [T('b0t', 'Notice copy here', 0, 10, 300, 24)]), F('h2', 'Market Header', 0, 100, 1440, 80, [T('h2t', 'Brand', 0, 110, 100, 24)])]));
+  assert.deepEqual(notTop._provenance.segmentation.chrome.header, [], 'body content above it: not the header');
+  const exact = build(F('2:3', 'Page', 0, 0, 1440, 900, [F('b1', 'Banner', 0, 0, 1440, 80, [T('b1t', 'Notice copy here', 0, 10, 300, 24)]), F('h3', 'Header', 0, 100, 1440, 80, [T('h3t', 'Brand', 0, 110, 100, 24)])]));
+  assert.deepEqual(exact._provenance.segmentation.chrome.header, ['h3'], 'an exact name is chrome wherever it sits');
+});
+
 await test('segmentation: a single wrapper with ≥ 2 bands is descended into sections', () => {
   const m = build(page([F('w', 'Wrapper', 0, 100, 1440, 900, [F('b1', 'Band one', 0, 100, 1440, 300, [T('b1t', 'Band one copy', 0, 120, 300, 24)]), F('b2', 'Band two', 0, 500, 1440, 300, [T('b2t', 'Band two copy', 0, 520, 300, 24)])])]));
   assert.equal(m.sections.length, 2);
