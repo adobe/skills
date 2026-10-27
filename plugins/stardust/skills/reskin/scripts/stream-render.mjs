@@ -40,6 +40,9 @@
  *   A branded row's plain texts ahead of its primary links (site name, motto) sit in .brand beside the logo;
  *   a branded row with no primary links takes a logo-less link row's links when the header is one row
  *   (navAlign set), else that row stays below and the toggle (aria-controls) opens its nav.
+ *   chrome.footer: several slots with one zoned (headings + list items) among them are one zoned footer
+ *   (brand: logos ≥ 48px, a leading single-text slot as the name, the prose; link columns; social row); a
+ *   link named for a social network is an inline-SVG icon with its text as .sr-only; no empty <ul>.
  *   layout stack: the stream in order; grid-2: form fields two-up; media-band: the slot's first image as a
  *   cover backdrop behind a panel; split: the first image beside the text; cards: the stream's repeating
  *   run (findRepeat — same node-kind sequence back to back, heading levels ignored when that covers more,
@@ -243,6 +246,30 @@ function repeatRun(ordered, { maxStart = 6, maxPeriod = 12 } = {}, levels = true
   }
   return best;
 }
+
+// A link that names a social network by its text ("Facebook", "Follow us on Instagram", "X (formerly Twitter)"), or
+// with byHost by its URL's host: the network key, else null. Pure; exported for tests.
+export function socialNetwork(s, byHost = false) {
+  const t = String(s ?? '').trim();
+  if (byHost) {
+    let h = ''; try { h = new URL(t).hostname.replace(/^(www|m)\./, ''); } catch { return null; }
+    const hit = Object.entries({ facebook: /^(facebook\.com|fb\.com)$/, instagram: /^instagram\.com$/, x: /^(x\.com|twitter\.com)$/, linkedin: /^linkedin\.com$/, youtube: /^(youtube\.com|youtu\.be)$/, tiktok: /^tiktok\.com$/ }).find(([, re]) => re.test(h));
+    return hit ? hit[0] : null;
+  }
+  const m = t.match(/^(?:(?:follow|find|like|join|visit|watch) us on )?(facebook|instagram|x|twitter|linked ?in|you ?tube|tik ?tok)(?: \([^)]*\))?$/i);
+  if (!m) return null;
+  const k = m[1].toLowerCase().replace(/\s/g, '');
+  return k === 'twitter' ? 'x' : k;
+}
+// Simple 24×24 marks for the networks socialNetwork knows (fill currentColor, even-odd).
+const SOCIAL_PATHS = {
+  facebook: 'M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2h-5v-7h2.5l.5-3h-3V9.5c0-.9.4-1.5 1.6-1.5H18V5.3A20 20 0 0 0 15.6 5C13.2 5 12 6.4 12 8.8V12H9.5v3H12v7H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z',
+  instagram: 'M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H7zm5 3.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm5.3-4a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z',
+  x: 'M3 3h5l4.5 6.2L18 3h3l-7.1 8.1L21.5 21h-5l-4.9-6.7L5.5 21h-3l7.6-8.6z',
+  linkedin: 'M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm1.5 7.5V19h3V9.5zM7 4.8a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4zm3.5 4.7V19h3v-5c0-1.4.6-2.3 1.8-2.3s1.7.9 1.7 2.3v5h3v-5.6c0-2.8-1.5-4.1-3.6-4.1-1.4 0-2.4.6-2.9 1.4V9.5z',
+  youtube: 'M2.5 7.2C2.8 5.6 4 4.6 5.6 4.5 8 4.3 10 4.2 12 4.2s4 .1 6.4.3c1.6.1 2.8 1.1 3.1 2.7.3 1.6.5 3.2.5 4.8s-.2 3.2-.5 4.8c-.3 1.6-1.5 2.6-3.1 2.7-2.4.2-4.4.3-6.4.3s-4-.1-6.4-.3C4 19.4 2.8 18.4 2.5 16.8 2.2 15.2 2 13.6 2 12s.2-3.2.5-4.8zM10 8.5v7l6-3.5z',
+  tiktok: 'M14 2h3c.2 2.2 1.6 3.7 4 4v3c-1.5 0-2.9-.4-4-1.2V15a6 6 0 1 1-6-6h.5v3.1H11a3 3 0 1 0 3 2.9z',
+};
 
 // WCAG contrast of two CSS colours (#rgb, #rrggbb, rgb()/rgba()); null when either is unparseable.
 export function contrast(a, b) {
@@ -579,39 +606,97 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
 
   // A footer whose stream has headings is laid out in zones, as a Figma footer is: the brand (logos, the
   // top-level heading and the prose), one column per titled run of list items (an untitled run is its own
-  // column), and a social row (a heading with no list of its own, beside the icon links).
-  function footerZones(s) {
+  // column), and a social row (a heading with no list of its own, beside the icon links). A link whose text
+  // names a social network (socialNetwork) is an icon in the social row, its text kept as .sr-only.
+  // named: a footer-name is already set (an earlier band of a merged footer).
+  function footerParts(s, { named = false } = {}) {
     const ordered = Array.isArray(s.ordered) ? s.ordered : [];
     const heads = ordered.filter((n) => n.kind === 'heading');
-    if (!heads.length || !ordered.some((n) => n.kind === 'listItem')) return null;
     const lvl = (n) => Number(String(n.level || 'h6').slice(1)) || 6;
     const top = Math.min(...heads.map(lvl));
-    const brand = []; const cols = []; let social = null; let col = null;
+    const brand = []; const cols = []; let social = null; let col = null; const icons = [];
     const leaf = (n) => (n.children?.length ? inlineHtml(n.children) : esc((n.text || '').trim()));
+    const hasName = () => named || brand.some((b) => b.startsWith('<p class="footer-name"'));
     for (let i = 0; i < ordered.length; i += 1) {
       const n = ordered[i];
       if (n.kind === 'heading') {
         col = null;
-        if (lvl(n) === top && !brand.some((b) => b.startsWith('<p class="footer-name"'))) { brand.push(`<p class="footer-name">${leaf(n)}</p>`); continue; }
+        if (lvl(n) === top && !hasName()) { brand.push(`<p class="footer-name">${leaf(n)}</p>`); continue; }
         const next = ordered.slice(i + 1).find((m) => m.kind !== 'image');
         if (next?.kind === 'listItem') { col = { title: leaf(n), items: [] }; cols.push(col); continue; }
         social = leaf(n); continue;
       }
       if (n.kind === 'listItem') {
         if (!col) { col = { title: null, items: [] }; cols.push(col); }
-        col.items.push(`<li>${leaf(n)}</li>`); continue;
+        const only = n.children?.length === 1 && n.children[0].kind === 'cta' ? n.children[0] : null;
+        if (only && socialNetwork(only.text)) icons.push(socialIcon(only, only.text)); else col.items.push(`<li>${leaf(n)}</li>`);
+        continue;
       }
       col = null;
       if (n.kind === 'image' || (n.kind === 'cta' && !(n.text || '').trim())) continue;
+      if (n.kind === 'cta' && socialNetwork(n.text)) { icons.push(socialIcon(n, n.text)); continue; }
       if (n.kind === 'cta') { cols.push({ title: null, items: [`<li><a href="${url(n)}">${leaf(n)}</a></li>`] }); continue; }
       if ((n.text || '').trim()) brand.push(`<p class="footer-prose">${leaf(n)}</p>`);
     }
-    const logos = s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
-    const icons = (s.iconLinks || []).map((c) => `<li><a href="${url(c)}" aria-label="${esc(c.label)}">${esc(c.label)}</a></li>`).join('');
+    // A titled column whose links were all social icons titles the social row instead.
+    for (const c of cols.filter((x) => !x.items.length)) if (c.title && !social) { social = c.title; c.title = null; }
+    return { logos: s.images, brand, cols: cols.filter((c) => c.title || c.items.length), social, icons: [...icons, ...(s.iconLinks || []).map(iconLink)] };
+  }
+  function zonedHtml({ logos, brand, cols, social, icons }) {
+    const logoHtml = logos.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
+    const iconHtml = icons.join('');
     return `<div class="container chrome-footer footer-zoned">
-      <div class="footer-main"><div class="footer-brand">${logos}${brand.join('')}</div>
-      ${cols.map((c) => `<div class="footer-col">${c.title ? `<p class="footer-col-title">${c.title}</p>` : ''}<ul>${c.items.join('')}</ul></div>`).join('\n      ')}</div>
-      ${social || icons ? `<div class="footer-social">${social ? `<p class="footer-social-label">${social}</p>` : ''}${icons ? `<ul class="icon-links">${icons}</ul>` : ''}</div>` : ''}
+      <div class="footer-main"><div class="footer-brand">${logoHtml}${brand.join('')}</div>
+      ${cols.map((c) => `<div class="footer-col">${c.title ? `<p class="footer-col-title">${c.title}</p>` : ''}${c.items.length ? `<ul>${c.items.join('')}</ul>` : ''}</div>`).join('\n      ')}</div>
+      ${social || iconHtml ? `<div class="footer-social">${social ? `<p class="footer-social-label">${social}</p>` : ''}${iconHtml ? `<ul class="icon-links">${iconHtml}</ul>` : ''}</div>` : ''}
+    </div>`;
+  }
+  const zones = (s) => Array.isArray(s.ordered) && s.ordered.some((n) => n.kind === 'heading') && s.ordered.some((n) => n.kind === 'listItem');
+  function footerZones(s) {
+    return zones(s) ? zonedHtml(footerParts(s)) : null;
+  }
+  // A social link: the network's mark (inline SVG, aria-hidden) with its text as the accessible name, kept in
+  // the DOM (.sr-only) so the chrome text checks still read it. Any other icon link keeps its label as text.
+  function socialIcon(c, label) {
+    const net = socialNetwork(label) || socialNetwork(c.absHref || c.href || '', true);
+    return `<li><a class="social-icon" href="${url(c)}"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="${SOCIAL_PATHS[net]}"/></svg><span class="sr-only">${esc(label)}</span></a></li>`;
+  }
+  const iconLink = (c) => (socialNetwork(c.label) || socialNetwork(c.absHref || c.href || '', true)
+    ? socialIcon(c, c.label) : `<li><a href="${url(c)}" aria-label="${esc(c.label)}">${esc(c.label)}</a></li>`);
+  // Several footer bands with one zoned among them (a name band, a contact band, an acknowledgement band, a
+  // logo and links band) are one zoned footer: a leading single-text band is the footer name, every band's
+  // logos and prose join the brand column, its links one column (social links the social row).
+  function mergedFooter(slots) {
+    const all = { logos: [], brand: [], cols: [], social: null, icons: [] };
+    const firstZoned = slots.findIndex(zones);
+    slots.forEach((s, k) => {
+      const named = all.brand.some((b) => b.startsWith('<p class="footer-name"'));
+      if (zones(s)) {
+        const p = footerParts(s, { named });
+        all.logos.push(...p.logos); all.brand.push(...p.brand); all.cols.push(...p.cols); all.icons.push(...p.icons);
+        all.social ||= p.social;
+        return;
+      }
+      all.logos.push(...s.images);
+      const texts = footerTexts(s);
+      const links = (s.ctas || []).filter((c) => (c.text || '').trim());
+      texts.forEach((t) => all.brand.push(!named && k < firstZoned && texts.length === 1 && !links.length ? `<p class="footer-name">${esc(t)}</p>` : `<p class="footer-prose">${esc(t)}</p>`));
+      const items = [];
+      for (const c of links) (socialNetwork(c.text) ? all.icons : items).push(socialNetwork(c.text) ? socialIcon(c, c.text) : `<li><a href="${url(c)}">${esc(c.text)}</a></li>`);
+      if (items.length) all.cols.push({ title: null, items });
+      all.icons.push(...(s.iconLinks || []).map(iconLink));
+    });
+    return zonedHtml(all);
+  }
+  function plainFooter(s) {
+    const texts = footerTexts(s);
+    const social = s.ctas.filter((c) => socialNetwork(c.text));
+    const links = s.ctas.filter((c) => !social.includes(c));
+    const icons = [...social.map((c) => socialIcon(c, c.text)), ...(s.iconLinks || []).map(iconLink)];
+    return `<div class="container chrome-footer">
+      <div>${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}${texts.map((t) => `<p>${esc(t)}</p>`).join('')}</div>${links.length ? `
+      <ul>${links.map((c) => `<li><a href="${url(c)}">${esc(c.text)}</a></li>`).join('')}</ul>` : ''}${icons.length ? `
+      <ul class="icon-links">${icons.join('')}</ul>` : ''}
     </div>`;
   }
 
@@ -631,16 +716,12 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     if (role === 'header') {
       return headerRows(slots).map((r) => { r.texts.forEach((s) => assertChromeText(s, r.html)); return r.html; }).join('\n  ');
     }
-    return slots.map((s) => checked(s, (() => {
-      const zoned = footerZones(s);
-      if (zoned) return zoned;
-      const texts = footerTexts(s);
-      return `<div class="container chrome-footer">
-      <div>${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}${texts.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
-      <ul>${s.ctas.map((c) => `<li><a href="${url(c)}">${esc(c.text)}</a></li>`).join('')}</ul>${(s.iconLinks || []).length ? `
-      <ul class="icon-links">${s.iconLinks.map((c) => `<li><a href="${url(c)}" aria-label="${esc(c.label)}">${esc(c.label)}</a></li>`).join('')}</ul>` : ''}
-    </div>`;
-    })())).join('\n  ');
+    if (slots.length > 1 && slots.some(zones)) {
+      const html = mergedFooter(slots);
+      slots.forEach((s) => assertChromeText(s, html));
+      return html;
+    }
+    return slots.map((s) => checked(s, footerZones(s) || plainFooter(s))).join('\n  ');
   }
 
   // ---- page -------------------------------------------------------------------------------------------
@@ -708,6 +789,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     md.favicon ? `<link rel="icon" href="${esc(md.favicon)}">` : '',
   ].filter(Boolean).join('\n');
 
+  const headerHtml = chromeHtml(mapping.chrome?.header || [], 'header');
+  const footerHtml = chromeHtml(mapping.chrome?.footer || [], 'footer');
   const css = `${rootTokens(tokens).css.trimEnd()}
   :root {
   ${vars.map(([n, val]) => `  ${n}: ${val};`).join('\n')}
@@ -907,9 +990,11 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-main .table :is(th, td) { padding: 8px; }
     .site-main :is(.heading, .heading-display .heading) { font-size: min(${v('--type-display-font-size', '2em')}, 11vw); }
     .site-main .heading { overflow-wrap: break-word; }
-  }`;
+  }${footerHtml.includes('footer-zoned') ? `
+  .site-footer .footer-brand .logo { height: ${v('--footer-logo-height', v('--header-logo-height', '48px'))}; min-height: 48px; }` : ''}${footerHtml.includes('class="social-icon"') ? `
+  .site-footer .social-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
+  .site-footer .social-icon svg { width: 24px; height: 24px; fill: currentcolor; }` : ''}`;
 
-  const headerHtml = chromeHtml(mapping.chrome?.header || [], 'header');
   const html = `<!doctype html>
 <html lang="${esc(md.lang || 'en')}">
 <head>
@@ -941,7 +1026,7 @@ ${css}
   ${sections.join('\n  ')}
 </main>
 <footer class="site-footer${['dark', 'light', 'accent'].includes(mapping.chrome?.footerTone) ? ` tone-${mapping.chrome.footerTone}` : ''}" data-canon="footer">
-  ${chromeHtml(mapping.chrome?.footer || [], 'footer')}
+  ${footerHtml}
 </footer>${headerHtml.includes('class="icon-btn nav-toggle"') ? `
 <script>document.addEventListener('click', (e) => { const b = e.target.closest('.nav-toggle'); if (!b) return; const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); b.closest('.site-header').classList.toggle('nav-open', open); });</script>` : ''}${sections.some((h) => h.includes('class="disclosure"')) ? `
 <script>document.addEventListener('click', (e) => { const b = e.target.closest('.disclosure-toggle'); if (!b) return; const p = document.getElementById(b.getAttribute('aria-controls')); const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); if (open) p.removeAttribute('hidden'); else p.setAttribute('hidden', 'until-found'); });</script>` : ''}

@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { donorModulesEds } from '../figma/eds-map.mjs';
-import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, socialNetwork, tokenVars } from '../stream-render.mjs';
 import { advance } from '../../../stardust/scripts/state.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
@@ -416,7 +416,7 @@ check('0.42 chrome: a link with only sr-only text is the utility bar; a footer w
   assert.doesNotMatch(html.match(/<div class="nav-actions">[\s\S]*?<\/div>/)[0], /NSW Government/);
   assert.match(html, /<div class="footer-brand"><p class="footer-name">Hill School<\/p><p class="footer-prose">We acknowledge the land\.<\/p><\/div>/);
   assert.match(html, /<div class="footer-col"><p class="footer-col-title">Contact<\/p><ul><li>1 Hill St<\/li><li>02 1234<\/li><\/ul><\/div>/);
-  assert.match(html, /<div class="footer-social"><p class="footer-social-label">Follow us<\/p><ul class="icon-links"><li><a href="https:\/\/example\.test\/fb" aria-label="Facebook">Facebook<\/a><\/li><\/ul><\/div>/);
+  assert.match(html, /<div class="footer-social"><p class="footer-social-label">Follow us<\/p><ul class="icon-links"><li><a class="social-icon" href="https:\/\/example\.test\/fb"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="[^"]+"\/><\/svg><span class="sr-only">Facebook<\/span><\/a><\/li><\/ul><\/div>/);
 });
 const BRANDED = { sections: [{
   slot: 'h1', images: [{ currentSrc: 'https://example.test/logo.svg', alt: 'Logo' }], ctas: [],
@@ -503,6 +503,55 @@ check('0.42 main: an icon-font word is a glyph without the flag; a ledgered embe
   assert.doesNotMatch(plain, /<div class="embed-placeholder"/);
 });
 
+
+// A live-site footer captured as four bands: the site name, a contact band (headings + list items), an
+// acknowledgement, and a logo with links (social links among them as text).
+const BANDS = [
+  { slot: 'f1', images: [], paragraphs: [], ctas: [], ordered: [{ kind: 'paragraph', text: 'Hill Public School' }] },
+  { slot: 'f2', images: [], paragraphs: [], ctas: [], ordered: [
+    { kind: 'heading', level: 'h2', text: 'Contact us' },
+    { kind: 'listItem', text: '1 Hill St' }, { kind: 'listItem', text: '02 1234 5678' },
+    { kind: 'heading', level: 'h2', text: 'Follow us' },
+    { kind: 'listItem', text: 'Instagram', children: [{ kind: 'cta', text: 'Instagram', absHref: 'https://instagram.com/hill' }] },
+  ] },
+  { slot: 'f3', images: [], paragraphs: [], ctas: [], ordered: [{ kind: 'paragraph', text: 'We acknowledge the traditional custodians of the land.' }] },
+  { slot: 'f4', images: [{ currentSrc: 'https://example.test/gov.svg', alt: 'Government' }], paragraphs: [],
+    ctas: [{ text: 'Privacy', absHref: 'https://example.test/privacy' }, { text: 'Facebook', absHref: 'https://facebook.com/hill' }],
+    iconLinks: [{ label: 'YouTube', absHref: 'https://youtube.com/hill' }],
+    ordered: [{ kind: 'image', currentSrc: 'https://example.test/gov.svg' }, { kind: 'cta', text: 'Privacy', absHref: 'https://example.test/privacy' }, { kind: 'cta', text: 'Facebook', absHref: 'https://facebook.com/hill' }] },
+];
+const bandsHtml = () => render({ ...base, chromeModel: { sections: BANDS }, mapping: { ...mapping, chrome: { footer: BANDS.map((b) => b.slot) } } }).html;
+check('footer bands: a name, a zoned contact band, an acknowledgement and a logo/links band are one zoned footer; no empty <ul>', () => {
+  const html = bandsHtml();
+  const footer = html.slice(html.indexOf('<footer'), html.indexOf('</footer>'));
+  assert.equal((footer.match(/class="container chrome-footer/g) || []).length, 1, 'one footer layout, not stacked bands');
+  assert.doesNotMatch(footer, /<ul><\/ul>|<ul class="icon-links"><\/ul>/);
+  assert.match(footer, /<div class="footer-brand"><img class="logo" src="https:\/\/example\.test\/gov\.svg" alt="Government"><p class="footer-name">Hill Public School<\/p><p class="footer-prose">We acknowledge the traditional custodians of the land\.<\/p><\/div>/);
+  assert.match(footer, /<div class="footer-col"><p class="footer-col-title">Contact us<\/p><ul><li>1 Hill St<\/li><li>02 1234 5678<\/li><\/ul><\/div>/);
+  assert.match(footer, /<div class="footer-col"><ul><li><a href="https:\/\/example\.test\/privacy">Privacy<\/a><\/li><\/ul><\/div>/);
+  assert.match(footer, /<div class="footer-social"><p class="footer-social-label">Follow us<\/p><ul class="icon-links">/);
+  for (const [net, href] of [['Instagram', 'instagram.com/hill'], ['Facebook', 'facebook.com/hill'], ['YouTube', 'youtube.com/hill']]) {
+    assert.match(footer, new RegExp(`<a class="social-icon" href="https://${href.replace(/\./g, '\\.')}"><svg [^>]*aria-hidden="true"[^>]*><path [^>]*/></svg><span class="sr-only">${net}</span></a>`), net);
+  }
+  assert.match(html, /\.site-footer \.footer-brand \.logo \{ height: 48px; min-height: 48px; \}/);
+  assert.match(html, /\.site-footer \.social-icon svg \{/);
+  // a single plain band never prints an empty list; one without social links gets no icon CSS
+  const plain = render({ ...base, chromeModel: { sections: [BANDS[2]] }, mapping: { ...mapping, chrome: { footer: ['f3'] } } }).html;
+  assert.doesNotMatch(plain, /<ul><\/ul>/);
+  assert.doesNotMatch(plain, /social-icon|footer-brand \.logo \{ height: 48px/);
+});
+check('socialNetwork: network names by text (and by host for icon links); anything else is null', () => {
+  assert.equal(socialNetwork('Facebook'), 'facebook');
+  assert.equal(socialNetwork('Follow us on Instagram'), 'instagram');
+  assert.equal(socialNetwork('X (formerly Twitter)'), 'x');
+  assert.equal(socialNetwork('Twitter'), 'x');
+  assert.equal(socialNetwork('LinkedIn'), 'linkedin');
+  assert.equal(socialNetwork('TikTok'), 'tiktok');
+  assert.equal(socialNetwork('Facebook privacy policy'), null);
+  assert.equal(socialNetwork('Contact'), null);
+  assert.equal(socialNetwork('https://www.youtube.com/@hill', true), 'youtube');
+  assert.equal(socialNetwork('https://example.test/facebook', true), null);
+});
 
 // ---- mapping.json --check (reference/mapping-json.md) ----
 const chromeM = { sections: [{ slot: 'h1', ordered: [] }, { slot: 'f1', ordered: [] }] };
@@ -798,6 +847,32 @@ await (async () => {
       assert.equal(await page.locator('#site-nav a[href="https://example.test/about"]').isVisible(), true, `primary links open (${navAlign})`);
       assert.equal(await page.locator('.nav-toggle').getAttribute('aria-controls'), 'site-nav');
     }
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
+})();
+
+// The merged footer in a browser at 1440: brand, columns side by side; the social icons drawn, their text hidden.
+await (async () => {
+  const name = 'footer bands in a browser at 1440: one zoned row, a ≥48px logo, social icons drawn with hidden text';
+  let browser;
+  try {
+    const { chromium } = await import('playwright');
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.route('https://example.test/gov.svg', (r) => r.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><rect width="120" height="40"/></svg>' }));
+    await page.setContent(bandsHtml(), { waitUntil: 'load' });
+    const geo = await page.evaluate(() => {
+      const r = (el) => el.getBoundingClientRect();
+      const tops = [...document.querySelectorAll('.footer-main > *')].map((el) => Math.round(r(el).top));
+      const icons = [...document.querySelectorAll('.social-icon')].map((a) => ({ w: r(a.querySelector('svg')).width, text: r(a.querySelector('.sr-only')).width }));
+      return { tops, logo: r(document.querySelector('.footer-brand .logo')).height, icons };
+    });
+    assert.ok(geo.tops.length >= 3 && new Set(geo.tops).size === 1, `brand and columns in one row: ${geo.tops}`);
+    assert.ok(geo.logo >= 48, `logo ${geo.logo}px`);
+    assert.equal(geo.icons.length, 3);
+    assert.ok(geo.icons.every((i) => i.w >= 20 && i.text <= 1), JSON.stringify(geo.icons));
+    const shot = await page.locator('footer').screenshot();
+    assert.ok(shot.length > 1000, 'footer screenshot rendered');
     console.log(`✓ ${name}`);
   } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
 })();
