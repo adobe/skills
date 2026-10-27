@@ -334,7 +334,7 @@ async function boxesStep({ dir, opts, log, UsageError }) {
 
   if (opts.node) {
     const { roots, missing } = loadBoxes(dir, [opts.node]);
-    if (missing.length) throw new UsageError(`node ${opts.node} is not in the capture: capture its frame with figma-donor.mjs capture <figma-url> --frames <ids>`);
+    if (missing.length) throw new UsageError(`node ${opts.node} is not in the capture, a narrowed one: re-capture the whole file with figma-donor.mjs capture <figma-url> --refresh (no --frames, no --max-frames)`);
     for (const line of outline(roots[opts.node].box, depth)) log(line);
     return 0;
   }
@@ -344,7 +344,7 @@ async function boxesStep({ dir, opts, log, UsageError }) {
     const id = modules.get(opts.module);
     if (!id) throw new UsageError(`no included module ${opts.module} in ${dir}/reskin/curation-rules.json (included: ${[...modules.keys()].join(', ') || 'none'})`);
     const { roots, missing } = loadBoxes(dir, [id]);
-    if (missing.length) throw new UsageError(`${opts.module} (${id}) is not in the capture: capture its frame with figma-donor.mjs capture <figma-url> --frames <ids>`);
+    if (missing.length) throw new UsageError(`${opts.module} (${id}) is not in the capture, a narrowed one: re-capture the whole file with figma-donor.mjs capture <figma-url> --refresh (no --frames, no --max-frames)`);
     for (const line of outline(roots[id].box, depth)) log(line);
     return 0;
   }
@@ -352,7 +352,7 @@ async function boxesStep({ dir, opts, log, UsageError }) {
   const { roots, missing } = loadBoxes(dir, [...modules.values()]);
   if (missing.length) {
     const lost = [...modules].filter(([, f]) => missing.includes(f)).map(([m, f]) => `${m} (${f})`);
-    throw new UsageError(`included module frame(s) not in the capture: ${lost.join(', ')}: capture them with figma-donor.mjs capture <figma-url> --frames <ids>`);
+    throw new UsageError(`included module frame(s) not in the capture: ${lost.join(', ')}: the capture was narrowed: re-capture the whole file with figma-donor.mjs capture <figma-url> --refresh (no --frames, no --max-frames)`);
   }
   for (const [m, f] of modules) log(`${m} ${f} ${roots[f].box.w}×${roots[f].box.h}`);
   return 0;

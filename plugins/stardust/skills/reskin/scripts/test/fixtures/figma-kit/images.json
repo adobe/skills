@@ -2,6 +2,7 @@
   "err": null,
   "images": {
     "1:2": "{{base}}/img/frame-a.png?X-Amz-Signature=fixture-signature-a",
-    "1:9": "{{base}}/img/frame-b.png?X-Amz-Signature=fixture-signature-b"
+    "1:9": "{{base}}/img/frame-b.png?X-Amz-Signature=fixture-signature-b",
+    "3:1": "{{base}}/img/frame-a.png?X-Amz-Signature=fixture-signature-c"
   }
 }

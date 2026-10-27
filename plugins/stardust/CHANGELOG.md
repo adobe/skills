@@ -187,6 +187,10 @@ multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 wi
 - **Preflight warns on thin deployed-leg coverage.** `reskin-preflight` warns `deployed-coverage` for a type whose
   migrated pages with preview-deployed evidence in the ledger number fewer than max(2, ⌈10 %⌉) of them (all below
   2), naming the counts and the pages to run `deployed-gate all` on. A warning only in this release.
+- **The handoff takes the full inventory.** Aligned with 0.33.0: `handoff.md` § Bounded inventory, which read the
+  inventory as the pages the user named, is § Full inventory: the uncapped `extract --all` crawl, every page typed,
+  full-site handoff by default and archetypes-only only on a user request recorded in `ledger.json#delivery`. Phase 6
+  migrates every non-archetype inventory page at the sibling tier, never a skip.
 
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 
@@ -325,6 +329,9 @@ with exit 2. This release adds no site auth: the gates send no Authorization hea
   every mobile root it requires (exit 2); `--waiver-budget <pct>` raises the share and is recorded.
 - **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
   checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`.
+- **Whole file, whole site.** Aligned with 0.33.0: Phase 1's Figma bullet and `donor-sources.md` § 3 no longer hand-pick
+  kit frames with `--list` and `--frames`, and the content crawl is `extract --all`. `figma-gate`'s no-capture and
+  frame-not-captured errors ask for a whole-file `capture` (`--refresh` over a narrowed one), not `--frames <ids>`.
 - **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The
   first read geometry 41/41, ramp 291/291 and `parity` n/a while the deployed page was 21.05% off at 360; that drove the
   floor. The second: ramp 547/547 at widths 414 and 1440, coverage 78/80 with 2 waivers, parity
@@ -338,9 +345,10 @@ version, caches the raw responses and writes `canon-source/` foundation, role an
 every value citing its node id. `curate` turns the agent-authored `reskin/curation-rules.json` into `donor-tokens.json`,
 `donor-modules.md`, `DESIGN.{md,json}` and `_brand-extraction.json`, byte-identical for the same inputs. `stamp` sets
 `state.json.designSource`. `donor-sources.md` §3 is now the recipe, with `figma-rest` provenance. `--confidential`
-refuses to write anything git would track and redacts the stamped URL. A component kit (one module per page) is captured
-by picking frames from `capture --list`; a whole file larger than `--max-frames` stops and asks for that instead of
-capturing its first frames in document order. Four review fixes: a failed `--refresh` no longer overwrites the last
+refuses to write anything git would track and redacts the stamped URL. `capture` takes the whole file by default: every
+visible top-level frame, section, component and component set of every page. A shared link names whichever page the
+designer had open (a kit's cover), so the URL's node-id is recorded as `linked` and never narrows; `--frames` narrows,
+`--max-frames` only caps when passed, and a frame Figma cannot render is recorded as not renderable. Four review fixes: a failed `--refresh` no longer overwrites the last
 complete capture of the same file version (a capture is staged and swapped in whole); `--confidential` checks every
 output and cache path, not one per directory; an API error reason is redacted before it is truncated; `curate` no
 longer emits radii or shadows the rules mark absent.
@@ -354,6 +362,12 @@ longer emits radii or shadows the rules mark absent.
   `layout.mobile.sectionPaddingY|gutter`) with role candidates from card components, button box heights and frames
   narrower than 600px. They never block: `curate` notes each one left unmapped and lists them in
   `coverage.recommended`.
+- **A reskin migrates the whole site.** Phase 1 ran `extract <content-url>`, extract's capped discovery mode, so a 60-page
+  school site came back with 25 pages. Every content crawl is now `--all` (not `--prep`: reskin never runs the
+  prepare-migration cascade), reskin types every inventory page itself, and Setup step 5 treats a capped crawl
+  (`site.pageCap` set, a `below cap` row in `_crawl-log.json#discovery.cut`) as a setup error to re-crawl. `--pages`
+  restricts the archetype capture, never the inventory. Phase 6 migrates and ships every page by default;
+  archetypes-only delivery is an opt-out the user asks for, recorded in `ledger.json#delivery`.
 
 ## 0.32.1 — spec knowledge, wave 4: what a reviewing client had to guess
 
