@@ -319,7 +319,10 @@ Rules:
   (`scripts/figma/eds-map.mjs`; a module's `eds` in
   `curation-rules.json` overrides): Q&A → `accordion`, Teaser →
   `cards (teaser)`, Button → default content, Chips → `chips` (no EDS
-  match keeps the donor name), Input / Dropdown / Toggle → `form` (field
+  match keeps the donor name); a pattern word anywhere in the name
+  counts (Accordion Item / FAQ Section → `accordion`, Table – Striped →
+  `table (striped)`, Image Top Columns → `columns (image-top)`,
+  3 Columns → `columns`), Input / Dropdown / Toggle → `form` (field
   type rows of the Block Collection form, `Label | value | type | state`,
   not variants; only a layout such as Login stays a class, `form (login)`).
   Other modules sharing an EDS block are its variants, never a second

@@ -112,7 +112,9 @@ curation-rules.json:
   except paths marked absent.
   Module ids are M1, M2, …; a composition variant of a module takes a letter suffix (M1b, a variant of M1).
   A module's optional "eds" overrides the EDS block deploy Step 2 (D1/D11) gives its name
-  (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser, Button → null = default content).
+  (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser, Button → null = default content; a pattern
+  word anywhere counts: Accordion Item → accordion, Table – Striped → table striped, Image Top Columns →
+  columns image-top).
 Needs Node 22+ (an older Node stops at once with exit 2).
 Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup (Node < 22) or not
             found (404) · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
