@@ -334,6 +334,9 @@ Rules:
 - **Closed set**: Phase 3 maps onto these ids only; anything else is
   an explicit new-module entry (`reference/mapping-brief.md`
   § Status semantics).
+- **Ids**: `M1`, `M2`, …; a composition variant of a module takes a
+  letter suffix (`M1b` is a variant of `M1`). `figma-donor.mjs curate`
+  accepts exactly `M<n>` or `M<n><letter>`.
 - End with a **notes-for-reskin** line capturing the donor's idiom
   (casing conventions, link suffix glyphs, band rhythm) — the
   renderer's cheat sheet.

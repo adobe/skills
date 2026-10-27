@@ -23,6 +23,8 @@ import { letterSpacingCss, lineHeightCss } from './normalize.mjs';
 export const TOKEN_GROUPS = ['palette', 'type', 'layout', 'buttons', 'cards', 'radii', 'shadows'];
 export const TOP_KEYS = ['version', 'reference', 'roles', 'normalizations', 'curations', 'suspect', 'modules', 'notesForReskin', 'motifs', 'design'];
 export const NORMALIZATION_KINDS = ['lineHeightUnitless', 'letterSpacingEm', 'weightMap', 'familyEquivalence', 'fontSmoothing'];
+// M1, M2, …; a composition variant of a module takes a letter suffix (M1b is a variant of M1).
+export const MODULE_ID = /^M\d+[a-z]?$/;
 const CSS_FIELDS = {
   typography: ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing'],
   components: ['background', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'borderRadius', 'padding', 'border', 'boxShadow', 'height'],
@@ -206,7 +208,7 @@ export function resolveRules(rules, { foundation, moduleCandidates, screenshotIn
     if (m.status === 'excluded') {
       if (!nonEmpty(m.why)) problems.push(`${label}: excluded needs a why`);
     } else if (m.status === 'include') {
-      if (!/^M\d+$/.test(m.id || '')) problems.push(`${label}: an included module needs an id like M1`);
+      if (!MODULE_ID.test(m.id || '')) problems.push(`${label}: an included module needs an id like M1 (or M1b for a composition variant of M1)`);
       else if (ids.has(m.id)) problems.push(`duplicate module id ${m.id}`);
       ids.add(m.id);
       if (!nonEmpty(m.anatomy)) problems.push(`${label}: needs an anatomy (the slots it carries)`);

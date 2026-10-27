@@ -108,6 +108,7 @@ curation-rules.json:
   params.paths scope; weightMap / familyEquivalence take params.map { from: to }; fontSmoothing
   takes params.value. Without radii.* or shadows.* roles every captured radius / shadow is listed,
   except paths marked absent.
+  Module ids are M1, M2, …; a composition variant of a module takes a letter suffix (M1b, a variant of M1).
   A module's optional "eds" overrides the EDS block deploy Step 2 (D1/D11) gives its name
   (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser, Button → null = default content).
 Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or not found (404)
