@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { donorModulesEds } from '../figma/eds-map.mjs';
-import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, MAPPING_SCHEMA, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
 import { advance } from '../../../stardust/scripts/state.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
@@ -392,6 +392,21 @@ const goodMapping = {
 check('checkMapping: a valid mapping (every key, annotations) has no problems', () => {
   assert.deepEqual(checkMapping(goodMapping, { models: { login: model }, chromeModel: chromeM, slugs: ['login'] }), []);
   assert.deepEqual(checkMapping(mapping, { models: { login: model } }), []);
+});
+check('checkMapping: --check allows every mapping key the renderer and --deploy-map read (no documented key rejected)', () => {
+  const reads = { top: new Set(), chrome: new Set(), page: new Set(), slot: new Set() };
+  const track = (o, set) => new Proxy(o, { get(t, k, r) { if (typeof k === 'string') set.add(k); return Reflect.get(t, k, r); } });
+  const m = structuredClone(goodMapping); m.blocks = { M2: 'hero' };
+  const slots = Object.fromEntries(Object.entries(m.pages.login.slots).map(([id, s]) => [id, track(s, reads.slot)]));
+  const mapped = track({ ...m, chrome: track(m.chrome, reads.chrome), pages: { login: track({ ...m.pages.login, slots }, reads.page) } }, reads.top);
+  render({ ...base, mapping: mapped, chromeModel: { sections: chromeM.sections.map((x) => ({ ...x, ctas: [], images: [], ordered: [{ kind: 'text', text: 'Chrome' }] })) } });
+  deployMap(mapped, 'login', model);
+  const S = MAPPING_SCHEMA; const ok = (k, allowed) => allowed.includes(k) || /^[_$]/.test(k) || k === 'toJSON';
+  for (const [level, allowed] of [['top', S.top], ['chrome', S.chrome], ['page', S.page], ['slot', S.slot]]) {
+    const extra = [...reads[level]].filter((k) => !ok(k, allowed));
+    assert.deepEqual(extra, [], `${level} keys the renderer reads but --check rejects: ${extra.join(', ')}`);
+  }
+  assert.ok(reads.slot.has('inset') && reads.chrome.has('model') && reads.top.has('blocks'), 'the audit saw the reads');
 });
 check('checkMapping: unknown keys at every level', () => {
   const m = structuredClone(goodMapping); m.extra = 1; m.chrome.logo = 'x'; m.pages.login.status = 'mapped'; m.pages.login.slots.s01.rationale = 'why';
