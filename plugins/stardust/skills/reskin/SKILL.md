@@ -493,7 +493,9 @@ pipeline:
   first-class token-sourcing paths).
   Same-type sibling pages render at the **sibling tier** against the
   gated archetype; gate each migrated page (the three gates on
-  migrate's output, reports in `reskin/gates/<slug>/migrated/`) and
+  migrate's output, reports in `reskin/gates/<slug>/migrated/`, with
+  `--deltas` ignoring the `canonical` / `og:url` migrate rewrites to the
+  deploy host: `reference/handoff.md` § Sibling gate) and
   `reskin-ledger.mjs record <slug> --stage migrated`. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.

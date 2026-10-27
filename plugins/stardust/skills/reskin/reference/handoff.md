@@ -138,6 +138,38 @@ three gates against the source URL, reports in
 (`sibling-gates`) on migrated pages without a passing one; rollout does not
 publish them.
 
+When `state.json` `site.deployUrl` is set, `migrate` rewrites the page's
+`canonical` and `og:url` to the deploy host, so the source's values no longer
+match by design: the content gates read a delta file that ignores exactly
+those two (`reference/deployed-leg.md` § The delta file), or slot-coverage
+fails a healthy page on metadata. Without a deploy host, leave `--deltas` out.
+
+```bash
+# stardust/reskin/deltas/<slug>.migrated.json
+# { "version": 1, "metadata": { "ignore": ["canonical", "og:url"] } }
+node stardust/scripts/reskin/dom-equality.mjs \
+  --source <page-url> --source-scope '<declared scope>' \
+  --normalize stardust/reskin/normalize/<slug>.mjs \
+  --rendered stardust/migrated/<outputPath> --rendered-scope main \
+  --deltas stardust/reskin/deltas/<slug>.migrated.json \
+  --report stardust/reskin/gates/<slug>/migrated/dom-equality.md
+node stardust/scripts/reskin/slot-coverage.mjs \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --rendered stardust/migrated/<outputPath> \
+  --deltas stardust/reskin/deltas/<slug>.migrated.json \
+  --report stardust/reskin/gates/<slug>/migrated/slot-coverage.md
+node stardust/scripts/reskin/donor-probe.mjs \
+  --tokens stardust/reskin/donor-tokens.json \
+  --rendered stardust/migrated/<outputPath> \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --report stardust/reskin/gates/<slug>/migrated/donor-probe.md
+node stardust/scripts/reskin/reskin-ledger.mjs record <slug> --stage migrated
+```
+
+`<outputPath>` is the page's path under `stardust/migrated/` (its sidecar,
+`_meta.json` or `<name>._meta.json`, sits beside it). Keep the file to those two keys: any other
+difference on migrate's output is a finding, not a delta.
+
 ## Switching away
 
 `$stardust <flow> --switch-flow` from `reskin` marks `prototyped`,
