@@ -38,6 +38,7 @@ other key not listed below is an error for `--check` (the renderer ignores it, s
 | `footer` | string[] | chrome-model slot ids | each renders in `<footer data-canon="footer">`; zoned (brand, titled columns, social row) when its stream has headings and list items. Several slots with one zoned among them are one zoned footer: a leading single-text slot is the footer name, every slot's logos and prose join the brand column (logo ≥ 48px: `footer.logoHeight`, else `header.logoHeight`, else 48px), its links one column. A link whose text names a social network (Facebook, Instagram, X/Twitter, LinkedIn, YouTube, TikTok) is an icon in the social row, its text kept as `.sr-only`; no empty list is printed |
 | `footerTone` | string | `dark` \| `light` \| `accent`; default none | paints the footer from the palette |
 | `navAlign` | string | `start` \| `center` \| `end`; default the donor's `layout.navAlign`, else `end` | where a zoned header puts its menu |
+| `kit` | object | from `mapping.seed.json`: chrome slot → `{ module, block, variant }` | none (a copied seed passes `--check`; the renderer does not read it) |
 
 ## `blocks` (optional)
 
@@ -56,6 +57,7 @@ read by the renderer.
 |---|---|---|---|
 | `template` | string | the archetype slug; default `<slug>` | `main[data-template]` and the provenance `template` |
 | `slots` | object | `{ "<slot id>": { … } }`, ids from the page's `content-model.json` `sections[].slot` | per-slot decisions; a model slot with no entry renders as `stack` / `narrow` with no `data-module` |
+| `defaultContent` | object | from `mapping.seed.json`: slot → `{ module, figma }` for slots that are no block | none (kept for review; the renderer does not read it) |
 
 `stream-render <slug>` refuses a page with no `pages.<slug>` entry (exit 2).
 

@@ -564,6 +564,14 @@ check('checkMapping: a valid mapping (every key, annotations) has no problems', 
   assert.deepEqual(checkMapping(goodMapping, { models: { login: model }, chromeModel: chromeM, slugs: ['login'] }), []);
   assert.deepEqual(checkMapping(mapping, { models: { login: model } }), []);
 });
+check('checkMapping: a copied mapping.seed.json (library, chrome.kit, pages[].defaultContent) passes --check', () => {
+  const seed = { ...structuredClone(goodMapping), library: [{ figma: 'Card', block: 'cards', variant: null }] };
+  seed.chrome = { ...seed.chrome, kit: { c01: { module: 'M7', block: 'header', variant: [] } } };
+  seed.pages.login.defaultContent = { s09: { module: 'M9', figma: 'Rich text' } };
+  assert.deepEqual(checkMapping(seed, { models: { login: model }, chromeModel: chromeM, slugs: ['login'] }), []);
+  assert.match(checkMapping({ ...seed, librar: [] }).join('\n'), /librar/);
+});
+
 check('checkMapping: --check allows every mapping key the renderer and --deploy-map read (no documented key rejected)', () => {
   const reads = { top: new Set(), chrome: new Set(), page: new Set(), slot: new Set() };
   const track = (o, set) => new Proxy(o, { get(t, k, r) { if (typeof k === 'string') set.add(k); return Reflect.get(t, k, r); } });

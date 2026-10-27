@@ -1081,9 +1081,11 @@ ${css}
 // Every key render() reads, with its allowed values. Keys starting with `_` or `$` are annotations
 // ($schema, _note, _provenance) and are never read. Pure; exported for tests.
 export const MAPPING_SCHEMA = {
-  top: ['chrome', 'pages', 'blocks'],
-  chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign'],
-  page: ['template', 'slots'],
+  // library, chrome.kit and pages[].defaultContent come from figma-donor's mapping.seed.json: a copied seed is
+  // read as the documented starting point, not rendered.
+  top: ['chrome', 'pages', 'blocks', 'library'],
+  chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign', 'kit'],
+  page: ['template', 'slots', 'defaultContent'],
   slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split', 'bleed', 'align', 'cardTone', 'block', 'variant', 'instance'],
   align: ['center'],
   layout: ['stack', 'grid-2', 'media-band', 'split', 'cards'],
