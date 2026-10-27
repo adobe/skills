@@ -1,9 +1,10 @@
 // skills/reskin/scripts/figma/client.mjs — the Figma REST client figma-donor.mjs capture uses. The
 // token comes from the caller (FIGMA_TOKEN) and is sent as X-Figma-Token to the API base only; image
 // bytes come from signed storage URLs fetched without it. Failure policy: 401/403 → exit 3 (not
-// retried); 404 and other 4xx → exit 2; 429 waits Retry-After when it is within maxWaitSec, else
-// exit 3 at once quoting the plan headers; 5xx and network errors back off min(2^n s, maxWaitSec)
-// up to maxRetries, then exit 3. Every error message is redacted of the token.
+// retried; the message names the token's source variable, its length and whether it has the figd_
+// personal-access-token prefix, never its characters); 404 and other 4xx → exit 2; 429 waits
+// Retry-After when it is within maxWaitSec, else exit 3 at once quoting the plan headers; 5xx and
+// network errors back off min(2^n s, maxWaitSec) up to maxRetries, then exit 3. Every error message is redacted of the token.
 import { FigmaError, UsageError } from './errors.mjs';
 
 const DEFAULT_BASE = 'https://api.figma.com';
@@ -40,8 +41,22 @@ const reasonOf = async (res, token) => {
   try { const j = JSON.parse(text); return clip(j.err ?? j.message ?? text, token); } catch { return clip(text, token); }
 };
 
+// What a 401/403 can say about the token without revealing it: where it came from, its length,
+// whether it carries the figd_ prefix Figma personal access tokens use, and stray whitespace.
+// Never any of its characters beyond that prefix verdict.
+export const PAT_PREFIX = 'figd_';
+export function describeToken(token, source = 'FIGMA_TOKEN') {
+  const t = String(token ?? '');
+  const shape = t.startsWith(PAT_PREFIX)
+    ? 'prefix looks like a Figma personal access token'
+    : `unexpected prefix: Figma personal access tokens start with ${PAT_PREFIX}`;
+  const space = t !== t.trim() ? '; it has leading or trailing whitespace' : '';
+  return `the token came from ${source} (${t.length} characters; ${shape}${space})`;
+}
+
 export function createClient({
   token,
+  tokenSource = 'FIGMA_TOKEN',
   base = process.env.FIGMA_API_BASE || DEFAULT_BASE,
   fetchImpl = fetch,
   maxRetries = 3,
@@ -84,7 +99,7 @@ export function createClient({
         throw fail(`Image download refused (HTTP ${status}) for ${label}: the signed render URL may have expired; re-run capture with --refresh.`, { exitCode: 3, status });
       }
       if (status === 401 || status === 403) {
-        throw fail(`Figma refused the request (HTTP ${status}${reason ? `: ${reason}` : ''}) for ${label}. Check that FIGMA_TOKEN holds a current personal access token (not expired or revoked), that it has the file_content:read scope, and that the file is shared with the token's account.`, { exitCode: 3, status, info: { reason } });
+        throw fail(`Figma refused the request (HTTP ${status}${reason ? `: ${reason}` : ''}) for ${label}; ${describeToken(token, tokenSource)}. Check that ${tokenSource} holds a current personal access token (not expired or revoked), that it has the file_content:read scope, and that the file is shared with the token's account.`, { exitCode: 3, status, info: { reason } });
       }
       if (status === 404) {
         throw fail(`Figma has no such file or node (HTTP 404) for ${label}. Check the file key and node-id in the URL, and that the file is shared with the token's account.`, { exitCode: 2, status, info: { reason } });

@@ -5,7 +5,7 @@
 // skip line otherwise). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -129,7 +129,20 @@ let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  runRamp and the ramp CLI against page.html (playwright not importable here; run this test in an environment that has it)'); }
 
 if (playwrightOk) {
-  const project = (n) => makeProject(join(scratch, n));
+  // The fixture page declares Inter; a face of it that never loads makes "not served" the same on every machine (an
+  // installed Inter would otherwise serve it). served(p) gives it a face that loads instead.
+  const project = (n) => {
+    const p = makeProject(join(scratch, n));
+    writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('<style>', '<style>\n@font-face { font-family: Inter; src: url("no-such-inter.woff2"); font-weight: 100 900; }'));
+    return p;
+  };
+  const FONT = join(HERE, '..', '..', '..', '..', '..', 'aem', 'project-management', 'fonts', 'SourceSans3-Regular.otf');
+  const served = (p) => {
+    copyFileSync(FONT, join(p.root, 'face.otf'));
+    writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('url("no-such-inter.woff2")', 'url("face.otf")'));
+    return p;
+  };
+  const UNSERVED = 8;
   const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
   const rampOf = (p) => JSON.parse(readFileSync(join(p.dir, '.work', 'reskin', 'gates', p.slug, 'figma', 'ramp.json'), 'utf8'));
   const urlOf = (p) => pathToFileURL(p.page).href;
@@ -141,7 +154,7 @@ if (playwrightOk) {
   const total = 8 * 6 + rootEntries.length;
 
   await check('every :root entry and type entry of the fixture passes on page.html; ramp.json and the probe files are written', async () => {
-    const p = project('pass');
+    const p = served(project('pass'));
     const r = await gate(p);
     assert.equal(r.results.length, total);
     assert.deepEqual(r.results.filter((x) => x.status !== 'PASS'), [], JSON.stringify(r.results.filter((x) => x.status !== 'PASS')));
@@ -158,8 +171,26 @@ if (playwrightOk) {
     assert.ok(r.literals.length > 0);
   });
 
+  await check('declared but not served: each type entry\'s fontFamily is UNSERVED "declared Inter, served fallback", neither PASS nor FAIL; the CLI says "(8 unserved)" with a font.unserved line each, exit 0', async () => {
+    const p = project('unserved');
+    const r = await gate(p);
+    const unserved = r.results.filter((x) => x.status === 'UNSERVED');
+    assert.equal(unserved.length, UNSERVED);
+    assert.ok(unserved.every((x) => x.property === 'fontFamily' && x.detail === 'declared Inter, served fallback'), JSON.stringify(unserved));
+    assert.deepEqual(r.results.filter((x) => x.status === 'FAIL'), []);
+    assert.equal(r.pass, true);
+    const cli = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
+    assert.equal(cli.status, 0, cli.stdout + cli.stderr);
+    assert.match(cli.stdout, new RegExp(`^ramp PASS ${total - UNSERVED}/${total - UNSERVED} \\(${UNSERVED} unserved\\)$`, 'm'));
+    assert.match(cli.stdout, /^ {2}s01 t1 fontFamily \(node 1:5\): font.unserved, declared Inter, served fallback$/m);
+    const wrong = project('unserved-wrong');
+    writeFileSync(wrong.page, readFileSync(wrong.page, 'utf8').replace('</style>', 'h1 { font-family: Georgia, serif }\n</style>'));
+    const w = await gate(wrong);
+    assert.equal(w.results.find((x) => x.slot === 's01' && x.id === 't1' && x.property === 'fontFamily').status, 'FAIL', 'a declared family other than Figma\'s is a FAIL, served or not');
+  });
+
   await check('.card-label { font-size: 16px } fails s02 t2 fontSize; the CLI exits 1 with one indented line', () => {
-    const p = project('card-label');
+    const p = served(project('card-label'));
     writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('</style>', '.card-label { font-size: 16px }\n</style>'));
     const r = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
     assert.equal(r.status, 1, r.stdout + r.stderr);
@@ -171,7 +202,7 @@ if (playwrightOk) {
   });
 
   await check(':scope > …, a comma list and a descendant selector resolve inside the section on a real page; a branch cannot reach another section', async () => {
-    const p = project('scoped');
+    const p = served(project('scoped'));
     const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
     const checks = JSON.parse(readFileSync(file, 'utf8'));
     checks.sections.s02.type[0].selector = ':scope > h2';
@@ -195,7 +226,7 @@ if (playwrightOk) {
   });
 
   await check('CLI ramp on page.html: PASS line, an advisory line for token literals, exit 0', () => {
-    const p = project('cli-pass');
+    const p = served(project('cli-pass'));
     const r = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, new RegExp(`^ramp PASS ${total}/${total}$`, 'm'));
@@ -251,7 +282,7 @@ if (playwrightOk) {
   });
 
   await check('CLI ramp: "ramp PASS n/n (1 unasserted)" and an indented advisory line, exit 0', () => {
-    const p = project('cli-unasserted');
+    const p = served(project('cli-unasserted'));
     nonSolid(p);
     const r = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
     assert.equal(r.status, 0, r.stdout + r.stderr);

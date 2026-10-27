@@ -62,7 +62,7 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
     const newer = stalled.filter((s) => s !== latest.version);
     if (newer.length) warn(`figma-donor: a newer capture (version ${newer.join(', ')}) stopped part-way; using the complete cached version ${latest.version}. Re-run with --refresh to finish it.`);
     if (stalled.includes(latest.version)) warn(`figma-donor: a refresh of version ${latest.version} stopped part-way; the complete cached capture is unchanged and is used. Re-run with --refresh to finish it.`);
-    const written = writeOutputs({ dir, manifest, v, confidential, guard });
+    const written = writeOutputs({ dir, manifest, v, confidential, guard, warn });
     return { manifest, written, fromCache: true };
   }
 
@@ -158,7 +158,7 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   };
   v.write('manifest.json', manifest);
   cache.promote(version, v);
-  const written = writeOutputs({ dir, manifest, v: cache.version(version), confidential, guard });
+  const written = writeOutputs({ dir, manifest, v: cache.version(version), confidential, guard, warn });
   return { manifest, written, fromCache: false };
 }
 
@@ -189,7 +189,7 @@ export async function listInventory({ url, refresh = false, dir = 'stardust', cl
 }
 
 // Every output is a pure function of the cache: a cached re-run writes the same bytes.
-function writeOutputs({ dir, manifest, v, confidential = false, guard = () => {} }) {
+function writeOutputs({ dir, manifest, v, confidential = false, guard = () => {}, warn = () => {} }) {
   const file = v.read('file.json');
   const nodes = v.read('nodes.json');
   const imageMap = v.read('images.json') || {};
@@ -197,6 +197,9 @@ function writeOutputs({ dir, manifest, v, confidential = false, guard = () => {}
   const raw = (name) => `${dir}/.work/reskin/figma/${manifest.fileKey}/${manifest.version}/${name}`;
   const prov = (names, note) => provenance({ at: manifest.capturedAt, readArtifacts: names.map(raw), note });
   const { foundation, roleCandidates, moduleCandidates, specTables } = buildFoundation({ file, nodes, frameIds: manifest.frames });
+  // Childless instances (remote-library components the payload did not expand): flagged, never silent.
+  const hollow = moduleCandidates.frames.flatMap((f) => (f.hollow ? [`${f.name} (${f.node})`] : f.sections.filter((x) => x.hollow).map((x) => `${f.name} › ${x.name} (${x.node})`)));
+  if (hollow.length) warn(`figma-donor: ${hollow.length} frame(s) or section(s) hold only childless instances, likely remote-library components the REST payload did not expand; nothing inside them is measured (hollow: true in module-candidates.json): ${hollow.join(', ')}`);
   guard(moduleCandidates.frames.filter((f) => imageMap[f.node]).map((f) => [`canon-source/assets/screenshots/${f.slug}.png`, 'canon-source/assets/screenshots/']));
   const written = [];
   const out = (rel, obj) => { writeJson(join(cs, rel), obj); written.push(`${dir}/canon-source/${rel}`); };

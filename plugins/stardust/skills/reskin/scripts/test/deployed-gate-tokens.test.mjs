@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { readJson } from '../figma/io.mjs';
 import { main } from '../deployed-gate.mjs';
-import { edsSpec, runTokens } from '../deployed/eds-spec.mjs';
+import { edsSpec, figmaPaddingSkip, runTokens } from '../deployed/eds-spec.mjs';
 import { deployedDir } from '../deployed/io.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { fixturePath, startPreviewServer } from './fixtures/deployed/servers.mjs';
@@ -64,10 +64,13 @@ const outOf = (root) => deployedDir(join(root, 'stardust'), 'home');
 const recordOf = (root) => readJson(join(outOf(root), 'tokens.json'));
 const tokens = (root, extra = [], opts = {}) => run(['tokens', '--page', 'home', ...extra], { cwd: root, ...opts });
 
-// The fixture page with strings replaced, served from a file of its own.
+// The fixture page with strings replaced, served from a file of its own. It declares Inter; a face of it that never
+// loads (no network request) makes "declared, not served" the same on every machine, so the font-family row is the
+// one UNSERVED result: an ADVISORY tokens font.unserved line, left out of n.
+const NEVER_INTER = '@font-face { font-family: Inter; src: local("No Such Inter Face"); }';
 const variant = (name, ...pairs) => {
   const file = join(scratch, `${name}.html`);
-  let html = readFileSync(fixturePath('home.html'), 'utf8');
+  let html = readFileSync(fixturePath('home.html'), 'utf8').replace('<style>', `<style>\n${NEVER_INTER}`);
   for (const [from, to] of pairs) {
     assert.ok(html.includes(from), `the fixture page has ${from}`);
     html = html.replace(from, () => to);
@@ -86,7 +89,7 @@ await check('edsSpec on the fixture tokens: body, heading and primary-button ent
   const by = (label) => spec.find((e) => e.label === label);
   assert.deepEqual(by('page bg'), { label: 'page bg', selector: 'body', property: 'backgroundColor', value: 'rgb(255, 255, 255)' });
   assert.deepEqual(by('body fg'), { label: 'body fg', selector: 'body', property: 'color', value: 'rgb(26, 26, 26)' });
-  assert.deepEqual(by('font-family token string'), { label: 'font-family token string', selector: 'body', property: 'fontFamily', value: 'Inter', compare: 'firstFamily' });
+  assert.deepEqual(by('font-family token string'), { label: 'font-family token string', selector: 'body', property: 'fontFamily', value: 'Inter', compare: 'firstFamily', served: true });
   assert.deepEqual(by('body font size'), { label: 'body font size', selector: 'body', property: 'fontSize', value: '18px' });
   assert.deepEqual(by('display weight'), { label: 'display weight', selector: 'main h1', property: 'fontWeight', value: '700' });
   assert.deepEqual(by('heading color'), { label: 'heading color', selector: 'main h2', property: 'color', value: 'rgb(31, 58, 95)' });
@@ -123,6 +126,21 @@ await check('edsSpec: layout.sectionPaddingY becomes top and bottom padding asse
   assert.ok(edsSpec({ tokens: t, runtimeContract: contract() }).some((e) => e.selector === SECTIONS && e.value === '0'), 'a zero padding is a px length');
   delete t.layout.sectionPaddingY;
   assert.ok(!edsSpec({ tokens: t, runtimeContract: contract() }).some((e) => e.selector === SECTIONS), 'a sheet without the token has no section entry');
+});
+
+await check('edsSpec with the page\'s Figma checks file leaves the section padding rows to figma-gate (a kit pads per module); figmaPaddingSkip names how many sections the checks hold to their module', () => {
+  const checks = { version: 1, page: 'home', sections: {
+    s01: { geometry: [{ id: 'g1', selector: ':scope', node: '1:3', measure: 'paddingTop' }], type: [] },
+    s02: { geometry: [{ id: 'g1', selector: '.card', node: '1:8', measure: 'width' }], type: [] },
+    s03: { skip: 'not drawn' },
+  } };
+  const spec = edsSpec({ tokens: sheet(), runtimeContract: contract(), figmaChecks: checks });
+  const SECTIONS = 'main > .section:not(:empty)';
+  assert.ok(!spec.some((e) => e.selector === SECTIONS), 'no uniform section padding against a per-module kit');
+  assert.ok(spec.some((e) => e.label === ':root --section-padding'), 'the token itself is still asserted verbatim');
+  assert.equal(figmaPaddingSkip(checks), 'layout.sectionPaddingY: a Figma donor pads per module; figma checks hold the padding of 1 of 2 section(s) to their module (deployed-gate figma)');
+  assert.equal(figmaPaddingSkip(null), null);
+  assert.ok(edsSpec({ tokens: sheet(), runtimeContract: contract(), figmaChecks: null }).some((e) => e.selector === SECTIONS), 'without a checks file: every section, as before');
 });
 
 await check('edsSpec: the optional curated paths (cards.primary.*, buttons.primary.height, layout.mobile.*) are asserted as :root entries when present, and add nothing when absent', () => {
@@ -228,6 +246,18 @@ await check('runTokens hands donor-probe the spec, the preview URL and --wait-ed
   assert.equal(r.exit, 0);
   assert.equal(r.total, 1);
   assert.deepEqual(recordOf(root), { verdict: 'PASS', exit: 0, report: r.report, json: r.json, skipped: r.skipped });
+});
+
+await check('runTokens with a Figma checks file: no section padding row in the spec, and a SKIP line naming the figma step in the record', async () => {
+  const root = project('stub-figma');
+  mkdirSync(join(root, 'stardust', 'reskin', 'figma-checks'), { recursive: true });
+  writeFileSync(join(root, 'stardust', 'reskin', 'figma-checks', 'home.json'), JSON.stringify({ version: 1, page: 'home', sections: { s01: { geometry: [{ id: 'g1', selector: ':scope', node: '1:3', measure: 'paddingBottom' }], type: [] } } }));
+  const stub = stubProbe('probe-figma', { exit: 0, json: PASSING });
+  const r = await runTokens({ dir: join(root, 'stardust'), slug: 'home', preview: readJson(join(outOf(root), 'preview.json')), donorProbe: stub.file });
+  assert.ok(!readJson(join(outOf(root), 'tokens-spec.json')).some((e) => e.selector === 'main > .section:not(:empty)'));
+  assert.deepEqual(r.skipped, ['layout.containerMaxWidth: measured by parity cap-probe', 'layout.sectionPaddingY: a Figma donor pads per module; figma checks hold the padding of 1 of 1 section(s) to their module (deployed-gate figma)']);
+  writeFileSync(join(root, 'stardust', 'reskin', 'figma-checks', 'home.json'), '{ not json');
+  await assert.rejects(runTokens({ dir: join(root, 'stardust'), slug: 'home', preview: readJson(join(outOf(root), 'preview.json')), donorProbe: stub.file }), (e) => e instanceof UsageError && /figma-checks/.test(e.message));
 });
 
 await check('runTokens: donor-probe exit 1 with its JSON is the FAIL verdict with one line per failing assertion; the record says so', async () => {
@@ -395,11 +425,12 @@ let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  browser parts (playwright not importable here; run this test in an environment that has it)'); }
 
 if (playwrightOk) {
-  const total = edsSpec({ tokens: sheet(), runtimeContract: contract() }).length;
+  const total = edsSpec({ tokens: sheet(), runtimeContract: contract() }).length - 1;
   const SKIPS = [/^SKIP layout\.containerMaxWidth: measured by parity cap-probe$/m];
+  const UNSERVED_LINE = /^ADVISORY tokens font\.unserved: font-family token string: declared Inter, served fallback$/m;
 
   await check('preview then tokens on the fake preview: PASS tokens n/n, the one SKIP line (the container measure), exit 0; the files and the record are written', async () => {
-    const server = await startPreviewServer();
+    const server = await startPreviewServer({ pages: { '/ns/home': variant('page-plain') } });
     try {
       const root = project('cli-pass', { preview: false });
       const pv = await run(['preview', '--page', 'home', '--org', 'o', '--repo', 'r', '--branch', 'b', '--path', '/ns/home', '--namespace', 'ns'], { cwd: root, env: { DEPLOY_VERIFY_ORIGIN: server.origin } });
@@ -410,17 +441,19 @@ if (playwrightOk) {
       assert.equal(r.status, 0, r.all);
       assert.match(r.stdout, new RegExp(`^PASS tokens ${total}/${total}$`, 'm'));
       for (const re of SKIPS) assert.match(r.stdout, re);
+      assert.match(r.stdout, UNSERVED_LINE, 'a declared font the preview does not serve is no silent pass');
       assert.ok(!/FAIL/.test(r.stdout), r.stdout);
       const out = outOf(root);
       const rec = recordOf(root);
       assert.equal(rec.verdict, 'PASS');
       assert.equal(rec.exit, 0);
       assert.deepEqual(rec.skipped, ['layout.containerMaxWidth: measured by parity cap-probe']);
+      assert.deepEqual(rec.unserved, ['font-family token string: declared Inter, served fallback']);
       assert.ok(!r.stdout.includes('sectionPaddingY'), 'the section padding is asserted, not skipped');
       assert.ok(existsSync(rec.report) && existsSync(rec.json), 'the probe\'s report and JSON are where the record says');
-      assert.deepEqual(Object.keys(rec), ['verdict', 'exit', 'report', 'json', 'skipped']);
+      assert.deepEqual(Object.keys(rec), ['verdict', 'exit', 'report', 'json', 'skipped', 'unserved']);
       assert.deepEqual(readJson(join(out, 'tokens-spec.json')), edsSpec({ tokens: sheet(), runtimeContract: contract() }));
-      assert.equal(readJson(rec.json).results.length, total);
+      assert.equal(readJson(rec.json).results.length, total + 1);
       assert.ok(!existsSync(join(elsewhere, 'stardust')), 'nothing under the cwd');
       assert.ok(server.requests.some((q) => q.path === '/ns/home'), 'the page was asked for');
     } finally { await server.close(); }

@@ -16,7 +16,7 @@ import { UsageError } from '../figma/errors.mjs';
 import { readJson } from '../figma/io.mjs';
 import { main } from '../deployed-gate.mjs';
 import { deployedDir } from '../deployed/io.mjs';
-import { parityLines, previewExclusion, replicaTools, runParity } from '../deployed/parity.mjs';
+import { parityLines, previewExclusion, replicaTools, runParity, sandboxChrome } from '../deployed/parity.mjs';
 import { startPreviewServer } from './fixtures/deployed/servers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -171,6 +171,26 @@ await check('previewExclusion: the parts of the preview left out of pixel and he
   assert.deepEqual(previewExclusion(sides([64, 40], [80, 48])), nothing, 'a part the reskin page renders stays in both captures');
   assert.deepEqual(previewExclusion(sides([0, 0], [0, 0])), nothing, 'nothing to leave out where the preview has none either');
   assert.deepEqual(previewExclusion(sides([0, 40], [64, 0])), { parts: ['header'], hide: 'header:not(main header)', detail: 'preview header excluded: reskin page renders none' });
+});
+
+await check('previewExclusion with ignored parts (a sandbox preview\'s own chrome): hidden on both sides where each renders it, the detail names why; sandboxChrome lists the parts mapping.md maps no chrome row to, only on a sandbox with a slot table', () => {
+  const sides = (reskin, preview) => ({ reskin: { header: reskin[0], footer: reskin[1] }, preview: { header: preview[0], footer: preview[1] } });
+  const why = "header/footer ignored on both sides: sandbox preview renders the boilerplate's header: mapping.md maps no header chrome; sandbox preview renders the boilerplate's footer: mapping.md maps no footer chrome";
+  assert.deepEqual(previewExclusion(sides([64, 40], [80, 48]), ['header', 'footer']), {
+    parts: ['header', 'footer'], hide: 'header:not(main header),footer:not(main footer)', detail: why, reskinHide: 'header:not(main header),footer:not(main footer)',
+  });
+  assert.deepEqual(previewExclusion(sides([0, 40], [80, 48]), ['footer']), {
+    parts: ['header', 'footer'], hide: 'header:not(main header),footer:not(main footer)',
+    detail: "preview header excluded: reskin page renders none; footer ignored on both sides: sandbox preview renders the boilerplate's footer: mapping.md maps no footer chrome",
+    reskinHide: 'footer:not(main footer)',
+  });
+  const table = (rows) => `| # | Content | Donor module | Status |\n|---|---|---|---|\n| s01 | hero | M1 | mapped |\n${rows}`;
+  assert.deepEqual(sandboxChrome({ preview: { sandbox: true }, mapping: table('') }), ['header', 'footer']);
+  assert.deepEqual(sandboxChrome({ preview: { sandbox: true }, mapping: table('| s00-nav | links | M7 | chrome |\n') }), ['footer']);
+  assert.deepEqual(sandboxChrome({ preview: { sandbox: true }, mapping: table('| s00-nav | links | — | chrome |\n| s09 | footer links | — | chrome |\n') }), []);
+  assert.deepEqual(sandboxChrome({ preview: { sandbox: false }, mapping: table('') }), [], 'a namespaced preview shows the project\'s own chrome');
+  assert.deepEqual(sandboxChrome({ preview: { sandbox: true }, mapping: null }), [], 'no mapping.md: nothing ignored');
+  assert.deepEqual(sandboxChrome({ preview: { sandbox: true }, mapping: '# prose only' }), [], 'no slot table: nothing ignored');
 });
 
 await check('--help documents parity; its usage errors exit 2 and write nothing; the record is needed (absent, problems), a skipped leg is "not run: skipped", the reskin page must exist', async () => {
@@ -355,6 +375,27 @@ if (playwrightOk) {
     assert.equal(probes['/%2e%2e%2fsecret.txt'][0], 404);
   });
 
+  await check('a reskin page under the project root is served from the project root at its path: a root-relative font and a ../ asset outside the page directory resolve (200), dot-segments and paths above the root do not (404)', async () => {
+    const root = join(scratch, 'served-root');
+    const pages = join(root, 'stardust', 'reskin', 'pages');
+    mkdirSync(pages, { recursive: true });
+    mkdirSync(join(root, 'fonts'), { recursive: true });
+    mkdirSync(join(root, '.git'), { recursive: true });
+    writeFileSync(join(root, 'fonts', 'brand.woff2'), 'font bytes');
+    writeFileSync(join(root, '.git', 'config'), 'never served');
+    writeFileSync(join(scratch, 'above-root.txt'), 'above the project root');
+    const page = join(pages, 'home.html');
+    copyFileSync(smallPage(), page);
+    const { stub, error } = await scenario('served-root', { stitch: { probe: ['/fonts/brand.woff2', '../../../fonts/brand.woff2', '/.git/config', '/..%2fabove-root.txt'] } }, { reskin: page });
+    assert.ifError(error);
+    const { argv, probes } = stub.calls()[0];
+    assert.match(argv[0], /^http:\/\/127\.0\.0\.1:\d+\/stardust\/reskin\/pages\/home\.html$/, 'the page at its path under the project root, never file://');
+    assert.deepEqual(probes['/fonts/brand.woff2'], [200, 'font bytes'], 'a root-relative font outside the page directory loads');
+    assert.deepEqual(probes['../../../fonts/brand.woff2'], [200, 'font bytes']);
+    assert.equal(probes['/.git/config'][0], 404, 'dot-segments are never served');
+    assert.equal(probes['/..%2fabove-root.txt'][0], 404, 'nothing above the project root');
+  });
+
   await check('chrome-parity is advisory: deltas make an ADVISORY row and line, never a FAIL; cap-probe ✗ rows are a FAIL and each is named', async () => {
     const chrome = { regions: [{ name: 'header', findings: [{ kind: 'PAIR', text: 'Home', msg: 'fontWeight 500 → 400' }, { kind: 'MISSING', text: 'Docs', msg: 'live <a> "Docs" has no build element with the same text' }] }, { name: 'footer', findings: [] }] };
     const advisory = await scenario('chrome-delta', { chrome: { stdout: chrome, exit: 2 } });
@@ -400,6 +441,44 @@ if (playwrightOk) {
     assert.equal(pick(footerOnly.result.rows, 'footer crop', 1440).status, 'PASS');
     const chromeCall = footerOnly.stub.calls().find((c) => c.tool === 'chrome');
     assert.deepEqual(chromeCall.argv.slice(2), ['--width', '1440', '--no-defaults', '--region', 'footer=footer', '--json'], 'only the regions the reskin page has');
+  });
+
+  await check('sandbox: a --sandbox preview\'s header and footer that mapping.md maps no chrome row to are hidden on both sides, their crops n/a with the reason, left out of chrome-parity, and parity.json records them; a mapped part is still compared', async () => {
+    const HIDE = 'header:not(main header),footer:not(main footer)';
+    const stitchOf = (s, side) => s.stub.calls().find((c) => c.tool === 'stitch' && c.key === side).argv;
+    const withMapping = (name, rows) => {
+      mkdirSync(join(scratch, name, 'stardust', 'reskin'), { recursive: true });
+      writeFileSync(join(scratch, name, 'stardust', 'reskin', 'mapping.md'), `| # | Content | Donor module | Status |\n|---|---|---|---|\n| s01 | hero | M1 | mapped |\n${rows}`);
+    };
+    const record = { sandbox: true, namespace: null };
+    withMapping('sandbox-none', '');
+    const none = await scenario('sandbox-none', {}, { reskin: smallPage(), previewPage: smallPage({ css: 'header{height:80px}footer{height:48px}' }), record });
+    assert.ifError(none.error);
+    assert.deepEqual(stitchOf(none, 'reskin').slice(-2), ['--hide', HIDE], 'the reskin page\'s own chrome leaves its capture too');
+    assert.deepEqual(stitchOf(none, 'preview').slice(-2), ['--hide', HIDE]);
+    for (const part of ['header', 'footer']) {
+      const row = pick(none.result.rows, `${part} crop`, 1440);
+      assert.deepEqual({ status: row.status, value: row.value }, { status: 'n/a', value: `n/a: sandbox preview renders the boilerplate's ${part}: mapping.md maps no ${part} chrome` });
+    }
+    assert.equal(pick(none.result.rows, 'chrome-parity', 1440).status, 'n/a');
+    assert.deepEqual(none.stub.calls().map((c) => c.tool), ['stitch', 'stitch', 'pixel', 'cap', 'cap'], 'no crop, no chrome-parity');
+    assert.equal(none.result.verdict, 'PASS');
+    const reason = "sandbox preview renders the boilerplate's header: mapping.md maps no header chrome; sandbox preview renders the boilerplate's footer: mapping.md maps no footer chrome";
+    assert.deepEqual(none.result.ignored, { parts: ['header', 'footer'], reason });
+    assert.deepEqual(readJson(join(outOf(none.root), 'parity.json')).ignored, { parts: ['header', 'footer'], reason });
+    assert.match(pick(none.result.rows, 'pixel', 1440).detail, /^header\/footer ignored on both sides: /);
+
+    withMapping('sandbox-header', '| s00-nav | links | M7 (Header) | chrome |\n');
+    const header = await scenario('sandbox-header', {}, { reskin: smallPage(), record });
+    assert.equal(pick(header.result.rows, 'header crop', 1440).status, 'PASS', 'a mapped header is held to the preview');
+    assert.equal(pick(header.result.rows, 'footer crop', 1440).status, 'n/a');
+    assert.deepEqual(stitchOf(header, 'preview').slice(-2), ['--hide', 'footer:not(main footer)']);
+    assert.deepEqual(header.stub.calls().find((c) => c.tool === 'chrome').argv.slice(2), ['--width', '1440', '--no-defaults', '--region', 'header=header', '--json']);
+
+    withMapping('namespaced', '');
+    const namespaced = await scenario('namespaced', {}, { reskin: smallPage() });
+    assert.equal(pick(namespaced.result.rows, 'header crop', 1440).status, 'PASS', 'a namespaced preview keeps its chrome compared');
+    assert.equal(namespaced.result.ignored, undefined);
   });
 
   await check('pixel and height compare main to main: for each part the reskin page does not render at that width the preview side is captured with --hide on it, and both rows say what was excluded; a part it renders stays in both captures', async () => {

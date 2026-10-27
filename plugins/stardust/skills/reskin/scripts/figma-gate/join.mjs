@@ -1,16 +1,53 @@
 // skills/reskin/scripts/figma-gate/join.mjs — B0, the section join: every mapping.md slot that renders as
 // a module must be one <section> of the page, in order, carrying the module the mapping names and the
 // slot's first heading; the join pairs each with its Figma module frame. Every later check measures
-// inside these sections, so a page that drifted from the mapping stops here.
+// inside these sections, so a page that drifted from the mapping stops here. A chrome row whose Donor module is an
+// included module (the page's header or footer swapped for a Figma Header / Footer component) joins the page's
+// header or footer element the same way, as section "header" or "footer" (joinChrome).
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { edsModules, includedModules } from './io.mjs';
-import { anchors, norm, parseMapping } from './mapping.mjs';
+import { anchors, imageAnchors, norm, parseMapping } from './mapping.mjs';
 import { loadChromium, loadMeasureLive, localAttributes } from './target.mjs';
 
 // Statuses that put a section on the page; chrome and carried-invisible slots live outside the join.
 const RENDERED = new Set(['mapped', 'new-module']);
 const WIDTH = 1440;
+
+// Where a page's chrome is, first match wins: a data-canon or site-header / site-footer container, else the page's own
+// <header> / <footer> (never one inside a block of main). On an EDS preview that is the decorated header / footer.
+export const CHROME_SELECTORS = {
+  header: ['header[data-canon]:not(main header)', '[data-canon].site-header:not(main *)', '.site-header:not(main *)', '#site-header', 'header:not(main header)'],
+  footer: ['footer[data-canon]:not(main footer)', '[data-canon].site-footer:not(main *)', '.site-footer:not(main *)', '#site-footer', 'footer:not(main footer)'],
+};
+
+// In the page: { header, footer } → the first CHROME_SELECTORS match of each, { selector }, or null.
+export const findChrome = (candidates) => Object.fromEntries(Object.entries(candidates).map(([part, list]) => {
+  const selector = list.find((sel) => { try { return !!document.querySelector(sel); } catch { return false; } });
+  return [part, selector ? { selector } : null];
+}));
+
+// The chrome sections: each chrome row whose part is header or footer and whose Donor module is named joins the page
+// element `found` gives for that part, as section `header` / `footer` (one per part) with the module's frame, so the
+// checks file's `header` / `footer` entries and the coverage floor reach it. A chrome row naming no module ("—") or a
+// banner needs nothing, as before. A module that is not included, a second row mapping the same part, or a part the
+// page has no element for is section drift.
+export function joinChrome({ mapping, found = {}, modules }) {
+  const problems = [];
+  const drift = (msg) => problems.push(`section drift: ${msg}`);
+  const sections = [];
+  const taken = new Map();
+  for (const row of mapping.filter((r) => r.status === 'chrome' && r.part && r.module)) {
+    const { slot, module, part } = row;
+    if (taken.has(part)) { drift(`${slot} maps the ${part} to ${module}, ${taken.get(part)} already maps it: one chrome row per part`); continue; }
+    taken.set(part, slot);
+    if (!modules.has(module)) { drift(`${module} is not an included module in curation-rules.json (mapping.md maps chrome ${slot}, the ${part}, to it)`); continue; }
+    const el = found[part];
+    if (!el) { drift(`${slot}: mapping.md maps the ${part} to ${module} but the page has no ${part} (<${part}>, ${part}[data-canon] or .site-${part})`); continue; }
+    sections.push({ slot: part, module, node: modules.get(module) || null, selector: el.selector, index: null, chrome: slot });
+  }
+  return { sections, problems };
+}
 
 export function matchSections({ dom, mapping, anchors: anchorOf, modules, selector = localAttributes.selector }) {
   const problems = [];
@@ -63,19 +100,26 @@ export async function runJoin({ target, inputs, out, page }) {
   const [chromium, { openBrowser }] = await Promise.all([loadChromium(), loadMeasureLive()]);
   const browser = await openBrowser(chromium, { tier: 'plain' });
   let dom;
+  let found;
   try {
     const page = await target.open(browser, WIDTH);
     dom = await target.join.collect(page);
+    found = await page.evaluate(findChrome, CHROME_SELECTORS);
   } finally { await browser.close(); }
+  const mapping = parseMapping(inputs.mapping, page);
+  const modules = includedModules(inputs.rules);
   const matched = await (target.join.match ?? matchSections)({
     dom,
-    mapping: parseMapping(inputs.mapping, page),
+    mapping,
     anchors: anchors(inputs.contentModel),
-    modules: includedModules(inputs.rules),
+    images: imageAnchors(inputs.contentModel),
+    modules,
     eds: edsModules(inputs.rules),
     selector: target.join.selector,
   });
-  const result = { version: 1, url: target.url, regime: target.regime, width: WIDTH, ...matched };
+  const chrome = joinChrome({ mapping, found, modules });
+  const problems = [...matched.problems, ...chrome.problems];
+  const result = { version: 1, url: target.url, regime: target.regime, width: WIDTH, ...matched, pass: problems.length === 0, sections: [...matched.sections, ...chrome.sections], problems };
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'join.json'), `${JSON.stringify(result, null, 2)}\n`);
   return result;

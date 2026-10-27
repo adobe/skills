@@ -23,7 +23,7 @@ export async function loadMeasureLive() {
 
 export async function loadChromium() {
   try { return (await import('playwright')).chromium; } catch {
-    throw new UsageError('playwright is not importable from the reskin scripts: run npm i -D playwright pixelmatch pngjs --legacy-peer-deps in the project (reskin SKILL.md § Setup)');
+    throw new UsageError('playwright is not importable from the reskin scripts: run npm i -D playwright pixelmatch pngjs in stardust/, its own package root, not the project (reskin SKILL.md § Setup step 2)');
   }
 }
 
@@ -94,7 +94,7 @@ async function fetchPlain(url) {
 
 // A deployed EDS page (--target preview). open() navigates it like any EDS page and waits for the decoration: a block that never decorates throws code 124 "stalled decoration: …",
 // a bot challenge code 3, a 401 or 403 a usage error. Its sections are not marked, so join.collect reads what the
-// join needs: the authored form of the page, the text of each decorated `main > div` (the page is open) and the
+// join needs: the authored form of the page, the text and images ({ alt, src }) of each decorated `main > div` (the page is open) and the
 // data-slot sections of the reskin page (a file or URL, opened in a second page of the same browser); join.match is
 // plain-join.mjs's plainJoin over them. edsTimeoutMs, the settle bound, is on the target so the ramp's probe uses it too.
 export function previewTarget(input, { reskin, edsTimeoutMs = 20000 } = {}) {
@@ -112,7 +112,10 @@ export function previewTarget(input, { reskin, edsTimeoutMs = 20000 } = {}) {
       async collect(page) {
         const { plainUrl } = await import('../deployed/fetch.mjs');
         const html = await fetchPlain(plainUrl(url));
-        const decorated = await page.evaluate(() => [...document.querySelectorAll('main > div')].map((el) => el.innerText));
+        const decorated = await page.evaluate(() => [...document.querySelectorAll('main > div')].map((el) => ({
+          text: el.innerText,
+          images: [...el.querySelectorAll('img')].map((img) => ({ alt: img.getAttribute('alt') || '', src: img.getAttribute('src') || '' })),
+        })));
         const local = await reskinPage.open(page.context().browser(), page.viewportSize()?.width ?? 1440);
         try { return { local: await localAttributes.collect(local), html, decorated }; } finally { await local.context().close(); }
       },

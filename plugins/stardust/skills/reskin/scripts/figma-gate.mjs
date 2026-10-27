@@ -55,8 +55,15 @@ join     B0, the section join. Opens the page (a file path, a file: or localhost
          plain Chromium at 1440 and reads its main section[data-slot] elements in document order. Every
          mapping.md row that renders (status mapped or new-module) must be exactly one top-level section, in
          the table's order, whose data-module is the row's Donor module and whose text holds the slot's first
-         heading (content-model.json); a Donor module must be included in curation-rules.json. Chrome and
-         carried-invisible rows need no section. Each problem starts "section drift:". Writes
+         heading (content-model.json); a Donor module must be included in curation-rules.json. A chrome row
+         whose Donor module is named (the header or footer drawn from the kit's Header / Footer component; its part
+         read from the slot id, then the module cell, then Content: header|nav|navigation|masthead → header, footer →
+         footer) joins the page's header or footer element as section "header" or "footer": the first of
+         header[data-canon], .site-header, #site-header, header outside main (the same for footer; on a preview the
+         decorated header / footer). Its module must be included; a part the page lacks, or two rows mapping one
+         part, is drift. Checks file entries keyed "header" / "footer" measure it and the coverage floor counts it: a
+         mapped part with no entry is a floor problem like any section (skip spends the waiver budget). A chrome row
+         naming no module ("—") and carried-invisible rows need no section. Each problem starts "section drift:". Writes
          <dir>/.work/reskin/gates/<slug>/figma/join.json (figma-preview/ on --target preview; each section's slot, module, Figma frame, selector
          and document index), prints one PASS or FAIL line and exits 1 on drift.
          --target preview joins a deployed preview instead: --url is its http(s) URL, --reskin the reskin page (the file
@@ -64,7 +71,11 @@ join     B0, the section join. Opens the page (a file path, a file: or localhost
          decorates is exit 124 "stalled decoration: ..."). The reskin page is joined to mapping.md as above; then each slot
          is found in the preview's authored form (<url>.plain.html, read as text) as the first non-empty top-level <div>
          after the previous slot's whose text holds the slot's first heading (a split sub-slot has its parent's and may
-         share one). A <div> holding nothing, or only a metadata or section-metadata block, is empty and keeps its index.
+         share one). A slot with no text in content-model.json (an image-only slot) is placed after the others: the
+         first non-empty <div> no slot took between its previous and next slots' that holds one of its images (same alt
+         text or file name), else the first such <div> by document order, with a "  note: s03: no anchor text in
+         content-model.json: placed by ..." line; none free is drift ("s03 has no anchor text and no free plain section
+         after s02 and before s04 in .plain.html"). A <div> holding nothing, or only a metadata or section-metadata block, is empty and keeps its index.
          A slot with no authored section, a slot found before the previous one and a non-empty authored section no slot
          took are "section drift: ..." ("section drift: plain section 3 matches no slot"). Each slot is then found the same
          way in the decorated page, and its selector is "main > div:nth-child(k)" of the decorated div holding its heading
@@ -97,7 +108,11 @@ ramp     B3. Runs the join first (drift stops here, exit 1), validates the check
          ramp.<w>.json and ramp.json under <dir>/.work/reskin/gates/<slug>/figma/ (figma-preview/ on --target preview); exit 1 on any FAIL.
          A property the Figma node gives no value for (no font size, a fill that is not one visible solid
          color, ...) is recorded as UNASSERTED in ramp.json, never failed: the verdict reads "ramp PASS n/n
-         (k unasserted)" with one indented "advisory" line per property.
+         (k unasserted)" with one indented "advisory" line per property. A fontFamily whose declared first family
+         matches Figma's but is not the font the page renders (no loaded @font-face of it covering the element's
+         weight and style, and not installed; a generic family is served) is UNSERVED, "declared Inter, served
+         fallback": neither a PASS nor a FAIL. The verdict reads "ramp PASS n/n (j unserved)" (n leaves it out) with
+         one indented "font.unserved" line each; the ledger records each as a residual of class font.unserved.
          Token values written as literals outside :root (a color that equals a :root value) are listed in
          one "advisory" line and never change the exit code. A probe that cannot run is exit 124; one that exits 2 (its own setup error) is exit 2 with its message,
          and a bot challenge is exit 3. Every result carries root (null for a :root entry), the checks root its entry was
@@ -128,7 +143,7 @@ register B4, the divergence register. Reads join.json and whichever of geometry.
          checks file as it stands now, for its waivers and coverage (a missing or invalid one is exit 2). A step with no
          file is "not run": the register lists it, and no section is mandated unless both geometry.json and ramp.json exist.
          Six classes: mandated (a joined module section whose geometry and type entries all pass, whose text styles
-         all have a type entry and that has no waiver; UNASSERTED ignored; and whose results are of the checks file as it
+         all have a type entry and that has no waiver; UNASSERTED and UNSERVED ignored; and whose results are of the checks file as it
          stands: one for every entry id, from steps that recorded the section's checksStamp), waived (one row per waiver of a section, a
          skip included: the node's name and id, or the mobile or desktop root, its why in quotes, and how many text styles and text
          nodes it drops at which width; a section with a waiver is never mandated), unmandated (each failing entry, a
@@ -168,7 +183,7 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          --target preview its regime is "preview" and it goes to pages.<slug>.gates.deployed.figma, and the recorded
          invocation names --target preview and --reskin:
            { regime, figmaVersion, join: PASS | FAIL, geometry: "PASS n/n" | "FAIL k/n", ramp (the same over
-             asserted results, " (k unasserted)" appended), pixel: "<slot> <pct>%, <slot> n/a: <why>, ...",
+             asserted results, " (k unasserted)" / " (j unserved)" appended), pixel: "<slot> <pct>%, <slot> n/a: <why>, ...",
              register: the counts line, coverage: "text styles <covered>/<total> · widths <w1>,<w2> · waived <n>"
              (over every module section; a section skip counts as a waiver), literals: <token literals outside :root>,
              waiverBudget?: <pct, only when --waiver-budget is given>, invocation }
@@ -202,7 +217,8 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
   selector resolves inside the section: a plain selector as a descendant of it, ":scope" as the section itself (":scope",
   ":scope > .a .b"); a comma list is scoped branch by branch, a comma inside :is(), :where(), :not() or an attribute value
   is not a branch. A branch that begins with a sibling combinator (":scope + p") would leave the section: exit 2.
-  ids are g1.. and t1.. per section.
+  ids are g1.. and t1.. per section. A joined chrome section is keyed "header" or "footer" (its selector is the
+  page's header / footer element; ":scope" is that element).
   previewSelector (a string, scoped the same way) is the selector on a deployed preview (--target preview), whose blocks
   rebuild the markup the reskin page was written with; without it the preview uses selector. --target local never reads it.
   measure: width left right top height gapX gapY paddingTop paddingRight paddingBottom paddingLeft.
@@ -375,11 +391,13 @@ async function rampStep({ dir, opts, log, UsageError, ready: given }) {
   const { pass, results, literals } = await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out });
   const failing = results.filter((r) => r.status === 'FAIL');
   const unasserted = results.filter((r) => r.status === 'UNASSERTED');
-  const asserted = results.length - unasserted.length;
-  const note = unasserted.length ? ` (${unasserted.length} unasserted)` : '';
+  const unserved = results.filter((r) => r.status === 'UNSERVED');
+  const asserted = results.length - unasserted.length - unserved.length;
+  const note = rampNote(unasserted.length, unserved.length);
   log(pass ? `ramp PASS ${asserted}/${asserted}${note}` : `ramp FAIL ${failing.length}/${asserted}${note}`);
   for (const r of failing) log(r.slot === null ? `  :root ${r.id}: ${r.detail}` : `  ${r.slot} ${r.id} ${r.property}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
   for (const r of unasserted) log(`  ${r.slot} ${r.id} ${r.property} (node ${r.node}): advisory, ${r.detail}`);
+  for (const r of unserved) log(`  ${r.slot} ${r.id} ${r.property} (node ${r.node}): font.unserved, ${r.detail}`);
   if (literals.length) {
     const shown = literals.slice(0, 5).map((l) => `line ${l.line} ${l.literal} → ${l.token}`).join('; ');
     log(`advisory ramp: ${literals.length} token literal(s) outside :root (${shown}${literals.length > 5 ? '; …' : ''}): use var(<token>)`);
@@ -464,11 +482,18 @@ function geometryFragment(file) {
   return bad ? `FAIL ${bad}/${file.results.length}` : `PASS ${file.results.length}/${file.results.length}`;
 }
 
+// " (k unasserted)", " (j unserved)" or both in one parenthesis: what a ramp verdict leaves out of its n.
+function rampNote(unasserted, unserved) {
+  const parts = [unasserted ? `${unasserted} unasserted` : null, unserved ? `${unserved} unserved` : null].filter(Boolean);
+  return parts.length ? ` (${parts.join(', ')})` : '';
+}
+
 function rampFragment(file) {
   const unasserted = file.results.filter((r) => r.status === 'UNASSERTED').length;
-  const asserted = file.results.length - unasserted;
+  const unserved = file.results.filter((r) => r.status === 'UNSERVED').length;
+  const asserted = file.results.length - unasserted - unserved;
   const bad = file.results.filter((r) => r.status === 'FAIL').length;
-  return `${bad ? `FAIL ${bad}` : `PASS ${asserted}`}/${asserted}${unasserted ? ` (${unasserted} unasserted)` : ''}`;
+  return `${bad ? `FAIL ${bad}` : `PASS ${asserted}`}/${asserted}${rampNote(unasserted, unserved)}`;
 }
 
 function pixelFragment(file) {

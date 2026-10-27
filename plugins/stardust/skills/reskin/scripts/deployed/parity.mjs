@@ -17,14 +17,19 @@
 //                  the band is the reskin page's measured header / footer height, measured in a browser at that
 //                  width; where the reskin page has none, the row is "n/a: reskin page renders no chrome", and where
 //                  only the preview has none it is a FAIL, "preview renders no <header>"
+//                  On a --sandbox preview (preview.json sandbox: true) a header or footer that mapping.md maps no chrome
+//                  row to is the boilerplate's own chrome, never the reskin's: it is hidden on both sides of pixel and
+//                  height (stitch-shot --hide), left out of chrome-parity, and its crop is "n/a: sandbox preview renders
+//                  the boilerplate's <part>: mapping.md maps no <part> chrome"; parity.json records it under ignored
+//                  ({ parts, reason }). A missing mapping.md ignores nothing.
 // and at 1440 also
 //   chrome-parity  computed-style parity of the regions the reskin page has: advisory, never a FAIL
 //   cap-probe      the reskin page's content caps captured to <deployed>/design.json, then compared with the
 //                  preview's: ✗ is a FAIL, caps within ±20px
 // A protected preview (HTTP 401 or 403 to this step's browser) is a setup error: the leg measures a preview reachable
 // without auth.
-// The reskin page is served by a small static server on 127.0.0.1 for the run (serve.mjs: its own directory, so
-// relative assets resolve), never file://, which stitch-shot and cap-probe treat as live-unsafe.
+// The reskin page is served by a small static server on 127.0.0.1 for the run (serve.mjs: the project root, the parent
+// of dir, at the page's path under it, so root-relative fonts and ../ assets resolve), never file://, which stitch-shot and cap-probe treat as live-unsafe.
 //   runParity({ dir, slug, preview, reskinPage, widths, tools, env })  writes parity.json ({ verdict, rows }) and
 //        returns { verdict: 'PASS' | 'FAIL' | 'ERROR', exit, rows }. A row is { check, width, value, bar,
 //        status: 'PASS' | 'FAIL' | 'ADVISORY' | 'ERROR' | 'n/a', artifact, detail }. An instrument that gives no verdict
@@ -34,16 +39,20 @@
 //        `tools` maps stitch, pixel, crop, chrome and cap to script paths (default: replicaTools()), for tests.
 //   replicaTools(from)  the five instruments in either layout of the scripts, or a UsageError naming what is missing
 //   sectionRow(width, chrome)  the section-height row of one width from its measured sections
-//   previewExclusion(chrome)  which parts of the preview the pixel and height rows leave out, for one width's measured
-//        chrome: { parts, hide, detail } (hide = the --hide selector list for stitch-shot, null for none)
+//   previewExclusion(chrome, ignored)  which parts of the preview the pixel and height rows leave out, for one width's
+//        measured chrome: { parts, hide, detail } (hide = the --hide selector list for stitch-shot, null for none); with
+//        ignored parts (sandboxChrome) also reskinHide, the --hide list of the reskin side
+//   sandboxChrome({ preview, mapping })  the parts a sandbox preview's own chrome stands in for: [] off a sandbox or
+//        without mapping.md, else header / footer for each part no chrome row of mapping.md names
 //   parityLines(result) the lines the CLI prints
 // Evidence: <deployed>/parity/ (the two captures and the diffs per width, chrome-parity-1440.json,
 // cap-probe-1440.json), <deployed>/design.json and <deployed>/parity.json.
-import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
+import { parseMapping } from '../figma-gate/mapping.mjs';
 import { loadChromium } from '../figma-gate/target.mjs';
 import { callTool as call, childEnv, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
 import { edsSettle, loadLiveSession } from './eds.mjs';
@@ -74,6 +83,7 @@ const NAV_TIMEOUT_MS = 30000;
 const EDS_TIMEOUT_MS = 20000;
 const MAX_ADVISORIES = 10;
 const NO_CHROME = 'reskin page renders no chrome';
+const sandboxReason = (part) => `sandbox preview renders the boilerplate's ${part}: mapping.md maps no ${part} chrome`;
 // What --hide gets per part: the page's own header or footer, not one inside a block of main.
 const HIDE_SELECTOR = { header: 'header:not(main header)', footer: 'footer:not(main footer)' };
 
@@ -153,10 +163,31 @@ const errorRow = (check, width, name, r) => row(check, width, 'ERROR', `ERROR (e
 
 // The parts of the preview that pixel and height leave out at one width: those the reskin page does not render and the
 // preview does, so the rows compare `main` to `main` instead of a page shifted by a header the reskin page lacks.
-export function previewExclusion(chrome) {
-  const parts = ['header', 'footer'].filter((part) => !chrome.reskin[part] && chrome.preview[part]);
+// Ignored parts (a sandbox preview's own chrome) leave both captures.
+export function previewExclusion(chrome, ignored = []) {
+  const parts = ['header', 'footer'].filter((part) => chrome.preview[part] && (!chrome.reskin[part] || ignored.includes(part)));
+  const hideOf = (list) => (list.length ? list.map((part) => HIDE_SELECTOR[part]).join(',') : null);
+  if (ignored.length) {
+    const own = ignored.filter((part) => chrome.reskin[part]);
+    const missing = parts.filter((part) => !ignored.includes(part));
+    const detail = [
+      ...(missing.length ? [`preview ${missing.join('/')} excluded: reskin page renders none`] : []),
+      `${ignored.join('/')} ignored on both sides: ${ignored.map(sandboxReason).join('; ')}`,
+    ].join('; ');
+    return { parts, hide: hideOf(parts), detail, reskinHide: hideOf(own) };
+  }
   if (!parts.length) return { parts, hide: null, detail: null };
-  return { parts, hide: parts.map((part) => HIDE_SELECTOR[part]).join(','), detail: `preview ${parts.join('/')} excluded: reskin page renders none` };
+  return { parts, hide: hideOf(parts), detail: `preview ${parts.join('/')} excluded: reskin page renders none` };
+}
+
+// The chrome parts a sandbox preview's own header / footer stands in for: those mapping.md (its text, null when there is
+// none) maps no chrome row to. A mapping.md without the slot table (a non-Figma donor may write prose) ignores nothing.
+export function sandboxChrome({ preview, mapping }) {
+  if (preview?.sandbox !== true || typeof mapping !== 'string') return [];
+  let rows;
+  try { rows = parseMapping(mapping); } catch (e) { if (e instanceof UsageError) return []; throw e; }
+  const mapped = new Set(rows.filter((r) => r.status === 'chrome' && r.part).map((r) => r.part));
+  return ['header', 'footer'].filter((part) => !mapped.has(part));
 }
 
 // section-height at one width: the sections paired in document order, the worst |Δh| against the reskin section's height.
@@ -176,12 +207,14 @@ export function sectionRow(width, chrome) {
 
 // The rows of one width: pixel, height (the two stitched captures), section-height (the measured sections), header crop,
 // footer crop.
-async function captureRows({ width, urls, out, chrome, tools, env }) {
+async function captureRows({ width, urls, out, chrome, tools, env, ignored = [] }) {
   const png = { reskin: join(out, `reskin-${width}.png`), preview: join(out, `preview-${width}.png`) };
-  const excluded = previewExclusion(chrome);
+  const excluded = previewExclusion(chrome, ignored);
   let broken = null;
   for (const side of ['reskin', 'preview']) {
-    const extra = side === 'preview' ? ['--wait', String(PREVIEW_WAIT_MS), ...(excluded.hide ? ['--hide', excluded.hide] : [])] : [];
+    const extra = side === 'preview'
+      ? ['--wait', String(PREVIEW_WAIT_MS), ...(excluded.hide ? ['--hide', excluded.hide] : [])]
+      : (excluded.reskinHide ? ['--hide', excluded.reskinHide] : []);
     const args = [urls[side], png[side], '--width', String(width), '--settle', ...extra];
     const r = await call('stitch-shot', tools.stitch, args, env);
     if (r.status !== 0) { broken = r; break; }
@@ -210,6 +243,7 @@ async function captureRows({ width, urls, out, chrome, tools, env }) {
 
   for (const part of ['header', 'footer']) {
     const check = `${part} crop`;
+    if (ignored.includes(part)) { rows.push(naRow(check, width, sandboxReason(part))); continue; }
     if (!chrome.reskin[part]) { rows.push(naRow(check, width, NO_CHROME)); continue; }
     if (!chrome.preview[part]) { rows.push(row(check, width, 'FAIL', `preview renders no <${part}>`)); continue; }
     if (broken) { rows.push(errorRow(check, width, 'stitch-shot', broken)); continue; }
@@ -226,9 +260,9 @@ async function captureRows({ width, urls, out, chrome, tools, env }) {
 }
 
 // chrome-parity of the regions the reskin page has, at 1440. Advisory: deltas are never a FAIL.
-async function chromeParityRow({ urls, out, chrome, tools, env }) {
-  const parts = ['header', 'footer'].filter((p) => chrome.reskin[p]);
-  if (!parts.length) return naRow('chrome-parity', WIDE, NO_CHROME);
+async function chromeParityRow({ urls, out, chrome, tools, env, ignored = [] }) {
+  const parts = ['header', 'footer'].filter((p) => chrome.reskin[p] && !ignored.includes(p));
+  if (!parts.length) return naRow('chrome-parity', WIDE, ignored.some((p) => chrome.reskin[p]) ? ignored.map(sandboxReason).join('; ') : NO_CHROME);
   const r = await call('chrome-parity', tools.chrome, [urls.reskin, urls.preview, '--width', String(WIDE), '--no-defaults', ...parts.flatMap((p) => ['--region', `${p}=${p}`]), '--json'], env);
   const j = r.status === 0 || r.status === 2 ? parseJson(r.stdout) : null;
   if (!Array.isArray(j?.regions)) return errorRow('chrome-parity', WIDE, 'chrome-parity', r);
@@ -264,21 +298,25 @@ export async function runParity({ dir, slug, preview, reskinPage = join(dir, 're
   const out = join(deployed, 'parity');
   const record = join(deployed, 'parity.json');
   for (const stale of [record, out, join(deployed, 'design.json')]) rmSync(stale, { recursive: true, force: true });
+  let ignored = [];
   const seal = (rows) => {
     const verdict = verdictOf(rows);
-    writeJson(record, { verdict, rows });
-    return { verdict, exit: EXIT[verdict], rows };
+    const extra = ignored.length ? { ignored: { parts: ignored, reason: ignored.map(sandboxReason).join('; ') } } : {};
+    writeJson(record, { verdict, rows, ...extra });
+    return { verdict, exit: EXIT[verdict], rows, ...extra };
   };
 
   if (typeof preview.url !== 'string' || !preview.url) throw new UsageError(`${join(deployed, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
   if (!existsSync(reskinPage)) throw new UsageError(`missing ${reskinPage}: the reskin page the preview is held to (deployed-gate parity --reskin <file>)`);
   const instruments = tools ? checkTools(tools) : replicaTools();
+  const mappingFile = join(dir, 'reskin', 'mapping.md');
+  ignored = sandboxChrome({ preview, mapping: existsSync(mappingFile) ? readFileSync(mappingFile, 'utf8') : null });
   mkdirSync(out, { recursive: true });
 
-  const server = await serveReskinPage(reskinPage);
+  const server = await serveReskinPage(reskinPage, { root: dirname(resolve(dir)) });
   try {
     const urls = { reskin: server.url, preview: preview.url };
-    const run = { urls, out, tools: instruments, env: childEnv(env) };
+    const run = { urls, out, tools: instruments, env: childEnv(env), ignored };
     const chrome = await measureChrome({ widths, urls });
     const rows = [];
     for (const width of widths) {

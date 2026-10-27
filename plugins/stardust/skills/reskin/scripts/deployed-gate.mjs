@@ -89,16 +89,23 @@ tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through don
          <dir>/reskin/donor-tokens.json and the runtime contract stardust/runtime-contract.json at the project
          root (missing either is exit 2). layout.sectionPaddingY, when the sheet carries it (a px length, else exit
          2), is asserted as the top and bottom padding of every non-empty main > .section, each within 16px (a
-         failure names the match: "match 4 of 7: 80px"). layout.containerMaxWidth (measured by parity's
-         cap-probe) is not asserted: it prints a SKIP line. Prints "PASS tokens n/n" or "FAIL tokens k/n" (k of the n
-         assertions failing) plus one
+         failure names the match: "match 4 of 7: 80px"), unless the page has a Figma checks file
+         (<dir>/reskin/figma-checks/<slug>.json): a Figma kit pads per module, so the section rows are left to the
+         figma step's geometry and a SKIP line says how many sections its checks hold to their module's padding.
+         layout.containerMaxWidth (measured by parity's
+         cap-probe) is not asserted: it prints a SKIP line. The font family is compared on its first family and must
+         be served: one the preview declares but renders from a fallback (no loaded @font-face of it for the body's
+         weight and style, not installed) prints "ADVISORY tokens font.unserved: font-family token string: declared
+         X, served fallback", is left out of n and never fails (a font.unserved residual).
+         Prints "PASS tokens n/n" or "FAIL tokens k/n" (k of the n assertions failing) plus one
          indented line per failing assertion (exit 1). Writes tokens-spec.json, tokens-probe.md,
          tokens-probe.json and tokens.json ({ verdict, exit, report, json, skipped }) beside preview.json. A probe that
          cannot run is exit 2 (a stalled
          decoration, an unreachable or protected page), 3 (a bot challenge) or 124 (no verdict).
 parity   A3. Holds the preview to the local reskin page with replica's instruments, as shipped, at 1440 and 360.
          The reskin page (--reskin, default <dir>/reskin/pages/<slug>.html) is served by a local server for the
-         run, its own directory, never file://. Reads preview.json (no record, or one with problems, is exit 2;
+         run, rooted at the project root (the parent of --dir) so root-relative fonts and ../ assets resolve (a
+         page outside the project: its own directory), never file://. Reads preview.json (no record, or one with problems, is exit 2;
          a skipped leg prints "not run: skipped", exit 0) and needs replica's scripts beside the reskin ones
          (stitch-shot, pixel-compare, crop-compare, chrome-parity, cap-probe; and the diff skill's live-session).
          Per width, stitch-shot of both sides (--settle; the preview with --wait 3000 for the decoration), then:
@@ -112,7 +119,11 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
          a crop is "n/a: reskin page renders no chrome" where the reskin page has no such element, and a FAIL,
          "preview renders no <header>", where only the preview has none. A header or footer the reskin page does
          not render at that width is left out of the preview's capture (stitch-shot --hide), so pixel and height
-         compare main to main and their detail says what was excluded. At 1440 also:
+         compare main to main and their detail says what was excluded. On a --sandbox preview (preview.json
+         sandbox: true) the preview's header or footer is the boilerplate's own: each part <dir>/reskin/mapping.md
+         maps no chrome row to is hidden on both sides, left out of chrome-parity, and its crop is "n/a: sandbox
+         preview renders the boilerplate's header: mapping.md maps no header chrome"; parity.json records
+         ignored: { parts, reason }. Without mapping.md nothing is ignored. At 1440 also:
            chrome-parity  computed-style parity of the regions the reskin page has: ADVISORY, never a FAIL
            cap-probe      the reskin page's content caps, captured to design.json, against the preview's: a
                           cap outside ±20px, or missing, is a FAIL
@@ -121,7 +132,7 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
          failing row (a finding of the instrument below it), then an "ADVISORY …" line per advisory row and one
          "n/a: <reason> (<rows>)" line per reason; "ERROR (exit 124) parity: <n> checks gave no verdict" and a line
          per row in error when an instrument gave no verdict (exit 124, 1 or another: re-run once). Writes
-         parity.json ({ verdict, rows: [{ check, width, value, bar, status, artifact, detail }] }), the captures and
+         parity.json ({ verdict, rows: [{ check, width, value, bar, status, artifact, detail }], ignored? }), the captures and
          diffs under parity/ and design.json beside preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124
          on a row in error (the rows measured stay in parity.json).
 sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: no delta file, no residual
@@ -405,6 +416,7 @@ async function tokensStep(ctx) {
   const result = await runTokens({ dir, slug: opts.page, preview, env });
   log(result.verdict === 'PASS' ? `PASS tokens ${result.total}/${result.total}` : `FAIL tokens ${result.failures.length}/${result.total}`);
   for (const f of result.failures) log(`  ${f}`);
+  for (const u of result.unserved ?? []) log(`ADVISORY tokens font.unserved: ${u}`);
   for (const s of result.skipped) log(`SKIP ${s}`);
   return result.exit;
 }
@@ -495,7 +507,7 @@ function contentOutcome(result) {
 }
 
 function tokensOutcome(result) {
-  const detail = [...result.failures.map((f) => `  ${f}`), ...result.skipped.map((s) => `  SKIP ${s}`)];
+  const detail = [...result.failures.map((f) => `  ${f}`), ...(result.unserved ?? []).map((u) => `  ADVISORY font.unserved: ${u}`), ...result.skipped.map((s) => `  SKIP ${s}`)];
   if (result.verdict === 'FAIL') {
     const fraction = `${result.failures.length}/${result.total}`;
     return outcome('FAIL', 1, `FAIL tokens ${fraction}`, `FAIL ${fraction}`, detail);

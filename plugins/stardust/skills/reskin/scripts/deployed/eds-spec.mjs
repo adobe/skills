@@ -6,17 +6,24 @@
 //                                         match "all", ±16px: the empty metadata section the pipeline leaves is
 //                                         skipped; the token must be a px length, else a UsageError), then each :root
 //                                         token verbatim (the optional curated names too, when the sheet carries
-//                                         them). A token the sheet does not carry has no entry. The probe loads the
+//                                         them). With figmaChecks (the page's <dir>/reskin/figma-checks/<slug>.json, a
+//                                         Figma donor) the section padding rows are left out: a Figma kit pads per
+//                                         module and figma-gate's geometry holds each section to its own module
+//                                         (figmaPaddingSkip names the SKIP line and how many sections it covers). A token the sheet does not carry has no entry. The probe loads the
 //                                         preview at 1440px only, so layout.mobile.sectionPaddingY is asserted as
 //                                         :root --section-padding-mobile, not on the sections.
 //                                         layout.containerMaxWidth is not asserted here (A3's cap-probe measures it:
 //                                         EDS wrappers are full-width by design).
 //   runTokens({ dir, slug, preview, env, donorProbe })  writes tokens-spec.json, runs donor-probe on the preview,
 //                                         writes tokens.json and returns { verdict, exit, report, json, total, failures,
-//                                         skipped }. A probe that cannot give a verdict throws: a UsageError (exit 2),
+//                                         skipped, unserved }. The font family is compared on its first family and must be
+//                                         served (donor-probe served): one the preview declares but does not serve is
+//                                         an unserved line ("font-family token string: declared X, served fallback"),
+//                                         left out of total, never a failure (deployed-leg.md § Defaults: a declared
+//                                         difference, logged as a font.unserved residual). A probe that cannot give a verdict throws: a UsageError (exit 2),
 //                                         an error with code 3 (bot challenge) or code 124 (no verdict).
 // The labels are donor-probe's DEFAULT_SPEC labels for the same token paths, so a failure reads as it does in Phase 5.
-import { rmSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
@@ -44,7 +51,7 @@ const PX_LENGTH = /^(-?\d+(\.\d+)?px|0)$/;
 const ROWS = [
   { label: 'page bg', selector: 'body', property: 'backgroundColor', token: 'palette.pageBg' },
   { label: 'body fg', selector: 'body', property: 'color', token: 'palette.bodyFg' },
-  { label: 'font-family token string', selector: 'body', property: 'fontFamily', token: 'type.family', compare: 'firstFamily' },
+  { label: 'font-family token string', selector: 'body', property: 'fontFamily', token: 'type.family', compare: 'firstFamily', served: true },
   { label: 'body font size', selector: 'body', property: 'fontSize', token: 'type.body.fontSize' },
   { label: 'display weight', selector: 'main h1', property: 'fontWeight', token: 'type.display.fontWeight' },
   { label: 'heading color', selector: 'main h2', property: 'color', token: 'palette.headingFg' },
@@ -59,13 +66,23 @@ const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const lookup = (tokens, path) => path.split('.').reduce((o, k) => (isObject(o) ? o[k] : undefined), tokens);
 const present = (v) => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
 
-export function edsSpec({ tokens, runtimeContract }) {
+// A Figma donor's modules pad per module, so one layout.sectionPaddingY on every section fails a page whose modules
+// differ: with the page's Figma checks file (figmaChecks) the section rows are left to figma-gate (deployed-gate figma),
+// whose geometry holds each section's padding to its own module's Figma frame. → the SKIP line, or null.
+export function figmaPaddingSkip(figmaChecks) {
+  if (!isObject(figmaChecks)) return null;
+  const sections = Object.values(isObject(figmaChecks.sections) ? figmaChecks.sections : {}).filter((x) => isObject(x) && !x.skip);
+  const padded = sections.filter((x) => (Array.isArray(x.geometry) ? x.geometry : []).some((g) => /^padding(Top|Bottom)$/.test(g?.measure))).length;
+  return `layout.sectionPaddingY: a Figma donor pads per module; figma checks hold the padding of ${padded} of ${sections.length} section(s) to their module (deployed-gate figma)`;
+}
+
+export function edsSpec({ tokens, runtimeContract, figmaChecks = null }) {
   const rows = [];
   for (const { token, ...row } of ROWS) {
     const value = lookup(tokens, token);
     if (!present(value)) continue;
     if (typeof value !== 'string') throw new UsageError(`donor-tokens.json: ${token} must be a string, got ${typeof value}`);
-    rows.push({ label: row.label, selector: row.selector, property: row.property, value, ...(row.tolerancePx ? { tolerancePx: row.tolerancePx } : {}), ...(row.compare ? { compare: row.compare } : {}) });
+    rows.push({ label: row.label, selector: row.selector, property: row.property, value, ...(row.tolerancePx ? { tolerancePx: row.tolerancePx } : {}), ...(row.compare ? { compare: row.compare } : {}), ...(row.served ? { served: true } : {}) });
   }
   if (rows.some((r) => r.selector === BUTTON) && !PRIMARY_CLASS.test(String(runtimeContract?.buttonClasses ?? ''))) {
     throw new UsageError(`runtime-contract.json: buttonClasses (${JSON.stringify(runtimeContract?.buttonClasses ?? null)}) does not mention .button.primary, so the deployed site has no primary button for \`${BUTTON}\` to assert`);
@@ -77,7 +94,7 @@ export function edsSpec({ tokens, runtimeContract }) {
     if (typeof padding !== 'string' || !PX_LENGTH.test(padding.trim())) {
       throw new UsageError(`donor-tokens.json: layout.sectionPaddingY must be a px length such as "64px" to be asserted on every section of the preview, got ${JSON.stringify(padding)}: write it in px, or leave it out of the sheet`);
     }
-    for (const [label, property] of SECTION_PADDING) rows.push({ label, selector: SECTIONS, property, value: padding.trim(), tolerancePx: 16, match: 'all' });
+    if (!figmaPaddingSkip(figmaChecks)) for (const [label, property] of SECTION_PADDING) rows.push({ label, selector: SECTIONS, property, value: padding.trim(), tolerancePx: 16, match: 'all' });
   }
   return [...rows, ...root.map((e) => ({ label: `:root ${e.name}`, selector: ':root', property: e.name, value: e.value }))];
 }
@@ -96,7 +113,13 @@ export async function runTokens({ dir, slug, preview, env = process.env, donorPr
   if (typeof preview?.url !== 'string' || !preview.url) throw new UsageError(`${join(out, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
   const tokens = readInput(sheetPath, 'the donor token sheet the reskin writes');
   const runtimeContract = readInput(join(dirname(resolve(dir)), 'stardust', 'runtime-contract.json'), 'deploy\'s runtime probe writes it');
-  const spec = edsSpec({ tokens, runtimeContract });
+  const checksPath = join(dir, 'reskin', 'figma-checks', `${slug}.json`);
+  let figmaChecks = null;
+  if (existsSync(checksPath)) {
+    try { figmaChecks = readJson(checksPath); } catch (e) { throw new UsageError(`${checksPath} is not valid JSON: ${e.message}`); }
+  }
+  const paddingSkip = present(lookup(tokens, 'layout.sectionPaddingY')) ? figmaPaddingSkip(figmaChecks) : null;
+  const spec = edsSpec({ tokens, runtimeContract, figmaChecks });
   if (!spec.length) throw new UsageError(`${sheetPath} holds no token to assert: nothing to assert is no pass`);
   const want = new Map(spec.map((e) => [e.label, e.value]));
   writeJson(files.spec, spec);
@@ -118,7 +141,8 @@ export async function runTokens({ dir, slug, preview, env = process.env, donorPr
     const label = x.label ?? x.check;
     return SELECTOR_NOTHING.test(x.detail) ? `${label}: ${x.detail}` : `${label}: got ${x.detail}, want ${want.get(label)}`;
   });
-  const result = { verdict: bad.length ? 'FAIL' : 'PASS', exit: bad.length ? 1 : 0, report: files.report, json: files.json, skipped: [...SKIPPED] };
+  const unserved = probe.results.filter((x) => x.status === 'UNSERVED').map((x) => `${x.label ?? x.check}: ${x.detail}`);
+  const result = { verdict: bad.length ? 'FAIL' : 'PASS', exit: bad.length ? 1 : 0, report: files.report, json: files.json, skipped: [...SKIPPED, ...(paddingSkip ? [paddingSkip] : [])], ...(unserved.length ? { unserved } : {}) };
   writeJson(files.record, result);
-  return { ...result, total: scored.length, failures };
+  return { ...result, total: scored.length, failures, unserved };
 }

@@ -277,6 +277,20 @@ A miss is exit 2, every one listed, in `floor-problems.txt` too (the error's
 last line, for `run-bg wait`). A `boxes` TEXT line prints the colour and
 letter spacing a style is keyed by.
 
+**Chrome.** A `chrome` row of `mapping.md` that names an included module
+(the page's header or footer drawn from the kit's Header / Footer component)
+is joined like a section: its part comes from the slot id, then the module
+cell, then Content (`header`, `nav`, `navigation`, `masthead` → `header`;
+`footer` → `footer`), and the page element is the first of
+`header[data-canon]`, `.site-header`, `#site-header`, `header` outside `main`
+(the same for `footer`). `join.json` lists it as section `header` /
+`footer` (`chrome` names the row), so the checks file needs
+`sections.header` / `sections.footer` entries and the coverage floor counts
+their text styles: a mapped part without an entry is a floor problem like any
+section's, and its `skip` spends the waiver budget. A part the page lacks, a
+module that is not included or two rows mapping one part are section drift.
+A chrome row naming no module (`—`) needs nothing, as before.
+
 **Waiver budget.** Per checks file, waivers and skips may excuse at most 25%
 of the floor's items (each root's text styles, plus a waived mobile or
 desktop root's and a skipped section's), and never every mobile root the
@@ -285,7 +299,7 @@ raises the share; `summary.json` and the fragment record it.
 
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
-| B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading | exact; drift names the slot |
+| B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading; a `chrome` row whose Donor module is an included module joins the page's header or footer as section `header` / `footer` | exact; drift names the slot |
 | B1 geometry | blocks | width, height, left, right, top, gaps, paddings of page boxes against Figma nodes (relative to the module root) or a token | ±1px (Figma has half pixels, `measure-live` rounds) unless an entry says why |
 | B3 ramp | blocks | the `:root` block `donor-tokens.json` yields, and per type entry fontSize, fontWeight, lineHeight, letterSpacing, first fontFamily, color against the Figma text node | exact; lineHeight and letterSpacing ±0.1px |
 | B2 pixel | advisory | the section's slice of the frame image against the section's screenshot | none: orientation only; reference classes (light text 3%, inverted 3.5%, raster ground 4%) are uncalibrated |
@@ -300,9 +314,16 @@ raises the share; `summary.json` and the fragment record it.
   case ignored). Reskin keeps the *source's* bytes, so a section
   whose copy differs is n/a; geometry and ramp carry it. A `fixture`
   pixel mode screenshots a hand-made stand-in with the frame's copy.
-- **Fonts are recorded, not failed.** B2 names each font a section
-  uses that the page does not render; B3 compares only the first
-  family of the computed `font-family`.
+- **Fonts are recorded, not failed — and never passed unserved.** B2
+  names each font a section uses that the page does not render; B3
+  compares the first family of the computed `font-family` and, when it
+  matches Figma's, whether the page serves it (a loaded `@font-face` of
+  that family covering the element's weight and style, an installed
+  family, or a generic one). A declared family rendered from a fallback is
+  `UNSERVED` (`declared Inter, served fallback`): no PASS, no FAIL, left
+  out of `ramp PASS n/n` and counted as `(j unserved)`; log each as a
+  `font.unserved` residual (`accepted` when the donor supplies no font
+  files, `needs-owner` when the licensed font is meant to be served).
 - **Conflicts.** `conflict` is a Figma text colour below WCAG contrast (4.5, 3
   for large text) in a root the section's checks name, its alpha composited over
   the solid ground behind it; gradient and image grounds are skipped. A
@@ -331,8 +352,8 @@ fetches `.plain.html` without a browser.
 | Step | Class | Asserts | Bar |
 |---|---|---|---|
 | `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas` | both exit 0; unused deltas warn |
-| `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom), every `:root` token verbatim, with the optional `--card-bg`, `--card-radius`, `--card-padding`, `--card-title-color`, `--button-height`, `--section-padding-mobile`, `--gutter-mobile` when the sheet carries `cards.primary.*`, `buttons.primary.height`, `layout.mobile.*` (the probe runs at 1440 only: the mobile ones are asserted as `:root` values) | exact, first font family only (a font not served fails nothing); sections ±16px; container width is `parity`'s cap row |
-| `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height; per section (`section[data-slot]` paired in order with non-empty `main > .section`) the worst Δh ≤ 10% of its height, n/a when the counts differ; a header or footer the reskin page lacks left out of the preview's capture; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
+| `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom; with the page's Figma checks file a kit pads per module, so those rows are a SKIP and the `figma` step's geometry holds each section to its module), every `:root` token verbatim, with the optional `--card-bg`, `--card-radius`, `--card-padding`, `--card-title-color`, `--button-height`, `--section-padding-mobile`, `--gutter-mobile` when the sheet carries `cards.primary.*`, `buttons.primary.height`, `layout.mobile.*` (the probe runs at 1440 only: the mobile ones are asserted as `:root` values) | exact, first font family only (a font declared but not served is an `ADVISORY tokens font.unserved` line, left out of n, never a FAIL); sections ±16px; container width is `parity`'s cap row |
+| `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height; per section (`section[data-slot]` paired in order with non-empty `main > .section`) the worst Δh ≤ 10% of its height, n/a when the counts differ; a header or footer the reskin page lacks left out of the preview's capture; on a `--sandbox` preview a header or footer `mapping.md` maps no chrome row to is the boilerplate's own: hidden on both sides, its crop n/a and recorded (`parity.json` `ignored`); header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
 | `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a page answering HTTP 400 or more is no verdict (exit 124), never a pass |
 | `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0 on the inputs there are, a missing one (`eds-schema/<slug>.json`, `design.json`) being a FAIL row `incomplete: no …`, never `n/a`. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
@@ -345,7 +366,10 @@ fetches `.plain.html` without a browser.
 - **Figma on a preview.** Sections are the preview's authored
   `.plain.html` sections, found again as `main > div:nth-child(k)` of the
   decorated page (decoration can prepend or drop sections; a moved slot
-  gets a note in `join.json`). Each slot whose authored section does not
+  gets a note in `join.json`). A slot is found by its first heading; an
+  image-only slot (no text in the content model) by its image (alt text
+  or file name) among the free sections between its neighbours, else by
+  document order there, with a note. Each slot whose authored section does not
   hold the EDS block its module maps to (deploy Step 2,
   [`../../deploy/SKILL.md` § 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code),
   applied by `scripts/figma/eds-map.mjs`; a default-content module holds
@@ -392,7 +416,7 @@ budget would push independent cheap fixes into residuals.
 ```
 
 A Figma residual also carries `class` (`figma.join` | `figma.geometry` |
-`figma.ramp`); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
+`figma.ramp` | `font.unserved`, an UNSERVED ramp result or tokens line); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
 each names the gate, the check, and a human-readable verdict (`accepted` | `needs-owner` |
 `blocked`). The Phase 6 handoff report lists every residual and flag.
 

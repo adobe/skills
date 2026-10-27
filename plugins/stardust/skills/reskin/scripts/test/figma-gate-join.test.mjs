@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { includedModules, readInputs, workDir } from '../figma-gate/io.mjs';
-import { matchSections, runJoin } from '../figma-gate/join.mjs';
+import { joinChrome, matchSections, runJoin } from '../figma-gate/join.mjs';
 import { anchors, parseMapping } from '../figma-gate/mapping.mjs';
 import { localTarget } from '../figma-gate/target.mjs';
 import { makeProject } from './fixtures/figma-gate/setup.mjs';
@@ -35,8 +35,45 @@ await check('parseMapping reads the slot table: modules, statuses, "—" as null
   assert.deepEqual(mapping, [
     { slot: 's01', module: 'M1', status: 'mapped' },
     { slot: 's02', module: 'M2', status: 'mapped' },
-    { slot: 's03', module: null, status: 'chrome' },
+    { slot: 's03', module: null, status: 'chrome', part: 'footer' },
   ]);
+});
+
+await check('parseMapping: an escaped \\| inside a cell is cell text, read as |; an unescaped | still ends the cell', () => {
+  const md = '| # | Content | Donor module | Rationale | Status |\n|---|---|---|---|---|\n| s01 | h1 \\| lead | M3 (Card \\| Row) | a \\| b | mapped |\n| s02 | x | `M2` | y | new-module |\n';
+  assert.deepEqual(parseMapping(md), [{ slot: 's01', module: 'M3', status: 'mapped' }, { slot: 's02', module: 'M2', status: 'new-module' }]);
+  const pipeId = '| # | Donor module | Status |\n|---|---|---|\n| s01 | Hero \\| Dark | mapped |\n';
+  assert.deepEqual(parseMapping(pipeId), [{ slot: 's01', module: 'Hero | Dark', status: 'mapped' }]);
+});
+
+await check('parseMapping: a chrome row names its part from the slot id, then the module cell, then Content (header | footer | null)', () => {
+  const md = '| # | Content | Donor module | Status |\n|---|---|---|---|\n| s00-nav | top links | M7 | chrome |\n| s09 | footer nav links | M8 (Site Footer) | chrome |\n| s10 | links | M9 (Masthead) | chrome |\n| s11 | cookie banner | — | chrome |\n';
+  assert.deepEqual(parseMapping(md).map((r) => [r.slot, r.part]), [['s00-nav', 'header'], ['s09', 'footer'], ['s10', 'header'], ['s11', null]]);
+});
+
+await check('joinChrome: a chrome row mapped to an included module joins the page header / footer as section header / footer; "—" and banners need none; drift otherwise', () => {
+  const rows = [
+    { slot: 's00', module: 'M1', status: 'chrome', part: 'header' },
+    { slot: 's03', module: 'M3', status: 'chrome', part: 'footer' },
+    { slot: 's04', module: null, status: 'chrome', part: 'footer' },
+    { slot: 's05', module: 'M2', status: 'chrome', part: null },
+  ];
+  const found = { header: { selector: 'header:not(main header)' }, footer: { selector: 'footer[data-canon]:not(main footer)' } };
+  const ok = joinChrome({ mapping: rows, found, modules });
+  assert.deepEqual(ok.problems, []);
+  assert.deepEqual(ok.sections, [
+    { slot: 'header', module: 'M1', node: '1:3', selector: 'header:not(main header)', index: null, chrome: 's00' },
+    { slot: 'footer', module: 'M3', node: '1:10', selector: 'footer[data-canon]:not(main footer)', index: null, chrome: 's03' },
+  ]);
+  assert.deepEqual(joinChrome({ mapping: mapping, found: {}, modules }), { sections: [], problems: [] }, 'the fixture chrome row names no module: nothing to join, as before');
+  const bad = joinChrome({ mapping: [...rows.slice(0, 2), { slot: 's06', module: 'M4', status: 'chrome', part: 'header' }, { slot: 's07', module: 'M9', status: 'chrome', part: 'footer' }], found: { header: found.header }, modules });
+  assert.deepEqual(bad.problems, [
+    'section drift: s03: mapping.md maps the footer to M3 but the page has no footer (<footer>, footer[data-canon] or .site-footer)',
+    'section drift: s06 maps the header to M4, s00 already maps it: one chrome row per part',
+    'section drift: s07 maps the footer to M9, s03 already maps it: one chrome row per part',
+  ]);
+  const excluded = joinChrome({ mapping: [{ slot: 's00', module: 'M9', status: 'chrome', part: 'header' }], found, modules });
+  assert.deepEqual(excluded.problems, ['section drift: M9 is not an included module in curation-rules.json (mapping.md maps chrome s00, the header, to it)']);
 });
 
 await check('parseMapping: first table with Status and Donor module; split slots; no table is a usage error', () => {
@@ -170,6 +207,24 @@ if (playwrightOk) {
     assert.deepEqual(result.sections.map((s) => [s.slot, s.module, s.node, s.index]), [['s01', 'M1', '1:3', 0], ['s02', 'M2', '1:7', 1]]);
     assert.equal(result.regime, 'local');
     assert.deepEqual(JSON.parse(readFileSync(join(out, 'join.json'), 'utf8')), result);
+  });
+
+  await check('runJoin with the footer chrome row mapped to M3 and a <footer> on the page: join.json carries section footer (module, frame, selector); without the element it is drift', async () => {
+    const p = project('chrome');
+    const mdFile = join(p.dir, 'reskin', 'mapping.md');
+    writeFileSync(mdFile, readFileSync(mdFile, 'utf8').replace('| s03 | footer note | — |', '| s03 | footer note | M3 (Footer band) |'));
+    const inputs = readInputs(p.dir, p.slug, ['mapping', 'contentModel', 'rules']);
+    const out = workDir(p.dir, p.slug);
+    const missing = await runJoin({ target: localTarget(pathToFileURL(p.page).href), inputs, out });
+    assert.equal(missing.pass, false);
+    assert.deepEqual(missing.problems, ['section drift: s03: mapping.md maps the footer to M3 but the page has no footer (<footer>, footer[data-canon] or .site-footer)']);
+    writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('</main>', '</main>\n<footer><span class="note">Sample Kit is a synthetic test fixture.</span></footer>'));
+    const result = await runJoin({ target: localTarget(pathToFileURL(p.page).href), inputs, out });
+    assert.equal(result.pass, true, result.problems.join('\n'));
+    assert.deepEqual(result.sections.map((s) => [s.slot, s.module, s.node, s.selector]), [
+      ['s01', 'M1', '1:3', 'main section[data-slot="s01"]'], ['s02', 'M2', '1:7', 'main section[data-slot="s02"]'], ['footer', 'M3', '1:10', 'footer:not(main footer)'],
+    ]);
+    assert.deepEqual(JSON.parse(readFileSync(join(out, 'join.json'), 'utf8')).sections.at(-1).chrome, 's03');
   });
 
   await check('CLI join: PASS line, exit 0, join.json under .work/reskin/gates/<slug>/figma/; a file path works as --url', () => {

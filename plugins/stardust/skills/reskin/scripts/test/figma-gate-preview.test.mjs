@@ -109,7 +109,7 @@ await check('plainSections: a metadata block\'s text is left out of the section 
   const smeta = '<div class="section-metadata"><div><div>style</div><div>dark</div></div></div>';
   const meta = '<div class="metadata"><div><div>title</div><div>Hidden title</div></div></div>';
   const s = plainSections(doc(`<div><h2>Hi there</h2>${smeta}<p>Body</p>${meta}</div>`));
-  assert.deepEqual(s, [{ index: 0, text: 'hi there body', empty: false, blocks: [] }]);
+  assert.deepEqual(s, [{ index: 0, text: 'hi there body', empty: false, blocks: [], images: [] }]);
 });
 
 await check('plainSections: tags come off without splitting words, blocks split text, entities decode, comments and scripts are ignored', () => {
@@ -118,11 +118,34 @@ await check('plainSections: tags come off without splitting words, blocks split 
 });
 
 await check('plainSections: an image-only section is not empty; no <main> reads the whole document; an unclosed div ends at the end', () => {
-  assert.deepEqual(plainSections(doc('<div><p><picture><img src="a.png" alt="x"></picture></p></div>')), [{ index: 0, text: '', empty: false, blocks: [] }]);
+  assert.deepEqual(plainSections(doc('<div><p><picture><img src="./media_1a2b.png?width=750&amp;format=png" alt="X  Ray"></picture></p></div>')), [{ index: 0, text: '', empty: false, blocks: [], images: [{ alt: 'x ray', file: 'media_1a2b.png' }] }]);
   assert.deepEqual(plainSections('<div>a</div><div>b</div>').map((x) => x.text), ['a', 'b']);
   assert.deepEqual(plainSections('<main><div><p>a</p></main>').map((x) => x.text), ['a']);
   assert.deepEqual(plainSections(''), []);
   assert.deepEqual(plainSections(undefined), []);
+});
+
+await check('plainJoin: an image-only slot (no anchor text) is placed between its anchored neighbours: by its image (alt or file name) when a free section holds it, else by document order, with a note; none free is drift', () => {
+  const m = [{ slot: 's01', module: 'M1', status: 'mapped' }, { slot: 's02', module: 'M2', status: 'mapped' }, { slot: 's03', module: 'M4', status: 'mapped' }];
+  const dom = [local[0], { slot: 's02', module: 'M2', text: '', nested: false }, { slot: 's03', module: 'M4', text: 'Everything in one place', nested: false }];
+  const anchorsOf = new Map([['s01', a.get('s01')], ['s03', a.get('s02')]]);
+  const img = (alt, src) => ({ index: -1, text: '', empty: false, blocks: [], images: [{ alt, file: src }] });
+  const pics = [{ ...img('a promo', 'media_aaa.png'), index: 2 }, { ...img('the team', 'media_bbb.png'), index: 3 }];
+  const p = [plain[0], plain[1], ...pics, { ...plain[2], index: 4 }];
+  const deco = [decorated[0], decorated[1], { text: '', images: [{ alt: 'A promo', src: './media_aaa.png?width=750' }] }, { text: '', images: [{ alt: 'The team', src: './media_bbb.png' }] }, decorated[2]];
+  const byImage = plainJoin({ local: dom, plain: p, decorated: deco, mapping: m, anchors: anchorsOf, images: new Map([['s02', [{ alt: 'the team', file: 'team.jpg' }]]]), modules });
+  assert.deepEqual(byImage.problems, ['section drift: plain section 2 matches no slot'], 'the image picks section 3; the free section before it is extra');
+  assert.deepEqual(byImage.sections.map((x) => [x.slot, x.selector]), [['s01', 'main > div:nth-child(2)'], ['s02', 'main > div:nth-child(4)'], ['s03', 'main > div:nth-child(5)']]);
+  assert.ok(byImage.notes.includes('s02: no anchor text in content-model.json: placed by its image'), byImage.notes.join('\n'));
+
+  const one = [plain[0], plain[1], pics[0], { ...plain[2], index: 3 }];
+  const byOrder = plainJoin({ local: dom, plain: one, decorated: [deco[0], deco[1], deco[2], deco[4]], mapping: m, anchors: anchorsOf, modules });
+  assert.equal(byOrder.pass, true, byOrder.problems.join('\n'));
+  assert.equal(byOrder.sections[1].selector, 'main > div:nth-child(3)');
+  assert.deepEqual(byOrder.notes, ['s02: no anchor text in content-model.json: placed by document order between its neighbours']);
+
+  const none = plainJoin({ local: dom, plain: [plain[0], plain[1], { ...plain[2], index: 2 }], decorated, mapping: m, anchors: anchorsOf, modules });
+  assert.deepEqual(none.problems, ['section drift: s02 has no anchor text and no free plain section after s01 and before s03 in .plain.html']);
 });
 
 await check('plainJoin passes the fixture: s01 and s02 land on the decorated children 2 and 3, with their module frames', () => {
@@ -220,12 +243,14 @@ await check('plainJoin: split sub-slots may share one plain section; their paren
   ]);
 });
 
-await check('plainJoin: the reskin page\'s own drift from mapping.md is reported too; a slot with no anchor cannot be found', () => {
+await check('plainJoin: the reskin page\'s own drift from mapping.md is reported too; a slot with no anchor is placed by order before its anchored neighbour', () => {
   const r = joined({ local: [local[0]] });
   assert.ok(r.problems.includes('section drift: s02 has no section: add <section data-slot="s02"> inside <main>'), r.problems.join('\n'));
   assert.ok(r.problems.includes('section drift: plain section 2 matches no slot'), r.problems.join('\n'));
   const none = joined({ anchors: new Map([['s02', 'everything in one place']]) });
-  assert.deepEqual(none.problems, ['section drift: s01 has no anchor text in content-model.json: it cannot be found in .plain.html', 'section drift: plain section 1 matches no slot']);
+  assert.deepEqual(none.problems, []);
+  assert.equal(none.sections[0].selector, 'main > div:nth-child(2)');
+  assert.deepEqual(none.notes, ['s01: no anchor text in content-model.json: placed by document order between its neighbours']);
 });
 
 await check('plainJoin: whitespace, case and entities in the authored form do not matter', () => {
@@ -345,7 +370,9 @@ if (playwrightOk) {
         assert.equal(await page.evaluate(() => innerWidth), 1280);
         assert.equal(await page.evaluate(() => document.body.classList.contains('appear')), true);
         assert.equal(await page.evaluate(() => [...document.querySelectorAll('[data-block-status]')].every((el) => el.getAttribute('data-block-status') === 'loaded')), true);
-        const { local, html, decorated: texts } = await target.join.collect(page);
+        const { local, html, decorated } = await target.join.collect(page);
+        const texts = decorated.map((d) => d.text);
+        assert.ok(decorated.every((d) => Array.isArray(d.images)), 'each decorated section carries its images ({ alt, src })');
         assert.deepEqual(local.map((s) => [s.slot, s.module, s.nested]), [['s01', 'M1', false], ['s02', 'M2', false]]);
         assert.equal(html, PLAIN);
         assert.equal(texts.length, 3);
@@ -598,7 +625,7 @@ if (playwrightOk) {
       const p = previewProject('cli-ramp');
       const r = await run(stepArgs('ramp', p, url), { cwd: p.root });
       assert.equal(r.status, 0, r.all);
-      assert.match(r.stdout, /^ramp PASS (\d+)\/\1$/m);
+      assert.match(r.stdout, /^ramp PASS (\d+)\/\1( \(\d+ unserved\))?$/m);
       const j = stepFile(p, 'ramp.json');
       assert.deepEqual([j.regime, j.url, j.pass], ['preview', url, true]);
       const typed = j.results.filter((x) => x.slot !== null);
@@ -711,7 +738,7 @@ if (playwrightOk) {
       const p = previewProject('cli-all');
       const r = await run(stepArgs('all', p, url), { cwd: p.root });
       assert.equal(r.status, 0, r.all);
-      for (const pattern of [/^PASS join: 2 section\(s\)/m, /^geometry PASS 10\/10$/m, /^ramp PASS (\d+)\/\1$/m, /^pixel advisory/m, /^register written: /m]) assert.match(r.stdout, pattern);
+      for (const pattern of [/^PASS join: 2 section\(s\)/m, /^geometry PASS 10\/10$/m, /^ramp PASS (\d+)\/\1( \(\d+ unserved\))?$/m, /^pixel advisory/m, /^register written: /m]) assert.match(r.stdout, pattern);
       const s = stepFile(p, 'summary.json');
       assert.deepEqual([s.page, s.url, s.regime, s.ledgerFragment.regime], ['home', url, 'preview', 'preview']);
       assert.deepEqual(Object.entries(s.steps).map(([k, v]) => [k, v.verdict, v.exit]), [['join', 'PASS', 0], ['geometry', 'PASS', 0], ['ramp', 'PASS', 0], ['pixel', 'advisory', 0], ['register', 'written', 0]]);

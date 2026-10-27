@@ -173,7 +173,13 @@ environment only. Recipe:
    a file larger than `--max-frames` stops and asks for this. Look at
    the source page for module markers (`data-component` names) before
    picking frames: changing the selection of an existing capture needs
-   `--refresh`, a second full nodes fetch.
+   `--refresh`, a second full nodes fetch. A frame
+   or section holding only childless instances (components from a
+   remote library the REST payload did not expand) is marked
+   `hollow: true` and warned: nothing inside it is measured, and
+   `curate` lists every included module on one in
+   `donor-tokens.json#coverage.hollow` and flags its row; read its
+   anatomy from the screenshot, or capture the library file itself.
 3. Author `reskin/curation-rules.json`, the only non-mechanical
    input, from `role-candidates.json`, `module-candidates.json` and the
    frame screenshots: reference pins (one frame, variable mode and breakpoint per
@@ -328,7 +334,10 @@ Rules:
   (`scripts/figma/eds-map.mjs`; a module's `eds` in
   `curation-rules.json` overrides): Q&A → `accordion`, Teaser →
   `cards (teaser)`, Button → default content, Chips → `chips` (no EDS
-  match keeps the donor name), Input / Dropdown / Toggle → `form` (field
+  match keeps the donor name); a pattern word anywhere in the name
+  counts (Accordion Item / FAQ Section → `accordion`, Table – Striped →
+  `table (striped)`, Image Top Columns → `columns (image-top)`,
+  3 Columns → `columns`), Input / Dropdown / Toggle → `form` (field
   type rows of the Block Collection form, `Label | value | type | state`,
   not variants; only a layout such as Login stays a class, `form (login)`).
   Other modules sharing an EDS block are its variants, never a second
@@ -343,6 +352,9 @@ Rules:
 - **Closed set**: Phase 3 maps onto these ids only; anything else is
   an explicit new-module entry (`reference/mapping-brief.md`
   § Status semantics).
+- **Ids**: `M1`, `M2`, …; a composition variant of a module takes a
+  letter suffix (`M1b` is a variant of `M1`). `figma-donor.mjs curate`
+  accepts exactly `M<n>` or `M<n><letter>`.
 - End with a **notes-for-reskin** line capturing the donor's idiom
   (casing conventions, link suffix glyphs, band rhythm) — the
   renderer's cheat sheet.
