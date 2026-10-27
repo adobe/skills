@@ -73,7 +73,7 @@ curate   offline and deterministic: canon-source/foundation + module-candidates.
 stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/canon-source/" } and
          nothing else, through the master skill's state.mjs (beside the scripts: the plugin tree, or
          stardust/scripts/stardust/state.mjs in a project copy). Needs state.json (from
-         $stardust extract <content-url>) and canon-source/DESIGN.{md,json} (from curate); exit 2 otherwise.
+         $stardust extract <content-url> --all) and canon-source/DESIGN.{md,json} (from curate); exit 2 otherwise.
 --confidential  for a design that must not reach git: capture and curate first check, with
          git check-ignore, every path they would write or move (every foundation file, every
          screenshot, the cache files and the backup of a replaced capture once the file version is

@@ -28,6 +28,12 @@ longer emits radii or shadows the rules mark absent.
   `layout.mobile.sectionPaddingY|gutter`) with role candidates from card components, button box heights and frames
   narrower than 600px. They never block: `curate` notes each one left unmapped and lists them in
   `coverage.recommended`.
+- **A reskin migrates the whole site.** Phase 1 ran `extract <content-url>`, extract's capped discovery mode, so a 60-page
+  school site came back with 25 pages. Every content crawl is now `--all` (not `--prep`: reskin never runs the
+  prepare-migration cascade), reskin types every inventory page itself, and Setup step 5 treats a capped crawl
+  (`site.pageCap` set, a `below cap` row in `_crawl-log.json#discovery.cut`) as a setup error to re-crawl. `--pages`
+  restricts the archetype capture, never the inventory. Phase 6 migrates and ships every page by default;
+  archetypes-only delivery is an opt-out the user asks for, recorded in `ledger.json#delivery`.
 
 ## 0.32.1 — spec knowledge, wave 4: what a reviewing client had to guess
 
