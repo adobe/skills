@@ -11,6 +11,17 @@ export const cells = (line) => line.trim().replace(/^\|/, '').replace(/(?<!\\)\|
 const plain = (c) => c.replace(/[`*_]/g, '').trim();
 // "M3 (Card Row)": the id, with the module's name after it in parentheses.
 const moduleId = (c) => plain(c).replace(/\s*\(.*\)$/, '');
+// The page chrome a chrome row stands for, from its slot id, then its Donor module cell (the module's name), then its
+// Content, the first word in each that names one: header (header, nav, navigation, masthead) or footer; null for other
+// chrome (a banner).
+const CHROME_WORD = /\b(header|nav|navigation|masthead|footer)\b/i;
+export const chromePart = (...texts) => {
+  for (const t of texts) {
+    const word = CHROME_WORD.exec(plain(String(t ?? '')).replace(/[-_]/g, ' '))?.[1].toLowerCase();
+    if (word) return word === 'footer' ? 'footer' : 'header';
+  }
+  return null;
+};
 
 export const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
@@ -24,6 +35,7 @@ export function parseMapping(md) {
     const head = cells(lines[i]).map((c) => plain(c).toLowerCase());
     const modCol = head.indexOf('donor module');
     const statusCol = head.indexOf('status');
+    const contentCol = head.indexOf('content');
     if (modCol >= 0 && statusCol >= 0) {
       const rows = [];
       for (const line of lines.slice(i + 1, end)) {
@@ -33,7 +45,9 @@ export function parseMapping(md) {
         const module = moduleId(row[modCol] ?? '');
         const status = plain(row[statusCol] ?? '').toLowerCase();
         if (!STATUSES.includes(status)) throw new UsageError(`mapping.md: ${slot} has Status "${status}"; use one of ${STATUSES.join(' | ')}`);
-        rows.push({ slot, module: NONE.has(module) ? null : module, status });
+        const entry = { slot, module: NONE.has(module) ? null : module, status };
+        if (status === 'chrome') entry.part = chromePart(slot, row[modCol], contentCol >= 0 ? row[contentCol] : '');
+        rows.push(entry);
       }
       return rows;
     }

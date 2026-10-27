@@ -279,6 +279,61 @@ if (playwrightOk && pngOk) {
     assert.equal(r.stdout.split(lines.at(-1)).length, 2, 'the register path is printed once');
   });
 
+  // The footer chrome row mapped to the kit's footer module M3, and the page's <footer> drawn to it (or not).
+  const withFooter = async ({ padding = '64px 120px' } = {}) => {
+    const p = await framed();
+    const mdFile = join(p.dir, 'reskin', 'mapping.md');
+    writeFileSync(mdFile, readFileSync(mdFile, 'utf8').replace('| s03 | footer note | — |', '| s03 | footer note | M3 (Footer band) |'));
+    edit(p, '</style>', `footer { width: 1440px; height: 400px; padding: ${padding}; display: flex; flex-direction: column; background: rgb(31, 58, 95); }\n.note { font: 400 14px/20px Inter, "Inter-fallback", sans-serif; letter-spacing: 0; color: rgb(255, 255, 255); }\n</style>`);
+    edit(p, '</main>', '</main>\n<footer><span class="note">Sample Kit is a synthetic test fixture.</span></footer>');
+    return p;
+  };
+  const footerChecks = (p) => {
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checks = JSON.parse(readFileSync(file, 'utf8'));
+    checks.sections.footer = {
+      geometry: [{ id: 'g1', selector: ':scope', node: '1:10', measure: 'paddingLeft' }, { id: 'g2', selector: ':scope', node: '1:10', measure: 'paddingTop' }],
+      type: [{ id: 't1', selector: '.note', node: '1:11' }],
+    };
+    writeFileSync(file, `${JSON.stringify(checks, null, 2)}\n`);
+  };
+
+  queue('chrome: a footer chrome row mapped to M3 and a checks file without a footer entry is a coverage gap (exit 2, "footer has no geometry checks"); a skip is budgeted like any section', async () => {
+    const p = await withFooter();
+    const r = await runAll(p);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    const problems = readFileSync(join(work(p), 'floor-problems.txt'), 'utf8');
+    assert.match(problems, /^footer has no geometry checks: add one or "skip": "<why>"$/m);
+    assert.match(problems, /^footer has no type checks/m);
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checks = JSON.parse(readFileSync(file, 'utf8'));
+    checks.sections.footer = { skip: 'not drawn yet' };
+    writeFileSync(file, `${JSON.stringify(checks, null, 2)}\n`);
+    const skipped = await runAll(p);
+    assert.equal(skipped.status, 0, skipped.stdout + skipped.stderr);
+    assert.deepEqual(summaryOf(p).waiverBudget, { limitPct: 25, required: 9, excused: 1, mobileRequired: 0, mobileExcused: 0, raised: false });
+  });
+
+  queue('chrome: with a footer entry, geometry and ramp measure the page footer against M3, the floor counts its style, the register mandates it; a footer padding off Figma fails geometry', async () => {
+    const p = await withFooter();
+    footerChecks(p);
+    const r = await runAll(p);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const s = summaryOf(p);
+    assert.equal(s.ledgerFragment.coverage, 'text styles 9/9 · widths 1440 · waived 0');
+    assert.match(s.ledgerFragment.register, /^mandated 3 · /);
+    const geometry = JSON.parse(readFileSync(join(work(p), 'geometry.json'), 'utf8'));
+    assert.deepEqual(geometry.results.filter((x) => x.slot === 'footer').map((x) => [x.id, x.status]), [['g1', 'PASS'], ['g2', 'PASS']]);
+    const ramp = JSON.parse(readFileSync(join(work(p), 'ramp.json'), 'utf8'));
+    assert.ok(ramp.results.some((x) => x.slot === 'footer' && x.property === 'fontSize' && x.status === 'PASS'));
+
+    const off = await withFooter({ padding: '64px 96px' });
+    footerChecks(off);
+    const bad = await runAll(off);
+    assert.equal(bad.status, 1, bad.stdout + bad.stderr);
+    assert.match(bad.stdout, /^ {2}footer g1 paddingLeft \(node 1:10\): /m);
+  });
+
   queue('all twice, nodes.json deleted in between: the second run is served from the box cache, exit 0', async () => {
     const p = await framed();
     assert.equal((await runAll(p)).status, 0);

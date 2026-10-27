@@ -264,6 +264,20 @@ A miss is exit 2, every one listed, in `floor-problems.txt` too (the error's
 last line, for `run-bg wait`). A `boxes` TEXT line prints the colour and
 letter spacing a style is keyed by.
 
+**Chrome.** A `chrome` row of `mapping.md` that names an included module
+(the page's header or footer drawn from the kit's Header / Footer component)
+is joined like a section: its part comes from the slot id, then the module
+cell, then Content (`header`, `nav`, `navigation`, `masthead` → `header`;
+`footer` → `footer`), and the page element is the first of
+`header[data-canon]`, `.site-header`, `#site-header`, `header` outside `main`
+(the same for `footer`). `join.json` lists it as section `header` /
+`footer` (`chrome` names the row), so the checks file needs
+`sections.header` / `sections.footer` entries and the coverage floor counts
+their text styles: a mapped part without an entry is a floor problem like any
+section's, and its `skip` spends the waiver budget. A part the page lacks, a
+module that is not included or two rows mapping one part are section drift.
+A chrome row naming no module (`—`) needs nothing, as before.
+
 **Waiver budget.** Per checks file, waivers and skips may excuse at most 25%
 of the floor's items (each root's text styles, plus a waived mobile or
 desktop root's and a skipped section's), and never every mobile root the
@@ -272,7 +286,7 @@ raises the share; `summary.json` and the fragment record it.
 
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
-| B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading | exact; drift names the slot |
+| B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading; a `chrome` row whose Donor module is an included module joins the page's header or footer as section `header` / `footer` | exact; drift names the slot |
 | B1 geometry | blocks | width, height, left, right, top, gaps, paddings of page boxes against Figma nodes (relative to the module root) or a token | ±1px (Figma has half pixels, `measure-live` rounds) unless an entry says why |
 | B3 ramp | blocks | the `:root` block `donor-tokens.json` yields, and per type entry fontSize, fontWeight, lineHeight, letterSpacing, first fontFamily, color against the Figma text node | exact; lineHeight and letterSpacing ±0.1px |
 | B2 pixel | advisory | the section's slice of the frame image against the section's screenshot | none: orientation only; reference classes (light text 3%, inverted 3.5%, raster ground 4%) are uncalibrated |

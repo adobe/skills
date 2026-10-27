@@ -55,8 +55,15 @@ join     B0, the section join. Opens the page (a file path, a file: or localhost
          plain Chromium at 1440 and reads its main section[data-slot] elements in document order. Every
          mapping.md row that renders (status mapped or new-module) must be exactly one top-level section, in
          the table's order, whose data-module is the row's Donor module and whose text holds the slot's first
-         heading (content-model.json); a Donor module must be included in curation-rules.json. Chrome and
-         carried-invisible rows need no section. Each problem starts "section drift:". Writes
+         heading (content-model.json); a Donor module must be included in curation-rules.json. A chrome row
+         whose Donor module is named (the header or footer drawn from the kit's Header / Footer component; its part
+         read from the slot id, then the module cell, then Content: header|nav|navigation|masthead → header, footer →
+         footer) joins the page's header or footer element as section "header" or "footer": the first of
+         header[data-canon], .site-header, #site-header, header outside main (the same for footer; on a preview the
+         decorated header / footer). Its module must be included; a part the page lacks, or two rows mapping one
+         part, is drift. Checks file entries keyed "header" / "footer" measure it and the coverage floor counts it: a
+         mapped part with no entry is a floor problem like any section (skip spends the waiver budget). A chrome row
+         naming no module ("—") and carried-invisible rows need no section. Each problem starts "section drift:". Writes
          <dir>/.work/reskin/gates/<slug>/figma/join.json (figma-preview/ on --target preview; each section's slot, module, Figma frame, selector
          and document index), prints one PASS or FAIL line and exits 1 on drift.
          --target preview joins a deployed preview instead: --url is its http(s) URL, --reskin the reskin page (the file
@@ -202,7 +209,8 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
   selector resolves inside the section: a plain selector as a descendant of it, ":scope" as the section itself (":scope",
   ":scope > .a .b"); a comma list is scoped branch by branch, a comma inside :is(), :where(), :not() or an attribute value
   is not a branch. A branch that begins with a sibling combinator (":scope + p") would leave the section: exit 2.
-  ids are g1.. and t1.. per section.
+  ids are g1.. and t1.. per section. A joined chrome section is keyed "header" or "footer" (its selector is the
+  page's header / footer element; ":scope" is that element).
   previewSelector (a string, scoped the same way) is the selector on a deployed preview (--target preview), whose blocks
   rebuild the markup the reskin page was written with; without it the preview uses selector. --target local never reads it.
   measure: width left right top height gapX gapY paddingTop paddingRight paddingBottom paddingLeft.

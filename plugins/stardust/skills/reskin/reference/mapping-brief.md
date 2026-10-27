@@ -67,7 +67,11 @@ vocabulary at 91% mapped, 1 new-module, 1 chrome swap.
   `../../migrate/reference/content-preservation.md` rules apply to
   chrome too). Chrome slots are **excluded from the content-gate
   scope** and each swap is a documented delta (`D1`, `D2`, …) in the
-  Deltas block.
+  Deltas block. **Figma donor:** name the kit's Header / Footer module
+  in Donor module and say which part the row is (slot id such as
+  `s00-header` / `s09-footer`, or `header` / `nav` / `footer` in the
+  module name or Content): the Figma join then holds the page's header
+  or footer to that module (`gates.md` § (d) Chrome).
 - **`carried-invisible`** — non-visual content inside the byte
   scope: sr-only / visually-hidden a11y landmarks, skip-target
   headings. Real sites keep their only h1 here. None of the other
