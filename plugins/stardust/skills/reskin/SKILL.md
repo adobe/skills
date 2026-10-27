@@ -422,9 +422,12 @@ pass bars, tolerances, and failure modes in `reference/gates.md`. Serve or `file
 rendered page and run:
 
 **(a) CONTENT GATE** — all three must pass (a Figma-sourced page has no
-source DOM: run `figma-text-gate.mjs` in place of `dom-equality` and
-`slot-coverage --deltas reskin/deltas/<slug>.json`; see
-`reference/gates.md` § figma-text-gate.mjs):
+source DOM: run `figma-text-gate.mjs` in place of `dom-equality`, its
+report at `gates/<slug>/figma-text.json` — the file `reskin-ledger.mjs
+record` reads; never `reports/<slug>-content-gate.md`, which `record`
+reads first as a dom-equality report — and `slot-coverage --deltas
+reskin/deltas/<slug>.json`; see `reference/gates.md` §
+figma-text-gate.mjs):
 
 ```bash
 node stardust/scripts/reskin/dom-equality.mjs \
@@ -436,6 +439,11 @@ node stardust/scripts/reskin/slot-coverage.mjs \
   --model stardust/reskin/content-model/<slug>/content-model.json \
   --rendered stardust/reskin/pages/<slug>.html \
   --report stardust/reskin/reports/<slug>-slot-coverage.md
+# a Figma-sourced page, in place of dom-equality:
+node stardust/scripts/reskin/figma-text-gate.mjs \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --rendered stardust/reskin/pages/<slug>.html \
+  --report stardust/reskin/gates/<slug>/figma-text.json
 ```
 
 Then **(a′) SOURCE COVERAGE** — what the content reference above did

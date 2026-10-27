@@ -177,8 +177,13 @@ A Figma-sourced page has no source DOM, so `dom-equality` cannot run. The Figma 
 ```bash
 node stardust/scripts/reskin/figma-text-gate.mjs \
   --model stardust/reskin/content-model/<slug>/content-model.json \
-  --rendered stardust/prototypes/<slug>-proposed.html
+  --rendered stardust/reskin/pages/<slug>.html \
+  --report stardust/reskin/gates/<slug>/figma-text.json
 ```
+
+`--rendered` is the page `stream-render` wrote; `--report` is the JSON `reskin-ledger.mjs record` reads
+as the page's content gate (`verdict` PASS | FAIL) when no `dom-equality` report exists — do not write it
+to `reports/<slug>-content-gate.md`, the dom-equality path `record` reads first.
 
 The reference is every effectively-visible TEXT node of the frame's body sections, in reading order and
 rendered case, re-read from the cached nodes response — never from the model it checks. Each string must
