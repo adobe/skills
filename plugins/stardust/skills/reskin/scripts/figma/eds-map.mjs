@@ -3,7 +3,9 @@
 //   D1   no repeating units and no bespoke interactive structure → default content (block null): buttons,
 //        links, headings, body copy are what aem.js decorates, never a block.
 //   D11  a boilerplate or Block Collection pattern → that block's name (accordion, cards, form, …), the
-//        Figma name kept as the variant where it tells variants apart (Teaser → cards teaser).
+//        Figma name kept as the variant where it tells variants apart (Teaser → cards teaser); a pattern
+//        word anywhere in the name counts too (Accordion Item → accordion, Table – Striped → table striped,
+//        Image Top Columns → columns image-top).
 //   else the Figma name, kebab-cased and kept off the reserved EDS classes: an invented block only when
 //        nothing in EDS matches (Chips → chips).
 // A Figma kit is a proposal; this module is the one place a Figma name becomes an EDS name. Pure.
@@ -36,13 +38,16 @@ const DEFAULT_CONTENT = new Set([
 //   | 'field': a form field module (input, checkbox, dropdown, …) — the Block Collection form's content model
 //     makes field types rows (Label | value | type | state) of the one form block, never classes: variant null.
 const heroVariant = (s, t) => t.filter((x) => !['hero', 'home', 'page', 'main'].includes(x)).join('-') || null;
+// The Block Collection table's own variants; any other table name is the plain table.
+const TABLE_VARIANTS = ['striped', 'bordered', 'no-header'];
+const tableVariant = (s) => TABLE_VARIANTS.find((v) => `-${s}-`.includes(`-${v}-`)) ?? null;
 const RULES = [
   ['header', ['header', 'headers', 'site-header', 'global-header', 'nav', 'navigation', 'navbar', 'nav-bar', 'top-bar', 'topbar'], [], null],
   ['footer', ['footer', 'footers', 'site-footer', 'global-footer'], [], null],
   ['accordion', ['accordion', 'accordions', 'q-and-a', 'q-a', 'qa', 'qna', 'q-n-a', 'faq', 'faqs', 'expander', 'expanders', 'expandable', 'collapse', 'collapsible', 'disclosure'], ['accordion', 'faq', 'faqs'], null],
   ['cards', ['cards', 'card', 'teaser', 'teasers', 'tile', 'tiles'], ['card', 'cards', 'teaser', 'teasers', 'tile', 'tiles'], 'name'],
   ['hero', ['hero', 'heroes', 'heros'], [], heroVariant],
-  ['table', ['table', 'tables', 'data-table', 'data-tables', 'datatable'], ['table', 'tables'], null],
+  ['table', ['table', 'tables', 'data-table', 'data-tables', 'datatable'], ['table', 'tables'], tableVariant],
   ['breadcrumbs', ['breadcrumb', 'breadcrumbs', 'crumbs'], [], null],
   ['search', ['search', 'search-bar', 'searchbar', 'search-box', 'searchbox', 'search-field', 'search-input'], [], null],
   ['tabs', ['tabs', 'tab', 'tab-group', 'tabset'], ['tabs'], null],
@@ -62,6 +67,21 @@ const RULES = [
 ];
 const KIND = (block) => (BOILERPLATE.includes(block) ? 'boilerplate' : 'Block Collection');
 
+// Second pass, for names the rules above miss: the pattern word anywhere in the name ("Accordion Item",
+// "FAQ Section", "Table – Striped", "Image Top Columns", "3 Columns"). Columns keeps the layout words as
+// its variant, image-on-top spellings as image-top, and drops column counts (the columns block derives
+// columns-<n>-cols itself).
+const IMAGE_TOP = /(^|-)(image|img|media|photo|picture)-(on-)?top(-|$)|(^|-)top-(image|img|media|photo|picture)(-|$)/;
+const COLUMN_WORDS = new Set(['column', 'columns', 'col', 'cols', 'layout', 'layouts', 'block', 'grid', 'one', 'two', 'three', 'four', 'multi', 'up']);
+const ANYWHERE = [
+  ['accordion', (s, t) => t.some((x) => ['accordion', 'accordions', 'faq', 'faqs', 'disclosure', 'disclosures', 'expander', 'expanders', 'collapsible', 'collapsibles'].includes(x))
+    || /(^|-)q-(and-)?a(-|$)/.test(s), () => null],
+  ['table', (s, t) => t.some((x) => ['table', 'tables', 'datatable'].includes(x)) && !/(^|-)table-of-contents(-|$)/.test(s),
+    tableVariant],
+  ['columns', (s, t) => t.some((x) => ['column', 'columns', 'col', 'cols'].includes(x)) || IMAGE_TOP.test(s),
+    (s, t) => (IMAGE_TOP.test(s) ? 'image-top' : t.filter((x) => !COLUMN_WORDS.has(x) && !/^\d+$/.test(x)).join('-') || null)],
+];
+
 /**
  * edsEquivalent(figmaName, { hasRepeatingUnits, interactive }) → { block, variant, reason }
  * block null = default content (D1). The flags are optional: unknown is treated as "may be a block", so only
@@ -79,6 +99,11 @@ export function edsEquivalent(figmaName, { hasRepeatingUnits, interactive } = {}
     let v = null;
     if (variant === 'name') v = slug === block || slug === block.replace(/s$/, '') ? null : slug;
     else if (typeof variant === 'function') v = variant(slug, tokens);
+    return { block, variant: v, reason: `${STEP2} D11: "${label}" matches the ${KIND(block)} ${block} block${v ? ` (variant ${v})` : ''}` };
+  }
+  for (const [block, hit, variant] of ANYWHERE) {
+    if (!hit(slug, tokens)) continue;
+    const v = variant(slug, tokens);
     return { block, variant: v, reason: `${STEP2} D11: "${label}" matches the ${KIND(block)} ${block} block${v ? ` (variant ${v})` : ''}` };
   }
   const reserved = safeBlockName(slug) !== slug;

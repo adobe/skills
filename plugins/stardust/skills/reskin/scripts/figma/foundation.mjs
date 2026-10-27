@@ -26,7 +26,8 @@
 //   type.family  font families by characters; from = that family's most-used text style
 //   body size    text styles by characters
 //   display wt   text styles by font size, largest first
-//   buttons.*    components or instances named /button|btn|cta/i (node, component or set name);
+//   buttons.*    components or instances named /button|btn|cta/i (node, component or set name),
+//                except a visible variant or main component that says link and not button (Type=Link);
 //                a /primary/i variant first, then by instance count
 //   container    maxWidth values and widths of frames named /container|content|wrapper|grid/i,
 //                desktop-scale (≥ 960px) first
@@ -88,6 +89,7 @@ export const RECOMMENDED_SOURCES = {
 export const FOUNDATION_FILES = ['colors', 'typography', 'effects', 'radii', 'spacing', 'components'];
 const SECTION_TYPES = new Set(['FRAME', 'INSTANCE', 'COMPONENT', 'GROUP', 'SECTION']);
 const BUTTON = /button|btn|cta/i;
+const LINK = /\blink\b/i;
 const CARD = /card/i;
 const MOBILE_MAX = 600;
 const CONTAINER = /container|content|wrapper|grid/i;
@@ -100,6 +102,9 @@ export function slugify(s) {
 
 const numSlug = (n) => slugify(String(Math.round(n * 100) / 100));
 const visible = (n) => n && n.visible !== false;
+// A subtree with no content of its own to measure: a childless INSTANCE (typically a remote-library
+// component the file's REST payload did not expand), or a container whose every visible child is one.
+export const hollow = (n) => { const kids = (n.children || []).filter(visible); return kids.length ? kids.every(hollow) : n.type === 'INSTANCE'; };
 const cleanProp = (name) => String(name).replace(/#[^#]*$/, '');
 const pads = (n) => [n.paddingTop ?? 0, n.paddingRight ?? 0, n.paddingBottom ?? 0, n.paddingLeft ?? 0];
 const autoLayout = (n) => n.layoutMode && n.layoutMode !== 'NONE';
@@ -182,6 +187,15 @@ function variantOf(n, compName) {
     }
   }
   return v;
+}
+
+// A button-named instance or component whose visible variant or main component says it is a text
+// link (a "Button" set with Type=Link beside Type=Button, a Link=True variant, a main component named
+// "Text link") is not a button: the name rule decides only when the variant does not. Evidence that
+// also names a button ("Link button", "Link CTA") stays a button.
+function linkVariant(variant, compName) {
+  const says = (s) => LINK.test(s) && !BUTTON.test(s);
+  return Object.entries(variant).some(([k, v]) => says(String(v)) || (says(k) && /^(true|yes|on)$/i.test(String(v)))) || says(compName || '');
 }
 
 function propsOf(n, maps) {
@@ -395,9 +409,9 @@ export function buildFoundation({ file, nodes, frameIds }) {
     if (n.type === 'INSTANCE' || n.type === 'COMPONENT') {
       const info = componentInfo(n, maps, parentSet);
       const named = (re) => [n.name, info.compName, info.setName].some((x) => re.test(x || ''));
-      const kind = named(BUTTON) ? 'button' : named(CARD) ? 'card' : null;
+      const variant = variantOf(n, info.compName);
+      const kind = named(BUTTON) && !linkVariant(variant, info.compName) ? 'button' : named(CARD) ? 'card' : null;
       if (kind) {
-        const variant = variantOf(n, info.compName);
         const { value, fields: sources } = buttonValue(n);
         const identity = `component:${n.type === 'INSTANCE' ? n.componentId : n.id}`;
         const existing = g.components.byId.get(identity);
@@ -459,6 +473,7 @@ export function buildFoundation({ file, nodes, frameIds }) {
             instanceOf: info ? info.displayName : null,
             componentProperties: info ? propsOf(c, maps) : null,
             components: componentsUsed(c, []),
+            ...(hollow(c) ? { hollow: true } : {}),
           },
         };
       })
@@ -468,7 +483,7 @@ export function buildFoundation({ file, nodes, frameIds }) {
     let slug = base;
     for (let i = 2; usedSlugs.has(slug); i += 1) slug = `${base}-${i}`;
     usedSlugs.add(slug);
-    frames.push({ node: root.id, name: root.name, page: pageOf.get(root.id) ?? null, slug, width: root.absoluteBoundingBox?.width ?? 0, height: root.absoluteBoundingBox?.height ?? 0, sections });
+    frames.push({ node: root.id, name: root.name, page: pageOf.get(root.id) ?? null, slug, width: root.absoluteBoundingBox?.width ?? 0, height: root.absoluteBoundingBox?.height ?? 0, ...(hollow(root) ? { hollow: true } : {}), sections });
   }
 
   // ---- finalize records ---------------------------------------------------------------------------
