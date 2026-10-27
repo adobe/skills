@@ -224,6 +224,17 @@ check('a module without a screenshot or with a bad frame → RulesError (evidenc
   rulesError(() => curate(inputs(rules((r) => { r.modules[0].frame = '9:9'; return r; }))), /M1.*9:9/);
   rulesError(() => curate(inputs(rules((r) => { r.modules[1].id = 'M1'; return r; }))), /duplicate.*M1/);
 });
+check('a module whose frame holds only childless instances is recorded hollow in coverage and its row', () => {
+  assert.equal(t.coverage.hollow, undefined);
+  assert.ok(!out.donorModulesMd.includes('hollow'));
+  const mc = structuredClone(moduleCandidates);
+  for (const f of mc.frames) for (const s of f.sections) if (s.node === '1:10') s.hollow = true;
+  const o = curate(inputs(rules(), { moduleCandidates: mc }));
+  assert.deepEqual(o.donorTokens.coverage.hollow.map((h) => [h.id, h.name, h.frame]), [['M3', 'Footer band', '1:10']]);
+  assert.match(o.donorTokens.coverage.hollow[0].why, /childless instances \(likely remote-library components/);
+  assert.match(o.donorModulesMd, /\| M3 \| Footer band \|[^\n]*anatomy: single note line on a dark band; hollow: the frame holds only childless instances/);
+  assert.equal(o.donorModulesMd.match(/hollow:/g).length, 1);
+});
 check('module ids: M1 and composition variants such as M1b; anything else is a RulesError', () => {
   const md = curate(inputs(rules((r) => { r.modules[1].id = 'M1b'; r.modules[1].variantOf = 'M1'; return r; }))).donorModulesMd;
   assert.ok(md.includes('| M1b | Feature grid | feature-grid | canon-source'), md);

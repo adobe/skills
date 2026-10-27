@@ -172,7 +172,13 @@ environment only. Recipe:
    nodes; pass the foundation frames (colour, type, spacing, the button
    set) and one representative frame per module page with
    `--frames <id,…>`, raising `--max-frames` to fit. Without either,
-   a file larger than `--max-frames` stops and asks for this.
+   a file larger than `--max-frames` stops and asks for this. A frame
+   or section holding only childless instances (components from a
+   remote library the REST payload did not expand) is marked
+   `hollow: true` and warned: nothing inside it is measured, and
+   `curate` lists every included module on one in
+   `donor-tokens.json#coverage.hollow` and flags its row; read its
+   anatomy from the screenshot, or capture the library file itself.
 3. Author `reskin/curation-rules.json`, the only non-mechanical
    input: reference pins (one frame, variable mode and breakpoint per
    module family; § Pin one reference page), roles, normalizations,

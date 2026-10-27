@@ -58,13 +58,18 @@ capture  reads one version of the file over the Figma REST API (files depth=2, t
          itself is cut short, readers (curate, stamp) still get that capture from its backup and
          the next capture restores it.
          --max-wait <s>: the longest Retry-After a 429 may impose before stopping (default 60).
+         A frame or section holding only childless instances (remote-library components the REST
+         payload did not expand) is marked hollow: true in module-candidates.json and warned on
+         stderr: nothing inside it is measured; capture the library's own file for its components.
 curate   offline and deterministic: canon-source/foundation + module-candidates.json + the agent-
          authored <dir>/reskin/curation-rules.json → <dir>/reskin/donor-tokens.json (reskin's token
          sheet; nodeRefs cite the Figma node behind every value; coverage lists asserted, absent and
-         suspect paths and recommended { curated, missing }), <dir>/reskin/donor-modules.md (the module vocabulary, one screenshot and
-         node per row) and the descriptive design files direct reads: <dir>/canon-source/DESIGN.json,
-         DESIGN.md and _brand-extraction.json (prose only from rules.design). Every rule problem is
-         listed at once (exit 1). Re-run after any capture or rules change.
+         suspect paths, recommended { curated, missing } and, when any, hollow: included modules
+         whose frame holds only childless instances, warned on stderr), <dir>/reskin/donor-modules.md
+         (the module vocabulary, one screenshot and node per row) and the descriptive design files
+         direct reads: <dir>/canon-source/DESIGN.json, DESIGN.md and _brand-extraction.json (prose
+         only from rules.design). Every rule problem is listed at once (exit 1). Re-run after any
+         capture or rules change.
 stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/canon-source/" } and
          nothing else, through the master skill's state.mjs (beside the scripts: the plugin tree, or
          stardust/scripts/stardust/state.mjs in a project copy). Needs state.json (from
@@ -233,6 +238,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     log(`curate: ${c.asserted}/13 probe paths asserted (${c.absent.filter((a) => a.probe).length} absent, ${c.suspect.length} suspect) · ${mods.length - excluded} module(s), ${excluded} excluded → ${written.join(', ')}`);
     for (const a of c.absent.filter((x) => x.probe)) log(`  absent ${a.path}: ${a.why}`);
     for (const p of c.recommended.missing) log(`note: recommended token not curated: ${p} (map it, or mark it absent with a why)`);
+    for (const h of c.hollow || []) warn(`warning: module ${h.id} (${h.name}, frame ${h.frame}) is hollow: ${h.why}`);
     return 0;
   }
 

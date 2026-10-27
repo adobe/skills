@@ -102,6 +102,9 @@ export function slugify(s) {
 
 const numSlug = (n) => slugify(String(Math.round(n * 100) / 100));
 const visible = (n) => n && n.visible !== false;
+// A subtree with no content of its own to measure: a childless INSTANCE (typically a remote-library
+// component the file's REST payload did not expand), or a container whose every visible child is one.
+export const hollow = (n) => { const kids = (n.children || []).filter(visible); return kids.length ? kids.every(hollow) : n.type === 'INSTANCE'; };
 const cleanProp = (name) => String(name).replace(/#[^#]*$/, '');
 const pads = (n) => [n.paddingTop ?? 0, n.paddingRight ?? 0, n.paddingBottom ?? 0, n.paddingLeft ?? 0];
 const autoLayout = (n) => n.layoutMode && n.layoutMode !== 'NONE';
@@ -470,6 +473,7 @@ export function buildFoundation({ file, nodes, frameIds }) {
             instanceOf: info ? info.displayName : null,
             componentProperties: info ? propsOf(c, maps) : null,
             components: componentsUsed(c, []),
+            ...(hollow(c) ? { hollow: true } : {}),
           },
         };
       })
@@ -479,7 +483,7 @@ export function buildFoundation({ file, nodes, frameIds }) {
     let slug = base;
     for (let i = 2; usedSlugs.has(slug); i += 1) slug = `${base}-${i}`;
     usedSlugs.add(slug);
-    frames.push({ node: root.id, name: root.name, page: pageOf.get(root.id) ?? null, slug, width: root.absoluteBoundingBox?.width ?? 0, height: root.absoluteBoundingBox?.height ?? 0, sections });
+    frames.push({ node: root.id, name: root.name, page: pageOf.get(root.id) ?? null, slug, width: root.absoluteBoundingBox?.width ?? 0, height: root.absoluteBoundingBox?.height ?? 0, ...(hollow(root) ? { hollow: true } : {}), sections });
   }
 
   // ---- finalize records ---------------------------------------------------------------------------

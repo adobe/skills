@@ -154,6 +154,25 @@ check('a button set\'s text-link variant is not a button candidate; a Link CTA o
   assert.deepEqual(ids, ['C:btn', 'C:linkbtn', 'C:linkcta']);
   assert.deepEqual(r.roleCandidates['buttons.primary.background'].flatMap((c) => c.evidence), ['8:2', '8:6', '8:7']);
 });
+check('childless instances (remote-library components not expanded): the frame and its sections are hollow, never silent', () => {
+  const inst = (id, y) => ({ id, name: 'Library Module', type: 'INSTANCE', componentId: 'R:1', absoluteBoundingBox: { x: 0, y, width: 1440, height: 400 } });
+  const doc = (id, children) => ({ id, name: `Kit ${id}`, type: 'FRAME', absoluteBoundingBox: { x: 0, y: 0, width: 1440, height: 800 }, children });
+  const wrapped = { id: '7:5', name: 'Band', type: 'FRAME', absoluteBoundingBox: { x: 0, y: 0, width: 1440, height: 400 }, children: [inst('7:6', 0), { ...inst('7:7', 0), visible: false, children: [{ id: '7:8', type: 'TEXT', name: 'x' }] }] };
+  const r = buildFoundation({
+    file: { document: { children: [] } },
+    nodes: { nodes: {
+      '7:1': { document: doc('7:1', [inst('7:2', 0), inst('7:3', 400)]), components: { 'R:1': { name: 'Library Module', remote: true } } },
+      '7:4': { document: doc('7:4', [wrapped, { id: '7:9', name: 'Copy', type: 'FRAME', absoluteBoundingBox: { x: 0, y: 400, width: 1440, height: 400 }, children: [{ id: '7:10', type: 'TEXT', name: 'T', characters: 'Hi' }] }]) },
+    } },
+    frameIds: ['7:1', '7:4'],
+  });
+  const [a, b] = r.moduleCandidates.frames;
+  assert.equal(a.hollow, true);
+  assert.deepEqual(a.sections.map((x) => x.hollow), [true, true]);
+  assert.equal(b.hollow, undefined, 'a frame with real content is not hollow');
+  assert.deepEqual(b.sections.map((x) => x.hollow), [true, undefined], 'a container of childless instances is hollow (hidden children ignored)');
+  assert.ok(!JSON.stringify(moduleCandidates).includes('hollow'), 'the kit has no hollow frame: output unchanged');
+});
 check('container candidates: desktop-scale widths rank before narrower text measures, whatever their count', () => {
   const text = (id, mw) => ({ id, name: 'Copy', type: 'TEXT', maxWidth: mw, absoluteBoundingBox: { x: 0, y: 0, width: mw, height: 20 }, fills: [], characters: 'x', style: { fontFamily: 'Inter', fontSize: 16, fontWeight: 400, lineHeightPx: 24, lineHeightUnit: 'PIXELS' } });
   const doc = { id: '8:1', name: 'Kit page', type: 'FRAME', absoluteBoundingBox: { x: 0, y: 0, width: 1440, height: 900 }, fills: [], children: [

@@ -112,8 +112,8 @@ export function resolveRules(rules, { foundation, moduleCandidates, screenshotIn
   // Captured frames and their sections, for reference pins and modules.
   const where = new Map();
   for (const f of moduleCandidates?.frames || []) {
-    where.set(f.node, { name: f.name, slug: f.slug });
-    for (const s of f.sections) where.set(s.node, { name: s.name, slug: f.slug });
+    where.set(f.node, { name: f.name, slug: f.slug, hollow: f.hollow === true });
+    for (const s of f.sections) where.set(s.node, { name: s.name, slug: f.slug, hollow: s.hollow === true });
   }
 
   const reference = [];
@@ -214,7 +214,7 @@ export function resolveRules(rules, { foundation, moduleCandidates, screenshotIn
       if (!nonEmpty(m.anatomy)) problems.push(`${label}: needs an anatomy (the slots it carries)`);
       if (m.eds !== undefined && !(isObj(m.eds) && (m.eds.block === null || nonEmpty(m.eds.block)) && (m.eds.variant == null || nonEmpty(m.eds.variant)))) problems.push(`${label}: eds must be { "block": "<EDS block>" | null (default content), "variant": "<class>" | null } (deploy Step 2)`);
     } else problems.push(`${label}: status must be include or excluded`);
-    modules.push({ ...m, slug: w.slug });
+    modules.push({ ...m, slug: w.slug, ...(w.hollow ? { hollow: true } : {}) });
   });
 
   // Probe coverage over the resolved tree.

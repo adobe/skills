@@ -15,6 +15,7 @@ import { canonicalFigmaUrl } from './url.mjs';
 import { edsEquivalent, edsLabel } from './eds-map.mjs';
 
 const FAMILY_NOTE = 'adopted as a token string with a local fallback; no font files from Figma';
+const HOLLOW_WHY = 'the frame holds only childless instances (likely remote-library components the REST payload did not expand); nothing inside it was measured — read the anatomy from its screenshot';
 
 export function curate({ foundation, moduleCandidates, rules, manifest, screenshotIndex, donorUrl, dir = 'stardust' }) {
   const stale = Object.entries(screenshotIndex || {})
@@ -73,6 +74,10 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
     curated: curatedRecommended,
     missing: RECOMMENDED_PATHS.filter((p) => !curatedRecommended.includes(p) && !r.absent.some((a) => p === a.path || p.startsWith(`${a.path}.`))),
   };
+  // A module whose frame holds only childless instances (remote-library components the capture did not
+  // expand) had nothing measured: recorded in coverage and flagged in its row, never silent.
+  const hollow = r.modules.filter((m) => m.hollow && m.status === 'include')
+    .map((m) => ({ id: m.id, name: m.name, frame: m.frame, why: HOLLOW_WHY }));
   const pins = r.reference.map((p) => `${p.family}: ${p.name} (node ${p.frame}${p.breakpoint ? `, ${p.breakpoint}px` : ''}${p.mode ? `, mode ${p.mode}` : ''})`);
   const readArtifacts = [`${dir}/reskin/curation-rules.json`, `${dir}/canon-source/foundation/`, `${dir}/canon-source/module-candidates.json`, `${dir}/canon-source/assets/screenshots/index.json`];
 
@@ -84,7 +89,7 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
     ...tokens,
     motifs,
     nodeRefs,
-    coverage: { asserted, absent: r.absent, suspect: r.suspect, recommended },
+    coverage: { asserted, absent: r.absent, suspect: r.suspect, recommended, ...(hollow.length ? { hollow } : {}) },
   };
 
   const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ');
@@ -96,6 +101,7 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
     const parts = [`anatomy: ${m.anatomy}`];
     if (m.variants?.length) parts.push(`variants: ${m.variants.join(', ')}`);
     if (m.components?.length) parts.push(`components: ${m.components.join(', ')}`);
+    if (m.hollow) parts.push(`hollow: ${HOLLOW_WHY}`);
     return `| ${m.id} | ${cell(m.name)} | ${cell(edsLabel(eds))} | ${where} | ${cell(parts.join('; '))} |`;
   });
   const donorModulesMd = [
