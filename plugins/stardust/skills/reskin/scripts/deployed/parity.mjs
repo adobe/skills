@@ -23,8 +23,8 @@
 //                  preview's: ✗ is a FAIL, caps within ±20px
 // A protected preview (HTTP 401 or 403 to this step's browser) is a setup error: the leg measures a preview reachable
 // without auth.
-// The reskin page is served by a small static server on 127.0.0.1 for the run (serve.mjs: its own directory, so
-// relative assets resolve), never file://, which stitch-shot and cap-probe treat as live-unsafe.
+// The reskin page is served by a small static server on 127.0.0.1 for the run (serve.mjs: the project root, the parent
+// of dir, at the page's path under it, so root-relative fonts and ../ assets resolve), never file://, which stitch-shot and cap-probe treat as live-unsafe.
 //   runParity({ dir, slug, preview, reskinPage, widths, tools, env })  writes parity.json ({ verdict, rows }) and
 //        returns { verdict: 'PASS' | 'FAIL' | 'ERROR', exit, rows }. A row is { check, width, value, bar,
 //        status: 'PASS' | 'FAIL' | 'ADVISORY' | 'ERROR' | 'n/a', artifact, detail }. An instrument that gives no verdict
@@ -275,7 +275,7 @@ export async function runParity({ dir, slug, preview, reskinPage = join(dir, 're
   const instruments = tools ? checkTools(tools) : replicaTools();
   mkdirSync(out, { recursive: true });
 
-  const server = await serveReskinPage(reskinPage);
+  const server = await serveReskinPage(reskinPage, { root: dirname(resolve(dir)) });
   try {
     const urls = { reskin: server.url, preview: preview.url };
     const run = { urls, out, tools: instruments, env: childEnv(env) };

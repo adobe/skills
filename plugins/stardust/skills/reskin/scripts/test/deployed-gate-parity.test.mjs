@@ -355,6 +355,27 @@ if (playwrightOk) {
     assert.equal(probes['/%2e%2e%2fsecret.txt'][0], 404);
   });
 
+  await check('a reskin page under the project root is served from the project root at its path: a root-relative font and a ../ asset outside the page directory resolve (200), dot-segments and paths above the root do not (404)', async () => {
+    const root = join(scratch, 'served-root');
+    const pages = join(root, 'stardust', 'reskin', 'pages');
+    mkdirSync(pages, { recursive: true });
+    mkdirSync(join(root, 'fonts'), { recursive: true });
+    mkdirSync(join(root, '.git'), { recursive: true });
+    writeFileSync(join(root, 'fonts', 'brand.woff2'), 'font bytes');
+    writeFileSync(join(root, '.git', 'config'), 'never served');
+    writeFileSync(join(scratch, 'above-root.txt'), 'above the project root');
+    const page = join(pages, 'home.html');
+    copyFileSync(smallPage(), page);
+    const { stub, error } = await scenario('served-root', { stitch: { probe: ['/fonts/brand.woff2', '../../../fonts/brand.woff2', '/.git/config', '/..%2fabove-root.txt'] } }, { reskin: page });
+    assert.ifError(error);
+    const { argv, probes } = stub.calls()[0];
+    assert.match(argv[0], /^http:\/\/127\.0\.0\.1:\d+\/stardust\/reskin\/pages\/home\.html$/, 'the page at its path under the project root, never file://');
+    assert.deepEqual(probes['/fonts/brand.woff2'], [200, 'font bytes'], 'a root-relative font outside the page directory loads');
+    assert.deepEqual(probes['../../../fonts/brand.woff2'], [200, 'font bytes']);
+    assert.equal(probes['/.git/config'][0], 404, 'dot-segments are never served');
+    assert.equal(probes['/..%2fabove-root.txt'][0], 404, 'nothing above the project root');
+  });
+
   await check('chrome-parity is advisory: deltas make an ADVISORY row and line, never a FAIL; cap-probe ✗ rows are a FAIL and each is named', async () => {
     const chrome = { regions: [{ name: 'header', findings: [{ kind: 'PAIR', text: 'Home', msg: 'fontWeight 500 → 400' }, { kind: 'MISSING', text: 'Docs', msg: 'live <a> "Docs" has no build element with the same text' }] }, { name: 'footer', findings: [] }] };
     const advisory = await scenario('chrome-delta', { chrome: { stdout: chrome, exit: 2 } });

@@ -185,8 +185,8 @@ async function presenceRow({ urls, out, tools, env }) {
 }
 
 // The two instrument rows, with the reskin page served for the one that reads it.
-async function instrumentRows({ reskinPage, preview, out, tools, env }) {
-  const server = await serveReskinPage(reskinPage);
+async function instrumentRows({ dir, reskinPage, preview, out, tools, env }) {
+  const server = await serveReskinPage(reskinPage, { root: dirname(resolve(dir)) });
   try {
     const run = { urls: { reskin: server.url, preview }, out, tools, env: childEnv(env) };
     return [await clipRow(run), await presenceRow(run)];
@@ -212,7 +212,7 @@ export async function runSanity({ dir, slug, preview, reskinPage = join(dir, 're
   mkdirSync(out, { recursive: true });
 
   const measured = await browserRows({ widths, url: preview.url, edsTimeoutMs });
-  const wide = widths.includes(WIDE) ? await instrumentRows({ reskinPage, preview: preview.url, out, tools: instruments, env }) : [];
+  const wide = widths.includes(WIDE) ? await instrumentRows({ dir, reskinPage, preview: preview.url, out, tools: instruments, env }) : [];
   return seal(widths.flatMap((width) => [...measured[width], ...(width === WIDE ? wide : [])]));
 }
 

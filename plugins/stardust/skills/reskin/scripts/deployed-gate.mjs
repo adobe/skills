@@ -98,7 +98,8 @@ tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through don
          decoration, an unreachable or protected page), 3 (a bot challenge) or 124 (no verdict).
 parity   A3. Holds the preview to the local reskin page with replica's instruments, as shipped, at 1440 and 360.
          The reskin page (--reskin, default <dir>/reskin/pages/<slug>.html) is served by a local server for the
-         run, its own directory, never file://. Reads preview.json (no record, or one with problems, is exit 2;
+         run, rooted at the project root (the parent of --dir) so root-relative fonts and ../ assets resolve (a
+         page outside the project: its own directory), never file://. Reads preview.json (no record, or one with problems, is exit 2;
          a skipped leg prints "not run: skipped", exit 0) and needs replica's scripts beside the reskin ones
          (stitch-shot, pixel-compare, crop-compare, chrome-parity, cap-probe; and the diff skill's live-session).
          Per width, stitch-shot of both sides (--settle; the preview with --wait 3000 for the decoration), then:
