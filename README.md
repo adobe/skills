@@ -23,7 +23,7 @@ Repository of Adobe skills for AI coding agents.
 /plugin install commerce-app-migration@adobe-skills
 /plugin install commerce-app-review@adobe-skills
 /plugin install run-workflow@adobe-skills
-/plugin install adobe-for-developers-connector@adobe-skills
+/plugin install adobe-for-developers@adobe-skills
 ```
 
 ### GitHub Copilot CLI
@@ -37,7 +37,7 @@ cloud agent.
 copilot plugin marketplace add adobe/skills
 copilot plugin install stardust@adobe-skills
 copilot plugin install aem-edge-delivery-services@adobe-skills
-copilot plugin install adobe-for-developers-connector@adobe-skills
+copilot plugin install adobe-for-developers@adobe-skills
 ```
 
 Copilot CLI exposes plugin skills under their bare `name` with no plugin
@@ -274,23 +274,15 @@ Skills for building customized **Workfront** UI applications on Adobe App Builde
 | `workfront-actions`       | Runtime actions: `{data,error}` shape, IMS auth passthrough, inputs/config, CommonJS, and the Workfront Public API v21 (search/count, bulk PUT, custom `DE:` fields) |
 | `workfront-local-testing` | Preview a local (`extensionOverride`) or deployed (Extension Manager BYO) build inside Workfront; fix common "not showing" issues |
 
-### Adobe for Developers Connector
+### Adobe for Developers
 
-Helps developers complete common Adobe developer workflows from Claude, including Document Search and Development Console project and API management, and Adobe I/O Events setup. The plugin registers the hosted Adobe for Developers MCP server (`https://adp-connector.adobe.io/mcp`, Adobe IMS sign-in)
+Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters. The plugin registers the hosted Adobe for Developers MCP server (`https://adp-connector.adobe.io/mcp`, Adobe IMS sign-in)
 
 ```bash
-/plugin install adobe-for-developers-connector@adobe-skills
+/plugin install adobe-for-developers@adobe-skills
 ```
 
-| Skill | Description |
-| ----- | ----------- |
-| `dev-console-context` | Navigate orgs, projects, workspaces, and credentials with a live breadcrumb; sets context for the I/O Events flows |
-| `dev-console-subscribe-api` | Find an Adobe API, pick a credential type and product profile, create the credential, and subscribe it |
-| `io-events-registration` | Create, update, enable/disable, delete, and debug I/O Events registrations, webhooks, and journals |
-| `io-events-filtering` | Create, validate, update, and delete subscriber-defined filters; view and send sample events |
-| `search-adobe-developer-docs` | Answer Adobe developer product, API, and SDK questions from Adobe developer documentation |
-
-See the [`adobe-for-developers-connector`](plugins/adobe-for-developers-connector/README.md) doc for client setup and approval behavior.
+See the [`adobe-for-developers`](plugins/adobe-for-developers/README.md) doc for client setup and approval behavior.
 
 ### Commerce
 
@@ -368,7 +360,7 @@ See the [`commerce-app-review`](plugins/commerce/app-review/README.md) doc for t
 
 ```
 plugins/
-├── adobe-for-developers-connector/
+├── adobe-for-developers/
 │   ├── .claude-plugin/
 │   │   └── plugin.json
 │   ├── .mcp.json

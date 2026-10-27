@@ -212,12 +212,12 @@
       "license": "Apache-2.0"
     },
     {
-      "name": "adobe-for-developers-connector",
+      "name": "adobe-for-developers",
       "displayName": "Adobe for Developers",
-      "source": "./plugins/adobe-for-developers-connector",
-      "description": "Helps developers complete common Adobe developer workflows from Claude, including Documentation search, Developer Console project and API management, and Adobe I/O Events setup.",
-      "version": "1.1.0",
-      "category": "developer-platform",
+      "source": "./plugins/adobe-for-developers",
+      "description": "Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.",
+      "version": "1.0.0",
+      "category": "development",
       "keywords": [
         "adobe",
         "adobe-developer-platform",
@@ -228,7 +228,7 @@
         "mcp"
       ],
       "author": {
-        "name": "Adobe Developer Platform"
+        "name": "Adobe"
       },
       "license": "Apache-2.0"
     }

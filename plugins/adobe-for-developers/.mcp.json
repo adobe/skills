@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "adobe-for-developers-connector": {
+    "adobe-for-developers": {
       "type": "http",
       "url": "https://adp-connector.adobe.io/mcp"
     }

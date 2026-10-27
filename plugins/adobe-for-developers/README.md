@@ -1,6 +1,6 @@
 # Adobe for Developers
 
-Helps developers complete common Adobe developer workflows from Claude, including Documentation Search, Developer Console project, API management and Adobe I/O Events setup.
+Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.
 
 The plugin connects to the hosted Adobe for Developers MCP server at `https://adp-connector.adobe.io/mcp`. On first use, your client opens an Adobe IMS sign-in.
 
@@ -10,21 +10,21 @@ The plugin connects to the hosted Adobe for Developers MCP server at `https://ad
 
 ```bash
 /plugin marketplace add adobe/skills
-/plugin install adobe-for-developers-connector@adobe-skills
+/plugin install adobe-for-developers@adobe-skills
 ```
 
 ### GitHub Copilot CLI
 
 ```bash
 copilot plugin marketplace add adobe/skills
-copilot plugin install adobe-for-developers-connector@adobe-skills
+copilot plugin install adobe-for-developers@adobe-skills
 ```
 
 ## What it includes
 
 | Component | Path | Purpose |
 | --------- | ---- | ------- |
-| MCP server | [`.mcp.json`](.mcp.json) | Registers the hosted `adobe-for-developers-connector` server |
+| MCP server | [`.mcp.json`](.mcp.json) | Registers the hosted `adobe-for-developers` MCP server |
 | Skills | [`skills/`](skills/) | Guided Developer Console, I/O Events, and documentation flows |
 | Approval hook | [`hooks/`](hooks/) | Asks before destructive Developer Console tools run (Claude Code, Copilot CLI) |
 

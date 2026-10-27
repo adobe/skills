@@ -1,5 +1,5 @@
 # PreToolUse hook for compatible AI agent clients on Windows: requests approval
-# before the Adobe for Developers connector's destructive tools run, even if
+# before the Adobe for Developers plugin's destructive tools run, even if
 # allow-listed. Clients differ on matcher support (some harnesses ignore matchers),
 # so this script re-checks the tool name itself.
 #
@@ -30,16 +30,16 @@ $toolSuffix = '(?:^|[^A-Za-z0-9])(?:' + ($destructiveTools -join '|') + ')\z'
 function Test-DestructiveConnectorTool([string] $Name) {
   $suffixMatch = [regex]::Match($Name, $toolSuffix)
   if (-not $suffixMatch.Success) { return $false }
-  # Checking if the tool call came from the Adobe for Developers connector based on
+  # Checking if the tool call came from the Adobe for Developers plugin based on
   # standard tool name formats.
   if ($Name.StartsWith('mcp__', [System.StringComparison]::Ordinal)) {
     $end = $Name.LastIndexOf('__', [System.StringComparison]::Ordinal)
     $server = if ($end -gt 5) { $Name.Substring(5, $end - 5) } else { '' }
-    return $server -match 'adobe.*developers.*connector'
+    return $server -match 'adobe.*for.*developers'
   }
   if ($suffixMatch.Value.StartsWith('-', [System.StringComparison]::Ordinal)) {
     $server = $Name.Substring(0, $Name.Length - $suffixMatch.Value.Length)
-    return $server -ieq 'adobe-for-developers-connector'
+    return $server -ieq 'adobe-for-developers'
   }
   return $true
 }

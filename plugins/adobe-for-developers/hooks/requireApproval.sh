@@ -1,6 +1,6 @@
 #!/bin/sh
 # PreToolUse hook for compatible AI agent clients on macOS/Linux (and Git Bash on
-# Windows): requests approval before the Adobe for Developers connector's destructive
+# Windows): requests approval before the Adobe for Developers plugin's destructive
 # tools run, even if the user has an allow rule. Clients differ on matcher support (some harnesses
 # ignore matchers), so this script re-checks the tool name itself.
 #
@@ -25,21 +25,21 @@ is_destructive_connector_tool() {
   for tool in $DESTRUCTIVE_TOOLS; do
     case $name in
       "$tool" | *[!A-Za-z0-9]"$tool")
-        # Checking if the tool call came from the Adobe for Developers connector based
+        # Checking if the tool call came from the Adobe for Developers plugin based
         # on standard tool name formats.
         case $name in
           mcp__*)
             server=${name#mcp__}
             server=${server%__*}
             case $server in
-              *[Aa][Dd][Oo][Bb][Ee]*[Dd][Ee][Vv][Ee][Ll][Oo][Pp][Ee][Rr][Ss]*[Cc][Oo][Nn][Nn][Ee][Cc][Tt][Oo][Rr]*) return 0 ;;
+              *[Aa][Dd][Oo][Bb][Ee]*[Ff][Oo][Rr]*[Dd][Ee][Vv][Ee][Ll][Oo][Pp][Ee][Rr][Ss]*) return 0 ;;
               *) return 1 ;;
             esac
             ;;
           *-"$tool")
             server=${name%"-$tool"}
             case $server in
-              [Aa][Dd][Oo][Bb][Ee]-[Ff][Oo][Rr]-[Dd][Ee][Vv][Ee][Ll][Oo][Pp][Ee][Rr][Ss]-[Cc][Oo][Nn][Nn][Ee][Cc][Tt][Oo][Rr]) return 0 ;;
+              [Aa][Dd][Oo][Bb][Ee]-[Ff][Oo][Rr]-[Dd][Ee][Vv][Ee][Ll][Oo][Pp][Ee][Rr][Ss]) return 0 ;;
               *) return 1 ;;
             esac
             ;;
