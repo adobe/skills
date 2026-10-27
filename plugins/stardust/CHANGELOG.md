@@ -12,9 +12,10 @@ version, caches the raw responses and writes `canon-source/` foundation, role an
 every value citing its node id. `curate` turns the agent-authored `reskin/curation-rules.json` into `donor-tokens.json`,
 `donor-modules.md`, `DESIGN.{md,json}` and `_brand-extraction.json`, byte-identical for the same inputs. `stamp` sets
 `state.json.designSource`. `donor-sources.md` §3 is now the recipe, with `figma-rest` provenance. `--confidential`
-refuses to write anything git would track and redacts the stamped URL. A component kit (one module per page) is captured
-by picking frames from `capture --list`; a whole file larger than `--max-frames` stops and asks for that instead of
-capturing its first frames in document order. Four review fixes: a failed `--refresh` no longer overwrites the last
+refuses to write anything git would track and redacts the stamped URL. `capture` takes the whole file by default: every
+visible top-level frame, section, component and component set of every page. A shared link names whichever page the
+designer had open (a kit's cover), so the URL's node-id is recorded as `linked` and never narrows; `--frames` narrows,
+`--max-frames` only caps when passed, and a frame Figma cannot render is recorded as not renderable. Four review fixes: a failed `--refresh` no longer overwrites the last
 complete capture of the same file version (a capture is staged and swapped in whole); `--confidential` checks every
 output and cache path, not one per directory; an API error reason is redacted before it is truncated; `curate` no
 longer emits radii or shadows the rules mark absent.
