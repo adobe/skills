@@ -71,6 +71,12 @@ read by the renderer.
 | `heading` | string | `display` \| `h2` \| `h3` \| `h4`; default `display` | the type role of the slot's `.heading` (`display` when the donor lacks `type.<role>`) |
 | `inset` | string | a length `<n>px` \| `rem` \| `%` | full-width container with that side gutter |
 | `split` | string | two tracks, each `<n>px` \| `fr` \| `%` (`531px 1fr`); default `1fr 1fr` | the `split` layout's columns |
+| `bleed` | boolean | default `false` | with `tone`: paint the whole full-width band, not the panel |
+| `align` | string | `center` | centre the stream (cards keep start alignment) |
+| `cardTone` | string | `dark` \| `light` \| `accent` | the `cards` layout's card colours |
+| `block` | string | an EDS block name (Figma-only sites, seeded by `figma-donor.mjs content --all`) | `section[data-block]` |
+| `variant` | string[] | class tokens | `section[data-block-variant]` (with `block`) |
+| `instance` | string | the Figma kit instance node id (`12:34`) | `section[data-kit-instance]` (with `block`) |
 
 The renderer warns and ignores a bad `tone`, `heading`, `inset` or `split`, falls back for `columns`, and
 emits an unknown `layout` word as a class with no style; `--check` reports all of them.

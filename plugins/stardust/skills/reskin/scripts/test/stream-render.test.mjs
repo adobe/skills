@@ -558,7 +558,7 @@ const chromeM = { sections: [{ slot: 'h1', ordered: [] }, { slot: 'f1', ordered:
 const goodMapping = {
   $schema: 'stardust:reskin-mapping', _note: 'annotations are allowed',
   chrome: { model: 'stardust/reskin/content-model/_chrome', header: ['h1'], footer: ['f1'], footerTone: 'dark', navAlign: 'center' },
-  pages: { login: { template: 'login', slots: { s01: { module: 'M2', layout: 'split cards', width: 'wide', tone: 'accent', columns: 3, heading: 'h3', inset: '80px', split: '531px 1fr' } } } },
+  pages: { login: { template: 'login', slots: { s01: { module: 'M2', layout: 'split cards', width: 'wide', tone: 'accent', columns: 3, heading: 'h3', inset: '80px', split: '531px 1fr', bleed: true, align: 'center', cardTone: 'light', block: 'cards', variant: ['teaser'], instance: '12:34' } } } },
 };
 check('checkMapping: a valid mapping (every key, annotations) has no problems', () => {
   assert.deepEqual(checkMapping(goodMapping, { models: { login: model }, chromeModel: chromeM, slugs: ['login'] }), []);
@@ -592,6 +592,13 @@ check('checkMapping: bad enums and malformed values, one problem each', () => {
   const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM });
   for (const k of ['chrome.footerTone', 'chrome.navAlign', '.layout', '.width', '.tone', '.heading', '.columns', '.inset', '.split', '.module']) assert.ok(p.some((x) => x.includes(`${k}:`)), `${k} reported\n${p.join('\n')}`);
   assert.equal(p.length, 10);
+});
+check('checkMapping: the slot options the renderer also reads (bleed, align, cardTone, block, variant, instance) are validated', () => {
+  const m = structuredClone(goodMapping);
+  Object.assign(m.pages.login.slots.s01, { bleed: 'yes', align: 'left', cardTone: 'neon', block: 'Hero!', variant: 'teaser', instance: 'abc' });
+  const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM });
+  for (const k of ['bleed', 'align', 'cardTone', 'block', 'variant', 'instance']) assert.ok(p.some((x) => x.startsWith(`pages.login.slots.s01.${k}:`)), `${k} reported\n${p.join('\n')}`);
+  assert.equal(p.length, 6);
 });
 check('checkMapping: slots the content model lacks, chrome slots the chrome model lacks, chrome without a model, requested pages missing', () => {
   const m = structuredClone(goodMapping); m.pages.login.slots.s09 = { module: 'M1' }; m.chrome.header = ['h1', 'h7'];

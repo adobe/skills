@@ -1084,7 +1084,8 @@ export const MAPPING_SCHEMA = {
   top: ['chrome', 'pages', 'blocks'],
   chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign'],
   page: ['template', 'slots'],
-  slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split'],
+  slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split', 'bleed', 'align', 'cardTone', 'block', 'variant', 'instance'],
+  align: ['center'],
   layout: ['stack', 'grid-2', 'media-band', 'split', 'cards'],
   width: ['narrow', 'wide'],
   tone: ['dark', 'light', 'accent'],
@@ -1153,6 +1154,12 @@ export function checkMapping(mapping, { models = {}, chromeModel = null, slugs =
       if (m.columns !== undefined && !(Number.isInteger(m.columns) && m.columns > 0)) out.push(`${sat}.columns: ${JSON.stringify(m.columns)} is not a positive integer`);
       if (m.inset !== undefined && !(typeof m.inset === 'string' && /^\d+(\.\d+)?(px|rem|%)$/.test(m.inset))) out.push(`${sat}.inset: ${JSON.stringify(m.inset)} is not a length (px | rem | %)`);
       if (m.split !== undefined && !(typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()))) out.push(`${sat}.split: ${JSON.stringify(m.split)} is not two column tracks (px | fr | %)`);
+      if (m.bleed !== undefined && typeof m.bleed !== 'boolean') out.push(`${sat}.bleed: ${JSON.stringify(m.bleed)} is not true | false`);
+      if (m.align !== undefined && !one(m.align, S.align)) out.push(`${sat}.align: "${m.align}" is not ${S.align.join(' | ')}`);
+      if (m.cardTone !== undefined && !one(m.cardTone, S.tone)) out.push(`${sat}.cardTone: "${m.cardTone}" is not ${S.tone.join(' | ')}`);
+      if (m.block !== undefined && !(typeof m.block === 'string' && BLOCK_TOKEN.test(m.block))) out.push(`${sat}.block: ${JSON.stringify(m.block)} is not an EDS block name (lower-case letters, digits, hyphens)`);
+      if (m.variant !== undefined && !(Array.isArray(m.variant) && m.variant.every((t) => typeof t === 'string' && BLOCK_TOKEN.test(t)))) out.push(`${sat}.variant: ${JSON.stringify(m.variant)} is not an array of class tokens`);
+      if (m.instance !== undefined && !(typeof m.instance === 'string' && /^I?\d+:\d+(?:;\d+:\d+)*$/.test(m.instance))) out.push(`${sat}.instance: ${JSON.stringify(m.instance)} is not a Figma node id`);
     }
   }
   return out;
