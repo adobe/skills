@@ -13,8 +13,10 @@
 // Foundation records: { value, figma, node, count, nodes } (value = normalized CSS; typography and
 // components carry an object of CSS strings) — see figma/foundation.mjs for keys and heuristics.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
-// Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or 404 · 3 blocked
-// (401/403, a 429 wait over --max-wait, 5xx after retries).
+// Node older than 22 stops at startup with one line (exit 2). The process exits only after stdout
+// and stderr flush, so piped output (--help | less) is never cut short.
+// Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup (Node < 22) or 404 ·
+// 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).
 import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -111,8 +113,9 @@ curation-rules.json:
   Module ids are M1, M2, …; a composition variant of a module takes a letter suffix (M1b, a variant of M1).
   A module's optional "eds" overrides the EDS block deploy Step 2 (D1/D11) gives its name
   (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser, Button → null = default content).
-Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or not found (404)
-            · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
+Needs Node 22+ (an older Node stops at once with exit 2).
+Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup (Node < 22) or not
+            found (404) · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
 
 const SPEC = {
   capture: { values: ['--frames', '--max-frames', '--max-wait', '--dir'], bools: ['--refresh', '--confidential', '--list'], positional: ['<figma-url>'] },
@@ -244,12 +247,32 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
   return 2;
 }
 
+// The scripts use Node 22 APIs; an older runtime gets one clear line (exit 2) instead of a stack trace.
+export const MIN_NODE = 22;
+export function nodeVersionProblem(version = process.versions.node) {
+  const major = Number.parseInt(String(version).replace(/^v/, ''), 10);
+  return Number.isInteger(major) && major >= MIN_NODE ? null : `reskin needs Node ${MIN_NODE}+, found v${String(version).replace(/^v/, '')}`;
+}
+
+// Exit only once stdout and stderr have flushed: piped stdout is asynchronous on macOS, and an
+// immediate process.exit cut --help short. A write's callback fires after every earlier write.
+export function exitAfterFlush(code, { stdout = process.stdout, stderr = process.stderr, exit = process.exit } = {}) {
+  process.exitCode = code;
+  stdout.write('', () => stderr.write('', () => exit(code)));
+}
+
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && SELF === safeRealpath(process.argv[1])) {
-  main(process.argv.slice(2)).then((code) => process.exit(code), (e) => {
-    const token = process.env.FIGMA_TOKEN;
-    const msg = String(e?.message ?? e);
-    console.error(`figma-donor: ${token ? msg.split(token).join('[redacted]') : msg}`);
-    process.exit(e?.exitCode ?? (Number.isInteger(e?.code) ? e.code : 1));
-  });
+  const tooOld = nodeVersionProblem();
+  if (tooOld) {
+    console.error(`figma-donor: ${tooOld}`);
+    exitAfterFlush(2);
+  } else {
+    main(process.argv.slice(2)).then((code) => exitAfterFlush(code), (e) => {
+      const token = process.env.FIGMA_TOKEN;
+      const msg = String(e?.message ?? e);
+      console.error(`figma-donor: ${token ? msg.split(token).join('[redacted]') : msg}`);
+      exitAfterFlush(e?.exitCode ?? (Number.isInteger(e?.code) ? e.code : 1));
+    });
+  }
 }
