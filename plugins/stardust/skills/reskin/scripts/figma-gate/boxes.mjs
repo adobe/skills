@@ -120,10 +120,12 @@ export function outline(box, depth) {
 function noCapture(dir) {
   const selected = readJsonIf(join(dir, 'canon-source', '_crawl-log.json'))?.discovery?.selected;
   const ids = Array.isArray(selected) && selected.length ? selected : null;
+  // capture takes the whole file by default; the last selection is named only to repeat a narrowed one.
   const cost = ids
-    ? `2 + 2 × ceil(${ids.length} / 5) = ${2 + 2 * Math.ceil(ids.length / 5)} API calls`
+    ? `the last capture took ${ids.length} frames, 2 + 2 × ceil(${ids.length} / 5) = ${2 + 2 * Math.ceil(ids.length / 5)} API calls`
     : 'frame count unknown, so 2 + 2 × ceil(frames / 5) API calls';
-  return new UsageError(`no Figma capture to read under ${dir}/.work/reskin/figma/: run node figma-donor.mjs capture <figma-url> --frames ${ids ? ids.join(',') : '<ids>'} (${cost}), then curate`);
+  const repeat = ids ? `; to repeat a narrowed capture pass --frames ${ids.join(',')}` : '';
+  return new UsageError(`no Figma capture to read under ${dir}/.work/reskin/figma/: run node figma-donor.mjs capture <figma-url>, the whole file (${cost}), then curate${repeat}`);
 }
 
 export function loadBoxes(dir, roots) {

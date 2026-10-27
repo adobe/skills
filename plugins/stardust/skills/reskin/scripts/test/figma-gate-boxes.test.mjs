@@ -117,10 +117,10 @@ check('loadBoxes: a same-version re-capture of another frame replaces cached roo
   assert.ok(loadBoxes(p.dir, ['1:7']).roots['1:7'], 'a frame that was missing before the re-capture is found');
 });
 
-check('loadBoxes without a capture: setup error naming capture, the frames and the API cost', () => {
+check('loadBoxes without a capture: setup error naming a whole-file capture, the last frames and the API cost', () => {
   const p = makeProject(join(scratch, 'bare'));
   rmSync(join(p.dir, '.work'), { recursive: true });
-  assert.throws(() => loadBoxes(p.dir, ['1:7']), (e) => e.code === 2 && e.message.includes('figma-donor.mjs capture <figma-url> --frames 1:2,1:9') && e.message.includes('2 + 2 × ceil(2 / 5) = 4 API calls'));
+  assert.throws(() => loadBoxes(p.dir, ['1:7']), (e) => e.code === 2 && e.message.includes('figma-donor.mjs capture <figma-url>, the whole file') && e.message.includes('the last capture took 3 frames, 2 + 2 × ceil(3 / 5) = 4 API calls') && e.message.includes('narrowed capture pass --frames 1:2,1:9,3:1'));
   writeFileSync(join(p.dir, 'canon-source', '_crawl-log.json'), '{}');
   assert.throws(() => loadBoxes(p.dir, ['1:7']), (e) => /frame count unknown/.test(e.message) && e.message.includes('API calls'));
 });

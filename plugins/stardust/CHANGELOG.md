@@ -47,6 +47,9 @@ with exit 2. This release adds no site auth: the gates send no Authorization hea
   every mobile root it requires (exit 2); `--waiver-budget <pct>` raises the share and is recorded.
 - **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
   checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`.
+- **Whole file, whole site.** Aligned with 0.33.0: Phase 1's Figma bullet and `donor-sources.md` § 3 no longer hand-pick
+  kit frames with `--list` and `--frames`, and the content crawl is `extract --all`. `figma-gate`'s no-capture and
+  frame-not-captured errors ask for a whole-file `capture` (`--refresh` over a narrowed one), not `--frames <ids>`.
 - **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The
   first read geometry 41/41, ramp 291/291 and `parity` n/a while the deployed page was 21.05% off at 360; that drove the
   floor. The second: ramp 547/547 at widths 414 and 1440, coverage 78/80 with 2 waivers, parity
