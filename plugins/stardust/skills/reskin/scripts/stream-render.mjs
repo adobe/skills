@@ -37,6 +37,9 @@
  *   the EDS block the slot becomes, emitted as data-block / data-block-variant / data-kit-instance.
  *   chrome.navAlign: where a branded header row (logo + menu list) puts its menu between the logo and the
  *   actions; an override of the donor's layout.navAlign (a Figma donor's curate measures it), default end.
+ *   A branded row's plain texts ahead of its primary links (site name, motto) sit in .brand beside the logo;
+ *   a branded row with no primary links takes a logo-less link row's links when the header is one row
+ *   (navAlign set), else that row stays below and the toggle (aria-controls) opens its nav.
  *   layout stack: the stream in order; grid-2: form fields two-up; media-band: the slot's first image as a
  *   cover backdrop behind a panel; split: the first image beside the text; cards: the stream's repeating
  *   run (findRepeat — same node-kind sequence back to back, heading levels ignored when that covers more,
@@ -460,48 +463,99 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
 
   // A branded row (logo + a menu list) is three zones in source order: brand, the menu (its list items)
   // and the actions (the links outside it, e.g. a Login button). Other rows stay one link run.
-  function headerRow(s) {
+  const isActionNode = (n) => n.inButton || n.parentTag === 'button';
+  const isBrandedRow = (s) => {
+    const ordered = Array.isArray(s.ordered) ? s.ordered : [];
+    return s.images.length > 0 && (ordered.some((n) => n.kind === 'listItem') || ordered.some(isActionNode));
+  };
+  // A link whose label is only screen-reader text (a government/parent-org link whose mark was not captured)
+  // is the Figma header's utility bar: shown as a small text link above the row on desktop.
+  const isUtil = (h) => /^<a [^>]*>(<span class="sr-only">[^<]*<\/span>)+<\/a>$/.test(h);
+  const isNavText = (h) => h.startsWith('<span class="nav-text">');
+  // A primary-navigation entry: a visible link or a menu trigger (never sr-only, never the utility link).
+  const isNavEntry = (h) => (h.startsWith('<a ') && !h.startsWith('<a class="sr-only"') && !isUtil(h)) || h.startsWith('<button class="nav-menu"');
+  const plainRow = (s, navId = null) => `<div class="chrome-row"><div class="container">
+      ${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}
+      <nav${navId ? ` id="${navId}"` : ''}>${navItems(s).join('')}</nav>
+    </div></div>`;
+  // The zones of a branded row. primaryElsewhere: another header row holds primary links.
+  function brandedParts(s, primaryElsewhere = false) {
     const logos = s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
     const ordered = Array.isArray(s.ordered) ? s.ordered : [];
     const hasList = ordered.some((n) => n.kind === 'listItem');
-    const isAction = (n) => n.inButton || n.parentTag === 'button';
-    if (!logos || (!hasList && !ordered.some(isAction))) {
-      return `<div class="chrome-row"><div class="container">
-      ${logos}
-      <nav>${navItems(s).join('')}</nav>
-    </div></div>`;
-    }
     // Without a menu list the menu is the row's plain entries and the actions its buttons (a Figma frame).
-    const inMenu = (n) => (hasList ? n.kind === 'listItem' : !isAction(n));
-    const menu = ordered.filter(inMenu).flatMap((n) => navItem(s, n));
+    const inMenu = (n) => (hasList ? n.kind === 'listItem' : !isActionNode(n));
+    let menu = ordered.filter(inMenu).flatMap((n) => navItem(s, n));
     let btn = 0;
     // A source button stays a button: its link (or, without one, a <button>) takes the donor's button paint.
     const actions = ordered.filter((n) => !inMenu(n)).flatMap((n) => {
       const items = navItem(s, n);
-      if (!isAction(n)) return items;
+      if (!isActionNode(n)) return items;
       const cls = () => (btn++ === 0 ? 'btn btn-secondary' : 'btn');
       if (!items.length) return [];
       return items.map((h) => (h.startsWith('<a ') ? h.replace('<a ', `<a class="${cls()}" `)
         : n.glyph || n.srOnly ? `<button class="${n.glyph ? 'icon-btn' : 'sr-only'}" type="button">${leafHtml(n)}</button>` : `<button class="${cls()}" type="button">${esc((n.text || '').trim())}</button>`));
     });
-    const navAlign = mapping.chrome?.navAlign ?? tokens.layout?.navAlign;
-    const align = ['start', 'center', 'end'].includes(navAlign) ? navAlign : 'end';
+    // The menu's utility links join the utility bar; its leading plain texts (before any primary entry, a
+    // utility link aside) are the brand's name and tagline whenever primary links exist — in this menu after
+    // them or in another header row — so a site name beside a hidden parent-org link never lands in the nav.
+    const menuUtil = menu.filter(isUtil);
+    menu = menu.filter((h) => !isUtil(h));
+    let lead = 0;
+    while (lead < menu.length && isNavText(menu[lead])) lead += 1;
+    const menuBrand = lead && (primaryElsewhere || menu.slice(lead).some(isNavEntry)) ? menu.slice(0, lead) : [];
+    menu = menu.slice(menuBrand.length);
     // The row's plain (non-link) texts are the brand's name and tagline: they sit with the logo, as a
     // Figma header's brand zone does, not among the actions.
-    const brandTexts = actions.filter((h) => h.startsWith('<span class="nav-text">'));
-    // An action link whose label is only screen-reader text (a government/parent-org link whose mark was not
-    // captured) is the Figma header's utility bar: shown as a small text link above the row on desktop.
-    const isUtil = (h) => /^<a [^>]*>(<span class="sr-only">[^<]*<\/span>)+<\/a>$/.test(h);
-    const util = actions.filter(isUtil).map((h) => h.replace(/<span class="sr-only">([^<]*)<\/span>/g, '$1'));
-    const rest = actions.filter((h) => !brandTexts.includes(h) && !isUtil(h));
-    const brand = `<div class="brand">${logos}${brandTexts.length ? `<div class="brand-text">${brandTexts.join('')}</div>` : ''}</div>`;
+    const brandTexts = [...menuBrand, ...actions.filter(isNavText)];
+    const util = [...menuUtil, ...actions.filter(isUtil)].map((h) => h.replace(/<span class="sr-only">([^<]*)<\/span>/g, '$1'));
+    const rest = actions.filter((h) => !isNavText(h) && !isUtil(h));
+    return { logos, menu, brandTexts, util, rest, moved: menuUtil.length + menuBrand.length > 0 };
+  }
+  // extraNav: the primary links of another header row drawn in this row's menu (a one-row donor header);
+  // navElsewhere: the id of the nav another row keeps, which this row's toggle opens.
+  function brandedRow(p, { extraNav = null, navElsewhere = null } = {}) {
+    const menu = p.menu.length ? p.menu : extraNav || [];
+    const navAlign = mapping.chrome?.navAlign ?? tokens.layout?.navAlign;
+    const align = ['start', 'center', 'end'].includes(navAlign) ? navAlign : 'end';
+    const brand = `<div class="brand">${p.logos}${p.brandTexts.length ? `<div class="brand-text">${p.brandTexts.join('')}</div>` : ''}</div>`;
     // The toggle opens the folded menu below 900px: the page script flips aria-expanded and .nav-open on the header.
-    const toggle = menu.length ? '<button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="site-nav"><span class="glyph glyph-menu" aria-hidden="true"></span></button>' : '';
-    return `${util.length ? `<div class="utility-bar"><div class="container">${util.join('')}</div></div>` : ''}<div class="chrome-row nav-align-${align}"><div class="container">
-      ${brand}
-      <nav${toggle ? ' id="site-nav"' : ''}>${menu.join('')}</nav>
-      <div class="nav-actions">${rest.join('')}${toggle}</div>
+    const controls = menu.length ? 'site-nav' : navElsewhere;
+    const toggle = controls ? `<button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="${controls}"><span class="glyph glyph-menu" aria-hidden="true"></span></button>` : '';
+    // A menu emptied by the brand/utility moves (or whose links another row holds) is no nav at all.
+    const nav = !menu.length && (p.moved || navElsewhere) ? '' : `
+      <nav${menu.length && toggle ? ' id="site-nav"' : ''}>${menu.join('')}</nav>`;
+    return `${p.util.length ? `<div class="utility-bar"><div class="container">${p.util.join('')}</div></div>` : ''}<div class="chrome-row nav-align-${align}"><div class="container">
+      ${brand}${nav}
+      <div class="nav-actions">${p.rest.join('')}${toggle}</div>
     </div></div>`;
+  }
+  // The header's rows. A branded row whose menu holds no primary entry takes the primary links of a logo-less
+  // link row: drawn in its own menu when the donor's header is one row (layout.navAlign, measured from the
+  // Figma Header; or chrome.navAlign), else that row stays its own row and the branded row's toggle opens it.
+  // A branded row that keeps primary links of its own leaves other link rows (a utility row) as they are.
+  function headerRows(slots) {
+    const links = (s) => (isBrandedRow(s) || s.images.length ? 0 : navItems(s).filter(isNavEntry).length);
+    const linkRows = slots.filter((s) => links(s) > 0);
+    const out = new Map(slots.map((s) => [s, { html: null, texts: [s] }]));
+    const brandedSlots = slots.filter(isBrandedRow);
+    const b = brandedSlots[0];
+    let primary = null; let merged = false;
+    if (b && linkRows.length) {
+      const parts = brandedParts(b, true);
+      if (!parts.menu.some(isNavEntry)) {
+        primary = linkRows.reduce((m, s) => (links(s) > links(m) ? s : m));
+        merged = !parts.menu.length && ['start', 'center', 'end'].includes(mapping.chrome?.navAlign ?? tokens.layout?.navAlign);
+        out.get(b).html = merged ? brandedRow(parts, { extraNav: navItems(primary) }) : brandedRow(parts, { navElsewhere: 'site-nav' });
+        if (merged) { out.get(b).texts.push(primary); out.delete(primary); }
+      } else out.get(b).html = brandedRow(parts);
+    }
+    for (const s of slots) {
+      const r = out.get(s);
+      if (!r || r.html) continue;
+      r.html = isBrandedRow(s) ? brandedRow(brandedParts(s)) : s === primary ? plainRow(s, 'site-nav') : plainRow(s);
+    }
+    return [...out.values()];
   }
 
   // Footer prose in source order: every non-link text leaf (headings, text runs, list items), so a
@@ -575,7 +629,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const slots = ids.map((id) => chromeModel.sections.find((s) => s.slot === id)).filter(Boolean);
     const checked = (s, html) => { assertChromeText(s, html); return html; };
     if (role === 'header') {
-      return slots.map((s) => checked(s, headerRow(s))).join('\n  ');
+      return headerRows(slots).map((r) => { r.texts.forEach((s) => assertChromeText(s, r.html)); return r.html; }).join('\n  ');
     }
     return slots.map((s) => checked(s, (() => {
       const zoned = footerZones(s);

@@ -445,6 +445,46 @@ check('mobile menu toggle: aria-expanded/aria-controls on the toggle, the nav it
   const plain = render(base).html;
   assert.doesNotMatch(plain, /nav-toggle"|closest\('\.nav-toggle'\)/);
 });
+// A live-site header: the logo row holds a visually hidden parent-org link, the site name and the motto
+// (plain texts, no list), and a search button; the primary links are a second, logo-less row.
+const TWO_ROW = [{
+  slot: 'h1', images: [{ currentSrc: 'https://example.test/logo.svg', alt: 'Logo' }], ctas: [],
+  ordered: [
+    { kind: 'image', currentSrc: 'https://example.test/logo.svg' },
+    { kind: 'cta', text: 'Government', absHref: 'https://example.test/gov', children: [{ kind: 'text', text: 'Government', srOnly: true }] },
+    { kind: 'text', text: 'Hill Public School', parentTag: 'span' },
+    { kind: 'text', text: 'Learning together', parentTag: 'span' },
+    { kind: 'text', text: 'search', glyph: true, inButton: true },
+  ],
+}, {
+  slot: 'h2', images: [], ctas: [],
+  ordered: ['About', 'Enrolment', 'News', 'Contact'].map((t) => ({ kind: 'listItem', text: t, children: [{ kind: 'cta', text: t, absHref: `https://example.test/${t.toLowerCase()}` }] })),
+}];
+const twoRowHtml = (navAlign) => render({ ...base, tokens: navAlign ? { ...tokens, layout: { navAlign } } : tokens, chromeModel: { sections: TWO_ROW }, mapping: { ...mapping, chrome: { header: ['h1', 'h2'] } } }).html;
+check('header brand texts: a site name and motto beside a hidden parent-org link go to .brand, never the nav; a one-row donor draws the link row in the logo row', () => {
+  const html = twoRowHtml('center');
+  const header = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+  assert.match(header, /<div class="brand"><img class="logo"[^>]*><div class="brand-text"><span class="nav-text">Hill Public School<\/span><span class="nav-text">Learning together<\/span><\/div><\/div>/);
+  assert.match(header, /<div class="utility-bar"><div class="container"><a href="https:\/\/example\.test\/gov">Government<\/a><\/div><\/div>/);
+  assert.match(header, /<nav id="site-nav"><a href="https:\/\/example\.test\/about">About<\/a><a href="https:\/\/example\.test\/enrolment">Enrolment<\/a><a href="https:\/\/example\.test\/news">News<\/a><a href="https:\/\/example\.test\/contact">Contact<\/a><\/nav>/);
+  assert.equal((header.match(/<nav/g) || []).length, 1, 'one nav: the link row is drawn in the logo row');
+  assert.equal((header.match(/class="chrome-row/g) || []).length, 1);
+  assert.doesNotMatch(header, /<nav[^>]*>[^]*?nav-text[^]*?<\/nav>/, 'no brand text inside a nav');
+  assert.match(header, /<div class="nav-actions"><button class="icon-btn" type="button"><span class="glyph glyph-search" aria-hidden="true">search<\/span><\/button><button class="icon-btn nav-toggle"[^>]*aria-controls="site-nav">/);
+});
+check('header brand texts: without a one-row donor header the link row stays its own row; the toggle controls that nav', () => {
+  const header = ((h) => h.slice(h.indexOf('<header'), h.indexOf('</header>')))(twoRowHtml(null));
+  assert.equal((header.match(/class="chrome-row/g) || []).length, 2);
+  assert.equal((header.match(/<nav/g) || []).length, 1, 'the logo row keeps no empty nav');
+  assert.match(header, /<div class="chrome-row"><div class="container">\s*<nav id="site-nav"><a href="https:\/\/example\.test\/about">About<\/a>/);
+  assert.match(header, /aria-controls="site-nav"/);
+  assert.match(header, /<div class="brand-text"><span class="nav-text">Hill Public School<\/span>/);
+  // a branded row that keeps its own links leaves another link row (a utility row) alone
+  const own = render({ ...base, tokens: { ...tokens, layout: { navAlign: 'center' } }, chromeModel: { sections: [BRANDED.sections[0], TWO_ROW[1]] }, mapping: { ...mapping, chrome: { header: ['h1', 'h2'] } } }).html;
+  assert.equal((own.match(/class="chrome-row/g) || []).length, 2);
+  assert.match(own, /<nav id="site-nav"><a href="https:\/\/example\.test\/about">About<\/a><a href="https:\/\/example\.test\/contact">Contact<\/a><\/nav>/);
+  assert.match(own, /<div class="chrome-row"><div class="container">\s*<nav><a href="https:\/\/example\.test\/about">/);
+});
 check('zoned footer: a top-level link keeps its destination (text-only and text-children CTAs)', () => {
   const html = brandedHtml();
   assert.match(html, /<li><a href="https:\/\/example\.test\/privacy">Privacy<\/a><\/li>/);
@@ -725,6 +765,39 @@ await (async () => {
     await page.setViewportSize({ width: 1440, height: 800 });
     assert.equal(await toggle.isVisible(), false, 'no toggle at 1440px');
     assert.equal(await nav.isVisible(), true, 'nav shown at 1440px');
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
+})();
+
+// The live-site header in a browser: at 1440 the brand and every primary link share one row; at 390 the
+// toggle opens the nav holding the primary links (one-row donor), and the separate link row (two-row).
+await (async () => {
+  const name = 'header brand texts in a browser: one row at 1440, the toggle opens the primary nav at 390';
+  let browser;
+  try {
+    const { chromium } = await import('playwright');
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 800 } });
+    await page.setContent(twoRowHtml('center'), { waitUntil: 'domcontentloaded' });
+    const geo = await page.evaluate(() => {
+      const r = (el) => el.getBoundingClientRect();
+      const links = [...document.querySelectorAll('#site-nav a')].map((a) => Math.round(r(a).top));
+      const row = r(document.querySelector('.chrome-row .container'));
+      const brand = r(document.querySelector('.brand'));
+      return { links, row: [row.top, row.bottom], brandTop: brand.top, navTop: r(document.querySelector('#site-nav')).top };
+    });
+    assert.equal(geo.links.length, 4);
+    assert.equal(new Set(geo.links).size, 1, `links in one row: ${geo.links}`);
+    assert.ok(geo.navTop >= geo.row[0] && geo.navTop < geo.row[1] && geo.brandTop >= geo.row[0], `nav and brand share the row: ${JSON.stringify(geo)}`);
+    for (const navAlign of ['center', null]) {
+      await page.setViewportSize({ width: 390, height: 800 });
+      await page.setContent(twoRowHtml(navAlign), { waitUntil: 'domcontentloaded' });
+      const nav = page.locator('#site-nav');
+      assert.equal(await nav.isVisible(), false, 'nav folded at 390px');
+      await page.locator('.nav-toggle').click();
+      assert.equal(await page.locator('#site-nav a[href="https://example.test/about"]').isVisible(), true, `primary links open (${navAlign})`);
+      assert.equal(await page.locator('.nav-toggle').getAttribute('aria-controls'), 'site-nav');
+    }
     console.log(`✓ ${name}`);
   } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
 })();
