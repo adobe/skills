@@ -39,6 +39,13 @@ await check('parseMapping reads the slot table: modules, statuses, "—" as null
   ]);
 });
 
+await check('parseMapping: an escaped \\| inside a cell is cell text, read as |; an unescaped | still ends the cell', () => {
+  const md = '| # | Content | Donor module | Rationale | Status |\n|---|---|---|---|---|\n| s01 | h1 \\| lead | M3 (Card \\| Row) | a \\| b | mapped |\n| s02 | x | `M2` | y | new-module |\n';
+  assert.deepEqual(parseMapping(md), [{ slot: 's01', module: 'M3', status: 'mapped' }, { slot: 's02', module: 'M2', status: 'new-module' }]);
+  const pipeId = '| # | Donor module | Status |\n|---|---|---|\n| s01 | Hero \\| Dark | mapped |\n';
+  assert.deepEqual(parseMapping(pipeId), [{ slot: 's01', module: 'Hero | Dark', status: 'mapped' }]);
+});
+
 await check('parseMapping: first table with Status and Donor module; split slots; no table is a usage error', () => {
   const md = '| a | b |\n|---|---|\n| s09 | x |\n\n| Slot | Donor module | Status |\n|---|---|---|\n| **s07-news** | `M3` | mapped |\n| note | M1 | mapped |\n| s08 | — | new-module |\n';
   assert.deepEqual(parseMapping(md), [{ slot: 's07-news', module: 'M3', status: 'mapped' }, { slot: 's08', module: null, status: 'new-module' }]);

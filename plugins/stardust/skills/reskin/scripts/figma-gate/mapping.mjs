@@ -5,8 +5,9 @@ import { UsageError } from '../figma/errors.mjs';
 const SLOT = /^s\d+(-[a-z0-9-]+)?$/;
 export const STATUSES = ['mapped', 'new-module', 'chrome', 'carried-invisible'];
 const NONE = new Set(['', '—', '–', '-']);
-// Rows of a markdown table: runs of consecutive lines starting with "|".
-const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+// Rows of a markdown table: runs of consecutive lines starting with "|". A cell ends at an unescaped "|"; an escaped
+// "\\|" (a pipe inside a module name) is cell text, read as "|".
+export const cells = (line) => line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').trim());
 const plain = (c) => c.replace(/[`*_]/g, '').trim();
 // "M3 (Card Row)": the id, with the module's name after it in parentheses.
 const moduleId = (c) => plain(c).replace(/\s*\(.*\)$/, '');
