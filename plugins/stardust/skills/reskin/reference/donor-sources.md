@@ -13,16 +13,18 @@ donor type produced them.
 The proven path — delegate entirely to the existing skill:
 
 ```
-$stardust extract <content-url> --design-source <donor-url>
+$stardust extract <content-url> --all --design-source <donor-url>
 ```
 
-This captures the donor to `stardust/canon-source/` (pages, assets,
+This crawls the whole content site (`--all`: the migration inventory,
+never capped — `../SKILL.md` § Phase 1), captures the donor to
+`stardust/canon-source/` (pages, assets,
 screenshots, `_brand-extraction.json`, `_crawl-log.json`, descriptive
 `DESIGN.md`/`DESIGN.json`) and stamps `state.json.designSource`.
 Everything in extract applies unchanged — bot-management fallback,
-consent dismissal, vision verification, the default 5-page cap.
-Widen the cap when the donor's module vocabulary looks thin: more
-donor pages = more modules for the mapping brief to map onto (and
+consent dismissal, vision verification. The donor keeps the default
+5-page cap: widen it when the donor's module vocabulary looks thin —
+more donor pages = more modules for the mapping brief to map onto (and
 the ≥80% gate to clear).
 
 ### Two first-class token-sourcing paths
@@ -125,7 +127,7 @@ python3 -m http.server 8793 --directory <path> &
 #    open http://localhost:8793/  — or curl -sI http://localhost:8793/
 
 # 3. Same capture path as a live donor
-$stardust extract <content-url> --design-source http://localhost:8793/
+$stardust extract <content-url> --all --design-source http://localhost:8793/
 ```
 
 Recipe notes:
@@ -153,8 +155,8 @@ API: no browser, no crawl, no MCP server. The token is `FIGMA_TOKEN`
 (a personal access token with `file_content:read`), from the
 environment only. Recipe:
 
-1. `$stardust extract <content-url>` — the content site, as for the
-   other donors (it creates `state.json`).
+1. `$stardust extract <content-url> --all` — the whole content site,
+   uncapped, as for the other donors (it creates `state.json`).
 2. `figma-donor.mjs capture <figma-url>` — one file version (every
    call pinned with `version=`), raw responses cached under
    `.work/reskin/figma/` (swapped in whole: a failed `--refresh` keeps the
@@ -163,19 +165,20 @@ environment only. Recipe:
    (ranked sources for the 13 probe paths and the 7 recommended ones), `module-candidates.json`
    (frames with their page, sections by y, component sets, remote
    components), `spec-tables.json`, frame screenshots and
-   `_crawl-log.json`. What to capture depends on the file's shape. A
-   file of **page designs**: the URL of the page or frame. A
-   **component kit** (one module per page, tokens on documentation
-   frames): `capture <figma-url> --list` prints every page's top-level
-   nodes; pass the foundation frames (colour, type, spacing, the button
-   set) and one representative frame per module page with
-   `--frames <id,…>`, raising `--max-frames` to fit. Without either,
-   a file larger than `--max-frames` stops and asks for this. Look at
-   the source page for module markers (`data-component` names) before
-   picking frames: changing the selection of an existing capture needs
-   `--refresh`, a second full nodes fetch. A frame
-   or section holding only childless instances (components from a
-   remote library the REST payload did not expand) is marked
+   `_crawl-log.json`. It takes the whole file: every visible top-level
+   frame, section, component and component set of every page, in
+   document order, page designs and component kits alike. The URL's
+   node-id is the page the designer had open; it is recorded as
+   `linked`, never used to drop frames. Large files warn on stderr and
+   never stop; a frame Figma cannot render is recorded as not
+   renderable. `--list` prints every page's top-level nodes;
+   `--frames <id,…>` narrows; `--max-frames <n>` caps and lists the cut.
+   Changing the selection of an existing capture needs `--refresh`, a
+   second full nodes fetch. Read the source page's module markers
+   (`data-component` names) when mapping its sections onto the captured
+   frames. A frame or section holding only childless instances
+   (components from a remote library the REST payload did not expand)
+   is marked
    `hollow: true` and warned: nothing inside it is measured, and
    `curate` lists every included module on one in
    `donor-tokens.json#coverage.hollow` and flags its row; read its
@@ -219,7 +222,8 @@ for each one neither mapped nor marked absent and lists them in
 
 Provenance class: **`figma-rest`** — `_crawl-log.json#discovery`
 records `fetchTechnique: "figma-rest"` in place of a crawl, with the
-file version and the frames selected and cut; `notBrowserRendered`
+file version, the linked node, the frames selected and cut and any
+render errors; `notBrowserRendered`
 says per artifact that it was authored from REST node data. Every token
 cites its node in `donor-tokens.json#nodeRefs` (`via: "rest"`). Figma has
 no computed styles, so `donor-tokens.json` values are authored from node

@@ -3,7 +3,7 @@
 // fake of the Figma API (fixtures/figma-kit/fake-figma.mjs; no network) in temp project dirs:
 // --help, capture's outputs and its crawl log, one file version across every API call, variables
 // refused by plan, the cache re-run (no requests, no token, byte-identical), --refresh into a new
-// version, --max-frames cuts, missing token, bad URL, a long 429 (exit 3, completed calls kept),
+// version, the whole file whatever page the URL names, --max-frames cuts, unrenderable frames, missing token, bad URL, a long 429 (exit 3, completed calls kept),
 // and no signed image URL or token in any written file or output.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -120,11 +120,13 @@ await check('capture writes foundation, candidates, spec tables, screenshots, in
   assert.equal(log.discovery.method, 'figma-rest');
   assert.equal(log.discovery.fetchTechnique, 'figma-rest');
   assert.equal(log.discovery.version, 'v1');
-  assert.deepEqual(log.discovery.selected, ['1:2', '1:9']);
+  assert.deepEqual(log.discovery.selected, ['1:2', '1:9', '3:1'], 'a page node-id still takes every page');
+  assert.deepEqual(log.discovery.linked, { node: '0:1', page: { node: '0:1', name: 'Pages' } });
+  assert.deepEqual(index.button, { node: '3:1', width: 400, height: 120, version: 'v1', renderable: true });
   assert.equal(log.consent, null);
   assert.ok(Object.values(log.notBrowserRendered).every((s) => s === 'authored from Figma REST node data, not browser-rendered'));
   assert.ok('stardust/canon-source/foundation/colors.json' in log.notBrowserRendered);
-  assert.match(first.stdout, /capture: 2 frame/);
+  assert.match(first.stdout, /capture: 3 frame/);
 });
 await check('every later API call carries version=<v>; files first with depth=2', () => {
   const calls = apiCalls();
@@ -132,11 +134,11 @@ await check('every later API call carries version=<v>; files first with depth=2'
   assert.equal(calls[0].query.depth, '2');
   assert.ok(calls.slice(1).every((r) => r.query.version === 'v1'), calls.map((r) => r.rawUrl).join('\n'));
   assert.deepEqual(calls.map((r) => r.path), [`/v1/files/${KEY}`, `/v1/files/${KEY}/nodes`, `/v1/files/${KEY}/variables/local`, `/v1/images/${KEY}`]);
-  assert.equal(calls[1].query.ids, '1:2,1:9');
+  assert.equal(calls[1].query.ids, '1:2,1:9,3:1');
 });
 await check('image bytes fetched without the token', () => {
   const imgs = fake.requests.filter((r) => r.path.startsWith('/img/'));
-  assert.equal(imgs.length, 2);
+  assert.equal(imgs.length, 3);
   assert.ok(imgs.every((r) => r.headers['x-figma-token'] === undefined));
 });
 await check('variables 403 → unavailable (plan), exit 0', () => {
@@ -149,7 +151,8 @@ await check('cache: raw responses and a latest pointer, no signed URLs', () => {
   for (const f of ['file.json', 'nodes.json', 'images.json', 'manifest.json']) assert.ok(existsSync(join(v, f)), f);
   assert.deepEqual(json(join(P1, 'stardust', '.work', 'reskin', 'figma', KEY, 'latest.json')), { version: 'v1' });
   const m = json(join(v, 'manifest.json'));
-  assert.deepEqual([m.fileKey, m.mainFileKey, m.nodeId, m.version, m.frames, m.cut], [KEY, KEY, '0:1', 'v1', ['1:2', '1:9'], []]);
+  assert.deepEqual([m.fileKey, m.mainFileKey, m.nodeId, m.version, m.frames, m.cut], [KEY, KEY, '0:1', 'v1', ['1:2', '1:9', '3:1'], []]);
+  assert.deepEqual(m.request, { frames: null, maxFrames: null });
 });
 await check('second run: 0 requests, outputs byte-identical, FIGMA_TOKEN unset is fine', async () => {
   const before = hashTree(join(P1, 'stardust'));
@@ -191,43 +194,116 @@ await check('--frames picks frames by id in either form', async () => {
   assert.deepEqual(json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json')).frames, ['1:2']);
   assert.equal(apiCalls()[1].query.ids, '1:2');
 });
-await check('a page node-id with 30 top-level frames, --max-frames 25 → 5 in manifest.cut and a stderr warning', async () => {
-  const many = join(scratch, 'kit-many');
+// kit-many: 30 top-level nodes over four pages in document order: a cover, a separator page with no
+// frames, a components page (frames, components, component sets, a hidden frame and a text label)
+// and a templates page.
+const TYPES = ['FRAME', 'COMPONENT_SET', 'COMPONENT', 'SECTION'];
+const many = join(scratch, 'kit-many');
+const manyFrames = Array.from({ length: 30 }, (_, i) => ({ id: `9:${i + 1}`, name: `Node ${i + 1}`, type: i === 0 ? 'FRAME' : TYPES[i % 4], absoluteBoundingBox: { x: i * 1500, y: 0, width: i === 2 ? 26988 : 1440, height: i === 2 ? 5394 : 900 } }));
+{
   cpSync(KIT, many, { recursive: true });
-  const frames = Array.from({ length: 30 }, (_, i) => ({ id: `9:${i + 1}`, name: `Page ${i + 1}`, type: 'FRAME', absoluteBoundingBox: { x: i * 1500, y: 0, width: 1440, height: 900 } }));
   const file = json(join(KIT, 'file.json'));
-  file.document.children = [{ id: '0:1', name: 'Pages', type: 'CANVAS', children: frames }];
+  file.document.children = [
+    { id: '0:1', name: 'Cover', type: 'CANVAS', children: manyFrames.slice(0, 1) },
+    { id: '0:3', name: '---', type: 'CANVAS', children: [] },
+    { id: '0:4', name: 'Components', type: 'CANVAS', children: [...manyFrames.slice(1, 25), { id: '9:98', name: 'Label', type: 'TEXT' }, { id: '9:99', name: 'Hidden', type: 'FRAME', visible: false }] },
+    { id: '0:5', name: 'Templates', type: 'CANVAS', children: manyFrames.slice(25) },
+  ];
   writeFileSync(join(many, 'file.json'), JSON.stringify(file));
-  writeFileSync(join(many, 'nodes.json'), JSON.stringify({ version: 'v1', nodes: Object.fromEntries(frames.map((f) => [f.id, { document: { ...f, fills: [], children: [] }, components: {}, componentSets: {}, styles: {} }])) }));
-  writeFileSync(join(many, 'images.json'), JSON.stringify({ err: null, images: Object.fromEntries(frames.map((f) => [f.id, '{{base}}/img/frame-a.png'])) }));
+  writeFileSync(join(many, 'nodes.json'), JSON.stringify({ version: 'v1', nodes: Object.fromEntries(manyFrames.map((f) => [f.id, { document: { ...f, fills: [], children: [] }, components: {}, componentSets: {}, styles: {} }])) }));
+  writeFileSync(join(many, 'images.json'), JSON.stringify({ err: null, images: Object.fromEntries(manyFrames.map((f) => [f.id, '{{base}}/img/frame-a.png'])) }));
+}
+await check('a node-id naming the cover page of a 30-frame file, no --max-frames → every page captured, no error, a stderr note; hidden nodes, labels and empty pages skipped', async () => {
   reset();
   fake.setFixtureDir(many);
   const p = project();
-  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit?node-id=0-1`, '--max-frames', '25'], { cwd: p });
+  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit?node-id=0-1`], { cwd: p });
+  assert.equal(r.code, 0, r.stderr);
+  const m = json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json'));
+  assert.deepEqual(m.frames, manyFrames.map((f) => f.id));
+  assert.deepEqual([m.cut, m.totalDiscovered, m.request], [[], 30, { frames: null, maxFrames: null }]);
+  assert.deepEqual(m.linked, { node: '0:1', page: { node: '0:1', name: 'Cover' } });
+  assert.match(r.stderr, /capturing all 30 top-level frames across 4 pages/);
+  assert.doesNotMatch(r.stderr, /--list/);
+  assert.match(r.stdout, /capture: 30 frame/);
+  const nodeCalls = apiCalls().filter((c) => c.path.endsWith('/nodes'));
+  const imageCalls = apiCalls().filter((c) => c.path.startsWith('/v1/images/'));
+  assert.equal(nodeCalls.length, 6, 'nodes in batches of 5');
+  assert.equal(imageCalls.length, 6, 'images in batches of 5');
+  assert.ok([...nodeCalls, ...imageCalls].every((c) => c.query.ids.split(',').length <= 5));
+  const cs = join(p, 'stardust', 'canon-source');
+  const mc = json(join(cs, 'module-candidates.json'));
+  assert.equal(mc.frames.length, 30);
+  assert.deepEqual([...new Set(mc.frames.map((f) => f.page.name))], ['Cover', 'Components', 'Templates']);
+  const index = json(join(cs, 'assets', 'screenshots', 'index.json'));
+  assert.equal(Object.keys(index).filter((k) => !k.startsWith('_')).length, 30);
+  assert.deepEqual(index['node-3'], { node: '9:3', width: 26988, height: 5394, version: 'v1', renderable: true });
+});
+await check('a frame node-id on one page still takes the whole file; the linked frame and its page are recorded', async () => {
+  reset();
+  fake.setFixtureDir(many);
+  const p = project();
+  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit?node-id=9-27`], { cwd: p });
+  assert.equal(r.code, 0, r.stderr);
+  const m = json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json'));
+  assert.equal(m.frames.length, 30);
+  assert.deepEqual(json(join(p, 'stardust', 'canon-source', '_crawl-log.json')).discovery.linked, { node: '9:27', page: { node: '0:5', name: 'Templates' } });
+});
+await check('an explicit --max-frames 25 on 30 frames → the first 25 captured, 5 in manifest.cut and a stderr warning', async () => {
+  reset();
+  fake.setFixtureDir(many);
+  const p = project();
+  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--max-frames', '25'], { cwd: p });
   assert.equal(r.code, 0, r.stderr);
   const m = json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json'));
   assert.equal(m.frames.length, 25);
   assert.deepEqual(m.cut, ['9:26', '9:27', '9:28', '9:29', '9:30']);
+  assert.equal(m.linked, null);
+  assert.deepEqual(m.request, { frames: null, maxFrames: 25 });
   assert.match(r.stderr, /30 top-level frames.*25/s);
   assert.match(r.stderr, /9:26/);
-  const nodeCalls = apiCalls().filter((c) => c.path.endsWith('/nodes'));
-  const imageCalls = apiCalls().filter((c) => c.path.startsWith('/v1/images/'));
-  assert.equal(nodeCalls.length, 5, 'nodes in batches of 5');
-  assert.equal(imageCalls.length, 5, 'images in batches of 5');
-  assert.ok([...nodeCalls, ...imageCalls].every((c) => c.query.ids.split(',').length <= 5));
+  assert.match(r.stdout, /cut 5/);
+  assert.equal(apiCalls().filter((c) => c.path.endsWith('/nodes')).length, 5);
   assert.equal(json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'nodes.json')).nodes['9:25'].document.id, '9:25');
 });
-await check('no node-id and no --frames on a file with more frames than --max-frames → exit 2 pointing at --list; nothing captured', async () => {
+await check('--frames still narrows a large file, with no large-selection note', async () => {
   reset();
-  fake.setFixtureDir(join(scratch, 'kit-many'));
+  fake.setFixtureDir(many);
   const p = project();
-  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit`, '--max-frames', '25'], { cwd: p });
-  assert.equal(r.code, 2, r.stderr);
-  assert.match(r.stderr, /30 top-level frames/);
-  assert.match(r.stderr, /--list/);
-  assert.match(r.stderr, /--frames/);
-  assert.ok(!existsSync(join(p, 'stardust', 'canon-source')));
-  assert.deepEqual(apiCalls().map((c) => c.path), [`/v1/files/${KEY}`]);
+  const r = await run(['capture', `https://www.figma.com/design/${KEY}/Kit?node-id=0-1`, '--frames', '9-3,9:28'], { cwd: p });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(json(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json')).frames, ['9:3', '9:28']);
+  assert.doesNotMatch(r.stderr, /capturing all/);
+});
+await check('a frame Figma cannot render (HTTP 400 on its batch and alone) is recorded as not renderable; the rest render, exit 0', async () => {
+  reset();
+  const timeout = { status: 400, body: { status: 400, err: 'Render timeout' } };
+  fake.behaviors[`/v1/images/${KEY}`] = [timeout, {}, timeout, {}];
+  const p = project();
+  const r = await run(['capture', URL_PAGE], { cwd: p });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stderr, /could not render 1:9 \(.*Render timeout.*\); recorded as not renderable/);
+  assert.deepEqual(apiCalls().filter((c) => c.path.startsWith('/v1/images/')).map((c) => c.query.ids), ['1:2,1:9,3:1', '1:2', '1:9', '3:1']);
+  const index = json(join(p, 'stardust', 'canon-source', 'assets', 'screenshots', 'index.json'));
+  assert.deepEqual([index.home.renderable, index.article.renderable, index.button.renderable], [true, false, true]);
+  assert.ok(!existsSync(join(p, 'stardust', 'canon-source', 'assets', 'screenshots', 'article.png')));
+  assert.deepEqual(Object.keys(json(join(p, 'stardust', 'canon-source', '_crawl-log.json')).discovery.renderErrors), ['1:9']);
+});
+await check('a cache from before whole-file capture (its request names the node-id) asks for --refresh; another link into the same file reuses a cache', async () => {
+  reset();
+  const p = project();
+  assert.equal((await run(['capture', URL_PAGE], { cwd: p })).code, 0);
+  reset();
+  const other = await run(['capture', `https://www.figma.com/design/${KEY}/Kit?node-id=0-2`], { cwd: p, token: '' });
+  assert.equal(other.code, 0, other.stderr);
+  assert.match(other.stdout, /from cache/);
+  assert.equal(fake.requests.length, 0);
+  const mp = join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json');
+  writeFileSync(mp, JSON.stringify({ ...json(mp), request: { nodeId: '0:1', frames: null, maxFrames: 25 } }));
+  const old = await run(['capture', URL_PAGE], { cwd: p, token: '' });
+  assert.equal(old.code, 2, old.stderr);
+  assert.match(old.stderr, /different selection \(node 0:1, frames all, max 25; this run: frames all, max none\).*--refresh/);
+  assert.equal(fake.requests.length, 0);
 });
 await check('capture --list: one files call, every page and its top-level frames printed, nothing captured', async () => {
   reset();
@@ -255,7 +331,7 @@ await check('capture --list after a capture: from cache, no request, no token', 
 });
 await check('a 429 on the third nodes batch → exit 3; the re-run fetches only the batches still missing', async () => {
   reset();
-  fake.setFixtureDir(join(scratch, 'kit-many'));
+  fake.setFixtureDir(many);
   fake.behaviors[`/v1/files/${KEY}/nodes`] = [{}, {}, { status: 429, headers: { 'retry-after': '3600' }, body: { status: 429, err: 'Rate limit exceeded' } }];
   const p = project();
   const first = await run(['capture', `https://www.figma.com/design/${KEY}/Kit?node-id=0-1`, '--max-frames', '25'], { cwd: p });
