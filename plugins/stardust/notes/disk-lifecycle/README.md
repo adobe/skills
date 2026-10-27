@@ -50,6 +50,11 @@ Three classes of file, one rule each:
    (`gate-all.mjs`, every PNG in the page dir, so extra captures go too; a reuse run takes the recorded pass while
    its masks and eds URL hold), and earlier rounds' diff images in an archetype gate dir (`gate.sh`).
 
+The recorded pass is what lets a resumed run skip a page, so it has to be invalidated before anything can make it
+wrong: a page captured again loses it first, and a missing capture is written to `pixel.json`. Deleting at the end
+of a run would still let one run hold every page's captures at once, so pages go through in batches of 25 and a
+passed batch's PNGs go before the next batch is captured.
+
 Deleting inside the instrument needs no new rule for the agent and no separate prune step: the files never pile up.
 
 ## Left out, and why

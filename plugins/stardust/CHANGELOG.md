@@ -20,15 +20,19 @@ ignore file instead, because that dropped whole folders a resumed run reads. Des
 - **`replica/scripts/gate-all.mjs`:** a page that passes keeps its records, not its PNGs. Every PNG in its dir is
   deleted (an extra capture too) and `pixel.json` records the drop with the masks and eds URL it was measured with;
   `--skip-existing` and `--compare-only` reuse that pass without a capture while both hold. A failed or
-  override-delivered page keeps its captures for the fix round.
+  override-delivered page keeps its captures for the fix round. Pages go through in batches of 25, so a passed
+  batch's PNGs are gone before the next batch is captured (peak disk). A page captured again loses its recorded pass
+  first, and a missing capture is written to `pixel.json`: a failed or interrupted re-capture never leaves the old
+  pass to be reused.
 - **`replica/scripts/gate.sh`:** a round deletes earlier rounds' `diff-*.png` and `vdiff-*/` before comparing; their
   text and JSON evidence stay.
 - **Docs:** `artifact-map.md` § Versioning rows, `stardust/SKILL.md` § Versioning, the state report consequences in
   `state-machine.md`, `source-fidelity-gate.md` § all-pages gate, the README; `replica/SKILL.md`'s copy of the
   delivery-gate file list folds to a pointer at `gate-all.mjs --help`.
-- Tests: `gate-all.test.mjs` — `dropPassedCaptures`, `droppedPass`, and a run with stub instruments (a passed page
-  loses its PNGs, a failed one keeps them; reuse without a capture; a changed mask re-captures); `gate.test.mjs` — a
-  round keeps only its own diff image and vdiff dir.
+- Tests: `gate-all.test.mjs` — `dropPassedCaptures`, `droppedPass`, and runs with stub instruments (a passed page
+  loses its PNGs, a failed one keeps them; reuse without a capture; a changed mask re-captures; a failed or
+  interrupted re-capture captures again on resume; at most one batch of captures on disk at a time); `gate.test.mjs`
+  — a round keeps only its own diff image and vdiff dir.
 
 ## 0.36.0 — first page first: one page is delivered while the site scope is still being defined (#149)
 

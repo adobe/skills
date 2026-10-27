@@ -16,7 +16,10 @@
  * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json],
  * <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead. A page that passes keeps its
  * records, not its PNGs (#150, disk): every PNG in its dir is deleted, pixel.json notes the drop with the masks and
- * eds URL it was measured with, and a --skip-existing / --compare-only run reuses that pass while both hold.
+ * eds URL it was measured with, and a --skip-existing / --compare-only run reuses that pass while both hold. Pages go
+ * through in batches of BATCH, so a passed batch's PNGs are gone before the next is captured; a page captured again
+ * loses its recorded pass first, and a missing capture is written to pixel.json — a failed or interrupted re-capture
+ * never leaves the old pass to be reused.
  *
  * VERDICT (all four): pixel % ≤ --threshold AND |Δh| ≤ --height-tol × origin height (a union metric
  * was tried and rejected — white gaps score as matches) AND served clipped ≤ --clip-max +
@@ -46,6 +49,9 @@ import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// Pages go through in batches, so a passed batch's PNGs are gone before the next batch is captured (peak disk).
+export const BATCH = 25;
 
 const HELP = `gate-all — published-origin gate over every deployed page: pixel + height + clip + content (#125)
 
@@ -77,7 +83,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header).
 A page that passes keeps its records, not its PNGs (#150): --recapture-eds / --recapture-origin, or a run
-without --skip-existing, shoots it again.
+without --skip-existing, shoots it again. Pages go through in batches of ${BATCH}: a passed batch's PNGs are deleted
+before the next batch is captured.
 Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
 
 export function parseArgs(argv) {
@@ -186,7 +193,14 @@ export function droppedPass(d, { masks = [], edsUrl }) {
   const drop = pixel && pixel.capturesDropped;
   if (!drop || drop.edsUrl !== edsUrl || JSON.stringify(drop.masks) !== JSON.stringify(masks)) return null;
   const origin = readJsonSafe(join(d, 'origin.json')); const eds = readJsonSafe(join(d, 'eds.json'));
-  return origin && eds ? { origin, eds, pixel } : null;
+  return origin && eds && !origin.error && !eds.error ? { origin, eds, pixel } : null;
+}
+// Before a page is captured again: a failed or interrupted capture must not leave the old pass to be reused.
+function forgetDroppedPass(d) {
+  const pixel = readJsonSafe(join(d, 'pixel.json'));
+  if (!pixel || !pixel.capturesDropped) return;
+  delete pixel.capturesDropped;
+  writeFileSync(join(d, 'pixel.json'), JSON.stringify(pixel, null, 2));
 }
 
 function run(cmd, args, { timeoutMs = 480000 } = {}) {
@@ -233,7 +247,6 @@ async function main() {
       log(`${p.slug} → recorded pass reused (its captures were dropped on the pass)`);
     }
   }
-  const fresh = pages.filter((p) => !reused.has(p.slug));
   // --skip-existing reuses a capture and its meta — unless it is a stitch taken before fixed layers were captured once
   // (staleCapture): retaken, one log line, so both sides of the compare capture alike.
   const reusable = (p, side, png, meta) => {
@@ -326,7 +339,9 @@ async function main() {
   }
   async function compare(p) {
     const d = dir(p);
-    if (!existsSync(join(d, 'origin.png')) || !existsSync(join(d, 'eds.png'))) { rec(p, 'pixel', { error: 'missing capture' }); return; }
+    if (!existsSync(join(d, 'origin.png')) || !existsSync(join(d, 'eds.png'))) {
+      const px = { error: 'missing capture' }; mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'pixel.json'), JSON.stringify(px, null, 2)); rec(p, 'pixel', px); return;
+    }
     const mk = MASKS[p.slug];
     const args = [PIXEL, join(d, 'origin.png'), join(d, 'eds.png'), '--out', join(d, 'diff.png'), '--threshold', String(opts.threshold), '--json', '--timeout', '300'];
     if (mk && mk.masks && mk.masks.length) args.push('--mask', mk.masks.join(','));
@@ -338,12 +353,7 @@ async function main() {
     log(`pixel ${p.slug} → ${px.error ? `ERROR ${px.error}` : `${px.pct}% Δh ${px.heightDelta}${px.textPct != null ? ` text ${px.textPct}%` : ''} ${px.pass ? 'PASS' : 'FAIL'}${px.maskedRows ? ` [MASKED ${px.maskedRows} rows: ${px.maskReason}]` : ''}`}`);
   }
 
-  if (!opts.compareOnly) await Promise.all([pool(fresh, opts.oc, captureOrigin), pool(fresh, opts.ec, captureEds)]);
-  else for (const p of fresh) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
-  if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(pages, opts.pc, probe);
-  await pool(fresh, 4, compare);
-
-  const rows = pages.map((p) => {
+  const rowOf = (p) => {
     const r = results[p.slug] || {}; const px = r.pixel || {};
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0 }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
@@ -354,10 +364,20 @@ async function main() {
       browser: (r.content && r.content.tier) || (r.clip && r.clip.tier) || null,
       override: OVERRIDES[p.slug] || null, masked: !!px.maskedRows, maskedRows: px.maskedRows || 0, maskReason: px.maskReason || null,
       hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null };
-  });
+  };
   let dropped = 0;
-  pages.forEach((p, i) => { if (rows[i].pass) dropped += dropPassedCaptures(dir(p), measuredWith(p)); });
+  for (let i = 0; i < pages.length; i += BATCH) {
+    const batch = pages.slice(i, i + BATCH);
+    const shoot = batch.filter((p) => !reused.has(p.slug));
+    for (const p of shoot) forgetDroppedPass(dir(p));
+    if (!opts.compareOnly) await Promise.all([pool(shoot, opts.oc, captureOrigin), pool(shoot, opts.ec, captureEds)]);
+    else for (const p of shoot) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
+    if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(batch, opts.pc, probe);
+    await pool(shoot, 4, compare);
+    for (const p of batch) if (rowOf(p).pass) dropped += dropPassedCaptures(dir(p), measuredWith(p));
+  }
   if (dropped) log(`dropped ${dropped} PNG(s) of passed pages — their records stay (#150)`);
+  const rows = pages.map(rowOf);
   const n = (f) => rows.filter(f).length;
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.override), fail: n((r) => !r.pass && r.pct != null), error: n((r) => r.pct == null),
     failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome') };
