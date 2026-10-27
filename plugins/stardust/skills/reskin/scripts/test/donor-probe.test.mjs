@@ -4,7 +4,7 @@
 // Browser checks skip with a printed line when playwright does not resolve. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, writeFileSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url';
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
-const PROBE = join(dirname(fileURLToPath(import.meta.url)), '..', 'donor-probe.mjs');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const PROBE = join(HERE, '..', 'donor-probe.mjs');
 const run = (...a) => spawnSync(process.execPath, [PROBE, ...a], { encoding: 'utf8' });
 
 await check('an unknown flag is still rejected with exit 2', () => {
@@ -119,6 +120,45 @@ h1 { font-size: 56px } @media (max-width: 600px) { h1 { font-size: 32px } }
       const r = run('--tokens', tokens, '--rendered', page, '--spec', s3, '--no-sanity');
       assert.equal(r.status, 1);
       assert.match(r.stdout, /FAIL bad = sans-serif/); assert.ok(!/FAIL ok/.test(r.stdout));
+    });
+
+    await check('served: a matching first family that is not served is UNSERVED (no PASS, no FAIL, exit 0); a loaded face, a generic family or a match "all" over served elements is PASS; a weight no loaded face covers is UNSERVED', () => {
+      const failing = join(dir, 'unserved.html');
+      writeFileSync(failing, `<!doctype html><html><head><style>
+@font-face { font-family: Brand; src: url("no-such-brand.woff2"); }
+body { font-family: Brand, sans-serif; margin: 0 } .g { font-family: sans-serif }
+</style></head><body><p>Body</p><p class="g">Generic</p></body></html>`);
+      const s4 = join(dir, 'spec4.json');
+      writeFileSync(s4, JSON.stringify([
+        { label: 'brand', selector: 'p', property: 'fontFamily', value: 'Brand', compare: 'firstFamily', served: true },
+        { label: 'all', selector: 'p:not(.g)', property: 'fontFamily', value: 'Brand', compare: 'firstFamily', served: true, match: 'all' },
+        { label: 'generic', selector: '.g', property: 'fontFamily', value: 'sans-serif', compare: 'firstFamily', served: true },
+        { label: 'plain', selector: 'p', property: 'fontFamily', value: 'Brand', compare: 'firstFamily' },
+      ]));
+      const out = join(dir, 'r4.json');
+      const r = run('--tokens', tokens, '--rendered', failing, '--spec', s4, '--no-sanity', '--json', out);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.match(r.stdout, /PASS — 2\/4 assertions, 2 font not served/);
+      assert.match(r.stdout, /^ {2}UNSERVED brand = Brand — declared Brand, served fallback$/m);
+      const j = JSON.parse(readFileSync(out, 'utf8'));
+      assert.deepEqual(j.results.map((x) => [x.label, x.status]), [['brand', 'UNSERVED'], ['all', 'UNSERVED'], ['generic', 'PASS'], ['plain', 'PASS']]);
+      assert.equal(j.pass, true);
+
+      const font = join(HERE, '..', '..', '..', '..', '..', 'aem', 'project-management', 'fonts', 'SourceSans3-Regular.otf');
+      copyFileSync(font, join(dir, 'brand.otf'));
+      const loaded = join(dir, 'served.html');
+      writeFileSync(loaded, readFileSync(failing, 'utf8').replace('url("no-such-brand.woff2")', 'url("brand.otf")').replace('</style>', 'b { font-weight: 700 }\n</style>').replace('<p>Body</p>', '<p>Body <b>bold</b></p>'));
+      const s5 = join(dir, 'spec5.json');
+      writeFileSync(s5, JSON.stringify([
+        { label: 'brand', selector: 'p', property: 'fontFamily', value: 'Brand', compare: 'firstFamily', served: true },
+        { label: 'bold', selector: 'b', property: 'fontFamily', value: 'Brand', compare: 'firstFamily', served: true },
+      ]));
+      const out5 = join(dir, 'r5.json');
+      assert.equal(run('--tokens', tokens, '--rendered', loaded, '--spec', s5, '--no-sanity', '--json', out5).status, 0);
+      const j5 = JSON.parse(readFileSync(out5, 'utf8'));
+      assert.deepEqual(j5.results.map((x) => [x.label, x.status, x.status === 'UNSERVED' ? x.detail : '']), [
+        ['brand', 'PASS', ''], ['bold', 'UNSERVED', 'declared Brand, no 700 face loaded (synthesized)'],
+      ]);
     });
 
     await check('the default spec still FAILs a selector that matches nothing', () => {

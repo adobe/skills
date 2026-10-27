@@ -13,7 +13,11 @@
 //                                         EDS wrappers are full-width by design).
 //   runTokens({ dir, slug, preview, env, donorProbe })  writes tokens-spec.json, runs donor-probe on the preview,
 //                                         writes tokens.json and returns { verdict, exit, report, json, total, failures,
-//                                         skipped }. A probe that cannot give a verdict throws: a UsageError (exit 2),
+//                                         skipped, unserved }. The font family is compared on its first family and must be
+//                                         served (donor-probe served): one the preview declares but does not serve is
+//                                         an unserved line ("font-family token string: declared X, served fallback"),
+//                                         left out of total, never a failure (deployed-leg.md § Defaults: a declared
+//                                         difference, logged as a font.unserved residual). A probe that cannot give a verdict throws: a UsageError (exit 2),
 //                                         an error with code 3 (bot challenge) or code 124 (no verdict).
 // The labels are donor-probe's DEFAULT_SPEC labels for the same token paths, so a failure reads as it does in Phase 5.
 import { rmSync } from 'node:fs';
@@ -44,7 +48,7 @@ const PX_LENGTH = /^(-?\d+(\.\d+)?px|0)$/;
 const ROWS = [
   { label: 'page bg', selector: 'body', property: 'backgroundColor', token: 'palette.pageBg' },
   { label: 'body fg', selector: 'body', property: 'color', token: 'palette.bodyFg' },
-  { label: 'font-family token string', selector: 'body', property: 'fontFamily', token: 'type.family', compare: 'firstFamily' },
+  { label: 'font-family token string', selector: 'body', property: 'fontFamily', token: 'type.family', compare: 'firstFamily', served: true },
   { label: 'body font size', selector: 'body', property: 'fontSize', token: 'type.body.fontSize' },
   { label: 'display weight', selector: 'main h1', property: 'fontWeight', token: 'type.display.fontWeight' },
   { label: 'heading color', selector: 'main h2', property: 'color', token: 'palette.headingFg' },
@@ -65,7 +69,7 @@ export function edsSpec({ tokens, runtimeContract }) {
     const value = lookup(tokens, token);
     if (!present(value)) continue;
     if (typeof value !== 'string') throw new UsageError(`donor-tokens.json: ${token} must be a string, got ${typeof value}`);
-    rows.push({ label: row.label, selector: row.selector, property: row.property, value, ...(row.tolerancePx ? { tolerancePx: row.tolerancePx } : {}), ...(row.compare ? { compare: row.compare } : {}) });
+    rows.push({ label: row.label, selector: row.selector, property: row.property, value, ...(row.tolerancePx ? { tolerancePx: row.tolerancePx } : {}), ...(row.compare ? { compare: row.compare } : {}), ...(row.served ? { served: true } : {}) });
   }
   if (rows.some((r) => r.selector === BUTTON) && !PRIMARY_CLASS.test(String(runtimeContract?.buttonClasses ?? ''))) {
     throw new UsageError(`runtime-contract.json: buttonClasses (${JSON.stringify(runtimeContract?.buttonClasses ?? null)}) does not mention .button.primary, so the deployed site has no primary button for \`${BUTTON}\` to assert`);
@@ -118,7 +122,8 @@ export async function runTokens({ dir, slug, preview, env = process.env, donorPr
     const label = x.label ?? x.check;
     return SELECTOR_NOTHING.test(x.detail) ? `${label}: ${x.detail}` : `${label}: got ${x.detail}, want ${want.get(label)}`;
   });
-  const result = { verdict: bad.length ? 'FAIL' : 'PASS', exit: bad.length ? 1 : 0, report: files.report, json: files.json, skipped: [...SKIPPED] };
+  const unserved = probe.results.filter((x) => x.status === 'UNSERVED').map((x) => `${x.label ?? x.check}: ${x.detail}`);
+  const result = { verdict: bad.length ? 'FAIL' : 'PASS', exit: bad.length ? 1 : 0, report: files.report, json: files.json, skipped: [...SKIPPED], ...(unserved.length ? { unserved } : {}) };
   writeJson(files.record, result);
-  return { ...result, total: scored.length, failures };
+  return { ...result, total: scored.length, failures, unserved };
 }

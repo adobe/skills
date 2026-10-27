@@ -108,7 +108,11 @@ ramp     B3. Runs the join first (drift stops here, exit 1), validates the check
          ramp.<w>.json and ramp.json under <dir>/.work/reskin/gates/<slug>/figma/ (figma-preview/ on --target preview); exit 1 on any FAIL.
          A property the Figma node gives no value for (no font size, a fill that is not one visible solid
          color, ...) is recorded as UNASSERTED in ramp.json, never failed: the verdict reads "ramp PASS n/n
-         (k unasserted)" with one indented "advisory" line per property.
+         (k unasserted)" with one indented "advisory" line per property. A fontFamily whose declared first family
+         matches Figma's but is not the font the page renders (no loaded @font-face of it covering the element's
+         weight and style, and not installed; a generic family is served) is UNSERVED, "declared Inter, served
+         fallback": neither a PASS nor a FAIL. The verdict reads "ramp PASS n/n (j unserved)" (n leaves it out) with
+         one indented "font.unserved" line each; the ledger records each as a residual of class font.unserved.
          Token values written as literals outside :root (a color that equals a :root value) are listed in
          one "advisory" line and never change the exit code. A probe that cannot run is exit 124; one that exits 2 (its own setup error) is exit 2 with its message,
          and a bot challenge is exit 3. Every result carries root (null for a :root entry), the checks root its entry was
@@ -139,7 +143,7 @@ register B4, the divergence register. Reads join.json and whichever of geometry.
          checks file as it stands now, for its waivers and coverage (a missing or invalid one is exit 2). A step with no
          file is "not run": the register lists it, and no section is mandated unless both geometry.json and ramp.json exist.
          Six classes: mandated (a joined module section whose geometry and type entries all pass, whose text styles
-         all have a type entry and that has no waiver; UNASSERTED ignored; and whose results are of the checks file as it
+         all have a type entry and that has no waiver; UNASSERTED and UNSERVED ignored; and whose results are of the checks file as it
          stands: one for every entry id, from steps that recorded the section's checksStamp), waived (one row per waiver of a section, a
          skip included: the node's name and id, or the mobile or desktop root, its why in quotes, and how many text styles and text
          nodes it drops at which width; a section with a waiver is never mandated), unmandated (each failing entry, a
@@ -179,7 +183,7 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          --target preview its regime is "preview" and it goes to pages.<slug>.gates.deployed.figma, and the recorded
          invocation names --target preview and --reskin:
            { regime, figmaVersion, join: PASS | FAIL, geometry: "PASS n/n" | "FAIL k/n", ramp (the same over
-             asserted results, " (k unasserted)" appended), pixel: "<slot> <pct>%, <slot> n/a: <why>, ...",
+             asserted results, " (k unasserted)" / " (j unserved)" appended), pixel: "<slot> <pct>%, <slot> n/a: <why>, ...",
              register: the counts line, coverage: "text styles <covered>/<total> · widths <w1>,<w2> · waived <n>"
              (over every module section; a section skip counts as a waiver), literals: <token literals outside :root>,
              waiverBudget?: <pct, only when --waiver-budget is given>, invocation }
@@ -387,11 +391,13 @@ async function rampStep({ dir, opts, log, UsageError, ready: given }) {
   const { pass, results, literals } = await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out });
   const failing = results.filter((r) => r.status === 'FAIL');
   const unasserted = results.filter((r) => r.status === 'UNASSERTED');
-  const asserted = results.length - unasserted.length;
-  const note = unasserted.length ? ` (${unasserted.length} unasserted)` : '';
+  const unserved = results.filter((r) => r.status === 'UNSERVED');
+  const asserted = results.length - unasserted.length - unserved.length;
+  const note = rampNote(unasserted.length, unserved.length);
   log(pass ? `ramp PASS ${asserted}/${asserted}${note}` : `ramp FAIL ${failing.length}/${asserted}${note}`);
   for (const r of failing) log(r.slot === null ? `  :root ${r.id}: ${r.detail}` : `  ${r.slot} ${r.id} ${r.property}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
   for (const r of unasserted) log(`  ${r.slot} ${r.id} ${r.property} (node ${r.node}): advisory, ${r.detail}`);
+  for (const r of unserved) log(`  ${r.slot} ${r.id} ${r.property} (node ${r.node}): font.unserved, ${r.detail}`);
   if (literals.length) {
     const shown = literals.slice(0, 5).map((l) => `line ${l.line} ${l.literal} → ${l.token}`).join('; ');
     log(`advisory ramp: ${literals.length} token literal(s) outside :root (${shown}${literals.length > 5 ? '; …' : ''}): use var(<token>)`);
@@ -476,11 +482,18 @@ function geometryFragment(file) {
   return bad ? `FAIL ${bad}/${file.results.length}` : `PASS ${file.results.length}/${file.results.length}`;
 }
 
+// " (k unasserted)", " (j unserved)" or both in one parenthesis: what a ramp verdict leaves out of its n.
+function rampNote(unasserted, unserved) {
+  const parts = [unasserted ? `${unasserted} unasserted` : null, unserved ? `${unserved} unserved` : null].filter(Boolean);
+  return parts.length ? ` (${parts.join(', ')})` : '';
+}
+
 function rampFragment(file) {
   const unasserted = file.results.filter((r) => r.status === 'UNASSERTED').length;
-  const asserted = file.results.length - unasserted;
+  const unserved = file.results.filter((r) => r.status === 'UNSERVED').length;
+  const asserted = file.results.length - unasserted - unserved;
   const bad = file.results.filter((r) => r.status === 'FAIL').length;
-  return `${bad ? `FAIL ${bad}` : `PASS ${asserted}`}/${asserted}${unasserted ? ` (${unasserted} unasserted)` : ''}`;
+  return `${bad ? `FAIL ${bad}` : `PASS ${asserted}`}/${asserted}${rampNote(unasserted, unserved)}`;
 }
 
 function pixelFragment(file) {

@@ -625,7 +625,7 @@ if (playwrightOk) {
       const p = previewProject('cli-ramp');
       const r = await run(stepArgs('ramp', p, url), { cwd: p.root });
       assert.equal(r.status, 0, r.all);
-      assert.match(r.stdout, /^ramp PASS (\d+)\/\1$/m);
+      assert.match(r.stdout, /^ramp PASS (\d+)\/\1( \(\d+ unserved\))?$/m);
       const j = stepFile(p, 'ramp.json');
       assert.deepEqual([j.regime, j.url, j.pass], ['preview', url, true]);
       const typed = j.results.filter((x) => x.slot !== null);
@@ -738,7 +738,7 @@ if (playwrightOk) {
       const p = previewProject('cli-all');
       const r = await run(stepArgs('all', p, url), { cwd: p.root });
       assert.equal(r.status, 0, r.all);
-      for (const pattern of [/^PASS join: 2 section\(s\)/m, /^geometry PASS 10\/10$/m, /^ramp PASS (\d+)\/\1$/m, /^pixel advisory/m, /^register written: /m]) assert.match(r.stdout, pattern);
+      for (const pattern of [/^PASS join: 2 section\(s\)/m, /^geometry PASS 10\/10$/m, /^ramp PASS (\d+)\/\1( \(\d+ unserved\))?$/m, /^pixel advisory/m, /^register written: /m]) assert.match(r.stdout, pattern);
       const s = stepFile(p, 'summary.json');
       assert.deepEqual([s.page, s.url, s.regime, s.ledgerFragment.regime], ['home', url, 'preview', 'preview']);
       assert.deepEqual(Object.entries(s.steps).map(([k, v]) => [k, v.verdict, v.exit]), [['join', 'PASS', 0], ['geometry', 'PASS', 0], ['ramp', 'PASS', 0], ['pixel', 'advisory', 0], ['register', 'written', 0]]);

@@ -79,7 +79,7 @@ export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted =
           property,
           value: want[property],
           ...(TOLERANCE[property] ? { tolerancePx: TOLERANCE[property] } : {}),
-          ...(property === 'fontFamily' ? { compare: 'firstFamily' } : {}),
+          ...(property === 'fontFamily' ? { compare: 'firstFamily', served: true } : {}),
         });
       }
     }
@@ -153,7 +153,9 @@ const STALLED = /stalled decoration:/;
 // Writes ramp-spec.<w>.json, ramp.<w>.md, ramp.<w>.json and ramp.json under out. A probe that cannot
 // run (any exit other than 0 or 1, or exit 1 without a fresh JSON) throws with its stderr: no verdict,
 // never a ramp failure. Properties Figma gives no value for are listed as UNASSERTED results; they do
-// not fail the ramp. Every result carries root, the checks root its entry was measured against (null for a :root entry).
+// not fail the ramp. A fontFamily whose declared first family matches Figma's but that the page does not serve (no loaded
+// face of it for the element's weight and style, not installed: donor-probe's served check) is an UNSERVED result,
+// "declared <family>, served fallback": no PASS and no FAIL, the residual class font.unserved. Every result carries root, the checks root its entry was measured against (null for a :root entry).
 // On a preview target the probe settles the page's EDS decoration (--wait-eds); a probe that stalls on the decoration is
 // no verdict (code 124), a bot challenge code 3. The probe runs as an async child, so a server in this process
 // can answer it.
@@ -205,7 +207,10 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
       const [slot, id] = isRoot ? [null, e.property] : e.label.split(' ');
       let status = 'FAIL';
       let detail = 'donor-probe reported nothing for this entry';
-      if (got) {
+      if (got?.status === 'UNSERVED') {
+        status = 'UNSERVED';
+        detail = got.detail;
+      } else if (got) {
         status = got.status === 'PASS' ? 'PASS' : 'FAIL';
         detail = /^selector ".*" matched nothing$/.test(got.detail) ? got.detail : `${got.detail} vs ${e.value}`;
       }

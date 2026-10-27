@@ -117,8 +117,9 @@ function paintingAbove(frame, id) {
   return walk(frame) ? path.filter((b) => b.fillKind !== 'NONE') : null;
 }
 
-const failing = (r) => r.status !== 'PASS' && r.status !== 'UNASSERTED';
-const asserted = (r) => r.status !== 'UNASSERTED';
+// UNSERVED (a font not served, ramp.mjs) is neither: the ledger carries it as a font.unserved residual.
+const failing = (r) => r.status !== 'PASS' && r.status !== 'UNASSERTED' && r.status !== 'UNSERVED';
+const asserted = (r) => r.status !== 'UNASSERTED' && r.status !== 'UNSERVED';
 
 // Why geometry.json and ramp.json cannot vouch for this section of the checks file as it stands, or null: an entry of
 // the file has no result (an entry added, or an id renamed, since the run), or a step file was measured against another

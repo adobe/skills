@@ -90,8 +90,11 @@ tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through don
          root (missing either is exit 2). layout.sectionPaddingY, when the sheet carries it (a px length, else exit
          2), is asserted as the top and bottom padding of every non-empty main > .section, each within 16px (a
          failure names the match: "match 4 of 7: 80px"). layout.containerMaxWidth (measured by parity's
-         cap-probe) is not asserted: it prints a SKIP line. Prints "PASS tokens n/n" or "FAIL tokens k/n" (k of the n
-         assertions failing) plus one
+         cap-probe) is not asserted: it prints a SKIP line. The font family is compared on its first family and must
+         be served: one the preview declares but renders from a fallback (no loaded @font-face of it for the body's
+         weight and style, not installed) prints "ADVISORY tokens font.unserved: font-family token string: declared
+         X, served fallback", is left out of n and never fails (a font.unserved residual).
+         Prints "PASS tokens n/n" or "FAIL tokens k/n" (k of the n assertions failing) plus one
          indented line per failing assertion (exit 1). Writes tokens-spec.json, tokens-probe.md,
          tokens-probe.json and tokens.json ({ verdict, exit, report, json, skipped }) beside preview.json. A probe that
          cannot run is exit 2 (a stalled
@@ -410,6 +413,7 @@ async function tokensStep(ctx) {
   const result = await runTokens({ dir, slug: opts.page, preview, env });
   log(result.verdict === 'PASS' ? `PASS tokens ${result.total}/${result.total}` : `FAIL tokens ${result.failures.length}/${result.total}`);
   for (const f of result.failures) log(`  ${f}`);
+  for (const u of result.unserved ?? []) log(`ADVISORY tokens font.unserved: ${u}`);
   for (const s of result.skipped) log(`SKIP ${s}`);
   return result.exit;
 }
@@ -500,7 +504,7 @@ function contentOutcome(result) {
 }
 
 function tokensOutcome(result) {
-  const detail = [...result.failures.map((f) => `  ${f}`), ...result.skipped.map((s) => `  SKIP ${s}`)];
+  const detail = [...result.failures.map((f) => `  ${f}`), ...(result.unserved ?? []).map((u) => `  ADVISORY font.unserved: ${u}`), ...result.skipped.map((s) => `  SKIP ${s}`)];
   if (result.verdict === 'FAIL') {
     const fraction = `${result.failures.length}/${result.total}`;
     return outcome('FAIL', 1, `FAIL tokens ${fraction}`, `FAIL ${fraction}`, detail);

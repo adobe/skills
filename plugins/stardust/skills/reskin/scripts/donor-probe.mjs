@@ -17,6 +17,13 @@
  *   - compare "firstFamily": only the first family of the computed
  *     fontFamily, quote-stripped and case-folded, against the value treated
  *     the same way (a generated spec names one family, not the fallback stack)
+ *   - served: true (a fontFamily entry): the declared first family must also
+ *     be the font the element renders from: a generic family, a loaded
+ *     @font-face of that family covering the element's weight and style, or
+ *     (no @font-face of it) a family installed where the page is measured.
+ *     A family that matches but is not served is status UNSERVED, detail
+ *     "declared <family>, served fallback" (or "... no <weight> <style> face
+ *     loaded"): never a FAIL, the exit code is unchanged, but it is no PASS
  *   - custom property (property starts with `--`): the computed
  *     getPropertyValue, trimmed, compared whitespace-collapsed
  *   - tolerancePx: componentwise numeric comparison (each px component of
@@ -43,6 +50,7 @@
  *                "token": "buttons.primary.background" | "value": "rgb(...)",
  *                "tolerancePx": 2,         (property in camelCase, or a --custom-property)
  *                "compare": "firstFamily",
+ *                "served": true,           (fontFamily: the family must be served, else UNSERVED)
  *                "match": "all" }          (every match of the selector, not the first)
  *       [--report <path>]            markdown report
  *       [--shot <path>]              full-page screenshot at 1440 for the
@@ -247,8 +255,36 @@ if (waitEds) {
   if (stalled.length) { await browser.close(); die(`stalled decoration: ${stalled.join(', ')}`); }
 }
 await page.waitForTimeout(1500);
+if (spec.some((e) => e.served)) await page.evaluate(() => document.fonts.ready);
 
-const results = []; // { check, label, status: 'PASS'|'FAIL'|'SKIP', detail }
+// In the page: whether the element renders from its declared first family → null (served), or why not.
+// document.fonts.check() is no test: it answers true for a family no face declares.
+const unservedWhy = (el) => {
+  const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'math', 'emoji', 'fangsong', 'inherit', 'initial']);
+  const unquote = (v) => v.trim().replace(/^["']|["']$/g, '');
+  const cs = getComputedStyle(el);
+  const family = unquote(cs.fontFamily.split(',')[0]);
+  if (!family || GENERIC.has(family.toLowerCase())) return null;
+  const weight = Number(cs.fontWeight) || 400;
+  const italic = cs.fontStyle !== 'normal';
+  const range = (w) => {
+    const n = String(w).trim().split(/\s+/).map((x) => (x === 'normal' ? 400 : x === 'bold' ? 700 : Number(x)));
+    return [n[0], n[1] ?? n[0]];
+  };
+  const faces = [...document.fonts].filter((f) => unquote(f.family).toLowerCase() === family.toLowerCase());
+  if (!faces.length) {
+    const ctx = document.createElement('canvas').getContext('2d');
+    const widthIn = (font) => { ctx.font = font; return ctx.measureText('mmmmmmmmmmlli1WQ@#').width; };
+    const installed = ['monospace', 'serif', 'sans-serif'].some((base) => widthIn(`72px ${base}`) !== widthIn(`72px "${family}", ${base}`));
+    return installed ? null : `declared ${family}, served fallback`;
+  }
+  const loaded = faces.filter((f) => f.status === 'loaded');
+  if (!loaded.length) return `declared ${family}, served fallback`;
+  const fits = loaded.some((f) => { const [lo, hi] = range(f.weight); return weight >= lo && weight <= hi && ((f.style !== 'normal') === italic); });
+  return fits ? null : `declared ${family}, no ${weight}${italic ? ' italic' : ''} face loaded (synthesized)`;
+};
+
+const results = []; // { check, label, status: 'PASS'|'FAIL'|'SKIP'|'UNSERVED', detail }
 const MAX_NAMED = 5; // failing matches an "all" entry names; the rest are counted
 for (const entry of spec) {
   const want = entry.value !== undefined ? entry.value : get(tokens, entry.token);
@@ -262,6 +298,15 @@ for (const entry of spec) {
     if (!els.length) return null;
     return els.map((el) => (String(prop ?? '').startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop]));
   }, [entry.selector, entry.property, every]);
+  // The first unserved match's why (a matching family only: a mismatch is a FAIL anyway).
+  const unserved = entry.served && entry.property === 'fontFamily' && gots !== null
+    ? await page.evaluate(`(() => {
+      const why = ${unservedWhy.toString()};
+      const sel = ${JSON.stringify(entry.selector)};
+      const els = ${every} ? [...document.querySelectorAll(sel)] : [document.querySelector(sel)].filter(Boolean);
+      return els.map(why).find(Boolean) ?? null;
+    })()`)
+    : null;
   if (gots === null) {
     // A missing selector is a FAIL: either the renderer broke the documented
     // conventions or the spec is stale — both need a human, not a silent skip.
@@ -269,7 +314,8 @@ for (const entry of spec) {
     continue;
   }
   if (!every) {
-    results.push({ check: `${entry.label} = ${want}`, label: entry.label, status: compare(entry, gots[0], want) ? 'PASS' : 'FAIL', detail: gots[0] });
+    const ok = compare(entry, gots[0], want);
+    results.push({ check: `${entry.label} = ${want}`, label: entry.label, status: !ok ? 'FAIL' : unserved ? 'UNSERVED' : 'PASS', detail: ok && unserved ? unserved : gots[0] });
     continue;
   }
   const off = gots.map((got, i) => ({ got, at: i + 1 })).filter(({ got }) => !compare(entry, got, want));
@@ -278,8 +324,8 @@ for (const entry of spec) {
   results.push({
     check: `${entry.label} = ${want}`,
     label: entry.label,
-    status: off.length ? 'FAIL' : 'PASS',
-    detail: off.length ? shown.join('; ') : `all ${gots.length} matches: ${[...new Set(gots)].join(', ')}`,
+    status: off.length ? 'FAIL' : unserved ? 'UNSERVED' : 'PASS',
+    detail: off.length ? shown.join('; ') : unserved || `all ${gots.length} matches: ${[...new Set(gots)].join(', ')}`,
   });
 }
 
@@ -303,10 +349,12 @@ await browser.close();
 // ---- report -------------------------------------------------------------------
 const fails = results.filter((r) => r.status === 'FAIL');
 const skips = results.filter((r) => r.status === 'SKIP');
+const unservedRows = results.filter((r) => r.status === 'UNSERVED');
 const pass = fails.length === 0;
 let md = `# Design-adoption gate — donor token probe\n\n- Tokens: ${args.tokens}\n- Rendered: ${args.rendered}\n- Spec: ${args.spec || 'default (rendered-page conventions)'}\n- Generated: ${new Date().toISOString()}\n\n`;
-md += `## Assertions — ${results.length - fails.length - skips.length}/${results.length - skips.length} pass${skips.length ? ` (${skips.length} skipped)` : ''}\n\n`;
-for (const r of results) md += `- [${r.status === 'PASS' ? 'x' : ' '}]${r.status === 'SKIP' ? ' (SKIP)' : ''} ${r.check}${r.detail ? ` — ${r.detail}` : ''}\n`;
+const passed = results.length - fails.length - skips.length - unservedRows.length;
+md += `## Assertions — ${passed}/${results.length - skips.length} pass${skips.length ? ` (${skips.length} skipped)` : ''}${unservedRows.length ? ` (${unservedRows.length} font not served)` : ''}\n\n`;
+for (const r of results) md += `- [${r.status === 'PASS' ? 'x' : ' '}]${r.status === 'SKIP' || r.status === 'UNSERVED' ? ` (${r.status})` : ''} ${r.check}${r.detail ? ` — ${r.detail}` : ''}\n`;
 md += `\n**Overall: ${pass ? 'PASS' : 'FAIL'}**\n\n`;
 md += `> The probe proves tokens; it does not prove the page READS as the donor.\n`;
 md += `> Complete the gate with the side-by-side eyeball vs the donor screenshots\n`;
@@ -319,7 +367,8 @@ if (args.json) {
   mkdirSync(dirname(resolve(args.json)), { recursive: true });
   writeFileSync(args.json, `${JSON.stringify({ pass, results: results.map(({ check, label, status, detail }) => ({ check, label, status, detail })) }, null, 2)}\n`);
 }
-console.log(`[donor-probe] ${pass ? 'PASS' : 'FAIL'} — ${results.length - fails.length - skips.length}/${results.length - skips.length} assertions${skips.length ? `, ${skips.length} skipped` : ''}${args.report ? ` — report: ${args.report}` : ''}`);
+console.log(`[donor-probe] ${pass ? 'PASS' : 'FAIL'} — ${passed}/${results.length - skips.length} assertions${skips.length ? `, ${skips.length} skipped` : ''}${unservedRows.length ? `, ${unservedRows.length} font not served` : ''}${args.report ? ` — report: ${args.report}` : ''}`);
 for (const f of fails.slice(0, 15)) console.log(`  FAIL ${f.check} — ${f.detail}`);
+for (const u of unservedRows) console.log(`  UNSERVED ${u.check} — ${u.detail}`);
 for (const s of skips) console.log(`  SKIP ${s.check} — ${s.detail}`);
 process.exit(pass ? 0 : 1);

@@ -64,10 +64,13 @@ const outOf = (root) => deployedDir(join(root, 'stardust'), 'home');
 const recordOf = (root) => readJson(join(outOf(root), 'tokens.json'));
 const tokens = (root, extra = [], opts = {}) => run(['tokens', '--page', 'home', ...extra], { cwd: root, ...opts });
 
-// The fixture page with strings replaced, served from a file of its own.
+// The fixture page with strings replaced, served from a file of its own. It declares Inter; a face of it that never
+// loads (no network request) makes "declared, not served" the same on every machine, so the font-family row is the
+// one UNSERVED result: an ADVISORY tokens font.unserved line, left out of n.
+const NEVER_INTER = '@font-face { font-family: Inter; src: local("No Such Inter Face"); }';
 const variant = (name, ...pairs) => {
   const file = join(scratch, `${name}.html`);
-  let html = readFileSync(fixturePath('home.html'), 'utf8');
+  let html = readFileSync(fixturePath('home.html'), 'utf8').replace('<style>', `<style>\n${NEVER_INTER}`);
   for (const [from, to] of pairs) {
     assert.ok(html.includes(from), `the fixture page has ${from}`);
     html = html.replace(from, () => to);
@@ -86,7 +89,7 @@ await check('edsSpec on the fixture tokens: body, heading and primary-button ent
   const by = (label) => spec.find((e) => e.label === label);
   assert.deepEqual(by('page bg'), { label: 'page bg', selector: 'body', property: 'backgroundColor', value: 'rgb(255, 255, 255)' });
   assert.deepEqual(by('body fg'), { label: 'body fg', selector: 'body', property: 'color', value: 'rgb(26, 26, 26)' });
-  assert.deepEqual(by('font-family token string'), { label: 'font-family token string', selector: 'body', property: 'fontFamily', value: 'Inter', compare: 'firstFamily' });
+  assert.deepEqual(by('font-family token string'), { label: 'font-family token string', selector: 'body', property: 'fontFamily', value: 'Inter', compare: 'firstFamily', served: true });
   assert.deepEqual(by('body font size'), { label: 'body font size', selector: 'body', property: 'fontSize', value: '18px' });
   assert.deepEqual(by('display weight'), { label: 'display weight', selector: 'main h1', property: 'fontWeight', value: '700' });
   assert.deepEqual(by('heading color'), { label: 'heading color', selector: 'main h2', property: 'color', value: 'rgb(31, 58, 95)' });
@@ -395,11 +398,12 @@ let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  browser parts (playwright not importable here; run this test in an environment that has it)'); }
 
 if (playwrightOk) {
-  const total = edsSpec({ tokens: sheet(), runtimeContract: contract() }).length;
+  const total = edsSpec({ tokens: sheet(), runtimeContract: contract() }).length - 1;
   const SKIPS = [/^SKIP layout\.containerMaxWidth: measured by parity cap-probe$/m];
+  const UNSERVED_LINE = /^ADVISORY tokens font\.unserved: font-family token string: declared Inter, served fallback$/m;
 
   await check('preview then tokens on the fake preview: PASS tokens n/n, the one SKIP line (the container measure), exit 0; the files and the record are written', async () => {
-    const server = await startPreviewServer();
+    const server = await startPreviewServer({ pages: { '/ns/home': variant('page-plain') } });
     try {
       const root = project('cli-pass', { preview: false });
       const pv = await run(['preview', '--page', 'home', '--org', 'o', '--repo', 'r', '--branch', 'b', '--path', '/ns/home', '--namespace', 'ns'], { cwd: root, env: { DEPLOY_VERIFY_ORIGIN: server.origin } });
@@ -410,17 +414,19 @@ if (playwrightOk) {
       assert.equal(r.status, 0, r.all);
       assert.match(r.stdout, new RegExp(`^PASS tokens ${total}/${total}$`, 'm'));
       for (const re of SKIPS) assert.match(r.stdout, re);
+      assert.match(r.stdout, UNSERVED_LINE, 'a declared font the preview does not serve is no silent pass');
       assert.ok(!/FAIL/.test(r.stdout), r.stdout);
       const out = outOf(root);
       const rec = recordOf(root);
       assert.equal(rec.verdict, 'PASS');
       assert.equal(rec.exit, 0);
       assert.deepEqual(rec.skipped, ['layout.containerMaxWidth: measured by parity cap-probe']);
+      assert.deepEqual(rec.unserved, ['font-family token string: declared Inter, served fallback']);
       assert.ok(!r.stdout.includes('sectionPaddingY'), 'the section padding is asserted, not skipped');
       assert.ok(existsSync(rec.report) && existsSync(rec.json), 'the probe\'s report and JSON are where the record says');
-      assert.deepEqual(Object.keys(rec), ['verdict', 'exit', 'report', 'json', 'skipped']);
+      assert.deepEqual(Object.keys(rec), ['verdict', 'exit', 'report', 'json', 'skipped', 'unserved']);
       assert.deepEqual(readJson(join(out, 'tokens-spec.json')), edsSpec({ tokens: sheet(), runtimeContract: contract() }));
-      assert.equal(readJson(rec.json).results.length, total);
+      assert.equal(readJson(rec.json).results.length, total + 1);
       assert.ok(!existsSync(join(elsewhere, 'stardust')), 'nothing under the cwd');
       assert.ok(server.requests.some((q) => q.path === '/ns/home'), 'the page was asked for');
     } finally { await server.close(); }
