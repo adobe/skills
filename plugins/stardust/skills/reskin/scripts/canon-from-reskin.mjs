@@ -7,7 +7,9 @@
  * state.json, donor-tokens.json, mapping.json and the content models:
  *
  *   <dir>/canon/header.html, footer.html     <header|footer data-canon> lifted verbatim
- *   <dir>/canon/canon.css                    :root first (migrate strict 1) + class-based rules
+ *   <dir>/canon/canon.css                    :root first (migrate strict 1) — every :root block of the
+ *                                            archetype merged into it (the token contract + the donor
+ *                                            variables; a later name wins) — + class-based rules
  *                                            (canon-extraction.md § 2 selection rule), @media kept
  *   <dir>/canon/modules/<id>.html            section[data-module] skeleton, [data-slot-body] emptied;
  *                                            the named archetype's modules first, then modules only
@@ -102,9 +104,35 @@ export function cssBlocks(css) {
 }
 export const classBased = (sel) => sel.split(',').every((s) => /\.[A-Za-z_][\w-]*/.test(s));
 
+// A declaration block's `name: value` pairs, split on top-level `;` (parentheses and quotes respected).
+export function declarations(body) {
+  const out = []; let cur = ''; let depth = 0; let q = null;
+  for (const ch of body) {
+    if (q) { if (ch === q) q = null; } else if (ch === '"' || ch === "'") q = ch;
+    else if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ';' && !depth) { out.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map((d) => d.trim()).filter(Boolean).map((d) => { const i = d.indexOf(':'); return i > 0 ? [d.slice(0, i).trim(), d.slice(i + 1).trim()] : null; }).filter(Boolean);
+}
+
+// Every top-level `:root { … }` block as ONE block. stream-render emits two — the token-contract block
+// (render/root-tokens) and the flattened donor variables (--palette-*, --type-*, --layout-*) — and the
+// rules reference both; migrate keeps only the first block as :root (strict 1), so canon.css carries them
+// merged. A later declaration of a name wins, in the place the name first appeared. One block: verbatim.
+export function mergeRoots(style) {
+  const roots = cssBlocks(style).filter((b) => b.prelude === ':root');
+  if (roots.length < 2) return (style.match(/:root\s*\{[^}]*\}/) || [])[0] || null;
+  const decls = new Map();
+  for (const b of roots) for (const [n, v] of declarations(b.body)) decls.set(n, v);
+  return `:root {\n${[...decls].map(([n, v]) => `  ${n}: ${v};`).join('\n')}\n}`;
+}
+
 // canon-extraction.md § 2: class-based rules are canon; element/id rules stay in the page.
 export function liftCss(style) {
-  const rootBlock = (style.match(/:root\s*\{[^}]*\}/) || [])[0] || null;
+  const rootBlock = mergeRoots(style);
   const lifted = []; const leftBehind = [];
   for (const b of cssBlocks(style)) {
     if (b.prelude.startsWith(':root')) continue;
@@ -347,7 +375,8 @@ async function main(argv) {
     files[region] = { path: rel(p), sha: sha(writeStable(p, body)) };
   }
 
-  // 2. compound CSS — :root must be the FIRST block (migrate strict 1); provenance follows it.
+  // 2. compound CSS — :root must be the FIRST block (migrate strict 1), all of the archetype's :root
+  // blocks merged into it; provenance follows it.
   const style = (html.match(/<style\b[^>]*>([\s\S]*?)<\/style>/i) || [])[1];
   if (!style) throw new Refused('the archetype has no <style>');
   const { rootBlock, lifted, leftBehind } = liftCss(style);

@@ -137,6 +137,10 @@ export function tokenVars(tokens) {
   return vars;
 }
 
+// Custom properties the renderer sets in markup (a style attribute on the element its rule styles), not in
+// :root — canon.css reads them without defining them. reskin-preflight's canon-tokens check skips them.
+export const MARKUP_VARS = ['--band-inset', '--split-columns', '--cards-columns'];
+
 // Which top-level stream nodes render as a `.btn` (the donor primary/secondary button): a cta whose classes
 // say button or that capture saw styled as one (buttonLike), a submit/button form control, a bare text run
 // inside a <button>. Exported so donor-probe can tell "this page has no button" from "the renderer broke

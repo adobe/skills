@@ -10,6 +10,9 @@
  *   FAIL  state.json flow is "reskin"
  *   FAIL  every typed page's type has an approved (or migrated) archetype
  *   FAIL  canon/canon.css exists and its first block is :root (migrate strict 1)
+ *   FAIL  canon-tokens: every custom property canon.css reads without a fallback is defined — in canon.css
+ *         (its merged :root or any rule), in a style attribute of the canon markup, or one of
+ *         stream-render's MARKUP_VARS; WARN for undefined ones read only with a fallback
  *   FAIL  DESIGN.json source.kind is "donor" (written by the bridge, not by direct)
  *   FAIL  DESIGN.json extensions.canon.files match the canon files on disk (no hand edit, no overwrite)
  *   FAIL  direction.md carries an "## Active" direction
@@ -36,6 +39,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { codeStamp } from './deployed/stamp.mjs';
 import { gateVerdicts, NEVER_ACCEPTED, residualCovers } from './reskin-ledger.mjs';
+import { MARKUP_VARS } from './stream-render.mjs';
 
 const HELP = `usage: node reskin-preflight.mjs [--dir stardust] [--root .] [--json]
 
@@ -47,6 +51,25 @@ Exit 0 ready (warnings allowed), 1 not ready, 2 usage.`;
 const sha = (s) => createHash('sha1').update(s).digest('hex').slice(0, 12);
 // Share of a type's migrated pages the deployed leg should cover (at least 2, or all of them below 2).
 export const DEPLOYED_SHARE = 0.1;
+
+// Token completeness of canon.css: the custom properties it reads (var(--x) / var(--x, fallback)) that
+// nothing defines — no declaration in canon.css (its :root, or any rule), no `--x:` in a style attribute
+// of the canon markup (header/footer/module skeletons, `markup`), not one of the renderer's MARKUP_VARS.
+// Returns { missing: names read without a fallback, soft: names read only with one }. Pure.
+export function canonTokenGaps(css, markup = []) {
+  const src = String(css || '').replace(/\/\*[\s\S]*?\*\//g, '');
+  const defined = new Set(MARKUP_VARS);
+  for (const m of src.matchAll(/(?:^|[{;\s])(--[\w-]+)\s*:/g)) defined.add(m[1]);
+  for (const m of src.matchAll(/@property\s+(--[\w-]+)/g)) defined.add(m[1]);
+  for (const html of markup) {
+    for (const a of String(html || '').matchAll(/\bstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) {
+      for (const m of (a[1] ?? a[2]).matchAll(/(?:^|;)\s*(--[\w-]+)\s*:/g)) defined.add(m[1]);
+    }
+  }
+  const bare = new Set(); const withFallback = new Set();
+  for (const m of src.matchAll(/var\(\s*(--[\w-]+)\s*(,)?/g)) if (!defined.has(m[1])) (m[2] ? withFallback : bare).add(m[1]);
+  return { missing: [...bare].sort(), soft: [...withFallback].filter((n) => !bare.has(n)).sort() };
+}
 
 // Pure over a file reader: read(rel) → string | null. Returns [{ level: 'ok'|'fail'|'warn', check, detail }].
 // stamp(): the project's current code stamp (deployed/stamp.mjs codeStamp of the parent of dir), or null to skip the check.
@@ -144,6 +167,20 @@ export function preflight(read, { dir = 'stardust', stamp = null } = {}) {
       if (drift.length) fail('canon-record', `canon file(s) differ from DESIGN.json: ${drift.join(', ')} — re-run canon-from-reskin.mjs --force`);
       else ok('canon-record', `${Object.keys(files).length} canon file(s) match`);
     }
+  }
+
+  // Every custom property canon.css reads must be defined where migrate's pages get it: canon.css (its
+  // merged :root) or the canon markup. Without a fallback an undefined one is a FAIL — migrate renders the
+  // siblings without it; with a fallback it is a WARN (the sibling takes the literal, not the donor value).
+  if (css != null && /^\s*:root\s*\{/.test(css.replace(/\/\*[\s\S]*?\*\//g, ''))) {
+    const markup = [
+      ...Object.entries(design?.extensions?.canon?.files || {}).filter(([k]) => k !== 'css').map(([, f]) => f?.path),
+      ...(design?.extensions?.modules || []).map((m) => m.canonicalRendering?.path),
+    ].filter(Boolean).map((p) => read(p)).filter((s) => s != null);
+    const { missing: undef, soft } = canonTokenGaps(css, markup);
+    if (undef.length) fail('canon-tokens', `${dir}/canon/canon.css reads ${undef.length} custom propert${undef.length === 1 ? 'y' : 'ies'} defined nowhere, without a fallback: ${undef.join(', ')} — re-run canon-from-reskin.mjs --force (it merges every :root block of the archetype into canon.css's :root)`);
+    else ok('canon-tokens', `${dir}/canon/canon.css defines every custom property it reads without a fallback`);
+    if (soft.length) warn('canon-tokens', `${dir}/canon/canon.css reads ${soft.length} custom propert${soft.length === 1 ? 'y' : 'ies'} defined nowhere, only with a fallback (the fallback renders): ${soft.join(', ')}`);
   }
 
   const direction = read(`${dir}/direction.md`);
