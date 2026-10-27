@@ -42,15 +42,17 @@ regression check instead of a debugging tool.
     hand-coded). Served on localhost and captured through the same
     path — recipe in `reference/donor-sources.md` § Local prototypes.
   - `--donor-figma <url>` — a Figma file (a design, file, proto or
-    branch URL; a `node-id` scopes it to a page or frame), read
+    branch URL; the whole file is read, a `node-id` only recorded), read
     headlessly over the REST API. Needs `FIGMA_TOKEN` (a personal
     access token, `file_content:read`). Optional `--frames <ids>` and
     `--confidential` (refuses to write anything git would track;
     sticky for `curate` and `stamp`). Flags, schemas, exit codes:
     `figma-donor.mjs --help`.
 - `--pages <slug,slug,...>` — optional. Restrict the content capture
-  to specific pages. Default: the archetype set (one page per page
-  family; a spec's `archetypes.json` names them; scale to siblings happens in Phase 6 via `migrate`).
+  (Phases 2–5) to specific pages. Default: the archetype set (one page
+  per page type; a spec's `archetypes.json` names them; scale to
+  siblings happens in Phase 6 via `migrate`). Never restricts the
+  inventory: Phase 1 still crawls the whole site.
 - `--scope <selectors>` — optional. Pre-declare the content-root
   scope for a single-page run (comma-separated, `!` suffix keeps a
   scope whole; see `reference/content-model.md` § Scope declaration).
@@ -93,18 +95,36 @@ regression check instead of a debugging tool.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
+5. **Full-inventory check** — on resume, and again after Phase 1's
+   crawl, before Phase 2. The crawl is uncapped when
+   `state.json.site.pageCap` is `0` or null and
+   `stardust/current/_crawl-log.json#discovery.cut[]` holds no
+   `below cap` row (so `site.crawled` + `crawl.failures[]` equals
+   `discovery.filteredCount`). Anything else — an earlier
+   discovery-mode extract, a `--cap` run, a 25-page `crawl.mjs`
+   default — is a setup error: re-crawl the content site with `--all`
+   (Phase 1) before going on. A failed page is retried or recorded,
+   never dropped.
 
 ## Procedure
 
 ### Phase 1 — INGEST DONOR
 
 The donor's design system is captured **separately** from the content
-site, into `stardust/canon-source/`. Full recipes per donor type in
+site, into `stardust/canon-source/`. The same extract run crawls the
+content site, and **a reskin migration covers the whole site**: the
+content crawl is always `--all`, the full junk-filtered inventory.
+Extract's discovery cap (5; `crawl.mjs --max` 25) never applies to
+the content site, and a capped crawl is a setup error (Setup step 5).
+Not `--prep`: that is `prepare-migration`'s cascade, and reskin never
+runs `direct --prep` or `prepare-migration`. `--all` scopes the
+content inventory only; the donor keeps its own cap
+(`reference/donor-sources.md` § 1). Full recipes per donor type in
 `reference/donor-sources.md`; summary:
 
 - **Live URL** (`--donor <url>`): invoke
-  `$stardust extract <content-url> --design-source <donor-url>` — the
-  existing skill, unchanged. It lands in `stardust/canon-source/`
+  `$stardust extract <content-url> --all --design-source <donor-url>`
+  — the existing skill, unchanged. It lands in `stardust/canon-source/`
   (the donor's `pages/`, `assets/`, `_brand-extraction.json`,
   `_crawl-log.json`, a descriptive `DESIGN.md` + `DESIGN.json`) and stamps
   `state.json.designSource = { url, capturedAt, path }` — see
@@ -116,15 +136,24 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
   `<path>`) in `canon-source/_crawl-log.json`. Recipe details —
   page listing, index-less directories, port hygiene — in
   `reference/donor-sources.md` § Local prototypes.
-- **Figma** (`--donor-figma <url>`): no browser, no crawl. Run
-  `$stardust extract <content-url>` (it creates `state.json`), then
+- **Figma** (`--donor-figma <url>`): no browser, no donor crawl. Run
+  `$stardust extract <content-url> --all` (it creates `state.json`), then
   `node stardust/scripts/reskin/figma-donor.mjs capture <figma-url>`
-  (for a component kit, `--list` first, then `--frames` with the
-  foundation frames and one frame per module page); author
+  (the whole file: every page's frames, components and component
+  sets, whichever page the URL names; `--frames` narrows); author
   `stardust/reskin/curation-rules.json` from the candidates and the
   frame screenshots; then `curate` and `stamp`. Judge the result
   against the screenshots and fix the rules, not the outputs. Recipe:
   `reference/donor-sources.md` § Figma.
+
+**Type every inventory page.** `--all` leaves `state.json.pages[].type`
+null (only `--prep` types). Reskin types each page itself, before
+Phase 2: from a spec's `archetypes.json` when present, else inferred
+from URL pattern and content shape over the catalog in
+`../stardust/reference/state-machine.md` § Page types (the rule in
+`../extract/reference/prep-mode.md` § 2). One archetype per type is
+the default `--pages` set; `migrate` groups siblings by this field.
+Print the count per type with its archetype.
 
 Then author two reskin-owned donor artifacts (contracts in
 `reference/donor-sources.md`; for a Figma donor `curate` writes both):
@@ -479,7 +508,14 @@ value `"unresolved: <why>"` records NOT-RUN and a `needs-owner` residual).
 ### Phase 6 — HANDOFF
 
 Reskin owns the archetype pages; scale and shipping are the existing
-pipeline:
+pipeline. **The default is the whole site:** once every
+archetype is gated (residuals logged), every page of the Phase 1
+inventory is migrated and shipped — archetypes are the means, not the
+delivery. Archetypes-only delivery (`rollout` archetypes-only mode,
+the rest `content-pending`) is an opt-out the user asks for in
+words; record it as `ledger.json#delivery = { scope:
+"archetypes-only", requestedBy: "user", reason, at }` (default
+`scope: "full-site"`) and name it in the handoff report.
 
 - **Approve honestly.** The user approves the archetype
   (`state.mjs advance <slug> --to approved --by user --skill reskin`;
@@ -509,15 +545,18 @@ pipeline:
   a bounded donor capture wrote no stamp — record the donor origin
   in the handoff instead, `reference/donor-sources.md` § Two
   first-class token-sourcing paths).
-  Same-type sibling pages render at the **sibling tier** against the
-  gated archetype; gate each migrated page (the three gates on
+  Every non-archetype inventory page renders at the **sibling tier**
+  against its type's gated archetype; a page whose type has no
+  archetype gets one (Phases 2–5) or the unique-render branch, never a skip.
+  Gate each migrated page (the three gates on
   migrate's output, reports in `reskin/gates/<slug>/migrated/`, with
   `--deltas` ignoring the `canonical` / `og:url` migrate rewrites to the
   deploy host: `reference/handoff.md` § Sibling gate) and
   `reskin-ledger.mjs record <slug> --stage migrated`. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.
-- **Ship via the stardust `deploy` and `rollout` skills.** An archetype
+- **Ship via the stardust `deploy` and `rollout` skills** — `rollout`
+  over the full migrated tree. An archetype
   page's first deploy is Phase 5 (e), preview-only
   (`reference/deployed-leg.md`); it is handed off once `deploy` Step 10's
   eyeball, CLS and header results (or `unresolved`) are in its ledger.
@@ -530,13 +569,14 @@ Reskin writes its own state under `stardust/reskin/` — `ledger.json`
 (written by `reskin-ledger.mjs`) holds per-page status (`gated |
 failing`), gate results, eyeball, residuals and the `handoff` record. In
 the core state machine (`../stardust/reference/state-machine.md`) it
-only stamps `flow` (Setup) and `designSource` (Phase 1: `extract
+only stamps `flow` (Setup), `designSource` (Phase 1: `extract
 --design-source` for URL and directory donors, `figma-donor.mjs stamp`
-for Figma), registers each rendered page (`prototypePath` and
+for Figma) and each inventory page's `type` (Phase 1), registers each
+rendered page (`prototypePath` and
 `prototyped`, or `directed` for a sibling — Phase 4 `--register`),
 writes `approved` on the archetype and, through the bridge, `directed`
 on its type's `extracted` siblings (Phase 6). The full
-handoff contract — predicate, approval, tier record, bounded inventory,
+handoff contract — predicate, approval, tier record, full inventory,
 sibling gate — is `reference/handoff.md`.
 
 ## What reskin never does
@@ -553,6 +593,8 @@ sibling gate — is `reference/handoff.md`.
 - **No silent slot drops.** Anything excluded from the gate scope is a
   declared chrome delta or a ledger normalization — declared in
   `mapping.md`, executable in the normalize module.
+- **No partial site.** No capped content crawl, and no page of the
+  inventory left unmigrated unless the user opted out (Phase 6).
 
 ## Stop conditions
 
