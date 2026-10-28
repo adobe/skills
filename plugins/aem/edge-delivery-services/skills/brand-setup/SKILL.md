@@ -98,13 +98,15 @@ Sizes:
 
 Only the families used by body text and headings, and only the weights and styles they use.
 Declare each face with the weight and style the browser reports for it in `document.fonts`;
-treat a file as a variable font only if the browser reports a weight range for it.
+treat a file as a variable font only if the browser reports a weight range for it. Copy every
+file the browser loaded for those faces, not just the Latin one: a face split into subsets
+(Latin, Cyrillic, Greek, …) keeps one `@font-face` per file with its `unicode-range`.
 
 - **Self-hosted by the site** (files on its own domain or CDN): download the files the browser
   loaded into `fonts/`. Proprietary families are copied too, for fidelity, with a licensing
   warning (below).
 - **Open-licence hosting service** (Google Fonts): download the `woff2` files the browser
-  loaded (latin subset) into `fonts/` and self-host them, as the boilerplate does for Roboto.
+  loaded into `fonts/` and self-host them, as the boilerplate does for Roboto.
 - **Commercial hosting service** (Adobe Fonts/Typekit, fonts.net, Cloud.typography and the
   like): don't copy. Keep the family name in the stack, give it a fallback face, and report the
   family and service so the project can add a licensed kit later.
@@ -129,11 +131,13 @@ Wiring — the boilerplate's loading mechanism stays as is:
 
 Per [references/lookup-rules.md](references/lookup-rules.md):
 
-- If the source serves `/favicon.ico`, it replaces the root `favicon.ico`.
-- If the chosen icon is SVG or PNG, save it at the root as `favicon.svg`/`favicon.png` and add
-  exactly one line to `head.html`: `<link rel="icon" href="/favicon.<ext>">`. This is the only
-  `head.html` edit this skill makes. Delete the boilerplate `favicon.ico` if the source serves
-  none, so its icon doesn't leak.
+- Chosen icon is ICO (whatever its URL): it replaces the root `favicon.ico`. No `head.html`
+  change.
+- Chosen icon is SVG or PNG: save it at the root as `favicon.svg`/`favicon.png` and add exactly
+  one line to `head.html`: `<link rel="icon" href="/favicon.<ext>">`. This is the only
+  `head.html` edit this skill makes. Then, for the root `favicon.ico`: if the source serves
+  `/favicon.ico`, that file replaces it; if not, delete it, so the boilerplate icon doesn't leak.
+- No icon found: keep the boilerplate `favicon.ico` and report it.
 - Logo: `icons/logo.svg` for SVG; a raster logo is saved as `icons/logo.<ext>`. Don't wire it
   into the header — the nav document does that. A raster logo can't be used with the `:logo:`
   icon syntax; say so in the report.
@@ -152,8 +156,9 @@ browser or other tools left in the project (session folders, screenshots, downlo
 Run all six checks on the files you wrote, not from memory. The report lists each one with
 pass or fail; a report missing a check is incomplete. Fix any failure before reporting:
 
-- Every quoted family in the two font stacks has an `@font-face` in `styles/fonts.css`, or is
-  listed as commercial-hosted in the report.
+- Every non-generic family in the two font stacks is accounted for: a brand family has an
+  `@font-face` in `styles/fonts.css` or is listed as commercial-hosted in the report; a
+  `<family>-fallback` has its `@font-face` in `styles/styles.css`.
 - Every `url()` in `styles/fonts.css` points to a file in `fonts/`.
 - `head.html` differs from the boilerplate by at most the favicon line.
 - Both `:root` blocks still define all nine size slots, and heading sizes descend in each.
