@@ -199,8 +199,10 @@ when known). Do not pass an unconfirmed project name string. **Full tool schemas
 [references/cam-mcp.md](references/cam-mcp.md).
 
 If the **AEM MCP Server** is connected instead, run the recipes **`list-bpa-findings-by-pattern`**
-and **`list-bpa-findings-by-severity`** with `read-api`. They return the same response shapes and
-follow the same confirmation rules. The pattern recipe pages its results. See
+and **`list-bpa-findings-by-severity`** with `read-api` (and **`list-cam-projects`** to show the user
+their projects). The same confirmation rules apply. Differences: failures come back as the recipe's
+result rather than as tool errors, the pattern recipe returns its full list in one call, and
+`inputStream` is not available. See
 [references/cam-mcp.md](references/cam-mcp.md#through-the-aem-mcp-server-code-mode-recipes).
 
 ### Calling the helper

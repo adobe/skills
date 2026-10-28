@@ -1,8 +1,8 @@
-# CAM / MCP (Cloud Adoption Service)
+# CAM / MCP (Cloud Acceleration Manager)
 
 Read this file when **fetching BPA targets via MCP** instead of a CSV or cached collection, or when **submitting a Branch G validation outcome** ([`submit-migration-validation-result`](#tool-submit-migration-validation-result)). Parent skill: `../SKILL.md`.
 
-The tools below belong to the **AEM Cloud Service Migration MCP** server. If the **AEM MCP Server** (tools `lookup-api-spec`, `read-api`, …) is connected instead, the same two reads are available as code-mode recipes with the same response shapes. See [Through the AEM MCP Server](#through-the-aem-mcp-server-code-mode-recipes). Every rule in this file applies to both.
+The tools below belong to the **AEM Cloud Service Migration MCP** server. The same two reads are available as code-mode recipes on the **AEM MCP Server** (tools `lookup-api-spec`, `read-api`, …); see [Through the AEM MCP Server](#through-the-aem-mcp-server-code-mode-recipes). Every rule in this file applies to both, except where that section says otherwise.
 
 ## Happy path (what the user should see)
 
@@ -40,7 +40,7 @@ For other failures (auth, timeout, 5xx), still quote errors verbatim; use retrie
 
 Some **AEM Cloud Service Migration MCP** deployments return an error when the server is not enabled for the requested org, project, or operation. When the tool error **starts with**:
 
-`The MCP Server is restricted and isn't able to operate on the given`
+`The MCP Server is restricted and isn't able to`
 
 **You must:**
 
@@ -50,7 +50,7 @@ Some **AEM Cloud Service Migration MCP** deployments return an error when the se
 
 If your MCP server documentation adds other error prefixes or codes with the same "no paraphrase / no silent fallback" rule, treat those the same way and keep this file aligned with that documentation.
 
-Through the **AEM MCP Server**, the same restriction arrives as a recipe result with `success: false` and a `body.error` that starts with `The MCP Server is restricted and isn't able to perform this operation`. Handle it exactly the same way, and output `body.error` verbatim.
+Through the **AEM MCP Server**, the restriction arrives as the recipe's result: an object whose `error` starts with that prefix and which has no `success` field. Handle it exactly the same way, and output `error` verbatim.
 
 ---
 
@@ -62,14 +62,14 @@ Through the **AEM MCP Server**, the same restriction arrives as a recipe result 
 
 ## Tool: `fetch-cam-bpa-findings-by-pattern`
 
-Pattern-axis tool registered by the server. It can also resolve a project name to a project ID internally (via the CAM projects API), so a separate `list-projects` call is not needed — pass `projectName` or `projectId`.
+Pattern-axis tool registered by the server. It can also resolve a project name to a project ID itself, so a separate `list-projects` call is not needed — pass `projectName` or `projectId`.
 
 **Request (illustrative — confirm against live MCP tool schema):**
 
 ```typescript
 {
   projectId?: string;   // CAM project ID; either this or projectName must be provided
-  projectName?: string; // human-readable name; resolved to projectId via CAM /projects API
+  projectName?: string; // human-readable name; resolved to projectId by the server
   pattern?: "scheduler" | "assetApi" | "eventListener" | "resourceChangeListener" | "eventHandler"
     | "guavaCache" | "inputStream" | "lui" | "luiCoral2" | "cdw" | "all";
   environment?: "dev" | "stage" | "prod";  // defaults to "prod"
@@ -148,12 +148,10 @@ guardrails apply: never call it with an unconfirmed `projectId` / `projectName`.
 {
   importance: "CRITICAL" | "MAJOR" | "ADVISORY" | "INFO";  // required
   projectId?: string;   // CAM project ID; either this or projectName must be provided
-  projectName?: string; // human-readable name; resolved to projectId via CAM /projects API
+  projectName?: string; // human-readable name; resolved to projectId by the server
   environment?: "dev" | "stage" | "prod";  // defaults to "prod"
 }
 ```
-
-**Backed by:** `GET /projects/{projectId}/bpaReportCodeTransformerData/findings/{importance}`
 
 **Success response:**
 
@@ -164,7 +162,7 @@ guardrails apply: never call it with an unconfirmed `projectId` / `projectName`.
   environment?: "dev" | "stage" | "prod";
   projectId: string;
   reportId: string | null;
-  reportTime: number | null;  // epoch millis from BpaOverview, when available
+  reportTime: number | null;  // epoch millis, when available
   findings: Array<{
     code: string;          // e.g. "_COUNT_ACV"
     type: string;          // e.g. "_count.assets.health"
@@ -185,13 +183,17 @@ A 404 from the backend (no BPA report uploaded yet) is mapped to `success: true`
 
 ## Through the AEM MCP Server (code-mode recipes)
 
-The AEM MCP Server serves the same two reads from the same Cloud Adoption Service data.
+The AEM MCP Server serves the same two reads from the same Cloud Acceleration Manager data.
 They are recipes, run with `read-api`:
 
-| Cloud Migration MCP tool | AEM MCP Server recipe | Response |
+| AEM Cloud Service Migration MCP tool | AEM MCP Server recipe | Response |
 |---|---|---|
-| `fetch-cam-bpa-findings-by-pattern` | `list-bpa-findings-by-pattern` | Same `targets` / `summary` / `message` / error shape, plus paging fields (below) |
-| `fetch-cam-bpa-findings-by-importance` | `list-bpa-findings-by-severity` | Same shape |
+| `fetch-cam-bpa-findings-by-pattern` | `list-bpa-findings-by-pattern` | Same `targets` / `summary` / `message` shape, plus `total`, `truncated` and `fetchErrors` (below) |
+| `fetch-cam-bpa-findings-by-importance` | `list-bpa-findings-by-severity` | Same shape, plus `noReport` |
+| (none) | `list-cam-projects` | `{ success, projects: [{ id, name }] }` for the user's organization |
+
+`submit-migration-validation-result` has no AEM MCP Server equivalent. With only the AEM MCP
+Server connected, validation outcomes stay local.
 
 **How to call:**
 
@@ -201,31 +203,37 @@ They are recipes, run with `read-api`:
    and `pattern` or `importance`, as constants before the recipe code.
 3. No `aemUrl` is needed.
 
-To show the user their CAM projects to choose from, run
-`return (await aem.get('/projects')).body;` with `read-api`. It returns `{ id, name }` for
-each project of the user's organization.
+To show the user their CAM projects to choose from, run the `list-cam-projects` recipe the same way.
 
-**Differences from the Cloud Migration MCP tools:**
+**Differences from the AEM Cloud Service Migration MCP tools:**
 
-- **No `environment` parameter.** The server picks the CAM environment from the user's
-  sign-in: production, or stage for stage IMS accounts.
-- **Paging.** `list-bpa-findings-by-pattern` returns at most `limit` targets (default 50,
-  max 200). It also returns `total`, `offset` and `nextOffset`.
-  - The [batching contract](#batching) needs one complete fetch per `(projectId, pattern)`.
-    So call with `limit: 200`, then repeat with `offset: nextOffset` until `nextOffset` is
-    `null`.
-  - Give the helper the combined result as that single fetch: the concatenated `targets`,
-    plus `summary` and `message`.
-  - Then page from the cache as usual.
-- **Availability.** The recipes are rolled out per organization. If `recipes.get` returns
-  no recipe, this route is not enabled for the user's organization. Tell the user, and let
-  them choose another source (the Cloud Migration MCP server, a BPA CSV, or named files).
-  Do not fall back silently.
-- **Errors.** Recipe failures come back as `success: false` results, not as tool errors.
-  - An HTTP failure carries the backend's response in `body`.
-  - Apply the [retry table](#retries-and-agent-behavior) to the HTTP status in `error`.
-    Exception: the recipe has already retried a 5xx from the findings call once, so do not
-    retry that again.
+- **No `environment` parameter.** The server picks the CAM environment from the user's sign-in.
+- **One pattern per call.** Always pass the session's single `pattern`; the recipe defaults to
+  `all`. `inputStream` is not available on this route: use a BPA CSV or the AEM Cloud Service
+  Migration MCP server for it.
+- **No paging.** `list-bpa-findings-by-pattern` returns the full list in one call, capped at
+  500 targets per pattern. That result is the single fetch the [batching contract](#batching)
+  needs; give it to the helper as usual.
+  - If `truncated` is `true`, the cap cut the list and `summary.<pattern>Count` holds the full
+    count. Tell the user how many findings were returned out of that count before the first batch.
+- **Project names.** A `projectName` matches exactly (case-insensitive) first, then by a unique
+  partial match. Prefer the confirmed `projectId`. When you pass a name, check that the
+  `projectId` in the response is the project the user confirmed.
+- **Failures are results, not tool errors.** The recipes return the response body without the
+  HTTP status. Treat any result without `success: true` as a failure, and hand it to the helper
+  as `{ success: false, error }` so a failure is never cached as an empty result.
+  - A result with `error` but no `success` field is a denial by the AEM MCP Server itself, such as
+    the [enablement restriction](#enablement-restriction-errors-mandatory-handling).
+  - If `fetchErrors` is present, some patterns could not be read. Treat the call as failed.
+  - A "Multiple projects match" error lists the candidates in `suggestion`. Show them and ask
+    the user to pick one.
+- **Retries.** The server already retries a 5xx or network failure once. Do not retry any
+  failure from these recipes; quote `error` verbatim and stop.
+- **Availability.** The capability may not be enabled for every organization. If a recipe
+  returns the enablement restriction error, follow that section. If `recipes.get` returns
+  `null`, the connected server does not offer these recipes. In both cases tell the user and let
+  them choose another source (the AEM Cloud Service Migration MCP server, a BPA CSV, or named
+  files). Do not fall back silently.
 
 ---
 
@@ -334,7 +342,7 @@ helper caches the response to disk and slices from the cache on subsequent calls
 
 ## Retries and agent behavior
 
-**MCP tool:** The server implements its own retry and timeout logic internally. Do not add agent-side retries on top unless the table below says otherwise. The table covers the `fetch-…` tools; `submit-migration-validation-result` is never retried automatically (see [its rules](#tool-submit-migration-validation-result)).
+**MCP tool:** The server implements its own retry and timeout logic internally. Do not add agent-side retries on top unless the table below says otherwise. The table covers the `fetch-…` tools; `submit-migration-validation-result` is never retried automatically (see [its rules](#tool-submit-migration-validation-result)). AEM MCP Server recipes follow the table too, except that they are never retried (see [Through the AEM MCP Server](#through-the-aem-mcp-server-code-mode-recipes)).
 
 **Agent:**
 
@@ -346,9 +354,10 @@ helper caches the response to disk and slices from the cache on subsequent calls
 
 | Situation | Retry? | Action |
 |-----------|--------|--------|
-| Error starts with `The MCP Server is restricted and isn't able to operate on the given` (or, through the AEM MCP Server, `body.error` starts with `The MCP Server is restricted and isn't able to perform this operation`) | No | [Verbatim to user](#enablement-restriction-errors-mandatory-handling); stop automatic fallback |
+| Error starts with `The MCP Server is restricted and isn't able to` (both servers) | No | [Verbatim to user](#enablement-restriction-errors-mandatory-handling); stop automatic fallback |
 | Auth 401 / 403 | No | Quote error verbatim; stop. Ask how to proceed (credentials, CSV, or named files) only after stopping. |
 | 404 / "no project found" / unknown `projectId` | No | Quote error verbatim; stop. **Require** user to confirm the correct project name/ID or choose another source (CSV / explicit file list). **No** automatic "local workspace" migration. |
+| Multiple projects match (409) | No | Quote error verbatim and show the `suggestion` candidates; call again only with the project the user picks. |
 | Network / timeout | Once | Retry after ~2s, then quote error verbatim and stop if still failing. |
 | 5xx | Once | Retry after ~2s, then quote error verbatim and stop if still failing. |
 | 400 | No | Quote error verbatim; stop; ask user to fix parameters or pick another path. |
