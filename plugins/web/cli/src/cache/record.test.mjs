@@ -117,3 +117,35 @@ test('throws INTERNAL when the context closed but no HAR was written', () => {
   );
   assert.ok(!existsSync(har));
 });
+
+test('a stale HAR from an earlier recording does not mask a run that wrote nothing', () => {
+  const { dir, driver } = fixture({ writeHar: false });
+  writeFileSync(path.join(dir, harFileName(URL_)), '{"log":{"entries":[]}}');
+  assert.throws(
+    () => recordPage(driver, { url: URL_, cacheDir: dir }),
+    (err) => err.code === 'INTERNAL' && /HAR not written/.test(err.message),
+  );
+});
+
+test('harBytes skips body paths that escape the cache dir', () => {
+  const { dir, driver } = fixture();
+  const open = driver.open.bind(driver);
+  driver.open = (opts) => {
+    open(opts);
+    driver.run = () => {
+      const har = {
+        log: {
+          entries: [
+            {
+              ...entry(URL_, 200),
+              response: { status: 200, headers: [], content: { _file: '../nope' } },
+            },
+          ],
+        },
+      };
+      writeFileSync(driver.harPath, JSON.stringify(har));
+    };
+  };
+  const result = recordPage(driver, { url: URL_, cacheDir: dir });
+  assert.equal(result.entries, 1);
+});

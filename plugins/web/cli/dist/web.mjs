@@ -6384,7 +6384,7 @@ function cachePath(cacheDir, url) {
   if (!full.startsWith(`${root}${sep}`)) throw new Error(`cache path escapes ${root}: ${url}`);
   return full;
 }
-var sidecarPath = (bodyPath) => `${bodyPath}{meta}.json`;
+var sidecarPath = (bodyPath2) => `${bodyPath2}{meta}.json`;
 function countFiles(dir) {
   let n = 0;
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -6696,8 +6696,21 @@ function cleanHeaders(list) {
   }
   return headers;
 }
+function bodyPath(dir, file) {
+  const root = path4.resolve(dir);
+  const resolved = path4.resolve(root, file);
+  return resolved.startsWith(root + path4.sep) ? resolved : null;
+}
 function bodyReader(dir, content = {}) {
-  if (content._file) return () => readFileSync6(path4.join(dir, content._file));
+  if (content._file) {
+    const file = bodyPath(dir, content._file);
+    if (!file) {
+      throw new CliError("USAGE", `HAR body path escapes the cache dir: ${content._file}`, {
+        hint: "Delete the HAR file, or re-record it with `web cache record`."
+      });
+    }
+    return () => readFileSync6(file);
+  }
   if (content.text) {
     const encoding = content.encoding === "base64" ? "base64" : "utf8";
     return () => Buffer.from(content.text, encoding);
@@ -6708,10 +6721,13 @@ function loadHarIndex(dir) {
   const index = /* @__PURE__ */ new Map();
   for (const name of readdirSync2(dir).filter((f) => f.endsWith(".har")).sort()) {
     for (const { request, response } of readHar(path4.join(dir, name)).log.entries) {
-      index.set(`${request.method} ${request.url}`, {
+      const key = `${request.method} ${request.url}`;
+      const body = bodyReader(dir, response.content);
+      if (response.status === 304 && index.has(key)) continue;
+      index.set(key, {
         status: response.status,
         headers: cleanHeaders(response.headers),
-        body: bodyReader(dir, response.content)
+        body
       });
     }
   }
@@ -6796,6 +6812,7 @@ async function startHarProxy({
       return res.end(JSON.stringify({ ...stats, entries, missed: [...stats.missed] }));
     }
     if (pathname !== "/__stop") return text(res, 404, "Not found.\n");
+    if (!isDirectRequest(req)) return text(res, 403, "Forbidden.\n");
     text(res, 200, "Shutting down.\n");
     return stop();
   }
@@ -6867,7 +6884,7 @@ async function startHarProxy({
 }
 
 // src/cache/record.mjs
-import { existsSync as existsSync9, mkdirSync as mkdirSync8, readFileSync as readFileSync7, statSync as statSync2 } from "node:fs";
+import { existsSync as existsSync9, mkdirSync as mkdirSync8, readFileSync as readFileSync7, rmSync as rmSync4, statSync as statSync2 } from "node:fs";
 import path6 from "node:path";
 var SCROLL_TIMEOUT_MS = 18e4;
 var LOAD_AND_SCROLL = `async page => {
@@ -6886,8 +6903,8 @@ function harBytes(harPath) {
   const { log } = JSON.parse(readFileSync7(harPath, "utf8"));
   const dir = path6.dirname(harPath);
   return log.entries.reduce((sum, { response }) => {
-    const file = response.content?._file;
-    return file ? sum + statSync2(path6.join(dir, file)).size : sum;
+    const file = response.content?._file && bodyPath(dir, response.content._file);
+    return file ? sum + statSync2(file).size : sum;
   }, statSync2(harPath).size);
 }
 function closeQuietly(driver, session) {
@@ -6907,6 +6924,7 @@ function recordPage(driver, { url, cacheDir, headed, recipe }) {
     contextOptions: { recordHar: { path: har, content: "attach" } }
   });
   const session = generateSessionName();
+  rmSync4(har, { force: true });
   try {
     driver.open({ session, url, headed, ...launch2, config });
     assertNotBlocked(driver.pageHealth(session));

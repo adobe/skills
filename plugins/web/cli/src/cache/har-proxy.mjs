@@ -4,6 +4,7 @@ import path from 'node:path';
 import tls from 'node:tls';
 import { ensureCert } from '#src/cache/cert.mjs';
 import { loadHarIndex } from '#src/cache/har.mjs';
+import { isDirectRequest } from '#src/cache/proxy.mjs';
 
 export const TRACKERS =
   /google-analytics|analytics\.google|googletagmanager|doubleclick|googlesyndication|demdex|2o7\.net|omtrdc|clarity\.ms|facebook\.(com|net)\/tr|hotjar|segment\.(io|com)|intellimize|stackadapt|attn\.tv|monorail|visualwebsiteoptimizer|semrush|stripe\.com\/(0|\?)|cdn-cgi\/rum|owox/;
@@ -103,6 +104,7 @@ export async function startHarProxy({
       return res.end(JSON.stringify({ ...stats, entries, missed: [...stats.missed] }));
     }
     if (pathname !== '/__stop') return text(res, 404, 'Not found.\n');
+    if (!isDirectRequest(req)) return text(res, 403, 'Forbidden.\n');
     text(res, 200, 'Shutting down.\n');
     return stop();
   }

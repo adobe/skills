@@ -94,3 +94,31 @@ test('an unparsable HAR throws USAGE naming the file', async () => {
     (err) => err.code === 'USAGE' && err.message.includes('bad.har') && Boolean(err.hint),
   );
 });
+
+test('loadHarIndex rejects a relative _file that escapes the cache dir', async () => {
+  const dir = await tmp();
+  await writeHar(path.join(dir, 'a.har'), [entry('https://a.test/', 200, { _file: '../x' })]);
+  assert.throws(
+    () => loadHarIndex(dir),
+    (err) => err.code === 'USAGE' && /escapes the cache dir: \.\.\/x/.test(err.message),
+  );
+});
+
+test('loadHarIndex rejects an absolute _file', async () => {
+  const dir = await tmp();
+  await writeHar(path.join(dir, 'a.har'), [entry('https://a.test/', 200, { _file: '/etc/hosts' })]);
+  assert.throws(
+    () => loadHarIndex(dir),
+    (err) => err.code === 'USAGE' && /escapes the cache dir/.test(err.message),
+  );
+});
+
+test('a later 304 entry does not replace an earlier 200 for the same key', async () => {
+  const dir = await tmp();
+  await writeFile(path.join(dir, 'body.bin'), 'hello');
+  await writeHar(path.join(dir, 'a.har'), [entry('https://a.test/', 200, { _file: 'body.bin' })]);
+  await writeHar(path.join(dir, 'b.har'), [entry('https://a.test/', 304)]);
+  const res = loadHarIndex(dir).get('GET https://a.test/');
+  assert.equal(res.status, 200);
+  assert.equal(res.body().toString(), 'hello');
+});

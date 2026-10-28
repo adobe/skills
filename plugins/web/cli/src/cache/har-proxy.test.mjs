@@ -206,3 +206,14 @@ test('an unreadable HAR rejects with a USAGE error', async () => {
   await writeFile(path.join(dir, 'bad.har'), 'not json');
   await assert.rejects(start({ cacheDir: dir }), (err) => err.code === 'USAGE');
 });
+
+test('/__stop from a cross-site page answers 403 and leaves the proxy running', async () => {
+  const proxy = await start({ cacheDir: await tmp() });
+  try {
+    const res = await fetch(`${proxy.url}/__stop`, { headers: { 'sec-fetch-site': 'cross-site' } });
+    assert.equal(res.status, 403);
+    assert.equal((await fetch(`${proxy.url}/__status`)).status, 200);
+  } finally {
+    await proxy.stop();
+  }
+});

@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { CliError } from '#src/errors.mjs';
 import { assertNotBlocked } from '#src/driver/blocked.mjs';
-import { dropFailedEntries, harFileName } from '#src/cache/har.mjs';
+import { bodyPath, dropFailedEntries, harFileName } from '#src/cache/har.mjs';
 import { extendConfig, resolveLaunch } from '#src/recipe.mjs';
 import { generateSessionName } from '#src/session.mjs';
 
@@ -28,8 +28,8 @@ function harBytes(harPath) {
   const { log } = JSON.parse(readFileSync(harPath, 'utf8'));
   const dir = path.dirname(harPath);
   return log.entries.reduce((sum, { response }) => {
-    const file = response.content?._file;
-    return file ? sum + statSync(path.join(dir, file)).size : sum;
+    const file = response.content?._file && bodyPath(dir, response.content._file);
+    return file ? sum + statSync(file).size : sum;
   }, statSync(harPath).size);
 }
 
@@ -58,6 +58,7 @@ export function recordPage(driver, { url, cacheDir, headed, recipe }) {
     contextOptions: { recordHar: { path: har, content: 'attach' } },
   });
   const session = generateSessionName();
+  rmSync(har, { force: true });
   try {
     driver.open({ session, url, headed, ...launch, config });
     assertNotBlocked(driver.pageHealth(session));

@@ -59,11 +59,30 @@ function cleanHeaders(list) {
 }
 
 /**
+ * Absolute path of a HAR body file, or null when it lies outside `dir`.
+ * @param {string} dir
+ * @param {string} file the HAR entry's `_file`
+ */
+export function bodyPath(dir, file) {
+  const root = path.resolve(dir);
+  const resolved = path.resolve(root, file);
+  return resolved.startsWith(root + path.sep) ? resolved : null;
+}
+
+/**
  * @param {string} dir
  * @param {{ _file?: string, text?: string, encoding?: string }} [content]
  */
 function bodyReader(dir, content = {}) {
-  if (content._file) return () => readFileSync(path.join(dir, content._file));
+  if (content._file) {
+    const file = bodyPath(dir, content._file);
+    if (!file) {
+      throw new CliError('USAGE', `HAR body path escapes the cache dir: ${content._file}`, {
+        hint: 'Delete the HAR file, or re-record it with `web cache record`.',
+      });
+    }
+    return () => readFileSync(file);
+  }
   if (content.text) {
     const encoding = content.encoding === 'base64' ? 'base64' : 'utf8';
     return () => Buffer.from(content.text, encoding);
@@ -82,10 +101,13 @@ export function loadHarIndex(dir) {
     .filter((f) => f.endsWith('.har'))
     .sort()) {
     for (const { request, response } of readHar(path.join(dir, name)).log.entries) {
-      index.set(`${request.method} ${request.url}`, {
+      const key = `${request.method} ${request.url}`;
+      const body = bodyReader(dir, response.content);
+      if (response.status === 304 && index.has(key)) continue;
+      index.set(key, {
         status: response.status,
         headers: cleanHeaders(response.headers),
-        body: bodyReader(dir, response.content),
+        body,
       });
     }
   }

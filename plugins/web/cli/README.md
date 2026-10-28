@@ -1,10 +1,10 @@
 # web CLI
 
-`web` drives a browser and analyzes pages for the web plugin's skills: session
-plumbing, bot-protection probing, page analysis (tree, reduce, collect, langs,
-overlays), site URL discovery (`site scan`), a caching proxy (`cache serve`), a
-HAR page cache (`cache record`, `cache proxy`), Chrome extension piloting and domain masking. It is the only consumer
-of `playwright-cli` in the plugin (`src/driver/playwright-cli.mjs`).
+`web` drives a browser and analyzes pages for the web plugin's skills: session plumbing,
+bot-protection probing, page analysis (tree, reduce, collect, langs, overlays), site URL discovery
+(`site scan`), a caching proxy (`cache serve`), a HAR page cache (`cache record`, `cache proxy`),
+Chrome extension piloting and domain masking. It is the only consumer of `playwright-cli` in the
+plugin (`src/driver/playwright-cli.mjs`).
 
 ## Requirements
 

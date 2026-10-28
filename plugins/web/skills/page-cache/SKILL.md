@@ -117,7 +117,7 @@ those requests at their real URLs, so a browser opened with `--proxy` sees the o
 Pick it over `cache serve` when page scripts or absolute URLs break under the reverse proxy, or
 when assets come from several origins. Limits: the browser must be Playwright Chrome opened by
 `web browser open --proxy` (it trusts the proxy's self-signed certificate); a miss is fetched
-live and never stored unless `--offline`; one `record` call per URL.
+live (504 with `--offline`) and never stored; one `record` call per URL.
 
 ```bash
 $WEB cache record https://example.com --cache .har-cache   # repeat per URL
