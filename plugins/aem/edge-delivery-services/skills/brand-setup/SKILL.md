@@ -39,8 +39,8 @@ browser is available, stop and say so.
   (mobile values). Reload after resizing.
 - **Overlays:** accept or close cookie/consent banners and newsletter popups before reading,
   so their colors and fonts don't enter the measurements.
-- **Blocked:** if the page is a bot challenge, "access denied", maintenance or login page,
-  retry with a headed browser if you can. If it stays blocked, stop and report it. Never take
+- **Blocked:** if the page is a bot challenge, "access denied", maintenance or login page, or a
+  consent wall that can't be dismissed, retry with a headed browser if you can. If it stays blocked, stop and report it. Never take
   values from an interstitial page.
 
 ## 3. Read the values from the rendered page
@@ -135,7 +135,8 @@ Per [references/lookup-rules.md](references/lookup-rules.md):
   `head.html` edit this skill makes. Delete the boilerplate `favicon.ico` if the source serves
   none, so its icon doesn't leak.
 - Logo: `icons/logo.svg` for SVG; a raster logo is saved as `icons/logo.<ext>`. Don't wire it
-  into the header — the nav document does that.
+  into the header — the nav document does that. A raster logo can't be used with the `:logo:`
+  icon syntax; say so in the report.
 
 If a file download is refused outside the browser, fetch it from inside the page instead.
 
@@ -157,9 +158,10 @@ pass or fail; a report missing a check is incomplete. Fix any failure before rep
 - `head.html` differs from the boilerplate by at most the favicon line.
 - Both `:root` blocks still define all nine size slots, and heading sizes descend in each.
 - Every value in the report table has a source; anything else is listed as boilerplate or filled.
-- `git status` shows changes only in the files listed in step 7.
+- `git status` shows changes only in the files listed in step 7 (plus the report file, if the
+  user asked for one).
 
-Report:
+Give the report in your final reply. Write it to a file only when the user asks for one.
 
 1. The six self-check results.
 2. Table: slot | mobile value | desktop value | source (page, element, property).

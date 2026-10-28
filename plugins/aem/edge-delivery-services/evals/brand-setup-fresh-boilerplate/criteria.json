@@ -50,7 +50,7 @@
     {
       "name": "Raster logo saved under icons/",
       "max_score": 6,
-      "description": "The PNG logo is saved as icons/logo.png (not converted to or wrapped in an SVG, not wired into the header), and the report notes it is raster."
+      "description": "The PNG logo is saved as icons/logo.png (not converted to or wrapped in an SVG, not wired into the header), and the report says a raster logo cannot be used with the :logo: icon syntax."
     },
     {
       "name": "Report lists sources, gaps and unslotted traits",
