@@ -142,9 +142,11 @@ curl -s "$PROXY/__stop"
 | `--offline` | off | a miss answers 504 instead of going live |
 | `--timeout` | 5000 | live fetch deadline (ms); a failed or timed-out fetch answers 502 |
 
-Trackers (analytics, ad and tag-manager hosts) are refused with 403 and WebSocket upgrades are
-refused. The proxy writes its certificate and private key into the cache directory: do not
-commit it. Re-recording a URL replaces its HAR; restart the proxy to pick it up.
+A tracker request missing from the cache (analytics, ad and tag-manager hosts) is refused
+with 403; a recorded one is served like any other hit. WebSocket upgrades are refused. The
+proxy writes its certificate and private key into the cache directory: do not commit it.
+Re-recording a URL replaces its HAR only once the new recording is complete; restart the proxy
+to pick it up.
 
 ## Notes
 

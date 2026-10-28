@@ -6,7 +6,7 @@ import tls from 'node:tls';
 import { mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { startHarProxy } from '#src/cache/har-proxy.mjs';
+import { isTracker, startHarProxy } from '#src/cache/har-proxy.mjs';
 
 const tmp = () => mkdtemp(path.join(os.tmpdir(), 'har-proxy-'));
 const writeHar = (dir, name, entries) =>
@@ -158,6 +158,45 @@ test('a tracker miss is blocked with an empty 403 and not listed as missed', asy
     assert.deepEqual(s.missed, []);
   } finally {
     await proxy.stop();
+  }
+});
+
+test('isTracker matches tracker hosts and endpoints, not tracker names in paths or queries', () => {
+  for (const url of [
+    'https://www.google-analytics.com/collect',
+    'https://static.hotjar.com/c/hotjar-1.js',
+    'https://monorail-edge.shopifysvc.com/v1/produce',
+    'https://www.facebook.com/tr/?id=1',
+    'https://m.stripe.com/0',
+    'https://example.com/cdn-cgi/rum?x=1',
+  ]) {
+    assert.equal(isTracker(url), true, url);
+  }
+  for (const url of [
+    'https://example.com/images/hotjar-guide.png',
+    'https://example.com/search?q=googletagmanager',
+    'https://example.com/blog/segment.io-review',
+    'https://www.facebook.com/brand',
+  ]) {
+    assert.equal(isTracker(url), false, url);
+  }
+});
+
+test('a live HEAD response does not advertise content-length 0', async () => {
+  const dir = await tmp();
+  const upstream = await listen((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/plain', 'content-length': '123' });
+    res.end();
+  });
+  const proxy = await start({ cacheDir: dir });
+  try {
+    const url = `http://127.0.0.1:${upstream.address().port}/x`;
+    const res = await viaProxy(proxy, url, { method: 'HEAD' });
+    assert.equal(res.status, 200);
+    assert.notEqual(res.headers['content-length'], '0');
+  } finally {
+    await proxy.stop();
+    upstream.close();
   }
 });
 

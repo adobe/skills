@@ -6660,7 +6660,7 @@ function ensureCert(dir) {
 
 // src/cache/har.mjs
 import { createHash as createHash3 } from "node:crypto";
-import { readFileSync as readFileSync6, readdirSync as readdirSync2, writeFileSync as writeFileSync9 } from "node:fs";
+import { existsSync as existsSync9, readFileSync as readFileSync6, readdirSync as readdirSync2, realpathSync as realpathSync2, writeFileSync as writeFileSync9 } from "node:fs";
 import path4 from "node:path";
 var STRIPPED_HEADERS = /* @__PURE__ */ new Set(["content-encoding", "content-length", "transfer-encoding"]);
 function harFileName(url) {
@@ -6696,9 +6696,12 @@ function cleanHeaders(list) {
   }
   return headers;
 }
+function realOrSelf(p) {
+  return existsSync9(p) ? realpathSync2(p) : p;
+}
 function bodyPath(dir, file) {
-  const root = path4.resolve(dir);
-  const resolved = path4.resolve(root, file);
+  const root = realpathSync2(dir);
+  const resolved = realOrSelf(path4.resolve(root, file));
   return resolved.startsWith(root + path4.sep) ? resolved : null;
 }
 function bodyReader(dir, content = {}) {
@@ -6735,7 +6738,12 @@ function loadHarIndex(dir) {
 }
 
 // src/cache/har-proxy.mjs
-var TRACKERS = /google-analytics|analytics\.google|googletagmanager|doubleclick|googlesyndication|demdex|2o7\.net|omtrdc|clarity\.ms|facebook\.(com|net)\/tr|hotjar|segment\.(io|com)|intellimize|stackadapt|attn\.tv|monorail|visualwebsiteoptimizer|semrush|stripe\.com\/(0|\?)|cdn-cgi\/rum|owox/;
+var TRACKER_HOSTS = /(^|\.)(google-analytics|analytics\.google|googletagmanager|doubleclick|googlesyndication|demdex|2o7\.net|omtrdc|clarity\.ms|hotjar|segment\.(io|com)|intellimize|stackadapt|attn\.tv|monorail|visualwebsiteoptimizer|semrush|owox)/;
+var TRACKER_ENDPOINTS = /(^|\.)facebook\.(com|net)\/tr\b|(^|\.)stripe\.com\/(0|\?)|^[^/]+\/cdn-cgi\/rum/;
+function isTracker(url) {
+  const { hostname, pathname, search } = new URL(url);
+  return TRACKER_HOSTS.test(hostname) || TRACKER_ENDPOINTS.test(`${hostname}${pathname}${search}`);
+}
 var UNFORWARDED_REQUEST_HEADERS = [
   "connection",
   "keep-alive",
@@ -6757,7 +6765,8 @@ var UNRELAYED_RESPONSE_HEADERS = /* @__PURE__ */ new Set([
   "set-cookie"
 ]);
 function send(res, { method, status: status2, headers, body }) {
-  const length = status2 === 204 || status2 === 304 ? {} : { "content-length": body.length };
+  const noLength = method === "HEAD" || status2 === 204 || status2 === 304;
+  const length = noLength ? {} : { "content-length": body.length };
   res.writeHead(status2, { ...headers, ...length });
   res.end(method === "HEAD" ? void 0 : body);
 }
@@ -6825,7 +6834,7 @@ async function startHarProxy({
       log(`[hit] ${url}`);
       return send(res, { method: req.method, ...hit, body: hit.body() });
     }
-    if (TRACKERS.test(url)) {
+    if (isTracker(url)) {
       stats.blocked += 1;
       log(`[blocked] ${url}`);
       return send(res, { method: req.method, status: 403, headers: {}, body: Buffer.alloc(0) });
@@ -6884,7 +6893,7 @@ async function startHarProxy({
 }
 
 // src/cache/record.mjs
-import { existsSync as existsSync9, mkdirSync as mkdirSync8, readFileSync as readFileSync7, rmSync as rmSync4, statSync as statSync2 } from "node:fs";
+import { existsSync as existsSync10, mkdirSync as mkdirSync8, readFileSync as readFileSync7, renameSync, rmSync as rmSync4, statSync as statSync2 } from "node:fs";
 import path6 from "node:path";
 var SCROLL_TIMEOUT_MS = 18e4;
 var LOAD_AND_SCROLL = `async page => {
@@ -6920,23 +6929,29 @@ function recordPage(driver, { url, cacheDir, headed, recipe }) {
   mkdirSync8(dir, { recursive: true });
   const har = path6.join(dir, harFileName(url));
   const launch2 = resolveLaunch(recipe, { headed });
+  const tmp = `${har}.tmp`;
   const config = extendConfig(launch2.config, {
-    contextOptions: { recordHar: { path: har, content: "attach" } }
+    contextOptions: { recordHar: { path: tmp, content: "attach" } }
   });
   const session = generateSessionName();
-  rmSync4(har, { force: true });
+  rmSync4(tmp, { force: true });
   try {
-    driver.open({ session, url, headed, ...launch2, config });
-    assertNotBlocked(driver.pageHealth(session));
-    driver.run(session, { code: LOAD_AND_SCROLL, timeoutMs: SCROLL_TIMEOUT_MS });
-    driver.run(session, { code: FLUSH_HAR });
-  } catch (err) {
-    closeQuietly(driver, session);
-    throw err;
+    try {
+      driver.open({ session, url, headed, ...launch2, config });
+      assertNotBlocked(driver.pageHealth(session));
+      driver.run(session, { code: LOAD_AND_SCROLL, timeoutMs: SCROLL_TIMEOUT_MS });
+      driver.run(session, { code: FLUSH_HAR });
+    } catch (err) {
+      closeQuietly(driver, session);
+      throw err;
+    }
+    if (!existsSync10(tmp)) throw new CliError("INTERNAL", `HAR not written: ${har}`);
+    const { entries, dropped } = dropFailedEntries(tmp);
+    renameSync(tmp, har);
+    return { url, har, entries, dropped, bytes: harBytes(har) };
+  } finally {
+    rmSync4(tmp, { force: true });
   }
-  if (!existsSync9(har)) throw new CliError("INTERNAL", `HAR not written: ${har}`);
-  const { entries, dropped } = dropFailedEntries(har);
-  return { url, har, entries, dropped, bytes: harBytes(har) };
 }
 
 // src/commands/cache.mjs
@@ -6973,8 +6988,8 @@ Notes:
   A forward proxy on 127.0.0.1 that answers the real URLs recorded by cache record; HTTPS is
   intercepted with a self-signed certificate (browser open --proxy accepts it). HARs are read
   at start: restart to pick up new recordings. A miss is fetched live and never stored;
-  --offline answers it 504. Trackers are refused with 403, a failed or timed-out live fetch
-  answers 502, WebSocket upgrades are refused. GET /__status returns hit, miss, live and
+  --offline answers it 504. A tracker miss is refused with 403, a failed or timed-out live
+  fetch answers 502, WebSocket upgrades are refused. GET /__status returns hit, miss, live and
   blocked counts and the missed URLs.`;
 function waitUntilStopped(proxy) {
   return new Promise((ok) => {

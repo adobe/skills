@@ -6,8 +6,21 @@ import { ensureCert } from '#src/cache/cert.mjs';
 import { loadHarIndex } from '#src/cache/har.mjs';
 import { isDirectRequest } from '#src/cache/proxy.mjs';
 
-export const TRACKERS =
-  /google-analytics|analytics\.google|googletagmanager|doubleclick|googlesyndication|demdex|2o7\.net|omtrdc|clarity\.ms|facebook\.(com|net)\/tr|hotjar|segment\.(io|com)|intellimize|stackadapt|attn\.tv|monorail|visualwebsiteoptimizer|semrush|stripe\.com\/(0|\?)|cdn-cgi\/rum|owox/;
+// Matched against the hostname only, so a tracker name in a path or query is not blocked.
+const TRACKER_HOSTS =
+  /(^|\.)(google-analytics|analytics\.google|googletagmanager|doubleclick|googlesyndication|demdex|2o7\.net|omtrdc|clarity\.ms|hotjar|segment\.(io|com)|intellimize|stackadapt|attn\.tv|monorail|visualwebsiteoptimizer|semrush|owox)/;
+// Tracking endpoints on hosts that also serve real content, matched on host + path + query.
+const TRACKER_ENDPOINTS =
+  /(^|\.)facebook\.(com|net)\/tr\b|(^|\.)stripe\.com\/(0|\?)|^[^/]+\/cdn-cgi\/rum/;
+
+/**
+ * Whether a request that missed the cache goes to a known analytics or tracking endpoint.
+ * @param {string} url
+ */
+export function isTracker(url) {
+  const { hostname, pathname, search } = new URL(url);
+  return TRACKER_HOSTS.test(hostname) || TRACKER_ENDPOINTS.test(`${hostname}${pathname}${search}`);
+}
 
 // Hop-by-hop headers plus those fetch computes itself or rejects.
 const UNFORWARDED_REQUEST_HEADERS = [
@@ -31,9 +44,13 @@ const UNRELAYED_RESPONSE_HEADERS = new Set([
   'set-cookie',
 ]);
 
-/** Write a full response, `content-length` set to the body size. */
+/**
+ * Write a full response, `content-length` set to the body size. A HEAD body is empty, so its
+ * size says nothing about the resource: no length is sent.
+ */
 function send(res, { method, status, headers, body }) {
-  const length = status === 204 || status === 304 ? {} : { 'content-length': body.length };
+  const noLength = method === 'HEAD' || status === 204 || status === 304;
+  const length = noLength ? {} : { 'content-length': body.length };
   res.writeHead(status, { ...headers, ...length });
   res.end(method === 'HEAD' ? undefined : body);
 }
@@ -118,7 +135,7 @@ export async function startHarProxy({
       log(`[hit] ${url}`);
       return send(res, { method: req.method, ...hit, body: hit.body() });
     }
-    if (TRACKERS.test(url)) {
+    if (isTracker(url)) {
       stats.blocked += 1;
       log(`[blocked] ${url}`);
       return send(res, { method: req.method, status: 403, headers: {}, body: Buffer.alloc(0) });

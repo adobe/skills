@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { CliError } from '#src/errors.mjs';
 
@@ -58,14 +58,19 @@ function cleanHeaders(list) {
   return headers;
 }
 
+/** `p` with symlinks resolved; as given when it does not exist (reading it fails later). */
+function realOrSelf(p) {
+  return existsSync(p) ? realpathSync(p) : p;
+}
+
 /**
- * Absolute path of a HAR body file, or null when it lies outside `dir`.
+ * Absolute path of a HAR body file, symlinks resolved, or null when it lies outside `dir`.
  * @param {string} dir
  * @param {string} file the HAR entry's `_file`
  */
 export function bodyPath(dir, file) {
-  const root = path.resolve(dir);
-  const resolved = path.resolve(root, file);
+  const root = realpathSync(dir);
+  const resolved = realOrSelf(path.resolve(root, file));
   return resolved.startsWith(root + path.sep) ? resolved : null;
 }
 

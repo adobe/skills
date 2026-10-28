@@ -42,8 +42,8 @@ Notes:
   A forward proxy on 127.0.0.1 that answers the real URLs recorded by cache record; HTTPS is
   intercepted with a self-signed certificate (browser open --proxy accepts it). HARs are read
   at start: restart to pick up new recordings. A miss is fetched live and never stored;
-  --offline answers it 504. Trackers are refused with 403, a failed or timed-out live fetch
-  answers 502, WebSocket upgrades are refused. GET /__status returns hit, miss, live and
+  --offline answers it 504. A tracker miss is refused with 403, a failed or timed-out live
+  fetch answers 502, WebSocket upgrades are refused. GET /__status returns hit, miss, live and
   blocked counts and the missed URLs.`;
 
 function waitUntilStopped(proxy) {

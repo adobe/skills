@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { CliError } from '#src/errors.mjs';
 import { assertNotBlocked } from '#src/driver/blocked.mjs';
@@ -45,6 +45,8 @@ function closeQuietly(driver, session) {
  * Load `url` in a browser that records every request into a HAR in `cacheDir`, scroll to
  * trigger lazy content, then flush the HAR by closing the browser context. A successful flush
  * ends the playwright-cli session, so the session is closed only when something fails.
+ * The HAR is written to `<har>.tmp` (not indexed by the proxy) and replaces `<har>` only once
+ * complete, so a failed refresh keeps the previous recording.
  * @param {object} driver
  * @param {{ url: string, cacheDir: string, headed?: boolean, recipe?: string }} opts
  * @returns {{ url: string, har: string, entries: number, dropped: number, bytes: number }}
@@ -54,21 +56,27 @@ export function recordPage(driver, { url, cacheDir, headed, recipe }) {
   mkdirSync(dir, { recursive: true });
   const har = path.join(dir, harFileName(url));
   const launch = resolveLaunch(recipe, { headed });
+  const tmp = `${har}.tmp`;
   const config = extendConfig(launch.config, {
-    contextOptions: { recordHar: { path: har, content: 'attach' } },
+    contextOptions: { recordHar: { path: tmp, content: 'attach' } },
   });
   const session = generateSessionName();
-  rmSync(har, { force: true });
+  rmSync(tmp, { force: true });
   try {
-    driver.open({ session, url, headed, ...launch, config });
-    assertNotBlocked(driver.pageHealth(session));
-    driver.run(session, { code: LOAD_AND_SCROLL, timeoutMs: SCROLL_TIMEOUT_MS });
-    driver.run(session, { code: FLUSH_HAR });
-  } catch (err) {
-    closeQuietly(driver, session);
-    throw err;
+    try {
+      driver.open({ session, url, headed, ...launch, config });
+      assertNotBlocked(driver.pageHealth(session));
+      driver.run(session, { code: LOAD_AND_SCROLL, timeoutMs: SCROLL_TIMEOUT_MS });
+      driver.run(session, { code: FLUSH_HAR });
+    } catch (err) {
+      closeQuietly(driver, session);
+      throw err;
+    }
+    if (!existsSync(tmp)) throw new CliError('INTERNAL', `HAR not written: ${har}`);
+    const { entries, dropped } = dropFailedEntries(tmp);
+    renameSync(tmp, har);
+    return { url, har, entries, dropped, bytes: harBytes(har) };
+  } finally {
+    rmSync(tmp, { force: true });
   }
-  if (!existsSync(har)) throw new CliError('INTERNAL', `HAR not written: ${har}`);
-  const { entries, dropped } = dropFailedEntries(har);
-  return { url, har, entries, dropped, bytes: harBytes(har) };
 }

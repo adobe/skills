@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { harFileName } from '#src/cache/har.mjs';
@@ -59,7 +59,7 @@ test('opens with recordHar attach at the absolute har path and keeps recipe opti
   recordPage(driver, { url: URL_, cacheDir: relDir, headed: true, recipe });
   const open = calls.find(([name]) => name === 'open')[1];
   assert.deepEqual(open.config.contextOptions.recordHar, {
-    path: path.join(dir, harFileName(URL_)),
+    path: `${path.join(dir, harFileName(URL_))}.tmp`,
     content: 'attach',
   });
   assert.equal(open.config.contextOptions.locale, 'de-DE');
@@ -124,6 +124,30 @@ test('a stale HAR from an earlier recording does not mask a run that wrote nothi
   assert.throws(
     () => recordPage(driver, { url: URL_, cacheDir: dir }),
     (err) => err.code === 'INTERNAL' && /HAR not written/.test(err.message),
+  );
+});
+
+test('records to a temporary file the proxy does not index, then moves it into place', () => {
+  const { dir, calls, driver } = fixture();
+  recordPage(driver, { url: URL_, cacheDir: dir });
+  const open = calls.find(([name]) => name === 'open')[1];
+  assert.ok(!open.config.contextOptions.recordHar.path.endsWith('.har'));
+  assert.ok(existsSync(path.join(dir, harFileName(URL_))));
+  assert.deepEqual(
+    readdirSync(dir).filter((f) => f.includes('.har')),
+    [harFileName(URL_)],
+  );
+});
+
+test('a failed refresh keeps the previous HAR and leaves no temporary file', () => {
+  const { dir, driver } = fixture({ failOn: 'scrollHeight' });
+  const har = path.join(dir, harFileName(URL_));
+  writeFileSync(har, '{"log":{"entries":["old"]}}');
+  assert.throws(() => recordPage(driver, { url: URL_, cacheDir: dir }), /boom/);
+  assert.equal(readFileSync(har, 'utf8'), '{"log":{"entries":["old"]}}');
+  assert.deepEqual(
+    readdirSync(dir).filter((f) => f.includes('.har')),
+    [harFileName(URL_)],
   );
 });
 

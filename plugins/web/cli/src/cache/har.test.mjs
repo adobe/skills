@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { dropFailedEntries, harFileName, loadHarIndex } from '#src/cache/har.mjs';
@@ -107,6 +107,33 @@ test('loadHarIndex rejects a relative _file that escapes the cache dir', async (
 test('loadHarIndex rejects an absolute _file', async () => {
   const dir = await tmp();
   await writeHar(path.join(dir, 'a.har'), [entry('https://a.test/', 200, { _file: '/etc/hosts' })]);
+  assert.throws(
+    () => loadHarIndex(dir),
+    (err) => err.code === 'USAGE' && /escapes the cache dir/.test(err.message),
+  );
+});
+
+test('loadHarIndex rejects a _file that is a symlink to a file outside the cache dir', async () => {
+  const dir = await tmp();
+  const outside = path.join(await tmp(), 'secret.txt');
+  await writeFile(outside, 'secret');
+  await symlink(outside, path.join(dir, 'body.bin'));
+  await writeHar(path.join(dir, 'a.har'), [entry('https://a.test/', 200, { _file: 'body.bin' })]);
+  assert.throws(
+    () => loadHarIndex(dir),
+    (err) => err.code === 'USAGE' && /escapes the cache dir/.test(err.message),
+  );
+});
+
+test('loadHarIndex rejects a _file under a symlinked directory outside the cache dir', async () => {
+  const dir = await tmp();
+  const outside = await tmp();
+  await mkdir(path.join(outside, 'sub'));
+  await writeFile(path.join(outside, 'sub', 'secret.txt'), 'secret');
+  await symlink(outside, path.join(dir, 'link'));
+  await writeHar(path.join(dir, 'a.har'), [
+    entry('https://a.test/', 200, { _file: 'link/sub/secret.txt' }),
+  ]);
   assert.throws(
     () => loadHarIndex(dir),
     (err) => err.code === 'USAGE' && /escapes the cache dir/.test(err.message),
