@@ -30,34 +30,39 @@ A project that fails this check was already styled; this skill only overwrites d
 Use a real browser that renders the page and runs its scripts. Reading HTML or CSS files over
 plain HTTP is not a substitute: it yields stylesheet source and variable fallbacks, not what
 the page shows, and bot-managed sites answer it with a block or maintenance page. If no
-browser is available, stop and say so.
+browser is available, stop and say so. Start the browser from a directory outside the project.
 
 - **Pages:** the URL given, plus up to two inner pages linked from the main navigation,
-  preferring content-heavy ones (an article, an about page). Home pages alone are skewed by
-  heroes and promotional CTAs.
+  preferring content-heavy ones (an article or an about page, not an index or listing page).
+  Home pages alone are skewed by heroes and promotional CTAs.
 - **Widths:** read each page at about 1440 px wide (desktop values) and about 375 px wide
   (mobile values). Reload after resizing.
-- **Overlays:** accept or close cookie/consent banners and newsletter popups before reading,
-  so their colors and fonts don't enter the measurements.
+- **Overlays:** look at the page first (screenshot or accessibility snapshot): consent managers
+  often render in a shadow root or iframe that a DOM text search misses. Accept or close
+  banners and popups, then confirm `document.elementFromPoint` at the viewport centre isn't a
+  fixed overlay. Report what you closed, or "no overlay".
 - **Blocked:** if the page is a bot challenge, "access denied", maintenance or login page, or a
-  consent wall that can't be dismissed, retry with a headed browser if you can. If it stays blocked, stop and report it. Never take
-  values from an interstitial page.
+  consent wall that can't be dismissed, retry with a headed browser if you can. If it stays
+  blocked, stop and report it. Never take values from an interstitial page.
 
 ## 3. Read the values from the rendered page
 
 Run JavaScript in the page and read browser data, not stylesheet text:
 
-- `getComputedStyle()` on `body`, paragraphs and inline links inside the main content, `h1`–`h6`,
-  buttons, the header/nav bar, footer and section backgrounds. Skip elements that are hidden
+- `getComputedStyle()` on `body`, paragraphs, inline links and `h1`–`h6` inside the main content
+  (`main`, else `[role=main]`, else `body` minus header, nav and footer; say which), buttons,
+  the header/nav bar, footer and section backgrounds. Skip elements that are hidden
   (`display: none`, zero size, clipped, `visibility: hidden`) — many sites ship hidden SEO
   headings.
-- Real hover state: hover an inline content link and the primary button, then read the
-  computed colors again.
+- Real hover state: hover an inline content link and the primary button (often an `<a>`
+  styled as a button), confirm the hover applied (`:hover` matches the element), then read
+  the computed colors again. A hover you couldn't perform is unmeasured, not "no change".
 - `getComputedStyle(document.documentElement)` custom properties: if the site exposes tokens
   like `--color-primary`, use their names as hints for which color plays which role.
 - Loaded fonts: `document.fonts` entries with status `loaded`, and the font file URLs from the
   performance resource entries (`.woff2`, `.woff`, `.ttf`, `.otf`).
-- Header bar: the rendered height of the main navigation bar at 1440 px.
+- Header bar: the rendered height of the main navigation bar at both widths (at 375 px, the
+  bar that holds the logo and the menu button, even if the links are collapsed).
 - Favicon and logo: follow [references/lookup-rules.md](references/lookup-rules.md).
 
 Ignore fully transparent colors (`transparent`, alpha 0) — they mean "inherits the parent".
@@ -69,17 +74,20 @@ estimate: a value you did not measure keeps its boilerplate value and goes in th
 
 | Slot | Source on the rendered page |
 | --- | --- |
-| `--background-color` | page background: first non-transparent of `body`, `html`, `main` |
+| `--background-color` | the innermost opaque background on `main` or its ancestors (a full-width wrapper can paint over `body`); `body`/`html` only if none is opaque. Bands inside `main` are for `--light-color` |
 | `--text-color` | most common color of paragraphs in the main content |
 | `--link-color` | color of inline links inside main-content paragraphs (not nav, footer, buttons) |
-| `--link-hover-color` | the same link's color while hovered; if hover doesn't change the color, use `--link-color` and say so |
+| `--link-hover-color` | the same link's color while hovered; if a confirmed hover doesn't change the color, use `--link-color` and say so; if no hover could be performed, keep the boilerplate value and list it as unmeasured |
 | `--light-color` | most common light, non-white surface: alternating sections, footer, cards. Boilerplate uses it for light sections, the footer and disabled buttons |
 | `--dark-color` | primary button hover background if dark; else a dark section/footer background; else secondary text color. Boilerplate uses it for primary-button hover |
 | `--body-font-family` | family of main-content paragraphs (the first family that actually loaded) |
 | `--heading-font-family` | family of the visible `h1`/`h2` |
 | `--body-font-size-m` / `-s` / `-xs` | paragraph text / smaller supporting text (captions, nav links) / smallest legible text (legal, fine print) |
 | `--heading-font-size-xxl` … `-xs` | `h1` … `h6` |
-| `--nav-height` | rendered height of the main navigation bar (the row with the logo and main links, not utility or promo bars) |
+| `--nav-height` | rendered height of the main navigation bar's own box (the row with the logo and main links, not utility or promo bars, nor a logo or menu that overflows the bar); when the header stacks several rows, report the total height and its rows too |
+
+"Most common" and visible-element counts are taken over all main-content elements of every page
+read at that width, not a sample.
 
 Sizes:
 
@@ -87,18 +95,22 @@ Sizes:
   `@media (width >= 900px) { :root { … } }` block. Keep both blocks and all nine size slots in
   each. If `--nav-height` differs between widths, add the desktop value to the media block too.
 - Per heading level, when sizes differ across pages or elements, pick the one with the highest
-  `size × weight × number of visible elements`.
+  `size × weight × number of visible main-content elements`. Headings in headers, nav, footers
+  and asides don't count; a level found only there is unmeasured.
 - The heading scale must descend from `xxl` to `xs`, because authors pick levels by meaning.
   If the measured sizes don't descend (an `h3` larger than the `h2`), assign the distinct
   measured sizes to `xxl`, `xl`, … in descending order instead, and report the per-level values.
-- A level with no measured size keeps its boilerplate value, unless that breaks the descending
+- A level with no measured size keeps its boilerplate value for that width (mobile and desktop
+  differ), unless that breaks the descending
   order; then it takes the size of the level above it. Report it as filled, not measured.
 
 ## 5. Fonts
 
-Only the families used by body text and headings, and only the weights and styles they use.
-Declare each face with the weight and style the browser reports for it in `document.fonts`;
-treat a file as a variable font only if the browser reports a weight range for it. Copy every
+Only the families used by body text and headings, and every face of them that `document.fonts`
+reports as loaded on the pages you read (italics, bold and one-off weights included). Don't
+skip a loaded face as "unused". Declare each face with the weight and style the browser
+reports for it; treat a file as a variable font only if the browser reports a weight range for
+it. Copy every
 file the browser loaded for those faces, not just the Latin one: a face split into subsets
 (Latin, Cyrillic, Greek, …) keeps one `@font-face` per file with its `unicode-range`.
 
@@ -114,9 +126,11 @@ file the browser loaded for those faces, not just the Latin one: a face split in
 Wiring — the boilerplate's loading mechanism stays as is:
 
 - `styles/fonts.css`: replace the Roboto `@font-face` rules with the brand ones in the same
-  shape (`font-display: swap`, `src: url('../fonts/<file>') format('woff2')`). Delete the Roboto
-  files from `fonts/`. Keep `loadFonts()` in `scripts/scripts.js` untouched.
-- Proprietary copies: start `styles/fonts.css` with a comment
+  shape (`font-display: swap`, `src: url('../fonts/<file>') format('woff2')`, or `'truetype'`/
+  `'opentype'` for `.ttf`/`.otf` files, which you don't convert; report any file over 100 KB).
+  Delete the Roboto files from `fonts/`. Keep `loadFonts()` in `scripts/scripts.js` untouched.
+- Proprietary copies (any family not in the Google Fonts catalogue and not stated as
+  OFL/Apache/MIT, or when unsure): start `styles/fonts.css` with a comment
   `/* FONT LICENSING REQUIRED BEFORE GOING LIVE: <family> (<foundry if known>) */` per family.
 - `styles/styles.css`: replace the two Roboto fallback faces with one per brand family, named
   `<family>-fallback`, `src: local('Arial')` for sans-serif or `local('Times New Roman')` for
@@ -154,7 +168,8 @@ browser or other tools left in the project (session folders, screenshots, downlo
 ## 8. Self-check, then report
 
 Run all six checks on the files you wrote, not from memory. The report lists each one with
-pass or fail; a report missing a check is incomplete. Fix any failure before reporting:
+pass or fail; a report missing a check is incomplete. Fix any failure before reporting; a
+failure you can't fix needs a stated reason:
 
 - Every non-generic family in the two font stacks is accounted for: a brand family has an
   `@font-face` in `styles/fonts.css` or is listed as commercial-hosted in the report; a
@@ -163,8 +178,8 @@ pass or fail; a report missing a check is incomplete. Fix any failure before rep
 - `head.html` differs from the boilerplate by at most the favicon line.
 - Both `:root` blocks still define all nine size slots, and heading sizes descend in each.
 - Every value in the report table has a source; anything else is listed as boilerplate or filled.
-- `git status` shows changes only in the files listed in step 7 (plus the report file, if the
-  user asked for one).
+- `git status --short`, run after the last write and quoted in the report, shows changes only
+  in the files listed in step 7 (plus any file the user asked for, named in the report).
 
 Give the report in your final reply. Write it to a file only when the user asks for one.
 
@@ -172,7 +187,11 @@ Give the report in your final reply. Write it to a file only when the user asks 
 2. Table: slot | mobile value | desktop value | source (page, element, property).
 3. Slots left at boilerplate value or filled, and why.
 4. Fonts: family, files copied, licence status, hosted families not copied.
-5. Favicon and logo: source URL and file written.
+5. Favicon and logo: source URL and file written; overlays closed (or "no overlay").
 6. Brand traits with no boilerplate slot, measured but not written: button colors, radius and
-   padding; heading weight and line height; content max-width; extra accent colors;
+   padding; body and heading weight, line height; content max-width; extra accent colors;
    `theme-color`.
+
+This skill doesn't render the result. To review it, serve a page with the aem-cli skill; tell
+the user how to stop any server you leave running, and don't hide files with
+`.git/info/exclude`.

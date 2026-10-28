@@ -23,7 +23,9 @@ Candidates, inside the header, banner or main navigation:
 
 - an inline `<svg>`, or an `<img>` (or `<picture>`), whose own or ancestor link's class, id,
   `alt`, `aria-label` or file name contains "logo" or the brand name; a link to the home page
-  wrapping a single image or SVG is a strong candidate.
+  wrapping an image or SVG (plus text, if any) is a strong candidate — apply the size limits
+  below to that link. When it also holds text, save the icon only and report the wordmark as
+  text.
 
 Keep a candidate only if, at 1440 px:
 
@@ -37,8 +39,10 @@ or file name, then the brand name; on a tie, the larger rendered area.
 
 Saving:
 
-- Inline SVG: serialize the element. Keep its colors; make sure it has a `viewBox`. Inline
-  `<use>` references to a sprite so the file stands alone.
+- Inline SVG: serialize the element (don't retype it) and make sure it has a `viewBox`.
+  Colors set by site CSS or `currentColor` don't travel: write the computed fill/stroke onto
+  the shapes, and drop classes and fixed width/height. Inline `<use>` references to a sprite
+  so the file stands alone.
 - `<img>`: download the URL the browser actually displayed (`currentSrc`), query string intact.
 - A logo drawn as a CSS background image: download that URL and say so in the report.
 - Nothing found: report it. Never draw or synthesize a logo.
