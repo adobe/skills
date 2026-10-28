@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/adobe/skills/compare/web-cli-v2.0.0...web-cli-v2.1.0) (2026-10-28)
+
+
+### Features
+
+* **web-cli:** add HAR cache with cache record, cache proxy and browser open --proxy ([#503](https://github.com/adobe/skills/issues/503)) ([e947b4e](https://github.com/adobe/skills/commit/e947b4e6e2bdeffc789f9bc2ea1719a625422de4))
+
 # [2.0.0](https://github.com/adobe/skills/compare/web-cli-v1.2.0...web-cli-v2.0.0) (2026-10-21)
 
 
