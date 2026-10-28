@@ -6,6 +6,9 @@ import { dropFailedEntries, harFileName } from '#src/cache/har.mjs';
 import { extendConfig, resolveLaunch } from '#src/recipe.mjs';
 import { generateSessionName } from '#src/session.mjs';
 
+// 150 scrolls x 600 ms + two 8 s networkidle waits ~ 106 s; leave headroom.
+const SCROLL_TIMEOUT_MS = 180_000;
+
 const LOAD_AND_SCROLL = `async page => {
   await page.waitForLoadState('load');
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
@@ -58,7 +61,7 @@ export function recordPage(driver, { url, cacheDir, headed, recipe }) {
   try {
     driver.open({ session, url, headed, ...launch, config });
     assertNotBlocked(driver.pageHealth(session));
-    driver.run(session, { code: LOAD_AND_SCROLL });
+    driver.run(session, { code: LOAD_AND_SCROLL, timeoutMs: SCROLL_TIMEOUT_MS });
     driver.run(session, { code: FLUSH_HAR });
   } catch (err) {
     closeQuietly(driver, session);

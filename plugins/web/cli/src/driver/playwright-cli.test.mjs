@@ -8,12 +8,14 @@ import { createDriver } from './playwright-cli.mjs';
 function setup(responder = () => '{}', { debug = false } = {}) {
   const calls = [];
   const outputDir = mkdtempSync(join(tmpdir(), 'web-driver-test-'));
-  const exec = (args) => {
+  const execOpts = [];
+  const exec = (args, opts) => {
     calls.push(args);
+    execOpts.push(opts);
     const out = responder(args);
     return typeof out === 'string' ? { stdout: out, stderr: '', status: 0 } : out;
   };
-  return { calls, outputDir, driver: createDriver({ exec, outputDir, debug }) };
+  return { calls, execOpts, outputDir, driver: createDriver({ exec, outputDir, debug }) };
 }
 
 const code = (fn) => {
@@ -203,6 +205,14 @@ test('run with file passes it through untouched', () => {
   const { driver, calls } = setup(() => '{"result":"2"}');
   assert.equal(driver.run('s', { file: '/p/f.mjs' }), 2);
   assert.deepEqual(calls[0], ['-s=s', 'run-code', '--filename=/p/f.mjs']);
+});
+
+test('run passes a per-call timeoutMs to exec and defaults to the driver timeout', () => {
+  const { driver, execOpts } = setup(() => '{"result":"2"}');
+  driver.run('s', { file: '/p/f.mjs', timeoutMs: 180_000 });
+  driver.run('s', { file: '/p/f.mjs' });
+  assert.equal(execOpts[0].timeoutMs, 180_000);
+  assert.equal(execOpts[1].timeoutMs, 60_000);
 });
 
 test('attach uses --session and no -s', () => {

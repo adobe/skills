@@ -31,8 +31,8 @@ function fixture({ health = HEALTHY, failOn, writeHar = true } = {}) {
       calls.push(['pageHealth', session]);
       return health;
     },
-    run(session, { code }) {
-      calls.push(['run', code]);
+    run(session, { code, timeoutMs }) {
+      calls.push(['run', code, timeoutMs]);
       if (failOn && code.includes(failOn)) throw new Error('boom');
       if (writeHar && code.includes('context().close()')) {
         const har = { log: { entries: [entry(URL_, 200), entry(`${URL_}/x`, -1)] } };
@@ -78,6 +78,8 @@ test('loads, scrolls, flushes the HAR and never closes the session on success', 
   assert.match(scroll, /wheel\(0, 300\)/);
   assert.match(scroll, /waitForTimeout\(600\)/);
   assert.match(flush, /page\.context\(\)\.close\(\)/);
+  const [scrollRun] = calls.filter(([name]) => name === 'run');
+  assert.equal(scrollRun[2], 180_000);
 });
 
 test('returns cleaned entry counts and the byte size of the HAR plus its body files', () => {
