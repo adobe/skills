@@ -1,0 +1,170 @@
+---
+name: brand-setup
+description: Use when a fresh AEM Edge Delivery Services boilerplate project should take on the brand basics of an existing website being migrated to EDS — colors, body and heading fonts, font sizes, header height, favicon and logo. Triggers include "set up the brand from <site>", "match the source site's look", "apply the client's fonts and colors", "use their favicon and logo". Not for projects whose styles were already customized, and not for full design-system extraction (spacing scales, components, motifs).
+license: Apache-2.0
+metadata:
+  version: "0.1.0"
+---
+
+# Brand setup from a source site
+
+Fill the brand slots that the aem-boilerplate already defines with values measured on the
+source site, so every later migration step renders in the client's brand. The project you
+run in is the target; the source site URL comes from the user.
+
+Measured, not guessed: every value you write comes from what a browser rendered on the source
+site. A slot you cannot source keeps its boilerplate value and is listed in the report.
+
+## 1. Check the project is a fresh boilerplate
+
+Stop, with one line saying why, unless all of these hold at the project root:
+
+- `styles/styles.css` contains `--link-color: #3b63fb` and a `--body-font-family` starting
+  with `roboto`.
+- `styles/fonts.css` exists and declares the `roboto` faces.
+
+A project that fails this check was already styled; this skill only overwrites defaults.
+
+## 2. Load the source site in a browser
+
+Use a real browser that renders the page and runs its scripts. Reading HTML or CSS files over
+plain HTTP is not a substitute: it yields stylesheet source and variable fallbacks, not what
+the page shows, and bot-managed sites answer it with a block or maintenance page. If no
+browser is available, stop and say so.
+
+- **Pages:** the URL given, plus up to two inner pages linked from the main navigation,
+  preferring content-heavy ones (an article, an about page). Home pages alone are skewed by
+  heroes and promotional CTAs.
+- **Widths:** read each page at about 1440 px wide (desktop values) and about 375 px wide
+  (mobile values). Reload after resizing.
+- **Overlays:** accept or close cookie/consent banners and newsletter popups before reading,
+  so their colors and fonts don't enter the measurements.
+- **Blocked:** if the page is a bot challenge, "access denied", maintenance or login page,
+  retry with a headed browser if you can. If it stays blocked, stop and report it. Never take
+  values from an interstitial page.
+
+## 3. Read the values from the rendered page
+
+Run JavaScript in the page and read browser data, not stylesheet text:
+
+- `getComputedStyle()` on `body`, paragraphs and inline links inside the main content, `h1`–`h6`,
+  buttons, the header/nav bar, footer and section backgrounds. Skip elements that are hidden
+  (`display: none`, zero size, clipped, `visibility: hidden`) — many sites ship hidden SEO
+  headings.
+- Real hover state: hover an inline content link and the primary button, then read the
+  computed colors again.
+- `getComputedStyle(document.documentElement)` custom properties: if the site exposes tokens
+  like `--color-primary`, use their names as hints for which color plays which role.
+- Loaded fonts: `document.fonts` entries with status `loaded`, and the font file URLs from the
+  performance resource entries (`.woff2`, `.woff`, `.ttf`, `.otf`).
+- Header bar: the rendered height of the main navigation bar at 1440 px.
+- Favicon and logo: follow [references/lookup-rules.md](references/lookup-rules.md).
+
+Ignore fully transparent colors (`transparent`, alpha 0) — they mean "inherits the parent".
+
+## 4. Map values to the boilerplate slots
+
+Write values exactly as measured (convert `rgb()` to hex). Don't round, darken, derive or
+estimate: a value you did not measure keeps its boilerplate value and goes in the report.
+
+| Slot | Source on the rendered page |
+| --- | --- |
+| `--background-color` | page background: first non-transparent of `body`, `html`, `main` |
+| `--text-color` | most common color of paragraphs in the main content |
+| `--link-color` | color of inline links inside main-content paragraphs (not nav, footer, buttons) |
+| `--link-hover-color` | the same link's color while hovered; if hover doesn't change the color, use `--link-color` and say so |
+| `--light-color` | most common light, non-white surface: alternating sections, footer, cards. Boilerplate uses it for light sections, the footer and disabled buttons |
+| `--dark-color` | primary button hover background if dark; else a dark section/footer background; else secondary text color. Boilerplate uses it for primary-button hover |
+| `--body-font-family` | family of main-content paragraphs (the first family that actually loaded) |
+| `--heading-font-family` | family of the visible `h1`/`h2` |
+| `--body-font-size-m` / `-s` / `-xs` | paragraph text / smaller supporting text (captions, nav links) / smallest legible text (legal, fine print) |
+| `--heading-font-size-xxl` … `-xs` | `h1` … `h6` |
+| `--nav-height` | rendered height of the main navigation bar (the row with the logo and main links, not utility or promo bars) |
+
+Sizes:
+
+- Mobile values (375 px) go in the top `:root`; desktop values (1440 px) go in the existing
+  `@media (width >= 900px) { :root { … } }` block. Keep both blocks and all nine size slots in
+  each. If `--nav-height` differs between widths, add the desktop value to the media block too.
+- Per heading level, when sizes differ across pages or elements, pick the one with the highest
+  `size × weight × number of visible elements`.
+- The heading scale must descend from `xxl` to `xs`, because authors pick levels by meaning.
+  If the measured sizes don't descend (an `h3` larger than the `h2`), assign the distinct
+  measured sizes to `xxl`, `xl`, … in descending order instead, and report the per-level values.
+- A level with no measured size keeps its boilerplate value, unless that breaks the descending
+  order; then it takes the nearest smaller measured size. Report it as filled, not measured.
+
+## 5. Fonts
+
+Only the families used by body text and headings, and only the weights and styles they use.
+Declare each face with the weight and style the browser reports for it in `document.fonts`;
+treat a file as a variable font only if the browser reports a weight range for it.
+
+- **Self-hosted by the site** (files on its own domain or CDN): download the files the browser
+  loaded into `fonts/`. Proprietary families are copied too, for fidelity, with a licensing
+  warning (below).
+- **Open-licence hosting service** (Google Fonts): download the `woff2` files the browser
+  loaded (latin subset) into `fonts/` and self-host them, as the boilerplate does for Roboto.
+- **Commercial hosting service** (Adobe Fonts/Typekit, fonts.net, Cloud.typography and the
+  like): don't copy. Keep the family name in the stack, give it a fallback face, and report the
+  family and service so the project can add a licensed kit later.
+
+Wiring — the boilerplate's loading mechanism stays as is:
+
+- `styles/fonts.css`: replace the Roboto `@font-face` rules with the brand ones in the same
+  shape (`font-display: swap`, `src: url('../fonts/<file>') format('woff2')`). Delete the Roboto
+  files from `fonts/`. Keep `loadFonts()` in `scripts/scripts.js` untouched.
+- Proprietary copies: start `styles/fonts.css` with a comment
+  `/* FONT LICENSING REQUIRED BEFORE GOING LIVE: <family> (<foundry if known>) */` per family.
+- `styles/styles.css`: replace the two Roboto fallback faces with one per brand family, named
+  `<family>-fallback`, `src: local('Arial')` for sans-serif or `local('Times New Roman')` for
+  serif, and a `size-adjust` measured in the browser: render the same sample sentence in the
+  brand font and in the local font at one size and use the width ratio as a percentage.
+- Stacks: `--body-font-family: <family>, <family>-fallback, sans-serif;` (or `serif`). One
+  family for both roles means one set of faces and one fallback face.
+- Never add font `<link>`, `<style>` or preload lines to `head.html`.
+
+## 6. Favicon and logo
+
+Per [references/lookup-rules.md](references/lookup-rules.md):
+
+- If the source serves `/favicon.ico`, it replaces the root `favicon.ico`.
+- If the chosen icon is SVG or PNG, save it at the root as `favicon.svg`/`favicon.png` and add
+  exactly one line to `head.html`: `<link rel="icon" href="/favicon.<ext>">`. This is the only
+  `head.html` edit this skill makes. Delete the boilerplate `favicon.ico` if the source serves
+  none, so its icon doesn't leak.
+- Logo: `icons/logo.svg` for SVG; a raster logo is saved as `icons/logo.<ext>`. Don't wire it
+  into the header — the nav document does that.
+
+If a file download is refused outside the browser, fetch it from inside the page instead.
+
+## 7. Write only these files
+
+`styles/styles.css` (the two `:root` blocks and the fallback faces), `styles/fonts.css`,
+`fonts/*`, root favicon file(s), the one `head.html` favicon line, `icons/logo.<ext>`.
+Don't add custom properties, change other rules, edit blocks or scripts. Delete anything your
+browser or other tools left in the project (session folders, screenshots, downloads).
+
+## 8. Self-check, then report
+
+Run all six checks on the files you wrote, not from memory. The report lists each one with
+pass or fail; a report missing a check is incomplete. Fix any failure before reporting:
+
+- Every quoted family in the two font stacks has an `@font-face` in `styles/fonts.css`, or is
+  listed as commercial-hosted in the report.
+- Every `url()` in `styles/fonts.css` points to a file in `fonts/`.
+- `head.html` differs from the boilerplate by at most the favicon line.
+- Both `:root` blocks still define all nine size slots, and heading sizes descend in each.
+- Every value in the report table has a source; anything else is listed as boilerplate or filled.
+- `git status` shows changes only in the files listed in step 7.
+
+Report:
+
+1. The six self-check results.
+2. Table: slot | mobile value | desktop value | source (page, element, property).
+3. Slots left at boilerplate value or filled, and why.
+4. Fonts: family, files copied, licence status, hosted families not copied.
+5. Favicon and logo: source URL and file written.
+6. Brand traits with no boilerplate slot, measured but not written: button colors, radius and
+   padding; heading weight and line height; content max-width; extra accent colors;
+   `theme-color`.
