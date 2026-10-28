@@ -210,3 +210,43 @@ test('browser list gives url null when evaluate throws', async () => {
   const { stdout } = await run(['browser', 'list'], { sessions: OPEN, evalThrows: true });
   assert.equal(JSON.parse(stdout.buf).sessions[0].url, null);
 });
+
+test('browser open --proxy sets proxy and ignoreHTTPSErrors and prints proxy', async () => {
+  const proxy = 'http://127.0.0.1:3002';
+  const { code, stdout, calls } = await run([
+    'browser',
+    'open',
+    'https://a.test',
+    '--proxy',
+    proxy,
+  ]);
+  assert.equal(code, 0);
+  const { config } = call(calls, 'open')[1];
+  assert.equal(config.launchOptions.proxy.server, proxy);
+  assert.equal(config.contextOptions.ignoreHTTPSErrors, true);
+  assert.equal(JSON.parse(stdout.buf).proxy, proxy);
+});
+
+test('browser open --proxy keeps the recipe probe config', async () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'rec-')), 'recipe.json');
+  const probe = [{ config: { contextOptions: { locale: 'fr' } } }];
+  writeFileSync(file, JSON.stringify({ probe }));
+  const { calls } = await run([
+    'browser',
+    'open',
+    'https://a.test',
+    '--proxy',
+    'http://127.0.0.1:3002',
+    '--recipe',
+    file,
+  ]);
+  const { config } = call(calls, 'open')[1];
+  assert.deepEqual(config.contextOptions, { locale: 'fr', ignoreHTTPSErrors: true });
+  assert.equal(config.launchOptions.proxy.server, 'http://127.0.0.1:3002');
+});
+
+test('browser open --proxy with an invalid URL exits 2 USAGE', async () => {
+  const { code, stdout } = await run(['browser', 'open', 'https://a.test', '--proxy', 'notaurl']);
+  assert.equal(code, 2);
+  assert.equal(JSON.parse(stdout.buf).error.code, 'USAGE');
+});

@@ -2,7 +2,7 @@ import { parseIntArg } from '#src/args.mjs';
 import { existsSync } from 'node:fs';
 import { CliError } from '#src/errors.mjs';
 import { createContext } from '#src/context.mjs';
-import { resolveLaunch } from '#src/recipe.mjs';
+import { extendConfig, resolveLaunch } from '#src/recipe.mjs';
 import { artifactPath, generateSessionName, requireOpenSession } from '#src/session.mjs';
 
 const HELP = {
@@ -10,10 +10,11 @@ const HELP = {
 Example:
   S=$(web browser open https://example.com --headed | jq -r .session)
 Output:
-  { session, url, headed, cdpPort? }
+  { session, url, headed, cdpPort?, proxy? }
 Notes:
   Without --session a name web-<4 hex> is generated and returned. An open name exits 2
   (SESSION_EXISTS). --recipe applies a recipe from \`web probe\`. Leaves the browser open.
+  --proxy routes the browser through web cache proxy (certificate errors ignored).
 `,
   ATTACH: `
 Example:
@@ -99,6 +100,16 @@ function sessionUrl(driver, { name, status }) {
   }
 }
 
+function assertUrl(value) {
+  try {
+    new URL(value);
+  } catch {
+    throw new CliError('USAGE', `invalid --proxy url: ${value}`, {
+      hint: 'pass an absolute URL such as http://127.0.0.1:3002',
+    });
+  }
+}
+
 function parseParams(json) {
   if (json === undefined) return {};
   try {
@@ -135,18 +146,34 @@ export function registerBrowser(program, deps) {
       .description('open a browser session')
       .addHelpText('after', HELP.OPEN)
       .option('--cdp-port <n>', 'remote debugging port', parseIntArg)
-      .option('--persistent', 'use a persistent profile'),
+      .option('--persistent', 'use a persistent profile')
+      .option('--proxy <url>', 'route the browser through a web cache proxy'),
     ({ opts, driver, print, recipe }, url) => {
       const session = opts.session ?? generateSessionName();
-      const cdpPort = opts.cdpPort;
+      const { cdpPort, proxy } = opts;
+      if (proxy) assertUrl(proxy);
+      const launch = resolveLaunch(recipe, { persistent: opts.persistent });
+      const config = proxy
+        ? extendConfig(launch.config, {
+            launchOptions: { proxy: { server: proxy } },
+            contextOptions: { ignoreHTTPSErrors: true },
+          })
+        : launch.config;
       driver.open({
         session,
         url,
         headed: opts.headed,
         cdpPort,
-        ...resolveLaunch(recipe, { persistent: opts.persistent }),
+        ...launch,
+        ...(config && { config }),
       });
-      print({ session, url, headed: Boolean(opts.headed), ...(cdpPort && { cdpPort }) });
+      print({
+        session,
+        url,
+        headed: Boolean(opts.headed),
+        ...(cdpPort && { cdpPort }),
+        ...(proxy && { proxy }),
+      });
     },
   );
 
