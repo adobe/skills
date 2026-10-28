@@ -92,7 +92,7 @@ Sizes:
   If the measured sizes don't descend (an `h3` larger than the `h2`), assign the distinct
   measured sizes to `xxl`, `xl`, … in descending order instead, and report the per-level values.
 - A level with no measured size keeps its boilerplate value, unless that breaks the descending
-  order; then it takes the nearest smaller measured size. Report it as filled, not measured.
+  order; then it takes the size of the level above it. Report it as filled, not measured.
 
 ## 5. Fonts
 
@@ -119,7 +119,8 @@ Wiring — the boilerplate's loading mechanism stays as is:
 - `styles/styles.css`: replace the two Roboto fallback faces with one per brand family, named
   `<family>-fallback`, `src: local('Arial')` for sans-serif or `local('Times New Roman')` for
   serif, and a `size-adjust` measured in the browser: render the same sample sentence in the
-  brand font and in the local font at one size and use the width ratio as a percentage.
+  brand font and in the local font at one size; `size-adjust` = brand width ÷ local width,
+  as a percentage.
 - Stacks: `--body-font-family: <family>, <family>-fallback, sans-serif;` (or `serif`). One
   family for both roles means one set of faces and one fallback face.
 - Never add font `<link>`, `<style>` or preload lines to `head.html`.
