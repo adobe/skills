@@ -75,9 +75,10 @@
     "id": "BB-010",
     "claim": "Most variants should be CSS-only; check variant classes in JS only when the variant changes DOM structure or behavior.",
     "source": "SKILL.md:140-141, SKILL.md:200, references/js-guidelines.md:135",
-    "kind": "eds",
+    "kind": "generic",
     "verified": "consistent with https://www.aem.live/developer/markup-sections-blocks (options just add classes); prescriptive guidance, no source states it as a rule",
-    "question": "In EDS, how should a block variant that only changes appearance (for example a darker color scheme) be implemented?"
+    "question": null,
+    "quiz": "reclassified generic after the first run: guidance, not a documented platform fact"
   },
   {
     "id": "BB-011",
@@ -140,17 +141,19 @@
     "id": "BB-018",
     "claim": "Prefer a single, clear content model over supporting multiple authored structures in one block; work with authors to agree on it.",
     "source": "references/js-guidelines.md:232",
-    "kind": "eds",
-    "verified": "https://www.aem.live/developer/markup-sections-blocks ('keep things simple and intuitive for authors ... developers absorb the complexity')",
-    "question": "What guidance does EDS give about designing a block to accept several different authored content structures?"
+    "kind": "generic",
+    "verified": "not established: https://www.aem.live/developer/markup-sections-blocks says keep authoring simple and intuitive, but states no single-content-model rule",
+    "question": null,
+    "quiz": "reclassified generic after the first run: guidance, not a documented platform fact"
   },
   {
     "id": "BB-019",
     "claim": "In decorate(), re-use (move) existing authored elements such as <picture> and headings instead of recreating them from their text.",
     "source": "SKILL.md:122, SKILL.md:132, references/js-guidelines.md:29-45",
-    "kind": "eds",
+    "kind": "generic",
     "verified": "consistent with aem-boilerplate@5cea543 blocks/cards/cards.js:L9 (moves row.firstElementChild into new li); prescriptive, not stated in docs",
-    "question": "What is the recommended way to handle authored elements (pictures, headings, links) when restructuring a block's DOM in its decoration function?"
+    "question": null,
+    "quiz": "reclassified generic after the first run: guidance, not a documented platform fact"
   },
   {
     "id": "BB-020",

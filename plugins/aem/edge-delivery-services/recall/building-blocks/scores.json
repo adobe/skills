@@ -64,7 +64,8 @@
       "claude-sonnet-5.5": "correct",
       "gemini-4-argon": "correct",
       "gpt-6.1-sol": "correct",
-      "decision": "cut"
+      "decision": "cut",
+      "note": "generic (reclassified after quiz); all 3 correct anyway"
     },
     "BB-011": {
       "claude-sonnet-5.5": "correct",
@@ -111,14 +112,15 @@
       "claude-sonnet-5.5": "missing",
       "gemini-4-argon": "correct",
       "gpt-6.1-sol": "correct",
-      "decision": "judgement",
-      "note": "Sonnet vague and leans toward flexibility (\"few content-structure assumptions\") rather than one agreed model."
+      "decision": "cut",
+      "note": "generic (reclassified after quiz: no documented single-content-model rule). Sonnet was vague."
     },
     "BB-019": {
       "claude-sonnet-5.5": "correct",
       "gemini-4-argon": "correct",
       "gpt-6.1-sol": "correct",
-      "decision": "cut"
+      "decision": "cut",
+      "note": "generic (reclassified after quiz); all 3 correct anyway"
     },
     "BB-020": {
       "claude-sonnet-5.5": "correct",
