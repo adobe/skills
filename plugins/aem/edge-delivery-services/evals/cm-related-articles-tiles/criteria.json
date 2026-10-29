@@ -1,0 +1,41 @@
+{
+  "context": "Tests recognizing that a field-by-field tile spec does not mean authors should type every field: the data already lives in page metadata / query index, so editors should only paste article links (in any arrangement), with inference (current page category) instead of required configuration for the fallback. Code should collect links regardless of structure, resolve them against the query index, and tolerate missing/unknown links. A per-field authored collection or a key/value block is the failure mode.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Editors supply only article links",
+      "max_score": 25,
+      "description": "In the curated case the editor authors only links (or URLs) to the chosen articles — in a single cell, one per row, or as a list. Editors do NOT type or paste thumbnail, category, title, excerpt, date or read time into the block."
+    },
+    {
+      "name": "Fallback inferred, not configured",
+      "max_score": 25,
+      "description": "When no links are authored, the block infers the category from the current page (e.g. `getMetadata('category')`) and shows the newest 3 posts of that category, excluding the current post. Authoring an empty block (or just the block name) is enough; no required `Category | ...`/`Mode | auto` rows. Optional behavior-only settings (e.g. a limit) are acceptable if not required."
+    },
+    {
+      "name": "No per-field columns or label rows",
+      "max_score": 10,
+      "description": "The block has no header/label row and no cell per tile field (e.g. `| Image | Category | Title | Excerpt | Date |`), and no `Title | ...` key/value rows."
+    },
+    {
+      "name": "Links collected regardless of structure",
+      "max_score": 15,
+      "description": "related-articles.js gathers links with something like `block.querySelectorAll('a')`, so links work whether authored in one cell, one per row, or in a list; it compares by URL pathname so fully qualified URLs (incl. preview/live hosts) match index paths. It does not depend on `block.children[n]` positions."
+    },
+    {
+      "name": "Tile data from the query index",
+      "max_score": 5,
+      "description": "The code fetches `/blog/query-index.json` (once) and builds each tile from the matched entry: image, category, title, description (truncated to ~140 chars), formatted date from the epoch seconds value, read time, with the whole tile linking to the article."
+    },
+    {
+      "name": "Robust to unknown or few links",
+      "max_score": 10,
+      "description": "A link not found in the index is skipped or rendered gracefully (e.g. using the link text) without throwing; one or two picks render one or two tiles; a failed fetch doesn't throw an uncaught error."
+    },
+    {
+      "name": "Rationale addresses staleness and effort",
+      "max_score": 10,
+      "description": "The rationale explains that keeping teaser data out of the post (single source of truth in article metadata) avoids stale teasers and minimizes editor work in DA, e.g. 'editors just paste links'."
+    }
+  ]
+}

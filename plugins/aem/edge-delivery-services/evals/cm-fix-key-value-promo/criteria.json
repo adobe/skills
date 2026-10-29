@@ -1,0 +1,41 @@
+{
+  "context": "Tests recognizing a key/value (name/value) block used for editorial content as the root cause of author complaints, and replacing it with semantic authoring (heading + paragraphs + links in a cell, presentation options as block variants or inferred) plus decorate code that keeps authored DOM and finds elements by type, tolerating optional parts.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "No key/value rows for content",
+      "max_score": 20,
+      "description": "The new model in MODEL.md does NOT use label | value rows (Title, Subtitle, Body, Image, Button Text, Button Link or translated equivalents) for any displayed content. The block contains only the content itself."
+    },
+    {
+      "name": "Theme and image position not config rows",
+      "max_score": 15,
+      "description": "Theme is a block variant (e.g. `Promo (dark)`) and image position is a variant OR inferred from which side the author put the image (e.g. image cell first vs. last). Neither is a `Theme | dark` / `Image Position | right` row or an extra cell."
+    },
+    {
+      "name": "Semantic text and links in one cell",
+      "max_score": 15,
+      "description": "Title is a heading, subtitle is an optional heading or paragraph, body is ordinary rich paragraphs, and each button is a single authored link (text and URL together). Heading, body and buttons live together in one content cell (not one cell/row each), and a second button is simply a second link."
+    },
+    {
+      "name": "Authored DOM preserved",
+      "max_score": 10,
+      "description": "promo.js keeps or moves the authored elements (so bold text and inline links in the body survive) and does NOT rebuild the content from textContent/config values via string templates or innerHTML; readBlockConfig is no longer used for content."
+    },
+    {
+      "name": "Code finds elements semantically",
+      "max_score": 15,
+      "description": "promo.js locates the image via `picture`, the title via heading selectors, and buttons via links (e.g. links alone in a paragraph) — not via row/cell index, row label text, or toClassName keys."
+    },
+    {
+      "name": "Optional parts tolerated",
+      "max_score": 15,
+      "description": "Missing subtitle, missing image, or no button results in no empty element (no empty h3/gap/`<a href=undefined>`) and no thrown error; a minimal example (e.g. heading + text only) is documented as valid."
+    },
+    {
+      "name": "Rationale tied to complaints",
+      "max_score": 10,
+      "description": "MODEL.md explains how the new model fixes at least two of the listed complaints (e.g. no labels to mistype or translate, formatting preserved, rows not needed for absent parts, extra button = extra link) and says something concrete about existing promos (e.g. re-authoring/migration script, or temporary backward-compatible handling)."
+    }
+  ]
+}

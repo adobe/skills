@@ -1,0 +1,46 @@
+{
+  "context": "Tests the hard platform constraint that blocks cannot be nested as tables inside block cells (authoring tools handle nested tables badly and decorateBlocks only decorates `div.section > div > div`), and whether the agent instead uses a supported composition mechanism (sections + section metadata / auto-blocking, or fragments) with tab labels derived from content semantics, keeping tabs easy to add, reorder and copy.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "No nested block tables",
+      "max_score": 25,
+      "description": "Nowhere in MODEL.md is a block table (cards, quote, columns or any other) placed inside a cell of another block table. The prototype's nested structure is explicitly replaced."
+    },
+    {
+      "name": "Inner blocks authored as top-level blocks",
+      "max_score": 15,
+      "description": "Cards, quote and columns are authored as ordinary top-level blocks — e.g. inside page sections that are grouped into tabs via section metadata / auto-blocking, or inside fragment documents referenced by link — so the standard block pipeline can decorate them."
+    },
+    {
+      "name": "Tab label and panel boundaries from content",
+      "max_score": 15,
+      "description": "The tab label comes from something semantic the author writes (e.g. the section's first heading or a section-metadata value), and panel boundaries are section breaks (or fragment documents). Adding, removing, reordering or copying a tab means adding/moving/copying one section (or one link/row), with no index-based configuration such as a tab count or label list elsewhere."
+    },
+    {
+      "name": "Inner blocks still decorated and loaded",
+      "max_score": 15,
+      "description": "The code ensures blocks inside panels end up decorated and loaded: e.g. grouping happens in buildAutoBlocks/before decorateBlocks, or existing elements are moved (not re-created from innerHTML strings) and remain inside sections that are loaded, or fragments are loaded with the project's fragment loader. Code does not clone panels via innerHTML in a way that strips block decoration."
+    },
+    {
+      "name": "Video authored as a link",
+      "max_score": 5,
+      "description": "The YouTube video in Overview is authored as a plain link/URL (auto-blocked or handled by an embed block taking a link), not as iframe/embed HTML and not as `Video | id` key/value rows."
+    },
+    {
+      "name": "Mechanism justified by authoring",
+      "max_score": 5,
+      "description": "MODEL.md justifies the chosen mechanism by author experience (editing in DA/Word, copying a tab between pages, seeing content inline). If fragments are chosen, it acknowledges their cost (content not visible on the page being edited / indirection) or why it is acceptable here; if sections are chosen, it explains how authors mark them."
+    },
+    {
+      "name": "Explains block discovery limit",
+      "max_score": 10,
+      "description": "MODEL.md states that the boilerplate's `decorateBlocks` only finds blocks that sit directly in a section (`div.section > div > div` or equivalent wording, e.g. 'only top-level blocks in a section'), so the Cards/Quote tables inside a Tabs cell were never decorated or loaded and rendered as plain divs. Merely saying 'nested blocks are not supported' or 'nested tables are hard to edit' does not earn this."
+    },
+    {
+      "name": "Checked against each authoring tool",
+      "max_score": 10,
+      "description": "MODEL.md explicitly checks the model in both DA and Word (both named) and confirms it uses only constructs both produce reliably (tables, section breaks, headings, links), treating any construct that only works in one tool (or nested tables) as unacceptable."
+    }
+  ]
+}
