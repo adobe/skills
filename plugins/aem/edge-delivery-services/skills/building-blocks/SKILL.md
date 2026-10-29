@@ -14,7 +14,7 @@ Implementation step of **content-driven-development** (Step 5). If you are not f
 
 1. **Find patterns** (new blocks or major changes): check `blocks/` and use **block-collection-and-party** for reference implementations.
 2. **Read the delivered markup** for your test content before writing decoration.
-   - Test content lives in DA, in the block library: one page per block at `/docs/library/blocks/<block>` with the examples authors should copy (variants, optional parts left out). The PR links its preview, and authors reuse it. Stress cases (overflow, long strings) go under `/drafts`. If the project has no block library, use `/drafts`.
+   - Test content lives in DA, in the block library: one page per block, conventionally `/docs/library/blocks/<block>` (the `library` tab of the project's DA config points to the actual blocks sheet), with the examples authors should copy (variants, optional parts left out). The PR links its preview, and authors reuse it. Stress cases (overflow, long strings) go under `/drafts`. If the project has no block library, use `/drafts`.
    - Work on it locally: `aem content clone --path /docs/library/blocks` (clone `/drafts` the same way for stress cases; `--all` clones the whole site). It signs in to DA in the browser; no separate token. Then add or edit pages under `content/` in DA HTML format (**da-content**).
    - `aem up` serves `content/` before proxying, so `content/docs/library/blocks/my-block.html` previews at `/docs/library/blocks/my-block` (and `.plain.html`) without pushing.
    - To publish test content to DA: `aem content add <files>`, `aem content commit -m "..."`, `aem content push`. Push skips binaries and strips icon spans; see **aem-cli**.
