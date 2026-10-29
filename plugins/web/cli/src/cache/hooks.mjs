@@ -9,16 +9,42 @@ const HOOKS = `async page => {
   const state = { errors: 0, pending: new Set() };
   context.__webCache = state;
   const served = new WeakSet();
-  const pageIds = new WeakMap();
-  let lastPageId = 0;
+  // Each top-level navigation is its own recording (one page HAR). A request belongs to the
+  // recording current when it was routed, so a late response never lands in the next page.
+  const currentRecording = new WeakMap();
+  const recordingOf = new WeakMap();
+  let lastRecording = 0;
   const pageOf = (request) => {
     try {
-      const p = request.frame().page();
-      if (!pageIds.has(p)) pageIds.set(p, ++lastPageId);
-      return pageIds.get(p);
+      return request.frame().page();
     } catch {
-      return 0;
+      return null;
     }
+  };
+  const chainStart = (request) => {
+    let first = request;
+    try {
+      while (first.redirectedFrom()) first = first.redirectedFrom();
+    } catch {
+      // Keep the furthest request reached.
+    }
+    return first;
+  };
+  // Redirect hops are never routed: they take the recording of the request that started them.
+  const recordingFor = (request) => {
+    const page = pageOf(request);
+    return (
+      recordingOf.get(request) ??
+      recordingOf.get(chainStart(request)) ??
+      (page && currentRecording.get(page)) ??
+      0
+    );
+  };
+  const startRecording = (request) => {
+    lastRecording += 1;
+    const page = pageOf(request);
+    if (page) currentRecording.set(page, lastRecording);
+    recordingOf.set(request, lastRecording);
   };
   const isMainNavigation = (request) => {
     try {
@@ -42,28 +68,35 @@ const HOOKS = `async page => {
     const request = route.request();
     const url = request.url();
     if (request.method() !== 'GET' || !/^https?:/.test(url)) return route.fallback();
+    let response;
+    let fulfilled = false;
     try {
-      const data = {
-        url,
-        page: pageOf(request),
-        nav: isMainNavigation(request),
-        redirect: Boolean(request.redirectedFrom()),
-      };
+      const nav = isMainNavigation(request);
+      const redirect = Boolean(request.redirectedFrom());
+      if (nav && !redirect) startRecording(request);
+      else recordingOf.set(request, recordingFor(request));
+      const data = { url, page: recordingOf.get(request), nav, redirect };
       const options = { data, timeout: LOOKUP_TIMEOUT_MS, maxRedirects: 0 };
-      const response = await context.request.post(KEEPER + '/lookup', options);
+      response = await context.request.post(KEEPER + '/lookup', options);
       if (response.headers()['x-web-cache'] === 'hit') {
         served.add(request);
-        return await route.fulfill({ response });
+        await route.fulfill({ response });
+        fulfilled = true;
       }
     } catch {
       served.delete(request);
       fail();
+    } finally {
+      // Playwright keeps every APIResponse body until disposed.
+      if (response) await response.dispose().catch(fail);
     }
-    return route.fallback().catch(fail);
+    if (!fulfilled) await route.fallback().catch(fail);
   });
   const store = async (response) => {
     const request = response.request();
     if (served.has(request) || request.method() !== 'GET') return;
+    // An event stream's body only ends when the stream closes: never wait for it.
+    if ((response.headers()['content-type'] ?? '').includes('text/event-stream')) return;
     const status = response.status();
     let body;
     try {
@@ -74,7 +107,7 @@ const HOOKS = `async page => {
     try {
       const data = {
         startedAt: startOf(request),
-        page: pageOf(request),
+        page: recordingFor(request),
         method: 'GET',
         url: request.url(),
         status,
@@ -84,7 +117,8 @@ const HOOKS = `async page => {
         mimeType: response.headers()['content-type'] ?? '',
         body: body ? body.toString('base64') : '',
       };
-      await context.request.post(KEEPER + '/store', { data, timeout: STORE_TIMEOUT_MS });
+      const ack = await context.request.post(KEEPER + '/store', { data, timeout: STORE_TIMEOUT_MS });
+      await ack.dispose();
     } catch {
       fail();
     }
@@ -111,12 +145,15 @@ export function cacheHooksCode(port) {
 }
 
 /**
- * run-code snippet that waits for in-flight stores, then returns the number of hook failures in
- * the session (0 if no hooks).
+ * run-code snippet that waits up to 5 s for in-flight stores, then returns the number of hook
+ * failures in the session, stores still unfinished included (0 if no hooks). The deadline uses
+ * page.waitForTimeout: run-code has no setTimeout.
  */
 export const CACHE_STATS_CODE = `async page => {
   const state = page.context().__webCache;
   if (!state) return 0;
-  await Promise.allSettled([...state.pending]);
-  return state.errors;
+  const flushed = Promise.allSettled([...state.pending]).then(() => true);
+  const deadline = page.waitForTimeout(5000).then(() => false, () => false);
+  const done = await Promise.race([flushed, deadline]);
+  return state.errors + (done ? 0 : state.pending.size);
 }`;

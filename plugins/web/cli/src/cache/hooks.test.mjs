@@ -15,6 +15,7 @@ const B = 'https://site.test/b';
 const compile = (code) => new Function(`return (${code});`)();
 
 /** APIRequestContext stand-in backed by real HTTP, so the keeper protocol is exercised. */
+const responses = { created: 0, disposed: 0 };
 const apiRequest = {
   async post(url, { data }) {
     const res = await fetch(url, {
@@ -24,7 +25,11 @@ const apiRequest = {
       redirect: 'manual',
     });
     const body = Buffer.from(await res.arrayBuffer());
+    responses.created += 1;
     return {
+      dispose: async () => {
+        responses.disposed += 1;
+      },
       status: () => res.status,
       headers: () => Object.fromEntries(res.headers),
       body: async () => body,
@@ -44,7 +49,13 @@ function fakePage() {
       this.listeners[event] = handler;
     },
   };
-  const page = { context: () => context };
+  const page = {
+    context: () => context,
+    waitForTimeout: async (ms) => {
+      page.waited = ms;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    },
+  };
   return { page, context };
 }
 
@@ -197,4 +208,70 @@ test('store sends the request start time', async (t) => {
   await context.listeners.response(fakeResponse(request));
   const har = JSON.parse(readFileSync(path.join(dir, harFileName(A)), 'utf8'));
   assert.equal(har.log.entries[0].startedDateTime, new Date(1e12).toISOString());
+});
+
+test('keeper responses are disposed after use', async (t) => {
+  const { visit } = await setup(t);
+  const before = { ...responses };
+  await visit({ url: A, nav: true }, { body: '<h1>a</h1>' });
+  await visit({ url: A, nav: true }, { body: '<h1>a</h1>' });
+  const created = responses.created - before.created;
+  assert.equal(created, 3);
+  assert.equal(responses.disposed - before.disposed, created);
+});
+
+test('event streams are not read', async (t) => {
+  const { keeper, page, context } = await setup(t);
+  const request = fakeRequest(page, { url: A, nav: true });
+  await context.routes[0](fakeRoute(request));
+  const stream = {
+    ...fakeResponse(request, { mime: 'text/event-stream' }),
+    body: () => new Promise(() => {}),
+  };
+  await context.listeners.response(stream);
+  assert.equal(keeper.stats.stored, 0);
+  assert.equal(await compile(CACHE_STATS_CODE)(page), 0);
+});
+
+test('flush gives up after its deadline and counts unfinished stores', async (t) => {
+  const { page, context } = await setup(t);
+  const request = fakeRequest(page, { url: A, nav: true });
+  await context.routes[0](fakeRoute(request));
+  context.listeners.response({ ...fakeResponse(request), body: () => new Promise(() => {}) });
+  assert.equal(await compile(CACHE_STATS_CODE)(page), 1);
+  assert.equal(page.waited, 5000);
+});
+
+const readEntries = (dir, url) =>
+  JSON.parse(readFileSync(path.join(dir, harFileName(url)), 'utf8')).log.entries.map(
+    (e) => e.request.url,
+  );
+
+test('a late response stays in the HAR of the navigation that made it', async (t) => {
+  const { dir, page, context } = await setup(t);
+  const route = async (opts) => {
+    const request = fakeRequest(page, opts);
+    await context.routes[0](fakeRoute(request));
+    return request;
+  };
+  const docA = await route({ url: A, nav: true });
+  await context.listeners.response(fakeResponse(docA));
+  const lazyImage = await route({ url: 'https://site.test/lazy.png' });
+  const docB = await route({ url: B, nav: true });
+  await context.listeners.response(fakeResponse(docB));
+  await context.listeners.response(fakeResponse(lazyImage, { mime: 'image/png' }));
+  assert.deepEqual(readEntries(dir, A), [A, 'https://site.test/lazy.png']);
+  assert.deepEqual(readEntries(dir, B), [B]);
+});
+
+test('an unrouted redirect hop joins the HAR of its chain', async (t) => {
+  const { dir, page, context } = await setup(t);
+  const first = fakeRequest(page, { url: A, nav: true });
+  await context.routes[0](fakeRoute(first));
+  await context.listeners.response(fakeResponse(first, { status: 301, body: new Error('3xx') }));
+  const hop = fakeRequest(page, { url: B, nav: true, redirectedFrom: first });
+  const other = fakeRequest(page, { url: 'https://site.test/c', nav: true });
+  await context.routes[0](fakeRoute(other));
+  await context.listeners.response(fakeResponse(hop));
+  assert.deepEqual(readEntries(dir, A), [A, B]);
 });
