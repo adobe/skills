@@ -93,7 +93,8 @@
     "source": "references/css-guidelines.md:32, SKILL.md:105",
     "kind": "eds",
     "verified": "WRONG: docs say prefix with the block class only; aem-boilerplate@5cea543 blocks use `.cards`, `.hero`, `.columns` (no `main`), AGENTS.md says 'Scope CSS to `.blockname`'. A `main` prefix is not the convention and would not match header/footer blocks (outside <main>)",
-    "question": "What selector prefix do the aem-boilerplate blocks use to scope their CSS rules?"
+    "question": null,
+    "quiz": "excluded: claim is wrong; fix in skill first"
   },
   {
     "id": "BB-013",
@@ -173,7 +174,8 @@
     "source": "SKILL.md:248, SKILL.md:3, SKILL.md:36, SKILL.md:242",
     "kind": "eds",
     "verified": "WRONG: aem-boilerplate@5cea543 has no scripts/delayed.js; scripts/scripts.js:L206-209 loadDelayed() imports consent-check.js, which (declining by default) imports consented.js only after consent; https://www.aem.live/developer/keeping-it-100 Phase D. Also loadDelayed no longer has a 3s timer. Older projects may still have delayed.js",
-    "question": "In the current aem-boilerplate, which file(s) does the delayed loading phase pull in, and where should third-party analytics/marketing scripts go?"
+    "question": null,
+    "quiz": "excluded: claim is wrong; fix in skill first"
   },
   {
     "id": "BB-023",
@@ -249,11 +251,11 @@
   },
   {
     "id": "BB-032",
-    "claim": "A programmatically built block must be wrapped in a div placed inside a section (main .section) for decoration to work.",
+    "claim": "For automatic discovery by decorateBlocks (which selects `div.section > div > div`), a block must sit in a wrapper div inside a section. A block decorated and loaded explicitly via decorateBlock + loadBlock can live elsewhere (e.g. header/footer outside main).",
     "source": "references/js-guidelines.md:323-329",
     "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L579-582 decorateBlock uses block.parentElement as the -wrapper and closest('.section'); L591 decorateBlocks selects 'div.section > div > div'",
-    "question": "Where in the DOM must a programmatically built block be inserted so that EDS decoration and styling treat it like an authored block?"
+    "verified": "partial: skill says the section wrapper is always required. aem-boilerplate@5cea543 scripts/aem.js:L591 decorateBlocks selects 'div.section > div > div'; L579-582 decorateBlock uses block.parentElement as the -wrapper and guards the closest('.section') lookup; aem.js:L599-608 loadHeader appends, decorates and loads the header block outside main",
+    "question": "In EDS, what DOM placement does the automatic block discovery step require for a block element, and what changes if you decorate and load a programmatically built block yourself?"
   },
   {
     "id": "BB-033",
