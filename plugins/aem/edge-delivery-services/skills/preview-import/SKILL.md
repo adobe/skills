@@ -66,22 +66,12 @@ aem up --html-folder . --html-mount /
 
 ### Step 2: Navigate in Browser
 
-**For most files, use the document path directly:**
+**Preview URL:** `http://localhost:3000` + `paths.documentPath` from metadata.json, with a trailing `index` removed:
 ```
-http://localhost:3000${documentPath}
+us/en/about.plain.html  → http://localhost:3000/us/en/about
+index.plain.html        → http://localhost:3000/
+us/index.plain.html     → http://localhost:3000/us/
 ```
-
-Example:
-- HTML file: `us/en/about.plain.html`
-- URL: `http://localhost:3000/us/en/about`
-
-**IMPORTANT: For index files, drop the trailing `index`:**
-```
-index.plain.html     → http://localhost:3000/
-us/index.plain.html  → http://localhost:3000/us/
-```
-
-Use `paths.documentPath` from metadata.json, stripping a trailing `index` for index files.
 
 ---
 
