@@ -405,6 +405,14 @@ r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl12', '--ma
 check('… so the next unflagged round captures live (LIVE,BUILD) instead of reusing baseline bytes', r.status === 0 && attempts().join(',') === 'LIVE,BUILD' && livePng('blon') === 'png', `attempts ${attempts().join(',')} ${r.stderr}`);
 check('the frozen baseline itself is untouched by every round above', readFileSync(join(root, gdir('blon'), 'baseline.png'), 'utf8') === 'baseline-png-bytes' && JSON.parse(readFileSync(join(root, gdir('blon'), 'baseline.json'), 'utf8')).capturedAt === PROV.capturedAt);
 
+// Disk (#150): a round keeps only its own diff image and vdiff dir; earlier rounds keep their text and JSON evidence.
+const kdir = join(root, 'stardust/replica/gates/keep-1440');
+for (const d of ['vdiff-iter1', 'vdiff-iter2']) mkdirSync(join(kdir, d), { recursive: true });
+for (const f of ['diff-iter1.png', 'diff-final.png', 'vdiff-iter1/eds-full.png', 'diff-iter2.png', 'vdiff-iter2/eds-full.png', 'chrome-header-diff.png', 'baseline.png', 'verdict-iter1.json', 'content-diff-iter1.txt']) writeFileSync(join(kdir, f), 'x');
+r = await gate(['keep', 'https://live.example/', buildUrl, '1440', 'iter2', '--marker', 'home-proposed']);
+check('a round deletes earlier rounds\' diff-*.png and vdiff-*/ before comparing', r.status === 0 && !existsSync(join(kdir, 'diff-iter1.png')) && !existsSync(join(kdir, 'diff-final.png')) && !existsSync(join(kdir, 'vdiff-iter1')), `status ${r.status} ${readdirSync(kdir).join(',')}`);
+check('… and keeps everything else: this round\'s diff and vdiff dir, captures, the frozen baseline, crop diffs, earlier rounds\' text and JSON', ['diff-iter2.png', 'vdiff-iter2/eds-full.png', 'live.png', 'build.png', 'baseline.png', 'chrome-header-diff.png', 'verdict-iter1.json', 'content-diff-iter1.txt'].every((f) => existsSync(join(kdir, f))), readdirSync(kdir).join(','));
+
 server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);
 else rmSync(root, { recursive: true, force: true });

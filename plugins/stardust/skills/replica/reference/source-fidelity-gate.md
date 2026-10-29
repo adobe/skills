@@ -798,7 +798,7 @@ every `deployed` page in `stardust/state.json`, the stitched captures and pixel-
 archetype gate PLUS two DOM probes that load both pages in the same window-free real-Chrome tier
 and settle them the same way (`measure-live.mjs`), and writes
 `stardust/replica/gates/all-<width>/<slug>/{origin,eds,diff}.png + pixel.json + content.json +
-clip.json [+ units.json]` and `summary.{json,md}`. **Verdict, per page — all four:**
+clip.json [+ units.json]` and `summary.{json,md}` (a passed page keeps no PNG, #150). **Verdict, per page — all four:**
 
 1. **pixel** — overlap % ≤ `--threshold` (default 10).
 2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see

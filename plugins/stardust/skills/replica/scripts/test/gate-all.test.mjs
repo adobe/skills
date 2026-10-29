@@ -4,15 +4,16 @@
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag); parseArgs defaults and
 // --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff; staleCapture (a
-// capture with no fixedLayers in its record is retaken, gate.sh's rule).
+// capture with no fixedLayers in its record is retaken, gate.sh's rule); disk (#150): a passed page keeps its records,
+// not its PNGs, and --skip-existing reuses that recorded pass — a run with stub instruments, no browser.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureRecordOf, formatSummary, parseArgs, staleCapture, verdict } from '../gate-all.mjs';
+import { BATCH, captureRecordOf, droppedPass, dropPassedCaptures, formatSummary, parseArgs, staleCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -116,6 +117,130 @@ check('staleCapture: gate.sh\'s rule — a capture is reusable only when its cap
     writeFileSync(join(d, 'live.json'), JSON.stringify({ origin: 'live' }));
     assert.equal(staleCapture(live), true, 'a live round with no live.capture.json');
   } finally { rmSync(d, { recursive: true, force: true }); }
+});
+// ---- disk (#150): a passed page keeps its records, not its pictures ---------------------------------------------
+const pageDir = (files) => {
+  const d = mkdtempSync(join(tmpdir(), 'gate-all-drop-'));
+  for (const [name, body] of Object.entries(files)) writeFileSync(join(d, name), typeof body === 'string' ? body : JSON.stringify(body));
+  return d;
+};
+const RECORDS = { 'pixel.json': px(1.2, 0), 'origin.json': { instrument: 'stitch-live' }, 'eds.json': { instrument: 'stitch-live', url: 'https://eds.example/a' }, 'content.json': { totals: {} }, 'origin.capture.json': { fixedLayers: {} } };
+check('dropPassedCaptures: every PNG in the page dir goes, an extra capture too; the JSON records stay; pixel.json records the drop', () => {
+  const d = pageDir({ ...RECORDS, 'origin.png': 'p', 'eds.png': 'p', 'diff.png': 'p', 'origin-prev.png': 'p' });
+  try {
+    assert.equal(dropPassedCaptures(d, { masks: [], edsUrl: 'https://eds.example/a' }), 4);
+    assert.deepEqual(readdirSync(d).sort(), Object.keys(RECORDS).sort());
+    const pixel = JSON.parse(readFileSync(join(d, 'pixel.json'), 'utf8'));
+    assert.equal(pixel.pct, 1.2); assert.deepEqual(pixel.capturesDropped, { masks: [], edsUrl: 'https://eds.example/a' });
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+check('dropPassedCaptures: no pixel.json, nothing dropped', () => {
+  const d = pageDir({ 'origin.png': 'p' });
+  try { assert.equal(dropPassedCaptures(d, { edsUrl: 'u' }), 0); assert.ok(existsSync(join(d, 'origin.png'))); } finally { rmSync(d, { recursive: true, force: true }); }
+});
+check('droppedPass: the records for the same masks and eds URL; null when either changed, nothing was dropped, or a record is gone or holds an error', () => {
+  const d = pageDir(RECORDS);
+  try {
+    const at = { masks: ['0:100'], edsUrl: 'https://eds.example/a' };
+    assert.equal(droppedPass(d, at), null, 'never dropped');
+    dropPassedCaptures(d, at);
+    const kept = droppedPass(d, at);
+    assert.equal(kept.pixel.pct, 1.2); assert.equal(kept.origin.instrument, 'stitch-live'); assert.equal(kept.eds.url, 'https://eds.example/a');
+    assert.equal(droppedPass(d, { ...at, masks: [] }), null, 'mask removed');
+    assert.equal(droppedPass(d, { ...at, edsUrl: 'https://branch.example/a' }), null, 'another eds host');
+    writeFileSync(join(d, 'eds.json'), JSON.stringify({ instrument: 'none', url: 'https://eds.example/a', error: 'stitch exit 1' }));
+    assert.equal(droppedPass(d, at), null, 'a capture record that holds an error');
+    rmSync(join(d, 'origin.json'));
+    assert.equal(droppedPass(d, at), null, 'origin record gone');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+// A project root with the real gate-all.mjs, the real diff scripts and stub instruments. The stitch stub logs each
+// URL (STUB_LOG), fails one (STUB_FAIL, exit 1), kills gate-all on one (STUB_KILL — an interrupted run) and logs how
+// many gate PNGs exist when it is called (STUB_PNGS — the peak a run reaches). pixel-compare fails `/bad` pages.
+function sandbox(slugs) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
+  const rep = join(root, 'stardust/scripts/replica');
+  mkdirSync(rep, { recursive: true });
+  copyFileSync(SCRIPT, join(rep, 'gate-all.mjs'));
+  cpSync(join(HERE, '../../../diff/scripts'), join(root, 'stardust/scripts/diff'), { recursive: true });
+  writeFileSync(join(rep, 'stitch-shot.mjs'), `import { appendFileSync, readdirSync, writeFileSync } from 'node:fs';
+const [url, out] = process.argv.slice(2); appendFileSync(process.env.STUB_LOG, url + '\\n');
+if (process.env.STUB_PNGS) appendFileSync(process.env.STUB_PNGS, readdirSync('stardust/replica/gates', { recursive: true }).filter((f) => f.endsWith('.png')).length + '\\n');
+if (url === process.env.STUB_KILL) { process.kill(process.ppid, 'SIGKILL'); process.exit(1); }
+if (url === process.env.STUB_FAIL) { console.error('capture failed'); process.exit(1); }
+writeFileSync(out, 'png'); writeFileSync(out.replace(/\\.png$/, '.capture.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 } }));\n`);
+  writeFileSync(join(rep, 'pixel-compare.mjs'), `import { writeFileSync } from 'node:fs';
+const a = process.argv.slice(2); writeFileSync(a[a.indexOf('--out') + 1], 'png');
+const pct = a[0].includes('/bad/') ? 30 : 1;
+console.log(JSON.stringify({ pct, heightDelta: 0, compared: { width: 1440, height: 5000 }, pass: pct <= 10 }));\n`);
+  const page = (slug) => ({ slug, url: `https://origin.example/${slug}`, status: 'deployed', liveUrl: `https://eds.example/${slug}` });
+  writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ pages: slugs.map(page) }));
+  const out = join(root, 'stardust/replica/gates/all-1440');
+  const log = join(root, 'stitch.log');
+  const gateAll = (args = [], env = {}) => { writeFileSync(log, ''); return spawnSync(process.execPath, [join(rep, 'gate-all.mjs'), '--no-probes', ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, STUB_LOG: log, ...env } }); };
+  return {
+    root, out, gateAll,
+    shots: () => readFileSync(log, 'utf8').split('\n').filter(Boolean).sort(),
+    pngs: (slug) => readdirSync(join(out, slug)).filter((f) => f.endsWith('.png')).sort(),
+    rows: () => Object.fromEntries(JSON.parse(readFileSync(join(out, 'summary.json'), 'utf8')).rows.map((r) => [r.slug, r])),
+    done: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
+check('a run with stub instruments: the passed page loses its PNGs, the failed one keeps them; --skip-existing and --compare-only reuse the recorded pass without a capture; a changed mask re-captures', () => {
+  const { out, gateAll, shots, pngs, rows, done } = sandbox(['good', 'bad']);
+  try {
+    let r = gateAll();
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual(pngs('good'), [], 'the passed page keeps no PNG');
+    assert.deepEqual(pngs('bad'), ['diff.png', 'eds.png', 'origin.png'], 'the failed page keeps its captures and diff');
+    assert.ok(existsSync(join(out, 'good/pixel.json')) && existsSync(join(out, 'good/origin.json')) && existsSync(join(out, 'good/eds.json')));
+    assert.equal(rows().good.pass, true); assert.equal(rows().bad.pass, false);
+
+    r = gateAll(['--skip-existing']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual(shots(), [], 'nothing re-captured: the pass is reused, the failed page reuses its captures');
+    assert.equal(rows().good.pass, true); assert.equal(rows().good.pct, 1);
+    assert.match(r.stdout, /good → recorded pass reused/);
+
+    r = gateAll(['--compare-only']);
+    assert.equal(r.status, 2, r.stderr);
+    assert.equal(rows().good.pass, true, 'compare-only reads the recorded pass, not a missing capture');
+
+    writeFileSync(join(out, 'masks.json'), JSON.stringify({ good: { masks: ['0:100'], reason: 'a rotating banner' } }));
+    r = gateAll(['--skip-existing']);
+    assert.deepEqual(shots(), ['https://eds.example/good', 'https://origin.example/good'], 'a changed mask re-captures both sides');
+    assert.equal(rows().good.pass, true);
+    assert.deepEqual(pngs('good'), [], 'and drops them again on the pass');
+  } finally { done(); }
+});
+check('a failed or interrupted re-capture never leaves the old pass to be reused: the next --skip-existing run captures again', () => {
+  const { out, gateAll, shots, rows, done } = sandbox(['good']);
+  try {
+    assert.equal(gateAll().status, 0);
+    let r = gateAll(['--skip-existing', '--recapture-origin'], { STUB_FAIL: 'https://origin.example/good' });
+    assert.equal(r.status, 2, 'the failed re-capture fails the page');
+    assert.match(JSON.parse(readFileSync(join(out, 'good/pixel.json'), 'utf8')).error, /missing capture/, 'and pixel.json says so');
+    r = gateAll(['--skip-existing']);
+    assert.ok(shots().includes('https://origin.example/good') && !/recorded pass reused/.test(r.stdout), `the failed side captured again, not the old pass reused: ${shots().join(', ')}`);
+    assert.equal(r.status, 0); assert.equal(rows().good.pass, true);
+
+    r = gateAll(['--skip-existing', '--recapture-eds'], { STUB_KILL: 'https://eds.example/good' });
+    assert.equal(r.signal, 'SIGKILL', 'the run was interrupted mid-capture');
+    r = gateAll(['--skip-existing']);
+    assert.ok(shots().includes('https://eds.example/good') && !/recorded pass reused/.test(r.stdout), `captured again after the interruption: ${shots().join(', ')}`);
+    assert.equal(r.status, 0); assert.equal(rows().good.pass, true);
+  } finally { done(); }
+});
+check(`peak disk: pages go through in batches of ${BATCH} — a passed batch's PNGs are gone before the next batch is captured`, () => {
+  const slugs = Array.from({ length: BATCH + 15 }, (_, i) => `p${i}`);
+  const { root, gateAll, done } = sandbox(slugs);
+  try {
+    const counts = join(root, 'pngs.log');
+    const r = gateAll([], { STUB_PNGS: counts });
+    assert.equal(r.status, 0, r.stderr);
+    const peak = Math.max(...readFileSync(counts, 'utf8').split('\n').filter(Boolean).map(Number));
+    assert.ok(peak < 2 * BATCH, `at most one batch of captures on disk at a time: saw ${peak} PNGs, ${2 * slugs.length - 1} without batches`);
+  } finally { done(); }
 });
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-all-help-'));

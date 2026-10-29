@@ -471,11 +471,8 @@ inconsistency register, `progress.json` (one map: `types.<archetype>` —
 page type, iterations used, per-breakpoint gate results, residuals, motion
 inventory — beside `gate-evidence.mjs`'s `siblings` / `migrate`; extended
 per entry, never replaced), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
-The delivery gate (#125) adds `gates/all-<width>/` — one dir per deployed
-page (`origin.png`, `eds.png`, `diff.png`, `pixel.json`, `content.json`,
-`clip.json`, `units.json`), `summary.{json,md}`, `runs/` for `--only` runs and
-the documented sidecars (`masks.json`, `overrides.json`, `clip-allow.json`,
-`presence.json`, `units.json`).
+The delivery gate (#125) adds `gates/all-<width>/`: one dir per deployed page,
+`summary.{json,md}`, `runs/` and the sidecars (`gate-all.mjs --help`).
 Phase 5 adds three files under `stardust/rollout/`: `progress.json` (the
 C-deliver unit ledger — status, gates and verdict per unit),
 `foundation-freeze.json` (the sha256 manifest of the frozen foundation) and
@@ -510,7 +507,7 @@ stardust/
 │   ├── breakpoint-map.md               ← source → target breakpoint map (only with --target-breakpoints)
 │   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals, motion inventory
 │   ├── motion/<slug>.json              ← motion-observe evidence
-│   └── gates/<slug>-<width>/           ← live.png, proto.png, diff.png, probe outputs per iteration
+│   └── gates/<slug>-<width>/           ← live.png, build.png, the latest round's diff, probe outputs per round
 ├── migrated/                           ← from migrate (Phase 5)
 └── rollout/                            ← from rollout (Phase 5); coverage/, plan.json … per its SKILL.md
     ├── progress.json                   ← C-deliver unit ledger: status, gates, verdict per unit
