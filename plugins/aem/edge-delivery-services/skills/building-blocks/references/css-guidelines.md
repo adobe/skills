@@ -123,21 +123,15 @@ main .my-block p {
 }
 ```
 
-**Layout:**
-```css
-main .my-block {
-  max-width: var(--max-content-width);
-  padding-inline: var(--inline-section-padding);
-}
-```
+**Layout:** sections already constrain content width (`main > .section > div` sets `max-width` and inline padding in `styles/styles.css`), so blocks rarely need their own.
 
-**Available custom properties:**
-- Colors: `--clr-*`, `--link-color`, `--background-color`, `--text-color`, etc.
-- Fonts: `--body-font-family`, `--heading-font-family`, `--fixed-font-family`
+**Available custom properties (boilerplate):**
+- Colors: `--background-color`, `--light-color`, `--dark-color`, `--text-color`, `--link-color`, `--link-hover-color`
+- Fonts: `--body-font-family`, `--heading-font-family`
 - Font sizes: `--heading-font-size-*`, `--body-font-size-*`
-- Layout: `--max-content-width`, `--inline-section-padding`
+- Layout: `--nav-height`
 
-See `styles/styles.css` for the complete list.
+Projects often add their own; see `styles/styles.css` for the complete list.
 
 ## Mobile-First Responsive Design
 
@@ -261,7 +255,7 @@ main .my-block {
 /* Dark variant */
 main .my-block.dark {
   background-color: var(--dark-color);
-  color: var(--clr-white);
+  color: var(--background-color);
 }
 
 /* Wide variant */
@@ -345,7 +339,7 @@ main .my-block ul {
 ### Center content
 ```css
 main .my-block {
-  max-width: var(--max-content-width);
+  max-width: 800px;
   margin-inline: auto;
 }
 ```
