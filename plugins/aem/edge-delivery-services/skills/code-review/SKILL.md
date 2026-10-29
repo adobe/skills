@@ -28,8 +28,7 @@ Use this mode when you've finished writing code and want to review it before com
 - When you want to catch issues early, before they reach PR review
 
 **How to invoke:**
-- Automatically: CDD workflow invokes this skill after implementation
-- Manually: `/code-review` (reviews uncommitted changes in working directory)
+- Invoke this skill by name, or ask for a review of uncommitted changes in the working directory
 
 **What it does:**
 - Reviews all modified/new files in working directory
@@ -48,7 +47,7 @@ Use this mode to review an existing pull request (your own or someone else's).
 - Manual review of a specific PR
 
 **How to invoke:**
-- Manually: `/code-review <PR-number>` or `/code-review <PR-URL>`
+- Invoke this skill by name with a PR number or URL
 - Automated: Via GitHub workflow on `pull_request` event
 
 **What it does:**
@@ -191,8 +190,8 @@ const { temperature } = CONFIG;
 
 **Responsive Design:**
 - [ ] Mobile-first approach (base styles for mobile, media queries for larger)
-- [ ] Standard breakpoints used: `600px`, `900px`, `1200px` (all `min-width`)
-- [ ] No mixing of `min-width` and `max-width` queries
+- [ ] Standard breakpoints used: `600px`, `900px`, `1200px` (range syntax, e.g. `(width >= 900px)`)
+- [ ] Mobile-first: only `width >=` queries, no `width <` / `max-width` mixed in
 - [ ] Layout works across all viewports
 
 **Frameworks & Preprocessors:**
@@ -215,12 +214,12 @@ main .my-block .title { color: red; }
 main .my-block .button { color: white; }
 
 /* BAD: Mixed breakpoint directions */
-@media (max-width: 600px) { }
-@media (min-width: 900px) { }
+@media (width < 600px) { }
+@media (width >= 900px) { }
 
 /* GOOD: Consistent mobile-first */
-@media (min-width: 600px) { }
-@media (min-width: 900px) { }
+@media (width >= 600px) { }
+@media (width >= 900px) { }
 
 /* BAD: CSS in JS patterns */
 element.innerHTML = '<style>.foo { color: red; }</style>';
@@ -821,7 +820,7 @@ gh pr comment <PR-number> --repo {owner}/{repo} --body "<detailed review summary
 
 # 2. Submit a review with GitHub suggestions for ALL fixable issues
 # (Create JSON as shown in Approach 1 with all suggestions)
-gh api POST repos/{owner}/{repo}/pulls/<PR-number>/reviews \
+gh api --method POST repos/{owner}/{repo}/pulls/<PR-number>/reviews \
   --input /tmp/review-suggestions.json
 
 # 3. Add a friendly summary about the suggestions
@@ -1015,7 +1014,7 @@ cat > /tmp/review-$PR_NUMBER.json <<JSON
 JSON
 
 # Submit review
-gh api POST repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews \
+gh api --method POST repos/$OWNER/$REPO/pulls/$PR_NUMBER/reviews \
   --input /tmp/review-$PR_NUMBER.json
 
 # Add summary comment
