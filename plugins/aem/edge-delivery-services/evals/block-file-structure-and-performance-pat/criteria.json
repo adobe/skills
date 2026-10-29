@@ -38,11 +38,6 @@
       "description": "The solution does NOT modify or overwrite `scripts/aem.js`; it only imports from it"
     },
     {
-      "name": "async decorate function",
-      "max_score": 7,
-      "description": "The decorate function is declared with the `async` keyword (since it awaits operations or performs async logic)"
-    },
-    {
       "name": "Default export decorate",
       "max_score": 7,
       "description": "The block JS uses `export default` for the decorate function"
