@@ -321,6 +321,14 @@ falls short. Either way the renderer:
   garbage like broken JSON-LD URLs: fidelity over repair; **flag**
   such items for the human in the run report, never silently fix or
   silently keep);
+- shows each content image at least as completely as the source
+  does: a donor frame of fixed shape (a Figma image height) is the
+  placeholder's shape, not the content's. A single-image slot takes
+  the image's own ratio under a cap; a card grid shares one frame
+  only when its images share a shape, else each keeps its own
+  (`object-position` moves a crop, it never shrinks one); the
+  content gate fails a render that cuts more
+  (`reference/gates.md` § Image crop);
 - takes its surface exclusively from `donor-tokens.json` + the donor
   module patterns assigned in `mapping.md`: it imports `rootTokens`
   from `../../scripts/reskin/render/root-tokens.mjs`, emits its `css`
@@ -386,7 +394,9 @@ node stardust/scripts/reskin/slot-coverage.mjs \
 ```
 
 `dom-equality.mjs` gates on whitespace-normalized visible-text **byte
-equality** and the **ordered, URL-normalized visible-image set**;
+equality**, the **ordered, URL-normalized visible-image set** and
+**image crop** (no image shows over 10 points less of its area than
+on the source);
 `slot-coverage.mjs` also proves every slot, CTA (text and absolute
 href) and image present and asserts metadata carry-over
 (`reference/gates.md` § (a)).

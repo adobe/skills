@@ -119,6 +119,72 @@ export const IMG_VISIBLE = `((img) => {
 })`;
 
 /**
+ * The fraction (0–1) of an image's own pixels that its box shows: the crop measure dom-equality.mjs compares
+ * between source and rendered (reference/gates.md § Image crop). object-fit `cover` scales the image to fill the
+ * box and trims the overflow; `none` draws it at natural size; `fill`, `contain` and `scale-down` draw every pixel.
+ * clipFraction is the share of the box left visible by clipping ancestors (overflow other than visible). null when
+ * a size is unknown (a lazy image that never loaded): unmeasured, never a failure.
+ */
+export function visibleFraction({ naturalWidth, naturalHeight, boxWidth, boxHeight, fit = 'fill', clipFraction = 1 }) {
+  if (!(naturalWidth > 0 && naturalHeight > 0 && boxWidth > 0 && boxHeight > 0)) return null;
+  let shown = 1;
+  if (fit === 'cover') {
+    const scale = Math.max(boxWidth / naturalWidth, boxHeight / naturalHeight);
+    shown = (boxWidth * boxHeight) / (naturalWidth * naturalHeight * scale * scale);
+  } else if (fit === 'none') {
+    shown = (Math.min(boxWidth, naturalWidth) * Math.min(boxHeight, naturalHeight)) / (naturalWidth * naturalHeight);
+  }
+  return Math.max(0, Math.min(1, shown * clipFraction));
+}
+
+/**
+ * IMG_CROP — runs inside page.evaluate(): an img → { fraction, fit, box, natural }. The box is the img's content box;
+ * each ancestor whose overflow is not visible clips it on that axis (a fixed-height wrapper with overflow hidden
+ * crops exactly like object-fit: cover).
+ */
+export const IMG_CROP = `((img) => {
+  const visibleFraction = ${visibleFraction.toString()};
+  const st = getComputedStyle(img);
+  const r = img.getBoundingClientRect();
+  const boxWidth = img.clientWidth - parseFloat(st.paddingLeft) - parseFloat(st.paddingRight);
+  const boxHeight = img.clientHeight - parseFloat(st.paddingTop) - parseFloat(st.paddingBottom);
+  let [l, t, rr, b] = [r.left, r.top, r.right, r.bottom];
+  for (let a = img.parentElement; a && a !== document.body && a !== document.documentElement; a = a.parentElement) {
+    const s = getComputedStyle(a);
+    if (s.overflowX === 'visible' && s.overflowY === 'visible') continue;
+    const ar = a.getBoundingClientRect();
+    const al = ar.left + a.clientLeft; const at = ar.top + a.clientTop;
+    if (s.overflowX !== 'visible') { l = Math.max(l, al); rr = Math.min(rr, al + a.clientWidth); }
+    if (s.overflowY !== 'visible') { t = Math.max(t, at); b = Math.min(b, at + a.clientHeight); }
+  }
+  const area = r.width * r.height;
+  const clipFraction = area > 0 ? Math.max(0, rr - l) * Math.max(0, b - t) / area : 1;
+  return {
+    fraction: visibleFraction({ naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight, boxWidth, boxHeight, fit: st.objectFit, clipFraction }),
+    fit: st.objectFit,
+    box: Math.round(boxWidth) + 'x' + Math.round(boxHeight),
+    natural: img.naturalWidth + 'x' + img.naturalHeight,
+  };
+})`;
+
+/**
+ * compareCrops — the gate's crop check: image i of the rendered page must show at least the source's visible
+ * fraction minus tolerance (0–1). Pairs by order, so it only runs when both sides list the same number of images
+ * (a count difference already fails the image check). Returns { pass, measured, unmeasured, worse[], skipped? }.
+ */
+export function compareCrops(source, rendered, { tolerance = 0.1 } = {}) {
+  if (source.length !== rendered.length) return { pass: true, measured: 0, unmeasured: source.length, worse: [], skipped: 'image counts differ' };
+  const worse = []; let measured = 0; let unmeasured = 0;
+  source.forEach((s, i) => {
+    const r = rendered[i];
+    if (s.fraction == null || r.fraction == null) { unmeasured += 1; return; }
+    measured += 1;
+    if (r.fraction < s.fraction - tolerance) worse.push({ index: i, label: r.label || s.label || `image ${i + 1}`, source: s, rendered: r });
+  });
+  return { pass: worse.length === 0, measured, unmeasured, worse };
+}
+
+/**
  * Resolve the normalization to use: a page ledger module (--normalize path)
  * or the default. Returns { script, ledger, source }.
  * A ledger module MUST export NORMALIZE (string); LEDGER ([{id,what,why}])
@@ -139,7 +205,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   if (arg === '--help' || arg === '-h') {
     console.log('source-normalize.mjs — shared executable normalization ledger (reskin).');
     console.log('Usage: node source-normalize.mjs        # print default ledger entries + script');
-    console.log('As a module: import { DEFAULT_NORMALIZE, DEFAULT_LEDGER, loadNormalize, IMG_VISIBLE } from it.');
+    console.log('As a module: import { DEFAULT_NORMALIZE, DEFAULT_LEDGER, loadNormalize, IMG_VISIBLE, IMG_CROP, visibleFraction, compareCrops } from it.');
     console.log('Page ledgers: export NORMALIZE (string) and LEDGER; pass via --normalize to');
     console.log('capture-content.mjs and dom-equality.mjs — the SAME file to both.');
     process.exit(0);

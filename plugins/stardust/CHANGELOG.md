@@ -204,6 +204,17 @@ with exit 2. This release adds no site auth: the gates send no Authorization hea
 - **Whole file, whole site.** Aligned with 0.33.0: Phase 1's Figma bullet and `donor-sources.md` § 3 no longer hand-pick
   kit frames with `--list` and `--frames`, and the content crawl is `extract --all`. `figma-gate`'s no-capture and
   frame-not-captured errors ask for a whole-file `capture` (`--refresh` over a narrowed one), not `--frames <ids>`.
+- **Image crop.** `dom-equality` gains a gating check: each visible image's shown fraction of its own pixels
+  (object-fit and clipping ancestors, `source-normalize.mjs` `IMG_CROP`) on the source and the render, paired by order;
+  a render showing more than `--crop-tolerance` points (default 10) less fails, naming the image and both fractions. It
+  runs on the local render and on the preview (with or without `deltas.images`). Found on a school site reskinned to a
+  Figma kit: the Text + Image frame (574×324, `cover`) showed 56% of the principal's square portrait where the source
+  showed 96%, and Key dates 77% for 100%, with every gate green. `gates.md` § Image crop and Phase 4 say how to size
+  images against a fixed donor frame: a single image by its own ratio under a 2:3 cap; a grid shares one whole-pixel
+  frame only when its images are within 10% of the median ratio, else each keeps its own; the Figma gate's image-height
+  entries on content images become waivers. On that site's 52 pages: 58 of 201 images cut more on 18 pages before, 0 of
+  199 after, Figma gate PASS on the 4 archetypes, desktop pixel fidelity unchanged (mobile lower where Figma's own frame
+  crops its placeholder).
 - **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The
   first read geometry 41/41, ramp 291/291 and `parity` n/a while the deployed page was 21.05% off at 360; that drove the
   floor. The second: ramp 547/547 at widths 414 and 1440, coverage 78/80 with 2 waivers, parity
