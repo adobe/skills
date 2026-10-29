@@ -4,17 +4,22 @@ import { CliError } from '#src/errors.mjs';
 import { createContext } from '#src/context.mjs';
 import { extendConfig, resolveLaunch } from '#src/recipe.mjs';
 import { artifactPath, generateSessionName, requireOpenSession } from '#src/session.mjs';
+import { CACHE_STATS_CODE, cacheHooksCode } from '#src/cache/hooks.mjs';
+import { hasKeeper, startKeeperProcess, stopKeeper } from '#src/cache/keeper-process.mjs';
 
 const HELP = {
   OPEN: `
 Example:
   S=$(web browser open https://example.com --headed | jq -r .session)
 Output:
-  { session, url, headed, cdpPort?, proxy? }
+  { session, url, headed, cdpPort?, proxy?, cache?: { dir, entries } }
 Notes:
   Without --session a name web-<4 hex> is generated and returned. An open name exits 2
   (SESSION_EXISTS). --recipe applies a recipe from \`web probe\`. Leaves the browser open.
   --proxy routes the browser through web cache proxy (certificate errors ignored).
+  --cache <dir> records every page the session loads into per-page HARs (the cache record
+  format) and serves cached requests from disk; all network requests are made by the
+  browser. A background keeper serves the cache until browser close. Not with --proxy.
 `,
   ATTACH: `
 Example:
@@ -36,7 +41,9 @@ Notes:
 Example:
   web browser close --session "$S"
 Output:
-  { session, status }
+  { session, status, cache?: { hits, misses, stored, errors } | null }
+Notes:
+  cache is present for a session opened with --cache; null when its keeper had stopped.
 Exit codes:
   2 NO_SESSION when the session is not open.
 `,
@@ -110,6 +117,55 @@ function assertUrl(value) {
   }
 }
 
+function closeQuietly(driver, session) {
+  try {
+    driver.close(session);
+  } catch (err) {
+    process.stderr.write(`warning: failed to close session ${session}: ${err.message}\n`);
+  }
+}
+
+/**
+ * Open `session` as a cache session: start its keeper, open the browser on about:blank,
+ * install the cache hooks, then navigate, so the first page is recorded too.
+ */
+async function openWithCache({ driver, keeper, openArgs, url, cacheDir, outputDir }) {
+  const { session } = openArgs;
+  if (driver.list().some((s) => s.name === session && s.status === 'open')) {
+    throw new CliError('SESSION_EXISTS', `session '${session}' is already open`, {
+      hint: 'choose another --session or run: web browser close --session <name>',
+    });
+  }
+  const started = await keeper.start({ cacheDir, session, outputDir });
+  try {
+    driver.open({ ...openArgs, url: undefined });
+    driver.run(session, { code: cacheHooksCode(started.port) });
+    if (url) driver.goto(session, url);
+  } catch (err) {
+    await keeper.stop({ session, outputDir });
+    closeQuietly(driver, session);
+    throw err;
+  }
+  return { dir: started.dir, entries: started.entries };
+}
+
+/** Stop the session's keeper; its counters plus the hooks' errors, or null if it was gone. */
+async function closeCache({ driver, keeper, session, outputDir, stderr }) {
+  let hookErrors = 0;
+  try {
+    hookErrors = driver.run(session, { code: CACHE_STATS_CODE });
+  } catch (err) {
+    stderr.write(`warning: cannot read cache hook errors for ${session}: ${err.message}\n`);
+  }
+  driver.close(session);
+  const stats = await keeper.stop({ session, outputDir });
+  if (!stats) {
+    stderr.write(`warning: cache keeper for ${session} was not running\n`);
+    return null;
+  }
+  return { ...stats, errors: stats.errors + hookErrors };
+}
+
 function parseParams(json) {
   if (json === undefined) return {};
   try {
@@ -135,6 +191,8 @@ export function registerBrowser(program, deps) {
       const ctx = createContext(command, deps);
       await fn(ctx, ...args.slice(0, -2));
     });
+  const keeper = deps.keeper ?? { start: startKeeperProcess, stop: stopKeeper };
+  const stderr = deps.stderr ?? process.stderr;
   const openSession = (ctx) => {
     requireOpenSession(ctx.driver, ctx.opts.session);
     return ctx.opts.session;
@@ -147,10 +205,16 @@ export function registerBrowser(program, deps) {
       .addHelpText('after', HELP.OPEN)
       .option('--cdp-port <n>', 'remote debugging port', parseIntArg)
       .option('--persistent', 'use a persistent profile')
-      .option('--proxy <url>', 'route the browser through a web cache proxy'),
-    ({ opts, driver, print, recipe }, url) => {
+      .option('--proxy <url>', 'route the browser through a web cache proxy')
+      .option('--cache <dir>', 'record and replay the session in HARs under <dir>'),
+    async ({ opts, driver, print, recipe }, url) => {
       const session = opts.session ?? generateSessionName();
       const { cdpPort, proxy } = opts;
+      if (proxy && opts.cache) {
+        throw new CliError('USAGE', '--cache and --proxy cannot be combined', {
+          hint: 'use --cache to record while browsing, or --proxy to replay via cache proxy',
+        });
+      }
       if (proxy) assertUrl(proxy);
       const launch = resolveLaunch(recipe, { persistent: opts.persistent });
       const config = proxy
@@ -159,20 +223,29 @@ export function registerBrowser(program, deps) {
             contextOptions: { ignoreHTTPSErrors: true },
           })
         : launch.config;
-      driver.open({
+      const openArgs = {
         session,
         url,
         headed: opts.headed,
         cdpPort,
         ...launch,
         ...(config && { config }),
-      });
+      };
+      let cache;
+      if (opts.cache) {
+        const cacheDir = opts.cache;
+        const outputDir = opts.output;
+        cache = await openWithCache({ driver, keeper, openArgs, url, cacheDir, outputDir });
+      } else {
+        driver.open(openArgs);
+      }
       print({
         session,
         url,
         headed: Boolean(opts.headed),
         ...(cdpPort && { cdpPort }),
         ...(proxy && { proxy }),
+        ...(opts.cache && { cache }),
       });
     },
   );
@@ -204,10 +277,16 @@ export function registerBrowser(program, deps) {
 
   action(
     browser.command('close').description('close the session').addHelpText('after', HELP.CLOSE),
-    (ctx) => {
+    async (ctx) => {
       const session = openSession(ctx);
-      ctx.driver.close(session);
-      ctx.print({ session, status: 'closed' });
+      const outputDir = ctx.opts.output;
+      if (!hasKeeper({ session, outputDir })) {
+        ctx.driver.close(session);
+        return ctx.print({ session, status: 'closed' });
+      }
+      const { driver } = ctx;
+      const cache = await closeCache({ driver, keeper, session, outputDir, stderr });
+      return ctx.print({ session, status: 'closed', cache });
     },
   );
 
@@ -216,9 +295,10 @@ export function registerBrowser(program, deps) {
       .command('close-all')
       .description('close every session')
       .addHelpText('after', HELP.CLOSE_ALL),
-    (ctx) => {
+    async (ctx) => {
       const closed = ctx.driver.list().map((s) => s.name);
       ctx.driver.closeAll();
+      for (const session of closed) await keeper.stop({ session, outputDir: ctx.opts.output });
       ctx.print({ closed });
     },
   );

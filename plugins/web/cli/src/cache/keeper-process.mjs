@@ -128,3 +128,11 @@ export async function startKeeperProcess({
   writeFileSync(stateFile(outputDir, session), JSON.stringify(state));
   return { ...state, entries: ready.entries };
 }
+
+/**
+ * Whether `session` was opened with a cache keeper (its state file exists).
+ * @param {{ session: string, outputDir: string }} opts
+ */
+export function hasKeeper({ session, outputDir }) {
+  return existsSync(stateFile(outputDir, session));
+}
