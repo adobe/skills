@@ -1,6 +1,6 @@
 name: EDS Skill Eval
 
-# Multi-model eval for one EDS skill: per model, no-skill vs base (PR base) vs head (PR).
+# Eval for one EDS skill on tessl's default model: no-skill vs base (PR base) vs head (PR).
 # Config: plugins/aem/edge-delivery-services/recall/eval.json
 # Trigger: last commit message on the PR starts with `eds-eval:`, e.g.
 #   git commit --allow-empty -m "eds-eval: building-blocks"
@@ -48,9 +48,6 @@ jobs:
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
         with:
           token: ${{ secrets.TESSL_TOKEN }}
-
-      - name: List agents and models
-        run: tessl eval run --list-agents
 
       - name: Prepare variants
         run: node scripts/eds-eval-prepare.mjs "$CONFIG" "${{ github.event.pull_request.base.sha }}" "$OUT"

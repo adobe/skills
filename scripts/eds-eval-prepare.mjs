@@ -1,5 +1,5 @@
-// Prepares an EDS multi-model eval: scenario subset, base/head plugin copies narrowed to one
-// skill, and a variants file (per model: no-skill, base, head). Run from the repository root.
+// Prepares an EDS skill eval: scenario subset, base/head plugin copies narrowed to one
+// skill, and a variants file (no-skill, base, head) on tessl's default model. Run from the repository root.
 // Usage: node scripts/eds-eval-prepare.mjs <config.json> <base-ref> <out-dir>
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -13,7 +13,7 @@ if (!configPath || !baseRef || !out) {
 }
 
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
-const { skill, scenarios, models } = config;
+const { skill, scenarios } = config;
 
 function narrow(pluginDir, dest) {
   mkdirSync(join(dest, '.tessl-plugin'), { recursive: true });
@@ -43,11 +43,11 @@ execFileSync('tar', ['-x', '-C', baseTree], { input: archive });
 narrow(join(baseTree, PLUGIN), join(out, 'base'));
 rmSync(baseTree, { recursive: true, force: true });
 
-const variants = models.flatMap(({ label, agent, model }) => [
-  { label: `${label}-noskill`, agent, model, fixtures: { context: null } },
-  { label: `${label}-base`, agent, model, fixtures: { context: { localPath: resolve(out, 'base') } } },
-  { label: `${label}-head`, agent, model, fixtures: { context: { localPath: resolve(out, 'head') } } },
-]);
+const variants = [
+  { label: 'noskill', fixtures: { context: null } },
+  { label: 'base', fixtures: { context: { localPath: resolve(out, 'base') } } },
+  { label: 'head', fixtures: { context: { localPath: resolve(out, 'head') } } },
+];
 writeFileSync(join(out, 'variants.json'), `${JSON.stringify(variants, null, 2)}\n`);
 
 const solves = variants.length * scenarios.length * (config.runs || 1);
