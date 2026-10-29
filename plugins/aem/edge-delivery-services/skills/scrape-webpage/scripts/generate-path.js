@@ -120,7 +120,7 @@ function generateDocumentPathInfo(url) {
 
     // Automatically create directory structure if needed
     let directoryCreated = false;
-    if (dirPath && dirPath !== 'content') {
+    if (dirPath) {
       // Resolve to absolute path relative to workspace
       const workspaceRoot = process.env.WORKSPACE_ROOT || process.cwd();
       const absoluteDirPath = path.join(workspaceRoot, dirPath);
