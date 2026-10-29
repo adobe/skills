@@ -1,0 +1,90 @@
+name: EDS Skill Eval
+
+# Multi-model eval for one EDS skill: per model, no-skill vs base (PR base) vs head (PR).
+# Config: plugins/aem/edge-delivery-services/recall/eval.json
+# Trigger: last commit message on the PR starts with `eds-eval:`, e.g.
+#   git commit --allow-empty -m "eds-eval: building-blocks"
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: eds-eval-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.trigger.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - id: trigger
+        run: |
+          MSG=$(git log -1 --format=%s)
+          if [[ "$MSG" =~ ^eds-eval: ]]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; fi
+
+  eval:
+    needs: check
+    if: needs.check.outputs.run == 'true' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    environment: eval
+    env:
+      CONFIG: plugins/aem/edge-delivery-services/recall/eval.json
+      OUT: .eds-eval
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
+        with:
+          token: ${{ secrets.TESSL_TOKEN }}
+
+      - name: List agents and models
+        run: tessl eval run --list-agents
+
+      - name: Prepare variants
+        run: node scripts/eds-eval-prepare.mjs "$CONFIG" "${{ github.event.pull_request.base.sha }}" "$OUT"
+
+      - name: Run eval
+        id: run
+        run: |
+          RUNS=$(node -p "require('./$CONFIG').runs || 1")
+          SKILL=$(node -p "require('./$CONFIG').skill")
+          OUTPUT=$(tessl eval run "$OUT/scenarios" \
+            --variant-json "$OUT/variants.json" \
+            --runs "$RUNS" \
+            --label "eds-eval $SKILL PR#${{ github.event.pull_request.number }}" \
+            --yes --wait --json 2>&1) || STATUS=$?
+          echo "$OUTPUT"
+          RUN_ID=$(echo "$OUTPUT" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          exit ${STATUS:-0}
+
+      - name: Results
+        if: always() && steps.run.outputs.run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.run.outputs.run_id }}
+        run: |
+          VIEW=$(tessl eval view "$RUN_ID" --full 2>&1 || true)
+          echo "$VIEW"
+          {
+            echo "## EDS Skill Eval"
+            echo ""
+            echo "https://tessl.io/eval-runs/$RUN_ID"
+            echo ""
+            echo '```'
+            echo "$VIEW"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          gh pr comment ${{ github.event.pull_request.number }} --body "EDS skill eval ($(git log -1 --format=%s)): https://tessl.io/eval-runs/$RUN_ID"
