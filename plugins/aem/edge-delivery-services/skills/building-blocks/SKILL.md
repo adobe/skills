@@ -19,7 +19,7 @@ Implementation step of **content-driven-development** (Step 5). If you are not f
    - `aem up` serves `content/` before proxying, so `content/docs/library/blocks/my-block.html` previews at `/docs/library/blocks/my-block` (and `.plain.html`) without pushing.
    - To publish test content to DA: `aem content add <files>`, `aem content commit -m "..."`, `aem content push`. Push skips binaries and strips icon spans; see **aem-cli**.
    - Use the port `aem up` logs: in a git worktree it moves off 3000 to a branch-derived port.
-3. **Implement** `blocks/{block-name}/{block-name}.js` and `.css`. If the change needs core changes (scripts.js, styles.css, consented.js), make and verify those first.
+3. **Implement** `blocks/{block-name}/{block-name}.js` and `.css`. If the change needs core changes (scripts.js, styles.css, consented.js or delayed.js), make and verify those first.
 4. **Test** with **testing-blocks**. Pass it the block name, test content URL(s), variants, and acceptance criteria from CDD.
 5. **Return** to the CDD workflow.
 
@@ -29,7 +29,7 @@ Implementation step of **content-driven-development** (Step 5). If you are not f
 - **No `-wrapper` or `-container` class names inside a block.** EDS adds `{block}-wrapper` to the block's parent and `{block}-container` to its section; reusing those suffixes collides silently.
 - **Never edit `scripts/aem.js`.** It is vendored; put project code in `scripts/scripts.js` or block files.
 - **The whole first section loads before LCP**, not just its first block. Any block that can appear at the top of a page must render its authored content without waiting on network requests or heavy imports.
-- **Third-party scripts (analytics, martech, tag managers) go in `scripts/consented.js`.** `loadDelayed()` imports `consent-check.js`, which loads `consented.js` only after consent. Current boilerplate has no `delayed.js` or 3-second delay; older projects may still have one.
+- **Third-party scripts (analytics, martech, tag managers) go wherever `loadDelayed()` loads them:** `scripts/consented.js` if the project has `consent-check.js` (`loadDelayed()` imports it, and it loads `consented.js` only after consent; boilerplate since 2026-07-30), otherwise `scripts/delayed.js`. Never create a `consented.js` that nothing loads.
 
 ## Related Skills
 
