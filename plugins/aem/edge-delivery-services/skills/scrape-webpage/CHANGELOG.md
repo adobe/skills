@@ -1,3 +1,5 @@
+## [2.0.2](https://github.com/adobe/skills/compare/scrape-webpage-v2.0.1...scrape-webpage-v2.0.2) (2026-10-29)
+
 ## [2.0.1](https://github.com/adobe/skills/compare/scrape-webpage-v2.0.0...scrape-webpage-v2.0.1) (2026-07-06)
 
 
