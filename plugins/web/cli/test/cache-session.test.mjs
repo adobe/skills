@@ -75,7 +75,15 @@ after(async () => {
 });
 
 async function browse(cache) {
-  const opened = await web('browser', 'open', `${origin}/a`, '--session', session, '--cache', cache);
+  const opened = await web(
+    'browser',
+    'open',
+    `${origin}/a`,
+    '--session',
+    session,
+    '--cache',
+    cache,
+  );
   assert.equal(opened.status, 0, opened.stdout);
   const state = JSON.parse(readFileSync(join(cwd, '.web', `${session}-cache-keeper.json`), 'utf8'));
   await goto(`${origin}/b`);

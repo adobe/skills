@@ -4269,6 +4269,14 @@ var HOOKS = `async page => {
       return false;
     }
   };
+  const startOf = (request) => {
+    try {
+      const { startTime } = request.timing();
+      return startTime > 0 ? startTime : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   const fail = () => {
     state.errors += 1;
   };
@@ -4307,6 +4315,7 @@ var HOOKS = `async page => {
     }
     try {
       const data = {
+        startedAt: startOf(request),
         page: pageOf(request),
         method: 'GET',
         url: request.url(),
@@ -4461,6 +4470,9 @@ Notes:
   --cache <dir> records every page the session loads into per-page HARs (the cache record
   format) and serves cached requests from disk; all network requests are made by the
   browser. A background keeper serves the cache until browser close. Not with --proxy.
+  Every response is recorded with its original status (errors included, redirect hops with
+  redirectURL); only 2xx/3xx are served from the cache, errors are re-checked live. Redirect
+  hops after the first are always fetched live (Playwright does not route them).
 `,
   ATTACH: `
 Example:
@@ -7253,10 +7265,20 @@ var EXTENSIONS = {
   "image/vnd.microsoft.icon": "ico"
 };
 var mimeOf = (contentType = "") => contentType.split(";")[0].trim().toLowerCase();
-function isStorable({ method, url, status: status2 }) {
-  if (method !== "GET" || status2 < 200 || status2 > 399) return false;
-  if (status2 === 206 || status2 === 304) return false;
+function isRecordable({ method, url, status: status2 }) {
+  if (method !== "GET" || status2 <= 0 || status2 === 206 || status2 === 304) return false;
   return /^https?:\/\//.test(url) && !isTracker(url);
+}
+var isCacheable = (status2) => status2 >= 200 && status2 <= 399;
+var PAGE_ID = "page_1";
+function redirectUrl(url, headers) {
+  const location = headers.find(({ name }) => name.toLowerCase() === "location")?.value;
+  if (!location) return "";
+  try {
+    return new URL(location, url).href;
+  } catch {
+    return location;
+  }
 }
 var fromWebPage = (req) => {
   const site = req.headers["sec-fetch-site"];
@@ -7272,6 +7294,7 @@ var readJson = async (req) => {
   return JSON.parse(Buffer.concat(chunks2).toString("utf8"));
 };
 function harEntry({
+  startedAt = Date.now(),
   method,
   url,
   requestHeaders,
@@ -7283,7 +7306,8 @@ function harEntry({
   file
 }) {
   return {
-    startedDateTime: (/* @__PURE__ */ new Date()).toISOString(),
+    pageref: PAGE_ID,
+    startedDateTime: new Date(Number.isFinite(startedAt) ? startedAt : Date.now()).toISOString(),
     time: 0,
     request: {
       method,
@@ -7302,7 +7326,7 @@ function harEntry({
       cookies: [],
       headers,
       content: { size, mimeType, ...file && { _file: file } },
-      redirectURL: "",
+      redirectURL: redirectUrl(url, headers),
       headersSize: -1,
       bodySize: -1
     },
@@ -7315,6 +7339,7 @@ var headerList = (headers) => Object.entries(headers).flatMap(
 );
 function createStore(dir) {
   const index = loadHarIndex(dir);
+  for (const [key, { status: status2 }] of index) if (!isCacheable(status2)) index.delete(key);
   const entries = index.size;
   const pages = /* @__PURE__ */ new Map();
   function writeBody(body, mimeType) {
@@ -7327,13 +7352,16 @@ function createStore(dir) {
   function append(page, entry) {
     const current = pages.get(page);
     if (!current) return;
-    current.har.log.entries.push(entry);
+    const { entries: entries2 } = current.har.log;
+    const at = entries2.findLastIndex((e) => e.startedDateTime <= entry.startedDateTime);
+    entries2.splice(at + 1, 0, entry);
     writeAtomic(current.file, JSON.stringify(current.har));
   }
   function startPage(page, url) {
-    const har = {
-      log: { version: "1.2", creator: { name: "web-cli", version: "1" }, entries: [] }
-    };
+    const startedDateTime = (/* @__PURE__ */ new Date()).toISOString();
+    const harPages = [{ startedDateTime, id: PAGE_ID, title: url, pageTimings: {} }];
+    const creator = { name: "web-cli", version: "1" };
+    const har = { log: { version: "1.2", creator, pages: harPages, entries: [] } };
     pages.set(page, { file: path8.join(dir, harFileName(url)), har });
   }
   function lookup({ url, page }) {
@@ -7364,6 +7392,7 @@ function createStore(dir) {
     const mimeType = mimeOf(response.mimeType);
     const file = body.length ? writeBody(body, mimeType) : void 0;
     append(response.page, harEntry({ ...response, mimeType, size: body.length, file }));
+    if (!isCacheable(response.status)) return;
     const read = file ? () => readFileSync9(path8.join(dir, file)) : () => Buffer.alloc(0);
     index.set(`GET ${response.url}`, {
       status: response.status,
@@ -7402,7 +7431,7 @@ async function startKeeper({
     return reply(res, hit.status, { ...hit.headers, "x-web-cache": "hit" }, hit.body);
   }
   function onStore(req, res, response) {
-    if (isStorable(response)) {
+    if (isRecordable(response)) {
       cache.store(response);
       stats.stored += 1;
       log(`[stored] ${response.url}`);

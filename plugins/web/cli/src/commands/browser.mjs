@@ -20,6 +20,9 @@ Notes:
   --cache <dir> records every page the session loads into per-page HARs (the cache record
   format) and serves cached requests from disk; all network requests are made by the
   browser. A background keeper serves the cache until browser close. Not with --proxy.
+  Every response is recorded with its original status (errors included, redirect hops with
+  redirectURL); only 2xx/3xx are served from the cache, errors are re-checked live. Redirect
+  hops after the first are always fetched live (Playwright does not route them).
 `,
   ATTACH: `
 Example:
