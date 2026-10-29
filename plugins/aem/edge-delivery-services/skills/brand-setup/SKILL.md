@@ -39,18 +39,20 @@ browser is available, stop and say so. Start the browser from a directory outsid
   (mobile values). Reload after resizing.
 - **Overlays:** look at the page first (screenshot or accessibility snapshot): consent managers
   often render in a shadow root or iframe that a DOM text search misses. Accept or close
-  banners and popups, then confirm `document.elementFromPoint` at the viewport centre isn't a
-  fixed overlay. Report what you closed, or "no overlay".
+  banners and popups, then, on every page read, confirm `document.elementFromPoint` at the
+  viewport centre isn't a fixed overlay. Report what you closed, or "no overlay".
 - **Blocked:** if the page is a bot challenge, "access denied", maintenance or login page, or a
   consent wall that can't be dismissed, retry with a headed browser if you can. If it stays
   blocked, stop and report it. Never take values from an interstitial page.
 
 ## 3. Read the values from the rendered page
 
-Run JavaScript in the page and read browser data, not stylesheet text:
+Run JavaScript in the page and read browser data, not stylesheet text (stylesheet text is used
+only to locate font files, below):
 
 - `getComputedStyle()` on `body`, paragraphs, inline links and `h1`–`h6` inside the main content
-  (`main`, else `[role=main]`, else `body` minus header, nav and footer; say which), buttons,
+  (`main`, else `[role=main]`, else `body` minus the page's header, nav and footer; say which),
+  buttons,
   the header/nav bar, footer and section backgrounds. Skip elements that are hidden
   (`display: none`, zero size, clipped, `visibility: hidden`) — many sites ship hidden SEO
   headings.
@@ -60,7 +62,12 @@ Run JavaScript in the page and read browser data, not stylesheet text:
 - `getComputedStyle(document.documentElement)` custom properties: if the site exposes tokens
   like `--color-primary`, use their names as hints for which color plays which role.
 - Loaded fonts: `document.fonts` entries with status `loaded`, and the font file URLs from the
-  performance resource entries (`.woff2`, `.woff`, `.ttf`, `.otf`).
+  performance resource entries (`.woff2`, `.woff`, `.ttf`, `.otf`) of the first page in a fresh
+  browser session or after a cache-bypassing reload; later pages can be served from cache and
+  not list them. For a loaded face still without a file, find its `@font-face` rule: in the
+  page if the stylesheet allows it, else fetch that stylesheet's text (its URL is in the
+  network list) and resolve `src` against the stylesheet URL. Use the rule only to locate
+  files, never to choose fonts, weights or any other value.
 - Header bar: the rendered height of the main navigation bar at both widths (at 375 px, the
   bar that holds the logo and the menu button, even if the links are collapsed).
 - Favicon and logo: follow [references/lookup-rules.md](references/lookup-rules.md).
@@ -82,12 +89,12 @@ estimate: a value you did not measure keeps its boilerplate value and goes in th
 | `--dark-color` | primary button hover background if dark; else a dark section/footer background; else secondary text color. Boilerplate uses it for primary-button hover |
 | `--body-font-family` | family of main-content paragraphs (the first family that actually loaded) |
 | `--heading-font-family` | family of the visible `h1`/`h2` |
-| `--body-font-size-m` / `-s` / `-xs` | paragraph text / smaller supporting text (captions, nav links) / smallest legible text (legal, fine print) |
+| `--body-font-size-m` / `-s` / `-xs` | paragraph text / smaller supporting text (captions, nav links) / smallest legible text in the body font (legal, fine print), not labels set in the heading font |
 | `--heading-font-size-xxl` … `-xs` | `h1` … `h6` |
-| `--nav-height` | rendered height of the main navigation bar's own box (the row with the logo and main links, not utility or promo bars, nor a logo or menu that overflows the bar); when the header stacks several rows, report the total height and its rows too |
+| `--nav-height` | rendered height of the logo's nearest ancestor that also holds the main links (not an inner links element, utility or promo bars, nor a logo or menu that overflows it); when the logo and main links sit on separate rows, use the total of those rows. Report each row's height |
 
 "Most common" and visible-element counts are taken over all main-content elements of every page
-read at that width, not a sample.
+read (at that width for sizes, at both widths for colors), not a sample.
 
 Sizes:
 
@@ -95,14 +102,17 @@ Sizes:
   `@media (width >= 900px) { :root { … } }` block. Keep both blocks and all nine size slots in
   each. If `--nav-height` differs between widths, add the desktop value to the media block too.
 - Per heading level, when sizes differ across pages or elements, pick the one with the highest
-  `size × weight × number of visible main-content elements`. Headings in headers, nav, footers
-  and asides don't count; a level found only there is unmeasured.
-- The heading scale must descend from `xxl` to `xs`, because authors pick levels by meaning.
-  If the measured sizes don't descend (an `h3` larger than the `h2`), assign the distinct
-  measured sizes to `xxl`, `xl`, … in descending order instead, and report the per-level values.
+  `size × weight × number of visible main-content elements`. Headings in the page's header,
+  nav, footer and asides don't count (a `<header>` inside the main content does); a level
+  found only there is unmeasured.
+- No heading level may be larger than the one above it (`xxl` to `xs`; equal is allowed),
+  because authors pick levels by meaning. If the measured sizes don't descend (an `h3` larger
+  than the `h2`), assign the distinct measured sizes to `xxl`, `xl`, … in descending order
+  instead, and report the per-level values.
 - A level with no measured size keeps its boilerplate value for that width (mobile and desktop
-  differ), unless that breaks the descending
-  order; then it takes the size of the level above it. Report it as filled, not measured.
+  differ), unless that breaks this order; then it takes the size of the level above it.
+  Report it as filled, not measured. The same order and fill-in rules apply to the body sizes
+  `m`, `s`, `xs`.
 
 ## 5. Fonts
 
@@ -168,7 +178,9 @@ browser or other tools left in the project (session folders, screenshots, downlo
 ## 8. Self-check, then report
 
 Run all six checks on the files you wrote, not from memory. The report lists each one with
-pass or fail; a report missing a check is incomplete. Fix any failure before reporting; a
+pass or fail and the output that shows it; a report missing a check or its output is
+incomplete. If you edit a file after the checks, run them all again. Fix any failure before
+reporting; a
 failure you can't fix needs a stated reason:
 
 - Every non-generic family in the two font stacks is accounted for: a brand family has an
@@ -176,15 +188,18 @@ failure you can't fix needs a stated reason:
   `<family>-fallback` has its `@font-face` in `styles/styles.css`.
 - Every `url()` in `styles/fonts.css` points to a file in `fonts/`.
 - `head.html` differs from the boilerplate by at most the favicon line.
-- Both `:root` blocks still define all nine size slots, and heading sizes descend in each.
+- Both `:root` blocks still define all nine size slots, and in each no heading or body size is
+  larger than the one above it.
 - Every value in the report table has a source; anything else is listed as boilerplate or filled.
-- `git status --short`, run after the last write and quoted in the report, shows changes only
-  in the files listed in step 7 (plus any file the user asked for, named in the report).
+- `git status --short`, run after the last write and pasted verbatim in the report, shows
+  changes only in the files listed in step 7 (plus any file the user asked for, named in the
+  report).
 
 Give the report in your final reply. Write it to a file only when the user asks for one.
 
 1. The six self-check results.
-2. Table: slot | mobile value | desktop value | source (page, element, property).
+2. Table: slot | mobile value | desktop value | source (page, element, property), plus the
+   pages read and the main-content definition used.
 3. Slots left at boilerplate value or filled, and why.
 4. Fonts: family, files copied, licence status, hosted families not copied.
 5. Favicon and logo: source URL and file written; overlays closed (or "no overlay").
