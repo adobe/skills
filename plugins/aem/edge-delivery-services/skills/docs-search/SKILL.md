@@ -45,10 +45,10 @@ Determine 1-3 specific keywords related to what you're searching for. Be specifi
 
 ### Step 2: Run the Search Script
 
-Execute the search script from the project root:
+Execute the search script from the project root (`<SKILL_DIR>` is the absolute path to the directory containing this SKILL.md):
 
 ```bash
-node .claude/skills/docs-search/scripts/search.js [--all] <keyword1> [keyword2] [...]
+node <SKILL_DIR>/scripts/search.js [--all] <keyword1> [keyword2] [...]
 ```
 
 **Options:**
@@ -58,13 +58,13 @@ node .claude/skills/docs-search/scripts/search.js [--all] <keyword1> [keyword2] 
 **Examples:**
 ```bash
 # Search for block decoration info
-node .claude/skills/docs-search/scripts/search.js block decoration
+node <SKILL_DIR>/scripts/search.js block decoration
 
 # Search for metadata with all results
-node .claude/skills/docs-search/scripts/search.js --all metadata
+node <SKILL_DIR>/scripts/search.js --all metadata
 
 # Multi-word search
-node .claude/skills/docs-search/scripts/search.js universal editor blocks
+node <SKILL_DIR>/scripts/search.js universal editor blocks
 ```
 
 ### Step 3: Review Search Results
@@ -131,7 +131,7 @@ The search script searches documentation first (150+ pages). Blog posts are only
 **User Request:** "How do I decorate blocks in aem.live?"
 
 **Good Approach:**
-1. Search: `node .claude/skills/docs-search/scripts/search.js block decoration`
+1. Search: `node <SKILL_DIR>/scripts/search.js block decoration`
 2. Review top 3 results
 3. Fetch the most relevant: `https://www.aem.live/developer/markup-sections-blocks`
 4. Read full content and provide answer
@@ -145,7 +145,7 @@ The search script searches documentation first (150+ pages). Blog posts are only
 **User Request:** "I need to add metadata to my pages"
 
 **Good Approach:**
-1. Search: `node .claude/skills/docs-search/scripts/search.js metadata`
+1. Search: `node <SKILL_DIR>/scripts/search.js metadata`
 2. Notice top result is "/docs/bulk-metadata" (score: 63)
 3. Also see "/docs/metadata" (score: 30)
 4. Fetch and read both to understand page-level vs bulk metadata

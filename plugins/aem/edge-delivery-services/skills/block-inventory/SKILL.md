@@ -62,18 +62,20 @@ ls -d blocks/*/
 
 Search for commonly-used blocks that might not be in the project yet.
 
+`<SKILL_DIR>` is the absolute path to the directory containing this SKILL.md.
+
 **Common blocks to search (run in parallel):**
 
 ```bash
 # Search all common blocks in parallel
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js hero &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js cards &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js columns &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js accordion &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js tabs &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js carousel &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js quote &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js fragment &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js hero &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js cards &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js columns &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js accordion &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js tabs &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js carousel &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js quote &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js fragment &
 wait
 ```
 
@@ -153,8 +155,8 @@ ls -d blocks/*/
 **Step 2 - Block Collection search:**
 ```bash
 # Run parallel searches
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js hero &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js cards &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js hero &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js cards &
 # ... (all common blocks)
 wait
 ```
