@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -112,4 +112,29 @@ test('cache keeper is hidden from help', () => {
   const { stdout } = spawnSync(process.execPath, [BIN, 'cache', '--help'], { encoding: 'utf8' });
   assert.match(stdout, /record/);
   assert.doesNotMatch(stdout, /keeper/);
+});
+
+async function staleState(t, extraArgs) {
+  const root = await tmp();
+  const outputDir = path.join(root, 'out');
+  const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30000)', ...extraArgs], {
+    stdio: 'ignore',
+  });
+  t.after(() => child.kill());
+  mkdirSync(outputDir, { recursive: true });
+  const state = { pid: child.pid, port: 1, dir: root };
+  writeFileSync(path.join(outputDir, 's-cache-keeper.json'), JSON.stringify(state));
+  return { outputDir, pid: child.pid };
+}
+
+test('stop never kills an unrelated process on a stale pid', async (t) => {
+  const { outputDir, pid } = await staleState(t, []);
+  assert.equal(await stopKeeper({ session: 's', outputDir }), null);
+  assert.equal(await waitDead(pid), false);
+});
+
+test('stop kills an unreachable keeper process', async (t) => {
+  const { outputDir, pid } = await staleState(t, ['cache', 'keeper']);
+  assert.equal(await stopKeeper({ session: 's', outputDir }), null);
+  assert.equal(await waitDead(pid), true);
 });

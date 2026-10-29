@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   closeSync,
   existsSync,
@@ -17,6 +17,15 @@ const STOP_TIMEOUT_MS = 1_000;
 
 const stateFile = (outputDir, session) => artifactPath(outputDir, session, 'cache', 'keeper.json');
 const logFile = (outputDir, session) => artifactPath(outputDir, session, 'cache', 'keeper.log');
+
+/**
+ * Whether `pid` is still a cache keeper: a stale state file may name a pid the OS has since
+ * given to an unrelated process. Without `ps` (or on any failure) the answer is no.
+ */
+function isKeeperProcess(pid) {
+  const res = spawnSync('ps', ['-o', 'command=', '-p', String(pid)], { encoding: 'utf8' });
+  return res.status === 0 && res.stdout.includes('cache keeper');
+}
 
 /** The error document a failed `web` run printed on stdout, if any. */
 function cliErrorFrom(stdout) {
@@ -86,10 +95,12 @@ export async function stopKeeper({ session, outputDir }) {
     const { hits, misses, stored, errors } = status;
     return { hits, misses, stored, errors };
   } catch {
-    try {
-      process.kill(pid);
-    } catch {
-      // Already gone: nothing left to stop.
+    if (isKeeperProcess(pid)) {
+      try {
+        process.kill(pid);
+      } catch {
+        // Exited between the check and the signal: nothing left to stop.
+      }
     }
     return null;
   }

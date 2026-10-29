@@ -22,7 +22,8 @@ Notes:
   browser. A background keeper serves the cache until browser close. Not with --proxy.
   Every response is recorded with its original status (errors included, redirect hops with
   redirectURL); only 2xx/3xx are served from the cache, errors are re-checked live. Redirect
-  hops after the first are always fetched live (Playwright does not route them).
+  hops after the first are always fetched live (Playwright does not route them). Service
+  workers are blocked in a cache session.
 `,
   ATTACH: `
 Example:
@@ -141,7 +142,9 @@ async function openWithCache({ driver, keeper, openArgs, url, cacheDir, outputDi
   }
   const started = await keeper.start({ cacheDir, session, outputDir });
   try {
-    driver.open({ ...openArgs, url: undefined });
+    // Requests a service worker handles never reach the cache route: block service workers.
+    const config = extendConfig(openArgs.config, { contextOptions: { serviceWorkers: 'block' } });
+    driver.open({ ...openArgs, url: undefined, config });
     driver.run(session, { code: cacheHooksCode(started.port) });
     if (url) driver.goto(session, url);
   } catch (err) {
@@ -152,14 +155,19 @@ async function openWithCache({ driver, keeper, openArgs, url, cacheDir, outputDi
   return { dir: started.dir, entries: started.entries };
 }
 
+/** Wait for the session's in-flight cache stores; returns the hooks' error count. */
+function flushCache(driver, session, stderr) {
+  try {
+    return driver.run(session, { code: CACHE_STATS_CODE });
+  } catch (err) {
+    stderr.write(`warning: cannot flush cache recordings for ${session}: ${err.message}\n`);
+    return 0;
+  }
+}
+
 /** Stop the session's keeper; its counters plus the hooks' errors, or null if it was gone. */
 async function closeCache({ driver, keeper, session, outputDir, stderr }) {
-  let hookErrors = 0;
-  try {
-    hookErrors = driver.run(session, { code: CACHE_STATS_CODE });
-  } catch (err) {
-    stderr.write(`warning: cannot read cache hook errors for ${session}: ${err.message}\n`);
-  }
+  const hookErrors = flushCache(driver, session, stderr);
   driver.close(session);
   const stats = await keeper.stop({ session, outputDir });
   if (!stats) {
@@ -299,9 +307,16 @@ export function registerBrowser(program, deps) {
       .description('close every session')
       .addHelpText('after', HELP.CLOSE_ALL),
     async (ctx) => {
-      const closed = ctx.driver.list().map((s) => s.name);
+      const outputDir = ctx.opts.output;
+      const sessions = ctx.driver.list();
+      for (const { name, status } of sessions) {
+        if (status === 'open' && hasKeeper({ session: name, outputDir })) {
+          flushCache(ctx.driver, name, stderr);
+        }
+      }
+      const closed = sessions.map((s) => s.name);
       ctx.driver.closeAll();
-      for (const session of closed) await keeper.stop({ session, outputDir: ctx.opts.output });
+      for (const session of closed) await keeper.stop({ session, outputDir });
       ctx.print({ closed });
     },
   );

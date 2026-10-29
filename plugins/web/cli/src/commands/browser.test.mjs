@@ -388,3 +388,33 @@ test('open --cache on an open session is SESSION_EXISTS and keeps its keeper', a
   assert.equal(call(calls, 'keeperStop'), undefined);
   assert.equal(call(calls, 'close'), undefined);
 });
+
+test('close-all flushes cache sessions before closing', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'web-close-all-'));
+  writeFileSync(join(dir, 'a-cache-keeper.json'), '{}');
+  const sessions = [
+    { name: 'a', status: 'open' },
+    { name: 'b', status: 'open' },
+  ];
+  const { calls } = await run(['browser', 'close-all', '--output', dir], {
+    sessions,
+    keeper: KEEPER,
+  });
+  const flushes = calls.filter((c) => c[0] === 'run').map((c) => c[1]);
+  assert.deepEqual(flushes, ['a']);
+  assert.ok(names(calls).indexOf('run') < names(calls).indexOf('closeAll'));
+});
+
+test('open --cache blocks service workers and keeps the recipe config', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'web-sw-'));
+  const recipe = join(dir, 'recipe.json');
+  const probe = [{ config: { contextOptions: { locale: 'fr-FR' } } }];
+  writeFileSync(recipe, JSON.stringify({ probe }));
+  const { calls } = await run(
+    ['browser', 'open', 'http://x', '--session', 's', '--cache', 'c', '--recipe', recipe],
+    { keeper: KEEPER },
+  );
+  const { contextOptions } = call(calls, 'open')[1].config;
+  assert.equal(contextOptions.serviceWorkers, 'block');
+  assert.equal(contextOptions.locale, 'fr-FR');
+});
