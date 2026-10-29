@@ -106,12 +106,14 @@ function generateDocumentPathInfo(url) {
     // Generate the document path (no extension)
     const documentPath = generateDocumentPath({ url });
 
+    const relativePath = documentPath.replace(/^\//, '');
+
     // Build file paths
-    const mdFilePath = `${documentPath}.md`;
-    const htmlFilePath = `${documentPath}.plain.html`;
+    const mdFilePath = `${relativePath}.md`;
+    const htmlFilePath = `${relativePath}.plain.html`;
 
     // Extract directory path (parent directory)
-    const dirPath = `${documentPath.substring(0, documentPath.lastIndexOf('/'))}`;
+    const dirPath = relativePath.includes('/') ? relativePath.substring(0, relativePath.lastIndexOf('/')) : '';
 
     // Extract just the filename (without extension)
     const filename = documentPath.substring(documentPath.lastIndexOf('/') + 1);
@@ -193,7 +195,7 @@ async function main() {
 }
 
 // Run if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === __filename) {
   main();
 }
 
