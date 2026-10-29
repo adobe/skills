@@ -4,6 +4,82 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.0 — reskin checks a page against its Figma donor and on its aem.page preview
+
+A Figma-donor reskin stopped at the token probe: nothing compared the page with its frames. The new `reskin/figma-gate.mjs`
+does, offline, from the capture `figma-donor.mjs` made. B0 joins the page's top-level `section[data-slot]`s to `mapping.md`,
+B1 measures geometry, B3 the generated `:root` block and each text style, B2 compares frame pixels (advisory, only where
+the frame's copy is the section's copy) and B4 writes a divergence register. The agent authors
+`reskin/figma-checks/<slug>.json` from `boxes` outlines; the coverage floor comes from Figma, so a file cannot cover only
+what the page got right (every text style of each checked root, a mobile root at the variant's own width; only a `waive`
+or `skip` with a `why` lowers it, a miss is exit 2). B0, B1 and B3 block. Phase 5 gains **(d)**; Phase 4 renders each `mapped`
+or `new-module` slot as a top-level `section[data-slot]` (`data-module` on `mapped` only) and emits
+`render/root-tokens.mjs`'s `:root` block first.
+
+Nothing checked a reskin page where it ships. The new `reskin/deployed-gate.mjs` holds the page `deploy` made to the reskin
+page and the donor on its `aem.page` preview, any donor, in an aem-boilerplate project: `preview` (isolation: `--namespace
+<ns>` in a shared repo, `--sandbox` in one's own), `content` (through a declared delta file, `reskin/deltas/<slug>.json`),
+`tokens`, `parity`, `sanity` (hard), `inherited` (`.plain.html`, `ai-readability`, `qa-gate`; a missing `qa-gate` input is a
+FAIL, never `n/a`) and `figma-gate --target preview`. It replaces only `deploy` Step 10's automated reconcile: the
+deployed eyeball, the delayed-font/nav CLS probe and the header-behavior checks stay mandatory before handoff, recorded in
+the ledger. Phase 5 gains **(e)**; recipe, delta file and fix budget are in `reference/deployed-leg.md`, the bars in
+`gates.md`.
+
+The preview must be reachable without auth: a protected preview is out of scope, and `preview` stops on its 401 or 403
+with exit 2. This release adds no site auth: the gates send no Authorization header, and no token flag is added to the
+`deploy`, `diff` or `replica` instruments.
+
+- **Instruments.** `stitch-shot --hide`; `donor-probe` `match: "all"` and `--wait-eds`; `dom-equality` and
+  `slot-coverage` `--deltas`; `capture-content` skips script, style, noscript and template children; `qa-gate` finds a
+  repeat group's block by order, not name; `build-harness` creates its output directory. Setup installs `pixelmatch` and
+  `pngjs` and copies more scripts (`reference/gates.md` § Project copies).
+- **Honest coverage.** `parity` compares main to main and says what it left out; an unserved font is recorded, never a
+  failure; B4 `conflict` scans the checked roots, composites alpha and lists texts with no opaque ground as "Contrast not
+  assessed" (`register.unassessable`), neither a class nor a PASS.
+- **Optional tokens.** `render/root-tokens.mjs` emits `--card-bg`, `--card-radius`, `--card-padding`,
+  `--card-title-color`, `--button-height`, `--section-padding-mobile` and `--gutter-mobile` when the sheet carries
+  `cards.primary.*`, `buttons.primary.height` or `layout.mobile.*`; `tokens` asserts them. Without them the block is unchanged.
+- **Section heights.** `parity` adds a `section-height` row per width: the reskin page's slots paired in order with the
+  preview's non-empty sections, the worst |Δh| ≤ 10% (naming the slot), n/a when the counts differ.
+- **Stale evidence.** `deployed-gate all` records a `codeStamp` (the project's `blocks/`, `styles/`, `scripts/`,
+  `head.html`) in `summary.json` and the ledger fragment; `deployed-gate stamp` says `current` or `stale` (exit 1).
+- **Waiver budget.** `figma-gate` refuses a checks file whose waivers and skips excuse over 25% of the floor, or
+  every mobile root it requires (exit 2); `--waiver-budget <pct>` raises the share and is recorded.
+- **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
+  checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`.
+- **Whole file, whole site.** Aligned with 0.33.0: Phase 1's Figma bullet and `donor-sources.md` § 3 no longer hand-pick
+  kit frames with `--list` and `--frames`, and the content crawl is `extract --all`. `figma-gate`'s no-capture and
+  frame-not-captured errors ask for a whole-file `capture` (`--refresh` over a narrowed one), not `--frames <ids>`.
+- **Image crop.** `dom-equality` gains a gating check: each visible image's shown region of its own pixels
+  (object-fit, object-position and clipping ancestors, `source-normalize.mjs` `visibleRegion` / `IMG_CROP`) on the source
+  and the render, paired by order. A render fails when over `--crop-tolerance` (default 10%) of what it shows lies
+  outside the source's region, or when it drops an off-centre anchor the source sets; each failure names the
+  `object-position` that fixes it. How much shows is informational: a donor frame may be tighter. It runs on the local
+  render and on the preview. Found on a school site reskinned to a Figma kit: the donor frames cropped from the centre
+  where the source frames its social post cards at `50% 30%` and media cards at `50% 0%`. `gates.md` § Image crop and
+  Phase 4: keep the donor frame, carry the source's position (an authorable block option in EDS), the upper third where
+  the source shows an image whole. On that site: 40 images on 5 pages showed the wrong area with centred crops, 0 of 192
+  with the source's positions as block options, frames unchanged. `--crops-out` writes each side's framing. (A first
+  version gated on how much shows and had images keep their own shape; that broke the donor's proportions and was
+  replaced.)
+- **Full donor vocabulary (#133).** Deploy builds every module the donor records, not only those the migrated pages
+  use, so an author can place any of them on a later page. `donor-modules.md` gains a Disposition column: `block`,
+  `variant` (an authored block option, preferred), `chrome`, `section-style (<name>)`, `style`, `convention`,
+  `feature` or `default-content`, a why after the colon (required for every blockless kind). A Figma donor's
+  `curation-rules.json` names a blockless kind in `eds.as` (`eds.name` for a section style) and the reason in
+  `edsWhy`; `curate` validates both. The new `reskin/vocabulary-check.mjs` reads the table and the project: every
+  block and variant exists and is handled by its block code, listed in `metadata.json` `variants` and sampled in
+  the block library, every section style styled, no invented block an existing block hosts (variant-first).
+  `deploy` Step 2c is the procedure; reskin Phase 6 hands the whole vocabulary off. Seeds corrected from the
+  field: a kit's Links is a links block; a card whose anatomy is a full-bleed image with copy over it is a hero;
+  chips and pagination are variants of a project links block. Found on a school site reskinned to a component kit:
+  its 34 modules became 8 blocks, 12 variants, 2 chrome blocks and 12 blockless entries (styles, features, a
+  section style), with the existing 52 pages unchanged by the content gate and the render check.
+- **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The
+  first read geometry 41/41, ramp 291/291 and `parity` n/a while the deployed page was 21.05% off at 360; that drove the
+  floor. The second: ramp 547/547 at widths 414 and 1440, coverage 78/80 with 2 waivers, parity
+  0.05% at 1440 and 0.19% at 360, sanity PASS.
+
 ## 0.33.0 — reskin takes a Figma donor: headless capture and deterministic curation
 
 `reskin --donor-figma <url>` replaces the "not yet implemented" stop. The new `reskin/figma-donor.mjs` reads the file over

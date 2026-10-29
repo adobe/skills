@@ -17,6 +17,7 @@
 //   optionally scopes them to role paths and their children; weightMap / familyEquivalence:
 //   params.map { from: to }; fontSmoothing: params.value (written to type.fontSmoothing).
 import { RulesError } from './errors.mjs';
+import { BLOCKLESS, NEEDS_WHY } from './eds-map.mjs';
 import { FOUNDATION_FILES, PROBE_PATHS, PROBE_SOURCES, RECOMMENDED_SOURCES } from './foundation.mjs';
 import { letterSpacingCss, lineHeightCss } from './normalize.mjs';
 
@@ -35,7 +36,7 @@ const nonEmpty = (s) => typeof s === 'string' && s.trim().length > 0;
 const depth = (path) => path.split('.').length;
 const under = (path, prefixes) => !prefixes || prefixes.some((p) => path === p || path.startsWith(`${p}.`));
 
-function parseNormalizations(list, problems) {
+export function parseNormalizations(list, problems) {
   const norm = { lineHeightUnitless: [], letterSpacingEm: [], weightMap: [], familyEquivalence: [], fontSmoothing: [] };
   (Array.isArray(list) ? list : []).forEach((n, i) => {
     const at = `normalizations[${i}]${n?.id ? ` (${n.id})` : ''}`;
@@ -213,6 +214,7 @@ export function resolveRules(rules, { foundation, moduleCandidates, screenshotIn
       ids.add(m.id);
       if (!nonEmpty(m.anatomy)) problems.push(`${label}: needs an anatomy (the slots it carries)`);
       if (m.eds !== undefined && !(isObj(m.eds) && (m.eds.block === null || nonEmpty(m.eds.block)) && (m.eds.variant == null || nonEmpty(m.eds.variant)))) problems.push(`${label}: eds must be { "block": "<EDS block>" | null (default content), "variant": "<class>" | null } (deploy Step 2)`);
+      problems.push(...edsProblems(label, m));
     } else problems.push(`${label}: status must be include or excluded`);
     modules.push({ ...m, slug: w.slug, ...(w.hollow ? { hollow: true } : {}) });
   });
@@ -249,4 +251,18 @@ export function deletePath(o, path) {
   const keys = path.split('.');
   const parent = getPath(o, keys.slice(0, -1).join('.'));
   if (isObj(parent)) delete parent[keys.at(-1)];
+}
+
+// A module's disposition fields (deploy Step 2c): eds.as names a blockless kind and needs block null; a
+// section-style names its class in eds.name; section-style, style and feature say why in edsWhy.
+export function edsProblems(label, m) {
+  const out = [];
+  if (m.edsWhy !== undefined && !nonEmpty(m.edsWhy)) out.push(`${label}: edsWhy must be a non-empty string`);
+  const e = isObj(m.eds) ? m.eds : null;
+  if (!e || e.as === undefined) return out;
+  if (!BLOCKLESS.includes(e.as)) out.push(`${label}: eds.as must be one of ${BLOCKLESS.join(', ')} (a block's kind is derived: block, variant or chrome)`);
+  else if (e.block !== null) out.push(`${label}: eds.as "${e.as}" needs "block": null`);
+  if (e.as === 'section-style' && !/^[a-z][a-z0-9-]*$/.test(e.name || '')) out.push(`${label}: a section-style needs eds.name, the kebab Style value`);
+  if (NEEDS_WHY.includes(e.as) && !nonEmpty(m.edsWhy)) out.push(`${label}: eds.as "${e.as}" needs an edsWhy (what it styles or does, where it lives)`);
+  return out;
 }

@@ -16,14 +16,17 @@ judgment arbitrary enough to require a human.
 
 ## Entry schema
 
-One table row (or block) per slot, for **every** slot in the content
-model — no slot may be absent from the brief:
+One table row per slot, for **every** slot in the content model — no
+slot may be absent from the brief. For a Figma donor the table form is
+required: the section join reads the first table whose header has
+`Donor module` and `Status`, slot ids (`s01`, `s07-news`) in the first
+column:
 
 | Field | Contract |
 |---|---|
 | `#` / slot id | The content-model slot (`s01`), or split sub-slot (`s07-news`, `s07-events`) |
 | Content | One-line anatomy: what the slot carries (eyebrow / h-level / body / CTAs / media) |
-| Donor module | A module id from `donor-modules.md` (`M4`, or `M4b` for a composition variant of `M4`), or `—` for new-module |
+| Donor module | A module id from `donor-modules.md` (`M4`, or `M4b` for a composition variant of `M4`), or `—` for new-module; the module's name may follow in parentheses (`M4 (Card Row)`) |
 | Rationale | One line grounding the assignment: slot anatomy vs module anatomy |
 | Status | `mapped` \| `new-module` \| `chrome` \| `carried-invisible` |
 
@@ -50,12 +53,25 @@ vocabulary at 91% mapped, 1 new-module, 1 chrome swap.
   3. Nothing is ever improvised mid-render: a renderer needing a
      module the brief doesn't grant stops, and the brief is amended
      first.
+  4. **Figma donor:** a `new-module` row is no new EDS block. What a
+     slot renders as in EDS — an existing block (its name and content
+     model mirrored) or default content — is decided by `deploy`
+     Step 2 (D1/D11,
+     [`../../deploy/SKILL.md` § 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code)),
+     never invented here. A `mapped` row's EDS block is its module's
+     (`donor-modules.md` EDS block column); the preview join lists
+     each slot authored as another block (`gates.md` § Figma on a
+     preview).
 - **`chrome`** — nav / footer swapped for donor chrome carrying the
   source's links (labels and destinations preserved — the
   `../../migrate/reference/content-preservation.md` rules apply to
   chrome too). Chrome slots are **excluded from the content-gate
   scope** and each swap is a documented delta (`D1`, `D2`, …) in the
-  Deltas block.
+  Deltas block. **Figma donor:** name the kit's Header / Footer module
+  in Donor module and say which part the row is (slot id such as
+  `s00-header` / `s09-footer`, or `header` / `nav` / `footer` in the
+  module name or Content): the Figma join then holds the page's header
+  or footer to that module (`gates.md` § (d) Chrome).
 - **`carried-invisible`** — non-visual content inside the byte
   scope: sr-only / visually-hidden a11y landmarks, skip-target
   headings. Real sites keep their only h1 here. None of the other
@@ -141,7 +157,10 @@ page and the gated comparison:
   the ledger executes them.
 
 If a delta is not in this block, it does not exist: any other
-source↔render difference is a gate failure, not a delta.
+source↔render difference is a gate failure, not a delta. The block
+covers source → local render changes; a page's source → deployed preview
+differences are declared in `reskin/deltas/<slug>.json`
+(`reference/deployed-leg.md` § The delta file).
 
 ## Flag, don't fix
 

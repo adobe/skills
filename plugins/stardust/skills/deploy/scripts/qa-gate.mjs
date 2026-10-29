@@ -26,8 +26,9 @@
  *   - zero pageerror events; zero broken images (loaded but naturalWidth 0)
  *   - every block instance renders non-empty (height > 5px, has child elements)
  *   - schema unit counts: each schema section with repeats count N≥2 renders
- *     ≥N units in its matching page section (grid/flex children or unit-level
- *     headings — the 1-of-N / 0-of-N segmentation collapse, #48/#52/#62)
+ *     ≥N units (grid/flex children or unit-level headings — the 1-of-N / 0-of-N
+ *     segmentation collapse, #48/#52/#62) in its page block, matched by ORDER among
+ *     the non-chrome sections, never by name (a page's sections can share one class)
  *   - wide pass at the DERIVED width (#13 → #124): the viewport is DESIGN.json's probeWidth
  *     (max(2560, largest captured cap × 1.25) — never a fixed 1600/1920: a probe at a cap's
  *     own width cannot see the cap; 2560 without a DESIGN.json). It asserts the OUTER cap
@@ -52,177 +53,199 @@
  */
 /* eslint-disable no-console, no-await-in-loop, no-restricted-syntax */
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-// --help prints this file's usage header, so an agent never reads the source to learn the flags.
-if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
-  const header = src.match(/\/\*\*[\s\S]*?\*\//);
-  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
-  process.exit(0);
-}
+const CHROME = ['header', 'footer'];
 
-// playwright is imported only past the --help guard, so --help answers on a checkout without it.
-const { chromium } = await import('playwright');
-
-const args = process.argv.slice(2);
-const url = args.find((a) => !a.startsWith('--'));
-const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt; };
-const schemaPath = opt('schema', null);
-// The sizing model lives in DESIGN.json (cap-probe.mjs --write-design); the probe itself is the
-// replica skill's cap-probe.mjs — plugin tree or the documented project copy (stardust/scripts/).
-const designPath = opt('design', fs.existsSync('DESIGN.json') ? 'DESIGN.json' : null);
-const HERE = new URL('.', import.meta.url);
-const capProbeUrl = ['../../replica/scripts/cap-probe.mjs', '../replica/cap-probe.mjs'].map((p) => new URL(p, HERE)).find((u) => fs.existsSync(u));
-const capProbe = capProbeUrl ? await import(capProbeUrl.href) : null;
-const sizing = capProbe && designPath ? capProbe.readDesignSizing(designPath) : null;
-const maxw = Number(opt('maxw', sizing && sizing.containerMaxWidth ? sizing.containerMaxWidth : 1340));
-const fullBleed = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
-if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band]'); process.exit(2); }
-const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
-
-const fails = [];
-const warns = [];
-const ok = [];
-const check = (cond, label, detail = '') => (cond ? ok : fails).push(`${label}${detail ? ` — ${detail}` : ''}`);
-
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
-const pageErrors = [];
-page.on('pageerror', (e) => pageErrors.push(e.message));
-await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
-// let lazy sections load
-await page.evaluate(async () => {
-  for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 60); }); }
-  window.scrollTo(0, 0);
-});
-await page.waitForTimeout(1200);
-
-const r = await page.evaluate(() => {
-  const out = {};
-  out.appear = document.body.classList.contains('appear');
-  out.h1 = document.querySelectorAll('h1').length;
-  out.h1Nested = document.querySelectorAll('h1 h1, h1 h2, h1 h3, h1 h4, h1 h5, h1 h6').length;
-  out.sections = document.querySelectorAll('main .section').length;
-  out.blocks = [...document.querySelectorAll('[data-block-name]')].map((b) => {
-    const rect = b.getBoundingClientRect();
-    const containers = [b, ...b.querySelectorAll('*')].filter((e) => ['grid', 'flex'].includes(getComputedStyle(e).display));
-    const cand = containers[0] || null;
-    // the repeating container is the DENSEST grid/flex, not the first (an
-    // outer 2-col layout wrapping a 5-item rail would otherwise read as 2)
-    const unitCount = containers.reduce((m, e) => Math.max(m, e.children.length), 0);
-    // tag-level unit proxies (the schema's unitSelector tag maps to these)
-    const tagCounts = {
-      article: b.querySelectorAll('article').length,
-      li: b.querySelectorAll('li').length,
-      figure: b.querySelectorAll('figure').length,
-      details: b.querySelectorAll('details').length, // accordions/FAQ units (was a false-negative "units 0")
-    };
-    const headingUnits = b.querySelectorAll('h3, h4, h5').length;
-    return {
-      name: b.dataset.blockName,
-      status: b.dataset.blockStatus,
-      height: Math.round(rect.height || b.scrollHeight),
-      kids: b.childElementCount,
-      layout: cand ? getComputedStyle(cand).display : 'block-only',
-      unitCount,
-      headingUnits,
-      tagCounts,
-    };
-  });
-  // content.da.live / admin.da.live are auth-gated → 401 to an anon harness browser,
-  // so they read as "broken" locally though they ingest fine (was a false-negative).
-  // The delivered-URL check (B1 .plain.html about:error / img-count) is the real image gate.
-  out.brokenImgs = [...document.querySelectorAll('img')]
-    .filter((i) => !/(content|admin)\.da\.live/.test(i.currentSrc || i.src || ''))
-    .filter((i) => i.complete && !i.naturalWidth).length;
-  // page sections that hold blocks, in order (for schema matching)
-  out.blockSections = [...document.querySelectorAll('main .section')]
-    .filter((s) => s.querySelector('[data-block-name]'))
-    .map((s) => {
-      const b = s.querySelector('[data-block-name]');
-      return { block: b.dataset.blockName };
-    });
-  return out;
-});
-
-check(r.appear, 'body.appear set (runtime booted)');
-check(r.h1 === 1, 'exactly one <h1>', `found ${r.h1}`);
-check(r.h1Nested === 0, 'no heading nested inside <h1>', `found ${r.h1Nested}`);
-check(r.sections > 0, 'main .section count > 0', `${r.sections} sections`);
-check(pageErrors.length === 0, 'zero pageerror events', pageErrors.slice(0, 3).join(' | '));
-check(r.brokenImgs === 0, 'zero broken images', `${r.brokenImgs} broken`);
-for (const b of r.blocks) {
-  check(b.status === 'loaded', `block ${b.name} loaded`, `status=${b.status}`);
-  check(b.height > 5 && b.kids > 0, `block ${b.name} renders non-empty`, `h=${b.height} kids=${b.kids}`);
-}
-
-// schema unit counts — match Nth block-bearing page section to Nth schema
-// section that has repeats is fragile; match by ORDER over all schema sections.
-if (schema && Array.isArray(schema.sections)) {
-  const withRepeats = schema.sections
-    .map((s, i) => ({ ...s, i }))
-    .filter((s) => (s.repeats || []).some((rep) => rep.count >= 2));
-  // page block instances in DOM order:
-  const instances = r.blocks.filter((b) => !['header', 'footer'].includes(b.name));
-  // schema sections (excluding chrome) in order:
-  const protoSections = schema.sections.filter((s) => !['header', 'footer'].includes(s.section));
-  withRepeats.forEach((s) => {
-    const pos = protoSections.indexOf(protoSections.find((x) => x.section === s.section));
-    const inst = instances[pos];
-    if (!inst) { warns.push(`schema section "${s.section}" (repeats) has no matching page block by order — verify manually`); return; }
-    const want = Math.max(...s.repeats.map((rep) => rep.count));
+/**
+ * The schema's repeat groups held to the rendered block instances (the block-bearing entries of
+ * r.blocks, header/footer left out), pure: [{ kind: 'ok' | 'fail' | 'warn', text }] in schema order.
+ * A section's position is its order among the schema's non-chrome sections, never its name:
+ * section-schema names a section by its first class token, so a page whose sections all share one
+ * class (a reskin page's `m`) has one name for every section.
+ */
+export function checkUnits(schema, instances) {
+  const out = [];
+  if (!schema || !Array.isArray(schema.sections)) return out;
+  let pos = -1;
+  schema.sections.forEach((s) => {
+    const chrome = CHROME.includes(s.section);
+    if (!chrome) pos += 1;
+    const repeats = s.repeats || [];
+    if (!repeats.some((rep) => rep.count >= 2)) return;
+    const inst = chrome ? null : instances[pos];
+    if (!inst) { out.push({ kind: 'warn', text: `schema section "${s.section}" (repeats) has no matching page block by order — verify manually` }); return; }
+    const want = Math.max(...repeats.map((rep) => rep.count));
     // schema-informed proxy: the unitSelector's TAG (proto classes don't survive
     // conversion, the semantic tag usually does), else densest grid / headings
-    const tags = s.repeats.map((rep) => (rep.unitSelector || '').split('.')[0].toLowerCase()).filter(Boolean);
+    const tags = repeats.map((rep) => (rep.unitSelector || '').split('.')[0].toLowerCase()).filter(Boolean);
     const tagGot = Math.max(0, ...tags.map((t) => (inst.tagCounts || {})[t] || 0));
     const got = Math.max(inst.unitCount, inst.headingUnits, tagGot);
-    check(got >= want, `units: "${s.section}" → block ${inst.name} renders ≥${want}`, `rendered ${got} (grid kids ${inst.unitCount} / unit headings ${inst.headingUnits} / tag ${tagGot})`);
+    out.push({
+      kind: got >= want ? 'ok' : 'fail',
+      text: `units: "${s.section}" #${pos + 1} → block ${inst.name} renders ≥${want} — rendered ${got} (grid kids ${inst.unitCount} / unit headings ${inst.headingUnits} / tag ${tagGot})`,
+    });
   });
+  return out;
 }
 
-// full-bleed pass (inverse of #13): the declared full-bleed blocks' section
-// wrappers must span the viewport; a template-level max-width cap out-specifying
-// the block's `max-width: none` is the recorded cause.
-if (fullBleed.length) {
-  const fb = await page.evaluate((names) => {
-    const vw = document.documentElement.clientWidth;
-    return [...document.querySelectorAll('[data-block-name]')]
-      .filter((b) => names.includes(b.dataset.blockName))
-      .map((b) => {
-        const wrapper = b.closest('main > .section > div') || b.parentElement;
-        return { name: b.dataset.blockName, w: Math.round(wrapper.getBoundingClientRect().width), vw };
+async function main() {
+  // --help prints this file's usage header, so an agent never reads the source to learn the flags.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+    const header = src.match(/\/\*\*[\s\S]*?\*\//);
+    console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+    process.exit(0);
+  }
+
+  // playwright is imported only past the --help guard, so --help answers on a checkout without it.
+  const { chromium } = await import('playwright');
+
+  const args = process.argv.slice(2);
+  const url = args.find((a) => !a.startsWith('--'));
+  const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt; };
+  const schemaPath = opt('schema', null);
+  // The sizing model lives in DESIGN.json (cap-probe.mjs --write-design); the probe itself is the
+  // replica skill's cap-probe.mjs — plugin tree or the documented project copy (stardust/scripts/).
+  const designPath = opt('design', fs.existsSync('DESIGN.json') ? 'DESIGN.json' : null);
+  const HERE = new URL('.', import.meta.url);
+  const capProbeUrl = ['../../replica/scripts/cap-probe.mjs', '../replica/cap-probe.mjs'].map((p) => new URL(p, HERE)).find((u) => fs.existsSync(u));
+  const capProbe = capProbeUrl ? await import(capProbeUrl.href) : null;
+  const sizing = capProbe && designPath ? capProbe.readDesignSizing(designPath) : null;
+  const maxw = Number(opt('maxw', sizing && sizing.containerMaxWidth ? sizing.containerMaxWidth : 1340));
+  const fullBleed = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band]'); process.exit(2); }
+  const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
+
+  const fails = [];
+  const warns = [];
+  const ok = [];
+  const check = (cond, label, detail = '') => (cond ? ok : fails).push(`${label}${detail ? ` — ${detail}` : ''}`);
+
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  const pageErrors = [];
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+  // let lazy sections load
+  await page.evaluate(async () => {
+    for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 60); }); }
+    window.scrollTo(0, 0);
+  });
+  await page.waitForTimeout(1200);
+
+  const r = await page.evaluate(() => {
+    const out = {};
+    out.appear = document.body.classList.contains('appear');
+    out.h1 = document.querySelectorAll('h1').length;
+    out.h1Nested = document.querySelectorAll('h1 h1, h1 h2, h1 h3, h1 h4, h1 h5, h1 h6').length;
+    out.sections = document.querySelectorAll('main .section').length;
+    out.blocks = [...document.querySelectorAll('[data-block-name]')].map((b) => {
+      const rect = b.getBoundingClientRect();
+      const containers = [b, ...b.querySelectorAll('*')].filter((e) => ['grid', 'flex'].includes(getComputedStyle(e).display));
+      const cand = containers[0] || null;
+      // the repeating container is the DENSEST grid/flex, not the first (an
+      // outer 2-col layout wrapping a 5-item rail would otherwise read as 2)
+      const unitCount = containers.reduce((m, e) => Math.max(m, e.children.length), 0);
+      // tag-level unit proxies (the schema's unitSelector tag maps to these)
+      const tagCounts = {
+        article: b.querySelectorAll('article').length,
+        li: b.querySelectorAll('li').length,
+        figure: b.querySelectorAll('figure').length,
+        details: b.querySelectorAll('details').length, // accordions/FAQ units (was a false-negative "units 0")
+      };
+      const headingUnits = b.querySelectorAll('h3, h4, h5').length;
+      return {
+        name: b.dataset.blockName,
+        status: b.dataset.blockStatus,
+        height: Math.round(rect.height || b.scrollHeight),
+        kids: b.childElementCount,
+        layout: cand ? getComputedStyle(cand).display : 'block-only',
+        unitCount,
+        headingUnits,
+        tagCounts,
+      };
+    });
+    // content.da.live / admin.da.live are auth-gated → 401 to an anon harness browser,
+    // so they read as "broken" locally though they ingest fine (was a false-negative).
+    // The delivered-URL check (B1 .plain.html about:error / img-count) is the real image gate.
+    out.brokenImgs = [...document.querySelectorAll('img')]
+      .filter((i) => !/(content|admin)\.da\.live/.test(i.currentSrc || i.src || ''))
+      .filter((i) => i.complete && !i.naturalWidth).length;
+    // page sections that hold blocks, in order (for schema matching)
+    out.blockSections = [...document.querySelectorAll('main .section')]
+      .filter((s) => s.querySelector('[data-block-name]'))
+      .map((s) => {
+        const b = s.querySelector('[data-block-name]');
+        return { block: b.dataset.blockName };
       });
-  }, fullBleed);
-  fullBleed.filter((n) => !fb.some((b) => b.name === n)).forEach((n) => warns.push(`full-bleed: block ${n} not found on the page — check the --full-bleed list`));
-  fb.forEach((b) => (b.w >= b.vw - 2 ? ok : warns).push(`full-bleed: block ${b.name} wrapper spans ${b.w}px of ${b.vw}px viewport${b.w < b.vw - 2 ? ' — a template-level `main > .section > div { max-width }` cap is likely out-specifying the block\'s escape rule; define ONE full-bleed escape at template level and route the block through it' : ''}`));
+    return out;
+  });
+
+  check(r.appear, 'body.appear set (runtime booted)');
+  check(r.h1 === 1, 'exactly one <h1>', `found ${r.h1}`);
+  check(r.h1Nested === 0, 'no heading nested inside <h1>', `found ${r.h1Nested}`);
+  check(r.sections > 0, 'main .section count > 0', `${r.sections} sections`);
+  check(pageErrors.length === 0, 'zero pageerror events', pageErrors.slice(0, 3).join(' | '));
+  check(r.brokenImgs === 0, 'zero broken images', `${r.brokenImgs} broken`);
+  for (const b of r.blocks) {
+    check(b.status === 'loaded', `block ${b.name} loaded`, `status=${b.status}`);
+    check(b.height > 5 && b.kids > 0, `block ${b.name} renders non-empty`, `h=${b.height} kids=${b.kids}`);
+  }
+
+  // schema unit counts, matched to the page's block instances by ORDER (checkUnits)
+  const bucket = { ok, warn: warns, fail: fails };
+  checkUnits(schema, r.blocks.filter((b) => !CHROME.includes(b.name))).forEach((f) => bucket[f.kind].push(f.text));
+
+  // full-bleed pass (inverse of #13): the declared full-bleed blocks' section
+  // wrappers must span the viewport; a template-level max-width cap out-specifying
+  // the block's `max-width: none` is the recorded cause.
+  if (fullBleed.length) {
+    const fb = await page.evaluate((names) => {
+      const vw = document.documentElement.clientWidth;
+      return [...document.querySelectorAll('[data-block-name]')]
+        .filter((b) => names.includes(b.dataset.blockName))
+        .map((b) => {
+          const wrapper = b.closest('main > .section > div') || b.parentElement;
+          return { name: b.dataset.blockName, w: Math.round(wrapper.getBoundingClientRect().width), vw };
+        });
+    }, fullBleed);
+    fullBleed.filter((n) => !fb.some((b) => b.name === n)).forEach((n) => warns.push(`full-bleed: block ${n} not found on the page — check the --full-bleed list`));
+    fb.forEach((b) => (b.w >= b.vw - 2 ? ok : warns).push(`full-bleed: block ${b.name} wrapper spans ${b.w}px of ${b.vw}px viewport${b.w < b.vw - 2 ? ' — a template-level `main > .section > div { max-width }` cap is likely out-specifying the block\'s escape rule; define ONE full-bleed escape at template level and route the block through it' : ''}`));
+  }
+
+  // wide pass at the derived width (#13 → #124): the outer cap first, through the shared probe, then the
+  // per-block boxes at the same viewport.
+  let wideW = (sizing && sizing.probeWidth) || 2560;
+  if (capProbe) {
+    const model = await capProbe.probePage(page, { rootSel: 'main', probeWidth: (sizing && sizing.probeWidth) || null });
+    wideW = model.probeWidth;
+    const got = model.contentMaxWidth;
+    if (!sizing) warns.push(`wide-${wideW}: no DESIGN.json sizing model (${designPath || '--design'}) — the outer cap is not asserted; run cap-probe.mjs --write-design (#124). Build content cap: ${got === null ? 'none (fluid)' : `${got}px`}`);
+    else if (sizing.containerMaxWidth === null) check(got === null, `no content cap at ${wideW} (DESIGN.json containerMaxWidth null — live is fluid, #124)`, got === null ? '' : `build caps content at ${got}px (${model.contentFrom}) — remove the scaffold cap`);
+    else check(got !== null && Math.abs(got - sizing.containerMaxWidth) <= 20, `content cap ${sizing.containerMaxWidth}px holds at ${wideW} (#124)`, got === null ? `content runs ${model.root.w2}px wide — apply the cap on the section scaffold (main { max-width } for a shell/content cap, main > .section > div { max-width } for a module cap; deploy Step 3)` : `build cap ${got}px (${model.contentFrom}) vs DESIGN.json ${sizing.containerMaxWidth}px`);
+  } else {
+    warns.push(`wide-${wideW}: cap-probe.mjs not found beside this script (../../replica/scripts/ or ../replica/) — the outer cap is not asserted (#124); copy the replica scripts dir`);
+    await page.setViewportSize({ width: wideW, height: 900 });
+    await page.waitForTimeout(600);
+  }
+  const wide = await page.evaluate(() => [...document.querySelectorAll('[data-block-name]')].map((b) => {
+    const inner = b.querySelector('.wrap, [class*="inner"], [class*="container"]') || b.firstElementChild;
+    return { name: b.dataset.blockName, w: inner ? Math.round(inner.getBoundingClientRect().width) : 0 };
+  }));
+  wide.filter((b) => b.w > maxw + 40 && !['header', 'footer'].includes(b.name) && !fullBleed.includes(b.name)) // declared full-bleed blocks are exempt from #13
+    .forEach((b) => warns.push(`wide-${wideW}: block ${b.name} content spans ${b.w}px (> ${maxw}) — full-bleed is correct ONLY if the prototype section has no inner max-width wrapper (#13)`));
+
+  await browser.close();
+
+  ok.forEach((l) => console.log(`  ✓ ${l}`));
+  warns.forEach((l) => console.log(`  ⚠ ${l}`));
+  fails.forEach((l) => console.log(`  ✗ ${l}`));
+  console.log(`QA GATE: ${fails.length === 0 ? 'PASS' : 'FAIL'} — ${ok.length} ok, ${warns.length} warn, ${fails.length} fail`);
+  process.exit(fails.length ? 1 : 0);
 }
 
-// wide pass at the derived width (#13 → #124): the outer cap first, through the shared probe, then the
-// per-block boxes at the same viewport.
-let wideW = (sizing && sizing.probeWidth) || 2560;
-if (capProbe) {
-  const model = await capProbe.probePage(page, { rootSel: 'main', probeWidth: (sizing && sizing.probeWidth) || null });
-  wideW = model.probeWidth;
-  const got = model.contentMaxWidth;
-  if (!sizing) warns.push(`wide-${wideW}: no DESIGN.json sizing model (${designPath || '--design'}) — the outer cap is not asserted; run cap-probe.mjs --write-design (#124). Build content cap: ${got === null ? 'none (fluid)' : `${got}px`}`);
-  else if (sizing.containerMaxWidth === null) check(got === null, `no content cap at ${wideW} (DESIGN.json containerMaxWidth null — live is fluid, #124)`, got === null ? '' : `build caps content at ${got}px (${model.contentFrom}) — remove the scaffold cap`);
-  else check(got !== null && Math.abs(got - sizing.containerMaxWidth) <= 20, `content cap ${sizing.containerMaxWidth}px holds at ${wideW} (#124)`, got === null ? `content runs ${model.root.w2}px wide — apply the cap on the section scaffold (main { max-width } for a shell/content cap, main > .section > div { max-width } for a module cap; deploy Step 3)` : `build cap ${got}px (${model.contentFrom}) vs DESIGN.json ${sizing.containerMaxWidth}px`);
-} else {
-  warns.push(`wide-${wideW}: cap-probe.mjs not found beside this script (../../replica/scripts/ or ../replica/) — the outer cap is not asserted (#124); copy the replica scripts dir`);
-  await page.setViewportSize({ width: wideW, height: 900 });
-  await page.waitForTimeout(600);
-}
-const wide = await page.evaluate(() => [...document.querySelectorAll('[data-block-name]')].map((b) => {
-  const inner = b.querySelector('.wrap, [class*="inner"], [class*="container"]') || b.firstElementChild;
-  return { name: b.dataset.blockName, w: inner ? Math.round(inner.getBoundingClientRect().width) : 0 };
-}));
-wide.filter((b) => b.w > maxw + 40 && !['header', 'footer'].includes(b.name) && !fullBleed.includes(b.name)) // declared full-bleed blocks are exempt from #13
-  .forEach((b) => warns.push(`wide-${wideW}: block ${b.name} content spans ${b.w}px (> ${maxw}) — full-bleed is correct ONLY if the prototype section has no inner max-width wrapper (#13)`));
-
-await browser.close();
-
-ok.forEach((l) => console.log(`  ✓ ${l}`));
-warns.forEach((l) => console.log(`  ⚠ ${l}`));
-fails.forEach((l) => console.log(`  ✗ ${l}`));
-console.log(`QA GATE: ${fails.length === 0 ? 'PASS' : 'FAIL'} — ${ok.length} ok, ${warns.length} warn, ${fails.length} fail`);
-process.exit(fails.length ? 1 : 0);
+const isMain = (() => {
+  try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; }
+})();
+if (isMain) await main();

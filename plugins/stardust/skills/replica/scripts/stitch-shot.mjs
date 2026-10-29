@@ -64,6 +64,13 @@
  *                         built-in candidates (OneTrust, "Accept all", …)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
+ *     --hide <sel,...>    remove the matched elements from the capture
+ *                         (display:none, applied before the settle pass): no
+ *                         band at their place, no space they reserved, and a
+ *                         fixed bar is not repeated in every chunk. --dismiss
+ *                         CLICKS its selectors and leaves layout as it was;
+ *                         this one removes. Space reserved outside the
+ *                         element (a body or main offset) stays.
  *     --headed            escalation: headed stealth real Chrome
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
@@ -109,6 +116,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --settle          slow-scroll lazyload settle pass before capture
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
+  --hide <sel,…>    remove the matched elements from the capture (display:none, before the settle
+                    pass: no band, no reserved space, a fixed bar not repeated per chunk); --dismiss
+                    only clicks. Default none; selectors are comma-separated, so none holds a comma
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
@@ -123,7 +133,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], hide: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -131,6 +141,7 @@ function parseArgs(argv) {
     else if (a === '--settle') { opts.settle = true; }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--hide') { opts.hide = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
@@ -174,6 +185,9 @@ async function main() {
     // solveWindow only under --headed: headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
+    // One rule per selector, so an invalid one drops only itself; a stylesheet rule also covers elements
+    // the page adds later.
+    if (opts.hide.length) await page.addStyleTag({ content: opts.hide.map((sel) => `${sel}{display:none!important}`).join('\n') });
     await page.waitForTimeout(opts.wait);
     await dismissAndLog(page, url, opts);
 

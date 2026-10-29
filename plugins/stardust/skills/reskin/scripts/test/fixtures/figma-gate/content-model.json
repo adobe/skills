@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "page": "home",
+  "visibleTextNormalized": "Welcome to the kit A calm, readable starting point for every page in the sample kit, built from a small set of tokens. Get started Learn more Everything in one place Plan the work with a shared board that everyone on the team can read. Ship each change behind a review, and keep the history of every decision. New Try it Sample kit, all rights reserved.",
+  "sections": [
+    {
+      "slot": "s01",
+      "visibleText": "Welcome to the kit A calm, readable starting point for every page in the sample kit, built from a small set of tokens. Get started Learn more",
+      "headings": [{ "level": "h1", "text": "Welcome to the kit" }],
+      "ordered": [
+        { "kind": "heading", "level": "h1", "text": "Welcome to the kit", "display": "block", "sep": "" },
+        { "kind": "paragraph", "text": "A calm, readable starting point for every page in the sample kit, built from a small set of tokens.", "sep": " " },
+        { "kind": "cta", "text": "Get started", "sep": " " },
+        { "kind": "cta", "text": "Learn more", "sep": " " }
+      ],
+      "orderedVerified": true
+    },
+    {
+      "slot": "s02",
+      "visibleText": "Everything in one place Plan the work with a shared board that everyone on the team can read. Ship each change behind a review, and keep the history of every decision. New Try it",
+      "headings": [{ "level": "h2", "text": "Everything in one place" }],
+      "ordered": [
+        { "kind": "heading", "level": "h2", "text": "Everything in one place", "display": "block", "sep": "" },
+        { "kind": "paragraph", "text": "Plan the work with a shared board that everyone on the team can read.", "sep": " " },
+        { "kind": "paragraph", "text": "Ship each change behind a review, and keep the history of every decision.", "sep": " " },
+        { "kind": "text", "text": "New", "sep": " " },
+        { "kind": "cta", "text": "Try it", "sep": " " }
+      ],
+      "orderedVerified": true
+    },
+    {
+      "slot": "s03",
+      "visibleText": "Sample kit, all rights reserved.",
+      "headings": [],
+      "ordered": [{ "kind": "text", "text": "Sample kit, all rights reserved.", "sep": "" }],
+      "orderedVerified": true
+    }
+  ]
+}
