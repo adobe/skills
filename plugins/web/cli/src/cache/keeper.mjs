@@ -68,6 +68,7 @@ const readJson = async (req) => {
 };
 
 function harEntry({
+  startedAt = Date.now(),
   method,
   url,
   requestHeaders,
@@ -80,7 +81,7 @@ function harEntry({
 }) {
   return {
     pageref: PAGE_ID,
-    startedDateTime: new Date().toISOString(),
+    startedDateTime: new Date(Number.isFinite(startedAt) ? startedAt : Date.now()).toISOString(),
     time: 0,
     request: {
       method,
@@ -136,7 +137,11 @@ function createStore(dir) {
   function append(page, entry) {
     const current = pages.get(page);
     if (!current) return;
-    current.har.log.entries.push(entry);
+    // HAR entries are sorted by request start: a cache hit is known before an earlier
+    // request's response has arrived.
+    const { entries } = current.har.log;
+    const at = entries.findLastIndex((e) => e.startedDateTime <= entry.startedDateTime);
+    entries.splice(at + 1, 0, entry);
     writeAtomic(current.file, JSON.stringify(current.har));
   }
 

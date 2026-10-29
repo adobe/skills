@@ -186,3 +186,15 @@ test('stats snippet waits for pending stores', async (t) => {
   assert.equal(await stats, 0);
   assert.equal(keeper.stats.stored, 1);
 });
+
+test('store sends the request start time', async (t) => {
+  const { dir, page, context } = await setup(t);
+  const request = {
+    ...fakeRequest(page, { url: A, nav: true }),
+    timing: () => ({ startTime: 1e12 }),
+  };
+  await context.routes[0](fakeRoute(request));
+  await context.listeners.response(fakeResponse(request));
+  const har = JSON.parse(readFileSync(path.join(dir, harFileName(A)), 'utf8'));
+  assert.equal(har.log.entries[0].startedDateTime, new Date(1e12).toISOString());
+});

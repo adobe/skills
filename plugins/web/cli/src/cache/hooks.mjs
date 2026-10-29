@@ -27,6 +27,14 @@ const HOOKS = `async page => {
       return false;
     }
   };
+  const startOf = (request) => {
+    try {
+      const { startTime } = request.timing();
+      return startTime > 0 ? startTime : undefined;
+    } catch {
+      return undefined;
+    }
+  };
   const fail = () => {
     state.errors += 1;
   };
@@ -65,6 +73,7 @@ const HOOKS = `async page => {
     }
     try {
       const data = {
+        startedAt: startOf(request),
         page: pageOf(request),
         method: 'GET',
         url: request.url(),

@@ -303,3 +303,30 @@ test('page HAR lists the page and pageref', async (t) => {
     ['page_1', 'page_1'],
   );
 });
+
+test('entries are ordered by request start', async (t) => {
+  const { dir, keeper } = await withKeeper(t);
+  await lookup(keeper, A, 1, true);
+  await store(keeper, { url: CSS, page: 1, body: 'h1{}', mime: 'text/css' });
+  await lookup(keeper, B, 2, true);
+  const documentStart = Date.now() - 1000;
+  assert.equal((await lookup(keeper, CSS, 2)).status, 200);
+  await post(keeper, '/store', {
+    page: 2,
+    method: 'GET',
+    url: B,
+    status: 404,
+    statusText: '',
+    requestHeaders: [],
+    headers: [],
+    mimeType: 'text/html',
+    body: '',
+    startedAt: documentStart,
+  });
+  const entries = readHar(dir, B);
+  assert.deepEqual(
+    entries.map((e) => e.request.url),
+    [B, CSS],
+  );
+  assert.equal(entries[0].startedDateTime, new Date(documentStart).toISOString());
+});
