@@ -88,17 +88,47 @@ that never loaded is unmeasured, never failed. The source's own
 crop is the floor, not a target: a render that shows more passes.
 A failure names each image, both fractions and the rendered box.
 
-Fix the frame, not the image. A slot holding one image (text +
-image, a banner) sizes the image by its own ratio with the frame as
-a cap: `aspect-ratio` from the image, a `max-height` from the donor
-token, `cover` only past the cap; the kit's placeholder still
-renders the frame exactly. A grid (cards) keeps the frame so the
-row stays aligned, and crops toward the subject with
-`object-position` (portraits: `50% 20%`) instead of the centre.
-The same rule holds for the EDS blocks the deploy leg ships: the
-deployed content gate runs this check on the preview. A crop the
-design truly needs is a residual with its cause, never a raised
-`--crop-tolerance`.
+Fix the frame, not the image; the kit's placeholder already has the
+frame's shape, so it still renders the frame exactly:
+
+- **One image in a slot** (text + image, a banner): the image keeps
+  its own ratio (`height: auto` over the `width`/`height` attributes
+  EDS delivers), capped at a 2:3 portrait (`max-height: 150cqi` on a
+  `container-type: inline-size` media cell), `cover` only past the
+  cap. A square cap still cut a 2:3 staff portrait to 66% of a
+  source that showed all of it.
+- **A grid** (cards): one frame for the grid only when its images
+  share a shape: every image's ratio within 10% of the median's, the
+  frame at the median image's `width`/`height` in whole pixels
+  (`round(calc(100cqi * h / w), 1px)`; a fractional height shifts
+  every later section by a sub-pixel and costs pixel fidelity below
+  it). Rows stay aligned and no image loses more than ~9%, inside the
+  tolerance. A grid of mixed shapes, or one whose image sizes are
+  unknown (no attributes), lets each image keep its own ratio. A
+  single frame for a mixed grid fails: a median frame cut a home
+  page's wide 736×400 tiles to 80% and a house page's portraits to
+  66–73% of what the source showed.
+- `object-position` only moves a crop, it never shrinks one: it
+  does not pass this check.
+- The Figma gate's image-**height** geometry entries assert the
+  placeholder's frame on content images: drop them for a content
+  image frame and waive its node with this section as the why; keep
+  its width entries, and give a section left with no geometry a
+  shape-independent entry (the image-to-text `gapY`).
+
+Measured on a 52-page school site reskinned to a Figma kit: 58 of
+201 images cut more than the source on 18 pages before, 0 of 199
+after; Figma gate PASS on its 4 archetypes; pixel fidelity
+unchanged on desktop. Figma's own mobile frames crop their
+placeholders (card 375×188 against a 5:3 image), so a content-shaped
+frame scores lower there (card 93.5% → 83.0%, text + image 95.3% →
+93.8%): a design trade-off to state, not to hide. The same rule
+holds for the EDS blocks the deploy leg ships: the deployed content
+gate runs this check on the preview. Test it against the preview's
+HTML: `aem up` serves images without the `width`/`height`
+attributes, so a block that reads them takes its fallback there. A
+crop the design truly needs is a residual with its cause, never a
+raised `--crop-tolerance`.
 
 Two invariants or the run measures nothing: `--source-scope` is
 byte-identical to the capture's `_provenance.scope`, and
@@ -454,8 +484,9 @@ each names the gate, the check, and a human-readable verdict (`accepted` | `need
   (Text + Image 324px, card media 220px) applied with
   `object-fit: cover` cut a square principal's portrait to 56% of
   its area, where the source showed 96%; every other gate passed.
-  Defense: the content gate's image-crop check (§ Image crop), and
-  size single-image slots by the image's ratio under the frame.
+  Defense: the content gate's image-crop check (§ Image crop): a
+  single image keeps its ratio under a cap; a grid shares one frame
+  only when its images share a shape.
 - **Carousel nondeterminism.** Rotating carousels make source text
   capture time-dependent (hidden slides absent, clones duplicated).
   Defense: `N-D2` de-carousel in the shared ledger, applied

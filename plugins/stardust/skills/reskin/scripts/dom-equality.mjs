@@ -322,7 +322,7 @@ if (!cropCheck.pass) {
   cropCheck.worse.forEach((w) => {
     md += `| ${w.index} | ${w.label} | ${w.rendered.natural} | ${pct(w.source.fraction)} (${w.source.box} ${w.source.fit}) | ${pct(w.rendered.fraction)} | ${w.rendered.box} ${w.rendered.fit} |\n`;
   });
-  md += `\nFix the frame, not the image: size a single-media slot by the image's own ratio (capped), or keep a grid's fixed frame and crop toward the subject (reference/gates.md § Image crop).\n\n`;
+  md += `\nFix the frame, not the image: size a single-image slot by the image's own ratio (capped), let a grid share one frame only when its images share a shape; object-position never shrinks a crop (reference/gates.md § Image crop).\n\n`;
 }
 md += `## Informational (non-gating — a reskin re-structures markup by design)\n\n`;
 md += `- Element count: source=${src.elementCount} rendered=${rnd.elementCount} (delta ${countDelta >= 0 ? '+' : ''}${countDelta})\n`;

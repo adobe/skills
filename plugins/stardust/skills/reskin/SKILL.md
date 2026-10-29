@@ -303,11 +303,13 @@ modeled on the experiment's `render-reskin.mjs`) that:
   such items for the human in the run report, never silently fix or
   silently keep);
 - shows each content image at least as completely as the source
-  does: a donor frame of fixed shape (a Figma image height) caps a
-  single-image slot, which otherwise takes the image's own ratio,
-  and a card grid keeps its frame but crops toward the subject
-  (`object-position`); the content gate fails a render that cuts
-  more (`reference/gates.md` § Image crop);
+  does: a donor frame of fixed shape (a Figma image height) is the
+  placeholder's shape, not the content's. A single-image slot takes
+  the image's own ratio under a cap; a card grid shares one frame
+  only when its images share a shape, else each keeps its own
+  (`object-position` moves a crop, it never shrinks one); the
+  content gate fails a render that cuts more
+  (`reference/gates.md` § Image crop);
 - takes its surface exclusively from `donor-tokens.json` + the donor
   module patterns assigned in `mapping.md`: it imports `rootTokens`
   from `../../scripts/reskin/render/root-tokens.mjs`, emits its `css`
