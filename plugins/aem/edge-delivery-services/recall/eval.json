@@ -8,8 +8,7 @@
   ],
   "models": [
     { "label": "sonnet", "agent": "claude", "model": "claude-sonnet-5-5" },
-    { "label": "gemini", "agent": "gemini", "model": "gemini-4-argon" },
-    { "label": "gpt", "agent": "codex", "model": "gpt-6-1-sol" }
+    { "label": "gpt", "agent": "codex", "model": "gpt-6.1-sol" }
   ],
   "runs": 3
 }
