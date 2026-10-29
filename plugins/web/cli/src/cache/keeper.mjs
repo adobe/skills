@@ -27,12 +27,27 @@ const EXTENSIONS = {
 
 const mimeOf = (contentType = '') => contentType.split(';')[0].trim().toLowerCase();
 
-/** Whether a response the browser received from the network belongs in the cache. */
-function isStorable({ method, url, status }) {
+/** Whether a response the browser received from the network is recorded in its page HAR. */
+function isRecordable({ method, url, status }) {
   // 206 is one byte range of the resource: replaying it for the whole URL breaks media.
-  if (method !== 'GET' || status < 200 || status > 399) return false;
-  if (status === 206 || status === 304) return false;
+  if (method !== 'GET' || status <= 0 || status === 206 || status === 304) return false;
   return /^https?:\/\//.test(url) && !isTracker(url);
+}
+
+/** Whether a recorded response is served from the cache; errors are always re-checked live. */
+const isCacheable = (status) => status >= 200 && status <= 399;
+
+const PAGE_ID = 'page_1';
+
+/** The absolute `location` of a response, or '' when it has none (HAR `redirectURL`). */
+function redirectUrl(url, headers) {
+  const location = headers.find(({ name }) => name.toLowerCase() === 'location')?.value;
+  if (!location) return '';
+  try {
+    return new URL(location, url).href;
+  } catch {
+    return location;
+  }
 }
 
 /** A request coming from page JavaScript rather than the session hooks or a CLI. */
@@ -64,6 +79,7 @@ function harEntry({
   file,
 }) {
   return {
+    pageref: PAGE_ID,
     startedDateTime: new Date().toISOString(),
     time: 0,
     request: {
@@ -83,7 +99,7 @@ function harEntry({
       cookies: [],
       headers,
       content: { size, mimeType, ...(file && { _file: file }) },
-      redirectURL: '',
+      redirectURL: redirectUrl(url, headers),
       headersSize: -1,
       bodySize: -1,
     },
@@ -104,6 +120,7 @@ const headerList = (headers) =>
  */
 function createStore(dir) {
   const index = loadHarIndex(dir);
+  for (const [key, { status }] of index) if (!isCacheable(status)) index.delete(key);
   const entries = index.size;
   /** @type {Map<unknown, { file: string, har: object }>} */
   const pages = new Map();
@@ -124,9 +141,10 @@ function createStore(dir) {
   }
 
   function startPage(page, url) {
-    const har = {
-      log: { version: '1.2', creator: { name: 'web-cli', version: '1' }, entries: [] },
-    };
+    const startedDateTime = new Date().toISOString();
+    const harPages = [{ startedDateTime, id: PAGE_ID, title: url, pageTimings: {} }];
+    const creator = { name: 'web-cli', version: '1' };
+    const har = { log: { version: '1.2', creator, pages: harPages, entries: [] } };
     pages.set(page, { file: path.join(dir, harFileName(url)), har });
   }
 
@@ -159,6 +177,7 @@ function createStore(dir) {
     const mimeType = mimeOf(response.mimeType);
     const file = body.length ? writeBody(body, mimeType) : undefined;
     append(response.page, harEntry({ ...response, mimeType, size: body.length, file }));
+    if (!isCacheable(response.status)) return;
     const read = file ? () => readFileSync(path.join(dir, file)) : () => Buffer.alloc(0);
     index.set(`GET ${response.url}`, {
       status: response.status,
@@ -209,7 +228,7 @@ export async function startKeeper({
   }
 
   function onStore(req, res, response) {
-    if (isStorable(response)) {
+    if (isRecordable(response)) {
       cache.store(response);
       stats.stored += 1;
       log(`[stored] ${response.url}`);

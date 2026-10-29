@@ -147,7 +147,6 @@ test('non-storable responses are ignored', async (t) => {
   const { dir, keeper } = await withKeeper(t);
   await lookup(keeper, A, 1, true);
   await store(keeper, { url: A, page: 1, method: 'POST' });
-  await store(keeper, { url: A, page: 1, status: 500 });
   await store(keeper, { url: A, page: 1, status: 304 });
   await store(keeper, { url: A, page: 1, status: 206, body: 'partial' });
   await store(keeper, { url: 'https://www.google-analytics.com/g/collect', page: 1 });
@@ -238,4 +237,69 @@ test('malformed body answers 400 and is counted', async (t) => {
   assert.equal((await post(keeper, '/lookup', '{bad')).status, 400);
   assert.equal(keeper.stats.errors, 2);
   assert.equal((await lookup(keeper, A, 1, true)).status, 404);
+});
+
+const pageHar = (dir, url) => JSON.parse(readFileSync(path.join(dir, harFileName(url)), 'utf8'));
+
+test('error responses are recorded but not served', async (t) => {
+  const { dir, keeper } = await withKeeper(t);
+  await lookup(keeper, A, 1, true);
+  await store(keeper, { url: A, page: 1, status: 404, body: 'nf' });
+  const [entry] = readHar(dir, A);
+  assert.equal(entry.response.status, 404);
+  assert.equal(readFileSync(path.join(dir, entry.response.content._file), 'utf8'), 'nf');
+  const res = await lookup(keeper, A, 2, true);
+  assert.equal(res.status, 404);
+  assert.equal(res.headers.get('x-web-cache'), 'miss');
+  assert.equal(keeper.stats.stored, 1);
+  assert.equal(keeper.stats.hits, 0);
+});
+
+test('errors in existing HARs are not indexed', async (t) => {
+  const dir = await tmp();
+  const first = await startKeeper({ cacheDir: dir, port: 0 });
+  await lookup(first, A, 1, true);
+  await store(first, { url: A, page: 1, status: 500, body: 'boom' });
+  await store(first, { url: CSS, page: 1, body: 'h1{}', mime: 'text/css' });
+  await first.stop();
+  const { keeper } = await withKeeper(t, { cacheDir: dir });
+  assert.equal(keeper.entries, 1);
+  assert.equal((await lookup(keeper, A, 1, true)).status, 404);
+  assert.equal((await lookup(keeper, CSS, 1)).status, 200);
+});
+
+test('redirectURL is the absolute location', async (t) => {
+  const { dir, keeper } = await withKeeper(t);
+  await lookup(keeper, A, 1, true);
+  await post(keeper, '/store', {
+    page: 1,
+    method: 'GET',
+    url: A,
+    status: 301,
+    statusText: 'Moved',
+    requestHeaders: [],
+    headers: [{ name: 'Location', value: '/b' }],
+    mimeType: '',
+    body: '',
+  });
+  await store(keeper, { url: B, page: 1, body: '<h1>b</h1>' });
+  const entries = readHar(dir, A);
+  assert.equal(entries[0].response.redirectURL, B);
+  assert.equal(entries[1].response.redirectURL, '');
+});
+
+test('page HAR lists the page and pageref', async (t) => {
+  const { dir, keeper } = await withKeeper(t);
+  await lookup(keeper, A, 1, true);
+  await store(keeper, { url: A, page: 1, body: '<h1>a</h1>' });
+  await store(keeper, { url: CSS, page: 1, body: 'h1{}', mime: 'text/css' });
+  const { log } = pageHar(dir, A);
+  assert.equal(log.pages.length, 1);
+  assert.equal(log.pages[0].id, 'page_1');
+  assert.equal(log.pages[0].title, A);
+  assert.deepEqual(log.pages[0].pageTimings, {});
+  assert.deepEqual(
+    log.entries.map((e) => e.pageref),
+    ['page_1', 'page_1'],
+  );
 });
