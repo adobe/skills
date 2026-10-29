@@ -71,8 +71,8 @@
       "claude-sonnet-5.5": "correct",
       "gemini-4-argon": "correct",
       "gpt-6.1-sol": "correct",
-      "decision": "cut",
-      "note": "All correct on prefixing with the block class. Sonnet and Gemini also offer `main .cards`, the stale prefix from BB-012."
+      "decision": "reminder",
+      "note": "All correct on prefixing with the block class. Sonnet and Gemini also offer `main .cards`, the stale prefix from BB-012. Reminder: unscoped CSS breaks other pages silently."
     },
     "BB-012": {
       "decision": "fix-and-keep",
@@ -100,7 +100,8 @@
       "claude-sonnet-5.5": "correct",
       "gemini-4-argon": "correct",
       "gpt-6.1-sol": "correct",
-      "decision": "cut"
+      "decision": "reminder",
+      "note": "Reminder: an internal `-wrapper`/`-container` class collides silently with platform-added classes."
     },
     "BB-017": {
       "claude-sonnet-5.5": "correct",
@@ -211,8 +212,8 @@
       "claude-sonnet-5.5": "correct",
       "gemini-4-argon": "correct",
       "gpt-6.1-sol": "correct",
-      "decision": "cut",
-      "note": "All correct on never editing aem.js. Sonnet says customizations go in scripts.js or delayed.js; delayed.js is stale (see BB-022)."
+      "decision": "reminder",
+      "note": "All correct on never editing aem.js. Sonnet says customizations go in scripts.js or delayed.js; delayed.js is stale (see BB-022). Reminder: aem.js edits are lost on upgrade, silently."
     },
     "BB-035": {
       "decision": "cut",

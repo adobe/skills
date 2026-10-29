@@ -11,13 +11,13 @@ Decides which lines of a skill are worth their tokens: test what current models 
 2. **Verify.** Check every `eds` fact against a live source (aem-boilerplate `main`, aem.live docs, aem-cli source). Record the source. Wrong facts get fixed in the skill, not quizzed.
 3. **Quiz.** One open, non-leading question per `eds` fact. Questions must not contain the answer.
 4. **Recall.** Ask each model the full quiz in one prompt, no tools, no skill text. Save raw answers.
-5. **Score.** Each answer vs. its fact: `correct`, `wrong` (confident and incorrect, incl. stale), `missing` (no answer, vague, or partial).
+5. **Score.** Each answer vs. its fact: `correct`, `wrong` (confident and incorrect, incl. stale), `missing` (no answer, vague, or partial). Two scorers from different vendors score independently; disagreements go to a human.
 6. **Decide.**
 
 | Condition | Decision |
 |---|---|
 | `generic` or `repo` | cut |
-| `eds`, `correct` in all models | cut |
+| `eds`, `correct` in all models | cut, unless forgetting it is costly and silent (e.g. unscoped CSS, editing `aem.js`): then keep as a one-line `reminder` |
 | `eds`, `wrong` in any model | keep, state sharply |
 | `eds`, `missing` in 2+ models | keep |
 | otherwise | judgement, note why |
