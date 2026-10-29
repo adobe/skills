@@ -19,6 +19,10 @@ const EXTENSIONS = {
   'image/avif': 'avif',
   'font/woff': 'woff',
   'font/woff2': 'woff2',
+  'font/ttf': 'ttf',
+  'font/otf': 'otf',
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
 };
 
 const mimeOf = (contentType = '') => contentType.split(';')[0].trim().toLowerCase();
