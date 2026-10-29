@@ -3,7 +3,7 @@ name: find-test-content
 description: "Use this when you need to find existing pages that already use a specific block in an AEM Edge Delivery Services project, for example to locate test content or examples during block development. Covers reporting page URLs with occurrence counts and block variants. This searches existing content; to import a new page from a URL use page-import."
 license: Apache-2.0
 metadata:
-  version: "1.2.1"
+  version: "1.2.2"
 ---
 
 # Find Test Content
