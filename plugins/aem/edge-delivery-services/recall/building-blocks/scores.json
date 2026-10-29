@@ -124,10 +124,10 @@
     },
     "BB-020": {
       "claude-sonnet-5.5": "correct",
-      "gemini-4-argon": "correct",
+      "gemini-4-argon": "wrong",
       "gpt-6.1-sol": "wrong",
       "decision": "keep",
-      "note": "GPT describes the retired waitForLCP(LCP_BLOCKS) first-block path; current boilerplate loads the whole first section (loadSection + waitForFirstImage)."
+      "note": "GPT describes the retired waitForLCP(LCP_BLOCKS) first-block path. Gemini names loadSection but still restricts it to 'the first block'. Current boilerplate loads the whole first section (loadSection + waitForFirstImage)."
     },
     "BB-021": {
       "claude-sonnet-5.5": "correct",
