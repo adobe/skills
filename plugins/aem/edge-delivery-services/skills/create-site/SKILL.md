@@ -31,6 +31,7 @@ Use this skill when:
 ## Related Skills
 
 - **page-import** — Import existing pages into the newly created site
+- **brand-setup** — When migrating an existing site, apply its colors, fonts, favicon and logo to the fresh project
 - **content-driven-development** — Build and modify blocks once the site exists
 - **building-blocks** — Implement new block code
 

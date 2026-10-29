@@ -1,0 +1,61 @@
+{
+  "context": "Tests whether the agent applies a source site's brand basics to a fresh aem-boilerplate project the way EDS expects: values mapped into the existing :root slots for both mobile and the (width >= 900px) block, fonts self-hosted through styles/fonts.css with metric fallback faces in styles.css (never head.html), commercial hosted fonts reported rather than copied, a descending heading scale despite inverted source levels, the main nav bar measured without the promo bar, favicon.ico replaced without a head.html edit, a raster logo saved under icons/, and no invented values.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Color slots mapped from the readings",
+      "max_score": 12,
+      "description": "styles.css :root sets --background-color #ffffff (or #fff), --text-color #222222, --link-color #1f4d3a, --link-hover-color #143326, --light-color #f4f1ea and --dark-color #0f261d (primary button hover). No color is darkened, rounded or invented, and no new custom properties are added."
+    },
+    {
+      "name": "Mobile and desktop size blocks both kept and filled",
+      "max_score": 12,
+      "description": "The top :root carries the 375 px values (body m/s/xs 16/14/12px) and the existing @media (width >= 900px) :root block is kept with the 1440 px values (body m/s/xs 18/15/13px). Both blocks still define all nine size slots."
+    },
+    {
+      "name": "Heading scale descends despite the inverted h2/h3",
+      "max_score": 10,
+      "description": "Because the source h3 (40px) is larger than its h2 (32px), desktop headings are xxl 56, xl 40, l 32, m 22, s 18 and mobile xxl 36, xl 28, l 26, m 20, s 16 (distinct measured sizes in descending order). The hidden 14px h1 is ignored. The xs slot is never larger than s in either block (mobile xs not left at the boilerplate 22px), and the report says h6 was not measured."
+    },
+    {
+      "name": "Nav height is the main navigation bar only",
+      "max_score": 6,
+      "description": "--nav-height is 60px in the top :root and 72px for desktop (in the media block); the 32px promo bar is not included (not 104px)."
+    },
+    {
+      "name": "Open-licence body font self-hosted through fonts.css",
+      "max_score": 10,
+      "description": "The Inter 400 and 600 woff2 files are placed in fonts/ and declared in styles/fonts.css with font-display: swap and url('../fonts/...') sources; the Roboto @font-face rules and Roboto files are removed; --body-font-family is an Inter stack with an Inter fallback face."
+    },
+    {
+      "name": "Commercial hosted heading font reported, not copied",
+      "max_score": 8,
+      "description": "Halden Display (Adobe Fonts kit) is not downloaded or declared from use.typekit.net; --heading-font-family keeps the Halden Display name with its fallback face and a serif generic; the report names the family and the service so a licensed kit can be added later."
+    },
+    {
+      "name": "Fallback faces replaced with measured size-adjust",
+      "max_score": 8,
+      "description": "The two Roboto fallback faces in styles.css are replaced by an Inter fallback on local('Arial') with size-adjust about 102.8% (512/498) and a Halden Display fallback on local('Times New Roman') with size-adjust about 96.4% (540/560)."
+    },
+    {
+      "name": "No font or script wiring changes outside fonts.css/styles.css",
+      "max_score": 12,
+      "description": "head.html is unchanged (no font <link>, <style> or preload lines, no favicon line), styles/fonts.css still exists, and the provided loadFonts() in scripts/scripts.js is unchanged."
+    },
+    {
+      "name": "Favicon replaces favicon.ico, format kept",
+      "max_score": 6,
+      "description": "The root favicon.ico (provided as the \"boilerplate favicon\" placeholder) is replaced with the downloaded /favicon.ico from the source; it is not converted to another format and no <link rel=\"icon\"> is added because the source has no linked icon."
+    },
+    {
+      "name": "Raster logo saved under icons/",
+      "max_score": 6,
+      "description": "The PNG logo is saved as icons/logo.png (not converted to or wrapped in an SVG, not wired into the header), and the report says a raster logo cannot be used with the :logo: icon syntax."
+    },
+    {
+      "name": "Report lists sources, gaps and unslotted traits",
+      "max_score": 10,
+      "description": "BRAND-REPORT.md gives the six self-check results each with the output that shows it (including git status --short pasted verbatim), a source for each value written, what was left or filled (h6/xs), and the measured-but-unwritten traits: theme-color #1f4d3a, button radius 4px and padding 12px 24px, heading weight 700."
+    }
+  ]
+}
