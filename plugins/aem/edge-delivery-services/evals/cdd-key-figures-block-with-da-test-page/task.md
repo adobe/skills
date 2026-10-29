@@ -2,11 +2,11 @@
 
 ## Problem/Feature Description
 
-Acme's marketing site (GitHub repo `acme/website`) runs on AEM Edge Delivery Services. Authors write pages in Document Authoring at `https://da.live/#/acme/website`. Code previews at `https://main--website--acme.aem.page/`.
+Acme's marketing site (GitHub repo `acme/website`) runs on AEM Edge Delivery Services. Authors write pages in Document Authoring at `https://da.live/#/acme/website`. Code previews at `https://main--website--acme.aem.page/`. Authors insert blocks from the site's block library; the DA config's `library` tab points its Blocks entry at `https://content.da.live/acme/website/docs/library/blocks.json`.
 
 Product marketing wants a new `key-figures` block: a horizontal row of two to four big numbers ("98%", "12M", "140+"), each with a short label underneath and, optionally, a small source link (e.g. "Source: 2025 annual report"). It will sit in the middle of landing pages. No page uses this block yet and the authors have not written any content for it.
 
-The tech lead does not want to wait for authors. Please create a test page yourself at `/drafts/key-figures` (covering the cases the block must handle), check it against your local dev server while you build, and get that page into the site's content so the reviewer can open the PR's branch test link and see the block working. Then implement the block and prepare the PR.
+The tech lead does not want to wait for authors. Please create the test content yourself (covering the cases the block must handle), check it against your local dev server while you build, and get it into the site's content so the reviewer can open the PR's branch test link and see the block working. Then implement the block and prepare the PR.
 
 You are working in a git worktree of the repository checked out on branch `key-figures` (see `.git`). Other agents are working on other branches in sibling worktrees of the same repo and have their own dev servers running.
 
@@ -19,7 +19,7 @@ Produce the following files:
 1. `NOTES.md` containing:
    - A **Content model** section describing how authors will structure the block in a document (rows, cells, what goes in each cell, optional parts).
    - A **Steps** section: a numbered list, in the exact order you would perform them, of everything from starting the dev server to the reviewer being able to open the test link. Each step that involves a command or HTTP request must show the exact command/request in a code block. Include the exact local URL(s) you would load to check the test page.
-2. The test page file for `/drafts/key-figures`, saved at whatever path in the project your workflow requires for it to be served locally and synced to the site's content.
+2. The test content file(s), saved at whatever path in the project your workflow requires for them to be served locally and synced to the site's content.
 3. `blocks/key-figures/key-figures.js` and `blocks/key-figures/key-figures.css` implementing the block.
 4. `PR.md` containing the pull request description you would submit.
 

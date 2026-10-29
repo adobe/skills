@@ -2,13 +2,13 @@
 
 ## Problem/Feature Description
 
-Acme's marketing site runs on AEM Edge Delivery Services, with content authored in Document Authoring (da.live, org `acme`, site `acme-site`). A developer has finished a new `hero-video` block on the branch `feature-hero-video` and handed it to you to validate before the pull request is opened. You are working in that developer's checkout of the repository (see the input files).
+Acme's marketing site runs on AEM Edge Delivery Services, with content authored in Document Authoring (da.live, org `acme`, site `acme-site`). Authors insert blocks from the site's block library; the DA config's `library` tab points its Blocks entry at `https://content.da.live/acme/acme-site/docs/library/blocks.json`. A developer has finished a new `hero-video` block on the branch `feature-hero-video` and handed it to you to validate before the pull request is opened. You are working in that developer's checkout of the repository (see the input files).
 
 The block shows an authored poster image and heading. On desktop it swaps the poster for a muted, looping background video; on smaller screens it keeps the poster and adds a play button that opens the video.
 
 Nothing exists yet to test it with. You need to:
 
-1. Create a test page that uses the block (one plain instance with a poster, heading and video link). The reviewer will open the same page on the branch preview, `https://feature-hero-video--acme-site--acme.aem.page/drafts/hero-video`, so the page has to end up in DA as well; you also want to look at it locally first, before anything is published.
+1. Create a test page that uses the block (one plain instance with a poster, heading and video link). The reviewer will open the same page on the branch preview (`https://feature-hero-video--acme-site--acme.aem.page/<path>`), so the page has to end up in DA as well; you also want to look at it locally first, before anything is published.
 2. Write a Playwright script that opens the test page on the local dev server, waits until the block has finished loading, captures the block's accessibility tree, takes screenshots at mobile, tablet and desktop sizes, checks that the video element only appears at desktop width, and fails on browser console errors.
 3. Write down exactly how you will run the validation and what you will hand back to the developer.
 
@@ -18,7 +18,7 @@ You cannot run a browser or the AEM CLI in this environment; write the files and
 
 - The test page HTML file, at the path in the checkout where you would create it.
 - The Playwright script as `check-hero-video.mjs`.
-- `NOTES.md` covering: the commands to start the local server and the exact local URL you will open; how you will get the test page into DA for the reviewer; the order of the validation steps you will run before saying the block is done; and where the Playwright script lives and what happens to it afterwards.
+- `NOTES.md` covering: the commands to start the local server and the exact local URL you will open; the branch preview URL the reviewer will open; how you will get the test page into DA for the reviewer; the order of the validation steps you will run before saying the block is done; and where the Playwright script lives and what happens to it afterwards.
 
 ## Input Files
 
