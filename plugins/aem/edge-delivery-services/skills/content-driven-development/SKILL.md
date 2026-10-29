@@ -34,7 +34,7 @@ Create a todo list with these 8 steps and complete them in order.
   - one block table per variant; a visual variant is a header `Block (variant)`, i.e. `<div class="block variant">`; a content variant is a heading right before its table;
   - optional `library-metadata` block after a block, with one `description` row;
   - content that must be inserted together (heading plus block, multi-section blocks such as tabs or accordions) goes between `library-container-start` and `library-container-end` marker blocks.
-- **New block:** add a row to the blocks sheet (`content/docs/library/blocks.json` after cloning; keep its existing JSON shape): `name` = block display name, `path` = `https://content.da.live/{org}/{site}/docs/library/blocks/<block>`. Or edit the sheet in da.live.
+- **New block:** add a row to the blocks sheet (`content/docs/library/blocks.json` after cloning; keep its existing JSON shape): `name` = block display name (e.g. `Cards`), `path` = `https://content.da.live/{org}/{site}/docs/library/blocks/<block>`. Or edit the sheet in da.live. Library format reference: https://www.aem.live/docs/ew/administering/set-up-library
 - **Check locally** before pushing: `aem up` serves `content/` before proxying, so the page is at `http://localhost:<port>/docs/library/blocks/<block>` and `.plain.html`, rendered by the same pipeline as production.
 - **Sync:** `aem content add <files>`, `aem content commit -m "..."`, `aem content push` (also for the sheet).
 - **Preview** each pushed page: Sidekick Preview, or `POST https://admin.hlx.page/preview/{owner}/{repo}/{ref}/{path}`.
