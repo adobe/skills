@@ -6,7 +6,7 @@
 const HOOKS = `async page => {
   const context = page.context();
   if (context.__webCache) return 'already';
-  const state = { errors: 0 };
+  const state = { errors: 0, pending: new Set() };
   context.__webCache = state;
   const served = new WeakSet();
   const pageIds = new WeakMap();
@@ -53,7 +53,7 @@ const HOOKS = `async page => {
     }
     return route.fallback().catch(fail);
   });
-  context.on('response', async (response) => {
+  const store = async (response) => {
     const request = response.request();
     if (served.has(request) || request.method() !== 'GET') return;
     const status = response.status();
@@ -79,6 +79,11 @@ const HOOKS = `async page => {
     } catch {
       fail();
     }
+  };
+  context.on('response', (response) => {
+    const pending = store(response);
+    state.pending.add(pending);
+    return pending.finally(() => state.pending.delete(pending));
   });
   return 'installed';
 }`;
@@ -96,5 +101,13 @@ export function cacheHooksCode(port) {
     .replace('STORE_TIMEOUT_MS', '10000');
 }
 
-/** run-code snippet returning the number of hook failures in the session (0 if no hooks). */
-export const CACHE_STATS_CODE = 'async page => page.context().__webCache?.errors ?? 0';
+/**
+ * run-code snippet that waits for in-flight stores, then returns the number of hook failures in
+ * the session (0 if no hooks).
+ */
+export const CACHE_STATS_CODE = `async page => {
+  const state = page.context().__webCache;
+  if (!state) return 0;
+  await Promise.allSettled([...state.pending]);
+  return state.errors;
+}`;

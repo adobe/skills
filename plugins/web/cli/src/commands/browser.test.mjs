@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli } from '#src/cli.mjs';
+import { CACHE_STATS_CODE } from '#src/cache/hooks.mjs';
 
 const HINT = 'run: web browser open <url> --session <name>';
 const OPEN = [{ name: 's', status: 'open' }];
@@ -34,7 +35,7 @@ function run(args, { sessions = [], evalThrows = false, env = {}, keeper, openTh
     attach: rec('attach'),
     close: rec('close'),
     closeAll: rec('closeAll'),
-    run: (...a) => (calls.push(['run', ...a]), a[1]?.code?.includes('__webCache?') ? 3 : 'ran'),
+    run: (...a) => (calls.push(['run', ...a]), a[1]?.code === CACHE_STATS_CODE ? 3 : 'ran'),
     screenshot: rec('screenshot'),
     evaluate: evalThrows
       ? () => {

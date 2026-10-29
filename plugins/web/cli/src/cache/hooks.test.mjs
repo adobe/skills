@@ -172,3 +172,17 @@ test('stats snippet reports hook errors', async (t) => {
 test('port must be an integer', () => {
   assert.throws(() => cacheHooksCode('1; evil()'), /port/);
 });
+
+test('stats snippet waits for pending stores', async (t) => {
+  const { keeper, page, context } = await setup(t);
+  const request = fakeRequest(page, { url: A, nav: true });
+  await context.routes[0](fakeRoute(request));
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const slow = { ...fakeResponse(request), body: async () => (await gate, Buffer.from('x')) };
+  context.listeners.response(slow);
+  const stats = compile(CACHE_STATS_CODE)(page);
+  release();
+  assert.equal(await stats, 0);
+  assert.equal(keeper.stats.stored, 1);
+});
