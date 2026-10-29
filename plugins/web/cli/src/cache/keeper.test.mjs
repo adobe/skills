@@ -149,6 +149,7 @@ test('non-storable responses are ignored', async (t) => {
   await store(keeper, { url: A, page: 1, method: 'POST' });
   await store(keeper, { url: A, page: 1, status: 500 });
   await store(keeper, { url: A, page: 1, status: 304 });
+  await store(keeper, { url: A, page: 1, status: 206, body: 'partial' });
   await store(keeper, { url: 'https://www.google-analytics.com/g/collect', page: 1 });
   await store(keeper, { url: 'data:text/plain,hi', page: 1 });
   assert.deepEqual(readdirSync(dir), []);

@@ -7254,7 +7254,8 @@ var EXTENSIONS = {
 };
 var mimeOf = (contentType = "") => contentType.split(";")[0].trim().toLowerCase();
 function isStorable({ method, url, status: status2 }) {
-  if (method !== "GET" || status2 < 200 || status2 > 399 || status2 === 304) return false;
+  if (method !== "GET" || status2 < 200 || status2 > 399) return false;
+  if (status2 === 206 || status2 === 304) return false;
   return /^https?:\/\//.test(url) && !isTracker(url);
 }
 var fromWebPage = (req) => {

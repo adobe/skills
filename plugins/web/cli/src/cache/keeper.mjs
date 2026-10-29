@@ -29,7 +29,9 @@ const mimeOf = (contentType = '') => contentType.split(';')[0].trim().toLowerCas
 
 /** Whether a response the browser received from the network belongs in the cache. */
 function isStorable({ method, url, status }) {
-  if (method !== 'GET' || status < 200 || status > 399 || status === 304) return false;
+  // 206 is one byte range of the resource: replaying it for the whole URL breaks media.
+  if (method !== 'GET' || status < 200 || status > 399) return false;
+  if (status === 206 || status === 304) return false;
   return /^https?:\/\//.test(url) && !isTracker(url);
 }
 
