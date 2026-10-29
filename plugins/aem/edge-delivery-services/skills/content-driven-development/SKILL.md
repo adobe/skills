@@ -288,7 +288,7 @@ npm run lint
 1. Fix issues (use `npm run lint:fix` for auto-fixable problems)
 2. Re-run lint until clean
 
-**Run existing tests:**
+**Run existing tests** (only if `package.json` defines a `test` script; the boilerplate has none):
 ```bash
 npm test
 ```

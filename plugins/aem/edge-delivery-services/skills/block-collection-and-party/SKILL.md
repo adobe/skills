@@ -93,12 +93,14 @@ Determine what you're looking for and identify relevant search terms. **Think ab
 
 ### Step 2: Search Block Collection
 
+`<SKILL_DIR>` in commands below is the absolute path to the directory containing this SKILL.md.
+
 **IMPORTANT:** Run BOTH search scripts in parallel for comprehensive results:
 
 ```bash
 # Run both searches in parallel (preferred approach)
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js <search-term> & \
-node .claude/skills/block-collection-and-party/scripts/search-block-collection.js <search-term> & \
+node <SKILL_DIR>/scripts/search-block-collection-github.js <search-term> & \
+node <SKILL_DIR>/scripts/search-block-collection.js <search-term> & \
 wait
 ```
 
@@ -110,17 +112,17 @@ wait
 **Examples:**
 ```bash
 # Search for accordion/FAQ blocks (both scripts)
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js accordion & \
-node .claude/skills/block-collection-and-party/scripts/search-block-collection.js accordion & \
+node <SKILL_DIR>/scripts/search-block-collection-github.js accordion & \
+node <SKILL_DIR>/scripts/search-block-collection.js accordion & \
 wait
 
 # Search for embed block (both scripts)
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js embed & \
-node .claude/skills/block-collection-and-party/scripts/search-block-collection.js embed & \
+node <SKILL_DIR>/scripts/search-block-collection-github.js embed & \
+node <SKILL_DIR>/scripts/search-block-collection.js embed & \
 wait
 
 # If running both is problematic, prioritize the GitHub API version
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js carousel
+node <SKILL_DIR>/scripts/search-block-collection-github.js carousel
 ```
 
 ### Step 3: Search Block Party
@@ -128,7 +130,7 @@ node .claude/skills/block-collection-and-party/scripts/search-block-collection-g
 Execute the Block Party search script from the project root:
 
 ```bash
-node .claude/skills/block-collection-and-party/scripts/search-block-party.js [--category <category>] <search-term> [additional-terms...]
+node <SKILL_DIR>/scripts/search-block-party.js [--category <category>] <search-term> [additional-terms...]
 ```
 
 **Options:**
@@ -138,16 +140,16 @@ node .claude/skills/block-collection-and-party/scripts/search-block-party.js [--
 **Examples:**
 ```bash
 # Search for breadcrumb blocks
-node .claude/skills/block-collection-and-party/scripts/search-block-party.js breadcrumb
+node <SKILL_DIR>/scripts/search-block-party.js breadcrumb
 
 # Search for Sass integration examples
-node .claude/skills/block-collection-and-party/scripts/search-block-party.js sass
+node <SKILL_DIR>/scripts/search-block-party.js sass
 
 # Search only for build tooling
-node .claude/skills/block-collection-and-party/scripts/search-block-party.js --category "Build Tooling" webpack
+node <SKILL_DIR>/scripts/search-block-party.js --category "Build Tooling" webpack
 
 # Multi-word search
-node .claude/skills/block-collection-and-party/scripts/search-block-party.js adobe target integration
+node <SKILL_DIR>/scripts/search-block-party.js adobe target integration
 ```
 
 ### Step 4: Review Search Results
@@ -157,7 +159,7 @@ node .claude/skills/block-collection-and-party/scripts/search-block-party.js ado
 {
   "query": "accordion",
   "source": "Adobe AEM Block Collection",
-  "totalItems": 26,
+  "totalItems": 25,
   "matchCount": 1,
   "results": [
     {
@@ -177,7 +179,7 @@ node .claude/skills/block-collection-and-party/scripts/search-block-party.js ado
 {
   "query": "breadcrumb",
   "source": "Adobe AEM Block Collection",
-  "totalItems": 26,
+  "totalItems": 25,
   "matchCount": 1,
   "results": [
     {
@@ -198,8 +200,8 @@ node .claude/skills/block-collection-and-party/scripts/search-block-party.js ado
   "query": "breadcrumb",
   "category": "All categories",
   "source": "AEM Block Party (Approved Only)",
-  "totalEntries": 90,
-  "approvedEntries": 62,
+  "totalEntries": 110,
+  "approvedEntries": 77,
   "matchCount": 1,
   "results": [
     {
@@ -219,7 +221,7 @@ node .claude/skills/block-collection-and-party/scripts/search-block-party.js ado
 **IMPORTANT:** Before writing any HTML for a block, ALWAYS fetch the pre-decoration structure examples first.
 
 ```bash
-node .claude/skills/block-collection-and-party/scripts/get-block-structure.js <block-name>
+node <SKILL_DIR>/scripts/get-block-structure.js <block-name>
 ```
 
 **Why this is critical:**
@@ -231,13 +233,13 @@ node .claude/skills/block-collection-and-party/scripts/get-block-structure.js <b
 **Examples:**
 ```bash
 # Get accordion structure
-node .claude/skills/block-collection-and-party/scripts/get-block-structure.js accordion
+node <SKILL_DIR>/scripts/get-block-structure.js accordion
 
 # Get cards structure (will show multiple variants)
-node .claude/skills/block-collection-and-party/scripts/get-block-structure.js cards
+node <SKILL_DIR>/scripts/get-block-structure.js cards
 
 # Get tabs structure
-node .claude/skills/block-collection-and-party/scripts/get-block-structure.js tabs
+node <SKILL_DIR>/scripts/get-block-structure.js tabs
 ```
 
 **Output includes:**
@@ -312,8 +314,8 @@ Use the reference implementations to inform your approach:
 1. Recognize FAQ often uses accordion pattern
 2. Search Block Collection with both scripts:
    ```bash
-   node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js accordion & \
-   node .claude/skills/block-collection-and-party/scripts/search-block-collection.js accordion & \
+   node <SKILL_DIR>/scripts/search-block-collection-github.js accordion & \
+   node <SKILL_DIR>/scripts/search-block-collection.js accordion & \
    wait
    ```
 3. Review results from both searches (they should align, but running both ensures nothing is missed)
@@ -334,12 +336,12 @@ Use the reference implementations to inform your approach:
 **Good Approach:**
 1. Search Block Collection first with both scripts:
    ```bash
-   node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js breadcrumb & \
-   node .claude/skills/block-collection-and-party/scripts/search-block-collection.js breadcrumb & \
+   node <SKILL_DIR>/scripts/search-block-collection-github.js breadcrumb & \
+   node <SKILL_DIR>/scripts/search-block-collection.js breadcrumb & \
    wait
    ```
 2. Find that breadcrumbs is "default-content" (not a standalone block)
-3. Search Block Party: `node .claude/skills/block-collection-and-party/scripts/search-block-party.js breadcrumb`
+3. Search Block Party: `node <SKILL_DIR>/scripts/search-block-party.js breadcrumb`
 4. Find breadcrumb block in Block Party
 5. Review the implementation, noting it's community-contributed
 6. Evaluate if it meets your needs or needs adaptation
@@ -357,7 +359,7 @@ Use the reference implementations to inform your approach:
 **Good Approach:**
 1. Recognize this is a build tooling question (not a block)
 2. Skip Block Collection (doesn't have build tools)
-3. Search Block Party: `node .claude/skills/block-collection-and-party/scripts/search-block-party.js --category "Build Tooling" sass`
+3. Search Block Party: `node <SKILL_DIR>/scripts/search-block-party.js --category "Build Tooling" sass`
 4. Find Sass integration examples
 5. Review the approach and adapt to your project
 
@@ -375,12 +377,12 @@ Use the reference implementations to inform your approach:
 **Good Approach:**
 1. Search Block Collection with both scripts:
    ```bash
-   node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js carousel & \
-   node .claude/skills/block-collection-and-party/scripts/search-block-collection.js carousel & \
+   node <SKILL_DIR>/scripts/search-block-collection-github.js carousel & \
+   node <SKILL_DIR>/scripts/search-block-collection.js carousel & \
    wait
    ```
 2. Find Block Collection carousel from both search results
-3. Also search Block Party: `node .claude/skills/block-collection-and-party/scripts/search-block-party.js carousel`
+3. Also search Block Party: `node <SKILL_DIR>/scripts/search-block-party.js carousel`
 4. Find multiple Block Party carousels
 5. **Prefer Block Collection** for best practices
 6. Review Block Party versions to see if they have innovative features worth considering

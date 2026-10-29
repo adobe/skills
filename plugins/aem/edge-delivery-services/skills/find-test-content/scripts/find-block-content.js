@@ -25,7 +25,21 @@
  * Defaults to localhost:3000 if no host specified
  */
 
-import { JSDOM } from 'jsdom';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+async function loadJSDOM() {
+  try {
+    return (await import('jsdom')).JSDOM;
+  } catch (error) {
+    if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+    const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+    console.error(`Error: jsdom is not installed. Run: npm install --prefix "${scriptsDir}"`);
+    process.exit(1);
+  }
+}
+
+const JSDOM = await loadJSDOM();
 
 const USER_AGENT = 'AdobeSkills/1.0 (https://github.com/adobe/skills; skill:find-test-content)';
 

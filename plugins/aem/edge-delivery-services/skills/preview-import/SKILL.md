@@ -37,13 +37,15 @@ From previous skills, you need:
 
 ### Step 1: Start Development Server with HTML Folder Flag
 
-**Determine the folder from metadata.json:**
-- Look at `paths.dirPath` from metadata.json (e.g., `/us`)
-- This is the root folder containing your imported HTML file
+**Determine the folder from `paths.htmlFilePath` in metadata.json:**
+- Use the first path segment of `htmlFilePath` (e.g., `us` for `us/en/about.plain.html`)
+- If `htmlFilePath` has no folder (e.g., `index.plain.html`, `about.plain.html`), serve the project root instead
 
 **Command:**
 ```bash
-aem up --html-folder {dirPath}
+aem up --html-folder {top-level folder}
+# root-level files:
+aem up --html-folder . --html-mount /
 ```
 
 **Examples based on imported content location:**
@@ -53,6 +55,7 @@ aem up --html-folder {dirPath}
 | `us/en.plain.html` | `aem up --html-folder us` | `http://localhost:3000/us/en` |
 | `products/widget.plain.html` | `aem up --html-folder products` | `http://localhost:3000/products/widget` |
 | `blog/2024/post.plain.html` | `aem up --html-folder blog` | `http://localhost:3000/blog/2024/post` |
+| `index.plain.html` | `aem up --html-folder . --html-mount /` | `http://localhost:3000/` |
 
 **Why this is required:**
 - Without `--html-folder`, AEM CLI proxies requests to the remote server
@@ -63,29 +66,12 @@ aem up --html-folder {dirPath}
 
 ### Step 2: Navigate in Browser
 
-**For most files, use the document path directly:**
+**Preview URL:** `http://localhost:3000` + `paths.documentPath` from metadata.json, with a trailing `index` removed:
 ```
-http://localhost:3000${documentPath}
+us/en/about.plain.html  → http://localhost:3000/us/en/about
+index.plain.html        → http://localhost:3000/
+us/index.plain.html     → http://localhost:3000/us/
 ```
-
-Example:
-- HTML file: `us/en/about.plain.html`
-- URL: `http://localhost:3000/us/en/about`
-
-**IMPORTANT: For index files, use `/` instead of `/index`:**
-```
-If file is: index.plain.html
-Preview at: http://localhost:3000/
-NOT: http://localhost:3000/index
-```
-
-**Note:** If you used `--html-folder` flag (e.g., `aem up --html-folder drafts`), prepend that folder to the URL:
-```
-File: drafts/test.plain.html
-URL: http://localhost:3000/drafts/test
-```
-
-Use `paths.documentPath` from metadata.json, but for index files ensure the path is `/` not `/index`
 
 ---
 
@@ -140,7 +126,7 @@ Use `paths.documentPath` from metadata.json, but for index files ensure the path
 - Verify you're in correct project directory
 
 **Page not found (404):**
-- **Most common cause:** Missing `--html-folder` flag - restart server with `aem up --html-folder {dirPath}`
+- **Most common cause:** Missing `--html-folder` flag - restart server with `aem up --html-folder {top-level folder}`
 - Verify HTML file exists at expected path
 - Check documentPath from metadata.json matches URL
 - For index files, use `/` not `/index`

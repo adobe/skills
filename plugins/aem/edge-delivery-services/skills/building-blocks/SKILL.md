@@ -166,7 +166,6 @@ main .my-block {
   background-color: var(--background-color);
   color: var(--text-color);
   font-family: var(--body-font-family);
-  max-width: var(--max-content-width);
 
   /* Mobile-first styles (default) */
   padding: 1rem;
@@ -201,7 +200,7 @@ main .my-block .item {
 /* Variants - most are CSS-only */
 main .my-block.dark {
   background-color: var(--dark-color);
-  color: var(--clr-white);
+  color: var(--background-color);
 }
 ```
 

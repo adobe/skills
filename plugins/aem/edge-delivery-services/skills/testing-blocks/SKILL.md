@@ -94,26 +94,27 @@ If you have MCP browser or Playwright tools available, use them directly:
 Write one (or more) temporary test scripts to validate functionality with playwright and capture snapshots/screenshots for inspection and validation.
 
 ```javascript
-// test-my-block.js (temporary - don't commit)
+// test-my-block.mjs (temporary - don't commit)
+import { writeFile } from 'fs/promises';
 import { chromium } from 'playwright';
 
 async function test() {
   const browser = await chromium.launch({ headless: false });
   const page = await browser.newPage();
 
+  // Capture console output before navigating
+  page.on('console', msg => console.log('Browser:', msg.text()));
+
   // Navigate and wait for block
   await page.goto('http://localhost:3000/path/to/test');
   await page.waitForSelector('.my-block');
 
   // Inspect accessibility tree (useful for validating structure)
-  const accessibilityTree = await page.accessibility.snapshot();
-  console.log('Accessibility tree:', JSON.stringify(accessibilityTree, null, 2));
-  
+  const ariaSnapshot = await page.locator('.my-block').ariaSnapshot();
+  console.log('Accessibility tree:', ariaSnapshot);
+
   // Optionally save to file for easier analysis
-  await require('fs').promises.writeFile(
-    'accessibility-tree.json',
-    JSON.stringify(accessibilityTree, null, 2)
-  );
+  await writeFile('accessibility-tree.yml', ariaSnapshot);
 
   // Test viewports and take screenshots
   await page.setViewportSize({ width: 375, height: 667 });
@@ -128,16 +129,13 @@ async function test() {
   await page.screenshot({ path: 'desktop.png', fullPage: true });
   await page.locator('.my-block').screenshot({ path: 'desktop-block.png' });
 
-  // Check for console errors
-  page.on('console', msg => console.log('Browser:', msg.text()));
-
   await browser.close();
 }
 
 test().catch(console.error);
 ```
 
-Run: `node test-my-block.js` then delete the script and analyze the resulting artifacts.
+Run: `node test-my-block.mjs` then delete the script and analyze the resulting artifacts.
 
 **Option 3: Manual browser testing**
 
@@ -229,7 +227,7 @@ describe('myUtility', () => {
 
 ## Step 4: Run Existing Tests
 
-**Verify your changes don't break existing functionality:**
+**If `package.json` defines a `test` script** (the boilerplate has none), verify your changes don't break existing functionality:
 
 ```bash
 npm test
@@ -245,7 +243,7 @@ npm test
 - ✅ All existing tests pass
 - ✅ No regressions introduced
 
-**Mark complete when:** `npm test` passes with no failures
+**Mark complete when:** `npm test` passes with no failures, or the project has no `test` script
 
 ## Troubleshooting
 
@@ -265,7 +263,7 @@ For detailed troubleshooting guide, see [references/troubleshooting.md](referenc
 ### Browser tests fail
 - Verify dev server running: `aem up --html-folder drafts`
 - Check test content exists in `drafts/tmp/`
-- Verify URL uses `/tmp/` path: `http://localhost:3000/drafts/tmp/my-block`
+- For local drafts, verify the URL includes the html folder: `http://localhost:3000/drafts/tmp/my-block`
 - Add waits: `await page.waitForSelector('.block')`
 
 ## Resources

@@ -38,7 +38,7 @@ This skill will:
 
 **This skill does NOT:**
 - Validate content quality (you'll do that during implementation)
-- Create new content (that happens in Step 4b of CDD if needed)
+- Create new content (that happens in CDD Step 4, Option B if needed)
 - Analyze content structure (that's part of implementation)
 
 ## How to Use
@@ -79,29 +79,29 @@ Check if searching on local dev or live/preview:
 
 ### 2. Run Search
 
-Execute the find-block-content script:
+Execute the find-block-content script (`<SKILL_DIR>` is the absolute path to the directory containing this SKILL.md):
 
 ```bash
 # Search for block
-node .claude/skills/find-test-content/scripts/find-block-content.js <block-name> [host] [--concurrency N] [--delay MS]
+node <SKILL_DIR>/scripts/find-block-content.js <block-name> [host] [--concurrency N] [--delay MS]
 ```
 
 **Examples:**
 ```bash
 # Find hero block on local dev (default)
-node .claude/skills/find-test-content/scripts/find-block-content.js hero
+node <SKILL_DIR>/scripts/find-block-content.js hero
 
 # Find hero block on local dev (explicit)
-node .claude/skills/find-test-content/scripts/find-block-content.js hero localhost:3000
+node <SKILL_DIR>/scripts/find-block-content.js hero localhost:3000
 
 # Find cards block on live
-node .claude/skills/find-test-content/scripts/find-block-content.js cards main--mysite--owner.aem.live
+node <SKILL_DIR>/scripts/find-block-content.js cards main--mysite--owner.aem.live
 
 # Find carousel block on preview
-node .claude/skills/find-test-content/scripts/find-block-content.js carousel main--mysite--owner.aem.page
+node <SKILL_DIR>/scripts/find-block-content.js carousel main--mysite--owner.aem.page
 
 # Gentle crawl for large sites
-node .claude/skills/find-test-content/scripts/find-block-content.js hero main--mysite--owner.aem.page --concurrency 2 --delay 200
+node <SKILL_DIR>/scripts/find-block-content.js hero main--mysite--owner.aem.page --concurrency 2 --delay 200
 ```
 
 **The script will automatically detect and report:**
@@ -156,7 +156,7 @@ node .claude/skills/find-test-content/scripts/find-block-content.js hero main--m
 
 **Command:**
 ```bash
-node .claude/skills/find-test-content/scripts/find-block-content.js hero
+node <SKILL_DIR>/scripts/find-block-content.js hero
 ```
 
 **Possible outputs:**
@@ -183,7 +183,7 @@ Found 3 page(s) containing the "hero" block:
 
 **Command:**
 ```bash
-node .claude/skills/find-test-content/scripts/find-block-content.js cards localhost:3000
+node <SKILL_DIR>/scripts/find-block-content.js cards localhost:3000
 ```
 
 **Possible outputs:**
@@ -265,5 +265,5 @@ This skill is invoked from **Step 4: Identify/Create Test Content, Option C: Exi
 - Re-run the search; transient errors often resolve
 
 **Script errors**
-- jsdom dependency missing: Run `npm install` in project root
+- jsdom dependency missing: Run `npm install --prefix <this skill's scripts dir>` (the script prints the exact command)
 - Fetch errors: Check network/server connectivity

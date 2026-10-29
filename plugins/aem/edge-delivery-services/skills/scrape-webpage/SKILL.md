@@ -25,11 +25,12 @@ Use this skill when:
 
 ## Prerequisites
 
+`<SKILL_DIR>` is the absolute path to the directory containing this SKILL.md.
+
 Before using this skill, ensure:
 - ✅ Node.js is available
-- ✅ npm playwright is installed (`npm install playwright`)
-- ✅ Chromium browser is installed (`npx playwright install chromium`)
-- ✅ Sharp image library is installed (`cd .claude/skills/scrape-webpage/scripts && npm install`)
+- ✅ Script dependencies (playwright, sharp) are installed (`npm install --prefix <SKILL_DIR>/scripts`)
+- ✅ Chromium browser is installed (`npx --prefix <SKILL_DIR>/scripts playwright install chromium`)
 
 ## Related Skills
 
@@ -43,7 +44,7 @@ Before using this skill, ensure:
 
 **Command:**
 ```bash
-node .claude/skills/scrape-webpage/scripts/analyze-webpage.js "https://example.com/page" --output ./import-work
+node <SKILL_DIR>/scripts/analyze-webpage.js "https://example.com/page" --output ./import-work
 ```
 
 **What the script does:**
@@ -144,12 +145,12 @@ This skill provides:
 
 **Browser not installed:**
 ```bash
-npx playwright install chromium
+npx --prefix <SKILL_DIR>/scripts playwright install chromium
 ```
 
-**Sharp not installed:**
+**Playwright or Sharp not installed:**
 ```bash
-cd .claude/skills/scrape-webpage/scripts && npm install
+npm install --prefix <SKILL_DIR>/scripts
 ```
 
 **Image download failures:**

@@ -106,19 +106,21 @@ function generateDocumentPathInfo(url) {
     // Generate the document path (no extension)
     const documentPath = generateDocumentPath({ url });
 
+    const relativePath = documentPath.replace(/^\//, '');
+
     // Build file paths
-    const mdFilePath = `${documentPath}.md`;
-    const htmlFilePath = `${documentPath}.plain.html`;
+    const mdFilePath = `${relativePath}.md`;
+    const htmlFilePath = `${relativePath}.plain.html`;
 
     // Extract directory path (parent directory)
-    const dirPath = `${documentPath.substring(0, documentPath.lastIndexOf('/'))}`;
+    const dirPath = relativePath.includes('/') ? relativePath.substring(0, relativePath.lastIndexOf('/')) : '';
 
     // Extract just the filename (without extension)
     const filename = documentPath.substring(documentPath.lastIndexOf('/') + 1);
 
     // Automatically create directory structure if needed
     let directoryCreated = false;
-    if (dirPath && dirPath !== 'content') {
+    if (dirPath) {
       // Resolve to absolute path relative to workspace
       const workspaceRoot = process.env.WORKSPACE_ROOT || process.cwd();
       const absoluteDirPath = path.join(workspaceRoot, dirPath);
@@ -193,7 +195,7 @@ async function main() {
 }
 
 // Run if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === __filename) {
   main();
 }
 
