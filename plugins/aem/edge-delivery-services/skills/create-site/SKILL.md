@@ -3,7 +3,7 @@ name: create-site
 description: Use this when a user wants to create a brand-new AEM Edge Delivery site from scratch and no GitHub repository or DA content exists yet — triggers include 'set up a new site', 'create a new EDS project', or 'onboard a new site'. Covers creating the GitHub repo from the boilerplate, installing aem-code-sync, seeding initial DA content (nav, footer, homepage), and returning a live preview URL. For importing or migrating existing pages use page-import; for building blocks on an existing site use content-driven-development.
 license: Apache-2.0
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Create a New AEM Edge Delivery Site
