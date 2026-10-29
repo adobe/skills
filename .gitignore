@@ -26,3 +26,7 @@ dist/
 !plugins/web/cli/dist/
 .playwright-cli/
 .web/
+
+# recall probe working files (facts.json is tracked)
+plugins/*/*/recall/*/scores.json
+plugins/*/*/recall/*/answers/

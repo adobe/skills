@@ -28,10 +28,12 @@ Facts that steer workflow (step order, when to invoke other skills) aren't recal
 
 ```
 recall/<skill>/
-  facts.json        [{ id, claim, source, kind, verified, question, quiz? }]  (quiz: reason a fact is excluded, e.g. wrong claim)
-  answers/<model>.md  raw model output
-  scores.json       { models: [...], facts: { <id>: { <model>: score, decision, note } } }
+  facts.json          [{ id, claim, source, kind, verified, question, quiz? }]  (quiz: reason a fact is excluded, e.g. wrong claim)
+  answers/<model>.md  raw model output (gitignored)
+  scores.json         { models: [...], facts: { <id>: { <model>: score, decision, note } } } (gitignored)
 ```
+
+Only `facts.json` is committed. Answers and scores go stale with each model release and are cheap to regenerate; summarize models, totals and per-fact decisions in the PR body.
 
 ## Models
 
