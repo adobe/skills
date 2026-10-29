@@ -214,7 +214,11 @@ export function registerCache(program, deps = {}) {
   const { stdout = process.stdout, stderr = process.stderr } = deps;
   const group = program
     .command('cache')
-    .description('cache original pages locally for offline replay');
+    .description('cache original pages locally for offline replay')
+    .addHelpText(
+      'after',
+      '\nTo record while browsing, open the session with: web browser open <url> --cache <dir>\n',
+    );
   registerServe(group, { stdout, stderr });
   registerRecord(group, deps);
   registerProxy(group, { stdout, stderr });
