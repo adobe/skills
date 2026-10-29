@@ -14,7 +14,7 @@ Implementation step of **content-driven-development** (Step 5). If you are not f
 
 1. **Find patterns** (new blocks or major changes): check `blocks/` and use **block-collection-and-party** for reference implementations.
 2. **Read the delivered markup** for your test content before writing decoration.
-   - Test content lives in DA. Work on it locally: `aem content clone` (signs in to DA in the browser; no separate token), then add or edit pages under `content/` in DA HTML format (**da-content**).
+   - Test content lives in DA. Work on it locally: `aem content clone --path /drafts` (or the folder holding your test content; `--all` clones the whole site). It signs in to DA in the browser; no separate token. Then add or edit pages under `content/` in DA HTML format (**da-content**).
    - `aem up` serves `content/` before proxying, so a draft at `content/drafts/my-block.html` previews at `/drafts/my-block` (and `.plain.html`) without pushing.
    - To publish test content to DA: `aem content add <files>`, `aem content commit -m "..."`, `aem content push`. Push skips binaries and strips icon spans; see **aem-cli**.
    - Use the port `aem up` logs: in a git worktree it moves off 3000 to a branch-derived port.
