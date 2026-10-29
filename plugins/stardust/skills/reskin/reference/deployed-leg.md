@@ -84,6 +84,8 @@ declares source → local render changes: `mapping-brief.md` § Deltas block), r
   image moved across a slot boundary with the order kept, or replaced by one with the same alt, goes undetected; its
   `images total` check counts every visible image in scope, so an image the delivered page adds fails it, and the
   schema cannot declare one.
+  `dom-equality`'s image-crop check still runs under it (images pair by order, not src): an EDS block that crops an
+  image more than the source did fails on the preview (`gates.md` § Image crop).
 - `links.localize.sourceHost`: a bare host; a CTA's href also matches as `deploy` localizes it onto the preview origin.
 - `metadata`: `ignore` keys (`title`, `description`, `canonical`, `og:…`, `twitter:…`) skip their check, `absent` keys
   must not be carried, `jsonLd` is `"count-only"` (the default: the block count) or `"ignore"`.
