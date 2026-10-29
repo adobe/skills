@@ -3,7 +3,7 @@ name: docs-search
 description: "Use this when you need more information about an AEM Edge Delivery Services (EDS, Franklin, Helix) feature or guidance on how to implement one, and your existing web-search tools are not turning up relevant results. Searches the aem.live documentation, ranks matching pages by relevance, fetches full articles, and surfaces code examples and deprecation warnings."
 license: Apache-2.0
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # Searching AEM Documentation
