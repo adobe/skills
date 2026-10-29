@@ -1,11 +1,11 @@
 {
-  "context": "Tests the hard platform constraint that blocks cannot be nested as tables inside block cells (authoring tools handle nested tables badly and decorateBlocks only decorates `div.section > div > div`), and whether the agent instead uses a supported composition mechanism (sections + section metadata / auto-blocking, or fragments) with tab labels derived from content semantics, keeping tabs easy to add, reorder and copy.",
+  "context": "A PM asks for existing blocks (Cards, Quote, Columns) inside tab panels, and the current tabs block is authored as | label | panel | rows, which invites nesting. Tests whether the agent recognizes unprompted the hard platform constraint that blocks cannot be nested as tables inside block cells (authoring tools handle nested tables badly and decorateBlocks only decorates `div.section > div > div`), and whether the agent instead uses a supported composition mechanism (sections + section metadata / auto-blocking, or fragments) with tab labels derived from content semantics, keeping tabs easy to add, reorder and copy.",
   "type": "weighted_checklist",
   "checklist": [
     {
       "name": "No nested block tables",
       "max_score": 25,
-      "description": "Nowhere in MODEL.md is a block table (cards, quote, columns or any other) placed inside a cell of another block table. The prototype's nested structure is explicitly replaced."
+      "description": "Nowhere in MODEL.md is a block table (cards, quote, columns or any other) placed inside a cell of another block table. The current `| label | panel |` row model is not simply extended with block tables in the panel cell."
     },
     {
       "name": "Inner blocks authored as top-level blocks",
@@ -35,7 +35,7 @@
     {
       "name": "Explains block discovery limit",
       "max_score": 10,
-      "description": "MODEL.md states that the boilerplate's `decorateBlocks` only finds blocks that sit directly in a section (`div.section > div > div` or equivalent wording, e.g. 'only top-level blocks in a section'), so the Cards/Quote tables inside a Tabs cell were never decorated or loaded and rendered as plain divs. Merely saying 'nested blocks are not supported' or 'nested tables are hard to edit' does not earn this."
+      "description": "MODEL.md states that the boilerplate's `decorateBlocks` only finds blocks that sit directly in a section (`div.section > div > div` or equivalent wording, e.g. 'only top-level blocks in a section'), so a Cards/Quote/Columns table authored inside a Tabs cell would never be decorated or loaded and would render as plain divs. Merely saying 'nested blocks are not supported' or 'nested tables are hard to edit' does not earn this."
     },
     {
       "name": "Checked against each authoring tool",

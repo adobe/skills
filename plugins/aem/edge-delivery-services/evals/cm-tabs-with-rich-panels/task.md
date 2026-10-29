@@ -2,42 +2,38 @@
 
 ## Problem/Feature Description
 
-Kestrel Audio's product detail pages run on AEM Edge Delivery Services, authored in Document Authoring (da.live) and, for some regional teams, in Word. Product marketing wants a tabbed area below the product hero with three to five tabs, e.g. **Overview**, **In the box**, **Accessories**, **Reviews**. Panels are rich:
+Kestrel Audio's product detail pages run on AEM Edge Delivery Services, authored in Document Authoring (da.live) and, for some regional teams, in Word. The site already has a `tabs` block; today its panels hold only short text (see the input files for how authors write it).
 
-- **Overview**: a few paragraphs, a bulleted list of highlights, a product image, and a YouTube video.
-- **In the box**: an image and a short list.
-- **Accessories**: an intro sentence and a grid of 3–6 accessory cards (image, name, short text, link) — the same look as the site's existing `cards` block.
-- **Reviews**: a pull quote (the site's existing `quote` block) and a two-column comparison (the site's existing `columns` block).
+The product manager filed this request:
 
-Product managers add, remove and reorder tabs per product, and the regional teams often copy a whole tab from one product page to another.
-
-A developer already prototyped this. Authors tried it and reported: "I can't edit a table inside a table in Word without the whole thing collapsing," "in DA I couldn't figure out how to add a new accessory card inside the tab," and on the preview the accessory cards and quote "show up as unstyled plain text." The prototype model and the relevant project code are in the input files.
+> **PDP-212 — Richer product tabs**
+>
+> We want three to five tabs below the product hero, e.g. **Overview**, **In the box**, **Accessories**, **Reviews**:
+>
+> - **Overview**: a few paragraphs, a bulleted list of highlights, a product image, and a YouTube video.
+> - **In the box**: an image and a short list.
+> - **Accessories**: an intro sentence and then the accessories shown with our **Cards** block (3–6 cards: image, name, short text, link), same look as on the accessories landing page.
+> - **Reviews**: our **Quote** block for a pull quote, and a two-column comparison using our **Columns** block.
+>
+> Product managers add, remove and reorder tabs per product, and the regional teams often copy a whole tab from one product page to another.
 
 ## Output Specification
 
-- Write `MODEL.md` describing how authors create the tabbed area: an authored example (text tables / markdown grids, using `---` for section breaks if you use sections) covering at least the **Accessories** and **Reviews** tabs, an explanation of how the tab label and the start/end of each panel are determined, why the prototype's accessory cards and quote rendered as unstyled text, a short check of the model against the authoring tools the teams use, and a 2–5 sentence rationale.
+- Write `MODEL.md` describing how authors create the tabbed area: an authored example (text tables / markdown grids, using `---` for section breaks if you use sections) covering at least the **Accessories** and **Reviews** tabs, an explanation of how the tab label and the start/end of each panel are determined, how the tabs and the Cards, Quote and Columns content get rendered, a short check of the model against the authoring tools the teams use, and a 2–5 sentence rationale.
 - Provide the code changes needed for your model to work: modify `scripts/scripts.js` and/or `blocks/tabs/tabs.js` (only the functions you change need to be complete). CSS is not needed.
 
 ## Input Files
 
 The following files are provided as inputs. Extract them before beginning.
 
-=============== FILE: content/prototype-model.md ===============
-Prototype authored structure (one tab shown; the others follow the same pattern):
+=============== FILE: content/current-tabs.md ===============
+How authors write the tabs block today (short text panels only):
 
-| Tabs                                                                                   |
-|--------------|-------------------------------------------------------------------------|
-| Accessories  | Pair your headphones with these favorites.                              |
-|              | +-------------------------------------------------------------------+  |
-|              | | Cards                                                             |  |
-|              | | ![case](case.jpg)  | **Travel case** Hard shell. [Shop](/acc/case)|  |
-|              | | ![cable](cable.jpg)| **Braided cable** 1.5 m. [Shop](/acc/cable) |  |
-|              | +-------------------------------------------------------------------+  |
-| Reviews      | +-------------------------------+                                       |
-|              | | Quote                         |                                       |
-|              | | "Best ANC under $300."        |                                       |
-|              | | *— AudioWeekly*               |                                       |
-|              | +-------------------------------+                                       |
+| Tabs |  |
+|------|--|
+| Overview | The Aria 3 headphones combine hybrid ANC with 40-hour battery life. |
+| In the box | Headphones, travel pouch, USB-C cable. |
+| Reviews | "Best ANC under $300." — AudioWeekly |
 
 =============== FILE: blocks/tabs/tabs.js ===============
 // Project tabs block (adapted from the AEM Block Collection).
