@@ -4253,16 +4253,42 @@ var HOOKS = `async page => {
   const state = { errors: 0, pending: new Set() };
   context.__webCache = state;
   const served = new WeakSet();
-  const pageIds = new WeakMap();
-  let lastPageId = 0;
+  // Each top-level navigation is its own recording (one page HAR). A request belongs to the
+  // recording current when it was routed, so a late response never lands in the next page.
+  const currentRecording = new WeakMap();
+  const recordingOf = new WeakMap();
+  let lastRecording = 0;
   const pageOf = (request) => {
     try {
-      const p = request.frame().page();
-      if (!pageIds.has(p)) pageIds.set(p, ++lastPageId);
-      return pageIds.get(p);
+      return request.frame().page();
     } catch {
-      return 0;
+      return null;
     }
+  };
+  const chainStart = (request) => {
+    let first = request;
+    try {
+      while (first.redirectedFrom()) first = first.redirectedFrom();
+    } catch {
+      // Keep the furthest request reached.
+    }
+    return first;
+  };
+  // Redirect hops are never routed: they take the recording of the request that started them.
+  const recordingFor = (request) => {
+    const page = pageOf(request);
+    return (
+      recordingOf.get(request) ??
+      recordingOf.get(chainStart(request)) ??
+      (page && currentRecording.get(page)) ??
+      0
+    );
+  };
+  const startRecording = (request) => {
+    lastRecording += 1;
+    const page = pageOf(request);
+    if (page) currentRecording.set(page, lastRecording);
+    recordingOf.set(request, lastRecording);
   };
   const isMainNavigation = (request) => {
     try {
@@ -4286,28 +4312,35 @@ var HOOKS = `async page => {
     const request = route.request();
     const url = request.url();
     if (request.method() !== 'GET' || !/^https?:/.test(url)) return route.fallback();
+    let response;
+    let fulfilled = false;
     try {
-      const data = {
-        url,
-        page: pageOf(request),
-        nav: isMainNavigation(request),
-        redirect: Boolean(request.redirectedFrom()),
-      };
+      const nav = isMainNavigation(request);
+      const redirect = Boolean(request.redirectedFrom());
+      if (nav && !redirect) startRecording(request);
+      else recordingOf.set(request, recordingFor(request));
+      const data = { url, page: recordingOf.get(request), nav, redirect };
       const options = { data, timeout: LOOKUP_TIMEOUT_MS, maxRedirects: 0 };
-      const response = await context.request.post(KEEPER + '/lookup', options);
+      response = await context.request.post(KEEPER + '/lookup', options);
       if (response.headers()['x-web-cache'] === 'hit') {
         served.add(request);
-        return await route.fulfill({ response });
+        await route.fulfill({ response });
+        fulfilled = true;
       }
     } catch {
       served.delete(request);
       fail();
+    } finally {
+      // Playwright keeps every APIResponse body until disposed.
+      if (response) await response.dispose().catch(fail);
     }
-    return route.fallback().catch(fail);
+    if (!fulfilled) await route.fallback().catch(fail);
   });
   const store = async (response) => {
     const request = response.request();
     if (served.has(request) || request.method() !== 'GET') return;
+    // An event stream's body only ends when the stream closes: never wait for it.
+    if ((response.headers()['content-type'] ?? '').includes('text/event-stream')) return;
     const status = response.status();
     let body;
     try {
@@ -4318,7 +4351,7 @@ var HOOKS = `async page => {
     try {
       const data = {
         startedAt: startOf(request),
-        page: pageOf(request),
+        page: recordingFor(request),
         method: 'GET',
         url: request.url(),
         status,
@@ -4328,7 +4361,8 @@ var HOOKS = `async page => {
         mimeType: response.headers()['content-type'] ?? '',
         body: body ? body.toString('base64') : '',
       };
-      await context.request.post(KEEPER + '/store', { data, timeout: STORE_TIMEOUT_MS });
+      const ack = await context.request.post(KEEPER + '/store', { data, timeout: STORE_TIMEOUT_MS });
+      await ack.dispose();
     } catch {
       fail();
     }
@@ -4347,12 +4381,14 @@ function cacheHooksCode(port) {
 var CACHE_STATS_CODE = `async page => {
   const state = page.context().__webCache;
   if (!state) return 0;
-  await Promise.allSettled([...state.pending]);
-  return state.errors;
+  const flushed = Promise.allSettled([...state.pending]).then(() => true);
+  const deadline = page.waitForTimeout(5000).then(() => false, () => false);
+  const done = await Promise.race([flushed, deadline]);
+  return state.errors + (done ? 0 : state.pending.size);
 }`;
 
 // src/cache/keeper-process.mjs
-import { spawn } from "node:child_process";
+import { spawn, spawnSync as spawnSync2 } from "node:child_process";
 import {
   closeSync,
   existsSync as existsSync3,
@@ -4367,6 +4403,10 @@ var START_TIMEOUT_MS = 1e4;
 var STOP_TIMEOUT_MS = 1e3;
 var stateFile = (outputDir, session) => artifactPath(outputDir, session, "cache", "keeper.json");
 var logFile = (outputDir, session) => artifactPath(outputDir, session, "cache", "keeper.log");
+function isKeeperProcess(pid) {
+  const res = spawnSync2("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
+  return res.status === 0 && res.stdout.includes("cache keeper");
+}
 function cliErrorFrom(stdout) {
   try {
     const { error } = JSON.parse(stdout);
@@ -4422,9 +4462,11 @@ async function stopKeeper({ session, outputDir }) {
     const { hits, misses, stored, errors } = status2;
     return { hits, misses, stored, errors };
   } catch {
-    try {
-      process.kill(pid);
-    } catch {
+    if (isKeeperProcess(pid)) {
+      try {
+        process.kill(pid);
+      } catch {
+      }
     }
     return null;
   }
@@ -4474,7 +4516,8 @@ Notes:
   browser. A background keeper serves the cache until browser close. Not with --proxy.
   Every response is recorded with its original status (errors included, redirect hops with
   redirectURL); only 2xx/3xx are served from the cache, errors are re-checked live. Redirect
-  hops after the first are always fetched live (Playwright does not route them).
+  hops after the first are always fetched live (Playwright does not route them). Service
+  workers are blocked in a cache session.
 `,
   ATTACH: `
 Example:
@@ -4584,7 +4627,8 @@ async function openWithCache({ driver, keeper, openArgs, url, cacheDir, outputDi
   }
   const started = await keeper.start({ cacheDir, session, outputDir });
   try {
-    driver.open({ ...openArgs, url: void 0 });
+    const config = extendConfig(openArgs.config, { contextOptions: { serviceWorkers: "block" } });
+    driver.open({ ...openArgs, url: void 0, config });
     driver.run(session, { code: cacheHooksCode(started.port) });
     if (url) driver.goto(session, url);
   } catch (err) {
@@ -4594,14 +4638,17 @@ async function openWithCache({ driver, keeper, openArgs, url, cacheDir, outputDi
   }
   return { dir: started.dir, entries: started.entries };
 }
-async function closeCache({ driver, keeper, session, outputDir, stderr }) {
-  let hookErrors = 0;
+function flushCache(driver, session, stderr) {
   try {
-    hookErrors = driver.run(session, { code: CACHE_STATS_CODE });
+    return driver.run(session, { code: CACHE_STATS_CODE });
   } catch (err) {
-    stderr.write(`warning: cannot read cache hook errors for ${session}: ${err.message}
+    stderr.write(`warning: cannot flush cache recordings for ${session}: ${err.message}
 `);
+    return 0;
   }
+}
+async function closeCache({ driver, keeper, session, outputDir, stderr }) {
+  const hookErrors = flushCache(driver, session, stderr);
   driver.close(session);
   const stats = await keeper.stop({ session, outputDir });
   if (!stats) {
@@ -4711,9 +4758,16 @@ function registerBrowser(program2, deps) {
   action(
     browser.command("close-all").description("close every session").addHelpText("after", HELP.CLOSE_ALL),
     async (ctx) => {
-      const closed = ctx.driver.list().map((s) => s.name);
+      const outputDir = ctx.opts.output;
+      const sessions = ctx.driver.list();
+      for (const { name, status: status2 } of sessions) {
+        if (status2 === "open" && hasKeeper({ session: name, outputDir })) {
+          flushCache(ctx.driver, name, stderr);
+        }
+      }
+      const closed = sessions.map((s) => s.name);
       ctx.driver.closeAll();
-      for (const session of closed) await keeper.stop({ session, outputDir: ctx.opts.output });
+      for (const session of closed) await keeper.stop({ session, outputDir });
       ctx.print({ closed });
     }
   );
@@ -7273,6 +7327,7 @@ function isRecordable({ method, url, status: status2 }) {
 }
 var isCacheable = (status2) => status2 >= 200 && status2 <= 399;
 var PAGE_ID = "page_1";
+var OPEN_RECORDINGS = 16;
 function redirectUrl(url, headers) {
   const location = headers.find(({ name }) => name.toLowerCase() === "location")?.value;
   if (!location) return "";
@@ -7286,9 +7341,12 @@ var fromWebPage = (req) => {
   const site = req.headers["sec-fetch-site"];
   return Boolean(req.headers.origin) || site !== void 0 && site !== "none";
 };
+var tmpCounter = 0;
 function writeAtomic(file, data) {
-  writeFileSync11(`${file}.tmp`, data);
-  renameSync2(`${file}.tmp`, file);
+  tmpCounter += 1;
+  const tmp = `${file}.${process.pid}-${tmpCounter}.tmp`;
+  writeFileSync11(tmp, data);
+  renameSync2(tmp, file);
 }
 var readJson = async (req) => {
   const chunks2 = [];
@@ -7365,6 +7423,7 @@ function createStore(dir) {
     const creator = { name: "web-cli", version: "1" };
     const har = { log: { version: "1.2", creator, pages: harPages, entries: [] } };
     pages.set(page, { file: path8.join(dir, harFileName(url)), har });
+    if (pages.size > OPEN_RECORDINGS) pages.delete(pages.keys().next().value);
   }
   function lookup({ url, page }) {
     const hit = index.get(`GET ${url}`);
@@ -7394,7 +7453,10 @@ function createStore(dir) {
     const mimeType = mimeOf(response.mimeType);
     const file = body.length ? writeBody(body, mimeType) : void 0;
     append(response.page, harEntry({ ...response, mimeType, size: body.length, file }));
-    if (!isCacheable(response.status)) return;
+    if (!isCacheable(response.status)) {
+      index.delete(`GET ${response.url}`);
+      return;
+    }
     const read = file ? () => readFileSync9(path8.join(dir, file)) : () => Buffer.alloc(0);
     index.set(`GET ${response.url}`, {
       status: response.status,
