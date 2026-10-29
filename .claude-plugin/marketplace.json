@@ -210,6 +210,27 @@
       "homepage": "https://github.com/adobe/skills",
       "repository": "https://github.com/adobe/skills",
       "license": "Apache-2.0"
+    },
+    {
+      "name": "adobe-for-developers",
+      "displayName": "Adobe for Developers",
+      "source": "./plugins/adobe-for-developers",
+      "description": "Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": [
+        "adobe",
+        "adobe-developer-platform",
+        "developer-console",
+        "credentials",
+        "io-events",
+        "documentation",
+        "mcp"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "license": "Apache-2.0"
     }
   ]
 }
