@@ -48,7 +48,7 @@ Runs inside **content-driven-development**: after **testing-blocks**, before lin
 - **Build the payload as a file, not an unquoted heredoc.** Write `review.json` directly, or build it with `jq -n --arg ... --rawfile ...`. Validate it with `jq empty review.json`, re-check every `line` against the diff, then `gh api --method POST repos/{owner}/{repo}/pulls/{n}/reviews --input review.json`. `commit_id`, if set, is the PR head SHA.
 - **Block CSS is scoped with the block class** (`.my-block .title`), not `main .my-block`: header and footer blocks are outside `<main>`. Fix `!important` with that scoping, not more weight.
 - **`scripts/aem.js` is never edited** in a project (blocking). Pass options from the caller, or propose the change upstream.
-- **Third-party code stays out of `head.html` and `loadEager`.** A library a block needs is loaded by that block via `loadScript()`. Analytics, martech, chat and tag managers go in `scripts/consented.js`: `loadDelayed()` imports `consent-check.js`, which loads `consented.js` only after consent. There is no `delayed.js` in current boilerplate.
+- **Third-party code stays out of `head.html` and `loadEager`.** A library a block needs is loaded by that block via `loadScript()`. Analytics, martech, chat and tag managers go wherever `loadDelayed()` loads them: `scripts/consented.js` if the project has `consent-check.js` (boilerplate since 2026-07-30), otherwise `scripts/delayed.js`. Flag a `consented.js` that nothing loads.
 
 ## Related Skills
 
