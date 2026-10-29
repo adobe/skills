@@ -122,7 +122,7 @@ If any results have a `deprecation` field with content, **inform the user** that
 
 ## What Gets Searched
 
-The search script searches documentation first (150+ pages). Blog posts are only searched if fewer than 5 doc results are found. If you need comprehensive coverage including blogs, use the `--all` flag.
+The search script searches documentation first (150+ pages). Blog posts are only searched if fewer than 5 doc results are found. `--all` only removes the 10-result limit; it does not force a blog search.
 
 ## Examples
 
@@ -153,7 +153,7 @@ The search script searches documentation first (150+ pages). Blog posts are only
 
 **Poor Approach:**
 - Only reading the first result and missing bulk metadata option
-- Not using `--all` when you need comprehensive coverage
+- Not using `--all` when you need more than the top 10 results
 
 ### Example 3: Deprecated Feature Warning
 

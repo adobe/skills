@@ -38,7 +38,7 @@ This skill will:
 
 **This skill does NOT:**
 - Validate content quality (you'll do that during implementation)
-- Create new content (that happens in Step 4b of CDD if needed)
+- Create new content (that happens in CDD Step 4, Option B if needed)
 - Analyze content structure (that's part of implementation)
 
 ## How to Use

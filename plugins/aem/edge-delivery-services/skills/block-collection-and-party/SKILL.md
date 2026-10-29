@@ -159,7 +159,7 @@ node <SKILL_DIR>/scripts/search-block-party.js adobe target integration
 {
   "query": "accordion",
   "source": "Adobe AEM Block Collection",
-  "totalItems": 26,
+  "totalItems": 25,
   "matchCount": 1,
   "results": [
     {
@@ -179,7 +179,7 @@ node <SKILL_DIR>/scripts/search-block-party.js adobe target integration
 {
   "query": "breadcrumb",
   "source": "Adobe AEM Block Collection",
-  "totalItems": 26,
+  "totalItems": 25,
   "matchCount": 1,
   "results": [
     {
@@ -200,8 +200,8 @@ node <SKILL_DIR>/scripts/search-block-party.js adobe target integration
   "query": "breadcrumb",
   "category": "All categories",
   "source": "AEM Block Party (Approved Only)",
-  "totalEntries": 90,
-  "approvedEntries": 62,
+  "totalEntries": 110,
+  "approvedEntries": 77,
   "matchCount": 1,
   "results": [
     {
