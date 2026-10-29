@@ -8,7 +8,7 @@ metadata:
 
 # Testing Blocks
 
-Test step of **building-blocks** (Step 4). Run it after changing blocks, core scripts (`scripts.js`, `aem.js`, `consent-check.js`, `consented.js`), styles, or configuration that affects behavior, and before opening any pull request with code changes. Inputs: block name, test page path(s) and variants from **content-driven-development**, acceptance criteria, and design or existing screenshots if any.
+Test step of **building-blocks** (Step 4). Run it after changing blocks, core scripts (`scripts.js`, `aem.js`, `consent-check.js`/`consented.js` or `delayed.js`), styles, or configuration that affects behavior, and before opening any pull request with code changes. Inputs: block name, test page path(s) and variants from **content-driven-development**, acceptance criteria, and design or existing screenshots if any.
 
 ## Workflow
 
@@ -26,7 +26,7 @@ Test step of **building-blocks** (Step 4). Run it after changing blocks, core sc
 
 - **Use the port `aem up` logs.** In a git worktree it serves on a branch-derived port (3000 + hash(branch) % 1000), not 3000, unless you pass `--port`. Pass the base URL to browser scripts instead of hardcoding `localhost:3000`.
 - **Wait for `data-block-status="loaded"`** (e.g. `.my-block[data-block-status="loaded"]`). There is no `loaded` class. Playwright's default timeout is 30 s; `{ timeout: 10000 }` shortens it.
-- **Third-party scripts are consent-gated.** `loadDelayed()` imports `consent-check.js`, which imports `consented.js` only after consent. There is no `delayed.js` or 3-second timer. Test both states; the boilerplate's placeholder consent check accepts `?consent=accept` and declines by default.
+- **Third-party scripts load where `loadDelayed()` loads them.** If the project has `consent-check.js` (boilerplate since 2026-07-30), it loads `consented.js` only after consent: test both states; the boilerplate's placeholder consent check accepts `?consent=accept` and declines by default. Older projects load `delayed.js` instead, about 3 s after page load.
 - **Never import `scripts/scripts.js` in unit tests.** It runs `loadPage()` on import and does not export `buildAutoBlocks`. Move the code under test into a side-effect-free module under `scripts/` that exports it, and import it from `scripts.js` so behavior is unchanged.
 - **Boilerplate auto-blocking only handles `/fragments/` and `/widgets/` links** (`buildWidgetAutoBlocks`). There is no hero auto-block; hero is an authored block. Read the project's `buildAutoBlocks` before writing or accepting tests that assume an auto-block.
 - **The boilerplate has no `test` script.** When adding Vitest before any test files exist, use `vitest run --passWithNoTests` (or `passWithNoTests: true`); plain `vitest run` exits 1 with no test files. DOM code needs a DOM environment (`jsdom` or `happy-dom`).
