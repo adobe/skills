@@ -3,7 +3,7 @@ name: scrape-webpage
 description: "Use this when the page-import pipeline needs to fetch a source webpage and prepare it for import/migration to AEM Edge Delivery Services. Covers scraping content, extracting metadata, downloading images, and returning analysis JSON with paths, metadata, cleaned HTML, and local images. Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
-  version: "2.0.2"
+  version: "2.0.3"
 ---
 
 # Scrape Webpage
