@@ -29,9 +29,8 @@ Use this skill when:
 
 Before using this skill, ensure:
 - ✅ Node.js is available
-- ✅ npm playwright is installed (`npm install playwright`)
-- ✅ Chromium browser is installed (`npx playwright install chromium`)
-- ✅ Sharp image library is installed (`cd <SKILL_DIR>/scripts && npm install`)
+- ✅ Script dependencies (playwright, sharp) are installed (`npm install --prefix <SKILL_DIR>/scripts`)
+- ✅ Chromium browser is installed (`npx --prefix <SKILL_DIR>/scripts playwright install chromium`)
 
 ## Related Skills
 
@@ -146,12 +145,12 @@ This skill provides:
 
 **Browser not installed:**
 ```bash
-npx playwright install chromium
+npx --prefix <SKILL_DIR>/scripts playwright install chromium
 ```
 
-**Sharp not installed:**
+**Playwright or Sharp not installed:**
 ```bash
-cd <SKILL_DIR>/scripts && npm install
+npm install --prefix <SKILL_DIR>/scripts
 ```
 
 **Image download failures:**
