@@ -26,7 +26,13 @@ Facts that steer workflow (step order, when to invoke other skills) aren't recal
 
 ## Regression check
 
-On the trim PR, push an `eval:` commit before the trim and another after it (shared `tessl-eval.yml`), then `tessl eval compare <before-run> <after-run> --full`. The trimmed skill should score no lower on the skill's scenarios.
+Before trimming a skill:
+
+1. Write at least one eval scenario aimed at facts the recall quiz showed models get `wrong`, and one at the skill's workflow where that is testable.
+2. Run the scenario without the skill first. If the no-skill baseline scores above ~90, rework the scenario until it discriminates; a scenario every model passes can only show nothing broke, not that the skill helps.
+3. Use 3 repeats on the skill's own scenarios; single runs swing widely. The shared CI workflow runs once, so run these locally from the plugin directory (`tessl eval run . -n 3`, needs `tessl login` to the `adobe` workspace).
+
+After the trim, run the same eval again and compare with `tessl eval compare <before-run> <after-run> --full`. The trimmed skill should score no lower on the skill's scenarios.
 
 ## Files
 
