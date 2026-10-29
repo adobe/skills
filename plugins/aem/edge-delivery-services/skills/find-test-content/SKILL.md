@@ -265,5 +265,5 @@ This skill is invoked from **Step 4: Identify/Create Test Content, Option C: Exi
 - Re-run the search; transient errors often resolve
 
 **Script errors**
-- jsdom dependency missing: Run `npm install` in project root
+- jsdom dependency missing: Run `npm install --prefix <this skill's scripts dir>` (the script prints the exact command)
 - Fetch errors: Check network/server connectivity
