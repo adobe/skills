@@ -1,735 +1,739 @@
-[
-  {
-    "id": "BB-001",
-    "claim": "'Franklin' and 'Helix' are earlier names for AEM Edge Delivery Services.",
-    "source": "SKILL.md:3",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 package.json description 'Starter project for Adobe Helix'; CLI repo is github.com/adobe/helix-cli",
-    "question": "Before the AEM Edge Delivery Services branding, what project or code names was this Adobe delivery platform known by?"
-  },
-  {
-    "id": "BB-002",
-    "claim": "A block's JS module must default-export its decoration function (conventionally named decorate).",
-    "source": "references/js-guidelines.md:5, references/js-guidelines.md:20, SKILL.md:97",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L545-549 (loadBlock imports the module and calls mod.default); https://www.aem.live/developer/markup-sections-blocks ('exports a default function')",
-    "question": "In an EDS block's JavaScript file, what must the module export for the block loader to run it?"
-  },
-  {
-    "id": "BB-003",
-    "claim": "The decoration function receives the block's DOM element as its (first) argument.",
-    "source": "references/js-guidelines.md:21, SKILL.md:95",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L549 `await mod.default(block)`",
-    "question": "When the EDS block loader invokes a block's decoration function, what argument does it pass?"
-  },
-  {
-    "id": "BB-004",
-    "claim": "The decoration function may be async; the loader awaits it.",
-    "source": "references/js-guidelines.md:5, references/js-guidelines.md:22",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L549 `await mod.default(block)`; L558 Promise.all([cssLoaded, decorationComplete]) before data-block-status='loaded'",
-    "question": "How does the EDS block loader handle a block decoration function that returns a Promise?"
-  },
-  {
-    "id": "BB-005",
-    "claim": "A block lives in blocks/{block-name}/ with {block-name}.js and {block-name}.css; file and folder names must match the block name, which is the kebab-case class derived from the authored block name.",
-    "source": "SKILL.md:86-88, references/js-guidelines.md:253-254",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L541-546 (loadBlock builds paths `/blocks/${blockName}/${blockName}.css|.js` from data-block-name = first class, L573-576); https://www.aem.live/developer/markup-sections-blocks (block name = folder name = file name = CSS class; 'super wide' -> 'super-wide')",
-    "question": "If an author titles a block table 'Product Teaser', what folder and file names must the developer create for its code?"
-  },
-  {
-    "id": "BB-006",
-    "claim": "A block can be CSS-only, with no JavaScript decoration needed.",
-    "source": "SKILL.md:53",
-    "kind": "eds",
-    "verified": "partially: aem-boilerplate@5cea543 scripts/aem.js:L540-556 loadBlock always tries to import {name}.js; if missing it logs console.error('failed to load module ...') but the CSS still loads and the block is marked loaded",
-    "question": "Does an EDS block need a JavaScript file? What happens at load time if a block folder only contains a stylesheet?"
-  },
-  {
-    "id": "BB-007",
-    "claim": "The server delivers authored images as <picture> elements containing <source> elements (not a bare <img>).",
-    "source": "SKILL.md:126",
-    "kind": "eds",
-    "verified": "https://www.aem.live/developer/markup-sections-blocks ('a full <picture> tag is rendered with a number of different resolutions ... webp'); live https://main--aem-boilerplate--adobe.aem.live/ markup",
-    "question": "When an author places an image in a document, what HTML structure does EDS render for it in the delivered markup?"
-  },
-  {
-    "id": "BB-008",
-    "claim": "Authored images arrive from the platform with responsive srcset candidates and alt text already set.",
-    "source": "references/js-guidelines.md:141, references/js-guidelines.md:150",
-    "kind": "eds",
-    "verified": "verified with nuance: live https://main--aem-boilerplate--adobe.aem.live/ — srcset is on the <source> elements (webp + original format, width=2000 for min-width:600px and 750), the <img> carries src, alt, loading=lazy, width, height (no srcset on the img itself)",
-    "question": "In the delivered markup of an authored EDS image, where do the responsive image candidates and the alternative text live?"
-  },
-  {
-    "id": "BB-009",
-    "claim": "Block variants (options) appear as additional classes on the block element alongside the block-name class, e.g. <div class=\"my-block dark\">.",
-    "source": "references/js-guidelines.md:118, references/js-guidelines.md:133, references/css-guidelines.md:246",
-    "kind": "eds",
-    "verified": "https://www.aem.live/developer/markup-sections-blocks#block-options ('Columns (dark, wide)' -> class=\"columns dark wide\")",
-    "question": "If an author writes a block table header as 'Columns (dark, wide)', what class attribute does the rendered block element get?"
-  },
-  {
-    "id": "BB-010",
-    "claim": "Most variants should be CSS-only; check variant classes in JS only when the variant changes DOM structure or behavior.",
-    "source": "SKILL.md:140-141, SKILL.md:200, references/js-guidelines.md:135",
-    "kind": "generic",
-    "verified": "consistent with https://www.aem.live/developer/markup-sections-blocks (options just add classes); prescriptive guidance, no source states it as a rule",
-    "question": null,
-    "quiz": "reclassified generic after the first run: guidance, not a documented platform fact"
-  },
-  {
-    "id": "BB-011",
-    "claim": "All block CSS selectors must be scoped (prefixed) with the block's class to avoid style leakage.",
-    "source": "references/css-guidelines.md:5, SKILL.md:104, SKILL.md:163",
-    "kind": "eds",
-    "verified": "https://www.aem.live/developer/markup-sections-blocks ('all selectors in a block should be prefixed with the corresponding block class')",
-    "question": "In EDS, what convention keeps a block's CSS from affecting other parts of the page?"
-  },
-  {
-    "id": "BB-012",
-    "claim": "Block selectors should always start with `main .{block-name}`.",
-    "source": "references/css-guidelines.md:32, SKILL.md:105",
-    "kind": "eds",
-    "verified": "WRONG: docs say prefix with the block class only; aem-boilerplate@5cea543 blocks use `.cards`, `.hero`, `.columns` (no `main`), AGENTS.md says 'Scope CSS to `.blockname`'. A `main` prefix is not the convention and would not match header/footer blocks (outside <main>)",
-    "question": null,
-    "quiz": "excluded: claim is wrong; fix in skill first"
-  },
-  {
-    "id": "BB-013",
-    "claim": "Decoration adds a `{block-name}-wrapper` class to the div directly wrapping the block (outside the block).",
-    "source": "references/css-guidelines.md:38",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L579-580 decorateBlock: block.parentElement.classList.add(`${shortBlockName}-wrapper`) (done client-side by aem.js, not the server; the wrapper div itself is created by decorateSections L481-489)",
-    "question": "After EDS decorates a block named 'cards', what class is added to the block's immediate parent element?"
-  },
-  {
-    "id": "BB-014",
-    "claim": "Decoration adds a `{block-name}-container` class to the section that contains the block.",
-    "source": "references/css-guidelines.md:38",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L581-582 decorateBlock: block.closest('.section').classList.add(`${shortBlockName}-container`)",
-    "question": "What class does EDS decoration add to the section that contains a 'cards' block?"
-  },
-  {
-    "id": "BB-015",
-    "claim": "A selector like `main .my-block-wrapper` matches the platform-added wrapper outside the block, not an element inside it.",
-    "source": "references/css-guidelines.md:41-44",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L579-580 (wrapper class is on the block's parent)",
-    "question": "If a block stylesheet contains `main .my-block-wrapper { padding: 2rem; }`, which element does that rule match on a decorated EDS page?"
-  },
-  {
-    "id": "BB-016",
-    "claim": "Avoid giving elements inside a block classes with `-wrapper` or `-container` suffixes, to avoid collisions with platform-added classes.",
-    "source": "references/css-guidelines.md:57, references/css-guidelines.md:51",
-    "kind": "eds",
-    "verified": "follows from aem-boilerplate@5cea543 scripts/aem.js:L579-582; AGENTS.md '-wrapper/-container are section classes'",
-    "question": "Which class-name suffixes should you avoid for elements inside an EDS block, and why?"
-  },
-  {
-    "id": "BB-017",
-    "claim": "Block rows (and columns) are nested direct-child divs, so `block.querySelectorAll(':scope > div')` returns the rows.",
-    "source": "references/js-guidelines.md:218",
-    "kind": "eds",
-    "verified": "https://www.aem.live/developer/markup-sections-blocks (block rendered as nested <div>s for rows and columns); aem-boilerplate@5cea543 scripts/aem.js:L235 readBlockConfig iterates ':scope > div'",
-    "question": "What is the DOM structure of an EDS block's authored rows and columns as delivered in the markup?"
-  },
-  {
-    "id": "BB-018",
-    "claim": "Prefer a single, clear content model over supporting multiple authored structures in one block; work with authors to agree on it.",
-    "source": "references/js-guidelines.md:232",
-    "kind": "generic",
-    "verified": "not established: https://www.aem.live/developer/markup-sections-blocks says keep authoring simple and intuitive, but states no single-content-model rule",
-    "question": null,
-    "quiz": "reclassified generic after the first run: guidance, not a documented platform fact"
-  },
-  {
-    "id": "BB-019",
-    "claim": "In decorate(), re-use (move) existing authored elements such as <picture> and headings instead of recreating them from their text.",
-    "source": "SKILL.md:122, SKILL.md:132, references/js-guidelines.md:29-45",
-    "kind": "generic",
-    "verified": "consistent with aem-boilerplate@5cea543 blocks/cards/cards.js:L9 (moves row.firstElementChild into new li); prescriptive, not stated in docs",
-    "question": null,
-    "quiz": "reclassified generic after the first run: guidance, not a documented platform fact"
-  },
-  {
-    "id": "BB-020",
-    "claim": "Blocks in the first section load eagerly (before LCP) and therefore affect LCP.",
-    "source": "references/js-guidelines.md:261",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/scripts.js:L169 loadEager -> loadSection(first .section, waitForFirstImage); https://www.aem.live/developer/keeping-it-100 (Phase E loads the full first section)",
-    "question": "In the EDS page-loading sequence, which blocks are loaded before the LCP, and why does that matter for block code?"
-  },
-  {
-    "id": "BB-021",
-    "claim": "Auto-blocking (programmatically creating blocks from default content) is implemented in scripts.js.",
-    "source": "SKILL.md:34, SKILL.md:245, SKILL.md:261",
-    "kind": "eds",
-    "verified": "https://www.aem.live/developer/markup-sections-blocks#auto-blocking (buildAutoBlocks() in scripts.js); aem-boilerplate@5cea543 scripts/scripts.js:L80",
-    "question": "What is 'auto blocking' in EDS, and in which function/file of a boilerplate project does it live?"
-  },
-  {
-    "id": "BB-022",
-    "claim": "delayed.js is the core file for marketing, analytics and third-party integrations (delayed loading).",
-    "source": "SKILL.md:248, SKILL.md:3, SKILL.md:36, SKILL.md:242",
-    "kind": "eds",
-    "verified": "WRONG: aem-boilerplate@5cea543 has no scripts/delayed.js; scripts/scripts.js:L206-209 loadDelayed() imports consent-check.js, which (declining by default) imports consented.js only after consent; https://www.aem.live/developer/keeping-it-100 Phase D. Also loadDelayed no longer has a 3s timer. Older projects may still have delayed.js",
-    "question": null,
-    "quiz": "excluded: claim is wrong; fix in skill first"
-  },
-  {
-    "id": "BB-023",
-    "claim": "The local dev server runs at http://localhost:3000.",
-    "source": "SKILL.md:116",
-    "kind": "eds",
-    "verified": "github.com/adobe/helix-cli src/server/HelixServer.js `this._httpPort = 3000` (main)",
-    "question": "On which local port does the AEM CLI development server (`aem up`) listen by default?"
-  },
-  {
-    "id": "BB-024",
-    "claim": "Fetching a page from the dev server with curl shows the initial (pre-decoration) server HTML of blocks.",
-    "source": "SKILL.md:114-116",
-    "kind": "eds",
-    "verified": "verified: server markup is undecorated (live page markup shows <div class=\"hero\"> with nested divs, no -wrapper/data-block-status); aem-boilerplate@5cea543 AGENTS.md recommends `curl localhost:3000/x.plain.html` for the content-only markup",
-    "question": "During local EDS development, how can you see the raw block markup the server delivers before any client-side decoration runs?"
-  },
-  {
-    "id": "BB-025",
-    "claim": "aem.js toClassName(text) converts text to a valid CSS class name.",
-    "source": "references/js-guidelines.md:311",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L208-216 (lowercase, non-alphanumerics -> '-', collapse repeats, trim leading/trailing '-'; '' for non-strings)",
-    "question": "Which aem.js helper turns arbitrary text into a CSS-safe class name, and what transformation does it apply?"
-  },
-  {
-    "id": "BB-026",
-    "claim": "aem.js getMetadata(name) returns a page metadata value.",
-    "source": "references/js-guidelines.md:312",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L321-328 (reads <meta name=...>, or <meta property=...> if name contains ':'; joins multiple with ', '; returns '' if absent)",
-    "question": "Using the boilerplate's library, how do you read a page-level metadata value (e.g. 'template') from block code, and what does it return when the value is missing?"
-  },
-  {
-    "id": "BB-027",
-    "claim": "aem.js loadCSS(href) loads a stylesheet and returns a promise that resolves when it has loaded.",
-    "source": "references/js-guidelines.md:313",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L275-290 (appends <link rel=stylesheet> to head, resolves on load, rejects on error, resolves immediately if already present)",
-    "question": "Which aem.js helper loads an extra stylesheet at runtime, and what does it return?"
-  },
-  {
-    "id": "BB-028",
-    "claim": "aem.js loadScript(url, attrs) loads a JavaScript file, applying optional attributes (e.g. async, type).",
-    "source": "references/js-guidelines.md:314",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L295-316 (appends <script src> to head, sets each attrs entry via setAttribute, returns promise; dedupes by src). Intended for non-module scripts",
-    "question": "Which aem.js helper loads an external (non-module) script, and how can you pass extra attributes to the script tag?"
-  },
-  {
-    "id": "BB-029",
-    "claim": "aem.js createOptimizedPicture(src, alt, eager, breakpoints) creates a responsive <picture> with optimized image sources.",
-    "source": "references/js-guidelines.md:315, references/js-guidelines.md:141, references/js-guidelines.md:158",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L337-384 (alt='', eager=false -> img loading=lazy, default breakpoints [{media:'(min-width: 600px)',width:'2000'},{width:'750'}]; webp <source>s + original-format fallback with ?width=&format=&optimize=medium)",
-    "question": "What are the parameters of the aem.js helper that generates an optimized responsive image element, and what does it produce?"
-  },
-  {
-    "id": "BB-030",
-    "claim": "aem.js buildBlock(name, cells) programmatically creates a block's DOM structure from a 2-D array of cell contents.",
-    "source": "references/js-guidelines.md:316, references/js-guidelines.md:321",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L505-531 buildBlock(blockName, content): content is 2-D array, or string/element/{elems:[...]} wrapped as single cell; returns div.{name} > div(row) > div(col)",
-    "question": "What input does the aem.js buildBlock helper take, and what DOM structure does it return?"
-  },
-  {
-    "id": "BB-031",
-    "claim": "A block created with buildBlock must then be decorated (decorateBlock) and loaded (loadBlock) to display.",
-    "source": "references/js-guidelines.md:316, references/js-guidelines.md:331-333",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L572-585 decorateBlock adds .block, data-block-name, data-block-status; L535-566 loadBlock loads CSS/JS and runs decorate; loadBlock skips unless status set. (Auto-blocks built during decorateMain before decorateBlocks are handled automatically, scripts.js:L150-156)",
-    "question": "After you programmatically create a block with buildBlock and insert it into an already-loaded EDS page, which further aem.js calls are needed for it to render, in what order?"
-  },
-  {
-    "id": "BB-032",
-    "claim": "For automatic discovery by decorateBlocks (which selects `div.section > div > div`), a block must sit in a wrapper div inside a section. A block decorated and loaded explicitly via decorateBlock + loadBlock can live elsewhere (e.g. header/footer outside main).",
-    "source": "references/js-guidelines.md:323-329",
-    "kind": "eds",
-    "verified": "partial: skill says the section wrapper is always required. aem-boilerplate@5cea543 scripts/aem.js:L591 decorateBlocks selects 'div.section > div > div'; L579-582 decorateBlock uses block.parentElement as the -wrapper and guards the closest('.section') lookup; aem.js:L599-608 loadHeader appends, decorates and loads the header block outside main",
-    "question": "In EDS, what DOM placement does the automatic block discovery step require for a block element, and what changes if you decorate and load a programmatically built block yourself?"
-  },
-  {
-    "id": "BB-033",
-    "claim": "loadBlock is async (returns a promise) and can be awaited.",
-    "source": "references/js-guidelines.md:333",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 scripts/aem.js:L535 `async function loadBlock(block)` returns block",
-    "question": "Is the aem.js function that loads a block's code synchronous or asynchronous, and what does it resolve to?"
-  },
-  {
-    "id": "BB-034",
-    "claim": "Never modify scripts/aem.js.",
-    "source": "references/js-guidelines.md:336",
-    "kind": "eds",
-    "verified": "aem-boilerplate@5cea543 AGENTS.md: '`scripts/aem.js` is vendored. Never edit.'",
-    "question": "In an aem-boilerplate-based project, what is the policy on editing scripts/aem.js, and why?"
-  },
-  {
-    "id": "BB-035",
-    "claim": "Existing blocks can be found by listing the blocks/ directory.",
-    "source": "SKILL.md:67-70",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 blocks/ (cards, columns, footer, fragment, header, hero, widget)",
-    "question": null
-  },
-  {
-    "id": "BB-036",
-    "claim": "Blocks import helpers from aem.js via the relative path '../../scripts/aem.js'.",
-    "source": "references/js-guidelines.md:144, references/js-guidelines.md:307",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 blocks/cards/cards.js:L1",
-    "question": null
-  },
-  {
-    "id": "BB-037",
-    "claim": "scripts.js holds decoration utilities, auto-blocking logic and page loading.",
-    "source": "SKILL.md:245, SKILL.md:34",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 scripts/scripts.js (buildAutoBlocks L80, decorateMain L150, loadEager/loadLazy/loadDelayed/loadPage L162-217)",
-    "question": null
-  },
-  {
-    "id": "BB-038",
-    "claim": "styles/styles.css holds the eagerly loaded global styles and CSS custom properties.",
-    "source": "SKILL.md:246, references/css-guidelines.md:95",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 head.html <link rel=stylesheet href=/styles/styles.css>; styles/styles.css :root",
-    "question": null
-  },
-  {
-    "id": "BB-039",
-    "claim": "styles/lazy-styles.css holds global styles loaded lazily.",
-    "source": "SKILL.md:247, SKILL.md:35",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 scripts/scripts.js:L198 loadLazy -> loadCSS(lazy-styles.css)",
-    "question": null
-  },
-  {
-    "id": "BB-040",
-    "claim": "Sections already constrain content width: `main > .section > div` sets max-width and inline padding in styles/styles.css, so blocks rarely need their own.",
-    "source": "references/css-guidelines.md:126",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 styles/styles.css (main > .section > div { max-width: 1200px; padding: 0 24px }, 32px at width >= 900px)",
-    "question": null
-  },
-  {
-    "id": "BB-041",
-    "claim": "Boilerplate color custom properties: --background-color, --light-color, --dark-color, --text-color, --link-color, --link-hover-color.",
-    "source": "references/css-guidelines.md:129",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 styles/styles.css:L13-20",
-    "question": null
-  },
-  {
-    "id": "BB-042",
-    "claim": "Boilerplate font custom properties: --body-font-family, --heading-font-family.",
-    "source": "references/css-guidelines.md:130",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 styles/styles.css:L22-24",
-    "question": null
-  },
-  {
-    "id": "BB-043",
-    "claim": "Boilerplate font-size custom properties follow --heading-font-size-* and --body-font-size-* (e.g. --heading-font-size-m).",
-    "source": "references/css-guidelines.md:131, SKILL.md:177",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 styles/styles.css (heading xxl/xl/l/m/s/xs; body m/s/xs; redefined at width >= 900px)",
-    "question": null
-  },
-  {
-    "id": "BB-044",
-    "claim": "Boilerplate layout custom property --nav-height exists.",
-    "source": "references/css-guidelines.md:132",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 styles/styles.css (--nav-height: 64px)",
-    "question": null
-  },
-  {
-    "id": "BB-045",
-    "claim": "Desktop breakpoint is `@media (width >= 900px)`.",
-    "source": "references/css-guidelines.md:166, SKILL.md:193",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 styles/styles.css and blocks/*/*.css use only (width >= 900px)",
-    "question": null
-  },
-  {
-    "id": "BB-046",
-    "claim": "Tablet breakpoint is `@media (width >= 600px)`; mobile is the default below 600px.",
-    "source": "references/css-guidelines.md:164-165, SKILL.md:186",
-    "kind": "repo",
-    "verified": "unverified: aem-boilerplate@5cea543 CSS contains no 600px media query (only 900px); 600px appears only as createOptimizedPicture's default image breakpoint (scripts/aem.js:L341)",
-    "question": null
-  },
-  {
-    "id": "BB-047",
-    "claim": "Use media query range syntax `(width >= 600px)` instead of `(min-width: 600px)`.",
-    "source": "references/css-guidelines.md:169",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 .stylelintrc.json extends stylelint-config-standard, which sets 'media-feature-range-notation': 'context'",
-    "question": null
-  },
-  {
-    "id": "BB-048",
-    "claim": "Use modern color function syntax, e.g. rgb(0 0 0 / 20%).",
-    "source": "references/css-guidelines.md:207",
-    "kind": "repo",
-    "verified": "stylelint-config-standard: 'color-function-notation': 'modern', 'alpha-value-notation' percentage",
-    "question": null
-  },
-  {
-    "id": "BB-049",
-    "claim": "Class names are lowercase kebab-case.",
-    "source": "references/css-guidelines.md:89",
-    "kind": "repo",
-    "verified": "stylelint-config-standard 'selector-class-pattern' (kebab-case)",
-    "question": null
-  },
-  {
-    "id": "BB-050",
-    "claim": "JS linting uses the Airbnb ESLint config (airbnb-base) with project modifications.",
-    "source": "references/js-guidelines.md:236",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 .eslintrc.js extends 'airbnb-base'",
-    "question": null
-  },
-  {
-    "id": "BB-051",
-    "claim": "Imports must include the .js file extension.",
-    "source": "references/js-guidelines.md:240",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 .eslintrc.js 'import/extensions': ['error', { js: 'always' }]",
-    "question": null
-  },
-  {
-    "id": "BB-052",
-    "claim": "JS uses single quotes for strings.",
-    "source": "references/js-guidelines.md:241",
-    "kind": "repo",
-    "verified": "airbnb-base 'quotes': single",
-    "question": null
-  },
-  {
-    "id": "BB-053",
-    "claim": "Semicolons are required in JS.",
-    "source": "references/js-guidelines.md:242",
-    "kind": "repo",
-    "verified": "airbnb-base 'semi': always",
-    "question": null
-  },
-  {
-    "id": "BB-054",
-    "claim": "JS uses 2-space indentation.",
-    "source": "references/js-guidelines.md:243",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 .editorconfig [*.js] indent_size = 2; airbnb-base indent 2",
-    "question": null
-  },
-  {
-    "id": "BB-055",
-    "claim": "Unix (LF) line endings are enforced.",
-    "source": "references/js-guidelines.md:244",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 .eslintrc.js 'linebreak-style': ['error', 'unix']",
-    "question": null
-  },
-  {
-    "id": "BB-056",
-    "claim": "Reassigning properties of function parameters (e.g. block.foo = 'bar') is allowed.",
-    "source": "references/js-guidelines.md:245",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 .eslintrc.js 'no-param-reassign': [2, { props: false }]",
-    "question": null
-  },
-  {
-    "id": "BB-057",
-    "claim": "console calls need an eslint-disable no-console comment.",
-    "source": "references/js-guidelines.md:176",
-    "kind": "repo",
-    "verified": "airbnb-base 'no-console': warn; aem-boilerplate@5cea543 scripts/aem.js uses `// eslint-disable-next-line no-console`",
-    "question": null
-  },
-  {
-    "id": "BB-058",
-    "claim": "CSS uses 2-space indentation.",
-    "source": "references/css-guidelines.md:304",
-    "kind": "repo",
-    "verified": "aem-boilerplate@5cea543 block/style .css files use 2 spaces, though .editorconfig declares [*.css] indent_size = 4; stylelint-config-standard no longer enforces indentation",
-    "question": null
-  },
-  {
-    "id": "BB-059",
-    "claim": "Include JSDoc comments describing functions.",
-    "source": "references/js-guidelines.md:23",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-060",
-    "claim": "Use semantic HTML elements (e.g. blockquote, figure) when building block DOM.",
-    "source": "references/js-guidelines.md:48",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-061",
-    "claim": "Use the spread operator to append multiple elements at once: container.append(...nodes).",
-    "source": "references/js-guidelines.md:54",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-062",
-    "claim": "Use element.replaceChildren() to replace a block's content efficiently.",
-    "source": "references/js-guidelines.md:61, SKILL.md:138",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-063",
-    "claim": "Query within the block (block.querySelectorAll) rather than the whole document.",
-    "source": "references/js-guidelines.md:66",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-064",
-    "claim": "Avoid innerHTML for complex structures (maintainability, XSS risk); build with DOM APIs.",
-    "source": "references/js-guidelines.md:77",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-065",
-    "claim": "Don't mutate elements belonging to other blocks or global page regions (e.g. header) from a block.",
-    "source": "references/js-guidelines.md:91",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-066",
-    "claim": "Don't leave obsolete/temporary DOM elements; replace originals (e.g. p.replaceWith(newDiv)).",
-    "source": "references/js-guidelines.md:101",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-067",
-    "claim": "Check for variant classes with classList.contains().",
-    "source": "references/js-guidelines.md:134",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-068",
-    "claim": "Use async/await with try/catch for data fetching and log failures.",
-    "source": "references/js-guidelines.md:165",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-069",
-    "claim": "Use static imports for always-needed modules and dynamic import() for conditional or deferrable modules.",
-    "source": "references/js-guidelines.md:184, references/js-guidelines.md:194",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-070",
-    "claim": "Defer expensive work (e.g. setTimeout) and keep initial decoration minimal.",
-    "source": "references/js-guidelines.md:258-260, references/js-guidelines.md:270",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-071",
-    "claim": "Use IntersectionObserver to load heavy content (e.g. embeds) only when the block becomes visible.",
-    "source": "references/js-guidelines.md:277",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-072",
-    "claim": "Use ES6+ features (const/let, arrow functions, template literals).",
-    "source": "references/js-guidelines.md:239",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-073",
-    "claim": "Naming: camelCase for variables/functions, PascalCase for classes, UPPER_CASE for constants.",
-    "source": "references/js-guidelines.md:249-251",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-074",
-    "claim": "Write CSS mobile-first: defaults for small screens, media queries for larger.",
-    "source": "references/css-guidelines.md:138, SKILL.md:170",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-075",
-    "claim": "Use CSS custom properties instead of hardcoded colors/fonts when variables exist.",
-    "source": "SKILL.md:165, references/css-guidelines.md:387",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-076",
-    "claim": "Use logical properties (padding-inline, margin-inline-start, etc.) for internationalization.",
-    "source": "references/css-guidelines.md:170, references/css-guidelines.md:176",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-077",
-    "claim": "Prefer flexbox/grid with gap for layout; grid repeat(auto-fit, minmax()) for responsive grids.",
-    "source": "references/css-guidelines.md:187-201",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-078",
-    "claim": "Use BEM-like descriptive class names for elements within a block.",
-    "source": "references/css-guidelines.md:61",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-079",
-    "claim": "Avoid generic class names like .container or .wrapper; be block-specific.",
-    "source": "references/css-guidelines.md:91",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-080",
-    "claim": "Keep specificity low: use classes over tags, avoid IDs, keep selector chains short (2-3 levels).",
-    "source": "references/css-guidelines.md:214, references/css-guidelines.md:239-242",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-081",
-    "claim": "Variant styles use compound selectors on the block (.my-block.dark), and can be combined (.my-block.dark.wide).",
-    "source": "references/css-guidelines.md:246-269, SKILL.md:201",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-082",
-    "claim": "Prefer transforms over position changes (left/top) to avoid reflow.",
-    "source": "references/css-guidelines.md:276",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-083",
-    "claim": "Use will-change sparingly, only for elements that will animate.",
-    "source": "references/css-guidelines.md:287",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-084",
-    "claim": "Be careful with expensive properties (box-shadow, border-radius, opacity, filters) on large areas.",
-    "source": "references/css-guidelines.md:295-298",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-085",
-    "claim": "CSS formatting: one selector per line, brace on selector line, one property per line, space after colon, none before, semicolon after every declaration.",
-    "source": "references/css-guidelines.md:305-310",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-086",
-    "claim": "Recommended property order: layout, box model, visual, animation/transform.",
-    "source": "references/css-guidelines.md:322",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-087",
-    "claim": "Common patterns: list reset, centering with max-width + margin-inline:auto, aspect-ratio, text truncation with ellipsis.",
-    "source": "references/css-guidelines.md:330-361",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-088",
-    "claim": "Don't use !important; fix specificity instead.",
-    "source": "references/css-guidelines.md:365",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-089",
-    "claim": "Don't use absolute positioning for layout; reserve it for visual effects.",
-    "source": "references/css-guidelines.md:402",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-090",
-    "claim": "Make core (shared) changes before dependent block changes, test them independently, and keep them minimal since they affect many pages.",
-    "source": "SKILL.md:252-256",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  },
-  {
-    "id": "BB-091",
-    "claim": "Document core changes with code comments rather than separate docs.",
-    "source": "SKILL.md:257",
-    "kind": "generic",
-    "verified": "n/a",
-    "question": null
-  }
-]
+{
+  "sourceRef": "65e16628b12075cce8aa83c45853fd5840627740",
+  "sourceRoot": "plugins/aem/edge-delivery-services/skills/building-blocks",
+  "facts": [
+    {
+      "id": "BB-001",
+      "claim": "'Franklin' and 'Helix' are earlier names for AEM Edge Delivery Services.",
+      "source": "SKILL.md:3",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 package.json description 'Starter project for Adobe Helix'; CLI repo is github.com/adobe/helix-cli",
+      "question": "Before the AEM Edge Delivery Services branding, what project or code names was this Adobe delivery platform known by?"
+    },
+    {
+      "id": "BB-002",
+      "claim": "A block's JS module must default-export its decoration function (conventionally named decorate).",
+      "source": "references/js-guidelines.md:5, references/js-guidelines.md:20, SKILL.md:97",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L545-549 (loadBlock imports the module and calls mod.default); https://www.aem.live/developer/markup-sections-blocks ('exports a default function')",
+      "question": "In an EDS block's JavaScript file, what must the module export for the block loader to run it?"
+    },
+    {
+      "id": "BB-003",
+      "claim": "The decoration function receives the block's DOM element as its (first) argument.",
+      "source": "references/js-guidelines.md:21, SKILL.md:95",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L549 `await mod.default(block)`",
+      "question": "When the EDS block loader invokes a block's decoration function, what argument does it pass?"
+    },
+    {
+      "id": "BB-004",
+      "claim": "The decoration function may be async; the loader awaits it.",
+      "source": "references/js-guidelines.md:5, references/js-guidelines.md:22",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L549 `await mod.default(block)`; L558 Promise.all([cssLoaded, decorationComplete]) before data-block-status='loaded'",
+      "question": "How does the EDS block loader handle a block decoration function that returns a Promise?"
+    },
+    {
+      "id": "BB-005",
+      "claim": "A block lives in blocks/{block-name}/ with {block-name}.js and {block-name}.css; file and folder names must match the block name, which is the kebab-case class derived from the authored block name.",
+      "source": "SKILL.md:86-88, references/js-guidelines.md:253-254",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L541-546 (loadBlock builds paths `/blocks/${blockName}/${blockName}.css|.js` from data-block-name = first class, L573-576); https://www.aem.live/developer/markup-sections-blocks (block name = folder name = file name = CSS class; 'super wide' -> 'super-wide')",
+      "question": "If an author titles a block table 'Product Teaser', what folder and file names must the developer create for its code?"
+    },
+    {
+      "id": "BB-006",
+      "claim": "A block can be CSS-only, with no JavaScript decoration needed.",
+      "source": "SKILL.md:53",
+      "kind": "eds",
+      "verified": "partially: aem-boilerplate@5cea543 scripts/aem.js:L540-556 loadBlock always tries to import {name}.js; if missing it logs console.error('failed to load module ...') but the CSS still loads and the block is marked loaded",
+      "question": "Does an EDS block need a JavaScript file? What happens at load time if a block folder only contains a stylesheet?"
+    },
+    {
+      "id": "BB-007",
+      "claim": "The server delivers authored images as <picture> elements containing <source> elements (not a bare <img>).",
+      "source": "SKILL.md:126",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks ('a full <picture> tag is rendered with a number of different resolutions ... webp'); live https://main--aem-boilerplate--adobe.aem.live/ markup",
+      "question": "When an author places an image in a document, what HTML structure does EDS render for it in the delivered markup?"
+    },
+    {
+      "id": "BB-008",
+      "claim": "Authored images arrive from the platform with responsive srcset candidates and alt text already set.",
+      "source": "references/js-guidelines.md:141, references/js-guidelines.md:150",
+      "kind": "eds",
+      "verified": "verified with nuance: live https://main--aem-boilerplate--adobe.aem.live/ — srcset is on the <source> elements (webp + original format, width=2000 for min-width:600px and 750), the <img> carries src, alt, loading=lazy, width, height (no srcset on the img itself)",
+      "question": "In the delivered markup of an authored EDS image, where do the responsive image candidates and the alternative text live?"
+    },
+    {
+      "id": "BB-009",
+      "claim": "Block variants (options) appear as additional classes on the block element alongside the block-name class, e.g. <div class=\"my-block dark\">.",
+      "source": "references/js-guidelines.md:118, references/js-guidelines.md:133, references/css-guidelines.md:246",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks#block-options ('Columns (dark, wide)' -> class=\"columns dark wide\")",
+      "question": "If an author writes a block table header as 'Columns (dark, wide)', what class attribute does the rendered block element get?"
+    },
+    {
+      "id": "BB-010",
+      "claim": "Most variants should be CSS-only; check variant classes in JS only when the variant changes DOM structure or behavior.",
+      "source": "SKILL.md:140-141, SKILL.md:200, references/js-guidelines.md:135",
+      "kind": "generic",
+      "verified": "consistent with https://www.aem.live/developer/markup-sections-blocks (options just add classes); prescriptive guidance, no source states it as a rule",
+      "question": null,
+      "quiz": "reclassified generic after the first run: guidance, not a documented platform fact"
+    },
+    {
+      "id": "BB-011",
+      "claim": "All block CSS selectors must be scoped (prefixed) with the block's class to avoid style leakage.",
+      "source": "references/css-guidelines.md:5, SKILL.md:104, SKILL.md:163",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks ('all selectors in a block should be prefixed with the corresponding block class')",
+      "question": "In EDS, what convention keeps a block's CSS from affecting other parts of the page?"
+    },
+    {
+      "id": "BB-012",
+      "claim": "Block selectors should always start with `main .{block-name}`.",
+      "source": "references/css-guidelines.md:32, SKILL.md:105",
+      "kind": "eds",
+      "verified": "WRONG: docs say prefix with the block class only; aem-boilerplate@5cea543 blocks use `.cards`, `.hero`, `.columns` (no `main`), AGENTS.md says 'Scope CSS to `.blockname`'. A `main` prefix is not the convention and would not match header/footer blocks (outside <main>)",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "BB-013",
+      "claim": "Decoration adds a `{block-name}-wrapper` class to the div directly wrapping the block (outside the block).",
+      "source": "references/css-guidelines.md:38",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L579-580 decorateBlock: block.parentElement.classList.add(`${shortBlockName}-wrapper`) (done client-side by aem.js, not the server; the wrapper div itself is created by decorateSections L481-489)",
+      "question": "After EDS decorates a block named 'cards', what class is added to the block's immediate parent element?"
+    },
+    {
+      "id": "BB-014",
+      "claim": "Decoration adds a `{block-name}-container` class to the section that contains the block.",
+      "source": "references/css-guidelines.md:38",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L581-582 decorateBlock: block.closest('.section').classList.add(`${shortBlockName}-container`)",
+      "question": "What class does EDS decoration add to the section that contains a 'cards' block?"
+    },
+    {
+      "id": "BB-015",
+      "claim": "A selector like `main .my-block-wrapper` matches the platform-added wrapper outside the block, not an element inside it.",
+      "source": "references/css-guidelines.md:41-44",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L579-580 (wrapper class is on the block's parent)",
+      "question": "If a block stylesheet contains `main .my-block-wrapper { padding: 2rem; }`, which element does that rule match on a decorated EDS page?"
+    },
+    {
+      "id": "BB-016",
+      "claim": "Avoid giving elements inside a block classes with `-wrapper` or `-container` suffixes, to avoid collisions with platform-added classes.",
+      "source": "references/css-guidelines.md:57, references/css-guidelines.md:51",
+      "kind": "eds",
+      "verified": "follows from aem-boilerplate@5cea543 scripts/aem.js:L579-582; AGENTS.md '-wrapper/-container are section classes'",
+      "question": "Which class-name suffixes should you avoid for elements inside an EDS block, and why?"
+    },
+    {
+      "id": "BB-017",
+      "claim": "Block rows (and columns) are nested direct-child divs, so `block.querySelectorAll(':scope > div')` returns the rows.",
+      "source": "references/js-guidelines.md:218",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks (block rendered as nested <div>s for rows and columns); aem-boilerplate@5cea543 scripts/aem.js:L235 readBlockConfig iterates ':scope > div'",
+      "question": "What is the DOM structure of an EDS block's authored rows and columns as delivered in the markup?"
+    },
+    {
+      "id": "BB-018",
+      "claim": "Prefer a single, clear content model over supporting multiple authored structures in one block; work with authors to agree on it.",
+      "source": "references/js-guidelines.md:232",
+      "kind": "generic",
+      "verified": "not established: https://www.aem.live/developer/markup-sections-blocks says keep authoring simple and intuitive, but states no single-content-model rule",
+      "question": null,
+      "quiz": "reclassified generic after the first run: guidance, not a documented platform fact"
+    },
+    {
+      "id": "BB-019",
+      "claim": "In decorate(), re-use (move) existing authored elements such as <picture> and headings instead of recreating them from their text.",
+      "source": "SKILL.md:122, SKILL.md:132, references/js-guidelines.md:29-45",
+      "kind": "generic",
+      "verified": "consistent with aem-boilerplate@5cea543 blocks/cards/cards.js:L9 (moves row.firstElementChild into new li); prescriptive, not stated in docs",
+      "question": null,
+      "quiz": "reclassified generic after the first run: guidance, not a documented platform fact"
+    },
+    {
+      "id": "BB-020",
+      "claim": "Blocks in the first section load eagerly (before LCP) and therefore affect LCP.",
+      "source": "references/js-guidelines.md:261",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/scripts.js:L169 loadEager -> loadSection(first .section, waitForFirstImage); https://www.aem.live/developer/keeping-it-100 (Phase E loads the full first section)",
+      "question": "In the EDS page-loading sequence, which blocks are loaded before the LCP, and why does that matter for block code?"
+    },
+    {
+      "id": "BB-021",
+      "claim": "Auto-blocking (programmatically creating blocks from default content) is implemented in scripts.js.",
+      "source": "SKILL.md:34, SKILL.md:245, SKILL.md:261",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks#auto-blocking (buildAutoBlocks() in scripts.js); aem-boilerplate@5cea543 scripts/scripts.js:L80",
+      "question": "What is 'auto blocking' in EDS, and in which function/file of a boilerplate project does it live?"
+    },
+    {
+      "id": "BB-022",
+      "claim": "delayed.js is the core file for marketing, analytics and third-party integrations (delayed loading).",
+      "source": "SKILL.md:248, SKILL.md:3, SKILL.md:36, SKILL.md:242",
+      "kind": "eds",
+      "verified": "WRONG: aem-boilerplate@5cea543 has no scripts/delayed.js; scripts/scripts.js:L206-209 loadDelayed() imports consent-check.js, which (declining by default) imports consented.js only after consent; https://www.aem.live/developer/keeping-it-100 Phase D. Also loadDelayed no longer has a 3s timer. Older projects may still have delayed.js",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "BB-023",
+      "claim": "The local dev server runs at http://localhost:3000.",
+      "source": "SKILL.md:116",
+      "kind": "eds",
+      "verified": "github.com/adobe/helix-cli src/server/HelixServer.js `this._httpPort = 3000` (main)",
+      "question": "On which local port does the AEM CLI development server (`aem up`) listen by default?"
+    },
+    {
+      "id": "BB-024",
+      "claim": "Fetching a page from the dev server with curl shows the initial (pre-decoration) server HTML of blocks.",
+      "source": "SKILL.md:114-116",
+      "kind": "eds",
+      "verified": "verified: server markup is undecorated (live page markup shows <div class=\"hero\"> with nested divs, no -wrapper/data-block-status); aem-boilerplate@5cea543 AGENTS.md recommends `curl localhost:3000/x.plain.html` for the content-only markup",
+      "question": "During local EDS development, how can you see the raw block markup the server delivers before any client-side decoration runs?"
+    },
+    {
+      "id": "BB-025",
+      "claim": "aem.js toClassName(text) converts text to a valid CSS class name.",
+      "source": "references/js-guidelines.md:311",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L208-216 (lowercase, non-alphanumerics -> '-', collapse repeats, trim leading/trailing '-'; '' for non-strings)",
+      "question": "Which aem.js helper turns arbitrary text into a CSS-safe class name, and what transformation does it apply?"
+    },
+    {
+      "id": "BB-026",
+      "claim": "aem.js getMetadata(name) returns a page metadata value.",
+      "source": "references/js-guidelines.md:312",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L321-328 (reads <meta name=...>, or <meta property=...> if name contains ':'; joins multiple with ', '; returns '' if absent)",
+      "question": "Using the boilerplate's library, how do you read a page-level metadata value (e.g. 'template') from block code, and what does it return when the value is missing?"
+    },
+    {
+      "id": "BB-027",
+      "claim": "aem.js loadCSS(href) loads a stylesheet and returns a promise that resolves when it has loaded.",
+      "source": "references/js-guidelines.md:313",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L275-290 (appends <link rel=stylesheet> to head, resolves on load, rejects on error, resolves immediately if already present)",
+      "question": "Which aem.js helper loads an extra stylesheet at runtime, and what does it return?"
+    },
+    {
+      "id": "BB-028",
+      "claim": "aem.js loadScript(url, attrs) loads a JavaScript file, applying optional attributes (e.g. async, type).",
+      "source": "references/js-guidelines.md:314",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L295-316 (appends <script src> to head, sets each attrs entry via setAttribute, returns promise; dedupes by src). Intended for non-module scripts",
+      "question": "Which aem.js helper loads an external (non-module) script, and how can you pass extra attributes to the script tag?"
+    },
+    {
+      "id": "BB-029",
+      "claim": "aem.js createOptimizedPicture(src, alt, eager, breakpoints) creates a responsive <picture> with optimized image sources.",
+      "source": "references/js-guidelines.md:315, references/js-guidelines.md:141, references/js-guidelines.md:158",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L337-384 (alt='', eager=false -> img loading=lazy, default breakpoints [{media:'(min-width: 600px)',width:'2000'},{width:'750'}]; webp <source>s + original-format fallback with ?width=&format=&optimize=medium)",
+      "question": "What are the parameters of the aem.js helper that generates an optimized responsive image element, and what does it produce?"
+    },
+    {
+      "id": "BB-030",
+      "claim": "aem.js buildBlock(name, cells) programmatically creates a block's DOM structure from a 2-D array of cell contents.",
+      "source": "references/js-guidelines.md:316, references/js-guidelines.md:321",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L505-531 buildBlock(blockName, content): content is 2-D array, or string/element/{elems:[...]} wrapped as single cell; returns div.{name} > div(row) > div(col)",
+      "question": "What input does the aem.js buildBlock helper take, and what DOM structure does it return?"
+    },
+    {
+      "id": "BB-031",
+      "claim": "A block created with buildBlock must then be decorated (decorateBlock) and loaded (loadBlock) to display.",
+      "source": "references/js-guidelines.md:316, references/js-guidelines.md:331-333",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L572-585 decorateBlock adds .block, data-block-name, data-block-status; L535-566 loadBlock loads CSS/JS and runs decorate; loadBlock skips unless status set. (Auto-blocks built during decorateMain before decorateBlocks are handled automatically, scripts.js:L150-156)",
+      "question": "After you programmatically create a block with buildBlock and insert it into an already-loaded EDS page, which further aem.js calls are needed for it to render, in what order?"
+    },
+    {
+      "id": "BB-032",
+      "claim": "For automatic discovery by decorateBlocks (which selects `div.section > div > div`), a block must sit in a wrapper div inside a section. A block decorated and loaded explicitly via decorateBlock + loadBlock can live elsewhere (e.g. header/footer outside main).",
+      "source": "references/js-guidelines.md:323-329",
+      "kind": "eds",
+      "verified": "partial: skill says the section wrapper is always required. aem-boilerplate@5cea543 scripts/aem.js:L591 decorateBlocks selects 'div.section > div > div'; L579-582 decorateBlock uses block.parentElement as the -wrapper and guards the closest('.section') lookup; aem.js:L599-608 loadHeader appends, decorates and loads the header block outside main",
+      "question": "In EDS, what DOM placement does the automatic block discovery step require for a block element, and what changes if you decorate and load a programmatically built block yourself?"
+    },
+    {
+      "id": "BB-033",
+      "claim": "loadBlock is async (returns a promise) and can be awaited.",
+      "source": "references/js-guidelines.md:333",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L535 `async function loadBlock(block)` returns block",
+      "question": "Is the aem.js function that loads a block's code synchronous or asynchronous, and what does it resolve to?"
+    },
+    {
+      "id": "BB-034",
+      "claim": "Never modify scripts/aem.js.",
+      "source": "references/js-guidelines.md:336",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 AGENTS.md: '`scripts/aem.js` is vendored. Never edit.'",
+      "question": "In an aem-boilerplate-based project, what is the policy on editing scripts/aem.js, and why?"
+    },
+    {
+      "id": "BB-035",
+      "claim": "Existing blocks can be found by listing the blocks/ directory.",
+      "source": "SKILL.md:67-70",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 blocks/ (cards, columns, footer, fragment, header, hero, widget)",
+      "question": null
+    },
+    {
+      "id": "BB-036",
+      "claim": "Blocks import helpers from aem.js via the relative path '../../scripts/aem.js'.",
+      "source": "references/js-guidelines.md:144, references/js-guidelines.md:307",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 blocks/cards/cards.js:L1",
+      "question": null
+    },
+    {
+      "id": "BB-037",
+      "claim": "scripts.js holds decoration utilities, auto-blocking logic and page loading.",
+      "source": "SKILL.md:245, SKILL.md:34",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 scripts/scripts.js (buildAutoBlocks L80, decorateMain L150, loadEager/loadLazy/loadDelayed/loadPage L162-217)",
+      "question": null
+    },
+    {
+      "id": "BB-038",
+      "claim": "styles/styles.css holds the eagerly loaded global styles and CSS custom properties.",
+      "source": "SKILL.md:246, references/css-guidelines.md:95",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 head.html <link rel=stylesheet href=/styles/styles.css>; styles/styles.css :root",
+      "question": null
+    },
+    {
+      "id": "BB-039",
+      "claim": "styles/lazy-styles.css holds global styles loaded lazily.",
+      "source": "SKILL.md:247, SKILL.md:35",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 scripts/scripts.js:L198 loadLazy -> loadCSS(lazy-styles.css)",
+      "question": null
+    },
+    {
+      "id": "BB-040",
+      "claim": "Sections already constrain content width: `main > .section > div` sets max-width and inline padding in styles/styles.css, so blocks rarely need their own.",
+      "source": "references/css-guidelines.md:126",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 styles/styles.css (main > .section > div { max-width: 1200px; padding: 0 24px }, 32px at width >= 900px)",
+      "question": null
+    },
+    {
+      "id": "BB-041",
+      "claim": "Boilerplate color custom properties: --background-color, --light-color, --dark-color, --text-color, --link-color, --link-hover-color.",
+      "source": "references/css-guidelines.md:129",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 styles/styles.css:L13-20",
+      "question": null
+    },
+    {
+      "id": "BB-042",
+      "claim": "Boilerplate font custom properties: --body-font-family, --heading-font-family.",
+      "source": "references/css-guidelines.md:130",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 styles/styles.css:L22-24",
+      "question": null
+    },
+    {
+      "id": "BB-043",
+      "claim": "Boilerplate font-size custom properties follow --heading-font-size-* and --body-font-size-* (e.g. --heading-font-size-m).",
+      "source": "references/css-guidelines.md:131, SKILL.md:177",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 styles/styles.css (heading xxl/xl/l/m/s/xs; body m/s/xs; redefined at width >= 900px)",
+      "question": null
+    },
+    {
+      "id": "BB-044",
+      "claim": "Boilerplate layout custom property --nav-height exists.",
+      "source": "references/css-guidelines.md:132",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 styles/styles.css (--nav-height: 64px)",
+      "question": null
+    },
+    {
+      "id": "BB-045",
+      "claim": "Desktop breakpoint is `@media (width >= 900px)`.",
+      "source": "references/css-guidelines.md:166, SKILL.md:193",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 styles/styles.css and blocks/*/*.css use only (width >= 900px)",
+      "question": null
+    },
+    {
+      "id": "BB-046",
+      "claim": "Tablet breakpoint is `@media (width >= 600px)`; mobile is the default below 600px.",
+      "source": "references/css-guidelines.md:164-165, SKILL.md:186",
+      "kind": "repo",
+      "verified": "unverified: aem-boilerplate@5cea543 CSS contains no 600px media query (only 900px); 600px appears only as createOptimizedPicture's default image breakpoint (scripts/aem.js:L341)",
+      "question": null
+    },
+    {
+      "id": "BB-047",
+      "claim": "Use media query range syntax `(width >= 600px)` instead of `(min-width: 600px)`.",
+      "source": "references/css-guidelines.md:169",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 .stylelintrc.json extends stylelint-config-standard, which sets 'media-feature-range-notation': 'context'",
+      "question": null
+    },
+    {
+      "id": "BB-048",
+      "claim": "Use modern color function syntax, e.g. rgb(0 0 0 / 20%).",
+      "source": "references/css-guidelines.md:207",
+      "kind": "repo",
+      "verified": "stylelint-config-standard: 'color-function-notation': 'modern', 'alpha-value-notation' percentage",
+      "question": null
+    },
+    {
+      "id": "BB-049",
+      "claim": "Class names are lowercase kebab-case.",
+      "source": "references/css-guidelines.md:89",
+      "kind": "repo",
+      "verified": "stylelint-config-standard 'selector-class-pattern' (kebab-case)",
+      "question": null
+    },
+    {
+      "id": "BB-050",
+      "claim": "JS linting uses the Airbnb ESLint config (airbnb-base) with project modifications.",
+      "source": "references/js-guidelines.md:236",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 .eslintrc.js extends 'airbnb-base'",
+      "question": null
+    },
+    {
+      "id": "BB-051",
+      "claim": "Imports must include the .js file extension.",
+      "source": "references/js-guidelines.md:240",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 .eslintrc.js 'import/extensions': ['error', { js: 'always' }]",
+      "question": null
+    },
+    {
+      "id": "BB-052",
+      "claim": "JS uses single quotes for strings.",
+      "source": "references/js-guidelines.md:241",
+      "kind": "repo",
+      "verified": "airbnb-base 'quotes': single",
+      "question": null
+    },
+    {
+      "id": "BB-053",
+      "claim": "Semicolons are required in JS.",
+      "source": "references/js-guidelines.md:242",
+      "kind": "repo",
+      "verified": "airbnb-base 'semi': always",
+      "question": null
+    },
+    {
+      "id": "BB-054",
+      "claim": "JS uses 2-space indentation.",
+      "source": "references/js-guidelines.md:243",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 .editorconfig [*.js] indent_size = 2; airbnb-base indent 2",
+      "question": null
+    },
+    {
+      "id": "BB-055",
+      "claim": "Unix (LF) line endings are enforced.",
+      "source": "references/js-guidelines.md:244",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 .eslintrc.js 'linebreak-style': ['error', 'unix']",
+      "question": null
+    },
+    {
+      "id": "BB-056",
+      "claim": "Reassigning properties of function parameters (e.g. block.foo = 'bar') is allowed.",
+      "source": "references/js-guidelines.md:245",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 .eslintrc.js 'no-param-reassign': [2, { props: false }]",
+      "question": null
+    },
+    {
+      "id": "BB-057",
+      "claim": "console calls need an eslint-disable no-console comment.",
+      "source": "references/js-guidelines.md:176",
+      "kind": "repo",
+      "verified": "airbnb-base 'no-console': warn; aem-boilerplate@5cea543 scripts/aem.js uses `// eslint-disable-next-line no-console`",
+      "question": null
+    },
+    {
+      "id": "BB-058",
+      "claim": "CSS uses 2-space indentation.",
+      "source": "references/css-guidelines.md:304",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 block/style .css files use 2 spaces, though .editorconfig declares [*.css] indent_size = 4; stylelint-config-standard no longer enforces indentation",
+      "question": null
+    },
+    {
+      "id": "BB-059",
+      "claim": "Include JSDoc comments describing functions.",
+      "source": "references/js-guidelines.md:23",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-060",
+      "claim": "Use semantic HTML elements (e.g. blockquote, figure) when building block DOM.",
+      "source": "references/js-guidelines.md:48",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-061",
+      "claim": "Use the spread operator to append multiple elements at once: container.append(...nodes).",
+      "source": "references/js-guidelines.md:54",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-062",
+      "claim": "Use element.replaceChildren() to replace a block's content efficiently.",
+      "source": "references/js-guidelines.md:61, SKILL.md:138",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-063",
+      "claim": "Query within the block (block.querySelectorAll) rather than the whole document.",
+      "source": "references/js-guidelines.md:66",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-064",
+      "claim": "Avoid innerHTML for complex structures (maintainability, XSS risk); build with DOM APIs.",
+      "source": "references/js-guidelines.md:77",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-065",
+      "claim": "Don't mutate elements belonging to other blocks or global page regions (e.g. header) from a block.",
+      "source": "references/js-guidelines.md:91",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-066",
+      "claim": "Don't leave obsolete/temporary DOM elements; replace originals (e.g. p.replaceWith(newDiv)).",
+      "source": "references/js-guidelines.md:101",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-067",
+      "claim": "Check for variant classes with classList.contains().",
+      "source": "references/js-guidelines.md:134",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-068",
+      "claim": "Use async/await with try/catch for data fetching and log failures.",
+      "source": "references/js-guidelines.md:165",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-069",
+      "claim": "Use static imports for always-needed modules and dynamic import() for conditional or deferrable modules.",
+      "source": "references/js-guidelines.md:184, references/js-guidelines.md:194",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-070",
+      "claim": "Defer expensive work (e.g. setTimeout) and keep initial decoration minimal.",
+      "source": "references/js-guidelines.md:258-260, references/js-guidelines.md:270",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-071",
+      "claim": "Use IntersectionObserver to load heavy content (e.g. embeds) only when the block becomes visible.",
+      "source": "references/js-guidelines.md:277",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-072",
+      "claim": "Use ES6+ features (const/let, arrow functions, template literals).",
+      "source": "references/js-guidelines.md:239",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-073",
+      "claim": "Naming: camelCase for variables/functions, PascalCase for classes, UPPER_CASE for constants.",
+      "source": "references/js-guidelines.md:249-251",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-074",
+      "claim": "Write CSS mobile-first: defaults for small screens, media queries for larger.",
+      "source": "references/css-guidelines.md:138, SKILL.md:170",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-075",
+      "claim": "Use CSS custom properties instead of hardcoded colors/fonts when variables exist.",
+      "source": "SKILL.md:165, references/css-guidelines.md:387",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-076",
+      "claim": "Use logical properties (padding-inline, margin-inline-start, etc.) for internationalization.",
+      "source": "references/css-guidelines.md:170, references/css-guidelines.md:176",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-077",
+      "claim": "Prefer flexbox/grid with gap for layout; grid repeat(auto-fit, minmax()) for responsive grids.",
+      "source": "references/css-guidelines.md:187-201",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-078",
+      "claim": "Use BEM-like descriptive class names for elements within a block.",
+      "source": "references/css-guidelines.md:61",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-079",
+      "claim": "Avoid generic class names like .container or .wrapper; be block-specific.",
+      "source": "references/css-guidelines.md:91",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-080",
+      "claim": "Keep specificity low: use classes over tags, avoid IDs, keep selector chains short (2-3 levels).",
+      "source": "references/css-guidelines.md:214, references/css-guidelines.md:239-242",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-081",
+      "claim": "Variant styles use compound selectors on the block (.my-block.dark), and can be combined (.my-block.dark.wide).",
+      "source": "references/css-guidelines.md:246-269, SKILL.md:201",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-082",
+      "claim": "Prefer transforms over position changes (left/top) to avoid reflow.",
+      "source": "references/css-guidelines.md:276",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-083",
+      "claim": "Use will-change sparingly, only for elements that will animate.",
+      "source": "references/css-guidelines.md:287",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-084",
+      "claim": "Be careful with expensive properties (box-shadow, border-radius, opacity, filters) on large areas.",
+      "source": "references/css-guidelines.md:295-298",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-085",
+      "claim": "CSS formatting: one selector per line, brace on selector line, one property per line, space after colon, none before, semicolon after every declaration.",
+      "source": "references/css-guidelines.md:305-310",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-086",
+      "claim": "Recommended property order: layout, box model, visual, animation/transform.",
+      "source": "references/css-guidelines.md:322",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-087",
+      "claim": "Common patterns: list reset, centering with max-width + margin-inline:auto, aspect-ratio, text truncation with ellipsis.",
+      "source": "references/css-guidelines.md:330-361",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-088",
+      "claim": "Don't use !important; fix specificity instead.",
+      "source": "references/css-guidelines.md:365",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-089",
+      "claim": "Don't use absolute positioning for layout; reserve it for visual effects.",
+      "source": "references/css-guidelines.md:402",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-090",
+      "claim": "Make core (shared) changes before dependent block changes, test them independently, and keep them minimal since they affect many pages.",
+      "source": "SKILL.md:252-256",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "BB-091",
+      "claim": "Document core changes with code comments rather than separate docs.",
+      "source": "SKILL.md:257",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    }
+  ]
+}

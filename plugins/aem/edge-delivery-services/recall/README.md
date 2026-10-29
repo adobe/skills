@@ -38,7 +38,9 @@ After the trim, run the same eval again and compare with `tessl eval compare <be
 
 ```
 recall/<skill>/
-  facts.json          [{ id, claim, source, kind, verified, question, quiz? }]  (quiz: reason a fact is excluded, e.g. wrong claim)
+  facts.json          { sourceRef, sourceRoot, facts: [{ id, claim, source, kind, verified, question, quiz? }] }
+                      sourceRef: commit the inventory was taken from; source paths (`file:line`) are relative to sourceRoot at that commit
+                      quiz: reason a fact is excluded, e.g. wrong claim
   answers/<model>.md  raw model output (gitignored)
   scores.json         { models: [...], facts: { <id>: { <model>: score, decision, note } } } (gitignored)
 ```
