@@ -30,4 +30,3 @@ dist/
 # recall probe working files (facts.json is tracked)
 plugins/*/*/recall/*/scores.json
 plugins/*/*/recall/*/answers/
-.eds-eval/

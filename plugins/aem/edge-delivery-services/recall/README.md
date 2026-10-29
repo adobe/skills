@@ -24,6 +24,10 @@ Decides which lines of a skill are worth their tokens: test what current models 
 
 Facts that steer workflow (step order, when to invoke other skills) aren't recall; the tessl regression eval covers those.
 
+## Regression check
+
+On the trim PR, push an `eval:` commit before the trim and another after it (shared `tessl-eval.yml`), then `tessl eval compare <before-run> <after-run> --full`. The trimmed skill should score no lower on the skill's scenarios.
+
 ## Files
 
 ```
