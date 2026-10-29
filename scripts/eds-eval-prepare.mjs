@@ -3,7 +3,7 @@
 // Usage: node scripts/eds-eval-prepare.mjs <config.json> <base-ref> <out-dir>
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 const PLUGIN = 'plugins/aem/edge-delivery-services';
 const [configPath, baseRef, out] = process.argv.slice(2);
@@ -45,8 +45,8 @@ rmSync(baseTree, { recursive: true, force: true });
 
 const variants = models.flatMap(({ label, agent, model }) => [
   { label: `${label}-noskill`, agent, model, fixtures: { context: null } },
-  { label: `${label}-base`, agent, model, fixtures: { context: { localPath: join(out, 'base') } } },
-  { label: `${label}-head`, agent, model, fixtures: { context: { localPath: join(out, 'head') } } },
+  { label: `${label}-base`, agent, model, fixtures: { context: { localPath: resolve(out, 'base') } } },
+  { label: `${label}-head`, agent, model, fixtures: { context: { localPath: resolve(out, 'head') } } },
 ]);
 writeFileSync(join(out, 'variants.json'), `${JSON.stringify(variants, null, 2)}\n`);
 

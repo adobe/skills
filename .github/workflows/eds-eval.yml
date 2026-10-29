@@ -57,11 +57,14 @@ jobs:
 
       - name: Run eval
         id: run
+        # tessl.json (project link) lives in the plugin directory
+        working-directory: plugins/aem/edge-delivery-services
         run: |
-          RUNS=$(node -p "require('./$CONFIG').runs || 1")
-          SKILL=$(node -p "require('./$CONFIG').skill")
-          OUTPUT=$(tessl eval run "$OUT/scenarios" \
-            --variant-json "$OUT/variants.json" \
+          ROOT=$GITHUB_WORKSPACE
+          RUNS=$(node -p "require('$ROOT/$CONFIG').runs || 1")
+          SKILL=$(node -p "require('$ROOT/$CONFIG').skill")
+          OUTPUT=$(tessl eval run "$ROOT/$OUT/scenarios" \
+            --variant-json "$ROOT/$OUT/variants.json" \
             --runs "$RUNS" \
             --label "eds-eval $SKILL PR#${{ github.event.pull_request.number }}" \
             --yes --wait --json 2>&1) || STATUS=$?
