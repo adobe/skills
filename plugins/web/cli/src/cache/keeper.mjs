@@ -38,6 +38,7 @@ function isRecordable({ method, url, status }) {
 const isCacheable = (status) => status >= 200 && status <= 399;
 
 const PAGE_ID = 'page_1';
+const OPEN_RECORDINGS = 16;
 
 /** The absolute `location` of a response, or '' when it has none (HAR `redirectURL`). */
 function redirectUrl(url, headers) {
@@ -56,9 +57,14 @@ const fromWebPage = (req) => {
   return Boolean(req.headers.origin) || (site !== undefined && site !== 'none');
 };
 
+let tmpCounter = 0;
+
+/** Write via a temp file unique to this process, so keepers sharing a directory never collide. */
 function writeAtomic(file, data) {
-  writeFileSync(`${file}.tmp`, data);
-  renameSync(`${file}.tmp`, file);
+  tmpCounter += 1;
+  const tmp = `${file}.${process.pid}-${tmpCounter}.tmp`;
+  writeFileSync(tmp, data);
+  renameSync(tmp, file);
 }
 
 const readJson = async (req) => {
@@ -151,6 +157,8 @@ function createStore(dir) {
     const creator = { name: 'web-cli', version: '1' };
     const har = { log: { version: '1.2', creator, pages: harPages, entries: [] } };
     pages.set(page, { file: path.join(dir, harFileName(url)), har });
+    // Late responses of recent pages still find their HAR; older recordings are let go.
+    if (pages.size > OPEN_RECORDINGS) pages.delete(pages.keys().next().value);
   }
 
   function lookup({ url, page }) {
@@ -182,7 +190,10 @@ function createStore(dir) {
     const mimeType = mimeOf(response.mimeType);
     const file = body.length ? writeBody(body, mimeType) : undefined;
     append(response.page, harEntry({ ...response, mimeType, size: body.length, file }));
-    if (!isCacheable(response.status)) return;
+    if (!isCacheable(response.status)) {
+      index.delete(`GET ${response.url}`);
+      return;
+    }
     const read = file ? () => readFileSync(path.join(dir, file)) : () => Buffer.alloc(0);
     index.set(`GET ${response.url}`, {
       status: response.status,

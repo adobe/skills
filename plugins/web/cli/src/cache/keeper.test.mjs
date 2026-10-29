@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -329,4 +329,42 @@ test('entries are ordered by request start', async (t) => {
     [B, CSS],
   );
   assert.equal(entries[0].startedDateTime, new Date(documentStart).toISOString());
+});
+
+test('a newer error removes the cached response', async (t) => {
+  const { keeper } = await withKeeper(t);
+  await lookup(keeper, A, 1, true);
+  await store(keeper, { url: CSS, page: 1, body: 'h1{}', mime: 'text/css' });
+  await store(keeper, { url: CSS, page: 1, status: 500, body: 'boom' });
+  const res = await lookup(keeper, CSS, 1);
+  assert.equal(res.status, 404);
+  assert.equal(res.headers.get('x-web-cache'), 'miss');
+});
+
+test("another writer's temp file is left alone", async (t) => {
+  const { dir, keeper } = await withKeeper(t);
+  const stray = path.join(dir, `${harFileName(A)}.tmp`);
+  writeFileSync(stray, 'other keeper, mid-write');
+  await lookup(keeper, A, 1, true);
+  await store(keeper, { url: A, page: 1, body: '<h1>a</h1>' });
+  assert.equal(readFileSync(stray, 'utf8'), 'other keeper, mid-write');
+  assert.equal(readHar(dir, A)[0].request.url, A);
+});
+
+test('only the 16 most recent recordings stay open', async (t) => {
+  const { dir, keeper } = await withKeeper(t);
+  await lookup(keeper, A, 1, true);
+  await store(keeper, { url: A, page: 1, body: '<h1>a</h1>' });
+  for (let id = 2; id <= 17; id++) await lookup(keeper, `https://site.test/p${id}`, id, true);
+  await store(keeper, { url: CSS, page: 2, body: 'h1{}', mime: 'text/css' });
+  await store(keeper, { url: CSS, page: 1, body: 'h1{}', mime: 'text/css' });
+  assert.deepEqual(
+    readHar(dir, A).map((e) => e.request.url),
+    [A],
+  );
+  assert.deepEqual(
+    readHar(dir, 'https://site.test/p2').map((e) => e.request.url),
+    [CSS],
+  );
+  assert.equal((await lookup(keeper, CSS, 17)).status, 200);
 });
