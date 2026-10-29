@@ -277,7 +277,7 @@ async function main() {
 
     // Filter to only approved entries
     const approvedEntries = allEntries.filter(entry =>
-      entry.approved === 'Yes' || entry.approved === true || entry.approved === 'true'
+      ['yes', 'true'].includes(String(entry.approved).trim().toLowerCase())
     );
 
     // Get available categories (from approved entries only)
