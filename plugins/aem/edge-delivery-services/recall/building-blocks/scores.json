@@ -182,10 +182,11 @@
       "decision": "cut"
     },
     "BB-030": {
-      "claude-sonnet-5.5": "correct",
+      "claude-sonnet-5.5": "missing",
       "gemini-4-argon": "correct",
       "gpt-6.1-sol": "correct",
-      "decision": "cut"
+      "decision": "judgement",
+      "note": "Sonnet names `content` but not its 2-D rows/cells array shape (partial = missing). Lean cut: one model, and the signature is readable in aem.js."
     },
     "BB-031": {
       "claude-sonnet-5.5": "correct",
