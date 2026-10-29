@@ -19,9 +19,12 @@ site. A slot you cannot source keeps its boilerplate value and is listed in the 
 
 Stop, with one line saying why, unless all of these hold at the project root:
 
-- `styles/styles.css` contains `--link-color: #3b63fb` and a `--body-font-family` starting
-  with `roboto`.
-- `styles/fonts.css` exists and declares the `roboto` faces.
+- Every slot in the two `:root` blocks of `styles/styles.css` still holds its boilerplate
+  value. Top block: colors `white`, `#f8f8f8`, `#505050`, `#131313`, `#3b63fb`, `#1d3ecf`;
+  `roboto` body and `roboto-condensed` heading stacks; body sizes 22/19/17px; heading sizes
+  55/44/34/27/24/22px; `--nav-height: 64px`. Desktop block: body 18/16/14px; heading
+  45/36/28/22/20/18px.
+- `styles/fonts.css` exists and declares only the `roboto` and `roboto-condensed` faces.
 
 A project that fails this check was already styled; this skill only overwrites defaults.
 
@@ -106,12 +109,13 @@ Sizes:
   nav, footer and asides don't count (a `<header>` inside the main content does); a level
   found only there is unmeasured.
 - No heading level may be larger than the one above it (`xxl` to `xs`; equal is allowed),
-  because authors pick levels by meaning. If the measured sizes don't descend (an `h3` larger
-  than the `h2`), assign the distinct measured sizes to `xxl`, `xl`, … in descending order
-  instead, and report the per-level values.
+  because authors pick levels by meaning. Each measured size stays on its own level. Only if
+  measured levels are out of order (an `h3` larger than the `h2`), re-sort the measured sizes
+  in descending order over those same measured levels, and report the per-level values.
 - A level with no measured size keeps its boilerplate value for that width (mobile and desktop
-  differ), unless that breaks this order; then it takes the size of the level above it.
-  Report it as filled, not measured. The same order and fill-in rules apply to the body sizes
+  differ), unless that breaks this order; then it takes the size of the nearest measured level
+  above it, or below it when none is measured above (a missing `h1`). Report it as filled, not
+  measured. The same order and fill-in rules apply to the body sizes
   `m`, `s`, `xs`.
 
 ## 5. Fonts
@@ -149,6 +153,8 @@ Wiring — the boilerplate's loading mechanism stays as is:
   as a percentage.
 - Stacks: `--body-font-family: <family>, <family>-fallback, sans-serif;` (or `serif`). One
   family for both roles means one set of faces and one fallback face.
+- System fonts: when no family in the measured stack has a loaded face (Arial, Georgia,
+  Helvetica …), write the stack as measured, with no download and no fallback face.
 - Never add font `<link>`, `<style>` or preload lines to `head.html`.
 
 ## 6. Favicon and logo
@@ -184,8 +190,8 @@ reporting; a
 failure you can't fix needs a stated reason:
 
 - Every non-generic family in the two font stacks is accounted for: a brand family has an
-  `@font-face` in `styles/fonts.css` or is listed as commercial-hosted in the report; a
-  `<family>-fallback` has its `@font-face` in `styles/styles.css`.
+  `@font-face` in `styles/fonts.css` or is listed as commercial-hosted or system in the
+  report; a `<family>-fallback` has its `@font-face` in `styles/styles.css`.
 - Every `url()` in `styles/fonts.css` points to a file in `fonts/`.
 - `head.html` differs from the boilerplate by at most the favicon line.
 - Both `:root` blocks still define all nine size slots, and in each no heading or body size is

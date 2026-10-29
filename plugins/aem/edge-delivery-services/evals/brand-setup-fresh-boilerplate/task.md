@@ -135,6 +135,22 @@ under `downloads/` stand for files the teammate downloaded from Acme's site.
 <script nonce="aem" src="/scripts/scripts.js" type="module"></script>
 <link rel="stylesheet" href="/styles/styles.css"/>
 
+=============== FILE: scripts/scripts.js (excerpt; the rest is unchanged boilerplate) ===============
+/**
+ * load fonts.css and set a session storage flag
+ */
+async function loadFonts() {
+  await loadCSS(`${window.hlx.codeBasePath}/styles/fonts.css`);
+  try {
+    if (!window.location.hostname.includes('localhost')) sessionStorage.setItem('fonts-loaded', 'true');
+  } catch (e) {
+    // do nothing
+  }
+}
+
+=============== FILE: favicon.ico (binary, boilerplate icon) ===============
+(placeholder: create it containing the line "boilerplate favicon")
+
 =============== FILE: fonts/ (directory listing) ===============
 roboto-bold.woff2
 roboto-condensed-bold.woff2

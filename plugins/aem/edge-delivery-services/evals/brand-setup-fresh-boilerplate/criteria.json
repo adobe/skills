@@ -40,12 +40,12 @@
     {
       "name": "No font or script wiring changes outside fonts.css/styles.css",
       "max_score": 12,
-      "description": "head.html is unchanged (no font <link>, <style> or preload lines, no favicon line), styles/fonts.css still exists, and loadFonts() in scripts/scripts.js is untouched."
+      "description": "head.html is unchanged (no font <link>, <style> or preload lines, no favicon line), styles/fonts.css still exists, and the provided loadFonts() in scripts/scripts.js is unchanged."
     },
     {
       "name": "Favicon replaces favicon.ico, format kept",
       "max_score": 6,
-      "description": "The root favicon.ico is replaced with the downloaded /favicon.ico from the source; it is not converted to another format and no <link rel=\"icon\"> is added because the source has no linked icon."
+      "description": "The root favicon.ico (provided as the \"boilerplate favicon\" placeholder) is replaced with the downloaded /favicon.ico from the source; it is not converted to another format and no <link rel=\"icon\"> is added because the source has no linked icon."
     },
     {
       "name": "Raster logo saved under icons/",
@@ -55,7 +55,7 @@
     {
       "name": "Report lists sources, gaps and unslotted traits",
       "max_score": 10,
-      "description": "BRAND-REPORT.md gives a source for each value written, lists what was left or filled (h6/xs), and lists measured-but-unwritten traits: theme-color #1f4d3a, button radius 4px and padding 12px 24px, heading weight 700."
+      "description": "BRAND-REPORT.md gives the six self-check results each with the output that shows it (including git status --short pasted verbatim), a source for each value written, what was left or filled (h6/xs), and the measured-but-unwritten traits: theme-color #1f4d3a, button radius 4px and padding 12px 24px, heading weight 700."
     }
   ]
 }
