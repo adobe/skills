@@ -217,7 +217,9 @@ export function compareRegions(source, rendered, { tolerance = 0.1 } = {}) {
     const r = rendered[i];
     if (!s.region || !r.region) { unmeasured += 1; return; }
     const [sx0, sy0, sx1, sy1] = s.region; const [rx0, ry0, rx1, ry1] = r.region;
-    const srcY = s.fit === 'cover' ? yPos(s.position) : 50; const rCropsV = ry1 - ry0 < 0.999;
+    const srcY = s.fit === 'cover' ? yPos(s.position) : 50;
+    // the render crops it top and bottom through object-fit (a 1px clip by a rounded container is not a crop; fill shows it all)
+    const rCropsV = (r.fit === 'cover' || r.fit === 'none') && ry1 - ry0 < 0.98;
     const anchorOff = Math.abs(srcY - 50) > 1e-6 && rCropsV && Math.abs(yPos(r.position) - srcY) > 15;
     const rs = ratio(s.natural); const rr = ratio(r.natural);
     if (rs && rr && Math.abs(rs / rr - 1) > 0.02) {
