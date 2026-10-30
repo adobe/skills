@@ -1,0 +1,266 @@
+{
+  "sourceRef": "65e16628b12075cce8aa83c45853fd5840627740",
+  "sourceRoot": "plugins/aem/edge-delivery-services/skills/da-auth",
+  "facts": [
+    {
+      "id": "DAA-001",
+      "claim": "Calls to the DA Admin API (admin.da.live) authenticate with an Adobe IMS access token sent as `Authorization: Bearer <token>`.",
+      "source": "SKILL.md:11, SKILL.md:96-104",
+      "kind": "eds",
+      "origin": "skill",
+      "verified": "https://docs.da.live/developers/api/source (curl examples: --header 'Authorization: Bearer {IMS_TOKEN}'); aem-cli@16.22.16 src/content/da-api.js:99-101 authHeader = `Bearer ${token}`",
+      "question": "What kind of credential does the Document Authoring admin API (admin.da.live) expect, and how is it sent on a request?"
+    },
+    {
+      "id": "DAA-002",
+      "claim": "Use da-auth only when a step must call the DA/AEM admin APIs directly and no unexpired token is already in scope; skip it when create-site is handling auth or a DA MCP server is active (use its auth tool).",
+      "source": "SKILL.md:3, SKILL.md:13-23",
+      "kind": "workflow",
+      "origin": "skill",
+      "verified": "workflow instruction",
+      "quiz": "workflow scope rule"
+    },
+    {
+      "id": "DAA-003",
+      "claim": "da-auth-helper caches the token at `~/.aem/da-token.json` as `{access_token, expires_at}` with `expires_at` in Unix milliseconds; a cached token counts as valid only while `expires_at` is more than 60 seconds in the future.",
+      "source": "SKILL.md:41-56, SKILL.md:122",
+      "kind": "eds",
+      "origin": "skill",
+      "verified": "https://github.com/adobe-rnd/da-auth-helper README ('Checks ~/.aem/da-token.json for a cached, non-expired token'); src/auth.js:70-72 (Date.now() >= expires_at - 60_000 → expired), :195 expires_at = Date.now() + expiresIn*1000",
+      "question": "Where does the da-auth-helper tool cache the DA/IMS token, and how should a script decide whether the cached token can still be used?"
+    },
+    {
+      "id": "DAA-004",
+      "claim": "Do not assume a fixed IMS token lifetime; read `expires_at` (derived from the IMS `expires_in`) and keep a 60-second buffer. Lifetimes from about 1 to 3 hours have been observed.",
+      "source": "SKILL.md:21",
+      "kind": "eds",
+      "origin": "skill",
+      "goal": "da-auth / da-content",
+      "skillSays": "tokens are valid for ~1 hour with a 60-second buffer (da-content SKILL.md:171 says dev tokens last 24 hours)",
+      "verified": "https://github.com/adobe-rnd/da-auth-helper src/auth.js:195 and aem-cli@16.22.16 src/content/da-auth.js:232-235 both compute expires_at from the IMS expires_in; /tmp/eds-src/pr505.diff ('lifetimes from 1 to 3 hours occur', tested by PR author). Exact lifetime unverified: depends on IMS",
+      "question": "How long does an Adobe IMS access token for DA stay valid, and how should an agent decide when it needs a new one?"
+    },
+    {
+      "id": "DAA-005",
+      "claim": "`npx github:adobe-rnd/da-auth-helper token` (or `da-auth-helper token` after `npm install -g github:adobe-rnd/da-auth-helper`) returns a token: it reuses the cached token or runs the IMS implicit-flow login in the browser, then caches the token and prints it to stdout (status messages go to stderr).",
+      "source": "SKILL.md:62-76",
+      "kind": "eds",
+      "origin": "skill",
+      "verified": "https://github.com/adobe-rnd/da-auth-helper README ('Run directly without installing: npx github:adobe-rnd/da-auth-helper token'; 'Token is printed to stdout; status messages go to stderr')",
+      "question": "What command-line tool can an agent run to get an IMS token for DA, and what does it do when no cached token exists?"
+    },
+    {
+      "id": "DAA-006",
+      "claim": "When the browser login opens, tell the user to complete the Adobe IMS login there; the token is captured automatically by a local callback.",
+      "source": "SKILL.md:78-80",
+      "kind": "workflow",
+      "origin": "skill",
+      "verified": "workflow instruction",
+      "quiz": "user-facing instruction"
+    },
+    {
+      "id": "DAA-007",
+      "claim": "A valid IMS access token is a JWT, so it starts with `eyJ`.",
+      "source": "SKILL.md:82",
+      "kind": "generic",
+      "origin": "skill",
+      "verified": "JWT header base64 of '{\"' encodes to 'eyJ' (generic)"
+    },
+    {
+      "id": "DAA-008",
+      "claim": "Fallbacks when the helper cannot run (headless, npx/GitHub blocked): use a DA MCP server's auth tool, or as a last resort ask the user to copy the `Authorization: Bearer` value (without the `Bearer ` prefix) from a da.live request to admin.da.live in DevTools.",
+      "source": "SKILL.md:84-94, SKILL.md:113-114",
+      "kind": "workflow",
+      "origin": "skill",
+      "verified": "workflow instruction",
+      "quiz": "workflow fallback order"
+    },
+    {
+      "id": "DAA-009",
+      "claim": "Verify a DA token with `GET https://admin.da.live/list/{org}/{repo}` and the Bearer header; HTTP 200 means it works.",
+      "source": "SKILL.md:96-106",
+      "kind": "eds",
+      "origin": "skill",
+      "verified": "aem-cli@16.22.16 src/content/da-api.js:110-127 (GET {daAdmin}/list/{org}/{site}{path}, 401 → 'Unauthorized: invalid or missing token'); da-auth-helper README example fetch('https://admin.da.live/list/org/repo')",
+      "question": "What cheap request confirms that an IMS token is accepted by DA for a given org and repo?"
+    },
+    {
+      "id": "DAA-010",
+      "claim": "A 401 from the DA API means the token is missing, invalid or expired (get a new one); a 403 means the signed-in user lacks permission on that org/repo/path (ask the user to check DA permissions).",
+      "source": "SKILL.md:115-116",
+      "kind": "eds",
+      "origin": "skill",
+      "verified": "adobe/da-admin@main src/index.js (anonymous user → 401; !authorized → 403), src/routes/source.js (hasPermission(..., 'read'|'write') → 403)",
+      "question": "When a DA admin API call fails with 401 versus 403, what does each status tell you and what should you do?"
+    },
+    {
+      "id": "DAA-011",
+      "claim": "Needs Node.js 18+, a browser on the machine for the OAuth flow, and network access to `ims-na1.adobelogin.com`.",
+      "source": "SKILL.md:25-29",
+      "kind": "eds",
+      "origin": "skill",
+      "verified": "aem-cli@16.22.16 src/content/da-auth.js:20 DEFAULT_DA_IMS_ORIGIN = 'https://ims-na1.adobelogin.com'; da-auth-helper opens the IMS login in the default browser (README). Node 18 minimum unverified",
+      "quiz": "setup detail"
+    },
+    {
+      "id": "DAA-012",
+      "claim": "Related skills: create-site does its own DA auth (don't call da-auth inside it); snowflake needs `$DA_TOKEN` before its round-trip phase; da-content is the reference for using the token (source API, preview/publish).",
+      "source": "SKILL.md:31-37",
+      "kind": "workflow",
+      "origin": "skill",
+      "verified": "workflow hand-off",
+      "quiz": "hand-off map"
+    },
+    {
+      "id": "DAA-013",
+      "claim": "Test content for block development and CDD on DA projects does not need da-auth: `aem content clone/add/commit/push` handles login itself.",
+      "source": "SKILL.md:34-35",
+      "kind": "workflow",
+      "origin": "skill",
+      "goal": "Test content, DA projects",
+      "skillSays": "content-driven-development — use da-auth before pushing authored content to DA; building-blocks — use da-auth if test content needs to be pushed to DA",
+      "verified": "goals.md ('no separately obtained DA token'); aem-cli@16.22.16 src/content/da-auth.js:284-301 getValidToken (--token → .hlx token file → browser login)",
+      "quiz": "workflow hand-off"
+    },
+    {
+      "id": "DAA-014",
+      "claim": "The DA Admin API reference is at https://docs.da.live/developers/api (the linked https://opensource.adobe.com/da-admin/ returns 404).",
+      "source": "SKILL.md:121",
+      "kind": "eds",
+      "origin": "skill",
+      "skillSays": "DA Admin API: https://opensource.adobe.com/da-admin/",
+      "verified": "curl https://opensource.adobe.com/da-admin/ → 404; curl https://docs.da.live/developers/api/source → 200 (Source API docs)",
+      "quiz": "link maintenance"
+    },
+    {
+      "id": "DAA-015",
+      "claim": "The same IMS token (`DA_TOKEN`) also works for the AEM API at api.aem.live, sent as `Authorization: Bearer <token>`. It is a plain IMS token, not a DA-specific one.",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "/tmp/eds-src/pr505.diff ('the same token works for both APIs', tested against a real site); adobe/da-admin@main src/utils/hlx6.js getAuthHeaders forwards the caller's IMS token as `Bearer` to https://api.aem.live/{org}/sites/{site}/source; aem-api.html components.securitySchemes.BearerToken {type: http, scheme: bearer, bearerFormat: JWT}",
+      "question": "A site's content is managed through api.aem.live instead of admin.da.live. Which credential can an agent use to call it, and how is it sent?"
+    },
+    {
+      "id": "DAA-016",
+      "claim": "api.aem.live also accepts a site API key as `authorization: token <API_KEY>` or a login cookie `auth_token` from /login; agents normally reuse the IMS Bearer token instead.",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "aem-api.html 'authentication' section: 'auth token in the response cookie (auth_token)... Alternatively, you can provide an authorization: token $API_KEY header'",
+      "quiz": "secondary auth paths; low value for recall"
+    },
+    {
+      "id": "DAA-017",
+      "claim": "Verify the token for a Source Bus site with `GET https://api.aem.live/{org}/sites/{site}/status/`; HTTP 200 means it is accepted (401 without/with a bad token).",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "aem-api.html 'get /{org}/sites/{site}/status/{path}'; pr505.diff Step 3; curl https://api.aem.live/adobe/sites/aem-boilerplate/status/ without auth → 401",
+      "question": "How can an agent check that its token is accepted by the AEM API (api.aem.live) for a specific site?"
+    },
+    {
+      "id": "DAA-018",
+      "claim": "A site's content lives in exactly one source (DA or the Source Bus); writing to the other API changes nothing the site serves.",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "pr505.diff 'Which API holds the content' (tested by author); aem-api.html site config content.source is a single oneOf (google | onedrive | markup | sourcebus)",
+      "question": "If an agent writes a page through admin.da.live for a site whose content is served from the Source Bus, what happens on the site?"
+    },
+    {
+      "id": "DAA-019",
+      "claim": "A non-empty DA listing does not prove DA is the content source: a Source Bus site can still have DA documents (e.g. boilerplate index/nav/footer from onboarding).",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "pr505.diff ('a non-empty DA listing does not prove DA is the source'); unverified independently",
+      "question": "Why is finding documents in a site's DA listing not enough to conclude that DA is where the site's content lives?"
+    },
+    {
+      "id": "DAA-020",
+      "claim": "Check before writing: if the user says the site is edited in Experience Workspace or calls it a Source Bus site, use api.aem.live; otherwise ask the user rather than inferring from which listing has documents.",
+      "source": "goals.md",
+      "kind": "workflow",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "pr505.diff workflow rule",
+      "quiz": "workflow decision"
+    },
+    {
+      "id": "DAA-021",
+      "claim": "A site config whose `content.source` has `type: \"sourcebus\"` (url `https://api.aem.live/{org}/sites/{site}/source`) is a Source Bus site; site config is readable at `GET https://api.aem.live/{org}/sites/{site}/config.json`.",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "aem-api.html schema content-source-sourcebus {type const 'sourcebus', url pattern ^https://api\\.aem\\.live/[^/?#]+/sites/[^/?#]+/source$}; 'Read Site Config' get /{org}/sites/{site}/config.json. Unverified: which role may read config, and that DA sites always show type 'markup'",
+      "question": "Where in a site's configuration can you see whether its content comes from the Source Bus, and what value marks it?"
+    },
+    {
+      "id": "DAA-022",
+      "claim": "Never echo the token or put it in a URL, a repo file, or a command shown to the user; read it from the cache file when a command needs it.",
+      "source": "goals.md",
+      "kind": "generic",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "pr505.diff; generic secret-handling practice"
+    },
+    {
+      "id": "DAA-023",
+      "claim": "`aem content` (aem-cli) runs its own IMS login (same `darkalley` client and localhost:9898 callback as da-auth-helper) and caches the token per project at `.hlx/.da-token.json` (auto-gitignored); it does not read `~/.aem/da-token.json`, but accepts a token via `--token`.",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "Test content, DA projects",
+      "verified": "aem-cli@16.22.16 src/content/da-auth.js:22 client 'darkalley', :25 CALLBACK_PORT 9898, :66-80 .hlx/.da-token.json and ignore entry .hlx/.da-token*.json, :284-301 getValidToken (override → stored file → login); da-auth-helper src/auth.js:33 'darkalley', :47 9898",
+      "question": "When an agent uses the AEM CLI's content commands for a DA project, how does it get authenticated, and where does it keep the token?"
+    },
+    {
+      "id": "DAA-024",
+      "claim": "`aem content` talks only to the DA admin API (admin.da.live, overridable via AEM_DA_ADMIN); it cannot clone or push Source Bus (api.aem.live) content.",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "aem-cli@16.22.16 src/content/da-api.js:18 DEFAULT_DA_ADMIN='https://admin.da.live', :111 /list/{org}/{site}, :192,:216 /source/{org}/{site}{path}; api.aem.live uses /{org}/sites/{site}/source/{path} (aem-api.html)",
+      "question": "Can the AEM CLI's `aem content` commands sync test content for a site whose content lives in the Source Bus? Why or why not?"
+    },
+    {
+      "id": "DAA-025",
+      "claim": "da-auth-helper and `aem content` both bind localhost:9898 for the login callback, so only one browser login can run at a time.",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "Test content, DA projects",
+      "verified": "aem-cli@16.22.16 src/content/da-auth.js:25,197-198 ('Could not start callback server on port 9898'); da-auth-helper src/auth.js:47",
+      "quiz": "edge-case troubleshooting"
+    },
+    {
+      "id": "DAA-026",
+      "claim": "Troubleshooting: content was written successfully but the page does not change → it went to DA while the site reads the Source Bus (or the reverse), or the page was not previewed.",
+      "source": "goals.md",
+      "kind": "eds",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "verified": "pr505.diff troubleshooting row; preview is separate from writing (aem-api.html: preview 'Updates the preview resource by fetching the latest content from the content providers')",
+      "question": "An agent pushed page content without errors, but the preview URL still shows the old page. What are the likely causes?"
+    },
+    {
+      "id": "DAA-027",
+      "claim": "The skill description and 'When to Use' should trigger on api.aem.live too (Source Bus content, status, preview, publish for Experience Workspace sites), not only admin.da.live.",
+      "source": "SKILL.md:3, SKILL.md:15-18",
+      "kind": "workflow",
+      "origin": "goal",
+      "goal": "da-auth / da-content",
+      "skillSays": "Use this when another step needs to call the admin.da.live API ...",
+      "verified": "goals.md; pr505.diff description",
+      "quiz": "skill trigger metadata"
+    }
+  ]
+}
