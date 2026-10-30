@@ -1,6 +1,6 @@
 ---
 name: content-driven-development
-description: Use this when making any AEM Edge Delivery Services (EDS, Franklin, Helix) code change — new blocks, block modifications, CSS styling, bug fixes, core functionality (scripts.js, styles, consented.js), or any JavaScript/CSS work that needs validation. Covers the Content Driven Development process — designing an author-friendly content model, creating test content (block library page in DA) before writing code, and validating against it through to the PR. Do not use for documentation-only changes or configuration changes that do not affect authoring.
+description: Use this when making any AEM Edge Delivery Services (EDS, Franklin, Helix) code change — new blocks, block modifications, CSS styling, bug fixes, core functionality (scripts.js, styles, consented.js or delayed.js), or any JavaScript/CSS work that needs validation. Covers the Content Driven Development process — designing an author-friendly content model, creating test content (block library page in DA) before writing code, and validating against it through to the PR. Do not use for documentation-only changes or configuration changes that do not affect authoring.
 license: Apache-2.0
 metadata:
   version: "2.0.2"
@@ -62,7 +62,7 @@ Link the library page (`/docs/library/blocks/<block>`) and any other test pages.
 - **No `--html-folder`, no DA token step.** Local test pages live in `content/` and plain `aem up` serves them. `aem content` handles DA auth (browser login, cached in `.hlx/.da-token.json`).
 - **Test pages are `.html` full documents**, not `.plain.html` files; `.plain.html` is only a URL (`<path>.plain.html` returns the `<main>` content).
 - **Section metadata is applied server-side** by the HTML pipeline: `Style` values become classes on the section, other keys become `data-*` attributes, and the section-metadata div is gone from the delivered markup. Don't parse it in `scripts.js`. If a section lacks its class, check that the section-metadata block is inside that section.
-- **Third-party scripts go in `scripts/consented.js`**, loaded by `consent-check.js` after consent. The boilerplate has no `delayed.js`.
+- **Third-party scripts go wherever `loadDelayed()` loads them:** `scripts/consented.js` if the project has `consent-check.js` (loads it only after consent; boilerplate since 2026-07-30), otherwise `scripts/delayed.js`. Never create a `consented.js` that nothing loads.
 
 ## Related Skills
 
