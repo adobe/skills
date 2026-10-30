@@ -35,7 +35,7 @@ const nonEmpty = (s) => typeof s === 'string' && s.trim().length > 0;
 const depth = (path) => path.split('.').length;
 const under = (path, prefixes) => !prefixes || prefixes.some((p) => path === p || path.startsWith(`${p}.`));
 
-function parseNormalizations(list, problems) {
+export function parseNormalizations(list, problems) {
   const norm = { lineHeightUnitless: [], letterSpacingEm: [], weightMap: [], familyEquivalence: [], fontSmoothing: [] };
   (Array.isArray(list) ? list : []).forEach((n, i) => {
     const at = `normalizations[${i}]${n?.id ? ` (${n.id})` : ''}`;

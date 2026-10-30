@@ -101,19 +101,17 @@ values.
 
 ### Screenshot trap: inner-scroll / fake-viewport donors
 
-Some donors scroll an **inner container**, not the body — app-shell
-sites, and at the extreme a whole "desktop OS" chrome where the page
-is a window inside a fake viewport (the smoke's donor did exactly
-this). `fullPage: true` sizes the shot from `body.scrollHeight`, so
-it silently collapses to one viewport and your module-evidence
-screenshots cover only the fold. Check before trusting any donor
-shot: if `document.body.scrollHeight` ≈ the viewport height while
-the page obviously continues, find the inner scroll container
-(`overflow-y: auto|scroll` with `scrollHeight > clientHeight`) and
-either scroll *it* while capturing stitched viewport slices, or
-expand its height to `scrollHeight` before a single shot. A
-fold-only screenshot poisons `donor-modules.md` — modules below the
-fold never enter the vocabulary and the mapping ratio starves.
+Some donors scroll an **inner container**, not the body (app shells,
+a whole "desktop OS" chrome). `fullPage: true` sizes the shot from
+`body.scrollHeight`, so it silently collapses to one viewport and the
+module-evidence screenshots cover only the fold, which poisons
+`donor-modules.md`: modules below it never enter the vocabulary. Check
+before trusting a donor shot: if `document.body.scrollHeight` ≈ the
+viewport height while the page obviously continues, find the inner
+scroll container (`overflow-y: auto|scroll` with `scrollHeight >
+clientHeight`) and either scroll *it* while capturing stitched
+viewport slices, or expand its height to `scrollHeight` before a single
+shot.
 
 ## 2. Local static prototypes (`--donor-dir <path>`)
 
@@ -175,21 +173,33 @@ environment only. Recipe:
    never stop; a frame Figma cannot render is recorded as not
    renderable. `--list` prints every page's top-level nodes;
    `--frames <id,…>` narrows; `--max-frames <n>` caps and lists the cut.
-   A frame or section holding only childless instances (components from
-   a remote library the REST payload did not expand) is marked
+   Changing the selection of an existing capture needs `--refresh`, a
+   second full nodes fetch. Read the source page's module markers
+   (`data-component` names) when mapping its sections onto the captured
+   frames. A frame or section holding only childless instances
+   (components from a remote library the REST payload did not expand)
+   is marked
    `hollow: true` and warned: nothing inside it is measured, and
    `curate` lists every included module on one in
    `donor-tokens.json#coverage.hollow` and flags its row; read its
    anatomy from the screenshot, or capture the library file itself.
 3. Author `reskin/curation-rules.json`, the only non-mechanical
-   input: reference pins (one frame, variable mode and breakpoint per
-   module family; § Pin one reference page), roles, normalizations,
-   curations with their proving rule, suspects, section-level modules
-   and the DESIGN prose.
+   input, from `role-candidates.json`, `module-candidates.json` and the
+   frame screenshots: reference pins (one frame, variable mode and breakpoint per
+   module family; § Pin one reference page), roles (each of the 13 probe paths
+   mapped, or marked absent with a why), normalizations,
+   curations with their proving rule, suspects, section-level modules, not
+   atoms (an included module's `id` matches `^M\d+$`: a kit whose codes are not
+   M-numbers is renumbered, its own code kept in the `name`) and the DESIGN
+   prose.
 4. `figma-donor.mjs curate` — deterministic: `donor-tokens.json`,
    `donor-modules.md`, `canon-source/DESIGN.{md,json}` and
    `_brand-extraction.json`. Re-run after any rules change.
 5. `figma-donor.mjs stamp` — `state.json.designSource`, nothing else.
+6. After Phase 4, `figma-gate.mjs` checks the page against this capture
+   (`reference/gates.md` § (d)); it reads `.work/reskin/figma/`, so
+   keep it, and the rules' `weightMap` and `familyEquivalence` apply to
+   the Figma side of its type ramp.
 
 Seven recommended role paths are optional:
 `cards.primary.background|borderRadius|padding|titleColor`,
