@@ -63,3 +63,43 @@ export default async function decorate(block) {
 
   block.replaceChildren(list);
 }
+
+=============== FILE: styles/styles.css ===============
+/* excerpt of the project's styles.css */
+:root {
+  /* colors */
+  --background-color: white;
+  --light-color: #f8f8f8;
+  --dark-color: #505050;
+  --text-color: #131313;
+  --link-color: #3b63fb;
+  --link-hover-color: #1d3ecf;
+
+  /* fonts */
+  --body-font-family: roboto, roboto-fallback, sans-serif;
+  --heading-font-family: roboto-condensed, roboto-condensed-fallback, sans-serif;
+
+  /* body sizes */
+  --body-font-size-m: 22px;
+  --body-font-size-s: 19px;
+  --body-font-size-xs: 17px;
+
+  /* heading sizes */
+  --heading-font-size-xxl: 55px;
+  --heading-font-size-xl: 44px;
+  --heading-font-size-l: 34px;
+  --heading-font-size-m: 27px;
+  --heading-font-size-s: 24px;
+  --heading-font-size-xs: 22px;
+
+  /* nav height */
+  --nav-height: 64px;
+}
+
+@media (width >= 900px) {
+  :root {
+    /* body sizes */
+    --body-font-size-m: 18px;
+    --body-font-size-s: 16px;
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "adobe/aem-edge-delivery-services",
+  "mode": "vendored",
+  "dependencies": {}
+}

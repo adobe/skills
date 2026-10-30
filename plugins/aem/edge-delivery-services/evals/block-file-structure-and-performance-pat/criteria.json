@@ -1,5 +1,5 @@
 {
-  "context": "Tests whether the agent follows AEM EDS block file structure conventions and performance optimization patterns. Covers correct directory/file naming with kebab-case, lazy loading with IntersectionObserver, deferred heavy operations, dynamic imports for conditional modules, and proper use of aem.js utilities.",
+  "context": "Tests whether the agent follows AEM EDS block file structure conventions and performance optimization patterns. Covers correct directory/file naming with kebab-case, lazy loading with IntersectionObserver, deferred loading of heavy third-party code, and leaving aem.js untouched.",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -28,24 +28,14 @@
       "description": "The synchronous/immediate part of decorate() does minimal work (e.g., adds placeholder UI or initializes observer) rather than eagerly fetching data or building complex DOM"
     },
     {
-      "name": "Dynamic import for heavy module",
+      "name": "Deferred load of heavy script",
       "max_score": 12,
-      "description": "Any heavy or conditionally needed JavaScript module (e.g., a third-party player library or complex renderer) is loaded via dynamic `import()` inside the observer callback or conditional branch, NOT as a top-level static import"
-    },
-    {
-      "name": "aem.js imports with .js extension",
-      "max_score": 8,
-      "description": "Any import from `scripts/aem.js` uses the full relative path with `.js` extension: `import { ... } from '../../scripts/aem.js'`"
+      "description": "The heavy third-party player code (e.g., the YouTube iframe API) is loaded on demand inside the observer callback or conditional branch, via `loadScript()` from `scripts/aem.js`, a dynamic `import()`, or an injected script tag, NOT eagerly at decorate time or via a top-level static import"
     },
     {
       "name": "aem.js not modified",
       "max_score": 8,
       "description": "The solution does NOT modify or overwrite `scripts/aem.js`; it only imports from it"
-    },
-    {
-      "name": "async decorate function",
-      "max_score": 7,
-      "description": "The decorate function is declared with the `async` keyword (since it awaits operations or performs async logic)"
     },
     {
       "name": "Default export decorate",
