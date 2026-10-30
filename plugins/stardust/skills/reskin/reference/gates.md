@@ -20,13 +20,17 @@ siblings of `../reskin/`.
 
 - `skills/reskin/scripts/` → `reskin/`, recursively except `test/` (`deployed/`, `figma/`, `figma-gate/` and `render/`
   travel with it).
-- `skills/stardust/scripts/state.mjs` → `stardust/` (`figma-donor.mjs stamp` writes through it).
+- `skills/stardust/scripts/state.mjs` → `stardust/` (`figma-donor.mjs stamp`, `stream-render --register` and the
+  canon bridge write through it).
 - `skills/diff/scripts/` → `diff/`, all of it.
 - `skills/replica/scripts/` → `replica/`: `pixel-compare.mjs`, `run-capped.mjs`, `run-bg.mjs`, `stitch-shot.mjs`,
   `crop-compare.mjs`, `chrome-parity.mjs`, `cap-probe.mjs` (`pixel-compare` and `run-bg` import `run-capped`;
   `stitch-shot`, `chrome-parity` and `cap-probe` need `diff/live-session.mjs`).
 - `skills/deploy/scripts/` → `deploy/`: `eds-path.mjs`, `qa-gate.mjs` (finds `replica/cap-probe.mjs`),
   `ai-readability.mjs`: what `deployed-gate.mjs` resolves.
+- `skills/prototype/fixtures/mobile-nav-audit.mjs` → `prototype/`: `reskin-ledger.mjs record` runs it as the runtime
+  mobile-adapt check; without it that check is `NOT-RUN`, which blocks the archetype until a residual is accepted.
+  (`canon-from-reskin.mjs`'s visual record uses `replica/stitch-shot.mjs` and `pixel-compare.mjs`, listed above.)
 
 Every gate script (`capture-content`, `dom-equality`, `donor-probe`, `slot-coverage`) needs `diff/live-session.mjs`
 and exits 2 without it, even for a local file; only `capture-content` also fails `--help`.
@@ -60,75 +64,98 @@ executed identically by `capture-content.mjs` and this gate: hidden
 by style → out; rendered above 1×1px → in (tracking pixels are not
 content); `loading="lazy"` and still zero-size → in. One definition,
 two callers — capture and gate cannot drift on image counts.
-(3) **image crop** (§ Image crop below): no rendered image shows
-more than `--crop-tolerance` points (default 10) less of its own
-area than the source shows of it.
+(3) **disclosure rest state**: the collapsed and open disclosures in
+scope (`aria-expanded`, `<details>`, `hidden="until-found"`, the shared
+`DISCLOSURE_STATE` in `source-normalize.mjs`) are counted on both sides
+**before** the ledger runs. A source that starts any collapsed against a
+render that starts none collapsed FAILS: a ledger entry that expands
+accordions is capture-only and never makes the delivered block start
+open. The rendered side then runs `REVEAL_DISCLOSURES` (opens `<details>`,
+unhides `hidden="until-found"`) before its text is read, so a correctly
+collapsed panel is still measured; a panel hidden any other way
+(`display:none` on a class) stays unread and fails (1). `slot-coverage`
+and `figma-text-gate` run the same reveal. A page whose redesign starts
+every disclosure open says so in its deltas file:
+`"disclosures": { "restState": "open", "why": "…" }`.
+(4) **image crop** (§ Image crop below): every rendered image shows
+the area of it the source shows: at most `--crop-tolerance` (default
+10%) of what it shows lies outside the source's region, and an
+off-centre anchor the source sets is kept.
 **Informational only:** element count and tag+class
 sequence — a reskin re-structures markup by design; a tag-sequence
 divergence at position 0 is expected and healthy.
 
 #### Image crop
 
-A donor frame has a fixed shape: a Figma Text + Image frame is
-574×324, a card's media 367×220, and the geometry gate (d) holds a
-render to those sizes. The kit's placeholder already has the frame's
-shape; a content image rarely does, and `object-fit: cover` fills
-the frame by trimming the rest. A square portrait in a 574×324
-frame loses 44% of its area. No other check sees it: the image is
-present, in order, with its alt text and the frame's width. So the
-gate measures, on both sides, the fraction of each image's own
-pixels its box shows: object-fit (`cover` trims, `none` draws at
-natural size, `fill` / `contain` / `scale-down` draw everything)
-times the share any clipping ancestor (overflow other than
-`visible`) leaves. That is `source-normalize.mjs` `IMG_CROP`, one
-definition run on both pages. Images pair by order, so the check
-runs whenever the counts agree, with or without `deltas.images`
-(a preview's media-bus srcs still pair one to one); a lazy image
-that never loaded is unmeasured, never failed. The source's own
-crop is the floor, not a target: a render that shows more passes.
-A failure names each image, both fractions and the rendered box.
+A donor frame has a fixed size: a Figma Text + Image frame is
+574×324, a card's media 220px high, and the geometry gate (d) holds
+a render to it. The frame stays; what must match the source is
+**which area of the image it shows**. A content image rarely has the
+frame's shape, so `object-fit: cover` crops it, and the source
+crops it too, often off-centre: a component's `object-position`
+(social post cards `50% 30%`, media cards `50% 0%`). A centred
+crop then shows a part the source cut away (the middle of a post
+the source frames at its upper third), and no other check sees it:
+the image is present, in order, with its alt text and the frame's
+width.
 
-Fix the frame, not the image; the kit's placeholder already has the
-frame's shape, so it still renders the frame exactly:
+So the gate measures, on both sides, the region of each image's own
+pixels its box shows: object-fit and object-position place the
+drawn image, clipping ancestors (overflow other than `visible`)
+narrow the box (`source-normalize.mjs` `visibleRegion` / `IMG_CROP`,
+one definition run on both pages). Images pair by order, so the
+check runs whenever the counts agree, with or without
+`deltas.images`, and only images of the same shape pair (natural
+ratios within 2%): a live feed that re-orders between capture and
+gate leaves the pair unpaired, reported, never judged. A rendered
+image fails when more than
+`--crop-tolerance` (default 10%) of its region lies outside the
+source's (per axis: where the rendered window is the larger one, it
+must contain the source's, since a wider donor frame necessarily
+shows more width), or when the source anchors it off-centre vertically, the
+render crops it top and bottom, and the render's position is more
+than 15 points from the source's (the designer's anchor holds even
+where the source's own box shows the whole image). A smaller frame
+inside the source's area passes; so does any position where the
+source shows the whole image and sets no anchor. How much of the
+image shows is reported, never gated: a donor frame may be tighter.
+A lazy image that never loaded is unmeasured, never failed. Each
+failure names the `object-position` that puts the rendered window on
+the source's area.
 
-- **One image in a slot** (text + image, a banner): the image keeps
-  its own ratio (`height: auto` over the `width`/`height` attributes
-  EDS delivers), capped at a 2:3 portrait (`max-height: 150cqi` on a
-  `container-type: inline-size` media cell), `cover` only past the
-  cap. A square cap still cut a 2:3 staff portrait to 66% of a
-  source that showed all of it.
-- **A grid** (cards): one frame for the grid only when its images
-  share a shape: every image's ratio within 10% of the median's, the
-  frame at the median image's `width`/`height` in whole pixels
-  (`round(calc(100cqi * h / w), 1px)`; a fractional height shifts
-  every later section by a sub-pixel and costs pixel fidelity below
-  it). Rows stay aligned and no image loses more than ~9%, inside the
-  tolerance. A grid of mixed shapes, or one whose image sizes are
-  unknown (no attributes), lets each image keep its own ratio. A
-  single frame for a mixed grid fails: a median frame cut a home
-  page's wide 736×400 tiles to 80% and a house page's portraits to
-  66–73% of what the source showed.
-- `object-position` only moves a crop, it never shrinks one: it
-  does not pass this check.
-- The Figma gate's image-**height** geometry entries assert the
-  placeholder's frame on content images: drop them for a content
-  image frame and waive its node with this section as the why; keep
-  its width entries, and give a section left with no geometry a
-  shape-independent entry (the image-to-text `gapY`).
+Keep the frame; move the crop:
 
-Measured on a 52-page school site reskinned to a Figma kit: 58 of
-201 images cut more than the source on 18 pages before, 0 of 199
-after; Figma gate PASS on its 4 archetypes; pixel fidelity
-unchanged on desktop. Figma's own mobile frames crop their
-placeholders (card 375×188 against a 5:3 image), so a content-shaped
-frame scores lower there (card 93.5% → 83.0%, text + image 95.3% →
-93.8%): a design trade-off to state, not to hide. The same rule
-holds for the EDS blocks the deploy leg ships: the deployed content
-gate runs this check on the preview. Test it against the preview's
-HTML: `aem up` serves images without the `width`/`height`
-attributes, so a block that reads them takes its fallback there. A
-crop the design truly needs is a residual with its cause, never a
-raised `--crop-tolerance`.
+- **Carry the source's position.** Read it from the source
+  (`getComputedStyle(img).objectPosition` of each content image, or
+  the failure's Fix column). In EDS, a block whose images share a
+  position takes it as an authorable option: `Cards (focus-upper)`
+  for `50% 30%`, `Cards (focus-top)` for `50% 0%`, centre by default;
+  the block CSS sets `object-position` per option. In the reskin
+  renderer, the same position on each image.
+- **A source that shows the image whole** sets no area to keep, but
+  the donor frame must crop it: put the window in the upper third
+  (`50% 30%`; the convention sources use for photo cards) so a
+  portrait keeps the head. A centred 16:9 crop of a square portrait
+  cut the top of the head off; the gate cannot see faces, so this is
+  the rule, not a check.
+- **Never grow the frame to show the whole image**: it breaks the
+  donor's image-to-text proportions; the Figma geometry gate (d)
+  holds the frame size, this check holds the area inside it.
+- Pixel fidelity is unchanged: the frames keep the donor's size.
+
+Measured on a 52-page school site reskinned to a Figma kit: the
+source framed 74 of 213 images off-centre (62 at `50% 0%`, 12 at
+`50% 30%`); centred crops showed the wrong area of 40 images on 5
+pages (social posts, media cards). Carrying the source's position as
+a block option (27 blocks on 19 pages) took that to 0 of 192, with
+the frames unchanged. `--crops-out <json>` writes both sides'
+framing per image: the source's is what a renderer or the DA
+conversion copies. The gate waits (up to 8 s) for images to finish
+loading before it measures; one that never loads stays unmeasured. The same
+rule holds for the EDS blocks the deploy leg ships: the deployed
+content gate runs this check on the preview. A crop the design truly
+needs elsewhere is a residual with its cause, never a raised
+`--crop-tolerance`.
 
 Two invariants or the run measures nothing: `--source-scope` is
 byte-identical to the capture's `_provenance.scope`, and
@@ -219,6 +246,68 @@ Defenses, in order:
   broken *now*, in the gated artifact (see § Failure modes,
   Hotlinked source images).
 
+### figma-text-gate.mjs — content gate for Figma-sourced pages
+
+A Figma-sourced page has no source DOM, so `dom-equality` cannot run. The Figma text gate replaces it:
+
+```bash
+node stardust/scripts/reskin/figma-text-gate.mjs \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --rendered stardust/reskin/pages/<slug>.html \
+  --report stardust/reskin/gates/<slug>/figma-text.json
+```
+
+`--rendered` is the page `stream-render` wrote; `--report` is the JSON `reskin-ledger.mjs record` reads
+as the page's content gate (`verdict` PASS | FAIL) when no `dom-equality` report exists — do not write it
+to `reports/<slug>-content-gate.md`, the dom-equality path `record` reads first.
+
+The reference is every effectively-visible TEXT node of the frame's body sections, in reading order and
+rendered case, re-read from the cached nodes response — never from the model it checks. Each string must
+appear exactly once, in order, in `<main>` innerText; drawn-field placeholders must appear as
+`placeholder` attributes. Findings: missing, order, case (TITLE is caseless: CSS `capitalize` is not
+Figma TITLE), duplicate, extra. `text-ops.json` beside the model declares what not to expect. PASS only
+with zero findings; exit 0 / 1 / 2 (setup). Run `slot-coverage.mjs --deltas reskin/deltas/<slug>.json`
+beside it: `figma-donor.mjs content` seeds that file (the deployed leg's schema, `deployed/deltas.mjs`)
+with `metadata.absent: [description, canonical]`, asserted not carried; the model's empty OG/Twitter
+maps and JSON-LD list make the gate expect none, and images keep the host+path comparison.
+
+## (a′) Source coverage
+
+Every gate above compares the target with the captured model, so what the
+capture did not observe is invisible to all of them and its loss passes.
+`source-coverage.mjs` gates the three blind spots — space, time, attribute —
+against the local reskin page (Phase 5) and again on the aem.page preview
+(after (e)'s `preview`), where page chrome and client-rendered blocks exist.
+
+| Check | Reads | Bar |
+|---|---|---|
+| S1 residue carried | `residue[]` (not `chrome`) | each region ≥ `--min-chars` (20): one target element outside header/footer, ≤ 3× its text, holds ≥ 60% of its text lines — else declared, else **FAIL**; shorter regions are `info` |
+| S2 settled | `_provenance.settle` | missing (pre-0.40 model) or `stable: false` is **WARN**: re-capture; never fails; `n/a` on a Figma-sourced model (`_provenance.source.kind: figma`: no settle step) |
+| S3 tone carried | `sections[].tone` | a `dark` slot's first heading (else text) sits on a dark background in the target — else declared, else **FAIL** (also when the probe text is gone); `tinted` → other is WARN; `page` is not checked |
+
+The target is settled the same way as the source (scroll, then text stable
+3 × 500 ms, ≤ 15 s) before it is measured. Declared drops,
+`stardust/reskin/coverage/<slug>.json`:
+
+```json
+{ "version": 1,
+  "residue": [ { "match": "<substring of the sel or the first line>", "why": "…" } ],
+  "tones":   [ { "slot": "s01", "to": "tinted", "why": "donor hero module is a light band" } ],
+  "blocking": true }
+```
+
+Every entry needs a `why`; an unknown key, a bad slot id or tone is exit 2,
+every problem listed. `"blocking": false` reports FAILs as ADVISORY (exit 0).
+Exit 0 PASS, 1 FAIL, 2 setup (a protected preview, 401 or 403, is out of scope).
+
+**Why it exists.** A 52-page school-site migration passed every content gate
+while the deployed pages had no breadcrumb or section sidebar (outside
+`main`, so never in the model), no Facebook posts on the home page (rendered
+by XHR after the capture read the page) and light bands where the source's
+callouts were dark (tone was a mapping judgment nothing measured). (a′)
+FAILs all three on the original render, PASSes the fixed preview, and PASSes
+a declared hero change.
+
 ## (b) Design-adoption gate
 
 ### donor-probe.mjs — computed-style token assertions
@@ -249,14 +338,23 @@ trimmed padding overrides and would fail the button spec spuriously).
 A renderer that breaks a convention fails the probe with
 `selector matched nothing` — a missing selector is a **FAIL, not a
 skip**, because silent skips fake passes. A token path absent from
-`donor-tokens.json` is a reported SKIP.
+`donor-tokens.json` is a reported SKIP. The one content-aware
+exception: with `--model <content-model.json>`, spec entries marked
+`"needs": "button"` (the default `main .btn` entries) are a reported
+SKIP when the page's content has nothing the renderer turns into a
+button (`stream-render.mjs` `rendersButton`: a cta with a button class
+or captured `buttonLike`,
+a submit/button control, text inside a `<button>`). The decision reads
+the source content, not the rendered page, so a renderer that drops a
+real button still fails.
 
-One default-spec blind spot: when the source's only h1 is visually
-hidden (an sr-only landmark), the `main h1` display-weight assertion
-holds a token on an **invisible** element and says nothing about the
-page's display face. Add a `--spec` entry asserting the display tokens
-on the element that renders as the display headline (the hero h2,
-typically).
+One default-spec blind spot: when the source's only heading is visually
+hidden (an sr-only landmark), the display-weight assertion (the first
+`h1`–`h3` in `main`; the heading colour takes the first heading of any
+level, since form pages often carry no h1/h2) holds a token on an
+**invisible** element and says nothing about the page's display face.
+Add a `--spec` entry asserting the display tokens on the element that
+renders as the display headline (the hero h2, typically).
 
 #### Tolerances
 
@@ -375,8 +473,7 @@ raises the share; `summary.json` and the fragment record it.
   family, or a generic one). A declared family rendered from a fallback is
   `UNSERVED` (`declared Inter, served fallback`): no PASS, no FAIL, left
   out of `ramp PASS n/n` and counted as `(j unserved)`; log each as a
-  `font.unserved` residual (`accepted` when the donor supplies no font
-  files, `needs-owner` when the licensed font is meant to be served).
+  `font.unserved` residual (§ Unserved donor font).
 - **Conflicts.** `conflict` is a Figma text colour below WCAG contrast (4.5, 3
   for large text) in a root the section's checks name, its alpha composited over
   the solid ground behind it; gradient and image grounds are skipped. A
@@ -396,7 +493,7 @@ raises the share; `summary.json` and the fragment record it.
 page and the donor, on `https://<branch>--<repo>--<org>.aem.page`.
 Recipe, delta file, ledger, fix budget: `deployed-leg.md`; command
 lines: SKILL.md Phase 5 (e); flags, evidence, exit codes:
-`deployed-gate.mjs --help`. `content`, `tokens`, `sanity` and `figma` first
+`deployed-gate.mjs --help`. `content`, `tokens`, `sanity`, `chrome` and `figma` first
 settle the EDS decoration (`body.appear`, every section and block `loaded`,
 within 20 s) and name a stall; in `all` a stall is that step's FAIL and the
 run goes on. `parity`'s captures wait a fixed 3 s instead, and `inherited`
@@ -404,11 +501,12 @@ fetches `.plain.html` without a browser.
 
 | Step | Class | Asserts | Bar |
 |---|---|---|---|
-| `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas` | both exit 0; unused deltas warn |
+| `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas`; a Figma-sourced model runs `figma-text-gate` in place of `dom-equality` | both exit 0; unused deltas warn |
 | `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom; with the page's Figma checks file a kit pads per module, so those rows are a SKIP and the `figma` step's geometry holds each section to its module), every `:root` token verbatim, with the optional `--card-bg`, `--card-radius`, `--card-padding`, `--card-title-color`, `--button-height`, `--section-padding-mobile`, `--gutter-mobile` when the sheet carries `cards.primary.*`, `buttons.primary.height`, `layout.mobile.*` (the probe runs at 1440 only: the mobile ones are asserted as `:root` values) | exact, first font family only (a font declared but not served is an `ADVISORY tokens font.unserved` line, left out of n, never a FAIL); sections ±16px; container width is `parity`'s cap row |
 | `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height; per section (`section[data-slot]` paired in order with non-empty `main > .section`) the worst Δh ≤ 10% of its height, n/a when the counts differ; a header or footer the reskin page lacks left out of the preview's capture; on a `--sandbox` preview a header or footer `mapping.md` maps no chrome row to is the boilerplate's own: hidden on both sides, its crop n/a and recorded (`parity.json` `ignored`); header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
 | `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a page answering HTTP 400 or more is no verdict (exit 124), never a pass |
 | `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0 on the inputs there are, a missing one (`eds-schema/<slug>.json`, `design.json`) being a FAIL row `incomplete: no …`, never `n/a`. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
+| `chrome` A6 | **hard**, as `sanity`; a header/footer residual (`step10.header`, …) is accepted only `--by` the site owner | at 1440 and 360 the `<header>` and `<footer>` against `mapping.json` `chrome` and its model (ctas, `iconLinks`, images, footer text) | present and decorated; a logo ≥ 16px when mapped; header ≤ 240px closed, covering main ≤ 4px, band above it ≤ 48px; every mapped link rendered and visible (at 360 a toggle shows the hidden ones); no icon-font ligature word as text; every mapped footer text. No chrome in the mapping: those rows `n/a`; a mapped slot empty in the model is exit 2 |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
 - **Protected preview.** Out of scope: the preview must be reachable without
@@ -431,6 +529,61 @@ fetches `.plain.html` without a browser.
   FAIL. Evidence goes to `gates/<slug>/figma-preview/`, so a local run's
   `figma/` survives it.
 - **No verdict, exit 3.** As (d); the budget is in `deployed-leg.md`.
+
+## (f) Exact fidelity (Figma-only sites)
+
+On a Figma-only site the design *is* the page: content and layout come from the same frames, so the
+measure is the frame itself, not a donor's look. B2 stays advisory for donor reskins; (f) is the
+blocking pixel gate for `flowSource: "figma-only"`, run after (d) and before (e).
+
+`figma-donor.mjs renders <url>` fetches the references once (Figma's own PNG render of every page
+breakpoint frame and of every variant of every kit block, used or not) into
+`reskin/figma-renders.json`; both steps then run offline.
+
+| Step | Unit | Asserts | Bar (default) |
+|---|---|---|---|
+| `figma-gate.mjs exact --page <slug> --url <page>` | page × breakpoint frame | full-height screenshot in a viewport of the frame's width × height (a frame is a screen: 100vh layouts and frames shorter than a laptop screen measure true) against the frame PNG | differing-pixel share ≤ `--bar` 3 %, \|height Δ\| ≤ `--height-tol` 8 px |
+| `figma-gate.mjs library --url-pattern <…/{page}>` | block × variant | `[data-kit-component="<variant id>"]` on the block's library page (its `.<EDS block>`; the whole element for default content) against the variant PNG | share ≤ `--bar` 3 %, \|width Δ\|, \|height Δ\| ≤ `--size-tol` 2 px |
+
+- **The library is the whole kit.** Every block in `figma-pages.json` `kit.blocks` has a library page
+  (deploy's `/library/<page>`: `figma-renders.json` `library.<key>.eds.page`, the EDS block
+  [`deploy` Step 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code) names it — Teaser → `/library/cards`;
+  `{block}` in `--url-pattern` is the kit key; `--out` moves the report) showing every variant of every public set, with the variant's copy
+  (`figma-renders.json` `texts`), one section per variant carrying `data-kit-component`. A missing
+  variant, or a library page that does not load, is FAIL, so an unused block cannot be skipped.
+- **Transparent reference pixels** (a frame or variant with no fill) are composited onto white before
+  comparing, as the browser paints them; alpha is never a difference.
+- **Similarity** is 100 − the mean differing-pixel share over the compared rows, per page, per block
+  and overall; the report quotes it beside the PASS/FAIL count, never instead of it.
+- **Residuals.** Font rasterisation and anti-aliasing differ between Figma's renderer and Chromium;
+  the default bar leaves room for that and nothing more. A row over the bar is one fix iteration
+  (§ below), then a residual with its diff PNG under `.work/reskin/gates/<slug>/exact/` or
+  `.work/reskin/gates/_library/`. Raising `--bar` is recorded in `direction.md` as a named deviation.
+- **Unserved donor font.** `exact` also probes whether the donor's families (`donor-tokens.json`
+  `type.family`, `type.*.fontFamily`) render on the page; a FAIL while one does not is `font.unserved`
+  (below).
+
+### Unserved donor font (`font.unserved`)
+
+One cause name for a font the donor declares and the page renders from a fallback (no loaded
+`@font-face` covering the weight and style, not installed, not generic). Every gate that sees it says
+so instead of passing silently:
+
+| Gate | Shows it as | Verdict effect |
+|---|---|---|
+| `donor-probe` / deployed `tokens` (A2) | status `UNSERVED`, `ADVISORY tokens font.unserved: …` | none: left out of n, never a FAIL |
+| figma `ramp` (B3) | `UNSERVED` (`declared Inter, served fallback`), `(j unserved)` | none: neither PASS nor FAIL |
+| figma `pixel` (B2) | `served: false` per font | advisory |
+| `figma-gate exact` (f) | the row's `why`, `summary.json` `fonts.unserved`, `ledgerFragment.cause` | a FAIL stays blocking (`gates.exact`) until the residual is accepted: Figma rasterises the licensed font, the page a fallback, and heading glyphs alone exceed 3 % |
+
+Record it once per gate: `reskin-ledger.mjs residual <slug> --gate <exact | figma.ramp | figma.pixel |
+deployed.tokens> --cause font.unserved --verdict accepted|needs-owner` — `accepted` when the donor
+supplies no font files (an agent may accept it: it is not chrome), `needs-owner` when the licensed font
+is meant to be served. On `exact` the ledger refuses `accepted` unless the recorded `gates.exact`
+evidence names `font.unserved`; check the diff PNG shows glyph shapes, not layout. Serving the font
+clears it.
+- Exit codes are figma-gate's: 1 a FAIL row, 2 usage (no `figma-renders.json`), 124 a comparison
+  past its deadline (re-run once).
 
 ## One fix iteration per gate family, then residuals
 
@@ -469,24 +622,30 @@ budget would push independent cheap fixes into residuals.
 ```
 
 A Figma residual also carries `class` (`figma.join` | `figma.geometry` |
-`figma.ramp` | `font.unserved`, an UNSERVED ramp result or tokens line); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
+`figma.ramp`); an unserved font is the cause `font.unserved` on its gate (§ Unserved donor font); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
 each names the gate, the check, and a human-readable verdict (`accepted` | `needs-owner` |
 `blocked`). The Phase 6 handoff report lists every residual and flag.
 
 ## Failure modes
+
+- **The reference was smaller than the page.** A region beside the scope
+  (sidebar, breadcrumb), a block rendered after the capture read the page,
+  or a band tone the mapping recoloured — no byte gate can see these,
+  because they compare against the model. (a′) `source-coverage.mjs`.
 
 - **Content-root drop (the top one).** Byte equality "passes" against
   an incomplete reference because the scope missed content (the 30%
   drop). Defense: the scope-discovery procedure + coverage line
   (`reference/content-model.md` § Scope discovery) runs *before*
   rendering; the gate inherits the verified scope verbatim.
-- **Fixed donor frame crops the content.** A Figma image height
-  (Text + Image 324px, card media 220px) applied with
-  `object-fit: cover` cut a square principal's portrait to 56% of
-  its area, where the source showed 96%; every other gate passed.
-  Defense: the content gate's image-crop check (§ Image crop): a
-  single image keeps its ratio under a cap; a grid shares one frame
-  only when its images share a shape.
+- **The donor frame crops the wrong area.** A Figma image frame with
+  `object-fit: cover` crops from the centre; the source framed its
+  social post cards at `50% 30%` and its media cards at `50% 0%`, so
+  the render showed the parts the source cut away; every other gate
+  passed. Defense: the content gate's image-crop check (§ Image crop),
+  and carry the source's `object-position` (a block option in EDS).
+  Growing the frame to show whole images is not a fix: it broke the
+  donor's image-to-text proportions.
 - **Carousel nondeterminism.** Rotating carousels make source text
   capture time-dependent (hidden slides absent, clones duplicated).
   Defense: `N-D2` de-carousel in the shared ledger, applied

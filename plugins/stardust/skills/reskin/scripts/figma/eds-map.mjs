@@ -143,3 +143,42 @@ export function resolveVariants(entries) {
     return out;
   });
 }
+
+/** edsLabel's inverse: "cards (teaser)" → { block: 'cards', variant: 'teaser' }, "default content" → { block: null }, else null. */
+export function parseEdsLabel(label) {
+  const s = String(label ?? '').replace(/[`*_]/g, '').trim().toLowerCase();
+  if (s === 'default content') return { block: null, variant: null };
+  const m = /^([a-z][a-z0-9-]*)(?:\s*\(([a-z0-9-]+)\))?$/.exec(s);
+  return m ? { block: m[1], variant: m[2] ?? null } : null;
+}
+
+/**
+ * donor-modules.md → Map(module id → { block, variant }): its EDS block column, else deploy Step 2 on the
+ * module's name (a donor-modules.md written before the column). Excluded rows ("—") are absent.
+ */
+export function donorModulesEds(md) {
+  const out = new Map();
+  let head = null;
+  for (const line of String(md ?? '').split('\n')) {
+    if (!line.trim().startsWith('|')) { head = null; continue; }
+    const cells = line.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').replace(/[`*_]/g, '').trim());
+    if (!head) { head = cells.map((c) => c.toLowerCase()); continue; }
+    const id = cells[head.indexOf('#')] ?? cells[0];
+    if (!/^M\d+$/.test(id ?? '')) continue;
+    const col = head.indexOf('eds block');
+    const name = cells[head.indexOf('module')] ?? '';
+    const eds = col >= 0 ? parseEdsLabel(cells[col]) : edsEquivalent(name);
+    if (eds) out.set(id, { block: eds.block, variant: eds.variant ?? null });
+  }
+  return out;
+}
+
+// A block EDS already has (boilerplate or Block Collection): one a page section may map to without a kit block.
+export const isEdsBlock = (block) => BOILERPLATE.includes(block) || BLOCK_COLLECTION.includes(block);
+
+// The library page /library/<page> a kit block is shown on: its EDS block (several kit blocks on one EDS block
+// share the page), or the kit key for default content (shown as plain sections).
+export const edsPage = (eds, key) => (eds?.block ?? key);
+
+// Binding classes: the EDS variant first, then the kit's own classes, without repeats.
+export const edsClasses = (eds, classes = []) => [...new Set([eds?.variant, ...classes].filter(Boolean))];

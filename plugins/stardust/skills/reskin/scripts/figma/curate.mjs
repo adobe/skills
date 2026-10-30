@@ -53,6 +53,25 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
       curated: { from: typeof prev === 'string' ? prev : null, rule: c.rule, evidence: c.evidence },
     };
   }
+  // Display alignment: not an authored role — the majority textAlignHorizontal (by characters) of the
+  // typography record the display role resolved to. An explicit role, curation or absent wins.
+  const displayRef = Object.entries(nodeRefs).find(([k]) => k.startsWith('type.display.'))?.[1];
+  const displayRec = displayRef && Object.values(foundation.typography || {}).find((t) => t.node === displayRef.node && t.align);
+  if (displayRec && getPath(tokens, 'type.display.textAlign') === undefined && !r.absent.some((a) => a.path === 'type.display.textAlign')) {
+    const [align] = Object.entries(displayRec.align).sort(([, a], [, b]) => b - a)[0];
+    setPath(tokens, 'type.display.textAlign', align);
+    nodeRefs['type.display.textAlign'] = { node: displayRec.node, figma: { textAlignHorizontal: displayRec.align }, via: 'rest', derived: 'majority by characters' };
+  }
+  // Header menu placement: not an authored role either — the majority align of the desktop frames'
+  // header rows (foundation.mjs headerRowOf). An explicit role, curation or absent wins.
+  const headerRows = (moduleCandidates.frames || []).flatMap((f) => f.headerRows || []);
+  if (headerRows.length && getPath(tokens, 'layout.navAlign') === undefined && !r.absent.some((a) => a.path === 'layout.navAlign')) {
+    const tally = {};
+    for (const h of headerRows) tally[h.align] = (tally[h.align] || 0) + 1;
+    const [align] = Object.entries(tally).sort(([, a], [, b]) => b - a)[0];
+    setPath(tokens, 'layout.navAlign', align);
+    nodeRefs['layout.navAlign'] = { node: headerRows.find((h) => h.align === align).node, figma: { headerRows: tally }, via: 'rest', derived: 'majority of desktop header rows' };
+  }
   const smoothing = r.norm.fontSmoothing.at(-1);
   if (smoothing) tokens.type.fontSmoothing = smoothing.params.value;
 

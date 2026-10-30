@@ -45,10 +45,11 @@ function git(args, { cwd, input } = {}) {
   return r;
 }
 
-export function assertIgnored(outputs, { dir = 'stardust', cwd = process.cwd(), namespaces = [] } = {}) {
+// The outputs git would track (with the namespaces' tracked files). Throws only when git cannot answer.
+export function exposedOutputs(outputs, { dir = 'stardust', cwd = process.cwd(), namespaces = [] } = {}) {
   const wanted = new Map(outputs.map(([rel, line]) => [join(dir, rel), line]));
   const spaces = namespaces.map(([rel, line]) => [join(dir, rel), line]);
-  if (!wanted.size && !spaces.length) return;
+  if (!wanted.size && !spaces.length) return [];
   // ls-files prints paths relative to cwd, whatever form --dir took.
   const key = (p) => relative(cwd, resolve(cwd, p));
 
@@ -76,8 +77,20 @@ export function assertIgnored(outputs, { dir = 'stardust', cwd = process.cwd(), 
     const space = spaces.find(([p]) => path.startsWith(`${key(p)}/`));
     if (space && !listed.has(path)) exposed.push({ path, line: space[1], tracked: true });
   }
+  return exposed;
+}
+
+// The .gitignore lines still missing for later steps (capture → curate), so one edit covers the pipeline.
+export function laterLines(later, opts = {}) {
+  return later?.length ? [...new Set(exposedOutputs(later, opts).map((t) => t.line))] : [];
+}
+
+// later: outputs of the steps that follow (capture passes CURATE_OUTPUTS) — their missing lines join the
+// refusal, so the user fixes .gitignore once instead of once per step.
+export function assertIgnored(outputs, { dir = 'stardust', cwd = process.cwd(), namespaces = [], later = [] } = {}) {
+  const exposed = exposedOutputs(outputs, { dir, cwd, namespaces });
   if (!exposed.length) return;
-  const lines = [...new Set(exposed.map((t) => t.line))];
+  const lines = [...new Set([...exposed.map((t) => t.line), ...laterLines(later, { dir, cwd })])];
   const trackedPaths = exposed.filter((t) => t.tracked).map((t) => t.path);
   throw new UsageError([
     `--confidential: ${exposed.length} output(s) would be tracked by git: ${exposed.map((t) => t.path).join(', ')}.`,
@@ -86,3 +99,10 @@ export function assertIgnored(outputs, { dir = 'stardust', cwd = process.cwd(), 
     ...(trackedPaths.length ? [`Already tracked, so .gitignore alone will not do: git rm --cached -- ${trackedPaths.join(' ')}`] : []),
   ].join('\n'));
 }
+
+// content (Figma-only, --confidential): the model holds the design's copy and the assets its images.
+export const contentOutputs = (slug) => [
+  [`reskin/content-model/${slug}/content-model.json`, 'reskin/content-model/'],
+  [`reskin/content-model/${slug}/assets/x.png`, 'reskin/content-model/'],
+  ['reskin/content-model/_chrome/content-model.json', 'reskin/content-model/'],
+];
