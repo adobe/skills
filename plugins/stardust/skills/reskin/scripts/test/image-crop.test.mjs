@@ -100,6 +100,10 @@ check('compareRegions: an unpaired image still keeps the source component\'s anc
   const r = compareRegions([side(reg(1080, 1920, 368, 200, 'cover', 30), '50% 30%', 'cover', '1080x1920')], [side(reg(720, 1000, 367, 220, 'cover'), '50% 50%', 'cover', '720x1000')]);
   assert.deepEqual([r.pass, r.unpaired, r.wrong[0].fix, r.wrong[0].inside], [false, 1, '50% 30%', null]);
 });
+check('compareRegions: a fill render clipped by a rounded container keeps no anchor to keep', () => {
+  const src = reg(750, 500, 368, 300, 'cover', 0); const rnd = [0, 0.004, 1, 0.996]; // fill, a 1px corner clip
+  assert.equal(compareRegions([side(src, '50% 0%')], [side(rnd, '50% 50%', 'fill')]).pass, true);
+});
 check('compareRegions: unmeasured images are counted, never failed; count mismatch skips', () => {
   assert.deepEqual([compareRegions([side(null, '')], [side([0, 0, 1, 1], '')]).unmeasured, compareRegions([side([0, 0, 1, 1], '')], []).skipped], [1, 'image counts differ']);
 });
