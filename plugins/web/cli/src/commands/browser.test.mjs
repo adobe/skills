@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli } from '#src/cli.mjs';
+import { CACHE_STATS_CODE } from '#src/cache/hooks.mjs';
 
 const HINT = 'run: web browser open <url> --session <name>';
 const OPEN = [{ name: 's', status: 'open' }];
@@ -16,19 +17,25 @@ const sink = () => ({
   },
 });
 
-function run(args, { sessions = [], evalThrows = false, env = {} } = {}) {
+function run(args, { sessions = [], evalThrows = false, env = {}, keeper, openThrows } = {}) {
   const calls = [];
   const rec =
     (n, ret) =>
     (...a) => (calls.push([n, ...a]), ret);
   const driver = {
     ensureAvailable: rec('ensureAvailable'),
-    open: rec('open'),
+    open: openThrows
+      ? (...a) => {
+          calls.push(['open', ...a]);
+          throw new Error('launch failed');
+        }
+      : rec('open'),
+    goto: rec('goto'),
     list: () => sessions,
     attach: rec('attach'),
     close: rec('close'),
     closeAll: rec('closeAll'),
-    run: rec('run', 'ran'),
+    run: (...a) => (calls.push(['run', ...a]), a[1]?.code === CACHE_STATS_CODE ? 3 : 'ran'),
     screenshot: rec('screenshot'),
     evaluate: evalThrows
       ? () => {
@@ -40,7 +47,13 @@ function run(args, { sessions = [], evalThrows = false, env = {} } = {}) {
   const stdout = sink();
   const stderr = sink();
   const deps = { stdout, stderr, env, driverFactory: () => driver };
-  return runCli(['node', 'web', ...args], deps).then((code) => ({ code, calls, stdout }));
+  if (keeper) {
+    deps.keeper = {
+      start: async (opts) => (calls.push(['keeperStart', opts]), keeper.started),
+      stop: async (opts) => (calls.push(['keeperStop', opts]), keeper.stopped),
+    };
+  }
+  return runCli(['node', 'web', ...args], deps).then((code) => ({ code, calls, stdout, stderr }));
 }
 
 test('browser eval without session exits 2 NO_SESSION', async () => {
@@ -249,4 +262,159 @@ test('browser open --proxy with an invalid URL exits 2 USAGE', async () => {
   const { code, stdout } = await run(['browser', 'open', 'https://a.test', '--proxy', 'notaurl']);
   assert.equal(code, 2);
   assert.equal(JSON.parse(stdout.buf).error.code, 'USAGE');
+});
+
+const KEEPER = {
+  started: { pid: 1, port: 4321, entries: 7, dir: '/abs/cache' },
+  stopped: { hits: 5, misses: 2, stored: 2, errors: 1 },
+};
+const names = (calls) => calls.map((c) => c[0]);
+
+test('open --cache starts keeper, installs hooks before navigating', async () => {
+  const { code, calls, stdout } = await run(
+    ['browser', 'open', 'http://x', '--session', 's', '--cache', 'c'],
+    { keeper: KEEPER },
+  );
+  assert.equal(code, 0);
+  assert.deepEqual(
+    names(calls).filter((n) => n !== 'ensureAvailable'),
+    ['keeperStart', 'open', 'run', 'goto'],
+  );
+  assert.equal(call(calls, 'keeperStart')[1].session, 's');
+  assert.equal(call(calls, 'keeperStart')[1].cacheDir, 'c');
+  assert.equal(call(calls, 'open')[1].url, undefined);
+  assert.match(call(calls, 'run')[2].code, /127\.0\.0\.1:4321/);
+  assert.deepEqual(call(calls, 'goto'), ['goto', 's', 'http://x']);
+  assert.deepEqual(JSON.parse(stdout.buf), {
+    session: 's',
+    url: 'http://x',
+    headed: false,
+    cache: { dir: '/abs/cache', entries: 7 },
+  });
+});
+
+test('open --cache without url does not navigate', async () => {
+  const { code, calls } = await run(['browser', 'open', '--session', 's', '--cache', 'c'], {
+    keeper: KEEPER,
+  });
+  assert.equal(code, 0);
+  assert.equal(call(calls, 'goto'), undefined);
+  assert.ok(call(calls, 'run'));
+});
+
+test('open --cache --proxy is USAGE', async () => {
+  const { code, calls, stdout } = await run(
+    ['browser', 'open', 'http://x', '--cache', 'c', '--proxy', 'http://127.0.0.1:3002'],
+    { keeper: KEEPER },
+  );
+  assert.equal(code, 2);
+  assert.equal(JSON.parse(stdout.buf).error.code, 'USAGE');
+  assert.equal(call(calls, 'keeperStart'), undefined);
+  assert.equal(call(calls, 'open'), undefined);
+});
+
+test('open --cache stops keeper when the browser fails to open', async () => {
+  const { code, calls } = await run(
+    ['browser', 'open', 'http://x', '--session', 's', '--cache', 'c'],
+    {
+      keeper: KEEPER,
+      openThrows: true,
+    },
+  );
+  assert.notEqual(code, 0);
+  assert.ok(call(calls, 'keeperStop'));
+  assert.ok(call(calls, 'close'));
+});
+
+test('close reports cache stats', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'web-close-'));
+  writeFileSync(join(dir, 's-cache-keeper.json'), '{}');
+  const { code, calls, stdout } = await run(
+    ['browser', 'close', '--session', 's', '--output', dir],
+    { sessions: OPEN, keeper: KEEPER },
+  );
+  assert.equal(code, 0);
+  assert.ok(names(calls).indexOf('run') < names(calls).indexOf('close'));
+  assert.deepEqual(JSON.parse(stdout.buf), {
+    session: 's',
+    status: 'closed',
+    cache: { hits: 5, misses: 2, stored: 2, errors: 4 },
+  });
+});
+
+test('close with dead keeper', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'web-close-'));
+  writeFileSync(join(dir, 's-cache-keeper.json'), '{}');
+  const { code, calls, stdout, stderr } = await run(
+    ['browser', 'close', '--session', 's', '--output', dir],
+    { sessions: OPEN, keeper: { ...KEEPER, stopped: null } },
+  );
+  assert.equal(code, 0);
+  assert.ok(call(calls, 'close'));
+  assert.deepEqual(JSON.parse(stdout.buf), { session: 's', status: 'closed', cache: null });
+  assert.match(stderr.buf, /cache keeper for s was not running/);
+});
+
+test('close without cache keeps the old output', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'web-close-'));
+  const { stdout } = await run(['browser', 'close', '--session', 's', '--output', dir], {
+    sessions: OPEN,
+    keeper: { ...KEEPER, stopped: null },
+  });
+  assert.deepEqual(JSON.parse(stdout.buf), { session: 's', status: 'closed' });
+});
+
+test('close-all stops every keeper', async () => {
+  const sessions = [
+    { name: 'a', status: 'open' },
+    { name: 'b', status: 'open' },
+  ];
+  const { calls, stdout } = await run(['browser', 'close-all'], { sessions, keeper: KEEPER });
+  assert.deepEqual(
+    calls.filter((c) => c[0] === 'keeperStop').map((c) => c[1].session),
+    ['a', 'b'],
+  );
+  assert.deepEqual(JSON.parse(stdout.buf), { closed: ['a', 'b'] });
+});
+
+test('open --cache on an open session is SESSION_EXISTS and keeps its keeper', async () => {
+  const { code, calls, stdout } = await run(
+    ['browser', 'open', 'http://x', '--session', 's', '--cache', 'c'],
+    { sessions: OPEN, keeper: KEEPER },
+  );
+  assert.equal(code, 2);
+  assert.equal(JSON.parse(stdout.buf).error.code, 'SESSION_EXISTS');
+  assert.equal(call(calls, 'keeperStart'), undefined);
+  assert.equal(call(calls, 'keeperStop'), undefined);
+  assert.equal(call(calls, 'close'), undefined);
+});
+
+test('close-all flushes cache sessions before closing', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'web-close-all-'));
+  writeFileSync(join(dir, 'a-cache-keeper.json'), '{}');
+  const sessions = [
+    { name: 'a', status: 'open' },
+    { name: 'b', status: 'open' },
+  ];
+  const { calls } = await run(['browser', 'close-all', '--output', dir], {
+    sessions,
+    keeper: KEEPER,
+  });
+  const flushes = calls.filter((c) => c[0] === 'run').map((c) => c[1]);
+  assert.deepEqual(flushes, ['a']);
+  assert.ok(names(calls).indexOf('run') < names(calls).indexOf('closeAll'));
+});
+
+test('open --cache blocks service workers and keeps the recipe config', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'web-sw-'));
+  const recipe = join(dir, 'recipe.json');
+  const probe = [{ config: { contextOptions: { locale: 'fr-FR' } } }];
+  writeFileSync(recipe, JSON.stringify({ probe }));
+  const { calls } = await run(
+    ['browser', 'open', 'http://x', '--session', 's', '--cache', 'c', '--recipe', recipe],
+    { keeper: KEEPER },
+  );
+  const { contextOptions } = call(calls, 'open')[1].config;
+  assert.equal(contextOptions.serviceWorkers, 'block');
+  assert.equal(contextOptions.locale, 'fr-FR');
 });

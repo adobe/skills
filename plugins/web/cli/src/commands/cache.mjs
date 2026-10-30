@@ -5,6 +5,8 @@ import { emit } from '#src/output.mjs';
 import { startCacheProxy } from '#src/cache/proxy.mjs';
 import { startHarProxy } from '#src/cache/har-proxy.mjs';
 import { recordPage } from '#src/cache/record.mjs';
+import { startKeeper } from '#src/cache/keeper.mjs';
+import { createDriver } from '#src/driver/playwright-cli.mjs';
 import { createContext } from '#src/context.mjs';
 
 const SERVE_HELP = `
@@ -174,6 +176,35 @@ function registerProxy(group, { stdout, stderr }) {
     });
 }
 
+/** Whether `session` is still open; a failing playwright-cli counts as closed. */
+function sessionChecker(session, outputDir) {
+  return () => {
+    try {
+      const sessions = createDriver({ outputDir }).list();
+      return sessions.some((s) => s.name === session && s.status === 'open');
+    } catch {
+      return false;
+    }
+  };
+}
+
+function registerKeeper(group, { stdout, stderr }) {
+  group
+    .command('keeper', { hidden: true })
+    .description('internal: the session cache keeper started by browser open --cache')
+    .requiredOption('--cache <dir>', 'cache directory')
+    .action(async (opts, command) => {
+      const { session, output } = command.optsWithGlobals();
+      const keeper = await startKeeper({
+        cacheDir: opts.cache,
+        ...(session && { isSessionOpen: sessionChecker(session, output) }),
+        log: (line) => stderr.write(`${line}\n`),
+      });
+      stdout.write(`${JSON.stringify({ port: keeper.port, entries: keeper.entries })}\n`);
+      await waitUntilStopped(keeper);
+    });
+}
+
 /**
  * Register the `cache` group.
  * @param {import('commander').Command} program
@@ -183,8 +214,13 @@ export function registerCache(program, deps = {}) {
   const { stdout = process.stdout, stderr = process.stderr } = deps;
   const group = program
     .command('cache')
-    .description('cache original pages locally for offline replay');
+    .description('cache original pages locally for offline replay')
+    .addHelpText(
+      'after',
+      '\nTo record while browsing, open the session with: web browser open <url> --cache <dir>\n',
+    );
   registerServe(group, { stdout, stderr });
   registerRecord(group, deps);
   registerProxy(group, { stdout, stderr });
+  registerKeeper(group, { stdout, stderr });
 }
