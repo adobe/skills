@@ -64,75 +64,85 @@ executed identically by `capture-content.mjs` and this gate: hidden
 by style → out; rendered above 1×1px → in (tracking pixels are not
 content); `loading="lazy"` and still zero-size → in. One definition,
 two callers — capture and gate cannot drift on image counts.
-(3) **image crop** (§ Image crop below): no rendered image shows
-more than `--crop-tolerance` points (default 10) less of its own
-area than the source shows of it.
+(3) **image crop** (§ Image crop below): every rendered image shows
+the area of it the source shows: at most `--crop-tolerance` (default
+10%) of what it shows lies outside the source's region, and an
+off-centre anchor the source sets is kept.
 **Informational only:** element count and tag+class
 sequence — a reskin re-structures markup by design; a tag-sequence
 divergence at position 0 is expected and healthy.
 
 #### Image crop
 
-A donor frame has a fixed shape: a Figma Text + Image frame is
-574×324, a card's media 367×220, and the geometry gate (d) holds a
-render to those sizes. The kit's placeholder already has the frame's
-shape; a content image rarely does, and `object-fit: cover` fills
-the frame by trimming the rest. A square portrait in a 574×324
-frame loses 44% of its area. No other check sees it: the image is
-present, in order, with its alt text and the frame's width. So the
-gate measures, on both sides, the fraction of each image's own
-pixels its box shows: object-fit (`cover` trims, `none` draws at
-natural size, `fill` / `contain` / `scale-down` draw everything)
-times the share any clipping ancestor (overflow other than
-`visible`) leaves. That is `source-normalize.mjs` `IMG_CROP`, one
-definition run on both pages. Images pair by order, so the check
-runs whenever the counts agree, with or without `deltas.images`
-(a preview's media-bus srcs still pair one to one); a lazy image
-that never loaded is unmeasured, never failed. The source's own
-crop is the floor, not a target: a render that shows more passes.
-A failure names each image, both fractions and the rendered box.
+A donor frame has a fixed size: a Figma Text + Image frame is
+574×324, a card's media 220px high, and the geometry gate (d) holds
+a render to it. The frame stays; what must match the source is
+**which area of the image it shows**. A content image rarely has the
+frame's shape, so `object-fit: cover` crops it, and the source
+crops it too, often off-centre: a component's `object-position`
+(social post cards `50% 30%`, media cards `50% 0%`). A centred
+crop then shows a part the source cut away (the middle of a post
+the source frames at its upper third), and no other check sees it:
+the image is present, in order, with its alt text and the frame's
+width.
 
-Fix the frame, not the image; the kit's placeholder already has the
-frame's shape, so it still renders the frame exactly:
+So the gate measures, on both sides, the region of each image's own
+pixels its box shows: object-fit and object-position place the
+drawn image, clipping ancestors (overflow other than `visible`)
+narrow the box (`source-normalize.mjs` `visibleRegion` / `IMG_CROP`,
+one definition run on both pages). Images pair by order, so the
+check runs whenever the counts agree, with or without
+`deltas.images`, and only images of the same shape pair (natural
+ratios within 2%): a live feed that re-orders between capture and
+gate leaves the pair unpaired, reported, never judged. A rendered
+image fails when more than
+`--crop-tolerance` (default 10%) of its region lies outside the
+source's (per axis: where the rendered window is the larger one, it
+must contain the source's, since a wider donor frame necessarily
+shows more width), or when the source anchors it off-centre vertically, the
+render crops it top and bottom, and the render's position is more
+than 15 points from the source's (the designer's anchor holds even
+where the source's own box shows the whole image). A smaller frame
+inside the source's area passes; so does any position where the
+source shows the whole image and sets no anchor. How much of the
+image shows is reported, never gated: a donor frame may be tighter.
+A lazy image that never loaded is unmeasured, never failed. Each
+failure names the `object-position` that puts the rendered window on
+the source's area.
 
-- **One image in a slot** (text + image, a banner): the image keeps
-  its own ratio (`height: auto` over the `width`/`height` attributes
-  EDS delivers), capped at a 2:3 portrait (`max-height: 150cqi` on a
-  `container-type: inline-size` media cell), `cover` only past the
-  cap. A square cap still cut a 2:3 staff portrait to 66% of a
-  source that showed all of it.
-- **A grid** (cards): one frame for the grid only when its images
-  share a shape: every image's ratio within 10% of the median's, the
-  frame at the median image's `width`/`height` in whole pixels
-  (`round(calc(100cqi * h / w), 1px)`; a fractional height shifts
-  every later section by a sub-pixel and costs pixel fidelity below
-  it). Rows stay aligned and no image loses more than ~9%, inside the
-  tolerance. A grid of mixed shapes, or one whose image sizes are
-  unknown (no attributes), lets each image keep its own ratio. A
-  single frame for a mixed grid fails: a median frame cut a home
-  page's wide 736×400 tiles to 80% and a house page's portraits to
-  66–73% of what the source showed.
-- `object-position` only moves a crop, it never shrinks one: it
-  does not pass this check.
-- The Figma gate's image-**height** geometry entries assert the
-  placeholder's frame on content images: drop them for a content
-  image frame and waive its node with this section as the why; keep
-  its width entries, and give a section left with no geometry a
-  shape-independent entry (the image-to-text `gapY`).
+Keep the frame; move the crop:
 
-Measured on a 52-page school site reskinned to a Figma kit: 58 of
-201 images cut more than the source on 18 pages before, 0 of 199
-after; Figma gate PASS on its 4 archetypes; pixel fidelity
-unchanged on desktop. Figma's own mobile frames crop their
-placeholders (card 375×188 against a 5:3 image), so a content-shaped
-frame scores lower there (card 93.5% → 83.0%, text + image 95.3% →
-93.8%): a design trade-off to state, not to hide. The same rule
-holds for the EDS blocks the deploy leg ships: the deployed content
-gate runs this check on the preview. Test it against the preview's
-HTML: `aem up` serves images without the `width`/`height`
-attributes, so a block that reads them takes its fallback there. A
-crop the design truly needs is a residual with its cause, never a
-raised `--crop-tolerance`.
+- **Carry the source's position.** Read it from the source
+  (`getComputedStyle(img).objectPosition` of each content image, or
+  the failure's Fix column). In EDS, a block whose images share a
+  position takes it as an authorable option: `Cards (focus-upper)`
+  for `50% 30%`, `Cards (focus-top)` for `50% 0%`, centre by default;
+  the block CSS sets `object-position` per option. In the reskin
+  renderer, the same position on each image.
+- **A source that shows the image whole** sets no area to keep, but
+  the donor frame must crop it: put the window in the upper third
+  (`50% 30%`; the convention sources use for photo cards) so a
+  portrait keeps the head. A centred 16:9 crop of a square portrait
+  cut the top of the head off; the gate cannot see faces, so this is
+  the rule, not a check.
+- **Never grow the frame to show the whole image**: it breaks the
+  donor's image-to-text proportions; the Figma geometry gate (d)
+  holds the frame size, this check holds the area inside it.
+- Pixel fidelity is unchanged: the frames keep the donor's size.
+
+Measured on a 52-page school site reskinned to a Figma kit: the
+source framed 74 of 213 images off-centre (62 at `50% 0%`, 12 at
+`50% 30%`); centred crops showed the wrong area of 40 images on 5
+pages (social posts, media cards). Carrying the source's position as
+a block option (27 blocks on 19 pages) took that to 0 of 192, with
+the frames unchanged. `--crops-out <json>` writes both sides'
+framing per image: the source's is what a renderer or the DA
+conversion copies. The gate waits (up to 8 s) for images to finish
+loading before it measures; one that never loads stays unmeasured. The same
+rule holds for the EDS blocks the deploy leg ships: the deployed
+content gate runs this check on the preview. A crop the design truly
+needs elsewhere is a residual with its cause, never a raised
+`--crop-tolerance`.
 
 Two invariants or the run measures nothing: `--source-scope` is
 byte-identical to the capture's `_provenance.scope`, and
@@ -493,13 +503,14 @@ each names the gate, the check, and a human-readable verdict (`accepted` | `need
   drop). Defense: the scope-discovery procedure + coverage line
   (`reference/content-model.md` § Scope discovery) runs *before*
   rendering; the gate inherits the verified scope verbatim.
-- **Fixed donor frame crops the content.** A Figma image height
-  (Text + Image 324px, card media 220px) applied with
-  `object-fit: cover` cut a square principal's portrait to 56% of
-  its area, where the source showed 96%; every other gate passed.
-  Defense: the content gate's image-crop check (§ Image crop): a
-  single image keeps its ratio under a cap; a grid shares one frame
-  only when its images share a shape.
+- **The donor frame crops the wrong area.** A Figma image frame with
+  `object-fit: cover` crops from the centre; the source framed its
+  social post cards at `50% 30%` and its media cards at `50% 0%`, so
+  the render showed the parts the source cut away; every other gate
+  passed. Defense: the content gate's image-crop check (§ Image crop),
+  and carry the source's `object-position` (a block option in EDS).
+  Growing the frame to show whole images is not a fix: it broke the
+  donor's image-to-text proportions.
 - **Carousel nondeterminism.** Rotating carousels make source text
   capture time-dependent (hidden slides absent, clones duplicated).
   Defense: `N-D2` de-carousel in the shared ledger, applied
