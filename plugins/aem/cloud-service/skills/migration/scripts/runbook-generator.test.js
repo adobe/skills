@@ -30,11 +30,11 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 15 migration patterns with a valid strategy', () => {
+test('registry includes all 16 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
     'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
-    'guavaCache', 'inputStream', 'dispatcherConversion', 'oakIndex',
+    'guavaCache', 'inputStream', 'dispatcherConversion', 'oakIndex', 'assetWorkflowMigration',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
@@ -46,6 +46,8 @@ test('registry includes all 15 migration patterns with a valid strategy', () => 
   }
   assert.strictEqual(PATTERN_META.dispatcherConversion.strategy, 'content-scan');
   assert.deepStrictEqual(PATTERN_META.dispatcherConversion.bpaSlugs, []);
+  assert.strictEqual(PATTERN_META.assetWorkflowMigration.strategy, 'content-scan');
+  assert.deepStrictEqual(PATTERN_META.assetWorkflowMigration.bpaSlugs, []);
 });
 
 test('guavaCache has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
@@ -1390,6 +1392,29 @@ test('bpaIncomplete: when BPA DOES report the pattern, BPA still owns it (no fal
   });
   assert.strictEqual(gathered.sourceByPattern.templateModernization, 'mcp', 'BPA owns it when it reports findings');
   assert.strictEqual(gathered.findingsByPattern.templateModernization.length, 1, 'BPA finding, not the content-scan one');
+});
+
+// ── content-scan: asset workflows (Branch H) ────────────────────────────────
+
+test('gatherFindings content-scans enabled asset workflows that do custom work', async () => {
+  const { materializeProject } = require('./fixtures/asset-workflow.js');
+  const root = mkworkspace();
+  materializeProject(path.join(root, 'aem-project'));
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  assert.strictEqual(gathered.sourceByPattern.assetWorkflowMigration, 'content-scan');
+  const details = gathered.findingsByPattern.assetWorkflowMigration.map(f => f.detail);
+  assert.strictEqual(details.length, 3, details.join('\n'));
+  assert.ok(details.some(d => /models\/dam\/update_asset .*1 unsupported step/.test(d)), details.join('\n'));
+  assert.ok(details.every(d => /Branch H/.test(d)));
+  assert.ok(!gathered.needsLlmScan.includes('assetWorkflowMigration'));
+});
+
+test('asset workflow content-scan reports nothing for a workspace without workflows', async () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', '<project><modules><module>ui.apps</module></modules></project>');
+  write(root, 'ui.apps/pom.xml', '<project><packaging>content-package</packaging></project>');
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  assert.deepStrictEqual(gathered.findingsByPattern.assetWorkflowMigration, []);
 });
 
 // ── CAM project handoff to validate-migration ──────────────────────────────

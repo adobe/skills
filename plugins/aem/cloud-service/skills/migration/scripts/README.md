@@ -42,6 +42,7 @@ Each pattern declares a **detection strategy** in `PATTERN_META`:
 | `osgiConfig` | `config-scan` | `osgi-config-runner.js` (config-file scan) |
 | `lui`, `cdw`, `templateModernization` | BPA + `content-scan` | BPA/CAM → CSV first (`legacy-ui-runner.js` / `template-scan-runner.js` as fallback) |
 | `dispatcherConversion` | `content-scan` | `dispatcher-inventory.js` (`runDispatcherScan` — heuristic, no BPA subtype) |
+| `assetWorkflowMigration` | `content-scan` | `asset-workflow-inventory.js` (`runAssetWorkflowScan` — heuristic, no BPA subtype) |
 | `guavaCache` | `bpa-only` | BPA/CAM → CSV only (no analyzer, no content-scan) → LLM scan |
 | `inputStream` | `java-scan` | BPA/CAM → CSV first; `input-stream-runner.js` resolves the reported classes to files (rows outside the workspace collapsed per bundle) and scans every `src/main/java` file only when BPA has no `inputStream` findings. Never needs the LLM tier. |
 
@@ -127,6 +128,22 @@ Output verification for a generated Cloud Service Dispatcher config (`verifyOutp
 ### `dispatcher-run.js`
 
 Drives the end-to-end conversion: writes the tool `config.yaml`, resolves the mode-specific executor, and wraps Adobe's [`@adobe/aem-cs-source-migration-dispatcher-converter`](https://github.com/adobe/aem-cs-source-migration). That Adobe tool is **not a bundled dependency** — it is auto-installed on first use into the gitignored `scripts/dispatcher-tool/node_modules/` (`ensureToolInstalled`), keeping the core scripts zero-dependency.
+
+### Asset workflow migration (Branch H)
+
+Wraps Adobe's Asset Workflow Migration Tool ([`adobe/aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration), `wf-migrator` JAR) — see [`../references/asset-workflow/context.md`](../references/asset-workflow/context.md). Pure Node, no npm dependencies; only the tool run needs Java 11+.
+
+| Script | Role |
+|---|---|
+| `asset-workflow-run.js` | CLI entry point: pre-flight → dry-run plan + gate → baseline copy → run the JAR and check it succeeded → verification → follow-ups → report. `node scripts/asset-workflow-run.js <project> [--dry-run] [--verify-only] [--acknowledge <list>] [--jar <path>] …`. Exit 0 / 1 / 2. `ensureToolInstalled` downloads the pinned JAR into the gitignored `scripts/asset-workflow-tool/` and checks its SHA-256. `affectedWorkflows`, `gateUnsupported` and `planPreview` build the dry-run plan and gate. |
+| `asset-workflow-inventory.js` | Reads a Maven project: modules and filters, workflow models (steps, splits, transient flag), launchers, runner configs (`.cfg.json`, XML, `.config`, `.cfg`), processing profiles. `isAffected` / `isRenditionsOnly` (workflows whose only work to carry over is renditions), `affectedWorkflows`, `runnerOverlaps`, and `runAssetWorkflowScan(workspaceRoot)` — the runbook's content-scan entry point. |
+| `asset-workflow-catalog.js` | Step categories (mirrors the tool's `workflowSteps.properties`), keep/remove rules, remediation text (`remediationFor`), and `requiresAck` (steps the gate stops on: `UNSUPPORTED` ones and `CommandLineProcess`). |
+| `asset-workflow-followup.js` | Read-only: what is left to do by hand after the tool ran (`collectFollowUps`) — profiles to attach and their folders, issues from the tool's `migration-report.md` (`parseToolIssues`), launcher conditions, overlapping runner entries, OR routing, models to sync. Feeds the report's checklist. |
+| `asset-workflow-verify.js` | Verification gates (`verifyMigration`) — failures and warnings listed in [`validation.md`](../references/asset-workflow/validation.md). |
+| `asset-workflow-report.js` | Renders `asset-workflow-report.md` (summary, per-workflow changes, verification, post-deploy checklist). |
+| `asset-workflow-xml.js` | Small read-only JCR XML parser used by the others. |
+
+Tests: `asset-workflow.test.js` and `asset-workflow-followup.test.js` run against a fixture project and the real tool's recorded output, both kept in `fixtures/asset-workflow.js` and written to a temp folder at test time, so they need no Java. `asset-workflow-e2e.test.js` runs the real JAR, checks its output still matches that recording, and is skipped unless `ASSET_WF_E2E=1` (optionally `ASSET_WF_JAR=<path>`).
 
 ### `bpa-findings-helper.js` (main entry point)
 
