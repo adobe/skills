@@ -25,15 +25,24 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
 
 ## Recipe
 
-1. **Deploy, preview-only.** `deploy` Steps 1–9 with `stardust/reskin/pages/<slug>.html` as the prototype: the content
-   page `content/<ns>/<slug>.html`, in a shared repo both chrome documents, and `eds-schema/<slug>.json` (Step 2b,
-   `qa-gate`'s input). `deploy` authors the content page (Step 9); generating it from the model is not built, so
-   its differences are declared in the delta file. This leg replaces only Step 10's automated reconciliation, the
-   reskin page its reference (step 7 keeps the rest).
-   `block-roundtrip`'s default `--map` (`section.<name>`, `[data-section]`, `.<name>`) cannot pair a reskin page:
-   `.cards` matches the inner grids, `.tabs` the tab row. Give one `--map <block>=section[data-slot=sNN][,section[data-slot=sMM]…]`
-   per block (Phase 4's `data-slot`, a class is not general), the instances in page order. It compares CTA text by
+1. **Deploy, preview-only.** `deploy` Steps 1–9 with `stardust/reskin/pages/<slug>.html` (the page Phase 5 gated) as
+   the prototype: the content page `content/<ns>/<slug>.html`, in a shared repo both chrome documents, and
+   `eds-schema/<slug>.json` (Step 2b, `qa-gate`'s input). The content page is `deploy`'s own conversion of that page's
+   `<main>`, no custom converter: one block per `section[data-slot]` in page order, named for its `mapping.json`
+   module — `blocks.<module id>`, else the module's EDS block in `donor-modules.md` (`deploy` Step 2,
+   [`../../deploy/SKILL.md` § 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code)), else the id lower-cased (`mapping-json.md` § `blocks`); a slot with no
+   module, or whose module Step 2 makes default content, is default content. What still differs from the source is declared in the delta file. This leg replaces only
+   Step 10's automated reconciliation, the reskin page its reference (step 7 keeps the rest).
+   `block-roundtrip`'s default `--map` (`section.<name>`, `[data-section]`, `.<name>`) cannot pair a reskin page
+   (`.cards` matches the inner grids, `.tabs` the tab row); pass the arguments
+   `node stardust/scripts/reskin/stream-render.mjs <slug> --deploy-map` prints — one
+   `--map '<block>=section[data-slot="sNN"],…'` per block, its instances in page order. It compares CTA text by
    `textContent`: a block that moves children into wrappers keeps a whitespace text node between them.
+   **A design change found in review** (the eyeball, a gate, the preview) is made in `mapping.json` or
+   `donor-tokens.json`, then the page re-rendered (`stream-render --register`), re-gated (Phase 5, `reskin-ledger
+   record`) and re-deployed — never in the EDS blocks or CSS alone: the reskin page is the reference every sibling
+   renders from, and `reskin-preflight` fails deployed evidence whose `codeStamp` no longer matches the code. A
+   block or CSS fix that makes EDS match the unchanged reskin page is a fix round (§ The fix budget).
 2. **Push the branch, force Code Sync** and poll until an edited block file is served
    (`../../deploy/da-deploy-protocol.md` § Deploy, step 0).
 3. **Write the documents to DA and preview them, never publish:**
@@ -50,7 +59,7 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
 7. **Step 10's deployed checks stay mandatory before handoff**, run as `deploy` specifies, not re-built here: the
    desktop and mobile eyeball, the delayed-font/nav CLS probe (CLS < 0.1; `deployed-gate` and `qa-gate` measure settled
    pages) and the applicable header-behavior checks. Record each result, or `unresolved: <why>`, under `gates.step10`
-   (§ The ledger).
+   with `reskin-ledger.mjs step10` (§ The ledger).
 
 The preview must be reachable without auth: a protected preview is out of scope. `preview` stops with exit 2 on a
 401 or 403 rather than poll, and the gates send no Authorization header. A sandbox repo's preview is public by
@@ -85,7 +94,7 @@ declares source → local render changes: `mapping-brief.md` § Deltas block), r
   `images total` check counts every visible image in scope, so an image the delivered page adds fails it, and the
   schema cannot declare one.
   `dom-equality`'s image-crop check still runs under it (images pair by order, not src): an EDS block that crops an
-  image more than the source did fails on the preview (`gates.md` § Image crop).
+  image to another area than the source shows fails on the preview (`gates.md` § Image crop).
 - `links.localize.sourceHost`: a bare host; a CTA's href also matches as `deploy` localizes it onto the preview origin.
 - `metadata`: `ignore` keys (`title`, `description`, `canonical`, `og:…`, `twitter:…`) skip their check, `absent` keys
   must not be carried, `jsonLd` is `"count-only"` (the default: the block count) or `"ignore"`.
@@ -110,9 +119,15 @@ after review invalidates the evidence, so re-run the leg (step 6).
 The test hook `DEPLOY_VERIFY_ORIGIN` is recorded as `originOverride: { env, origin }` in `preview.json`, `summary.json` and
 the fragment.
 
-Step 7's results go beside the fragment, in `pages.<slug>.gates.step10`, e.g.
-`{ "eyeball": "adopted", "cls": "0.04", "header": "n/a: no header contract" }`; a check not run is
-`unresolved: <why>` and a `residuals[]` entry (`needs-owner`).
+Step 7's results go beside the fragment, in `pages.<slug>.gates.step10`, written by
+`node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass|fail --cls <n> --header pass|fail|"n/a: <why>" [--note "…"] [--by <who>]`
+(`--header-toggle` is an alias of `--header`), e.g.
+`{ "eyeball": "pass", "cls": "0.04", "header": "n/a: no header contract", "verdict": "PASS", "note": null, "by": "user", "at": "…" }`.
+A check not run is `unresolved: <why>` (any of the three): the verdict is NOT-RUN and the command adds a
+`residuals[]` entry on `step10` (`needs-owner`, `source: "step10"`), which a later `step10` with nothing unresolved
+removes. `verdict` is FAIL on an eyeball `fail`, a CLS ≥ 0.1 or a header `fail`, else NOT-RUN on an unresolved check,
+else PASS; like any gate it blocks the predicate unless PASS or covered by an accepted residual. `record` keeps an
+existing `gates.step10` (it is entered, never read from a report).
 
 A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s
 `steps.<step>.detail`), `FAIL k/n`, `FAIL stalled decoration: <what>` (a gate stalled on the preview's decoration and
