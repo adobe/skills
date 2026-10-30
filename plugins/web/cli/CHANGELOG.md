@@ -1,3 +1,10 @@
+# [2.2.0](https://github.com/adobe/skills/compare/web-cli-v2.1.0...web-cli-v2.2.0) (2026-10-30)
+
+
+### Features
+
+* **web-cli:** record and replay sessions with browser open --cache ([#507](https://github.com/adobe/skills/issues/507)) ([cab980a](https://github.com/adobe/skills/commit/cab980a65a98ccb9314270e282dd9f752cb7b274))
+
 # [2.1.0](https://github.com/adobe/skills/compare/web-cli-v2.0.0...web-cli-v2.1.0) (2026-10-28)
 
 
