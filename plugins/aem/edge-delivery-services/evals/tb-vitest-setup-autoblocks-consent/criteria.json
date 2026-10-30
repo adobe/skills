@@ -1,0 +1,61 @@
+{
+  "context": "Tests current EDS unit-testing knowledge and workflow: Vitest exits 1 when no test files exist unless --passWithNoTests (or passWithNoTests: true) is set, and the boilerplate has no `test` script; buildAutoBlocks is not exported from scripts/scripts.js and importing scripts.js runs loadPage() as a side effect, so testable logic must live in a side-effect-free module; current auto-blocking only handles /fragments/ and /widgets/ links (no hero auto-block); third-party scripts load in the delayed phase via consent-check.js -> consented.js (no delayed.js, no 3-second timer) and the boilerplate's dummy consent accepts `?consent=accept`; Playwright's default timeout is 30000 ms; browser checks are temporary and lint runs before a PR is ready.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "npm test passes with no test files",
+      "max_score": 16,
+      "description": "The added `test` script runs Vitest once (e.g. `vitest run`, not watch mode) and will exit 0 while there are no test files: the script passes `--passWithNoTests` or the Vitest config sets `passWithNoTests: true`. A plain `vitest run` with no such option fails this item"
+    },
+    {
+      "name": "Vitest installed with a DOM environment",
+      "max_score": 4,
+      "description": "package.json adds `vitest` as a devDependency and the Vitest config (or test plan per-file directive) uses a DOM environment (`jsdom` or `happy-dom`, also added as a devDependency) for the DOM-based auto-blocking tests"
+    },
+    {
+      "name": "CI runs lint and npm test",
+      "max_score": 4,
+      "description": "ci.yml keeps `npm run lint` and adds an `npm test` step after `npm ci`"
+    },
+    {
+      "name": "Tests never import scripts/scripts.js",
+      "max_score": 15,
+      "description": "The solution recognizes that importing `scripts/scripts.js` runs `loadPage()` (and the Trusted Types setup) at module load, and the test plan has PR 2 import the auto-blocking code from a separate side-effect-free module rather than from `scripts/scripts.js`. Simply adding `export` to `buildAutoBlocks` in scripts.js and importing scripts.js from tests fails this item"
+    },
+    {
+      "name": "Auto-blocking extracted into an importable module",
+      "max_score": 10,
+      "description": "A source change moves `buildAutoBlocks` (and/or `buildWidgetAutoBlocks`) into a new module under `scripts/` that exports it, and `scripts/scripts.js` imports it from there so `decorateMain` still calls it; behavior is otherwise unchanged and `scripts/aem.js` is not edited"
+    },
+    {
+      "name": "QA-311 handled as no hero auto-block",
+      "max_score": 15,
+      "description": "TESTPLAN.md states that the current `buildAutoBlocks` only handles `/fragments/` links and `/widgets/` links and has no hero auto-block (hero is an authored block), so QA-311 is sent back or re-scoped (e.g. test the authored hero block / confirm with QA) instead of adding a test asserting a hero is built from the first picture. The solution does NOT add a `buildHeroBlock` or similar hero auto-blocking code"
+    },
+    {
+      "name": "Widget auto-block cases",
+      "max_score": 8,
+      "description": "TESTPLAN.md lists widget auto-block cases matching the code: a `/widgets/` link alone in its paragraph replaces the paragraph with a `widget` block; a `/widgets/` link inline with other text replaces only the link; a link already inside a `.widget` is left alone"
+    },
+    {
+      "name": "QA-318 uses the consent gate",
+      "max_score": 15,
+      "description": "TESTPLAN.md states that the chat loader is loaded by `consented.js`, which `consent-check.js` imports only after consent (from `loadDelayed()` in scripts.js), and the check verifies no request to `widget.example-chat.com` without consent (default, or `?consent=decline`) and a request with `?consent=accept`. It corrects or ignores the wiki: no reliance on a `delayed.js` file or a fixed 3-second wait"
+    },
+    {
+      "name": "Wait long enough without shortening Playwright's default",
+      "max_score": 5,
+      "description": "The QA-318 check waits for the chat request/script (e.g. `page.waitForRequest` or a selector wait) with Playwright's default 30000 ms timeout or an explicit timeout of at least 20000 ms. It does NOT set a timeout below 20000 ms (e.g. `{ timeout: 10000 }`) while claiming to extend the wait"
+    },
+    {
+      "name": "Browser check kept out of the unit suite and repo",
+      "max_score": 4,
+      "description": "TESTPLAN.md runs the QA-318 check as a browser check (Playwright script or browser tool) that is temporary and not committed, not as a Vitest unit test in the project's test suite"
+    },
+    {
+      "name": "Lint before ready",
+      "max_score": 4,
+      "description": "TESTPLAN.md lists `npm run lint` (fixing issues, e.g. with `npm run lint:fix`) and `npm test` as commands that must pass before each PR is marked ready"
+    }
+  ]
+}

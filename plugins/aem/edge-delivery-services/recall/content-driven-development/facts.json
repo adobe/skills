@@ -1,0 +1,676 @@
+{
+  "sourceRef": "65e16628b12075cce8aa83c45853fd5840627740",
+  "sourceRoot": "plugins/aem/edge-delivery-services/skills/content-driven-development",
+  "facts": [
+    {
+      "id": "CDD-001",
+      "claim": "'Franklin' and 'Helix' are earlier names for AEM Edge Delivery Services.",
+      "source": "SKILL.md:3",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 package.json description 'Starter project for Adobe Helix'; aem.live CLI reference points to github.com/adobe/helix-cli",
+      "question": "Before the AEM Edge Delivery Services branding, what project or code names was this Adobe delivery platform known by?"
+    },
+    {
+      "id": "CDD-002",
+      "claim": "delayed.js is one of the core boilerplate files (alongside scripts.js and styles) that code changes touch.",
+      "source": "SKILL.md:3",
+      "kind": "eds",
+      "verified": "WRONG: aem-boilerplate@5cea543 scripts/ contains only aem.js, consent-check.js, consented.js, scripts.js — no delayed.js. scripts.js loadDelayed() imports consent-check.js, which loads consented.js only after consent (https://www.aem.live/developer/keeping-it-100 Phase D). Older projects may still have delayed.js",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "CDD-003",
+      "claim": "Use CDD for every EDS code change (new blocks, block modifications, CSS, bug fixes, core decoration); skip it for documentation-only changes, configuration that does not affect authoring, and research without code changes.",
+      "source": "SKILL.md:3, SKILL.md:17-27",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-004",
+      "claim": "Never write or modify code before identifying or creating the content used to test the change; anti-patterns are coding before understanding the content model, assuming content structure, author-hostile models, and skipping content creation.",
+      "source": "SKILL.md:13, SKILL.md:31-34, SKILL.md:438-444",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-005",
+      "claim": "Read references/cdd-philosophy.md only when the user asks 'why' questions or when unsure whether to prioritize author vs developer experience; otherwise just follow the steps.",
+      "source": "SKILL.md:36-43, SKILL.md:448",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-006",
+      "claim": "Step 0: create a TodoWrite list with 8 tasks in order — start dev server, analyze & plan, design content model, identify/create test content, implement, lint & test, final validation, ship it — each with a success criterion; mark each complete per its 'Mark todo complete when' line.",
+      "source": "SKILL.md:45-73, SKILL.md:116, SKILL.md:139, SKILL.md:163, SKILL.md:250, SKILL.md:275, SKILL.md:302, SKILL.md:330, SKILL.md:424",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-007",
+      "claim": "Check whether a server is up with `curl -s -o /dev/null -w \"%{http_code}\" <url>`; 200 means running/available, a connection error means not running.",
+      "source": "SKILL.md:79-85, SKILL.md:103-109, SKILL.md:180-181, SKILL.md:199-200, SKILL.md:209-210, SKILL.md:234-235",
+      "kind": "generic",
+      "verified": "standard curl usage; no EDS specifics",
+      "question": null
+    },
+    {
+      "id": "CDD-008",
+      "claim": "`aem up` starts the local AEM development server, serving local code and proxying content from the site's preview.",
+      "source": "SKILL.md:90, SKILL.md:208, references/html-structure.md:70",
+      "kind": "eds",
+      "verified": "`aem up --help` ('Run a AEM development server'); aem-cli@16.21.20 src/up.cmd.js:219 default proxy url https://main--{repo}--{owner}.aem.page; aem-boilerplate@5cea543 AGENTS.md:18 ('local code, previewed content'). Since 16.x it serves ./content/ before proxying (server/BaseServer.js:163 'Serving content from local content/')",
+      "question": "Which AEM CLI command starts the local Edge Delivery development server, and where does that server get page content it does not have locally?"
+    },
+    {
+      "id": "CDD-009",
+      "claim": "`aem up --no-open` disables automatically opening a browser window.",
+      "source": "SKILL.md:90, SKILL.md:96, SKILL.md:208",
+      "kind": "eds",
+      "verified": "`aem up --help`: '--no-open, --noOpen  Disable automatic opening of browser window'; https://www.aem.live/developer/cli-reference",
+      "question": "By default `aem up` opens a browser window when it starts. Which flag suppresses that?"
+    },
+    {
+      "id": "CDD-010",
+      "claim": "`aem up --forward-browser-logs` forwards the browser console logs to the terminal.",
+      "source": "SKILL.md:90, SKILL.md:96, SKILL.md:208",
+      "kind": "eds",
+      "verified": "`aem up --help`: '--forward-browser-logs, --forwardBrowserLogs  Forward browser console logs to terminal [default: false]'; https://www.aem.live/developer/cli-reference",
+      "question": "Which `aem up` option makes browser console output from the previewed page appear in the terminal running the dev server?"
+    },
+    {
+      "id": "CDD-011",
+      "claim": "The local dev server is at http://localhost:3000.",
+      "source": "SKILL.md:50, SKILL.md:82, SKILL.md:106, SKILL.md:113, SKILL.md:180, SKILL.md:199, SKILL.md:209, SKILL.md:223, SKILL.md:385, references/html-structure.md:74-76, references/html-structure.md:497",
+      "kind": "eds",
+      "verified": "partial: `aem up --help` --port default 3000, but in a git worktree aem-cli@16.21.20 src/up.cmd.js:105-112 replaces 3000 with GitUtils.hashBranchToPort(branch) = 3000 + hash(branch) % 1000 (git-utils.js:406-414) unless --port is set to something other than 3000; use the port logged at startup ('Git worktree detected. Using port ...')",
+      "question": "On which host and port does `aem up` serve by default, and under what circumstance does it pick a different port on its own?"
+    },
+    {
+      "id": "CDD-012",
+      "claim": "The dev server must stay running during development; run it in the background.",
+      "source": "SKILL.md:94",
+      "kind": "generic",
+      "verified": "general dev-server practice",
+      "question": null
+    },
+    {
+      "id": "CDD-013",
+      "claim": "The AEM CLI is installed globally with `npm install -g @adobe/aem-cli`.",
+      "source": "SKILL.md:95",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/cli-reference#installation (`npm install -g @adobe/aem-cli`); installed package @adobe/aem-cli 16.21.20",
+      "question": "What is the npm package name of the AEM (Edge Delivery) command line tool, and how is it typically installed?"
+    },
+    {
+      "id": "CDD-014",
+      "claim": "Without a global install, the dev server can be started with `npx -y @adobe/aem-cli up`.",
+      "source": "SKILL.md:96",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 AGENTS.md:18 (`npx -y @adobe/aem-cli up`); package bin 'aem' in @adobe/aem-cli",
+      "question": "How can you start the Edge Delivery dev server via npx without a global CLI install?"
+    },
+    {
+      "id": "CDD-015",
+      "claim": "Common `aem up` startup failures: port 3000 already in use, AEM CLI not installed, configuration errors.",
+      "source": "SKILL.md:98-101, SKILL.md:114",
+      "kind": "eds",
+      "verified": "partial: `aem up --help` --stop-other defaults to true, so another AEM CLI on the port is stopped automatically — only non-AEM processes cause a port conflict; in a worktree the port is not 3000 (up.cmd.js:105-112). Config errors are real: up.cmd.js:99-100 throws 'aem up needs local git repository.'; up.cmd.js:209-216 aborts when {branch}--{repo}--{owner} exceeds 63 chars",
+      "question": "When `aem up` is started while another `aem up` instance already holds the same port, what happens by default?"
+    },
+    {
+      "id": "CDD-016",
+      "claim": "Step 2: invoke the analyze-and-plan skill with the task description and any screenshots/designs/URLs; it defines acceptance criteria and the analysis must be documented to a file for later steps.",
+      "source": "SKILL.md:120-139, SKILL.md:430",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-017",
+      "claim": "Step 3: invoke the content-modeling skill (skip for CSS-only changes that don't affect content structure), providing the Step 2 analysis plus block name and purpose; it designs and documents the table structure.",
+      "source": "SKILL.md:143-163, SKILL.md:431",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-018",
+      "claim": "Content-model best practice: at most 4 cells per row and semantic formatting.",
+      "source": "SKILL.md:155",
+      "kind": "generic",
+      "verified": "prescriptive (content-modeling skill guideline); https://www.aem.live/docs/davidsmodel Rule #10 'Limit number of Columns' recommends few columns but states no numeric limit; no platform limit on cells",
+      "question": null
+    },
+    {
+      "id": "CDD-019",
+      "claim": "Step 4 paths: Option A user-provided URLs (validate 200, document); Option B new block (skip search, create content); Option C existing block (find-test-content first, add content if coverage is insufficient). End with validated URLs covering all scenarios.",
+      "source": "SKILL.md:167-250",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-020",
+      "claim": "For new test content, preferred approach is asking the user to author it in their CMS using the Step 3 content model and waiting for the URL; local HTML in drafts/ is the temporary fallback.",
+      "source": "SKILL.md:195-211",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-021",
+      "claim": "EDS content can be authored in Google Drive, SharePoint, Document Authoring (DA) or Universal Editor.",
+      "source": "SKILL.md:196",
+      "kind": "eds",
+      "verified": "https://www.aem.live/docs/sidekick (Google Drive / Microsoft SharePoint sources); https://docs.da.live (Document Authoring, previewUrl on *.aem.page); https://www.aem.live/developer/ue-tutorial (Universal Editor)",
+      "question": "Name the authoring sources / editors that can feed content into an AEM Edge Delivery Services site."
+    },
+    {
+      "id": "CDD-022",
+      "claim": "A page that exists (previewed) in the content source is reachable on the local dev server at localhost:<port>/<path>.",
+      "source": "SKILL.md:180, SKILL.md:199, SKILL.md:234",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 src/up.cmd.js:219 proxies https://main--<repo>--<owner>.aem.page (preview, so content must be previewed, not just saved); server/HelixServer.js:475-486 + BaseServer.js:163 serve ./content/ (from `aem content clone`) first, so local DA drafts also resolve at /<path> and /<path>.plain.html",
+      "question": "When you request a page path on the local `aem up` server that isn't a code file in your repo, where does the server get that page from, and what must the author have done for it to show up?"
+    },
+    {
+      "id": "CDD-023",
+      "claim": "Pushing HTML content to DA programmatically first requires obtaining a DA_TOKEN via the separate da-auth skill (invoked at the start of Step 4), then calling the DA Admin API.",
+      "source": "SKILL.md:202, SKILL.md:432",
+      "kind": "eds",
+      "verified": "WRONG: the AEM CLI handles DA auth itself: `aem content clone --path <folder>` (or --all), `aem content add`, `aem content commit -m`, `aem content push` sync DA content via ./content/; auth is a browser IMS login triggered by the CLI with the token cached in .hlx/.da-token.json (aem-cli@16.21.20 src/content/da-auth.js:28, 215-235; https://www.aem.live/developer/cli-reference#content). No separate token step needed",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "CDD-024",
+      "claim": "The DA Admin API stores content with `POST https://admin.da.live/source/{org}/{repo}/{path}`.",
+      "source": "SKILL.md:202",
+      "kind": "eds",
+      "verified": "verified with nuance: https://docs.da.live/developers/api/source — POST to /source/{org}/{repo}/{path} with a file extension (e.g. .html) and multipart/form-data field `data`, Bearer IMS token; aem-cli@16.21.20 src/content/da-api.js:152-154 uses PUT on the same endpoint",
+      "question": "Which DA (Document Authoring) Admin API endpoint and HTTP method create or overwrite a document, and how is the document body sent?"
+    },
+    {
+      "id": "CDD-025",
+      "claim": "Pushing content through the DA Admin API source endpoint also triggers a preview.",
+      "source": "SKILL.md:202",
+      "kind": "eds",
+      "verified": "WRONG: the source endpoint only stores content in DA; its response merely lists aem.previewUrl (https://docs.da.live/developers/api/source). Previewing is a separate call, POST https://admin.hlx.page/preview/{org}/{site}/{ref}/{path} (https://www.aem.live/docs/admin.html), or Sidekick Preview. `aem content push` also does not preview (aem-cli content/push.js has no preview call)",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "CDD-026",
+      "claim": "Put local test files in the drafts/ folder (e.g. drafts/tmp/{block-name}.plain.html), optionally in subfolders.",
+      "source": "SKILL.md:205, references/html-structure.md:3, references/html-structure.md:62-63, references/html-structure.md:501-504",
+      "kind": "generic",
+      "verified": "convention only: --html-folder accepts any folder name (`aem up --help`); no platform rule requires drafts/",
+      "question": null
+    },
+    {
+      "id": "CDD-027",
+      "claim": "`aem up --html-folder <folder>` serves local HTML files from that folder, so the server must be (re)started with the flag.",
+      "source": "SKILL.md:208, references/html-structure.md:66-71, references/html-structure.md:506-508",
+      "kind": "eds",
+      "verified": "`aem up --help` ('--html-folder  Serve HTML files from this folder without extensions. Defaults to serving at /FOLDER.'); aem-cli@16.21.20 src/server/HelixServer.js:673-676 registers the handler at startup; https://www.aem.live/developer/cli-reference. Alternative since 16.x: files in ./content/ are served without any flag (HelixServer.js:475-486)",
+      "question": "Which `aem up` option lets you preview hand-written local HTML pages that do not exist in any CMS, and how are those files mapped to URLs?"
+    },
+    {
+      "id": "CDD-028",
+      "claim": "A file in the html-folder is served at /<folder>/<path> without extension, e.g. drafts/hero-test.plain.html → http://localhost:3000/drafts/hero-test.",
+      "source": "SKILL.md:209, references/html-structure.md:73-75, references/html-structure.md:497",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 src/server/HelixProject.js:158 (mount defaults to /<folder>), server/HelixServer.js:265-284 (extension-less path resolved to <path>.html or <path>.plain.html; paths containing '.' are not resolved); --html-mount can change the mount",
+      "question": "With `aem up --html-folder drafts`, at what local URL is the file drafts/blocks/cards.plain.html served?"
+    },
+    {
+      "id": "CDD-029",
+      "claim": "A trailing-slash URL maps to the folder's index file: drafts/blog/index.plain.html → /drafts/blog/ (not /drafts/).",
+      "source": "references/html-structure.md:76",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 src/server/HelixServer.js:327-330 appends 'index' to empty or trailing-slash paths; matches https://www.aem.live/docs/sidekick ('A / at the end of a path refers to the index document in a folder')",
+      "question": "In EDS URL conventions (and the dev server's html-folder), which document does a path ending in '/' resolve to?"
+    },
+    {
+      "id": "CDD-030",
+      "claim": "The AEM CLI wraps a .plain.html file in the full page: <html>, <head> (from the project's head.html), <body>, <header>, <main>, <footer>; the file only supplies the section content.",
+      "source": "references/html-structure.md:7-19, references/html-structure.md:509",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 src/server/HelixServer.js:291-308 (transformPlainHtml reads head.html via HeadHtmlSupport) and server/utils.js:794-797 (`<html><head>…</head><body><header></header><main>${content}</main><footer></footer></body></html>`); a leading `metadata` block is turned into <meta> tags (utils.js:595ff). Note: no rendering pipeline runs, so section-metadata/icons/pictures are not processed server-side for these files",
+      "question": "When the dev server serves a local `.plain.html` file from an html folder, what does it add around the file's content to produce a full page?"
+    },
+    {
+      "id": "CDD-031",
+      "claim": "A .plain.html file must use the .plain.html extension; plain `.html` files are an old format that is no longer used.",
+      "source": "references/html-structure.md:59-64, references/html-structure.md:504",
+      "kind": "eds",
+      "verified": "WRONG: --html-folder resolves `<stem>.html` first and `<stem>.plain.html` second (aem-cli@16.21.20 src/server/HelixServer.js:43-44, 271-280); `.html` files are served as-is (full documents), `.plain.html` files get wrapped; `--prefer-plain-html` flips the order (`aem up --help`; https://www.aem.live/developer/cli-reference). `.plain.html` is only needed to get automatic wrapping",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "CDD-032",
+      "claim": "Page content is organized into sections: each top-level <div> in the page content (inside <main>) is a section.",
+      "source": "references/html-structure.md:10, references/html-structure.md:78-92",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks (sections, separated by horizontal rules / ---; blocks and default content always wrapped in a section); aem-boilerplate@5cea543 scripts/aem.js:480-497 decorateSections iterates `main > div`",
+      "question": "In EDS page markup, how are sections represented in the HTML, and how does an author create a section break in a document?"
+    },
+    {
+      "id": "CDD-033",
+      "claim": "A section can hold default content, blocks, or a mix, including multiple blocks.",
+      "source": "references/html-structure.md:94-96, references/html-structure.md:192-194, references/html-structure.md:511-512",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks ('Sections can contain multiple blocks'; default content and blocks wrapped in sections)",
+      "question": "What kinds of content can a single EDS section contain?"
+    },
+    {
+      "id": "CDD-034",
+      "claim": "There are no strict rules on section boundaries; some blocks may require being alone in their section (check the block's docs).",
+      "source": "references/html-structure.md:97-99, references/html-structure.md:513-514",
+      "kind": "generic",
+      "verified": "project/authoring practice; no platform rule",
+      "question": null
+    },
+    {
+      "id": "CDD-035",
+      "claim": "Section metadata is authored as a 'Section Metadata' table in the section, rendered as <div class=\"section-metadata\"> with one row div per key/value pair (key cell, value cell).",
+      "source": "references/html-structure.md:101-125, references/html-structure.md:128-129",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/block-collection/section-metadata (name in first column, value in second); aem-cli@16.21.20 node_modules/@adobe/helix-html-pipeline@6.32.0 src/steps/extract-section-metadata.js (matches div.section-metadata, reads row children [name, value])",
+      "question": "How does an author attach settings such as a background style to one section of an EDS page, and what does that look like in the delivered HTML before processing?"
+    },
+    {
+      "id": "CDD-036",
+      "claim": "Section metadata is applied to its section and then removed: Style values become CSS classes on the section, other keys become data attributes.",
+      "source": "references/html-structure.md:127-132, references/html-structure.md:103",
+      "kind": "eds",
+      "verified": "partial: correct behavior (https://www.aem.live/developer/block-collection/section-metadata: Style → class, Id → id attribute, others → data-*). But it now happens server-side: helix-html-pipeline extract-section-metadata.js (only for rendering version >= 2 or sites created on/after 2026-05-01) and aem-lib 3.1.0 removed the client-side handler; aem-boilerplate@5cea543 scripts/aem.js decorateSections no longer reads section-metadata (removed in 26af708). Live www.aem.live sections carry class=\"title-section\" with no section-metadata div. Consequence: in local --html-folder .plain.html drafts (no pipeline, aem-cli utils.js:794) the section-metadata div is NOT processed with current boilerplate",
+      "question": "What happens to a section's 'Section Metadata' table when an EDS page is rendered — how do the Style key and other keys end up in the DOM, and which layer does that work today?"
+    },
+    {
+      "id": "CDD-037",
+      "claim": "The section-metadata div is placed at the beginning of the section.",
+      "source": "references/html-structure.md:128",
+      "kind": "eds",
+      "verified": "partial: position is not significant — aem-cli@16.21.20 node_modules/@adobe/helix-html-pipeline@6.32.0 src/steps/extract-section-metadata.js visits any div.section-metadata within the section and applies it to the parent; aem.live block-collection does not prescribe a position",
+      "question": null,
+      "quiz": "excluded: position claim is not a platform rule; low recall value"
+    },
+    {
+      "id": "CDD-038",
+      "claim": "Common section style names are light, dark, grey, accent; reuse the same style name for the same visual treatment instead of unique names per section.",
+      "source": "references/html-structure.md:134-143",
+      "kind": "generic",
+      "verified": "project convention; aem-boilerplate@5cea543 styles/styles.css:320-321 only defines `.section.light` and `.section.highlight`",
+      "question": null
+    },
+    {
+      "id": "CDD-039",
+      "claim": "In EDS markdown, blocks such as Section Metadata are written as grid tables (+---+ borders) with the block name as the header row.",
+      "source": "references/html-structure.md:118-125",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 node_modules/@adobe: remark-gridtables / mdast-util-gridtables / micromark-extension-gridtables used by helix-html2md and helix-html-pipeline; https://www.aem.live/developer/markup-sections-blocks (block = table with name in first row)",
+      "question": "In the markdown representation that EDS uses internally for documents, what table syntax represents a block?"
+    },
+    {
+      "id": "CDD-040",
+      "claim": "Use the page-decomposition skill for identifying sections and assigning styles when migrating pages.",
+      "source": "references/html-structure.md:189-190",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-041",
+      "claim": "Supported default content elements: h1–h6, p, ul/ol/li, strong/em/a, images as <picture>, code blocks (<pre>/<code>), and <blockquote>.",
+      "source": "references/html-structure.md:196-221",
+      "kind": "eds",
+      "verified": "partial: https://www.aem.live/developer/markup-sections-blocks lists headings h1–h6, images, links, lists ul/ol, emphasis em/strong 'etc.'; pre/code and blockquote are standard markdown rendered by the remark-based helix-html-pipeline but are not documented explicitly and are rarely produced by Docs/Word authoring",
+      "question": "Which HTML elements does EDS produce for 'default content' (content outside blocks)?"
+    },
+    {
+      "id": "CDD-042",
+      "claim": "A block is a <div> whose first class is the block name; that class triggers loading of the block's decoration code.",
+      "source": "references/html-structure.md:223-234, references/html-structure.md:29",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks (block name used as CSS class and as folder/file name loaded by the block loader); aem-boilerplate@5cea543 scripts/aem.js:572-576 (block.classList[0] → data-block-name), 590-591 (blocks = `div.section > div > div`)",
+      "question": "In delivered EDS markup, how is a block represented, and how does the block loader determine which code to load for it?"
+    },
+    {
+      "id": "CDD-043",
+      "claim": "Block variants/options appear as additional classes on the block div after the block name (e.g. class=\"block-name variant-one variant-two\").",
+      "source": "references/html-structure.md:42, references/html-structure.md:236-252, references/html-structure.md:479",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks#block-options ('Columns (dark, wide)' → class=\"columns dark wide\"; multi-word options hyphenated)",
+      "question": "How does an author specify a variant of a block in a document, and how does it show up in the block's HTML?"
+    },
+    {
+      "id": "CDD-044",
+      "claim": "Icons are authored as :iconName: and rendered as <span class=\"icon icon-iconName\"></span> (base class `icon` plus `icon-{name}`).",
+      "source": "references/html-structure.md:254-271",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 node_modules/@adobe/helix-html-pipeline@6.32.0 src/steps/rewrite-icons.js:16-35 (regex :name: → h('span', {className: ['icon', `icon-${name}`]})); https://www.aem.live/developer/block-collection/icons",
+      "question": "How does an author insert an icon in EDS content, and what HTML does the server render for it?"
+    },
+    {
+      "id": "CDD-045",
+      "claim": "An icon name maps to an SVG at /icons/{name}.svg (e.g. :profile: → /icons/profile.svg).",
+      "source": "references/html-structure.md:270",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:449-461 decorateIcon appends <img src=`${codeBasePath}${prefix}/icons/${iconName}.svg`>; https://www.aem.live/developer/block-collection/icons (icons in code or in an /icons/ folder in the content source)",
+      "question": "Where does the boilerplate look for the image file behind an authored icon?"
+    },
+    {
+      "id": "CDD-046",
+      "claim": "Icons are inline and can be combined with text or wrapped in links, strong, em or other inline elements.",
+      "source": "references/html-structure.md:268-289",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/block-collection/icons ('can be inserted as a part of all Default Content constructs'); rewrite-icons.js replaces text-node matches in place",
+      "question": "Can authored icons appear inside links or emphasized text in EDS content?"
+    },
+    {
+      "id": "CDD-047",
+      "claim": "Images are rendered as <picture> elements with <source> elements (WebP plus original-format fallback) and a final <img> fallback.",
+      "source": "references/html-structure.md:219, references/html-structure.md:291-310, references/html-structure.md:517",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 node_modules/@adobe/helix-html-pipeline@6.32.0 src/steps/create-pictures.js:30-62 (webply sources + original-ext sources, last variant is <img loading=lazy>); https://www.aem.live/developer/markup-sections-blocks ('a full <picture> tag is rendered')",
+      "question": "When an author places an image in a document, what HTML structure does EDS render for it?"
+    },
+    {
+      "id": "CDD-048",
+      "claim": "Responsive image breakpoints are (min-width: 600px) at width=2000 and a default width=750.",
+      "source": "references/html-structure.md:298-301, references/html-structure.md:307-308, references/html-structure.md:314-328",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 node_modules/@adobe/helix-html-pipeline@6.32.0 src/steps/create-pictures.js:16-18 BREAK_POINTS; aem-boilerplate@5cea543 scripts/aem.js:341 createOptimizedPicture default breakpoints",
+      "question": "What media breakpoint and image widths does EDS use by default for the responsive variants of an authored image?"
+    },
+    {
+      "id": "CDD-049",
+      "claim": "Image URLs carry query parameters width, format (webply for WebP, otherwise the image format) and optimize=medium.",
+      "source": "references/html-structure.md:298-301, references/html-structure.md:308-309",
+      "kind": "eds",
+      "verified": "partial: aem-cli@16.21.20 node_modules/@adobe/helix-html-pipeline@6.32.0 src/steps/create-pictures.js:47 `?width=${w}&format=${ext}&optimize=medium` with ext 'webply' or the original file extension; aem-boilerplate@5cea543 aem.js:355,367. The skill's example uses format=jpeg for a .jpg; the platform uses the extension (format=jpg). Pipeline fallback <source> also has a type attribute",
+      "question": "What query parameters does EDS append to image URLs to request an optimized rendition, and what format value requests WebP?"
+    },
+    {
+      "id": "CDD-050",
+      "claim": "Always include meaningful alt text; use loading=\"lazy\" for below-the-fold images and loading=\"eager\" only for hero/above-the-fold images.",
+      "source": "references/html-structure.md:311-312, references/html-structure.md:333-334, references/html-structure.md:519",
+      "kind": "generic",
+      "verified": "general web practice. EDS nuance: the pipeline renders all images loading=lazy (create-pictures.js:56) and aem-boilerplate@5cea543 scripts/aem.js:632-637 waitForFirstImage sets the LCP image eager at runtime, so authored content never sets eager",
+      "question": null
+    },
+    {
+      "id": "CDD-051",
+      "claim": "Place images in the /media/ folder.",
+      "source": "references/html-structure.md:298-301, references/html-structure.md:332, references/html-structure.md:518",
+      "kind": "eds",
+      "verified": "partial: no /media/ folder exists in EDS; authored images are delivered content-addressed as ./media_<hash>.<ext> relative to the page (helix-html-pipeline create-pictures.js:82 only treats `./media_` srcs as media bus). For local drafts any path the dev server can serve works",
+      "question": "Where do images that authors add to documents live on an EDS site, and what do their URLs look like?"
+    },
+    {
+      "id": "CDD-052",
+      "claim": "The createOptimizedPicture() helper generates the responsive <picture> structure in decoration code.",
+      "source": "references/html-structure.md:335",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:337-380 createOptimizedPicture(src, alt, eager, breakpoints) builds webp + fallback sources and <img>; exported from aem.js",
+      "question": "Which aem.js helper should block code use to build a responsive picture element for an image URL?"
+    },
+    {
+      "id": "CDD-053",
+      "claim": "A simplified <picture><img></picture> is acceptable in local test files for quick prototyping; the full responsive structure is more realistic.",
+      "source": "references/html-structure.md:337-348",
+      "kind": "generic",
+      "verified": "test-authoring advice; --html-folder serves files unchanged (aem-cli utils.js:794) so no picture expansion happens either way",
+      "question": null
+    },
+    {
+      "id": "CDD-054",
+      "claim": "A block's rows and cells are rendered as nested <div>s: block div > one div per row > one div per cell, mirroring the authored table.",
+      "source": "references/html-structure.md:350-352, references/html-structure.md:418-442, references/html-structure.md:31-34",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks ('A block's content is rendered into the markup as nested <div> tags for the rows and columns that the author entered')",
+      "question": "How are the rows and columns of an authored block table represented in the delivered HTML?"
+    },
+    {
+      "id": "CDD-055",
+      "claim": "In the authored table the block name sits in the first (header) row; the remaining rows are content.",
+      "source": "references/html-structure.md:422-428",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks ('a table with the block name in the first row or table heading')",
+      "question": "In a document, how does an author tell EDS which block a table represents?"
+    },
+    {
+      "id": "CDD-056",
+      "claim": "Page-level decoration happens in decorateMain in scripts.js.",
+      "source": "references/html-structure.md:529-530",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 scripts/scripts.js:150 export function decorateMain(main)",
+      "question": null
+    },
+    {
+      "id": "CDD-057",
+      "claim": "Block-specific decoration lives in blocks/{block-name}/{block-name}.js.",
+      "source": "references/html-structure.md:531, SKILL.md:345",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks (block name = folder name = file name); aem-boilerplate@5cea543 scripts/aem.js loadBlock builds /blocks/${blockName}/${blockName}.js|.css",
+      "question": "Where must the JavaScript and CSS for a block named 'product-teaser' be placed so the block loader finds them?"
+    },
+    {
+      "id": "CDD-058",
+      "claim": "Classes and enhanced markup are added during decoration, not present in the authored HTML.",
+      "source": "references/html-structure.md:532",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks (DOM vs. markup: wrappers, classes and data attributes added by scripts.js); aem-boilerplate@5cea543 scripts/aem.js:494 (.section), 572-583 (.block, data-block-name, {name}-wrapper, {name}-container)",
+      "question": "Which classes or wrapper elements on sections and blocks are added by the client-side decoration rather than delivered in the server HTML?"
+    },
+    {
+      "id": "CDD-059",
+      "claim": "Test content should cover all variants and edge cases (multiple sections in one file) with realistic, not placeholder, content, and must match the block's content model.",
+      "source": "SKILL.md:247, references/html-structure.md:521-528",
+      "kind": "generic",
+      "verified": "testing practice",
+      "question": null
+    },
+    {
+      "id": "CDD-060",
+      "claim": "Option C: invoke find-test-content with the block name (and optional dev server URL, default localhost:3000); it reports URLs with instance counts and variants; create more content via Option B if coverage is insufficient.",
+      "source": "SKILL.md:215-241, SKILL.md:433",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-061",
+      "claim": "Step 5: invoke building-blocks with the content model, test URLs, analysis and change type; it handles JS decoration, mobile-first responsive CSS and iterative browser testing, invoking testing-blocks itself.",
+      "source": "SKILL.md:254-275, SKILL.md:296, SKILL.md:434-435",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-062",
+      "claim": "Validate in mobile, tablet and desktop viewports with no console errors and no visual regressions.",
+      "source": "SKILL.md:62, SKILL.md:272-273, SKILL.md:314-318, SKILL.md:326-327",
+      "kind": "generic",
+      "verified": "general QA practice",
+      "question": null
+    },
+    {
+      "id": "CDD-063",
+      "claim": "`npm run lint` runs the project's linters; `npm run lint:fix` auto-fixes fixable problems.",
+      "source": "SKILL.md:284-289, SKILL.md:299",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 package.json scripts lint (eslint . + stylelint blocks/**/*.css styles/*.css) and lint:fix; .github/workflows/main.yaml runs npm run lint",
+      "question": null
+    },
+    {
+      "id": "CDD-064",
+      "claim": "Run `npm test` only if package.json defines a test script; the boilerplate has none.",
+      "source": "SKILL.md:291-294, SKILL.md:300",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 package.json has no test script",
+      "question": null
+    },
+    {
+      "id": "CDD-065",
+      "claim": "Unit tests are optional, only for logic-heavy utilities.",
+      "source": "SKILL.md:296",
+      "kind": "generic",
+      "verified": "prescriptive; no platform rule",
+      "question": null
+    },
+    {
+      "id": "CDD-066",
+      "claim": "Step 7: re-read the Step 2 acceptance criteria, do a final browser check, and check regressions (existing variants for block changes, spot-check pages for core changes).",
+      "source": "SKILL.md:306-330",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-067",
+      "claim": "Work on a feature branch (git checkout -b), stage only the files you changed (never `git add .`), push with `git push origin HEAD`, never to main.",
+      "source": "SKILL.md:338-347, SKILL.md:356-358, SKILL.md:421",
+      "kind": "generic",
+      "verified": "general git practice; https://www.aem.live/docs/dev-collab-and-good-practices recommends not pushing to main",
+      "question": null
+    },
+    {
+      "id": "CDD-068",
+      "claim": "Commit messages use conventional commit format, e.g. `feat(block-name): add new block`.",
+      "source": "SKILL.md:349-351, SKILL.md:420",
+      "kind": "generic",
+      "verified": "general convention; not required by EDS",
+      "question": null
+    },
+    {
+      "id": "CDD-069",
+      "claim": "Add agent attribution in the commit footer (`Co-authored-by: cursor <noreply@cursor.com>`).",
+      "source": "SKILL.md:353, SKILL.md:420",
+      "kind": "workflow",
+      "verified": "workflow instruction; note the trailer is Cursor-specific and would be wrong for other agents",
+      "question": null
+    },
+    {
+      "id": "CDD-070",
+      "claim": "Each branch pushed to GitHub gets a preview at https://{branch}--{repo}--{owner}.aem.page/{path} (code from the branch, content from the content source).",
+      "source": "SKILL.md:361-362, SKILL.md:408",
+      "kind": "eds",
+      "verified": "verified with nuance: https://www.aem.live/developer/tutorial ('https://<branch>--<repo>--<owner>.aem.page/'); https://www.aem.live/docs/sidekick (branch--site--org.aem.page/path). aem-cli up.cmd.js:209-216: '/' in branch names becomes '-' and the whole label must be <= 63 chars",
+      "question": "After pushing a feature branch to an EDS project's GitHub repo, at what URL can you preview a page with that branch's code? Note any constraints on the branch name."
+    },
+    {
+      "id": "CDD-071",
+      "claim": "PR test URLs (preview links in the PR description) are used for automated PageSpeed Insights checks and are required for every PR.",
+      "source": "SKILL.md:363, references/cdd-philosophy.md:33, references/html-structure.md:538",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/keeping-it-100 ('test URLs in the description ... used to run PageSpeed Insights ... The AEM GitHub bot will automatically fail your PR if the score is below 100'); https://www.aem.live/docs/dev-collab-and-good-practices (AEM Code Sync app runs PSI); aem-boilerplate@5cea543 AGENTS.md:20",
+      "question": "What does the AEM GitHub integration do with the URLs listed in a pull request description, and what happens to the PR based on the result?"
+    },
+    {
+      "id": "CDD-072",
+      "claim": "A PR's Before/After links use https://main--{repo}--{owner}.aem.page/{path} and https://{branch}--{repo}--{owner}.aem.page/{path}; the PR description includes 'Fix #<issue>' and 'Test URLs'.",
+      "source": "SKILL.md:393-417",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 .github/pull_request_template.md (Fix #<gh-issue-id>, Test URLs Before main--{repo}--{owner}.aem.live / After <branch>--...aem.live — the template uses .aem.live, the skill .aem.page; both work)",
+      "question": null
+    },
+    {
+      "id": "CDD-073",
+      "claim": "Local --html-folder test content is not on the branch preview, so PR validation links need content that exists in the content source and has been previewed.",
+      "source": "SKILL.md:211, SKILL.md:366-375, references/html-structure.md:534-542",
+      "kind": "eds",
+      "verified": "verified with nuance: --html-folder files are only served by the local CLI (aem-cli server/HelixServer.js:673-676); branch previews take content from the content source (https://www.aem.live/docs/sidekick). For DA sites, local ./content/ drafts can be uploaded with `aem content push` and then previewed, so the user need not author them by hand",
+      "question": "Can test pages that exist only as local HTML files for the dev server be used as preview links on a branch's *.aem.page URL? What has to happen first?"
+    },
+    {
+      "id": "CDD-074",
+      "claim": "Create a draft PR (gh pr create --draft) when only local test content exists; a regular PR when all test content is in the CMS; include next steps, have the user create/preview CMS content, add preview URLs and mark the PR ready.",
+      "source": "SKILL.md:366-391, SKILL.md:410-417",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-075",
+      "claim": "`gh pr create --draft` creates a draft pull request.",
+      "source": "SKILL.md:378",
+      "kind": "generic",
+      "verified": "GitHub CLI",
+      "question": null
+    },
+    {
+      "id": "CDD-076",
+      "claim": "AEM Sidekick: right-clicking the extension icon on an AEM page offers 'View document source', which opens a popup whose copy button copies the page content for pasting into Word, Google Docs or DA.",
+      "source": "SKILL.md:384-389",
+      "kind": "eds",
+      "verified": "aem-sidekick@233d816 src/extension/ui.js:173-182 (context menu item 'openViewDocSource', contexts ['action'], shown when page has body>header, body>main>div, body>footer — true for CLI-wrapped drafts), _locales/en/messages.json 'View document source', views/doc-source/index.html copy button, js/ui.js:49 converts <hr> to '---' for pasting. Not documented on https://www.aem.live/docs/sidekick",
+      "question": "How can you turn an EDS page you are viewing in the browser back into content that can be pasted into a Word/Google Docs document, using the AEM Sidekick?"
+    },
+    {
+      "id": "CDD-077",
+      "claim": "For Universal Editor projects, copied document source cannot be pasted directly; use it as a guide.",
+      "source": "SKILL.md:389",
+      "kind": "eds",
+      "verified": "partial: consistent with https://www.aem.live/developer/ue-tutorial (UE content is authored as components in AEM Sites, not documents); no source states the copy/paste limitation explicitly",
+      "question": null,
+      "quiz": "excluded: no direct source; low-value detail"
+    },
+    {
+      "id": "CDD-078",
+      "claim": "block-collection-and-party is used to find similar blocks and reference implementations.",
+      "source": "SKILL.md:436",
+      "kind": "workflow",
+      "verified": "workflow instruction (process/ordering/hand-off); not recall-quizzed",
+      "question": null
+    },
+    {
+      "id": "CDD-079",
+      "claim": "Authors are the primary users of content models: models must be intuitive, easy, forgiving and flexible, and developers accept more complex decoration code rather than burdening authors.",
+      "source": "references/cdd-philosophy.md:3-15, SKILL.md:443",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/markup-sections-blocks ('developers absorb the complexity of translating an intuitive authoring experience into the DOM'; 'It is often tempting to delegate complexity to the author. Instead ...'); also 'Structure of a Document': involve authors early",
+      "question": "According to Edge Delivery's guidance on block design, how should complexity be divided between content authors and developer code?"
+    },
+    {
+      "id": "CDD-080",
+      "claim": "Preparing test content first enables immediate testing, doubles as PR validation and living documentation, and replaces assumptions with real author patterns and edge cases.",
+      "source": "references/cdd-philosophy.md:17-56",
+      "kind": "generic",
+      "verified": "development philosophy",
+      "question": null
+    },
+    {
+      "id": "CDD-081",
+      "claim": "Skipping discovery, modeling or test content leads to imagined requirements, author-hostile structures and late bug discovery; the code-first loop is slower than CDD overall.",
+      "source": "references/cdd-philosophy.md:58-101",
+      "kind": "generic",
+      "verified": "development philosophy",
+      "question": null
+    },
+    {
+      "id": "CDD-082",
+      "claim": "The initial content structure is a contract between authors and developers; breaking it breaks existing pages and forces author rework.",
+      "source": "references/cdd-philosophy.md:103-115",
+      "kind": "generic",
+      "verified": "general backwards-compatibility principle; no specific platform rule",
+      "question": null
+    },
+    {
+      "id": "CDD-083",
+      "claim": "CDD mindset: ask what authors need and how they will use it, prefer understandable over elegant, test while building.",
+      "source": "references/cdd-philosophy.md:117-133",
+      "kind": "generic",
+      "verified": "development philosophy",
+      "question": null
+    }
+  ]
+}

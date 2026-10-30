@@ -1,0 +1,774 @@
+{
+  "sourceRef": "65e16628b12075cce8aa83c45853fd5840627740",
+  "sourceRoot": "plugins/aem/edge-delivery-services/skills/testing-blocks",
+  "facts": [
+    {
+      "id": "TB-001",
+      "claim": "Run this skill after changing blocks, core scripts, styles or functionality-affecting configuration, and before opening any pull request with code changes.",
+      "source": "SKILL.md:3, SKILL.md:24-28",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    },
+    {
+      "id": "TB-002",
+      "claim": "Browser validation is mandatory: the skill cannot be completed without proof (screenshots) of functional testing in a real browser; browser tests are required before opening any PR.",
+      "source": "SKILL.md:13, SKILL.md:66, SKILL.md:177, references/testing-philosophy.md:6, references/testing-philosophy.md:21",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    },
+    {
+      "id": "TB-003",
+      "claim": "Related skills: content-driven-development provides the test content; building-blocks invokes this skill; block-collection-and-party may provide reference test patterns.",
+      "source": "SKILL.md:17-19",
+      "kind": "workflow",
+      "verified": "consistent with building-blocks/SKILL.md:15,22 and content-driven-development/SKILL.md:167 (Step 4 test content)",
+      "question": null
+    },
+    {
+      "id": "TB-004",
+      "claim": "building-blocks invokes this skill during its Step 5 (Test Implementation).",
+      "source": "SKILL.md:18, SKILL.md:30, SKILL.md:278",
+      "kind": "workflow",
+      "verified": "WRONG: building-blocks/SKILL.md:13-23 (same repo) now has a 5-item workflow where testing-blocks is item 4 ('Test with testing-blocks'); item 5 is 'Return to the CDD workflow'. There is no 'Step 5 (Test Implementation)'",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "TB-005",
+      "claim": "The core project scripts are scripts.js, delayed.js and aem.js.",
+      "source": "SKILL.md:25",
+      "kind": "eds",
+      "verified": "WRONG: aem-boilerplate@5cea543 scripts/ contains aem.js, scripts.js, consent-check.js, consented.js; there is no delayed.js. scripts/scripts.js:L206-209 loadDelayed() imports consent-check.js, which loads consented.js only after consent (https://www.aem.live/developer/anatomy-of-a-project). Also AGENTS.md: 'scripts/aem.js is vendored. Never edit.' Older projects may still have delayed.js",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "TB-006",
+      "claim": "The global stylesheets are styles.css and lazy-styles.css.",
+      "source": "SKILL.md:26",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 styles/styles.css, styles/lazy-styles.css (also styles/fonts.css)",
+      "question": null
+    },
+    {
+      "id": "TB-007",
+      "claim": "Testing workflow order: (1) lint and fix, (2) browser validation (mandatory), (3) decide whether unit tests are needed (optional), (4) run existing tests.",
+      "source": "SKILL.md:34-39",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    },
+    {
+      "id": "TB-008",
+      "claim": "`npm run lint` runs the project's linting (ESLint for JS and Stylelint for CSS).",
+      "source": "SKILL.md:46, SKILL.md:60, references/troubleshooting.md:255, references/troubleshooting.md:413",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 package.json: lint = 'npm run lint:js && npm run lint:css'; lint:js = 'eslint .'; lint:css = stylelint on blocks/**/*.css and styles/*.css",
+      "question": null
+    },
+    {
+      "id": "TB-009",
+      "claim": "`npm run lint:fix` auto-fixes lint issues that can be fixed automatically.",
+      "source": "SKILL.md:51, SKILL.md:260, references/troubleshooting.md:136, references/troubleshooting.md:178",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 package.json: lint:fix = 'npm run lint:js -- --fix && npm run lint:css -- --fix'",
+      "question": null
+    },
+    {
+      "id": "TB-010",
+      "claim": "If lint:fix leaves issues, fix them manually; step 1 is complete only when `npm run lint` passes with no errors.",
+      "source": "SKILL.md:54-60, SKILL.md:261",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    },
+    {
+      "id": "TB-011",
+      "claim": "Browser validation checks: the block renders correctly, responsive behavior across mobile/tablet/desktop, no console errors, visual match to acceptance criteria, interactive behavior, and all variants.",
+      "source": "SKILL.md:70-76, SKILL.md:171-175",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-012",
+      "claim": "With browser/Playwright MCP tools: navigate to the test URL, take accessibility snapshots to inspect content (preferred for interaction), take full-page and block-element screenshots at several viewports, and interact as needed.",
+      "source": "SKILL.md:82-90",
+      "kind": "generic",
+      "verified": "n/a (agent tooling advice; Playwright MCP exposes accessibility snapshots and screenshots)",
+      "question": null
+    },
+    {
+      "id": "TB-013",
+      "claim": "Browser test scripts are temporary: write them (e.g. test-my-block.mjs), run with `node`, analyze the artifacts, delete the script, and never commit browser tests.",
+      "source": "SKILL.md:94, SKILL.md:97, SKILL.md:138, references/testing-philosophy.md:23, references/testing-philosophy.md:41",
+      "kind": "workflow",
+      "verified": "n/a (process instruction). Note: aem-boilerplate@5cea543 has no playwright dependency, so the script needs playwright installed separately",
+      "question": null
+    },
+    {
+      "id": "TB-014",
+      "claim": "A Playwright script can `import { chromium } from 'playwright'` in an .mjs file, launch with `chromium.launch({ headless: false })` and open a page with `browser.newPage()`.",
+      "source": "SKILL.md:98-103",
+      "kind": "generic",
+      "verified": "playwright@1.64.1 (types.d.ts): chromium.launch(options) with headless?: boolean; import verified with node 24 ESM",
+      "question": null
+    },
+    {
+      "id": "TB-015",
+      "claim": "Register `page.on('console', msg => ...)` before navigating to capture browser console output; `msg.text()` returns the message text.",
+      "source": "SKILL.md:105-106",
+      "kind": "generic",
+      "verified": "playwright@1.64.1 (types.d.ts): Page 'console' event, ConsoleMessage.text()",
+      "question": null
+    },
+    {
+      "id": "TB-016",
+      "claim": "`locator.ariaSnapshot()` returns the accessibility tree of an element (a YAML string), which can be written to a .yml file for analysis.",
+      "source": "SKILL.md:112-117",
+      "kind": "generic",
+      "verified": "playwright@1.64.1 (types.d.ts): Locator.ariaSnapshot(options?) -> Promise<string> (YAML); page.accessibility no longer exists in 1.64",
+      "question": null
+    },
+    {
+      "id": "TB-017",
+      "claim": "Use `page.setViewportSize({width, height})` to switch viewports, `page.screenshot({ path, fullPage: true })` for full-page shots and `locator.screenshot({ path })` for element shots.",
+      "source": "SKILL.md:119-130",
+      "kind": "generic",
+      "verified": "playwright@1.64.1 (types.d.ts): Page.setViewportSize, Page.screenshot fullPage option, Locator.screenshot",
+      "question": null
+    },
+    {
+      "id": "TB-018",
+      "claim": "Representative test viewports: 375x667 (mobile), 768x1024 (tablet), 1200x800 (desktop).",
+      "source": "SKILL.md:120-128, SKILL.md:145-147",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-019",
+      "claim": "Project breakpoints: mobile below 600px, tablet 600-900px, desktop above 900px.",
+      "source": "SKILL.md:145-147",
+      "kind": "repo",
+      "verified": "partial: aem-boilerplate@5cea543 CSS uses only `@media (width >= 900px)` (styles/styles.css:L56,L313, blocks/*/*.css), so desktop starts at 900px inclusive; there is no 600px CSS breakpoint (600px appears only as createOptimizedPicture's default image breakpoint in scripts/aem.js)",
+      "question": null
+    },
+    {
+      "id": "TB-020",
+      "claim": "`aem up` starts the local dev server, reachable at http://localhost:3000 (check with `curl http://localhost:3000`).",
+      "source": "SKILL.md:109, SKILL.md:143, SKILL.md:266, references/troubleshooting.md:66-70, references/troubleshooting.md:442",
+      "kind": "eds",
+      "verified": "partial: aem-cli@16.21.20 src/up.js:L50-53 --port default 3000; but src/up.cmd.js:L105-112 in a git worktree replaces port 3000 with a branch-derived port (GitUtils.hashBranchToPort) unless another port is set, so use the port `aem up` logs",
+      "question": "On which local address and port does the AEM CLI dev server listen by default, and are there situations where it picks a different port?"
+    },
+    {
+      "id": "TB-021",
+      "claim": "Manual browser testing: use dev tools responsive mode for each viewport, check the console for errors at each, and take screenshots as proof.",
+      "source": "SKILL.md:142-149",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-022",
+      "claim": "Validate against acceptance criteria from CDD Step 2 and against any provided design/mockup screenshots, noting intentional deviations.",
+      "source": "SKILL.md:153-161",
+      "kind": "workflow",
+      "verified": "consistent with content-driven-development/SKILL.md:120-139 (Step 2 Analyze & Plan defines acceptance criteria)",
+      "question": null
+    },
+    {
+      "id": "TB-023",
+      "claim": "Required proof of testing: screenshots in at least one viewport, confirmation of no console errors, and confirmation that acceptance criteria are met.",
+      "source": "SKILL.md:165-168",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    },
+    {
+      "id": "TB-024",
+      "claim": "Write unit tests for logic-heavy code: pure functions, utilities shared across blocks, data processing/validation, API integrations, complex algorithms/business logic, shared libraries.",
+      "source": "SKILL.md:185-189, references/testing-philosophy.md:27-32, references/unit-testing.md:7-12",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-025",
+      "claim": "Don't unit-test simple DOM manipulation, CSS-only changes, block decoration/rendering logic, UI layout/visual appearance or simple getters/setters; validate those in the browser.",
+      "source": "SKILL.md:191-195, references/testing-philosophy.md:36-41, references/unit-testing.md:14-19",
+      "kind": "generic",
+      "verified": "n/a (prescriptive guidance; no platform rule)",
+      "question": null
+    },
+    {
+      "id": "TB-026",
+      "claim": "Unit tests are optional; step 3 is complete when tests are written and passing or it is determined they are not needed.",
+      "source": "SKILL.md:181-183, SKILL.md:219-224",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    },
+    {
+      "id": "TB-027",
+      "claim": "Vitest test structure: `import { describe, it, expect } from 'vitest'`, group with describe(), cases with it(), assert with expect(...).toBe/toEqual/toBeNull.",
+      "source": "SKILL.md:207-214, references/unit-testing.md:56-70, references/vitest-setup.md:120-126",
+      "kind": "generic",
+      "verified": "vitest@5.0.5 (run in temp dir)",
+      "question": null
+    },
+    {
+      "id": "TB-028",
+      "claim": "Unit tests live in a top-level test/ directory mirroring the source path (scripts/utils/x.js -> test/utils/x.test.js; blocks/hero/utils.js -> test/blocks/hero/utils.test.js), named {filename}.test.js; create with `mkdir -p test/utils test/blocks`.",
+      "source": "SKILL.md:206, references/unit-testing.md:47-51, references/vitest-setup.md:73-100",
+      "kind": "generic",
+      "verified": "partial: unit-testing.md:47 says 'next to the code they test' but every example mirrors the source under test/. Default Vitest include **/*.{test,spec}.?(c|m)[jt]s?(x) matches both (vitest@5.0.5 (run in temp dir))",
+      "question": null
+    },
+    {
+      "id": "TB-029",
+      "claim": "The boilerplate defines no `test` script; run `npm test` in step 4 only if package.json has one.",
+      "source": "SKILL.md:230, SKILL.md:246",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 package.json scripts: lint:js, lint:css, lint, lint:fix only",
+      "question": null
+    },
+    {
+      "id": "TB-030",
+      "claim": "Run a single test file with `npm test -- path/to/test.js`.",
+      "source": "SKILL.md:238, SKILL.md:256, references/troubleshooting.md:44",
+      "kind": "generic",
+      "verified": "vitest@5.0.5 (run in temp dir): `npm test -- test/utils/u.test.js` with test = 'vitest run' runs only that file (positional filename filter)",
+      "question": null
+    },
+    {
+      "id": "TB-031",
+      "claim": "When tests fail: read the error (assertion, expected vs actual, file/line); fix the code if you broke functionality, update the test only if requirements intentionally changed; re-run the full suite.",
+      "source": "SKILL.md:236-240, references/troubleshooting.md:15-39",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-032",
+      "claim": "Serve local draft content with `aem up --html-folder drafts` so browser tests can load it.",
+      "source": "SKILL.md:264",
+      "kind": "eds",
+      "verified": "partial: flag exists (aem-cli@16.21.20 src/up.js:L118-122; https://www.aem.live/developer/cli-reference), but it is no longer needed for drafts: `aem up` serves ./content/ before proxying (src/server/HelixServer.js:L475-478), so test content checked out with `aem content clone --path <folder>` (DA, browser IMS login) and edited under content/ previews without push or --html-folder (building-blocks/SKILL.md:17-18)",
+      "question": "How can a developer preview test content locally with the AEM CLI dev server before it exists in, or is pushed to, the authoring system?"
+    },
+    {
+      "id": "TB-033",
+      "claim": "Files served from a local HTML folder appear under /<folder>/ without extension, e.g. drafts/tmp/my-block.plain.html at http://localhost:3000/drafts/tmp/my-block.",
+      "source": "SKILL.md:266",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 src/server/HelixProject.js:L157-159 (mount defaults to `/${htmlFolder}`; --html-mount overrides); up.js:L120 'Serve HTML files from this folder without extensions'; cli-reference: /folder/file serves folder/file.html or folder/file.plain.html",
+      "question": "When the AEM CLI dev server is told to serve a local folder of HTML files, at what URL path are those files served by default, and does the URL include the file extension?"
+    },
+    {
+      "id": "TB-034",
+      "claim": "Local test content lives in drafts/tmp/.",
+      "source": "SKILL.md:265",
+      "kind": "workflow",
+      "verified": "partial: matches content-driven-development/SKILL.md:205 (drafts/tmp/{block-name}.plain.html); building-blocks/SKILL.md:17-18 now uses DA content checked out to content/ (e.g. content/drafts/my-block.html)",
+      "question": null
+    },
+    {
+      "id": "TB-035",
+      "claim": "Add `await page.waitForSelector('.block')` when browser tests fail because the block isn't ready.",
+      "source": "SKILL.md:267",
+      "kind": "eds",
+      "verified": "partial: aem-boilerplate@5cea543 scripts/aem.js:L579-582 decorateBlock adds class `block` to every block, so '.block' matches the first visible block of any type, not necessarily the one under test; target the block's own class or `[data-block-status=\"loaded\"]`",
+      "question": "What class does EDS block decoration add to every block element, regardless of the block's name?"
+    },
+    {
+      "id": "TB-036",
+      "claim": "Testing follows value vs. cost: keep (maintain) tests only when their value exceeds creation and maintenance cost; everything else is still tested, but with temporary tests.",
+      "source": "SKILL.md:11, references/testing-philosophy.md:5",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-037",
+      "claim": "Focus most testing effort on browser tests: every created/modified block, layout and responsive behavior, DOM transformation, interactions, accessibility, block/page integration, performance (LCP, CLS); they catch rendering bugs, CSS conflicts and responsive breakdowns unit tests can't.",
+      "source": "references/testing-philosophy.md:10-21",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-038",
+      "claim": "Unit tests for shared logic have lasting value: they catch regressions in reused code, act as living documentation, and are fast and easy to maintain (e.g. URL normalization used by many blocks).",
+      "source": "references/testing-philosophy.md:34, references/unit-testing.md:131-135",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-039",
+      "claim": "`npm test` runs without errors when no test files exist yet, printing 'No test files found, exiting with code 0'.",
+      "source": "references/unit-testing.md:28, references/vitest-setup.md:110-114",
+      "kind": "generic",
+      "verified": "WRONG: vitest@5.0.5 (run in temp dir) `vitest run` with no tests prints 'No test files found, exiting with code 1' and exits 1 unless --passWithNoTests is set",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "TB-040",
+      "claim": "Add test/ and *.test.js to .hlxignore (same syntax as .gitignore) so test files are not served on the live site.",
+      "source": "references/unit-testing.md:33-41",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/anatomy-of-a-project ('Don't Serve: .hlxignore' ... same format as .gitignore); https://www.aem.live/docs/limits; aem-boilerplate@5cea543 AGENTS.md ('All committed files are served. Use .hlxignore.'). Note: aem-boilerplate@5cea543 .hlxignore already lists test/*",
+      "question": "How do you prevent files committed to an EDS project's GitHub repository (tests, tooling) from being served on the site, and what syntax does that mechanism use?"
+    },
+    {
+      "id": "TB-041",
+      "claim": "Test npm scripts: test = 'vitest run' (run once, CI/pre-commit), test:watch = 'vitest' (watch), test:ui = 'vitest --ui' (interactive UI), test:coverage = 'vitest run --coverage'.",
+      "source": "references/unit-testing.md:75-80, references/vitest-setup.md:53-69",
+      "kind": "generic",
+      "verified": "vitest@5.0.5 (run in temp dir): run, watch default, --ui (needs @vitest/ui), --coverage",
+      "question": null
+    },
+    {
+      "id": "TB-042",
+      "claim": "Good unit tests are fast, isolated, repeatable, self-validating and focused on one behavior.",
+      "source": "references/unit-testing.md:84-89",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-043",
+      "claim": "Example normalizeUrl(url, base): returns '' for falsy url, absolute http(s) URLs unchanged, prefixes base for root-relative paths, and base + '/' for relative paths; the example tests assert exactly that.",
+      "source": "references/unit-testing.md:96-129",
+      "kind": "generic",
+      "verified": "consistent by reading the example code",
+      "question": null
+    },
+    {
+      "id": "TB-044",
+      "claim": "In tests, `new JSDOM('<!DOCTYPE html>...').window.document` gives a browser-like document, which can be assigned to `global.document`.",
+      "source": "references/unit-testing.md:139-160, references/vitest-setup.md:139-160",
+      "kind": "generic",
+      "verified": "jsdom@30.1.3 under vitest@5.0.5 (ran in temp dir)",
+      "question": null
+    },
+    {
+      "id": "TB-045",
+      "claim": "Integration tests use the same Vitest setup, test multiple functions together (e.g. auto-blocking, multi-utility workflows) and are worth keeping when the workflow is critical, shared across teams, or costly to break.",
+      "source": "references/unit-testing.md:164-171, references/unit-testing.md:206-209",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-046",
+      "claim": "`buildAutoBlocks` can be imported from scripts/scripts.js for testing.",
+      "source": "references/unit-testing.md:179",
+      "kind": "eds",
+      "verified": "WRONG: aem-boilerplate@5cea543 scripts/scripts.js:L80 `function buildAutoBlocks` is not exported; the only export is decorateMain (L149-150). Importing scripts.js also runs loadPage() at module load (L217)",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "TB-047",
+      "claim": "buildAutoBlocks turns a first section containing a picture into a hero block.",
+      "source": "references/unit-testing.md:190-201",
+      "kind": "eds",
+      "verified": "WRONG: aem-boilerplate@5cea543 scripts/scripts.js:L80-103 buildAutoBlocks only auto-loads /fragments/ links and builds widget blocks from /widgets/ links (buildWidgetAutoBlocks); there is no hero auto-block (no buildHeroBlock on main). Hero is an authored block (blocks/hero)",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "TB-048",
+      "claim": "Unit test best practices: test behavior not implementation, descriptive names, one behavior per test, no interdependence, keep tests simple, mock external dependencies, test edge cases.",
+      "source": "references/unit-testing.md:213-219",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-049",
+      "claim": "Vitest patterns: async tests with async/await, beforeEach for setup, `expect(() => fn()).toThrow('message')` for errors.",
+      "source": "references/unit-testing.md:225-256",
+      "kind": "generic",
+      "verified": "vitest@5.0.5 (run in temp dir) API",
+      "question": null
+    },
+    {
+      "id": "TB-050",
+      "claim": "During development use `npm run test:watch`; run `npm test` and `npm run lint` before every commit; monitor coverage with `npm run test:coverage`; keep tests updated.",
+      "source": "references/unit-testing.md:260-264, references/vitest-setup.md:198-202, references/troubleshooting.md:412-414",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    },
+    {
+      "id": "TB-051",
+      "claim": "Install with `npm install --save-dev vitest @vitest/ui jsdom`; add `@vitest/coverage-v8` for coverage.",
+      "source": "references/vitest-setup.md:10, references/vitest-setup.md:16, references/troubleshooting.md:187, references/troubleshooting.md:194, references/troubleshooting.md:395",
+      "kind": "generic",
+      "verified": "npm registry: vitest 5.0.5, jsdom 30.1.3 installed in temp dir",
+      "question": null
+    },
+    {
+      "id": "TB-052",
+      "claim": "vitest.config.js: `defineConfig` from 'vitest/config' with test.environment 'jsdom', globals true, and coverage { provider 'v8', reporter ['text','html'], exclude node_modules/, test/, **/*.config.js }.",
+      "source": "references/vitest-setup.md:21-41",
+      "kind": "generic",
+      "verified": "vitest@5.0.5 (run in temp dir): config loaded and tests ran with this file",
+      "question": null
+    },
+    {
+      "id": "TB-053",
+      "claim": "environment 'jsdom' gives tests a DOM; without it Vitest runs in Node and DOM code fails with 'document is not defined'.",
+      "source": "references/vitest-setup.md:45, references/troubleshooting.md:366-382",
+      "kind": "generic",
+      "verified": "vitest@5.0.5 (run in temp dir): default environment is node (typeof document is 'undefined')",
+      "question": null
+    },
+    {
+      "id": "TB-054",
+      "claim": "globals: true makes describe, it and expect available without importing them.",
+      "source": "references/vitest-setup.md:46",
+      "kind": "generic",
+      "verified": "vitest@5.0.5 (run in temp dir): without globals 'ReferenceError: it is not defined'; with globals tests ran",
+      "question": null
+    },
+    {
+      "id": "TB-055",
+      "claim": "Verify setup with a throwaway test/example.test.js (expect(true).toBe(true)), run `npm test`, then delete it.",
+      "source": "references/vitest-setup.md:116-135",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-056",
+      "claim": "In CI (e.g. GitHub Actions) tests run automatically with `npm test`; add 'Run tests' and 'Generate coverage' steps to the workflow.",
+      "source": "references/vitest-setup.md:164-178",
+      "kind": "repo",
+      "verified": "partial: only once added. aem-boilerplate@5cea543 .github/workflows/main.yaml runs `npm ci` and `npm run lint` only; no test step",
+      "question": null
+    },
+    {
+      "id": "TB-057",
+      "claim": "'vitest: command not found': ensure vitest is in devDependencies and run `npm install`.",
+      "source": "references/vitest-setup.md:182-184",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-058",
+      "claim": "Import errors ('Failed to resolve import ...'): use paths relative to the test file (e.g. '../../scripts/utils/my-utility.js', not 'scripts/utils/...') and make sure the module exports the function.",
+      "source": "references/vitest-setup.md:189-191, references/troubleshooting.md:345-364",
+      "kind": "generic",
+      "verified": "vitest@5.0.5 (run in temp dir): bare 'scripts/utils/...' fails with 'Failed to resolve import \"scripts/utils/my-utility.js\" from \"test/utils/bad.test.js\". Does the file exist?'",
+      "question": null
+    },
+    {
+      "id": "TB-059",
+      "claim": "A missing coverage provider shows 'Coverage provider not found'; fix by installing @vitest/coverage-v8.",
+      "source": "references/troubleshooting.md:384-396, references/vitest-setup.md:193-194",
+      "kind": "generic",
+      "verified": "partial: fix is right, message differs. vitest@5.0.5 (run in temp dir) `vitest run --coverage` without the package prints 'MISSING DEPENDENCY Cannot find dependency '@vitest/coverage-v8''",
+      "question": null
+    },
+    {
+      "id": "TB-060",
+      "claim": "Use `it.only(...)` (test.only) to run just one test while debugging.",
+      "source": "references/troubleshooting.md:47-53",
+      "kind": "generic",
+      "verified": "vitest@5.0.5 (run in temp dir) API",
+      "question": null
+    },
+    {
+      "id": "TB-061",
+      "claim": "If a block isn't decorated yet, `await page.waitForSelector('.my-block')` (optionally with a timeout) waits for it.",
+      "source": "references/troubleshooting.md:78-81, SKILL.md:110",
+      "kind": "eds",
+      "verified": "verified with nuance: the block-name class is already in the server-delivered markup (https://www.aem.live/developer/markup-sections-blocks), but aem-boilerplate@5cea543 scripts/aem.js:L495-496 hides each section (style.display='none') until loadSection has loaded all its blocks (L651-661), and playwright@1.64.1 (types.d.ts) waitForSelector defaults to state 'visible', so it effectively waits for decoration. Explicit signal: data-block-status=\"loaded\" (aem.js:L563)",
+      "question": "When browser-automating an EDS page, what can a script wait for to know that a particular block has been loaded and decorated, and why does that work?"
+    },
+    {
+      "id": "TB-062",
+      "claim": "Wait for `page.waitForLoadState('networkidle')` when a block isn't decorated.",
+      "source": "references/troubleshooting.md:84",
+      "kind": "generic",
+      "verified": "partial: API exists, but playwright@1.64.1 (types.d.ts) marks 'networkidle' DISCOURAGED ('rely on web assertions to assess readiness instead')",
+      "question": null
+    },
+    {
+      "id": "TB-063",
+      "claim": "`page.waitForSelector(sel, { timeout: 10000 })` increases the timeout.",
+      "source": "references/troubleshooting.md:86-87",
+      "kind": "generic",
+      "verified": "WRONG: playwright@1.64.1 (types.d.ts) library default timeout is 30000 ms (coreBundle DEFAULT_PLAYWRIGHT_TIMEOUT = 3e4; TimeoutSettings._timeout), so 10000 shortens it",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "TB-064",
+      "claim": "Use `page.waitForTimeout(500)` to wait for animations to complete.",
+      "source": "references/troubleshooting.md:92-93",
+      "kind": "generic",
+      "verified": "partial: API exists; playwright@1.64.1 (types.d.ts) docs: 'Never wait for timeout in production. Tests that wait for time are inherently flaky.'",
+      "question": null
+    },
+    {
+      "id": "TB-065",
+      "claim": "A decorated block gets a `loaded` class, so tests can wait for `.my-block` classList.contains('loaded').",
+      "source": "references/troubleshooting.md:95-98",
+      "kind": "eds",
+      "verified": "WRONG: aem-boilerplate@5cea543 scripts/aem.js:L533-566 loadBlock sets block.dataset.blockStatus ('loading' then 'loaded', i.e. data-block-status=\"loaded\"); no 'loaded' class is added. Sections use data-section-status (L653-660)",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "TB-066",
+      "claim": "`locator.click({ force: false })` waits for the element to be clickable; or scroll it into view first with `scrollIntoViewIfNeeded()`.",
+      "source": "references/troubleshooting.md:101-109",
+      "kind": "generic",
+      "verified": "partial: playwright@1.64.1 (types.d.ts) force defaults to false (no-op option); click() already waits for actionability and scrolls into view, so scrollIntoViewIfNeeded() is redundant",
+      "question": null
+    },
+    {
+      "id": "TB-067",
+      "claim": "If test content can't be loaded, verify the URL manually and check that the content is previewed/published; `aem up` shows previewed content.",
+      "source": "references/troubleshooting.md:73-76",
+      "kind": "eds",
+      "verified": "aem-cli@16.21.20 src/up.cmd.js:L219 proxies https://main--{repo}--{owner}.aem.page (preview) by default, so previewing is enough; local content/ files are served first (HelixServer.js:L475)",
+      "question": "When the AEM CLI dev server proxies a page that isn't available locally, which host does it fetch the content from by default, and what does that imply about the state the content must be in?"
+    },
+    {
+      "id": "TB-068",
+      "claim": "Unused variables are lint errors ('foo' is defined but never used); remove or use them.",
+      "source": "references/troubleshooting.md:115-122",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 eslint run: no-unused-vars error",
+      "question": null
+    },
+    {
+      "id": "TB-069",
+      "claim": "Missing semicolons are lint errors.",
+      "source": "references/troubleshooting.md:124-131",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 eslint run: semi error ('Missing semicolon')",
+      "question": null
+    },
+    {
+      "id": "TB-070",
+      "claim": "Indentation issues are auto-fixed by `npm run lint:fix`.",
+      "source": "references/troubleshooting.md:133-137",
+      "kind": "repo",
+      "verified": "airbnb-base indent rule is fixable",
+      "question": null
+    },
+    {
+      "id": "TB-071",
+      "claim": "console.log produces the lint error 'Unexpected console statement'; remove it or add `// eslint-disable-next-line no-console`.",
+      "source": "references/troubleshooting.md:139-150",
+      "kind": "repo",
+      "verified": "partial: aem-boilerplate@5cea543 eslint run reports it as a warning (airbnb-base rules/errors.js 'no-console': 'warn'), which does not fail `npm run lint`; the disable comment is used in scripts/aem.js",
+      "question": null
+    },
+    {
+      "id": "TB-072",
+      "claim": "Imports without the .js extension fail lint with 'Unable to resolve path to module'; fix by adding .js.",
+      "source": "references/troubleshooting.md:152-159",
+      "kind": "repo",
+      "verified": "partial: fix is right; aem-boilerplate@5cea543 eslint run reports 'Missing file extension \"js\" for \"./utils\"' (import/extensions, .eslintrc.js js: 'always')",
+      "question": null
+    },
+    {
+      "id": "TB-073",
+      "claim": "`import { foo, bar } from './utils.js';` triggers airbnb's 'Expected a line break after this opening brace'; let lint:fix split it over multiple lines.",
+      "source": "references/troubleshooting.md:161-172",
+      "kind": "repo",
+      "verified": "WRONG: aem-boilerplate@5cea543 eslint run reports nothing for two specifiers; airbnb-base object-curly-newline ImportDeclaration { minProperties: 4, multiline: true, consistent: true } only fires at 4+ specifiers",
+      "question": null,
+      "quiz": "excluded: claim is wrong; fix in skill first"
+    },
+    {
+      "id": "TB-074",
+      "claim": "`npm run lint:js -- --fix-dry-run` shows what would be fixed.",
+      "source": "references/troubleshooting.md:181-184",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 eslint 8.57.1 supports --fix-dry-run (ran)",
+      "question": null
+    },
+    {
+      "id": "TB-075",
+      "claim": "`npm run lint:js -- <file>` lints a specific file.",
+      "source": "references/troubleshooting.md:186-189",
+      "kind": "repo",
+      "verified": "partial: aem-boilerplate@5cea543 lint:js is 'eslint .', so the command becomes `eslint . <file>` and still lints the whole project; use `npx eslint <file>`",
+      "question": null
+    },
+    {
+      "id": "TB-076",
+      "claim": "PSI checks only run when the PR description contains a test link to a branch preview page.",
+      "source": "references/troubleshooting.md:195-205, references/troubleshooting.md:416",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/keeping-it-100 ('the test URLs in the description ... are used to run the PageSpeed Insights Service'; the bot fails the PR if the score is below 100); https://www.aem.live/docs/dev-collab-and-good-practices (AEM Code Sync app runs PSI)",
+      "question": "What does the automated PageSpeed Insights check on an EDS project's pull request need from the pull request in order to run?"
+    },
+    {
+      "id": "TB-077",
+      "claim": "Branch preview URLs follow https://{branch}--{repo}--{owner}.aem.page/{path}.",
+      "source": "references/troubleshooting.md:202",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 AGENTS.md ('{branch}--{repo}--{owner}.aem.page/{path}'); aem-cli src/up.cmd.js:L219 main--{repo}--{owner}.aem.page",
+      "question": "What is the URL pattern for previewing a page from a specific Git branch of an EDS project?"
+    },
+    {
+      "id": "TB-078",
+      "claim": "If checks don't run, ensure GitHub Actions workflows are enabled in repository settings.",
+      "source": "references/troubleshooting.md:207-209",
+      "kind": "repo",
+      "verified": "partial: applies to the lint check (aem-boilerplate@5cea543 .github/workflows/main.yaml); PSI checks come from the AEM Code Sync GitHub app, not Actions",
+      "question": null
+    },
+    {
+      "id": "TB-079",
+      "claim": "Poor PSI scores are commonly caused by too much eagerly loaded JS, render-blocking CSS and large unoptimized images.",
+      "source": "references/troubleshooting.md:213-218",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-080",
+      "claim": "Third-party scripts must not load in the eager phase; they belong in the delayed phase.",
+      "source": "references/troubleshooting.md:219",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/keeping-it-100 (Three-Phase Loading E-L-D, Phase D for third-party/martech); aem-boilerplate@5cea543 scripts/scripts.js:L206-209 loadDelayed() -> consent-check.js -> consented.js",
+      "question": "In EDS page loading, in which phase should third-party and martech scripts be loaded, and from which file in the current boilerplate?"
+    },
+    {
+      "id": "TB-081",
+      "claim": "To improve performance, move non-LCP code in scripts.js into loadLazy() or loadDelayed().",
+      "source": "references/troubleshooting.md:223-226",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/scripts.js:L162 loadEager, L186 loadLazy, L206 loadDelayed ('load anything that can be postponed to the latest here'); loadPage L211-215 runs them in order",
+      "question": "In the EDS boilerplate's scripts.js, which functions represent the page-loading phases, and where should code not needed for the largest contentful paint go?"
+    },
+    {
+      "id": "TB-082",
+      "claim": "Optimize images for PSI: use WebP, lazy-load below-the-fold images, use appropriate dimensions.",
+      "source": "references/troubleshooting.md:228-231",
+      "kind": "generic",
+      "verified": "partial for EDS: authored images are already delivered as <picture> with webp sources and loading=lazy (https://www.aem.live/developer/markup-sections-blocks); aem-boilerplate@5cea543 scripts/aem.js waitForFirstImage sets the LCP image eager; manual WebP conversion is rarely needed",
+      "question": null
+    },
+    {
+      "id": "TB-083",
+      "claim": "Move non-LCP CSS to lazy-styles.css, which loads after the LCP.",
+      "source": "references/troubleshooting.md:233-236",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 scripts/scripts.js:L198 loadCSS(styles/lazy-styles.css) inside loadLazy(); https://www.aem.live/developer/anatomy-of-a-project ('lazy-styles.css ... loaded after the LCP event')",
+      "question": "In the EDS boilerplate, where does global CSS that isn't needed for the first paint go, and when is it loaded?"
+    },
+    {
+      "id": "TB-084",
+      "claim": "Use `gh pr checks` to review PR check status and failed check details.",
+      "source": "references/troubleshooting.md:239-243, references/troubleshooting.md:417, references/troubleshooting.md:448",
+      "kind": "generic",
+      "verified": "n/a (gh CLI)",
+      "question": null
+    },
+    {
+      "id": "TB-085",
+      "claim": "Lint runs in CI; if it fails there but passes locally, run `npm run lint` before committing and make sure .eslintrc.js is committed.",
+      "source": "references/troubleshooting.md:246-260",
+      "kind": "repo",
+      "verified": "aem-boilerplate@5cea543 .github/workflows/main.yaml runs `npm run lint` on push; ESLint config is .eslintrc.js; https://www.aem.live/docs/dev-collab-and-good-practices (linting runs for each change in a PR)",
+      "question": null
+    },
+    {
+      "id": "TB-086",
+      "claim": "Pin the Node version with `echo \"20\" > .nvmrc` so CI and local match.",
+      "source": "references/troubleshooting.md:264-281",
+      "kind": "repo",
+      "verified": "partial: generic advice works, but aem-boilerplate@5cea543 has no .nvmrc and its CI uses node-version 24 (.github/workflows/main.yaml, despite the step name 'Use Node.js 20'), so '20' would mismatch",
+      "question": null
+    },
+    {
+      "id": "TB-087",
+      "claim": "For 'module not found' in CI, commit package.json and package-lock.json (or regenerate the lock file).",
+      "source": "references/troubleshooting.md:283-300",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-088",
+      "claim": "Use relative, environment-agnostic paths instead of absolute local paths.",
+      "source": "references/troubleshooting.md:302-317",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-089",
+      "claim": "Fix flaky timing-dependent tests by waiting for the condition, e.g. `await waitFor(() => getText() === 'updated')`.",
+      "source": "references/troubleshooting.md:319-341",
+      "kind": "generic",
+      "verified": "partial: `waitFor` is not defined in the example; vitest@5.0.5 (run in temp dir) vi.waitFor retries only while the callback throws, so a callback returning false resolves immediately; wrap an expect() inside instead",
+      "question": null
+    },
+    {
+      "id": "TB-090",
+      "claim": "When stuck: read the full error, check vitest.dev / playwright.dev, search GitHub issues, build a minimal reproduction, ask with context.",
+      "source": "references/troubleshooting.md:398-406",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-091",
+      "claim": "Preventive habits: test in the browser before opening a PR, include test links in PR descriptions, monitor `gh pr checks`; don't skip local testing, commit failing tests, ignore lint errors, force push without re-running tests, or merge with failing checks.",
+      "source": "references/troubleshooting.md:408-424",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    },
+    {
+      "id": "TB-092",
+      "claim": "Quick diagnostics: node --version, npm --version, npm list vitest, cat vitest.config.js, curl the dev server, git status, gh pr checks.",
+      "source": "references/troubleshooting.md:426-449",
+      "kind": "generic",
+      "verified": "n/a",
+      "question": null
+    },
+    {
+      "id": "TB-093",
+      "claim": "After resolving issues: re-run all checks, verify they pass, commit fixes, update docs if the issue was unclear.",
+      "source": "references/troubleshooting.md:451-461",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    },
+    {
+      "id": "TB-094",
+      "claim": "Inputs from building-blocks: block name, test content URL(s) from CDD Step 4, variants, design/existing screenshots, and acceptance criteria from CDD Step 2.",
+      "source": "SKILL.md:280-285",
+      "kind": "workflow",
+      "verified": "partial: building-blocks/SKILL.md:22 passes block name, test content URL(s), variants and acceptance criteria (no screenshots); content-driven-development/SKILL.md:120,167 confirm Step 2 = analysis/acceptance criteria, Step 4 = test content",
+      "question": null
+    },
+    {
+      "id": "TB-095",
+      "claim": "Outputs to building-blocks: confirmation all steps completed, browser screenshots, lint passing, tests passing, issues found and resolved.",
+      "source": "SKILL.md:287-292",
+      "kind": "workflow",
+      "verified": "n/a (process instruction)",
+      "question": null
+    }
+  ]
+}

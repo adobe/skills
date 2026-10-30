@@ -1,0 +1,56 @@
+{
+  "context": "Tests CDD on an existing block driven by test content, plus current facts a model without the skill tends to get wrong: Section Metadata (Style -> class, other keys -> data-*) is applied server-side by the HTML pipeline, so client-side parsing in scripts.js is unnecessary and the real bug is in the test content; local drafts in ./content/ are served by plain `aem up` before pushing; `aem content push` only stores content in DA, so the page must be previewed separately before a branch test link works; and the content is synced with the CLI's add/commit/push commands without a separate token step.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Root cause: Section Metadata is in the wrong section",
+      "max_score": 15,
+      "description": "NOTES.md says the Section Metadata block sits in its own separate section, so `dark` is applied to that empty section and not to the teaser's section. `content/drafts/teaser-dark.html` is fixed so that `<div class=\"section-metadata\">` (Style | dark) is inside the same section `<div>` as the teaser"
+    },
+    {
+      "name": "Section Metadata is applied server-side",
+      "max_score": 12,
+      "description": "NOTES.md says Section Metadata is turned into section classes/attributes server-side by the AEM HTML rendering pipeline (the delivered markup or `.plain.html` already has the class on the section and no section-metadata div), not by `aem.js`/`decorateSections`. That is why `decorateSections` doesn't touch it, and it is not a regression that needs client code"
+    },
+    {
+      "name": "Client-side section-metadata parser removed",
+      "max_score": 10,
+      "description": "`scripts/scripts.js` no longer defines or calls `applySectionMetadata` (or any other code that reads `.section-metadata` on the client), and `scripts/aem.js` is not modified"
+    },
+    {
+      "name": "Test page stays a DA document",
+      "max_score": 6,
+      "description": "The fixed `content/drafts/teaser-dark.html` keeps the full DA document shape (`<body>` with `<header></header>`, `<main>` with section `<div>`s, `<footer></footer>`) and the section-metadata block keeps its `<div>` row/cell structure with `Style` / `dark`"
+    },
+    {
+      "name": "Test content covers both cases",
+      "max_score": 5,
+      "description": "Validation covers a teaser in a dark section and a teaser in a normal section, either both on the draft page or the draft plus the existing `content/index.html` (`/`) checked for regressions"
+    },
+    {
+      "name": "Dark styling scoped to dark sections",
+      "max_score": 8,
+      "description": "`blocks/teaser/teaser.css` adds rules scoped to teasers inside dark sections (e.g. `.section.dark .teaser` / `main > .section.dark .teaser`) that set a transparent card background, light text and a white outlined button. The default teaser rules for normal sections are unchanged"
+    },
+    {
+      "name": "Explains the 404: push does not preview",
+      "max_score": 12,
+      "description": "NOTES.md says `aem content push` only uploads/stores the page in DA and does not preview it. The branch URL `teaser-dark--website--acme.aem.page` serves previewed content, so `/drafts/teaser-dark` must be previewed before the link works. Blaming the branch code, a missing deploy, or a wrong URL format instead gets no credit"
+    },
+    {
+      "name": "Re-sync and preview commands in order",
+      "max_score": 12,
+      "description": "Steps include, after the content fix and in order: `aem content add` for the draft path, `aem content commit -m \"...\"`, `aem content push`, and then a preview via Sidekick Preview or `POST https://admin.hlx.page/preview/acme/website/<ref>/drafts/teaser-dark`. 3 points each"
+    },
+    {
+      "name": "Validates locally before pushing, without --html-folder",
+      "max_score": 10,
+      "description": "Before pushing, Steps check the fixed draft with plain `aem up` (no `--html-folder`) at `http://localhost:<port>/drafts/teaser-dark` and/or `/drafts/teaser-dark.plain.html` (e.g. confirming the section now has the `dark` class), relying on `aem up` serving the local `content/` folder"
+    },
+    {
+      "name": "No separate DA token step and PR link updated",
+      "max_score": 10,
+      "description": "5 points: no manual DA/IMS token handling (no `DA_TOKEN`, no Bearer-token curl to admin.da.live, no separate auth step) for syncing content. 5 points: PR.md contains `https://teaser-dark--website--acme.aem.page/drafts/teaser-dark`"
+    }
+  ]
+}

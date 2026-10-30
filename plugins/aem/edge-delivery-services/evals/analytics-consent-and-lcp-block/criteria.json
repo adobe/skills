@@ -1,0 +1,51 @@
+{
+  "context": "Tests current AEM EDS loading-phase knowledge: third-party analytics belongs behind the boilerplate consent gate (consent-check.js -> consented.js), not in a delayed.js file or the eager/lazy phases; and a block likely to sit in the first section is loaded before LCP, so its decoration must not block rendering on network work.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Analytics loaded from consented.js",
+      "max_score": 20,
+      "description": "The analytics script is loaded from `scripts/consented.js` (or code it imports), so it runs only after consent; the consent gate in `consent-check.js` stays in place"
+    },
+    {
+      "name": "No delayed.js",
+      "max_score": 10,
+      "description": "The solution does NOT create or reference a `scripts/delayed.js` file and does NOT add a timer-based delayed loader"
+    },
+    {
+      "name": "Analytics not in eager or lazy phase",
+      "max_score": 15,
+      "description": "The analytics tag is NOT added to `head.html`, `loadEager`, `loadLazy`, or at module top level in `scripts.js`"
+    },
+    {
+      "name": "aem.js not modified",
+      "max_score": 5,
+      "description": "The solution does NOT modify or overwrite `scripts/aem.js`"
+    },
+    {
+      "name": "Block at standard path with default export",
+      "max_score": 5,
+      "description": "The block JS is at `blocks/promo-banner/promo-banner.js` and default-exports a `decorate(block)` function"
+    },
+    {
+      "name": "Authored content rendered without waiting on fetch",
+      "max_score": 15,
+      "description": "The authored picture and heading are kept (moved or left in place, not recreated) and are not hidden or held back until `/promo.json` responds; decorate does not `await` the fetch before the authored content is in its final position"
+    },
+    {
+      "name": "Promo fetch is non-blocking and handles failure",
+      "max_score": 10,
+      "description": "The `/promo.json` request runs without blocking decoration (e.g., not awaited in decorate, or started after render) and handles a failed or invalid response without throwing"
+    },
+    {
+      "name": "Notes explain first-section loading",
+      "max_score": 10,
+      "description": "NOTES.md states that a block at the top of the page loads in the first section before LCP (or equivalent), which is why the fetch must not block rendering"
+    },
+    {
+      "name": "Notes explain consent placement",
+      "max_score": 10,
+      "description": "NOTES.md states that analytics is loaded via the consent gate (consented.js), not eagerly"
+    }
+  ]
+}
