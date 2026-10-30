@@ -302,13 +302,10 @@ modeled on the experiment's `render-reskin.mjs`) that:
   garbage like broken JSON-LD URLs: fidelity over repair; **flag**
   such items for the human in the run report, never silently fix or
   silently keep);
-- shows each content image at least as completely as the source
-  does: a donor frame of fixed shape (a Figma image height) is the
-  placeholder's shape, not the content's. A single-image slot takes
-  the image's own ratio under a cap; a card grid shares one frame
-  only when its images share a shape, else each keeps its own
-  (`object-position` moves a crop, it never shrinks one); the
-  content gate fails a render that cuts more
+- keeps the donor's image frames and crops each content image to
+  the area the source shows: the source's `object-position` (a block
+  option in EDS), the upper third where the source shows the image
+  whole; the content gate fails a render that shows another area
   (`reference/gates.md` § Image crop);
 - takes its surface exclusively from `donor-tokens.json` + the donor
   module patterns assigned in `mapping.md`: it imports `rootTokens`
@@ -358,8 +355,7 @@ node stardust/scripts/reskin/slot-coverage.mjs \
 
 `dom-equality.mjs` gates on whitespace-normalized visible-text **byte
 equality**, the **ordered, URL-normalized visible-image set** and
-**image crop** (no image shows over 10 points less of its area than
-on the source);
+**image crop** (each image shows the area of it the source shows);
 `slot-coverage.mjs` also proves every slot, CTA (text and absolute
 href) and image present and asserts metadata carry-over
 (`reference/gates.md` § (a)).
