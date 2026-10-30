@@ -22,7 +22,7 @@ convention derived from the long flag name.
 
 ## `aem up` — Development Server
 
-Starts a local dev server (default port 3000) that proxies the AEM pipeline.
+Starts a local dev server (default port 3000; in a git worktree 3000 + hash(branch) % 1000) that serves `./content/` and proxies the AEM pipeline for everything else.
 
 ### Server options
 
@@ -90,7 +90,7 @@ Git-style subcommands for syncing content with da.live.
 
 | Subcommand | Description |
 |---|---|
-| `aem content clone [--path /]` | Clone da.live content into local `content/` (triggers browser auth) |
+| `aem content clone --path <folder>` / `--all` | Clone da.live content into local `content/` (one of the two is required; triggers browser auth) |
 | `aem content status` | Show locally added, modified, and deleted files |
 | `aem content diff [path]` | Diff local vs remote content |
 | `aem content merge [path]` | Pull remote changes into local files |
@@ -151,8 +151,8 @@ AEM_PAGES_URL=https://main--mysite--myorg.aem.page
 AEM_FORWARD_BROWSER_LOGS=true
 AEM_NO_OPEN=true
 
-# Local HTML serving (import/preview)
-AEM_HTML_FOLDER=drafts
+# Local HTML serving (import output outside ./content/)
+AEM_HTML_FOLDER=import
 
 # TLS
 AEM_TLS_CERT=server.crt

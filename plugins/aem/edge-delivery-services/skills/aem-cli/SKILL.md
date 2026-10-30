@@ -57,9 +57,9 @@ ships `hlx` as an alias.
 aem up --no-open --forward-browser-logs
 ```
 
-**Check the server is running:**
+**Check the server is running** (use the port `aem up` logs; see `--port`):
 ```bash
-curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
+curl -s -o /dev/null -w "%{http_code}" http://localhost:<port>
 # Expected: 200
 ```
 
@@ -69,7 +69,7 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
 |---|---|
 | `--no-open` | Do not open a browser window on startup |
 | `--forward-browser-logs` | Forward browser console messages (log, error, warn, info) to the terminal |
-| `--port <n>` | Listen on a different port (default: `3000`) |
+| `--port <n>` | Listen on a different port (default: `3000`; in a git worktree, 3000 + hash(branch) % 1000; use the port `aem up` logs) |
 | `--addr <addr>` | Bind address; use `*` to allow external connections (default: `127.0.0.1`) |
 | `--url <url>` | Origin URL to proxy content from (overrides the project's default pages URL) |
 | `--html-folder <dir>` | Serve local HTML files from `<dir>` without extensions |
@@ -83,14 +83,18 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
 | `--site-token <token>` | Site token for CLI access to the website |
 | `--cookies` | Proxy all cookies (default: only `hlx-auth-token` is proxied) |
 
-**`--html-folder`:** without it, local HTML files are never served — all requests proxy to the
-remote pipeline, returning 404 for local-only paths. `[verified]`
+**Local content:** `aem up` serves `./content/` (where `aem content clone` puts DA pages) before
+proxying, so `content/drafts/x.html` is at `/drafts/x` without any flag. `[verified]`
+
+**`--html-folder`:** only for HTML outside `./content/`, such as import output (`.plain.html`).
+Without it those files are not served; requests proxy to the remote pipeline and return 404
+for local-only paths. `[verified]`
 
 ### Serving import HTML locally (preview-import pattern)
 
 ```bash
-aem up --html-folder drafts --no-open --forward-browser-logs
-# Files in ./drafts/ are served at /drafts/<name> (no extension needed)
+aem up --html-folder import --no-open --forward-browser-logs
+# Files in ./import/ are served at /import/<name> (no extension needed)
 ```
 
 ---
@@ -104,7 +108,6 @@ All options can be persisted in `.env` at the project root; loaded automatically
 AEM_PORT=8080
 AEM_PAGES_URL=https://stage.myproject.com
 AEM_FORWARD_BROWSER_LOGS=true
-AEM_HTML_FOLDER=drafts
 AEM_TLS_CERT=server.crt
 AEM_TLS_KEY=server.key
 AEM_OPEN=/products
@@ -205,15 +208,18 @@ starting and configuring the server.
 ## 7. `aem content` — da.live Content Sync
 
 ```bash
-aem content clone [--path /]   # auth via browser popup; clones into ./content/
+aem content clone --path <folder>   # or --all; auth via browser popup; clones into ./content/
 aem content status             # show added / modified / deleted files
 aem content diff [path]        # diff local vs remote
 aem content merge [path]       # sync remote changes into local files
 aem content add <files..>      # stage changes (like git add)
 aem content commit -m "..."    # commit staged changes (like git commit)
-aem content push               # upload committed changes to da.live
+aem content push               # upload committed changes to da.live (does not preview)
 aem content push --force       # overwrite remote on conflict
 ```
+
+Pushed pages are not previewed: preview them with Sidekick or
+`POST https://admin.hlx.page/preview/{owner}/{repo}/{ref}/{path}` before branch links work.
 
 Auth token cached at `.hlx/.da-token.json` (gitignored); browser OAuth on first use.
 
@@ -264,7 +270,7 @@ See the **da-content** skill (platform reference §7) for the DA Source API cont
 | `npm install -g @adobe/aem-cli` → `File exists: …/hlx` | old `helix-cli` package still owns the binary | uninstall the old package (see §1) then reinstall |
 | `aem up` → `EADDRINUSE: address already in use :::3000` | Port 3000 is taken | Pass `--port <other>` or kill the process on 3000 |
 | `aem up` → `unable to get local issuer certificate` | Corporate proxy intercepts TLS | Export corp CA cert → `export NODE_EXTRA_CA_CERTS=/path/to/ca.crt` |
-| `localhost:3000/mypath` returns 404 | Local HTML file in `mypath/` not mounted | Add `--html-folder mypath` (or `AEM_HTML_FOLDER=mypath` in `.env`) |
+| `localhost:<port>/mypath` returns 404 | DA page not in `./content/`, or local HTML outside `./content/` not mounted | `aem content clone --path /mypath`; for import output add `--html-folder <dir>` |
 | `aem up` → pipeline 404 for pages that exist live | Wrong origin URL proxied | Pass `--url https://your-pages-url.aem.page` |
 | `aem content push` reports success but binary is missing | CLI silently no-ops on binaries | Upload binary via DA Source API (see §7) |
 | `aem content push` strips icon spans from HTML | Pre-upload normalization removes EDS decorations | POST directly to DA Source API for byte-faithful upload |
