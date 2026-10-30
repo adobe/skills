@@ -29,12 +29,13 @@
  *     then runs REVEAL_DISCLOSURES (open <details>, unhide hidden="until-found") before its text is
  *     read, so a correctly collapsed panel still counts as present. Waived per page by the deltas
  *     file's "disclosures": { "restState": "open", "why": … }.
- *   - Image crop (gating): each visible image's shown fraction of its own
- *     pixels (object-fit + clipping ancestors, source-normalize.mjs IMG_CROP)
- *     on both sides; a rendered image showing less than the source's
- *     fraction minus --crop-tolerance FAILS. A donor frame of a fixed shape
- *     (a Figma image height the geometry gate holds) must not cut away
- *     content the source showed.
+ *   - Image crop (gating): each visible image's shown REGION of its own pixels
+ *     (object-fit, object-position and clipping ancestors, source-normalize.mjs
+ *     IMG_CROP) on both sides. The rendered frame keeps its size; it must
+ *     show the area the source shows: FAIL when more than --crop-tolerance of
+ *     the rendered region lies outside the source's, or when the source
+ *     anchors the image off-centre and the render crops it elsewhere. Each
+ *     failure names the object-position that fixes it.
  *   - Live navigation via the shared diff live-session module (F-G/F-R1):
  *     real-Chrome UA + the standard request headers (UA alone still 403s on
  *     Akamai), domcontentloaded on live targets, webdriver spoof, challenge
@@ -58,8 +59,10 @@
  *     [--headed]                     headed stealth real Chrome (escalation
  *                                    for bot-managed sites)
  *     [--locale <tag>]               pin Accept-Language + locale
- *     [--crop-tolerance <points>]    image crop allowance, percentage points
- *                                    of the image's area (default 10, 0–100)
+ *     [--crops-out <json>]           write both sides' per-image framing (region, fit, position, box,
+ *                                    natural; the source's is what a renderer copies)
+ *     [--crop-tolerance <points>]    share of a rendered image's shown region that may
+ *                                    lie outside the source's (default 10, 0–100)
  *     [--wait-eds]                   settle the RENDERED page's EDS decoration (body.appear,
  *                                    every data-section-status / data-block-status "loaded")
  *                                    before measuring; on by default when --rendered is an EDS
@@ -92,7 +95,7 @@ function parseArgs(argv) {
   const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --source-scpoe) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'eds-timeout', 'deltas', 'crop-tolerance']);
+  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'eds-timeout', 'deltas', 'crop-tolerance', 'crops-out']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -113,9 +116,10 @@ if (args.help || !args.source || !args.rendered || !args.report) {
   console.log('usage: node dom-equality.mjs --source <url|file> --rendered <url|file> --report <path>');
   console.log('         [--source-scope selA,selB] [--rendered-scope main] [--normalize ledger.mjs]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
-  console.log('         [--wait-eds] [--eds-timeout <ms>] [--deltas <json>] [--crop-tolerance <points>]');
-  console.log('Gates on byte-equal normalized visible text + ordered visible-image set, and on image crop:');
-  console.log('a rendered image may show at most --crop-tolerance (default 10) points less of its area than the source.');
+  console.log('         [--wait-eds] [--eds-timeout <ms>] [--deltas <json>] [--crop-tolerance <points>] [--crops-out <json>]');
+  console.log('Gates on byte-equal normalized visible text + ordered visible-image set, and on image crop: each rendered');
+  console.log('image shows the area of it the source shows (at most --crop-tolerance, default 10, % outside; the source\'s');
+  console.log('off-centre anchor kept). The frame may be smaller; how much is shown is reported, not gated.');
   console.log('Structure (element count, tag sequence) is reported but informational.');
   console.log('Live targets get the shared live-session hardening (real-Chrome UA + standard headers,');
   console.log('domcontentloaded, challenge detection); escalate bot-managed sites with --headed.');
@@ -152,7 +156,7 @@ try {
 }
 const { edsSettle, isEdsHost } = eds;
 const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = live;
-const { loadNormalize, IMG_VISIBLE, DISCLOSURE_STATE, REVEAL_DISCLOSURES, IMG_CROP, compareCrops } = normalizeLib;
+const { loadNormalize, IMG_VISIBLE, DISCLOSURE_STATE, REVEAL_DISCLOSURES, IMG_CROP, compareCrops, compareRegions } = normalizeLib;
 
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
@@ -219,6 +223,8 @@ async function capture(url, scopeList, normalize, rendered = false) {
     window.scrollTo(0, 0);
   });
   await page.waitForTimeout(1500);
+  // image crop needs each image's natural size: wait (bounded) for the images the scroll pass started to finish
+  await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 8000 }).catch(() => {});
   // Rest state first: the ledger (source) and the reveal (rendered) both change it.
   const rest = await page.evaluate(({ sl, stateSrc }) => {
     const state = (0, eval)(stateSrc);
@@ -292,10 +298,15 @@ if (!imageCheck) {
 }
 const imageMatch = imageCheck ? imageCheck.pass : imgDiffs.length === 0;
 
-// --- PRIMARY: image crop (shown fraction of each image vs the source's) -----
+// --- PRIMARY: image crop (the area of each image the render shows vs the source's) -----
 // Pairs by order, so it runs whenever the counts agree — with or without deltas.images (a preview's media-bus
 // srcs differ from the source's, its images still pair one to one).
-const cropCheck = compareCrops(src.crops, rnd.crops, { tolerance: cropTolerance / 100 });
+const cropCheck = compareRegions(src.crops, rnd.crops, { tolerance: cropTolerance / 100 });
+const shownCheck = compareCrops(src.crops, rnd.crops, { tolerance: 0.1 }); // informational: how much of each image shows
+if (args['crops-out']) {
+  mkdirSync(dirname(resolve(args['crops-out'])), { recursive: true });
+  writeFileSync(args['crops-out'], JSON.stringify({ source: args.source, rendered: args.rendered, viewport: 1440, sourceImages: src.crops, renderedImages: rnd.crops }, null, 2));
+}
 const pct = (f) => `${Math.round(f * 100)}%`;
 
 // --- INFORMATIONAL: structure ----------------------------------------------
@@ -322,7 +333,7 @@ md += `| Check | Source | Rendered | Status |\n|---|---|---|---|\n`;
 md += `| Visible text (normalized chars) | ${src.visibleText.length} | ${rnd.visibleText.length} | ${tick(textMatch)} |\n`;
 md += `| ${imageCheck ? `Visible images (${deltas.images})` : 'Visible image srcs (ordered)'} | ${srcImgs.length} | ${rndImgs.length} | ${tick(imageMatch)} |\n`;
 md += `| Disclosures collapsed at rest${restLeak && restWaived ? ' (waived: deltas disclosures.restState "open")' : ''} | ${src.rest.collapsed} (${src.rest.expanded} open) | ${rnd.rest.collapsed} (${rnd.rest.expanded} open) | ${tick(restMatch)} |\n`;
-md += `| Image crop (shown area, −${cropTolerance} pts allowed) | ${cropCheck.measured} measured | ${cropCheck.worse.length} cut more | ${cropCheck.skipped ? `not run (${cropCheck.skipped})` : tick(cropCheck.pass)} |\n\n`;
+md += `| Image crop area (same area as the source, ≤${cropTolerance}% outside) | ${cropCheck.measured} measured${cropCheck.unpaired ? `, ${cropCheck.unpaired} unpaired (another image at that position)` : ''} | ${cropCheck.wrong.length} wrong area | ${cropCheck.skipped ? `not run (${cropCheck.skipped})` : tick(cropCheck.pass)} |\n\n`;
 md += `**Overall: ${pass ? 'PASS' : 'FAIL'}**\n\n`;
 // deltas: blocking false turns a failure into an advisory (the exit code stays 0).
 const advisory = !!deltas && !pass && !deltasLib.isBlocking(deltas);
@@ -346,14 +357,15 @@ if (!imageMatch) {
   md += `\n`;
 }
 if (!cropCheck.pass) {
-  md += `### Image crop divergences\n\nThe rendered page shows less of these images than the source does (object-fit / clipping; area shown, at 1440px):\n\n`;
-  md += `| # | Image | Natural | Source shows | Rendered shows | Rendered box (fit) |\n|---|---|---|---|---|---|\n`;
-  cropCheck.worse.forEach((w) => {
-    md += `| ${w.index} | ${w.label} | ${w.rendered.natural} | ${pct(w.source.fraction)} (${w.source.box} ${w.source.fit}) | ${pct(w.rendered.fraction)} | ${w.rendered.box} ${w.rendered.fit} |\n`;
+  md += `### Image crop divergences\n\nThese images show a different area than the source shows of them (object-fit / object-position / clipping, at 1440px):\n\n`;
+  md += `| # | Image | Natural | Source (box, fit, position) | Rendered (box, fit, position) | Rendered area inside the source's | Fix |\n|---|---|---|---|---|---|---|\n`;
+  cropCheck.wrong.forEach((w) => {
+    md += `| ${w.index} | ${w.label} | ${w.rendered.natural} | ${w.source.box} ${w.source.fit} ${w.source.position} | ${w.rendered.box} ${w.rendered.fit} ${w.rendered.position} | ${w.inside == null ? 'n/a (another image here: a re-ordered feed)' : pct(w.inside)}${w.anchorOff ? ' (source anchor not kept)' : ''} | \`object-position: ${w.fix}\` |\n`;
   });
-  md += `\nFix the frame, not the image: size a single-image slot by the image's own ratio (capped), let a grid share one frame only when its images share a shape; object-position never shrinks a crop (reference/gates.md § Image crop).\n\n`;
+  md += `\nKeep the frame; move the crop: set the object-position the Fix column names, as a block option where a block's images share it (reference/gates.md § Image crop).\n\n`;
 }
 md += `## Informational (non-gating — a reskin re-structures markup by design)\n\n`;
+if (!shownCheck.skipped) md += `- Image area shown: ${shownCheck.worse.length} of ${shownCheck.measured} image(s) show over 10 points less of their area than on the source (a smaller donor frame; the area check above holds what they show)\n`;
 md += `- Element count: source=${src.elementCount} rendered=${rnd.elementCount} (delta ${countDelta >= 0 ? '+' : ''}${countDelta})\n`;
 md += `- Tag+class sequence: ${firstTagDivergence === -1 && src.tagSequence.length === rnd.tagSequence.length ? 'identical' : `diverges at position ${firstTagDivergence === -1 ? minT : firstTagDivergence} of ${minT}`}\n`;
 if (deltas) {
@@ -366,7 +378,7 @@ mkdirSync(dirname(resolve(args.report)), { recursive: true });
 writeFileSync(args.report, md);
 console.error(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`);
 if (!restMatch) console.error(`  disclosures: source ${src.rest.collapsed} collapsed at rest, rendered 0 collapsed (${rnd.rest.expanded} open) — the delivered block must start closed like the source`);
-cropCheck.worse.slice(0, 5).forEach((w) => console.error(`  image [${w.index}] "${w.label}" cut: source shows ${pct(w.source.fraction)}, rendered ${pct(w.rendered.fraction)} (${w.rendered.box} ${w.rendered.fit})`));
+cropCheck.wrong.slice(0, 5).forEach((w) => console.error(`  image [${w.index}] "${w.label}" wrong area: ${w.inside == null ? 'unpaired' : `${pct(w.inside)} inside the source's`}${w.anchorOff ? ', source anchor not kept' : ''} (${w.rendered.box} ${w.rendered.fit} ${w.rendered.position}) — fix: object-position: ${w.fix}`));
 if (textDiff) console.error(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`);
 if (deltas) {
   console.log(`  deltas applied: ${textDeltas.applied.length ? textDeltas.applied.map((a) => `${a.id} ×${a.count}`).join(', ') : 'none'}`);
