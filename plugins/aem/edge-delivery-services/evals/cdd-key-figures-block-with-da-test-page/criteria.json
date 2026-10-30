@@ -1,0 +1,66 @@
+{
+  "context": "Tests the current Content Driven Development flow for a new block on a Document Authoring (DA) site, done from a git worktree: model and test content come before code; test content goes in the site's block library (`/docs/library/blocks/<block>`) so the PR links its preview and authors can reuse it, and the new block is registered in the library's blocks sheet; the page is a DA-format document under ./content/ that `aem up` serves locally without flags; it is synced with the AEM CLI content commands (clone, add, commit, push; the CLI does its own browser login); pushing does not preview, so a separate preview step is needed before the branch test link works; and in a worktree `aem up` serves on a branch-derived port, not 3000. Rewards none of the retired approaches (--html-folder drafts, separate DA token step).",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Content model and test page before block code",
+      "max_score": 10,
+      "description": "NOTES.md has a Content model section that defines the block table (e.g. one row per figure with cells for number, label and optional source link, no more than 4 cells per row). In the numbered Steps, designing the model and creating/checking the test page come before the step that writes `blocks/key-figures/key-figures.js`/`.css`"
+    },
+    {
+      "name": "Test page is the block's library page under ./content",
+      "max_score": 10,
+      "description": "The test page with the author-facing examples is saved as `content/docs/library/blocks/key-figures.html` (the block's page in the block library, inside the project's `content/` folder used by `aem content`). Extra stress-case pages under `content/drafts/` are fine. A page saved only under `content/drafts/` earns 3 points; a page outside `content/` (e.g. `drafts/key-figures.plain.html`) earns 0"
+    },
+    {
+      "name": "Test page uses DA document format",
+      "max_score": 10,
+      "description": "The test page is a full DA document: `<body>` containing `<header></header>`, `<main>` with one `<div>` per section, and `<footer></footer>`; the block is a `<div class=\"key-figures\">` whose rows and cells are nested `<div>`s. A bare section fragment without body/header/main/footer gets no credit"
+    },
+    {
+      "name": "Test page covers the block's cases",
+      "max_score": 5,
+      "description": "The test content contains more than one key-figures instance or case, covering at least two of: two figures, four figures, a figure without the optional source link"
+    },
+    {
+      "name": "Clones DA content with the AEM CLI first",
+      "max_score": 8,
+      "description": "Steps include `aem content clone --path <folder>` covering the library (e.g. `--path /docs/library` or `--path /docs/library/blocks`) or `aem content clone --all`, placed before the test page is created or pushed"
+    },
+    {
+      "name": "Local preview from ./content without --html-folder",
+      "max_score": 10,
+      "description": "The dev server is started with plain `aem up` (optionally with flags like `--no-open`/`--forward-browser-logs`) and the test page is checked at its served path (e.g. `/docs/library/blocks/key-figures` and/or `.plain.html`) before pushing. No `--html-folder` flag and no server restart to serve the content"
+    },
+    {
+      "name": "Uses the worktree's branch-derived port",
+      "max_score": 10,
+      "description": "Local URLs in NOTES.md are not hard-coded to `localhost:3000`. Full credit: NOTES.md says that in a git worktree `aem up` picks a port derived from the branch (3000 + hash of branch name) and that the port printed at startup should be used (e.g. `http://localhost:<port>/docs/library/blocks/key-figures`, or the computed 3279). Half credit (5): only passes an explicit non-3000 `--port` and uses it consistently"
+    },
+    {
+      "name": "Registers the block in the library sheet",
+      "max_score": 8,
+      "description": "NOTES.md adds a row for the new block to the library's blocks sheet (`docs/library/blocks.json`, columns `name` and `path`), with `path` = `https://content.da.live/acme/website/docs/library/blocks/key-figures`, and gets that change into DA (with `aem content` add/commit/push or by editing the sheet in da.live). Stating the row and how it is added is enough"
+    },
+    {
+      "name": "Syncs the page with aem content add / commit / push",
+      "max_score": 10,
+      "description": "Steps include, in this order, `aem content add` with the test page path (e.g. `content/docs/library/blocks/key-figures.html` or `docs/library/blocks/key-figures.html`), `aem content commit -m \"...\"`, and `aem content push`. Points are split evenly across the three commands when they appear in the correct order"
+    },
+    {
+      "name": "No separate DA token step",
+      "max_score": 4,
+      "description": "NOTES.md does not obtain or export a DA/IMS bearer token manually (no `DA_TOKEN`, no `Authorization: Bearer` curl to admin.da.live, no separate auth skill/tool step) for syncing content; it relies on the CLI's own browser login (mentioning that the CLI prompts for login is fine)"
+    },
+    {
+      "name": "Separate preview step after push",
+      "max_score": 10,
+      "description": "After the push, Steps include a separate preview of the test page, via Sidekick Preview or `POST https://admin.hlx.page/preview/acme/website/<ref>/<path>` (ref `main` or `key-figures`), and NOTES.md states that pushing alone does not preview the page (so the branch link would 404 without it)"
+    },
+    {
+      "name": "PR description has the branch test URL",
+      "max_score": 5,
+      "description": "PR.md contains the branch preview URL of the test page, `https://key-figures--website--acme.aem.page/<path>` (full credit for `/docs/library/blocks/key-figures`; 2 points for a `/drafts/...` path)"
+    }
+  ]
+}

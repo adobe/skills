@@ -1,0 +1,66 @@
+{
+  "context": "Tests current local-validation knowledge for AEM EDS blocks: in a git worktree `aem up` serves on a branch-derived port (3000 + hash(branch) % 1000), not localhost:3000; `aem up` serves ./content/ (local DA content) first, so a test page at content/<path>.html in DA HTML format (for a new block: the block library page content/docs/library/blocks/<name>.html) previews at /<path> without pushing or --html-folder, and reaches DA via `aem content add/commit/push`; a loaded block carries data-block-status=\"loaded\" (there is no `loaded` class); accessibility trees come from locator.ariaSnapshot(); plus the testing workflow (lint, multiple viewports, temporary browser scripts, report back).",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Test page under content/",
+      "max_score": 14,
+      "description": "The test page file is created under the local DA content folder as the block's library page, `content/docs/library/blocks/hero-video.html`. Half credit (7): a page under `content/drafts/`. A page placed only in a repo-root `drafts/` or `docs/` folder, or only uploaded through a curl/admin API call, earns 0"
+    },
+    {
+      "name": "Test page in DA HTML format",
+      "max_score": 8,
+      "description": "The test page is a DA body document: `<body>` with `<header>`, `<main>` (one `<div>` per section) and `<footer>`; the block is a `<div class=\"hero-video\">` with row/cell `<div>`s holding the picture/image, heading and .mp4 link. No `<html>`/`<head>`, `<script>`, or `<style>` elements"
+    },
+    {
+      "name": "Local preview without push or --html-folder",
+      "max_score": 10,
+      "description": "NOTES.md previews the page with plain `aem up` (no `--html-folder` flag) at the page's served path (e.g. `/docs/library/blocks/hero-video`, no `.html` extension, no `content/` prefix), and makes clear this works before anything is pushed to DA"
+    },
+    {
+      "name": "Publishes test content with aem content commands",
+      "max_score": 9,
+      "description": "NOTES.md gets the page into DA with `aem content add` (the file), `aem content commit`, and `aem content push`, in that order (optionally after `aem content clone --path <folder>` to set up `content/`). Manually pasting into da.live or hand-written admin API curl calls alone do not earn this item"
+    },
+    {
+      "name": "Script does not hardcode port 3000",
+      "max_score": 7,
+      "description": "check-hero-video.mjs reads the base URL or port from an environment variable or command-line argument, so it can target a port other than 3000; a script whose only target is `http://localhost:3000` fails this item"
+    },
+    {
+      "name": "Notes explain the worktree port",
+      "max_score": 12,
+      "description": "NOTES.md states that because the checkout is a git worktree (branch `feature-hero-video`), `aem up` serves on a branch-derived port rather than 3000, and that the URL/port to use is the one `aem up` prints (or an explicitly passed `--port`). Saying only 'if 3000 is busy it moves to 3001' does not earn this item"
+    },
+    {
+      "name": "Waits on data-block-status=loaded",
+      "max_score": 12,
+      "description": "The script waits for the block to finish loading using the `data-block-status=\"loaded\"` attribute (e.g. `.hero-video[data-block-status=\"loaded\"]`). It does NOT wait for a `loaded` class on the block (e.g. `.hero-video.loaded`) or rely only on a fixed sleep"
+    },
+    {
+      "name": "Three viewports with desktop-only video check",
+      "max_score": 8,
+      "description": "The script sets at least three viewport widths covering mobile (<600px), tablet (600-899px) and desktop (>=900px), takes a screenshot at each, and asserts the `video` element is present only at the desktop width"
+    },
+    {
+      "name": "Accessibility tree via ariaSnapshot",
+      "max_score": 5,
+      "description": "The accessibility tree is captured with `locator.ariaSnapshot()` (e.g. `page.locator('.hero-video').ariaSnapshot()`), not the removed `page.accessibility.snapshot()`"
+    },
+    {
+      "name": "Console errors fail the run",
+      "max_score": 4,
+      "description": "A console/pageerror listener is registered before navigation and the script exits non-zero or reports failure when an error is logged"
+    },
+    {
+      "name": "Browser script kept out of the repo",
+      "max_score": 6,
+      "description": "NOTES.md says check-hero-video.mjs is a temporary script that is not committed (kept outside the repo or deleted after the run) and is not added as a project test or npm script"
+    },
+    {
+      "name": "Lint in the validation order",
+      "max_score": 5,
+      "description": "NOTES.md includes running `npm run lint` (fixing with `npm run lint:fix` or manually) as a step that must pass before the block is declared done"
+    }
+  ]
+}

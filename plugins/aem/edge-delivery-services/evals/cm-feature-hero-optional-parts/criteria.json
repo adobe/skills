@@ -1,0 +1,46 @@
+{
+  "context": "Tests modeling a standalone block from a field table with many optional parts: discriminating models keep text as one semantic flow (heading, paragraphs, links with bold/italic for button types), turn theme/alignment/height into variants, need no empty rows for unused parts, and decorate by finding elements by type/context instead of fixed row/cell positions — so omitting the background, eyebrow or second CTA doesn't shift or break anything. A model with one row or cell per spec field, or Theme/Alignment/Height config rows, should score low.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Presentation options as variants",
+      "max_score": 15,
+      "description": "Theme, alignment and height are block variants (e.g. `Feature Hero (dark, tall, centered)`) or are inferred with documented defaults. They are NOT `Theme | Dark` key/value rows or extra cells."
+    },
+    {
+      "name": "Text as one semantic flow",
+      "max_score": 15,
+      "description": "Eyebrow, headline (heading), subheadline, body, CTAs and disclaimer are authored together as ordinary content in one cell (or at most a couple of cells), distinguished by element type and formatting/placement relative to the heading (e.g. paragraph before the heading = eyebrow, small/italic or final paragraph = disclaimer). They are NOT one row or cell per spec field, and not `Eyebrow | ...` label pairs."
+    },
+    {
+      "name": "CTAs are plain links with formatting",
+      "max_score": 10,
+      "description": "Each CTA is a single authored link; primary vs. secondary is expressed by link formatting (e.g. bold vs. italic) or a documented default such as first link = primary. No separate CTA-text and CTA-URL cells, no 'Primary CTA' label rows."
+    },
+    {
+      "name": "Minimal instance needs no empty structure",
+      "max_score": 10,
+      "description": "The minimal example contains only the headline, sentence and CTA — no empty rows/cells or placeholders for unused parts — and MODEL.md states that unused parts can simply be left out."
+    },
+    {
+      "name": "Background vs. product image unambiguous",
+      "max_score": 10,
+      "description": "The model gives a clear, author-understandable way to tell background media from the product cut-out (e.g. background in its own row, product image in the text cell or after it, or a variant), AND the code does not reclassify the product image as background when no background is present (and vice versa)."
+    },
+    {
+      "name": "Background video authored as a link",
+      "max_score": 10,
+      "description": "The MP4 background is authored as a link/URL and the code detects it by href (e.g. `.mp4` or video CDN host) and creates the video element; no embed HTML or `Video | url` row."
+    },
+    {
+      "name": "Code finds elements by type and tolerates absence",
+      "max_score": 20,
+      "description": "feature-hero.js locates the heading, pictures, links and paragraphs via selectors/element type, using order only relative to anchor elements (heading, picture, link) — not via fixed indices such as `block.children[n]`, `row.children[n]` or 'the 3rd paragraph'. Removing any optional part (background, eyebrow, subheadline, body, second CTA, disclaimer, product image) neither throws nor shifts other parts into the wrong role."
+    },
+    {
+      "name": "Rationale addresses authoring",
+      "max_score": 10,
+      "description": "The rationale speaks to authors' experience in Word: e.g. writing the hero like normal text, omitting parts freely, not memorizing row order or labels, choosing look via variants."
+    }
+  ]
+}

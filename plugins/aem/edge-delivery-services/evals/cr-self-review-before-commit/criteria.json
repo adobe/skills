@@ -1,0 +1,81 @@
+{
+  "context": "Tests the code-review skill's self-review mode (uncommitted changes, before commit/PR): review all changed files including untracked ones that `git diff` does not show, fix issues directly in the working directory rather than producing PR suggestions, scope block CSS with the block class (not a `main` prefix), report Must Fix / Recommendations with a ready-to-commit checklist, cover visual validation against the test content, and prepare the before/after preview URLs the PR will need.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Untracked block files reviewed",
+      "max_score": 5,
+      "description": "SELF-REVIEW.md lists `blocks/product-teaser/product-teaser.js` and `blocks/product-teaser/product-teaser.css` (untracked, absent from `git diff`) as reviewed, alongside `scripts/scripts.js`"
+    },
+    {
+      "name": "Issues fixed in the working files",
+      "max_score": 5,
+      "description": "The review changes the project files themselves (not only a report): at least three of the issues below are fixed in the delivered files"
+    },
+    {
+      "name": "Swiper removed from loadEager",
+      "max_score": 10,
+      "description": "`scripts/scripts.js` no longer loads Swiper in `loadEager` (nor anywhere else globally in scripts.js), and the now-unused `loadScript` import is removed; the block loads Swiper itself (e.g. `loadScript` from `../../scripts/aem.js` inside decorate, optionally deferred via IntersectionObserver) before calling `new Swiper`"
+    },
+    {
+      "name": "scripts.js otherwise intact",
+      "max_score": 5,
+      "description": "Apart from removing the Swiper load/import, scripts.js keeps the boilerplate flow unchanged (loadEager still decorates main and awaits `loadSection(... waitForFirstImage)`; loadLazy/loadDelayed untouched)"
+    },
+    {
+      "name": "Debug logging removed",
+      "max_score": 5,
+      "description": "The `console.log('decorating product-teaser', ...)` line is removed from product-teaser.js"
+    },
+    {
+      "name": "CSS scoped with the block class",
+      "max_score": 10,
+      "description": "In product-teaser.css every rule targeting `.slide`, `.slide img` and `.slide-info ...` is scoped under `.product-teaser` (e.g. `.product-teaser .slide`), or classes are renamed with a `product-teaser-` prefix. Score 0 if selectors are prefixed with `main` (e.g. `main .product-teaser .slide`) or SELF-REVIEW.md recommends `main .<block>` scoping"
+    },
+    {
+      "name": "Mobile-first media queries",
+      "max_score": 5,
+      "description": "The `@media (max-width: 899px)` rule is gone: its styles become the base (mobile) styles and only `width >=` (or `min-width`) queries remain"
+    },
+    {
+      "name": "Inline styles and !important removed",
+      "max_score": 5,
+      "description": "`price.style.fontWeight` / `price.style.color` are replaced by CSS on the `price` class in product-teaser.css, and `margin: 0 !important` is replaced by a non-important declaration (specificity via block scoping)"
+    },
+    {
+      "name": "Price fetch robustness addressed",
+      "max_score": 5,
+      "description": "The hardcoded `PRICE_API` URL and the unchecked `fetch`/`resp.json()` (no `resp.ok` check or try/catch, failure breaks the carousel) are either fixed in code or listed as open recommendations in SELF-REVIEW.md"
+    },
+    {
+      "name": "Block still functional",
+      "max_score": 5,
+      "description": "product-teaser.js still default-exports `decorate(block)`, keeps the authored rows/pictures (moved, not recreated), and every class it relies on for styling exists in product-teaser.css after the changes"
+    },
+    {
+      "name": "Must Fix vs Recommendations",
+      "max_score": 10,
+      "description": "SELF-REVIEW.md separates blocking items that must be fixed before committing from non-blocking recommendations (headings like \"Must Fix Before Committing\" and \"Recommendations\" or a clear equivalent), with file:line or file references, and marks which were fixed"
+    },
+    {
+      "name": "Ready-to-commit checklist with lint",
+      "max_score": 5,
+      "description": "SELF-REVIEW.md ends with a ready-to-commit checklist or next steps that includes running `npm run lint` (ESLint + Stylelint) and confirming must-fix items are resolved before `git add`/`git commit`"
+    },
+    {
+      "name": "Visual validation against test content",
+      "max_score": 10,
+      "description": "SELF-REVIEW.md addresses visual validation of `http://localhost:3000/drafts/jdoe/product-teaser` (or its preview URL) at mobile, tablet and desktop widths, either reporting screenshots taken or listing them explicitly as a remaining step (e.g. ~375/768/1200px)"
+    },
+    {
+      "name": "PR preview URLs prepared",
+      "max_score": 10,
+      "description": "SELF-REVIEW.md states that the PR description needs before/after preview URLs and gives them: `https://main--northwind-site--northwind-outfitters.aem.page/drafts/jdoe/product-teaser` and `https://product-teaser--northwind-site--northwind-outfitters.aem.page/drafts/jdoe/product-teaser` (5 points if mentioned with wrong host format, branch, repo or owner)"
+    },
+    {
+      "name": "No PR-review artifacts",
+      "max_score": 5,
+      "description": "The output does not create GitHub review payloads, ```suggestion blocks, or `gh api`/`gh pr` posting commands for this not-yet-opened change; findings are fixed or listed locally instead"
+    }
+  ]
+}

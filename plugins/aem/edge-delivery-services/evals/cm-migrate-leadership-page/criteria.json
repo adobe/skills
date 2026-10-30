@@ -1,0 +1,46 @@
+{
+  "context": "Tests migrating field-oriented legacy markup (span.member-name, span.member-title, a.member-linkedin ...) into an authorable EDS model: default content where possible, a collection block with one row per person and a rich content cell, links typed by their URL rather than by position, and decorate code that tolerates people without photos or links. A model that mirrors the legacy fields one cell each, or uses Name | value pairs, should score low.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Intro and section headings as default content",
+      "max_score": 10,
+      "description": "The H1, intro paragraph and the 'Executive Team' / 'Board of Directors' headings are authored as default content, not wrapped in a block (no 'Text', 'Intro' or 'Title' block, no heading stored in a block config row)."
+    },
+    {
+      "name": "One row per person",
+      "max_score": 15,
+      "description": "In the people block each person is exactly one row with at most 3 cells (e.g. photo | details); there is no header/label row and no person spread over several rows. Reordering people = moving rows."
+    },
+    {
+      "name": "No cell per legacy field",
+      "max_score": 15,
+      "description": "Name, title, department, bio, LinkedIn and email are NOT each given their own cell/column, and are NOT authored as `Name | ...`, `LinkedIn | ...` key/value pairs."
+    },
+    {
+      "name": "Semantic elements in the details cell",
+      "max_score": 15,
+      "description": "Name is a heading (or another clearly semantic element such as bold that the code relies on), title/department are paragraphs (optionally italic), bio is one or more paragraphs, and LinkedIn/email are ordinary links (`https://www.linkedin.com/...`, `mailto:`) in the same cell."
+    },
+    {
+      "name": "Missing photo needs no placeholder",
+      "max_score": 10,
+      "description": "Executives without a headshot and all board members are authored by simply omitting the image — no empty image cell or placeholder image is required (an empty first cell that the code tolerates is acceptable only if documented as optional). The board uses the same block (optionally with a variant) or a justified separate block."
+    },
+    {
+      "name": "Code types links and images by content",
+      "max_score": 15,
+      "description": "The block JS detects the photo via `picture`/`img`, LinkedIn by the link's hostname/href, and email by `mailto:` — not by position (e.g. 'last link is email', `cells[1]`, `children[4]`)."
+    },
+    {
+      "name": "Code tolerates missing parts",
+      "max_score": 10,
+      "description": "A row with no photo, no LinkedIn, no email, or a multi-paragraph bio decorates without errors and without empty wrappers or misclassifying the details cell as the photo cell."
+    },
+    {
+      "name": "Stats strip without field labels",
+      "max_score": 10,
+      "description": "The stats strip is modeled so each stat is one row or one cell containing value and label (e.g. bold/heading value + paragraph label), or as default content/columns. There are no 'Value'/'Label' header cells or key/value config rows, and adding a stat means adding one row/cell."
+    }
+  ]
+}

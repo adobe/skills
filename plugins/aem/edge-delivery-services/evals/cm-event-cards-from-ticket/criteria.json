@@ -1,0 +1,41 @@
+{
+  "context": "Tests whether a field-by-field design ticket gets translated into an author-friendly collection model (one row per event, image cell + one rich content cell using headings/paragraphs/links) instead of a cell-per-field or key/value structure, and whether decorate() identifies parts by element type rather than by cell/element position so that optional image, CTA, time and badge can be left out and cards can be reordered.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "One row per event, no label row",
+      "max_score": 20,
+      "description": "In MODEL.md each event is exactly one block row (adding, removing or re-sorting an event means adding, removing or moving one row). There is no header/label row (e.g. `| Image | Title | Date |`) and no event spread over multiple rows."
+    },
+    {
+      "name": "No cell per field",
+      "max_score": 15,
+      "description": "Each event row has at most 3 cells (typically image | content). Title, description, date, location and CTA are NOT each given their own cell or column."
+    },
+    {
+      "name": "Semantic elements inside the content cell",
+      "max_score": 15,
+      "description": "The title is authored as a heading; the description as paragraph text that keeps its bold/links; the CTA as a link (link text + URL together, not separate text and URL cells); eyebrow, date and location as ordinary paragraphs or inline formatting. No `Name | value` pairs (e.g. `Date | March 14`, `Location | Online`) inside the block."
+    },
+    {
+      "name": "Sold-out state is authorable",
+      "max_score": 10,
+      "description": "Sold-out is something authors can set without a dedicated true/false column or hidden alt text. Full credit: a marker inside the event's own row (e.g. a 'Sold out' paragraph, bold/italic marker, struck-through CTA) or inferred from content. Also full credit: a position-indexed block variant (e.g. `Event Cards (sold-out-2)`) if the rationale acknowledges it must be updated when events are re-sorted. Half credit: a position-indexed variant with no mention of the re-sort cost. Zero: a true/false column or alt-text flag."
+    },
+    {
+      "name": "Decorate finds parts by element type",
+      "max_score": 15,
+      "description": "event-cards.js identifies the image via `picture`/`img`, the title via a heading selector, the CTA via `a` (e.g. a link alone in a paragraph), etc. Order relative to an anchor element is acceptable (e.g. paragraph before the heading = eyebrow, first plain paragraph after the description = date). It does NOT rely on fixed indices such as `row.children[2]`, `cells[3]`, or 'the 4th paragraph of the cell is the date' that shift when an optional part is missing."
+    },
+    {
+      "name": "Decorate tolerates missing optional parts",
+      "max_score": 15,
+      "description": "A card with no image, a card with no CTA, and a date without a time all decorate without throwing and without misclassifying content (e.g. the text cell is not treated as the image cell when the image cell is missing; no empty badge/button/image wrappers are rendered). Null results from querySelector are guarded."
+    },
+    {
+      "name": "Rationale addresses authoring",
+      "max_score": 10,
+      "description": "The MODEL.md rationale explains the model in terms of the coordinators' experience — e.g. adding/removing/re-sorting rows, leaving optional parts out, or pasting copied event text into one cell in Google Docs — not only in terms of rendering or code convenience."
+    }
+  ]
+}

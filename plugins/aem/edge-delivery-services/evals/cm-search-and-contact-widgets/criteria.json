@@ -1,0 +1,51 @@
+{
+  "context": "Tests current aem.live guidance for application-like features: search results and forms are widgets, referenced by authoring a single link to /widgets/<name>/<name>.html (query params become data-* attributes on the widget element), auto-blocked by the boilerplate's buildWidgetAutoBlocks into the `widget` block, which fetches the widget's .html and loads its .css/.js. The Block Collection Form block (spreadsheet-defined fields) is deprecated, and a key/value configuration block is not the recommended model for search results. Also checks the content-modeling hand-off back to the content-driven workflow.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Search results as a widget link",
+      "max_score": 20,
+      "description": "The `/search` page is modeled as a link to a widget under `/widgets/` (e.g. `/widgets/search/search.html`) placed in the document, NOT as a block table (no `Search Results` key/value configuration block, no other block table) for the results UI"
+    },
+    {
+      "name": "Contact form as a widget link",
+      "max_score": 20,
+      "description": "The contact form on `/contact` and the branch pages is modeled as a link to a widget under `/widgets/` (e.g. `/widgets/contact/contact.html`); the form fields live in the widget's own files (HTML and/or JSON), not in an authored table or spreadsheet"
+    },
+    {
+      "name": "Per-page settings as query parameters",
+      "max_score": 15,
+      "description": "The branch id (and any other per-instance setting) is passed as a query parameter on the widget link (e.g. `?branch=downtown`), and MODEL.md says it becomes a `data-*` attribute on the widget element (e.g. `data-branch`) read by the widget code"
+    },
+    {
+      "name": "Form block declined as deprecated",
+      "max_score": 10,
+      "description": "The reply to the web producer states that the Block Collection Form block (spreadsheet-defined fields) is deprecated and will not be used"
+    },
+    {
+      "name": "Widget files and boilerplate auto-blocking",
+      "max_score": 10,
+      "description": "MODEL.md names widget folders under `/widgets/<name>/` containing `<name>.html`, `<name>.css` and `<name>.js` (optional `.json`), and states that the boilerplate already turns `/widgets/` links into a `widget` block (buildWidgetAutoBlocks / `blocks/widget`) that loads those files, so no new auto-blocking code or new block in `/blocks/` is needed for these features"
+    },
+    {
+      "name": "Link authored alone in its paragraph",
+      "max_score": 5,
+      "description": "MODEL.md tells authors to put the widget link on its own line/paragraph with nothing else in it"
+    },
+    {
+      "name": "Authored page examples",
+      "max_score": 10,
+      "description": "MODEL.md shows the authored content of `/search`, `/contact` and at least one branch page (e.g. heading and intro as default content plus the exact widget link with its query string)"
+    },
+    {
+      "name": "Works in Google Docs and DA",
+      "max_score": 5,
+      "description": "MODEL.md checks the model against both Google Docs and DA and notes that a plain link (no tool-specific feature) is authored the same way in both"
+    },
+    {
+      "name": "Hand-off to next workflow step",
+      "max_score": 5,
+      "description": "MODEL.md says the next step is to create test content (the sample pages with the widget links) and then implement the widgets against it, and the solution does not create widget or block implementation files"
+    }
+  ]
+}
