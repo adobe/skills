@@ -2,7 +2,7 @@
 name: workflow-orchestrator
 description: Orchestrate complete lifecycle work for the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration in AEM as a Cloud Service, from design and implementation through validation, release readiness, and incident troubleshooting.
 license: Apache-2.0
-compatibility: Tool-dependent checks require exposed Dispatcher MCP tools configured for cloud (`AEM_DEPLOYMENT_MODE=cloud`); bounded explanation/static review is available without MCP.
+compatibility: Requires Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`).
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
 metadata:
   mcp-tool-contract: core-7-tools
@@ -11,17 +11,6 @@ metadata:
 # Dispatcher Workflow Orchestrator (Cloud)
 
 Use this skill when users need end-to-end Dispatcher support instead of a single specialist workflow.
-
-## Runtime and Availability Preflight
-
-Before workflows, edits, or commands, confirm target module/runtime from active dependencies, deployment configuration, and Dispatcher layout, not this directory or `AEM_DEPLOYMENT_MODE` alone.
-
-- Cloud: primary `aem-sdk-api` plus Cloud target/defaults; `opt-in/USE_SOURCES_DIRECTLY` marks flexible mode, but legacy Cloud may lack it. AMS: primary `uber-jar`/6.5 version plus AMS target/layout such as `ams_default.vars` and tier farms. Shared config directories alone prove neither runtime; confirm actual LTS version/hosting.
-- On a wrong-runtime mismatch, STOP; explicitly route to the companion runtime's Dispatcher plugin with no wrong-mode commands. For missing/conflicting evidence, ask focused confirmation of target runtime/module/source root; make no runtime-specific edits or commands until resolved.
-- Discover actual Cloud MCP tools/prerequisites separately from mode. All linked workflows and checklists are conditional: allow bounded conceptual explanation/static source review without MCP; report each required tool-dependent check BLOCKED / NOT VERIFIED with its missing prerequisite, leaving items incomplete.
-- Never fabricate evidence or substitute another runtime's tools. Separate static review, SDK file/baseline/startup checks, and live target evidence; no runtime/release sign-off from incomplete checks or production proof from local results. Core-7 signatures are repository contracts, not publicly verified Adobe SDK interfaces; inspect exposed schemas/installed help before execution.
-
-This orchestrator coordinates Dispatcher, not Granite Workflow.
 
 ## Scope
 
@@ -33,6 +22,11 @@ This orchestrator coordinates Dispatcher, not Granite Workflow.
   - static/runtime validation
   - release readiness and rollback planning
   - production incident triage
+
+## Runtime Check
+
+- Before edits or commands, confirm the project targets Cloud Service (e.g. `aem-sdk-api` dependency, Cloud `dispatcher/src` layout); if it shows 6.5/AMS evidence (`uber-jar`, `ams_default.vars`), stop and route to the 6.5 LTS `dispatcher` skill. Ask when evidence is missing or conflicting.
+- If Dispatcher MCP tools are unavailable, limit work to explanation and static review and report each tool-dependent check as NOT VERIFIED; never fabricate tool output.
 
 ## Routing Model
 

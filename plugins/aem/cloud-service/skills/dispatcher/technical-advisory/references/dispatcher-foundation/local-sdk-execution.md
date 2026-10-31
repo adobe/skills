@@ -2,8 +2,6 @@
 
 Use this reference when cloud dispatcher work requires a local SDK-backed runtime, not just static validation.
 
-First apply the [skill's inline preflight](../../SKILL.md#runtime-and-availability-preflight). Local SDK execution requires confirmed Cloud project/runtime, installed tooling, and authorization; it does not satisfy an unavailable MCP check.
-
 This file documents the launcher contract exposed by the shipped Dispatcher SDK scripts. It aligns with [Set up Dispatcher Tools (Adobe Experience League)](https://experienceleague.adobe.com/en/docs/experience-manager-learn/cloud-service/local-development-environment-set-up/dispatcher-tools): Dispatcher is run locally using Docker against the **src** Dispatcher and Apache Web server configuration files. Treat the help output from the installed SDK package as the final authority for your exact SDK version.
 
 ## When To Use This
@@ -197,9 +195,9 @@ This is a host Docker-client compatibility override, not a dispatcher runtime se
 
 ## Recommended Execution Patterns
 
-### 1. SDK Configuration Startup Test
+### 1. Static Config Test
 
-Use this first when the goal is syntax or processed-config validation. This SDK check starts Apache in a local container; it is not static-only source review and is not live request verification:
+Use this first when the goal is syntax or processed-config validation:
 
 ```bash
 ./bin/docker_run.sh ./src <aem-host>:<aem-port> test

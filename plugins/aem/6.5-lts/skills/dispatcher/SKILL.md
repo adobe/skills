@@ -6,7 +6,7 @@ description: |
   orchestration for the Adobe Dispatcher Apache HTTP Server module and its HTTPD/dispatcher configuration
   in AEM 6.5 LTS and AMS environments.
 license: Apache-2.0
-compatibility: Tool-dependent checks require exposed Dispatcher MCP tools configured for AMS (`AEM_DEPLOYMENT_MODE=ams`); bounded explanation/static review is available without MCP.
+compatibility: Requires Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`).
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
 metadata:
   mcp-tool-contract: core-7-tools
@@ -16,17 +16,10 @@ metadata:
 
 Route user requests to the appropriate specialist skill based on intent.
 
-## Runtime and Availability Preflight
+## Runtime Check
 
-Before routing, workflows, edits, or commands, confirm the target project/module runtime from active dependencies, deployment configuration, and Dispatcher layout, not this directory or `AEM_DEPLOYMENT_MODE` alone:
-
-- Cloud evidence: primary `aem-sdk-api` and Cloud target/defaults; `opt-in/USE_SOURCES_DIRECTLY` identifies flexible mode, but legacy Cloud may lack it.
-- AMS evidence: primary `uber-jar`/6.5 product version and AMS target/layout such as `ams_default.vars` and tier farms. Confirm actual LTS version/hosting; shared `conf.d`/`conf.dispatcher.d` directories alone prove neither runtime.
-- On a wrong-runtime mismatch, STOP; explicitly route to `cloud-service/skills/dispatcher` or `6.5-lts/skills/dispatcher`, with no wrong-mode commands. For missing/conflicting evidence, ask focused confirmation of target runtime and module/source root; make no runtime-specific edits or commands until resolved.
-- Discover actual AMS MCP tools and host/log prerequisites separately from mode. All dependent workflows and checklists are conditional: permit bounded conceptual explanation/static source review without MCP; report each required tool-dependent check BLOCKED / NOT VERIFIED with its missing prerequisite and leave checklist items incomplete.
-- Never fabricate output or substitute another runtime's tools. Distinguish static review, file/baseline or Apache host syntax checks, and live target observations; none substitutes for missing MCP evidence or proves production behavior. No runtime/release sign-off with required checks unavailable. Core-7 signatures are repository contracts, not publicly verified Adobe SDK interfaces; inspect exposed schemas/installed help before execution.
-
-Sources: [AMS layout](https://experienceleague.adobe.com/en/docs/experience-manager-learn/ams/dispatcher/basic-file-layout), [immutable files](https://experienceleague.adobe.com/en/docs/experience-manager-learn/ams/dispatcher/immutable-files), and [flushing](https://experienceleague.adobe.com/en/docs/experience-manager-learn/ams/dispatcher/disp-flushing) (updated 2026-09-22). Preserve deny-first explicit publish IP flush ACLs, mutable includes, tier variables, and author/publish separation. Java API JAR compilation does not verify Apache configuration or private MCP signatures.
+- Before edits or commands, confirm the project targets 6.5 LTS/AMS (e.g. `uber-jar` dependency, `ams_default.vars` layout); if it shows Cloud evidence (`aem-sdk-api`, `opt-in/USE_SOURCES_DIRECTLY`), stop and route to the Cloud Service `dispatcher` skill. Ask when evidence is missing or conflicting.
+- If Dispatcher MCP tools are unavailable, limit work to explanation and static review and report each tool-dependent check as NOT VERIFIED; never fabricate tool output.
 
 ## Intent Router
 

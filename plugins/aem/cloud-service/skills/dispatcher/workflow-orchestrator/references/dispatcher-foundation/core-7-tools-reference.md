@@ -2,14 +2,6 @@
 
 This document defines the shared MCP tool contract used by the dispatcher skills.
 
-## Execution Prerequisites
-
-Apply the [skill's inline preflight](../../SKILL.md#runtime-and-availability-preflight) before any command chain. All linked playbooks and mandatory checklists remain conditional on confirmed project runtime and actual tool prerequisites.
-
-If a required tool or prerequisite is unavailable, allow bounded explanation/static source review and report that check BLOCKED / NOT VERIFIED, naming the missing prerequisite. Leave required checklist items incomplete. Static analysis, SDK file/baseline checks, local Apache startup checks, and live target observations are separate evidence classes. Never fabricate outputs, silently substitute another runtime's tools, or grant release/runtime sign-off from incomplete evidence.
-
-Tool names and signatures here describe the repository MCP contract, not Adobe's public SDK CLI. Inspect exposed tool schemas before execution; Java API JAR validation does not verify this contract.
-
 ## Overview
 
 The `core-7-tools` contract is the baseline tool set for dispatcher work across both AEMaaCS and AMS variants.
