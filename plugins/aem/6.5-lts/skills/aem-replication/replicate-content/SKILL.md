@@ -10,6 +10,8 @@ Use this skill when the user asks to publish, unpublish, replicate, activate, de
 
 ## Prerequisites
 
+Before publication, unpublication, or queue changes, apply [authorization and recovery guardrails](../references/replication-foundation/65-lts-guardrails.md#authorization-and-recovery-before-mutation): explicit approval for targets/paths, impact assessment, and rollback or controlled re-publication. Default credentials are isolated-local-only; shared/AMS targets require operator-supplied credentials with configured permissions.
+
 - AEM 6.5 LTS Author with configured replication agents — see `configure-replication-agent`
 - Author permissions to activate/deactivate content
 

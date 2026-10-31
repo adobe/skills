@@ -1,6 +1,6 @@
 ---
 name: replication
-description: AEM Cloud Service expert skill for replication / content distribution. Covers migration from CQ Replicator (com.day.cq.replication.Replicator) and Sling Replication Agent (org.apache.sling.replication.agent.api) to the Sling Distribution API (Distributor + SimpleDistributionRequest). Includes agent selection (publish vs preview), async response handling, author cluster coordination, service-user setup, review checklist, troubleshooting, and common pitfalls.
+description: AEM Cloud Service expert skill for supported CQ Replicator publishing and migration from retired Sling Replication Agent APIs to Sling Distribution. Includes publish versus preview selection, asynchronous acceptance versus delivery, service-user setup, review, and troubleshooting. Preserve valid com.day.cq.replication usage.
 license: Apache-2.0
 ---
 
@@ -8,7 +8,9 @@ license: Apache-2.0
 
 ## Overview
 
-On AEM as a Cloud Service, replication is performed via the **Sling Distribution API** (`org.apache.sling.distribution.Distributor`). The legacy CQ `Replicator` (`com.day.cq.replication.*`) and Sling Replication Agent (`org.apache.sling.replication.agent.*`) APIs are **not supported** — code using them either compiles against legacy AEM 6.x jars or fails at runtime on CS.
+On AEM as a Cloud Service, **CQ `Replicator` (`com.day.cq.replication`) is a supported publishing API**, backed by Sling Content Distribution. Preserve valid publishing calls; do not rewrite them merely to satisfy migration detection. The retired `org.apache.sling.replication.*` API is different from both CQ replication and `org.apache.sling.distribution.*`; it is absent from the checked Cloud SDK and remains a migration finding.
+
+API verification: `com.adobe.aem:aem-sdk-api:2026.9.28386.20260923T071724Z-260900`, checked against the actual public JAR and [versioned Replicator Javadoc](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/Replicator.html), plus [product documentation](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication) (updated October 9, 2026).
 
 **AEMaaCS provides two predefined replication agents:**
 
@@ -17,13 +19,13 @@ On AEM as a Cloud Service, replication is performed via the **Sling Distribution
 | `publish` | Live publish tier | Available by default in every AEMaaCS environment |
 | `preview` | Preview tier | **Opt-in** — only available when the preview tier is enabled for the environment |
 
-`publish` is the default agent for activation; `preview` must be explicitly enabled. If both tiers are in use, call `distributor.distribute(...)` **twice** — once per agent name. Legacy `Replicator.replicate(...)` implicitly fanned out to every configured agent; `Distributor.distribute(...)` is explicit and targets one named agent per call.
+An unfiltered Cloud `Replicator.replicate(...)` targets **publish only**, not preview. Select `preview` or both `publish` and `preview` with `ReplicationOptions.setFilter(AgentFilter)`; see [supported publishing examples](../../content-distribution/replication/SKILL.md#publishing-to-preview-tier). This differs from configurable legacy 6.x agent selection. `Distributor.distribute(...)` targets one named agent per call; both tiers require two calls when using that API.
 
 **Three CS-specific constraints every distribution call must satisfy:**
 
 | Constraint | Why |
 |-----------|-----|
-| Use `Distributor` + `SimpleDistributionRequest` — not `Replicator` or `ReplicationAgent` | Legacy APIs are removed from the CS SDK |
+| Preserve supported CQ `Replicator`; replace retired Sling `ReplicationAgent` APIs | CQ replication is present in the checked CS SDK; the old Sling replication package is not |
 | Resolver via `getServiceResourceResolver(SUBSERVICE)` — never admin auth or `USER`/`PASSWORD` maps | Admin resolvers are unavailable on CS; service-user auth is the only supported path |
 | Inspect `DistributionResponse.isSuccessful()` and `getState()` | `Distributor.distribute()` returns a queued/accepted response — it does NOT block for delivery |
 
@@ -36,7 +38,7 @@ On AEM as a Cloud Service, replication is performed via the **Sling Distribution
 Identify the source pattern in the file:
 
 **Uses `com.day.cq.replication.Replicator`** with `ReplicationAction` and `ReplicationActionType` (`ACTIVATE`, `DEACTIVATE`)
-→ Apply **P1–P4**.
+→ Supported API. Preserve valid `replicate(Session, ReplicationActionType, path[, options])` calls. Correct authentication or invalid overloads independently; see P1.
 
 **Uses `org.apache.sling.replication.agent.api.ReplicationAgent`** with `ReplicationResult` and `agent.replicate(resolver, type, path)`
 → Apply **P1–P4**.
@@ -61,17 +63,18 @@ Detection is performed by the analyzer ([`../scripts/analyze.sh`](../scripts/REA
 bash ../scripts/analyze.sh <workspace-root> --pattern replication
 ```
 
-**Match criteria (what the detector flags):** a file that imports **`com.day.cq.replication.Replicator`** or any **`org.apache.sling.replication.*`** type — the legacy replication APIs removed on Cloud Service. One finding per file, at the file's primary type, with the class header as the snippet. Parse-level only — import-based, no type resolution. The modern `org.apache.sling.distribution.*` API is not flagged.
+**Match criteria (what the detector flags):** imports of **`org.apache.sling.replication.*`**, including wildcard imports, for the retired Sling replication API absent from the checked SDK. One finding per file, at the primary type. This is an import-based signal, not type resolution. Supported `com.day.cq.replication.*` and `org.apache.sling.distribution.*` imports are not flagged.
 
 > Analyzer-only: `replication` has no BPA subtype, so a `replication` finding originates from the local analyzer, never from a BPA/CAM report.
 
 ## Resolution contract
 
-**guided** — `apply (guided)`. The analyzer locates each legacy replication caller; remediation is judgment-based (CQ `Replicator` / Sling Replication Agent → Sling Distribution API) and applied via P1–P4 in an apply session.
+**guided** — `apply (guided)`. The analyzer locates retired Sling replication callers; remediation is judgment-based (Sling Replication Agent → Sling Distribution API) via P1–P4. Supported CQ publishing is not a migration defect.
 
 | Site shape | Disposition |
 |---|---|
-| `Replicator` / Sling Replication Agent usage in custom code | apply (guided) → P1–P4 |
+| Supported CQ `Replicator` usage | unchanged; review authentication, options, and publication intent |
+| Retired Sling Replication Agent usage in custom code | apply (guided) → P1–P4 |
 | Replication tied to a workflow step (workflow owns it) | skipped: `workflow-owned` |
 | Test code (`src/test/`) | skipped: `test-scope` |
 
@@ -79,7 +82,7 @@ bash ../scripts/analyze.sh <workspace-root> --pattern replication
 
 ## Complete example — before and after
 
-### Before (legacy CQ Replicator with admin resolver)
+### Before — negative example (admin resolver and invalid CQ overload, not an unsupported CQ API)
 
 ```java
 package com.example.replication;
@@ -129,7 +132,7 @@ public class ContentReplicationService {
 }
 ```
 
-### After — Cloud Service compatible
+### After — Cloud Service compatible, preserving CQ publishing
 
 ```java
 package com.example.replication;
@@ -137,12 +140,9 @@ package com.example.replication;
 import org.apache.sling.api.resource.LoginException;
 import org.apache.sling.api.resource.ResourceResolver;
 import org.apache.sling.api.resource.ResourceResolverFactory;
-import org.apache.sling.distribution.DistributionException;
-import org.apache.sling.distribution.DistributionRequest;
-import org.apache.sling.distribution.DistributionRequestType;
-import org.apache.sling.distribution.DistributionResponse;
-import org.apache.sling.distribution.Distributor;
-import org.apache.sling.distribution.SimpleDistributionRequest;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationActionType;
+import com.day.cq.replication.ReplicationException;
 import org.apache.sling.settings.SlingSettingsService;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Reference;
@@ -150,6 +150,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Collections;
+import javax.jcr.Session;
 
 @Component(service = ContentReplicationService.class)
 public class ContentReplicationService {
@@ -158,7 +159,7 @@ public class ContentReplicationService {
     private static final String SUBSERVICE = "content-distribution-service";
 
     @Reference
-    private Distributor distributor;
+    private Replicator replicator;
 
     @Reference
     private ResourceResolverFactory resolverFactory;
@@ -175,22 +176,16 @@ public class ContentReplicationService {
         try (ResourceResolver resolver = resolverFactory.getServiceResourceResolver(
                 Collections.singletonMap(ResourceResolverFactory.SUBSERVICE, SUBSERVICE))) {
 
-            DistributionRequest request = new SimpleDistributionRequest(
-                    DistributionRequestType.ADD, false, contentPath);
-
-            DistributionResponse response = distributor.distribute("publish", resolver, request);
-
-            if (response.isSuccessful()) {
-                LOG.info("Content distribution queued for path: {} (state={})",
-                        contentPath, response.getState());
-            } else {
-                LOG.warn("Content distribution not queued for path: {} (state={}, message={})",
-                        contentPath, response.getState(), response.getMessage());
+            Session session = resolver.adaptTo(Session.class);
+            if (session == null) {
+                throw new IllegalStateException("Service resolver cannot adapt to Session");
             }
+            replicator.replicate(session, ReplicationActionType.ACTIVATE, contentPath);
+            LOG.info("Publication requested for path: {}; delivery is asynchronous", contentPath);
         } catch (LoginException e) {
             LOG.error("Could not open service resolver for subservice '{}'", SUBSERVICE, e);
-        } catch (DistributionException e) {
-            LOG.error("Distribution failed for path: {}", contentPath, e);
+        } catch (ReplicationException e) {
+            LOG.error("Publication request failed for path: {}", contentPath, e);
         }
     }
 }
@@ -220,25 +215,16 @@ The **`crx:replicate`** privilege is required for the service user to initiate d
 
 ---
 
-## P1 — Replace Replicator / ReplicationAgent with Distributor
+## P1 — Preserve CQ Replicator; replace retired Sling ReplicationAgent
 
-**For `com.day.cq.replication.Replicator`:**
+**For `com.day.cq.replication.Replicator`:** keep supported calls. The negative example above uses a non-existent overload. Correct the overload and resolver authentication, not the publishing API. This method fragment assumes an injected `replicator` and a service resolver:
 
 ```java
-// BEFORE
-@Reference
-private Replicator replicator;
-
-ReplicationAction action = new ReplicationAction(ReplicationActionType.ACTIVATE, path);
-replicator.replicate(resolver, action);
-
-// AFTER
-@Reference
-private Distributor distributor;
-
-DistributionRequest request = new SimpleDistributionRequest(
-        DistributionRequestType.ADD, false, path);
-DistributionResponse response = distributor.distribute("publish", resolver, request);
+Session session = resolver.adaptTo(Session.class);
+if (session == null) {
+    throw new IllegalStateException("Service resolver cannot adapt to Session");
+}
+replicator.replicate(session, ReplicationActionType.ACTIVATE, path);
 ```
 
 **For `org.apache.sling.replication.agent.api.ReplicationAgent`:**
@@ -316,13 +302,7 @@ Treating "no matching agent" as a warning rather than an info-level log in a pub
 
 ## P2 — Update imports
 
-**Remove (CQ Replicator):**
-```java
-import com.day.cq.replication.ReplicationAction;
-import com.day.cq.replication.ReplicationActionType;
-import com.day.cq.replication.Replicator;
-import com.day.cq.replication.ReplicationException;
-```
+**Keep CQ replication imports when retaining supported CQ publishing.** Remove unused imports only.
 
 **Remove (Sling Replication Agent):**
 ```java
@@ -643,15 +623,15 @@ public void replicate(String path) {
 ## Review Checklist
 
 **Cross-cutting:**
-- [ ] No `com.day.cq.replication.*` imports remain
+- [ ] Supported `com.day.cq.replication.*` publishing is preserved, with valid Session-based overloads
 - [ ] No `org.apache.sling.replication.agent.*` imports remain
 - [ ] No `getAdministrativeResourceResolver()` or `USER`/`PASSWORD` auth maps remain
 - [ ] `getServiceResourceResolver(SUBSERVICE)` used in try-with-resources
 - [ ] OSGi DS R6 annotations — no `org.apache.felix.scr.annotations.*` imports
 - [ ] SLF4J logging — no `System.out` / `System.err` / `printStackTrace`
 
-**Distribution call:**
-- [ ] `@Reference Distributor` injected — not `Replicator` or `ReplicationAgent`
+**Distribution call (only for callers choosing Sling Distribution):**
+- [ ] `@Reference Distributor` injected; no retired Sling `ReplicationAgent`
 - [ ] `SimpleDistributionRequest` constructed with explicit `DistributionRequestType` (`ADD` / `DELETE`)
 - [ ] `deep=true` used deliberately — narrow scope when possible
 - [ ] Agent name explicit (`"publish"` and/or `"preview"`) — not a legacy custom agent name
@@ -679,10 +659,10 @@ public void replicate(String path) {
 | `LoginException: Unable to retrieve the service resource resolver` | the exception name verbatim | Service user not provisioned via Repoinit, OR `ServiceUserMapperImpl.amended-*.cfg.json` missing/misnamed, OR bundle symbolic name in the mapping doesn't match the bundle owning the distribution caller |
 | `DistributionResponse.getState() == DROPPED` with "not authorized" message | `state=DROPPED` and `not authorized` in `getMessage()` | Service user lacks `crx:replicate` — extend Repoinit ACL to add `crx:replicate` on the distributed paths |
 | `DistributionResponse.getState() == DROPPED` with "no matching agent" | `agent not found` or `no matching agent` | First argument to `distribute(...)` is a legacy/custom agent name not present on AEMaaCS — use `"publish"` or `"preview"` |
-| Distribution call returns successful but content never appears on publish | none synchronously — in the Distribution UI (`Tools > Deployment > Distribution`), open the specific agent (`publish` or `preview`), then check **Queue items** for per-item state and **Logs** for per-item delivery errors | Distribution is asynchronous; the response means **queued**, not delivered. In the Distribution UI, items move from a `persisted` state to `fully published`. Items stuck in `persisted` indicate the publish tier hasn't drained the queue — open the item to see the failure reason. If the agent's overall status shows `blocked` or `paused`, distribution is halted for that agent regardless of individual item state |
+| Distribution call returns successful but content never appears on publish | In `Tools > Deployment > Distribution`, open the target agent's Status, queues, and Logs | Acceptance does not prove delivery. The agent has **two queues**, not successive item states: clearing **persisted** means durable storage on the publish tier, with convergence over time; clearing **fully published** means content is live on **all publish pods** and affected Dispatcher invalidation is complete. Review pending items and errors in each queue |
 | Same path queued N times in quick succession | repeating `Distribution queued for path: …` entries | Trigger fires on every author cluster pod — add idempotency check or leader-only guard. The log noise indicates a real coordination bug even if the final delivered outcome looks correct |
-| `ClassNotFoundException: com.day.cq.replication.Replicator` at runtime | the exception name verbatim | Legacy `Replicator` API is not on the CS SDK classpath — code wasn't fully migrated; complete the P1 + P2 steps |
-| `ClassNotFoundException: org.apache.sling.replication.agent.*` at runtime | the exception name verbatim | Same as above, for the Sling Replication Agent API |
+| `ClassNotFoundException: com.day.cq.replication.Replicator` at runtime | the exception name verbatim | CQ Replicator is supported. Check dependency scope, bundle imports/resolution, and the actual target SDK; do not rewrite publishing solely for this error |
+| `ClassNotFoundException: org.apache.sling.replication.agent.*` at runtime | the exception name verbatim | Retired Sling replication API is absent from the checked SDK; migrate that caller via P1–P4 |
 
 ---
 
@@ -714,7 +694,7 @@ public void replicate(String path) {
 
 | Need | Use |
 |------|-----|
-| Programmatic single-path activation from code | `Distributor.distribute("publish", resolver, request)` (this skill) |
+| Programmatic single-path activation from code | Supported `Replicator.replicate(session, ACTIVATE, path)` or explicit Sling Distribution |
 | Recursive activation of a content tree | `SimpleDistributionRequest(ADD, true, path)` — used carefully |
 | Multiple paths in one batch | `SimpleDistributionRequest(ADD, false, path1, path2, ...)` |
 | Activation as part of an editorial workflow | AEM Workflow + the built-in **Activate Page** / **Deactivate Page** workflow step — do not add a parallel `Distributor` call |
@@ -728,7 +708,7 @@ public void replicate(String path) {
 
 ## Expert Guidance
 
-**Distribution is asynchronous; design for it.** The `DistributionResponse` tells you whether the request was accepted into the queue, not whether content has reached publish. Treat distribution like sending an email: the API confirms it left your outbox, not that the recipient read it. Use the Distribution UI (`Tools > Deployment > Distribution`) and the queue state model (`persisted` → `fully published`) for delivery visibility — not per-call assertions in code.
+**Distribution is asynchronous; design for it.** `DistributionResponse` acceptance is not persistence or full publication. In `Tools > Deployment > Distribution`, monitor **two queues**: **persisted** (durable publish-tier storage) and **fully published** (live on all publish pods, affected Dispatcher invalidation complete). Queue completion, not acceptance or aggregate replication metadata, provides these operational guarantees.
 
 **Failure modes to plan for:**
 

@@ -23,7 +23,9 @@ Use Sling Distribution event handling for:
 
 ## Official API Documentation
 
-**Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
+**Javadoc (SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/package-summary.html
+
+Event callbacks do not prove full Cloud publication. Use **Tools > Deployment > Distribution** to monitor **two queues**: **persisted** for durable publish-tier storage and **fully published** for content live on all publish pods with affected Dispatcher invalidation complete. Do not equate queued acceptance or an import event with that guarantee.
 
 **Key Packages**:
 - `org.apache.sling.distribution` - Core distribution interfaces
@@ -73,7 +75,7 @@ Sling Distribution fires events at each stage of the distribution lifecycle:
 | `AGENT_PACKAGE_QUEUED` | After package is queued | Monitor queue depth |
 | `AGENT_PACKAGE_DISTRIBUTED` | After successful distribution | Trigger post-publish actions |
 | `AGENT_PACKAGE_DROPPED` | When package fails and is dropped | Handle failures, alert on-call |
-| `IMPORTER_PACKAGE_IMPORTED` | After successful import on target | Confirm content is live |
+| `IMPORTER_PACKAGE_IMPORTED` | After successful import on target | Observe import; not proof of full Cloud publication |
 
 ### Event Topic Constants
 
@@ -600,7 +602,7 @@ LOG.error("Package dropped: {}", packageId);
 While you can't directly query distribution queues via the API in Cloud Service, you can monitor via:
 
 1. **Events**: Track `AGENT_PACKAGE_QUEUED` and `AGENT_PACKAGE_DISTRIBUTED` events
-2. **Felix Console**: View Sling jobs at `/system/console/slingjobs`
+2. **Distribution UI**: Open **Tools > Deployment > Distribution**, then the target agent's Status, queues, and Logs
 3. **Logs**: Check distribution logs in Cloud Manager
 
 ### Example: Queue Depth Monitoring
@@ -733,7 +735,7 @@ Target Tier: Imports package → [IMPORTER_PACKAGE_IMPORTED]
 
 ## References
 
-- **Sling Distribution Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
+- **Sling Distribution Javadoc (SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/package-summary.html
 - **Sling Distribution Docs**: https://sling.apache.org/documentation/bundles/content-distribution.html
 - **Replication API Skill**: [replication/SKILL.md](../replication/SKILL.md)
 - **Adobe AEM Replication**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html

@@ -2,6 +2,10 @@
 
 Quick reference for AEM 6.5 LTS Replication API methods and interfaces.
 
+Publishing examples below are integration fragments. Apply [authorization and recovery guardrails](65-lts-guardrails.md#authorization-and-recovery-before-mutation) before mutations; method availability does not establish permission or delivery.
+
+Checked October 31, 2026 against the public `com.adobe.aem:uber-jar:jar:apis:6.6.3` API JAR, documented for [6.5 LTS SP3](https://experienceleague.adobe.com/en/docs/experience-manager-65-lts/content/release-notes/release-notes#uber-jar-packaging), and [6.5 LTS Javadoc](https://developer.adobe.com/experience-manager/reference-materials/6-5-lts/javadoc/com/day/cq/replication/package-summary.html) (pages identify 6.6.0). API signatures were inspected with `javap`; this does not verify deployed queue delivery.
+
 ## Core Interfaces
 
 ### Replicator
@@ -32,6 +36,7 @@ Quick reference for AEM 6.5 LTS Replication API methods and interfaces.
 | `setSuppressStatusUpdate()` | boolean | false | Don't update replication metadata |
 | `setFilter()` | AgentFilter | null | Target specific agents only |
 | `setRevision()` | String | null | Replicate specific version |
+| `setListener()` | ReplicationListener | null | Callbacks for synchronous replication only |
 
 ### ReplicationStatus
 
@@ -41,12 +46,13 @@ Quick reference for AEM 6.5 LTS Replication API methods and interfaces.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `isActivated()` | boolean | True if replicated to at least one agent |
+| `isActivated()` | boolean | Last replication action was activation; not independent delivery proof |
 | `isDeactivated()` | boolean | True if deactivated |
 | `getLastPublished()` | Calendar | Last activation timestamp |
 | `getLastPublishedBy()` | String | User who last activated |
-| `getLastReplicationAction()` | String | Last action (ACTIVATE, DEACTIVATE, etc.) |
-| `getLastReplicatedRevision()` | String | Version ID last replicated |
+| `getLastReplicationAction()` | ReplicationActionType | Last action (ACTIVATE, DEACTIVATE, etc.) |
+| `isPending()` | boolean | Last action remains in a queue |
+| `isDelivered()` | boolean | Calculated from replication logs; does not check physical target content |
 
 ### AgentManager
 
@@ -57,30 +63,33 @@ Quick reference for AEM 6.5 LTS Replication API methods and interfaces.
 | Method | Parameters | Returns | Use Case |
 |--------|-----------|---------|----------|
 | `getAgents()` | - | Map<String, Agent> | Get all agents |
-| `getAgents()` | AgentFilter | Map<String, Agent> | Get filtered agents |
-| `getAgent()` | String agentId | Agent | Get specific agent |
+
+Look up one agent with `agentManager.getAgents().get(agentId)`; filter the returned map in caller code.
 
 ### ReplicationQueue
 
 **Package:** `com.day.cq.replication.ReplicationQueue`
 
-**Purpose:** Inspect queue state (read-only via JMX)
+**Purpose:** Inspect queues through the Java API; mutation methods also exist and require operational authorization.
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `getEntries()` | Collection<ReplicationQueueItem> | All queued items |
-| `getSize()` | int | Queue depth |
-| `getState()` | State | IDLE, RUNNING, BLOCKED, PAUSED |
+| `entries()` | List<ReplicationQueue.Entry> | Unmodifiable queued-entry snapshot; `.size()` gives depth |
+| `getStatus()` | ReplicationQueue.Status | Queue timing snapshot, not a state enum |
+| `isPaused()` | boolean | Whether queue processing is paused |
+
+[`ReplicationQueue.Status`](https://developer.adobe.com/experience-manager/reference-materials/6-5-lts/javadoc/com/day/cq/replication/ReplicationQueue.Status.html) exposes `getStatusTime()`, `getNextRetryTime()`, `getProcessingSince()`, and `getLastProcessTime()` (all `long`). Next retry time is nonzero when blocked, zero otherwise. Processing-since is zero for blocked **or idle**; it is not a standalone blocked check.
 
 ### ReplicationListener
 
 **Package:** `com.day.cq.replication.ReplicationListener`
 
-**Purpose:** Monitor replication events
+**Purpose:** Receive synchronous replication callbacks via `ReplicationOptions.setListener()`; not a general asynchronous queue subscription.
 
 | Method | Parameters | Use Case |
 |--------|-----------|----------|
 | `onStart()` | Agent, ReplicationAction | Replication initiated |
+| `onMessage()` | ReplicationLog.Level, String | Replication log message |
 | `onEnd()` | Agent, ReplicationAction, ReplicationResult | Replication completed |
 | `onError()` | Agent, ReplicationAction, Exception | Replication failed |
 

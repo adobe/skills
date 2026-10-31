@@ -2,6 +2,12 @@
 
 Best practices, limitations, and operational guidelines for replication in AEM 6.5 LTS.
 
+## Authorization and Recovery Before Mutation
+
+All publishing, unpublishing, agent configuration, cache invalidation, queue clearing, deletion, pause/retry, and restart examples require explicit authorization for the named environment and paths. Record expected impact and a rollback/recovery plan before executing them. Snapshot configuration and preserve authoritative content/revisions; clearing pending entries has no direct undo and may alter event order, so plan controlled re-publication. Do not delete replication repository data as routine troubleshooting; require a backup and an approved maintenance procedure.
+
+Default credentials are permitted only on isolated local development instances. For shared/on-premises/AMS targets, use operator-supplied credentials and configured permissions: `jcr:read` and `crx:replicate` for publication, with separate least-privilege authorization for management operations. Do not infer management permission from publication permission.
+
 ## Service User Requirements
 
 ### Never Use Admin Account
@@ -37,7 +43,7 @@ resolver = resolverFactory.getServiceResourceResolver(authInfo);
 Service user `replication-service` needs:
 - Read: `/content`, `/conf`
 - Modify: `/var/replication/outbox` (reverse replication)
-- Replicate: `jcr:all` on replicated paths
+- Replicate: `crx:replicate` on replicated paths (not `jcr:all`)
 
 ## URI Patterns
 

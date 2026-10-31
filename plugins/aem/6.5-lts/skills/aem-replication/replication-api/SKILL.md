@@ -22,6 +22,8 @@ Use this skill when you need to:
 
 ## Prerequisites
 
+Before publishing, clearing, pausing, or retrying queues, apply [authorization and recovery guardrails](../references/replication-foundation/65-lts-guardrails.md#authorization-and-recovery-before-mutation). Obtain explicit approval for targets/paths, record impact, and prepare rollback or controlled re-publication. Default credentials are isolated-local-only; shared/AMS systems require operator-supplied credentials and configured permissions.
+
 - AEM 6.5 LTS environment with configured replication agents
 - Java development environment for AEM
 - Maven project with AEM dependencies
@@ -470,10 +472,7 @@ Calendar getLastPublished();
 String getLastPublishedBy();
 
 // Get last replication action
-String getLastReplicationAction();
-
-// Get last replicated revision
-String getLastReplicatedRevision();
+ReplicationActionType getLastReplicationAction();
 ```
 
 **Example:**
@@ -915,7 +914,7 @@ public void clearQueueForPath(String agentId, String path) {
         ids.add(entry.getId());
     }
     
-    // Clear specific entries
+    // Caller must authorize this loss of pending work and record a re-publication plan.
     queue.clear(ids);
     LOG.info("Cleared {} entries for path: {}", ids.size(), path);
 }
@@ -941,7 +940,7 @@ public void forceRetryBlockedQueue(String agentId) {
 
 ### ReplicationListener Interface
 
-Listens for replication events in real-time.
+Receives callbacks **only for synchronous replication**, attached with `ReplicationOptions.setListener()`. Merely registering an OSGi service does not subscribe it to all agents or asynchronous queue events. Use queue snapshots or supported operational monitoring for asynchronous work; callbacks do not prove visitor-visible delivery.
 
 **Official Documentation:** [ReplicationListener JavaDoc](https://developer.adobe.com/experience-manager/reference-materials/6-5-lts/javadoc/com/day/cq/replication/ReplicationListener.html)
 

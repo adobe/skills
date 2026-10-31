@@ -20,6 +20,8 @@ Use this skill when you need to:
 
 ## Prerequisites
 
+Before any configuration, queue clearing, retry, or cache flush, apply [authorization and recovery guardrails](../references/replication-foundation/65-lts-guardrails.md#authorization-and-recovery-before-mutation). Obtain explicit approval, record affected targets/paths and impact, and prepare rollback or controlled re-publication. Use operator-supplied credentials on shared/AMS targets; default credentials are isolated-local-only.
+
 - AEM 6.5 Author instance running (typically port 4502)
 - AEM 6.5 Publish instance(s) running (typically port 4503+)
 - Administrator access to AEM Author environment

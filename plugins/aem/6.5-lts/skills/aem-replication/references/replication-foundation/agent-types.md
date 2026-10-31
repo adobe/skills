@@ -2,6 +2,8 @@
 
 Reference guide for AEM 6.5 LTS replication agent types and their purposes.
 
+Before configuring agents or invoking the publishing fragment below, apply [authorization and recovery guardrails](65-lts-guardrails.md#authorization-and-recovery-before-mutation).
+
 ## Default Replication Agent (Author to Publish)
 
 **Purpose:** Distributes activated content from Author to Publish instances.
@@ -9,7 +11,7 @@ Reference guide for AEM 6.5 LTS replication agent types and their purposes.
 **Key Characteristics:**
 - Transport Type: HTTP/HTTPS
 - Default URI Pattern: `http://publish-host:4503/bin/receive?sling:authRequestLogin=1`
-- Serialization Type: Dispatcher Flush
+- Serialization Type: Default
 - Direction: Author → Publish
 
 **When to Use:**
@@ -35,9 +37,15 @@ Reference guide for AEM 6.5 LTS replication agent types and their purposes.
 **Dispatcher Configuration Required:**
 ```apache
 /allowedClients {
-    /0 { /type "allow" /glob "*" }
+    /0000 { /type "deny" /glob "*" }
+    /0001 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP_1>" }
+    /0002 { /type "allow" /glob "<TRUSTED_PUBLISH_SOURCE_IP_2>" }
 }
 ```
+
+This is a fail-closed template, not deployable until trusted-source placeholders are replaced. The flush endpoint must not accept arbitrary clients. Use the source address Dispatcher actually observes: with NAT or a reverse proxy this may differ from the publish host IP. Restrict the proxy's ingress to trusted publishers; allowing a shared proxy address alone does not authenticate every client behind it. Follow the deployment's [AMS Dispatcher ACL guardrail](../../../dispatcher/config-authoring/references/dispatcher-foundation/ams-6-5-guardrails.md#4-flushinvalidation-safety).
+
+Serialization settings verified against [AEM 6.5 LTS replication documentation](https://experienceleague.adobe.com/en/docs/experience-manager-65-lts/content/implementing/deploying/configuring/replication) (updated September 29, 2026).
 
 ## Reverse Replication Agent
 
@@ -140,7 +148,7 @@ private AgentManager agentManager;
 
 public void checkAgentStatus(String agentId) {
     // Get agent with null check
-    Agent agent = agentManager.getAgent(agentId);
+    Agent agent = agentManager.getAgents().get(agentId);
     
     if (agent == null) {
         LOG.warn("Agent not found: {}", agentId);

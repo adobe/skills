@@ -11,8 +11,8 @@ These skills cover the official APIs for content replication and distribution ev
 
 ## Official Documentation
 
-- **Replication API Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
-- **Sling Distribution Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
+- **Replication API Javadoc (verified SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
+- **Sling Distribution Javadoc (SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/package-summary.html
 - **Adobe Replication Guide**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html
 
 ## Skills Included
@@ -84,10 +84,12 @@ Monitor and react to content distribution lifecycle events.
 │ [IMPORTER_PACKAGE_IMPORTED] ← Event fires on target     │
 └─────────────────────────────────────────────────────────┘
                        ↓
-              Content is live on Publish/Preview
+              Imported; full publication requires queue completion
 ```
 
 ### Workflow Example
+
+Lifecycle events below are not proof of full Cloud publication. Monitor **two queues** under **Tools > Deployment > Distribution**: **persisted** for durable publish-tier storage and **fully published** for live content on all publish pods with affected Dispatcher invalidation complete.
 
 **Scenario**: Publish a page and warm the CDN cache after distribution completes.
 
@@ -362,7 +364,7 @@ public class MyDistributionHandler implements EventHandler {
 1. **Replication fails**:
    - Check logs for `ReplicationException`
    - Verify user has `crx:replicate` permission on content path
-   - Check Sling jobs console: `/system/console/slingjobs`
+   - Open **Tools > Deployment > Distribution**, then the target agent's Status, queues, and Logs
 
 2. **Events not firing**:
    - Verify component is active: `/system/console/components`
@@ -378,5 +380,5 @@ public class MyDistributionHandler implements EventHandler {
 
 - **Replication Skill**: [replication/SKILL.md](./replication/SKILL.md)
 - **Sling Distribution Skill**: [sling-distribution/SKILL.md](./sling-distribution/SKILL.md)
-- **Official Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/
+- **Official Javadoc (SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/
 - **Adobe Documentation**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html

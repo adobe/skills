@@ -23,7 +23,9 @@ Use the Replication API for programmatic content distribution:
 
 ## Official API Documentation
 
-**Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
+**Javadoc**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
+
+Verified October 31, 2026 against the public `com.adobe.aem:aem-sdk-api:2026.9.28386.20260923T071724Z-260900` JAR and versioned Javadoc. Compilation verifies signatures, not deployed runtime delivery or limits.
 
 **Key Classes**:
 - `com.day.cq.replication.Replicator` - Main replication service
@@ -92,35 +94,48 @@ public class ContentPublisher {
 
 ## Bulk Replication: Multiple Paths
 
-**CONSTRAINTS** (per [official Javadoc](https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/Replicator.html)):
-- **Recommended limit**: 100 paths per call for a transactional guarantee
-- **Above 100 paths**: the system automatically splits into multiple non-transactional chunks — no extra options needed
+**CONSTRAINTS** (sources checked October 31, 2026):
+- [Experience League](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication) (updated October 9, 2026) recommends approximately 100 paths, documents a **500-path limit**, `ReplicationException` above that limit, and `setUseAtomicCalls(false)` as an alternative.
+- [SDK 2026.9 Replicator Javadoc](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/Replicator.html) recommends 100 paths, describes transactional replication up to that number, and permits splitting above it. [ReplicationOptions](https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/ReplicationOptions.html) still deprecates `setUseAtomicCalls()` as "no longer required".
+- **Conservative custom calls**: keep each call below approximately 100 paths and handle/report `ReplicationException`. Do not promise automatic splitting without options or runtime atomicity from compilation alone.
 - **Payload size**: 10 MB maximum (excluding binaries)
 
-> **Note**: `ReplicationOptions.setUseAtomicCalls()` is `@Deprecated` and marked "no longer required" in the Cloud Service Javadoc. Do **not** call it; the system handles auto-bucketing automatically.
+> **Unresolved documentation conflict:** Product limits/options guidance and current SDK deprecation guidance differ. The example avoids the disputed option and bounds each call to 99 paths. Validate runtime limits and failure handling on the target release; use Tree Activation for large trees.
 
 ### Example: Bulk Activation
 
 ```java
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationActionType;
+import com.day.cq.replication.ReplicationException;
+import org.osgi.service.component.annotations.Reference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import javax.jcr.Session;
+import java.util.Arrays;
+
 public class BulkPublisher {
+    private static final Logger LOG = LoggerFactory.getLogger(BulkPublisher.class);
     
     @Reference
     private Replicator replicator;
     
     /**
      * Publish multiple pages.
-     * ≤100 paths → replicated atomically (transactional guarantee).
-     * >100 paths → system automatically splits into non-transactional chunks.
+     * Each call is conservatively bounded; the whole operation is not atomic.
      */
     public void publishMultiplePages(Session session, String[] pagePaths) 
             throws ReplicationException {
         
-        replicator.replicate(
-            session,
-            ReplicationActionType.ACTIVATE,
-            pagePaths,
-            null  // No options needed; system handles auto-bucketing above 100 paths
-        );
+        for (int start = 0; start < pagePaths.length; start += 99) {
+            String[] batch = Arrays.copyOfRange(pagePaths, start, Math.min(start + 99, pagePaths.length));
+            try {
+                replicator.replicate(session, ReplicationActionType.ACTIVATE, batch, null);
+            } catch (ReplicationException e) {
+                LOG.error("Publication request failed for batch starting at {}; earlier batches may be queued", start, e);
+                throw e;
+            }
+        }
     }
 }
 ```
@@ -129,13 +144,19 @@ public class BulkPublisher {
 
 ## Publishing to Preview Tier
 
-The Preview tier requires explicit agent filtering.
+An unfiltered Cloud `Replicator` call uses **publish only**. The Preview tier requires explicit agent filtering.
 
 ### Example: Publish to Preview
 
 ```java
 import com.day.cq.replication.Agent;
 import com.day.cq.replication.AgentFilter;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationActionType;
+import com.day.cq.replication.ReplicationException;
+import com.day.cq.replication.ReplicationOptions;
+import org.osgi.service.component.annotations.Reference;
+import javax.jcr.Session;
 
 public class PreviewPublisher {
     
@@ -200,6 +221,18 @@ public class PreviewPublisher {
 ### Synchronous vs. Asynchronous Replication
 
 ```java
+import com.day.cq.replication.Agent;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationAction;
+import com.day.cq.replication.ReplicationActionType;
+import com.day.cq.replication.ReplicationException;
+import com.day.cq.replication.ReplicationOptions;
+import com.day.cq.replication.ReplicationListener;
+import com.day.cq.replication.ReplicationLog;
+import com.day.cq.replication.ReplicationResult;
+import org.osgi.service.component.annotations.Reference;
+import javax.jcr.Session;
+
 public class SynchronousPublisher {
     
     @Reference
@@ -217,7 +250,7 @@ public class SynchronousPublisher {
         // Optional: Add listener for synchronous feedback
         options.setListener(new ReplicationListener() {
             @Override
-            public void onStart(ReplicationAction action) {
+            public void onStart(Agent agent, ReplicationAction action) {
                 // Called when replication starts
             }
             
@@ -227,12 +260,12 @@ public class SynchronousPublisher {
             }
             
             @Override
-            public void onEnd(ReplicationAction action, ReplicationResult result) {
+            public void onEnd(Agent agent, ReplicationAction action, ReplicationResult result) {
                 // Called when replication completes
             }
             
             @Override
-            public void onError(ReplicationAction action, Exception error) {
+            public void onError(Agent agent, ReplicationAction action, Exception error) {
                 // Called if replication fails
             }
         });
@@ -248,6 +281,8 @@ public class SynchronousPublisher {
 ```
 
 **Important**: `ReplicationListener` only works with synchronous replication.
+
+These callbacks are not a general asynchronous queue subscription or proof of full Cloud publication across pods.
 
 ### Suppress Status Updates
 
@@ -295,11 +330,20 @@ public void replicateWithoutVersioning(Session session, String path)
 
 ### Example: Check if Page is Published
 
+Status metadata describes replication actions, not independent proof of visitor-visible delivery. In Cloud, aggregate status updates for default-enabled agents (publish). Preview-only activation can leave aggregate `isActivated()` **false** while `getStatusForAgent("preview").isActivated()` is **true**. Check the required agent and monitor its Distribution queues for delivery.
+
 ```java
 import com.day.cq.replication.ReplicationStatus;
+import com.day.cq.replication.Replicator;
+import com.day.cq.replication.ReplicationException;
 import org.apache.sling.api.resource.Resource;
+import org.osgi.service.component.annotations.Reference;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import javax.jcr.Session;
 
 public class StatusChecker {
+    private static final Logger LOG = LoggerFactory.getLogger(StatusChecker.class);
     
     @Reference
     private Replicator replicator;
@@ -316,7 +360,14 @@ public class StatusChecker {
             return false;  // No replication metadata
         }
         
-        return status.isActivated();
+        ReplicationStatus publishStatus = status.getStatusForAgent("publish");
+        return publishStatus != null && publishStatus.isActivated();
+    }
+
+    public boolean isPreviewPublished(Session session, String path) {
+        ReplicationStatus status = replicator.getReplicationStatus(session, path);
+        ReplicationStatus previewStatus = status == null ? null : status.getStatusForAgent("preview");
+        return previewStatus != null && previewStatus.isActivated();
     }
     
     /**
@@ -328,12 +379,9 @@ public class StatusChecker {
         ReplicationStatus status = replicator.getReplicationStatus(session, path);
         
         if (status != null) {
-            System.out.println("Activated: " + status.isActivated());
-            System.out.println("Deactivated: " + status.isDeactivated());
-            System.out.println("Last Published: " + status.getLastPublished());
-            System.out.println("Published By: " + status.getLastPublishedBy());
-            System.out.println("Last Action: " + status.getLastReplicationAction());
-            System.out.println("Pending: " + status.isPending());
+            LOG.info("Aggregate activated={}, deactivated={}, lastPublished={}, publishedBy={}, action={}, pending={}",
+                    status.isActivated(), status.isDeactivated(), status.getLastPublished(),
+                    status.getLastPublishedBy(), status.getLastReplicationAction(), status.isPending());
         }
     }
     
@@ -342,7 +390,8 @@ public class StatusChecker {
      */
     public boolean isPublished(Resource resource) {
         ReplicationStatus status = resource.adaptTo(ReplicationStatus.class);
-        return status != null && status.isActivated();
+        ReplicationStatus publishStatus = status == null ? null : status.getStatusForAgent("publish");
+        return publishStatus != null && publishStatus.isActivated();
     }
 }
 ```
@@ -350,6 +399,8 @@ public class StatusChecker {
 ### Batch Status Queries
 
 Use `ReplicationStatusProvider.getBatchReplicationStatus()` when you need to check the publication state of multiple resources in a single call. It is more efficient than calling `Replicator.getReplicationStatus()` in a loop.
+
+The following batch example queries aggregate/default-publish activation metadata; it does not report preview activation or full publication. For preview, use each status's `getStatusForAgent("preview")`.
 
 **Javadoc**: `com.day.cq.replication.ReplicationStatusProvider`
 
@@ -535,7 +586,7 @@ public class ReplicationEventLogger implements EventHandler {
 ## Best Practices
 
 ### 1. Respect Rate Limits
-- ≤100 paths per call for transactional guarantee; system auto-splits if exceeded
+- Keep custom calls below approximately 100 paths; catch/report `ReplicationException` and validate target-runtime behavior
 - ≤10 MB payload size
 
 ### 2. Use Workflow for Large Operations
@@ -561,12 +612,13 @@ See [references/patterns.md](references/patterns.md) for complete implementation
 
 ### Issue: Replication Fails Silently
 
-**Check**: Verify replication queues in Felix console (Sling Jobs console):
-```
-https://author-p<programId>-e<envId>.adobeaemcloud.com/system/console/slingjobs
-```
+**Check**: On hosted Cloud author, use **Tools > Deployment > Distribution**, then open the `publish` or `preview` agent's **Status**, queues, and **Logs**.
 
-Look for failed jobs with topic: `com/day/cq/replication`
+Each agent displays **two queues**, not successive item states:
+- **persisted**: after an item clears this queue, content is durably stored on the publish tier; instances converge over time.
+- **fully published**: after an item clears this queue, content is live on **all publish pods**, with affected **Dispatcher invalidation complete**.
+
+Request acceptance is not persistence or full publication. Review pending items and queue errors. Clearing items discards pending work; obtain explicit authorization, record affected paths, and plan re-publication before clearing any queue.
 
 ### Issue: Permission Errors
 
@@ -586,6 +638,20 @@ Look for failed jobs with topic: `com/day/cq/replication`
 
 ## References
 
-- **Official Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
+### Repeatable API compile check
+
+`ContentPublisher`, `BulkPublisher`, `PreviewPublisher`, `SynchronousPublisher`, and `StatusChecker` are standalone positive class examples. Other Java fences are integration fragments requiring their surrounding imports, services, or workflow context. Negative legacy examples in code-assessment are intentionally excluded.
+
+The focused check extracts the actual Markdown classes, including the corrected code-assessment publisher and LTS queue/listener pair. Supply downloaded public JARs: `com.adobe.aem:aem-sdk-api:2026.9.28386.20260923T071724Z-260900`, `com.adobe.aem:uber-jar:jar:apis:6.6.3`, and `org.osgi:org.osgi.service.component.annotations:1.5.1`. No stubs are used. From repository root:
+
+```bash
+python3 plugins/aem/cloud-service/skills/content-distribution/replication/test/verify-examples.py \
+  --sdk-jar "$SDK_API_JAR" --lts-jar "$LTS_API_JAR" \
+  --annotations-jar "$OSGI_ANNOTATIONS_JAR" --work-dir "$VERIFICATION_OUTPUT"
+```
+
+Use an explicit artifact directory for output, not a tracked binary location. This is compile-time verification only; target-runtime batch limits, listener invocation, queue delivery, and Dispatcher invalidation remain separately verifiable.
+
+- **Official Javadoc (verified SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
 - **Adobe Docs**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html
 - **Sling Distribution**: https://sling.apache.org/documentation/bundles/content-distribution.html

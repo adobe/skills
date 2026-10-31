@@ -2,6 +2,8 @@
 
 Replicates a specific set of JCR nodes by building a content package and distributing it to Publish instances.
 
+Before package replication, apply [authorization and recovery guardrails](../../references/replication-foundation/65-lts-guardrails.md#authorization-and-recovery-before-mutation): approve exact filters and targets, assess overwrite/deletion impact, back up affected content, and prepare rollback. Use operator-supplied credentials on shared/AMS targets; defaults are isolated-local-only.
+
 ## Steps
 
 1. Navigate to `http://localhost:4502/crx/packmgr/index.jsp` → **Create Package**
