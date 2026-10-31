@@ -15,7 +15,8 @@ Deliver evidence-backed security findings and remediations for cloud workflows t
 ## Variant Scope
 
 - This skill is cloud-service-only.
-- Scope is fixed by this skill directory; do not ask the user to choose deployment variant.
+- Before edits or commands, confirm the project targets Cloud Service (e.g. `aem-sdk-api` dependency, Cloud `dispatcher/src` layout); if it shows 6.5/AMS evidence (`uber-jar`, `ams_default.vars`), stop and route to the 6.5 LTS `dispatcher` skill. Ask when evidence is missing or conflicting.
+- If Dispatcher MCP tools are unavailable, limit work to explanation and static review and report each tool-dependent check as NOT VERIFIED; never fabricate tool output.
 
 ## MCP Tool Contract
 

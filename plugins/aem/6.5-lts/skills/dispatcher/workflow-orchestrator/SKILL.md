@@ -21,6 +21,11 @@ Use this skill when users need end-to-end Dispatcher support instead of a single
   - release readiness and rollback planning
   - production incident triage
 
+## Runtime Check
+
+- Before edits or commands, confirm the project targets 6.5 LTS/AMS (e.g. `uber-jar` dependency, `ams_default.vars` layout); if it shows Cloud evidence (`aem-sdk-api`, `opt-in/USE_SOURCES_DIRECTLY`), stop and route to the Cloud Service `dispatcher` skill. Ask when evidence is missing or conflicting.
+- If Dispatcher MCP tools are unavailable, limit work to explanation and static review and report each tool-dependent check as NOT VERIFIED; never fabricate tool output.
+
 ## Routing Model
 
 1. Start in `config-authoring` for file design and edits.

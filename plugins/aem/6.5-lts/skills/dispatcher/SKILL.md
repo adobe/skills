@@ -16,6 +16,11 @@ metadata:
 
 Route user requests to the appropriate specialist skill based on intent.
 
+## Runtime Check
+
+- Before edits or commands, confirm the project targets 6.5 LTS/AMS (e.g. `uber-jar` dependency, `ams_default.vars` layout); if it shows Cloud evidence (`aem-sdk-api`, `opt-in/USE_SOURCES_DIRECTLY`), stop and route to the Cloud Service `dispatcher` skill. Ask when evidence is missing or conflicting.
+- If Dispatcher MCP tools are unavailable, limit work to explanation and static review and report each tool-dependent check as NOT VERIFIED; never fabricate tool output.
+
 ## Intent Router
 
 | User Intent | Skill | Path |
