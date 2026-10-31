@@ -7,25 +7,19 @@ Decides which lines of a skill are worth their tokens: test what current models 
 1. **Inventory.** Split the skill's factual content (SKILL.md + references) into atomic facts: one key point per claim. Skip workflow and best-practice opinions not documented on aem.live (see below). If a claim has a main point plus a secondary detail worth knowing, make two facts; if the detail is noise, drop it. Classify each:
    - `eds` — Edge Delivery Services specific
    - `generic` — general web/JS/CSS practice
-   - `repo` — visible in the project (`ls`, `cat package.json`, lint config, existing blocks); set `context` to the boilerplate files that show it
-2. **Verify.** Check every `eds` and `repo` fact against a live source (aem-boilerplate `main`, aem.live docs, aem-cli source). Record the source. Wrong facts get fixed in the skill, not quizzed.
-3. **Quiz.** One open, non-leading question per fact, framed in EDS terms. Questions must not contain the answer. Workflow facts aren't quizzed.
-4. **Recall.** Ask each model, no tools, no skill text. Save raw answers.
-   - `eds` and `generic`: the full set in one prompt, no context.
-   - `repo`: a second prompt with each fact's `context` files pasted in (from `contextRef`), since in real use the model can read them. This tests whether it applies the file, not whether it remembers it.
-   - Answers vary between runs: a fact can flip from `correct` to `wrong` on a re-ask. Run each prompt 3 times per model, score every run, and use each model's majority score; with no majority, use `missing`.
+2. **Verify.** Check every `eds` fact against a live source (aem-boilerplate `main`, aem.live docs, aem-cli source). Record the source. If the skill is wrong, correct the claim, fix the skill to match, record the old wording in `skillSays`, and quiz the corrected fact to justify keeping it.
+3. **Quiz.** One open, non-leading question per fact, framed in EDS terms. Questions must not contain the answer.
+4. **Recall.** Ask 5-8 models from at least three vendors, once each, no tools, no skill text. Save raw answers. Answers vary between runs, so breadth replaces repeats: a fact is cut only if every model gets it right.
+   - The full set in one prompt, no context. Facts visible in the boilerplate (scripts, lint config) are classed `eds` and quizzed the same way; it's open source and documented, so models can learn it; those facts just take longer to be cut.
 5. **Score.** Each answer vs. its fact's key point: `correct`, `wrong` (confident and incorrect, incl. stale), `missing` (no answer, vague, or misses the key point). Omitting a minor detail of the claim is still `correct`. Two scorers from different vendors score independently; disagreements go to a human.
 6. **Decide.**
 
 | Condition | Decision |
 |---|---|
-| `generic` or `repo`, `correct` in all models | cut |
-| `generic` or `repo`, `wrong` in any model | keep, state sharply |
-| `generic` or `repo`, otherwise | cut, unless costly and silent |
+| `generic`, `correct` in all models | cut |
 | `eds`, `correct` in all models | cut, unless forgetting it is costly and silent (e.g. unscoped CSS, editing `aem.js`): then keep as a one-line `reminder` |
-| `eds`, `wrong` in any model | keep, state sharply |
-| `eds`, `missing` in 2+ models | keep |
-| otherwise | judgement, note why |
+| `wrong` in any model | keep, state sharply |
+| `missing` in any model | keep |
 
 Workflow (step order, when to invoke other skills) isn't recall: no fact, no quiz, never trimmed by this probe. Best practices documented on aem.live are facts: quiz them, with the doc as `verified`. Best-practice opinions found only in the skills aren't quizzed; keep them until the tessl eval, run after all skills' facts are done, shows whether they're still needed.
 
@@ -46,15 +40,13 @@ After the trim, run the same eval again and compare with `tessl eval compare <be
 
 ```
 recall/<skill>/
-  facts.json          { sourceRef, sourceRoot, contextRef?, facts: [{ id, claim, source, kind, verified, context?, question, quiz? }] }
+  facts.json          { sourceRef, sourceRoot, facts: [{ id, claim, source, kind, verified, question, quiz? }] }
                       sourceRef: commit the inventory was taken from; source paths (`file:line`) are relative to sourceRoot at that commit
-                      kind: eds | generic | repo | workflow; all kinds live in one file
-                      contextRef: boilerplate tree that `context` paths resolve against
-                      context: files pasted into the quiz prompt for `repo` facts
+                      kind: eds | generic; all kinds live in one file
                       goal: goals.md entry the fact supports (optional)
                       skillSays: current skill wording where it contradicts the claim (optional)
-                      quiz: reason a fact is excluded, e.g. wrong claim
-  answers/<model>-<run>.md  raw model output per run (gitignored)
+                      quiz: reason a fact is excluded from the quiz (optional)
+  answers/<model>.md  raw model output (gitignored)
   scores.json         { models: [...], facts: { <id>: { <model>: score, decision, note } } } (gitignored)
 ```
 
@@ -62,4 +54,4 @@ Only `facts.json` is committed. Answers and scores go stale with each model rele
 
 ## Models
 
-`claude-sonnet-5.5`, `gemini-4-argon`, `gpt-6.1-sol`. Re-run when models change; cuts that depended on a removed model's recall should be re-checked.
+5-8 current models from at least three vendors, e.g. `claude-sonnet-5.5`, `gemini-4-argon`, `gpt-6.1-sol`; list the set used in `scores.json` and the PR body. Re-run when models change; cuts that depended on a removed model's recall should be re-checked.

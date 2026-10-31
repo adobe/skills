@@ -1,7 +1,6 @@
 {
   "sourceRef": "f3923ff0928f7992fcda73175482966f357059d0",
   "sourceRoot": "plugins/aem/edge-delivery-services/skills/testing-blocks",
-  "contextRef": "https://github.com/adobe/aem-boilerplate/tree/5cea543707db900c92014b0bba93564fe325b9e4",
   "facts": [
     {
       "id": "TB-001",
@@ -82,6 +81,31 @@
       "kind": "eds",
       "verified": "https://www.aem.live/developer/keeping-it-100#testing-your-pull-requests ('the test URLs in the description ... are used to run the PageSpeed Insights Service against. The AEM GitHub bot will automatically fail your PR if the score is below 100'); aem-boilerplate@5cea543 .github/pull_request_template.md, AGENTS.md:20",
       "question": "What performance check runs on a pull request in an EDS project, what does it test, and what must the PR contain for it to work?"
+    },
+    {
+      "id": "TB-010",
+      "claim": "`aem content push` writes content to da.live (source) but doesn't preview it. `aem up` serves it from `./content/`, but branch preview URLs and the PR PageSpeed check only see it after it's previewed.",
+      "source": "n/a (not in skill)",
+      "kind": "eds",
+      "verified": "@adobe/aem-cli@16.22.16 src/content/push.js:L21 ('Push committed content/ changes to da.live'), src/content/push.cmd.js:L129 (only putSource), src/content/da-api.js:L215-220 (PUT admin.da.live/source/...); no preview call in src/content/",
+      "question": "After you edit test content locally and run `aem content push`, where is the change visible: on the local dev server, on the branch preview URL, or both?"
+    },
+    {
+      "id": "TB-011",
+      "claim": "Playwright can capture the accessibility tree as YAML (`locator.ariaSnapshot()`) and assert against it (`expect(locator).toMatchAriaSnapshot()`), with roles, accessible names and states like `[expanded]`.",
+      "source": "SKILL.md:79-83, SKILL.md:112-117",
+      "kind": "generic",
+      "verified": "https://playwright.dev/docs/aria-snapshots",
+      "question": "How can a Playwright test inspect or assert a block's accessibility tree (roles, names, states) in one step?"
+    },
+    {
+      "id": "TB-012",
+      "claim": "Check one width inside each range the project's breakpoints create; EDS default breakpoints are 600, 900 and 1200px (min-width), e.g. 375, 768, 1024 and 1440.",
+      "source": "SKILL.md:72, SKILL.md:116-130, SKILL.md:144-147",
+      "kind": "generic",
+      "skillSays": "SKILL.md:144-147 'Mobile: <600px, Tablet: 600-900px, Desktop: >900px' (no range above 1200px)",
+      "verified": "https://www.aem.live/docs/dev-collab-and-good-practices#breakpoints ('use 600px, 900px and 1200px as your breakpoints, all min-width')",
+      "question": "When testing an EDS block, which viewport widths should you check to cover its responsive layouts?"
     }
   ]
 }
