@@ -4,19 +4,23 @@ Decides which lines of a skill are worth their tokens: test what current models 
 
 ## Steps
 
-1. **Inventory.** Split the skill (SKILL.md + references) into atomic facts. Classify each:
+1. **Inventory.** Split the skill (SKILL.md + references) into atomic facts: one key point per claim. If a claim has a main point plus a secondary detail worth knowing, make two facts; if the detail is noise, drop it. Classify each:
    - `eds` — Edge Delivery Services specific
    - `generic` — general web/JS/CSS practice
-   - `repo` — visible in the project (`ls`, `cat package.json`, lint config, existing blocks)
-2. **Verify.** Check every `eds` fact against a live source (aem-boilerplate `main`, aem.live docs, aem-cli source). Record the source. Wrong facts get fixed in the skill, not quizzed.
-3. **Quiz.** One open, non-leading question per `eds` fact. Questions must not contain the answer.
-4. **Recall.** Ask each model the full quiz in one prompt, no tools, no skill text. Save raw answers.
-5. **Score.** Each answer vs. its fact: `correct`, `wrong` (confident and incorrect, incl. stale), `missing` (no answer, vague, or partial). Two scorers from different vendors score independently; disagreements go to a human.
+   - `repo` — visible in the project (`ls`, `cat package.json`, lint config, existing blocks); set `context` to the boilerplate files that show it
+2. **Verify.** Check every `eds` and `repo` fact against a live source (aem-boilerplate `main`, aem.live docs, aem-cli source). Record the source. Wrong facts get fixed in the skill, not quizzed.
+3. **Quiz.** One open, non-leading question per fact, framed in EDS terms. Questions must not contain the answer. Workflow facts aren't quizzed.
+4. **Recall.** Ask each model, no tools, no skill text. Save raw answers.
+   - `eds` and `generic`: the full set in one prompt, no context.
+   - `repo`: a second prompt with each fact's `context` files pasted in (from `contextRef`), since in real use the model can read them. This tests whether it applies the file, not whether it remembers it.
+5. **Score.** Each answer vs. its fact's key point: `correct`, `wrong` (confident and incorrect, incl. stale), `missing` (no answer, vague, or misses the key point). Omitting a minor detail of the claim is still `correct`. Two scorers from different vendors score independently; disagreements go to a human.
 6. **Decide.**
 
 | Condition | Decision |
 |---|---|
-| `generic` or `repo` | cut |
+| `generic` or `repo`, `correct` in all models | cut |
+| `generic` or `repo`, `wrong` in any model | keep, state sharply |
+| `generic` or `repo`, otherwise | cut, unless costly and silent |
 | `eds`, `correct` in all models | cut, unless forgetting it is costly and silent (e.g. unscoped CSS, editing `aem.js`): then keep as a one-line `reminder` |
 | `eds`, `wrong` in any model | keep, state sharply |
 | `eds`, `missing` in 2+ models | keep |
@@ -38,8 +42,13 @@ After the trim, run the same eval again and compare with `tessl eval compare <be
 
 ```
 recall/<skill>/
-  facts.json          { sourceRef, sourceRoot, facts: [{ id, claim, source, kind, verified, question, quiz? }] }
+  facts.json          { sourceRef, sourceRoot, contextRef?, facts: [{ id, claim, source, kind, verified, context?, question, quiz? }] }
                       sourceRef: commit the inventory was taken from; source paths (`file:line`) are relative to sourceRoot at that commit
+                      kind: eds | generic | repo | workflow; all kinds live in one file
+                      contextRef: boilerplate tree that `context` paths resolve against
+                      context: files pasted into the quiz prompt for `repo` facts
+                      goal: goals.md entry the fact supports (optional)
+                      skillSays: current skill wording where it contradicts the claim (optional)
                       quiz: reason a fact is excluded, e.g. wrong claim
   answers/<model>.md  raw model output (gitignored)
   scores.json         { models: [...], facts: { <id>: { <model>: score, decision, note } } } (gitignored)
