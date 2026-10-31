@@ -6,14 +6,13 @@ const { getBundleDiagnosis } = require('../lib/diagnosis.js');
 const { bundleGate } = require('../lib/runtime-gate.js');
 
 module.exports = {
-  describe: 'CQ Replicator / Sling Replicator → Sling Distribution API',
+  describe: 'Sling Replication Agent → Sling Distribution API (CQ Replicator is supported)',
   discover: (jar, args) => {
-    // Discovery on manifest: bundle imports org.apache.sling.distribution
-    // (migrated) and NOT com.day.cq.replication (legacy). Class detection
-    // is optional; we verify at the bundle level.
+    // Discovery on manifest: bundle must NOT import the retired
+    // org.apache.sling.replication API. CQ Replicator is supported on CS.
     const manifest = readJarManifest(jar);
     const importsDistribution = manifestImportsPackage(manifest, 'org.apache.sling.distribution');
-    const importsLegacy = manifestImportsPackage(manifest, 'com.day.cq.replication');
+    const importsLegacy = manifestImportsPackage(manifest, 'org.apache.sling.replication');
     return { importsDistribution, importsLegacy, fqcn: (args && args.fqcn) || null };
   },
   async verify({ bundleBSN, discovered, args }) {
@@ -29,15 +28,7 @@ module.exports = {
         result: 'fail',
         failure_class: FAILURE_CLASSES.CONTRACT_MISMATCH,
         bundle_state: 'Active', component_state: 'Active',
-        evidence: 'bundle still imports com.day.cq.replication — migration incomplete',
-      };
-    }
-    if (!discovered.importsDistribution) {
-      return {
-        result: 'fail',
-        failure_class: FAILURE_CLASSES.CONTRACT_MISMATCH,
-        bundle_state: 'Active', component_state: 'Active',
-        evidence: 'bundle does not import org.apache.sling.distribution — migration incomplete',
+        evidence: 'bundle still imports org.apache.sling.replication — migration incomplete',
       };
     }
 
@@ -46,7 +37,7 @@ module.exports = {
       bundle_state: 'Active', component_state: 'Active',
       restricted: true,
       restricted_reason: 'Distributor service registration not exposed by diagnose-osgi-bundle',
-      checks: { imports_distribution: true, imports_legacy: false },
+      checks: { imports_distribution: discovered.importsDistribution, imports_legacy: false },
     };
   },
 };

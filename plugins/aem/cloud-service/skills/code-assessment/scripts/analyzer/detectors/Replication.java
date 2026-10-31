@@ -10,7 +10,6 @@ import com.sun.source.tree.ClassTree;
 import java.util.List;
 
 public final class Replication implements Detector {
-    static final String CQ_REPLICATOR_FQN = "com.day.cq.replication.Replicator";
     static final String SLING_REPL_PKG    = "org.apache.sling.replication";
 
     public String pattern() { return "replication"; }
@@ -18,8 +17,7 @@ public final class Replication implements Detector {
 
     public void detect(Corpus c, List<Finding> out, List<String> warnings) {
         for (JavaUnit u : c.java) {
-            boolean usesLegacy = Types.importsType(u, CQ_REPLICATOR_FQN)
-                              || u.imports.values().stream().anyMatch(i -> i.startsWith(SLING_REPL_PKG + "."))
+            boolean usesLegacy = u.imports.values().stream().anyMatch(i -> i.startsWith(SLING_REPL_PKG + "."))
                               || u.wildcards.stream().anyMatch(w -> w.equals(SLING_REPL_PKG) || w.startsWith(SLING_REPL_PKG + "."));
             if (!usesLegacy) continue;
             // File-level signal — emit one finding attributed to the file's primary type

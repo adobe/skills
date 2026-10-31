@@ -112,9 +112,10 @@ assert_contains "ExternalRclListener flagged"              "$OUT" 'ExternalRclLi
 assert_contains "resource-change-listener pattern present" "$OUT" '"pattern":"resource-change-listener"'
 assert_absent  "CollisionRcl (non-Sling RCL) not flagged"  "$OUT" 'CollisionRcl.java'
 
-echo "[replication] CQ Replicator import detected; modern Distributor not flagged"
+echo "[replication] Sling replication detected; CQ Replicator and Distributor not flagged"
 OUT="$(run "$FIX/replication")"
-assert_contains "LegacyReplicator flagged"           "$OUT" 'LegacyReplicator.java'
+assert_absent   "CQ Replicator not flagged"          "$OUT" 'LegacyReplicator.java'
+assert_contains "Sling replication flagged"          "$OUT" 'UnsupportedSlingReplication.java'
 assert_contains "replication pattern present"        "$OUT" '"pattern":"replication"'
 assert_absent  "CleanDistributor not flagged"        "$OUT" 'CleanDistributor.java'
 
