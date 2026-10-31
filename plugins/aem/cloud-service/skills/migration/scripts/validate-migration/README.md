@@ -230,7 +230,7 @@ There is no fallback to direct Felix Web Console access.
 | `asset-manager` | Active bundle/component; offline absence of AssetManager references | customer asset operations and business effects |
 | `event-migration` | Built JobConsumer service and nonempty String `job.topics`; Active bundle/component | effective properties, job processing, and business effects |
 | `resource-change-listener` | Built listener service, nonempty String paths and supported change types; Active bundle/component | effective properties, listener callbacks, and business effects |
-| `replication` | Active bundle; no retired `org.apache.sling.replication` imports; CQ Replicator and Sling Distribution imports accepted | Replication/distribution service registration, delivery, and business effects |
+| `replication` | Active bundle; no retired `org.apache.sling.replication` import (CQ Replicator is supported) | Distributor service registration, distribution execution, and business effects |
 | `legacy-ui` | Source-only dialog inspection for Classic UI and Coral 2, plus the package-checkable rules of `migration/references/legacy-ui/dialog/validation.md` (rule ids in evidence; blocking for dialogs changed on the branch, warnings in a full-package scan) | source-tree checks in that file (backups, sidecars, filter.xml); runtime rendering and interactions |
 | `cdw` | Source-only inspection for classic widget types and custom xtypes, plus `migration/references/legacy-ui/cdw/validation.md` 2.2 | session-specific checks in that file; runtime rendering and interactions |
 

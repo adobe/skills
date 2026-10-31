@@ -2,8 +2,6 @@
 
 Publishes an entire content hierarchy in one operation via Classic UI.
 
-Before activation, apply [authorization and recovery guardrails](../../references/replication-foundation/65-lts-guardrails.md#authorization-and-recovery-before-mutation): obtain explicit approval for the tree, assess publication impact, preserve revisions, and prepare a rollback/re-publication plan. Use operator-supplied credentials on shared/AMS targets; defaults are isolated-local-only.
-
 ## Steps
 
 1. Navigate to `http://localhost:4502/miscadmin`

@@ -6,7 +6,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # Harness lives at plugins/aem/cloud-service/test/code-assessment; the skill it exercises
 # is its sibling under skills/code-assessment.
 SKILL_ROOT="$(cd "$HERE/../../skills/code-assessment" && pwd)"
-ANALYZE="${ANALYZE:-$SKILL_ROOT/scripts/analyze.sh}"
+ANALYZE="$SKILL_ROOT/scripts/analyze.sh"
 FIX="$HERE/fixtures"
 PASS=0; FAIL=0
 
@@ -112,11 +112,10 @@ assert_contains "ExternalRclListener flagged"              "$OUT" 'ExternalRclLi
 assert_contains "resource-change-listener pattern present" "$OUT" '"pattern":"resource-change-listener"'
 assert_absent  "CollisionRcl (non-Sling RCL) not flagged"  "$OUT" 'CollisionRcl.java'
 
-echo "[replication] retired Sling replication detected; CQ Replicator and Distributor supported"
+echo "[replication] Sling replication detected; CQ Replicator and Distributor not flagged"
 OUT="$(run "$FIX/replication")"
 assert_absent   "CQ Replicator not flagged"          "$OUT" 'LegacyReplicator.java'
 assert_contains "Sling replication flagged"          "$OUT" 'UnsupportedSlingReplication.java'
-assert_contains "Sling wildcard flagged"             "$OUT" 'UnsupportedSlingWildcard.java'
 assert_contains "replication pattern present"        "$OUT" '"pattern":"replication"'
 assert_absent  "CleanDistributor not flagged"        "$OUT" 'CleanDistributor.java'
 

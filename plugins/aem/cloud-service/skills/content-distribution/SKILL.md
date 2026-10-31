@@ -53,11 +53,11 @@ This is a parent skill that routes to specialized sub-skills based on your task:
 Both skills use official, supported AEM Cloud Service APIs:
 
 1. **Replication API**: `com.day.cq.replication`
-   - **Javadoc (verified SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
+   - **Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
    - **Main Classes**: `Replicator`, `ReplicationOptions`, `ReplicationStatus`, `ReplicationActionType`
 
 2. **Sling Distribution API**: `org.apache.sling.distribution`
-   - **Javadoc (SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/package-summary.html
+   - **Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
    - **Main Packages**: `org.apache.sling.distribution.event` (event topics and properties)
 
 ## Architecture Overview
@@ -85,7 +85,7 @@ Both skills use official, supported AEM Cloud Service APIs:
 │ [IMPORTER_PACKAGE_IMPORTED]                     │
 └──────────────────────────────────────────────────┘
                      ↓
-         Imported; full publication requires queue completion
+         Content live on Publish/Preview
 ```
 
 ### How It Works
@@ -95,13 +95,13 @@ Both skills use official, supported AEM Cloud Service APIs:
 3. Package is **queued** and `AGENT_PACKAGE_QUEUED` event fires
 4. Package is **sent** to Adobe Developer pipeline and `AGENT_PACKAGE_DISTRIBUTED` event fires
 5. Target tier **imports** content and `IMPORTER_PACKAGE_IMPORTED` event fires
-6. Import events do not prove full Cloud publication. Monitor the agent's **persisted** and **fully published** queues in **Tools > Deployment > Distribution**; clearing the latter means live on all publish pods with affected Dispatcher invalidation complete.
+6. Content is **live** on target tier (Publish or Preview)
 
 ## Common Patterns
 
 ### Pattern 1: Publish and Monitor
 
-Publish content and track import events; use Distribution queue completion to verify full publication:
+Publish content and track when it goes live:
 
 ```java
 // Step 1: Publish using Replication API
@@ -112,7 +112,7 @@ public void publishContent(Session session, String path) throws ReplicationExcep
     replicator.replicate(session, ReplicationActionType.ACTIVATE, path);
 }
 
-// Step 2: Monitor import events, not full Cloud publication
+// Step 2: Monitor completion using Distribution Events
 @Component(service = EventHandler.class, property = {
     org.osgi.service.event.EventConstants.EVENT_TOPIC + "=" + 
         DistributionEventTopics.IMPORTER_PACKAGE_IMPORTED
@@ -125,7 +125,7 @@ public class PublishCompletionHandler implements EventHandler {
             DistributionEventProperties.DISTRIBUTION_PATHS
         );
         
-        LOG.info("Content import event: {}", String.join(",", paths));
+        LOG.info("Content is now live: {}", String.join(",", paths));
         // Trigger post-publish actions (cache warming, notifications, etc.)
     }
 }
@@ -296,7 +296,7 @@ public class DistributionMonitor implements EventHandler {
         if (DistributionEventTopics.AGENT_PACKAGE_DROPPED.equals(topic)) {
             LOG.error("Distribution failed: {}", packageId);
         } else if (DistributionEventTopics.IMPORTER_PACKAGE_IMPORTED.equals(topic)) {
-            LOG.info("Content import event: {}", String.join(",", paths));
+            LOG.info("Content is live: {}", String.join(",", paths));
         }
     }
 }
@@ -339,8 +339,8 @@ For detailed examples, code samples, and advanced usage:
 
 ## References
 
-- **Replication Javadoc (verified SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/com/day/cq/replication/package-summary.html
-- **Sling Distribution Javadoc (SDK 2026.9)**: https://javadoc.io/static/com.adobe.aem/aem-sdk-api/2026.9.28386.20260923T071724Z-260900/org/apache/sling/distribution/package-summary.html
+- **Replication Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/package-summary.html
+- **Sling Distribution Javadoc**: https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/org/apache/sling/distribution/package-summary.html
 - **Adobe Documentation**: https://experienceleague.adobe.com/docs/experience-manager-cloud-service/content/operations/replication.html
 - **Sling Distribution**: https://sling.apache.org/documentation/bundles/content-distribution.html
 - **Service Users / Repo Init**: https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/developing/aem-project-content-package-structure#repo-init

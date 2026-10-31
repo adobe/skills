@@ -2,8 +2,6 @@
 
 Programmatic replication via the AEM Java API or HTTP endpoint.
 
-Before any mutating call, apply [authorization and recovery guardrails](../../references/replication-foundation/65-lts-guardrails.md#authorization-and-recovery-before-mutation): explicit approval for targets/paths, recorded impact, and rollback or controlled re-publication. `localhost` samples are local-development examples; default credentials are isolated-local-only. Shared/AMS targets require operator-supplied credentials with configured permissions, not defaults. HTTP acceptance alone does not prove delivery.
-
 ## Java API
 
 ### Basic Usage

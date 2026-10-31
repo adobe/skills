@@ -91,6 +91,7 @@ for (const example of [
   { pattern: 'resource-change-listener', service: 'org.apache.sling.api.resource.observation.ResourceChangeListener', properties: '<property name="resource.paths">\n/content\n/content/dam\n</property><property name="resource.change.types">\nADDED\nCHANGED\nREMOVED\n</property>' },
   { pattern: 'asset-manager', service: 'com.acme.AssetService', properties: '' },
   { pattern: 'replication', service: 'com.acme.DistributionService', properties: '', manifest: 'Import-Package: org.apache.sling.distribution\n' },
+  { pattern: 'replication', service: 'com.acme.PublishService', properties: '', manifest: 'Import-Package: com.day.cq.replication\n' },
 ]) {
   test(`migration contract accepts ${example.pattern} without claiming business behavior`, (context) => {
     const { outcome, execution } = verifyContractFixture(context, example.pattern, example.properties, example.service, example.manifest);
@@ -100,6 +101,12 @@ for (const example of [
     assert.strictEqual(outcome.checks.migration_contract, 'pass');
   });
 }
+
+test('migration contract rejects retired org.apache.sling.replication imports', (context) => {
+  const { outcome } = verifyContractFixture(context, 'replication', '', 'com.acme.PublishService', 'Import-Package: org.apache.sling.replication.agent.api\n');
+  assert.strictEqual(outcome.result, 'fail');
+  assert.match(outcome.evidence, /org\.apache\.sling\.replication/);
+});
 
 for (const pattern of Object.keys(PATTERNS)) {
   test(`business behavior stays untested in the ${pattern} MCP outcome`, () => {

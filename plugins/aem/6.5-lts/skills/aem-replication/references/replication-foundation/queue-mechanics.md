@@ -2,8 +2,6 @@
 
 Reference guide for AEM 6.5 LTS replication queue behavior and management.
 
-**Mutation safety:** Obtain explicit operator authorization before queue clearing, retry, pause, or remote changes. Record target environment, agent, affected paths/entry IDs, and publication impact. Clearing cannot be undone: preserve the desired content/revisions and plan controlled re-publication in dependency order; pause/resume requires a recovery plan. Use operator-supplied credentials with configured permissions on shared/AMS systems. Default credentials, if used, are limited to isolated local development.
-
 ## Queue Architecture
 
 ### FIFO Processing
@@ -189,9 +187,7 @@ If item N blocks:
 
 ## Queue Listener Patterns
 
-[`ReplicationOptions.setListener()`](https://developer.adobe.com/experience-manager/reference-materials/6-5-lts/javadoc/com/day/cq/replication/ReplicationOptions.html) invokes listeners **only for synchronous replication**. Registering an OSGi service alone does not subscribe it to asynchronous events. This complete example reads queue snapshots during its attached call; it is not a general queue subscription.
-
-Verified with public `com.adobe.aem:uber-jar:jar:apis:6.6.3` ([LTS SP3 dependency](https://experienceleague.adobe.com/en/docs/experience-manager-65-lts/content/release-notes/release-notes#uber-jar-packaging)) and the 6.5 LTS [queue](https://developer.adobe.com/experience-manager/reference-materials/6-5-lts/javadoc/com/day/cq/replication/ReplicationQueue.html), [status](https://developer.adobe.com/experience-manager/reference-materials/6-5-lts/javadoc/com/day/cq/replication/ReplicationQueue.Status.html), and [listener](https://developer.adobe.com/experience-manager/reference-materials/6-5-lts/javadoc/com/day/cq/replication/ReplicationListener.html) Javadoc (pages identify 6.6.0). Compilation verifies interface conformance, not runtime event delivery.
+`ReplicationListener` callbacks fire **only for synchronous replication** when attached via `ReplicationOptions.setListener()`; registering it as an OSGi service does not subscribe it to queue events.
 
 ```java
 import com.day.cq.replication.Agent;
@@ -267,32 +263,9 @@ public class QueueMonitorListener implements ReplicationListener {
 }
 ```
 
-**Documented attachment (complete companion example):**
+Attach it per call: `options.setSynchronous(true); options.setListener(new QueueMonitorListener());`
 
-```java
-import com.day.cq.replication.Replicator;
-import com.day.cq.replication.ReplicationActionType;
-import com.day.cq.replication.ReplicationException;
-import com.day.cq.replication.ReplicationOptions;
-import org.osgi.service.component.annotations.Component;
-import org.osgi.service.component.annotations.Reference;
-import javax.jcr.Session;
-
-@Component(service = MonitoredPublisher.class)
-public class MonitoredPublisher {
-    @Reference
-    private Replicator replicator;
-
-    public void publish(Session session, String path) throws ReplicationException {
-        ReplicationOptions options = new ReplicationOptions();
-        options.setSynchronous(true);
-        options.setListener(new QueueMonitorListener());
-        replicator.replicate(session, ReplicationActionType.ACTIVATE, path, options);
-    }
-}
-```
-
-For asynchronous operations, inspect agent queues in the supported Replication UI or periodically read `AgentManager.getAgents()`, `Agent.getQueue()`, `entries()`, `getStatus()`, and `isPaused()`. These are snapshots, not a lossless event stream or proof that all targets and caches are current. Do not automatically clear queues from a listener.
+For asynchronous replication, poll `Agent.getQueue()` (`entries()`, `getStatus()`, `isPaused()`) or use the Replication UI.
 
 ## Best Practices
 

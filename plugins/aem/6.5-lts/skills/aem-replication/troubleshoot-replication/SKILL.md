@@ -25,8 +25,6 @@ Use this skill when experiencing:
 
 ## Prerequisites
 
-All mutating remedies below require [authorization and recovery guardrails](../references/replication-foundation/65-lts-guardrails.md#authorization-and-recovery-before-mutation): explicit approval, recorded target/paths and impact, and a backup/rollback or re-publication plan. Do not clear queues or delete repository data as an automatic diagnostic step. Use operator-supplied credentials on shared/AMS targets; default credentials are isolated-local-only.
-
 - AEM 6.5 LTS Author and Publish instances
 - Administrator access to AEM environments
 - Access to replication agent configuration

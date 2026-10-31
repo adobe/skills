@@ -2,8 +2,6 @@
 
 Reference guide for AEM 6.5 LTS replication agent types and their purposes.
 
-Before configuring agents or invoking the publishing fragment below, apply [authorization and recovery guardrails](65-lts-guardrails.md#authorization-and-recovery-before-mutation).
-
 ## Default Replication Agent (Author to Publish)
 
 **Purpose:** Distributes activated content from Author to Publish instances.
@@ -43,9 +41,7 @@ Before configuring agents or invoking the publishing fragment below, apply [auth
 }
 ```
 
-This is a fail-closed template, not deployable until trusted-source placeholders are replaced. The flush endpoint must not accept arbitrary clients. Use the source address Dispatcher actually observes: with NAT or a reverse proxy this may differ from the publish host IP. Restrict the proxy's ingress to trusted publishers; allowing a shared proxy address alone does not authenticate every client behind it. Follow the deployment's [AMS Dispatcher ACL guardrail](../../../dispatcher/config-authoring/references/dispatcher-foundation/ams-6-5-guardrails.md#4-flushinvalidation-safety).
-
-Serialization settings verified against [AEM 6.5 LTS replication documentation](https://experienceleague.adobe.com/en/docs/experience-manager-65-lts/content/implementing/deploying/configuring/replication) (updated September 29, 2026).
+Replace the placeholders with the publish source IPs Dispatcher actually sees (after NAT/proxy); never allow `*`.
 
 ## Reverse Replication Agent
 
