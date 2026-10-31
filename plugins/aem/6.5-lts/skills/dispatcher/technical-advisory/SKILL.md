@@ -2,7 +2,7 @@
 name: technical-advisory
 description: Provide advisory guidance for the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration in AEM 6.5 / AMS workflows only, with public-doc citations and AMS-specific MCP verification plans. Use for conceptual questions such as `statfileslevel`, filter rules, URL decomposition, cache invalidation behavior, rewrite behavior, and security headers.
 license: Apache-2.0
-compatibility: Requires Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`).
+compatibility: Tool-dependent checks require exposed Dispatcher MCP tools configured for AMS (`AEM_DEPLOYMENT_MODE=ams`); bounded explanation/static review is available without MCP.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
 metadata:
   mcp-tool-contract: core-7-tools
@@ -15,7 +15,16 @@ Provide deterministic guidance for AEM 6.5/AMS use cases involving the Adobe Dis
 ## Variant Scope
 
 - This skill is AMS-only.
-- Scope is fixed by this skill directory; do not ask the user to choose deployment variant.
+- Scope remains 6.5/AMS-only after target project evidence is confirmed; missing/conflicting evidence requires focused confirmation, not a directory-based assumption.
+
+## Runtime and Availability Preflight
+
+Before workflows, edits, or commands, confirm target module/runtime from active dependencies, deployment configuration, and Dispatcher layout, not this directory or `AEM_DEPLOYMENT_MODE` alone.
+
+- Cloud: primary `aem-sdk-api` plus Cloud target/defaults; `opt-in/USE_SOURCES_DIRECTLY` marks flexible mode, but legacy Cloud may lack it. AMS: primary `uber-jar`/6.5 version plus AMS target/layout such as `ams_default.vars` and tier farms. Shared config directories alone prove neither runtime; confirm actual LTS version/hosting.
+- On a wrong-runtime mismatch, STOP; explicitly route to the companion runtime's Dispatcher plugin with no wrong-mode commands. For missing/conflicting evidence, ask focused confirmation of target runtime/module/source root; make no runtime-specific edits or commands until resolved.
+- Discover actual AMS MCP tools/host/log prerequisites separately from mode. All linked workflows and checklists are conditional: allow bounded conceptual explanation/static source review without MCP; report each required tool-dependent check BLOCKED / NOT VERIFIED with its missing prerequisite, leaving items incomplete.
+- Never fabricate evidence or substitute another runtime's tools. Separate static review, AMS file/baseline/host syntax checks, and live target evidence; no runtime/release sign-off from incomplete checks or production proof from local results. Core-7 signatures are repository contracts, not publicly verified Adobe SDK interfaces; inspect exposed schemas/installed help before execution.
 
 ## MCP Tool Contract
 
