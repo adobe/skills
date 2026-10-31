@@ -1,0 +1,87 @@
+{
+  "sourceRef": "f3923ff0928f7992fcda73175482966f357059d0",
+  "sourceRoot": "plugins/aem/edge-delivery-services/skills/testing-blocks",
+  "contextRef": "https://github.com/adobe/aem-boilerplate/tree/5cea543707db900c92014b0bba93564fe325b9e4",
+  "facts": [
+    {
+      "id": "TB-001",
+      "claim": "Playwright's docs recommend user-facing locators, `getByRole` with an accessible name first, and discourage CSS selectors such as classes because the DOM changes.",
+      "source": "SKILL.md:113, references/troubleshooting.md:101-109",
+      "kind": "generic",
+      "goal": "testing-blocks: Playwright locates via the a11y tree",
+      "skillSays": "references/troubleshooting.md:104 `page.locator('.button').click()`",
+      "verified": "https://playwright.dev/docs/locators ('prioritize user-facing attributes ... page.getByRole()'; 'CSS and XPath are not recommended as the DOM can often change'), https://playwright.dev/docs/best-practices#use-locators",
+      "question": "Which kinds of locators does Playwright's documentation recommend, in what priority, and what does it say about CSS class selectors?"
+    },
+    {
+      "id": "TB-002",
+      "claim": "Wait for `.<block>[data-block-status=\"loaded\"]`. The block class is in the delivered markup before any JS runs, so waiting for `.<block>` alone doesn't mean it's decorated.",
+      "source": "SKILL.md:110, SKILL.md:267, references/troubleshooting.md:78-99",
+      "kind": "eds",
+      "goal": "Fix wrong guidance",
+      "skillSays": "`await page.waitForSelector('.my-block')`; also `waitForLoadState('networkidle')`, `waitForTimeout(500)`, `classList.contains('loaded')`",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L536-538 (loading), L563 (loaded after CSS + decorate), L573-577 (block name read from existing first class; initialized)",
+      "question": "In a Playwright test, how do you wait until an EDS block has finished decorating before interacting with it?"
+    },
+    {
+      "id": "TB-003",
+      "claim": "`aem up` serves files from `./content/` before proxying to the preview site; local-only test HTML goes there, not in an `--html-folder`.",
+      "source": "SKILL.md:264-266",
+      "kind": "eds",
+      "goal": "`./content/` replaces `--html-folder` for test content",
+      "skillSays": "SKILL.md:264 'Verify dev server running: `aem up --html-folder drafts`'",
+      "verified": "@adobe/aem-cli@16.22.16 src/server/HelixServer.js:L473-478 ('Check content/ first — prefer local content checkout over proxy'), src/server/BaseServer.js:L161-163, src/content/content-shared.js:L16",
+      "question": "How do you make the AEM CLI dev server serve a hand-written HTML test page for a block that doesn't exist in the project's content source?"
+    },
+    {
+      "id": "TB-004",
+      "claim": "In a git worktree, `aem up` (no --port) uses a branch-derived port and logs it; tests must use the logged port, not 3000.",
+      "source": "SKILL.md:109, SKILL.md:143, SKILL.md:266",
+      "kind": "eds",
+      "goal": "Worktrees",
+      "skillSays": "`await page.goto('http://localhost:3000/path/to/test')`",
+      "verified": "@adobe/aem-cli@16.22.16 src/up.js:L50-54 (default '3000 (branch-derived in Git worktrees)'), src/up.cmd.js:L108-111 ('Git worktree detected. Using port ...')",
+      "question": "When you run `aem up` inside a git worktree without --port, which URL should a Playwright test use to reach the dev server?"
+    },
+    {
+      "id": "TB-005",
+      "claim": "Every committed file is publicly served unless `.hlxignore` matches it, so committed test files need an `.hlxignore` entry.",
+      "source": "references/unit-testing.md:33-41",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 AGENTS.md:21 ('All committed files are served. Use `.hlxignore`.'), .hlxignore:L7 (`test/*`)",
+      "question": "If you commit test files to an EDS project's GitHub repo, will they be publicly reachable on the site?"
+    },
+    {
+      "id": "TB-006",
+      "claim": "Boilerplate projects lint with `npm run lint` (ESLint airbnb-base + Stylelint) and autofix with `npm run lint:fix`; the boilerplate's GitHub workflow runs `npm run lint` on every push.",
+      "source": "SKILL.md:42-60, references/troubleshooting.md:111-189",
+      "kind": "eds",
+      "verified": "aem-boilerplate@5cea543 package.json:L7-10, .github/workflows/main.yaml:L1-14; https://www.aem.live/docs/dev-collab-and-good-practices#linting",
+      "question": "How do you lint an EDS boilerplate project locally, fix what can be fixed automatically, and where else does lint run?"
+    },
+    {
+      "id": "TB-007",
+      "claim": "`aem up` proxies pages it can't find in `./content/` from the preview site (`main--<repo>--<owner>.aem.page` by default), so that content only shows locally after it's been previewed.",
+      "source": "references/troubleshooting.md:73-76",
+      "kind": "eds",
+      "verified": "@adobe/aem-cli@16.22.16 src/up.cmd.js:L220 (default url 'https://main--{{repo}}--{{owner}}.aem.page'), src/server/HelixServer.js:L473-478 (content/ first), src/server/BaseServer.js:L161-163 ('Serving content from local content/, proxying missing files from ...')",
+      "question": "Where does the AEM CLI dev server get page content from, and why might a page an author just edited not show up locally?"
+    },
+    {
+      "id": "TB-008",
+      "claim": "Each pushed branch is served at `https://<branch>--<repo>--<owner>.aem.page/`; special characters (e.g. `/`) become `-`, and `<branch>--<repo>--<owner>` must fit in 63 characters (one DNS label).",
+      "source": "references/troubleshooting.md:200-205",
+      "kind": "eds",
+      "verified": "https://www.aem.live/docs/network-profile#dns-scheme ('Special characters ... replaced by a single -', 'maximum length of a domain name label is 63 characters'); https://www.aem.live/docs/limits (`ref--repo--owner` 63 characters); @adobe/aem-cli@16.22.16 src/up.cmd.js:L211-217",
+      "question": "After pushing a feature branch `feature/new-hero` of an EDS project, at what URL can you test it, and what limits apply to that URL?"
+    },
+    {
+      "id": "TB-009",
+      "claim": "On a PR, the AEM GitHub bot runs PageSpeed Insights against the test URLs in the PR description and fails the PR if the (mobile) Lighthouse score is below ~100; without test URLs there's nothing to check.",
+      "source": "references/troubleshooting.md:191-244",
+      "kind": "eds",
+      "verified": "https://www.aem.live/developer/keeping-it-100#testing-your-pull-requests ('the test URLs in the description ... are used to run the PageSpeed Insights Service against. The AEM GitHub bot will automatically fail your PR if the score is below 100'); aem-boilerplate@5cea543 .github/pull_request_template.md, AGENTS.md:20",
+      "question": "What performance check runs on a pull request in an EDS project, what does it test, and what must the PR contain for it to work?"
+    }
+  ]
+}

@@ -4,7 +4,7 @@ Decides which lines of a skill are worth their tokens: test what current models 
 
 ## Steps
 
-1. **Inventory.** Split the skill (SKILL.md + references) into atomic facts: one key point per claim. If a claim has a main point plus a secondary detail worth knowing, make two facts; if the detail is noise, drop it. Classify each:
+1. **Inventory.** Split the skill's factual content (SKILL.md + references) into atomic facts: one key point per claim. Skip workflow and best-practice opinions (see below). If a claim has a main point plus a secondary detail worth knowing, make two facts; if the detail is noise, drop it. Classify each:
    - `eds` — Edge Delivery Services specific
    - `generic` — general web/JS/CSS practice
    - `repo` — visible in the project (`ls`, `cat package.json`, lint config, existing blocks); set `context` to the boilerplate files that show it
@@ -27,9 +27,9 @@ Decides which lines of a skill are worth their tokens: test what current models 
 | `eds`, `missing` in 2+ models | keep |
 | otherwise | judgement, note why |
 
-Facts that steer workflow (step order, when to invoke other skills) aren't recall; the tessl regression eval covers those.
+Workflow (step order, when to invoke other skills) isn't recall: no fact, no quiz, never trimmed by this probe. Adobe's EDS best-practice opinions (e.g. what to test, how to model content) aren't quizzed either; keep them by default, and cut them once they're documented on aem.live and the tessl eval shows models follow them without the skill. The tessl regression eval covers both.
 
-- Never trim skill content that no fact covers. To trim it, add a fact and quiz it first.
+- Never trim factual content that no fact covers. To trim it, add a fact and quiz it first.
 - Trimming a line doesn't remove its fact. Keep it in `facts.json` so a re-run with newer models shows when it should come back.
 
 ## Regression check
