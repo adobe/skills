@@ -294,7 +294,7 @@
       "context": [
         ".eslintrc.js"
       ],
-      "question": "Which ESLint configuration does the aem-boilerplate use, and which rules does it override?"
+      "question": "Write the import and first lines of an EDS block's decorate function that uses `getMetadata` from the project's scripts and sets a property on the block element. What does the project's JS lint require or allow here?"
     },
     {
       "id": "BB-035",
@@ -305,7 +305,7 @@
       "context": [
         ".stylelintrc.json"
       ],
-      "question": "Which stylelint configuration does the aem-boilerplate use, and what does it require for class names, media queries and color functions?"
+      "question": "Write CSS for an EDS block that adds a class for featured items, a translucent black overlay, and a layout change at tablet width. What must it look like to pass the project's CSS lint?"
     },
     {
       "id": "BB-036",
@@ -405,6 +405,15 @@
       "kind": "generic",
       "verified": "n/a (general JS)",
       "question": "How should an EDS block's JavaScript load a module it only needs in some cases?"
+    },
+    {
+      "id": "BB-048",
+      "claim": "The LCP candidate is the first `<img>` in the first section, picked after that section's blocks have decorated; a block that builds or swaps the hero image must have the final image in the DOM when decorate() resolves.",
+      "source": "n/a (not in skill; added in review)",
+      "kind": "eds",
+      "goal": "Fix wrong guidance",
+      "verified": "aem-boilerplate@5cea543 scripts/aem.js:L632-645 (waitForFirstImage: section.querySelector('img'), sets loading=eager), L650-662 (called after all blocks in the section load); https://www.aem.live/developer/keeping-it-100#lcp ('the page loading waits with guessing the LCP candidate (currently the first image on the page) until the first block has made the necessary changes to the DOM')",
+      "question": "An EDS hero block in the first section fetches its image URL from a JSON file and then inserts the image. How does that interact with how the page loads its LCP image?"
     }
   ]
 }

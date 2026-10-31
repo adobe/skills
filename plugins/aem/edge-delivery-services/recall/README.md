@@ -13,6 +13,7 @@ Decides which lines of a skill are worth their tokens: test what current models 
 4. **Recall.** Ask each model, no tools, no skill text. Save raw answers.
    - `eds` and `generic`: the full set in one prompt, no context.
    - `repo`: a second prompt with each fact's `context` files pasted in (from `contextRef`), since in real use the model can read them. This tests whether it applies the file, not whether it remembers it.
+   - Answers vary between runs: a fact can flip from `correct` to `wrong` on a re-ask. Run each prompt 3 times per model, score every run, and use each model's majority score; with no majority, use `missing`.
 5. **Score.** Each answer vs. its fact's key point: `correct`, `wrong` (confident and incorrect, incl. stale), `missing` (no answer, vague, or misses the key point). Omitting a minor detail of the claim is still `correct`. Two scorers from different vendors score independently; disagreements go to a human.
 6. **Decide.**
 
@@ -27,6 +28,9 @@ Decides which lines of a skill are worth their tokens: test what current models 
 | otherwise | judgement, note why |
 
 Facts that steer workflow (step order, when to invoke other skills) aren't recall; the tessl regression eval covers those.
+
+- Never trim skill content that no fact covers. To trim it, add a fact and quiz it first.
+- Trimming a line doesn't remove its fact. Keep it in `facts.json` so a re-run with newer models shows when it should come back.
 
 ## Regression check
 
@@ -50,7 +54,7 @@ recall/<skill>/
                       goal: goals.md entry the fact supports (optional)
                       skillSays: current skill wording where it contradicts the claim (optional)
                       quiz: reason a fact is excluded, e.g. wrong claim
-  answers/<model>.md  raw model output (gitignored)
+  answers/<model>-<run>.md  raw model output per run (gitignored)
   scores.json         { models: [...], facts: { <id>: { <model>: score, decision, note } } } (gitignored)
 ```
 
