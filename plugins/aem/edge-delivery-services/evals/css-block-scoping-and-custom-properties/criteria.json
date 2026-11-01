@@ -5,7 +5,7 @@
     {
       "name": "Block CSS location",
       "max_score": 8,
-      "description": "Styles are in `blocks/testimonial-carousel/testimonial-carousel.css`, the file aem.js loads for the block. Fail if they are put in styles/styles.css, another file, or inline in the JS. The block JS and styles/styles.css are unchanged."
+      "description": "Styles are in `blocks/testimonial-carousel/testimonial-carousel.css`, the file aem.js loads for the block. Fail if they are put in styles/styles.css, another file, or inline in the JS. styles/styles.css has no `testimonial-carousel` rules, and testimonial-carousel.js sets no inline styles and injects no `<style>` or stylesheet."
     },
     {
       "name": "Block selector scoping",
