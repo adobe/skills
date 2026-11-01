@@ -1,10 +1,9 @@
 ---
 name: dispatcher
 description: |
-  Single entry point for all AEM 6.5 LTS Dispatcher skills. Covers config authoring,
-  technical advisory, incident response, performance tuning, security hardening, and full lifecycle
-  orchestration for the Adobe Dispatcher Apache HTTP Server module and its HTTPD/dispatcher configuration
-  in AEM 6.5 LTS and AMS environments.
+  Use for AEM 6.5 LTS or AMS Dispatcher work: author or validate .any filters, vhosts, rewrite
+  and cache rules, investigate incidents, and review performance or security. Routes LTS/AMS work
+  to specialist skills; use the Cloud Service Dispatcher skill for AEM as a Cloud Service.
 license: Apache-2.0
 compatibility: Requires Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`).
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
