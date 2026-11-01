@@ -77,6 +77,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `reskin/figma-gate.mjs` — Figma checks on a reskin page: join, geometry, type ramp, pixels, register — `boxes [--module Mn] | all --page <slug> --url <u|f>`; exit 124 = no verdict
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
+- `reskin/vocabulary-check.mjs` — every donor module built: block, variant, style, feature (deploy Step 2c) — `[--modules <donor-modules.md>] [--project .] [--library <dir>] [--json <p>]`
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
