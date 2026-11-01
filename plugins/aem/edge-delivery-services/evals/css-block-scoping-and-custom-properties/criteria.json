@@ -5,12 +5,12 @@
     {
       "name": "Block selector scoping",
       "max_score": 12,
-      "description": "All CSS selectors begin with `main .{block-name}` (e.g., `main .testimonial-carousel { ... }`), not bare element names or unscoped class names"
+      "description": "All CSS selectors begin with `.{block-name}` or `main .{block-name}` (e.g., `.testimonial-carousel { ... }`), not bare element names or unscoped class names. Either prefix is valid."
     },
     {
       "name": "No unscoped selectors",
       "max_score": 8,
-      "description": "No CSS rules use bare element selectors (e.g., `h2 { }`, `.item { }`) that are not prefixed with `main .{block-name}`"
+      "description": "No CSS rules use bare element selectors (e.g., `h2 { }`, `.item { }`) that are not prefixed with `.{block-name}` or `main .{block-name}`"
     },
     {
       "name": "CSS custom properties for color",
@@ -45,7 +45,7 @@
     {
       "name": "Variant CSS pattern",
       "max_score": 6,
-      "description": "If variants (dark, wide, etc.) are styled, the selector combines block and variant classes: `main .{block-name}.{variant}` pattern"
+      "description": "If variants (dark, wide, etc.) are styled, the selector combines block and variant classes: `.{block-name}.{variant}`, optionally prefixed with `main `"
     },
     {
       "name": "No -wrapper/-container suffix inside block",
