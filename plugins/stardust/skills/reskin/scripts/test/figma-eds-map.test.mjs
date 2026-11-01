@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // skills/reskin/scripts/test/figma-eds-map.test.mjs — eds-map (pure): a Figma module name → the EDS block deploy
-// Step 2 gives it. D1: buttons, links and body copy are default content (block null); D11: a boilerplate or
+// Step 2 gives it. D1: buttons, a text link and body copy are default content (block null); D11: a boilerplate or
 // Block Collection pattern takes that block's name, the Figma name kept as the variant where it tells variants
 // apart; anything else keeps its Figma name, off the reserved EDS classes. Several modules on one EDS block
 // become its variants. Deterministic. Run: node --test <this file>.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { edsEquivalent, edsLabel, resolveVariants, safeBlockName, slugOf } from '../figma/eds-map.mjs';
+import { donorModulesEds, edsClasses, edsEquivalent, edsLabel, edsPage, isEdsBlock, parseEdsLabel, resolveVariants, safeBlockName, slugOf, variantHost } from '../figma/eds-map.mjs';
 
 const map = (n, o) => { const e = edsEquivalent(n, o); return [e.block, e.variant]; };
 
@@ -14,7 +14,7 @@ const map = (n, o) => { const e = edsEquivalent(n, o); return [e.block, e.varian
 const ONE_AZ = {
   accordion: ['accordion', null], 'back-to-top': ['back-to-top', null], button: [null, null], breadcrumb: ['breadcrumbs', null],
   carousel: ['carousel', null], 'checkbox-radio': ['form', null], chips: ['chips', null], dropdown: ['form', null],
-  input: ['form', null], links: [null, null], modal: ['modal', null], pagination: ['pagination', null], 'search-bar': ['search', null],
+  input: ['form', null], links: ['links', null], modal: ['modal', null], pagination: ['pagination', null], 'search-bar': ['search', null],
   slider: ['form', null], stepper: ['stepper', null], 'tab-nav': ['tabs', 'nav'], tabs: ['tabs', null], tables: ['table', null],
   toggle: ['form', null], tooltip: ['tooltip', null], account: ['account', null], 'block-content': [null, null],
   'cta-banner': ['cta-banner', null], calculator: ['calculator', null], email: [null, null], forms: ['form', null],
@@ -66,10 +66,10 @@ test('D11: a pattern word anywhere in the name — table, accordion, image-top a
   assert.deepEqual(map('FAQ Card'), ['cards', 'faq-card']);
 });
 
-test('D1: buttons, links and body copy are default content unless they carry structure', () => {
-  for (const n of ['Button', 'Btn', 'Links', 'Heading', 'Title Text', 'Rich Text', 'Block Content', 'Email']) assert.deepEqual(map(n), [null, null], n);
+test('D1: buttons, a text link and body copy are default content unless they carry structure', () => {
+  for (const n of ['Button', 'Btn', 'Link', 'Text Link', 'Heading', 'Title Text', 'Rich Text', 'Block Content', 'Email']) assert.deepEqual(map(n), [null, null], n);
   assert.match(edsEquivalent('Button').reason, /D1: "Button" is default content/);
-  assert.deepEqual(map('Links', { hasRepeatingUnits: true }), ['links', null]);
+  assert.deepEqual(map('Link', { hasRepeatingUnits: true }), ['link', null]);
   assert.deepEqual(map('Promo Band', { hasRepeatingUnits: false, interactive: false }), [null, null]);
   assert.deepEqual(map('Promo Band', { hasRepeatingUnits: false, interactive: true }), ['promo-band', null]);
 });
@@ -90,9 +90,32 @@ test('edsLabel / resolveVariants: several modules on one block become its varian
   assert.equal(edsLabel(edsEquivalent('Button')), 'default content');
   const entries = ['Accordion', 'Q&A', 'FAQ', 'Teaser', 'Button', 'Links'].map((figma) => ({ key: slugOf(figma), figma, eds: edsEquivalent(figma) }));
   const out = resolveVariants(entries);
-  assert.deepEqual(out.map((e) => [e.block, e.variant]), [['accordion', null], ['accordion', 'q-and-a'], ['accordion', 'faq'], ['cards', 'teaser'], [null, null], [null, null]]);
+  assert.deepEqual(out.map((e) => [e.block, e.variant]), [['accordion', null], ['accordion', 'q-and-a'], ['accordion', 'faq'], ['cards', 'teaser'], [null, null], ['links', null]]);
   assert.match(out[1].reason, /a variant of it/);
   assert.deepEqual(resolveVariants([{ key: 'a', figma: 'Teaser', eds: edsEquivalent('Teaser') }, { key: 'b', figma: 'Teaser', eds: edsEquivalent('Teaser') }]).map((e) => e.variant), ['teaser', 'teaser-2']);
+});
+
+test('parseEdsLabel inverts edsLabel; donorModulesEds reads the EDS block column, else Step 2 on the name', () => {
+  for (const e of [{ block: 'accordion', variant: null }, { block: 'cards', variant: 'teaser' }, { block: null, variant: null }]) {
+    assert.deepEqual(parseEdsLabel(edsLabel(e)), e);
+  }
+  assert.equal(parseEdsLabel('—'), null);
+  const md = [
+    '| # | Module | EDS block | Where seen | Description |', '|---|---|---|---|---|',
+    '| M1 | Q&A | accordion | a | d |', '| M2 | Hero \\| dark | hero (dark) | a | d |', '| M3 | Button | default content | a | d |', '| — | Related | — | a | d |',
+    '', '| # | Module | Where seen |', '|---|---|---|', '| M9 | FAQ | a |',
+  ].join('\n');
+  assert.deepEqual(Object.fromEntries(donorModulesEds(md)), {
+    M1: { block: 'accordion', variant: null }, M2: { block: 'hero', variant: 'dark' }, M3: { block: null, variant: null }, M9: { block: 'accordion', variant: null },
+  });
+});
+
+test('isEdsBlock / edsPage / edsClasses: EDS-known blocks, the library page, binding classes', () => {
+  assert.ok(isEdsBlock('cards') && isEdsBlock('accordion') && !isEdsBlock('chips'));
+  assert.equal(edsPage({ block: 'cards', variant: 'teaser' }, 'teaser'), 'cards');
+  assert.equal(edsPage({ block: null }, 'button'), 'button');
+  assert.deepEqual(edsClasses({ block: 'cards', variant: 'teaser' }, ['card', 'teaser']), ['teaser', 'card']);
+  assert.deepEqual(edsClasses(null, ['a']), ['a']);
 });
 
 test('form fields are rows of the one Block Collection form, never variants', () => {
@@ -105,4 +128,17 @@ test('form fields are rows of the one Block Collection form, never variants', ()
   const out = resolveVariants(['Forms', 'Input', 'Dropdown', 'Toggle', 'Login', 'Sign In'].map((figma) => ({ key: slugOf(figma), figma, eds: edsEquivalent(figma) })));
   assert.deepEqual(out.map((e) => edsLabel(e)), ['form', 'form', 'form', 'form', 'form (login)', 'form (sign-in)']);
   assert.deepEqual(resolveVariants([{ key: 'a', eds: { block: 'form', variant: null } }, { key: 'b', eds: { block: 'form', variant: null } }]).map((e) => e.variant), [null, null]);
+});
+
+test('seeds a kit run corrected: Links is a link list, an overlay teaser is a hero, chips ride on links', () => {
+  assert.deepEqual(map('Links'), ['links', null], 'a kit Links component is a list of links, not a text link');
+  assert.deepEqual(map('Link'), [null, null]);
+  assert.deepEqual(map('Block Content'), [null, null], 'default content: the disposition still records why');
+  assert.deepEqual(map('Teaser', { anatomy: 'full-bleed image, title and CTA in an overlay box' }), ['hero', 'teaser']);
+  assert.deepEqual(map('Teaser', { anatomy: 'image top, title, body' }), ['cards', 'teaser']);
+  assert.deepEqual(map('Chips', { blocks: ['links', 'cards'] }), ['links', 'chips'], 'variant-first');
+  assert.deepEqual(map('Chips'), ['chips', null], 'no links block: keeps its name');
+  assert.deepEqual(map('Chips', { blocks: ['links', 'chips'] }), ['chips', null], 'a chips block already built stays');
+  assert.equal(variantHost('pagination', ['links']), 'links');
+  assert.equal(variantHost('accordion', ['links']), null);
 });

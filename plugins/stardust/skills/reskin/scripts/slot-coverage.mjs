@@ -14,9 +14,13 @@
  *                     present in the rendered scope's normalized text.
  *   (2) CTAs        — each captured CTA is present as a (text, ABSOLUTE
  *                     href) pair: an <a> whose href equals absHref and
- *                     whose text contains the captured label.
+ *                     whose text contains the captured label. A link
+ *                     migrate rewrote is matched by its data-source-href.
+ *                     A Figma-sourced model's CTA also matches the raw href
+ *                     attribute (a page-relative or "#" placeholder link).
  *   (3) IMAGES      — each captured image src is present, URL-normalized
- *                     to host+path.
+ *                     to host+path. A localized image (stream-render
+ *                     --localize-images) is matched by its data-source-src.
  *   (3b) PAINT      — each present content image actually RENDERS
  *                     (naturalWidth > 0 after a lazy-load scroll pass).
  *                     The src check compares URL strings; an origin-locked
@@ -27,7 +31,8 @@
  *                     with a recorded reason.
  *   (4) METADATA    — title, description, canonical, every OG tag, every
  *                     Twitter tag carried VERBATIM; JSON-LD block count
- *                     matches. Fidelity over repair: broken source values
+ *                     matches (migrate's inserted data-migrate-default
+ *                     block is not counted). Fidelity over repair: broken source values
  *                     must be carried too (flag them, don't fix them).
  *
  * Live --rendered targets (a staged deploy, a served page on a real host)
@@ -177,6 +182,8 @@ if (args.deltas) {
   }
 }
 const model = JSON.parse(readFileSync(resolve(args.model), 'utf8'));
+// A Figma-sourced model (content-model.md § Figma-sourced models) has page-relative or "#" link targets: match the raw attribute too.
+const figmaSourced = model.source?.kind === 'figma' || model._provenance?.source?.kind === 'figma';
 
 const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
 // UA + standard headers + webdriver spoof (live-session) — harmless on
@@ -228,6 +235,11 @@ await page.evaluate(() => Promise.race([
   new Promise((r) => setTimeout(r, 10000)),
 ]));
 await page.waitForTimeout(300);
+// Collapsed panels (hidden="until-found", closed <details>) are content: read them open (source-normalize.mjs).
+try {
+  const { REVEAL_DISCLOSURES } = await import('./source-normalize.mjs');
+  await page.evaluate(REVEAL_DISCLOSURES);
+} catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
 
 const results = []; // { gate, check, pass, detail }
 const R = (gate, check, pass, detail = '') => results.push({ gate, check, pass, detail });
@@ -242,9 +254,9 @@ const rendered = await page.evaluate(({ scopeSel, imgVisibleSrc: visibleSrc }) =
   const imgVisible = visibleSrc ? (0, eval)(visibleSrc) : () => true;
   return {
     text: norm(scope.innerText),
-    hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.href, text: norm(a.innerText) })),
+    hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.dataset.sourceHref || a.href, raw: a.getAttribute('href'), text: norm(a.innerText) })),
     imgs: Array.from(scope.querySelectorAll('img')).filter(imgVisible).map((i) => ({
-      src: i.currentSrc || i.src,
+      src: i.dataset.sourceSrc || i.currentSrc || i.src,
       alt: i.getAttribute('alt') ?? '',
       width: Math.round(i.getBoundingClientRect().width),
       painted: i.complete && i.naturalWidth > 0,
@@ -278,7 +290,7 @@ for (const s of model.sections) {
   R('slot-coverage', `${s.slot} text present`, rendered.text.includes(text), text.slice(0, 50));
   for (const [ci, c] of s.ctas.entries()) {
     const hrefs = localize ? [c.absHref, deltasLib.normalizeHref(c.absHref, localize)] : [c.absHref];
-    const hit = rendered.hrefs.find((h) => hrefs.includes(h.href) && h.text.includes(ctaTexts[ci]));
+    const hit = rendered.hrefs.find((h) => (hrefs.includes(h.href) || (figmaSourced && h.raw === c.absHref)) && h.text.includes(ctaTexts[ci]));
     R('slot-coverage', `${s.slot} CTA "${c.text.slice(0, 30)}" -> ${c.absHref.slice(0, 60)}`, !!hit);
   }
   if (deltas?.images) {
@@ -323,7 +335,7 @@ const meta = await page.evaluate(() => {
   if (document.title) carried.push('title');
   return {
     title: document.title, description, canonical, carried,
-    og, tw, jsonLdCount: document.querySelectorAll('script[type="application/ld+json"]').length,
+    og, tw, jsonLdCount: document.querySelectorAll('script[type="application/ld+json"]:not([data-migrate-default])').length,
   };
 });
 const md0 = model.metadata;

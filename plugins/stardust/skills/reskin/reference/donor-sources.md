@@ -156,7 +156,9 @@ API: no browser, no crawl, no MCP server. The token is `FIGMA_TOKEN`
 environment only. Recipe:
 
 1. `$stardust extract <content-url> --all` — the whole content site,
-   uncapped, as for the other donors (it creates `state.json`).
+   uncapped, as for the other donors (it creates `state.json`). A
+   Figma-only project has no content site: `figma-donor.mjs init <url>`,
+   then `pages` (SKILL.md § Phase 2′).
 2. `figma-donor.mjs capture <figma-url>` — one file version (every
    call pinned with `version=`), raw responses cached under
    `.work/reskin/figma/` (swapped in whole: a failed `--refresh` keeps the
@@ -322,9 +324,10 @@ the flattened values. The probe asserts the flattened spec on
 maps onto. One row per module:
 
 ```markdown
-| # | Module | EDS block | Where seen | Description |
-|---|--------|-----------|-----------|-------------|
-| M1 | Gradient hero | hero (gradient) | home top (screenshot slice ref) | anatomy: display headline + lede + primary/secondary CTA + media object right… |
+| # | Module | EDS block | Disposition | Where seen | Description |
+|---|--------|-----------|-------------|-----------|-------------|
+| M1 | Gradient hero | hero (gradient) | variant | home top (screenshot slice ref) | anatomy: display headline + lede + primary/secondary CTA + media object right… |
+| M2 | Back to top | default content | feature: back-to-top button, scripts/ | kit page (screenshot ref) | anatomy: … |
 ```
 
 Rules:
@@ -335,17 +338,22 @@ Rules:
   (D1: default content when there is no repeating unit or bespoke
   interactive structure; D11: a Block Collection pattern keeps that
   block's name). A Figma donor applies it mechanically
-  (`scripts/figma/eds-map.mjs`; a module's `eds` in
-  `curation-rules.json` overrides): Q&A → `accordion`, Teaser →
-  `cards (teaser)`, Button → default content, Chips → `chips` (no EDS
-  match keeps the donor name); a pattern word anywhere in the name
-  counts (Accordion Item / FAQ Section → `accordion`, Table – Striped →
-  `table (striped)`, Image Top Columns → `columns (image-top)`,
-  3 Columns → `columns`), Input / Dropdown / Toggle → `form` (field
-  type rows of the Block Collection form, `Label | value | type | state`,
-  not variants; only a layout such as Login stays a class, `form (login)`).
-  Other modules sharing an EDS block are its variants, never a second
-  block.
+  (`scripts/figma/eds-map.mjs`, whose header lists the spellings it
+  maps: Q&A → `accordion`, Button → default content, Input / Dropdown /
+  Toggle → field rows of `form`, no EDS match keeps the donor name); a
+  module's `eds` in `curation-rules.json` overrides. Other modules
+  sharing an EDS block are its variants, never a second block.
+- **Disposition — the whole vocabulary is handed to deploy**: every
+  included module, used by a page or not, is one of `block`, `variant`
+  (an authored block option — preferred over a new block: chips on a
+  links block), `chrome`, `section-style (<name>)`, `style`,
+  `convention`, `feature` or `default-content`, with a why after a
+  colon (required for every blockless kind). Blocks are derived from
+  the EDS block; a Figma donor names a blockless kind in `eds.as`
+  (`eds.name` for a section-style's Style value) and the reason in
+  `edsWhy`. Deploy Step 2c builds every row;
+  `scripts/vocabulary-check.mjs` checks the project against it. A table
+  without the column is read from its EDS block column.
 
 - **Evidence-bound**: every module cites the donor screenshot
   (`canon-source/assets/screenshots/…`) it was observed in. No module

@@ -283,6 +283,23 @@ Record the tier per block in the conversion log. Default: template-slotted for b
 
 **Record two more things per section in the schema (D1/D11 + forward-compat):** sections triaged to default content in Step 2 carry `"defaultContent": true` (the encode side emits prose, not a table — the lint flags a block wrapping bare default content); and every block's authored shape must be expressible as one of the three component-model shapes — **simple** (one property per row), **key-value** (config), or **container** (own rows + one row per child) — so a later Universal Editor adoption needs no content migration (see aem.live "component model definitions"). A shape that fits none of the three is a signal the model is wrong, not that a fourth shape is needed.
 
+### 2c. Full donor vocabulary — build every recorded module, used or not (reskin, #133)
+
+With a donor design (`stardust/reskin/donor-modules.md`), the project ships the donor's **whole** vocabulary, not only what the migrated pages use, so a later page's author can pick any module from the block library. Each included row has one Disposition (contract: `../reskin/reference/donor-sources.md` § donor-modules.md); lock it before code, first fit wins, one-line reason in the conversion log:
+
+1. **Existing block** reused unchanged.
+2. **Variant** (preferred) — an authored block option (`Cards (focus-upper)` → `class="cards focus-upper"`) when the module keeps an existing block's rows and differs in layout or a `decorate()` branch (tabs on accordion rows, a carousel on teaser panels). A different content model is not a variant (anti-pattern 1).
+3. **New block** — only when no block's content model fits (a calculator's input and formula rows); say why.
+4. **Section style** — default content + a section-metadata Style (`.section.<name>`).
+5. **Style** — global CSS in `styles/styles.css` (shared form fields, a tooltip).
+6. **Convention** — what `aem.js` decorates: `strong` / `em` / `strong` + `em` links → `.primary` / `.secondary` / `.accent` buttons (Step 5).
+7. **Feature** — `scripts/` behaviour no author places (back-to-top; `/modals/` links opening a fragment in a dialog).
+8. **Default content** (D1).
+
+Kinds 4–8 say why. The kit's seed is a proposal: an invented block an existing block hosts is its variant (chips, pagination on a links block); a card whose anatomy is a full-bleed image with copy over it is a hero.
+
+Build all of them in Steps 3–8 under the page blocks' EW contract, round-trip and lint; each block and variant gets a block-library sample (a variant is an extra section of its block's sample) and its `metadata.json` `variants` entry. Close with `node skills/reskin/scripts/vocabulary-check.mjs --project . --library <library dir>` (exit 0), then re-run the content gate and render check on the migrated pages: unchanged. Recorded traps: splice new tokens into the committed `:root` — re-running the foundation generator erases hand edits; load `scripts/` features by dynamic import from `window.hlx.codeBasePath` (a static import of `fragment.js` closes an `import/no-cycle` loop through `scripts.js`); a `[hidden]` element whose class sets `display` needs `[hidden] { display: none }`; parse an authored formula with a small evaluator, never `eval` / `Function`; keep an unrecognised authored row as content (EW1).
+
 ### 3. Foundation
 
 Rebrand `styles/styles.css` — replace the boilerplate's DEMO layer (roboto tokens, demo type scale, demo button colors) while **preserving its STRUCTURAL layer verbatim**: the `body { display: none }` / `body.appear { display: block }` gate (the runtime adds `appear` — removing the gate is not a fix for a blank harness render, loading the real `scripts.js` is), the `header { height: var(--nav-height) }` + `header .header { visibility: hidden }` → `[data-block-status="loaded"]` chrome reservation, and the `main > .section` scaffold. What you author:
@@ -748,7 +765,7 @@ The hard property of stardust output: **any text an author wrote in a DA documen
 
 **EW6 — Card-as-link: unwrap the authored inner anchor in the live DOM** (`link.replaceWith(...link.childNodes)`) after reading its `href`; the indexed paragraph survives inside the card `<a>`, no nested anchors on the published page (`labelWrap(link, 'affordance-wrap', { unwrap: true })`). The editor re-renders the inner link while editing, so the foundation ships `a .prosemirror-editor a:any-link { color: inherit; text-decoration: none }` (Step 3 (b)).
 
-**EW7 — Interactive containers cannot host the editor.** A `<button>` (or `<summary>`) swallows focus and clicks: an accordion title moves into a sibling `div.accordion-title`, the whole headline row takes the click handler, and the button becomes a chevron-only toggle with an `aria-label`. Content hidden at rest (collapsed panels, inactive tabs, non-active slides) is editable but only reachable after the author opens it — keep those controls working inside the workspace (link navigation is blocked there, buttons are not).
+**EW7 — Interactive containers cannot host the editor.** A `<button>` (or `<summary>`) swallows focus and clicks: an accordion title moves into a sibling `div.accordion-title`, the whole headline row takes the click handler, and the button becomes a chevron-only toggle with an `aria-label`. Content hidden at rest (collapsed panels, inactive tabs, non-active slides) is editable but only reachable after the author opens it — keep those controls working inside the workspace (link navigation is blocked there, buttons are not). EW7 does **not** require panels open at rest: a disclosure starts in the source's rest state (collapsed when the source's is), whatever the capture ledger expanded to read it, and hides a closed panel with `hidden="until-found"` (find-in-page and text fragments still open it; open it on `beforematch`) or a closed `<details>` — the content gate reveals both and fails a render that starts everything open against a collapsed source (`../reskin/reference/gates.md` § dom-equality).
 
 **EW8 — Section heads reabsorbed from default content MOVE the wrapper's children** (they are already editable as default content) and remove the empty wrapper (§ Section heads).
 

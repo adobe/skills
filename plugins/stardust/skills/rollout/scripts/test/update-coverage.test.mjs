@@ -126,6 +126,19 @@ await check('(c) a real pending block still counts as pending beside a default-c
   assert.deepEqual(blockRollup(out), { total: 2, converted: 2, pending: 0 });
 });
 
+await check('blocks.mjs names blocks by deploy Step 2: faq → accordion, teaser → cards (teaser), button → default content; chrome keeps its fragment name', async () => {
+  const { proj, out } = fixture();
+  writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages: [{ slug: 'home', templateId: 'detail', blocks: ['faq', 'teaser', 'button', 'chips', 'nav'], delivery: { status: 'pending' } }] }, null, 2));
+  const r = await runScript(BLOCKS_SCRIPT, ['--out', out], proj);
+  assert.equal(r.code, 0, r.err);
+  const byId = Object.fromEntries(readBlocks(out).map((b) => [b.id, b.delivery]));
+  assert.equal(byId.faq.edsBlockName, 'accordion');
+  assert.deepEqual([byId.teaser.edsBlockName, byId.teaser.edsVariant], ['cards', 'teaser']);
+  assert.equal(byId.button.edsBlockName, 'default-content');
+  assert.equal(byId.chips.edsBlockName, 'chips');
+  assert.deepEqual([byId.nav.edsBlockName, byId.nav.blockPath], [null, 'fragments/nav.html']);
+});
+
 await check('a blocks.mjs re-run keeps a default-content mapping recorded pending and rolls it up as converted', async () => {
   const { proj, out } = fixture();
   writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages: [{ slug: 'home', templateId: 'detail', blocks: ['hero', 'title'], delivery: { status: 'pending' } }] }, null, 2));

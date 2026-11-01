@@ -123,6 +123,11 @@ Always emit when page-type is known. Composition rules:
 | `form`    | `Action` (optional)    | Form schema                                                                  |
 | `unique`  | None (or fallback)     | Skip JSON-LD by default                                                      |
 
+A block migrate inserts because the page had none carries
+`data-migrate-default`, so content gates that count the source's
+JSON-LD blocks (`reskin/slot-coverage`) skip it. A source block is
+kept as is and never marked.
+
 Each page-type's emission rule lives here; future expansion
 (FAQPage, Event, BreadcrumbList, HowTo) is additive.
 

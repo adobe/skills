@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { foldPath } from '../migrate.mjs';
+import { buildPageMap, foldPath, siteUrlOf, tagSections } from '../migrate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -45,6 +45,16 @@ write(STATE, `${JSON.stringify(state0, null, 2)}\n`);
 
 // ---- importing the module never prints help or exits -------------------------------------------
 console.log('import');
+check('a Figma-sourced page maps by path or slug, never by its design-frame URL', () => {
+  const fig = 'https://www.figma.com/design/KEY/File?node-id=1-2';
+  assert.equal(siteUrlOf({ slug: 'index', source: 'figma', url: fig }), '/');
+  assert.equal(siteUrlOf({ slug: 'pricing', source: 'figma', url: fig }), '/pricing/');
+  assert.equal(siteUrlOf({ slug: 'pricing', source: 'figma', url: fig, path: '/plans' }), '/plans');
+  assert.equal(siteUrlOf({ slug: 'about', url: 'https://example.test/about-us' }), 'https://example.test/about-us');
+  const m = buildPageMap([{ slug: 'index', source: 'figma', url: fig }, { slug: 'pricing', source: 'figma', url: fig }]);
+  assert.deepEqual(m.entries.map((e) => e.outputPath), ['index.html', 'pricing/index.html']);
+  assert.equal(m.collisions.size, 0);
+});
 check('importing migrate.mjs with no argv prints nothing and does not exit (the help guard sits under the main check)', () => {
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(pathToFileURL(SCRIPT).href)}); console.log('imported');`], { cwd: tmp, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'imported\n'); assert.equal(r.stderr, '');
@@ -145,8 +155,13 @@ check('internal links: relative with explicit leaf, tracking stripped, broken fl
   assert.match(home, /href="https:\/\/example\.test\/contact\/" data-broken-link="true"/);
   assert.match(home, /href="\.\/nowhere\/index\.html" data-broken-link="true"/);
   assert.match(home, /href="mailto:a@example\.test"/); assert.match(home, /href="#top"/); assert.match(home, /href="https:\/\/elsewhere\.example\/x"/);
-  assert.match(home, /<header><a href="\.\/index\.html">/);
+  assert.match(home, /<header><a href="\.\/index\.html"[ >]/);
   assert.equal(homeMeta.brokenInternalLinks.length, 2);
+});
+check('rewritten links keep data-source-href (absolute source URL); untouched links get none', () => {
+  assert.match(home, /href="\.\/tours\/index\.html" data-source-href="https:\/\/example\.test\/tours\/"/);
+  assert.match(home, /data-broken-link="true" data-source-href="https:\/\/example\.test\/nowhere\/?"/);
+  assert.match(home, /href="mailto:a@example\.test">/); assert.match(home, /href="https:\/\/elsewhere\.example\/x">/);
 });
 check('depth-aware prefixes on nested pages', () => {
   const north = read(`${OUT}/tours/north/index.html`); const hist = read(`${OUT}/about/history.html`);
@@ -324,10 +339,11 @@ check('deployUrl → canonical and og:url point at the deployed URL form of the 
   assert.equal(json(`${OUT}/_meta.json`).metadata.canonical, 'https://www.example-live.test/');
 });
 check('default JSON-LD: WebPage for home, Article for an article page, an existing block is left alone', () => {
-  const ld = (html) => [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]));
+  const ld = (html) => [...html.matchAll(/<script type="application\/ld\+json"( data-migrate-default)?>([\s\S]*?)<\/script>/g)].map((m) => ({ ...JSON.parse(m[2]), inserted: !!m[1] }));
   const h = ld(read(`${OUT}/index.html`)); assert.equal(h.length, 1); assert.equal(h[0]['@type'], 'WebPage'); assert.equal(h[0].name, 'Home'); assert.equal(h[0].url, 'https://www.example-live.test/');
   const p = ld(read(`${OUT}/news/post/index.html`)); assert.equal(p.length, 1); assert.equal(p[0]['@type'], 'Article'); assert.equal(p[0].headline, 'A post'); assert.equal(p[0].mainEntityOfPage, 'https://www.example-live.test/news/post/');
   const t = ld(read(`${OUT}/tours/index.html`)); assert.equal(t.length, 1); assert.equal(t[0]['@type'], 'CollectionPage');
+  assert.equal(h[0].inserted, true); assert.equal(t[0].inserted, false); // the inserted default is marked, the source block is not
   assert.equal(json(`${OUT}/_meta.json`).jsonLd?.['@type'], 'WebPage');
 });
 check('missing asset: reference left as is, warned, recorded in the sidecar and in state.json.migrate', () => {
@@ -337,6 +353,22 @@ check('missing asset: reference left as is, warned, recorded in the sidecar and 
   assert.match(read(`${OUT}/news/post/index.html`), /src="assets\/img\/missing\.png"/);
   assert.deepEqual(json(STATE).migrate.missingAssets, [{ subpath: 'img/missing.png', referencedBy: ['news-post'] }]);
   assert.ok(!json(STATE).migrate.bundledAssets.includes('img/missing.png'));
+});
+
+// ---- flow: reskin (data-slot names, gate handoff from reskin/ledger.json) ---------------------
+console.log('flow: reskin');
+check('tagSections names a slot by its data-slot, else its first class, else its tag', () => {
+  const t = tagSections('<main><section class="band x" data-slot="s01">a</section><div class="grid">b</div><p>c</p></main>', 'home');
+  assert.deepEqual(t.slots, ['s01', 'grid', 'p']);
+});
+check('flow reskin: gates recorded in reskin/ledger.json handoff land in the first sidecar; recorded evidence wins over the ledger', () => {
+  const s = json(STATE); const keep = s.flow; s.flow = 'reskin'; write(STATE, `${JSON.stringify(s, null, 2)}\n`);
+  write('stardust/reskin/ledger.json', JSON.stringify({ handoff: { listing: { archetype: 'tours', gates: { tours: { 'reskin-content-gate': 'dom-equality PASS', links: 'from ledger' } } } } }));
+  const r = run(['render', 'tours', '--force']); assert.equal(r.status, 0, r.err);
+  const m = json(`${OUT}/tours/_meta.json`);
+  assert.ok(m.gatesPassed.includes('reskin-content-gate')); assert.equal(m.gateEvidence['reskin-content-gate'], 'dom-equality PASS');
+  rmSync(join(tmp, 'stardust/reskin'), { recursive: true, force: true });
+  const back = json(STATE); back.flow = keep; write(STATE, `${JSON.stringify(back, null, 2)}\n`);
 });
 
 // ---- --help ---------------------------------------------------------------------------------

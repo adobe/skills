@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildFoundation, PROBE_PATHS, PROBE_SOURCES, RECOMMENDED_PATHS, RECOMMENDED_SOURCES } from '../figma/foundation.mjs';
+import { buildFoundation, headerRowOf, headerRowsOf, PROBE_PATHS, PROBE_SOURCES, RECOMMENDED_PATHS, RECOMMENDED_SOURCES } from '../figma/foundation.mjs';
 
 const KIT = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'figma-kit');
 const file = JSON.parse(readFileSync(join(KIT, 'file.json'), 'utf8'));
@@ -259,6 +259,48 @@ check('a frame missing from the nodes response is reported, not fatal', () => {
 });
 check('no NaN or undefined anywhere (omitted paddings default to 0)', () => assert.ok(!/NaN|undefined/.test(JSON.stringify(out))));
 check('deterministic', () => assert.equal(JSON.stringify(buildFoundation({ file, nodes, frameIds: ['1:2', '1:9'] })), JSON.stringify(out)));
+
+check('headerRowOf: brand | menu | actions measured off the boxes; center, start, end; none below the top band or on mobile', () => {
+  const bb = (x, y, width, height = 40) => ({ x, y, width, height });
+  const text = (id, x) => ({ id, type: 'TEXT', characters: 'Item', absoluteBoundingBox: bb(x, 100, 80) });
+  const item = (id, x) => ({ id, type: 'INSTANCE', absoluteBoundingBox: bb(x, 100, 80), children: [text(`${id}t`, x)] });
+  const frame = (menuX, rowY = 80, width = 1440) => ({
+    id: 'F', type: 'FRAME', absoluteBoundingBox: bb(0, 0, width, 900), children: [{
+      id: 'H', type: 'FRAME', layoutMode: 'HORIZONTAL', absoluteBoundingBox: bb(130, rowY, 1180), children: [
+        { id: 'L', type: 'FRAME', absoluteBoundingBox: bb(130, rowY, 136), children: [] },
+        { id: 'M', type: 'FRAME', layoutMode: 'HORIZONTAL', absoluteBoundingBox: bb(menuX, rowY, 353), children: [item('a', menuX), item('b', menuX + 120)] },
+        { id: 'R', type: 'FRAME', absoluteBoundingBox: bb(1174, rowY, 136), children: [] },
+      ],
+    }],
+  });
+  assert.deepEqual(headerRowOf(frame(543.5)), { node: 'H', menu: 'M', align: 'center', offset: 0, width: 1180 });
+  assert.equal(headerRowOf(frame(300)).align, 'start');
+  assert.equal(headerRowOf(frame(800)).align, 'end');
+  assert.equal(headerRowOf(frame(450)), null);
+  assert.equal(headerRowOf(frame(543.5, 400)), null);
+  assert.equal(headerRowOf(frame(543.5, 80, 390)), null);
+});
+
+check('headerRowsOf: each screen of a canvas measured from its own top; deduped; footers skipped', () => {
+  const bb = (x, y, width, height = 40) => ({ x, y, width, height });
+  const item = (id, x, y) => ({ id, type: 'INSTANCE', absoluteBoundingBox: bb(x, y, 80), children: [{ id: `${id}t`, type: 'TEXT', characters: 'Item', absoluteBoundingBox: bb(x, y, 80) }] });
+  const row = (p, x, y, menuX) => ({
+    id: `${p}H`, type: 'FRAME', layoutMode: 'HORIZONTAL', absoluteBoundingBox: bb(x + 130, y, 1180), children: [
+      { id: `${p}L`, type: 'FRAME', absoluteBoundingBox: bb(x + 130, y, 136), children: [] },
+      { id: `${p}M`, type: 'FRAME', absoluteBoundingBox: bb(x + menuX, y, 353), children: [item(`${p}a`, x + menuX, y), item(`${p}b`, x + menuX + 120, y)] },
+      { id: `${p}R`, type: 'FRAME', absoluteBoundingBox: bb(x + 1174, y, 136), children: [] },
+    ],
+  });
+  const screen = (p, x, y, menuX, name = 'Breakpoint=Desktop') => ({ id: p, name, type: 'COMPONENT', absoluteBoundingBox: bb(x, y, 1440, 900), children: [row(p, x, y + 40, menuX)] });
+  const canvas = {
+    id: 'C', name: 'Page', type: 'FRAME', absoluteBoundingBox: bb(0, 0, 4400, 3000), children: [
+      screen('A', 0, 100, 543.5), screen('B', 1500, 100, 543.5), screen('D', 0, 2000, 543.5), screen('E', 1500, 2000, 1174 - 353 - 20, 'Site Footer'),
+    ],
+  };
+  const rows = headerRowsOf(canvas);
+  assert.deepEqual(rows.map((r) => [r.node, r.align, r.screen]), [['AH', 'center', 'A'], ['BH', 'center', 'B'], ['DH', 'center', 'D']]);
+  assert.deepEqual(headerRowsOf({ ...canvas, name: 'Footer' }), []);
+});
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 process.exit(failed ? 1 : 0);
