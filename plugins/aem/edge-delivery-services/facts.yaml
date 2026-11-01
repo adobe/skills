@@ -1,5 +1,6 @@
-# Verified claims the EDS skills and evals rely on.
-# source: where it was checked. used_by: paths relative to this plugin.
+# Facts the EDS skills and evals rely on.
+# source: external and re-checkable only; omitted for maintainer-endorsed practice.
+# used_by: paths relative to this plugin.
 
 - id: block-css-scoping
   claim: >-
@@ -53,7 +54,7 @@
     centering and inline padding). Blocks don't override it on the block root;
     outer layout changes go through `{block}-container` / `{block}-wrapper`.
     Inner padding is the block's call.
-  source: aem-boilerplate 5cea543, styles/styles.css; maintainer guidance
+  source: aem-boilerplate 5cea543, styles/styles.css
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/references/css-guidelines.md
@@ -65,7 +66,7 @@
     current boilerplate uses only 900px.
   source: >-
     aem-boilerplate 5cea543, every @media is `(width >= 900px)`; 600px removed
-    in 4a3d34f (2024-05-29); maintainer guidance
+    in 4a3d34f (2024-05-29)
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/references/css-guidelines.md # says 600/900
