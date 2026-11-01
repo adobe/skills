@@ -4,7 +4,7 @@
 
 The marketing team at Acme Corp has just launched a redesign of their AEM Edge Delivery Services website. The development team already implemented the JavaScript decoration logic for a new `testimonial-carousel` block, but the CSS file was never written. The block displays customer testimonials in a horizontal carousel, and it supports two visual variants: a standard light background version and a `dark` variant with an inverted color scheme.
 
-The design team's requirements are: on mobile, testimonials should stack vertically in a single column; on tablet (medium screens), items should be displayed side by side in two columns; on desktop (wide screens), up to three columns should be visible. The dark variant needs a darker background and light text, and should still follow the standard column layout rules. The block also needs proper typography for the quote text and a byline with author name and company.
+The design team's requirements are: on mobile, testimonials should stack vertically in a single column; on tablet (medium screens), items should be displayed side by side in two columns; on desktop (wide screens), up to three columns should be visible. The dark variant needs a darker background and light text, and should still follow the standard column layout rules. The block also needs proper typography for the quote text and the byline.
 
 ## Output Specification
 
@@ -15,12 +15,12 @@ blocks/testimonial-carousel/testimonial-carousel.css
 ```
 
 The CSS should:
-- Style the block container and its child elements (items, quote text, byline, author name, company)
+- Style the block container and its child elements (items, quote text, byline)
 - Implement the responsive column layout described above
 - Style the dark variant
 - Ensure fonts and colors are consistent with the site's design system
 
-Do NOT create any JavaScript files — only the CSS file is needed.
+Do NOT create any JavaScript files or modify `styles/styles.css` — only the block CSS file is needed.
 
 ## Input Files
 
@@ -63,3 +63,89 @@ export default async function decorate(block) {
 
   block.replaceChildren(list);
 }
+
+=============== FILE: styles/styles.css ===============
+:root {
+  /* colors */
+  --background-color: white;
+  --light-color: #f8f8f8;
+  --dark-color: #505050;
+  --text-color: #131313;
+  --link-color: #3b63fb;
+  --link-hover-color: #1d3ecf;
+
+  /* fonts */
+  --body-font-family: roboto, roboto-fallback, sans-serif;
+  --heading-font-family: roboto-condensed, roboto-condensed-fallback, sans-serif;
+
+  /* body sizes */
+  --body-font-size-m: 22px;
+  --body-font-size-s: 19px;
+  --body-font-size-xs: 17px;
+
+  /* heading sizes */
+  --heading-font-size-xxl: 55px;
+  --heading-font-size-xl: 44px;
+  --heading-font-size-l: 34px;
+  --heading-font-size-m: 27px;
+  --heading-font-size-s: 24px;
+  --heading-font-size-xs: 22px;
+
+  /* nav height */
+  --nav-height: 64px;
+}
+
+/* fallback fonts */
+@font-face {
+  font-family: roboto-condensed-fallback;
+  size-adjust: 88.82%;
+  src: local('Arial');
+}
+
+@font-face {
+  font-family: roboto-fallback;
+  size-adjust: 99.529%;
+  src: local('Arial');
+}
+
+@media (width >= 900px) {
+  :root {
+    /* body sizes */
+    --body-font-size-m: 18px;
+    --body-font-size-s: 16px;
+    --body-font-size-xs: 14px;
+
+    /* heading sizes */
+    --heading-font-size-xxl: 45px;
+    --heading-font-size-xl: 36px;
+    --heading-font-size-l: 28px;
+    --heading-font-size-m: 22px;
+    --heading-font-size-s: 20px;
+    --heading-font-size-xs: 18px;
+  }
+}
+
+/* ... */
+
+
+/* sections */
+main > .section {
+  margin: 40px 0;
+}
+
+main > .section > div {
+  max-width: 1200px;
+  margin: auto;
+  padding: 0 24px;
+}
+
+main > .section:first-of-type {
+  margin-top: 0;
+}
+
+@media (width >= 900px) {
+  main > .section > div {
+    padding: 0 32px;
+  }
+}
+

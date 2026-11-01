@@ -1,0 +1,71 @@
+# Verified claims the EDS skills and evals rely on.
+# source: where it was checked. used_by: paths relative to this plugin.
+
+- id: block-css-scoping
+  claim: >-
+    Block selectors start with `.{block}` or `main .{block}`; both are valid.
+    `main .{block}` excludes copies of the block in header/footer.
+  source: aem-boilerplate 5cea543, blocks/*/*.css use `.{block}`
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/references/css-guidelines.md # still `main .{block}` only
+
+- id: platform-wrapper-classes
+  claim: >-
+    aem.js adds `{block}-wrapper` to the block's parent and `{block}-container`
+    to its section. Don't reuse these names inside the block. Styling them from
+    outside is fine when needed.
+  source: aem-boilerplate 5cea543, scripts/aem.js decorateBlock()
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/references/css-guidelines.md
+
+- id: css-targets-decorated-dom
+  claim: >-
+    Block CSS styles the DOM after decorate() runs, not the authored row/cell divs.
+  source: >-
+    aem-boilerplate 5cea543, scripts/aem.js loadBlock() runs CSS load and
+    decorate() together and marks the block loaded after both
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+
+- id: root-custom-properties
+  claim: >-
+    Colors, font families and font sizes are `:root` custom properties in
+    styles/styles.css. Blocks reference them instead of repeating their values,
+    which drift.
+  source: aem-boilerplate 5cea543, styles/styles.css :root
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/references/css-guidelines.md
+
+- id: block-layout-scope
+  claim: >-
+    Global styles define the page layout grid (`main > .section > div` sets
+    max-width, centering and inline padding). Block CSS controls what is inside
+    the block. Exceptions exist (full-bleed blocks like hero).
+  source: aem-boilerplate 5cea543, styles/styles.css; maintainer guidance
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/references/css-guidelines.md
+
+- id: mobile-first-breakpoints
+  claim: >-
+    CSS is mobile-first: defaults are mobile, wider layouts in min-width queries.
+    Use the project's breakpoints. 600/900/1200px is the common convention;
+    current boilerplate uses only 900px.
+  source: >-
+    aem-boilerplate 5cea543, every @media is `(width >= 900px)`; 600px removed
+    in 4a3d34f (2024-05-29); maintainer guidance
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/references/css-guidelines.md # says 600/900
+
+- id: block-variant-classes
+  claim: >-
+    Block options are extra classes on the block element (`Columns (dark, wide)`
+    → `class="columns dark wide"`), styled as `.{block}.{option}`.
+  source: https://www.aem.live/developer/markup-sections-blocks (block options)
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/references/css-guidelines.md
