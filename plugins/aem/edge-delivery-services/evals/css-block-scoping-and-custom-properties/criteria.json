@@ -40,7 +40,7 @@
     {
       "name": "Section grid not overridden",
       "max_score": 10,
-      "description": "The block does not fight the page grid set by global section styles (`main > .section > div`): no outer `max-width`, `margin: auto`/`margin-inline: auto` centering, or negative/outer margins on the block root. If the block needs a different outer layout (e.g. full bleed), it targets `.testimonial-carousel-container` or `.testimonial-carousel-wrapper`. Padding inside the block, including on the block root, is fine."
+      "description": "The block does not fight the page grid set by global section styles (`main > .section > div`). The full-width dark background is done through the platform classes, e.g. `.testimonial-carousel-container:has(.testimonial-carousel.dark)` or `.testimonial-carousel-wrapper`, and the testimonials keep the section's content width. Fail on viewport hacks on the block root or its children (`width: 100vw`, `margin-inline: calc(50% - 50vw)`, negative margins) or on overriding `max-width`/centering of the block root. Padding inside the block, including on the block root, is fine."
     },
     {
       "name": "Mobile-first",
