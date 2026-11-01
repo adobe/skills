@@ -2,8 +2,9 @@
 name: content-distribution
 license: Apache-2.0
 description: |
-  AEM as a Cloud Service content distribution and replication. Covers programmatic publishing
-  using the Replication API and distribution event monitoring using Sling Distribution events.
+  Use for AEM as a Cloud Service content publishing and distribution: publish or unpublish pages
+  with the Replication API, target preview, check publication status, or monitor Sling Distribution
+  events and queues. Covers Cloud Service, not 6.5 LTS/AMS replication.
 ---
 
 # AEM Cloud Service Content Distribution
