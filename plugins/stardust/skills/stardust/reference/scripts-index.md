@@ -8,7 +8,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
 - `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
-- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failed, 3 = token halt
+- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content <dir> [--no-publish] [--token-env|--token-file]`; exit 1 fail, 3 token halt
 - `deploy/diff-profiles.mjs` — library (profiles), no CLI
 - `deploy/file-lock.mjs` — library (ledger lock), no CLI
 - `deploy/eds-path.mjs` — library (path contract), no CLI
@@ -48,13 +48,13 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
 - `replica/breakpoint-lint.mjs` — breakpoints on target steps — `[--target 600,900,1200] [--dirs <list>]` | `--inventory <file|dir…>`; exit 1 = off-target
-- `replica/cap-probe.mjs` — content caps — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>]`; exit 2 = FAIL
+- `replica/cap-probe.mjs` — content caps — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>]`; exit 2 FAIL
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
 - `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--no-probes]`; exit 2 = any FAIL
+- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--no-probes]`; exit 2 FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables — `[--slug <s>]… [--check] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow + probes — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text]`
@@ -80,8 +80,8 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `reskin/reskin-preflight.mjs` — ready to migrate? exit 0 = yes — `[--dir] [--root] [--json]`
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
-- `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images] [--register]`; `--check [<slug>…]` validates mapping.json; `<slug> --deploy-map` prints block-roundtrip `--map`s
-- `reskin/vocabulary-check.mjs` — every donor module built: block, variant, style, feature (deploy Step 2c) — `[--modules <donor-modules.md>] [--project .] [--library <dir>] [--json <p>]`
+- `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images] [--register]`; `--check [<slug>…]` checks mapping.json; `--deploy-map` prints roundtrip `--map`s
+- `reskin/vocabulary-check.mjs` — donor modules built (deploy 2c) — `[--library <dir>]`
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
