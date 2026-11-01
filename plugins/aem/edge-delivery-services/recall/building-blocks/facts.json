@@ -1,7 +1,6 @@
 {
   "sourceRef": "9a7be7886ad442fea068f94fc9f51b89cecfc82d",
   "sourceRoot": "plugins/aem/edge-delivery-services/skills/building-blocks",
-  "contextRef": "https://github.com/adobe/aem-boilerplate/tree/5cea543707db900c92014b0bba93564fe325b9e4",
   "facts": [
     {
       "id": "BB-001",
@@ -37,7 +36,7 @@
     },
     {
       "id": "BB-005",
-      "claim": "Inspect the backend-delivered markup before writing decorate code: `<path>.plain.html` on the dev server returns the page content undecorated.",
+      "claim": "`<path>.plain.html` on the dev server (or preview) returns the page content as the backend delivers it, without decoration.",
       "source": "SKILL.md:113-117",
       "kind": "eds",
       "verified": "aem-boilerplate@5cea543 AGENTS.md:7 ('Markup comes from the backend. `curl localhost:3000/x.plain.html` first.')",
@@ -48,7 +47,6 @@
       "claim": "In a git worktree, `aem up` (no --port) uses a branch-derived port in 3000-3999 and logs it; use the logged port, not 3000.",
       "source": "SKILL.md:116",
       "kind": "eds",
-      "goal": "Worktrees",
       "skillSays": "`curl http://localhost:3000/{test-content-path}`",
       "verified": "@adobe/aem-cli@16.22.16 src/up.cmd.js:L105-111 ('Git worktree detected. Using port ...'), src/git-utils.js:L406-415 hashBranchToPort(branch, 3000, 1000)",
       "question": "When you run `aem up` inside a git worktree without --port, which port does it serve on?"
@@ -79,12 +77,11 @@
     },
     {
       "id": "BB-010",
-      "claim": "`.<name>` and `main .<name>` are both valid prefixes; `main .<name>` can't match blocks outside `<main>` (header, footer). Follow the project's convention.",
+      "claim": "`.<name>` and `main .<name>` are both valid block selector prefixes; `main .<name>` can't match blocks outside `<main>` (header, footer).",
       "source": "SKILL.md:104-105, SKILL.md:163-164, references/css-guidelines.md:3-34",
       "kind": "eds",
-      "goal": "CSS scoping",
       "skillSays": "'Always start selectors with `main .{block-name}`'",
-      "verified": "aem-boilerplate@5cea543 blocks/cards/cards.css, columns.css, hero.css use bare `.<name>`; scripts/aem.js:L599-626 header/footer blocks render in body > header / body > footer; goals.md 'CSS scoping'",
+      "verified": "aem-boilerplate@5cea543 blocks/cards/cards.css, columns.css, hero.css use bare `.<name>`; scripts/aem.js:L599-626 header/footer blocks render in body > header / body > footer",
       "question": "In EDS block CSS, what is the difference between prefixing selectors with `.blockname` and with `main .blockname`, and which should you use?"
     },
     {
@@ -100,7 +97,6 @@
       "claim": "The whole first section loads before LCP: its blocks load one at a time (CSS + awaited decorate), then its first image. Every block in the first section adds to LCP.",
       "source": "references/js-guidelines.md:261",
       "kind": "eds",
-      "goal": "Fix wrong guidance",
       "skillSays": "'blocks in the first section load eagerly and affect LCP'",
       "verified": "aem-boilerplate@5cea543 scripts/scripts.js:L169 (loadEager awaits loadSection(first section, waitForFirstImage)); scripts/aem.js:L650-662 (sequential await loadBlock, then callback), L632-645; https://www.aem.live/developer/keeping-it-100#phase-e-eager ('the full first section is loaded')",
       "question": "In the EDS boilerplate, what has to finish loading before the LCP image is shown, and how are the blocks in that part of the page loaded?"
@@ -108,18 +104,16 @@
     {
       "id": "BB-013",
       "claim": "Wait for `data-block-status=\"loaded\"` on a block; it's set only after the block CSS has loaded and decorate() has resolved.",
-      "source": "goals.md, references/js-guidelines.md:263-291",
+      "source": "references/js-guidelines.md:263-291",
       "kind": "eds",
-      "goal": "Fix wrong guidance",
       "verified": "aem-boilerplate@5cea543 scripts/aem.js:L577 (initialized), L538 (loading), L558-563 (Promise.all([cssLoaded, decorationComplete]) then 'loaded')",
       "question": "How can code or a test tell that an EDS block has finished loading and decorating?"
     },
     {
       "id": "BB-014",
       "claim": "Work decorate() defers (setTimeout, IntersectionObserver, event handlers) isn't covered by `data-block-status=\"loaded\"` or the first-section LCP wait.",
-      "source": "goals.md, references/js-guidelines.md:263-291",
+      "source": "references/js-guidelines.md:263-291",
       "kind": "eds",
-      "goal": "Fix wrong guidance",
       "verified": "aem-boilerplate@5cea543 scripts/aem.js:L549 awaits only mod.default(block); L563 sets 'loaded' right after",
       "question": "An EDS block's decorate function schedules part of its rendering with setTimeout. How does that interact with the block's loaded status and the page's LCP wait?"
     },
@@ -128,7 +122,6 @@
       "claim": "The delayed phase is `loadDelayed()` in scripts.js. Current boilerplate has no delayed.js: loadDelayed() imports `consent-check.js`, which imports `consented.js` (analytics, martech) only after consent. Older projects use delayed.js.",
       "source": "SKILL.md:3, SKILL.md:36, SKILL.md:242-248",
       "kind": "eds",
-      "goal": "Third-party scripts",
       "skillSays": "'delayed.js - Marketing, analytics, third-party integrations'",
       "verified": "aem-boilerplate@5cea543 scripts/scripts.js:L206-209, scripts/consent-check.js:L28-46, scripts/consented.js:L1; no scripts/delayed.js; https://www.aem.live/developer/keeping-it-100#phase-d-delayed",
       "question": "In the current aem-boilerplate, what does loadDelayed() load, and where do scripts that need user consent go?"
@@ -136,18 +129,16 @@
     {
       "id": "BB-016",
       "claim": "Current boilerplate runs loadDelayed() right after the lazy phase with no timer; aem.live still advises the delayed phase start >=3s after LCP, so add a delay explicitly if needed.",
-      "source": "goals.md",
+      "source": "n/a (not in skill)",
       "kind": "eds",
-      "goal": "Third-party scripts",
       "verified": "aem-boilerplate@5cea543 scripts/scripts.js:L211-215 (loadPage: await loadLazy, then loadDelayed() with no setTimeout); https://www.aem.live/developer/keeping-it-100#phase-d-delayed ('loadDelayed() no longer enforces this with a hard-coded timer')",
       "question": "When does the current aem-boilerplate start the delayed phase relative to the rest of page loading?"
     },
     {
       "id": "BB-017",
       "claim": "The boilerplate's dummy consent check declines by default; append `?consent=accept` to load consented.js when testing locally.",
-      "source": "goals.md",
+      "source": "n/a (not in skill)",
       "kind": "eds",
-      "goal": "Third-party scripts",
       "verified": "aem-boilerplate@5cea543 scripts/consent-check.js:L16-23 (query param accept/true/1/yes; default false)",
       "question": "With the boilerplate's default consent implementation, do consent-gated scripts load, and how do you exercise that path locally?"
     },
@@ -156,26 +147,15 @@
       "claim": "Not all third-party code belongs in the delayed phase; choose by context, e.g. load when the block scrolls into view (IntersectionObserver) or on user interaction (placeholder, load on click).",
       "source": "SKILL.md:248, references/js-guidelines.md:277-291",
       "kind": "eds",
-      "goal": "Third-party scripts",
       "skillSays": "delayed.js listed as the home for all 'Marketing, analytics, third-party integrations'",
-      "verified": "https://www.aem.live/docs/dev-collab-and-good-practices#loading-3rd-party-libraries ('consider using an IntersectionObserver'); https://www.aem.live/developer/keeping-it-100#phase-d-delayed; goals.md 'Third-party scripts'",
+      "verified": "https://www.aem.live/docs/dev-collab-and-good-practices#loading-3rd-party-libraries ('consider using an IntersectionObserver'); https://www.aem.live/developer/keeping-it-100#phase-d-delayed",
       "question": "A block embeds a heavy third-party widget. What options does EDS guidance give for when to load its script?"
-    },
-    {
-      "id": "BB-019",
-      "claim": "A timed loader (load after a set delay, e.g. a few seconds after LCP) is an option for third-party scripts not tied to a block or user action.",
-      "source": "SKILL.md:248, references/js-guidelines.md:277-291",
-      "kind": "eds",
-      "goal": "Third-party scripts",
-      "verified": "goals.md 'Third-party scripts' ('timed loader'); https://www.aem.live/developer/keeping-it-100#phase-d-delayed (>=3s after LCP guideline)",
-      "question": "Besides loading on visibility or on user interaction, how can an EDS site defer a third-party script that isn't tied to any block, without relying on loadDelayed()?"
     },
     {
       "id": "BB-020",
       "claim": "Load a library that only one block needs from that block, not via head.html.",
       "source": "references/js-guidelines.md:303, references/js-guidelines.md:314",
       "kind": "eds",
-      "goal": "Third-party scripts",
       "verified": "https://www.aem.live/docs/dev-collab-and-good-practices#loading-3rd-party-libraries ('Don't add 3rd party libraries to your <head> via head.html ... Add the dependencies where needed via loadScript() to the specific block')",
       "question": "Where should a third-party library used by a single block be loaded from in an EDS project?"
     },
@@ -184,8 +164,7 @@
       "claim": "Authors omit, add, and reorder cells; decorate() must tolerate missing or extra rows and not depend on fixed cell positions.",
       "source": "references/js-guidelines.md:212-232",
       "kind": "eds",
-      "goal": "content-modeling",
-      "verified": "aem-boilerplate@5cea543 AGENTS.md:9 ('Authors omit and add cells. Decorate defensively.'); goals.md content-modeling ('decorate code doesn't rely on cell positions')",
+      "verified": "aem-boilerplate@5cea543 AGENTS.md:9 ('Authors omit and add cells. Decorate defensively.')",
       "question": "What should a block's decorate function assume about the number and order of the rows and cells an author provides?"
     },
     {
@@ -206,11 +185,11 @@
     },
     {
       "id": "BB-024",
-      "claim": "Global styles own a block's outer dimensions (width, inline padding, spacing between blocks); block CSS styles what's inside the block.",
+      "claim": "The boilerplate's global styles already set max-width and inline padding on `main > .section > div`, so blocks inherit their outer width and spacing.",
       "source": "references/css-guidelines.md:126",
       "kind": "eds",
       "verified": "aem-boilerplate@5cea543 styles/styles.css:L299-317 (`main > .section > div` max-width/padding)",
-      "question": "In an EDS project, which CSS should control a block's outer width and spacing, and what should the block's own stylesheet handle?"
+      "question": "In an EDS boilerplate project, where do a block's outer width and horizontal padding come from by default?"
     },
     {
       "id": "BB-025",
@@ -263,9 +242,8 @@
     {
       "id": "BB-031",
       "claim": "Boilerplate head.html sets a CSP (`script-src 'nonce-aem' 'strict-dynamic'`, Trusted Types required). Scripts in head.html need `nonce=\"aem\"`; scripts loaded at runtime from trusted code (loadScript, import) are allowed; eval/new Function and inline event handlers are blocked.",
-      "source": "goals.md",
+      "source": "n/a (not in skill)",
       "kind": "eds",
-      "goal": "Third-party scripts",
       "verified": "aem-boilerplate@5cea543 head.html:L1-8; https://www.aem.live/docs/csp-strict-dynamic-cached-nonce",
       "question": "What Content Security Policy does the current aem-boilerplate ship, and what does it mean for adding a third-party script to a page?"
     },
@@ -289,34 +267,25 @@
       "id": "BB-034",
       "claim": "JS lint is ESLint airbnb-base with: `.js` extension required in imports, unix linebreaks, and parameter property reassignment allowed (`block.foo = x`).",
       "source": "references/js-guidelines.md:234-254",
-      "kind": "repo",
+      "kind": "eds",
       "verified": "aem-boilerplate@5cea543 .eslintrc.js:L3, L14-16",
-      "context": [
-        ".eslintrc.js"
-      ],
-      "question": "Write the import and first lines of an EDS block's decorate function that uses `getMetadata` from the project's scripts and sets a property on the block element. What does the project's JS lint require or allow here?"
+      "question": "Write the import and first lines of an EDS block's decorate function that uses `getMetadata` from the project's scripts and sets a property on the block element. What does the EDS boilerplate's JS lint require or allow here?"
     },
     {
       "id": "BB-035",
       "claim": "CSS lint is stylelint-config-standard: kebab-case class names, media range syntax (`(width >= 600px)`), and modern color notation (`rgb(0 0 0 / 20%)`).",
       "source": "references/css-guidelines.md:88-91, references/css-guidelines.md:168-170, references/css-guidelines.md:204-210",
-      "kind": "repo",
+      "kind": "eds",
       "verified": "aem-boilerplate@5cea543 .stylelintrc.json; stylelint-config-standard@40.0.0 index.js:L26 (color-function-notation modern), L96 (media-feature-range-notation context), L107-112 (selector-class-pattern kebab-case)",
-      "context": [
-        ".stylelintrc.json"
-      ],
-      "question": "Write CSS for an EDS block that adds a class for featured items, a translucent black overlay, and a layout change at tablet width. What must it look like to pass the project's CSS lint?"
+      "question": "Write CSS for an EDS block that adds a class for featured items, a translucent black overlay, and a layout change at tablet width. What must it look like to pass the EDS boilerplate's CSS lint?"
     },
     {
       "id": "BB-036",
-      "claim": "Use the CSS custom properties from `styles/styles.css` (`--text-color`, `--link-color`, `--body-font-family`, `--heading-font-size-m`, ...) instead of hardcoded colors and fonts.",
+      "claim": "The boilerplate's `styles/styles.css` defines CSS custom properties for colors, fonts and sizes (`--text-color`, `--link-color`, `--body-font-family`, `--heading-font-size-m`, ...).",
       "source": "SKILL.md:160-178, references/css-guidelines.md:93-134, references/css-guidelines.md:387-400",
-      "kind": "repo",
+      "kind": "eds",
       "verified": "aem-boilerplate@5cea543 styles/styles.css:L14-41",
-      "context": [
-        "styles/styles.css"
-      ],
-      "question": "An EDS block needs body-colored text in the site's body font, links in the site's link color, and a medium-sized heading. How should the block's CSS set these values?"
+      "question": "Which CSS custom properties does the EDS boilerplate define for site colors, fonts and heading sizes, and where?"
     },
     {
       "id": "BB-037",
@@ -339,23 +308,15 @@
       "claim": "Use logical properties (`padding-inline`, `margin-block`, `inset-inline-start`) so layouts work in RTL.",
       "source": "references/css-guidelines.md:168-185",
       "kind": "generic",
-      "verified": "n/a (general CSS)",
+      "verified": "https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_logical_properties_and_values",
       "question": "How should an EDS block's CSS express horizontal padding and margins so it also works for right-to-left languages?"
-    },
-    {
-      "id": "BB-040",
-      "claim": "Lay out with flexbox/grid and `gap`; use absolute positioning only for visual effects, not layout.",
-      "source": "references/css-guidelines.md:187-202, references/css-guidelines.md:402-406",
-      "kind": "generic",
-      "verified": "n/a (general CSS)",
-      "question": "What CSS techniques should an EDS block use for layout and spacing between items, and what should it avoid?"
     },
     {
       "id": "BB-041",
       "claim": "Animate with `transform`/`opacity` rather than layout properties (`left`, `top`, `width`); use `will-change` sparingly.",
       "source": "references/css-guidelines.md:272-299",
       "kind": "generic",
-      "verified": "n/a (general CSS)",
+      "verified": "https://web.dev/articles/stick-to-compositor-only-properties-and-manage-layer-count, https://web.dev/articles/animations-guide",
       "question": "When animating elements in an EDS block, which CSS properties should you animate for good rendering performance, and how should `will-change` be used?"
     },
     {
@@ -376,11 +337,12 @@
     },
     {
       "id": "BB-044",
-      "claim": "Build structure with DOM APIs (`createElement`, `append`, `textContent`), not `innerHTML` strings, to avoid XSS and keep code maintainable.",
+      "claim": "`innerHTML` is fine for static or fully controlled markup; strings that include authored, fetched or user-supplied values go through DOM APIs (`createElement`, `textContent`) to avoid XSS.",
       "source": "references/js-guidelines.md:77-89",
       "kind": "generic",
-      "verified": "n/a (general DOM practice); aem-boilerplate@5cea543 head.html:L3 requires Trusted Types",
-      "question": "What is the recommended way to build new DOM structure in an EDS block's decorate function, and what approach should be avoided?"
+      "verified": "https://developer.mozilla.org/en-US/docs/Web/API/Element/innerHTML#security_considerations; aem-boilerplate@5cea543 blocks/header/header.js:L146 (static innerHTML), scripts/scripts.js:L15-38 (default Trusted Types policy passes HTML through)",
+      "question": "When is it OK to use `innerHTML` in an EDS block's decorate function, and when should you build elements another way?",
+      "skillSays": "references/js-guidelines.md:77-80 marks static `block.innerHTML = '<div class=\"wrapper\"><p>Text</p></div>'` as bad (XSS risk)"
     },
     {
       "id": "BB-045",
@@ -411,7 +373,6 @@
       "claim": "The LCP candidate is the first `<img>` in the first section, picked after that section's blocks have decorated; a block that builds or swaps the hero image must have the final image in the DOM when decorate() resolves.",
       "source": "n/a (not in skill; added in review)",
       "kind": "eds",
-      "goal": "Fix wrong guidance",
       "verified": "aem-boilerplate@5cea543 scripts/aem.js:L632-645 (waitForFirstImage: section.querySelector('img'), sets loading=eager), L650-662 (called after all blocks in the section load); https://www.aem.live/developer/keeping-it-100#lcp ('the page loading waits with guessing the LCP candidate (currently the first image on the page) until the first block has made the necessary changes to the DOM')",
       "question": "An EDS hero block in the first section fetches its image URL from a JSON file and then inserts the image. How does that interact with how the page loads its LCP image?"
     }

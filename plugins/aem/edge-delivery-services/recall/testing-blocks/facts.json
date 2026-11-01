@@ -7,7 +7,6 @@
       "claim": "Prefer user-facing locators, `getByRole` with an accessible name first; avoid CSS selectors such as classes because the DOM changes.",
       "source": "SKILL.md:113, references/troubleshooting.md:101-109",
       "kind": "generic",
-      "goal": "testing-blocks: Playwright locates via the a11y tree",
       "skillSays": "references/troubleshooting.md:104 `page.locator('.button').click()`",
       "verified": "https://playwright.dev/docs/locators ('prioritize user-facing attributes ... page.getByRole()'; 'CSS and XPath are not recommended as the DOM can often change'), https://playwright.dev/docs/best-practices#use-locators",
       "question": "Which kinds of locators are recommended for selecting elements in a Playwright test, and in what priority?"
@@ -17,7 +16,6 @@
       "claim": "Wait for `.<block>[data-block-status=\"loaded\"]`. The block class is in the delivered markup before any JS runs, so waiting for `.<block>` alone doesn't mean it's decorated.",
       "source": "SKILL.md:110, SKILL.md:267, references/troubleshooting.md:78-99",
       "kind": "eds",
-      "goal": "Fix wrong guidance",
       "skillSays": "`await page.waitForSelector('.my-block')`; also `waitForLoadState('networkidle')`, `waitForTimeout(500)`, `classList.contains('loaded')`",
       "verified": "aem-boilerplate@5cea543 scripts/aem.js:L536-538 (loading), L563 (loaded after CSS + decorate), L573-577 (block name read from existing first class; initialized)",
       "question": "In a Playwright test, how do you wait until an EDS block has finished decorating before interacting with it?"
@@ -27,7 +25,6 @@
       "claim": "`aem up` serves files from `./content/` before proxying to the preview site; local-only test HTML goes there, not in an `--html-folder`.",
       "source": "SKILL.md:264-266",
       "kind": "eds",
-      "goal": "`./content/` replaces `--html-folder` for test content",
       "skillSays": "SKILL.md:264 'Verify dev server running: `aem up --html-folder drafts`'",
       "verified": "@adobe/aem-cli@16.22.16 src/server/HelixServer.js:L473-478 ('Check content/ first — prefer local content checkout over proxy'), src/server/BaseServer.js:L161-163, src/content/content-shared.js:L16",
       "question": "How do you make the AEM CLI dev server serve a hand-written HTML test page for a block that doesn't exist in the project's content source?"
@@ -37,7 +34,6 @@
       "claim": "In a git worktree, `aem up` (no --port) uses a branch-derived port and logs it; tests must use the logged port, not 3000.",
       "source": "SKILL.md:109, SKILL.md:143, SKILL.md:266",
       "kind": "eds",
-      "goal": "Worktrees",
       "skillSays": "`await page.goto('http://localhost:3000/path/to/test')`",
       "verified": "@adobe/aem-cli@16.22.16 src/up.js:L50-54 (default '3000 (branch-derived in Git worktrees)'), src/up.cmd.js:L108-111 ('Git worktree detected. Using port ...')",
       "question": "When you run `aem up` inside a git worktree without --port, which URL should a Playwright test use to reach the dev server?"

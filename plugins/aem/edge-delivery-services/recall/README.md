@@ -4,7 +4,7 @@ Decides which lines of a skill are worth their tokens: test what current models 
 
 ## Steps
 
-1. **Inventory.** Split the skill's factual content (SKILL.md + references) into atomic facts: one key point per claim. Skip workflow and best-practice opinions not documented on aem.live (see below). If a claim has a main point plus a secondary detail worth knowing, make two facts; if the detail is noise, drop it. Classify each:
+1. **Inventory.** Split the skill's factual content (SKILL.md + references) into atomic facts: one key point per claim. Skip workflow and process opinions (see below). If a claim has a main point plus a secondary detail worth knowing, make two facts; if the detail is noise, drop it. Classify each:
    - `eds` — Edge Delivery Services specific
    - `generic` — general web/JS/CSS practice
 2. **Verify.** Check every `eds` fact against a live source (aem-boilerplate `main`, aem.live docs, aem-cli source). Record the source. If the skill is wrong, correct the claim, fix the skill to match, record the old wording in `skillSays`, and quiz the corrected fact to justify keeping it.
@@ -21,7 +21,7 @@ Decides which lines of a skill are worth their tokens: test what current models 
 | `wrong` in any model | keep, state sharply |
 | `missing` in any model | keep |
 
-Workflow (step order, when to invoke other skills) isn't recall: no fact, no quiz, never trimmed by this probe. Best practices documented on aem.live are facts: quiz them, with the doc as `verified`. Best-practice opinions found only in the skills aren't quizzed; keep them until the tessl eval, run after all skills' facts are done, shows whether they're still needed.
+Workflow (step order, when to invoke other skills) isn't recall: no fact, no quiz, never trimmed by this probe. Best practices are facts when authoritative docs state them (aem.live, MDN, web.dev, a tool's own docs) or they're established EDS coding practice; quiz them, citing the doc in `verified` where one exists. Process opinions found only in the skills (e.g. what to test) aren't quizzed; keep them until the tessl eval, run after all skills' facts are done, shows whether they're still needed.
 
 - Never trim factual content that no fact covers. To trim it, add a fact and quiz it first.
 - Trimming a line doesn't remove its fact. Keep it in `facts.json` so a re-run with newer models shows when it should come back.
@@ -43,7 +43,6 @@ recall/<skill>/
   facts.json          { sourceRef, sourceRoot, facts: [{ id, claim, source, kind, verified, question, quiz? }] }
                       sourceRef: commit the inventory was taken from; source paths (`file:line`) are relative to sourceRoot at that commit
                       kind: eds | generic; all kinds live in one file
-                      goal: goals.md entry the fact supports (optional)
                       skillSays: current skill wording where it contradicts the claim (optional)
                       quiz: reason a fact is excluded from the quiz (optional)
   answers/<model>.md  raw model output (gitignored)
