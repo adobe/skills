@@ -15,7 +15,7 @@
     {
       "name": "No platform class names inside the block",
       "max_score": 8,
-      "description": "Elements inside the block are not styled or named with `-wrapper` or `-container` suffixes (e.g. no `.testimonial-carousel .testimonial-carousel-wrapper`). The platform adds those classes to the block's parent and section."
+      "description": "Elements inside the block are not named with `-wrapper` or `-container` suffixes (e.g. no `.testimonial-carousel .testimonial-carousel-wrapper`). Those classes belong to the block's parent and section; targeting them from outside to adjust outer layout is fine."
     },
     {
       "name": "Targets the decorated DOM",
@@ -38,9 +38,9 @@
       "description": "Every `var(--x)` used is either defined in styles/styles.css or declared in the block CSS itself. No guessed names such as `var(--primary-color)` or `var(--font-body)` that exist in neither."
     },
     {
-      "name": "Page layout left to sections",
+      "name": "Section grid not overridden",
       "max_score": 10,
-      "description": "The block does not re-create the section layout already set by `main > .section > div`: no outer `max-width` on the block, no `margin: auto`/`margin-inline: auto` centering, no page-level inline padding on the block root. Styles control what is inside the block."
+      "description": "The block does not fight the page grid set by global section styles (`main > .section > div`): no outer `max-width`, `margin: auto`/`margin-inline: auto` centering, or negative/outer margins on the block root. If the block needs a different outer layout (e.g. full bleed), it targets `.testimonial-carousel-container` or `.testimonial-carousel-wrapper`. Padding inside the block, including on the block root, is fine."
     },
     {
       "name": "Mobile-first",

@@ -21,8 +21,8 @@
 - id: platform-wrapper-classes
   claim: >-
     aem.js adds `{block}-wrapper` to the block's parent and `{block}-container`
-    to its section. Don't reuse these names inside the block. Styling them from
-    outside is fine when needed.
+    to its section. Don't reuse these names inside the block. They are where a
+    block adjusts its outer layout (e.g. full bleed).
   source: aem-boilerplate 5cea543, scripts/aem.js decorateBlock()
   used_by:
     - evals/css-block-scoping-and-custom-properties
@@ -49,9 +49,10 @@
 
 - id: block-layout-scope
   claim: >-
-    Global styles define the page layout grid (`main > .section > div` sets
-    max-width, centering and inline padding). Block CSS controls what is inside
-    the block. Exceptions exist (full-bleed blocks like hero).
+    Global styles define the page grid (`main > .section > div` sets max-width,
+    centering and inline padding). Blocks don't override it on the block root;
+    outer layout changes go through `{block}-container` / `{block}-wrapper`.
+    Inner padding is the block's call.
   source: aem-boilerplate 5cea543, styles/styles.css; maintainer guidance
   used_by:
     - evals/css-block-scoping-and-custom-properties
