@@ -52,7 +52,7 @@ export function includedModules(rules) {
 // (figma/eds-map.mjs). { block: null } is default content.
 export function edsModules(rules) {
   const out = new Map();
-  for (const m of rules?.modules || []) if (m.status === 'include' && m.id) out.set(m.id, m.eds && typeof m.eds === 'object' && 'block' in m.eds ? m.eds : edsEquivalent(m.name));
+  for (const m of rules?.modules || []) if (m.status === 'include' && m.id) out.set(m.id, m.eds && typeof m.eds === 'object' && 'block' in m.eds ? m.eds : edsEquivalent(m.name, { anatomy: m.anatomy }));
   return out;
 }
 

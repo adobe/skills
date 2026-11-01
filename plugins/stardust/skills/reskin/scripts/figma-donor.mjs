@@ -117,7 +117,8 @@ curation-rules.json:
     "suspect": [ { "path": "<token path>", "why": "<text>" } ],
     "modules": [ { "id": "M1", "name": "<name>", "frame": "<frame or section nodeId>", "family": "<f>",
                    "anatomy": "<slots>", "variants": [], "components": [], "status": "include",
-                   "eds": { "block": "<EDS block>|null", "variant": null } },
+                   "eds": { "block": "<EDS block>|null", "variant": null, "as": "<blockless kind>", "name": "<style>" },
+                   "edsWhy": "<reason>" },
                  { "name": "<name>", "frame": "<nodeId>", "status": "excluded", "why": "<reason>" } ],
     "notesForReskin": "<casing, link glyphs, band rhythm>", "motifs": [ "<prose>" ],
     "design": { "displayName": "<name>", ... } }
@@ -136,7 +137,11 @@ curation-rules.json:
   A module's optional "eds" overrides the EDS block deploy Step 2 (D1/D11) gives its name
   (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser, Button → null = default content; a pattern
   word anywhere counts: Accordion Item → accordion, Table – Striped → table striped, Image Top Columns →
-  columns image-top).
+  columns image-top; a Links component is a links block). With "block": null, "as" names what it is
+  instead: section-style (its Style value in "name"), style (global CSS), convention (an authoring
+  convention such as strong/em buttons), feature (scripts/ behaviour) or default-content (the default),
+  each with an "edsWhy". donor-modules.md's Disposition column carries it for every included
+  module (deploy Step 2c builds each one; vocabulary-check.mjs checks the project).
 Figma as the CONTENT source (Figma-only sites, no live URL; reference/content-model.md
 § Figma-sourced models):
 init     writes <dir>/state.json when there is none: _provenance, site.contentSource {kind figma},
@@ -168,7 +173,7 @@ pages    discovers every page of a design-system file, not only the linked node.
          canvas (key from the canvas, its public sets variant classes, its "." sets parts; kit.blockPer
          "set" for one block per public set) and one donor module (M1… in canvas order), whose EDS name
          (block.eds) is deploy Step 2's (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser,
-         Button → default content, Chips → chips; several canvases on one EDS block are its variants).
+         Button → default content, Chips → chips, or links (chips) beside a Links canvas; several canvases on one EDS block are its variants).
          Each page binds only the blocks it instances, by EDS block and variant (variant classes from
          the set's non-breakpoint properties); a set no kit canvas holds is off-kit: a variant of the
          EDS block it maps to, else default content — never a new block. Writes reskin/figma-pages.json: pages, skipped,

@@ -6,7 +6,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks] --ew`
 - `deploy/build-harness.mjs` — local structural harness — `content/<p>.html <out.html> [--root <dir>]`
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
-- `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
+- `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
 - `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 fail, 3 token halt
 - `deploy/diff-profiles.mjs` — library (profiles), no CLI
@@ -54,7 +54,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--no-probes]`; exit 2 = FAIL
+- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--no-probes]`; exit 2 FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables — `[--slug <s>]… [--check] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow + probes — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text]`
@@ -82,7 +82,8 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <f> --rendered <u|f> [--deltas]`
 - `reskin/source-coverage.mjs` — gate (a′) — `--model <f> --target <u|f> [--declared <f>]`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
-- `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images] [--register]`; `--check [<slug>…]` validates mapping.json; `<slug> --deploy-map` prints block-roundtrip `--map`s
+- `reskin/stream-render.mjs` — renderer — `<slug> [--mapping] [--out] [--localize-images] [--register]`; `--check [<slug>…]` checks mapping.json; `--deploy-map`: roundtrip `--map`s
+- `reskin/vocabulary-check.mjs` — donor modules built (deploy 2c) — `[--library <d>]`
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`

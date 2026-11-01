@@ -206,6 +206,8 @@ await test('kitLibrary: each kit block carries its EDS name (deploy Step 2); sev
   ], 'Q&A → accordion, Teaser → cards (teaser), Input/Dropdown → form (field rows, no variant), Chips keeps its name; a second plain cards becomes a variant, never cards-2');
   assert.equal(figmaName('❖ Q&A'), 'Q&A');
   assert.deepEqual(libraryEds([{ block: 'x', eds: { block: 'tabs', variant: 'nav', reason: 'r' } }]), [{ block: 'tabs', variant: 'nav', reason: 'r' }], 'a recorded eds is kept');
+  assert.deepEqual(libraryEds([{ block: 'links', figma: 'Links' }, { block: 'chips', figma: 'Chips' }, { block: 'pagination', figma: 'Pagination' }]).map((e) => [e.block, e.variant]),
+    [['links', null], ['links', 'chips'], ['links', 'pagination']], 'variant-first: chips and pagination ride on the kit links block');
 });
 
 await test('offKitEds: an off-kit set joins the EDS block it maps to (kit or EDS), else default content — never a new block', () => {

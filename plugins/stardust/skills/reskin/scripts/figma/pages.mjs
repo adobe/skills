@@ -278,7 +278,10 @@ export function kitLibrary(kitCanvasNodes, kit) {
 // Figma name, several blocks on one EDS block made its variants (figma/eds-map.mjs resolveVariants).
 export function libraryEds(blocks) {
   const figmaOf = (b) => b.figma || figmaName(b.canvas?.name || b.set?.name) || b.block;
-  return resolveVariants(blocks.map((b) => ({ key: b.block, figma: figmaOf(b), eds: b.eds || edsEquivalent(figmaOf(b)) })));
+  // Variant-first: an invented block another library block hosts (Chips on a Links canvas) is its variant.
+  const first = blocks.map((b) => b.eds || edsEquivalent(figmaOf(b)));
+  const names = first.map((e) => e.block).filter(Boolean);
+  return resolveVariants(blocks.map((b, i) => ({ key: b.block, figma: figmaOf(b), eds: b.eds || edsEquivalent(figmaOf(b), { blocks: names.filter((n) => n !== first[i].block) }) })));
 }
 
 // pages[] + per-page frame responses + the library (+ homes for sets outside it) → the registry: every library
