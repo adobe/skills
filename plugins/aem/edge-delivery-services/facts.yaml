@@ -40,10 +40,14 @@
 
 - id: root-custom-properties
   claim: >-
-    Colors, font families and font sizes are `:root` custom properties in
-    styles/styles.css. Blocks reference them instead of repeating their values,
-    which drift.
-  source: aem-boilerplate 5cea543, styles/styles.css :root
+    Colors, font families and font sizes are custom properties declared on
+    `:root` in styles/styles.css (`:root, :host` in projects embedded with
+    aem-embed, which loads styles.css into a shadow root where `:root` matches
+    nothing). Blocks reference them instead of repeating their values, which
+    drift.
+  source: >-
+    aem-boilerplate 5cea543, styles/styles.css :root; adobe/aem-embed
+    scripts/aem-embed.js
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/references/css-guidelines.md
@@ -52,7 +56,8 @@
   claim: >-
     Global styles define the page grid (`main > .section > div` sets max-width,
     centering and inline padding). Blocks don't override it on the block root;
-    outer layout changes go through `{block}-container` / `{block}-wrapper`.
+    outer layout changes (e.g. full bleed) go through `{block}-container` /
+    `{block}-wrapper`, not viewport hacks like `calc(50% - 50vw)` or `100vw`.
     Inner padding is the block's call.
   source: aem-boilerplate 5cea543, styles/styles.css
   used_by:
@@ -79,3 +84,17 @@
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/references/css-guidelines.md
+
+- id: css-logical-properties
+  claim: >-
+    Use logical properties: `padding-inline`, `margin-block`,
+    `inset-inline-start` instead of left/right/top/bottom physical ones.
+  used_by:
+    - skills/building-blocks/references/css-guidelines.md
+
+- id: flex-grid-gap
+  claim: >-
+    Space flex and grid items with `gap`, not margins on the items or negative
+    margins on the container.
+  used_by:
+    - evals/css-block-scoping-and-custom-properties

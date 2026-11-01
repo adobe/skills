@@ -1,10 +1,10 @@
 {
-  "context": "The working directory is aem-boilerplate with an unstyled testimonial-carousel block (JS only). Tests whether the agent finds where block CSS goes and writes CSS that fits the project: scoped to the block, targeting the DOM decorate() produces, reusing the :root custom properties in styles/styles.css instead of duplicating their values, leaving page layout to section styles, and responsive mobile-first. Backing facts: facts.yaml (block-css-scoping, block-css-location, platform-wrapper-classes, css-targets-decorated-dom, root-custom-properties, block-layout-scope, mobile-first-breakpoints, block-variant-classes).",
+  "context": "The working directory is aem-boilerplate with an unstyled testimonial-carousel block (JS only). Tests whether the agent finds where block CSS goes and writes CSS that fits the project: scoped to the block, targeting the DOM decorate() produces, reusing the :root custom properties in styles/styles.css instead of duplicating their values, leaving page layout to section styles, and responsive mobile-first. Backing facts: facts.yaml (block-css-scoping, block-css-location, platform-wrapper-classes, css-targets-decorated-dom, root-custom-properties, block-layout-scope, mobile-first-breakpoints, block-variant-classes, flex-grid-gap).",
   "type": "weighted_checklist",
   "checklist": [
     {
       "name": "Block CSS location",
-      "max_score": 8,
+      "max_score": 6,
       "description": "Styles are in `blocks/testimonial-carousel/testimonial-carousel.css`, the file aem.js loads for the block. Fail if they are put in styles/styles.css, another file, or inline in the JS. styles/styles.css has no `testimonial-carousel` rules, and testimonial-carousel.js sets no inline styles and injects no `<style>` or stylesheet."
     },
     {
@@ -19,12 +19,12 @@
     },
     {
       "name": "Targets the decorated DOM",
-      "max_score": 13,
+      "max_score": 11,
       "description": "Selectors match the markup decorate() produces: `ul.items`, `li.item`, `blockquote.quote`, `.byline`, and the `p` elements inside them. Fail if the CSS styles classes or structure the JS does not create (e.g. invented `.author`, `.company`, `.testimonial-card`, or the authored `:scope > div > div` rows)."
     },
     {
       "name": "Uses root custom properties",
-      "max_score": 13,
+      "max_score": 11,
       "description": "Colors, font families and font sizes reference the custom properties defined in `:root` in the project's styles/styles.css (e.g. `var(--text-color)`, `var(--dark-color)`, `var(--body-font-family)`, `var(--heading-font-size-s)`), including in the dark variant."
     },
     {
@@ -41,6 +41,11 @@
       "name": "Section grid not overridden",
       "max_score": 10,
       "description": "The block does not fight the page grid set by global section styles (`main > .section > div`). The full-width dark background is done through the platform classes, e.g. `.testimonial-carousel-container:has(.testimonial-carousel.dark)` or `.testimonial-carousel-wrapper`, and the testimonials keep the section's content width. Fail on viewport hacks on the block root or its children (`width: 100vw`, `margin-inline: calc(50% - 50vw)`, negative margins) or on overriding `max-width`/centering of the block root. Padding inside the block, including on the block root, is fine."
+    },
+    {
+      "name": "Gap for item spacing",
+      "max_score": 6,
+      "description": "Spacing between the grid/flex items uses `gap`. Fail on margins on the items or negative margins on the list to create gutters."
     },
     {
       "name": "Mobile-first",
