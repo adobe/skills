@@ -9,7 +9,7 @@
   source: aem-boilerplate 5cea543, blocks/*/*.css use `.{block}`
   used_by:
     - evals/css-block-scoping-and-custom-properties
-    - skills/building-blocks/references/css-guidelines.md # still `main .{block}` only
+    - skills/building-blocks/SKILL.md
 
 - id: block-css-location
   claim: >-
@@ -27,7 +27,7 @@
   source: aem-boilerplate 5cea543, scripts/aem.js decorateBlock()
   used_by:
     - evals/css-block-scoping-and-custom-properties
-    - skills/building-blocks/references/css-guidelines.md
+    - skills/building-blocks/SKILL.md
 
 - id: css-targets-decorated-dom
   claim: >-
@@ -50,7 +50,7 @@
     scripts/aem-embed.js
   used_by:
     - evals/css-block-scoping-and-custom-properties
-    - skills/building-blocks/references/css-guidelines.md
+    - skills/building-blocks/SKILL.md
 
 - id: block-layout-scope
   claim: >-
@@ -62,7 +62,7 @@
   source: aem-boilerplate 5cea543, styles/styles.css
   used_by:
     - evals/css-block-scoping-and-custom-properties
-    - skills/building-blocks/references/css-guidelines.md
+    - skills/building-blocks/SKILL.md
 
 - id: mobile-first-breakpoints
   claim: >-
@@ -74,7 +74,6 @@
     in 4a3d34f (2024-05-29)
   used_by:
     - evals/css-block-scoping-and-custom-properties
-    - skills/building-blocks/references/css-guidelines.md # says 600/900
 
 - id: block-variant-classes
   claim: >-
@@ -83,14 +82,12 @@
   source: https://www.aem.live/developer/markup-sections-blocks (block options)
   used_by:
     - evals/css-block-scoping-and-custom-properties
-    - skills/building-blocks/references/css-guidelines.md
 
 - id: css-logical-properties
   claim: >-
     Use logical properties: `padding-inline`, `margin-block`,
     `inset-inline-start` instead of left/right/top/bottom physical ones.
-  used_by:
-    - skills/building-blocks/references/css-guidelines.md
+  used_by: []
 
 - id: flex-grid-gap
   claim: >-
