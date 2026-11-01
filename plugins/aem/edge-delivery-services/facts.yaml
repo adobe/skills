@@ -10,6 +10,14 @@
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/references/css-guidelines.md # still `main .{block}` only
 
+- id: block-css-location
+  claim: >-
+    aem.js loads a block's styles from `blocks/{block}/{block}.css` when the
+    block is on the page.
+  source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+
 - id: platform-wrapper-classes
   claim: >-
     aem.js adds `{block}-wrapper` to the block's parent and `{block}-container`

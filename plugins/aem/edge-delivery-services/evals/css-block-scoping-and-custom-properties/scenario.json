@@ -1,0 +1,15 @@
+{
+  "description": "Style an existing block in aem-boilerplate",
+  "fixtures": {
+    "codebase": {
+      "type": "commit",
+      "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+      "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+    },
+    "block-js": {
+      "type": "directory",
+      "path": "./fixtures/testimonial-carousel",
+      "installPath": "blocks/testimonial-carousel"
+    }
+  }
+}

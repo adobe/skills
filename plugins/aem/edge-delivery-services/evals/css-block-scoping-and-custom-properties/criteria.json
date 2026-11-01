@@ -1,10 +1,15 @@
 {
-  "context": "Tests whether the agent writes block CSS that fits an AEM Edge Delivery Services project: scoped to the block, targeting the DOM decorate() produces, reusing the :root custom properties from styles/styles.css instead of duplicating their values, leaving page layout to section styles, and responsive mobile-first. Backing facts: facts.yaml (block-css-scoping, platform-wrapper-classes, css-targets-decorated-dom, root-custom-properties, block-layout-scope, mobile-first-breakpoints, block-variant-classes).",
+  "context": "The working directory is aem-boilerplate with an unstyled testimonial-carousel block (JS only). Tests whether the agent finds where block CSS goes and writes CSS that fits the project: scoped to the block, targeting the DOM decorate() produces, reusing the :root custom properties in styles/styles.css instead of duplicating their values, leaving page layout to section styles, and responsive mobile-first. Backing facts: facts.yaml (block-css-scoping, block-css-location, platform-wrapper-classes, css-targets-decorated-dom, root-custom-properties, block-layout-scope, mobile-first-breakpoints, block-variant-classes).",
   "type": "weighted_checklist",
   "checklist": [
     {
+      "name": "Block CSS location",
+      "max_score": 8,
+      "description": "Styles are in `blocks/testimonial-carousel/testimonial-carousel.css`, the file aem.js loads for the block. Fail if they are put in styles/styles.css, another file, or inline in the JS. The block JS and styles/styles.css are unchanged."
+    },
+    {
       "name": "Block selector scoping",
-      "max_score": 12,
+      "max_score": 10,
       "description": "Every selector starts with `.testimonial-carousel` or `main .testimonial-carousel` (variant compounds like `.testimonial-carousel.dark` included). No bare element or unscoped class selectors such as `h2 { }` or `.item { }`."
     },
     {
@@ -14,13 +19,13 @@
     },
     {
       "name": "Targets the decorated DOM",
-      "max_score": 15,
+      "max_score": 13,
       "description": "Selectors match the markup decorate() produces: `ul.items`, `li.item`, `blockquote.quote`, `.byline`, and the `p` elements inside them. Fail if the CSS styles classes or structure the JS does not create (e.g. invented `.author`, `.company`, `.testimonial-card`, or the authored `:scope > div > div` rows)."
     },
     {
       "name": "Uses root custom properties",
-      "max_score": 15,
-      "description": "Colors, font families and font sizes reference the custom properties defined in `:root` in styles/styles.css (e.g. `var(--text-color)`, `var(--dark-color)`, `var(--body-font-family)`, `var(--heading-font-size-s)`), including in the dark variant."
+      "max_score": 13,
+      "description": "Colors, font families and font sizes reference the custom properties defined in `:root` in the project's styles/styles.css (e.g. `var(--text-color)`, `var(--dark-color)`, `var(--body-font-family)`, `var(--heading-font-size-s)`), including in the dark variant."
     },
     {
       "name": "No duplicated root values",
@@ -34,7 +39,7 @@
     },
     {
       "name": "Page layout left to sections",
-      "max_score": 12,
+      "max_score": 10,
       "description": "The block does not re-create the section layout already set by `main > .section > div`: no outer `max-width` on the block, no `margin: auto`/`margin-inline: auto` centering, no page-level inline padding on the block root. Styles control what is inside the block."
     },
     {
