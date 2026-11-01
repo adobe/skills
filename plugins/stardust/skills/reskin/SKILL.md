@@ -567,9 +567,13 @@ words; record it as `ledger.json#delivery = { scope:
   (`reference/deployed-leg.md`); it is handed off once `deploy` Step 10's
   eyeball, CLS and header results (or `unresolved`) are in its ledger.
   Publishing and the rest of the site are
-  theirs. Blocks written for donor modules obey the Experience Workspace
-  editability contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW
-  gate (`block-roundtrip --ew`) before they are done.
+  theirs. Blocks written for donor modules pass the EW gate
+  (`block-roundtrip --ew`, deploy SKILL.md § 8) before they are done.
+- **Hand off the whole vocabulary**, not only what the archetypes map:
+  every included `donor-modules.md` row carries a Disposition and
+  deploy builds each one, so authors can use it on later pages
+  (`../deploy/SKILL.md` § 2c); `vocabulary-check.mjs --library <dir>`
+  exits 0 before handoff.
 
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`
 (written by `reskin-ledger.mjs`) holds per-page status (`gated |

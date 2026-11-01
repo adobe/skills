@@ -216,6 +216,19 @@ with exit 2. This release adds no site auth: the gates send no Authorization hea
   with the source's positions as block options, frames unchanged. `--crops-out` writes each side's framing. (A first
   version gated on how much shows and had images keep their own shape; that broke the donor's proportions and was
   replaced.)
+- **Full donor vocabulary (#133).** Deploy builds every module the donor records, not only those the migrated pages
+  use, so an author can place any of them on a later page. `donor-modules.md` gains a Disposition column: `block`,
+  `variant` (an authored block option, preferred), `chrome`, `section-style (<name>)`, `style`, `convention`,
+  `feature` or `default-content`, a why after the colon (required for every blockless kind). A Figma donor's
+  `curation-rules.json` names a blockless kind in `eds.as` (`eds.name` for a section style) and the reason in
+  `edsWhy`; `curate` validates both. The new `reskin/vocabulary-check.mjs` reads the table and the project: every
+  block and variant exists and is handled by its block code, listed in `metadata.json` `variants` and sampled in
+  the block library, every section style styled, no invented block an existing block hosts (variant-first).
+  `deploy` Step 2c is the procedure; reskin Phase 6 hands the whole vocabulary off. Seeds corrected from the
+  field: a kit's Links is a links block; a card whose anatomy is a full-bleed image with copy over it is a hero;
+  chips and pagination are variants of a project links block. Found on a school site reskinned to a component kit:
+  its 34 modules became 8 blocks, 12 variants, 2 chrome blocks and 12 blockless entries (styles, features, a
+  section style), with the existing 52 pages unchanged by the content gate and the render check.
 - **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The
   first read geometry 41/41, ramp 291/291 and `parity` n/a while the deployed page was 21.05% off at 360; that drove the
   floor. The second: ramp 547/547 at widths 414 and 1440, coverage 78/80 with 2 waivers, parity

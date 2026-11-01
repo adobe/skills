@@ -236,18 +236,31 @@ check('donor-modules.md: provenance first, table, excluded row and Notes line; e
   const md = out.donorModulesMd;
   const lines = md.trimEnd().split('\n');
   assert.equal(lines[0], '<!-- stardust:provenance');
-  assert.ok(md.includes('| # | Module | EDS block | Where seen | Description |\n|---|--------|-----------|-----------|-------------|'));
-  assert.ok(md.includes('| M1 | Gradient hero | hero (gradient) | canon-source/assets/screenshots/home.png · node 1:3 | anatomy: display headline + lede + primary and secondary CTA; components: Button |'));
-  assert.ok(md.includes('| M2 | Feature grid | feature-grid | canon-source/assets/screenshots/home.png · node 1:7 | anatomy: section title + feature copy + card (label, CTA); variants: Show heading; components: Feature Grid, Button |'));
-  assert.ok(md.includes('| — | Related | — | canon-source/assets/screenshots/article.png · node 2:8 | excluded — do not develop: a second instance of the feature grid; M2 covers it |'));
+  assert.ok(md.includes('| # | Module | EDS block | Disposition | Where seen | Description |\n|---|--------|-----------|-------------|-----------|-------------|'));
+  assert.ok(md.includes('| M1 | Gradient hero | hero (gradient) | variant | canon-source/assets/screenshots/home.png · node 1:3 | anatomy: display headline + lede + primary and secondary CTA; components: Button |'));
+  assert.ok(md.includes('| M2 | Feature grid | feature-grid | block | canon-source/assets/screenshots/home.png · node 1:7 | anatomy: section title + feature copy + card (label, CTA); variants: Show heading; components: Feature Grid, Button |'));
+  assert.ok(md.includes('| — | Related | — | — | canon-source/assets/screenshots/article.png · node 2:8 | excluded — do not develop: a second instance of the feature grid; M2 covers it |'));
   for (const row of lines.filter((l) => /^\| (M\d+[a-z]?|—) \|/.test(l))) assert.match(row, /screenshots\/[a-z0-9-]+\.png · node I?\d+:\d+/);
   assert.equal(lines.at(-1), '**Notes for reskin:** sentence-case headings; navy and off-white bands alternate; buttons are 8px rounded with semibold labels');
 });
 check('donor-modules.md: the EDS block column is deploy Step 2 (eds-map.mjs) unless a module pins eds', () => {
   const md = curate(inputs(rules((r) => { r.modules[0].name = 'Q&A'; r.modules[1].eds = { block: null, variant: null }; return r; }))).donorModulesMd;
-  assert.ok(md.includes('| M1 | Q&A | accordion | canon-source'), md);
-  assert.ok(md.includes('| M2 | Feature grid | default content | canon-source'), md);
+  assert.ok(md.includes('| M1 | Q&A | accordion | block | canon-source'), md);
+  assert.ok(md.includes('| M2 | Feature grid | default content | default-content | canon-source'), md);
   rulesError(() => curate(inputs(rules((r) => { r.modules[0].eds = { block: '' }; return r; }))), /M1: eds must be/);
+});
+check('donor-modules.md: every included module carries one disposition, eds.as and edsWhy included', () => {
+  const md = curate(inputs(rules((r) => {
+    r.modules[0].eds = { block: null, variant: null, as: 'feature' }; r.modules[0].edsWhy = 'back-to-top button (scripts)';
+    r.modules[1].eds = { block: null, variant: null, as: 'section-style', name: 'email' }; r.modules[1].edsWhy = 'default content on a tinted band';
+    return r;
+  }))).donorModulesMd;
+  assert.ok(md.includes('| M1 | Gradient hero | default content | feature: back-to-top button (scripts) | canon-source'), md);
+  assert.ok(md.includes('| M2 | Feature grid | default content | section-style (email): default content on a tinted band | canon-source'), md);
+  rulesError(() => curate(inputs(rules((r) => { r.modules[0].eds = { block: null, as: 'feature' }; return r; }))), /M1: eds.as "feature" needs an edsWhy/);
+  rulesError(() => curate(inputs(rules((r) => { r.modules[0].eds = { block: 'hero', as: 'style' }; r.modules[0].edsWhy = 'x'; return r; }))), /M1: eds.as "style" needs "block": null/);
+  rulesError(() => curate(inputs(rules((r) => { r.modules[0].eds = { block: null, as: 'section-style' }; r.modules[0].edsWhy = 'x'; return r; }))), /M1: a section-style needs eds.name/);
+  rulesError(() => curate(inputs(rules((r) => { r.modules[0].eds = { block: null, as: 'widget' }; return r; }))), /M1: eds.as must be one of/);
 });
 check('a module without a screenshot or with a bad frame → RulesError (evidence-bound)', () => {
   rulesError(() => curate(inputs(rules(), { screenshotIndex: { ...screenshotIndex, article: { ...screenshotIndex.article, renderable: false } } })), /M4.*screenshot/);
@@ -267,7 +280,7 @@ check('a module whose frame holds only childless instances is recorded hollow in
 });
 check('module ids: M1 and composition variants such as M1b; anything else is a RulesError', () => {
   const md = curate(inputs(rules((r) => { r.modules[1].id = 'M1b'; r.modules[1].variantOf = 'M1'; return r; }))).donorModulesMd;
-  assert.ok(md.includes('| M1b | Feature grid | feature-grid | canon-source'), md);
+  assert.ok(md.includes('| M1b | Feature grid | feature-grid | block | canon-source'), md);
   for (const bad of ['m1', 'M', 'M1B', 'M1bc', 'M1-b', 'Mb']) rulesError(() => curate(inputs(rules((r) => { r.modules[1].id = bad; return r; }))), /needs an id like M1 \(or M1b/);
   rulesError(() => curate(inputs(rules((r) => { r.modules[1].id = 'M1b'; r.modules[2].id = 'M1b'; return r; }))), /duplicate module id M1b/);
 });
