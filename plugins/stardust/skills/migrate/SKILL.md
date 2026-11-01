@@ -169,6 +169,17 @@ its page type: report the archetype slug and `$stardust replica
 `rollout` Setup; the published-origin re-gate is unchanged. Thresholds
 are the gate's.
 
+**Gated-archetype precondition (`flow: reskin`).** The same rule, read
+from `stardust/reskin/ledger.json`: run
+`node skills/reskin/scripts/reskin-preflight.mjs` — exit 0 is the
+predicate (each type's archetype gated, residuals accepted, eyeball
+recorded, prototype unchanged; `../reskin/reference/handoff.md`). Exit 1
+blocks every `sibling`-tier render; print its FAIL lines. migrate merges
+the ledger's `handoff.<type>.gates` into each first sidecar
+(`gatesPassed` / `gateEvidence`). After rendering, gate the output
+(`reskin/gates/<slug>/migrated/`) and record it with
+`reskin-ledger.mjs record <slug> --stage migrated`.
+
 Print the plan and wait for confirmation when the scope is large:
 
 ```

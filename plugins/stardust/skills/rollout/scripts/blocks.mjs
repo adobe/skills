@@ -23,7 +23,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, edsName, kindOf, blockCounts, DEFAULT_CONTENT } from './lib.mjs';
+import { readJSON, writeJSON, edsName, edsBlock, kebabName, kindOf, blockCounts, DEFAULT_CONTENT } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -62,17 +62,20 @@ const now = new Date().toISOString();
 const blocks = [...agg.entries()].map(([id, a]) => {
   const kind = kindOf(id);
   const p = prior.get(id);
+  const variant = kind === 'chrome' ? null : edsBlock(id).variant;
   const delivery = (p && p.delivery) || {
     status: 'pending',
     edsBlockName: kind === 'chrome' ? null : edsName(id),
-    blockPath: kind === 'chrome' ? `fragments/${edsName(id)}.html` : null,
+    ...(variant ? { edsVariant: variant } : {}),
+    blockPath: kind === 'chrome' ? `fragments/${kebabName(id)}.html` : null,
     convertedAt: null,
   };
   // Keep the derived EDS name fresh for not-yet-converted blocks — never over a default-content
   // mapping, which is a resolved decision (no block to build) even while its status reads pending.
   if (delivery.status === 'pending' && delivery.edsBlockName !== DEFAULT_CONTENT) {
     delivery.edsBlockName = kind === 'chrome' ? null : edsName(id);
-    delivery.blockPath = kind === 'chrome' ? `fragments/${edsName(id)}.html` : delivery.blockPath || null;
+    if (variant) delivery.edsVariant = variant; else delete delivery.edsVariant;
+    delivery.blockPath = kind === 'chrome' ? `fragments/${kebabName(id)}.html` : delivery.blockPath || null;
   }
   return {
     id,

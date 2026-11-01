@@ -46,10 +46,10 @@ eyeballing.
 
 1. Run the master skill's setup (`../stardust/SKILL.md` § Setup): context
    loader, state read. **Flow guard.** If `state.json.flow` is
-   `redesign`, refuse: print the never-mix line and the switch command
-   (`$stardust replica --switch-flow`, which marks the redesign flow's
-   prototyped and migrated pages stale — master skill § Two migration
-   flows). If `flow` is absent, stamp `flow: "replica"`,
+   `redesign` or `reskin`, refuse: print the never-mix line and the switch
+   command (`$stardust replica --switch-flow`, which marks the other flow's
+   prototyped and migrated pages — and a reskin's registered `approved`
+   archetypes — stale; master skill § Two migration flows). If `flow` is absent, stamp `flow: "replica"`,
    `flowSource: "user-phrase"` (`../stardust/reference/state-machine.md`
    § Flow keys): invoking `replica` is the choice.
 2. Verify Playwright is importable from the project root (extract needs it;

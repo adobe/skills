@@ -1,7 +1,8 @@
 // skills/reskin/scripts/figma/eds-map.mjs — a Figma component / module name → the EDS block it becomes.
 // The rule is deploy's Step 2 (skills/deploy/SKILL.md § 2. Decide names + reuse), applied mechanically:
 //   D1   no repeating units and no bespoke interactive structure → default content (block null): buttons,
-//        links, headings, body copy are what aem.js decorates, never a block.
+//        a text link, headings, body copy are what aem.js decorates, never a block (a kit's "Links" is a link
+//        list: it keeps its name).
 //   D11  a boilerplate or Block Collection pattern → that block's name (accordion, cards, form, …), the
 //        Figma name kept as the variant where it tells variants apart (Teaser → cards teaser); a pattern
 //        word anywhere in the name counts too (Accordion Item → accordion, Table – Striped → table striped,
@@ -28,7 +29,7 @@ export function safeBlockName(name) {
 }
 
 const DEFAULT_CONTENT = new Set([
-  'button', 'buttons', 'btn', 'btns', 'cta-button', 'link', 'links', 'text-link', 'text', 'texts', 'heading', 'headings',
+  'button', 'buttons', 'btn', 'btns', 'cta-button', 'link', 'text-link', 'text', 'texts', 'heading', 'headings',
   'title', 'title-text', 'rich-text', 'richtext', 'body-copy', 'copy', 'paragraph', 'block-content', 'content-block', 'email',
   'image', 'picture', 'separator', 'divider',
 ]);
@@ -83,11 +84,36 @@ const ANYWHERE = [
 ];
 
 /**
- * edsEquivalent(figmaName, { hasRepeatingUnits, interactive }) → { block, variant, reason }
+ * edsEquivalent(figmaName, { hasRepeatingUnits, interactive, anatomy, blocks }) → { block, variant, reason }
  * block null = default content (D1). The flags are optional: unknown is treated as "may be a block", so only
  * the default-content names and an explicit { hasRepeatingUnits: false, interactive: false } fall to D1.
+ * anatomy (the module's slots): a card name whose anatomy is a full-bleed image with copy over it is a hero.
+ * blocks (the project's block names): an invented block another block can host is that block's variant.
  */
-export function edsEquivalent(figmaName, { hasRepeatingUnits, interactive } = {}) {
+export function edsEquivalent(figmaName, opts = {}) {
+  const e = byName(figmaName, opts);
+  const label = String(figmaName ?? '').trim();
+  if (e.block === 'cards' && FULL_BLEED.test(opts.anatomy || '') && OVER_IMAGE.test(opts.anatomy || '')) {
+    const v = e.variant || slugOf(figmaName);
+    return { block: 'hero', variant: v === 'hero' ? null : v, reason: `${STEP2} D11: "${label}" is a full-bleed image with copy over it — the hero block, not a card` };
+  }
+  const host = variantHost(e.block, opts.blocks);
+  if (host) return { block: host, variant: e.block, reason: `${STEP2} D11: "${label}" is a variant of the project's ${host} block (variant-first: no second block)` };
+  return e;
+}
+
+// A full-bleed image with copy laid over it (the anatomy line of a module).
+const FULL_BLEED = /full[- ](bleed|width)|background image|edge[- ]to[- ]edge/i;
+const OVER_IMAGE = /overlay|over the image|on the image|over a(n)? (image|photo)/i;
+// Invented blocks an existing block hosts as a variant (the same authored rows: a list of links).
+export const VARIANT_HOSTS = { links: ['chips', 'chip', 'pills', 'tags', 'tag-list', 'pagination', 'link-list'] };
+/** variantHost(block, blocks) → the project block that hosts `block` as a variant, or null. */
+export function variantHost(block, blocks) {
+  if (!block || !Array.isArray(blocks) || blocks.includes(block)) return null;
+  return Object.keys(VARIANT_HOSTS).find((h) => blocks.includes(h) && VARIANT_HOSTS[h].includes(block)) ?? null;
+}
+
+function byName(figmaName, { hasRepeatingUnits, interactive } = {}) {
   const slug = slugOf(figmaName);
   const label = String(figmaName ?? '').trim() || slug;
   if (!slug) return { block: null, variant: null, reason: `${STEP2} D1: "${label}" has no name to map — default content` };
@@ -142,4 +168,66 @@ export function resolveVariants(entries) {
     seen.add(id(out));
     return out;
   });
+}
+
+/** edsLabel's inverse: "cards (teaser)" → { block: 'cards', variant: 'teaser' }, "default content" → { block: null }, else null. */
+export function parseEdsLabel(label) {
+  const s = String(label ?? '').replace(/[`*_]/g, '').trim().toLowerCase();
+  if (s === 'default content') return { block: null, variant: null };
+  const m = /^([a-z][a-z0-9-]*)(?:\s*\(([a-z0-9-]+)\))?$/.exec(s);
+  return m ? { block: m[1], variant: m[2] ?? null } : null;
+}
+
+/**
+ * donor-modules.md → Map(module id → { block, variant }): its EDS block column, else deploy Step 2 on the
+ * module's name (a donor-modules.md written before the column). Excluded rows ("—") are absent.
+ */
+export function donorModulesEds(md) {
+  const out = new Map();
+  let head = null;
+  for (const line of String(md ?? '').split('\n')) {
+    if (!line.trim().startsWith('|')) { head = null; continue; }
+    const cells = line.trim().replace(/^\||\|$/g, '').split(/(?<!\\)\|/).map((c) => c.replace(/\\\|/g, '|').replace(/[`*_]/g, '').trim());
+    if (!head) { head = cells.map((c) => c.toLowerCase()); continue; }
+    const id = cells[head.indexOf('#')] ?? cells[0];
+    if (!/^M\d+$/.test(id ?? '')) continue;
+    const col = head.indexOf('eds block');
+    const name = cells[head.indexOf('module')] ?? '';
+    const eds = col >= 0 ? parseEdsLabel(cells[col]) : edsEquivalent(name);
+    if (eds) out.set(id, { block: eds.block, variant: eds.variant ?? null });
+  }
+  return out;
+}
+
+// ---- disposition: what a recorded module becomes in the project (deploy Step 2c, Full donor vocabulary) ----
+// block | variant (an authored block option, preferred over a new block) | chrome (header/footer) and, with no
+// block: section-style (a section-metadata Style value, `name` = the class) | style (global CSS in styles.css:
+// form fields, tooltip) | convention (an authoring convention aem.js decorates: strong / em links → buttons) |
+// feature (scripts/ behaviour: back-to-top, /modals/ links) |
+// default-content (D1). Every included module gets exactly one; deploy builds each, used by a page or not.
+export const DISPOSITIONS = ['block', 'variant', 'chrome', 'section-style', 'style', 'convention', 'feature', 'default-content'];
+export const BLOCKLESS = ['section-style', 'style', 'convention', 'feature', 'default-content'];
+// Every blockless kind says why (what it styles or does, where it lives); a block's why is optional.
+export const NEEDS_WHY = BLOCKLESS;
+const CHROME = ['header', 'footer'];
+
+/** disposition(eds, why) → { kind, block, variant, name, why }. eds.as names a blockless kind; else derived. */
+export function disposition(eds, why = '') {
+  const e = eds || { block: null, variant: null };
+  const w = String(why ?? '').trim();
+  if (e.block) {
+    const kind = CHROME.includes(e.block) ? 'chrome' : e.variant ? 'variant' : 'block';
+    return { kind, block: e.block, variant: e.variant ?? null, name: null, why: w };
+  }
+  return { kind: BLOCKLESS.includes(e.as) ? e.as : 'default-content', block: null, variant: null, name: e.name ?? null, why: w };
+}
+
+// "variant", "section-style (email): <why>", "feature: <why>" — the donor-modules.md Disposition cell.
+export const dispositionLabel = (d) => `${d.kind}${d.name ? ` (${d.name})` : ''}${d.why ? `: ${d.why}` : ''}`;
+
+/** The inverse of dispositionLabel, for a Disposition cell read back from donor-modules.md; null when malformed. */
+export function parseDisposition(cell) {
+  const m = String(cell ?? '').trim().match(/^([a-z-]+)(?: \(([^)]+)\))?(?::\s*(.*))?$/s);
+  if (!m || !DISPOSITIONS.includes(m[1])) return null;
+  return { kind: m[1], name: m[2] ?? null, why: (m[3] ?? '').trim() };
 }

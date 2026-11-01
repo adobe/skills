@@ -81,9 +81,10 @@ stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/ca
          known) and refuse (exit 2, nothing written to it, no request for the fixed outputs) when
          one is not ignored or is already tracked, or when any file under foundation/, the
          screenshots or the cache is tracked; the message names the path and the exact lines to
-         add to <dir>/.gitignore (or the git rm --cached a tracked file needs); capture --list
-         writes nothing and is not checked; stamp stores designSource.url as "figma:redacted"
-         (state.json stays tracked).
+         add to <dir>/.gitignore (or the git rm --cached a tracked file needs; capture's refusal
+         also lists curate's lines, so one edit covers both, and a capture that passes warns when
+         curate's are still missing); capture --list writes nothing and is not checked; stamp
+         stores designSource.url as "figma:redacted" (state.json stays tracked).
          Sticky: after capture --confidential, curate, stamp and later captures in this dir apply it
          too. Needs a git repository.
 --dir <d>  the stardust directory (default stardust).
@@ -101,7 +102,8 @@ curation-rules.json:
     "suspect": [ { "path": "<token path>", "why": "<text>" } ],
     "modules": [ { "id": "M1", "name": "<name>", "frame": "<frame or section nodeId>", "family": "<f>",
                    "anatomy": "<slots>", "variants": [], "components": [], "status": "include",
-                   "eds": { "block": "<EDS block>|null", "variant": null } },
+                   "eds": { "block": "<EDS block>|null", "variant": null, "as": "<blockless kind>", "name": "<style>" },
+                   "edsWhy": "<reason>" },
                  { "name": "<name>", "frame": "<nodeId>", "status": "excluded", "why": "<reason>" } ],
     "notesForReskin": "<casing, link glyphs, band rhythm>", "motifs": [ "<prose>" ],
     "design": { "displayName": "<name>", ... } }
@@ -120,7 +122,11 @@ curation-rules.json:
   A module's optional "eds" overrides the EDS block deploy Step 2 (D1/D11) gives its name
   (figma/eds-map.mjs: Q&A → accordion, Teaser → cards teaser, Button → null = default content; a pattern
   word anywhere counts: Accordion Item → accordion, Table – Striped → table striped, Image Top Columns →
-  columns image-top).
+  columns image-top; a Links component is a links block). With "block": null, "as" names what it is
+  instead: section-style (its Style value in "name"), style (global CSS), convention (an authoring
+  convention such as strong/em buttons), feature (scripts/ behaviour) or default-content (the default),
+  each with an "edsWhy". donor-modules.md's Disposition column carries it for every included
+  module (deploy Step 2c builds each one; vocabulary-check.mjs checks the project).
 Needs Node 22+ (an older Node stops at once with exit 2).
 Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup (Node < 22) or not
             found (404) · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
@@ -220,7 +226,11 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
       return 0;
     }
     const confidential = await confidentialMode(dir, opts, log);
-    if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir, namespaces: g.CAPTURE_NAMESPACES }); }
+    if (confidential) {
+      const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir, namespaces: g.CAPTURE_NAMESPACES, later: g.CURATE_OUTPUTS });
+      const missing = g.laterLines(g.CURATE_OUTPUTS, { dir });
+      if (missing.length) warn(`--confidential: curate will refuse until ${dir}/.gitignore also has: ${missing.join(' · ')}`);
+    }
     const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
     const { manifest, written, fromCache } = await runCapture({ url: positional[0], frames, maxFrames, refresh: Boolean(opts.refresh), confidential, dir, client, warn });
     const status = manifest.endpoints.map((e) => `${e.name} ${e.status}`).join(', ');

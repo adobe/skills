@@ -8,7 +8,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
 - `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
-- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failed, 3 = token halt
+- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content <dir> [--no-publish] [--token-env|--token-file]`; exit 1 fail, 3 token halt
 - `deploy/diff-profiles.mjs` — library (profiles), no CLI
 - `deploy/file-lock.mjs` — library (ledger lock), no CLI
 - `deploy/eds-path.mjs` — library (path contract), no CLI
@@ -24,12 +24,12 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `diff/chrome-explore.mjs` — header behaviour: states, close paths, motion — `<url> <out.json> [--width 1440,390]`
 - `diff/clip-probe.mjs` — text/controls clipped by overflow — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped
 - `diff/content-diff.mjs` — structural diff, main + chrome — `<protoURL> <edsURL> [--main <sel>] [--no-chrome] [--json]`
-- `diff/content-presence.mjs` — visible content per band, origin vs served — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = MISSING/HIDDEN
+- `diff/content-presence.mjs` — visible content per band — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = MISSING/HIDDEN
 - `diff/content-inventory.mjs` — library (classifier), no CLI
 - `diff/diff-profiles.mjs` — library (profiles), no CLI
 - `diff/live-session.mjs` — library (hardened browser session), no CLI
 - `diff/measure-live.mjs` — library (settle + measurement), no CLI
-- `diff/unit-geometry.mjs` — repeated-unit geometry Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>)`; exit 2 = unit off/hidden
+- `diff/unit-geometry.mjs` — unit geometry Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>)`; exit 2 = unit off/hidden
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>]`
 - `dynamics/dynamics-check.mjs` — replay parity checks vs source — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
@@ -48,13 +48,13 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
 - `replica/breakpoint-lint.mjs` — breakpoints on target steps — `[--target 600,900,1200] [--dirs <list>]` | `--inventory <file|dir…>`; exit 1 = off-target
-- `replica/cap-probe.mjs` — content caps — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>]`; exit 2 = FAIL
+- `replica/cap-probe.mjs` — content caps — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>]`; exit 2 FAIL
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
 - `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--no-probes]`; exit 2 = any FAIL
+- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--no-probes]`; exit 2 FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables — `[--slug <s>]… [--check] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow + probes — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text]`
@@ -69,14 +69,19 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
 - `replica/stitch-shot.mjs` — stitched full-page capture — `<url> <out.png> [--width] [--vh 900] [--settle]`
-- `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
-- `reskin/deployed-gate.mjs` — checks a deployed reskin preview: content, tokens, parity, sanity, deploy's gates — `preview --page <slug> --org --repo --branch --path | all --page <slug>`; exit 124 = no verdict
-- `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
-- `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>] [--viewport <w>] [--no-sanity] [--json <p>]`
-- `reskin/figma-donor.mjs` — Figma donor capture/curate/stamp — `capture <url> [--list] [--frames a,b] [--refresh] | curate | stamp [--confidential]`; exit 3 = blocked
-- `reskin/figma-gate.mjs` — Figma checks on a reskin page: join, geometry, type ramp, pixels, register — `boxes [--module Mn] | all --page <slug> --url <u|f>`; exit 124 = no verdict
+- `reskin/canon-from-reskin.mjs` — reskin → migrate bridge — `<archetype-slug> [--force] [--visual-threshold 10]`
+- `reskin/capture-content.mjs` — source content model — `--url <u> --out <dir> [--scope 'a,b']`
+- `reskin/deployed-gate.mjs` — deployed preview checks — `preview --page <slug> --org --repo --branch --path | all --page <slug>`; exit 124 = no verdict
+- `reskin/dom-equality.mjs` — content gate — `--source <u|f> --rendered <u|f> --report <p>`
+- `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <f> --rendered <u|f> [--spec] [--viewport] [--no-sanity] [--json]`
+- `reskin/figma-donor.mjs` — Figma donor — `capture <url> [--list] [--frames] [--refresh] | curate | stamp [--confidential]`; exit 3 = blocked
+- `reskin/figma-gate.mjs` — Figma checks — `boxes [--module Mn] | all --page <slug> --url <u|f>`; exit 124 = no verdict
+- `reskin/reskin-ledger.mjs` — ledger from gate evidence — `record <slug> [--stage] | eyeball | residual | show`
+- `reskin/reskin-preflight.mjs` — ready to migrate? exit 0 = yes — `[--dir] [--root] [--json]`
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
+- `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images] [--register]`; `--check [<slug>…]` checks mapping.json; `--deploy-map` prints roundtrip `--map`s
+- `reskin/vocabulary-check.mjs` — donor modules built (deploy 2c) — `[--library <dir>]`
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
