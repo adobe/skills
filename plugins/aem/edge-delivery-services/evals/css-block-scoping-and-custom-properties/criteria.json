@@ -10,7 +10,7 @@
     {
       "name": "Block selector scoping",
       "max_score": 10,
-      "description": "Every selector starts with `.testimonial-carousel` or `main .testimonial-carousel` (variant compounds like `.testimonial-carousel.dark` included). No bare element or unscoped class selectors such as `h2 { }` or `.item { }`."
+      "description": "Every selector starts with `.testimonial-carousel` or `main .testimonial-carousel` (variant compounds like `.testimonial-carousel.dark` included), or targets the platform `.testimonial-carousel-container` / `.testimonial-carousel-wrapper` for outer layout. No bare element or unscoped class selectors such as `h2 { }` or `.item { }`."
     },
     {
       "name": "No platform class names inside the block",
