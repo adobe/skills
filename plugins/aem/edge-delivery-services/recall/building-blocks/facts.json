@@ -346,11 +346,11 @@
     },
     {
       "id": "BB-045",
-      "claim": "A component's JS should query within its own root element and not modify elements outside it.",
+      "claim": "Block JS queries and modifies within its own block element by default; reaching outside it (e.g. the header locking body scroll for its mobile menu) is a deliberate exception.",
       "source": "references/js-guidelines.md:66-73, references/js-guidelines.md:91-99",
       "kind": "generic",
-      "verified": "n/a (general component practice)",
-      "question": "In an EDS block's JavaScript, what scope should DOM queries and modifications be limited to?"
+      "verified": "n/a (EDS coding practice); aem-boilerplate@5cea543 blocks/header/header.js:L70 (header sets document.body.style.overflowY), blocks/cards/cards.js (works only within block)",
+      "question": "In an EDS block's JavaScript, what part of the page should DOM queries and modifications normally be limited to, and when is it acceptable to go beyond that?"
     },
     {
       "id": "BB-046",
