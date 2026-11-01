@@ -1,4 +1,5 @@
 # Facts the EDS skills and evals rely on.
+# question: asked unaided to quiz whether models know the claim (the answer key).
 # source: external and re-checkable only; omitted for maintainer-endorsed practice.
 # used_by: paths relative to this plugin.
 
@@ -6,6 +7,9 @@
   claim: >-
     Block selectors start with `.{block}` or `main .{block}`; both are valid.
     `main .{block}` excludes copies of the block in header/footer.
+  question: >-
+    How should selectors in an EDS block's CSS be written so they only affect
+    that block? Example for a block named `cards`.
   source: aem-boilerplate 5cea543, blocks/*/*.css use `.{block}`
   used_by:
     - evals/css-block-scoping-and-custom-properties
@@ -15,6 +19,7 @@
   claim: >-
     aem.js loads a block's styles from `blocks/{block}/{block}.css` when the
     block is on the page.
+  question: Where does the CSS for an EDS block named `cards` live, and what loads it?
   source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
   used_by:
     - evals/css-block-scoping-and-custom-properties
@@ -24,6 +29,9 @@
     aem.js adds `{block}-wrapper` to the block's parent and `{block}-container`
     to its section. Don't reuse these names inside the block. They are where a
     block adjusts its outer layout (e.g. full bleed).
+  question: >-
+    What classes does EDS add around a block automatically, and how should
+    block CSS treat them?
   source: aem-boilerplate 5cea543, scripts/aem.js decorateBlock()
   used_by:
     - evals/css-block-scoping-and-custom-properties
@@ -32,6 +40,7 @@
 - id: css-targets-decorated-dom
   claim: >-
     Block CSS styles the DOM after decorate() runs, not the authored row/cell divs.
+  question: Does an EDS block's CSS target the authored markup or something else?
   source: >-
     aem-boilerplate 5cea543, scripts/aem.js loadBlock() runs CSS load and
     decorate() together and marks the block loaded after both
@@ -45,6 +54,10 @@
     aem-embed, which loads styles.css into a shadow root where `:root` matches
     nothing). Blocks reference them instead of repeating their values, which
     drift.
+  question: >-
+    Where do an EDS site's colors, fonts and font sizes come from, and how
+    should block CSS use them? Anything different when the site is embedded
+    with aem-embed?
   source: >-
     aem-boilerplate 5cea543, styles/styles.css :root; adobe/aem-embed
     scripts/aem-embed.js
@@ -59,6 +72,9 @@
     outer layout changes (e.g. full bleed) go through `{block}-container` /
     `{block}-wrapper`, not viewport hacks like `calc(50% - 50vw)` or `100vw`.
     Inner padding is the block's call.
+  question: >-
+    An EDS block needs a full-width background while its content stays aligned
+    with the rest of the page. How?
   source: aem-boilerplate 5cea543, styles/styles.css
   used_by:
     - evals/css-block-scoping-and-custom-properties
@@ -69,6 +85,7 @@
     CSS is mobile-first: defaults are mobile, wider layouts in min-width queries.
     Use the project's breakpoints. 600/900/1200px is the common convention;
     current boilerplate uses only 900px.
+  question: What responsive approach and breakpoints does EDS block CSS use?
   source: >-
     aem-boilerplate 5cea543, every @media is `(width >= 900px)`; 600px removed
     in 4a3d34f (2024-05-29)
@@ -79,6 +96,7 @@
   claim: >-
     Block options are extra classes on the block element (`Columns (dark, wide)`
     → `class="columns dark wide"`), styled as `.{block}.{option}`.
+  question: How do authors create a variant of an EDS block, and how is it styled?
   source: https://www.aem.live/developer/markup-sections-blocks (block options)
   used_by:
     - evals/css-block-scoping-and-custom-properties
@@ -87,11 +105,15 @@
   claim: >-
     Use logical properties: `padding-inline`, `margin-block`,
     `inset-inline-start` instead of left/right/top/bottom physical ones.
+  question: >-
+    In block CSS, how do you set horizontal padding and position an absolutely
+    positioned element's start edge?
   used_by: []
 
 - id: flex-grid-gap
   claim: >-
     Space flex and grid items with `gap`, not margins on the items or negative
     margins on the container.
+  question: How do you space items in a flex or grid layout?
   used_by:
     - evals/css-block-scoping-and-custom-properties
