@@ -716,20 +716,21 @@ this in the user report; do not engineer around it.
   redirects to a login screen, capture that one page, mark the rest as
   unreachable, and ask the user how to proceed (provide cookies via
   Playwright config, change the entry URL, or scope to public pages).
-- **Bot-management block (Akamai / Cloudflare / F5 / Imperva).**
+- **Bot-management block (Akamai / Cloudflare / F5 / Imperva / CloudFront).**
   When the first navigation returns `ERR_HTTP2_PROTOCOL_ERROR`,
   `ERR_QUIC_PROTOCOL_ERROR`, or hangs through the hard-cap on a
   TLS/H2 fingerprint check, the issue is JA3/H2 fingerprinting on
   bundled-chromium-default headless mode — not auth, not network.
-  Switch to `headless: false, channel: 'chrome'` per
-  `reference/playwright-recipe.md` § Bot-management fallback. Do
-  **not** retry headless: it will fail identically. The headed
-  fallback works against most enterprise / commerce origins;
-  `playwright-extra` + stealth plugin is a non-standard escape
-  hatch for the residual cases. The headed window pops visibly,
-  which is acceptable for interactive runs and unacceptable for
-  unattended pipelines — surface this to the user when first
-  triggered. Note for asset harvest: a page-level bot wall usually
+  `crawl.mjs` runs the fallback itself, window-free and without
+  stealth: real Chrome headless (`channel: 'chrome'`, its own
+  identity) first, bundled Chromium only when Chrome is missing, one
+  real-Chrome relaunch with the challenge-solve window on an
+  entry-page block, and a wall — an edge 403 or a 200 verification
+  interstitial — is named within seconds in `_crawl-log.json`
+  (`discovery.botBlock`, per-page `BotChallenge` failures), never
+  captured as content (`node crawl.mjs --help`; a hand-rolled recipe
+  follows `reference/playwright-recipe.md` § Bot-management
+  fallback). Note for asset harvest: a page-level bot wall usually
   does NOT gate assets — media/CSS/font URLs commonly return 200 to
   a plain browser-UA curl even while every page navigation is
   challenged (Cloudflare challenge, field-confirmed). Probe one
