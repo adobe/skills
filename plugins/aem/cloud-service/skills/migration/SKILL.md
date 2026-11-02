@@ -188,23 +188,14 @@ neither is configured, the helper reports `no-source` and the agent asks for one
 
 ### CAM via MCP (summary)
 
-Use **`fetch-cam-bpa-findings-by-pattern`** for code-transformer pattern flows (scheduler,
-assetApi, eventListener, resourceChangeListener, eventHandler, guavaCache, inputStream, lui, cdw) and
-**`fetch-cam-bpa-findings-by-importance`** when the user instead asks "what are the
-critical/major/advisory/info findings?" (returns the latest BPA report's authoritative
-`_COUNT_<code>` rows at one importance level, sorted by descending count). Either tool
-requires **explicit user confirmation** of the project before being called — ask the user
-for their CAM project name or ID; the tools resolve it internally (prefer **`projectId`**
-when known). Do not pass an unconfirmed project name string. **Full tool schemas, REST notes, retries, and error handling:**
-[references/cam-mcp.md](references/cam-mcp.md).
-
-If the **AEM MCP Server** is connected instead, run the recipes **`list-bpa-findings-by-pattern`**
-and **`list-bpa-findings-by-severity`** with `read-api` (and **`list-cam-projects`** to show the user
-their projects). The same confirmation rules apply. Differences: failures come back as the recipe's
-result rather than as tool errors, and the pattern recipe returns its full list in one call
-(`inputStream` is supported). Branch G validation outcomes are submitted with the
-**`submit-migration-validation-result`** recipe through `write-api`. See
-[references/cam-mcp.md](references/cam-mcp.md#through-the-aem-mcp-server-code-mode-recipes).
+Fetch CAM findings through the **AEM MCP Server** recipes: **`list-bpa-findings-by-pattern`** for
+code-transformer pattern flows (scheduler, assetApi, eventListener, resourceChangeListener,
+eventHandler, guavaCache, inputStream, lui, luiCoral2, cdw) and **`list-bpa-findings-by-severity`**
+when the user asks "what are the critical/major/advisory/info findings?". The **AEM Cloud Service
+Migration MCP** tools (`fetch-cam-bpa-findings-by-*`) are **deprecated**; use them only when the
+recipes are unavailable. Either way, the user must **explicitly confirm** the project first — resolve a
+name to its ID with `list-cam-projects` and pass **`projectId`**. Source choice, schemas, retries,
+the 500-target cap, and error handling: [references/cam-mcp.md](references/cam-mcp.md).
 
 ### Calling the helper
 
@@ -399,7 +390,7 @@ For `lui` findings, the `identifier` in each target is the **JCR component path*
 
 For **`dispatcherConversion`**, targets are the Dispatcher config root(s) and detected mode from the `dispatcher-inventory.js` scan (surfaced in the Step 0 runbook), not from BPA — go straight to **Branch E**.
 
-For **`inputStream`**, the precedence is the same as for the other BPA patterns: the runbook cache (above), then BPA findings — CAM via `fetch-cam-bpa-findings-by-pattern` with `pattern: "inputStream"`, then a BPA CSV — and the local scan only when BPA has no `inputStream` findings. BPA names classes, not lines, so always run the scanner once to resolve them: write the CAM targets to a JSON file and run `node scripts/input-stream-runner.js <workspaceRoot> --bpa-json <cam-targets.json> [--csv <bpa.csv>] --json` (CAM targets win over the CSV; with neither, it scans the whole workspace). Do **not** hand BPA rows to `analyze.sh`. With BPA rows, only the reported classes are in scope: the scanner resolves them to workspace files with line-level sites and collapses classes outside the workspace per bundle (per package for CAM rows, which carry no bundle name). A batch is **five non-informational file findings** in the scanner's (risk) order. After editing a batch, verify with `--files <touched files>` (a missing or unreadable path fails the re-scan). Full loop: [references/input-stream.md](references/input-stream.md).
+For **`inputStream`**, the precedence is the same as for the other BPA patterns: the runbook cache (above), then BPA findings — CAM via `list-bpa-findings-by-pattern` (or the deprecated `fetch-cam-bpa-findings-by-pattern`) with `pattern: "inputStream"`, then a BPA CSV — and the local scan only when BPA has no `inputStream` findings. BPA names classes, not lines, so always run the scanner once to resolve them: write the CAM targets to a JSON file and run `node scripts/input-stream-runner.js <workspaceRoot> --bpa-json <cam-targets.json> [--csv <bpa.csv>] --json` (CAM targets win over the CSV; with neither, it scans the whole workspace). Do **not** hand BPA rows to `analyze.sh`. With BPA rows, only the reported classes are in scope: the scanner resolves them to workspace files with line-level sites and collapses classes outside the workspace per bundle (per package for CAM rows, which carry no bundle name). A batch is **five non-informational file findings** in the scanner's (risk) order. After editing a batch, verify with `--files <touched files>` (a missing or unreadable path fails the re-scan). Full loop: [references/input-stream.md](references/input-stream.md).
 
 `getBpaFindings` returns **a batch of 5 findings** (default `limit=5`) along with a `paging`
 envelope. The agent processes that batch only; it does **not** request the next batch until
