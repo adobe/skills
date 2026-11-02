@@ -2,7 +2,7 @@
 name: performance-tuning
 description: Optimize performance of the Adobe Dispatcher Apache HTTP Server module and related HTTPD configuration for AEM 6.5 / AMS workflows only, with AMS-specific baseline and runtime verification.
 license: Apache-2.0
-compatibility: Requires Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`).
+compatibility: AEM 6.5 LTS/AMS Dispatcher configuration; no AMS Dispatcher MCP is currently available.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
 metadata:
   mcp-tool-contract: core-7-tools

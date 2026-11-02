@@ -35,7 +35,7 @@ Route user requests to the appropriate specialist skill based on intent.
 
 ## MCP Tool Contract
 
-When Dispatcher MCP tools are unavailable, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output.
+The configured Dispatcher MCP supports publish-layer checks only; do not use it as an Author-tier tool. When Dispatcher MCP tools are unavailable, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output.
 
 All specialist skills share the same core-7 MCP tool set:
 

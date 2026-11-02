@@ -5,7 +5,7 @@ description: |
   and cache rules, investigate incidents, and review performance or security. Routes LTS/AMS work
   to specialist skills; use the Cloud Service Dispatcher skill for AEM as a Cloud Service.
 license: Apache-2.0
-compatibility: Tool-dependent checks require Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`); bounded explanation/static review is available without MCP.
+compatibility: AEM 6.5 LTS/AMS Dispatcher configuration; no AMS Dispatcher MCP is currently available.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
 metadata:
   mcp-tool-contract: core-7-tools
@@ -35,17 +35,7 @@ Route user requests to the appropriate specialist skill based on intent.
 
 ## MCP Tool Contract
 
-When Dispatcher MCP tools are unavailable, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output.
-
-All specialist skills share the same core-7 MCP tool set:
-
-- `validate` — static config validation
-- `lint` — deep/order-aware linting
-- `sdk` — SDK check-files and diff-baseline
-- `trace_request` — trace a request through dispatcher
-- `inspect_cache` — inspect cache state
-- `monitor_metrics` — runtime metrics
-- `tail_logs` — log tailing
+No AMS Dispatcher MCP is currently available. For 6.5 LTS/AMS, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output.
 
 ## Specialist Skills
 
