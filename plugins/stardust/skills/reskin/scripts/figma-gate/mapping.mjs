@@ -26,7 +26,9 @@ export const chromePart = (...texts) => {
 export const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 // The first table whose header has Status and Donor module (reference/mapping-brief.md § Entry schema).
-export function parseMapping(md) {
+// A multi-page brief (one table for every page, a Page column) keeps the rows whose Page cell is `page`
+// (the slug); a brief with a Page column and no `page` is a usage error.
+export function parseMapping(md, page) {
   const lines = String(md).split('\n');
   for (let i = 0; i < lines.length; i += 1) {
     if (!lines[i].trim().startsWith('|')) continue;
@@ -35,12 +37,16 @@ export function parseMapping(md) {
     const head = cells(lines[i]).map((c) => plain(c).toLowerCase());
     const modCol = head.indexOf('donor module');
     const statusCol = head.indexOf('status');
+    const pageCol = head.indexOf('page');
     const contentCol = head.indexOf('content');
     if (modCol >= 0 && statusCol >= 0) {
+      if (pageCol >= 0 && !page) throw new UsageError('mapping.md has a Page column: pass --page <slug>');
+      const slotCol = pageCol === 0 ? 1 : 0;
       const rows = [];
       for (const line of lines.slice(i + 1, end)) {
         const row = cells(line);
-        const slot = plain(row[0] ?? '');
+        if (pageCol >= 0 && plain(row[pageCol] ?? '') !== page) continue;
+        const slot = plain(row[slotCol] ?? '');
         if (!SLOT.test(slot)) continue;
         const module = moduleId(row[modCol] ?? '');
         const status = plain(row[statusCol] ?? '').toLowerCase();

@@ -446,6 +446,26 @@ async function dismissConsent(page) {
   await page.evaluate(() => {
     document.querySelectorAll('#onetrust-banner-sdk, #truste-consent-track, #usercentrics-root, [class*="cookie" i][class*="banner" i], [id*="consent" i]')
       .forEach((n) => n.remove());
+    // Overlay heuristic (field finding, M3 spike: a CMP panel id'd like '#CookieReportsPanel'
+    // slipped every name pattern above): an element whose id/class names cookie/consent/gdpr
+    // AND that sits in a fixed/sticky or high-z overlay is chrome. The overlay guard keeps an
+    // in-content "cookie policy" section from being pruned.
+    {
+      const NAME = /cookie|consent|gdpr/i;
+      const overlay = (el) => {
+        for (let n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          if (cs.position === 'fixed' || cs.position === 'sticky') return true;
+          if (cs.position !== 'static' && +cs.zIndex >= 100) return true;
+        }
+        return false;
+      };
+      for (const el of [...document.querySelectorAll('[id], [class]')]) {
+        if (!el.isConnected || el.closest('main article')) continue;
+        const name = (el.id || '') + ' ' + (typeof el.className === 'string' ? el.className : '');
+        if (NAME.test(name) && overlay(el)) el.remove();
+      }
+    }
   });
 }
 

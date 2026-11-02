@@ -28,6 +28,10 @@
  *   SVG <title>/<desc> a11y labels ("Arrow right", "Play") and other
  *   innerText-invisible text never become ghost nodes that a spec-compliant
  *   renderer would emit and fail the gate on.
+ *   A node whose source text is line-clamped (computed -webkit-line-clamp
+ *   on a vertical -webkit-box, or line-clamp — on its element or a
+ *   transparent wrapper) carries lineClamp + clampGroup, so the target
+ *   clamps it too (content-model.md § The ordered stream).
  *
  * Live navigation is hardened via the shared diff live-session module
  * (real-Chrome UA + the standard request headers — UA alone still 403s on
@@ -267,6 +271,20 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
     const r = el.getBoundingClientRect();
     return r.width > 0 || r.height > 0 || el.offsetParent !== null;
   };
+  // The number of lines an element clamps its text to, or null: a computed
+  // -webkit-line-clamp on a vertical -webkit-box (the legacy clamp; Chrome
+  // computes that display as flow-root / inline-block) or a standard
+  // line-clamp. A -webkit-line-clamp on any other box clamps nothing. A card
+  // that clamps a post body in the source clamps it in the target too
+  // (content-model.md § The ordered stream, lineClamp).
+  const linesClamped = (el) => {
+    const st = getComputedStyle(el);
+    const std = parseInt(st.getPropertyValue('line-clamp'), 10);
+    if (std > 0) return std;
+    const n = parseInt(st.webkitLineClamp || st.getPropertyValue('-webkit-line-clamp'), 10);
+    const box = /^(-webkit-box|-webkit-inline-box|flow-root|inline-block)$/.test(st.display) && st.webkitBoxOrient === 'vertical';
+    return n > 0 && box ? n : null;
+  };
   // Shared image predicate — the SAME code dom-equality.mjs runs at gate
   // time (source-normalize.mjs IMG_VISIBLE), so capture and gate can never
   // drift on which images count as content.
@@ -387,7 +405,14 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
     // (inline zero-separator runs), ' ' when whitespace separates them.
     // Renderers consume this; they no longer reconstruct order from
     // visibleText as an oracle.
-    function nodeFor(el) {
+    // Clamped text: a node whose element clamps (or that sits in a clamped
+    // transparent wrapper) carries lineClamp + clampGroup; nodes sharing a
+    // group came from one clamped element, and the renderer clamps them
+    // together. Groups are numbered per slot.
+    let clampSeq = 0;
+    const clampOf = (el) => { const n = linesClamped(el); return n ? { lines: n, group: ++clampSeq } : null; };
+    const withClamp = (n, c) => (c ? Object.assign(n, { lineClamp: c.lines, clampGroup: c.group }) : n);
+    function nodeFor(el, inherited = null) {
       const kind = kindOf(el);
       if (kind === 'image') {
         if (!imgVisible(el)) return null;
@@ -403,11 +428,18 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       }
       if (!isVisible(el)) return null;
       const n = { kind, text: norm(el.innerText), display: getComputedStyle(el).display };
+      withClamp(n, clampOf(el) || inherited);
       if (kind === 'heading') n.level = el.tagName.toLowerCase();
       if (kind === 'cta') {
         n.href = el.getAttribute('href') || '';
         n.absHref = el.href || '';
         n.classes = (typeof el.className === 'string' ? el.className : '');
+        // Styled as a button whatever its class names (utility-CSS sites): a painted background or a
+        // visible border, plus button-sized padding.
+        const cs = getComputedStyle(el); const px = (v) => parseFloat(v) || 0;
+        const painted = !/^(transparent|rgba\(\d+,\s*\d+,\s*\d+,\s*0\))$/.test(cs.backgroundColor)
+          || (cs.borderStyle !== 'none' && px(cs.borderTopWidth) > 0 && px(cs.borderLeftWidth) > 0);
+        if (painted && px(cs.paddingLeft) >= 8 && px(cs.paddingRight) >= 8 && px(cs.paddingTop) >= 4) n.buttonLike = true;
       }
       const children = streamOf(el);
       // Pure-text leaves need no children; keep them only when they add
@@ -417,9 +449,9 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       if (!n.text && !(n.children && n.children.length)) return null;
       return n;
     }
-    function streamOf(rootEl) {
+    function streamOf(rootEl, rootClamp = null) {
       const out = [];
-      (function walk(el) {
+      (function walk(el, clamp) {
         for (const node of el.childNodes) {
           if (node.nodeType === Node.TEXT_NODE) {
             let t = norm(node.textContent);
@@ -440,25 +472,27 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
               const slice = ciFind(pInner, t);
               if (slice === null) continue; // absent from innerText → not in the byte reference → not a stream node
               t = slice;
-              out.push({
+              out.push(withClamp({
                 kind: 'text',
                 text: t,
                 parentTag: el.tagName.toLowerCase(),
                 parentClass: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
-              });
+                // An icon button's label sits in a nested span (often sr-only): the node is still the button.
+                ...(el.tagName !== 'BUTTON' && el.closest('button') ? { inButton: true } : {}),
+              }, clamp));
             }
             continue;
           }
           if (node.nodeType !== Node.ELEMENT_NODE) continue;
           if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(node.tagName)) continue;
           if (kindOf(node)) {
-            const n = nodeFor(node);
+            const n = nodeFor(node, clamp);
             if (n) out.push(n);
             continue;
           }
-          walk(node); // transparent wrapper — descend
+          walk(node, clampOf(node) || clamp); // transparent wrapper — descend
         }
-      })(rootEl);
+      })(rootEl, rootClamp);
       return out;
     }
     // Assign `sep` flags by tiling each parent's normalized text with its
@@ -481,7 +515,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       return ok;
     }
     const visibleText = norm(sec.innerText);
-    const ordered = kindOf(sec) ? [nodeFor(sec)].filter(Boolean) : streamOf(sec);
+    const ordered = kindOf(sec) ? [nodeFor(sec)].filter(Boolean) : streamOf(sec, clampOf(sec));
     const orderedVerified = assignSeps(visibleText, ordered);
     return {
       slot: `s${String(i + 1).padStart(2, '0')}`,
@@ -556,19 +590,20 @@ writeFileSync(out, JSON.stringify({
 const imgCount = model.sections.reduce((n, s) => n + s.images.length, 0);
 console.log(`[capture-content] slots=${model.sections.length} textLen=${model.visibleTextNormalized.length} images=${imgCount}`);
 console.log(`[capture-content] coverage: scope ${model.coverage.scopeTextLen} / body ${model.coverage.bodyTextLen} chars (ratio ${model.coverage.ratio}) — h1 in scope: ${model.coverage.h1InScope}`);
-if (model.coverage.h1InScope === false) {
-  console.log('[capture-content] WARNING: the page h1 is OUTSIDE the declared scope — the top failure mode (hero living in <header>). Widen --scope.');
-}
+
 // Slot-granularity smell (content-model.md § Scope discovery step 3b): a
 // whole page collapsing to ~2 slots, or one slot carrying most of the scope
 // text, means the scope sits on a page-wide wrapper (CMS parsys), not on
 // the real sections. Coverage ratio and h1InScope both pass in that state.
+// stream-render's captureSmells drops the known false positives (all-whole
+// scopes, a mega-slot that is a repeating card grid) to notes.
 const largestSlot = model.sections.reduce((m, s) => Math.max(m, s.visibleText.length), 0);
 const largestShare = model.visibleTextNormalized.length ? largestSlot / model.visibleTextNormalized.length : 0;
 console.log(`[capture-content] granularity: ${model.sections.length} slots — largest slot carries ${Math.round(largestShare * 100)}% of scope text`);
-if (model.sections.length < 3 || largestShare > 0.5) {
-  console.log('[capture-content] WARNING: wrapper-scope smell — fewer slots than visible sections, or one mega-slot. Scope DEEPER so the real sections become the scope\'s children (content-model.md § Scope discovery step 3b).');
-}
+const { captureSmells } = await import(pathToFileURL(resolvePath(dirname(fileURLToPath(import.meta.url)), 'stream-render.mjs')).href);
+const smells = captureSmells(model);
+for (const w of smells.warnings) console.log(`[capture-content] WARNING: ${w}`);
+for (const n of smells.notes) console.log(`[capture-content] note: ${n}`);
 const unverified = model.sections.filter((s) => !s.orderedVerified).map((s) => s.slot);
 if (unverified.length) {
   console.log(`[capture-content] WARNING: ordered stream did not tile visibleText for ${unverified.join(', ')} — renderers must not trust sep flags on those slots; inspect before rendering.`);
