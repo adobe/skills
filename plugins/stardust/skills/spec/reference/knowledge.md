@@ -1,8 +1,8 @@
 # The spec's output (knowledge/)
 
 `spec-knowledge.mjs` writes `stardust/spec/knowledge/` from the run's raw material and `judgement/`; clients read it,
-never crawl or judge. It is rewritten whole on each run, rows in a stable order, names neutral. A patch only adds
-fields, and clients ignore fields they do not know; removing or renaming one is a minor release.
+never crawl or judge. Rewritten whole on each run, rows in a stable order, names neutral. A patch only adds fields or
+enum values, which clients ignore when unknown; removing or renaming one is a minor release.
 
 ## Files
 
@@ -12,9 +12,9 @@ fields, and clients ignore fields they do not know; removing or renaming one is 
 |---|---|
 | `site.json` | `site`, `origin`, `scope_path`, `reference_blocks {name, count}`, `rum {available, window, bundles}`, `sitemap_urls`, `inventory_total`, `inventory_source`, `sample_note` (only when capped), `fetch_sources {live, headed, archive}`, `evidence_note` (only with archive captures), `built_at`, `built_by`, `provenance`, `variant_cut`, `capture_format`, `i18n_notes[]` |
 | `urls.jsonl` | id, url, path, section, depth, in_sitemap, status, final_url, final_status, outcome, template, variant_code, title, eds_path, needs_migration_redirect, pageviews_90d, rum_bundles, traffic_band, block_count, capture_key, main_chars, flag, blocked (why an `error` row was not read) |
-| `page-blocks.jsonl` | per page: `url_id`, `url`, `blocks[] {pos, block, variant, kind, source[], path, nested_in, section, crop}`; chrome globals first and last |
+| `page-blocks.jsonl` | per page: `url_id`, `url`, `blocks[] {pos, block, variant, kind (block, dynamic, widget, default, metadata, global), source[], path, nested_in, section, crop}`; chrome globals first and last |
 | `signals.jsonl` | per live sitemap page: `url_id`, `url`, `signals[]` (`hreflang`, `script:<host>`, `iframe:<host>`, `jsonld:<type>`, and `implementation.json#signals` names) |
-| `blocks.json` | name, kind, family, description, source[], reference_block, verdict, rationale, url_count, instance_count, template_count, pageviews_90d, `variants[] {variant, verdict, rationale, url_count, instance_count, examples[] {url, crop}}` |
+| `blocks.json` | name, kind (`block|dynamic|global|widget`), family, description, source[], reference_block, verdict, rationale, url_count, instance_count, template_count, pageviews_90d, `variants[] {variant, verdict, rationale, url_count, instance_count, examples[] {url, crop}}` |
 | `variants.json` | code, template_id, rank, label, core[], optional[], url_count, pageviews_90d, distinct_sets, rep_url, rep_capture_key |
 | `templates.json` | id, label, url_count, pageviews_90d, variant_count, top_variants_share, rep_url |
 | `source-components.json` | name, url_count, instance_count, maps_to {block: instances} |

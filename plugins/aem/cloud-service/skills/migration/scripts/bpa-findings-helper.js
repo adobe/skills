@@ -28,10 +28,12 @@ const {
   fetchUnifiedBpaFindings,
   getAvailablePatterns,
   getUnifiedCollectionSummary,
+  readUnifiedCollection,
   paginate,
-  DEFAULT_BATCH_SIZE
+  DEFAULT_BATCH_SIZE,
+  PATTERN_TO_SUBTYPES
 } = require('./unified-collection-reader.js');
-const { validateBpaFile, parseBpaFile, createUnifiedCollection } = require('./bpa-local-parser.js');
+const { validateBpaFile, parseBpaFile, createUnifiedCollection, LEGACY_PARSED_SUBTYPES } = require('./bpa-local-parser.js');
 
 const DEFAULT_COLLECTIONS_DIR = './unified-collections';
 
@@ -161,12 +163,42 @@ async function getFromMcp({ pattern, projectId, environment, mcpFetcher, collect
 }
 
 /**
+ * Patterns `pattern` asks for that the cached collection can't answer because it
+ * was written by a parser that didn't yet extract their subtypes
+ * (`meta.parsedSubtypes`; collections written before that field existed cover the
+ * subtypes parsers handled then). Such a collection lacks the pattern even when
+ * its CSV has rows for it. Empty when the cache is complete for `pattern`.
+ */
+function patternsMissingFromCache(collectionsDir, pattern) {
+  const recorded = readUnifiedCollection(collectionsDir)?.meta?.parsedSubtypes;
+  const parsed = Array.isArray(recorded) ? recorded : LEGACY_PARSED_SUBTYPES;
+  const covers = name => (PATTERN_TO_SUBTYPES[name] || []).every(subtype => parsed.includes(subtype));
+  return (pattern === 'all' ? Object.keys(PATTERN_TO_SUBTYPES) : [pattern]).filter(name => !covers(name));
+}
+
+/**
  * CSV / cached-collection path: first call parses CSV and writes the unified
  * collection; subsequent calls read it. Every call returns exactly one batch.
+ * A cached collection that predates a requested pattern is rebuilt from the CSV
+ * when one is given. Without a CSV, a request for that one pattern is an error
+ * (not "pattern absent"), while `all` still returns the patterns the cache
+ * covers and names the ones it can't answer.
  */
 function getFromCsvOrCache({ pattern, bpaFilePath, collectionsDir, offset, limit }) {
-  // Create the cache on first invocation if it doesn't exist yet.
-  if (!hasUnifiedCollection(collectionsDir)) {
+  const cached = hasUnifiedCollection(collectionsDir);
+  const missing = cached ? patternsMissingFromCache(collectionsDir, pattern) : [];
+  const stale = missing.length > 0;
+  if (stale && !bpaFilePath && pattern !== 'all') {
+    return {
+      success: false,
+      source: 'bpa-file',
+      error: `The cached collection at ${collectionsDir} was created before '${pattern}' was supported`,
+      message: `The cached collection at ${collectionsDir} can't answer '${pattern}'; provide the BPA CSV (bpaFilePath) to rebuild it.`
+    };
+  }
+  const servedFromStaleCache = stale && !bpaFilePath;
+  // Create the cache on first invocation, or rebuild a stale one from the CSV.
+  if (!cached || (stale && !servedFromStaleCache)) {
     if (!bpaFilePath) {
       return {
         success: false,
@@ -208,6 +240,11 @@ function getFromCsvOrCache({ pattern, bpaFilePath, collectionsDir, offset, limit
   const result = fetchUnifiedBpaFindings(pattern, collectionsDir, { offset, limit });
   result.source = 'bpa-file';
   result.message = `Using CSV collection (${summary?.totalFindings ?? result.paging.total} findings, ${formatTimestamp(summary?.timestamp)}).`;
+  if (servedFromStaleCache) {
+    // Not "absent": the cache predates these patterns, so their findings are unknown.
+    result.staleCache = { missingPatterns: missing };
+    result.message += ` The cached collection predates ${missing.map(m => `'${m}'`).join(', ')}; provide the BPA CSV (bpaFilePath) to include ${missing.length === 1 ? 'it' : 'them'}.`;
+  }
   return result;
 }
 

@@ -14,7 +14,7 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
-import { arg, helpAndExit, loadConfig, loadSibling, log, readJSON, readJSONL, templateOf, urlKey, writeJSON, writeText } from './lib.mjs';
+import { CODED, arg, helpAndExit, loadConfig, loadSibling, log, readJSON, readJSONL, templateOf, urlKey, writeJSON, writeText } from './lib.mjs';
 import { evalRule, fillText, selectUrls, tokens } from './rules.mjs';
 
 helpAndExit(import.meta.url);
@@ -89,6 +89,8 @@ export function archetypes(urls, variants, cut = 0.8) {
   return { cut, types: types.map((x) => ({ ...x, url_count: x.urls.length })) };
 }
 
+/** Block kinds that ship code (a widget is code only: one `/widgets/<path>/<name>.html` link, no authored rows). */
+
 /** A reach rule from implementation.json: the rule format only; SQL and the retired kinds fail loudly. Pure. */
 export function reachRule(rule) {
   const r = String(rule || '').trim();
@@ -146,7 +148,7 @@ async function main() {
   const addUrl = (r, inSitemap) => {
     const path = new URL(r.url).pathname; const segs = path.split('/').filter(Boolean); const oc = outcome(r); const isPage = oc === 'page';
     const pv = views[path] || {}; const pb = isPage ? blocksOf.get(r.url) : null; const c = comps.get(r.url);
-    const nblocks = pb ? new Set(pb.blocks.filter((b) => b.kind === 'block' || b.kind === 'dynamic').map((b) => b.block)).size : null;
+    const nblocks = pb ? new Set(pb.blocks.filter((b) => CODED.has(b.kind)).map((b) => b.block)).size : null;
     const dyn = pb && pb.blocks.some((b) => b.kind === 'dynamic');
     let flag = null;
     if (isPage && /thank-?you/i.test(path)) flag = 'thank-you'; else if (isPage && c && c.main_chars < 50 && !nblocks && !dyn) flag = 'empty';
@@ -176,7 +178,7 @@ async function main() {
     let last = 0;
     for (const b of pb.blocks) {
       const crop = ck && b.path && existsSync(join(media, ck, `${b.path}.jpg`)) ? `${ck}/${b.path}.jpg` : null;
-      if (crop && (b.kind === 'block' || b.kind === 'dynamic')) { const k = `${b.block}|${b.variant}`; (examples[k] = examples[k] || []).length < 4 && examples[k].push({ url: u, crop }); }
+      if (crop && CODED.has(b.kind)) { const k = `${b.block}|${b.variant}`; (examples[k] = examples[k] || []).length < 4 && examples[k].push({ url: u, crop }); }
       out.push({ pos: b.pos, block: b.block, variant: b.variant ?? null, kind: b.kind, source: b.aem || [], path: b.path ?? null, nested_in: b.nested_in ?? null, section: b.section ?? null, crop });
       last = b.pos;
     }
@@ -201,7 +203,7 @@ async function main() {
       url_count: on.length, instance_count: inst.length, template_count: tpl.size, pageviews_90d: on.reduce((a, p) => a + (urlById.get(p.url_id).pageviews_90d || 0), 0), variants: vs });
   }
   const named = new Set(blocks.map((b) => b.name));
-  const missing = [...new Set(pageBlocks.flatMap((p) => p.blocks.filter((x) => ['block', 'dynamic', 'global'].includes(x.kind) && !named.has(x.block)).map((x) => x.block)))];
+  const missing = [...new Set(pageBlocks.flatMap((p) => p.blocks.filter((x) => (CODED.has(x.kind) || x.kind === 'global') && !named.has(x.block)).map((x) => x.block)))];
   if (missing.length) log(`WARNING blocks missing from judgement/catalog.json: ${missing.join(', ')}`);
 
   // ---- source components → blocks

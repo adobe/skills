@@ -239,7 +239,7 @@ This project uses Airbnb ESLint configuration with some modifications:
 - Use ES6+ features (const, let, arrow functions, template literals)
 - Always include `.js` extension in imports: `import { foo } from './bar.js';`
 - Use single quotes for strings
-- No semicolons are enforced, but be consistent
+- Semicolons required
 - Use 2-space indentation
 - Unix line endings (LF)
 - Parameter reassignment is allowed for properties: `block.foo = 'bar'`

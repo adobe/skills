@@ -18,6 +18,8 @@
  *   node skills/deploy/scripts/ai-readability.mjs --origin https://main--site--org.aem.live \
  *        [--paths file | /path …] [--min 98] [--token-env SITE_TOKEN | --auth-header "token …"] \
  *        [--exclude-blocks client-app,widget,form] [--allowlist file.json] [--json out.json] [--verbose]
+ *   --exclude-blocks default client-app,widget: an EDS widget (data-block-name="widget") fetches its
+ *   words from code by design; they leave the code score and stay in strict.
  *
  * Exit 1 when any page's code score is below --min; 2 on infrastructure failure.
  * Writes: nothing unless --json <file> is given (the per-page results as JSON); the report is stdout.

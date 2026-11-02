@@ -112,21 +112,21 @@ alternative mode.
 ## `_meta.json` sidecar contract
 
 Schema in `skills/migrate/reference/migration-procedure.md` §
-`_meta.json` sidecar. The asset-bundling phase extends the
-sidecar with one field:
+`_meta.json` sidecar. Two fields beyond that schema:
 
 ```json
 {
-  "assetsBundled": 11
+  "assetsBundled": 11,
+  "widgets": [ { "id": "<name>", "href": "/widgets/<path>/<name>.html?<params>" } ]
 }
 ```
 
 `assetsBundled` is the count of **unique asset references on
 this page** — not the count of unique bundled files on disk
-(which is a project-wide number, recorded under
-`state.json.migrate.totalAssetsBundled`). A page that references
-the same logo 5 times reports `assetsBundled: 1` plus the rest
-of the page's references.
+(a project-wide number under `state.json.migrate.totalAssetsBundled`).
+`widgets[]` is derived from the page's `a[data-widget]` mounts
+(`id` = file stem of the href path, one entry per id); `modules[]`
+stays the block-id list.
 
 Missing-asset references are recorded as
 `migrationDecisions[]` entries with

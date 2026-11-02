@@ -9,7 +9,8 @@
  *
  * Dedup signal (Phase 2): brand-module ids carried per page in the _meta.json
  * sidecar `modules[]` (shared by construction) + chrome (header/nav/footer,
- * site-wide singletons). Finer section-archetype dedup via structural signatures
+ * site-wide singletons) + widgets (`widgets[] {id, href}`: kind `widget`, code at
+ * widgets/<path>/<name>.html, no document rows — the page carries one link). Finer section-archetype dedup via structural signatures
  * is a later refinement; the `signature` field is reserved for it.
  *
  * Idempotent: existing block delivery status is preserved; a `default-content` mapping (a module
@@ -23,7 +24,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, edsName, kindOf, blockCounts, DEFAULT_CONTENT } from './lib.mjs';
+import { readJSON, writeJSON, edsName, kindOf, blockCounts, widgetCodePath, DEFAULT_CONTENT } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -47,32 +48,35 @@ const blocksPath = join(OUT, 'coverage', 'blocks.json');
 const prior = new Map(((readJSON(blocksPath, { blocks: [] }) || {}).blocks || []).map((b) => [b.id, b]));
 
 // Aggregate block instances across pages.
-const agg = new Map(); // id -> { templates:Set, pages:[], count }
+const agg = new Map(); // id -> { templates:Set, pages:[], count, kind, href }
+const tally = (p, id, extra) => {
+  if (!agg.has(id)) agg.set(id, { templates: new Set(), pages: [], count: 0, ...extra });
+  const a = agg.get(id);
+  a.count += 1;
+  a.pages.push(p.slug);
+  if (p.templateId) a.templates.add(p.templateId);
+};
 for (const p of pages) {
-  for (const id of p.blocks || []) {
-    if (!agg.has(id)) agg.set(id, { templates: new Set(), pages: [], count: 0 });
-    const a = agg.get(id);
-    a.count += 1;
-    a.pages.push(p.slug);
-    if (p.templateId) a.templates.add(p.templateId);
-  }
+  for (const id of p.blocks || []) tally(p, id, { kind: kindOf(id) });
+  for (const w of p.widgets || []) tally(p, w.id, { kind: 'widget', href: w.href });
 }
 
 const now = new Date().toISOString();
 const blocks = [...agg.entries()].map(([id, a]) => {
-  const kind = kindOf(id);
+  const { kind } = a;
+  const codePath = kind === 'chrome' ? `fragments/${edsName(id)}.html` : kind === 'widget' ? widgetCodePath(a.href) : null;
   const p = prior.get(id);
   const delivery = (p && p.delivery) || {
     status: 'pending',
-    edsBlockName: kind === 'chrome' ? null : edsName(id),
-    blockPath: kind === 'chrome' ? `fragments/${edsName(id)}.html` : null,
+    edsBlockName: kind === 'chrome' ? null : kind === 'widget' ? id : edsName(id), // a widget's class is its file stem verbatim (reservedStem is the lint's job)
+    blockPath: codePath,
     convertedAt: null,
   };
   // Keep the derived EDS name fresh for not-yet-converted blocks — never over a default-content
   // mapping, which is a resolved decision (no block to build) even while its status reads pending.
   if (delivery.status === 'pending' && delivery.edsBlockName !== DEFAULT_CONTENT) {
     delivery.edsBlockName = kind === 'chrome' ? null : edsName(id);
-    delivery.blockPath = kind === 'chrome' ? `fragments/${edsName(id)}.html` : delivery.blockPath || null;
+    delivery.blockPath = codePath || delivery.blockPath || null;
   }
   return {
     id,
@@ -103,10 +107,12 @@ if (config) {
 
 const modules = blocks.filter((b) => b.kind === 'module');
 const chrome = blocks.filter((b) => b.kind === 'chrome');
+const widgets = blocks.filter((b) => b.kind === 'widget');
 console.log(`rollout blocks → ${blocksPath}`);
 console.log('='.repeat(60));
-console.log(`Distinct blocks  ${blocks.length}  (${modules.length} module · ${chrome.length} chrome/fragment)`);
-console.log(`Reuse leverage   ${pages.reduce((n, p) => n + (p.blocks || []).length, 0)} instances → ${blocks.length} conversions`);
+console.log(`Distinct blocks  ${blocks.length}  (${modules.length} module · ${chrome.length} chrome/fragment · ${widgets.length} widget)`);
+console.log(`Reuse leverage   ${pages.reduce((n, p) => n + (p.blocks || []).length + (p.widgets || []).length, 0)} instances → ${blocks.length} conversions`);
 const top = [...modules].sort((a, b) => b.instanceCount - a.instanceCount).slice(0, 6);
 if (top.length) console.log(`Most reused      ${top.map((b) => `${b.id}×${b.instanceCount}`).join(', ')}`);
 if (chrome.length) console.log(`Fragments        ${chrome.map((b) => b.id).join(', ')}`);
+if (widgets.length) console.log(`Widgets          ${widgets.map((b) => `${b.id} → ${b.delivery.blockPath}`).join(', ')} (code only; no document rows)`);

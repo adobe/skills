@@ -51,6 +51,11 @@
           "description": "Block ids this page composes (rollout/coverage/blocks.json[].id).",
           "items": { "type": "string" }
         },
+        "widgets": {
+          "type": "array",
+          "description": "Widgets this page mounts (sidecar widgets[]): id = the EDS widget name (rollout/coverage/blocks.json[].id, kind widget), href = the one /widgets/<path>/<name>.html link the page carries, query params included.",
+          "items": { "type": "object", "required": ["id", "href"], "additionalProperties": false, "properties": { "id": { "type": "string" }, "href": { "type": "string" } } }
+        },
         "delivery": {
           "type": "object",
           "required": ["status"],
@@ -64,7 +69,12 @@
             "deployedUrl": { "type": ["string", "null"], "format": "uri" },
             "deployedAt": { "type": ["string", "null"], "format": "date-time" },
             "verifiedAt": { "type": ["string", "null"], "format": "date-time" },
-            "error": { "type": ["string", "null"], "description": "Failure detail when status == failed." }
+            "error": { "type": ["string", "null"], "description": "Failure detail when status == failed." },
+            "pinned": {
+              "type": "object",
+              "description": "Delivered on its own track (replica first page first), written by update-coverage.mjs --gate <table> --pin: inventory never re-flags the row stale on a re-render; a page write --status pending|stale removes it.",
+              "properties": { "by": { "type": "string" }, "table": { "type": "string" }, "at": { "type": "string", "format": "date-time" } }
+            }
           }
         }
       }

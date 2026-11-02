@@ -1,36 +1,36 @@
 {
-  "context": "The agent turns an existing bot-protection probe report (CloudFront blocking the HeadlessChrome User-Agent; first working step: stealth + UA override) into a browser recipe for playwright-cli consumers. Judge browser-recipe.json and answer.md.",
+  "context": "The agent turns an existing `web probe` report (CloudFront blocking the HeadlessChrome User-Agent; first working step: stealth-ua) into the browser recipe `web probe --save-recipe` would have written, `recipe.json`. Judge recipe.json and answer.md.",
   "type": "weighted_checklist",
   "checklist": [
     {
       "name": "recipe_written",
       "max_score": 10,
       "category": "INTENT",
-      "description": "browser-recipe.json exists in the working directory, is valid JSON, and records the probed URL https://shop.northwind-outdoor.com/."
+      "description": "recipe.json exists in the working directory and is valid JSON: an object whose `probe` key is an array with one entry that has a boolean `persistent` field."
     },
     {
       "name": "consumable_shape",
       "max_score": 15,
       "category": "INTEGRATION",
-      "description": "The recipe has a top-level `cliConfig` object that is a playwright-cli config (a `browser` key with `browserName` and `launchOptions`) and a top-level `stealthInitScript` field, so a consumer can write cliConfig to a --config file and the script to an initScript file."
+      "description": "The recipe has the shape `web probe --save-recipe` writes: `probe[0]` has `url`, `config` with `browserName` and `launchOptions`, `persistent` and a boolean `stealth`, so `--recipe` can load it. No other top-level keys than recipe types (`probe`, `overlays`)."
     },
     {
       "name": "ua_override",
       "max_score": 20,
       "category": "INTENT",
-      "description": "cliConfig.browser.launchOptions.args contains a `--user-agent=` value for a regular desktop Chrome that does not contain 'HeadlessChrome'."
+      "description": "probe[0].config.launchOptions.args contains a `--user-agent=` value for a regular desktop Chrome that does not contain 'HeadlessChrome'."
     },
     {
       "name": "stealth_script",
       "max_score": 15,
       "category": "INTENT",
-      "description": "stealthInitScript is non-empty JavaScript that, at minimum, hides navigator.webdriver (the working step used the stealth init script)."
+      "description": "probe[0].stealth is true (the working step used the stealth init script), and the recipe does not inline a script or point at a script file: the CLI injects its own."
     },
     {
       "name": "minimum_config",
       "max_score": 15,
       "category": "MINIMALITY",
-      "description": "The recipe matches the first successful step (stealth-ua): it does not switch to system Chrome (`channel: \"chrome\"`) and does not request a persistent profile."
+      "description": "The recipe matches the first successful step (stealth-ua): `persistent` is false and it does not switch to system Chrome (`channel: \"chrome\"`)."
     },
     {
       "name": "diagnosis",

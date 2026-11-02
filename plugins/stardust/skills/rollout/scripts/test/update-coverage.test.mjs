@@ -244,5 +244,29 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
   assert.equal(bad.code, 1, 'a file without rows[] is refused');
 });
 
+await check('--gate --pin (first page first): a passing row matched by PATH (the inventory slug differs) is pinned and moved to deployed with the table\'s eds URL; a failing one is not pinned; --status stale unpins', async () => {
+  const { proj, out } = fixture();
+  const pj = join(out, 'coverage', 'pages.json');
+  const doc = JSON.parse(readFileSync(pj, 'utf8'));
+  doc.pages[0].path = '/'; doc.pages[1].path = '/about'; doc.pages[2].path = '/contact'; doc.pages[2].delivery.status = 'verified';
+  writeFileSync(pj, JSON.stringify(doc));
+  const table = join(proj, 'summary.json');
+  writeFileSync(table, JSON.stringify({ _provenance: { eds: 'https://main--site--org.aem.live' }, rows: [
+    { slug: 'index', path: '/', pct: 2.1, heightDelta: 4, clipped: 0, pass: true, reasons: [] },
+    { slug: 'about-us', path: '/about', pct: 22, heightDelta: 0, clipped: 0, pass: false, reasons: ['pixel 22% > 10%'] },
+    { slug: 'contact-us', path: '/contact', pct: 1, heightDelta: 0, clipped: 0, pass: true, reasons: [] },
+  ] }));
+  const r = await run(['--gate', table, '--pin'], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /3 of 3 rows matched, 1 status flip\(s\), pinned 2: page-0, page-2$/m);
+  const by = () => Object.fromEntries(JSON.parse(readFileSync(pj, 'utf8')).pages.map((p) => [p.slug, p.delivery]));
+  const d = by();
+  assert.equal(d['page-0'].status, 'deployed'); assert.equal(d['page-0'].deployedUrl, 'https://main--site--org.aem.live/'); assert.equal(d['page-0'].pinned.by, 'first-page'); assert.equal(d['page-0'].gate.pass, true);
+  assert.equal(d['page-1'].status, 'pending', 'a failing row is neither pinned nor moved'); assert.equal(d['page-1'].pinned, undefined);
+  assert.equal(d['page-2'].status, 'verified', 'a verified row stays verified'); assert.ok(d['page-2'].pinned);
+  const u = await run(['page-2', '--status', 'stale'], proj); assert.equal(u.code, 0, u.err);
+  assert.equal(by()['page-2'].pinned, undefined, 'asking for re-delivery unpins');
+  const plain = await run(['--gate', table], proj); assert.equal(plain.code, 0); assert.doesNotMatch(plain.out, /pinned/, 'without --pin nothing is pinned');
+});
+
 console.log(failed ? `update-coverage: ${failed} check(s) failed` : 'update-coverage: all checks passed');
 process.exit(failed ? 1 : 0);

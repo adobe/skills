@@ -12,9 +12,7 @@ When `--prep` is active, call `validateProvenance(page)` per
 validation on every `extracted` page in `state.json` before typing
 or module detection. Abort with the helper's error when any page
 lacks live-render evidence. Surface `Provenance OK on N pages` in
-the prep summary. Discovery-mode `direct` does not validate (it
-operates on a 5-page sample for which extract's own write-time
-refusal is sufficient).
+the prep summary. Discovery-mode `direct` does not validate.
 
 `--prep` adds five things on top of the standard procedure:
 
@@ -53,7 +51,7 @@ hotline-211 (5 instances)
   Slot candidates: phone, hours, headline, cta-label
   Found in: home, get-help, donate, news, programs
 
-  Confirm? (name "<id>" / promote / prune / refine slots)
+  Confirm? (name "<id>" / promote / prune / refine slots / widget)
 ```
 
 User actions per candidate:
@@ -65,15 +63,18 @@ User actions per candidate:
   spurious match; instances will render as inline content).
 - **Refine slots.** Mark slots required, set defaults, add or
   remove slots, adjust types.
+- **Mark as widget.** Code-driven with no slots, or every slot is
+  configuration (no authored content → widget; authors fill rows →
+  block). Move to `DESIGN.json.extensions.widgets[]` as
+  `{ id, path, params }`; instances render as the mount link
+  (`../../stardust/reference/data-attributes.md`).
 
-Confirmed modules become the catalog migrate consumes.
+Confirmed modules and widgets become the catalog migrate consumes.
 
 ### 3. Color reservations
 
 If the resolved direction reserves any color to a specific
-module/lockup (e.g., centennial-red `#DC323D` reserved to the
-`trh-100-lockup` module), capture in
-`DESIGN.json.extensions.colorReservations[]`:
+module/lockup, capture in `DESIGN.json.extensions.colorReservations[]`:
 
 ```json
 [
