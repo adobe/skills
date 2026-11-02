@@ -21,6 +21,7 @@ const PATTERN_TO_SUBTYPE = {
   scheduler: "sling.commons.scheduler",
   assetApi: "unsupported.asset.api",
   guavaCache: "custom.guava.cache",
+  oakIndex: "oak.index.definition",
   inputStream: "java.io.inputstream",
 };
 
@@ -31,6 +32,8 @@ const CSV_SUBTYPE_TO_PATTERN = {
   "org.apache.sling.api.resource.observation.ResourceChangeListener": "resourceChangeListener",
   "org.osgi.service.event.EventHandler": "eventHandler",
   "custom.guava.cache": "guavaCache",
+  "index.rule.violation": "oakIndex",
+  "standard.index.modification": "oakIndex",
   "java.io.inputstream": "inputStream"
 };
 
@@ -67,12 +70,15 @@ const PARSED_SUBTYPES = [
   'org.apache.sling.api.resource.observation.ResourceChangeListener',
   'org.osgi.service.event.EventHandler',
   'custom.guava.cache',
+  'oak.index.definition',
   'java.io.inputstream',
   ...CONTENT_SUBTYPES,
 ];
 // What collections written before `meta.parsedSubtypes` existed can be trusted
 // for: every subtype above except those added since.
-const LEGACY_PARSED_SUBTYPES = PARSED_SUBTYPES.filter(subtype => subtype !== 'java.io.inputstream');
+const LEGACY_PARSED_SUBTYPES = PARSED_SUBTYPES.filter(
+  subtype => subtype !== 'java.io.inputstream' && subtype !== 'oak.index.definition'
+);
 
 /**
  * Parse command line arguments
@@ -500,6 +506,44 @@ function processGuavaCacheFindings(findings) {
 }
 
 /**
+ * Process oak index findings from CSV. `identifier` is the oak index JCR path
+ * (e.g. `/content/oak:index/enablementResourceName`), not a class name — kept
+ * as raw array values (never used as an object key), so no mongo-safe
+ * round-trip risk. One real index path produces multiple raw CSV rows (one
+ * per distinct rule violation — "must follow -custom-N pattern", "path must
+ * begin with /oak:/index", "type must be lucene", etc., all for the same
+ * path) — dedupe by path per subtype, not by row. Both BPA subtypes for
+ * category OID (`index.rule.violation`, `standard.index.modification`) are
+ * emitted under the single `oakIndex` pattern, keyed separately since a path
+ * can independently need both a naming fix and a modification review.
+ */
+function processOakIndexFindings(findings) {
+  const oakIndexFindings = findings.filter(finding =>
+    (finding.subtype === 'index.rule.violation' || finding.subtype === 'standard.index.modification') &&
+    !String(finding.code || '').startsWith('_')
+  );
+
+  const identifiers = {};
+
+  oakIndexFindings.forEach(finding => {
+    const subtype = finding.subtype;
+    const indexPath = (finding.identifier || '').trim();
+    if (!indexPath) return;
+    if (!identifiers[subtype]) {
+      identifiers[subtype] = [];
+    }
+    if (!identifiers[subtype].includes(indexPath)) {
+      identifiers[subtype].push(indexPath);
+    }
+  });
+
+  return {
+    subtype: 'oak.index.definition',
+    identifiers: identifiers
+  };
+}
+
+/**
  * Extract the referenced `java.io.*InputStream` API from a `java.io.inputstream`
  * finding. BPA puts it in the `other` column; older exports without that column
  * still carry it in the message ("… bundle uses java.io.FileInputStream. …") and
@@ -703,6 +747,21 @@ function createUnifiedCollection(bpaData, outputDir) {
     });
 
     console.log(`Found ${Object.values(guavaCacheCollection.identifiers).flat().length} bundles using Guava cache`);
+  }
+
+  // Process oak index findings
+  const oakIndexCollection = processOakIndexFindings(findings);
+  if (Object.keys(oakIndexCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(oakIndexCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(oakIndexCollection.identifiers).forEach(([identifier, indexPaths]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = indexPaths;
+      totalFindings += indexPaths.length;
+    });
+
+    console.log(`Found ${Object.values(oakIndexCollection.identifiers).flat().length} oak index paths`);
   }
 
   // Process java.io.InputStream findings

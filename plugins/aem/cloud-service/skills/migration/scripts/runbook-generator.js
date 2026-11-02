@@ -37,17 +37,25 @@
  *                   dialogs, custom `cq:Widget` xtypes, static templates) is the
  *                   heuristic fallback when no BPA source is available. Routed to
  *                   migration Branches D / C, not code-assessment.
- *   'bpa-only'    — `guavaCache`: BPA/CAM/CSV only (subtype `custom.guava.cache`),
- *                   one finding per bundle. `identifier` on this subtype is a
+ *   'bpa-only'    — `guavaCache`, `oakIndex`: BPA/CAM/CSV only, no analyzer, no
+ *                   content-scan fallback.
+ *                     `guavaCache` (subtype `custom.guava.cache`): one finding
+ *                   per bundle. `identifier` on this subtype is a
  *                   Guava-internal class, not a customer class — BPA reports
  *                   every Guava-internal class reachable on a bundle's
  *                   classpath, so raw rows are deduped to the bundle named in
  *                   the message, not surfaced per row. No analyzer, no
  *                   content-scan — Guava cache usage does not occur in native
  *                   AEMaaCS code, so there is deliberately no compiled
- *                   detector for it. With no BPA source the pattern surfaces
- *                   in `needsLlmScan` like any other
- *                   unscanned pattern.
+ *                   detector for it.
+ *                     `oakIndex` (subtypes `index.rule.violation` /
+ *                   `standard.index.modification`, beta, Branch F): one
+ *                   finding per Oak index JCR path. Legacy `_oak_index/*.xml`
+ *                   layouts only exist in pre-cloud projects, so — like
+ *                   Dispatcher Conversion — this wraps Adobe's index-converter
+ *                   tool rather than a compiled detector.
+ *                     With no BPA source, either pattern surfaces in
+ *                   `needsLlmScan` like any other unscanned pattern.
  *   'java-scan'   — `inputStream` (subtype `java.io.inputstream`). Same
  *                   precedence as the cascade: BPA/CAM → CSV → local. With
  *                   BPA rows, those classes define the scope; the scanner
@@ -73,6 +81,7 @@
  *
  * Usage (CLI):
  *   node scripts/runbook-generator.js <workspaceRoot> [--csv <bpaFilePath>] [--out <outputPath>] [--cache <cachePath>]
+ *     [--bpa-json <file>] [--llm-findings <file>] [--project-id <camProjectId> --project-name <name>]
  */
 
 'use strict';
@@ -96,11 +105,12 @@ const { runInputStreamScan } = require('./input-stream-runner.js');
 //   'config-scan'  — config-file heuristic scan (osgiConfig)
 //   'content-scan' — .content.xml / template / dispatcher-config scan (lui, cdw,
 //                    templateModernization, dispatcherConversion)
-//   'bpa-only'     — BPA/CAM/CSV only, no local fallback (guavaCache)
+//   'bpa-only'     — BPA/CAM/CSV only, no local fallback (guavaCache, oakIndex)
 //   'java-scan'    — BPA first; Java source scan only when BPA has none (inputStream)
 // `bpaSlugs` maps a pattern to its BPA subtype(s): the Java 'cascade' patterns,
-// plus replication (replication.agent), lui/cdw/templateModernization, and
-// guavaCache (com.google.common.cache). When a BPA source is present it is
+// plus replication (replication.agent), lui/cdw/templateModernization,
+// guavaCache (com.google.common.cache), and oakIndex (index.rule.violation /
+// standard.index.modification). When a BPA source is present it is
 // authoritative; html/config/content scans are the local fallback for the
 // patterns that have one. (inject-in-sling-model and outdated-dependencies
 // belong to code-assessment's own runbook, not the migration runbook, so they
@@ -258,6 +268,15 @@ const PATTERN_META = {
     description: 'An AMS or on-premise Dispatcher configuration convertible to AEM as a Cloud Service (Branch E). Detected heuristically; the conversion wraps Adobe\'s aem-cs-source-migration dispatcher-converter with mode detection, config generation, output verification, and validation.',
     promptPattern: 'dispatcher conversion',
     sampleOverride: 'Use the migration skill: convert my dispatcher configuration to AEM as a Cloud Service.',
+  },
+  oakIndex: {
+    label: 'Oak Index Migration',
+    severity: 'high',
+    strategy: 'bpa-only',
+    bpaSlugs: ['oakIndex'],
+    description: 'Legacy `_oak_index/*.xml` definitions (BPA subtypes `index.rule.violation` / `standard.index.modification`, category OID) convertible to AEM as a Cloud Service Oak index definitions (Branch F, beta). BPA is the sole source of truth — one finding per Oak index JCR path; there is no analyzer or content-scan fallback. Wraps Adobe\'s aem-cs-source-migration index-converter tool rather than re-implementing transformation rules.',
+    promptPattern: 'oakIndex',
+    sampleOverride: 'Use the migration skill: fix oakIndex findings using BPA CSV at ./reports/bpa.csv.',
   },
 };
 
@@ -809,6 +828,7 @@ function writeRunbookCache(gathered, ctx, cachePath = DEFAULT_CACHE_PATH) {
     // `file` fields below are relative to this root — the apply handoff
     // resolves them with `path.join(workspaceRoot, file)`.
     workspaceRoot: root || null,
+    project: ctx.projectId ? { id: ctx.projectId, name: ctx.projectName || null } : null,
     sourceByPattern: gathered.sourceByPattern,
     findingsByPattern: {},
   };
@@ -868,13 +888,15 @@ function mergeLlmFindings(gathered, llmByPattern) {
  *   the generator merges, re-renders, and rewrites the cache in one pass.
  */
 async function generateRunbook(options = {}) {
-  const { outputPath = './migration-runbook.md', cachePath = DEFAULT_CACHE_PATH, bpaFilePath, workspaceRoot, llmByPattern } = options;
+  const { outputPath = './migration-runbook.md', cachePath = DEFAULT_CACHE_PATH, bpaFilePath, workspaceRoot, llmByPattern, projectId, projectName } = options;
 
   const gathered = await gatherFindings(options);
   if (llmByPattern) mergeLlmFindings(gathered, llmByPattern);
   const ctx = {
     bpaFilePath,
     workspaceRoot,
+    projectId,
+    projectName,
     generatedAt: new Date().toISOString().replace('T', ' ').slice(0, 19),
   };
 
@@ -905,7 +927,7 @@ async function generateRunbook(options = {}) {
 
 // CLI
 function parseArgs(argv) {
-  const out = { workspaceRoot: undefined, bpaFilePath: undefined, outputPath: './migration-runbook.md', cachePath: DEFAULT_CACHE_PATH, bpaJsonPath: undefined, llmFindingsPath: undefined };
+  const out = { workspaceRoot: undefined, bpaFilePath: undefined, outputPath: './migration-runbook.md', cachePath: DEFAULT_CACHE_PATH, bpaJsonPath: undefined, llmFindingsPath: undefined, projectId: undefined, projectName: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--csv') out.bpaFilePath = argv[++i];
@@ -913,6 +935,8 @@ function parseArgs(argv) {
     else if (a === '--cache') out.cachePath = argv[++i];
     else if (a === '--bpa-json') out.bpaJsonPath = argv[++i];
     else if (a === '--llm-findings') out.llmFindingsPath = argv[++i];
+    else if (a === '--project-id') out.projectId = argv[++i];
+    else if (a === '--project-name') out.projectName = argv[++i];
     else if (!out.workspaceRoot) out.workspaceRoot = a;
   }
   if (!out.workspaceRoot) out.workspaceRoot = process.cwd();
@@ -920,7 +944,7 @@ function parseArgs(argv) {
 }
 
 async function main() {
-  const { workspaceRoot, bpaFilePath, outputPath, cachePath, bpaJsonPath, llmFindingsPath } = parseArgs(process.argv.slice(2));
+  const { workspaceRoot, bpaFilePath, outputPath, cachePath, bpaJsonPath, llmFindingsPath, projectId, projectName } = parseArgs(process.argv.slice(2));
 
   // Pre-fetched BPA (agent dumped its CAM/MCP result to JSON) and LLM-scan
   // findings are the two inputs that let the whole runbook run as ONE command,
@@ -940,7 +964,7 @@ async function main() {
   console.log(`Cache:      ${cachePath}`);
   console.log('');
 
-  const result = await generateRunbook({ workspaceRoot, bpaFilePath, outputPath, cachePath, preFetchedBpa, llmByPattern });
+  const result = await generateRunbook({ workspaceRoot, bpaFilePath, outputPath, cachePath, preFetchedBpa, llmByPattern, projectId, projectName });
 
   console.log(`✅ ${result.message}`);
   console.log(`   Findings cache: ${result.cachePath}`);
@@ -966,6 +990,7 @@ if (require.main === module) {
 
 module.exports = {
   generateRunbook,
+  parseArgs,
   gatherFindings,
   renderRunbook,
   writeRunbookCache,

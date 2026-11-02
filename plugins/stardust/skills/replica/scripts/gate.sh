@@ -92,7 +92,8 @@
 #            missing, lone, unreadable or stale baseline (another URL or width) ends the round with that one line on
 #            stderr and exit 125 — never a live shot in its place. Flag OFF: the round is the one it always was; a
 #            live.png whose live.json says origin "baseline" is retaken (one line; its records go with it), a
-#            live.png with no record is reused as before.
+#            live.png with no live.json is a live capture: reused when its live.capture.json records fixedLayers,
+#            retaken (one line) when it does not — captured before fixed layers were captured once.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -303,7 +304,8 @@ fi
 # — live.json and the capture record live.capture.json — go first, and a copy or record that fails removes
 # live.png and ends the round (exit 1, one line): baseline bytes never sit under a missing or stale record.
 # Flag OFF: a live.png whose live.json says origin "baseline" was a flagged round's copy — retaken with one line,
-# its records removed with it; a live.png with no record is a live capture and is reused as before.
+# its records removed with it; a live.png with no live.json is a live capture — reused only when live.capture.json
+# records fixedLayers, else retaken (below).
 if [ "$BASELINE" = 1 ]; then
   rm -f "$DIR/live.json" "$DIR/live.capture.json"
   if ! { cp -f "$DIR/baseline.png" "$DIR/live.png.$$.tmp" && mv -f "$DIR/live.png.$$.tmp" "$DIR/live.png"; }; then
@@ -318,6 +320,12 @@ if [ "$BASELINE" = 1 ]; then
 else
   if [ -f "$DIR/live.png" ] && [ -f "$DIR/live.json" ] && grep -qE '"origin": *"baseline"' "$DIR/live.json"; then
     echo "gate.sh: live.png is the frozen origin baseline (a --gate-against-baseline round); this round gates against the live origin — retaking it" >&2
+    rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
+  fi
+  # A live capture from before fixed layers were captured once (its live.capture.json has no fixedLayers) would be
+  # compared with a build captured the new way — asymmetric: retake it.
+  if [ -f "$DIR/live.png" ] && ! grep -q '"fixedLayers"' "$DIR/live.capture.json" 2>/dev/null; then
+    echo "gate.sh: $DIR/live.png predates the fixed-layer capture (no fixedLayers in live.capture.json) — retaking it so both sides capture alike"
     rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
   fi
   if [ ! -f "$DIR/live.png" ]; then
@@ -449,7 +457,10 @@ verdict() { # $1 rc, $2 label, $3 line
 }
 FINDINGS=$(grep -E '^Findings:' "$CD" | head -1 | sed -E 's/^Findings: //')
 STRUCTURAL=$(printf '%s' "$FINDINGS" | grep -oE '[0-9]+ structural' | grep -oE '^[0-9]+' || echo 0)
-verdict "$RC_CD" "content-diff" "${FINDINGS:-no findings line}" "$CD"
+# Two tiers (source-fidelity-gate.md § Pass bar item 1): looks-same = structural 🔴; nothing-lost = invisible losses.
+TIERS=$(grep -E '^Tiers:' "$CD" | head -1)
+LOST=$(printf '%s' "$TIERS" | grep -oE 'nothing-lost 🟡 [0-9]+' | grep -oE '[0-9]+$' || echo 0)
+verdict "$RC_CD" "content-diff" "${FINDINGS:-no findings line}${TIERS:+ — ${TIERS#Tiers: }}" "$CD"
 FLAGS=$(awk '/red flags \(advisory\)/{f=1;next} f&&/^[[:space:]]*•/{n++} f&&/^Full metrics/{exit} END{print n+0}' "$VD")
 verdict "$RC_VD" "visual-diff" "$FLAGS advisory flag(s) — $(awk '/red flags \(advisory\)/{f=1;next} f&&/^[[:space:]]*•/{sub(/^[[:space:]]*• /,""); printf "%s; ", substr($0,1,60)} f&&/^Full metrics/{exit}' "$VD")" "$VD"
 CHROME=$(grep -E '^(✗|✓)' "$CP" | tail -1 | cut -c1-120)
@@ -468,12 +479,21 @@ if [ -n "$P_UG" ]; then
   verdict "$RC_UG" "unit-geometry" "${UNITS:-no Units line}" "$UG"
 fi
 echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG} $DIR/vdiff-$LBL/"
+# The round's record: which evidence file each probe's verdict read, its exit code, the two tiers — so a ledger entry
+# points at THIS round's files, never at an older -iterN or -mapped file beside them.
+G_PIXEL_RC="$PIXEL_RC" G_DIFF="$DIR/diff-$LBL.png" G_STRUCTURAL="${STRUCTURAL:-0}" G_LOST="${LOST:-0}" \
+node -e 'const [out, round, width, ...a] = process.argv.slice(1); const probes = {}; for (let i = 0; i + 2 < a.length; i += 3) if (a[i + 2]) probes[a[i]] = { rc: Number(a[i + 1]), evidence: a[i + 2] }; const n = (k) => Number(process.env[k] || 0); require("fs").writeFileSync(out, JSON.stringify({ round, width: Number(width), pixel: { rc: n("G_PIXEL_RC"), diff: process.env.G_DIFF }, probes, structural: n("G_STRUCTURAL"), nothingLost: n("G_LOST"), at: new Date().toISOString() }, null, 2) + "\n");' \
+  "$DIR/verdict-$LBL.json" "$LBL" "$W" content-diff "$RC_CD" "$CD" visual-diff "$RC_VD" "$VD" chrome-parity "$RC_CP" "$CP" clip-probe "$RC_CL" "$CL" \
+  content-presence "$RC_PR" "${P_PR:+$PR}" unit-geometry "$RC_UG" "${P_UG:+$UG}" 2>/dev/null || true
 
-# Exit: any deadline → 124 (re-run); else the pixel verdict rules, and a structural
-# content 🔴 or a chrome delta fails the round the same way an over-threshold pixel diff does.
+
+# Exit: any deadline → 124 (re-run); else the pixel verdict rules, and a structural content 🔴, a
+# nothing-lost 🟡 or a chrome delta fails the round the same way an over-threshold pixel diff does.
 for rc in "$RC_CD" "$RC_VD" "$RC_CP" "$RC_CL" "$RC_PR" "$RC_UG" "$PIXEL_RC"; do [ "$rc" = 124 ] && exit 124; done
 [ "$PIXEL_RC" != 0 ] && exit $PIXEL_RC
 [ "${STRUCTURAL:-0}" -gt 0 ] 2>/dev/null && exit 2
+# nothing-lost: an invisible loss (an aria-label, sr-only text, a heading flattened) fails the round like a visible one
+[ "${LOST:-0}" -gt 0 ] 2>/dev/null && exit 2
 [ "$RC_CP" = 2 ] && exit 2
 # clipped text / controls, a MISSING / HIDDEN link or heading, a required unit off: element defects fail the
 # round like an over-threshold pixel diff (#125 — a pixel PASS with every card clipped).

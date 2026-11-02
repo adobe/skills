@@ -26,7 +26,7 @@ Not for: a single static file with no JS decoration (use the build/harness URL s
 
 | Probe | Script | Sees | Blind to |
 |---|---|---|---|
-| **Pixel / layout** | `skills/diff/scripts/visual-diff.mjs` | stretched images, dropped max-width wraps, blank renders, surface/ground colour flips, image-count gaps | "right text, wrong slot"; a dropped CTA (full pixels, plausible colours → no flag) |
+| **Pixel / layout** | `skills/diff/scripts/visual-diff.mjs` | stretched images (vs the source), dropped max-width wraps, blank renders, surface/ground colour flips, heading size/face deltas, image-count gaps | "right text, wrong slot"; a dropped CTA (full pixels, plausible colours → no flag) |
 | **Structural content + type** | `skills/diff/scripts/content-diff.mjs` | MISSING / ROLE-SWAPPED headings·eyebrows·CTAs, invented/dropped body copy, rendered-FACE font forks (width probe); dropped `placeholder`/`aria-label`/`title` values, missing/wrong/moved icons — on the main root AND the `header`/`footer` chrome roots by default | geometry / layout regressions |
 
 `content-diff` extracts an ordered, role-classified inventory (`heading` / `eyebrow` /
@@ -154,15 +154,16 @@ deploy Step 10, on the live host before handover (`done-check` `header_parity`),
 ## Reading content-diff
 
 - 🔴 **MISSING CTA / HEADING / EYEBROW** — real dropped content. FIX. A missing eyebrow is most often a segmentation drop where the eyebrow precedes its heading; a missing CTA means the component never rendered the link. These are exactly what the pixel probe cannot see.
-- 🔴 **ROLE SWAP** — same text under a different role (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation.
-- 🔴 **MISSING PLACEHOLDER / ARIA-LABEL, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its aria-label or icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡.
-- 🟡 **MISSING TITLE** — always 🟡: a title tooltip is not read by most assistive tech and is commonly dropped by design. 🟡 **ICON MOVED** — the same icon (glyph code point / file name / svg signature) at another anchor, paired by identity and document order after the anchor passes (typically a text-less `<button>` host that anchors as `button#n`): the icon is present, CONFIRM its placement. 🟡 **ICON KIND** (glyph vs svg vs image — the pixel probe judges) and every **EXTRA**.
+- 🔴 **ROLE SWAP** — same text under a different role (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation. With the same look, body/eyebrow → heading is an accepted ROLE UPGRADE (root line and `--json` `accepted`, not a finding), heading → body/eyebrow 🟡 ROLE DOWNGRADE. Lost visually hidden (sr-only) text is 🟡 MISSING SR-ONLY TEXT; a lost sr-only link stays 🔴 MISSING CTA.
+- 🔴 **MISSING PLACEHOLDER, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡. A lost aria-label is a nothing-lost 🟡 anywhere (fails the gate).
+- Icons pair by identity or by **the same pixels**: a re-hosted file (SAME IMAGE) or an svg drawn as `<img>` (SAME ICON) is accepted. A laid-out 0×0 icon is not one.
+- 🟡 **MISSING TITLE** — always 🟡: a title tooltip is not read by most assistive tech and is commonly dropped by design. 🟡 **ICON MOVED** — the same icon at another anchor, paired after the anchor passes (typically a text-less `<button>` host that anchors as `button#n`): CONFIRM its placement. 🟡 **ICON KIND** (pixels not compared, e.g. a hidden icon) and every **EXTRA**.
 - Every finding line names its root — `🔴 MISSING PLACEHOLDER [header]: …` — and the report prints one block per root (`root "main"`, `root "header"`, …; a root a side lacks is measured as empty there and the line says which side).
 - 🟡 **MISSING BODY / EXTRA** — body prose dropped, or build copy with no source. Usually a placeholder→real-copy rewrite. CONFIRM intended; don't blindly "fix".
 - 🟠 **FONT FORK** — matched lines whose rendered FACE differs (width probe, never `document.fonts.check`). `source X→sys` means the prototype named font X but never loaded it and fell back to system — the build self-hosting the intended fallback is then CORRECT, not a bug. All forked lines are grouped into one advisory.
 - **Known limitation — node-granularity JOIN/SPLIT reads as 🔴 (#87).** When the source renders one text run as N sibling nodes and the build renders the same text as ONE node (or vice versa — e.g. three fact chips vs one combined chip span), the diff currently reports MISSING + ROLE SWAP + EXTRA for what is a non-defect. Until concat-matching lands (a source node that is a substring of a same-region build node → 🟡 JOIN/SPLIT advisory), verify a 🔴 whose texts concatenate into an EXTRA finding's text before treating it as dropped content — confirmed-justified is a pass.
 
-**Pass bar:** visual red flags none/justified **AND** content-diff **0 structural 🔴** (🟡/🟠 confirmed intended). Re-run BOTH after each fix.
+**Pass bar:** visual red flags none/justified **AND** content-diff **0 🔴 and 0 nothing-lost 🟡** (`../replica/reference/source-fidelity-gate.md` § Pass bar item 1). Re-run BOTH after each fix.
 
 ## Profiles
 
@@ -190,5 +191,6 @@ block's flattened-shape fallback, not the authoring.
 ## Workflow use
 
 Call both scripts in a validation phase and gate on the output, as deploy's Validate phase does on a served,
-decorated build (local harness or branch preview): fix visual-diff's STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP flags
-(unless justified) and every content-diff 🔴, confirm 🟡/🟠, loop until both are clean.
+decorated build (local harness or branch preview): fix visual-diff's STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP/
+HEADING FACE flags (unless justified — a font substitution is one `HEADING FACE ×N` line) and every content-diff 🔴,
+confirm 🟡/🟠, loop until both are clean.

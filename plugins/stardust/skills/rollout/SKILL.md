@@ -83,7 +83,8 @@ full mode; pages present only in `state.json` are seeded with `templateId` from
 content-pending`.
 
 Inventory is **idempotent and incremental**: delivery status is preserved; a page
-whose migrated HTML changed after delivery is re-flagged `stale`. Fill in the DA
+whose migrated HTML changed after delivery is re-flagged `stale` (never a
+pinned row: replica's first page first). Fill in the DA
 coordinates in `rollout.json` (`site.da.org`, `site.site`, `site.da.ref`,
 `site.liveHost`) if not inferred.
 

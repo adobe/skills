@@ -3,14 +3,15 @@
 // criteria (pixel, height, clip + allowance, content), n/a content never fails a page, required vs advisory
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag); parseArgs defaults and
-// --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff.
+// --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff; staleCapture (a
+// capture with no fixedLayers in its record is retaken, gate.sh's rule).
 // Fonts (gate rule 14): shotFonts reads a stitch capture record (a list = checked, null + fontCheck when the check
 // could not run, when the record predates the check or when there is none), fontsNotLoaded / fontChecksSkipped over
 // the two metas (explicit null only), verdict's font-not-loaded:<family> and font-check-skipped:<side> reasons failing
 // an otherwise passing row, the calibration line and the FAIL (fonts) cell; then the runner with stub instruments
 // (stitch-shot writes the record, pixel-compare the JSON): the meta carries fontsFailed, a dead face or a skipped
-// check fails the row (exit 2), the prototype stage reads live.capture.json beside the archetype round's live.png — none
-// is unchecked, never "all loaded".
+// check fails the row (exit 2), the prototype stage reads the record of the archetype round's live.png it reuses (or the
+// frozen baseline's after a flagged round; one staleCapture refuses is captured afresh) — none is unchecked, never "all loaded".
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -18,7 +19,7 @@ import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { fontChecksSkipped, fontsNotLoaded, formatSummary, parseArgs, shotFonts, verdict } from '../gate-all.mjs';
+import { captureRecordOf, fontChecksSkipped, fontsNotLoaded, formatSummary, parseArgs, shotFonts, staleCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -100,6 +101,30 @@ if (textBoxPct) check('pixel-compare textBoxPct: differing pixels counted inside
   masked[1] = 1;
   assert.equal(textBoxPct({ data }, [{ x: 0, y: 0, w: 4, h: 4 }], w, h, masked).pct, 0);
 });
+check('staleCapture: gate.sh\'s rule — a capture is reusable only when its capture record has fixedLayers; a baseline copy of live.png goes by baseline.json', () => {
+  const d = mkdtempSync(join(tmpdir(), 'gate-all-stale-'));
+  try {
+    const png = (name) => { const f = join(d, name); writeFileSync(f, 'png'); return f; };
+    const origin = png('origin.png');
+    assert.equal(captureRecordOf(origin), join(d, 'origin.capture.json'));
+    assert.equal(staleCapture(origin), true, 'no record: an old-style capture');
+    writeFileSync(captureRecordOf(origin), JSON.stringify({ chunks: 4, denialCheck: 'ok' }));
+    assert.equal(staleCapture(origin), true, 'a record from before fixedLayers');
+    writeFileSync(captureRecordOf(origin), '{ torn');
+    assert.equal(staleCapture(origin), true, 'an unreadable record');
+    writeFileSync(captureRecordOf(origin), JSON.stringify({ fixedLayers: { capture: 'once', count: 2, late: 0 } }));
+    assert.equal(staleCapture(origin), false);
+    const live = png('live.png');
+    writeFileSync(join(d, 'live.json'), JSON.stringify({ origin: 'baseline' }));
+    writeFileSync(join(d, 'baseline.json'), JSON.stringify({ fixedLayers: null }));
+    assert.equal(staleCapture(live), true, 'a copy of a baseline frozen the old way');
+    writeFileSync(join(d, 'baseline.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 1 } }));
+    assert.equal(staleCapture(live), false, 'a copy of a baseline frozen the new way');
+    writeFileSync(join(d, 'live.json'), JSON.stringify({ origin: 'live' }));
+    assert.equal(staleCapture(live), true, 'a live round with no live.capture.json');
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
 // ---- fonts (gate rule 14): a dead face on either side fails the row; a check that could not run is never a pass -----
 const live = (fontsFailed, extra = {}) => ({ instrument: 'stitch-live', url: 'https://origin.example/', ...extra, ...(fontsFailed === undefined ? {} : { fontsFailed }) });
 check('shotFonts: a record with a list is checked (strings only); null, an absent key or no record at all → fontsFailed null + a fontCheck saying why — never []', () => {
@@ -154,9 +179,9 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
 });
 
 // ---- the runner with stub instruments: the record → the meta → the row -------------------------------------------------
-// Sandbox: stardust/scripts/replica with the real gate-all.mjs and stubs for stitch-shot (writes the PNG and its --json
-// record: fontsFailed = STUB_FONTS_<ORIGIN|EDS> as a comma list, null + fontCheck under STUB_FONTS_NULL_<side>, no record
-// under STUB_NO_JSON_<side>; ORIGIN = a https://origin.example URL) and pixel-compare (a passing JSON). --no-probes: the
+// Sandbox: stardust/scripts/replica with the real gate-all.mjs and stubs for stitch-shot (writes the PNG and its capture
+// record, fixedLayers always: fontsFailed = STUB_FONTS_<ORIGIN|EDS> as a comma list, null + fontCheck under STUB_FONTS_NULL_<side>,
+// no record under STUB_NO_JSON_<side>; ORIGIN = a https://origin.example URL) and pixel-compare (a passing JSON). --no-probes: the
 // diff skill's scripts are not needed. realpath: the main-module guard compares process.argv[1] with import.meta.url.
 {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
@@ -173,7 +198,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
     writeFileSync(out, 'png');
     const json = out.replace(/\\.png$/i, '') + '.capture.json';
     const fonts = process.env['STUB_FONTS_NULL_' + side] ? { fontsFailed: null, fontCheck: 'failed: Execution context was destroyed' } : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
-    if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: true, ...fonts, height: 2000 }, null, 2) + '\\n');
+    if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: true, ...fonts, fixedLayers: { capture: 'once', count: 0, late: 0 }, height: 2000 }, null, 2) + '\\n');
     console.log('overflow: scrollWidth=1440 viewport=1440 delta=0'); console.log('stitched ' + out);`);
   stub('pixel-compare.mjs', `console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 2000 }, pass: true, bands: [] }));`);
   const pages = (extra = {}) => ({ pages: [{ slug: 'a', url: 'https://origin.example/a', liveUrl: 'https://served.example/a', status: 'deployed', template: 't', fidelityTier: 'thin', ...extra }] });
@@ -182,7 +207,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
     writeFileSync(stateFile, JSON.stringify(state));
     const r = spawnSync(process.execPath, [join(replica, 'gate-all.mjs'), '--state', stateFile, '--out', out, '--no-probes', ...args], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
     const read = (f) => (existsSync(join(out, f)) ? JSON.parse(readFileSync(join(out, f), 'utf8')) : null);
-    return { status: r.status, stdout: r.stdout, stderr: r.stderr, summary: read('summary.json'), origin: read('a/origin.json'), eds: read('a/eds.json'), out };
+    return { status: r.status, stdout: r.stdout, stderr: r.stderr, summary: read('summary.json'), origin: read('a/origin.json'), eds: read('a/eds.json'), record: read('a/origin.capture.json'), out };
   };
   try {
     check('runner: both stitches are asked for their capture record; the metas carry fontsFailed [] and the clean row passes (exit 0)', () => {
@@ -218,28 +243,52 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
       assert.equal(r.eds.fontsFailed, null); assert.match(r.eds.fontCheck, /^failed: no readable capture record \(stitch-shot wrote no capture record/);
       assert.deepEqual(r.summary.rows[0].reasons, ['font-check-skipped:build']);
     });
-    check('runner (prototype stage): the archetype round\'s live.png is reused with the font check of its live.capture.json; none beside it is unchecked (font-check-skipped:origin, the fix named) — never "all loaded"', () => {
+    check('runner (prototype stage): the archetype round\'s live.png is reused with the font check of its live.capture.json, which goes with the copy — a record with fixedLayers but no fontsFailed predates the check (font-check-skipped:origin, the fix named), a dead face fails the row, [] passes; one staleCapture refuses (no record) is not reused: the origin is captured afresh, said once — never "all loaded"', () => {
       const proto = pages({ prototypePath: 'stardust/prototypes/a.html' });
       const cached = join(root, 'stardust/replica/gates/a-1440'); mkdirSync(cached, { recursive: true });
+      const protoArgs = ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'];
       writeFileSync(join(cached, 'live.png'), 'png');
-      const none = runAll('proto-none', ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'], {}, proto);
-      assert.equal(none.status, 2, none.stderr);
-      assert.equal(none.origin.fontsFailed, null);
-      assert.match(none.origin.fontCheck, /^failed: no live.capture\.json beside .*live\.png \(a gate round before the font check\) — delete live\.png to re-take it$/);
-      assert.match(none.origin.note, /^reused .*live\.png/);
-      assert.deepEqual(none.summary.rows[0].reasons, ['font-check-skipped:origin']);
-      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: ['Brand Serif'], height: 2000 }));
-      const some = runAll('proto-some', ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'], {}, proto);
+      const none = runAll('proto-none', protoArgs, {}, proto);
+      assert.equal(none.status, 0, none.stderr);
+      assert.match(none.stdout, /live\.png predates the fixed-layer capture \(no fixedLayers in its record\) — not reused, capturing the origin/);
+      assert.ok(!/^reused /.test(none.origin.note || ''), `not reused: ${none.origin.note}`);
+      assert.deepEqual([none.origin.instrument, none.origin.fontsFailed, none.record.fontsFailed], ['stitch-live', [], []], 'captured afresh by the stub, its own record checked');
+      const layers = { capture: 'once', count: 0, late: 0 };
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fixedLayers: layers, height: 2000 }));
+      const pre = runAll('proto-pre', protoArgs, {}, proto);
+      assert.equal(pre.status, 2, pre.stderr);
+      assert.match(pre.origin.note, /^reused .*live\.png/);
+      assert.deepEqual([pre.origin.fontsFailed, pre.origin.fontCheck], [null, 'failed: the capture record predates the font check — re-copy stitch-shot.mjs']);
+      assert.deepEqual(pre.summary.rows[0].reasons, ['font-check-skipped:origin']);
+      assert.deepEqual(pre.record.fixedLayers, layers, 'the cached record went with the copy');
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: ['Brand Serif'], fixedLayers: layers, height: 2000 }));
+      const some = runAll('proto-some', protoArgs, {}, proto);
       assert.equal(some.status, 2, some.stderr);
       assert.deepEqual([some.origin.fontsFailed, some.summary.rows[0].reasons], [['Brand Serif'], ['font-not-loaded:Brand Serif']], 'the cached capture\'s dead face fails the prototype row');
-      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: [], height: 2000 }));
-      const clean = runAll('proto-clean', ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'], {}, proto);
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: [], fixedLayers: layers, height: 2000 }));
+      const clean = runAll('proto-clean', protoArgs, {}, proto);
+      assert.equal(clean.status, 0, clean.stderr);
+      assert.deepEqual([clean.origin.fontsFailed, clean.summary.rows[0].pass], [[], true]);
+    });
+    check('runner (prototype stage): after a --gate-against-baseline round (live.json origin "baseline", no live.capture.json) the frozen baseline\'s record stands in — its fixedLayers for the reuse, its fontsFailed for the font check — and the copy\'s record says where it came from', () => {
+      const proto = pages({ prototypePath: 'stardust/prototypes/a.html' });
+      const cached = join(root, 'stardust/replica/gates/a-1440');
+      const protoArgs = ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'];
+      rmSync(join(cached, 'live.capture.json'), { force: true });
+      writeFileSync(join(cached, 'live.json'), JSON.stringify({ origin: 'baseline' }));
+      writeFileSync(join(cached, 'baseline.json'), JSON.stringify({ fontsFailed: ['Brand Serif'], fixedLayers: { capture: 'once', count: 1, late: 0 } }));
+      const r = runAll('proto-baseline', protoArgs, {}, proto);
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.origin.note, /^reused .*live\.png/);
+      assert.deepEqual([r.origin.fontsFailed, r.summary.rows[0].reasons], [['Brand Serif'], ['font-not-loaded:Brand Serif']], 'the baseline\'s dead face fails the prototype row');
+      assert.deepEqual(r.record, { writtenBy: 'gate-all.mjs', copiedFrom: 'stardust/replica/gates/a-1440/live.png', fixedLayers: { capture: 'once', count: 1, late: 0 }, fontsFailed: ['Brand Serif'] });
+      writeFileSync(join(cached, 'baseline.json'), JSON.stringify({ fontsFailed: [], fixedLayers: { capture: 'once', count: 1, late: 0 } }));
+      const clean = runAll('proto-baseline-clean', protoArgs, {}, proto);
       assert.equal(clean.status, 0, clean.stderr);
       assert.deepEqual([clean.origin.fontsFailed, clean.summary.rows[0].pass], [[], true]);
     });
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
-
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-all-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });

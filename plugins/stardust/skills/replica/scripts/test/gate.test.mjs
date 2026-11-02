@@ -39,7 +39,8 @@ cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
 // (LIVE = the https://live.example URL, BUILD = anything else) an exit code (STUB_STITCH_RC_<side>) or a fail-ONCE
 // marker file (STUB_FAIL_ONCE_<side>: exit 1 while the marker is absent, create it); every call appends its side to
 // STUB_STITCH_COUNT so a test can count attempts, and its side + argv to STUB_STITCH_ARGS so a test can read the flags. A
-// successful capture writes its capture record <stem>.capture.json (fontsFailed = the comma list STUB_FONTS_<side>, or
+// successful capture writes its capture record <stem>.capture.json (fixedLayers always — a capture the new way, reusable;
+// fontsFailed = the comma list STUB_FONTS_<side>, or
 // null + fontCheck "failed: …" under STUB_FONTS_NULL_<side> — a font check that could not run; STUB_NO_JSON_<side> writes
 // none, STUB_BAD_JSON_<side> an unreadable one). measure: the root line gate.sh reads (STUB_OVERFLOW px over the
 // viewport, STUB_MEASURE_RC exit code, STUB_MEASURE_NO_ROOT drops the line).
@@ -69,7 +70,7 @@ stub(replica, 'stitch-shot.mjs', `
   const fonts = process.env['STUB_FONTS_NULL_' + side] ? { fontsFailed: null, fontCheck: 'failed: Execution context was destroyed' }
     : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
   if (json && process.env['STUB_BAD_JSON_' + side]) writeFileSync(json, '{ "url": ');
-  else if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: process.argv.includes('--settle'), ...fonts, height: 2000 }, null, 2) + '\\n');
+  else if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: process.argv.includes('--settle'), ...fonts, fixedLayers: { capture: 'once', count: 0, late: 0 }, height: 2000 }, null, 2) + '\\n');
   console.log('stitched ' + out);`);
 stub(replica, 'measure.mjs', `
   import { appendFileSync } from 'node:fs';
@@ -91,8 +92,9 @@ stub(replica, 'chrome-parity.mjs', `
   process.exit(deltas ? 2 : 0);`);
 stub(diff, 'content-diff.mjs', `
   if (process.env.STUB_CD_RC) { console.error('content-diff error: build side answered HTTP 502'); process.exit(Number(process.env.STUB_CD_RC)); }
-  const s = Number(process.env.STUB_STRUCTURAL || 0);
-  console.log('  live: 12 headings'); console.log('Findings: ' + (s ? (s + 2) + ' (' + s + ' structural 🔴)' : 'none — content + roles match'));`);
+  const s = Number(process.env.STUB_STRUCTURAL || 0); const l = Number(process.env.STUB_LOST || 0);
+  console.log('  live: 12 headings'); console.log('Findings: ' + (s || l ? (s + l + 2) + ' (' + s + ' structural 🔴)' : 'none — content + roles match'));
+  console.log('Tiers: looks-same 🔴 ' + s + ' · nothing-lost 🟡 ' + l + ' · accepted 🟢 0 (owner 0, auto 0) · advisory ' + (s || l ? 2 : 0));`);
 stub(diff, 'clip-probe.mjs', `
   console.log('argv ' + process.argv.slice(2).join(' '));
   const n = Number(process.env.STUB_CLIPPED || 0);
@@ -183,6 +185,10 @@ check('a build capture that exits 1 once is retried and the round passes', r.sta
 check('the retry is said on stderr', /^gate\.sh: build capture exited 1 — retrying once \(a capture error under load is not a verdict\)$/m.test(r.stderr), r.stderr);
 check('exactly two build attempts, live cached (no live attempt)', attempts().join(',') === 'BUILD,BUILD', attempts().join(','));
 resetCount();
+writeFileSync(join(root, 'stardust/replica/gates/home-1440/live.capture.json'), JSON.stringify({ chunks: 6 }));
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'relive'], { STUB_STITCH_COUNT: countFile });
+check('a cached live.png captured before fixed layers were captured once is re-taken, said on stdout', r.status === 0 && attempts().join(',') === 'LIVE,BUILD' && /live\.png predates the fixed-layer capture/.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')} ${r.stdout.slice(0, 300)}`);
+resetCount();
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'retry2'], { STUB_STITCH_RC_BUILD: '1', STUB_STITCH_COUNT: countFile });
 check('two exit-1 build captures end the round with exit 1 and say re-queue, never a FAIL', r.status === 1 && /build capture failed \(exit 1\) — not comparing \(twice: no verdict — re-queue the round\)/.test(r.stderr), `status ${r.status} ${r.stderr}`);
 check('no third attempt', attempts().join(',') === 'BUILD,BUILD', attempts().join(','));
@@ -252,7 +258,16 @@ check('--full keeps the full reports out of stdout', !/12 headings/.test(r.stdou
 // --full, structural red → 2 even though pixels pass
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter3', '--full'], { STUB_STRUCTURAL: '1' });
 check('a structural content red fails the round (exit 2)', r.status === 2, `status ${r.status}`);
-check('the structural count is on the verdict line', /^content-diff: 3 \(1 structural 🔴\)/m.test(r.stdout), r.stdout);
+check('the structural count is on the verdict line, with the tiers', /^content-diff: 3 \(1 structural 🔴\) — looks-same 🔴 1 · nothing-lost 🟡 0 /m.test(r.stdout), r.stdout);
+
+// --full, an invisible loss only (nothing-lost 🟡) → 2: the second tier fails the round too; the round's record names its files
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'lost1', '--full'], { STUB_LOST: '2' });
+check('a nothing-lost 🟡 fails the round (exit 2) with 0 structural 🔴', r.status === 2 && /^content-diff: 4 \(0 structural 🔴\) — looks-same 🔴 0 · nothing-lost 🟡 2 /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+{
+  const vj = join(root, 'stardust/replica/gates/home-1440/verdict-lost1.json');
+  const v = existsSync(vj) ? JSON.parse(readFileSync(vj, 'utf8')) : null;
+  check('verdict-<label>.json records this round: each probe\'s rc and evidence file, the pixel rc + diff, the two tiers', v && v.round === 'lost1' && v.width === 1440 && v.nothingLost === 2 && v.structural === 0 && v.pixel.diff.endsWith('diff-lost1.png') && v.probes['content-diff'].evidence.endsWith('content-diff-lost1.txt') && v.probes['chrome-parity'].rc === 0 && !v.probes['content-presence'], JSON.stringify(v));
+}
 
 // --full, chrome deltas → 2
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter4', '--full'], { STUB_CHROME_DELTAS: '3' });
@@ -350,7 +365,7 @@ unlinkSync(join(root, 'stardust/replica/units.json'));
 const liveJson = (slug) => { const f = join(root, gdir(slug), 'live.json'); return existsSync(f) ? readFileSync(f, 'utf8') : null; };
 const livePng = (slug) => { const f = join(root, gdir(slug), 'live.png'); return existsSync(f) ? readFileSync(f, 'utf8') : null; };
 const noTmp = (slug) => !readdirSync(join(root, gdir(slug))).some((f) => f.endsWith('.tmp'));
-const PROV = { writtenBy: 'skills/replica/scripts/stitch-shot.mjs --freeze-baseline', schema: 1, capturedAt: '2026-10-19T08:00:00.000Z', url: 'https://live.example/', width: 1440, vh: 900, height: 2000, settle: true, chunks: 3, fontsFailed: [] };
+const PROV = { writtenBy: 'skills/replica/scripts/stitch-shot.mjs --freeze-baseline', schema: 1, capturedAt: '2026-10-19T08:00:00.000Z', url: 'https://live.example/', width: 1440, vh: 900, height: 2000, settle: true, chunks: 3, fontsFailed: [], fixedLayers: { capture: 'once', count: 1 } };
 const freezeBaseline = (slug, prov = PROV) => {
   const d = join(root, gdir(slug));
   mkdirSync(d, { recursive: true });

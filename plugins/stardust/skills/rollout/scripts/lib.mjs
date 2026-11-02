@@ -262,3 +262,17 @@ export function computeScorecard(findings, runId, now) {
     fixed: { P1: sev(fixed, 'P1'), P2: sev(fixed, 'P2'), P3: sev(fixed, 'P3') },
   };
 }
+
+/** The roster against the site: { pages, discovered, capped } from state.json's site block (extract writes
+ * totalDiscovered and pageCap), or null when the site was never counted. */
+export function scopeOf(pages, site) {
+  const discovered = site && Number.isFinite(site.totalDiscovered) ? site.totalDiscovered : null;
+  if (discovered === null) return null;
+  return { pages, discovered, capped: discovered > pages, pageCap: site.pageCap ?? null };
+}
+
+/** One report line: "94 of 2532 discovered pages in scope — …" (says so loudly when the roster is a subset). */
+export function scopeLine(scope) {
+  if (!scope.capped) return `${scope.pages} of ${scope.discovered} discovered pages in scope — the whole site`;
+  return `${scope.pages} of ${scope.discovered} discovered pages in scope — a SUBSET: the other ${scope.discovered - scope.pages} are not delivered by this rollout (capped roster, decided-out or app-routed — direction.md names which); widen the roster to deliver them`;
+}

@@ -16,8 +16,11 @@
  * <main>, classifying by COMPUTED STYLE + tag (symmetric across the prototype's
  * .ds-* DOM and the EDS block DOM), then DIFFS the two inventories:
  *   - MISSING   a proto heading / CTA / eyebrow with no EDS match   (🔴 structural)
- *   - ROLE SWAP same text present but under a different role         (🔴 the #76 class)
+ *   - ROLE SWAP same text under a different role AND a different look (🔴 the #76 class);
+ *     same look: body/eyebrow → heading is an accepted ROLE UPGRADE (root line, --json
+ *     `accepted`), heading → body/eyebrow 🟡 ROLE DOWNGRADE
  *   - MISSING BODY / EXTRA  body copy dropped / invented             (🟡 advisory)
+ *   - MISSING SR-ONLY TEXT  visually hidden non-CTA text dropped      (🟡; a lost skip link stays MISSING CTA)
  *   - FONT DIFF a matched line whose rendered FACE differs           (🟠 width probe, #77)
  *
  * Text nodes are not the whole content. A second inventory (attributeInventory,
@@ -129,7 +132,7 @@
  * line per finding (gate.sh and gate-evidence read the Findings line only); with
  * --json, `Inventories JSON:` followed by { primaryRoot, [source]: inv, [build]: inv
  * (the first root), roots: { <other root>: { [source]: inv, [build]: inv } },
- * findings: [{ sev, kind, root, msg }] }.
+ * findings: [{ sev, kind, root, msg }], accepted: [{ kind, from, text, root }] }.
  *
  * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding
  * (pure) are exported; playwright is imported lazily in main, so the contract test runs
@@ -138,7 +141,7 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, newline-per-chained-call, no-continue, no-multi-spaces */
 /* standalone dev tool: playwright is a devDependency (imported lazily in main); sequential page ops use awaited loops by design */
-import { realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // NOTE: deploy's gates (#93/#94) now use their OWN synced copies in skills/deploy/scripts/
@@ -149,6 +152,7 @@ import { resolveProfile } from './diff-profiles.mjs';
 // editableInventory = the Experience Workspace outermost-editable classifier, shared
 // with the deploy gates (section-schema editableTexts, block-roundtrip --ew).
 import { inventory, diffInventories, summarise, editableInventory } from './content-inventory.mjs';
+import { sameImage, signElements } from './image-signature.mjs';
 import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <buildURL> [options]
@@ -171,17 +175,29 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
                          sides; optional comma-separated extra selectors
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
+  --accepted <file>      accepted changes ({ accepted: [{ kind, text?, root?, probe?, reason }] }); a matching
+                         finding is printed as accepted with its reason and never counted
+                         (default stardust/replica/accepted.json when it exists). text matches inside
+                         the finding's first quoted text (the item, value or anchor), never its wording;
+                         an entry without text accepts EVERY finding of its kind
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
             3 bot challenge (live side blocked — fail loud)
-findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXTRA, FONT FORK,
+findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY|SR-ONLY TEXT, ROLE SWAP (the look
+            changed too; same look: body/eyebrow → heading is an accepted ROLE UPGRADE, not a
+            finding, heading → body/eyebrow 🟡 ROLE DOWNGRADE), EXTRA, FONT FORK,
             EDITABLE COUNT; attribute layer — MISSING|EXTRA PLACEHOLDER|ARIA-LABEL|TITLE,
             MISSING ICON, ICON DIFF, ICON KIND, EXTRA ICON, ICON MOVED (same icon at another
-            anchor, paired by identity + document order). 🔴 = MISSING PLACEHOLDER|ARIA-LABEL,
-            MISSING ICON, ICON DIFF on an interactive element (input, button, link or inside
-            one); MISSING TITLE, ICON MOVED, ICON KIND and every EXTRA are 🟡; else 🟡.
+            anchor, paired by identity + document order). 🔴 = MISSING PLACEHOLDER, MISSING
+            ICON, ICON DIFF on an interactive element (input, button, link or inside one);
+            MISSING ARIA-LABEL, MISSING TITLE, ICON MOVED, ICON KIND and every EXTRA are 🟡.
             Each finding line carries its root — "<sev> <KIND> [<root>]: <msg>"; the
-            Findings: line is unchanged.
+            Findings: line is unchanged. Tiers (the verdict reads both): looks-same = every 🔴
+            (a visible difference); nothing-lost = MISSING ARIA-LABEL, MISSING SR-ONLY TEXT,
+            ROLE DOWNGRADE (invisible, still to fix); the rest is advisory. A side whose main
+            root fell back while the other found it is re-read at the same fallback (aligned;
+            at <body> when the re-read side has no <main>). accepted 🟢 = owner (the
+            accepted list) + auto (ROLE UPGRADE, SAME IMAGE, SAME ICON).
 `;
 
 // ---- attribute + icon layer ----------------------------------------------------------------------
@@ -201,7 +217,7 @@ findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXT
 //          [data-block-name]) keyed by its first heading's text, '' when none — the scope the ICON MOVED pass pairs within first.
 /* eslint-disable no-undef */
 export function attributeInventory(args) {
-  const [rootSel] = args;
+  const [rootSel, refPrefix = 'i'] = args;
   const root = document.querySelector(rootSel) || document.querySelector('main') || document.body;
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const norm = (s) => clean(s).toLowerCase();
@@ -219,10 +235,14 @@ export function attributeInventory(args) {
     const h = b.querySelector('h1, h2, h3, h4, h5, h6');
     return h ? norm(h.textContent).slice(0, 60) : '';
   };
+  // an element's text minus inline-svg <title>/<text> and payloads (as content-inventory labelOf): an svg icon and an <img> icon leave the same anchor
+  const textOf = (el) => { let t = ''; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement.closest('svg, script, noscript, style, template')) t += ` ${n.textContent}`; return t; };
+  // the consent managers' banners, as content-inventory skips them (test/content-diff.test.mjs pins the copies)
+  const CONSENT_UI = '#onetrust-consent-sdk, #cmpbox, .ch2-container, #CybotCookiebotDialog, #didomi-host, #usercentrics-root, .osano-cm-window, #termly-code-snippet-support, #truste-consent-track, .qc-cmp2-container, #iubenda-cs-banner, .cmplz-cookiebanner, .cky-consent-container';
   const anchorOf = (el) => {
     const host = el.matches(INTERACTIVE) ? el : el.closest(INTERACTIVE);
     if (host && root.contains(host)) {
-      const label = norm(host.getAttribute('aria-label') || host.getAttribute('title') || host.textContent);
+      const label = norm(host.getAttribute('aria-label') || host.getAttribute('title') || textOf(host));
       if (label) return label.slice(0, 60);
       const href = host.getAttribute('href');
       if (href) { try { return new URL(href, location.href).pathname.toLowerCase() || '/'; } catch { return href.toLowerCase(); } }
@@ -230,13 +250,18 @@ export function attributeInventory(args) {
       return `${host.tagName.toLowerCase()}#${hostIds.get(host)}`;
     }
     let p = el.parentElement;
-    while (p && p !== root && !clean(p.textContent)) p = p.parentElement;
-    return p ? norm(p.textContent).slice(0, 60) : '';
+    while (p && p !== root && !clean(textOf(p))) p = p.parentElement;
+    return p ? norm(textOf(p)).slice(0, 60) : '';
   };
   const attrs = []; const icons = [];
+  // every icon element gets a ref the caller screenshots for its pixel signature (image-signature.mjs)
+  const push = (el, icon) => { const ref = `${refPrefix}${icons.length}`; el.setAttribute('data-sd-icon', ref); icons.push({ ...icon, ref }); };
+  // laid out but drawn at 0×0: nothing anyone sees (a display:none subtree has no client rect and is kept)
+  const zeroBox = (el) => { const r = el.getBoundingClientRect(); return el.getClientRects().length > 0 && (r.width < 1 || r.height < 1); };
   root.querySelectorAll('*').forEach((el) => {
     const tag = el.tagName.toLowerCase();
     if (['script', 'style', 'template', 'noscript'].includes(tag) || el.closest('script, style, template, noscript')) return;
+    if (el.closest(CONSENT_UI)) return; // a consent banner's close / accept controls are not page content
     if (el.ownerSVGElement) return; // svg internals — the <svg> itself is the icon
     const interactive = Boolean(el.closest(INTERACTIVE)); // closest() includes the element itself
     for (const attr of ['placeholder', 'aria-label', 'title']) {
@@ -247,15 +272,16 @@ export function attributeInventory(args) {
       const r = el.getBoundingClientRect();
       const w = r.width || el.naturalWidth || Number(el.getAttribute('width')) || 0;
       const h = r.height || el.naturalHeight || Number(el.getAttribute('height')) || 0;
-      if (w > 0 && h > 0 && w <= 64 && h <= 64) icons.push({ kind: 'img', value: fileOf(el.currentSrc || el.src), size: `${Math.round(w)}×${Math.round(h)}`, interactive, anchor: anchorOf(el), block: blockOf(el) });
+      if (w > 0 && h > 0 && w <= 64 && h <= 64) push(el, { kind: 'img', value: fileOf(el.currentSrc || el.src), size: `${Math.round(w)}×${Math.round(h)}`, interactive, anchor: anchorOf(el), block: blockOf(el) });
       return;
     }
     if (tag === 'svg') {
+      if (zeroBox(el)) return;
       const use = el.querySelector('use');
       const ref = (use && (use.getAttribute('href') || use.getAttribute('xlink:href'))) || '';
       const title = el.querySelector('title');
       const value = (ref.includes('#') ? ref.slice(ref.lastIndexOf('#')) : '') || clean(el.getAttribute('aria-label')) || (title && clean(title.textContent)) || `${el.getAttribute('viewBox') || 'no viewBox'} / ${el.querySelectorAll('path, circle, rect, polygon, line, polyline, ellipse').length} shape(s)`;
-      icons.push({ kind: 'svg', value, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) });
+      push(el, { kind: 'svg', value, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) });
       return;
     }
     const iconClass = [...el.classList].some((c) => ICON_CLASS.test(c));
@@ -265,16 +291,17 @@ export function attributeInventory(args) {
     if (!iconClass && !/^inline/.test(cs.display)) return; // an empty block is layout, not an icon
     if (iconClass && el.querySelector('img, svg')) return; // a wrapper — its child is the icon
     if (iconClass && !empty) return; // an icon-class element that is really a text label (ligature fonts) — the text inventory has it
+    if (zeroBox(el)) return;
     const before = pseudo(el, '::before'); const after = pseudo(el, '::after');
     if (before || after) {
       const family = getComputedStyle(el, before ? '::before' : '::after').fontFamily.split(',')[0].replace(/["']/g, '').trim();
-      icons.push({ kind: 'glyph', value: `${before}${after}`, family, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) });
+      push(el, { kind: 'glyph', value: `${before}${after}`, family, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) });
       return;
     }
     if (!iconClass) return; // an empty inline element with no generated content is nothing
     const mask = urlFile(cs.maskImage || cs.webkitMaskImage); const bg = urlFile(cs.backgroundImage);
-    if (mask || bg) { icons.push({ kind: 'css', value: mask ? `mask:${mask}` : `bg:${bg}`, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); return; }
-    icons.push({ kind: 'glyph', value: '', family: '', size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); // the empty icon box
+    if (mask || bg) { push(el, { kind: 'css', value: mask ? `mask:${mask}` : `bg:${bg}`, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); return; }
+    push(el, { kind: 'glyph', value: '', family: '', size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); // the empty icon box
   });
   return { attrs, icons };
 }
@@ -309,7 +336,7 @@ const describeIcon = (ic) => {
 // kind + value, then same kind, then any kind at that anchor), then leftovers by IDENTITY + document order (ICON MOVED).
 // 🔴 when the element is interactive, 🟡 otherwise; MISSING TITLE, ICON MOVED, ICON KIND and every EXTRA are 🟡 (severity
 // table in the header).
-export function diffAttributes(src, tgt, prof) {
+export function diffAttributes(src, tgt, prof, accepted = []) {
   const flags = [];
   const S = prof.source; const T = prof.target; const H = { ...ATTRIBUTE_HINTS, ...(prof.hints || {}) };
   const sev = (interactive) => (interactive ? '🔴' : '🟡');
@@ -321,7 +348,7 @@ export function diffAttributes(src, tgt, prof) {
     const i = ta.findIndex((b, j) => !usedA[j] && key(b) === key(a));
     if (i >= 0) { usedA[i] = true; return; }
     const others = ta.filter((b) => b.attr === a.attr && b.tag === a.tag).map((b) => q(b.value, 40)).slice(0, 3);
-    flags.push({ sev: a.attr === 'title' ? '🟡' : sev(a.interactive), kind: `MISSING ${a.attr.toUpperCase()}`, msg: `${S} <${a.tag}> ${a.attr}=${q(a.value)} has no ${T} <${a.tag}> with that ${a.attr}${others.length ? ` (${T} <${a.tag}> ${a.attr}s: ${others.join(', ')})` : ''}. ${H.MISSING_ATTRIBUTE}` });
+    flags.push({ sev: a.attr === 'placeholder' ? sev(a.interactive) : '🟡', kind: `MISSING ${a.attr.toUpperCase()}`, msg: `${S} <${a.tag}> ${a.attr}=${q(a.value)} has no ${T} <${a.tag}> with that ${a.attr}${others.length ? ` (${T} <${a.tag}> ${a.attr}s: ${others.join(', ')})` : ''}. ${H.MISSING_ATTRIBUTE}` });
   });
   ta.forEach((b, j) => { if (!usedA[j]) flags.push({ sev: '🟡', kind: `EXTRA ${b.attr.toUpperCase()}`, msg: `${T} <${b.tag}> ${b.attr}=${q(b.value)} has no ${S} source. ${H.EXTRA_ATTRIBUTE}` }); });
 
@@ -330,7 +357,9 @@ export function diffAttributes(src, tgt, prof) {
   // Three ordered passes over ALL source icons — exact (anchor + kind + value), then same kind at the anchor, then any
   // kind there — so an exact match is never stolen by an earlier source icon's fallback.
   const pairs = new Array(si.length).fill(-1); const moved = new Array(si.length).fill(false);
-  const passes = [(a, b) => b.anchor === a.anchor && b.kind === a.kind && b.value === a.value, (a, b) => b.anchor === a.anchor && b.kind === a.kind, (a, b) => b.anchor === a.anchor];
+  // "the same icon" = same kind + value, or the same pixels (sameImage: a re-hosted file, svg drawn as <img>)
+  const same = (a, b) => (b.kind === a.kind && b.value === a.value) || sameImage(a, b);
+  const passes = [(a, b) => b.anchor === a.anchor && same(a, b), (a, b) => b.anchor === a.anchor && b.kind === a.kind, (a, b) => b.anchor === a.anchor];
   for (const pred of passes) {
     si.forEach((a, k) => {
       if (pairs[k] >= 0) return;
@@ -342,12 +371,12 @@ export function diffAttributes(src, tgt, prof) {
   // value: glyph code point, file name, svg signature) in document order — first within the same nearest block (equal block
   // keys), then anywhere in the root. Such a pair is ICON MOVED 🟡: the icon is present, anchored differently (a text-less
   // <button> host anchors as button#n where the source anchored to its item text) — never MISSING + EXTRA. Empty icon boxes
-  // have no identity to pair by.
+  // have no identity to pair by: they pair only by the same (non-blank) pixels.
   const ident = (ic) => `${ic.kind}\u0000${ic.value}`;
   for (const scope of [(a, b) => Boolean(a.block) && a.block === b.block, () => true]) {
     si.forEach((a, k) => {
-      if (pairs[k] >= 0 || !a.value) return;
-      const i = ti.findIndex((b, j) => !usedI[j] && ident(b) === ident(a) && scope(a, b));
+      if (pairs[k] >= 0 || (!a.value && !a.sig)) return;
+      const i = ti.findIndex((b, j) => !usedI[j] && ((a.value && ident(b) === ident(a)) || sameImage(a, b)) && scope(a, b));
       if (i >= 0) { usedI[i] = true; pairs[k] = i; moved[k] = true; }
     });
   }
@@ -355,6 +384,7 @@ export function diffAttributes(src, tgt, prof) {
     const i = pairs[k];
     if (i < 0) { flags.push({ sev: sev(a.interactive), kind: 'MISSING ICON', msg: `${S} ${describeIcon(a)} at ${q(a.anchor || '(no anchor)', 40)} has no ${T} icon there. ${H.MISSING_ICON}` }); return; }
     const b = ti[i];
+    if (!moved[k] && (b.kind !== a.kind || b.value !== a.value) && sameImage(a, b)) { accepted.push({ kind: b.kind === a.kind ? 'SAME IMAGE' : 'SAME ICON', text: `${a.value || a.kind} ↔ ${b.value || b.kind}` }); return; }
     if (moved[k]) flags.push({ sev: '🟡', kind: 'ICON MOVED', msg: `${S} ${describeIcon(a)} at ${q(a.anchor || '(no anchor)', 40)} is at ${q(b.anchor || '(no anchor)', 40)} in the ${T} — same icon, paired by order${a.block && a.block === b.block ? ` within ${q(a.block, 40)}` : ''}. ${H.ICON_MOVED}` });
     else if (b.kind !== a.kind) flags.push({ sev: '🟡', kind: 'ICON KIND', msg: `${S} ${describeIcon(a)} vs ${T} ${describeIcon(b)} at ${q(a.anchor, 40)}. ${H.ICON_KIND}` });
     else if (b.value !== a.value) flags.push({ sev: sev(a.interactive || b.interactive), kind: 'ICON DIFF', msg: `${S} ${describeIcon(a)} vs ${T} ${describeIcon(b)} at ${q(a.anchor, 40)}. ${H.ICON_DIFF}` });
@@ -390,13 +420,13 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   const S = prof.source; const T = prof.target;
   const s = srcInv || { ...EMPTY_INVENTORY(), absent: true }; const t = tgtInv || { ...EMPTY_INVENTORY(), absent: true };
   const lines = [];
-  if (s.absent && t.absent) { lines.push(`root "${root.name}": absent on both sides (${root.describe}) — not compared`); return { flags: [], lines }; }
+  if (s.absent && t.absent) { lines.push(`root "${root.name}": absent on both sides (${root.describe}) — not compared`); return { flags: [], lines, accepted: [] }; }
   const note = (inv, side) => (inv.absent ? `${side}: absent (${root.describe}) — measured as empty` : inv.fellBack ? `${side}: ${root.describe} absent, fell back to <${inv.fellBack}>` : '');
   const notes = [note(s, S), note(t, T)].filter(Boolean);
   lines.push(`root "${root.name}"${notes.length ? ` — ${notes.join('; ')}` : ''}`);
   lines.push(`  ${S}: ${summarise(s)}`);
   lines.push(`  ${T}: ${summarise(t)}`);
-  const { flags } = diffInventories(s.items || [], t.items || [], prof);
+  const { flags, accepted } = diffInventories(s.items || [], t.items || [], prof);
   // Experience Workspace editability advisory (deploy SKILL.md § Experience Workspace editability contract): the canvas can
   // only attach an editor to an OUTERMOST h1-h6/p/ul/ol element that survives decorate(); fewer on the build than on the
   // source means authored elements were rebuilt/merged into wrappers or text.
@@ -405,8 +435,63 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   if (tgtEd < srcEd) flags.push({ sev: '🟡', kind: 'EDITABLE COUNT', msg: `${T} has ${tgtEd} outermost editable element(s) vs ${srcEd} in the ${S} — fewer outermost editable elements after decoration usually means authored elements were rebuilt/merged — see deploy SKILL.md § Experience Workspace editability contract (run ew-editability-probe.mjs on the build URL for the per-block verdict).` });
   const sA = s.attrs || { attrs: [], icons: [] }; const tA = t.attrs || { attrs: [], icons: [] };
   lines.push(`  attributes (placeholder/aria-label/title): ${S} ${sA.attrs.length} / ${T} ${tA.attrs.length}; icons: ${S} ${sA.icons.length} / ${T} ${tA.icons.length}`);
-  flags.push(...diffAttributes(sA, tA, prof));
-  return { flags: flags.map((f) => ({ ...f, root: root.name })), lines };
+  flags.push(...diffAttributes(sA, tA, prof, accepted));
+  if (accepted.length) lines.push(`  accepted (invisible, nothing lost): ${acceptedLine(accepted)}`);
+  return { flags: flags.map((f) => ({ ...f, root: root.name })), lines, accepted: accepted.map((a) => ({ ...a, root: root.name })) };
+}
+// ---- verdict tiers + the accepted list --------------------------------------------------------------
+// looks-same = every 🔴 (a visible difference); nothing-lost = invisible losses still to fix; the rest is advisory.
+export const LOST_KINDS = new Set(['MISSING ARIA-LABEL', 'MISSING SR-ONLY TEXT', 'ROLE DOWNGRADE']);
+export const tierOf = (f) => (f.sev === '🔴' ? 'looks' : (LOST_KINDS.has(f.kind) ? 'lost' : 'advisory'));
+// Pure: a finding's subject — the first quoted text in its message (the item text, the attribute value or the icon's
+// anchor, as printed), never the fixed wording around it ("has no build link"); '' when the message quotes nothing.
+export const subjectOf = (f) => { const m = /"([^"]*)"/.exec(String((f && f.msg) || '')); return m ? m[1] : ''; };
+// Pure: split findings by an accepted list ({ kind, text?, root?, reason }) — kind equal, text a case-insensitive
+// substring of the finding's subject (subjectOf), root equal when given; an entry without text accepts EVERY finding of
+// its kind (on its root). Returns the findings left and the accepted ones with their reason.
+export function applyAccepted(flags, list) {
+  const left = []; const accepted = [];
+  for (const f of flags) {
+    const hit = (list || []).find((a) => a && (!a.probe || a.probe === 'content-diff') && a.kind === f.kind && (!a.root || a.root === f.root) && (!a.text || subjectOf(f).toLowerCase().includes(String(a.text).toLowerCase())));
+    if (hit) accepted.push({ ...f, reason: hit.reason || '' }); else left.push(f);
+  }
+  return { flags: left, accepted };
+}
+// Pure: the tier summary line the gate reads. accepted 🟢 = owner (the accepted list) + auto (the probe's own look-neutral
+// acceptances: ROLE UPGRADE, SAME IMAGE, SAME ICON).
+export function tierLine(flags, { owner = 0, auto = 0 } = {}) {
+  const n = (t) => flags.filter((f) => tierOf(f) === t).length;
+  return `Tiers: looks-same 🔴 ${n('looks')} · nothing-lost 🟡 ${n('lost')} · accepted 🟢 ${owner + auto} (owner ${owner}, auto ${auto}) · advisory ${n('advisory')}`;
+}
+// Align the primary root's scope across the two sides. sF / tF = where each side measured it: null = the selector itself,
+// else the in-page fallback it took ('main' → 'body'). One side found it and the other fell back: the side not at the
+// fallback is re-read there. reread(side, to) re-reads 'src' | 'tgt' at `to` and resolves to where that side was really
+// measured — a side re-read at <main> that has none falls back to <body> in the page — so the scopes are compared again
+// and, while they differ, aligned one step wider (<body> always exists). Pure given reread. Returns null (already the
+// same scope) or { to, note } — the note says what was measured, and which side lacked the first target.
+export async function alignPrimary(name, sF, tF, prof, reread) {
+  if (sF === tF) return null;
+  const at = { src: sF, tgt: tF }; const label = { src: prof.source, tgt: prof.target };
+  const lacks = []; let to = null;
+  for (let pass = 0; pass < 2 && at.src !== at.tgt; pass += 1) {
+    to = [at.src, at.tgt].includes('body') ? 'body' : 'main';
+    for (const side of ['src', 'tgt']) {
+      if (at[side] === to) continue;
+      const got = await reread(side, to);
+      if (got !== to) lacks.push(`${label[side]} has no <${to}>`);
+      at[side] = got;
+    }
+  }
+  const was = (f) => (f ? `fell back to <${f}>` : 'has it');
+  const both = at.src === at.tgt ? `both sides measured at <${at.src}>` : `${prof.source} measured at <${at.src}>, ${prof.target} at <${at.tgt}>`;
+  return { to: at.src === at.tgt ? at.src : null, note: `root "${name}": ${prof.source} ${was(sF)}, ${prof.target} ${was(tF)} — ${both} (aligned${lacks.length ? `; ${lacks.join(', ')}` : ''})` };
+}
+
+// Pure: "23 ROLE UPGRADE body → heading — "a", "b" …; 6 SAME IMAGE — …" — one group per kind, the first four examples each.
+export function acceptedLine(accepted) {
+  const kinds = [...new Set(accepted.map((x) => x.kind))];
+  const label = (k, xs) => (k === 'ROLE UPGRADE' && xs[0].from ? `${k} ${[...new Set(xs.map((x) => x.from))].join('/')} → heading` : k);
+  return kinds.map((k) => { const xs = accepted.filter((x) => x.kind === k); return `${xs.length} ${label(k, xs)} — ${xs.slice(0, 4).map((x) => `"${x.text}"`).join(', ')}${xs.length > 4 ? ' …' : ''}`; }).join('; ');
 }
 export const formatFinding = (f) => `  ${f.sev} ${f.kind}${f.root ? ` [${f.root}]` : ''}: ${f.msg}`;
 
@@ -431,6 +516,7 @@ function parseArgs(argv) {
     }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
+    else if (a === '--accepted') { opts.accepted = rest[i += 1]; }
   }
   return { proto, eds, opts };
 }
@@ -469,10 +555,14 @@ async function grab(browser, url, opts, prof, roots) {
     if (found !== 'yes' && !root.primary) { invs[root.name] = { ...EMPTY_INVENTORY(), absent: true }; continue; }
     const inv = await page.evaluate(inventory, [root.sel, prof.eyebrow]);
     inv.editable = await page.evaluate(editableInventory, [root.sel]);
-    inv.attrs = await page.evaluate(attributeInventory, [root.sel]);
+    inv.attrs = await page.evaluate(attributeInventory, [root.sel, `r${roots.indexOf(root)}i`]);
     if (found !== 'yes') inv.fellBack = found;
     invs[root.name] = inv;
   }
+  // pixel signatures of the visible icons, after every inventory (the screenshots scroll the page)
+  const icons = Object.values(invs).flatMap((inv) => (inv.attrs ? inv.attrs.icons : []));
+  const sigs = await signElements(page, icons.map((ic) => ({ ref: ic.ref, selector: `[data-sd-icon="${ic.ref}"]` })));
+  icons.forEach((ic) => { if (sigs.has(ic.ref)) ic.sig = sigs.get(ic.ref); });
   await ctx.close();
   return invs;
 }
@@ -490,20 +580,41 @@ async function main() {
     throw new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`);
   }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
-  let srcInvs; let tgtInvs;
+  let srcInvs; let tgtInvs; let aligned = null;
   try {
     srcInvs = await grab(browser, proto, opts, prof, roots);
     tgtInvs = await grab(browser, eds, opts, prof, roots);
+    // one side found the main root, the other fell back (→ <main> → <body>): re-read the first at the other's
+    // fallback, so both sides inventory the same scope (a page with no <main> read as <body> against a build's <main>
+    // turned its whole mega-menu into missing content) — alignPrimary re-checks where the re-read really landed
+    const pr = roots[0];
+    const reread = async (side, to) => {
+      const invs = await grab(browser, side === 'src' ? proto : eds, opts, prof, [{ ...pr, sel: to, describe: `<${to}> (aligned)` }, ...roots.slice(1)]);
+      if (side === 'src') srcInvs = invs; else tgtInvs = invs;
+      return invs[pr.name].fellBack || to;
+    };
+    const al = await alignPrimary(pr.name, srcInvs[pr.name].fellBack || null, tgtInvs[pr.name].fellBack || null, prof, reread);
+    aligned = al ? al.note : null;
   } finally {
     await browser.close();
   }
 
   process.stdout.write(`\nContent diff @ ${opts.width}px (profile "${prof.name}", roots: ${roots.map((r) => r.name).join(', ')})\n`);
-  const flags = [];
+  if (aligned) process.stdout.write(`⚠ ${aligned}\n`);
+  let flags = [];
+  const inProbe = []; // the probe's own look-neutral acceptances (ROLE UPGRADE, SAME IMAGE, SAME ICON)
   for (const root of roots) {
-    const { flags: rf, lines } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
+    const { flags: rf, lines, accepted: ra } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
     lines.forEach((l) => process.stdout.write(`${l}\n`));
     flags.push(...rf);
+    inProbe.push(...(ra || []));
+  }
+  // the project's accepted list (an owner's decision per change, with its reason)
+  const acceptedFile = opts.accepted || (existsSync('stardust/replica/accepted.json') ? 'stardust/replica/accepted.json' : null);
+  let byList = [];
+  if (acceptedFile) {
+    const list = JSON.parse(readFileSync(acceptedFile, 'utf8')).accepted || [];
+    ({ flags, accepted: byList } = applyAccepted(flags, list));
   }
 
   const primary = roots[0].name;
@@ -515,13 +626,15 @@ async function main() {
   flags.sort((a, b) => order[a.sev] - order[b.sev]);
   const strong = flags.filter((f) => f.sev === '🔴').length;
   process.stdout.write(`\nFindings: ${flags.length ? `${flags.length} (${strong} structural 🔴)` : 'none — content + roles match'}\n`);
+  process.stdout.write(`${tierLine(flags, { owner: byList.length, auto: inProbe.length })}\n`);
   flags.forEach((f) => process.stdout.write(`${formatFinding(f)}\n`));
+  byList.forEach((f) => process.stdout.write(`  🟢 ${f.kind}${f.root ? ` [${f.root}]` : ''} accepted (${acceptedFile}): ${f.reason}\n`));
 
   if (opts.json) {
     const others = {};
     roots.slice(1).forEach((r) => { others[r.name] = { [prof.source]: srcInvs[r.name], [prof.target]: tgtInvs[r.name] }; });
     process.stdout.write('\nInventories JSON:\n');
-    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags }, null, 1)}\n`);
+    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, aligned, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags.map((f) => ({ ...f, tier: tierOf(f) })), accepted: inProbe, acceptedByList: byList }, null, 1)}\n`);
   }
 }
 

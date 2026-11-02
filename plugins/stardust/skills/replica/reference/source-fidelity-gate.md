@@ -6,11 +6,6 @@ craft gates entirely: an archetype ships because it measured true, never
 because it looked right. Every fix in the loop comes off the instruments;
 eyeballing is not an input.
 
-Validated (UC1-E1, a typographic retail home page): 8.31% → 2.93% → 1.31% pixel diff across
-exactly 3 iterations, 0 structural 🔴, height Δ 0 — and the two defects the
-capture phase missed (span font fork, hero scrim) were both found only by
-these instruments.
-
 ## The three probes
 
 | Probe | Script | Catches | Blind to |
@@ -78,16 +73,23 @@ The prototype capture is re-taken every iteration.
 
 ## Pass bar (all five per breakpoint, plus the content-cap row)
 
-1. **content-diff: 0 structural 🔴 — across the main root AND the chrome
-   roots (`header`, `footer`), which the default run covers on every gate
-   page; each finding line names its root.** 🟡 (body/EXTRA, a missing
-   `title`, an `ICON MOVED` — the same icon at another anchor, e.g. inside a
-   text-less accordion button) and 🟠 (font fork) confirmed intended — a
-   substituted licensed font is a permanent justified 🟠; record it once in
-   the ledger.
-2. **visual-diff: flags none or justified.** A live page's own quirks are
-   justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
-   carousel tile at a negative offset — both real UC1-E1 justifications).
+1. **content-diff, two tiers, on the main and chrome roots** (each finding
+   names its root): *looks the same* = 0 🔴; *nothing lost* = 0
+   nothing-lost 🟡 (a lost aria-label, sr-only text or heading — invisible,
+   still a defect). gate.sh fails on either (`Tiers:`). Look-neutral changes
+   are accepted, never findings; other 🟡 and 🟠 are advisory, confirmed
+   intended (a substituted licensed font is a permanent justified 🟠 —
+   ledger it once). An owner's per-change decision, with its reason, is one
+   entry in `stardust/replica/accepted.json`: content-diff and chrome-parity
+   print it 🟢, uncounted (schema and matching: their `--help`). An entry
+   without `text` accepts EVERY finding of its kind — always give one.
+   Cite the round's `verdict-<label>.json` — it names the evidence file of
+   every verdict.
+2. **visual-diff: flags none or justified** — `HEADING FACE` included: a
+   licensed-font substitution is one `×N` line, justified once like the 🟠
+   fork. A live page's own quirks are justified when the prototype mirrors
+   them (e.g. a 1×1 SEO h1 at x0, a carousel tile at a negative offset —
+   both real UC1-E1 justifications).
 3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
    breakdown). 10% is the ship bar, not the target; the validated run
    landed at 1.31%.
@@ -142,20 +144,18 @@ The prototype capture is re-taken every iteration.
    add sticky strips with `--region strip=<liveSel>|<buildSel>`), pairs
    every text-bearing element by its text, and prints only what differs:
    family / size / weight / style / line-height / letter-spacing /
-   transform / colour / background / padding / radius, the element rect,
-   the clickable box of links and buttons, and the icon inventory
-   (count + size + signature, paired by order). Recorded: one run found
-   what many pixel-band rounds had not — an italic-vs-normal note, a
-   regular-vs-bold link, a wrong nav link colour, 12px row offsets, a 97×40
-   vs 71×32 button, six missing icons. Fix every delta, re-run until it is
-   quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
-   deltas outstanding is wasted iterations. Each run is one live
-   navigation (budget it like any live probe); `--json` records both
-   sides as the round's evidence.
+   transform / colour / background (the painted one) / padding / radius,
+   the element rect, the clickable box of links and buttons, and the icon
+   inventory (count + size, paired by order; the same pixels are the same
+   icon). A page with no `<header>` gets its top bar auto-detected (the line
+   names it); a region moved as one block by the page above is one advisory
+   OFFSET line. Fix every delta, re-run until it is quiet (exit 0), THEN
+   crop-compare — a pixel loop on chrome with parity deltas outstanding is
+   wasted iterations. Each run is one live navigation (budget it like any
+   live probe); `--json` records both sides as the round's evidence.
 
    ```bash
-   node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
-     --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
+   node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W   # + --region strip=<sel>|<sel>
    ```
 
    **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
@@ -311,11 +311,10 @@ loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
 wraps one full pixel round (stitch both sides — live cached — + compare +
 verdict) in one command.
 
-Section-level compare (crops) is the escalation when a band stays hot and
-the cause isn't visible in `diff-iter<N>.png` — in the validated run it was
-prepared and never needed, because re-authoring hit exact section heights.
-`crop-compare.mjs` (the chrome-gate script, pass-bar item 5) does exactly
-this for any y-band, not just chrome.
+When a band stays hot and `diff-iter<N>.png` doesn't show why,
+`../scripts/diff-report.mjs <gateDir> <buildURL>` names the block: the
+differing share per block (EDS `[data-block-name]`, else sections) and a
+`report.html` with live | build | diff crops of the hottest ones.
 
 **Two row-level instruments replace eyeballing crops (`../scripts/row-profile.mjs`,
 runs over the same stitched PNGs — no live hit):**
@@ -558,19 +557,17 @@ rather than erroring.
    adopt the live content-root class so one `--main` value fits both. Both
    diff scripts take `--main` (visual-diff's is the upstreamed flag: on
    sites without a `<main>`, both sides otherwise false-flag BLANK RENDER
-   while the main-scoped checks silently no-op). Two guardrails:
-   - **`--main body` is NEVER a valid replica scope.** A too-broad root
-     self-poisons the instrument regardless of symmetry: reproduced
-     (a furniture retailer), content-diff run live-vs-ITSELF with `--main body`
-     produced **103 structural 🔴** and asymmetric node counts (461 vs 73)
-     from analytics/inline-script text plus a nondeterministic
-     cookie-settings panel pulled into the inventory. The content root must
-     exclude consent/analytics chrome.
-   - **Verify the consent banner is actually gone post-dismiss before
-     trusting an inventory** — consent UIs render nondeterministically
-     between two sequential captures (one capture caught the expanded
-     cookie panel, the other didn't). If reds cluster on cookie/consent
-     strings, the scope or the dismissal is wrong, not the recreation.
+   while the main-scoped checks silently no-op). **`--main body` is never a
+   valid replica scope** (the chrome lands in the content inventory).
+   Script / style payloads and the common consent managers' banners are not
+   inventoried — a skipped banner is named on its root's summary line. Reds
+   that cluster on cookie strings mean a manager the list misses, or a
+   banner the dismissal hid rather than removed: `--consent <sel>` (rule 6)
+   only adds an accept click — it does not extend the skip list, and the
+   inventory has no visibility filter. **Verify the banner is actually gone
+   after dismissal before trusting an inventory** (consent UIs render
+   nondeterministically between captures); if it lingers, the scope or the
+   dismissal is wrong, not the recreation.
 4. **Stitched captures only, never `fullPage:true`.** Chromium's
    captureBeyondViewport renders lazy-decoded images as gray placeholders
    even when the DOM says loaded. Stitch on BOTH sides — the instrument
@@ -608,12 +605,10 @@ rather than erroring.
     reality). The shared `dismissOverlays` parks the mouse (bottom-left)
     after every dismissal pass — all three instruments inherit it; mirror
     it in any ad-hoc capture that clicks anything.
-11. **Fixed/sticky chrome × stitched capture.** Fixed elements repeat at
-    every chunk seam, occlude a band of content per seam, and can morph
-    with scroll state — chunks 2+ then capture different chrome than
-    chunk 1. Symmetry requires the prototype to replicate the chrome
-    including its scroll-state trigger; any height delta turns the seam
-    repeats into ghost bands in the diff. Full treatment:
+11. **Fixed/sticky chrome is captured once** (chunk 1; a stuck sticky
+    layer too), so seams neither repeat it nor hide content under it;
+    gate.sh re-takes a cached `live.png` captured the old way, and a frozen
+    baseline from before is stale (re-freeze).
     `recreation-procedure.md` § Fixed and sticky chrome.
 12. **A challenge/blocked response FAILS LOUD — it is never measured.** Every
     live instrument detects bot-management interstitials on every

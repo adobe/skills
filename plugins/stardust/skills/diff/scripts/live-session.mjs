@@ -537,12 +537,55 @@ export const CONSENT_CANDIDATES = [
   '#cmpwelcomebtnyes',
   '.cmpboxbtnyes',
   '#cmpbntyestxt',
+  // the other common consent managers' accept-all controls, by vendor id/class:
+  // CookieHub, Cookiebot (dialog v2, then v1), Didomi, Usercentrics, Osano,
+  // Termly, TrustArc, Quantcast Choice, iubenda, Complianz, CookieYes
+  '.ch2-allow-all-btn',
+  '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+  '#CybotCookiebotDialogBodyButtonAccept',
+  '#didomi-notice-agree-button',
+  '[data-testid="uc-accept-all-button"]',
+  '.osano-cm-accept-all',
+  '[data-tid="banner-accept"]',
+  '#truste-consent-button',
+  '.qc-cmp2-summary-buttons button[mode="primary"]',
+  '.iubenda-cs-accept-btn',
+  '.cmplz-accept',
+  '.cky-btn-accept',
   'button:has-text("Accept all")',
   'button:has-text("Accept All")',
+  // an unlisted manager's "Allow all": the label must START the button text
+  // (:has-text is a case-insensitive substring and would hit "Disallow all"),
+  // and it sits before the bare "Accept", which also hits "Accept only necessary"
+  'button:text-matches("^[^a-z]*allow all([^a-z]|$)", "i")',
   'button:has-text("Accept")',
   'button:has-text("I agree")',
   '[data-testid*="accept"]',
 ];
+
+/**
+ * The consent pass every live instrument shares (dismissOverlays, crawl.mjs, dynamics settlePage).
+ * Candidates in list order, each resolved to its first VISIBLE match (CMPs repeat the accept
+ * class in a hidden preference panel); a click is credited only once that control is hidden or
+ * detached, else the next candidate is tried (a second layer, a manager still initialising).
+ * One union probe first, so a page with no consent control costs one round trip.
+ * Returns the credited selector, or null.
+ */
+export async function acceptConsent(page, candidates = CONSENT_CANDIDATES) {
+  if (!(await page.locator(candidates.join(', ')).locator('visible=true').count().catch(() => 0))) return null;
+  for (const sel of candidates) {
+    try {
+      const loc = page.locator(sel).locator('visible=true').first();
+      if (!(await loc.count())) continue;
+      const btn = await loc.elementHandle({ timeout: 1000 });
+      await btn.click({ timeout: 3000 });
+      await btn.waitForElementState('hidden', { timeout: 3000 });
+      await page.waitForTimeout(1500);
+      return sel;
+    } catch { /* candidate absent, or still showing after the click — try next */ }
+  }
+  return null;
+}
 
 // Container candidates for timed marketing/newsletter interstitials (CH-1).
 // [role=dialog]/[aria-modal]/.modal alone is NOT enough: the recorded
@@ -567,7 +610,7 @@ const MODAL_CLOSE_CANDIDATES = [
 
 /**
  * Dismiss the two overlay classes that corrupt live measurement:
- *   (a) cookie consent — clicked (never removed), first candidate wins;
+ *   (a) cookie consent — clicked (never removed), acceptConsent above;
  *   (b) timed marketing/newsletter interstitials (CH-1) — every modal-like
  *       container with a VISIBLE close control gets it clicked, verified
  *       gone. Because these fire on a TIMER (recorded: a fashion retailer's panel
@@ -592,17 +635,7 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
     } catch { /* candidate absent — try next */ }
   }
 
-  for (const sel of CONSENT_CANDIDATES) {
-    try {
-      const btn = page.locator(sel).first();
-      if (await btn.count() && await btn.isVisible()) {
-        await btn.click({ timeout: 3000 });
-        await page.waitForTimeout(1500);
-        dismissed.consent = sel;
-        break;
-      }
-    } catch { /* candidate absent — try next */ }
-  }
+  dismissed.consent = await acceptConsent(page);
 
   // marketing/newsletter interstitials — close every modal container that
   // shows a visible close control. Gate on the CONTROL's visibility, not the

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadRecipe, resolveLaunch, saveRecipe } from '#src/recipe.mjs';
+import { extendConfig, loadRecipe, resolveLaunch, saveRecipe } from '#src/recipe.mjs';
 
 const tmp = () => join(mkdtempSync(join(tmpdir(), 'recipe-')), 'recipe.json');
 const read = (file) => JSON.parse(readFileSync(file, 'utf8'));
@@ -118,4 +118,18 @@ test('a recipe with the wrong shape is a USAGE error naming the property', () =>
     assert.throws(() => loadRecipe(file), { code: 'USAGE', message });
     assert.throws(() => saveRecipe(file, 'probe', []), { code: 'USAGE', message });
   }
+});
+
+test('extendConfig shallow-merges launchOptions and contextOptions, keeping other keys', () => {
+  assert.deepEqual(
+    extendConfig(
+      { contextOptions: { locale: 'fr' }, x: 1 },
+      { contextOptions: { ignoreHTTPSErrors: true } },
+    ),
+    { x: 1, contextOptions: { locale: 'fr', ignoreHTTPSErrors: true } },
+  );
+  assert.deepEqual(
+    extendConfig(undefined, { launchOptions: { proxy: { server: 'http://127.0.0.1:3002' } } }),
+    { launchOptions: { proxy: { server: 'http://127.0.0.1:3002' } } },
+  );
 });

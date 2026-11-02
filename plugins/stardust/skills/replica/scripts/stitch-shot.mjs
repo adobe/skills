@@ -65,6 +65,19 @@
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
+ *   - FIXED / STICKY layers are captured ONCE: chunk 1 shows the page's top
+ *     as a visitor sees it; from chunk 2 on, a fixed layer is made
+ *     transparent (opacity, so layout never moves) and a sticky one too while
+ *     it is stuck (displaced from its own place). A repeated header
+ *     covered a band of content at every seam on both sides, and a defect
+ *     under a seam scored 0 % (layerAction). The scan re-runs after every
+ *     chunk's scroll, so a header a scroll class makes fixed, or a widget
+ *     injected later, is caught where it appears (a WARNING names it). A
+ *     backdrop (negative z-index, or ≥ 90 % of the viewport) is never hidden
+ *     (isBackdrop). Not seen: a fixed element inside a shadow root. A fixed
+ *     layer still showing after the dismissal sweeps whose text reads like
+ *     consent / sign-up copy is printed as a WARNING (overlaySuspects) — an
+ *     overlay no candidate closed.
  *
  * Usage:
  *   node skills/replica/scripts/stitch-shot.mjs <url> <out.png> [options]
@@ -99,9 +112,10 @@
  * live.capture.json): { writtenBy, url, width, vh, height (the PNG's),
  * chunks, denialCheck ('ok' | 'skipped: <reason>' — the denial-page read
  * after the dismissal sweeps), fontsFailed ([] | the dead faces' families |
- * null + fontCheck "failed: <msg>"), at }. Removed when a capture starts, written
+ * null + fontCheck "failed: <msg>"), fixedLayers ('once', the count, late = those
+ * that appeared after scroll 0), at }. Removed when a capture starts, written
  * with the PNG — a failed or refused capture leaves none. A --freeze-baseline
- * capture writes baseline.json instead (HELP § Origin baseline).
+ * capture writes baseline.json instead (HELP § Origin baseline), fixedLayers included.
  *
  * Requires: playwright, pngjs (project devDependencies; imported lazily, so
  * --help and the two subcommands need neither), and the diff skill's scripts
@@ -172,12 +186,14 @@ bookkeeping — no browser, no network:
                     A round without the flag retakes a live.png whose record says "baseline". Exit 0; 1 usage.
 
 Writes <out.png> and <stem>.capture.json beside it (live.png → live.capture.json; removed when a capture starts, so a
-failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, fontsFailed, at } — denialCheck = 'ok' |
+failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, fontsFailed, fixedLayers, at } — denialCheck = 'ok' |
 'skipped: <reason>' (the denial-page read after the dismissal sweeps); fontsFailed = [] (every declared face loaded), or the
 dead faces' families (status error with no loaded face of the same family, weight and style: a file that failed to fetch,
 or a local() source this browser cannot resolve), or null + fontCheck "failed: <msg>" when the check could not run (one
 stderr line — never a pass). gate.sh prints it per side, gate-all fails the row. A --freeze-baseline capture writes
-baseline.json instead.
+baseline.json instead. Fixed/sticky layers are captured once: chunk 1, or where one turns fixed later (a WARNING); a backdrop
+(negative z-index, or ≥ 90 % of the viewport) stays in every chunk. A fixed layer left showing that reads like
+consent / sign-up copy is a WARNING.
 Run the SAME command shape against the live page and the served prototype.
 Exit codes: 0 written, 1 error, 2 baseline refusal, 3 bot challenge (live side blocked — an edge interstitial or a
 2xx denial page, read by live-session's pageDenial at the entry and after the dismissal sweeps; fail loud, never
@@ -275,7 +291,7 @@ export function readBaselineProvenance(dir) {
 
 // baseline.json: when the origin was frozen, for which page (url, width) and under which capture settings
 // (vh, settle), what it measured (height, chunks) and whether every declared font face loaded.
-export function baselineProvenance({ url, width, vh, height, settle = false, chunks = null, fontsFailed = [], capturedAt = new Date().toISOString() }) {
+export function baselineProvenance({ url, width, vh, height, settle = false, chunks = null, fontsFailed = [], fixedLayers = null, capturedAt = new Date().toISOString() }) {
   return {
     writtenBy: BASELINE_WRITER,
     schema: BASELINE_SCHEMA,
@@ -287,6 +303,7 @@ export function baselineProvenance({ url, width, vh, height, settle = false, chu
     settle: Boolean(settle),
     chunks: chunks == null ? null : Number(chunks),
     fontsFailed: Array.isArray(fontsFailed) ? fontsFailed : [],
+    fixedLayers,
   };
 }
 
@@ -318,6 +335,9 @@ export function baselineStatus(dir, { url = null, width = null } = {}) {
   if (!provenance) return { ok: false, why: `${json} is unreadable — re-freeze with --force` };
   if (url && typeof provenance.url === 'string' && !sameUrl(provenance.url, url)) return { ok: false, why: `stale: ${json} was frozen for ${provenance.url}, this round's live URL is ${url} — re-freeze with --force` };
   if (width != null && provenance.width != null && Number(provenance.width) !== Number(width)) return { ok: false, why: `stale: ${json} was frozen at ${provenance.width}px, this round is ${width}px — re-freeze with --force` };
+  // the one capture-method change that also makes a baseline stale: frozen before fixed/sticky layers were captured
+  // once, it would be compared with a build captured the new way
+  if (!provenance.fixedLayers) return { ok: false, why: `stale: ${json} was frozen before fixed/sticky layers were captured once (no fixedLayers) — re-freeze with --force` };
   return { ok: true, provenance };
 }
 
@@ -423,7 +443,7 @@ export function deadFontFaces(faces) {
 }
 
 /**
- * The font check's outcome for the --json record: a face list → { fontsFailed } (checked; [] = every declared face
+ * The font check's outcome for the capture record: a face list → { fontsFailed } (checked; [] = every declared face
  * loaded, else the dead faces); an evaluate error, or no list → { fontsFailed: null, fontCheck: 'failed: <first line>' }
  * — a check that could not run is recorded as not checked, never as [].
  */
@@ -457,6 +477,78 @@ async function dismissAndLog(page, url, opts) {
   return d;
 }
 
+// Fixed / sticky layers, captured once. A layer is { kind: 'fixed' | 'sticky' | other, top0, backdrop } (top0 = the
+// document top it has in its own place, measured as position: static — the sticky offset dropped, nothing else moves). Chunk 1 shows every
+// layer; from chunk 2 a fixed layer is hidden, a sticky one while it is stuck (displaced from top0), so a sticky element
+// still in its own place mid-page stays in the capture. A backdrop is never hidden; a layer a scroll class took back
+// into the flow (neither fixed nor sticky now) shows. Runs in the page too (layerPassScript) — this is the rule there.
+export const layerAction = (layer, chunkIndex, docTopNow) => {
+  if (chunkIndex === 0 || layer.backdrop) return 'show';
+  if (layer.kind === 'fixed') return 'hide';
+  if (layer.kind === 'sticky') return Math.abs(docTopNow - layer.top0) > 1 ? 'hide' : 'show';
+  return 'show';
+};
+// A layer that is the page's backdrop, not chrome: a negative z-index, or ≥ 90 % of the viewport covered (a
+// `position: fixed; inset: 0` background or video) — hiding it would show the body background from chunk 2 on.
+export const isBackdrop = (layer, vw, vh) => {
+  if (layer.z < 0) return true;
+  const w = Math.max(0, Math.min(layer.x + layer.w, vw) - Math.max(layer.x, 0));
+  const h = Math.max(0, Math.min(layer.y + layer.h, vh) - Math.max(layer.y, 0));
+  return w * h >= 0.9 * vw * vh;
+};
+// Runs IN THE PAGE, once per chunk after its scroll (layerPassScript serializes it with layerAction and isBackdrop, so
+// the rule the tests check is the rule that runs): tags the outermost fixed / sticky elements not tagged yet — at chunk
+// 1 every one at scroll 0; later a header a scroll class made fixed, a widget injected since — then applies the rule
+// to every tagged layer: opacity 0 (layout never moves), the page's own inline opacity and its priority kept aside and
+// restored. Tagging is idempotent (data-sd-layer). → the layers tagged in this pass.
+function layerPass(chunkIndex, action, backdropOf) {
+  const vw = window.innerWidth; const vh = window.innerHeight;
+  const docTop = (el) => Math.round(el.getBoundingClientRect().top + window.scrollY);
+  const inFlowTop = (el) => {
+    const s = el.style; const v = s.getPropertyValue('position'); const p = s.getPropertyPriority('position');
+    s.setProperty('position', 'static', 'important'); const t = docTop(el);
+    if (v) s.setProperty('position', v, p); else s.removeProperty('position');
+    return t;
+  };
+  const tagged = [];
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.hasAttribute('data-sd-layer')) continue;
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed' && cs.position !== 'sticky') continue;
+    if (el.parentElement && el.parentElement.closest('[data-sd-layer]')) continue; // the outermost layer only
+    const r = el.getBoundingClientRect();
+    const l = { kind: cs.position, x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height), z: parseInt(cs.zIndex, 10), visible: r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < vh && cs.visibility !== 'hidden', text: (el.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 160), name: `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}` };
+    l.backdrop = backdropOf(l, vw, vh);
+    el.setAttribute('data-sd-layer', l.backdrop ? 'backdrop' : '');
+    tagged.push(l);
+  }
+  for (const el of document.querySelectorAll('[data-sd-layer]')) {
+    const kind = getComputedStyle(el).position;
+    const sticky = kind === 'sticky';
+    const hide = action({ kind, top0: sticky ? inFlowTop(el) : null, backdrop: el.getAttribute('data-sd-layer') === 'backdrop' }, chunkIndex, sticky ? docTop(el) : null) === 'hide';
+    const hidden = el.hasAttribute('data-sd-opacity');
+    if (hide && !hidden) {
+      el.setAttribute('data-sd-opacity', el.style.getPropertyValue('opacity')); el.setAttribute('data-sd-opacity-priority', el.style.getPropertyPriority('opacity'));
+      el.style.setProperty('opacity', '0', 'important');
+    }
+    if (!hide && hidden) {
+      const o = el.getAttribute('data-sd-opacity'); const p = el.getAttribute('data-sd-opacity-priority') || '';
+      el.removeAttribute('data-sd-opacity'); el.removeAttribute('data-sd-opacity-priority');
+      if (o) el.style.setProperty('opacity', o, p); else el.style.removeProperty('opacity');
+    }
+  }
+  return tagged;
+}
+// The expression page.evaluate runs for chunk `chunkIndex`: layerPass with the exported rule passed in as source (a
+// string, so the page's CSP never sees an eval).
+export const layerPassScript = (chunkIndex) => `(${layerPass})(${Number(chunkIndex)}, ${layerAction}, ${isBackdrop})`;
+// A fixed layer still on screen after the dismissal sweeps, sized like an overlay (≥ 5 % of the viewport; below the top
+// bar, or a full-viewport one) and reading like consent / sign-up copy: an overlay no candidate closed (pass --consent
+// / --dismiss). A full-viewport one is a backdrop, kept in every chunk — the WARNING matters most there.
+const OVERLAY_TEXT = /cookie|consent|privacy|gdpr|newsletter|subscribe|sign up|sign-up/i;
+export function overlaySuspects(layers, vw, vh) {
+  return layers.filter((l) => l.kind === 'fixed' && l.visible && l.w * l.h >= 0.05 * vw * vh && (l.y > 0.1 * vh || l.backdrop) && OVERLAY_TEXT.test(l.text || ''));
+}
 // <out.png> → the record beside it (live.png → live.capture.json).
 export const sidecarOf = (out) => `${out.replace(/\.png$/i, '')}.capture.json`;
 
@@ -624,6 +716,7 @@ async function main() {
     if (!totalH || totalH < 10) throw new Error(`page height ${totalH}px — blank render? (bot challenge / hidden body)`);
 
     const chunks = [];
+    const layers = []; let lateLayers = 0;
     let y = 0;
     let prevActualY = null;
     while (y < totalH) {
@@ -640,6 +733,18 @@ async function main() {
         while (pend() && Date.now() - t0 < 3000) await new Promise((r) => { setTimeout(r, 150); });
       });
       const actualY = await page.evaluate(() => window.scrollY);
+      // layers captured once (layerPassScript — layerAction in the page): chunk 1 tags them at scroll 0, and a fixed
+      // or sticky layer that appears later (a scroll class, an injected widget) is tagged when it does — one WARNING
+      const tagged = await page.evaluate(layerPassScript(chunks.length));
+      layers.push(...tagged);
+      if (!chunks.length) {
+        for (const l of overlaySuspects(tagged, opts.width, opts.vh)) {
+          console.error(`stitch-shot WARNING: a fixed overlay is still showing after the dismissal sweeps (${l.w}x${l.h} at y ${l.y}: "${l.text.slice(0, 60)}…") — a consent / marketing overlay no candidate closed? Pass --consent <accept selector> or --dismiss <close selector> (to both sides).`);
+        }
+      } else if (tagged.length) {
+        lateLayers += tagged.length;
+        console.error(`stitch-shot WARNING: ${tagged.map((l) => `${l.kind} ${l.name}${l.backdrop ? ' (backdrop, kept)' : ''}`).join(', ')} turned fixed / sticky after scroll 0 (chunk ${chunks.length + 1}, y ${actualY}: a scroll-triggered header or an injected widget) — tagged there and captured once from there on.`);
+      }
       // Scroll-stall guard: on inner-scroller / scroll-jacked pages (html/body
       // overflow:hidden with a scrolling wrapper) the document reports totalH px
       // but window.scrollTo is a NO-OP — window.scrollY stays put, every chunk
@@ -670,10 +775,10 @@ async function main() {
     if (opts.freezeBaseline) { const tmp = `${out}.${process.pid}.tmp`; writeFileSync(tmp, pngBuf); renameSync(tmp, out); }
     else writeFileSync(out, pngBuf);
     if (opts.freezeBaseline) {
-      writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: fonts.fontsFailed }));
+      writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: fonts.fontsFailed, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers } }));
       console.log(`froze origin baseline in ${baselineDir}: ${BASELINE_PNG} + ${BASELINE_JSON} (${opts.width}x${totalH}px)`);
     }
-    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, ...fonts, at: new Date().toISOString() }, null, 2)}\n`);
+    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, ...fonts, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, at: new Date().toISOString() }, null, 2)}\n`);
     if (opts.checkBaseline) {
       const base = readBaselineProvenance(baselineDir);
       if (!base) console.log(`check-baseline: no frozen baseline in ${baselineDir} — freeze one first (nothing to compare)`);

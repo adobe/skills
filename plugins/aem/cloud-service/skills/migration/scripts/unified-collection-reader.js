@@ -20,6 +20,7 @@ const PATTERN_TO_SUBTYPE = {
   resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener",
   eventHandler: "org.osgi.service.event.EventHandler",
   guavaCache: "custom.guava.cache",
+  oakIndex: "oak.index.definition",
   inputStream: "java.io.inputstream"
 };
 
@@ -31,6 +32,7 @@ const MONGO_SAFE_TO_PATTERN = {
   "org_apache_sling_api_resource_observation_ResourceChangeListener": "resourceChangeListener",
   "org_osgi_service_event_EventHandler": "eventHandler",
   "custom_guava_cache": "guavaCache",
+  "oak_index_definition": "oakIndex",
   "java_io_inputstream": "inputStream"
 };
 
@@ -50,6 +52,7 @@ const PATTERN_TO_SUBTYPES = {
   replication: ["forward.replication", "reverse.replication"],
   urc: ["unsupported.runmode"],
   guavaCache: ["custom.guava.cache"],
+  oakIndex: ["oak.index.definition"],
   inputStream: ["java.io.inputstream"],
 };
 
@@ -367,6 +370,41 @@ function processGuavaCacheFromUnified(subtypeData, targets) {
 }
 
 /**
+ * Process Oak index data from unified collection. Unlike the content/LUI
+ * patterns, the unified data here is keyed by the BPA **sub-type** string
+ * (`index.rule.violation` / `standard.index.modification`, MongoDB-safe
+ * round-tripped), each mapping to an array of raw JCR index paths — so a
+ * generic `processContentFromUnified` pass (keyed by JCR path) doesn't fit.
+ *
+ * Field shape mirrors `processGuavaCacheFromUnified`: `className` carries the
+ * actionable JCR index path, and `identifier` carries the BPA sub-type string
+ * (which distinguishes a full rule violation from an OOTB index modified in
+ * place — both need the Index Converter tool, but the message differs).
+ */
+function processOakIndexFromUnified(subtypeData, targets) {
+  let count = 0;
+
+  const identifierKeys = Object.keys(subtypeData || {}).sort();
+  for (const mongoSafeIdentifier of identifierKeys) {
+    const indexPaths = subtypeData[mongoSafeIdentifier] || [];
+    const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
+
+    for (const indexPath of indexPaths) {
+      count++;
+      targets.push(new BpaTarget(
+        "oakIndex",
+        indexPath,
+        identifier,
+        `Oak index definition (${identifier}): ${indexPath}`,
+        "high"
+      ));
+    }
+  }
+
+  return count;
+}
+
+/**
  * Process java.io.InputStream data from unified collection. Keyed by the
  * referenced API (`java.io.FileInputStream`, …) → flagged class names, so each
  * target carries the class to locate (`className`) and the API to classify by
@@ -512,6 +550,7 @@ function fetchUnifiedBpaFindings(pattern = "all", collectionsDir = './unified-co
     resourceChangeListener: processResourceChangeListenerFromUnified,
     eventHandler: processEventHandlerFromUnified,
     guavaCache: processGuavaCacheFromUnified,
+    oakIndex: processOakIndexFromUnified,
     inputStream: processInputStreamFromUnified,
   };
 

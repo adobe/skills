@@ -40,8 +40,8 @@
  *                       says. Without any table the log rule above stands and one note names the
  *                       missing table.
  *   content-count       latest content-diff.mjs job for the page (`Findings: none …` or
- *                       `Findings: N (0 structural 🔴)`); when no such job exists, the newest
- *                       gate.sh --full round's `content-diff:` line; structural 🔴 > 0 → OPEN:
+ *                       `Findings: N (0 structural 🔴)` and nothing-lost 🟡 0); when no such job exists, the
+ *                       newest gate.sh --full round's `content-diff:` line; structural 🔴 or nothing-lost > 0 → OPEN:
  *   media-reconcile     latest media-reconcile.mjs job whose counts line has no `omit` and no
  *                       `unresolved` (the instrument's own exit-1 rule); either → OPEN: — but only once
  *                       the page's DELIVERED content file exists (`<--content>/<da-path>.html`, or
@@ -283,11 +283,15 @@ export function parseVerdict(text) {
   const h = [...text.matchAll(/→ compare \d+x\d+, height delta (-?\d+)px/g)].pop();
   return { px: Number(v[1]), total: Number(v[2]), pct: Number(v[3]), threshold: Number(v[4]), verdict: v[5], heightDelta: h ? Number(h[1]) : null };
 }
-// content-diff: `Findings: none — content + roles match` | `Findings: N (S structural 🔴)`; gate.sh --full echoes the same after `content-diff: `.
+// content-diff: `Findings: none — content + roles match` | `Findings: N (S structural 🔴)`, then `Tiers: looks-same 🔴 S ·
+// nothing-lost 🟡 L · …`; gate.sh --full echoes both on one `content-diff: ` line. lost = the nothing-lost count of the
+// SAME round as the last Findings line — on that line or the Tiers line right after it (0 when an older probe printed
+// no tiers), never a count from another round of a multi-round log.
 export function parseFindings(text) {
-  const m = [...text.matchAll(/^(?:Findings|content-diff): (none[^\n]*|(\d+) \((\d+) structural[^\n]*)$/gm)].pop();
+  const m = [...text.matchAll(/^(?:Findings|content-diff): (none[^\n]*|(\d+) \((\d+) structural[^\n]*)$(?:\r?\nTiers: [^\n]*)?/gm)].pop();
   if (!m) return null;
-  return { total: m[2] === undefined ? 0 : Number(m[2]), structural: m[3] === undefined ? 0 : Number(m[3]), text: m[1].trim() };
+  const tiers = /nothing-lost 🟡 (\d+)/.exec(m[0]);
+  return { total: m[2] === undefined ? 0 : Number(m[2]), structural: m[3] === undefined ? 0 : Number(m[3]), lost: tiers ? Number(tiers[1]) : 0, text: m[1].trim() };
 }
 // media-reconcile: last line `<n> keep · <n> optimize · <n> omit …` — one `<n> <decision>` per decision that occurred.
 export function parseCounts(text) {
@@ -417,7 +421,7 @@ export function derive(page, jobs, o, ctx) {
   if (cd) {
     facts.contentDiff = cd.v.text;
     const line = `content-diff: ${cd.v.text} ${cite(cd.j)}`;
-    if (cd.v.structural === 0) pass('content-count', line); else open('content-count', line);
+    if (cd.v.structural === 0 && cd.v.lost === 0) pass('content-count', line); else open('content-count', line);
   }
 
   const md = pick(ofKind('media-reconcile'), parseCounts, 'media-reconcile');

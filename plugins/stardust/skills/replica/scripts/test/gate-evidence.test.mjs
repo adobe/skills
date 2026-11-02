@@ -90,8 +90,12 @@ check('parsers read the instruments\' verdict lines and nothing else', () => {
   assert.deepEqual(parseVerdict(`${pixelLog(-9, 12, 100, '12.00', 'FAIL')}\n`), { px: 12, total: 100, pct: 12, threshold: 10, verdict: 'FAIL', heightDelta: -9 });
   assert.equal(parseVerdict('differing pixels: 1 / 100 = 1.00%  (threshold 10%) → PASS  [MASKED 40 rows: 0:40 — authored-volatile, excluded]').verdict, 'PASS');
   assert.equal(parseVerdict('run-bg: x launched: gate.sh a b c 1440'), null);
-  assert.deepEqual(parseFindings('x\nFindings: none — content + roles match\n'), { total: 0, structural: 0, text: 'none — content + roles match' });
-  assert.deepEqual(parseFindings('Findings: 3 (1 structural 🔴)\n  🔴 MISSING'), { total: 3, structural: 1, text: '3 (1 structural 🔴)' });
+  assert.deepEqual(parseFindings('x\nFindings: none — content + roles match\n'), { total: 0, structural: 0, lost: 0, text: 'none — content + roles match' });
+  assert.deepEqual(parseFindings('Findings: 3 (1 structural 🔴)\n  🔴 MISSING'), { total: 3, structural: 1, lost: 0, text: '3 (1 structural 🔴)' });
+  assert.deepEqual(parseFindings('Findings: 4 (0 structural 🔴)\nTiers: looks-same 🔴 0 · nothing-lost 🟡 2 · accepted 🟢 5 · advisory 2\n'), { total: 4, structural: 0, lost: 2, text: '4 (0 structural 🔴)' }, 'the probe\'s own Tiers line');
+  assert.equal(parseFindings('content-diff: 4 (0 structural 🔴) — looks-same 🔴 0 · nothing-lost 🟡 1 · accepted 🟢 0 · advisory 3\n').lost, 1, 'gate.sh --full\'s one-line echo');
+  assert.deepEqual(parseFindings('Findings: 5 (0 structural 🔴)\nTiers: looks-same 🔴 0 · nothing-lost 🟡 3 · accepted 🟢 0 (owner 0, auto 0) · advisory 2\n…\nFindings: 2 (0 structural 🔴)\n'), { total: 2, structural: 0, lost: 0, text: '2 (0 structural 🔴)' }, 'a multi-round log: the last round printed no tiers — an earlier round\'s nothing-lost count is not borrowed');
+  assert.equal(parseFindings('content-diff: 4 (1 structural 🔴) — looks-same 🔴 1 · nothing-lost 🟡 2 · accepted 🟢 1 (owner 1, auto 0) · advisory 1\nFindings: none — content + roles match\nTiers: looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 0 (owner 0, auto 0) · advisory 0\n').lost, 0, 'counts from the same (last) round');
   assert.equal(parseFindings('content-diff: 2 (0 structural 🔴)').structural, 0);
   assert.equal(parseFindings('content-diff: DEADLINE (exit 124) — re-run, not a verdict'), null);
   assert.deepEqual(parseCounts('  ✓ keep [200] x\n\n4 keep · 1 optimize · 0 omit\n').counts, { keep: 4, optimize: 1, omit: 0 });
