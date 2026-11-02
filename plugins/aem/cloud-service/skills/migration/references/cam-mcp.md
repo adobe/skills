@@ -2,7 +2,7 @@
 
 Read this file when **fetching BPA targets via MCP** instead of a CSV or cached collection, or when **submitting a Branch G validation outcome** ([`submit-migration-validation-result`](#tool-submit-migration-validation-result)). Parent skill: `../SKILL.md`.
 
-The tools below belong to the **AEM Cloud Service Migration MCP** server. The same two reads are available as code-mode recipes on the **AEM MCP Server** (tools `lookup-api-spec`, `read-api`, …); see [Through the AEM MCP Server](#through-the-aem-mcp-server-code-mode-recipes). Every rule in this file applies to both, except where that section says otherwise.
+The tools below belong to the **AEM Cloud Service Migration MCP** server. The same two reads and the validation submit are available as code-mode recipes on the **AEM MCP Server** (tools `lookup-api-spec`, `read-api`, `write-api`, …); see [Through the AEM MCP Server](#through-the-aem-mcp-server-code-mode-recipes). Every rule in this file applies to both, except where that section says otherwise.
 
 ## Happy path (what the user should see)
 
@@ -183,17 +183,16 @@ A 404 from the backend (no BPA report uploaded yet) is mapped to `success: true`
 
 ## Through the AEM MCP Server (code-mode recipes)
 
-The AEM MCP Server serves the same two reads from the same Cloud Acceleration Manager data.
-They are recipes, run with `read-api`:
+The AEM MCP Server serves the same two reads, and the validation submit, from the same Cloud
+Acceleration Manager data. They are recipes: the reads run with `read-api`, the submit with
+`write-api`:
 
 | AEM Cloud Service Migration MCP tool | AEM MCP Server recipe | Response |
 |---|---|---|
 | `fetch-cam-bpa-findings-by-pattern` | `list-bpa-findings-by-pattern` | Same `targets` / `summary` / `message` shape, plus `total`, `truncated` and `fetchErrors` (below) |
 | `fetch-cam-bpa-findings-by-importance` | `list-bpa-findings-by-severity` | Same shape, plus `noReport` |
+| `submit-migration-validation-result` | `submit-migration-validation-result` (run with `write-api`) | `{ success, run_id, project_id, stored_at, duplicate }`; see [the submit rules](#submit-through-the-aem-mcp-server) |
 | (none) | `list-cam-projects` | `{ success, projects: [{ id, name }] }` for the user's organization |
-
-`submit-migration-validation-result` has no AEM MCP Server equivalent. With only the AEM MCP
-Server connected, validation outcomes stay local.
 
 **How to call:**
 
@@ -209,8 +208,7 @@ To show the user their CAM projects to choose from, run the `list-cam-projects` 
 
 - **No `environment` parameter.** The server picks the CAM environment from the user's sign-in.
 - **One pattern per call.** Always pass the session's single `pattern`; the recipe defaults to
-  `all`. `inputStream` is not available on this route: use a BPA CSV or the AEM Cloud Service
-  Migration MCP server for it.
+  `all`. `inputStream` is supported like every other pattern.
 - **No paging.** `list-bpa-findings-by-pattern` returns the full list in one call, capped at
   500 targets per pattern. That result is the single fetch the [batching contract](#batching)
   needs; give it to the helper as usual.
@@ -234,6 +232,28 @@ To show the user their CAM projects to choose from, run the `list-cam-projects` 
   `null`, the connected server does not offer these recipes. In both cases tell the user and let
   them choose another source (the AEM Cloud Service Migration MCP server, a BPA CSV, or named
   files). Do not fall back silently.
+
+### Submit through the AEM MCP Server
+
+Everything in [`submit-migration-validation-result`](#tool-submit-migration-validation-result)
+applies (linked project only, forward the emitted payload unchanged, once, on the final
+verification attempt, no automatic retry). Differences:
+
+1. Get the recipe with `lookup-api-spec` (`return await recipes.get('submit-migration-validation-result');`)
+   and run it with **`write-api`**, declaring the emitted payload as the constant `payload`
+   before the recipe code. No `aemUrl` is needed; `project_id` or `project_name` stays in the
+   payload and a name is resolved within the user's organization like the reads.
+2. The result is a body without the HTTP status, and its success flag is `success`, not `ok`:
+   `{ success: true, run_id, project_id, stored_at, duplicate }`. A result without
+   `success: true` is a failed submission. A payload the server rejects returns `error` and
+   `details` (the problems found); quote them and stop. They mean the payload was altered or
+   the validator is out of date, so never repair the payload by hand and resubmit.
+3. Say "outcome recorded" only after `success: true` with a `run_id` equal to the submitted one.
+   Save the receipt as `{ "ok": true, "run_id", "stored_at", "duplicate" }` copied from that
+   result (finalize reads `ok`); for a failure save `{ "ok": false, "error": "<credential-free summary>" }`.
+4. The enablement restriction error and the "recipe not offered" cases are handled as for the
+   reads: with no AEM MCP Server recipe and no `submit-migration-validation-result` tool,
+   validation stays local.
 
 ---
 
@@ -342,7 +362,7 @@ helper caches the response to disk and slices from the cache on subsequent calls
 
 ## Retries and agent behavior
 
-**MCP tool:** The server implements its own retry and timeout logic internally. Do not add agent-side retries on top unless the table below says otherwise. The table covers the `fetch-…` tools; `submit-migration-validation-result` is never retried automatically (see [its rules](#tool-submit-migration-validation-result)). AEM MCP Server recipes follow the table too, except that they are never retried (see [Through the AEM MCP Server](#through-the-aem-mcp-server-code-mode-recipes)).
+**MCP tool:** The server implements its own retry and timeout logic internally. Do not add agent-side retries on top unless the table below says otherwise. The table covers the `fetch-…` tools; `submit-migration-validation-result` is never retried automatically (see [its rules](#tool-submit-migration-validation-result)), through either server. AEM MCP Server recipes follow the table too, except that they are never retried (see [Through the AEM MCP Server](#through-the-aem-mcp-server-code-mode-recipes)).
 
 **Agent:**
 

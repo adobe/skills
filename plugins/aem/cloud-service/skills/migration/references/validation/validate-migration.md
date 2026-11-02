@@ -96,8 +96,9 @@ Do not change credentials or SDK configuration without approval.
     `migration-runbook.json` (`project.id`) or an explicit `--project-id` /
     `--project-name` (explicit wins). With no linked project, validate locally: do not
     ask for one, and report that the outcome was not reported to CAM. With a linked
-    project, confirm `submit-migration-validation-result` is in your tools; never test
-    it with a fabricated outcome.
+    project, confirm `submit-migration-validation-result` is in your tools (or, on the AEM MCP
+    Server, that `recipes.get('submit-migration-validation-result')` returns the recipe); never
+    test it with a fabricated outcome.
 
 2. **Prepare.** Run `node "$VALIDATOR/check.js" --stage prepare` with the selected
   scope/project/SDK flags. It builds, discovers, deploys bundle-runtime patterns
@@ -131,6 +132,9 @@ Do not change credentials or SDK configuration without approval.
   sensitive error text. Never fabricate an acknowledgement. Missing CAM config,
    rejection, or network failure leaves reporting incomplete; do not silently retry.
    Request/response shape: [cam-mcp.md](../cam-mcp.md#tool-submit-migration-validation-result).
+   On the AEM MCP Server the recipe runs with `write-api` and answers `success: true` instead
+   of `ok: true`; save the receipt as described in
+   [cam-mcp.md](../cam-mcp.md#submit-through-the-aem-mcp-server).
 
 6. **Finalize (linked project only).** Run the command below even after submission fails, using the
    saved validation JSON and actual MCP receipt. It updates both reports with
