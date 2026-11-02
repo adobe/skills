@@ -69,11 +69,12 @@ carries its root as `[root]`; visual-diff takes one selector, default `main`), c
 `--chrome` / `--no-chrome` (default on — the `header` and `footer` roots, resolved as the first
 `<header>`/`[role=banner]` and `<footer>`/`[role=contentinfo]` outside the main root(s), are
 compared beside it; a side lacking one is measured as empty there and the root line says so),
-plus the live-target set (shared engine: `scripts/live-session.mjs` — every context sends the
-real-Chrome UA **and** the standard Chrome request headers; the UA alone still 403s on
-Akamai-class bot management):
+plus the live-target set (shared engine: `scripts/live-session.mjs` — the browser is real Chrome
+headless presenting **its own identity**: no stealth flag, no spoofed agent by default; every
+context sends the standard Chrome request headers, a bare context still 403s on Akamai-class bot
+management; live navigations to one host are paced `STARDUST_LIVE_PACE_MS` apart, default 2000):
 
-- `--ua <string>` — user agent override (default: real-Chrome desktop UA).
+- `--ua <string>` — user agent override (default: the browser's own).
 - `--wait-until <state>` — goto wait override. Default rule (one shared
   `defaultWaitUntil` in `scripts/live-session.mjs`), decided **per URL side**, three tiers:
   - localhost/127.0.0.1 → `networkidle` (local prototypes / harnesses, unchanged);
@@ -88,7 +89,9 @@ Akamai-class bot management):
 - `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
   removed) AND timed marketing/newsletter modals, plus optional extra site-specific
   selectors; the mouse is parked afterwards.
-- `--headed` — escalation for bot-managed sites: headed stealth real Chrome.
+- `--headed` — escalation for bot-managed sites: the same real Chrome plus the challenge-solve
+  window, window-free; `STARDUST_STEALTH=1` (stealth flags) and `STARDUST_HEADED_WINDOW=1` (a
+  window) are explicit operator switches, never defaults.
 - `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
   different locale per run otherwise).
 
@@ -96,7 +99,7 @@ Akamai-class bot management):
 
 A bot-management challenge/blocked interstitial on either navigation fails LOUD with
 **exit 3** — it is never measured as the source. Escalate with `--headed`; if that is still
-blocked, the site needs crawl.mjs-class capture and the check cannot run headless.
+blocked, the site needs crawl.mjs-class capture and the check cannot run unattended.
 
 A plain (non-challenge) HTTP error on either side — e.g. a **404 build side, normal on
 aem.page before preview propagation** — is NOT fatal: the probe logs a loud warning,

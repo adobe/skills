@@ -27,8 +27,8 @@
  *   - --headed (launchStealthHeaded) is the same real Chrome, window-free, plus
  *     the challenge-solve window (gotoLive `solveWindow`). The stealth launch
  *     flags and the navigator.webdriver spoof exist only behind
- *     STARDUST_STEALTH=1 — a visible policy decision, never a default; a window
- *     only behind STARDUST_HEADED_WINDOW=1.
+ *     STARDUST_STEALTH=1, a window only behind STARDUST_HEADED_WINDOW=1 — both
+ *     are explicit operator switches, never defaults.
  *
  * Fail-loud contract: a challenge / edge block (header signature, CloudFront /
  * AWS WAF included) or a 2xx DENIAL page (pageDenial / denialMarker own the

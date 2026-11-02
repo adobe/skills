@@ -523,18 +523,22 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 Each of these was hit live; skipping one silently corrupts the measurement
 rather than erroring.
 
-1. **Real-Chrome UA + the standard request headers on every capture and
-   probe.** The default HeadlessChrome UA can receive a Cloudflare managed
-   challenge, and the probe then **measures the challenge page as the
-   source** (3 headings, "Performing security verification" — it diffs
-   cleanly, wrongly). And the UA alone is NOT sufficient: field-proven
-   (F-R1, a nonprofit site), a real-Chrome UA with Playwright's minimal default
-   headers still got HTTP 403 from Akamai; adding the standard set every
-   real Chrome sends (`Accept`, `Accept-Language`,
-   `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced HTTP 200 — Akamai
-   bot-manager fingerprints on the *absence* of those headers, not just the
-   UA. All three instruments now send both by default via the shared
-   `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
+1. **Real Chrome presenting its own identity + the standard request headers
+   on every capture and probe.** Every live instrument launches the installed
+   Chrome headless (`launchLiveBrowser`; bundled Chromium only when Chrome is
+   missing, said on stderr) and sets no user agent, no stealth flag and no
+   `navigator.webdriver` spoof by default — the browser says what it is, its
+   client hints derived from its own version (#151). The UA alone was never
+   sufficient either: field-proven (F-R1, a nonprofit site), a real-Chrome UA
+   with Playwright's minimal default headers still got HTTP 403 from Akamai;
+   adding the standard set every real Chrome sends (`Accept`,
+   `Accept-Language`, `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced
+   HTTP 200 — Akamai bot-manager fingerprints on the *absence* of those
+   headers, not just the UA. Every instrument sends them by default via the
+   shared `diff/scripts/live-session.mjs`; `--ua` states a caller's identity
+   instead. Live navigations to one host are paced `STARDUST_LIVE_PACE_MS`
+   apart (default 2000 ms; 0 disables) — an Akamai-fronted origin answered
+   403 to back-to-back navigations and 200 once they were spaced.
    The header set rides **document requests only** (F-B2, financial-services site):
    forcing it on every request makes cross-origin CORS-mode webfont fetches
    non-simple and kills them with `net::ERR_FAILED` — the capture then
@@ -613,7 +617,7 @@ rather than erroring.
 12. **A challenge/blocked response FAILS LOUD — it is never measured.** Every
     live instrument detects bot-management interstitials on every
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
-    403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
+    403/429/503 with a Cloudflare/Akamai/F5/Imperva/CloudFront-AWS WAF edge signature) and
     exits **3** with a `BotChallengeError` naming the URL and the marker.
     Recorded (luggage retailer): Akamai served "Access Denied" to the headless
     instruments — which, without this rule, would have silently measured
@@ -623,8 +627,10 @@ rather than erroring.
     reads the page (`pageDenial` owns what counts) and throws the
     same error (marker `HTTP <status> denial page — …`, "origin blocked");
     stitch-shot reads once more after its dismissal sweeps and leaves no PNG
-    and no `capture.json`. The escalation ladder: default (UA + standard headers) → `--headed`
-    (stealth real Chrome, same tier as crawl.mjs's fallback) → if STILL
+    and no `capture.json`. The escalation ladder: default (real Chrome, its own
+    identity + standard headers, paced) → `--headed` (the same browser plus the
+    challenge-solve window, window-free; `STARDUST_STEALTH=1` and
+    `STARDUST_HEADED_WINDOW=1` are explicit operator switches) → if STILL
     blocked, the site needs crawl.mjs-class capture and **the gate must
     not silently degrade** — record the breakpoint as gate-blocked in the
     ledger and surface it to the user; a gate that can't read the live
@@ -665,8 +671,9 @@ rather than erroring.
 
 The four manual adaptations this section used to prescribe are upstreamed
 into the shipped scripts. All live-target hardening lives in one shared
-module — `diff/scripts/live-session.mjs` (UA + standard headers, challenge
-fail-loud, overlay dismissal, headed-stealth escalation) — and the diff
+module — `diff/scripts/live-session.mjs` (the browser's own identity + standard
+headers, per-host pacing, challenge fail-loud, overlay dismissal, `--headed`
+escalation) — and the diff
 scripts expose it as flags:
 
 ```bash
