@@ -43,7 +43,7 @@ await check('summarize: the requests spent, the typeahead cap and the request-bu
 await check('parseArgs: pacing, budget and typeahead defaults; the rest as before', () => {
   const o = parseArgs(['https://source.test/', 'out.json']);
   assert.deepEqual([o.url, o.out, o.help, o.plain], ['https://source.test/', 'out.json', false, false]);
-  assert.deepEqual([o.paceMs, o.reloadPauseMs, o.maxRequests, o.maxTypeahead], [400, 1500, 250, 2]);
+  assert.deepEqual([o.paceMs, o.reloadPauseMs, o.maxRequests, o.maxTypeahead], [400, 1500, 600, 2], 'the request budget counts subresources too: 600 leaves room after an image-heavy first load');
   assert.deepEqual([o.widths, o.maxStates, o.maxDepth, o.locale, o.rootSel, o.probe, o.shots, o.warmup], [[1440, 390], 400, 4, 'en-US', null, null, null, null]);
 });
 await check('parseArgs: explicit values, 0 accepted, a non-number or negative falls back, positionals survive flags around them', () => {

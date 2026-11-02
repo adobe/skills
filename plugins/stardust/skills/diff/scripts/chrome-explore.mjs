@@ -22,6 +22,8 @@
  * typeahead fires once per keystroke. Between controls the page is closed the way it was opened (Escape,
  * the trigger again, a click outside) and reloaded only when the header is not back at rest; the probe
  * term is entered in one go; reaching the budget ends the width, reported as TRUNCATED at request-budget.
+ * The budget counts every request to the site's host, subresources included — an image-heavy page spends a
+ * few hundred on its first load alone, so the default leaves room for the exploration after it.
  *
  * Usage: node skills/diff/scripts/chrome-explore.mjs <url> <out.json> [options]
  *   --width <w,…>        viewport widths (default 1440,390; below 768 is touch: no hover)
@@ -33,7 +35,8 @@
  *   --warmup <url>       visit first (bot-managed sites)   --locale <tag>  default en-US
  *   --pace-ms <n>        pause after each control open / close (default 400; 0 = none)
  *   --reload-pause-ms <n>  pause before each page reload (default 1500; 0 = none)
- *   --max-requests <n>   requests to the site's host per width, first load included (default 250; 0 = unlimited)
+ *   --max-requests <n>   requests to the site's host per width — documents and subresources alike (images,
+ *                        CSS, scripts, fonts, XHR), first load included (default 600; 0 = unlimited)
  *   --max-typeahead <n>  inputs probed per width (default 2); the rest are listed, not typed into
  * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlKind`, `normName`, `parseArgs`,
  * `requestBudget`, `sameSite`, `siteHost` are exported.
@@ -87,7 +90,7 @@ export function summarize(doc) {
   });
 }
 
-const DEFAULTS = { width: '1440,390', 'max-states': 400, 'max-depth': 4, 'pace-ms': 400, 'reload-pause-ms': 1500, 'max-requests': 250, 'max-typeahead': 2, locale: 'en-US' };
+const DEFAULTS = { width: '1440,390', 'max-states': 400, 'max-depth': 4, 'pace-ms': 400, 'reload-pause-ms': 1500, 'max-requests': 600, 'max-typeahead': 2, locale: 'en-US' };
 /** argv → options. A number flag that is missing, negative or not a number takes its default. Pure. */
 export function parseArgs(argv) {
   const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] !== undefined && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
@@ -500,7 +503,7 @@ async function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, '').trim()); process.exit(0); }
   const { url, out, widths } = opts;
-  if (!url || !out) { console.error('usage: chrome-explore.mjs <url> <out.json> [--width 1440,390] [--root <sel>] [--max-states 400] [--max-depth 4] [--probe <term>] [--shots <dir>] [--plain] [--pace-ms 400] [--reload-pause-ms 1500] [--max-requests 250] [--max-typeahead 2]'); process.exit(1); }
+  if (!url || !out) { console.error('usage: chrome-explore.mjs <url> <out.json> [--width 1440,390] [--root <sel>] [--max-states 400] [--max-depth 4] [--probe <term>] [--shots <dir>] [--plain] [--pace-ms 400] [--reload-pause-ms 1500] [--max-requests 600] [--max-typeahead 2]'); process.exit(1); }
   const shotsDir = opts.shots || join('stardust', '.work', 'chrome', basename(out, '.json'));
   mkdirSync(shotsDir, { recursive: true }); mkdirSync(dirname(out), { recursive: true });
   let probe = opts.probe;
