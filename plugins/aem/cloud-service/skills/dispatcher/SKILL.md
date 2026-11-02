@@ -5,7 +5,7 @@ description: |
   and cache rules, investigate incidents, and review performance or security. Routes Cloud-specific
   work to specialist skills; use the 6.5 LTS Dispatcher skill for AMS or on-prem environments.
 license: Apache-2.0
-compatibility: Requires Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`).
+compatibility: Tool-dependent checks require Dispatcher MCP configured for cloud variant (`AEM_DEPLOYMENT_MODE=cloud`); bounded explanation/static review is available without MCP.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
 metadata:
   mcp-tool-contract: core-7-tools
@@ -14,11 +14,6 @@ metadata:
 # AEM Cloud Service Dispatcher
 
 Route user requests to the appropriate specialist skill based on intent.
-
-## Runtime Check
-
-- Before edits or commands, confirm the project targets Cloud Service (e.g. `aem-sdk-api` dependency, Cloud `dispatcher/src` layout); if it shows 6.5/AMS evidence (`uber-jar`, `ams_default.vars`), stop and route to the 6.5 LTS `dispatcher` skill. Ask when evidence is missing or conflicting.
-- If Dispatcher MCP tools are unavailable, limit work to explanation and static review and report each tool-dependent check as NOT VERIFIED; never fabricate tool output.
 
 ## Intent Router
 
@@ -39,6 +34,8 @@ Route user requests to the appropriate specialist skill based on intent.
 4. For broad or ambiguous requests that span multiple concerns, use the **Workflow Orchestrator** which coordinates across all specialist skills.
 
 ## MCP Tool Contract
+
+When Dispatcher MCP tools are unavailable, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output.
 
 All specialist skills share the same core-7 MCP tool set:
 
