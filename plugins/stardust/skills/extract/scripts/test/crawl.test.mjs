@@ -148,18 +148,19 @@ check('inlineWallMarker (the fallback rule): a wall title or h1 on a page under 
 });
 
 // ---- probeEntry and capturePage on stub pages -------------------------------------------------------------------
-// what live-session's denialProbeInPage returns on an ordinary page / on the recorded "One moment, please…" interstitial
+// what live-session's denialProbeInPage returns on an ordinary page / on the recorded "One moment, please…" interstitial;
+// the stub derives the crawler's own wallProbeInPage shape from the same probe
 const CLEAN_PROBE = { title: 'Home', text: 'Welcome to the store. '.repeat(400), bytes: 8800, headings: ['Welcome', 'New arrivals'], frames: [] };
 const WALL_PROBE = { title: 'One moment, please...', text: 'Please wait while your request is being verified...', bytes: 96, headings: [], frames: [] };
 const HTML = { 'content-type': 'text/html; charset=utf-8' };
 const record = (url) => ({ finalUrl: url, title: 'Home', headings: [{ tag: 'h1', text: 'Welcome' }], body: ['Hello'], links: [], media: { imgs: [] }, _signals: { mainTextLen: 500, realImageCount: 0 }, _contentHash: 'h', dynamicDom: {} });
 /**
  * A stub playwright page + context: `responses` = the statuses/headers successive gotos answer (the last repeats),
- * `gotoError` = the goto throws it, `hang` = the goto never settles, `probes` = what successive denial-probe reads
+ * `gotoError` = the goto throws it, `hang` = the goto never settles, `probes` = what successive wall reads
  * return (the last repeats), `reload` = what a reload answers. evaluate dispatches on the function's name.
  */
 const stubPage = ({ responses = [{ status: 200, headers: HTML }], gotoError = null, hang = false, probes = [CLEAN_PROBE], reload = null } = {}) => {
-  const calls = { goto: [], reload: 0, evaluate: [], waits: [], closed: 0, screenshots: 0 };
+  const calls = { goto: [], reload: 0, evaluate: [], waits: [], closed: 0, screenshots: 0, reads: 0 };
   const resp = (r) => ({ status: () => r.status, headers: () => r.headers || {}, url: () => URL_ });
   const page = {
     calls,
@@ -169,7 +170,13 @@ const stubPage = ({ responses = [{ status: 200, headers: HTML }], gotoError = nu
     evaluate: async (fn) => {
       const name = typeof fn === 'function' ? fn.name : '';
       calls.evaluate.push(name);
-      if (name === 'denialProbeInPage') { const p = probes[Math.min(calls.evaluate.filter((n) => n === 'denialProbeInPage').length, probes.length) - 1]; if (p instanceof Error) throw p; return p; }
+      // one wall read = the crawler's title probe, then (no title hit) live-session's denial probe — both see the same page
+      if (name === 'wallProbeInPage' || name === 'denialProbeInPage') {
+        if (name === 'wallProbeInPage') calls.reads += 1;
+        const p = probes[Math.min(Math.max(calls.reads, 1), probes.length) - 1];
+        if (p instanceof Error) throw p;
+        return name === 'wallProbeInPage' ? { title: p.title, h1: p.headings[0] || '', bytes: p.bytes, selfReload: !!p.selfReload } : p;
+      }
       if (name === 'capture') return record(URL_);
       return undefined;
     },
@@ -187,7 +194,7 @@ const CLOUDFRONT_403 = { status: 403, headers: { server: 'CloudFront', 'x-cache'
 await checkAsync('probeEntry: the page → null after one settled read (no reload); a 403 with an edge signature → challenge naming it (the page is never read); a 404 → null (an app-level status, not a wall); a network reject → fingerprint with the error\'s first line; any other goto error is thrown', async () => {
   const ok = stubPage();
   assert.equal(await probeEntry(ok.page, URL_), null);
-  assert.deepEqual([ok.page.calls.goto, ok.page.calls.reload, ok.page.calls.evaluate, ok.page.calls.waits], [[URL_], 0, ['denialProbeInPage'], [1200]]);
+  assert.deepEqual([ok.page.calls.goto, ok.page.calls.reload, ok.page.calls.evaluate, ok.page.calls.waits], [[URL_], 0, ['wallProbeInPage', 'denialProbeInPage'], [1200]], 'one settled read: the title rule, then the shared reader');
   const cf = stubPage({ responses: [CF_403] });
   assert.deepEqual(await probeEntry(cf.page, URL_), { kind: 'challenge', marker: 'HTTP 403 + Cloudflare edge signature (cf-ray/server)' });
   assert.deepEqual([cf.page.calls.reload, cf.page.calls.evaluate], [0, []], 'no solve window and no page read on the first probe');
@@ -199,18 +206,18 @@ await checkAsync('probeEntry: the page → null after one settled read (no reloa
   assert.deepEqual(await probeEntry(reject.page, URL_), { kind: 'fingerprint', marker: 'page.goto: net::ERR_HTTP2_PROTOCOL_ERROR at https://www.example.com/' });
   await assert.rejects(probeEntry(stubPage({ gotoError: new Error('page.goto: Timeout 30000ms exceeded.') }).page, URL_), { message: 'page.goto: Timeout 30000ms exceeded.' });
 });
-await checkAsync('probeEntry: a 200 whose page is the "One moment, please…" interstitial → interstitial naming it (live-session\'s reader beside this script); with `solve` the wall gets up to three settled reloads — cleared after one → null, still there after three → interstitial, a reload answered by an edge challenge keeps it; a challenge under `solve` runs the wait+reload window first', async () => {
+await checkAsync('probeEntry: a 200 whose page is the "One moment, please…" interstitial → interstitial naming it (the crawler\'s own title rule, whatever live-session copy is beside it); with `solve` the wall gets up to three settled reloads — cleared after one → null, still there after three → interstitial, a reload answered by an edge challenge keeps it; a challenge under `solve` runs the wait+reload window first', async () => {
   const wall = stubPage({ probes: [WALL_PROBE] });
-  assert.deepEqual(await probeEntry(wall.page, URL_), { kind: 'interstitial', marker: 'denial page — "One moment, please…"' });
+  assert.deepEqual(await probeEntry(wall.page, URL_), { kind: 'interstitial', marker: 'interstitial page — "One moment, please..."' });
   assert.deepEqual([wall.page.calls.reload, wall.page.calls.waits], [0, [1200]], 'the first probe never reloads');
   const cleared = stubPage({ probes: [WALL_PROBE, CLEAN_PROBE] });
   assert.equal(await probeEntry(cleared.page, URL_, { solve: true }), null);
   assert.deepEqual([cleared.page.calls.reload, cleared.page.calls.waits], [1, [1200, 4000, 1200]], 'one reload, settled like the entry, then clean');
   const stuck = stubPage({ probes: [WALL_PROBE] });
-  assert.deepEqual(await probeEntry(stuck.page, URL_, { solve: true }), { kind: 'interstitial', marker: 'denial page — "One moment, please…"' });
+  assert.deepEqual(await probeEntry(stuck.page, URL_, { solve: true }), { kind: 'interstitial', marker: 'interstitial page — "One moment, please..."' });
   assert.equal(stuck.page.calls.reload, 3, 'the three-reload window');
   const edged = stubPage({ probes: [WALL_PROBE, CLEAN_PROBE], reload: CF_403 });
-  assert.deepEqual(await probeEntry(edged.page, URL_, { solve: true }), { kind: 'interstitial', marker: 'denial page — "One moment, please…"' });
+  assert.deepEqual(await probeEntry(edged.page, URL_, { solve: true }), { kind: 'interstitial', marker: 'interstitial page — "One moment, please..."' });
   assert.deepEqual([edged.page.calls.reload, edged.page.calls.evaluate.length], [1, 1], 'an edge-challenged reload is not a clearance and the page is not re-read');
   const challenged = stubPage({ responses: [CF_403] });
   assert.deepEqual(await probeEntry(challenged.page, URL_, { solve: true }), { kind: 'challenge', marker: 'HTTP 403 + Cloudflare edge signature (cf-ray/server)' });
@@ -231,7 +238,7 @@ await checkAsync('capturePage: a clean page → the record with the rendered DOM
     assert.deepEqual([rec._provenance.renderedBy, rec._provenance.httpStatus, rec._provenance.waitMs], ['playwright', 200, 1200]);
     assert.ok(!('dynamicDom' in rec), 'the opt-in dynamics section is dropped');
     assert.deepEqual([page.calls.goto, page.calls.reload, page.calls.closed, page.calls.screenshots], [[URL_], 0, 1, 1]);
-    assert.deepEqual(page.calls.evaluate.filter((n) => n === 'denialProbeInPage'), ['denialProbeInPage'], 'the wall is read once, after the settle');
+    assert.deepEqual(page.calls.evaluate.filter((n) => n === 'wallProbeInPage' || n === 'denialProbeInPage'), ['wallProbeInPage', 'denialProbeInPage'], 'the wall is read once, after the settle: the title rule, then the shared reader');
   } finally { rmSync(out, { recursive: true, force: true }); }
 });
 await checkAsync('capturePage: a 2xx "One moment, please…" interstitial on an inner page → BotChallenge naming the wall and the status, nothing captured, no screenshot, the tab closed', async () => {
@@ -240,7 +247,7 @@ await checkAsync('capturePage: a 2xx "One moment, please…" interstitial on an 
     const { page, context } = stubPage({ probes: [WALL_PROBE] });
     await assert.rejects(capturePage(context, URL_, 'about', argsFor(out)), (e) => {
       assert.equal(e.errorClass, 'BotChallenge');
-      assert.equal(e.message, 'bot-management interstitial served as HTTP 200: denial page — "One moment, please…"');
+      assert.equal(e.message, 'bot-management interstitial served as HTTP 200: interstitial page — "One moment, please..."');
       return true;
     });
     assert.deepEqual([page.calls.screenshots, page.calls.closed], [0, 1]);

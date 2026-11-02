@@ -79,12 +79,13 @@
  * (cf-mitigated, or a 403/429/503 with a Cloudflare / Akamai / F5 / Imperva signature, a 403 from
  * CloudFront / AWS WAF), or a 2xx VERIFICATION INTERSTITIAL served as a normal page ("One moment,
  * please…" reloading itself, "Just a moment…", CloudFront's "Request blocked" body — read from the
- * page, not the headers). On the ENTRY page → one relaunch (technique chrome-escalated;
+ * page, not the headers: this script's title rule, then live-session's vendor list when the module
+ * is beside it). On the ENTRY page → one relaunch (technique chrome-escalated;
  * STARDUST_STEALTH=1 adds the stealth flags, STARDUST_HEADED_WINDOW=1 is not read here) with the
  * challenge-solve window, then a fatal `bot-management … not cleared` error naming the wall; on an
  * inner page → the page is recorded as failed with errorClass BotChallenge and the marker. Live
- * navigations to one host are spaced STARDUST_LIVE_PACE_MS apart (default 2000; 0 disables) when
- * live-session.mjs is beside this script.
+ * navigations to one host are spaced STARDUST_LIVE_PACE_MS apart (default 2000; 0 disables) when a
+ * live-session.mjs that paces (paceLiveNavigation) is beside this script.
  *
  * Writes (everything under --out; nothing outside it):
  *   pages/<slug>.json              one record per captured page — slug, url, finalUrl, title,
@@ -342,16 +343,27 @@ export function inlineWallMarker(probe) {
   if (!small && !probe.selfReload) return null;
   return `interstitial page — "${hit.slice(0, 80)}"${probe.selfReload ? ' (self-reloading)' : ''}`;
 }
-// → { marker, skipped }: the shared reader when present, else the inline rule; a page the probe cannot read is
-// `skipped` with the error's first line (the caller logs it — never a silent pass, never a false wall).
+// One wall read's deadline: page.evaluate has no timeout of its own, and a renderer stuck in a busy loop never answers it.
+const WALL_PROBE_MS = 10000;
+// → { marker, skipped }: this script's own rule first (wallProbeInPage + inlineWallMarker — a wall named by its title or
+// h1 on a small or self-reloading page), then the shared reader when the module is beside this script (live-session
+// pageDenial: the vendor signature list and the one-error-heading rule). The crawler names the walls it knows whatever
+// live-session copy sits beside it. A page no reader could read is `skipped` with the error's first line (the caller
+// logs it — never a silent pass, never a false wall).
 async function pageWall(page) {
   const ls = await liveSession();
-  if (typeof ls.pageDenial === 'function') return ls.pageDenial(page);
+  const race = typeof ls.withDeadline === 'function' ? ls.withDeadline : inlineWithDeadline;
+  let skipped = null;
   try {
-    return { marker: inlineWallMarker(await page.evaluate(wallProbeInPage)), skipped: null };
+    const marker = inlineWallMarker(await race(page.evaluate(wallProbeInPage), WALL_PROBE_MS, 'wall probe'));
+    if (marker) return { marker, skipped: null };
   } catch (e) {
-    return { marker: null, skipped: String(e && e.message ? e.message : e).split('\n')[0] };
+    skipped = String(e && e.message ? e.message : e).split('\n')[0];
   }
+  if (typeof ls.pageDenial !== 'function') return { marker: null, skipped };
+  const shared = await ls.pageDenial(page);
+  if (shared.marker) return shared;
+  return { marker: null, skipped: skipped && shared.skipped ? skipped : null };
 }
 const ENTRY_SETTLE_MS = 1200;
 /**
