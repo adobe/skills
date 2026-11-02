@@ -121,12 +121,13 @@ flag, which takes precedence. If none is linked, ask for the actual CAM project
 name. Context files are not consumed. Only skip submission for an explicit local-only
 request, and do not label reporting complete.
 
-Forward the emitted payload once to `submit-migration-validation-result`, then save its
-actual `ok`, `run_id`, `stored_at`, and `duplicate` fields as the receipt. Wrap
-errors as `{ "ok": false, "error": "<credential-free summary>" }`, not raw
+Forward the emitted payload once to `submit-migration-validation-result` (the AEM MCP Server
+recipe, or the deprecated tool), then save the actual result as the receipt. Wrap
+errors as `{ "success": false, "error": "<credential-free summary>" }`, not raw
 potentially sensitive text. Never put credentials in receipts. Finalization
 keeps a safe error summary rather than copying arbitrary error text to reports.
-Finalization requires `ok: true` and the SAME `run_id`; it does not make a network
+Finalization requires `success: true` (AEM MCP Server) or `ok: true` (deprecated tool) and the
+SAME `run_id`; it does not make a network
 request or resubmit the outcome. It persists reporting status, errors, and
 restricted-check explanations in the reports. Exit codes:
 
