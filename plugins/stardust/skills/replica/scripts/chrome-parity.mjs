@@ -30,7 +30,7 @@
  *     --consent <sel>    extra consent-accept selector (live side)
  *     --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
  *     --no-dismiss       dismiss no overlay at all (gate.sh --no-dismiss pass-through)
- *     --headed           headed stealth real Chrome (bot-managed live sites)
+ *     --headed           real Chrome with the challenge-solve window (bot-managed live sites)
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
  *     --json             machine-readable output
  *     --live-cache <f>   reuse the live side's measurement from <f> (JSON) when it
@@ -78,7 +78,9 @@ if (!LIVE_SESSION) {
   console.error('chrome-parity error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchStealthHeaded, launchLiveBrowser, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+// the default tier: real Chrome headless with its own identity (a live-session copy that predates it: bundled Chromium)
+const launchDefault = typeof launchLiveBrowser === 'function' ? launchLiveBrowser : (chromium) => chromium.launch();
 // image-signature.mjs sits beside live-session.mjs in either layout
 const { sameImage, signElements } = await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'image-signature.mjs')).href);
 
@@ -92,7 +94,7 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --consent <sel>    extra consent-accept selector (live side)
   --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
   --no-dismiss       dismiss no overlay at all (gate.sh --no-dismiss pass-through)
-  --headed           headed stealth real Chrome (bot-managed live sites)
+  --headed           real Chrome with the challenge-solve window (bot-managed live sites)
   --locale <tag>     pin Accept-Language + locale
   --json             machine-readable output
   --live-cache <f>   reuse/write the live side's measurement (JSON) — one live hit per breakpoint
@@ -386,7 +388,7 @@ async function main() {
   const { live, build, opts } = parseArgs(process.argv);
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  const browser = opts.headed ? await launchStealthHeaded(chromium) : await launchDefault(chromium);
   let total = 0;
   try {
     const cached = readLiveCache(opts.liveCache, live, opts);

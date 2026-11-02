@@ -56,7 +56,7 @@ await check('parseArgs: positional url + out, defaults (1440×900, no settle, wa
   assert.equal(url, 'https://a/'); assert.equal(out, 'o.png');
   assert.equal(opts.width, 1440); assert.equal(opts.vh, 900); assert.equal(opts.settle, false); assert.equal(opts.wait, 1200); assert.equal(opts.timeout, 60000);
   assert.equal(opts.consent, null); assert.deepEqual(opts.dismiss, []); assert.equal(opts.noDismiss, false); assert.equal(opts.headed, false); assert.equal(opts.locale, null);
-  assert.match(opts.ua, /Chrome\//);
+  assert.equal(opts.ua, null, 'no user agent of our own — the browser presents its own');
 });
 await check('parseArgs: --settle raises the default wait to 3000; an explicit --wait wins; --width/--vh/--timeout/--ua/--locale/--headed', () => {
   assert.equal(parseArgs(argv('u', 'o', '--settle')).opts.wait, 3000);

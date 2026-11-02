@@ -98,7 +98,7 @@
  *     --width <px>          viewport width                 (default 1280)
  *     --json                also print the two raw inventories (text items, editable
  *                           set, attrs[], icons[]) and the findings array
- *     --ua <string>         user agent                     (default: real-Chrome desktop UA)
+ *     --ua <string>         user agent                     (default: the browser's own)
  *     --wait-until <state>  goto wait state override. Default rule (three tiers,
  *                           decided per URL side by live-session's defaultWaitUntil):
  *                           localhost/127.0.0.1 → 'networkidle'; EDS build/preview
@@ -110,11 +110,13 @@
  *     --dismiss [sel,...]   dismiss overlays on both sides via live-session
  *                           (consent + timed marketing modals), plus these extra
  *                           site-specific selectors (optional)
- *     --headed              escalation: headed stealth real Chrome (bot-managed sites)
+ *     --headed              escalation: real Chrome + the challenge-solve window (bot-managed sites)
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
  *
- * Every context gets the real-Chrome UA + the standard request headers via
- * live-session.mjs (UA alone still 403s on Akamai — F-R1). A bot-management
+ * The browser is real Chrome headless with its own identity (live-session
+ * launchLiveBrowser; bundled Chromium only when Chrome is missing) and every
+ * context gets the standard request headers via live-session.mjs (a bare
+ * context still 403s on Akamai — F-R1). A bot-management
  * challenge on either navigation FAILS LOUD (exit 3) — a challenge page must
  * never be measured as the source. A plain HTTP error (e.g. a 404 build side
  * before preview propagation) is NOT fatal: it is measured with a loud
@@ -153,7 +155,7 @@ import { resolveProfile } from './diff-profiles.mjs';
 // with the deploy gates (section-schema editableTexts, block-roundtrip --ew).
 import { inventory, diffInventories, summarise, editableInventory } from './content-inventory.mjs';
 import { sameImage, signElements } from './image-signature.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+import { isLiveHttpUrl, defaultWaitUntil, launchLiveBrowser, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -165,7 +167,7 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
   --width <px>           viewport width (default 1280)
   --json                 also print the two raw inventories (text, editable, attrs, icons)
                          and the findings array
-  --ua <string>          user agent (default: real-Chrome desktop UA)
+  --ua <string>          user agent (default: the browser's own)
   --wait-until <state>   goto wait state. Default (per URL side, three tiers):
                          networkidle for localhost/127.0.0.1; networkidle for EDS
                          build/preview origins (*.aem.page, *.aem.live, *.hlx.page,
@@ -173,7 +175,7 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
                          other live http(s) (never reach networkidle).
   --dismiss [sel,...]    dismiss overlays (consent + timed marketing modals) on both
                          sides; optional comma-separated extra selectors
-  --headed               headed stealth real Chrome (escalation for bot-managed sites)
+  --headed               real Chrome with the challenge-solve window (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --accepted <file>      accepted changes ({ accepted: [{ kind, text?, root?, probe?, reason }] }); a matching
                          finding is printed as accepted with its reason and never counted
@@ -498,7 +500,7 @@ export const formatFinding = (f) => `  ${f.sev} ${f.kind}${f.root ? ` [${f.root}
 function parseArgs(argv) {
   const [, , proto, eds, ...rest] = argv;
   if (rest.includes('--help') || proto === '--help' || proto === '-h') { process.stdout.write(USAGE); process.exit(0); }
-  const opts = { main: null, chrome: null, width: 1280, json: false, profile: 'eds', ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, headed: false, locale: null };
+  const opts = { main: null, chrome: null, width: 1280, json: false, profile: 'eds', ua: null, waitUntil: null, dismiss: null, headed: false, locale: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--main') { opts.main = rest[i += 1]; }
@@ -522,8 +524,8 @@ function parseArgs(argv) {
 }
 
 async function grab(browser, url, opts, prof, roots) {
-  // UA + standard headers on EVERY context (live-session; F-R1 — UA alone
-  // still 403s on Akamai), webdriver spoof included for the --headed tier.
+  // the standard headers on EVERY context (live-session; F-R1 — a bare context
+  // still 403s on Akamai); the browser's own identity otherwise.
   const ctx = await newLiveContext(browser, {
     ua: opts.ua, locale: opts.locale,
     viewport: { width: opts.width, height: 1000 },
@@ -579,7 +581,7 @@ async function main() {
   try { ({ chromium } = await import('playwright')); } catch (e) {
     throw new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`);
   }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  const browser = opts.headed ? await launchStealthHeaded(chromium) : await launchLiveBrowser(chromium);
   let srcInvs; let tgtInvs; let aligned = null;
   try {
     srcInvs = await grab(browser, proto, opts, prof, roots);
