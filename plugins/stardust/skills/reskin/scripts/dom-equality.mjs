@@ -22,6 +22,13 @@
  *     responsive duplicate menus poison raw img lists), using the SHARED
  *     predicate capture-content.mjs uses (source-normalize.mjs IMG_VISIBLE)
  *     so capture and gate can never drift on image counts.
+ *   - Disclosure rest state (gating): the scopes' collapsed/expanded disclosures are counted on both
+ *     sides BEFORE the ledger runs (source-normalize.mjs DISCLOSURE_STATE). A source with collapsed
+ *     disclosures against a render with none collapsed FAILS — a capture ledger that expands every
+ *     accordion is capture-only, it never makes the delivered block start open. The rendered side
+ *     then runs REVEAL_DISCLOSURES (open <details>, unhide hidden="until-found") before its text is
+ *     read, so a correctly collapsed panel still counts as present. Waived per page by the deltas
+ *     file's "disclosures": { "restState": "open", "why": … }.
  *   - Image crop (gating): each visible image's shown REGION of its own pixels
  *     (object-fit, object-position and clipping ancestors, source-normalize.mjs
  *     IMG_CROP) on both sides. The rendered frame keeps its size; it must
@@ -70,12 +77,14 @@
  *                                    "Declared deltas" section (applied with counts; unused = a
  *                                    declared entry that matched nothing, also a WARNING line on
  *                                    stdout). "blocking": false makes a failed check exit 0 with an
- *                                    ADVISORY line on stdout. Absent, nothing above changes.
+ *                                    ADVISORY line on stdout. "disclosures": { "restState": "open",
+ *                                    "why": … } waives the rest-state check. Absent, nothing above
+ *                                    changes.
  *
  * Writes: the markdown report to --report <path> (parent directories are created);
  * nothing else. The PASS/FAIL line goes to stderr.
  *
- * Exit: 0 PASS (text + images + image crop), 1 FAIL, 2 setup error (incl. a stalled decoration, an invalid
+ * Exit: 0 PASS (text + images + disclosure rest state + image crop), 1 FAIL, 2 setup error (incl. a stalled decoration, an invalid
  *       --deltas file), 3 bot challenge / blocked live source (fail loud, never measured).
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -147,7 +156,7 @@ try {
 }
 const { edsSettle, isEdsHost } = eds;
 const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = live;
-const { loadNormalize, IMG_VISIBLE, IMG_CROP, compareCrops, compareRegions } = normalizeLib;
+const { loadNormalize, IMG_VISIBLE, DISCLOSURE_STATE, REVEAL_DISCLOSURES, IMG_CROP, compareCrops, compareRegions } = normalizeLib;
 
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
@@ -216,7 +225,14 @@ async function capture(url, scopeList, normalize, rendered = false) {
   await page.waitForTimeout(1500);
   // image crop needs each image's natural size: wait (bounded) for the images the scroll pass started to finish
   await page.waitForFunction(() => [...document.images].every((i) => i.complete), null, { timeout: 8000 }).catch(() => {});
+  // Rest state first: the ledger (source) and the reveal (rendered) both change it.
+  const rest = await page.evaluate(({ sl, stateSrc }) => {
+    const state = (0, eval)(stateSrc);
+    return sl.split(',').map((s) => document.querySelector(s.trim().replace(/!$/, ''))).filter(Boolean)
+      .map(state).reduce((a, b) => ({ collapsed: a.collapsed + b.collapsed, expanded: a.expanded + b.expanded }), { collapsed: 0, expanded: 0 });
+  }, { sl: scopeList, stateSrc: DISCLOSURE_STATE });
   if (normalize) { await page.evaluate(NORMALIZE); await page.waitForTimeout(300); }
+  if (rendered) { await page.evaluate(REVEAL_DISCLOSURES); await page.waitForTimeout(100); }
   const data = await page.evaluate(({ sl, imgVisibleSrc, imgCropSrc }) => {
     const sels = sl.split(',').map((s) => s.trim().replace(/!$/, ''));
     const scopes = sels.map((s) => document.querySelector(s));
@@ -239,7 +255,7 @@ async function capture(url, scopeList, normalize, rendered = false) {
   }, { sl: scopeList, imgVisibleSrc: IMG_VISIBLE, imgCropSrc: IMG_CROP });
   await page.close();
   if (data.error) die(`${data.error} (page: ${url}${navErr ? ` — navigation failed: ${navErr.message.split('\n')[0]}` : ''})`);
-  return data;
+  return { ...data, rest };
 }
 
 console.error(`[dom-equality] capturing source ${args.source} scope=${args['source-scope']} normalize=${normalizeSource}`);
@@ -299,7 +315,14 @@ let firstTagDivergence = -1;
 const minT = Math.min(src.tagSequence.length, rnd.tagSequence.length);
 for (let i = 0; i < minT; i += 1) if (src.tagSequence[i] !== rnd.tagSequence[i]) { firstTagDivergence = i; break; }
 
-const pass = textMatch && imageMatch && cropCheck.pass;
+// --- PRIMARY: disclosure rest state ------------------------------------------
+// The source starts (some) disclosures collapsed; the render must too. Everything open at rest means a capture-only
+// "expand every accordion" ledger entry leaked into the delivered block.
+const restWaived = deltas?.disclosures?.restState === 'open';
+const restLeak = src.rest.collapsed > 0 && rnd.rest.collapsed === 0;
+const restMatch = !restLeak || restWaived;
+
+const pass = textMatch && imageMatch && restMatch && cropCheck.pass;
 const tick = (b) => (b ? 'PASS' : 'FAIL');
 let md = `# Content gate — DOM equality report (reskin profile)\n\n`;
 md += `- Source: ${args.source} (scopes: \`${args['source-scope']}\`, normalize: \`${normalizeSource}\`)\n`;
@@ -309,6 +332,7 @@ md += `## Primary checks (gating)\n\n`;
 md += `| Check | Source | Rendered | Status |\n|---|---|---|---|\n`;
 md += `| Visible text (normalized chars) | ${src.visibleText.length} | ${rnd.visibleText.length} | ${tick(textMatch)} |\n`;
 md += `| ${imageCheck ? `Visible images (${deltas.images})` : 'Visible image srcs (ordered)'} | ${srcImgs.length} | ${rndImgs.length} | ${tick(imageMatch)} |\n`;
+md += `| Disclosures collapsed at rest${restLeak && restWaived ? ' (waived: deltas disclosures.restState "open")' : ''} | ${src.rest.collapsed} (${src.rest.expanded} open) | ${rnd.rest.collapsed} (${rnd.rest.expanded} open) | ${tick(restMatch)} |\n`;
 md += `| Image crop area (same area as the source, ≤${cropTolerance}% outside) | ${cropCheck.measured} measured${cropCheck.unpaired ? `, ${cropCheck.unpaired} unpaired (another image at that position)` : ''} | ${cropCheck.wrong.length} wrong area | ${cropCheck.skipped ? `not run (${cropCheck.skipped})` : tick(cropCheck.pass)} |\n\n`;
 md += `**Overall: ${pass ? 'PASS' : 'FAIL'}**\n\n`;
 // deltas: blocking false turns a failure into an advisory (the exit code stays 0).
@@ -317,6 +341,10 @@ if (advisory) md += `${deltasLib.ADVISORY}: the failed checks are reported, the 
 if (textDiff) {
   md += `### Text divergence\n\nFirst divergent char at ${textDiff.firstDivergence} (source ${textDiff.sourceLen} / rendered ${textDiff.renderedLen} chars).\n\n`;
   md += `Source:\n\n> …${textDiff.sourceSnippet}…\n\nRendered:\n\n> …${textDiff.renderedSnippet}…\n\n`;
+}
+if (!restMatch) {
+  md += `### Disclosure rest state\n\nThe source starts ${src.rest.collapsed} disclosure(s) collapsed; the render starts none collapsed (${rnd.rest.expanded} open). `;
+  md += 'A ledger entry that expands accordions is capture-only: the delivered block starts closed like the source, its panels `hidden="until-found"` (or a closed `<details>`), which this gate reveals before reading the text.\n\n';
 }
 if (!imageMatch) {
   md += `### Image divergences\n\n`;
@@ -349,6 +377,7 @@ if (deltas) {
 mkdirSync(dirname(resolve(args.report)), { recursive: true });
 writeFileSync(args.report, md);
 console.error(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`);
+if (!restMatch) console.error(`  disclosures: source ${src.rest.collapsed} collapsed at rest, rendered 0 collapsed (${rnd.rest.expanded} open) — the delivered block must start closed like the source`);
 cropCheck.wrong.slice(0, 5).forEach((w) => console.error(`  image [${w.index}] "${w.label}" wrong area: ${w.inside == null ? 'unpaired' : `${pct(w.inside)} inside the source's`}${w.anchorOff ? ', source anchor not kept' : ''} (${w.rendered.box} ${w.rendered.fit} ${w.rendered.position}) — fix: object-position: ${w.fix}`));
 if (textDiff) console.error(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`);
 if (deltas) {

@@ -12,7 +12,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { donorModulesEds } from '../figma/eds-map.mjs';
-import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, MAPPING_SCHEMA, modelHasButton, registerRendered, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { blockName, captureSmells, checkMapping, chromeTextMissing, contrast, deployMap, findRepeat, localSubpath, MAPPING_SCHEMA, modelHasButton, registerRendered, render, rendersButton, socialNetwork, tokenVars } from '../stream-render.mjs';
 import { advance } from '../../../stardust/scripts/state.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
@@ -101,12 +101,35 @@ check('branded header row: brand | menu | actions zones; navAlign centres the me
   assert.match(fromDonor, /<div class="chrome-row nav-align-center">/);
   const overridden = render({ ...base, tokens: { ...tokens, layout: { navAlign: 'center' } }, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], navAlign: 'start' } } }).html;
   assert.match(overridden, /<div class="chrome-row nav-align-start">/);
-  // plain texts (name, tagline) join the logo in the brand zone; below 900px the menu folds behind the toggle
-  chromeModel.sections[0].ordered.splice(1, 0, { kind: 'text', text: 'Hill School' }, { kind: 'text', text: 'Learn well' });
-  const branded = run({});
-  assert.match(branded, /<div class="brand"><img class="logo"[^>]*><div class="brand-text"><span class="nav-text">Hill School<\/span><span class="nav-text">Learn well<\/span><\/div><\/div>/);
-  assert.doesNotMatch(branded.match(/<div class="nav-actions">.*?<\/div>/)[0], /Hill School/);
-  assert.match(branded, /@media \(max-width: 900px\) \{[\s\S]*\.site-header nav \{ display: none; \}[\s\S]*\.site-header \.nav-toggle \{ display: inline-flex; \}/);
+});
+check('header row without a menu list: plain entries are the menu, source buttons are styled actions', () => {
+  const chromeModel = { sections: [{
+    slot: 'h1', images: [{ currentSrc: 'https://example.test/logo.svg', alt: 'Logo' }], ctas: [{ text: 'Login', absHref: 'https://example.test/login' }],
+    ordered: [
+      { kind: 'image', currentSrc: 'https://example.test/logo.svg' },
+      { kind: 'paragraph', text: 'Products' },
+      { kind: 'text', text: 'Login', inButton: true },
+      { kind: 'text', text: 'Start free', inButton: true },
+    ],
+  }] };
+  const html = render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], navAlign: 'center' } } }).html;
+  assert.match(html, /<nav id="site-nav"><span class="nav-text">Products<\/span><\/nav>\s*<div class="nav-actions"><a class="btn btn-secondary" href="https:\/\/example\.test\/login">Login<\/a><button class="btn" type="button">Start free<\/button><button class="icon-btn nav-toggle"/);
+  assert.match(html, /:is\(\.site-main, \.site-header\) \.btn \{/);
+});
+check('slot options: bleed paints the band, align centres, a leading image goes first, heading roles size sub-headings', () => {
+  const m2 = { sections: [{ slot: 's01', ordered: [
+    { kind: 'image', currentSrc: 'https://example.test/a.png', alt: '' },
+    { kind: 'heading', level: 'h2', text: 'Title' },
+    { kind: 'heading', level: 'h5', role: 'h4', text: 'Sub' },
+    { kind: 'paragraph', text: 'Body' },
+  ] }] };
+  const t2 = { ...tokens, type: { ...tokens.type, h4: { fontSize: '24px' } } };
+  const run = (slot) => render({ ...base, model: m2, tokens: t2, mapping: { pages: { login: { template: 'login', slots: { s01: slot } } } } }).html;
+  const html = run({ module: 'M2', layout: 'split', tone: 'dark', bleed: true, align: 'center' });
+  assert.match(html, /<section class="band layout-split width-narrow tone-dark bleed align-center media-first"/);
+  assert.match(html, /<h5 class="heading role-h4">Sub<\/h5>/);
+  assert.match(html, /\.heading\.role-h4 \{ font-size: var\(--type-h4-font-size\)/);
+  assert.doesNotMatch(run({ module: 'M2', layout: 'split', bleed: true }), /<section class="[^"]*\bbleed\b/, 'bleed needs a tone');
 });
 check('renderer contract: chrome/main classes, data-slot, data-module, data-slot-body, template', () => {
   const { html, slots } = render(base);
@@ -198,15 +221,11 @@ check('findRepeat: intro, repeating items and tail; a shifted run loses the cove
   const h = (level, text = 'x') => ({ kind: 'heading', level, text });
   const p = { kind: 'paragraph', text: 'p' }; const im = { kind: 'image', src: 'i' }; const a = { kind: 'cta', text: 'c', href: '#' };
   assert.deepEqual(findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, im, h('h3'), p, a]), { start: 2, period: 3, count: 3, bounds: [2, 5, 8, 11] });
+  assert.deepEqual(findRepeat([h('h2'), p, h('h3'), p, p, h('h5'), p, p, h('h4'), p, p]), { start: 2, period: 3, count: 3, bounds: [2, 5, 8, 11] }, 'drifting card heading levels still repeat');
   const t = (cls) => ({ kind: 'text', text: 't', parentClass: cls });
   // intro (h2, p) then [num, title, p] x3: the run starting at the subtitle covers as many nodes but is shifted.
   assert.deepEqual(findRepeat([h('h2'), p, t('n'), t('t'), p, t('n'), t('t'), p, t('n'), t('t'), p]), { start: 2, period: 3, count: 3, bounds: [2, 5, 8, 11] });
   assert.equal(findRepeat([h('h2'), p, a, im]), null);
-  // items of uneven length that share an opening (image + heading) are one listing; the tail stays outside
-  const ev = findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, p, im, h('h3'), p, p, p, a]);
-  assert.deepEqual({ start: ev.start, count: ev.count, bounds: ev.bounds }, { start: 2, count: 3, bounds: [2, 5, 9, 13] });
-  // two openings stay with the exact repeat (an anchored listing needs three)
-  assert.deepEqual(findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, p, a]), { start: 2, period: 3, count: 2, bounds: [2, 5, 8] });
 });
 check('cards layout: items wrapped in .card inside .cards with columns; intro and tail outside; no repeat warns', () => {
   const p = { kind: 'paragraph', text: 'Bio' };
@@ -224,6 +243,23 @@ check('cards layout: items wrapped in .card inside .cards with columns; intro an
   const flat = render({ ...base, mapping: { pages: { login: { slots: { s01: { layout: 'cards', tone: 'neon' } } } } } });
   assert.equal(flat.warnings.length, 2);
   assert.doesNotMatch(flat.html, /class="cards"/);
+});
+check('cards layout: a list of structured items (image, link, text per li) is one card per item, not a bullet list', () => {
+  const li = (n) => ({ kind: 'listItem', text: n, children: [
+    { kind: 'image', currentSrc: `https://cdn.example.test/${n}.jpg`, alt: '' },
+    { kind: 'cta', text: n, href: `/${n}`, absHref: `https://example.test/${n}` },
+    { kind: 'paragraph', text: `About ${n}` }] });
+  const h2 = { kind: 'heading', level: 'h2', text: 'Why us' };
+  assert.deepEqual(findRepeat([h2, li('a'), li('b'), li('c')]), { start: 1, period: 1, count: 3, bounds: [1, 2, 3, 4] }, 'three single-node items');
+  assert.deepEqual(findRepeat([h2, ...'abcdef'.split('').map(li)]), { start: 1, period: 1, count: 6, bounds: [1, 2, 3, 4, 5, 6, 7] }, 'six items beat a false 2-node run');
+  const plain = { kind: 'listItem', text: 'x' };
+  assert.equal(findRepeat([h2, plain, plain, plain]), null, 'a bare bullet list is not cards');
+  const m2 = { metadata: {}, sections: [{ slot: 's01', ordered: [h2, li('a'), li('b'), li('c')] }] };
+  const { html, warnings } = render({ ...base, slug: 't', model: m2, mapping: { pages: { t: { slots: { s01: { layout: 'cards' } } } } } });
+  assert.equal((html.match(/<div class="card">/g) || []).length, 3);
+  assert.doesNotMatch(html, /<ul class="list">/);
+  assert.match(html, /<div class="card"><figure class="media"><img [^>]+><\/figure>/);
+  assert.deepEqual(warnings, []);
 });
 check('content-driven: 3+ consecutive images are one logo row; split puts the first image beside the text', () => {
   const ordered = ['a', 'b', 'c'].map((n) => ({ kind: 'image', currentSrc: `https://cdn.example.test/${n}.svg`, alt: n }));
@@ -314,11 +350,57 @@ check('contrast: WCAG ratio; a low-contrast accent stays an underline, never lin
   assert.match(mk('#1a4d8f'), /\.link \{ color: var\(--palette-accent\)/);
 });
 
-check('0.36.1 chrome: a link with only sr-only text is the utility bar; a footer with headings is laid out in zones', () => {
+check('0.41 structure: tables, disclosures at their rest state, glyphs, sr-only, content-sized images, cardTone', () => {
+  const ordered = [
+    { kind: 'text', text: 'Skip note', srOnly: true },
+    { kind: 'table', text: 'Year Count 2024 12', rows: [[{ text: 'Year', header: true }, { text: 'Count', header: true }], [{ text: '2024' }, { text: '12', children: [{ kind: 'cta', text: '12', absHref: 'https://example.test/c' }] }]] },
+    { kind: 'heading', level: 'h3', text: 'Closed one keyboard_arrow_down', children: [{ kind: 'text', text: 'Closed one', toggle: 'p1' }, { kind: 'text', text: 'keyboard_arrow_down', glyph: true, toggle: 'p1', sep: ' ' }] },
+    { kind: 'paragraph', text: 'Closed body', panels: ['p1'] },
+    { kind: 'text', text: 'Open one', toggle: 'p2', toggleOpen: true },
+    { kind: 'paragraph', text: 'Open body', panels: ['p2'] },
+    { kind: 'text', text: 'Show filters', toggle: 'p3' },
+    { kind: 'paragraph', text: '', children: [{ kind: 'image', currentSrc: 'https://example.test/hero.jpg', alt: 'Hero', rw: 768 }] },
+    { kind: 'paragraph', text: '', children: [{ kind: 'image', currentSrc: 'https://example.test/old.png', alt: 'Old' }] },
+    { kind: 'paragraph', text: 'Badge', children: [{ kind: 'image', currentSrc: 'https://example.test/b.png', alt: 'B', rw: 24 }, { kind: 'text', text: 'Badge', sep: ' ' }] },
+  ];
+  const m = { pages: { p: { slots: { s01: { module: 'M2', layout: 'cards', cardTone: 'dark' } } } } };
+  const { html, warnings } = render({ ...base, slug: 'p', mapping: m, model: { sections: [{ slot: 's01', ordered }] } });
+  assert.match(html, /<span class="sr-only">Skip note<\/span>/);
+  assert.match(html, /<table class="table"><tbody><tr><th>Year<\/th><th>Count<\/th><\/tr><tr><td>2024<\/td><td><p class="aux"><a class="link" href="https:\/\/example\.test\/c">12<\/a><\/p><\/td><\/tr><\/tbody><\/table>/);
+  assert.match(html, /<button class="disclosure-toggle" type="button" aria-expanded="false" aria-controls="(disclosure-\d+)">Closed one <span class="glyph glyph-down" aria-hidden="true">keyboard_arrow_down<\/span><\/button><div class="disclosure-panel" id="\1" hidden="until-found"><p class="lead">Closed body<\/p><\/div>/);
+  assert.match(html, /aria-expanded="true" aria-controls="(disclosure-\d+)">Open one<\/button><div class="disclosure-panel" id="\1"><p class="lead">Open body<\/p>/);
+  assert.match(html, /<p class="text">Show filters<\/p>/, 'a toggle with no panel in the stream stays plain text');
+  assert.match(html, /<figure class="media media-wide"><img src="https:\/\/example\.test\/hero\.jpg" alt="Hero"><\/figure>/);
+  assert.match(html, /<img class="icon" src="https:\/\/example\.test\/old\.png" alt="Old">/, 'a pre-0.41 model (no rw) keeps the inline icon');
+  assert.match(html, /<img class="icon" src="https:\/\/example\.test\/b\.png" alt="B"> Badge/);
+  assert.match(html, /class="band layout-cards cards-dark /);
+  assert.match(html, /\.disclosure-toggle'\); if \(!b\) return;/, 'the toggle script ships with a disclosure');
+  assert.deepEqual(warnings.filter((w) => /cardTone/.test(w)), []);
+  const bad = render({ ...base, slug: 'p', mapping: { pages: { p: { slots: { s01: { module: 'M2', cardTone: 'neon' } } } } }, model: { sections: [{ slot: 's01', ordered: [{ kind: 'paragraph', text: 'x' }] }] } });
+  assert.ok(bad.warnings.some((w) => /unknown cardTone "neon"/.test(w)));
+  assert.ok(!/disclosure-toggle'\)/.test(bad.html), 'no script without a disclosure');
+});
+check('0.41 header: a glyph or sr-only action is an icon button; nav link text keeps glyph/sr-only runs, never the link image', () => {
+  const chromeModel = { sections: [{
+    slot: 'h1', images: [], ctas: [{ text: 'Skip to content', absHref: 'https://example.test/#main' }, { text: 'About', absHref: 'https://example.test/about' }],
+    ordered: [
+      { kind: 'cta', text: 'Skip to content', absHref: 'https://example.test/#main', srOnly: true },
+      { kind: 'listItem', text: 'About', children: [{ kind: 'cta', text: 'About', absHref: 'https://example.test/about', children: [{ kind: 'image', currentSrc: 'https://example.test/crest.png', alt: '' }, { kind: 'text', text: 'About', sep: '' }] }] },
+      { kind: 'text', text: 'search', glyph: true, parentTag: 'span' },
+    ],
+  }] };
+  const { html } = render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'] } } });
+  const header = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+  assert.match(header, /<a class="sr-only" href="https:\/\/example\.test\/#main">Skip to content<\/a>/);
+  assert.match(header, /<a href="https:\/\/example\.test\/about">About<\/a>/);
+  assert.ok(!header.includes('crest.png'), 'a nav link image is not repeated as an inline image');
+  assert.match(header, /<span class="glyph glyph-search" aria-hidden="true">search<\/span>/);
+});
+check('0.42 chrome: a link with only sr-only text is the utility bar; a footer with headings is laid out in zones', () => {
   const header = { slot: 'h1', images: [{ currentSrc: 'https://example.test/crest.svg', alt: 'Crest' }], ctas: [],
     ordered: [
       { kind: 'image', currentSrc: 'https://example.test/crest.svg' },
-      { kind: 'cta', text: 'NSW Government', absHref: 'https://example.test/gov', children: [{ kind: 'text', text: 'NSW Government', parentClass: 'sr-only' }] },
+      { kind: 'cta', text: 'NSW Government', absHref: 'https://example.test/gov', children: [{ kind: 'text', text: 'NSW Government', srOnly: true }] },
       { kind: 'listItem', text: 'About', children: [{ kind: 'cta', text: 'About', absHref: 'https://example.test/about' }] },
     ] };
   const footer = { slot: 'f1', images: [], paragraphs: [], ctas: [], iconLinks: [{ label: 'Facebook', absHref: 'https://example.test/fb' }],
@@ -334,7 +416,7 @@ check('0.36.1 chrome: a link with only sr-only text is the utility bar; a footer
   assert.doesNotMatch(html.match(/<div class="nav-actions">[\s\S]*?<\/div>/)[0], /NSW Government/);
   assert.match(html, /<div class="footer-brand"><p class="footer-name">Hill School<\/p><p class="footer-prose">We acknowledge the land\.<\/p><\/div>/);
   assert.match(html, /<div class="footer-col"><p class="footer-col-title">Contact<\/p><ul><li>1 Hill St<\/li><li>02 1234<\/li><\/ul><\/div>/);
-  assert.match(html, /<div class="footer-social"><p class="footer-social-label">Follow us<\/p><ul class="icon-links"><li><a href="https:\/\/example\.test\/fb" aria-label="Facebook">Facebook<\/a><\/li><\/ul><\/div>/);
+  assert.match(html, /<div class="footer-social"><p class="footer-social-label">Follow us<\/p><ul class="icon-links"><li><a class="social-icon" href="https:\/\/example\.test\/fb"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="[^"]+"\/><\/svg><span class="sr-only">Facebook<\/span><\/a><\/li><\/ul><\/div>/);
 });
 const BRANDED = { sections: [{
   slot: 'h1', images: [{ currentSrc: 'https://example.test/logo.svg', alt: 'Logo' }], ctas: [],
@@ -363,12 +445,52 @@ check('mobile menu toggle: aria-expanded/aria-controls on the toggle, the nav it
   const plain = render(base).html;
   assert.doesNotMatch(plain, /nav-toggle"|closest\('\.nav-toggle'\)/);
 });
+// A live-site header: the logo row holds a visually hidden parent-org link, the site name and the motto
+// (plain texts, no list), and a search button; the primary links are a second, logo-less row.
+const TWO_ROW = [{
+  slot: 'h1', images: [{ currentSrc: 'https://example.test/logo.svg', alt: 'Logo' }], ctas: [],
+  ordered: [
+    { kind: 'image', currentSrc: 'https://example.test/logo.svg' },
+    { kind: 'cta', text: 'Government', absHref: 'https://example.test/gov', children: [{ kind: 'text', text: 'Government', srOnly: true }] },
+    { kind: 'text', text: 'Hill Public School', parentTag: 'span' },
+    { kind: 'text', text: 'Learning together', parentTag: 'span' },
+    { kind: 'text', text: 'search', glyph: true, inButton: true },
+  ],
+}, {
+  slot: 'h2', images: [], ctas: [],
+  ordered: ['About', 'Enrolment', 'News', 'Contact'].map((t) => ({ kind: 'listItem', text: t, children: [{ kind: 'cta', text: t, absHref: `https://example.test/${t.toLowerCase()}` }] })),
+}];
+const twoRowHtml = (navAlign) => render({ ...base, tokens: navAlign ? { ...tokens, layout: { navAlign } } : tokens, chromeModel: { sections: TWO_ROW }, mapping: { ...mapping, chrome: { header: ['h1', 'h2'] } } }).html;
+check('header brand texts: a site name and motto beside a hidden parent-org link go to .brand, never the nav; a one-row donor draws the link row in the logo row', () => {
+  const html = twoRowHtml('center');
+  const header = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+  assert.match(header, /<div class="brand"><img class="logo"[^>]*><div class="brand-text"><span class="nav-text">Hill Public School<\/span><span class="nav-text">Learning together<\/span><\/div><\/div>/);
+  assert.match(header, /<div class="utility-bar"><div class="container"><a href="https:\/\/example\.test\/gov">Government<\/a><\/div><\/div>/);
+  assert.match(header, /<nav id="site-nav"><a href="https:\/\/example\.test\/about">About<\/a><a href="https:\/\/example\.test\/enrolment">Enrolment<\/a><a href="https:\/\/example\.test\/news">News<\/a><a href="https:\/\/example\.test\/contact">Contact<\/a><\/nav>/);
+  assert.equal((header.match(/<nav/g) || []).length, 1, 'one nav: the link row is drawn in the logo row');
+  assert.equal((header.match(/class="chrome-row/g) || []).length, 1);
+  assert.doesNotMatch(header, /<nav[^>]*>[^]*?nav-text[^]*?<\/nav>/, 'no brand text inside a nav');
+  assert.match(header, /<div class="nav-actions"><button class="icon-btn" type="button"><span class="glyph glyph-search" aria-hidden="true">search<\/span><\/button><button class="icon-btn nav-toggle"[^>]*aria-controls="site-nav">/);
+});
+check('header brand texts: without a one-row donor header the link row stays its own row; the toggle controls that nav', () => {
+  const header = ((h) => h.slice(h.indexOf('<header'), h.indexOf('</header>')))(twoRowHtml(null));
+  assert.equal((header.match(/class="chrome-row/g) || []).length, 2);
+  assert.equal((header.match(/<nav/g) || []).length, 1, 'the logo row keeps no empty nav');
+  assert.match(header, /<div class="chrome-row"><div class="container">\s*<nav id="site-nav"><a href="https:\/\/example\.test\/about">About<\/a>/);
+  assert.match(header, /aria-controls="site-nav"/);
+  assert.match(header, /<div class="brand-text"><span class="nav-text">Hill Public School<\/span>/);
+  // a branded row that keeps its own links leaves another link row (a utility row) alone
+  const own = render({ ...base, tokens: { ...tokens, layout: { navAlign: 'center' } }, chromeModel: { sections: [BRANDED.sections[0], TWO_ROW[1]] }, mapping: { ...mapping, chrome: { header: ['h1', 'h2'] } } }).html;
+  assert.equal((own.match(/class="chrome-row/g) || []).length, 2);
+  assert.match(own, /<nav id="site-nav"><a href="https:\/\/example\.test\/about">About<\/a><a href="https:\/\/example\.test\/contact">Contact<\/a><\/nav>/);
+  assert.match(own, /<div class="chrome-row"><div class="container">\s*<nav><a href="https:\/\/example\.test\/about">/);
+});
 check('zoned footer: a top-level link keeps its destination (text-only and text-children CTAs)', () => {
   const html = brandedHtml();
   assert.match(html, /<li><a href="https:\/\/example\.test\/privacy">Privacy<\/a><\/li>/);
   assert.match(html, /<li><a href="https:\/\/example\.test\/terms">Terms<\/a><\/li>/);
 });
-check('0.36.1 main: an icon-font word is a glyph without the flag; a ledgered embed keeps its space after its section', () => {
+check('0.42 main: an icon-font word is a glyph without the flag; a ledgered embed keeps its space after its section', () => {
   const ordered = [
     { kind: 'heading', level: 'h2', text: 'Find us' },
     { kind: 'paragraph', text: 'Visit', children: [{ kind: 'text', text: 'Visit' }, { kind: 'text', text: 'east', parentClass: 'material-icons', sep: ' ' }] },
@@ -382,17 +504,74 @@ check('0.36.1 main: an icon-font word is a glyph without the flag; a ledgered em
 });
 
 
+// A live-site footer captured as four bands: the site name, a contact band (headings + list items), an
+// acknowledgement, and a logo with links (social links among them as text).
+const BANDS = [
+  { slot: 'f1', images: [], paragraphs: [], ctas: [], ordered: [{ kind: 'paragraph', text: 'Hill Public School' }] },
+  { slot: 'f2', images: [], paragraphs: [], ctas: [], ordered: [
+    { kind: 'heading', level: 'h2', text: 'Contact us' },
+    { kind: 'listItem', text: '1 Hill St' }, { kind: 'listItem', text: '02 1234 5678' },
+    { kind: 'heading', level: 'h2', text: 'Follow us' },
+    { kind: 'listItem', text: 'Instagram', children: [{ kind: 'cta', text: 'Instagram', absHref: 'https://instagram.com/hill' }] },
+  ] },
+  { slot: 'f3', images: [], paragraphs: [], ctas: [], ordered: [{ kind: 'paragraph', text: 'We acknowledge the traditional custodians of the land.' }] },
+  { slot: 'f4', images: [{ currentSrc: 'https://example.test/gov.svg', alt: 'Government' }], paragraphs: [],
+    ctas: [{ text: 'Privacy', absHref: 'https://example.test/privacy' }, { text: 'Facebook', absHref: 'https://facebook.com/hill' }],
+    iconLinks: [{ label: 'YouTube', absHref: 'https://youtube.com/hill' }],
+    ordered: [{ kind: 'image', currentSrc: 'https://example.test/gov.svg' }, { kind: 'cta', text: 'Privacy', absHref: 'https://example.test/privacy' }, { kind: 'cta', text: 'Facebook', absHref: 'https://facebook.com/hill' }] },
+];
+const bandsHtml = () => render({ ...base, chromeModel: { sections: BANDS }, mapping: { ...mapping, chrome: { footer: BANDS.map((b) => b.slot) } } }).html;
+check('footer bands: a name, a zoned contact band, an acknowledgement and a logo/links band are one zoned footer; no empty <ul>', () => {
+  const html = bandsHtml();
+  const footer = html.slice(html.indexOf('<footer'), html.indexOf('</footer>'));
+  assert.equal((footer.match(/class="container chrome-footer/g) || []).length, 1, 'one footer layout, not stacked bands');
+  assert.doesNotMatch(footer, /<ul><\/ul>|<ul class="icon-links"><\/ul>/);
+  assert.match(footer, /<div class="footer-brand"><img class="logo" src="https:\/\/example\.test\/gov\.svg" alt="Government"><p class="footer-name">Hill Public School<\/p><p class="footer-prose">We acknowledge the traditional custodians of the land\.<\/p><\/div>/);
+  assert.match(footer, /<div class="footer-col"><p class="footer-col-title">Contact us<\/p><ul><li>1 Hill St<\/li><li>02 1234 5678<\/li><\/ul><\/div>/);
+  assert.match(footer, /<div class="footer-col"><ul><li><a href="https:\/\/example\.test\/privacy">Privacy<\/a><\/li><\/ul><\/div>/);
+  assert.match(footer, /<div class="footer-social"><p class="footer-social-label">Follow us<\/p><ul class="icon-links">/);
+  for (const [net, href] of [['Instagram', 'instagram.com/hill'], ['Facebook', 'facebook.com/hill'], ['YouTube', 'youtube.com/hill']]) {
+    assert.match(footer, new RegExp(`<a class="social-icon" href="https://${href.replace(/\./g, '\\.')}"><svg [^>]*aria-hidden="true"[^>]*><path [^>]*/></svg><span class="sr-only">${net}</span></a>`), net);
+  }
+  assert.match(html, /\.site-footer \.footer-brand \.logo \{ height: 48px; min-height: 48px; \}/);
+  assert.match(html, /\.site-footer \.social-icon svg \{/);
+  // a single plain band never prints an empty list; one without social links gets no icon CSS
+  const plain = render({ ...base, chromeModel: { sections: [BANDS[2]] }, mapping: { ...mapping, chrome: { footer: ['f3'] } } }).html;
+  assert.doesNotMatch(plain, /<ul><\/ul>/);
+  assert.doesNotMatch(plain, /social-icon|footer-brand \.logo \{ height: 48px/);
+});
+check('socialNetwork: network names by text (and by host for icon links); anything else is null', () => {
+  assert.equal(socialNetwork('Facebook'), 'facebook');
+  assert.equal(socialNetwork('Follow us on Instagram'), 'instagram');
+  assert.equal(socialNetwork('X (formerly Twitter)'), 'x');
+  assert.equal(socialNetwork('Twitter'), 'x');
+  assert.equal(socialNetwork('LinkedIn'), 'linkedin');
+  assert.equal(socialNetwork('TikTok'), 'tiktok');
+  assert.equal(socialNetwork('Facebook privacy policy'), null);
+  assert.equal(socialNetwork('Contact'), null);
+  assert.equal(socialNetwork('https://www.youtube.com/@hill', true), 'youtube');
+  assert.equal(socialNetwork('https://example.test/facebook', true), null);
+});
+
 // ---- mapping.json --check (reference/mapping-json.md) ----
 const chromeM = { sections: [{ slot: 'h1', ordered: [] }, { slot: 'f1', ordered: [] }] };
 const goodMapping = {
   $schema: 'stardust:reskin-mapping', _note: 'annotations are allowed',
   chrome: { model: 'stardust/reskin/content-model/_chrome', header: ['h1'], footer: ['f1'], footerTone: 'dark', navAlign: 'center' },
-  pages: { login: { template: 'login', slots: { s01: { module: 'M2', layout: 'split cards', width: 'wide', tone: 'accent', columns: 3, heading: 'h3', inset: '80px', split: '531px 1fr' } } } },
+  pages: { login: { template: 'login', slots: { s01: { module: 'M2', layout: 'split cards', width: 'wide', tone: 'accent', columns: 3, heading: 'h3', inset: '80px', split: '531px 1fr', bleed: true, align: 'center', cardTone: 'light', block: 'cards', variant: ['teaser'], instance: '12:34' } } } },
 };
 check('checkMapping: a valid mapping (every key, annotations) has no problems', () => {
   assert.deepEqual(checkMapping(goodMapping, { models: { login: model }, chromeModel: chromeM, slugs: ['login'] }), []);
   assert.deepEqual(checkMapping(mapping, { models: { login: model } }), []);
 });
+check('checkMapping: a copied mapping.seed.json (library, chrome.kit, pages[].defaultContent) passes --check', () => {
+  const seed = { ...structuredClone(goodMapping), library: [{ figma: 'Card', block: 'cards', variant: null }] };
+  seed.chrome = { ...seed.chrome, kit: { c01: { module: 'M7', block: 'header', variant: [] } } };
+  seed.pages.login.defaultContent = { s09: { module: 'M9', figma: 'Rich text' } };
+  assert.deepEqual(checkMapping(seed, { models: { login: model }, chromeModel: chromeM, slugs: ['login'] }), []);
+  assert.match(checkMapping({ ...seed, librar: [] }).join('\n'), /librar/);
+});
+
 check('checkMapping: --check allows every mapping key the renderer and --deploy-map read (no documented key rejected)', () => {
   const reads = { top: new Set(), chrome: new Set(), page: new Set(), slot: new Set() };
   const track = (o, set) => new Proxy(o, { get(t, k, r) { if (typeof k === 'string') set.add(k); return Reflect.get(t, k, r); } });
@@ -421,6 +600,13 @@ check('checkMapping: bad enums and malformed values, one problem each', () => {
   const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM });
   for (const k of ['chrome.footerTone', 'chrome.navAlign', '.layout', '.width', '.tone', '.heading', '.columns', '.inset', '.split', '.module']) assert.ok(p.some((x) => x.includes(`${k}:`)), `${k} reported\n${p.join('\n')}`);
   assert.equal(p.length, 10);
+});
+check('checkMapping: the slot options the renderer also reads (bleed, align, cardTone, block, variant, instance) are validated', () => {
+  const m = structuredClone(goodMapping);
+  Object.assign(m.pages.login.slots.s01, { bleed: 'yes', align: 'left', cardTone: 'neon', block: 'Hero!', variant: 'teaser', instance: 'abc' });
+  const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM });
+  for (const k of ['bleed', 'align', 'cardTone', 'block', 'variant', 'instance']) assert.ok(p.some((x) => x.startsWith(`pages.login.slots.s01.${k}:`)), `${k} reported\n${p.join('\n')}`);
+  assert.equal(p.length, 6);
 });
 check('checkMapping: slots the content model lacks, chrome slots the chrome model lacks, chrome without a model, requested pages missing', () => {
   const m = structuredClone(goodMapping); m.pages.login.slots.s09 = { module: 'M1' }; m.chrome.header = ['h1', 'h7'];
@@ -653,6 +839,56 @@ await (async () => {
   } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { srv.close(); await browser?.close(); }
 })();
 
+// A Figma-only model's cached bytes (assets/<node>.png beside the model) are copied under prototypes/assets/img/figma/
+// and mirrored beside the page, so the page shows them and migrate bundles them with its default --proto-dir.
+await (async () => {
+  const name = 'figma assets: src="assets/img/figma/<slug>/…" displays from reskin/pages and migrate bundles it with default flags';
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a1f3a2a40000000049454e44ae426082', 'hex');
+  const run = (cwd, args) => new Promise((ok) => { const c = spawn(process.execPath, args, { cwd }); let out = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; }); c.on('close', (status) => ok({ status, out })); });
+  try {
+    const m = { _provenance: { source: { kind: 'figma' } }, metadata: { title: 'Sign in' }, sections: [{ slot: 's01', ordered: [{ kind: 'heading', level: 'h1', text: 'Hi' }, { kind: 'image', currentSrc: 'assets/1-2.png', alt: 'A' }] }] };
+    const root = project({ state: { ...reskinState([page('login', 'extracted')]), site: { originUrl: 'https://example.test/' } } });
+    const modelDir = join(root, 'stardust', 'reskin', 'content-model', 'login');
+    writeFileSync(join(modelDir, 'content-model.json'), JSON.stringify(m));
+    mkdirSync(join(modelDir, 'assets'), { recursive: true }); writeFileSync(join(modelDir, 'assets', '1-2.png'), PNG);
+    mkdirSync(join(root, 'stardust', 'canon'), { recursive: true }); writeFileSync(join(root, 'stardust', 'canon', 'canon.css'), ':root { --x: 1; }\n');
+    const r = await run(root, [SCRIPT, 'login', '--register']);
+    assert.equal(r.status, 0, r.out);
+    const html = readFileSync(join(root, 'stardust', 'reskin', 'pages', 'login.html'), 'utf8');
+    assert.match(html, /<img src="assets\/img\/figma\/login\/assets\/1-2\.png" data-source-src="assets\/1-2\.png" alt="A">/);
+    for (const d of ['reskin/pages/assets', 'prototypes/assets']) assert.ok(existsSync(join(root, 'stardust', d, 'img', 'figma', 'login', 'assets', '1-2.png')), d);
+    const mg = await run(root, [MIGRATE, 'render', 'login']);
+    assert.equal(mg.status, 0, mg.out);
+    assert.ok(existsSync(join(root, 'stardust', 'migrated', 'assets', 'img', 'figma', 'login', 'assets', '1-2.png')), 'bundled into migrated/assets');
+    assert.deepEqual(JSON.parse(readFileSync(join(root, 'stardust', 'state.json'), 'utf8')).migrate.missingAssets, []);
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); }
+})();
+
+// --localize-images on a Figma-only model: the Figma asset mapping survives the localizer's second pass.
+await (async () => {
+  const name = 'figma assets + --localize-images: the cached asset keeps its assets/img/figma src, the remote image is localized';
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a1f3a2a40000000049454e44ae426082', 'hex');
+  const srv = createServer((q, r) => { r.writeHead(200, { 'content-type': 'image/png' }); r.end(PNG); }).listen(0, '127.0.0.1');
+  const run = (cwd, args) => new Promise((ok) => { const c = spawn(process.execPath, args, { cwd }); let out = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; }); c.on('close', (status) => ok({ status, out })); });
+  try {
+    await new Promise((ok) => srv.on('listening', ok));
+    const remote = `http://127.0.0.1:${srv.address().port}/media/r.png`;
+    const m = { _provenance: { source: { kind: 'figma' } }, metadata: { title: 'Sign in' }, sections: [{ slot: 's01', ordered: [{ kind: 'heading', level: 'h1', text: 'Hi' }, { kind: 'image', currentSrc: 'assets/1-2.png', alt: 'A' }, { kind: 'image', currentSrc: remote, alt: 'R' }] }] };
+    const root = project({ state: { ...reskinState([page('login', 'extracted')]), site: { originUrl: 'https://example.test/' } } });
+    const modelDir = join(root, 'stardust', 'reskin', 'content-model', 'login');
+    writeFileSync(join(modelDir, 'content-model.json'), JSON.stringify(m));
+    mkdirSync(join(modelDir, 'assets'), { recursive: true }); writeFileSync(join(modelDir, 'assets', '1-2.png'), PNG);
+    const r = await run(root, [SCRIPT, 'login', '--localize-images']);
+    assert.equal(r.status, 0, r.out);
+    const html = readFileSync(join(root, 'stardust', 'reskin', 'pages', 'login.html'), 'utf8');
+    assert.match(html, /<img src="assets\/img\/figma\/login\/assets\/1-2\.png" data-source-src="assets\/1-2\.png" alt="A">/);
+    assert.match(html, /<img src="assets\/img\/127\.0\.0\.1\/media\/r\.png" data-source-src="http:\/\/127\.0\.0\.1:\d+\/media\/r\.png" alt="R">/);
+    assert.doesNotMatch(html, /<img src="assets\/1-2\.png"/);
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { srv.close(); }
+})();
+
 // In a browser at 390px: the menu is folded, the toggle opens and closes it.
 await (async () => {
   const name = 'mobile menu toggle in a browser at 390px: folded, opens on click, closes again';
@@ -675,6 +911,65 @@ await (async () => {
     await page.setViewportSize({ width: 1440, height: 800 });
     assert.equal(await toggle.isVisible(), false, 'no toggle at 1440px');
     assert.equal(await nav.isVisible(), true, 'nav shown at 1440px');
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
+})();
+
+// The live-site header in a browser: at 1440 the brand and every primary link share one row; at 390 the
+// toggle opens the nav holding the primary links (one-row donor), and the separate link row (two-row).
+await (async () => {
+  const name = 'header brand texts in a browser: one row at 1440, the toggle opens the primary nav at 390';
+  let browser;
+  try {
+    const { chromium } = await import('playwright');
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 800 } });
+    await page.setContent(twoRowHtml('center'), { waitUntil: 'domcontentloaded' });
+    const geo = await page.evaluate(() => {
+      const r = (el) => el.getBoundingClientRect();
+      const links = [...document.querySelectorAll('#site-nav a')].map((a) => Math.round(r(a).top));
+      const row = r(document.querySelector('.chrome-row .container'));
+      const brand = r(document.querySelector('.brand'));
+      return { links, row: [row.top, row.bottom], brandTop: brand.top, navTop: r(document.querySelector('#site-nav')).top };
+    });
+    assert.equal(geo.links.length, 4);
+    assert.equal(new Set(geo.links).size, 1, `links in one row: ${geo.links}`);
+    assert.ok(geo.navTop >= geo.row[0] && geo.navTop < geo.row[1] && geo.brandTop >= geo.row[0], `nav and brand share the row: ${JSON.stringify(geo)}`);
+    for (const navAlign of ['center', null]) {
+      await page.setViewportSize({ width: 390, height: 800 });
+      await page.setContent(twoRowHtml(navAlign), { waitUntil: 'domcontentloaded' });
+      const nav = page.locator('#site-nav');
+      assert.equal(await nav.isVisible(), false, 'nav folded at 390px');
+      await page.locator('.nav-toggle').click();
+      assert.equal(await page.locator('#site-nav a[href="https://example.test/about"]').isVisible(), true, `primary links open (${navAlign})`);
+      assert.equal(await page.locator('.nav-toggle').getAttribute('aria-controls'), 'site-nav');
+    }
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
+})();
+
+// The merged footer in a browser at 1440: brand, columns side by side; the social icons drawn, their text hidden.
+await (async () => {
+  const name = 'footer bands in a browser at 1440: one zoned row, a ≥48px logo, social icons drawn with hidden text';
+  let browser;
+  try {
+    const { chromium } = await import('playwright');
+    browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await page.route('https://example.test/gov.svg', (r) => r.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><rect width="120" height="40"/></svg>' }));
+    await page.setContent(bandsHtml(), { waitUntil: 'load' });
+    const geo = await page.evaluate(() => {
+      const r = (el) => el.getBoundingClientRect();
+      const tops = [...document.querySelectorAll('.footer-main > *')].map((el) => Math.round(r(el).top));
+      const icons = [...document.querySelectorAll('.social-icon')].map((a) => ({ w: r(a.querySelector('svg')).width, text: r(a.querySelector('.sr-only')).width }));
+      return { tops, logo: r(document.querySelector('.footer-brand .logo')).height, icons };
+    });
+    assert.ok(geo.tops.length >= 3 && new Set(geo.tops).size === 1, `brand and columns in one row: ${geo.tops}`);
+    assert.ok(geo.logo >= 48, `logo ${geo.logo}px`);
+    assert.equal(geo.icons.length, 3);
+    assert.ok(geo.icons.every((i) => i.w >= 20 && i.text <= 1), JSON.stringify(geo.icons));
+    const shot = await page.locator('footer').screenshot();
+    assert.ok(shot.length > 1000, 'footer screenshot rendered');
     console.log(`✓ ${name}`);
   } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { await browser?.close(); }
 })();

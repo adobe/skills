@@ -130,10 +130,16 @@ export const foldPath = (outputPath) => outputPath.toLowerCase().split('/').filt
 
 // The page map — every state page, built once per run; strict 8 refuses colliding slugs. `collisions` is keyed by
 // the FOLDED output path (literal collisions fold to the same key), value = every slug that lands on it.
+// A Figma-sourced page's url is the design frame, not a site path: its path is page.path, else the slug
+// (`index` → `/`). Every other page keeps the URL-literal rule.
+export const siteUrlOf = (page) => {
+  if (page.source !== 'figma') return page.url || page.path || `/${page.slug}/`;
+  return page.path || (page.slug === 'index' ? '/' : `/${page.slug}/`);
+};
 export function buildPageMap(pages, originUrl) {
   const entries = []; const bySlug = new Map(); const byPath = new Map(); const seen = new Map(); const collisions = new Map();
   for (const page of pages) {
-    const sourceUrl = pathnameOf(page.url, originUrl || undefined);
+    const sourceUrl = pathnameOf(siteUrlOf(page), originUrl || undefined);
     const o = outputPathFor(sourceUrl);
     const e = { sourceUrl, outputPath: o.outputPath, folded: foldPath(o.outputPath), slug: page.slug, outputPathDefault: o.outputPathDefault, passthrough: o.passthrough };
     entries.push(e); bySlug.set(page.slug, e); byPath.set(sourceUrl, e);
@@ -433,7 +439,7 @@ export function renderPage(run, page, entry) {
   const modules = modulesIn(tagged.html); const modulesOut = modules.length ? modules : (old?.modules?.length ? old.modules : []);
   const depth = depthOf(outputPath); const prefix = relPrefix(depth);
   // internal links via the page map
-  let pageUrl; try { pageUrl = new URL(page.url, run.originUrl || 'https://origin.invalid').href; } catch { pageUrl = page.url; }
+  let pageUrl; try { pageUrl = new URL(siteUrlOf(page), run.originUrl || 'https://origin.invalid').href; } catch { pageUrl = siteUrlOf(page); }
   const hosts = new Set(run.originHosts); try { hosts.add(normHost(new URL(pageUrl).host)); } catch { /* relative url — origin hosts only */ }
   const linked = rewriteLinks(html, { base: pageUrl, originHosts: hosts, origin: run.origin, byPath: run.pageMap.byPath, depth, available: run.available });
   html = linked.html;
@@ -554,7 +560,7 @@ export function renderRun(o) {
 function sidecarPath(o, slug) {
   const state = loadState(o.state); const page = state.pages.find((p) => p.slug === slug);
   if (!page) throw new UsageError(`unknown slug: ${slug}`);
-  const { outputPath, passthrough } = outputPathFor(page.url || page.path || `/${slug}/`);
+  const { outputPath, passthrough } = outputPathFor(siteUrlOf({ ...page, slug }));
   if (passthrough) throw new UsageError(`${slug} is a passthrough leaf (${outputPath}); it has no sidecar`);
   const file = join(o.out, sidecarFor(outputPath));
   if (!isFile(file)) throw new UsageError(`${file} does not exist — render ${slug} first`);

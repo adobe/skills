@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { foldPath, tagSections } from '../migrate.mjs';
+import { buildPageMap, foldPath, siteUrlOf, tagSections } from '../migrate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -45,6 +45,16 @@ write(STATE, `${JSON.stringify(state0, null, 2)}\n`);
 
 // ---- importing the module never prints help or exits -------------------------------------------
 console.log('import');
+check('a Figma-sourced page maps by path or slug, never by its design-frame URL', () => {
+  const fig = 'https://www.figma.com/design/KEY/File?node-id=1-2';
+  assert.equal(siteUrlOf({ slug: 'index', source: 'figma', url: fig }), '/');
+  assert.equal(siteUrlOf({ slug: 'pricing', source: 'figma', url: fig }), '/pricing/');
+  assert.equal(siteUrlOf({ slug: 'pricing', source: 'figma', url: fig, path: '/plans' }), '/plans');
+  assert.equal(siteUrlOf({ slug: 'about', url: 'https://example.test/about-us' }), 'https://example.test/about-us');
+  const m = buildPageMap([{ slug: 'index', source: 'figma', url: fig }, { slug: 'pricing', source: 'figma', url: fig }]);
+  assert.deepEqual(m.entries.map((e) => e.outputPath), ['index.html', 'pricing/index.html']);
+  assert.equal(m.collisions.size, 0);
+});
 check('importing migrate.mjs with no argv prints nothing and does not exit (the help guard sits under the main check)', () => {
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(pathToFileURL(SCRIPT).href)}); console.log('imported');`], { cwd: tmp, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'imported\n'); assert.equal(r.stderr, '');

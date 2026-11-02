@@ -34,10 +34,11 @@ other key not listed below is an error for `--check` (the renderer ignores it, s
 | key | type | values / default | effect |
 |---|---|---|---|
 | `model` | string | directory (project-relative) holding a `content-model.json` | the chrome capture `header` / `footer` read; required when either is set |
-| `header` | string[] | chrome-model slot ids | each renders as a header row in `<header data-canon="header">`; a row with a logo and list items is zoned brand / menu / actions |
-| `footer` | string[] | chrome-model slot ids | each renders in `<footer data-canon="footer">`; zoned (brand, titled columns, social row) when its stream has headings and list items |
+| `header` | string[] | chrome-model slot ids | each renders as a header row in `<header data-canon="header">`; a row with a logo and list items (or buttons) is zoned brand / menu / actions: its plain texts ahead of the primary links (site name, motto) join the logo as `.brand-text` and a link with only screen-reader text goes to the utility bar. A zoned row with no primary links of its own takes a logo-less link row's links into its menu when the header is one row (`navAlign` set, or the donor's `layout.navAlign`), else that row stays below and the zoned row's toggle opens it |
+| `footer` | string[] | chrome-model slot ids | each renders in `<footer data-canon="footer">`; zoned (brand, titled columns, social row) when its stream has headings and list items. Several slots with one zoned among them are one zoned footer: a leading single-text slot is the footer name, every slot's logos and prose join the brand column (logo ≥ 48px: `footer.logoHeight`, else `header.logoHeight`, else 48px), its links one column. A link whose text names a social network (Facebook, Instagram, X/Twitter, LinkedIn, YouTube, TikTok) is an icon in the social row, its text kept as `.sr-only`; no empty list is printed |
 | `footerTone` | string | `dark` \| `light` \| `accent`; default none | paints the footer from the palette |
 | `navAlign` | string | `start` \| `center` \| `end`; default the donor's `layout.navAlign`, else `end` | where a zoned header puts its menu |
+| `kit` | object | from `mapping.seed.json`: chrome slot → `{ module, block, variant }` | none (a copied seed passes `--check`; the renderer does not read it) |
 
 ## `blocks` (optional)
 
@@ -56,6 +57,7 @@ read by the renderer.
 |---|---|---|---|
 | `template` | string | the archetype slug; default `<slug>` | `main[data-template]` and the provenance `template` |
 | `slots` | object | `{ "<slot id>": { … } }`, ids from the page's `content-model.json` `sections[].slot` | per-slot decisions; a model slot with no entry renders as `stack` / `narrow` with no `data-module` |
+| `defaultContent` | object | from `mapping.seed.json`: slot → `{ module, figma }` for slots that are no block | none (kept for review; the renderer does not read it) |
 
 `stream-render <slug>` refuses a page with no `pages.<slug>` entry (exit 2).
 
@@ -71,6 +73,12 @@ read by the renderer.
 | `heading` | string | `display` \| `h2` \| `h3` \| `h4`; default `display` | the type role of the slot's `.heading` (`display` when the donor lacks `type.<role>`) |
 | `inset` | string | a length `<n>px` \| `rem` \| `%` | full-width container with that side gutter |
 | `split` | string | two tracks, each `<n>px` \| `fr` \| `%` (`531px 1fr`); default `1fr 1fr` | the `split` layout's columns |
+| `bleed` | boolean | default `false` | with `tone`: paint the whole full-width band, not the panel |
+| `align` | string | `center` | centre the stream (cards keep start alignment) |
+| `cardTone` | string | `dark` \| `light` \| `accent` | the `cards` layout's card colours |
+| `block` | string | an EDS block name (Figma-only sites, seeded by `figma-donor.mjs content --all`) | `section[data-block]` |
+| `variant` | string[] | class tokens | `section[data-block-variant]` (with `block`) |
+| `instance` | string | the Figma kit instance node id (`12:34`) | `section[data-kit-instance]` (with `block`) |
 
 The renderer warns and ignores a bad `tone`, `heading`, `inset` or `split`, falls back for `columns`, and
 emits an unknown `layout` word as a class with no style; `--check` reports all of them.

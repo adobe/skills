@@ -199,6 +199,16 @@ export function donorModulesEds(md) {
   return out;
 }
 
+// A block EDS already has (boilerplate or Block Collection): one a page section may map to without a kit block.
+export const isEdsBlock = (block) => BOILERPLATE.includes(block) || BLOCK_COLLECTION.includes(block);
+
+// The library page /library/<page> a kit block is shown on: its EDS block (several kit blocks on one EDS block
+// share the page), or the kit key for default content (shown as plain sections).
+export const edsPage = (eds, key) => (eds?.block ?? key);
+
+// Binding classes: the EDS variant first, then the kit's own classes, without repeats.
+export const edsClasses = (eds, classes = []) => [...new Set([eds?.variant, ...classes].filter(Boolean))];
+
 // ---- disposition: what a recorded module becomes in the project (deploy Step 2c, Full donor vocabulary) ----
 // block | variant (an authored block option, preferred over a new block) | chrome (header/footer) and, with no
 // block: section-style (a section-metadata Style value, `name` = the class) | style (global CSS in styles.css:

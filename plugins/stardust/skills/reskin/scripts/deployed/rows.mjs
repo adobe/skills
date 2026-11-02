@@ -1,5 +1,5 @@
-// skills/reskin/scripts/deployed/rows.mjs — what the deployed steps that report a table of rows share (`parity`, `sanity`
-// and `inherited`): the verdict of their rows, the lines the CLI prints for them, and a bounded list for a row's detail.
+// skills/reskin/scripts/deployed/rows.mjs — what the deployed steps that report a table of rows share (`parity`, `sanity`,
+// `inherited` and `chrome`): the verdict of their rows, the lines the CLI prints for them, and a bounded list for a row's detail.
 // A library, no CLI.
 //   EXIT                  the exit code of each verdict
 //   verdictOf(rows)       'ERROR' when a row gave no verdict, else 'FAIL' when one failed, else 'PASS'
