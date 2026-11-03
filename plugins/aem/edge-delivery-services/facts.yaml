@@ -15,6 +15,7 @@
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: block-css-location
   claim: >-
@@ -82,6 +83,7 @@
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: mobile-first-breakpoints
   claim: >-
@@ -95,6 +97,7 @@
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: block-variant-classes
   claim: >-
@@ -152,6 +155,7 @@
     - evals/block-file-structure-and-performance-pat
     - skills/building-blocks/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: reuse-authored-dom
   claim: >-
@@ -168,6 +172,7 @@
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: delivered-pictures
   claim: >-
@@ -184,6 +189,7 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: authored-cells-vary
   claim: >-
@@ -198,6 +204,7 @@
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: block-dom-scope
   claim: >-
@@ -208,6 +215,7 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: aem-js-vendored
   claim: >-
@@ -223,6 +231,7 @@
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: no-build-step
   claim: >-
@@ -237,6 +246,7 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: project-lint
   claim: >-
@@ -260,6 +270,7 @@
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: programmatic-blocks
   claim: >-
@@ -378,6 +389,7 @@
   used_by:
     - skills/building-blocks/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: psi-on-preview
   claim: >-
@@ -390,6 +402,7 @@
   source: https://www.aem.live/developer/keeping-it-100
   used_by:
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: committed-files-served
   claim: >-
@@ -403,6 +416,7 @@
   used_by:
     - skills/content-driven-development/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: authored-content-compat
   claim: >-
@@ -416,6 +430,7 @@
   source: aem-boilerplate 5cea543, AGENTS.md
   used_by:
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: strings-from-content
   claim: >-
@@ -428,3 +443,4 @@
   source: https://www.aem.live/docs/placeholders
   used_by:
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr

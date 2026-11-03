@@ -1,0 +1,76 @@
+{
+  "context": "The repo is aem-boilerplate 5cea543 on `main`; branch `summer-promo` adds one commit: blocks/promo-banner/{promo-banner.js,promo-banner.css}, a changed blocks/cards/cards.js, a getCookie export appended to scripts/aem.js, a GA4 gtag snippet appended to head.html, a `dayjs` entry in package.json `dependencies`, and a binary images/summer-hero.jpg. The PR description has only a localhost URL. The agent writes REVIEW.md. Score a criterion when REVIEW.md flags the issue with the right reason; the exact wording, severity and line number don't matter unless stated. Backing facts: facts.yaml (aem-js-vendored, martech-after-consent, no-build-step, decorate-gates-section, reuse-authored-dom, no-innerhtml, delivered-pictures, authored-cells-vary, block-dom-scope, block-css-scoping, block-layout-scope, mobile-first-breakpoints, authored-content-compat, strings-from-content, committed-files-served, psi-on-preview).",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "aem.js edited",
+      "max_score": 8,
+      "description": "Flags the getCookie function appended to scripts/aem.js: aem.js is vendored and must not be edited; the helper belongs in scripts/scripts.js or another file under scripts/. Flagging it only as style or naming does not count."
+    },
+    {
+      "name": "Analytics tag in head.html",
+      "max_score": 9,
+      "description": "Flags the GA4 gtag snippet in head.html as loading third-party martech in the critical path, and says it should load late from loadDelayed() in scripts.js (e.g. consented.js behind consent, or delayed.js). Full score needs both the problem and the delayed/consent location; flagging only the inline script or the CSP gets half."
+    },
+    {
+      "name": "Runtime npm dependency",
+      "max_score": 8,
+      "description": "Flags the `dayjs` runtime dependency and the bare `import dayjs from 'dayjs'`: EDS has no build step, so a bare specifier doesn't resolve in the browser and npm runtime dependencies aren't served. Suggests native Date/Intl, loadScript(), or copying the library into the repo."
+    },
+    {
+      "name": "Awaited fetch blocks the section",
+      "max_score": 8,
+      "description": "Flags the awaited fetch to offers.example.com in decorate(): the section stays hidden until the block finishes decorating (and can hurt LCP), and a failed or slow request breaks or delays the block. Suggests rendering the authored content first and filling in the countdown later, with its space reserved."
+    },
+    {
+      "name": "innerHTML rebuild drops authored DOM",
+      "max_score": 9,
+      "description": "Flags rebuilding the block with an innerHTML template: it copies image src into a bare <img> instead of keeping the delivered <picture> (or createOptimizedPicture), discards the authored heading/paragraph/link nodes and their attributes, and interpolates authored text into HTML (XSS/escaping). Full score needs the picture/authored-nodes point; XSS alone gets half."
+    },
+    {
+      "name": "Fixed cell indexes in promo-banner",
+      "max_score": 6,
+      "description": "Flags that promo-banner reads rows[0].children[1], rows[1].children[0] and querySelector(...).textContent without checks, so a missing row, cell, heading, paragraph or link throws. Content should be found by what it is and missing parts tolerated."
+    },
+    {
+      "name": "Block changes the header",
+      "max_score": 6,
+      "description": "Flags that promo-banner's decorate() queries `document.querySelector('header')` and adds a class to it (and styles `header.has-promo` from block CSS): a block should only touch its own element."
+    },
+    {
+      "name": "Unscoped block CSS",
+      "max_score": 7,
+      "description": "Flags the unscoped `.title` selector in promo-banner.css (it styles every .title on the page); selectors should start with `.promo-banner` or `main .promo-banner`."
+    },
+    {
+      "name": "Full bleed via viewport hack",
+      "max_score": 8,
+      "description": "Flags `width: 100vw` with `margin-left: calc(50% - 50vw)` on .promo-banner: it fights the page grid (and causes horizontal scroll with scrollbars). Full bleed should go on `.promo-banner-container` (section) or `.promo-banner-wrapper`. Flagging only horizontal scroll, without the container/wrapper fix, gets half."
+    },
+    {
+      "name": "Desktop-first media query",
+      "max_score": 6,
+      "description": "Flags `@media (max-width: 899px)`: EDS CSS is mobile-first, so the single-column layout should be the default and the two-column layout go in a `(width >= 900px)` query."
+    },
+    {
+      "name": "Cards change breaks existing content",
+      "max_score": 9,
+      "description": "Flags that cards.js now destructures a fixed [image, body, cta] and sets cta.className / cta.querySelector('a'), which throws for every card already authored with two cells (or without an image), breaking live pages. Content publishes separately from code, so the CTA cell must be optional (or a variant)."
+    },
+    {
+      "name": "Hardcoded UI strings",
+      "max_score": 5,
+      "description": "Flags the literal strings 'Shop now' and 'Offer ends in ... days' in promo-banner.js: user-facing text should come from content (the authored link text or placeholders) so authors can change and translate it."
+    },
+    {
+      "name": "Committed media file",
+      "max_score": 6,
+      "description": "Flags images/summer-hero.jpg: every committed file is publicly served from the code bus, and campaign images belong in authored content, not the repo."
+    },
+    {
+      "name": "No preview link",
+      "max_score": 5,
+      "description": "Flags that the PR description has only a localhost URL: it needs `summer-promo--{repo}--{owner}.aem.page/{path}` preview link(s), which the PageSpeed Insights check and reviewers use."
+    }
+  ]
+}
