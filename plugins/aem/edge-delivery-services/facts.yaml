@@ -258,3 +258,85 @@
     authoring it?
   source: aem-boilerplate 5cea543, scripts/aem.js, scripts/scripts.js decorateMain()
   used_by: []
+
+- id: use-project-test-tooling
+  claim: >-
+    Test with the project's own runner and E2E tool (package.json scripts,
+    existing test files). Don't add a second framework. aem-boilerplate ships
+    no test runner; a project that has none needs a decision, not a default.
+  question: >-
+    An EDS project already runs unit tests with node:test and E2E with
+    Playwright. You need to add tests for a block. Which tools do you use?
+    What if the project has no test setup at all?
+  source: aem-boilerplate 5cea543, package.json has no test script or test dependencies
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+
+- id: test-when-costly
+  claim: >-
+    Write a test only when a wrong answer is plausible and costly to miss.
+    No coverage targets.
+  question: How do you decide which tests to write for an EDS block, and is there a coverage target?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+
+- id: unit-vs-e2e-split
+  claim: >-
+    Unit tests: pure logic and malformed or missing authored input (absent
+    cells, empty rows), run against decorate() with a DOM shim. E2E: what a
+    manual click-through won't catch, i.e. accessibility behavior (focus,
+    keyboard, ARIA state) and analytics.
+  question: >-
+    For an EDS block, what belongs in unit tests and what in browser (E2E)
+    tests?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+
+- id: e2e-locate-by-a11y-tree
+  claim: >-
+    E2E specs locate elements by role and accessible name, not by classes or
+    ids the block's decorate() adds, and not by authored copy (read names from
+    the page at runtime). The block root class comes from aem.js, so it is
+    stable.
+  question: >-
+    In a Playwright spec for an EDS block, how should you locate elements
+    inside the block so the spec survives refactors and content edits?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+
+- id: block-status-loaded
+  claim: >-
+    aem.js sets `data-block-status="loaded"` on the block once its CSS and
+    decorate() are done; wait on `.{block}[data-block-status="loaded"]`.
+  question: In a browser test, how do you wait until an EDS block has finished decorating?
+  source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+
+- id: e2e-no-visual-asserts
+  claim: >-
+    E2E specs assert behavior, not visuals: no computed CSS, geometry or
+    screenshot comparisons. Visuals are checked by looking during manual
+    browser validation.
+  question: Should a Playwright spec for an EDS block assert CSS values, element sizes or screenshots?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+
+- id: analytics-assert-event
+  claim: >-
+    For analytics, assert that the event fired (read the data layer or wrap
+    the tracking function), not just that a tracking attribute is present.
+  question: How do you test that clicking an element in an EDS block sends an analytics event?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+
+- id: e2e-library-content
+  claim: >-
+    E2E specs run against the block's library page, which is author-facing
+    reference content and the happy path. Don't add rows to it to drive a
+    test; cover edge cases in unit tests or a separate drafts page.
+  question: >-
+    Which page should an EDS block's E2E spec run against, and where do edge
+    cases go?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
