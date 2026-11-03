@@ -5,23 +5,22 @@
  * capture engine". Every live-side navigation in the gate instruments
  * (content-diff, visual-diff, replica's stitch-shot, measure-live's probes)
  * goes through here, so capture-hardening and gate-hardening are the SAME
- * surface — a luggage retailer's field finding was that they weren't: the
- * crawler cleared Akamai while the headless gate instruments were served
- * "Access Denied" and would have silently measured it as the source.
+ * surface — a field finding was that they weren't: the crawler cleared the
+ * edge while headless gate instruments were served "Access Denied" and would
+ * have silently measured it as the source.
  *
- * THE IDENTITY RULE — real Chrome presents its real user agent and client
- * hints; the automation-signal handling already present on main stays on.
- * Set STARDUST_STEALTH=0 to turn that handling off.
+ * THE IDENTITY RULE — every context presents the running browser's own user
+ * agent with the headless token removed, or the caller's override. Real Chrome
+ * presents matching client hints; a bundled Chromium's own hints ride.
+ * The existing automation-signal handling stays on unless STARDUST_STEALTH=0.
  *   - Default tier (launchLiveBrowser): real Chrome headless (`channel:
- *     'chrome'`) — its own user agent, its own client hints, its own
- *     identity; bundled Chromium only when Chrome is not installed (tier
- *     'chromium-fallback', one stderr line). Every context gets the existing
- *     navigator.webdriver spoof unless STARDUST_STEALTH=0.
- *   - No user agent is set on a context unless the caller passed `--ua`; the
- *     sec-ch-ua* client hints are derived from the browser's real version and
- *     the running OS (or from the caller's UA string), so the header identity
- *     and the JavaScript-visible identity agree. A bundled Chromium's own
- *     hints ride untouched — it is not Chrome and the headers must not say so.
+ *     'chrome'`) — its own user agent without the headless token, its own
+ *     client hints, its own identity; bundled Chromium only when Chrome is not
+ *     installed (tier 'chromium-fallback', one stderr line). Every context gets
+ *     the existing navigator.webdriver spoof unless STARDUST_STEALTH=0.
+ *   - The sec-ch-ua* client hints are derived from the browser's real version
+ *     and running OS (or from the caller's UA string). A bundled Chromium's
+ *     own hints ride untouched — it is not Chrome and the headers must not say so.
  *   - The STANDARD request headers (Accept, Accept-Language,
  *     Upgrade-Insecure-Requests) ride on DOCUMENT requests only (F-R1: a bot
  *     manager fingerprints their absence; F-B2: on every request they make
@@ -117,6 +116,43 @@ export function chromeMajor(s) {
   return m ? m[1] : null;
 }
 
+/** The running browser's user agent without the headless token, cached once per browser. */
+export async function browserUserAgent(browser) {
+  if (Object.hasOwn(browser, 'stardustUserAgent')) return browser.stardustUserAgent;
+  const pending = (async () => {
+    let resolved = null;
+    if (typeof browser.newBrowserCDPSession === 'function') {
+      try {
+        const cdp = await browser.newBrowserCDPSession();
+        let userAgent;
+        try {
+          ({ userAgent } = await cdp.send('Browser.getVersion'));
+        } finally {
+          await cdp.detach();
+        }
+        if (typeof userAgent === 'string') resolved = userAgent.replace(/\bHeadlessChrome\//, 'Chrome/');
+      } catch { /* browser.version() fallback below */ }
+    }
+    if (!resolved) {
+      let major = null;
+      try {
+        major = chromeMajor(typeof browser.version === 'function' ? browser.version() : '');
+      } catch { /* no readable browser version */ }
+      if (major) {
+        const token = process.platform === 'darwin'
+          ? 'Macintosh; Intel Mac OS X 10_15_7'
+          : process.platform === 'win32' ? 'Windows NT 10.0; Win64; x64' : 'X11; Linux x86_64';
+        resolved = `Mozilla/5.0 (${token}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+      }
+    }
+    return resolved;
+  })();
+  browser.stardustUserAgent = pending;
+  const resolved = await pending;
+  browser.stardustUserAgent = resolved;
+  return resolved;
+}
+
 /**
  * The identity the context's document headers state, or null for "the browser's own hints ride untouched".
  * Without a caller UA: the real-Chrome tiers ('chrome' / 'chrome-window') → { major: browser.version()'s major,
@@ -209,9 +245,9 @@ export function standardHeaders(locale = 'en', identity = null) {
 }
 
 /**
- * Ready-to-spread options for browser.newContext(): the standard headers (+ userAgent ONLY when the caller
- * passed one — the browser's own identity is the default, + viewport, + navigator.language coherence when a
- * locale is pinned). Callers add their own instrument-specific options (reducedMotion etc.).
+ * Ready-to-spread options for browser.newContext(): the standard headers, userAgent ONLY when the caller passed one,
+ * viewport, and navigator.language coherence when a locale is pinned. newLiveContext resolves the browser default
+ * before calling this helper. Callers add their own instrument-specific options (reducedMotion etc.).
  * NOTE: newLiveContext strips extraHTTPHeaders back out and delivers the header set per-request instead
  * (document requests only — F-B2 below); spreading these options raw would re-introduce the font-fork trap.
  */
@@ -224,10 +260,10 @@ export function contextOptions({ ua, locale, viewport, identity = null } = {}) {
 }
 
 /**
- * newContext + contextOptions, the header identity derived from the browser (browserIdentity: the real-Chrome
- * tiers state their own version and OS; a caller's `ua` states its own; a bundled Chromium is left to its own
- * hints). The existing navigator.webdriver spoof lands on every context unless STARDUST_STEALTH=0.
- * Extra Playwright context options pass through (reducedMotion, ...).
+ * newContext + contextOptions, resolving userAgent to the caller's `ua` or the cached browserUserAgent. Header identity
+ * still receives the caller's `ua`: real-Chrome tiers state their version and OS, while bundled Chromium hints ride.
+ * The existing navigator.webdriver spoof lands on every context unless STARDUST_STEALTH=0. Extra Playwright context
+ * options pass through (reducedMotion, ...).
  */
 export async function newLiveContext(browser, { ua, locale, viewport, authOrigin, authHeader, ...rest } = {}) {
   // F-B2 (financial-services site, 2026-08-25): the standard header set must ride on
@@ -237,7 +273,8 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
   // renders FALLBACK type — an asymmetric false measurement (the prototype
   // side loads the same kit fine). Bot-manager fingerprinting happens on the
   // navigation request, which still carries the full set below.
-  const { extraHTTPHeaders, ...base } = contextOptions({ ua, locale, viewport, identity: browserIdentity(browser, { ua }) });
+  const resolvedUa = ua || await browserUserAgent(browser);
+  const { extraHTTPHeaders, ...base } = contextOptions({ ua: resolvedUa, locale, viewport, identity: browserIdentity(browser, { ua }) });
   const ctx = await browser.newContext({ ...rest, ...base });
   await ctx.route('**/*', (route) => {
     if (route.request().resourceType() === 'document') {
@@ -595,8 +632,8 @@ async function launchChromeFirst(chromium, { visible = false, stealth = false } 
 }
 
 /**
- * THE DEFAULT TIER of every live instrument: real Chrome, headless, presenting its real user agent and client hints.
- * Falls back to bundled Chromium with one stderr line when Chrome is not installed.
+ * THE DEFAULT TIER of every live instrument: real Chrome, headless, presenting its user agent without the headless
+ * token and matching client hints. Falls back to bundled Chromium with one stderr line when Chrome is not installed.
  * Tier tag (browserTier): 'chrome' | 'chromium-fallback'.
  */
 export function launchLiveBrowser(chromium) {

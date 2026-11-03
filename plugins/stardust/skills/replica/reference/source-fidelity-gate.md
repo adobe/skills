@@ -526,7 +526,8 @@ rather than erroring.
 1. **Real Chrome presenting its own identity + the standard request headers
    on every capture and probe.** Every live instrument launches the installed
    Chrome headless (`launchLiveBrowser`; bundled Chromium only when Chrome is
-   missing, said on stderr) and sets no user agent; client hints come from its version (#151).
+   missing, said on stderr), presents its user agent without the headless token,
+   and derives Chrome-tier client hints from its version; bundled hints ride (#151).
    Main's automation-signal handling stays on: every context gets the `navigator.webdriver`
    spoof and the headed tier its launch flags; `STARDUST_STEALTH=0` turns both off. The UA alone was never
    sufficient either: field-proven (F-R1, a nonprofit site), a real-Chrome UA

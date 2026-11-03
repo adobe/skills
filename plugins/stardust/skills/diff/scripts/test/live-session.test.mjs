@@ -11,9 +11,10 @@
 // defaultWaitUntil, and the live-URL guard — a localhost / loopback URL is never probed for a denial page.
 // The honest identity (stub chromium / browser, no launch): launchLiveBrowser tries real Chrome headless with no stealth
 // flags and falls back to bundled Chromium with one stderr line and the tier tag; launchStealthHeaded is window-free and
-// keeps the existing automation-signal handling unless STARDUST_STEALTH=0; no userAgent lands on a context unless passed;
-// the sec-ch-ua* trio is derived from the browser's version and the OS (or the caller's UA) on the Chrome tiers and left
-// to the browser on the bundled tier; the webdriver spoof reaches every context by default. The edge header signature.
+// keeps the existing automation-signal handling unless STARDUST_STEALTH=0; every context gets the browser's UA without
+// the headless token, or the caller's override; the sec-ch-ua* trio is derived from the browser's version and the OS
+// (or the caller's UA) on the Chrome tiers and left to the browser on the bundled tier; the webdriver spoof reaches
+// every context by default. The edge header signature.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import * as session from '../live-session.mjs';
@@ -36,8 +37,8 @@ const stderrOf = async (fn) => {
 check('the exported surface the instruments import, the denial-page names included', () => {
   for (const name of ['CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'challengeMarker', 'isChallengeResponse', 'gotoLive', 'launchLiveBrowser', 'launchStealthHeaded', 'browserTier', 'acceptConsent', 'dismissOverlays',
     'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'livePaceMs', 'paceSlot', 'paceLiveNavigation', 'resetLivePacing',
-    'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
-  for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError', 'launchLiveBrowser', 'launchStealthHeaded', 'browserIdentity', 'challengeMarker']) assert.equal(typeof session[name], 'function', name);
+    'browserUserAgent', 'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
+  for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError', 'launchLiveBrowser', 'launchStealthHeaded', 'browserIdentity', 'browserUserAgent', 'challengeMarker']) assert.equal(typeof session[name], 'function', name);
   assert.ok(!('REAL_CHROME_UA' in session), 'no hard-coded user agent is exported any more — the browser presents its own');
   assert.equal(session.DENIAL_TEXT_MAX_BYTES, 2048);
   assert.equal(session.DENIAL_PROBE_MS, 10000);
@@ -503,6 +504,50 @@ check('platformLabel and chromeMajor: darwin → macOS, win32 → Windows, every
   assert.equal(session.chromeMajor('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36'), '153');
   for (const v of ['', null, undefined, 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0', 'abc']) assert.equal(session.chromeMajor(v), null, String(v));
 });
+await checkAsync('browserUserAgent: removes the headless token from Browser.getVersion and caches the result on the browser', async () => {
+  let sends = 0; let detaches = 0;
+  const browser = {
+    newBrowserCDPSession: async () => ({
+      send: async (command) => { assert.equal(command, 'Browser.getVersion'); sends += 1; return { userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36' }; },
+      detach: async () => { detaches += 1; },
+    }),
+  };
+  const expected = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36';
+  assert.equal(await session.browserUserAgent(browser), expected);
+  assert.equal(await session.browserUserAgent(browser), expected);
+  assert.deepEqual([sends, detaches], [1, 1], 'the cached call does not talk to the browser again');
+});
+await checkAsync('browserUserAgent: concurrent first calls share one browser read', async () => {
+  let release; let sends = 0;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const browser = {
+    newBrowserCDPSession: async () => ({
+      send: async () => { sends += 1; await gate; return { userAgent: 'HeadlessChrome/156.0.0.0' }; },
+      detach: async () => {},
+    }),
+  };
+  const reads = [session.browserUserAgent(browser), session.browserUserAgent(browser)];
+  await new Promise(setImmediate);
+  release();
+  assert.deepEqual(await Promise.all(reads), ['Chrome/156.0.0.0', 'Chrome/156.0.0.0']);
+  assert.equal(sends, 1);
+});
+await checkAsync('browserUserAgent: a failed CDP read falls back to browser.version() and the running desktop platform; no readable major returns null', async () => {
+  let detaches = 0;
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { ...platform, value: 'linux' });
+  try {
+    const browser = {
+      newBrowserCDPSession: async () => ({ send: async () => { throw new Error('CDP unavailable'); }, detach: async () => { detaches += 1; } }),
+      version: () => '156.0.8078.74',
+    };
+    assert.equal(await session.browserUserAgent(browser), 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36');
+    assert.equal(detaches, 1, 'a failed read still detaches its CDP session');
+    assert.equal(await session.browserUserAgent({}), null);
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+  }
+});
 check('browserIdentity: the Chrome tiers state the browser\'s own major and the running OS; the bundled tiers state nothing (null — their own hints ride); a caller UA states its own major, platform and brand; a non-Chrome UA states nothing', () => {
   const chrome = { stardustTier: 'chrome', version: () => '156.0.8078.74' };
   assert.deepEqual(session.browserIdentity(chrome), { major: '156', platform: session.platformLabel(process.platform), chrome: true });
@@ -544,9 +589,15 @@ check('contextOptions: no userAgent unless the caller passed one; locale pins th
 });
 // a stub browser: records newContext's options; the context records its routes and init scripts and lets the test
 // drive the route handler with a stub document / subresource request
-const stubBrowser = ({ tier, version = '156.0.8078.74' } = {}) => {
+const stubBrowser = ({ tier, version = '156.0.8078.74', browserUA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36' } = {}) => {
   const ctx = { routes: [], initScripts: 0, route: async (glob, handler) => { ctx.routes.push({ glob, handler }); }, addInitScript: async () => { ctx.initScripts += 1; } };
-  const b = { contexts: [], newContext: async (o) => { b.contexts.push(o); return ctx; }, version: () => version, ctx };
+  const b = {
+    contexts: [],
+    newBrowserCDPSession: async () => ({ send: async () => ({ userAgent: browserUA }), detach: async () => {} }),
+    newContext: async (o) => { b.contexts.push(o); return ctx; },
+    version: () => version,
+    ctx,
+  };
   if (tier) b.stardustTier = tier;
   return b;
 };
@@ -555,11 +606,11 @@ const drive = async (ctx, { type = 'document', headers = { 'user-agent': 'OwnUA/
   await ctx.routes[0].handler({ request: () => ({ resourceType: () => type, headers: () => headers }), continue: (o) => { continued = o === undefined ? 'bare' : o; } });
   return continued;
 };
-await checkAsync('newLiveContext: no userAgent or extraHTTPHeaders on the context; standard headers ride document requests only; derived hints replace Chrome request hints while bundled hints ride; the webdriver spoof reaches every context unless STARDUST_STEALTH=0', async () => {
+await checkAsync('newLiveContext: the browser-derived or caller UA reaches the context; standard headers ride document requests only; Chrome hints match the UA major while bundled hints ride; the webdriver spoof reaches every context unless STARDUST_STEALTH=0', async () => {
   await withEnv({}, async () => {
     const chrome = stubBrowser({ tier: 'chrome' });
     const ctx = await session.newLiveContext(chrome, { locale: 'en', viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
-    assert.deepEqual(chrome.contexts, [{ reducedMotion: 'reduce', locale: 'en-US', viewport: { width: 1440, height: 900 } }], 'no userAgent, no extraHTTPHeaders, the extras pass through');
+    assert.deepEqual(chrome.contexts, [{ reducedMotion: 'reduce', userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36', locale: 'en-US', viewport: { width: 1440, height: 900 } }], 'the derived UA and extras pass through without extraHTTPHeaders');
     assert.deepEqual([ctx.routes.length, ctx.routes[0].glob, ctx.initScripts], [1, '**/*', 1]);
     const doc = await drive(ctx);
     assert.equal(doc.headers['user-agent'], 'OwnUA/1', 'the request\'s own UA is kept');
@@ -567,11 +618,13 @@ await checkAsync('newLiveContext: no userAgent or extraHTTPHeaders on the contex
     assert.equal(doc.headers['Accept-Language'], 'en-US,en;q=0.9');
     assert.equal(doc.headers['Upgrade-Insecure-Requests'], '1');
     assert.equal(doc.headers['sec-ch-ua'], `"Chromium";v="156", "Not:A-Brand";v="8", "Google Chrome";v="156"`);
+    assert.equal(doc.headers['sec-ch-ua'].match(/Google Chrome";v="(\d+)/)[1], chrome.contexts[0].userAgent.match(/Chrome\/(\d+)/)[1], 'the Chrome hint and UA majors agree');
     assert.equal(doc.headers['sec-ch-ua-platform'], `"${session.platformLabel(process.platform)}"`);
     assert.equal(await drive(ctx, { type: 'font' }), 'bare', 'a subresource is continued untouched (F-B2)');
-    const bundled = stubBrowser({ tier: 'chromium-fallback', version: '153.0.8010.12' });
+    const bundled = stubBrowser({ tier: 'chromium-fallback', version: '153.0.8010.12', browserUA: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36' });
     const bctx = await session.newLiveContext(bundled, { locale: 'en' });
     assert.equal(bctx.initScripts, 1, 'the spoof reaches a bundled-browser context too');
+    assert.equal(bundled.contexts[0].userAgent, 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36', 'the bundled context gets the browser-derived UA');
     const bdoc = await drive(bctx);
     assert.equal(bdoc.headers['sec-ch-ua'], '"Own";v="1"', 'the bundled browser\'s own hints ride');
     assert.equal(bdoc.headers['sec-ch-ua-platform'], '"Own"');

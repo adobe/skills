@@ -69,12 +69,12 @@ carries its root as `[root]`; visual-diff takes one selector, default `main`), c
 `--chrome` / `--no-chrome` (default on — the `header` and `footer` roots, resolved as the first
 `<header>`/`[role=banner]` and `<footer>`/`[role=contentinfo]` outside the main root(s), are
 compared beside it; a side lacking one is measured as empty there and the root line says so),
-plus the live-target set (shared engine: `scripts/live-session.mjs` — real Chrome presents its real
-user agent and client hints; existing automation-signal handling stays on unless `STARDUST_STEALTH=0`;
-every context sends the standard Chrome request headers, and live navigations to one host are paced
+plus the live-target set (shared engine: `scripts/live-session.mjs` — real Chrome presents its
+user agent without the headless token and matching client hints; automation-signal handling stays on unless
+`STARDUST_STEALTH=0`; every context sends standard Chrome request headers, and live navigations to one host are paced
 `STARDUST_LIVE_PACE_MS` apart, default 2000):
 
-- `--ua <string>` — user agent override (default: the browser's own).
+- `--ua <string>` — user agent override (default: the browser's own with `HeadlessChrome` replaced by `Chrome`).
 - `--wait-until <state>` — goto wait override. Default rule (one shared
   `defaultWaitUntil` in `scripts/live-session.mjs`), decided **per URL side**, three tiers:
   - localhost/127.0.0.1 → `networkidle` (local prototypes / harnesses, unchanged);
