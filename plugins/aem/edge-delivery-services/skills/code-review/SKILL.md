@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: "Use only when asked to review AEM Edge Delivery Services (EDS, Franklin, Helix) code: a pull request, branch, or diff. Lists the EDS-specific checks to apply on top of normal code review. Not for building or validating your own changes during development."
+description: "Use when asked to review AEM Edge Delivery Services (EDS, Franklin, Helix) code: a pull request, branch, diff, or your own changes before opening a PR. Lists the EDS-specific checks to apply on top of normal code review."
 license: Apache-2.0
 metadata:
   version: "2.0.1"
