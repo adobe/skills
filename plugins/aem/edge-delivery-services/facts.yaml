@@ -456,15 +456,13 @@
 
 - id: block-collection
   claim: >-
-    The Block Collection (github.com/adobe/aem-block-collection) is Adobe's
-    vetted reference set: accordion, cards, carousel, columns, embed, footer,
-    form, fragment, header, hero, modal, quote, search, table, tabs, video.
-    Each has a live example at
+    The Block Collection (github.com/adobe/aem-block-collection, `blocks/`) is
+    Adobe's vetted reference set of common blocks. Each has a live example at
     `main--aem-block-collection--adobe.aem.live/block-collection/{block}`.
     Prefer it as the starting point for a standard block.
   question: >-
-    Where are Adobe's reference implementations of common EDS blocks, which
-    blocks does it include, and where can you see each one rendered?
+    Where are Adobe's reference implementations of common EDS blocks, and
+    where can you see each one rendered?
   source: >-
     https://www.aem.live/developer/block-collection;
     github.com/adobe/aem-block-collection blocks/
