@@ -39,10 +39,12 @@
  * SHARED LIVE SESSION: live navigations to one host are coordinated across
  * processes. Fresh hosts start at STARDUST_LIVE_PACE_MS (default 1000; 0
  * disables) and STARDUST_LIVE_MAX_PARALLEL (default 2; 0 disables); a shared
- * bot signal cuts the host to one in flight and doubles its pace up to 15000 ms,
- * while each 50 clean navigations halves the pace no lower than its configured
- * floor. STARDUST_LIVE_MAX_WAIT_MS caps shared-slot waits (default 300000; 0
- * disables). A waiting process prints one stderr line per host.
+ * bot signal cuts the host to one in flight and doubles its pace up to 15000 ms;
+ * each 50 clean navigations halves the pace down to its configured floor, then
+ * one more such window restores the configured parallelism, and a host's
+ * backoff is forgotten STARDUST_LIVE_STATE_TTL_MS after its last signal (0
+ * keeps it). STARDUST_LIVE_MAX_WAIT_MS caps shared-slot waits (default 300000;
+ * 0 disables). A waiting process prints one stderr line per host.
  * A repository-scoped browser-state jar is loaded for new contexts and refreshed
  * after successful navigations. STARDUST_LIVE_STATE_TTL_MS defaults to 12 hours;
  * STARDUST_LIVE_STATE=0 disables jar reads and writes. The shared files live
@@ -275,9 +277,14 @@ function writeThrottleState(hostDir, state) {
   atomicWriteJson(path.join(hostDir, 'throttle.json'), state);
 }
 
-function cleanThrottleState(state, pidAlive, now) {
+// A host's backoff is remembered for adaptiveTtlMs after its last signal (the browser-state TTL; 0 keeps it): after that
+// a fresh run starts the host at its configured limits again.
+function cleanThrottleState(state, pidAlive, now, adaptiveTtlMs = liveStateTtlMs()) {
+  const backoffAt = state.adaptive ? state.adaptive.lastBackoffAt : null;
+  const forgotten = Number.isFinite(backoffAt) && adaptiveTtlMs > 0 && now - backoffAt > adaptiveTtlMs;
   return {
     ...state,
+    adaptive: forgotten ? emptyThrottleState().adaptive : state.adaptive,
     waiters: state.waiters.filter((w) => {
       const seenAt = Number.isFinite(w.seenAt) ? w.seenAt : w.queuedAt;
       return pidAlive(w.pid) && !(Number.isFinite(seenAt) && now - seenAt > LIVE_WAITER_STALE_MS);
@@ -317,7 +324,7 @@ function warnStateSave(host, error) {
 
 async function updateAdaptiveThrottle(url, update, {
   paceMs = livePaceMs(), maxParallel = liveMaxParallel(), now = Date.now, stateRoot = liveStateRoot(),
-  pid = process.pid, pidAlive = pidIsAlive, pollMs = LIVE_LOCK_POLL_MS,
+  pid = process.pid, pidAlive = pidIsAlive, pollMs = LIVE_LOCK_POLL_MS, adaptiveTtlMs = liveStateTtlMs(),
 } = {}) {
   const host = liveHost(url);
   if (!host) return { paceMs, maxParallel, signalSeen: false, successes: 0, backedOff: false };
@@ -328,7 +335,7 @@ async function updateAdaptiveThrottle(url, update, {
     await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
   try {
-    const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, now());
+    const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, now(), adaptiveTtlMs);
     const result = update(state, { observedAt, appliedAt: now(), paceMs, maxParallel });
     writeThrottleState(hostDir, state);
     return { ...adaptiveLimits(state, { paceMs, maxParallel }), ...result };
@@ -356,26 +363,37 @@ export async function recordLiveBotSignal(url, options = {}) {
   return state;
 }
 
-/** Record one successful host navigation and return its effective shared throttle. */
+/**
+ * Record one successful host navigation and return its effective shared throttle. Recovery mirrors the backoff, pace
+ * first: every LIVE_RECOVERY_SUCCESSES clean navigations halve the pace down to the configured floor; with the pace back
+ * at the floor, one more such window clears the signal and restores the configured parallelism.
+ */
 export async function recordLiveNavigationSuccess(url, options = {}) {
-  return updateAdaptiveThrottle(url, (shared, {
+  const host = liveHost(url);
+  const state = await updateAdaptiveThrottle(url, (shared, {
     observedAt, paceMs, maxParallel,
   }) => {
-    if (Number.isFinite(shared.adaptive.lastBackoffAt) && observedAt <= shared.adaptive.lastBackoffAt) return { backedOff: false };
+    if (Number.isFinite(shared.adaptive.lastBackoffAt) && observedAt <= shared.adaptive.lastBackoffAt) return { backedOff: false, recovered: false };
     shared.adaptive.successes += 1;
     const before = adaptiveLimits(shared, { paceMs, maxParallel });
+    let recovered = false;
     if (shared.adaptive.successes >= LIVE_RECOVERY_SUCCESSES) {
       if (before.paceMs > paceMs && paceMs > 0) shared.adaptive.paceMs = Math.max(paceMs, Math.floor(before.paceMs / 2));
+      else if (shared.adaptive.signalSeen) { shared.adaptive.signalSeen = false; recovered = true; }
       shared.adaptive.successes = 0;
     }
-    return { backedOff: false };
+    return { backedOff: false, recovered };
   }, options);
+  if (host && state.recovered) {
+    console.error(`[live-session] ${host}: ${LIVE_RECOVERY_SUCCESSES} clean navigations at ${state.paceMs} ms — ${state.maxParallel} in flight again`);
+  }
+  return state;
 }
 
 async function acquireLiveNavigation(page, url, {
   paceMs = livePaceMs(), maxParallel = liveMaxParallel(), now = Date.now, stateRoot = liveStateRoot(),
   pid = process.pid, pidAlive = pidIsAlive, pollMs = LIVE_LOCK_POLL_MS,
-  leaseMs = LIVE_LEASE_MS_DEFAULT, maxWaitMs = liveMaxWaitMs(),
+  leaseMs = LIVE_LEASE_MS_DEFAULT, maxWaitMs = liveMaxWaitMs(), adaptiveTtlMs = liveStateTtlMs(),
 } = {}) {
   const host = liveHost(url);
   if (!host || (!(paceMs > 0) && !(maxParallel > 0))) return { wait: 0, release: async () => {} };
@@ -414,7 +432,7 @@ async function acquireLiveNavigation(page, url, {
     queued = true;
   };
   const proceedWithoutLease = async () => {
-    const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock());
+    const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock(), adaptiveTtlMs);
     state.waiters = state.waiters.filter((w) => w.id !== waiterId);
     writeThrottleState(hostDir, state);
     queued = false;
@@ -438,7 +456,7 @@ async function acquireLiveNavigation(page, url, {
     }
     try {
       if (reachedCeiling()) return await proceedWithoutLease(held);
-      const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock());
+      const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock(), adaptiveTtlMs);
       enqueue(state);
       writeThrottleState(hostDir, state);
     } finally { held.release(); }
@@ -449,7 +467,7 @@ async function acquireLiveNavigation(page, url, {
       let limits;
       try {
         if (reachedCeiling()) return await proceedWithoutLease(held);
-        const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock());
+        const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock(), adaptiveTtlMs);
         limits = adaptiveLimits(state, configured);
         decision = liveThrottleDecision(state, waiterId, clock(), {
           ...limits, pollMs, leaseMs,
@@ -474,7 +492,7 @@ async function acquireLiveNavigation(page, url, {
               const releaseLock = await lock();
               if (!releaseLock) return;
               try {
-                const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock());
+                const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock(), adaptiveTtlMs);
                 state.active = state.active.filter((a) => a.id !== waiterId);
                 writeThrottleState(hostDir, state);
               } finally { releaseLock.release(); }

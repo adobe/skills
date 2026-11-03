@@ -468,7 +468,30 @@ await checkAsync('adaptive throttle: configured parallelism is the fresh ceiling
   state = await session.recordLiveNavigationSuccess(LIVE_URL, options);
   assert.deepEqual([state.paceMs, state.maxParallel, state.successes], [6000, 1, 0], 'the fiftieth success halves once');
   for (let i = 0; i < 50; i += 1) state = await session.recordLiveNavigationSuccess(LIVE_URL, options);
-  assert.deepEqual([state.paceMs, state.maxParallel, state.successes], [3000, 1, 0], 'recovery never crosses the configured floor');
+  assert.deepEqual([state.paceMs, state.maxParallel, state.successes, state.signalSeen], [3000, 1, 0, true], 'recovery never crosses the configured floor; parallelism waits one more window');
+  for (let i = 0; i < 49; i += 1) state = await session.recordLiveNavigationSuccess(LIVE_URL, options);
+  assert.deepEqual([state.maxParallel, state.signalSeen], [1, true]);
+  const lines = await stderrOf(async () => { state = await session.recordLiveNavigationSuccess(LIVE_URL, options); });
+  assert.deepEqual([state.paceMs, state.maxParallel, state.successes, state.signalSeen, state.recovered], [3000, 4, 0, false, true], 'with the pace at the floor, the next window restores the configured parallelism');
+  assert.deepEqual(lines, ['[live-session] www.example.com: 50 clean navigations at 3000 ms — 4 in flight again']);
+  clock += 1;
+  await stderrOf(async () => { state = await session.recordLiveBotSignal(LIVE_URL, options); });
+  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen], [6000, 1, true], 'a new signal backs off again');
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('adaptive throttle: a host\'s backoff is forgotten STARDUST_LIVE_STATE_TTL_MS after its last signal (0 keeps it); a fresh run starts at the configured limits', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-adaptive-ttl-'));
+  let clock = 10000;
+  const base = { stateRoot, paceMs: 1000, maxParallel: 2, pid: 501, pidAlive: () => true };
+  await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, { ...base, now: () => clock }));
+  clock += 1;
+  let state = await session.recordLiveNavigationSuccess(LIVE_URL, { ...base, now: () => clock, adaptiveTtlMs: 5000 });
+  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen], [2000, 1, true], 'within the TTL the backoff holds');
+  clock += 5001;
+  state = await session.recordLiveNavigationSuccess(LIVE_URL, { ...base, now: () => clock, adaptiveTtlMs: 0 });
+  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen], [2000, 1, true], 'TTL 0 keeps the backoff');
+  state = await session.recordLiveNavigationSuccess(LIVE_URL, { ...base, now: () => clock, adaptiveTtlMs: 5000 });
+  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen, state.successes], [1000, 2, false, 1], 'past the TTL the host starts fresh');
   rmSync(stateRoot, { recursive: true, force: true });
 });
 await checkAsync('adaptive throttle: a signal recorded by one process is visible to another process sharing the state root', async () => {

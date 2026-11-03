@@ -14,7 +14,9 @@ host. Fixed pacing was either too slow or not cautious enough.
 - **Adaptive shared throttle (`diff/scripts/live-session.mjs`):** fresh hosts allow
   `STARDUST_LIVE_MAX_PARALLEL` (default 2) in flight and start at `STARDUST_LIVE_PACE_MS` (default 1000) between starts.
   A shared bot signal reduces the host to one navigation at a time and doubles the pace through 2000, 4000, 8000 and
-  15000 ms; every 50 clean navigations halves it no lower than the configured floor. Repository-scoped OS-temp state,
+  15000 ms; every 50 clean navigations halves the pace down to the configured floor, then one more such window restores
+  the configured parallelism, and a host's backoff is forgotten `STARDUST_LIVE_STATE_TTL_MS` after its last signal.
+  Repository-scoped OS-temp state,
   fair queueing and stale-lock recovery coordinate every process. Lost waiters re-queue and stale waiters/leases expire;
   `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) caps slot waits. `0` disables either throttle limit.
 - **Per-host browser state:** after a successful `gotoLive` the context's storage state is saved (atomic write, at most
