@@ -139,7 +139,7 @@ drill-down drawer. The header's behaviour is recorded from the source once and t
 
 ```bash
 node stardust/scripts/diff/chrome-explore.mjs "$ORIGIN" stardust/chrome/header-contract.json   # 1440 + 390
-node stardust/scripts/diff/chrome-explore.mjs "$SERVED" stardust/chrome/header-build.json
+node stardust/scripts/diff/chrome-explore.mjs "$SERVED" stardust/chrome/header-build.json --max-requests 0 --pace-ms 0 --reload-pause-ms 0   # our host: source-edge protections do not apply
 node stardust/scripts/diff/chrome-compare.mjs stardust/chrome/header-contract.json stardust/chrome/header-build.json \
   --profile replica --json stardust/chrome/header-parity.json    # functional under redesign and reskin
 ```

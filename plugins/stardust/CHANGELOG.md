@@ -4,6 +4,33 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.4 — chrome-explore paces itself and keeps a per-width request budget (#153)
+
+Field learning (a hands-off replica run on a site behind an edge rate rule): the crawl, the style census and the cap
+probe went through; the header exploration then reloaded the page after every control (routing disables the browser
+cache, so each reload refetched the whole page) and typed the probe term keystroke by keystroke into the site's
+typeahead — the edge blocked the address mid-run.
+
+- **`diff/scripts/chrome-explore.mjs`:** `--pace-ms 400` after each control open / close and `--reload-pause-ms 1500`
+  before each reload (0 disables either). `--max-requests 600` per width counts every request leaving for the site's
+  host — documents and subresources alike, the first load included; 204-answered navigations not — and ends the width
+  with `truncated: 'request-budget'` and `n/max requests` on the summary line (a lower budget was spent by an
+  image-heavy page's first load alone while recording the same contract). `--max-typeahead 2` inputs per width; the
+  term enters as one fill plus one typed letter and a single settle, inputs past the cap are listed with `search: null`.
+- **Closing in place:** between controls the header is closed the way it was opened — Escape and the parked pointer,
+  each opened trigger re-acted innermost first, a click outside — and the page reloads only when atoms are not back as
+  loaded (visibility and aria state, so a left-behind selected tab still reloads). A GET search submit is answered 204
+  like every navigation and its URL is the record; a POST is followed with the results page's assets aborted, then the
+  page restored. The probe word is read from the explored page on first use (no extra load). Fixture headers, same
+  recorded states: rich 26 → 13 loads at 1440, 24 → 1 at 390; stock 6 → 1 at 390.
+- **Exports and docs:** `parseArgs`, `requestBudget`, `sameSite`, `siteHost` are exported; `--help` documents the four
+  flags; `scripts-index.md` names `--max-requests`.
+- **Build exploration:** diff and qa pass `--max-requests 0 --pace-ms 0 --reload-pause-ms 0`; source defaults stay protective.
+- **Parity:** request-budget gaps warn with the unbudgeted-build remedy; observed failures remain errors.
+- Tests: `chrome-explore.test.mjs` — the summary line, `parseArgs` defaults and fallbacks, `sameSite` / `requestBudget`;
+  with a browser: closing in place, the GET and POST submits, a stubborn header (new fixture in `chrome-fixtures.mjs`),
+  the budget stop and the typeahead cap.
+
 ## 0.36.3 — the crawler names a bot wall in seconds instead of waiting out its cap (#152)
 
 Field learning (a hands-off replica run on a bot-managed site): the entry page answered 200 with a verification
