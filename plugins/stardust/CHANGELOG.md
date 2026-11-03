@@ -4,6 +4,42 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.2 — real Chrome identity, retained automation-signal handling and paced live navigation (#151)
+
+Field learning (hands-off replica runs on bot-managed sites): the gate instruments presented a hard-coded desktop user
+agent on a Linux headless engine and were denied; the agents patched the identity by hand at run time, and spacing
+live navigations a few seconds apart turned the denials into 200s. The escalation to real Chrome opened a window and
+could not start where no display exists. The policy now has one home: every context presents the browser's user agent
+without the headless token and matching client hints; automation-signal handling stays on unless `STARDUST_STEALTH=0`;
+`STARDUST_HEADED_WINDOW=1` opens a window.
+
+- **`diff/scripts/live-session.mjs`:** `launchLiveBrowser` is the default tier of every live instrument — the installed
+  Chrome headless (`channel: chrome`), no stealth args, no `ignoreDefaultArgs`; bundled Chromium only when Chrome is
+  missing (tier `chromium-fallback`, one stderr line). Every context presents the user agent read from the running
+  browser with the headless token removed (`HeadlessChrome/156.0.0.0` → `Chrome/156.0.0.0`), or the caller's `--ua`.
+  Headless Chrome's header says `HeadlessChrome` while its client hints say `Google Chrome`, and managed challenges
+  key on that token.
+  The `sec-ch-ua*` client hints derive from `browser.version()` and the running OS on Chrome tiers, from the UA string
+  under `--ua`, and stay untouched on the bundled tier. The existing `navigator.webdriver` spoof reaches every context.
+  `launchStealthHeaded` (`--headed`) stays window-free real Chrome plus the challenge-solve window and the
+  two existing launch options. `STARDUST_STEALTH=0` disables the spoof and options with one stderr line; a window stays
+  behind `STARDUST_HEADED_WINDOW=1`. `gotoLive` paces live navigations per host
+  `STARDUST_LIVE_PACE_MS` apart (default 2000; 0 disables; slots reserved synchronously so concurrent callers queue; one
+  stderr line per host on its first wait — an Akamai-fronted origin answered 403 to back-to-back navigations, 200 once
+  spaced). Classifiers: a 403 with `server: CloudFront` or `x-cache: Error from cloudfront`, or any `x-amzn-waf-action`
+  header, is the CloudFront / AWS WAF edge signature; F5's `BigIP` header matches; denial pages "The request could not
+  be satisfied" + "Request blocked", "One moment, please…", "Please wait while your request is being verified".
+- **Wired instruments:** `replica/scripts/stitch-shot.mjs`, `diff/scripts/content-diff.mjs`, `visual-diff.mjs`,
+  `measure-live.mjs` (`openBrowser` default tier `chrome`; `stealth` stays an alias of the `--headed` tier),
+  `replica/scripts/chrome-parity.mjs` and `motion-observe.mjs` launch the default tier and default `--ua` to the
+  browser's own; each `--help` says so. `extract/scripts/style-census.mjs`, `replica/scripts/measure.mjs` and `cap-probe.mjs` drop
+  their hard-coded desktop user agent the same way — a container run showed them still presenting it beside real
+  Chrome's own client hints.
+- **Docs:** `source-fidelity-gate.md` § Hardening rule 1 owns identity, retained automation-signal handling and pacing;
+  rule 12's ladder, `diff/SKILL.md` (`--ua`, `--headed`) and `replica/SKILL.md` point to the explicit opt-out.
+- Tests: `live-session.test.mjs` (50 checks — automation defaults and opt-out, pacing, user-agent and identity derivation,
+  client hints and denial classification) and `stitch-shot.test.mjs` (`--ua` defaults to the browser's own).
+
 ## 0.36.1 — replica: a capture names its dead font faces; a font check that could not run is never a pass (#150)
 
 Field learning (a recorded hands-off replica run): the foundation CSS declared its metric fallback faces with a

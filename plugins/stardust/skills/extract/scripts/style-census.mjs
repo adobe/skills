@@ -34,8 +34,8 @@
  *                          it only on an origin known to have no bot management)
  *     --max-pages <n>      cap the page list (default: every page — the census is site-wide)
  *     --timeout-ms <ms>    per-page navigation timeout (default 20000)
- *     --ua <string>        user agent (default: the real-Chrome desktop UA the recipe's browser
- *                          configuration calls for — the same value the live-session helper uses)
+ *     --ua <string>        user agent (default: the browser's own, presented without the headless token by
+ *                          the shared live-session helper; a bundled Chromium keeps its own hints)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; clicked once each)
  *     --headed             headed stealth real Chrome (escalation for bot-managed sites)
  *     --locale <tag>       pin Accept-Language + context locale (e.g. en-GB) for geo determinism
@@ -91,8 +91,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 
 // Current stable desktop Chrome on macOS — the platform token and minor version are frozen by
 // Chrome's UA reduction, so only the major matters.
-export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
-export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, maxPages: Infinity, timeoutMs: 20000, ua: DEFAULT_UA, dismiss: [], headed: false, locale: null };
+export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, maxPages: Infinity, timeoutMs: 20000, ua: null, dismiss: [], headed: false, locale: null };
 const SETTLE_MS = 2500;
 const VIEWPORT_H = 900;
 const OCCLUDER_COVERAGE = 0.4;
@@ -471,7 +470,7 @@ async function main(argv) {
     const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
     const contexts = {
       live: await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common }),
-      local: await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common }),
+      local: await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common }),
     };
     while (next < jobs.length) {
       const { url, width } = jobs[next];
@@ -498,7 +497,7 @@ async function main(argv) {
 
   const measured = Object.values(pages).reduce((n, byWidth) => n + Object.keys(byWidth).length, 0);
   const out = {
-    _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua, synthesizedInputs: [], failed },
+    _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua || 'browser-default', synthesizedInputs: [], failed },
     pages,
     aggregate: measured ? aggregate(pages) : null,
   };

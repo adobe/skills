@@ -85,8 +85,8 @@ regression check instead of a debugging tool.
    slot-coverage) imports it unconditionally at startup, regardless
    of target type: without the copy each one exits 2 immediately,
    even for `--help` or a local-file `--rendered` target. It supplies
-   ALL live-target hardening (real-Chrome UA + standard headers,
-   challenge detection, headed-stealth escalation), resolved from
+   ALL live-target hardening (real Chrome's own identity + standard
+   headers, challenge detection, `--headed` escalation), resolved from
    `../diff/` next to `../reskin/`, so keep the two dirs siblings.
    Run the copies.
 4. **Origin collision** — if `stardust/state.json` records a different

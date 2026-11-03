@@ -34,7 +34,7 @@ await check('parseArgs: selectors split on commas, widths repeatable + comma-sep
   assert.equal(DEFAULT_PROPS[DEFAULT_PROPS.indexOf('backgroundColor') + 1], 'backgroundImage', 'backgroundImage sits right after backgroundColor');
   assert.equal(DEFAULT_PROPS[DEFAULT_PROPS.indexOf('position') + 1], 'boxSizing', 'boxSizing is a default prop — the box model is a lifted value the gate compares per box'); assert.equal(DEFAULT_PROPS.length, 24);
   assert.equal(o.against, null); assert.equal(o.allMatches, false); assert.equal(o.json, false); assert.equal(o.out, null);
-  assert.equal(o.timeoutMs, 20000); assert.match(o.ua, /Chrome\//);
+  assert.equal(o.timeoutMs, 20000); assert.equal(o.ua, null, 'the browser presents its own user agent unless --ua is given');
   assert.deepEqual(parseArgs(['http://a/', '--selectors', 'h1']).widths, [1440]);
 });
 await check('parseArgs: --props replaces the default list; --against, --all-matches, --json, --out, --timeout-ms, --ua', () => {

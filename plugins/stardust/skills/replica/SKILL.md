@@ -269,7 +269,7 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
-# --headed in any instrument = the window-free real-Chrome stealth tier (#125); STARDUST_HEADED_WINDOW=1 is the only way to a window.
+# Every instrument runs real Chrome headless with its real user agent and client hints (#151); existing automation-signal handling stays on unless STARDUST_STEALTH=0; STARDUST_HEADED_WINDOW=1 opens the --headed window (#125).
 # gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL). Rounds run in
 # the BACKGROUND: start every round at once (the slots pace the Chromiums — no `sleep N;` staggering),
 # then `wait` prints verdict lines only; exit 75 = still going → `wait` again as your NEXT step, never
@@ -327,9 +327,10 @@ in the foreground, or two as parallel tool calls in one turn, is the same
 blocked step (reference doc § Iteration discipline).
 
 **Hardening (each is a recorded false-measurement trap — see the reference
-doc for the full list):** real-Chrome UA **plus the standard request
-headers** on every capture (built into the shared
-`diff/scripts/live-session.mjs`); a challenge/blocked interstitial or a
+doc for the full list):** real Chrome headless with **its own identity plus
+the standard request headers** on every capture, live navigations paced per
+host (built into the shared `diff/scripts/live-session.mjs`); a
+challenge/blocked interstitial or a
 2xx denial page **fails loud (exit 3)**, never measured — escalate with
 `--headed`, and a site that still blocks needs crawl.mjs-class capture;
 `domcontentloaded` on live targets, never `networkidle`;
