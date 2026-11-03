@@ -95,7 +95,8 @@ export function matchSections({ dom, mapping, anchors: anchorOf, modules, select
 
 // Opens the target at the module width, joins it, and writes <out>/join.json (out = the page's work dir). A target
 // whose sections are not found in its own DOM (a preview) names its matcher: join.match, over what join.collect read.
-export async function runJoin({ target, inputs, out }) {
+// page selects that page's rows of a multi-page mapping.md.
+export async function runJoin({ target, inputs, out, page }) {
   const [chromium, { openBrowser }] = await Promise.all([loadChromium(), loadMeasureLive()]);
   const browser = await openBrowser(chromium, { tier: 'plain' });
   let dom;
@@ -105,7 +106,7 @@ export async function runJoin({ target, inputs, out }) {
     dom = await target.join.collect(page);
     found = await page.evaluate(findChrome, CHROME_SELECTORS);
   } finally { await browser.close(); }
-  const mapping = parseMapping(inputs.mapping);
+  const mapping = parseMapping(inputs.mapping, page);
   const modules = includedModules(inputs.rules);
   const matched = await (target.join.match ?? matchSections)({
     dom,

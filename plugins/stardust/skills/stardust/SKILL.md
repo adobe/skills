@@ -189,11 +189,16 @@ Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
 (`reference/state-machine.md` § Flow keys) before delegating. The
 sub-skills enforce it: `migrate`, `deploy`, `rollout` and a
 migration-intent `extract` refuse to start a migration on a project with
-`state.json` and no `flow`; `prepare-migration` refuses under
-`flow: replica` and `replica` under `flow: redesign`. Switching is
+`state.json` and no `flow`; `prepare-migration` and `direct` refuse under
+`flow: replica` or `flow: reskin`, `replica` under `flow: redesign` or
+`flow: reskin`, and `reskin` under any other flow. Switching is
 explicit — `$stardust replica --switch-flow` / `$stardust
-prepare-migration --switch-flow` — and marks the old flow's prototyped or
-migrated pages stale (§ Per-page state).
+prepare-migration --switch-flow` / `$stardust reskin --switch-flow` — and
+marks the old flow's prototyped or migrated pages (and a reskin's
+registered `approved` archetypes) stale (§ Per-page state). A donor phrase
+— "use this design / Figma file / site for my content", "same content, new
+design from X" — routes to `reskin`, never to `direct`; under reskin the
+migrate/rollout predicate is `reskin/scripts/reskin-preflight.mjs` exit 0.
 
 **Planning aids belong to one flow.** Redesign: the `prepare-migration`
 plan and its phase gates, the canon, module catalogs, template plans of
@@ -230,6 +235,7 @@ auto-resolves:
 | `direct` clarifying questions | derive the answers from the captured evidence (`stardust/current/`), and state each as a **named assumption** in `direction.md` |
 | `prototype` brief-confirmation waits | skip; proceed on the authored brief |
 | prototype approval | granted by the agent's own judgment **only after all quality gates pass** (craft bar, validation loop, motion gates); recorded as `approvedBy: "hands-off"` on the page's `approved` history entry in `state.json` |
+| `reskin` archetype approval (Phase 6) | granted only after every Phase 5 gate is PASS or a recorded residual is `accepted`, and the eyeball is recorded (`reskin-ledger.mjs`); recorded as `approvedBy: "hands-off"` with `state.json` `handsOff: true` — preflight refuses any other agent approval |
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
 | `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked; a named assumption never sets `decided-out` |

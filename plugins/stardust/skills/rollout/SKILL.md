@@ -56,6 +56,12 @@ least the archetype pages first. For a single page, use `stardust deploy` direct
    gate's, unchanged. (Recorded: 2,207 pages published at 24–28 % diff from
    an archetype that never passed; a 3,366-page re-import after a random
    review found what a gate would have.)
+   **Gated-archetype precondition (`flow: reskin`).** `node
+   skills/reskin/scripts/reskin-preflight.mjs` must exit 0 (the predicate
+   over `stardust/reskin/ledger.json`, `skills/reskin/reference/handoff.md`);
+   a type whose archetype it fails is blocked exactly as above, and a
+   migrated sibling whose own gate (`--stage migrated`) is not `gated` is
+   not published. Hands-off is not a bypass.
 3. Verify the EDS/AEM target is ready exactly as `deploy` requires (project
    scaffolding, `DA_TOKEN`, code branch pushable). `rollout` adds no new transport.
 4. If `state.json.handsOff` is true (`skills/stardust/SKILL.md` § Hands-off
@@ -79,8 +85,10 @@ Writes `coverage/pages.json` (one row per page: slug, delivered `path`,
 
 **Archetypes-only mode** (`--state`): pages with a `_meta.json` are seeded as in
 full mode; pages present only in `state.json` are seeded with `templateId` from
-`type`, `blocks` from the archetype sidecar, and `delivery.status:
-content-pending`.
+the archetype mapped by `stardust/reskin/ledger.json#handoff.<type>.archetype`
+(then `representative`, then the type slug), inherit that archetype's blocks and
+widgets, and start with `delivery.status: content-pending`. Trailing slashes in
+roster URLs do not create duplicate page rows for migrated archetypes.
 
 Inventory is **idempotent and incremental**: delivery status is preserved; a page
 whose migrated HTML changed after delivery is re-flagged `stale` (never a
@@ -96,14 +104,20 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 ```
 
 - `blocks.mjs` collapses every block instance (per-page `modules`, `widgets` + chrome)
-  into the **distinct** set, assigns each a canonical `edsBlockName` (kebab, reserved-class
-  guarded) and records `usedByPages` / `instanceCount`. Chrome (`header`/`nav`/`footer`)
-  is `kind: chrome` → site-wide authored documents (`/nav`, `/footer`). A widget
-  (`kind: widget`, from the sidecar's `widgets[] {id, href}`) needs no document rows:
-  its code ships at `widgets/<path>/<name>.html` and the page carries one
-  `/widgets/…html` link (#133). In archetypes-only mode the archetype sidecars
-  determine the block set; `content-pending` pages add none. A module that maps to
-  EDS **default content** (title, text, image, button, separator) needs no block: record
+  into the **distinct** set and records `usedByPages` / `instanceCount`. Modules
+  get a canonical `edsBlockName` by `deploy` Step 2
+  ([`../deploy/SKILL.md` § 2](../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code),
+  applied by `reskin/scripts/figma/eds-map.mjs`: `faq` → `accordion`, `teaser` →
+  `cards` with `edsVariant: "teaser"`, `button` → `default-content`; else kebab,
+  reserved-class-guarded per deploy #15). Chrome (`header`/`nav`/`footer`) is
+  `kind: chrome` → site-wide authored documents (`/nav`, `/footer`) fed to the
+  header/footer blocks. A widget (`kind: widget`, from the sidecar's
+  `widgets[] {id, href}`) keeps its id verbatim, not a module mapping; it needs
+  no document rows, its code ships at `widgets/<path>/<name>.html`, and the page
+  carries one `/widgets/…html` link (#133). In archetypes-only mode the archetype
+  sidecars determine the block set; `content-pending` pages add none. A module
+  that maps to EDS **default content** (title, text, image, button, separator —
+  deploy's D1) needs no block: record
   it `update-coverage.mjs --block <id> --status converted --eds-name default-content`;
   such a row is never counted pending, whatever its status.
 - `plan.mjs` orders pages **representative-first per template** and gives each

@@ -45,7 +45,7 @@
     {
       "name": "standard_handoff_no_core_changes",
       "max_score": 5,
-      "description": "Scale/delivery is handed to migrate (donor-pinned, sibling tier) / deploy / rollout unchanged; reskin state stays under stardust/reskin/; no existing skill or the core state machine is modified."
+      "description": "Scale/delivery is handed to migrate (donor-pinned, sibling tier) / deploy / rollout through the documented bridge (canon-from-reskin, reskin-ledger, reskin-preflight exit 0 before any sibling render; skills/reskin/reference/handoff.md); the run does not edit skill files, and touches core state only through the documented writes (flow, designSource, approved with an honest approvedBy, stale flags); reskin's own state stays under stardust/reskin/, with ledger.json written by reskin-ledger.mjs, not by hand."
     },
     {
       "name": "provenance",

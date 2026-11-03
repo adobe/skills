@@ -8,10 +8,10 @@
 // origin in source.migratedHtml, joins its template, is idempotent, refuses captured slugs and taken
 // paths, and lands under the lock beside concurrent page updates.
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { blockCounts } from '../lib.mjs';
 
@@ -124,6 +124,110 @@ await check('(c) a real pending block still counts as pending beside a default-c
   r = await run(['--block', 'hero', '--status', 'converted', '--eds-name', 'hero'], proj);
   assert.equal(r.code, 0, r.err);
   assert.deepEqual(blockRollup(out), { total: 2, converted: 2, pending: 0 });
+});
+
+await check('blocks.mjs names blocks by deploy Step 2: faq → accordion, teaser → cards (teaser), button → default content; chrome keeps its fragment name', async () => {
+  const { proj, out } = fixture();
+  writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages: [{ slug: 'home', templateId: 'detail', blocks: ['faq', 'teaser', 'button', 'chips', 'nav'], delivery: { status: 'pending' } }] }, null, 2));
+  const r = await runScript(BLOCKS_SCRIPT, ['--out', out], proj);
+  assert.equal(r.code, 0, r.err);
+  const byId = Object.fromEntries(readBlocks(out).map((b) => [b.id, b.delivery]));
+  assert.equal(byId.faq.edsBlockName, 'accordion');
+  assert.deepEqual([byId.teaser.edsBlockName, byId.teaser.edsVariant], ['cards', 'teaser']);
+  assert.equal(byId.button.edsBlockName, 'default-content');
+  assert.equal(byId.chips.edsBlockName, 'chips');
+  assert.deepEqual([byId.nav.edsBlockName, byId.nav.blockPath], [null, 'fragments/nav.html']);
+});
+
+await check('pending widgets keep their verbatim ids and code paths instead of module mappings', async () => {
+  const { proj, out } = fixture();
+  try {
+    const widgets = [{ id: 'faq', href: '/widgets/faq.html?lang=en' }, { id: 'heading', href: '/widgets/heading.html' }];
+    writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages: [{ slug: 'home', widgets }] }));
+    let r = await runScript(BLOCKS_SCRIPT, ['--out', out], proj);
+    assert.equal(r.code, 0, r.err);
+    let rows = readBlocks(out);
+    const faq = rows.find((b) => b.id === 'faq');
+    const heading = rows.find((b) => b.id === 'heading');
+    assert.deepEqual([faq.kind, faq.delivery.edsBlockName, faq.delivery.blockPath], ['widget', 'faq', 'widgets/faq.html']);
+    assert.deepEqual([heading.kind, heading.delivery.edsBlockName, heading.delivery.blockPath], ['widget', 'heading', 'widgets/heading.html']);
+    faq.delivery.edsVariant = 'stale';
+    writeBlocks(out, rows);
+    r = await runScript(BLOCKS_SCRIPT, ['--out', out], proj);
+    assert.equal(r.code, 0, r.err);
+    rows = readBlocks(out);
+    assert.equal(rows.find((b) => b.id === 'faq').delivery.edsBlockName, 'faq');
+    assert.equal('edsVariant' in rows.find((b) => b.id === 'faq').delivery, false);
+  } finally { rmSync(proj, { recursive: true, force: true }); }
+});
+
+await check('a widget named default-content remains pending while a default-content module is converted', async () => {
+  const { proj, out } = fixture();
+  try {
+    writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages: [{
+      slug: 'home', blocks: ['button'], widgets: [{ id: 'default-content', href: '/widgets/default-content.html' }],
+    }] }));
+    const r = await runScript(BLOCKS_SCRIPT, ['--out', out], proj);
+    assert.equal(r.code, 0, r.err);
+    const widget = readBlocks(out).find((b) => b.id === 'default-content');
+    assert.deepEqual([widget.kind, widget.delivery.status, widget.delivery.blockPath], ['widget', 'pending', 'widgets/default-content.html']);
+    assert.deepEqual(blockRollup(out), { total: 2, converted: 1, pending: 1 });
+  } finally { rmSync(proj, { recursive: true, force: true }); }
+});
+
+await check('mapped module names still honor reserved classes and chrome fragment names', async () => {
+  const { proj, out } = fixture();
+  try {
+    writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages: [{ slug: 'home', blocks: ['widget', 'product-wrapper', 'nav'] }] }));
+    const r = await runScript(BLOCKS_SCRIPT, ['--out', out], proj);
+    assert.equal(r.code, 0, r.err);
+    const byId = Object.fromEntries(readBlocks(out).map((b) => [b.id, b.delivery]));
+    assert.equal(byId.widget.edsBlockName, 'blk-widget');
+    assert.equal(byId['product-wrapper'].edsBlockName, 'product-wrapper-block');
+    assert.equal(byId.nav.blockPath, 'fragments/nav.html');
+  } finally { rmSync(proj, { recursive: true, force: true }); }
+});
+
+await check('pending module variants refresh without changing converted or default-content decisions', async () => {
+  const { proj, out } = fixture();
+  try {
+    writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages: [{ slug: 'home', blocks: ['teaser', 'title', 'faq', 'large-teaser'] }] }));
+    writeBlocks(out, [
+      { ...row('teaser', 'converted', 'custom-cards'), delivery: { status: 'converted', edsBlockName: 'custom-cards', edsVariant: 'manual', blockPath: 'blocks/custom-cards', convertedAt: 'earlier' } },
+      row('title', 'pending', 'default-content'),
+      { ...row('faq', 'pending'), delivery: { status: 'pending', edsBlockName: 'faq', edsVariant: 'stale', blockPath: null, convertedAt: null } },
+      { ...row('large-teaser', 'pending'), delivery: { status: 'pending', edsBlockName: 'old', edsVariant: 'stale', blockPath: null, convertedAt: null } },
+    ]);
+    const r = await runScript(BLOCKS_SCRIPT, ['--out', out], proj);
+    assert.equal(r.code, 0, r.err);
+    const byId = Object.fromEntries(readBlocks(out).map((b) => [b.id, b.delivery]));
+    assert.deepEqual(byId.teaser, { status: 'converted', edsBlockName: 'custom-cards', edsVariant: 'manual', blockPath: 'blocks/custom-cards', convertedAt: 'earlier' });
+    assert.equal(byId.title.edsBlockName, 'default-content');
+    assert.equal(byId.faq.edsBlockName, 'accordion');
+    assert.equal('edsVariant' in byId.faq, false);
+    assert.deepEqual([byId['large-teaser'].edsBlockName, byId['large-teaser'].edsVariant], ['cards', 'large-teaser']);
+  } finally { rmSync(proj, { recursive: true, force: true }); }
+});
+
+await check('project-copy mapping uses the reskin helper when present and retains non-reskin fallback', async () => {
+  for (const withMap of [false, true]) {
+    const root = mkdtempSync(join(tmpdir(), 'rollout-project-copy-'));
+    try {
+      const rollout = join(root, 'stardust', 'scripts', 'rollout');
+      mkdirSync(rollout, { recursive: true });
+      const lib = join(rollout, 'lib.mjs');
+      copyFileSync(join(HERE, '..', 'lib.mjs'), lib);
+      if (withMap) {
+        const figma = join(root, 'stardust', 'scripts', 'reskin', 'figma');
+        mkdirSync(figma, { recursive: true });
+        copyFileSync(join(HERE, '..', '..', '..', 'reskin', 'scripts', 'figma', 'eds-map.mjs'), join(figma, 'eds-map.mjs'));
+      }
+      const code = 'const m = await import(process.argv[1]); console.log(JSON.stringify([m.edsName("faq"), m.edsName("widget")]));';
+      const r = await runScript('--input-type=module', ['-e', code, pathToFileURL(lib).href], root);
+      assert.equal(r.code, 0, r.err);
+      assert.deepEqual(JSON.parse(r.out), [withMap ? 'accordion' : 'faq', 'blk-widget']);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }
 });
 
 await check('a blocks.mjs re-run keeps a default-content mapping recorded pending and rolls it up as converted', async () => {

@@ -100,6 +100,65 @@ export function slugify(s) {
   return String(s ?? '').normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'item';
 }
 
+// A desktop frame's header row: the topmost horizontal auto-layout in the top band, at least half the
+// frame wide, with ≥ 3 visible children of which an inner one (the menu) holds ≥ 2 text-bearing items.
+// align: the menu's centre within 2% (≥ 8px) of the row's → center; else ≤ 64px after the first child
+// (the brand) → start; ≤ 64px before the last (the actions) → end; anything else is not recorded.
+// Subtrees the design names "footer" are skipped: a footer link row has the same shape.
+const HEADER_BAND = 240;
+const isFooter = (n) => /\bfooter\b/i.test(n?.name || '');
+const ADJACENT = 64;
+export function headerRowOf(root) {
+  const box = (n) => n?.absoluteBoundingBox;
+  const fb = box(root);
+  if (!fb || fb.width < CONTAINER_MIN) return null;
+  const hasText = (n) => visible(n) && (n.type === 'TEXT' || (n.children || []).some(hasText));
+  let best = null;
+  const visit = (n, depth) => {
+    const b = box(n);
+    if (!visible(n) || isFooter(n) || depth > 8 || (b && b.y - fb.y > HEADER_BAND)) return;
+    const kids = (n.children || []).filter((c) => visible(c) && box(c));
+    if (depth > 0 && n.layoutMode === 'HORIZONTAL' && kids.length >= 3 && b && b.width >= 0.5 * fb.width) {
+      const menu = kids.slice(1, -1).find((c) => (c.children || []).filter(hasText).length >= 2);
+      if (menu && (!best || b.y < best.b.y)) best = { n, b, kids, menu };
+    }
+    for (const c of n.children || []) visit(c, depth + 1);
+  };
+  visit(root, 0);
+  if (!best) return null;
+  const { n, b, kids, menu } = best;
+  const mb = box(menu);
+  const brand = box(kids[0]);
+  const last = box(kids.at(-1));
+  const offset = mb.x + mb.width / 2 - (b.x + b.width / 2);
+  let align = null;
+  if (Math.abs(offset) <= Math.max(8, b.width * 0.02)) align = 'center';
+  else if (mb.x - (brand.x + brand.width) <= ADJACENT) align = 'start';
+  else if (last.x - (mb.x + mb.width) <= ADJACENT) align = 'end';
+  return align && { node: n.id, menu: menu.id, align, offset: Math.round(offset), width: b.width };
+}
+
+// Every header row of a frame. A captured frame is often a canvas laying out many screens, so each
+// desktop-width node whose parent is the root or a canvas (≥ 1.5× its width) counts as a screen and
+// its top band is measured from the screen's own top. Rows are deduped by node.
+export function headerRowsOf(root) {
+  const w = (n) => n?.absoluteBoundingBox?.width ?? 0;
+  if (isFooter(root)) return [];
+  const screens = [root];
+  const visit = (n, parent, depth) => {
+    if (!visible(n) || isFooter(n) || depth > 6) return;
+    if (parent && w(n) >= CONTAINER_MIN && (parent === root || w(parent) >= 1.5 * w(n))) screens.push(n);
+    for (const c of n.children || []) visit(c, n, depth + 1);
+  };
+  for (const c of root.children || []) visit(c, root, 1);
+  const rows = new Map();
+  for (const s of screens) {
+    const h = headerRowOf(s);
+    if (h && !rows.has(h.node)) rows.set(h.node, { ...h, screen: s.id });
+  }
+  return [...rows.values()];
+}
+
 const numSlug = (n) => slugify(String(Math.round(n * 100) / 100));
 const visible = (n) => n && n.visible !== false;
 // A subtree with no content of its own to measure: a childless INSTANCE (typically a remote-library
@@ -365,12 +424,18 @@ export function buildFoundation({ file, nodes, frameIds }) {
     if (n.type === 'TEXT' && n.style) {
       const st = n.style;
       const identity = [st.fontFamily, st.fontSize, st.fontWeight, st.lineHeightUnit, st.lineHeightPx, st.letterSpacing ?? 0].join('|');
-      g.typography.add(identity, {
+      const typo = g.typography.add(identity, {
         value: { fontFamily: st.fontFamily, fontSize: px(st.fontSize), fontWeight: weightCss(st.fontWeight), lineHeight: lineHeightCss(st), letterSpacing: letterSpacingCss(st) },
         figma: rawTextStyle(st), node: n.id, style: styleName(s.text),
         fallbackKey: slugify(`${st.fontFamily} ${st.fontSize} ${st.fontWeight}`),
       });
       const chars = (n.characters || '').length;
+      // Horizontal alignment per text style, weighted by characters: curate derives
+      // type.display.textAlign from the display record's majority (renderers fall back to left).
+      if (typeof st.textAlignHorizontal === 'string') {
+        const a = { LEFT: 'left', CENTER: 'center', RIGHT: 'right', JUSTIFIED: 'justify' }[st.textAlignHorizontal];
+        if (a) { typo.align ??= {}; typo.align[a] = (typo.align[a] || 0) + Math.max(chars, 1); }
+      }
       texts.push({ node: n.id, chars, size: st.fontSize, family: st.fontFamily, typo: identity, color: fillCss });
       const raw = (n.characters || '').trim();
       if (raw.startsWith('{')) {
@@ -483,7 +548,7 @@ export function buildFoundation({ file, nodes, frameIds }) {
     let slug = base;
     for (let i = 2; usedSlugs.has(slug); i += 1) slug = `${base}-${i}`;
     usedSlugs.add(slug);
-    frames.push({ node: root.id, name: root.name, page: pageOf.get(root.id) ?? null, slug, width: root.absoluteBoundingBox?.width ?? 0, height: root.absoluteBoundingBox?.height ?? 0, ...(hollow(root) ? { hollow: true } : {}), sections });
+    frames.push({ node: root.id, name: root.name, page: pageOf.get(root.id) ?? null, slug, width: root.absoluteBoundingBox?.width ?? 0, height: root.absoluteBoundingBox?.height ?? 0, ...(hollow(root) ? { hollow: true } : {}), sections, headerRows: headerRowsOf(root) });
   }
 
   // ---- finalize records ---------------------------------------------------------------------------

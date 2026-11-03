@@ -24,7 +24,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, edsName, kindOf, blockCounts, widgetCodePath, DEFAULT_CONTENT } from './lib.mjs';
+import { readJSON, writeJSON, edsName, edsBlock, kebabName, kindOf, blockCounts, widgetCodePath, DEFAULT_CONTENT } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -64,18 +64,21 @@ for (const p of pages) {
 const now = new Date().toISOString();
 const blocks = [...agg.entries()].map(([id, a]) => {
   const { kind } = a;
-  const codePath = kind === 'chrome' ? `fragments/${edsName(id)}.html` : kind === 'widget' ? widgetCodePath(a.href) : null;
+  const codePath = kind === 'chrome' ? `fragments/${kebabName(id)}.html` : kind === 'widget' ? widgetCodePath(a.href) : null;
   const p = prior.get(id);
+  const variant = kind === 'module' ? edsBlock(id).variant : null;
   const delivery = (p && p.delivery) || {
     status: 'pending',
-    edsBlockName: kind === 'chrome' ? null : kind === 'widget' ? id : edsName(id), // a widget's class is its file stem verbatim (reservedStem is the lint's job)
+    edsBlockName: kind === 'chrome' ? null : kind === 'widget' ? id : edsName(id),
+    ...(variant ? { edsVariant: variant } : {}),
     blockPath: codePath,
     convertedAt: null,
   };
-  // Keep the derived EDS name fresh for not-yet-converted blocks — never over a default-content
-  // mapping, which is a resolved decision (no block to build) even while its status reads pending.
-  if (delivery.status === 'pending' && delivery.edsBlockName !== DEFAULT_CONTENT) {
-    delivery.edsBlockName = kind === 'chrome' ? null : edsName(id);
+  // Keep pending names fresh without replacing a resolved default-content mapping. A widget id
+  // may itself be "default-content", but is not such a mapping.
+  if (delivery.status === 'pending' && (kind === 'widget' || delivery.edsBlockName !== DEFAULT_CONTENT)) {
+    delivery.edsBlockName = kind === 'chrome' ? null : kind === 'widget' ? id : edsName(id);
+    if (variant) delivery.edsVariant = variant; else delete delivery.edsVariant;
     delivery.blockPath = codePath || delivery.blockPath || null;
   }
   return {
