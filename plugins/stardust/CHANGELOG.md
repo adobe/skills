@@ -25,6 +25,8 @@ typeahead — the edge blocked the address mid-run.
   recorded states: rich 26 → 13 loads at 1440, 24 → 1 at 390; stock 6 → 1 at 390.
 - **Exports and docs:** `parseArgs`, `requestBudget`, `sameSite`, `siteHost` are exported; `--help` documents the four
   flags; `scripts-index.md` names `--max-requests`.
+- **Build exploration:** diff and qa pass `--max-requests 0 --pace-ms 0 --reload-pause-ms 0`; source defaults stay protective.
+- **Parity:** request-budget gaps warn with the unbudgeted-build remedy; observed failures remain errors.
 - Tests: `chrome-explore.test.mjs` — the summary line, `parseArgs` defaults and fallbacks, `sameSite` / `requestBudget`;
   with a browser: closing in place, the GET and POST submits, a stubborn header (new fixture in `chrome-fixtures.mjs`),
   the budget stop and the typeahead cap.
