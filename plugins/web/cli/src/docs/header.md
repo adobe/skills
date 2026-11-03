@@ -71,8 +71,9 @@ Read the lines, not the exit status: 0 means the check ran, clean or not.
    a load at each width (clean under 0.05).
 3. **Text properties and positions**, every text of the header matched with the source's:
    - closed: `$WEB header check text <source-url> <page> --sizes 1440,1200,1100,992,900,820,700,650,480,390x844 --hide-css <src>/overlays.json --source-cache <src>/text-cache`
-   - each menu open: `… --sizes 1440,1200,<breakpoint>,1440x700 --open "<label>" --trigger <hover|click>`
-     (labels and triggers in `open.json`; the short windows show a panel that does not fit)
+   - each menu open: `… --sizes 1440,1200,<bp>,1440x700,<bp>x800 --open "<label>" --trigger <hover|click>`
+     (`<bp>`: `open.json` `header.breakpoint.shownAt`, the widths under it left out; labels and
+     triggers in `open.json`; the short windows show a panel that does not fit)
    - the mobile menu open: `… --sizes 390x844,460x1000,600x1200,820x1100 --mobile-menu`
    - scrolling: `… --sizes 1440,820,390x844 --scroll 600,500,0` (wheel down to 600, back up to
      500, then to the top; each step compared)
