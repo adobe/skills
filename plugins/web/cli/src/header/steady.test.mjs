@@ -21,7 +21,7 @@ test('AB_TESTS: the page and its own assets are not', () => {
   for (const u of [
     'https://webflow.com/resources/marketing-head-v2.js',
     'https://www.optimizely.com.example.org/',
-    'https://stripe.com/fr-ch',
+    'https://www.example.com/fr-ch',
     'https://example.com/intellimize.co.js',
   ])
     assert.ok(!re.test(u), u);

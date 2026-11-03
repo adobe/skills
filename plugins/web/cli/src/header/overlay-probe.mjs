@@ -1,7 +1,7 @@
 /**
  * In-page source of `() => [...]`: cookie / consent layers still visible in the viewport after the
  * capture hid what it knew. Each hit is { selector, text, rect }. Run right before a screenshot:
- * the pre-flight aborts on any hit (backlinko-v3-clef-09 captured its menus under the dialog).
+ * the pre-flight aborts on any hit (an SEO blog's menus were once captured under the dialog).
  * A hit is a known CMP root, or a fixed / sticky / dialog layer whose text reads like consent.
  */
 /**
@@ -53,7 +53,7 @@ export const VISIBLE_OVERLAYS = `() => {
     if (r.width * r.height < 0.02 * innerWidth * innerHeight) continue;
     if (WORDS.test(e.innerText || '')) hits.push(e);
   }
-  // a layer inside an open shadow root (wpbeginner's WPConsent): its zero-height host is the hit
+  // a layer inside an open shadow root (a WordPress site's consent plugin): its zero-height host is the hit
   for (const host of document.querySelectorAll('body *')) {
     if (!host.shadowRoot || hits.some((h) => h.contains(host))) continue;
     const inner = [...host.shadowRoot.querySelectorAll('*')].find((e) => layer(e) && shown(e)

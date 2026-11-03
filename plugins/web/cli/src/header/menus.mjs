@@ -3,10 +3,9 @@
  * (`source/open/open.json`), on the EDS page at 1440 px: open it the way the source does (hover
  * or click its label in the page's header: `body > header`, else the first `header`), count the
  * links that appear in the viewport (anywhere: a panel can live outside the header; counted by
- * `lib/toggles.js`, as the capture counts them) against the capture's, then close it the way the
+ * `bundles/header-toggles.js`, as the capture counts them) against the capture's, then close it the way the
  * source does (pointer away for hover, the label clicked again for click) and check it closes.
- * Usage: node menus.mjs <page url> <open.json> [session]
- * Prints one line per menu; exit 1 when one fails.
+ * `web header check menus <page url> <open.json>`: one line per menu, and whether all are ok.
  */
 import { readFileSync } from 'node:fs';
 import { closeSession, openSession, runCode } from './browser.mjs';
@@ -60,7 +59,7 @@ const PROBE = `async (page, url, menus) => {
       else await label.hover({ timeout: 4000 });
       await page.waitForTimeout(700);
       opened = (await shown()) - closed;
-      // a click menu closes as on the source: its label clicked again (backlinko's panel fills
+      // a click menu closes as on the source: its label clicked again (an SEO blog's panel fills
       // the viewport, so an outside click lands in it)
       if (m.trigger === 'click') await label.click({ timeout: 4000 }); else await away();
       await page.waitForTimeout(500);

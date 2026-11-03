@@ -5,12 +5,9 @@
  * control (a close X, a search glass, a logo), paired by position, by its graphic's centre; and
  * where the page below the header starts. Closed: the source above its main content, the page's
  * `body > header`. With --open <label> (a menu opened as the source opens it) or --mobile-menu
- * (the burger, as open-panels.mjs opens it): the whole viewport on both sides.
- * Usage: node text-styles.mjs <source url> <page url> [--sizes 1440x900,820,390x844]
- *   [--open <label> --trigger hover|click | --mobile-menu] [--hide-css <overlays.json>]
- *   [--scroll 600,500,0] [--scale 2] [--tolerance 0.05] [--band auto|<px>] [--shots <prefix>]
- *   [--parallel 4] [--source-cache <dir>] [--baseline <url>] [--session s]
- * --baseline: the page before the unit (the shell): differences it already has against the source,
+ * (the burger, as panels.mjs opens it): the whole viewport on both sides.
+ * `web header check text <source url> <page url>` (its --help lists the options).
+ * --baseline: the page before the work: differences it already has against the source,
  *   with the same value on the page (texts, positions, pixels), are not counted.
  * --source-cache: the source's states are loaded once and reused from <dir> (one file per state).
  * --scroll: after the load, wheel to each y in turn (1 s each) and compare there: every header text
@@ -131,8 +128,8 @@ const COLLECT = `(args) => {
   // the page's own header (EDS: body > header); a page without one (the source itself) by the band
   const root = (scope && document.querySelector(scope)) || document.body;
   const texts = [];
-  // open shadow roots too: the page's legacy regions render the source's markup in one, so their
-  // texts match the source's instead of showing as "only on the source" (PR #14 review)
+  // open shadow roots too: a page can render parts of the source's markup in one (a migration in
+  // progress), so their texts match the source's instead of showing as "only on the source"
   const deep = (r) => [...r.querySelectorAll('*')].flatMap((e) => (e.shadowRoot ? [e, ...deep(e.shadowRoot)] : [e]));
   for (const el of deep(root)) {
     const nodes = [...el.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim());
@@ -163,7 +160,7 @@ const COLLECT = `(args) => {
   }
   // icons: every graphic of its own (an svg or img not part of a text: a close X, a search glass, a
   // logo; a chevron beside a label is the label's) and every icon-only control drawn by CSS, by its
-  // centre, paired by position: v1-6's close X sat up to 25 px off between the sampled widths, unseen
+  // centre, paired by position: a build's close X sat up to 25 px off between the sampled widths, unseen
   // by the texts. Labelled by its control's accessible name, for the report only
   const seen = (e) => { const r = e.getBoundingClientRect(); return r.width >= 2 && r.height >= 2
     && e.checkVisibility({ opacityProperty: true, visibilityProperty: true }); };
@@ -241,7 +238,7 @@ async function collect(
 ) {
   openSession(session, { width, height, scale });
   try {
-    // on the source, a consent layer that an interaction's JS shows (wpbeginner: the click or the
+    // on the source, a consent layer that an interaction's JS shows (a WordPress site: the click or the
     // wheel loads it) is hidden before each state, as header-probes.mjs hides it for its shot
     const late = hideLate
       ? `
@@ -266,7 +263,7 @@ async function collect(
   const innerW = ${width};
   await page.context().route(${AB_TESTS}, (r) => r.abort());
   await page.context().addInitScript(${STEADY});
-  // as the capture loads it: a slow third-party script must not fail the load (backlinko timed out)
+  // as the capture loads it: a slow third-party script must not fail the load (an SEO blog timed out)
   await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForLoadState('load', { timeout: 30000 }).catch(() => {});
   if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
@@ -343,8 +340,8 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
       shot: name('page'),
       hideLate: Boolean(pageHide),
     }),
-    // the baseline: the same page before the unit (the shell, every region legacy): what it already
-    // differs by (the body's legacy slices, a band the shell places in main) is not the unit's
+    // the baseline: the same page before the work: what it already differs by (its body, a band
+    // it places in main) is not the work's
     o.baseline
       ? sourceStates(
           o.baseline,
@@ -392,7 +389,7 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
       ? differingPixels(name('source')(i), name('page')(i), rows, base ? name('baseline')(i) : null)
       : null;
     // an open menu: how many of them are in the header and its panel (above the source panel's
-    // bottom); the rest is the page under it (the retailer's legacy body at 1200 and 992 px)
+    // bottom); the rest is the page under it (a body that is not the source's)
     const panelRows = o.open && s.panelBottom != null ? Math.ceil(s.panelBottom * +o.scale) : null;
     const pxPanel =
       px && panelRows
@@ -488,7 +485,7 @@ async function pool(fns, n) {
 
 /**
  * Pixels that differ between two shots (on white), down to row `rows` (the header) or all. With a
- * baseline shot (the page before the unit), a pixel where the page still equals the baseline and
+ * baseline shot (the page before the work), a pixel where the page still equals the baseline and
  * the baseline already differed from the source is the baseline's, not counted.
  */
 export function differingPixels(a, b, rows = null, base = null) {
@@ -514,10 +511,10 @@ export function differingPixels(a, b, rows = null, base = null) {
 }
 
 /**
- * Differences the baseline (the page before the unit) already has against the source, with the
- * same page value, are not the unit's: they are dropped and counted as inherited. The header is
- * always the unit's: its texts (`own`) and where the page below it starts are never inherited (the
- * retailer's shell had a collapsed header, so every header text was "already missing").
+ * Differences the baseline (the page before the work) already has against the source, with the
+ * same page value, are not the work's: they are dropped and counted as inherited. The header is
+ * always the work's: its texts (`own`) and where the page below it starts are never inherited (a
+ * baseline with a collapsed header would count every header text as "already missing").
  */
 export function minusBaseline(r, b, own = []) {
   let inherited = 0;
@@ -612,7 +609,7 @@ export async function checkText(srcUrl, pageUrl, opts = {}) {
     ...defaults,
     ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)),
   };
-  // a pool of 0 workers (--parallel 0, a fraction, a word) ran nothing and read as clean (PR #27 review)
+  // a pool of 0 workers (--parallel 0, a fraction, a word) ran nothing and read as clean
   const parallel = Number(o.parallel);
   if (!Number.isInteger(parallel) || parallel < 1)
     throw new Error(`--parallel must be a positive integer, not "${o.parallel}"`);
@@ -673,7 +670,7 @@ export async function checkText(srcUrl, pageUrl, opts = {}) {
         `${unmatched ? `, ${unmatched} on one side only` : ''}${r.inherited ? ` (${r.inherited} inherited from the baseline, not counted)` : ''}` +
         `${r.px == null ? '' : `; ${r.px} differing pixels at ${o.scale}x${r.pxPanel == null ? '' : ` (${r.pxPanel} in the header and open panel, ${r.px - r.pxPanel} below them)`} (${r.shots})`}`,
     );
-    // a text on one side only is a difference too: a changed or missing label (PR #14 review)
+    // a text on one side only is a difference too: a changed or missing label
     if (r.rows.length || r.onlySource.length || r.onlyPage.length || r.px) {
       differ += 1;
       failed.push(r.tag.split(' ')[0]);

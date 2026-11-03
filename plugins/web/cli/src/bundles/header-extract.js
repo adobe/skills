@@ -12,7 +12,7 @@
     'background-color', 'background-image', 'background-size', 'background-position',
     'border-top', 'border-right', 'border-bottom', 'border-left', 'border-radius',
     'box-shadow', 'opacity', 'object-fit', 'list-style-type', 'overflow', 'z-index',
-    // how glyphs render (s2b: without them a header's text was 1:1 in metrics, not in pixels)
+    // how glyphs render (without them a header's text was 1:1 in metrics, not in pixels)
     '-webkit-font-smoothing', 'text-rendering', 'font-feature-settings', 'font-variation-settings',
     'font-kerning',
   ];

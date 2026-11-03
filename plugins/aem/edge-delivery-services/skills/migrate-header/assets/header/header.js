@@ -622,7 +622,7 @@ export default async function decorate(block) {
 
   // the header's actual height, for whatever opens under it (mobile sheet, fixed panels):
   // var(--header-bottom); it moves with a wrapping promo bar, unlike the page's --nav-height.
-  // The border box: a padding change moves the bottom too (the content box missed it, s2b v1-5)
+  // The border box: a padding change moves the bottom too (the content box missed it)
   new ResizeObserver(() => {
     block.style.setProperty('--header-bottom', `${block.getBoundingClientRect().height}px`);
   }).observe(block, { box: 'border-box' });

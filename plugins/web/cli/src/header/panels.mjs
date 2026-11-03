@@ -1,14 +1,14 @@
 /**
- * Are the page's open menus 1:1 with the source's? No Clef: pixels and hrefs only.
+ * Are the page's open menus 1:1 with the source's? Pixels and hrefs only.
  * Desktop (1440 x 900): each menu the capture opened (`source/open/open.json`) is opened on the
  * page as the source opens it (hover or click on its visible label, a fresh load per menu, the
  * capture's freeze), then shot. Scored: the pixel mismatch inside the source's open panel box
  * (`panel.rect`) only, and the revealed links' hrefs against the capture's `panel.items`.
- * Mobile (390 x 844): the burger opened as `header-probes.mjs` opens it on the source, the viewport
+ * Mobile (390 x 844): the burger opened as `probes.mjs` opens it on the source, the viewport
  * shot against `source/open/mobile-menu.png` (skipped when the source has no such shot).
  * The capture's overlay hide rules are applied only when the page is the source itself (floors).
- * Usage: node open-panels.mjs <page url> <sourceDir> <outDir> [session]
- * Writes <outDir>/{<i>.png,mobile-menu.png,panels.json}; one line per check, exit 1 when one fails.
+ * `web header check panels <page url> <sourceDir> <outDir>`: writes
+ * <outDir>/{<i>.png,mobile-menu.png,panels.json}; one line per check.
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -18,7 +18,7 @@ import { VISIBLE_OVERLAYS } from './overlay-probe.mjs';
 import { PNG, pixelmatch } from './imaging.mjs';
 import { loadBundle } from '#src/bundles/index.mjs';
 
-// the s2b 1:1 bar (sp-fast-s2b-header-quality/README.md), fixed before the runs
+// the 1:1 bar of the header runs these checks come from (adobe/skills#533), fixed before them
 export const MAX_PANEL = 1.5;
 export const MAX_MOBILE = 2.0;
 
@@ -104,7 +104,7 @@ const LOAD = (url, hideCss, freeze) => `let page = first;
     if (${freeze}) await page.addStyleTag({ content: ${JSON.stringify(FREEZE)} });
     await page.addScriptTag({ content: ${JSON.stringify(TOGGLES)} });
     // an EDS header is decorated after load: wait for its block, then the capture's 1200 ms (later,
-    // the source itself changes: wpbeginner's panels moved 1 px, 0.7-1.2 % at 2.5 s)
+    // the source itself changes: a WordPress site's panels moved 1 px, 0.7-1.2 % at 2.5 s)
     await page.waitForFunction(() => !window.hlx
       || document.querySelector('body > header .header[data-block-status="loaded"]'), null, { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1200);

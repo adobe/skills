@@ -1,10 +1,9 @@
 /**
  * Renders the EDS page and compares it with the captured source, full page and per region.
- * Usage: node compare.mjs <edsUrl> <sourceDir> <outDir>
- *          [--map map.json] [--only r3,r4] [--session name] [--mobile | --tablet] [--no-full]
- *          [--static]   (--static: plain HTML page, don't wait for EDS decoration)
+ * `web header check pixels <page url> <sourceDir> <outDir> --map <map.json> [--only <ids>]
+ *   [--mobile | --tablet] [--no-full] [--static]` (--static: a plain HTML page, no EDS decoration)
  * map.json: { "r1": "header", "r3": "main > .section:nth-of-type(1)", ... } (region -> EDS selector)
- * Slices (<sourceDir>/slices.json, written by shell.mjs --cuts) are regions too, by their id.
+ * Slices (<sourceDir>/slices.json, when a capture has them) are regions too, by their id.
  * Writes <outDir>/eds-<vp>.png, full-diff-<vp>.png, report-<vp>.json, regions/<id>[.<vp>].side.png
  * (source | EDS | diff, side by side, shrunk to 1800 px: for humans) and regions/<id>[.<vp>].views/
  * (views.json, a scaled overview and full-resolution crops around the differences, each sized to
@@ -87,7 +86,7 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
         if (!e.hadRecentInput) window.__plgShifts.push({ v: e.value, at: [...new Set((e.sources || []).map((s) => where(s.node)))] });
       } }).observe({ type: 'layout-shift', buffered: true });
     });
-    // held still as the capture held the source (a rotating placeholder: the retailer, ap-1)
+    // held still as the capture held the source (a rotating placeholder)
     await page.addInitScript(${STEADY});
     await page.goto(${JSON.stringify(edsUrl)}, { waitUntil: 'load', timeout: 60000 });
     // an EDS page shows its body once loaded (body.appear); a page that never does is not one
@@ -106,7 +105,7 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
     await page.waitForFunction(() => [...document.querySelectorAll('[data-block-status]')]
       .every(b => b.dataset.blockStatus === 'loaded'), null, { timeout: 15000 }).catch(() => {});
     await page.evaluate(() => document.fonts.ready);
-    // images inside legacy shadow roots are invisible to document.images: collect them deeply
+    // images inside shadow roots are invisible to document.images: collect them deeply
     await page.evaluate(() => {
       window.__plgImgs = () => [...document.images, ...[...document.querySelectorAll('*')]
         .filter(e => e.shadowRoot).flatMap(e => [...e.shadowRoot.querySelectorAll('img')])];
@@ -145,7 +144,7 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
     const hh = Math.max(1, Math.min(h, meta.height - t));
     const { data, info } = await img
       .extract({ left: 0, top: t, width: Math.min(meta.width, width), height: hh })
-      // on white, as a browser shows it: a semi-transparent row in a shot is not a difference (s2b)
+      // on white, as a browser shows it: a semi-transparent row in a shot is not a difference
       .flatten({ background: '#ffffff' })
       .ensureAlpha()
       .raw()
@@ -203,7 +202,7 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
   const byId = Object.fromEntries([...source.regions, ...slices].map((r) => [r.id, r]));
   const rectOf = (r) => (vp === 'desktop' ? r.rect : r[`${vp}Rect`]);
   // a requested key the capture has no region for, or whose regions the source does not show at
-  // this width, is said so: skipped silently, it read as a clean comparison (PR #27 review)
+  // this width, is said so: skipped silently, it read as a clean comparison
   const unknown = [];
   const notShown = [];
   for (const key of Object.keys(map)) {
@@ -227,7 +226,7 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
     const base = join(out, 'regions', `${key}${vp === 'desktop' ? '' : `.${vp}`}`);
     const side = `${base}.side.png`;
     const { region, ...r } = await diff(a, b, null, side);
-    // full-resolution views for the agent: side.png is shrunk to 1800 px (s8)
+    // full-resolution views for the agent: side.png is shrunk to 1800 px
     const views = await writeViews(region, `${base}.views`);
     const srcText = ids
       .map((id) => {

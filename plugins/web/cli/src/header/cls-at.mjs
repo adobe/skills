@@ -1,8 +1,8 @@
 /**
  * The layout shift of a page load at given widths, the page held still as the checks hold it:
- * the bar's compare measures it at 1440, 820 and 390 only, and a source that changes between
- * them (the retailer zooms its page at 992–1439 px) can shift where none of those look.
- * Usage: node cls-at.mjs <url> <width,width,...>  → { "<width>": cls }
+ * `header check pixels` measures it at 1440, 820 and 390 only, and a source that changes between
+ * them (a retailer zooms its page at 992–1439 px) can shift where none of those look.
+ * `web header check cls <url> <width,width,...>`: { "<width>": cls }
  */
 import { closeSession, openSession, runCode } from './browser.mjs';
 import { STEADY } from './steady.mjs';

@@ -10,12 +10,12 @@ export const AB_TESTS = String.raw`/^https?:\/\/([^/]*\.)?(intellimize\.co|optim
 /**
  * Source of an init script (`addInitScript`) that holds a page still between two loads:
  * - a modal <dialog> opened more than a second after the last click, Enter or Space (a marketing
- *   splash on a timer, asianpaints) is closed at once, as a visitor closes it, so the page's own
+ *   splash on a timer, a paint retailer) is closed at once, as a visitor closes it, so the page's own
  *   close handler removes it; a click opens one as usual (a mobile menu built on showModal).
  *   Hiding it by CSS is not enough (while modal the page is inert), nor not opening it (the
  *   page's CSS showed the unopened dialog, and its body kept the scroll lock).
  *   navigator.userActivation is no test: Chrome reported it active with no input at all.
- * - a setInterval of 2 s or more never fires, so a rotating text (asianpaints' search placeholder,
+ * - a setInterval of 2 s or more never fires, so a rotating text (a paint retailer's search placeholder,
  *   every 3 s) or a carousel shows its first item on every load, on the source and on the build.
  * shortcut: a rotation chained with setTimeout or done in CSS still moves; add it when a page's
  * same-page check differs by one.

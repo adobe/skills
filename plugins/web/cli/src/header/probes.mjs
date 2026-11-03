@@ -1,8 +1,8 @@
 /**
- * Source header probes, for the header template (clef/header.mjs): scroll behaviour and the
+ * Source header probes, for the header template: scroll behaviour and the
  * desktop/mobile breakpoint (desktop session), and the mobile menu opened, then its first
- * expandable item (mobile session). Run after open-menus.mjs (it probes the first menu's label).
- * Usage: node header-probes.mjs <url> <sourceDir>
+ * expandable item (mobile session). Part of `web header capture`, after open-menus.mjs (it probes
+ * the first menu's label).
  * Adds `header` and `mobileMenu` to <sourceDir>/open/open.json; writes open/mobile-menu.png and
  * open/mobile-item.png.
  */
@@ -43,7 +43,7 @@ export function headerProbes(url, outArg) {
     const scroll = await page.evaluate(async (lbl) => window.__plgScrollProbe(lbl), label);
     // breakpoint: the smallest probed width that still shows the desktop nav (the real one lies
     // between it and the next probed width)
-    // a label not found at 1440 gives no breakpoint, not a bogus one (stripe-v3-clef-01 got 1440)
+    // a label not found at 1440 gives no breakpoint, not a bogus one (a payments site got 1440)
     if (!(await page.evaluate((lbl) => window.__plgLabelVisible(lbl), label))) {
       return JSON.stringify({ scroll, breakpoint: null });
     }
@@ -79,7 +79,7 @@ export function headerProbes(url, outArg) {
     await toggle.asElement().click();
     const revealed = await page.evaluate((n) => window.__plgWaitReveal(n), before);
     await page.waitForTimeout(700);
-    // a consent layer shown by JS that the click loaded (wpbeginner) is hidden like the capture's
+    // a consent layer shown by JS that the click loaded (a WordPress site) is hidden like the capture's
     const lateOverlays = (await page.evaluate(${VISIBLE_OVERLAYS})).map((o) => o.selector);
     if (lateOverlays.length) await page.addStyleTag({ content: lateOverlays.join(', ') + ' { display: none !important; }' });
     await page.screenshot({ path: ${JSON.stringify(join(out, 'open', 'mobile-menu.png'))} });

@@ -109,7 +109,7 @@ const settleSource = (prepBundle) => `
       document.querySelectorAll('video').forEach((v) => v.pause());
     });
     await page.waitForTimeout(300);
-    // consent layers neither page-prep nor the heuristic hid (stripe's cookie card): hidden by
+    // consent layers neither page-prep nor the heuristic hid (a payments site's cookie card): hidden by
     // selector, so open-menus.mjs and the snapshot hide them too; then probed again for the pre-flight
     rep.probeHidden = await page.evaluate(${VISIBLE_OVERLAYS});
     const probeCss = rep.probeHidden.map((o) => o.selector + ' { display:none!important }').join('\\n');

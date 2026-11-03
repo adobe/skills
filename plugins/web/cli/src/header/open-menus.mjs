@@ -1,10 +1,9 @@
 /**
  * Source open states: each top-nav menu opened in turn (viewport shot + visible link count), so
- * the built menus can be compared with the source's (open-states.mjs). A fresh load per toggle,
- * with the capture's overlay hide rules (overlays.json hideCss). Run after capture.mjs.
- * Usage: node open-menus.mjs <url> <sourceDir>
+ * the built menus can be compared with the source's. A fresh load per toggle, with the capture's
+ * overlay hide rules (overlays.json hideCss). Part of `web header capture`, after the views.
  * Writes <sourceDir>/open/{<i>.png,<i>.styles.txt,open.json}; each state also lists the consent
- * layers still visible when it was shot (visibleOverlays, lib/overlay-probe.mjs).
+ * layers still visible when it was shot (visibleOverlays, overlay-probe.mjs).
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -35,7 +34,7 @@ export function openMenus(url, outArg) {
   await first.context().route(${AB_TESTS}, (r) => r.abort());
   await first.context().addInitScript(${STEADY});
   // a fresh page per state: the previous one may still navigate from JS after a toggle's click
-  // (link tracking) and overtake the reload (wpbeginner); closing it stops that
+  // (link tracking) and overtake the reload (a WordPress site); closing it stops that
   let page = first;
   let loaded = false;
   const load = async () => {
@@ -72,7 +71,7 @@ export function openMenus(url, outArg) {
       trigger = 'click';
       try { await el.click({ timeout: 3000 }); } catch { states.push({ ...t, error: 'not clickable' }); continue; }
       await page.waitForTimeout(700);
-      // a toggle that is a plain link leaves the page (wpbeginner): no open state, not a crash
+      // a toggle that is a plain link leaves the page (a WordPress site): no open state, not a crash
       try { links = await page.evaluate(() => window.__plgVisibleLinks()); } catch (e) {
         states.push({ ...t, error: 'navigates: ' + e.message.split('\\n')[0].slice(0, 80) });
         continue;

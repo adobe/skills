@@ -7,7 +7,7 @@
     const r = el.getBoundingClientRect();
     if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > innerHeight) return false;
     const s = getComputedStyle(el);
-    // ancestors count too: a closed dropdown hidden by its panel's opacity (wpbeginner) is not shown
+    // ancestors count too: a closed dropdown hidden by its panel's opacity (a WordPress site) is not shown
     return s.visibility !== 'hidden' && s.display !== 'none' && Number(s.opacity) > 0.05
       && el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
   };
@@ -29,7 +29,7 @@
   };
   window.__plgVisibleLinks = () => [...document.querySelectorAll('a[href]')].filter(shown).length;
   // waits (up to `ms`) until more links are visible than `before`: a site that delays its JS until
-  // the first interaction replays the click ~1.5 s later (wpbeginner's mobile menu)
+  // the first interaction replays the click ~1.5 s later (a WordPress site's mobile menu)
   window.__plgWaitReveal = async (before, ms = 5000) => {
     for (let t = 0; t < ms; t += 100) {
       if (window.__plgVisibleLinks() > before) return true;
@@ -81,7 +81,7 @@
   };
 
   // the innermost shown element whose text is the label: not only text-only leaves, since a
-  // trigger often holds its label next to an icon (stripe-v3-clef-01: <button>Produits<svg/></button>)
+  // trigger often holds its label next to an icon (a payments site: <button>Produits<svg/></button>)
   const labelEl = (label) => [...document.querySelectorAll('body *')]
     .find((n) => n.textContent.trim() === label && shown(n)
       && ![...n.children].some((c) => c.textContent.trim() === label));
