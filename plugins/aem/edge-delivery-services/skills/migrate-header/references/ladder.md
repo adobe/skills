@@ -35,7 +35,8 @@ node <skill>/scripts/hrefs-check.mjs <src> drafts
 ## 2. Pixels at 1x
 
 The map gives the capture's region ids (`<src>/page.json` `regions[].id`) -> selectors on your page.
-For one region holding the whole header: `{ "<id>": "body > header" }`.
+Compare the header as a whole: join the ids with `+`, `{ "header+header-2": "body > header" }`
+(`{ "header": "body > header" }` when the capture has one region).
 
 ```bash
 $WEB header check pixels <page> <src> <out> --map .migrate-header/map.json --format text

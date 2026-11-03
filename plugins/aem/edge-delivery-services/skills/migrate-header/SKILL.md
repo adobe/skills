@@ -42,9 +42,9 @@ The checks are `header` commands of the web CLI, installed from adobe/skills on 
 pinned to a commit. It takes about 30 s the first time; afterwards the test below skips it.
 
 ```bash
-DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-5c498c8"
+DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-f5e54b2"
 [ -x "$DIR/node_modules/.bin/web" ] ||
-  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#5c498c8894a6b34f409eaf344654654d3e6789c3&path:/plugins/web/cli"
+  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#f5e54b26aefbc746cc979e065c198bae11f49ac3&path:/plugins/web/cli"
 WEB="$DIR/node_modules/.bin/web"
 "$WEB" header --help
 ```
@@ -69,9 +69,11 @@ $WEB header capture <source> .migrate-header/source --format text
 - `open/open.json`: each menu, its trigger, panel box, styles and links (`panel.items`), the
   breakpoint, the scroll guess and the mobile menu, with a shot and a style dump per state.
 
-When the header is several elements, or not found at the top of the page, name them:
-`--header "<selector>"` (repeat). Check the printed regions against the desktop shot before going
-on. Add `.migrate-header/` and `drafts/` to `.gitignore`.
+The capture prints the header's regions, top first: the first header element at the top of the
+page, with the bands stacked above it (a promo bar outside the `<header>`). Check them against
+`desktop.png` before going on: every band of the source's header is a region, and nothing else
+is. If not, capture again with the bands named, top first: `--header "<selector>"` (repeat).
+Add `.migrate-header/` and `drafts/` to `.gitignore`.
 
 ## 3. Serve your page
 
