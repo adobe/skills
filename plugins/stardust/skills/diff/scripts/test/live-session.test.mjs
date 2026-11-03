@@ -39,7 +39,7 @@ const stderrOf = async (fn) => {
 
 check('the exported surface the instruments import, the denial-page names included', () => {
   for (const name of ['CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'challengeMarker', 'isChallengeResponse', 'gotoLive', 'launchLiveBrowser', 'launchStealthHeaded', 'browserTier', 'acceptConsent', 'dismissOverlays',
-    'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'LIVE_MAX_PARALLEL_DEFAULT', 'LIVE_MAX_WAIT_MS_DEFAULT', 'LIVE_LEASE_MS_DEFAULT', 'LIVE_WAITER_STALE_MS', 'LIVE_STATE_TTL_MS_DEFAULT', 'LIVE_RETRY_AFTER_MAX_MS',
+    'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'LIVE_MAX_PARALLEL_DEFAULT', 'LIVE_MAX_WAIT_MS_DEFAULT', 'LIVE_LEASE_MS_DEFAULT', 'LIVE_WAITER_STALE_MS', 'LIVE_STATE_TTL_MS_DEFAULT', 'LIVE_RETRY_AFTER_MAX_MS', 'LIVE_BOOKKEEPING_WAIT_MS',
     'livePaceMs', 'liveMaxParallel', 'liveMaxWaitMs', 'liveStateTtlMs', 'liveStateEnabled', 'liveStateRoot', 'liveHostStateDir', 'paceSlot', 'liveThrottleDecision',
     'tryAcquireLiveLock', 'paceLiveNavigation', 'runLiveNavigation', 'isTransportError', 'recordLiveBotSignal', 'recordLiveNavigationSuccess', 'persistLiveStorageState', 'resetLivePacing',
     'browserUserAgent', 'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
@@ -353,21 +353,27 @@ await checkAsync('gotoLive: a headed challenge that clears still records the obs
   assert.deepEqual([shared.paceMs, shared.maxParallel, shared.signalSeen], [2000, 1, true]);
   rmSync(stateRoot, { recursive: true, force: true });
 });
-await checkAsync('gotoLive: a shared-state write failure remains attached to the original BotChallengeError', async () => {
+await checkAsync('gotoLive: an unavailable shared throttle does not shorten a denial-page solve window or alter its BotChallengeError', async () => {
+  session.resetLivePacing();
   const root = mkdtempSync(join(tmpdir(), 'live-goto-signal-error-'));
   const stateRoot = join(root, 'not-a-directory');
   writeFileSync(stateRoot, 'occupied');
-  const page = stubPage({ status: 403, headers: { server: 'AkamaiGHost' } });
-  await assert.rejects(gotoLive(page, LIVE_URL, {
-    settleMs: 0,
-    throttle: { stateRoot, paceMs: 0, maxParallel: 0 },
-  }), (error) => {
-    assert.equal(error.name, 'BotChallengeError');
-    assert.equal(error.marker, 'HTTP 403 + Akamai edge signature');
-    assert.ok(error.cause instanceof Error);
-    assert.match(error.message, /shared throttle update failed/);
-    return true;
+  const page = stubPage({ probes: [SIGNATURE_PAGES['system-down']] });
+  const lines = await stderrOf(async () => {
+    await assert.rejects(gotoLive(page, LIVE_URL, {
+      settleMs: 0, solveWindow: true,
+      throttle: { stateRoot, paceMs: 0, maxParallel: 0 },
+    }), (error) => {
+      assert.equal(error.name, 'BotChallengeError');
+      assert.equal(error.marker, 'HTTP 200 denial page — "System Down"');
+      assert.equal(error.cause, undefined);
+      assert.ok(!error.message.includes('throttle'), error.message);
+      return true;
+    });
   });
+  assert.equal(page.calls.reload, 3, 'the solve window runs to its end');
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\[live-session\] WARNING: shared throttle unavailable for www\.example\.com: .+ — proceeding unthrottled$/);
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -464,6 +470,16 @@ await checkAsync('adaptive throttle: each later bot signal climbs 1000 → 2000 
     [2000, 1, true], [4000, 1, true], [8000, 1, true], [15000, 1, true], [15000, 1, false],
   ]);
   assert.deepEqual(lines, [2000, 4000, 8000, 15000].map((pace) => `[live-session] www.example.com: bot signal seen — one navigation at a time, ${pace} ms apart from now on`));
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('adaptive throttle: a concurrent signal extends Retry-After without taking a second pace step', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-adaptive-concurrent-hold-'));
+  const options = {
+    stateRoot, paceMs: 1000, maxParallel: 2, now: () => 1000, pid: 102, pidAlive: () => true,
+  };
+  await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, { ...options, retryAfterMs: 2000 }));
+  const state = await session.recordLiveBotSignal(LIVE_URL, { ...options, retryAfterMs: 10000 });
+  assert.deepEqual([state.paceMs, state.backedOff, state.holdUntil], [2000, false, 11000]);
   rmSync(stateRoot, { recursive: true, force: true });
 });
 await checkAsync('adaptive throttle: configured parallelism is the fresh ceiling, configured pace is the floor, and recovery halves pace once after 50 consecutive successes', async () => {
@@ -651,6 +667,21 @@ await checkAsync('runLiveNavigation: 429 Retry-After seconds records one signal,
   assert.ok(clock >= 3000, `started at ${clock}`);
   state = JSON.parse(readFileSync(stateFile, 'utf8'));
   assert.equal(state.adaptive.holdUntil, 3000);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('runLiveNavigation: Retry-After holds still apply when pace and parallel limits are disabled', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-retry-after-only-'));
+  let clock = 1000;
+  const waits = [];
+  const page = { waitForTimeout: async (ms) => { waits.push(ms); clock += ms; } };
+  const options = {
+    stateRoot, paceMs: 0, maxParallel: 0, now: () => clock, pid: 604, pidAlive: () => true,
+  };
+  await session.recordLiveBotSignal(LIVE_URL, { ...options, retryAfterMs: 2000 });
+  clock += 1;
+  await session.runLiveNavigation(page, LIVE_URL, async () => 1, options);
+  assert.ok(waits.reduce((sum, ms) => sum + ms, 0) >= 1999, `waited ${waits.join('+')} ms`);
+  assert.ok(clock >= 3000);
   rmSync(stateRoot, { recursive: true, force: true });
 });
 await checkAsync('runLiveNavigation: Retry-After HTTP-date is relative to now and values above 120 seconds are capped', async () => {
@@ -877,6 +908,84 @@ await checkAsync('runLiveNavigation: lock contention reaches the wait ceiling wi
   assert.equal(navigated, true);
   assert.deepEqual(waits, [1, 1]);
   assert.ok(nowCalls < 50, `deadline handling used ${nowCalls} clock reads`);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('shared throttle: corrupt JSON warns once, navigation proceeds, and the next write replaces it', async () => {
+  session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-corrupt-throttle-'));
+  const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+  mkdirSync(hostDir, { recursive: true });
+  const stateFile = join(hostDir, 'throttle.json');
+  writeFileSync(stateFile, 'not json');
+  let navigated = false;
+  const options = {
+    stateRoot, paceMs: 1000, maxParallel: 2, now: () => 1000, pid: 701, pidAlive: () => true,
+  };
+  const lines = await stderrOf(async () => {
+    await session.runLiveNavigation(
+      { waitForTimeout: async () => {} }, LIVE_URL, async () => { navigated = true; return 7; }, options,
+    );
+    await session.recordLiveNavigationSuccess(LIVE_URL, options);
+  });
+  assert.equal(navigated, true);
+  assert.doesNotThrow(() => JSON.parse(readFileSync(stateFile, 'utf8')));
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\[live-session\] WARNING: shared throttle unavailable for www\.example\.com: Unexpected token .+ — proceeding unthrottled$/);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('shared throttle: an unwritable root warns once and every bookkeeping entry point skips without failing navigation', async () => {
+  session.resetLivePacing();
+  const root = mkdtempSync(join(tmpdir(), 'live-unwritable-throttle-'));
+  const stateRoot = join(root, 'not-a-directory');
+  writeFileSync(stateRoot, 'occupied');
+  const options = {
+    stateRoot, paceMs: 1000, maxParallel: 2, now: () => 1000, pid: 702, pidAlive: () => true,
+  };
+  let navigated = false;
+  let success; let signal;
+  const lines = await stderrOf(async () => {
+    assert.equal(await session.runLiveNavigation(
+      { waitForTimeout: async () => {} }, LIVE_URL, async () => { navigated = true; return 9; }, options,
+    ), 9);
+    success = await session.recordLiveNavigationSuccess(LIVE_URL, options);
+    signal = await session.recordLiveBotSignal(LIVE_URL, options);
+  });
+  assert.equal(navigated, true);
+  for (const result of [success, signal]) {
+    assert.deepEqual(result, {
+      paceMs: 1000, maxParallel: 2, signalSeen: false, successes: 0, holdUntil: null,
+      backedOff: false, recovered: false, skipped: true,
+    });
+  }
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /^\[live-session\] WARNING: shared throttle unavailable for www\.example\.com: ENOTDIR: .+ — proceeding unthrottled$/);
+  rmSync(root, { recursive: true, force: true });
+});
+await checkAsync('adaptive throttle: a foreign live lock skips bookkeeping after 10 seconds of fake time and warns once', async () => {
+  session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-bookkeeping-lock-'));
+  const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+  const ownerDir = join(hostDir, 'throttle.lock', 'other-owner');
+  mkdirSync(ownerDir, { recursive: true });
+  writeFileSync(join(ownerDir, 'owner.json'), JSON.stringify({ pid: 60, createdAt: 1000, token: 'other-owner' }));
+  const clock = 1000;
+  let waited = 0;
+  const lines = await stderrOf(async () => {
+    const result = await session.recordLiveBotSignal(LIVE_URL, {
+      stateRoot, paceMs: 3000, maxParallel: 4, pollMs: 1000,
+      now: () => clock,
+      waitForTimeout: async (ms) => { waited += ms; },
+      pid: 703, pidAlive: () => true,
+    });
+    assert.deepEqual(result, {
+      paceMs: 3000, maxParallel: 4, signalSeen: false, successes: 0, holdUntil: null,
+      backedOff: false, recovered: false, skipped: true,
+    });
+  });
+  assert.equal(clock, 1000, 'the adaptive state clock stays frozen');
+  assert.equal(waited, session.LIVE_BOOKKEEPING_WAIT_MS);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], new RegExp(`shared throttle unavailable for www\\.example\\.com: .*${session.LIVE_BOOKKEEPING_WAIT_MS} ms.*proceeding unthrottled`));
   rmSync(stateRoot, { recursive: true, force: true });
 });
 await checkAsync('paceLiveNavigation: slots per host under an injected clock — the first navigation is free, the next waits one pace, concurrent callers queue up (0, pace, 2×pace), another host is independent, localhost is never paced, 0 disables; ONE stderr line per host on its first wait', async () => {

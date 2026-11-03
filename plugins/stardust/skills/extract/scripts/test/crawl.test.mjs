@@ -11,9 +11,11 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
+import * as crawl from '../crawl.mjs';
+
+const {
   captureGaps, clearChallenge, crawlerLiveBindings, isChallengeResponse, localeRootPath, maxPages,
-} from '../crawl.mjs';
+} = crawl;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
@@ -141,10 +143,60 @@ await (async () => {
       ['navigate', 'https://www.example.com/path/'],
       ['reload'],
     ]);
+    calls.length = 0;
+    assert.equal(await clearChallenge(page, blocked, {
+      recordBotSignal: async () => { throw new Error('signal unavailable'); },
+      navigate: async (_page, url, operation) => { calls.push(['navigate', url]); return operation(); },
+    }), clean);
+    assert.deepEqual(calls, [
+      ['wait', 4000],
+      ['navigate', 'https://www.example.com/path/'],
+      ['reload'],
+    ]);
     console.log('✓ clearChallenge: an alternate-path edge response records the signal and reloads under shared navigation');
   } catch (e) {
     failed += 1;
     console.log(`✗ clearChallenge: an alternate-path edge response records the signal and reloads under shared navigation\n  ${e.message.split('\n').join('\n  ')}`);
+  }
+})();
+
+await (async () => {
+  const out = mkdtempSync(join(tmpdir(), 'crawl-capture-bindings-'));
+  try {
+    assert.equal(typeof crawl.capturePage, 'function', 'capturePage is exported for its binding-level test');
+    const url = 'https://www.example.com/page';
+    const response = { status: () => 200, headers: () => ({ 'content-type': 'text/html' }) };
+    const record = {
+      finalUrl: url,
+      headings: ['Captured'],
+      links: [],
+      _contentHash: 'content',
+      _signals: { mainTextLen: 8, realImageCount: 0 },
+    };
+    const page = {
+      goto: async () => response,
+      url: () => url,
+      waitForTimeout: async () => {},
+      evaluate: async (fn) => (fn.name === 'capture' ? record : undefined),
+      content: async () => '<main>Captured</main>',
+      screenshot: async () => {},
+      close: async () => {},
+    };
+    const context = { newPage: async () => page };
+    const captured = await crawl.capturePage(context, url, 'page', {
+      consent: false, dynamics: false, wait: 'fast', out,
+    }, {
+      runLiveNavigation: async (_page, _url, navigate) => navigate(),
+      recordLiveNavigationSuccess: async () => { throw new Error('success unavailable'); },
+      persistLiveStorageState: async () => { throw new Error('state unavailable'); },
+    });
+    assert.equal(captured.headings[0], 'Captured');
+    console.log('✓ capturePage: rejecting shared success and storage hooks do not fail a completed capture');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ capturePage: rejecting shared success and storage hooks do not fail a completed capture\n  ${e.message.split('\n').join('\n  ')}`);
+  } finally {
+    rmSync(out, { recursive: true, force: true });
   }
 })();
 

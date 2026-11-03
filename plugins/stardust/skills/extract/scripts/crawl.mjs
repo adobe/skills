@@ -273,7 +273,7 @@ export function isChallengeResponse(resp) {
 export async function clearChallenge(page, resp, {
   recordBotSignal = recordSharedBotSignal, navigate = sharedNavigate,
 } = {}) {
-  if (isChallengeResponse(resp)) await recordBotSignal(page.url());
+  if (isChallengeResponse(resp)) await recordBotSignal(page.url()).catch(() => {});
   for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
     await page.waitForTimeout(4000);
     const reloaded = await navigate(page, page.url(), () => page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }))
@@ -895,18 +895,23 @@ function capture() {
   };
 }
 
-async function capturePage(context, url, slug, args) {
+export async function capturePage(context, url, slug, args, sharedBindings = null) {
+  const live = sharedBindings ? crawlerLiveBindings(sharedBindings) : null;
+  const navigateLive = live ? live.runLiveNavigation : sharedNavigate;
+  const recordSuccess = live ? live.recordLiveNavigationSuccess : recordSharedSuccess;
+  const persistState = live ? live.persistLiveStorageState : persistSharedState;
+  const recordBotSignal = live ? live.recordLiveBotSignal : recordSharedBotSignal;
   const page = await context.newPage();
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
-  let resp = await sharedNavigate(page, url, () => page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }));
+  let resp = await navigateLive(page, url, () => page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }));
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
   // bot-management challenge (Cloudflare cf-mitigated: challenge, etc.): the
   // worker's fresh context is re-challenged even after the probe cleared it, so
   // give the interstitial its JS-solve window and reload before validating —
   // otherwise a solvable 403 is thrown as a fatal HTTPError.
-  resp = await clearChallenge(page, resp);
+  resp = await clearChallenge(page, resp, { recordBotSignal, navigate: navigateLive });
   let status = resp.status();
   // 404 on a slash variant: retry ONCE with the trailing slash flipped before
   // recording a failure (stardust-style e2e finding — slash-required hosts).
@@ -917,7 +922,7 @@ async function capturePage(context, url, slug, args) {
       u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
       // guarded + short timeout: a hanging flipped-variant probe must not
       // replace the crisp HTTPError 404 with a raw TimeoutError.
-      const retry = await sharedNavigate(page, u.href, () => page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 }))
+      const retry = await navigateLive(page, u.href, () => page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 }))
         .catch(() => null);
       if (retry && retry.status() < 400) {
         console.error(`[crawl] slash-retry OK ${url} -> ${u.href}`);
@@ -930,8 +935,8 @@ async function capturePage(context, url, slug, args) {
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
 
   if (args.consent) await dismissConsent(page);
-  await recordSharedSuccess(resolvedUrl);
-  await persistSharedState(page, resolvedUrl);
+  await recordSuccess(resolvedUrl).catch(() => {});
+  await persistState(page, resolvedUrl).catch(() => {});
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
   // 4-step scroll to trigger lazy content
   for (let y = 0; y <= 1; y += 0.34) {
@@ -1035,7 +1040,7 @@ async function main() {
   try {
     const probeResp = await sharedNavigate(probe, args.url, () => probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 }));
     if (isChallengeResponse(probeResp)) {
-      await recordSharedBotSignal(args.url);
+      await recordSharedBotSignal(args.url).catch(() => {});
       botBlock = 'challenge';
     }
   } catch (err) {
@@ -1063,7 +1068,7 @@ async function main() {
       );
     }
   }
-  await persistSharedState(probe);
+  await persistSharedState(probe).catch(() => {});
 
   // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
   // sitemap fetch must use where the site actually lives, or discovery silently
