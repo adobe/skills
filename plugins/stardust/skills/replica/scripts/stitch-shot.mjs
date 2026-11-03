@@ -15,10 +15,11 @@
  *
  * Hardening baked in (each one is a recorded false-measurement trap; the
  * live-navigation pieces live in the shared ../../diff/scripts/live-session.mjs):
- *   - real-Chrome UA + the STANDARD REQUEST HEADERS by default: the default
- *     HeadlessChrome UA gets a Cloudflare managed challenge on many live
- *     sites, and UA alone still 403s on Akamai (F-R1) — the standard headers
- *     (Accept / Accept-Language / sec-ch-ua*) are the other half of the fix.
+ *   - real Chrome headless with ITS OWN identity by default (live-session
+ *     launchLiveBrowser; bundled Chromium only when Chrome is missing) plus the
+ *     STANDARD REQUEST HEADERS on document requests: a bare context still 403s
+ *     on Akamai (F-R1) — the headers are the other half of the fix. No user
+ *     agent is set unless --ua says so; no stealth flag by default.
  *   - a bot-management challenge/blocked interstitial FAILS LOUD (exit 3),
  *     never captured as if it were the source (the Access-Denied trap). So
  *     does a 2xx DENIAL PAGE (live-session's pageDenial owns the rule): gotoLive
@@ -27,7 +28,7 @@
  *     domcontentloaded). The message names the signature and says "origin
  *     blocked"; a re-check that cannot read the page is one stderr line
  *     (`denial-page check skipped`), never a pass. Escalate with --headed
- *     (stealth real Chrome).
+ *     (real Chrome with the challenge-solve window).
  *   - waitUntil 'domcontentloaded' (never 'networkidle'): live sites with
  *     analytics beacons never reach networkidle — hard timeout otherwise.
  *   - TWO overlay classes dismissed: cookie consent (CLICKED accept, not DOM
@@ -90,9 +91,9 @@
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
  *     --no-dismiss        dismiss no overlay at all (gate.sh --no-dismiss)
- *     --headed            escalation: headed stealth real Chrome
+ *     --headed            escalation: real Chrome + the challenge-solve window
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
- *     --ua <string>       user agent                        (default real-Chrome)
+ *     --ua <string>       user agent                        (default: the browser's own)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
  *     --timeout <ms>      goto timeout                      (default 60000)
  *     --freeze-baseline   origin baseline (opt-in, default OFF): the capture is
@@ -144,7 +145,9 @@ if (!LIVE_SESSION) {
   process.exit(1);
 }
 const liveSession = await import(pathToFileURL(LIVE_SESSION).href);
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = liveSession;
+const { isLiveHttpUrl, launchStealthHeaded, launchLiveBrowser, newLiveContext, gotoLive, dismissOverlays } = liveSession;
+// the default tier: real Chrome headless with its own identity (a live-session copy that predates it: bundled Chromium)
+const launchDefault = typeof launchLiveBrowser === 'function' ? launchLiveBrowser : (chromium) => chromium.launch();
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -155,9 +158,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
   --no-dismiss      dismiss no overlay at all (gate.sh --no-dismiss pass-through)
-  --headed          headed stealth real Chrome (escalation for bot-managed sites)
+  --headed          real Chrome with the challenge-solve window (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
-  --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
+  --ua <string>     user agent (default: the browser's own — real Chrome's; the standard headers ride either way)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
   --timeout <ms>    goto timeout (default 60000)
   --freeze-baseline freeze this capture as the origin baseline (opt-in; default OFF): it is ALWAYS written as
@@ -205,7 +208,7 @@ export class UsageError extends Error { constructor(msg) { super(msg); this.name
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: null, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -595,9 +598,9 @@ async function main() {
   // Lazy: --help, the subcommands, the refusals above and the pure tests need neither playwright nor pngjs.
   let chromium; let PNG;
   try { ({ chromium } = await import('playwright')); ({ PNG } = await import('pngjs')); } catch (e) { throw new Error(`playwright / pngjs not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  const browser = opts.headed ? await launchStealthHeaded(chromium) : await launchDefault(chromium);
   try {
-    // UA + standard headers + webdriver spoof on the context (live-session).
+    // the standard headers on the context, the browser's own identity otherwise (live-session).
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
       viewport: { width: opts.width, height: opts.vh },

@@ -62,7 +62,7 @@ captures and crops stay in `<work>`.
   (`spec-knowledge.mjs` warns otherwise).
 - S10 passes when `spec-knowledge.mjs` exits 0 (every rule computed) and every open question has a default.
 - A blocked origin (S1 or S2 exit 3: bot challenges or refusals on 10% or more) stops the build: ask the user to
-  allow-list the crawler, or to choose `--headed` (the plugin's stealth real-Chrome tier from the diff skill's
+  allow-list the crawler, or to choose `--headed` (the plugin's real-Chrome challenge-solve tier from the diff skill's
   `live-session.mjs`, as replica uses) or `--archive <date>` (Internet Archive captures, which the provenance and a
   finding must disclose). Never choose for them, and never work around a block another way.
 - Before sharing: no customer secret, internal evaluation or other migration's name in the project or the output.

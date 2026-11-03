@@ -23,19 +23,20 @@
  *
  * Usage:
  *   node style-census.mjs [--pages <dir> | --urls a,b,c] [--out <file>] [--width <px>]…
- *                         [--concurrency <n>] [--max-pages <n>] [--timeout-ms <ms>] [--ua <string>]
- *                         [--dismiss <sel,…>] [--headed] [--locale <tag>]
+ *                         [--concurrency <n>] [--parallel-live-ok] [--max-pages <n>]
+ *                         [--timeout-ms <ms>] [--ua <string>] [--dismiss <sel,…>] [--headed] [--locale <tag>]
  *     --pages <dir>        page records (default stardust/current/pages): every *.json there,
  *                          each record's finalUrl (or url) is measured
  *     --urls a,b,c         measure exactly these URLs instead of a pages dir
  *     --out <file>         output (default stardust/current/_computed-styles.json)
  *     --width <px>         viewport width; repeatable or comma-separated (default 1440)
- *     --concurrency <n>    parallel browser contexts (default 1 — one live page at a time; raise
- *                          it only on an origin known to have no bot management)
+ *     --concurrency <n>    parallel browser contexts (default 1; values above 1 require
+ *                          --parallel-live-ok unless every input is local)
+ *     --parallel-live-ok   allow parallel live pages; a source edge rate-limits bursts from one address
  *     --max-pages <n>      cap the page list (default: every page — the census is site-wide)
  *     --timeout-ms <ms>    per-page navigation timeout (default 20000)
- *     --ua <string>        user agent (default: the real-Chrome desktop UA the recipe's browser
- *                          configuration calls for — the same value the live-session helper uses)
+ *     --ua <string>        user agent (default: the browser's own, presented without the headless token by
+ *                          the shared live-session helper; a bundled Chromium keeps its own hints)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; clicked once each)
  *     --headed             headed stealth real Chrome (escalation for bot-managed sites)
  *     --locale <tag>       pin Accept-Language + context locale (e.g. en-GB) for geo determinism
@@ -91,8 +92,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 
 // Current stable desktop Chrome on macOS — the platform token and minor version are frozen by
 // Chrome's UA reduction, so only the major matters.
-export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
-export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, maxPages: Infinity, timeoutMs: 20000, ua: DEFAULT_UA, dismiss: [], headed: false, locale: null };
+export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, parallelLiveOk: false, maxPages: Infinity, timeoutMs: 20000, ua: null, dismiss: [], headed: false, locale: null };
 const SETTLE_MS = 2500;
 const VIEWPORT_H = 900;
 const OCCLUDER_COVERAGE = 0.4;
@@ -111,7 +111,21 @@ async function loadLiveSession() {
   return import(pathToFileURL(found).href);
 }
 
-export function parseArgs(argv) {
+const isLocalInput = (value) => {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'file:' || ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(u.hostname) || u.hostname.endsWith('.localhost');
+  } catch { return false; }
+};
+
+function guardLiveConcurrency(o, urls) {
+  if (o.concurrency <= 1 || o.parallelLiveOk || (urls && urls.length && urls.every(isLocalInput))) return o;
+  console.error(`style-census: --concurrency ${o.concurrency} ignored — one live page at a time unless --parallel-live-ok (a source edge rate-limits bursts from one address)`);
+  o.concurrency = 1;
+  return o;
+}
+
+export function parseArgs(argv, { deferConcurrencyGuard = false } = {}) {
   const o = { ...DEFAULTS, widths: [], dismiss: [], urls: null, pagesGiven: false };
   // A value flag followed by nothing or by another --flag is a usage error naming the flag.
   const need = (i, k) => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${k} needs a value`); return argv[i + 1]; };
@@ -123,6 +137,7 @@ export function parseArgs(argv) {
     else if (k === '--out') { o.out = need(i, k); i += 1; }
     else if (k === '--width') { for (const w of need(i, k).split(',')) o.widths.push(int(w.trim(), k, 240)); i += 1; }
     else if (k === '--concurrency') { o.concurrency = int(need(i, k), k); i += 1; }
+    else if (k === '--parallel-live-ok') { o.parallelLiveOk = true; }
     else if (k === '--max-pages') { o.maxPages = int(need(i, k), k); i += 1; }
     else if (k === '--timeout-ms') { o.timeoutMs = int(need(i, k), k, 1000); i += 1; }
     else if (k === '--ua') { o.ua = need(i, k); i += 1; }
@@ -135,7 +150,7 @@ export function parseArgs(argv) {
   o.widths = [...new Set(o.widths)];
   if (o.urls && o.pagesGiven) throw new UsageError('pass --pages or --urls, not both');
   if (o.urls && !o.urls.length) throw new UsageError('--urls lists no URL');
-  return o;
+  return deferConcurrencyGuard ? o : guardLiveConcurrency(o, o.urls);
 }
 
 // The page list: --urls verbatim, or every *.json record under --pages (finalUrl, else url),
@@ -450,9 +465,16 @@ async function measure(contexts, url, width, o, session) {
   }
 }
 
+export async function launchCensusBrowser(chromium, o, session) {
+  if (o.headed) return session.launchStealthHeaded(chromium);
+  if (typeof session.gotoLive === 'function' && typeof session.launchLiveBrowser === 'function') return session.launchLiveBrowser(chromium);
+  return chromium.launch({ headless: true });
+}
+
 async function main(argv) {
-  const o = parseArgs(argv);
+  const o = parseArgs(argv, { deferConcurrencyGuard: true });
   const urls = listUrls(o);
+  guardLiveConcurrency(o, urls);
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) {
     throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — extract/SKILL.md § Setup: copy this script into the project's stardust/scripts/ and run the copy`);
@@ -462,8 +484,9 @@ async function main(argv) {
   for (const url of urls) for (const width of o.widths) jobs.push({ url, width });
   const pages = {};
   const failed = [];
-  // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.
-  const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
+  // --headed is the shared escalation tier; the identity-preserving live launcher is preferred
+  // when available, with the previous plain-headless launch retained for older helper copies.
+  const browser = await launchCensusBrowser(chromium, o, session);
   let next = 0;
   let challenge = null;
   async function worker() {
@@ -471,7 +494,7 @@ async function main(argv) {
     const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
     const contexts = {
       live: await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common }),
-      local: await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common }),
+      local: await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common }),
     };
     while (next < jobs.length) {
       const { url, width } = jobs[next];
@@ -498,7 +521,7 @@ async function main(argv) {
 
   const measured = Object.values(pages).reduce((n, byWidth) => n + Object.keys(byWidth).length, 0);
   const out = {
-    _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua, synthesizedInputs: [], failed },
+    _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua || 'browser-default', synthesizedInputs: [], failed },
     pages,
     aggregate: measured ? aggregate(pages) : null,
   };

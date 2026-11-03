@@ -22,7 +22,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read before any `--hel
 - `deploy/section-schema.mjs` — section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
 - `deploy/style-fingerprint.mjs` — variation groups — `file:///abs/<proto>.html`
 - `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f]`; exit 2 = undecided error
-- `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390]`
+- `diff/chrome-explore.mjs` — header states, motion, scroll — `<url> <out.json> [--width 1440,390] [--max-requests 600]`
 - `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped > 0
 - `diff/content-diff.mjs` — structural + attribute/icon diff, all roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json]`
 - `diff/content-presence.mjs` — content per band + controls — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = a MISSING/HIDDEN link/heading
@@ -41,7 +41,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read before any `--hel
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
-- `extract/crawl.mjs` — crawler → pages, shots, `captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
+- `extract/crawl.mjs` — crawler → pages, shots, `captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out <dir>] [--dynamics] [--page-timeout 60]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`

@@ -3,69 +3,176 @@
  *
  * The single home for "hit a live site to measure it, as robustly as the
  * capture engine". Every live-side navigation in the gate instruments
- * (content-diff, visual-diff, replica's stitch-shot) goes through here, so
- * capture-hardening and gate-hardening are the SAME surface — a luggage retailer's
- * field finding was that they weren't: crawl.mjs's bot-management ladder
- * cleared Akamai while the headless gate instruments were served "Access
- * Denied" and would have silently measured it as the source.
+ * (content-diff, visual-diff, replica's stitch-shot, measure-live's probes)
+ * goes through here, so capture-hardening and gate-hardening are the SAME
+ * surface — a field finding was that they weren't: the crawler cleared the
+ * edge while headless gate instruments were served "Access Denied" and would
+ * have silently measured it as the source.
  *
- * Ports the SEMANTICS of extract/scripts/crawl.mjs's bot-management ladder
- * (do not import crawl.mjs — it is a crawler, this is a measurement session):
- *   - challenge/interstitial detection on the entry response
- *     (cf-mitigated: challenge; 403/429/503 + an edge/CDN signature);
- *   - the challenge-solve wait+reload window before declaring a hard block —
- *     under STEALTH-HEADED sessions only (gotoLive `solveWindow`): headless
- *     clearance never lands, and the loop's extra hits would spend the
- *     ~3–4-request Akamai block budget before --headed escalation;
- *   - headed real-Chrome stealth escalation (`--disable-blink-features=
- *     AutomationControlled`, dropped `--enable-automation`, navigator.webdriver
- *     spoof on EVERY context — the challenge re-fires per context).
+ * THE IDENTITY RULE — every context presents the running browser's own user
+ * agent with the headless token removed, or the caller's override. Real Chrome
+ * presents matching client hints; a bundled Chromium's own hints ride.
+ * The existing automation-signal handling stays on unless STARDUST_STEALTH=0.
+ *   - Default tier (launchLiveBrowser): real Chrome headless (`channel:
+ *     'chrome'`) — its own user agent without the headless token, its own
+ *     client hints, its own identity; bundled Chromium only when Chrome is not
+ *     installed (tier 'chromium-fallback', one stderr line). Every context gets
+ *     the existing navigator.webdriver spoof unless STARDUST_STEALTH=0.
+ *   - The sec-ch-ua* client hints are derived from the browser's real version
+ *     and running OS (or from the caller's UA string). A bundled Chromium's
+ *     own hints ride untouched — it is not Chrome and the headers must not say so.
+ *   - The STANDARD request headers (Accept, Accept-Language,
+ *     Upgrade-Insecure-Requests) ride on DOCUMENT requests only (F-R1: a bot
+ *     manager fingerprints their absence; F-B2: on every request they make
+ *     cross-origin font fetches non-simple → silent fallback type).
+ *   - --headed (launchStealthHeaded) is the same real Chrome, window-free, plus
+ *     the challenge-solve window (gotoLive `solveWindow`) and the existing
+ *     launch flags. STARDUST_STEALTH=0 disables the flags and spoof with one
+ *     stderr line; STARDUST_HEADED_WINDOW=1 opens a window.
  *
- * Hardening this module owns (each is a recorded false-measurement trap):
- *   - REAL-CHROME UA **plus the standard request headers** on every context.
- *     Field-proven (F-R1, a nonprofit site): the real-Chrome UA ALONE still got
- *     HTTP 403 from Akamai; adding Accept / Accept-Language /
- *     Upgrade-Insecure-Requests / sec-ch-ua* produced HTTP 200. Akamai
- *     bot-manager fingerprints on the ABSENCE of the standard headers every
- *     real Chrome sends, not just on the UA string.
- *   - The standard headers ride DOCUMENT requests only, never subresources
- *     (F-B2, a financial-services site): forcing them via extraHTTPHeaders on every
- *     request makes cross-origin CORS-mode font fetches (Typekit, Google
- *     Fonts, any font CDN) non-simple; they die with net::ERR_FAILED and the
- *     live capture silently renders FALLBACK type — wrong wraps, wrong
- *     heights, wrong doc height, no error anywhere. Bot managers fingerprint
- *     the navigation request, which still carries the full set.
- *   - A challenge/blocked interstitial FAILS LOUD (BotChallengeError), never
- *     silently measured as the source (the Access-Denied trap: an "Access Denied"
- *     page diffs cleanly — wrongly). So does a 2xx DENIAL page (a vendor wall
- *     answering 200 with its denial text — no header to classify): after the
- *     settle the page itself is read (pageDenial / denialMarker own the
- *     rule), and the message says "origin blocked" and names the --headed escalation.
- *   - Two overlay classes dismissed, not one: cookie consent (clicked, never
- *     DOM-removed) AND timed marketing/newsletter interstitials (CH-1:
- *     a fashion retailer's "Sign up, stay updated!" modal baked a large pixel-diff
- *     contributor into the live capture that no prototype fidelity could
- *     null out). The mouse is parked afterwards (bottom-left) so no
- *     :hover-styled element under the resting cursor captures in hover state.
- *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
- *     a fashion brand → /ww/) capture a different locale per run unless
- *     Accept-Language + context locale are pinned.
+ * Fail-loud contract: a challenge / edge block (header signature, CloudFront /
+ * AWS WAF included) or a 2xx DENIAL page (pageDenial / denialMarker own the
+ * rule) throws BotChallengeError — never measured as the source. Overlays:
+ * consent clicked (never DOM-removed), timed marketing modals closed, the mouse
+ * parked. `--locale` pins Accept-Language + context locale for geo determinism.
  *
- * Escalation ladder (documented in replica/reference/source-fidelity-gate.md):
- *   headers+UA (default) → --headed (launchStealthHeaded) → if STILL blocked,
- *   the site needs crawl.mjs-class capture and the gate must fail, not degrade.
+ * PACING (paceLiveNavigation, inside gotoLive): live navigations to one host
+ * are spaced STARDUST_LIVE_PACE_MS apart (default 2000; 0 disables) within the
+ * process — an Akamai-fronted origin answered 403 to back-to-back navigations
+ * and to parallel browsers, 200 once they were spaced. Process-local by design;
+ * the first wait per host is one stderr line.
+ * The escalation ladder is documented in replica/reference/source-fidelity-gate.md.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev-tool library: sequential page ops use awaited loops by design */
 import { existsSync, readFileSync } from 'node:fs';
 
-// Current stable Chrome on macOS. Chrome's UA reduction freezes the platform
-// token at 10_15_7 and the minor version at .0.0.0 — only the major matters,
-// and standardHeaders() derives sec-ch-ua from it so the two never disagree.
-export const REAL_CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
+// ---- pacing: live navigations to one host, spaced ------------------------------------------------------------------
+export const LIVE_PACE_MS_DEFAULT = 2000;
+/** STARDUST_LIVE_PACE_MS as a non-negative integer; unset, empty or unparsable → the default (2000); 0 disables. */
+export function livePaceMs(env = process.env) {
+  const raw = env.STARDUST_LIVE_PACE_MS;
+  if (raw === undefined || String(raw).trim() === '') return LIVE_PACE_MS_DEFAULT;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : LIVE_PACE_MS_DEFAULT;
+}
+/**
+ * Pure: the slot a navigation takes given the host's next free time (`nextFree`, ms epoch, undefined for a host never
+ * navigated), `now` and the pace → { wait, nextFree }: wait = how long to hold before navigating (0 when the host is
+ * free), nextFree = when the host is free again. A pace of 0 (or less, or not a number) never waits.
+ */
+export function paceSlot(nextFree, now, paceMs) {
+  if (!(Number.isFinite(paceMs) && paceMs > 0)) return { wait: 0, nextFree: now };
+  const at = Math.max(now, Number.isFinite(nextFree) ? nextFree : 0);
+  return { wait: at - now, nextFree: at + paceMs };
+}
+const nextFreeByHost = new Map(); // host → ms epoch when the next live navigation may start
+const pacedHosts = new Set(); // hosts whose first wait has been logged
+/**
+ * Hold `page` until the host of `url` is free, then take the next slot (reserved synchronously, so concurrent
+ * callers in one process queue up instead of sharing a slot). Live URLs only (isLiveHttpUrl — localhost and loopback
+ * are never paced). Returns the ms waited. Every instrument's live goto goes through here (gotoLive; the crawler
+ * calls it before its own gotos).
+ */
+export async function paceLiveNavigation(page, url, { paceMs = livePaceMs(), now = Date.now } = {}) {
+  if (!isLiveHttpUrl(url) || !(paceMs > 0)) return 0;
+  const { host } = new URL(url);
+  const { wait, nextFree } = paceSlot(nextFreeByHost.get(host), now(), paceMs);
+  nextFreeByHost.set(host, nextFree);
+  if (wait > 0) {
+    if (!pacedHosts.has(host)) {
+      pacedHosts.add(host);
+      console.error(`[live-session] pacing live navigations to ${host} ${paceMs} ms apart (STARDUST_LIVE_PACE_MS; 0 disables) — first wait ${wait} ms`);
+    }
+    await page.waitForTimeout(wait);
+  }
+  return wait;
+}
+/** Forget every host's slot (tests). */
+export function resetLivePacing() { nextFreeByHost.clear(); pacedHosts.clear(); }
 
-const CHROME_MAJOR = (REAL_CHROME_UA.match(/Chrome\/(\d+)/) || [])[1] || '143';
+// ---- identity: what the browser is, said once, derived never invented ----------------------------------------------
+/** Whether the existing automation-signal handling is active; only STARDUST_STEALTH=0 disables it. */
+export const stealthEnabled = () => process.env.STARDUST_STEALTH !== '0';
+let stealthDisabledReported = false;
+function reportStealthDisabled() {
+  if (!stealthDisabledReported) {
+    stealthDisabledReported = true;
+    console.error('[live-session] STARDUST_STEALTH=0: automation-signal handling is OFF for this process');
+  }
+}
+
+/** process.platform → the sec-ch-ua-platform label: darwin → macOS, win32 → Windows, anything else → Linux. */
+export function platformLabel(platform = process.platform) {
+  if (platform === 'darwin') return 'macOS';
+  if (platform === 'win32') return 'Windows';
+  return 'Linux';
+}
+
+/** The Chrome/Chromium major of a version string ('156.0.8078.74' → '156') or of a UA ('… Chrome/156.0.0.0 …'); null when absent. */
+export function chromeMajor(s) {
+  const m = String(s ?? '').match(/(?:Chrome|Chromium|CriOS|HeadlessChrome)\/(\d+)/) || String(s ?? '').match(/^(\d+)\.\d+/);
+  return m ? m[1] : null;
+}
+
+/** The running browser's user agent without the headless token, cached once per browser. */
+export async function browserUserAgent(browser) {
+  if (Object.hasOwn(browser, 'stardustUserAgent')) return browser.stardustUserAgent;
+  const pending = (async () => {
+    let resolved = null;
+    if (typeof browser.newBrowserCDPSession === 'function') {
+      try {
+        const cdp = await browser.newBrowserCDPSession();
+        let userAgent;
+        try {
+          ({ userAgent } = await cdp.send('Browser.getVersion'));
+        } finally {
+          await cdp.detach();
+        }
+        if (typeof userAgent === 'string') resolved = userAgent.replace(/\bHeadlessChrome\//, 'Chrome/');
+      } catch { /* browser.version() fallback below */ }
+    }
+    if (!resolved) {
+      let major = null;
+      try {
+        major = chromeMajor(typeof browser.version === 'function' ? browser.version() : '');
+      } catch { /* no readable browser version */ }
+      if (major) {
+        const token = process.platform === 'darwin'
+          ? 'Macintosh; Intel Mac OS X 10_15_7'
+          : process.platform === 'win32' ? 'Windows NT 10.0; Win64; x64' : 'X11; Linux x86_64';
+        resolved = `Mozilla/5.0 (${token}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+      }
+    }
+    return resolved;
+  })();
+  browser.stardustUserAgent = pending;
+  const resolved = await pending;
+  browser.stardustUserAgent = resolved;
+  return resolved;
+}
+
+/**
+ * The identity the context's document headers state, or null for "the browser's own hints ride untouched".
+ * Without a caller UA: the real-Chrome tiers ('chrome' / 'chrome-window') → { major: browser.version()'s major,
+ * platform: the running OS, chrome: true } — exactly what the binary itself sends, so stating it is honest; any other
+ * tier → null (a bundled Chromium announces its own brands, which this module must not rewrite into Chrome's).
+ * With a caller UA: the major and platform read from the UA string, chrome = it names Chrome; a UA without a Chrome
+ * token → null (nothing honest to derive).
+ */
+export function browserIdentity(browser, { ua = null, platform = process.platform } = {}) {
+  if (ua) {
+    const major = chromeMajor(ua);
+    if (!major) return null;
+    const p = /Windows/i.test(ua) ? 'win32' : /Macintosh|Mac OS X/i.test(ua) ? 'darwin' : /Linux|X11|Android/i.test(ua) ? 'linux' : platform;
+    return { major, platform: platformLabel(p), chrome: /(?<!Headless)Chrome\//.test(ua) };
+  }
+  const tier = browserTier(browser);
+  if (tier !== 'chrome' && tier !== 'chrome-window') return null;
+  const major = chromeMajor(typeof browser.version === 'function' ? browser.version() : '');
+  return major ? { major, platform: platformLabel(platform), chrome: true } : null;
+}
 
 // 'en' → the exact field-proven value ('en-US,en;q=0.9' — the B-probe that
 // turned a nonprofit site's 403 into a 200); a regioned tag keeps its base as fallback.
@@ -115,45 +222,48 @@ export function defaultWaitUntil(url) {
 }
 
 /**
- * The standard header set every real Chrome sends and Playwright's minimal
- * default set omits. UA alone is NOT sufficient against Akamai-class bot
- * management (F-R1); these headers are the other half of the fix.
+ * The standard header set every real Chrome sends on a navigation and a bare Playwright context can omit
+ * (the bundled headless shell sends no Accept-Language at all). A UA alone is NOT sufficient against
+ * Akamai-class bot management (F-R1); these headers are the other half. The sec-ch-ua* client hints are
+ * stated ONLY from a given `identity` ({ major, platform, chrome } — browserIdentity); with none, the trio
+ * is left out and the browser's own hints ride (newLiveContext merges over the request's headers).
  */
-export function standardHeaders(locale = 'en') {
-  return {
+export function standardHeaders(locale = 'en', identity = null) {
+  const headers = {
     Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     'Accept-Language': acceptLanguage(locale),
     'Upgrade-Insecure-Requests': '1',
-    'sec-ch-ua': `"Not/A)Brand";v="8", "Chromium";v="${CHROME_MAJOR}", "Google Chrome";v="${CHROME_MAJOR}"`,
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"macOS"',
   };
+  if (identity && identity.major) {
+    const brands = [`"Chromium";v="${identity.major}"`, '"Not:A-Brand";v="8"'];
+    if (identity.chrome) brands.push(`"Google Chrome";v="${identity.major}"`);
+    headers['sec-ch-ua'] = brands.join(', ');
+    headers['sec-ch-ua-mobile'] = '?0';
+    headers['sec-ch-ua-platform'] = `"${identity.platform || platformLabel()}"`;
+  }
+  return headers;
 }
 
 /**
- * Ready-to-spread options for browser.newContext(): UA + standard headers
- * (+ viewport, + navigator.language coherence when a locale is pinned).
- * Callers add their own instrument-specific options (reducedMotion etc.).
- * NOTE: newLiveContext strips extraHTTPHeaders back out and delivers the
- * header set per-request instead (document requests only — F-B2 below);
- * spreading these options raw would re-introduce the font-fork trap.
+ * Ready-to-spread options for browser.newContext(): the standard headers, userAgent ONLY when the caller passed one,
+ * viewport, and navigator.language coherence when a locale is pinned. newLiveContext resolves the browser default
+ * before calling this helper. Callers add their own instrument-specific options (reducedMotion etc.).
+ * NOTE: newLiveContext strips extraHTTPHeaders back out and delivers the header set per-request instead
+ * (document requests only — F-B2 below); spreading these options raw would re-introduce the font-fork trap.
  */
-export function contextOptions({ ua, locale, viewport } = {}) {
-  const opts = {
-    userAgent: ua || REAL_CHROME_UA,
-    extraHTTPHeaders: standardHeaders(locale || 'en'),
-  };
+export function contextOptions({ ua, locale, viewport, identity = null } = {}) {
+  const opts = { extraHTTPHeaders: standardHeaders(locale || 'en', identity) };
+  if (ua) opts.userAgent = ua;
   if (locale) opts.locale = locale === 'en' ? 'en-US' : locale;
   if (viewport) opts.viewport = viewport;
   return opts;
 }
 
 /**
- * newContext + contextOptions + the navigator.webdriver spoof on EVERY
- * context (crawl.mjs semantics: the challenge re-fires per context, so a
- * context that skipped the spoof is re-challenged even after another one
- * cleared it; the spoof is harmless on non-challenging sites). Extra
- * Playwright context options pass through (reducedMotion, ...).
+ * newContext + contextOptions, resolving userAgent to the caller's `ua` or the cached browserUserAgent. Header identity
+ * still receives the caller's `ua`: real-Chrome tiers state their version and OS, while bundled Chromium hints ride.
+ * The existing navigator.webdriver spoof lands on every context unless STARDUST_STEALTH=0. Extra Playwright context
+ * options pass through (reducedMotion, ...).
  */
 export async function newLiveContext(browser, { ua, locale, viewport, authOrigin, authHeader, ...rest } = {}) {
   // F-B2 (financial-services site, 2026-08-25): the standard header set must ride on
@@ -163,7 +273,8 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
   // renders FALLBACK type — an asymmetric false measurement (the prototype
   // side loads the same kit fine). Bot-manager fingerprinting happens on the
   // navigation request, which still carries the full set below.
-  const { extraHTTPHeaders, ...base } = contextOptions({ ua, locale, viewport });
+  const resolvedUa = ua || await browserUserAgent(browser);
+  const { extraHTTPHeaders, ...base } = contextOptions({ ua: resolvedUa, locale, viewport, identity: browserIdentity(browser, { ua }) });
   const ctx = await browser.newContext({ ...rest, ...base });
   await ctx.route('**/*', (route) => {
     if (route.request().resourceType() === 'document') {
@@ -172,9 +283,11 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
       route.continue();
     }
   });
-  await ctx.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-  });
+  if (stealthEnabled()) {
+    await ctx.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+  } else reportStealthDisabled();
   if (authOrigin && authHeader) await attachOriginAuth(ctx, authOrigin, authHeader);
   return ctx;
 }
@@ -214,18 +327,25 @@ export async function attachOriginAuth(context, origin, headerValue) {
 // or null. Same semantics as crawl.mjs isChallengeResponse: a bare 403 with
 // NO edge signature is a genuine app-level status (fail loud as HTTP, not as
 // a challenge — no 12s solve loop on an auth-gated page).
-function challengeMarker(resp) {
+export function challengeMarker(resp) {
   if (!resp) return null;
   const status = resp.status();
   const h = resp.headers();
   // Cloudflare stamps this header specifically on managed/JS-challenge responses.
   if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return 'cf-mitigated: challenge';
+  // AWS WAF stamps its action (captcha / challenge) on the response it intercepts, whatever the status.
+  if (h['x-amzn-waf-action']) return `HTTP ${status} + CloudFront/AWS WAF edge signature (x-amzn-waf-action: ${h['x-amzn-waf-action']})`;
   if (status === 403 || status === 429 || status === 503) {
     const server = (h.server || '').toLowerCase();
     if (h['cf-ray'] || server.includes('cloudflare')) return `HTTP ${status} + Cloudflare edge signature (cf-ray/server)`;
     if (h['x-akamai-transformed'] || server.includes('akamai') || server.includes('edgesuite')) return `HTTP ${status} + Akamai edge signature`;
     if (resp.url().includes('edgesuite.net')) return `HTTP ${status} + errors.edgesuite.net interstitial`;
-    if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return `HTTP ${status} + F5/Imperva edge signature`;
+    if (server.includes('big-ip') || server.includes('bigip') || server.includes('imperva') || h['x-iinfo']) return `HTTP ${status} + F5/Imperva edge signature`;
+    // A CloudFront distribution answering 403 itself ("The request could not be satisfied. Request blocked.") is
+    // the AWS WAF block after a burst of requests — recorded on a CloudFront-fronted site; the body pair is also
+    // a denial signature below. A 403 the origin produced and CloudFront merely relayed carries the same two
+    // headers, so the label names the edge, not a verdict on the origin.
+    if (status === 403 && (server.includes('cloudfront') || (h['x-cache'] || '').toLowerCase().includes('error from cloudfront'))) return 'HTTP 403 + CloudFront/AWS WAF edge signature (server/x-cache)';
     // no edge signature — a genuine app-level status, not a challenge.
   }
   // Akamai escalates to HTTP 400 {"result":"Bad Request"} after a burst of headless
@@ -265,7 +385,12 @@ const denialSignature = (id, label, all) => Object.freeze({ id, label, all: Obje
 export const DENIAL_SIGNATURES = Object.freeze([
   denialSignature('cant-process', '"can\'t process your request" + "Incident Number"', ["can't process your request", 'incident number']),
   denialSignature('access-denied', '"Access Denied" + "Reference #"', ['access denied', 'reference #']),
+  // CloudFront's own 403 body for an AWS WAF block (an origin's error page relayed by CloudFront reads differently)
+  denialSignature('cloudfront-blocked', '"The request could not be satisfied" + "Request blocked"', ['the request could not be satisfied', 'request blocked']),
   denialSignature('just-a-moment', '"Just a moment…"', ['just a moment...']),
+  // the openresty-style verification interstitial: served 200 to every client, reloads itself every few seconds
+  denialSignature('one-moment', '"One moment, please…"', ['one moment, please']),
+  denialSignature('request-verified', '"Please wait while your request is being verified"', ['please wait while your request is being verified']),
   denialSignature('press-and-hold', '"Press & Hold"', ['press & hold']),
   denialSignature('incapsula', '"Incapsula"', ['incapsula']),
   denialSignature('datadome', '"DataDome"', [['datadome', 'captcha-delivery.com']]),
@@ -382,11 +507,11 @@ export async function pageDenial(page, { probeMs = DENIAL_PROBE_MS } = {}) {
  */
 export function botChallengeError(url, marker, { denial = false } = {}) {
   const err = new Error(denial
-    ? `bot challenge at ${url}: ${marker} — origin blocked: the live side served a denial page, NOT the page; refusing to measure it as the source. Escalate with --headed (stealth real Chrome); if that is still blocked, the site needs crawl.mjs-class capture (extract's bot-management ladder) and the gate cannot run against it headless.`
+    ? `bot challenge at ${url}: ${marker} — origin blocked: the live side served a denial page, NOT the page; refusing to measure it as the source. Escalate with --headed (real Chrome with the challenge-solve window); if that is still blocked, the site needs crawl.mjs-class capture (extract's bot-management ladder) and the gate cannot run against it unattended.`
     : `bot challenge at ${url}: ${marker} — the live side served an edge interstitial, NOT the page; `
-      + 'refusing to measure it as the source. Escalate with --headed (stealth real Chrome); if that is '
+      + 'refusing to measure it as the source. Escalate with --headed (real Chrome with the challenge-solve window); if that is '
       + "still blocked, the site needs crawl.mjs-class capture (extract's bot-management ladder) and the "
-      + 'gate cannot run against it headless.');
+      + 'gate cannot run against it unattended.');
   err.name = 'BotChallengeError';
   err.marker = marker;
   err.url = url;
@@ -396,17 +521,16 @@ export function botChallengeError(url, marker, { denial = false } = {}) {
 /**
  * Navigate + settle, with the full fail-loud contract:
  *   - challenge/blocked interstitial → per `solveWindow`:
- *       false (default — plain headless): THROW BotChallengeError after the
- *         FIRST challenge-classified response, 1 hit total. Clearance only
- *         lands under a stealth-headed session (module docstring), so a
- *         headless solve loop just burns the documented ~3–4-request Akamai
+ *       false (default tier): THROW BotChallengeError after the FIRST
+ *         challenge-classified response, 1 hit total — a solve loop on the
+ *         default tier just burns the documented ~3–4-request Akamai
  *         IP-block budget (source-fidelity-gate.md § Hit minimization)
  *         before the operator can escalate --headed.
  *       true (set it when the browser came from launchStealthHeaded): run
  *         the challenge-solve window first (wait + reload, 3 attempts —
  *         Cloudflare's non-interactive challenge sets its clearance cookie
- *         in that window under a stealth-headed session), THEN throw if
- *         still challenged.
+ *         in that window when it clears at all), THEN throw if still
+ *         challenged.
  *     Either way a challenge must NEVER be silently measured as the source
  *     (the Access-Denied trap) — regardless of `httpError`.
  *   - non-challenge entry status >= 400 → per `httpError`:
@@ -430,6 +554,7 @@ export function botChallengeError(url, marker, { denial = false } = {}) {
  * Returns the response.
  */
 export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false } = {}) {
+  await paceLiveNavigation(page, url);
   let resp = await page.goto(url, { waitUntil, timeout: timeoutMs });
   if (!resp) {
     const err = new Error(`no response navigating to ${url} — network-level failure or non-HTTP navigation`);
@@ -484,47 +609,54 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
   return resp;
 }
 
-/**
- * Stealth escalation tier (crawl.mjs launchHeadedStealth semantics): the REAL
- * Chrome binary (`channel: 'chrome'`) clears TLS/H2-fingerprint blocks, and the
- * stealth args strip the automation signals Cloudflare's managed challenge
- * probes for. Pair with newLiveContext so the navigator.webdriver spoof lands
- * on every context. Takes the caller's `chromium` so this module stays import-free.
- *
- * WINDOW-FREE BY DEFAULT (#125). The window was never what cleared the block, the
- * binary was: `channel:'chrome'` + headless gets HTTP 200 from Akamai where bundled
- * headless Chromium gets 400. Visible windows blocked an operator's desktop under
- * four parallel agents. A window is opt-in: `STARDUST_HEADED_WINDOW=1`, for a
- * challenge that genuinely needs a human. Every `--headed` flag means THIS tier.
- *
- * `channel: 'chrome'` needs Google Chrome installed; when the launch fails the
- * bundled Chromium is launched instead with the same stealth args and a loud
- * stderr warning (the instrument is then the lesser tier — say so in the log).
- */
-export async function launchStealthHeaded(chromium) {
-  const visible = process.env.STARDUST_HEADED_WINDOW === '1';
-  const opts = {
-    headless: !visible,
-    channel: 'chrome',
-    args: ['--disable-blink-features=AutomationControlled'],
-    ignoreDefaultArgs: ['--enable-automation'],
-  };
+// The existing headed-tier launch flags strip the automation signals a managed challenge probes for.
+// STARDUST_STEALTH=0 disables them together with the per-context navigator.webdriver spoof.
+const STEALTH_LAUNCH = Object.freeze({ args: Object.freeze(['--disable-blink-features=AutomationControlled']), ignoreDefaultArgs: Object.freeze(['--enable-automation']) });
+
+// Chrome first, bundled Chromium when Chrome is not installed. The binary is what clears TLS/H2-fingerprint blocks
+// (#125: `channel:'chrome'` + headless gets HTTP 200 from Akamai where the bundled headless shell gets 400) — and it
+// is the only browser whose identity is a normal Chrome's. Takes the caller's `chromium` so this module stays import-free.
+async function launchChromeFirst(chromium, { visible = false, stealth = false } = {}) {
+  const opts = { headless: !visible, channel: 'chrome', ...(stealth ? { args: [...STEALTH_LAUNCH.args], ignoreDefaultArgs: [...STEALTH_LAUNCH.ignoreDefaultArgs] } : {}) };
   try {
     const b = await chromium.launch(opts);
     b.stardustTier = visible ? 'chrome-window' : 'chrome';
     return b;
   } catch (e) {
-    console.error(`[live-session] WARNING: real Chrome (channel: chrome) failed to launch (${String(e.message).split('\n')[0]}) — falling back to bundled Chromium with the stealth args; bot-managed origins may still block this tier`);
+    console.error(`[live-session] WARNING: real Chrome (channel: chrome) failed to launch (${String(e.message).split('\n')[0]}) — falling back to bundled Chromium (tier chromium-fallback); bot-managed origins may block this tier`);
     const { channel, ...rest } = opts;
     const b = await chromium.launch(rest);
     b.stardustTier = 'chromium-fallback';
     return b;
   }
 }
-/** The tier a browser from launchStealthHeaded / chromium.launch actually runs: 'chrome' | 'chrome-window' |
- * 'chromium-fallback' (Chrome elected, not installed) | 'chromium' (elected). Every probe records it in its
- * evidence so a run that degraded is visible in the artifact, not only in a log line. */
-export const browserTier = (b) => b.stardustTier || 'chromium';
+
+/**
+ * THE DEFAULT TIER of every live instrument: real Chrome, headless, presenting its user agent without the headless
+ * token and matching client hints. Falls back to bundled Chromium with one stderr line when Chrome is not installed.
+ * Tier tag (browserTier): 'chrome' | 'chromium-fallback'.
+ */
+export function launchLiveBrowser(chromium) {
+  return launchChromeFirst(chromium);
+}
+
+/**
+ * The --headed escalation tier: the same real Chrome, WINDOW-FREE by default (#125 — the window was never what
+ * cleared a block, the binary was; visible windows blocked an operator's desktop under four parallel agents), plus
+ * the challenge-solve window the callers enable with gotoLive `solveWindow`. A window is opt-in
+ * (`STARDUST_HEADED_WINDOW=1`, for a challenge that genuinely needs a human). The existing launch flags stay on;
+ * `STARDUST_STEALTH=0` disables them and the per-context navigator.webdriver spoof. Falls back like launchLiveBrowser.
+ * Tier tag: 'chrome' | 'chrome-window' | 'chromium-fallback'.
+ */
+export function launchStealthHeaded(chromium) {
+  const stealth = stealthEnabled();
+  if (!stealth) reportStealthDisabled();
+  return launchChromeFirst(chromium, { visible: process.env.STARDUST_HEADED_WINDOW === '1', stealth });
+}
+/** The tier a browser from launchLiveBrowser / launchStealthHeaded / chromium.launch actually runs: 'chrome' |
+ * 'chrome-window' | 'chromium-fallback' (Chrome elected, not installed) | 'chromium' (elected). Every probe records
+ * it in its evidence so a run that degraded is visible in the artifact, not only in a log line. */
+export const browserTier = (b) => (b && b.stardustTier) || 'chromium';
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
 // layout settles the way a real visit does) — stitch-shot's proven list.

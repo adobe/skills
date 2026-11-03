@@ -34,6 +34,117 @@ ignore file instead, because that dropped whole folders a resumed run reads. Des
   interrupted re-capture captures again on resume; at most one batch of captures on disk at a time); `gate.test.mjs`
   — a round keeps only its own diff image and vdiff dir.
 
+## 0.36.5 — the style census runs one live page at a time unless an operator allows more (#154)
+
+Field learning (a recorded hands-off replica run on a bot-managed site): right after the crawl, the style census — a
+second full live pass at two widths — was started with `--concurrency 2`, although the option's default is 1 and its
+help text warned to raise it only on an origin known to have no bot manager. The origin stopped accepting connections
+and 17 of 20 census page loads timed out, which ended the run. The warning was advice; it is now a guard.
+
+- **`extract/scripts/style-census.mjs`:** `--concurrency <n>` above 1 is honoured only with the new explicit
+  `--parallel-live-ok`, or when every input is local (`file:`, `localhost` and `*.localhost`, `127.0.0.1`, `[::1]`,
+  `0.0.0.0`); otherwise one stderr line
+  (`--concurrency 2 ignored — one live page at a time unless --parallel-live-ok …`) and the census runs at 1.
+- **Browser tier:** when the shared live-session module beside the script exports `launchLiveBrowser`, the census
+  launches through it (the identity-preserving default tier, paced per host); `--headed` keeps the shared escalation
+  tier; a copy without the module keeps the plain headless launch. Tests: `extract/style-census` (+ guard, local
+  exemption, help text, launcher fallback).
+
+## 0.36.4 — chrome-explore paces itself and keeps a per-width request budget (#153)
+
+Field learning (a hands-off replica run on a site behind an edge rate rule): the crawl, the style census and the cap
+probe went through; the header exploration then reloaded the page after every control (routing disables the browser
+cache, so each reload refetched the whole page) and typed the probe term keystroke by keystroke into the site's
+typeahead — the edge blocked the address mid-run.
+
+- **`diff/scripts/chrome-explore.mjs`:** `--pace-ms 400` after each control open / close and `--reload-pause-ms 1500`
+  before each reload (0 disables either). `--max-requests 600` per width counts every request leaving for the site's
+  host — documents and subresources alike, the first load included; 204-answered navigations not — and ends the width
+  with `truncated: 'request-budget'` and `n/max requests` on the summary line (a lower budget was spent by an
+  image-heavy page's first load alone while recording the same contract). `--max-typeahead 2` inputs per width; the
+  term enters as one fill plus one typed letter and a single settle, inputs past the cap are listed with `search: null`.
+- **Closing in place:** between controls the header is closed the way it was opened — Escape and the parked pointer,
+  each opened trigger re-acted innermost first, a click outside — and the page reloads only when atoms are not back as
+  loaded (visibility and aria state, so a left-behind selected tab still reloads). A GET search submit is answered 204
+  like every navigation and its URL is the record; a POST is followed with the results page's assets aborted, then the
+  page restored. The probe word is read from the explored page on first use (no extra load). Fixture headers, same
+  recorded states: rich 26 → 13 loads at 1440, 24 → 1 at 390; stock 6 → 1 at 390.
+- **Exports and docs:** `parseArgs`, `requestBudget`, `sameSite`, `siteHost` are exported; `--help` documents the four
+  flags; `scripts-index.md` names `--max-requests`.
+- **Build exploration:** diff and qa pass `--max-requests 0 --pace-ms 0 --reload-pause-ms 0`; source defaults stay protective.
+- **Parity:** request-budget gaps warn with the unbudgeted-build remedy; observed failures remain errors.
+- Tests: `chrome-explore.test.mjs` — the summary line, `parseArgs` defaults and fallbacks, `sameSite` / `requestBudget`;
+  with a browser: closing in place, the GET and POST submits, a stubborn header (new fixture in `chrome-fixtures.mjs`),
+  the budget stop and the typeahead cap.
+
+## 0.36.3 — the crawler names a bot wall in seconds instead of waiting out its cap (#152)
+
+Field learning (a hands-off replica run on a bot-managed site): the entry page answered 200 with a verification
+interstitial that reloaded itself every few seconds; the crawler captured it as content and waited out its whole cap
+on it. A CloudFront block on inner pages read as a plain HTTP error, and the headed escalation opened a window where no
+display exists.
+
+- **`extract/scripts/crawl.mjs`:** `launchWithFallback` launches real Chrome headless first — its own identity, no
+  stealth flags; bundled Chromium when Chrome is missing (technique `chrome` | `chromium-fallback`) — through
+  live-session's `launchLiveBrowser` when the module beside the script has it, inline otherwise. `probeEntry`
+  classifies the entry page in seconds: a network reject (`fingerprint`), an edge challenge (`challengeMarker`:
+  Cloudflare / Akamai / F5 / Imperva / CloudFront–AWS WAF, Akamai's 400 escalation) or a 2xx interstitial read from
+  the page — the crawler's own title rule first (`wallProbeInPage` / `inlineWallMarker`: a wall title or h1 on a page
+  under 2 KB of text or one reloading itself), then live-session's `pageDenial` vendor list when present. Any of them
+  → one window-free real-Chrome relaunch (technique `chrome-escalated`; the existing launch flags and
+  `navigator.webdriver` spoof stay on, `STARDUST_STEALTH=0` turns them off; a relaunch failure is one stderr line) plus the challenge-solve window, then a fatal
+  `bot-management <kind> not cleared: <marker>`. On inner pages an uncleared challenge or a 2xx interstitial is
+  recorded as errorClass `BotChallenge` with the marker — never as content, never as a bare `HTTPError`;
+  `_crawl-log.json#discovery` carries `botBlock` + `botMarker`.
+- **The wall title names verification interstitials only** — "verify you are human", "verifying your request /
+  browser", "human verification", "checking your browser" and the vendor interstitial titles, never a bare "verify" or
+  "verification": an age or e-mail verification page is a page, and a small single-page-app entry page under such a
+  title would have aborted the crawl. **Readers of `fetchTechnique`** (`deploy/SKILL.md`, `deploy/da-deploy-protocol.md`,
+  `replica/reference/handoff-contract.md`) know the tier names (`chrome`, `chrome-escalated`, `chromium-fallback`; older
+  logs `headed-chrome*`) and verify source images with an in-page fetch from a browser of that tier, never a bare curl.
+- **`--page-timeout <s>`** (default 60; 0 = none) wraps each capture: a page that never settles is a `TimeoutError` and
+  its tab is closed. Live navigations are paced per host when a live-session copy that paces is beside the script.
+- **Docs:** `extract/SKILL.md` § Bot-management block says what the crawler does itself; `scripts-index.md` lists the
+  flag.
+- Tests: `crawl.test.mjs` — the classifiers, the inline wall rule, `pageTimeoutMs`, `probeEntry` and `capturePage` on
+  stub pages (clean / interstitial / challenge / CloudFront / bare 403 / hung navigation / an unreadable wall probe).
+
+## 0.36.2 — real Chrome identity, retained automation-signal handling and paced live navigation (#151)
+
+Field learning (hands-off replica runs on bot-managed sites): the gate instruments presented a hard-coded desktop user
+agent on a Linux headless engine and were denied; the agents patched the identity by hand at run time, and spacing
+live navigations a few seconds apart turned the denials into 200s. The escalation to real Chrome opened a window and
+could not start where no display exists. The policy now has one home: every context presents the browser's user agent
+without the headless token and matching client hints; automation-signal handling stays on unless `STARDUST_STEALTH=0`;
+`STARDUST_HEADED_WINDOW=1` opens a window.
+
+- **`diff/scripts/live-session.mjs`:** `launchLiveBrowser` is the default tier of every live instrument — the installed
+  Chrome headless (`channel: chrome`), no stealth args, no `ignoreDefaultArgs`; bundled Chromium only when Chrome is
+  missing (tier `chromium-fallback`, one stderr line). Every context presents the user agent read from the running
+  browser with the headless token removed (`HeadlessChrome/156.0.0.0` → `Chrome/156.0.0.0`), or the caller's `--ua`.
+  Headless Chrome's header says `HeadlessChrome` while its client hints say `Google Chrome`, and managed challenges
+  key on that token.
+  The `sec-ch-ua*` client hints derive from `browser.version()` and the running OS on Chrome tiers, from the UA string
+  under `--ua`, and stay untouched on the bundled tier. The existing `navigator.webdriver` spoof reaches every context.
+  `launchStealthHeaded` (`--headed`) stays window-free real Chrome plus the challenge-solve window and the
+  two existing launch options. `STARDUST_STEALTH=0` disables the spoof and options with one stderr line; a window stays
+  behind `STARDUST_HEADED_WINDOW=1`. `gotoLive` paces live navigations per host
+  `STARDUST_LIVE_PACE_MS` apart (default 2000; 0 disables; slots reserved synchronously so concurrent callers queue; one
+  stderr line per host on its first wait — an Akamai-fronted origin answered 403 to back-to-back navigations, 200 once
+  spaced). Classifiers: a 403 with `server: CloudFront` or `x-cache: Error from cloudfront`, or any `x-amzn-waf-action`
+  header, is the CloudFront / AWS WAF edge signature; F5's `BigIP` header matches; denial pages "The request could not
+  be satisfied" + "Request blocked", "One moment, please…", "Please wait while your request is being verified".
+- **Wired instruments:** `replica/scripts/stitch-shot.mjs`, `diff/scripts/content-diff.mjs`, `visual-diff.mjs`,
+  `measure-live.mjs` (`openBrowser` default tier `chrome`; `stealth` stays an alias of the `--headed` tier),
+  `replica/scripts/chrome-parity.mjs` and `motion-observe.mjs` launch the default tier and default `--ua` to the
+  browser's own; each `--help` says so. `extract/scripts/style-census.mjs`, `replica/scripts/measure.mjs` and `cap-probe.mjs` drop
+  their hard-coded desktop user agent the same way — a container run showed them still presenting it beside real
+  Chrome's own client hints.
+- **Docs:** `source-fidelity-gate.md` § Hardening rule 1 owns identity, retained automation-signal handling and pacing;
+  rule 12's ladder, `diff/SKILL.md` (`--ua`, `--headed`) and `replica/SKILL.md` point to the explicit opt-out.
+- Tests: `live-session.test.mjs` (50 checks — automation defaults and opt-out, pacing, user-agent and identity derivation,
+  client hints and denial classification) and `stitch-shot.test.mjs` (`--ua` defaults to the browser's own).
+
 ## 0.36.1 — replica: a capture names its dead font faces; a font check that could not run is never a pass (#150)
 
 Field learning (a recorded hands-off replica run): the foundation CSS declared its metric fallback faces with a

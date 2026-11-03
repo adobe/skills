@@ -69,11 +69,12 @@ carries its root as `[root]`; visual-diff takes one selector, default `main`), c
 `--chrome` / `--no-chrome` (default on — the `header` and `footer` roots, resolved as the first
 `<header>`/`[role=banner]` and `<footer>`/`[role=contentinfo]` outside the main root(s), are
 compared beside it; a side lacking one is measured as empty there and the root line says so),
-plus the live-target set (shared engine: `scripts/live-session.mjs` — every context sends the
-real-Chrome UA **and** the standard Chrome request headers; the UA alone still 403s on
-Akamai-class bot management):
+plus the live-target set (shared engine: `scripts/live-session.mjs` — real Chrome presents its
+user agent without the headless token and matching client hints; automation-signal handling stays on unless
+`STARDUST_STEALTH=0`; every context sends standard Chrome request headers, and live navigations to one host are paced
+`STARDUST_LIVE_PACE_MS` apart, default 2000):
 
-- `--ua <string>` — user agent override (default: real-Chrome desktop UA).
+- `--ua <string>` — user agent override (default: the browser's own with `HeadlessChrome` replaced by `Chrome`).
 - `--wait-until <state>` — goto wait override. Default rule (one shared
   `defaultWaitUntil` in `scripts/live-session.mjs`), decided **per URL side**, three tiers:
   - localhost/127.0.0.1 → `networkidle` (local prototypes / harnesses, unchanged);
@@ -88,7 +89,9 @@ Akamai-class bot management):
 - `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
   removed) AND timed marketing/newsletter modals, plus optional extra site-specific
   selectors; the mouse is parked afterwards.
-- `--headed` — escalation for bot-managed sites: headed stealth real Chrome.
+- `--headed` — escalation for bot-managed sites: the same real Chrome plus the challenge-solve
+  window and existing launch flags, window-free; `STARDUST_STEALTH=0` disables the flags and
+  context spoof, while `STARDUST_HEADED_WINDOW=1` opens a window.
 - `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
   different locale per run otherwise).
 
@@ -96,7 +99,7 @@ Akamai-class bot management):
 
 A bot-management challenge/blocked interstitial on either navigation fails LOUD with
 **exit 3** — it is never measured as the source. Escalate with `--headed`; if that is still
-blocked, the site needs crawl.mjs-class capture and the check cannot run headless.
+blocked, the site needs crawl.mjs-class capture and the check cannot run unattended.
 
 A plain (non-challenge) HTTP error on either side — e.g. a **404 build side, normal on
 aem.page before preview propagation** — is NOT fatal: the probe logs a loud warning,
@@ -136,7 +139,7 @@ drill-down drawer. The header's behaviour is recorded from the source once and t
 
 ```bash
 node stardust/scripts/diff/chrome-explore.mjs "$ORIGIN" stardust/chrome/header-contract.json   # 1440 + 390
-node stardust/scripts/diff/chrome-explore.mjs "$SERVED" stardust/chrome/header-build.json
+node stardust/scripts/diff/chrome-explore.mjs "$SERVED" stardust/chrome/header-build.json --max-requests 0 --pace-ms 0 --reload-pause-ms 0   # our host: source-edge protections do not apply
 node stardust/scripts/diff/chrome-compare.mjs stardust/chrome/header-contract.json stardust/chrome/header-build.json \
   --profile replica --json stardust/chrome/header-parity.json    # functional under redesign and reskin
 ```

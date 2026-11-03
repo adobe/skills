@@ -67,9 +67,9 @@
  *     --hover <sel>       element family to hover-diff (repeatable)
  *     --consent <sel>     extra consent-accept selector
  *     --dismiss <sel,...> extra overlay-dismiss selectors
- *     --headed            escalation: headed stealth real Chrome
+ *     --headed            escalation: real Chrome + the challenge-solve window
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
- *     --ua <string>       user agent                        (default real-Chrome)
+ *     --ua <string>       user agent                        (default: the browser's own)
  *     --wait <ms>         initial post-load wait            (default 2500)
  *     --timeout <ms>      goto timeout                      (default 60000)
  *
@@ -98,7 +98,9 @@ if (!LIVE_SESSION) {
   console.error('motion-observe error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchStealthHeaded, launchLiveBrowser, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+// the default tier: real Chrome headless with its own identity (a live-session copy that predates it: bundled Chromium)
+const launchDefault = typeof launchLiveBrowser === 'function' ? launchLiveBrowser : (chromium) => chromium.launch();
 
 const HELP = `motion-observe — runtime motion observation (implement only what fired)
 
@@ -108,9 +110,9 @@ Usage: node motion-observe.mjs <url> <out.json> [options]
   --hover <sel>     element family to hover-diff (repeatable)
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors
-  --headed          headed stealth real Chrome (escalation for bot-managed sites)
+  --headed          real Chrome with the challenge-solve window (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB)
-  --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
+  --ua <string>     user agent (default: the browser's own — real Chrome's; the standard headers ride either way)
   --wait <ms>       initial post-load wait (default 2500)
   --timeout <ms>    goto timeout (default 60000)
   --help            this text
@@ -122,7 +124,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, clicks: [], hovers: [], consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: 2500, timeout: 60000 };
+  const opts = { width: 1440, clicks: [], hovers: [], consent: null, dismiss: [], headed: false, locale: null, ua: null, wait: 2500, timeout: 60000 };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -171,7 +173,7 @@ async function sampleMedia(page) {
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
   const VH = 900;
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  const browser = opts.headed ? await launchStealthHeaded(chromium) : await launchDefault(chromium);
   try {
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,

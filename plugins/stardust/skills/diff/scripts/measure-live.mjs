@@ -15,7 +15,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, isLiveHttpUrl, launchStealthHeaded, newLiveContext } from './live-session.mjs';
+import { browserTier, defaultWaitUntil, dismissOverlays, gotoLive, isLiveHttpUrl, launchLiveBrowser, launchStealthHeaded, newLiveContext } from './live-session.mjs';
 
 export { browserTier };
 
@@ -24,14 +24,17 @@ export const cachePath = (slug) => join(MEASURE_DIR, `${slug}.json`);
 export function readCache(slug) { const p = cachePath(slug); return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null; }
 export function writeCache(slug, data) { mkdirSync(MEASURE_DIR, { recursive: true }); writeFileSync(cachePath(slug), JSON.stringify(data)); return cachePath(slug); }
 
-/** Launch the measurement browser. 'stealth' = the window-free real-Chrome tier (default on BOTH sides
- * of a compare so the instrument is symmetric); 'plain' = bundled Chromium. */
-export async function openBrowser(chromium, { tier = 'stealth' } = {}) {
+/** Launch the measurement browser (the same tier on BOTH sides of a compare so the instrument is symmetric).
+ * 'chrome' (default) = real Chrome headless with its own identity, bundled Chromium only when Chrome is missing
+ * (launchLiveBrowser); 'headed' (alias 'stealth', the probes' historical name) = the --headed escalation tier
+ * (launchStealthHeaded: window-free, existing launch flags; STARDUST_STEALTH=0 disables them); 'plain' = bundled Chromium. */
+export async function openBrowser(chromium, { tier = 'chrome' } = {}) {
   if (tier === 'plain') { const b = await chromium.launch(); b.stardustTier = 'chromium'; return b; }
-  return launchStealthHeaded(chromium); // the best available: Chrome, else Chromium (tagged 'chromium-fallback')
+  if (tier === 'headed' || tier === 'stealth') return launchStealthHeaded(chromium);
+  return launchLiveBrowser(chromium); // the best available: Chrome, else Chromium (tagged 'chromium-fallback')
 }
 
-export async function openPage(browser, { width = 1440, height = 900, locale = 'en-US', ua = REAL_CHROME_UA } = {}) {
+export async function openPage(browser, { width = 1440, height = 900, locale = 'en-US', ua = null } = {}) {
   const ctx = await newLiveContext(browser, { ua, locale, viewport: { width, height } });
   const page = await ctx.newPage();
   return { ctx, page };

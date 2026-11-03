@@ -12,7 +12,8 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS, DEFAULT_UA } from '../style-census.mjs';
+import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS } from '../style-census.mjs';
+import * as censusModule from '../style-census.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'style-census.mjs');
@@ -113,14 +114,33 @@ await check('aggregate is deterministic: reversed page/width key order gives a d
   assert.deepEqual(aggregate(reversed), agg);
 });
 await check('parseArgs: defaults, repeatable + comma widths deduped, usage errors', () => {
-  const d = parseArgs([]); assert.equal(d.pages, DEFAULTS.pages); assert.equal(d.out, DEFAULTS.out); assert.deepEqual(d.widths, [1440]); assert.equal(d.concurrency, 1, 'one live page at a time — the census is a full live pass'); assert.equal(d.maxPages, Infinity); assert.equal(d.timeoutMs, 20000); assert.equal(d.ua, DEFAULT_UA); assert.match(DEFAULT_UA, /^Mozilla\/5\.0 \(Macintosh.*Chrome\/\d+/);
-  assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null);
+  const d = parseArgs([]); assert.equal(d.pages, DEFAULTS.pages); assert.equal(d.out, DEFAULTS.out); assert.deepEqual(d.widths, [1440]); assert.equal(d.concurrency, 1, 'one live page at a time — the census is a full live pass'); assert.equal(d.maxPages, Infinity); assert.equal(d.timeoutMs, 20000); assert.equal(d.ua, null, 'the browser presents its own user agent unless --ua is given');
+  assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null); assert.equal(d.parallelLiveOk, false);
   assert.deepEqual(parseArgs(['--width', '360,1440', '--width', '1440']).widths, [360, 1440]);
   assert.deepEqual(parseArgs(['--urls', 'https://a.test/, https://b.test/x']).urls, ['https://a.test/', 'https://b.test/x']);
-  const l = parseArgs(['--concurrency', '2', '--dismiss', '.close, .later', '--dismiss', '#x', '--headed', '--locale', 'en-GB']);
-  assert.equal(l.concurrency, 2); assert.deepEqual(l.dismiss, ['.close', '.later', '#x']); assert.equal(l.headed, true); assert.equal(l.locale, 'en-GB');
+  const l = parseArgs(['--concurrency', '2', '--parallel-live-ok', '--dismiss', '.close, .later', '--dismiss', '#x', '--headed', '--locale', 'en-GB']);
+  assert.equal(l.concurrency, 2); assert.equal(l.parallelLiveOk, true); assert.deepEqual(l.dismiss, ['.close', '.later', '#x']); assert.equal(l.headed, true); assert.equal(l.locale, 'en-GB');
   assert.deepEqual(DEFAULTS.dismiss, [], 'parseArgs never mutates the shared default list');
   for (const bad of [['--bogus'], ['--width'], ['--width', 'wide'], ['--width', '100'], ['--concurrency', '0'], ['--timeout-ms', '10'], ['--pages', 'p', '--urls', 'https://a.test/'], ['--urls', '']]) assert.throws(() => parseArgs(bad), UsageError, bad.join(' '));
+});
+await check('parseArgs: live concurrency needs explicit approval; local URLs and files do not', () => {
+  const warnings = [];
+  const original = console.error;
+  console.error = (line) => warnings.push(line);
+  try {
+    assert.equal(parseArgs(['--concurrency', '2']).concurrency, 1);
+    assert.deepEqual(warnings, ['style-census: --concurrency 2 ignored — one live page at a time unless --parallel-live-ok (a source edge rate-limits bursts from one address)']);
+    warnings.length = 0;
+    assert.equal(parseArgs(['--concurrency', '2', '--parallel-live-ok']).concurrency, 2);
+    assert.equal(parseArgs(['--urls', 'http://localhost/a,http://127.0.0.1/b', '--concurrency', '2']).concurrency, 2);
+    assert.equal(parseArgs(['--urls', 'file:///tmp/a.html,file:///tmp/b.html', '--concurrency', '2']).concurrency, 2);
+    assert.equal(parseArgs(['--urls', 'http://[::1]:8080/c,http://0.0.0.0/d,http://app.localhost/e', '--concurrency', '2']).concurrency, 2, 'IPv6 loopback, the any-address and *.localhost are local too');
+    assert.deepEqual(warnings, []);
+    assert.equal(parseArgs(['--urls', 'http://[::1]/a,https://www.example.com/b', '--concurrency', '2']).concurrency, 1, 'one live input among local ones keeps the guard');
+    assert.equal(warnings.length, 1);
+  } finally {
+    console.error = original;
+  }
 });
 await check('parseArgs: a value flag followed by nothing or by another --flag is a usage error naming the flag (never swallows the flag)', () => {
   for (const [flag, ...tail] of [['--pages'], ['--urls'], ['--out'], ['--width'], ['--concurrency'], ['--max-pages'], ['--timeout-ms'], ['--ua'], ['--dismiss'], ['--locale'], ['--out', '--headed'], ['--concurrency', '--width', '360'], ['--urls', '--out', 'x.json'], ['--locale', '--headed']]) {
@@ -141,9 +161,20 @@ await check('listUrls: finalUrl over url, non-records skipped, deduped in file o
   assert.throws(() => listUrls(parseArgs(['--urls', 'not a url'])), /not a URL/);
 });
 await check('CLI: --help exits 0 with Usage + Writes before any work; usage errors exit 2 and write nothing', () => {
-  const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /Writes \(nothing else\):/); assert.match(h.out, /--max-pages/);
+  const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /Writes \(nothing else\):/); assert.match(h.out, /--max-pages/); assert.match(h.out, /--parallel-live-ok/); assert.match(h.out, /source edge rate-limits bursts from one address/);
   const e = run(['--bogus']); assert.equal(e.code, 2); assert.match(e.err, /unknown argument --bogus/);
   const m = run(['--pages', join(root, 'missing')]); assert.equal(m.code, 2); assert.match(m.err, /not a directory/);
+});
+await check('browser launch: shared live launcher is preferred; plain Chromium remains the fallback', async () => {
+  assert.equal(typeof censusModule.launchCensusBrowser, 'function');
+  const calls = [];
+  const chromium = { launch: async (options) => { calls.push(['fallback', options]); return 'fallback-browser'; } };
+  const shared = { gotoLive: async () => {}, launchLiveBrowser: async (value) => { calls.push(['shared', value]); return 'shared-browser'; } };
+  assert.equal(await censusModule.launchCensusBrowser(chromium, { headed: false }, shared), 'shared-browser');
+  assert.deepEqual(calls, [['shared', chromium]]);
+  calls.length = 0;
+  assert.equal(await censusModule.launchCensusBrowser(chromium, { headed: false }, { gotoLive: async () => {} }), 'fallback-browser');
+  assert.deepEqual(calls, [['fallback', { headless: true }]]);
 });
 
 // ---- part (b): end-to-end against a fixture site (needs playwright) --------------------------------------

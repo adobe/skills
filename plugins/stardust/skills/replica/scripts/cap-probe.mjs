@@ -78,7 +78,6 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.exit(0);
 }
 
-export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
 export const BASE_WIDTH = 1440;
 export const MIN_PROBE_WIDTH = 2560;
 export const PROBE_FACTOR = 1.25;
@@ -100,7 +99,7 @@ async function loadLiveSession() {
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 export function parseArgs(argv) {
-  const o = { urls: [], against: null, width: BASE_WIDTH, probeWidth: null, tolerance: CAP_TOLERANCE, main: null, buildMain: 'main', design: null, writeDesign: null, slug: null, label: 'iter', json: false, out: null, timeoutMs: 30000, ua: DEFAULT_UA, consent: null, dismiss: [], headed: false, locale: null };
+  const o = { urls: [], against: null, width: BASE_WIDTH, probeWidth: null, tolerance: CAP_TOLERANCE, main: null, buildMain: 'main', design: null, writeDesign: null, slug: null, label: 'iter', json: false, out: null, timeoutMs: 30000, ua: null, consent: null, dismiss: [], headed: false, locale: null };
   const need = (i, flag) => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${flag} needs a value`); return argv[i + 1]; };
   const int = (v, flag) => { const n = Number(v); if (!Number.isInteger(n) || n <= 0) throw new UsageError(`${flag} must be a positive integer, got ${v}`); return n; };
   for (let i = 0; i < argv.length; i += 1) {
@@ -445,7 +444,7 @@ async function openAndProbe(browser, url, o, session, { rootSel, probeWidth }) {
   const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
-    : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
+    : await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common });
   const page = await context.newPage();
   try {
     if (live) {
