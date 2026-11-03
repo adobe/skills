@@ -36,27 +36,299 @@
  * consent clicked (never DOM-removed), timed marketing modals closed, the mouse
  * parked. `--locale` pins Accept-Language + context locale for geo determinism.
  *
- * PACING (paceLiveNavigation, inside gotoLive): live navigations to one host
- * are spaced STARDUST_LIVE_PACE_MS apart (default 2000; 0 disables) within the
- * process — an Akamai-fronted origin answered 403 to back-to-back navigations
- * and to parallel browsers, 200 once they were spaced. Process-local by design;
- * the first wait per host is one stderr line.
+ * SHARED LIVE SESSION: live navigations to one host are coordinated across
+ * processes. STARDUST_LIVE_PACE_MS (default 2000; 0 disables) sets the minimum
+ * interval between starts; STARDUST_LIVE_MAX_PARALLEL (default 1; 0 disables)
+ * caps in-flight navigations. A waiting process prints one stderr line per host.
+ * A repository-scoped browser-state jar is loaded for new contexts and refreshed
+ * after successful navigations. STARDUST_LIVE_STATE_TTL_MS defaults to 12 hours;
+ * STARDUST_LIVE_STATE=0 disables jar reads and writes. The shared files live
+ * outside the working tree under the OS temp directory at
+ * stardust-live/<repository-path-sha1>/<host>/. The jar holds whatever cookies
+ * the site set, so OS-temp storage and repository scoping are deliberate.
  * The escalation ladder is documented in replica/reference/source-fidelity-gate.md.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev-tool library: sequential page ops use awaited loops by design */
-import { existsSync, readFileSync } from 'node:fs';
+import crypto from 'node:crypto';
+import {
+  chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync,
+  writeFileSync,
+} from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-// ---- pacing: live navigations to one host, spaced ------------------------------------------------------------------
+// ---- shared throttle and browser state -----------------------------------------------------------------------------
 export const LIVE_PACE_MS_DEFAULT = 2000;
-/** STARDUST_LIVE_PACE_MS as a non-negative integer; unset, empty or unparsable → the default (2000); 0 disables. */
-export function livePaceMs(env = process.env) {
-  const raw = env.STARDUST_LIVE_PACE_MS;
-  if (raw === undefined || String(raw).trim() === '') return LIVE_PACE_MS_DEFAULT;
+export const LIVE_MAX_PARALLEL_DEFAULT = 1;
+export const LIVE_STATE_TTL_MS_DEFAULT = 12 * 60 * 60 * 1000;
+const LIVE_LOCK_STALE_MS = 60000;
+const LIVE_LOCK_POLL_MS = 100;
+const LIVE_STATE_WRITE_INTERVAL_MS = 5000;
+
+function nonNegativeEnv(name, fallback, env = process.env) {
+  const raw = env[name];
+  if (raw === undefined || String(raw).trim() === '') return fallback;
   const n = Number(raw);
-  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : LIVE_PACE_MS_DEFAULT;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
 }
+
+/** STARDUST_LIVE_PACE_MS as a non-negative integer; unset, empty or unparsable → the default (2000); 0 disables. */
+export const livePaceMs = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_PACE_MS', LIVE_PACE_MS_DEFAULT, env);
+/** STARDUST_LIVE_MAX_PARALLEL as a non-negative integer; default 1; 0 disables the in-flight cap. */
+export const liveMaxParallel = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_MAX_PARALLEL', LIVE_MAX_PARALLEL_DEFAULT, env);
+/** STARDUST_LIVE_STATE_TTL_MS as a non-negative integer; default 12 hours. */
+export const liveStateTtlMs = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_STATE_TTL_MS', LIVE_STATE_TTL_MS_DEFAULT, env);
+/** The shared browser-state switch; only the exact value 0 disables reads and writes. */
+export const liveStateEnabled = (env = process.env) => env.STARDUST_LIVE_STATE !== '0';
+
+function repositoryRoot(start = process.cwd()) {
+  let current;
+  try { current = realpathSync(start); } catch { current = path.resolve(start); }
+  while (true) {
+    if (existsSync(path.join(current, '.git'))) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return path.resolve(start);
+    current = parent;
+  }
+}
+
+/** The repository-scoped OS-temp root used by the shared throttle and storage-state jar. */
+export function liveStateRoot({ tmpDir = os.tmpdir(), repositoryRootPath = repositoryRoot() } = {}) {
+  const key = crypto.createHash('sha1').update(path.resolve(repositoryRootPath)).digest('hex');
+  return path.join(tmpDir, 'stardust-live', key);
+}
+
+function liveHost(url) {
+  try { return isLiveHttpUrl(url) ? new URL(url).host.toLowerCase() : null; } catch { return null; }
+}
+
+/** The state directory for a live URL's host. */
+export function liveHostStateDir(url, { stateRoot = liveStateRoot() } = {}) {
+  const host = liveHost(url);
+  if (!host) return null;
+  return path.join(stateRoot, encodeURIComponent(host));
+}
+
+function atomicWriteJson(file, value) {
+  mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  chmodSync(path.dirname(file), 0o700);
+  const temp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`);
+  try {
+    writeFileSync(temp, JSON.stringify(value), { mode: 0o600 });
+    renameSync(temp, file);
+    chmodSync(file, 0o600);
+  } finally {
+    if (existsSync(temp)) rmSync(temp, { force: true });
+  }
+}
+
+function pidIsAlive(pid) {
+  if (!Number.isSafeInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; } catch (e) { return e && e.code === 'EPERM'; }
+}
+
+/**
+ * Try to own one host's atomic mkdir lock. Returns null while a recent live owner holds it, otherwise
+ * { release, reclaimed }. A dead owner or a lock older than 60 seconds is reclaimed.
+ */
+export function tryAcquireLiveLock(hostDir, {
+  now = Date.now, pid = process.pid, pidAlive = pidIsAlive,
+} = {}) {
+  mkdirSync(hostDir, { recursive: true, mode: 0o700 });
+  chmodSync(hostDir, 0o700);
+  const lockDir = path.join(hostDir, 'throttle.lock');
+  let reclaimed = false;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const token = `${pid}-${crypto.randomBytes(8).toString('hex')}`;
+    const ownerDir = path.join(lockDir, token);
+    try {
+      mkdirSync(lockDir);
+      try {
+        mkdirSync(ownerDir, { mode: 0o700 });
+        atomicWriteJson(path.join(ownerDir, 'owner.json'), { pid, createdAt: now(), token });
+      } catch (e) {
+        rmSync(ownerDir, { recursive: true, force: true });
+        try { rmdirSync(lockDir); } catch { /* another owner cannot enter while the canonical directory exists */ }
+        throw e;
+      }
+      return {
+        reclaimed,
+        release: () => {
+          try {
+            rmSync(ownerDir, { recursive: true, force: true });
+            rmdirSync(lockDir);
+          } catch (e) {
+            if (e && e.code !== 'ENOENT' && e.code !== 'ENOTEMPTY') throw e;
+          }
+        },
+      };
+    } catch (e) {
+      if (!e || e.code !== 'EEXIST') throw e;
+    }
+
+    let owner = null;
+    let createdAt = null;
+    let staleOwnerDir = null;
+    try {
+      const entry = readdirSync(lockDir, { withFileTypes: true }).find((item) => item.isDirectory());
+      if (entry) {
+        staleOwnerDir = path.join(lockDir, entry.name);
+        owner = JSON.parse(readFileSync(path.join(staleOwnerDir, 'owner.json'), 'utf8'));
+      }
+    } catch { /* an incomplete lock ages out by directory mtime */ }
+    try { createdAt = Number.isFinite(owner && owner.createdAt) ? owner.createdAt : statSync(lockDir).mtimeMs; } catch { /* raced with release; retry */ }
+    const dead = owner && Number.isSafeInteger(owner.pid) && !pidAlive(owner.pid);
+    const old = Number.isFinite(createdAt) && now() - createdAt > LIVE_LOCK_STALE_MS;
+    if (!dead && !old) return null;
+    try {
+      if (staleOwnerDir) rmSync(staleOwnerDir, { recursive: true, force: true });
+      rmdirSync(lockDir);
+      reclaimed = true;
+    } catch (e) {
+      if (e && e.code === 'ENOENT') continue;
+      return null;
+    }
+  }
+  return null;
+}
+
+const emptyThrottleState = () => ({ lastStart: null, nextTicket: 1, waiters: [], active: [] });
+function normalizedThrottleState(value) {
+  if (!value || typeof value !== 'object') return emptyThrottleState();
+  return {
+    lastStart: Number.isFinite(value.lastStart) ? value.lastStart : null,
+    nextTicket: Number.isSafeInteger(value.nextTicket) && value.nextTicket > 0 ? value.nextTicket : 1,
+    waiters: Array.isArray(value.waiters) ? value.waiters.filter((w) => w && typeof w.id === 'string') : [],
+    active: Array.isArray(value.active) ? value.active.filter((a) => a && typeof a.id === 'string') : [],
+  };
+}
+
+/**
+ * Pure throttle decision. Only the queue head may start. Pace gates the next start; maxParallel gates active leases.
+ * The returned state removes a granted waiter, records its start, and holds an active lease only when the cap is on.
+ */
+export function liveThrottleDecision(value, waiterId, now, {
+  paceMs = livePaceMs(), maxParallel = liveMaxParallel(), pollMs = LIVE_LOCK_POLL_MS,
+} = {}) {
+  const state = normalizedThrottleState(value);
+  const waiter = state.waiters.find((w) => w.id === waiterId);
+  const head = state.waiters[0];
+  if (!waiter || !head || head.id !== waiterId) return { canStart: false, waitMs: pollMs, state };
+  const paceWait = paceMs > 0 && Number.isFinite(state.lastStart) ? Math.max(0, state.lastStart + paceMs - now) : 0;
+  const slotWait = maxParallel > 0 && state.active.length >= maxParallel ? pollMs : 0;
+  if (paceWait > 0 || slotWait > 0) return { canStart: false, waitMs: Math.max(paceWait, slotWait), state };
+  state.waiters = state.waiters.filter((w) => w.id !== waiterId);
+  if (paceMs > 0) state.lastStart = now;
+  if (maxParallel > 0) state.active.push({ ...waiter, startedAt: now });
+  return { canStart: true, waitMs: 0, state };
+}
+
+function readThrottleState(hostDir) {
+  const file = path.join(hostDir, 'throttle.json');
+  if (!existsSync(file)) return emptyThrottleState();
+  return normalizedThrottleState(JSON.parse(readFileSync(file, 'utf8')));
+}
+
+function writeThrottleState(hostDir, state) {
+  atomicWriteJson(path.join(hostDir, 'throttle.json'), state);
+}
+
+function cleanDeadOwners(state, pidAlive) {
+  return {
+    ...state,
+    waiters: state.waiters.filter((w) => pidAlive(w.pid)),
+    active: state.active.filter((a) => pidAlive(a.pid)),
+  };
+}
+
+const pacedHosts = new Set();
+function logSharedWait(host, paceMs, maxParallel, waitMs) {
+  if (pacedHosts.has(host)) return;
+  pacedHosts.add(host);
+  console.error(`[live-session] waiting to pace live navigations to ${host} (${paceMs} ms apart, ${maxParallel} max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait ${waitMs} ms`);
+}
+
+async function acquireLiveNavigation(page, url, {
+  paceMs = livePaceMs(), maxParallel = liveMaxParallel(), now = Date.now, stateRoot = liveStateRoot(),
+  pid = process.pid, pidAlive = pidIsAlive, pollMs = LIVE_LOCK_POLL_MS,
+} = {}) {
+  const host = liveHost(url);
+  if (!host || (!(paceMs > 0) && !(maxParallel > 0))) return { wait: 0, release: async () => {} };
+  const hostDir = liveHostStateDir(url, { stateRoot });
+  const waiterId = `${pid}-${crypto.randomBytes(10).toString('hex')}`;
+  let queued = false;
+  let totalWait = 0;
+  let logicalNow = now();
+  const clock = () => Math.max(now(), logicalNow);
+  const sleep = async (ms) => {
+    const delay = Math.max(1, ms);
+    const startedAt = clock();
+    logSharedWait(host, paceMs, maxParallel, delay);
+    await page.waitForTimeout(delay);
+    totalWait += delay;
+    logicalNow = Math.max(logicalNow, startedAt + delay);
+  };
+  const lock = async () => {
+    while (true) {
+      const held = tryAcquireLiveLock(hostDir, { now: clock, pid, pidAlive });
+      if (held) return held;
+      await sleep(pollMs);
+    }
+  };
+
+  try {
+    let held = await lock();
+    try {
+      const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
+      const ticket = state.nextTicket;
+      state.nextTicket += 1;
+      state.waiters.push({ id: waiterId, pid, ticket, queuedAt: clock() });
+      writeThrottleState(hostDir, state);
+      queued = true;
+    } finally { held.release(); }
+
+    while (true) {
+      held = await lock();
+      let decision;
+      try {
+        const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
+        decision = liveThrottleDecision(state, waiterId, clock(), { paceMs, maxParallel, pollMs });
+        writeThrottleState(hostDir, decision.state);
+      } finally { held.release(); }
+      if (decision.canStart) {
+        queued = false;
+        return {
+          wait: totalWait,
+          release: async () => {
+            if (!(maxParallel > 0)) return;
+            const releaseLock = await lock();
+            try {
+              const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
+              state.active = state.active.filter((a) => a.id !== waiterId);
+              writeThrottleState(hostDir, state);
+            } finally { releaseLock.release(); }
+          },
+        };
+      }
+      await sleep(decision.waitMs);
+    }
+  } catch (e) {
+    if (queued) {
+      try {
+        const held = await lock();
+        try {
+          const state = readThrottleState(hostDir);
+          state.waiters = state.waiters.filter((w) => w.id !== waiterId);
+          writeThrottleState(hostDir, state);
+        } finally { held.release(); }
+      } catch { /* preserve the original coordination error */ }
+    }
+    throw e;
+  }
+}
+
 /**
  * Pure: the slot a navigation takes given the host's next free time (`nextFree`, ms epoch, undefined for a host never
  * navigated), `now` and the pace → { wait, nextFree }: wait = how long to hold before navigating (0 when the host is
@@ -67,30 +339,80 @@ export function paceSlot(nextFree, now, paceMs) {
   const at = Math.max(now, Number.isFinite(nextFree) ? nextFree : 0);
   return { wait: at - now, nextFree: at + paceMs };
 }
-const nextFreeByHost = new Map(); // host → ms epoch when the next live navigation may start
-const pacedHosts = new Set(); // hosts whose first wait has been logged
 /**
- * Hold `page` until the host of `url` is free, then take the next slot (reserved synchronously, so concurrent
- * callers in one process queue up instead of sharing a slot). Live URLs only (isLiveHttpUrl — localhost and loopback
- * are never paced). Returns the ms waited. Every instrument's live goto goes through here (gotoLive; the crawler
- * calls it before its own gotos).
+ * Hold `page` until the host of `url` is free, reserve a shared start, then release the in-flight lease immediately.
+ * Existing callers that pace before their own goto retain that behavior; runLiveNavigation holds the lease around
+ * the operation and is the path used by gotoLive and the crawler. Returns the total milliseconds waited.
  */
-export async function paceLiveNavigation(page, url, { paceMs = livePaceMs(), now = Date.now } = {}) {
-  if (!isLiveHttpUrl(url) || !(paceMs > 0)) return 0;
-  const { host } = new URL(url);
-  const { wait, nextFree } = paceSlot(nextFreeByHost.get(host), now(), paceMs);
-  nextFreeByHost.set(host, nextFree);
-  if (wait > 0) {
-    if (!pacedHosts.has(host)) {
-      pacedHosts.add(host);
-      console.error(`[live-session] pacing live navigations to ${host} ${paceMs} ms apart (STARDUST_LIVE_PACE_MS; 0 disables) — first wait ${wait} ms`);
-    }
-    await page.waitForTimeout(wait);
-  }
-  return wait;
+export async function paceLiveNavigation(page, url, options = {}) {
+  const lease = await acquireLiveNavigation(page, url, options);
+  await lease.release();
+  return lease.wait;
 }
-/** Forget every host's slot (tests). */
-export function resetLivePacing() { nextFreeByHost.clear(); pacedHosts.clear(); }
+
+/** Run one live navigation under the shared per-host pace and in-flight lease. */
+export async function runLiveNavigation(page, url, navigate, options = {}) {
+  const lease = await acquireLiveNavigation(page, url, options);
+  try { return await navigate(); } finally { await lease.release(); }
+}
+
+/** Forget process-local log and write-rate memory; shared disk state intentionally remains owned by all processes. */
+const lastStateWriteByHost = new Map();
+export function resetLivePacing() { pacedHosts.clear(); lastStateWriteByHost.clear(); }
+
+function liveStorageState(url, {
+  stateRoot = liveStateRoot(), now = Date.now, ttlMs = liveStateTtlMs(), env = process.env,
+} = {}) {
+  const hostDir = liveHostStateDir(url, { stateRoot });
+  if (!liveStateEnabled(env) || !hostDir) return null;
+  const file = path.join(hostDir, 'storage-state.json');
+  if (!existsSync(file) || now() - statSync(file).mtimeMs > ttlMs) return null;
+  try {
+    const state = JSON.parse(readFileSync(file, 'utf8'));
+    return {
+      cookies: Array.isArray(state.cookies) ? state.cookies : [],
+      origins: Array.isArray(state.origins) ? state.origins : [],
+    };
+  } catch (e) {
+    console.error(`[live-session] WARNING: cannot read shared browser state ${file}: ${String(e.message).split('\n')[0]}`);
+    return null;
+  }
+}
+
+function storageStateForHost(state, url) {
+  const target = new URL(url);
+  const hostname = target.hostname.toLowerCase();
+  const cookies = (Array.isArray(state.cookies) ? state.cookies : []).filter((cookie) => {
+    const domain = String(cookie.domain || '').toLowerCase().replace(/^\./, '');
+    return domain && (hostname === domain || hostname.endsWith(`.${domain}`));
+  });
+  const origins = (Array.isArray(state.origins) ? state.origins : []).filter((origin) => {
+    try { return new URL(origin.origin).host.toLowerCase() === target.host.toLowerCase(); } catch { return false; }
+  });
+  return { cookies, origins };
+}
+
+/**
+ * Persist a page or context's Playwright storage state to its host jar, atomically and rate-limited per process.
+ * Returns true when a file was written.
+ */
+export async function persistLiveStorageState(pageOrContext, url, {
+  stateRoot = liveStateRoot(), now = Date.now, writeIntervalMs = LIVE_STATE_WRITE_INTERVAL_MS, env = process.env,
+} = {}) {
+  const host = liveHost(url);
+  if (!host || !liveStateEnabled(env)) return false;
+  const context = typeof pageOrContext?.storageState === 'function'
+    ? pageOrContext : typeof pageOrContext?.context === 'function' ? pageOrContext.context() : null;
+  if (!context || typeof context.storageState !== 'function') return false;
+  const at = now();
+  const last = lastStateWriteByHost.get(host);
+  if (Number.isFinite(last) && at - last < writeIntervalMs) return false;
+  const state = storageStateForHost(await context.storageState(), url);
+  const hostDir = liveHostStateDir(url, { stateRoot });
+  atomicWriteJson(path.join(hostDir, 'storage-state.json'), state);
+  lastStateWriteByHost.set(host, at);
+  return true;
+}
 
 // ---- identity: what the browser is, said once, derived never invented ----------------------------------------------
 /** Whether the existing automation-signal handling is active; only STARDUST_STEALTH=0 disables it. */
@@ -265,7 +587,9 @@ export function contextOptions({ ua, locale, viewport, identity = null } = {}) {
  * The existing navigator.webdriver spoof lands on every context unless STARDUST_STEALTH=0. Extra Playwright context
  * options pass through (reducedMotion, ...).
  */
-export async function newLiveContext(browser, { ua, locale, viewport, authOrigin, authHeader, ...rest } = {}) {
+export async function newLiveContext(browser, {
+  ua, locale, viewport, authOrigin, authHeader, storageState, stateUrl, stateRoot, stateNow, stateTtlMs, stateEnv, ...rest
+} = {}) {
   // F-B2 (financial-services site, 2026-08-25): the standard header set must ride on
   // DOCUMENT requests only. Forcing it via extraHTTPHeaders on every request
   // makes cross-origin CORS-mode subresource fetches (Typekit/webfont CDNs)
@@ -275,7 +599,14 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
   // navigation request, which still carries the full set below.
   const resolvedUa = ua || await browserUserAgent(browser);
   const { extraHTTPHeaders, ...base } = contextOptions({ ua: resolvedUa, locale, viewport, identity: browserIdentity(browser, { ua }) });
-  const ctx = await browser.newContext({ ...rest, ...base });
+  const sharedState = storageState === undefined
+    ? liveStorageState(stateUrl, { stateRoot, now: stateNow, ttlMs: stateTtlMs, env: stateEnv })
+    : null;
+  const ctx = await browser.newContext({
+    ...rest,
+    ...base,
+    ...(storageState !== undefined ? { storageState } : sharedState ? { storageState: sharedState } : {}),
+  });
   await ctx.route('**/*', (route) => {
     if (route.request().resourceType() === 'document') {
       route.continue({ headers: { ...route.request().headers(), ...extraHTTPHeaders } });
@@ -553,9 +884,11 @@ export function botChallengeError(url, marker, { denial = false } = {}) {
  *     one stderr line ("denial-page check skipped"), never a pass.
  * Returns the response.
  */
-export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false } = {}) {
-  await paceLiveNavigation(page, url);
-  let resp = await page.goto(url, { waitUntil, timeout: timeoutMs });
+export async function gotoLive(page, url, {
+  waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false,
+  throttle = {},
+} = {}) {
+  let resp = await runLiveNavigation(page, url, () => page.goto(url, { waitUntil, timeout: timeoutMs }), throttle);
   if (!resp) {
     const err = new Error(`no response navigating to ${url} — network-level failure or non-HTTP navigation`);
     err.name = 'LiveNavigationError';
@@ -568,7 +901,7 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
   if (solveWindow) {
     for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
       await page.waitForTimeout(4000);
-      const reloaded = await page.reload({ waitUntil, timeout: timeoutMs }).catch(() => null);
+      const reloaded = await runLiveNavigation(page, url, () => page.reload({ waitUntil, timeout: timeoutMs }), throttle).catch(() => null);
       if (reloaded) resp = reloaded;
     }
   }
@@ -592,7 +925,7 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
     let d = await pageDenial(page);
     for (let attempt = 0; solveWindow && attempt < 3 && d.marker; attempt += 1) {
       await page.waitForTimeout(4000);
-      const reloaded = await page.reload({ waitUntil, timeout: timeoutMs }).catch(() => null);
+      const reloaded = await runLiveNavigation(page, url, () => page.reload({ waitUntil, timeout: timeoutMs }), throttle).catch(() => null);
       if (reloaded) resp = reloaded;
       if (settleMs > 0) await page.waitForTimeout(settleMs); // the reloaded page is read (and returned) settled, like the entry
       // a reload answered by an edge challenge or an error status has not cleared the denial page
@@ -606,6 +939,7 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
     if (d.skipped) console.error(`[live-session] denial-page check skipped at ${url}: ${d.skipped}`);
     if (d.marker) throw botChallengeError(url, `HTTP ${status} ${d.marker}`, { denial: true });
   }
+  await persistLiveStorageState(page, url);
   return resp;
 }
 
@@ -713,6 +1047,7 @@ export async function acceptConsent(page, candidates = CONSENT_CANDIDATES) {
       await btn.click({ timeout: 3000 });
       await btn.waitForElementState('hidden', { timeout: 3000 });
       await page.waitForTimeout(1500);
+      if (typeof page.url === 'function') await persistLiveStorageState(page, page.url());
       return sel;
     } catch { /* candidate absent, or still showing after the click — try next */ }
   }

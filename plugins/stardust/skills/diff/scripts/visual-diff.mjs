@@ -247,6 +247,7 @@ async function capture(browser, url, tag, opts) {
     ua: opts.ua, locale: opts.locale,
     viewport: { width: opts.width, height: 1000 },
     reducedMotion: 'reduce',
+    stateUrl: url,
   });
   const page = await ctx.newPage();
   // challenge detection on every navigation — a blocked live side throws

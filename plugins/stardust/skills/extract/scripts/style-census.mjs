@@ -468,8 +468,8 @@ async function main(argv) {
   async function worker() {
     const viewport = { width: o.widths[0], height: VIEWPORT_H };
     const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
+    const liveContexts = new Map();
     const contexts = {
-      live: await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common }),
       local: await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common }),
     };
     while (next < jobs.length) {
@@ -477,6 +477,15 @@ async function main(argv) {
       next += 1;
       const t0 = Date.now();
       try {
+        if (isLiveHttpUrl(url)) {
+          const host = new URL(url).host;
+          if (!liveContexts.has(host)) {
+            liveContexts.set(host, await session.newLiveContext(browser, {
+              ua: o.ua, locale: o.locale, viewport, stateUrl: url, ...common,
+            }));
+          }
+          contexts.live = liveContexts.get(host);
+        }
         const rec = await measure(contexts, url, width, o, session);
         pages[url] = pages[url] || {};
         pages[url][width] = rec;
@@ -489,7 +498,7 @@ async function main(argv) {
         if (e.name === 'BotChallengeError' && !challenge) { challenge = e; next = jobs.length; }
       }
     }
-    await contexts.live.close().catch(() => {});
+    await Promise.all([...liveContexts.values()].map((ctx) => ctx.close().catch(() => {})));
     await contexts.local.close().catch(() => {});
   }
   await Promise.all(Array.from({ length: Math.min(o.concurrency, jobs.length) }, worker));

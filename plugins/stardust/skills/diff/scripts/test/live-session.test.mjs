@@ -17,6 +17,9 @@
 // every context by default. The edge header signature.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import * as session from '../live-session.mjs';
 
 // the stub pages below navigate one host back-to-back; the per-host pacing has its own tests (they set the pace themselves)
@@ -36,7 +39,9 @@ const stderrOf = async (fn) => {
 
 check('the exported surface the instruments import, the denial-page names included', () => {
   for (const name of ['CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'challengeMarker', 'isChallengeResponse', 'gotoLive', 'launchLiveBrowser', 'launchStealthHeaded', 'browserTier', 'acceptConsent', 'dismissOverlays',
-    'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'livePaceMs', 'paceSlot', 'paceLiveNavigation', 'resetLivePacing',
+    'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'LIVE_MAX_PARALLEL_DEFAULT', 'LIVE_STATE_TTL_MS_DEFAULT',
+    'livePaceMs', 'liveMaxParallel', 'liveStateTtlMs', 'liveStateEnabled', 'liveStateRoot', 'liveHostStateDir', 'paceSlot', 'liveThrottleDecision',
+    'tryAcquireLiveLock', 'paceLiveNavigation', 'runLiveNavigation', 'persistLiveStorageState', 'resetLivePacing',
     'browserUserAgent', 'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
   for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError', 'launchLiveBrowser', 'launchStealthHeaded', 'browserIdentity', 'browserUserAgent', 'challengeMarker']) assert.equal(typeof session[name], 'function', name);
   assert.ok(!('REAL_CHROME_UA' in session), 'no hard-coded user agent is exported any more — the browser presents its own');
@@ -352,57 +357,162 @@ check('paceSlot (pure): a free host → no wait, the next free time one pace lat
   for (const pace of [-1, NaN, undefined, null, 'x']) assert.deepEqual(session.paceSlot(3000, 1000, pace), { wait: 0, nextFree: 1000 }, String(pace));
   assert.deepEqual(session.paceSlot(NaN, 1000, 2000), { wait: 0, nextFree: 3000 }, 'a garbage nextFree is a free host');
 });
+check('live throttle settings: parallel defaults to 1, state TTL defaults to 12 hours, non-negative integers are accepted, and STARDUST_LIVE_STATE=0 disables the jar', () => {
+  assert.equal(session.LIVE_MAX_PARALLEL_DEFAULT, 1);
+  assert.equal(session.LIVE_STATE_TTL_MS_DEFAULT, 12 * 60 * 60 * 1000);
+  for (const [v, want] of [[undefined, 1], ['', 1], ['0', 0], ['3', 3], ['2.9', 2], ['bad', 1], ['-1', 1]]) {
+    assert.equal(session.liveMaxParallel(v === undefined ? {} : { STARDUST_LIVE_MAX_PARALLEL: v }), want, String(v));
+  }
+  for (const [v, want] of [[undefined, 12 * 60 * 60 * 1000], ['0', 0], ['9000', 9000], ['bad', 12 * 60 * 60 * 1000]]) {
+    assert.equal(session.liveStateTtlMs(v === undefined ? {} : { STARDUST_LIVE_STATE_TTL_MS: v }), want, String(v));
+  }
+  assert.equal(session.liveStateEnabled({}), true);
+  assert.equal(session.liveStateEnabled({ STARDUST_LIVE_STATE: '0' }), false);
+});
+check('liveThrottleDecision (pure): pace and slots both gate starts, 0 disables either gate, and ticket order is fair', () => {
+  const waiters = [
+    { id: 'first', pid: 10, ticket: 1, queuedAt: 900 },
+    { id: 'second', pid: 11, ticket: 2, queuedAt: 901 },
+  ];
+  const busy = { lastStart: 500, nextTicket: 3, waiters, active: [{ id: 'active', pid: 12, startedAt: 500 }] };
+  let d = session.liveThrottleDecision(busy, 'second', 1000, { paceMs: 2000, maxParallel: 1 });
+  assert.deepEqual([d.canStart, d.waitMs], [false, 100], 'a later ticket cannot pass the head');
+  d = session.liveThrottleDecision(busy, 'first', 1000, { paceMs: 2000, maxParallel: 1 });
+  assert.deepEqual([d.canStart, d.waitMs], [false, 1500], 'both a full slot and the pace block the head');
+  d = session.liveThrottleDecision({ ...busy, active: [] }, 'first', 2500, { paceMs: 2000, maxParallel: 1 });
+  assert.equal(d.canStart, true);
+  assert.deepEqual(d.state.waiters.map((w) => w.id), ['second']);
+  assert.deepEqual(d.state.active.map((a) => a.id), ['first']);
+  assert.equal(d.state.lastStart, 2500);
+  d = session.liveThrottleDecision(busy, 'first', 1000, { paceMs: 0, maxParallel: 0 });
+  assert.equal(d.canStart, true, 'both gates disabled');
+  assert.ok(!d.state.active.some((a) => a.id === 'first'), 'a disabled slot cap adds no lease');
+  d = session.liveThrottleDecision({ ...busy, active: [] }, 'first', 1000, { paceMs: 2000, maxParallel: 0 });
+  assert.deepEqual([d.canStart, d.waitMs], [false, 1500], 'pace remains enabled');
+  d = session.liveThrottleDecision(busy, 'first', 1000, { paceMs: 0, maxParallel: 2 });
+  assert.equal(d.canStart, true, 'a second slot is available');
+});
+check('tryAcquireLiveLock: an atomic mkdir lock excludes a live owner and reclaims a dead or older-than-60-second owner', () => {
+  const root = mkdtempSync(join(tmpdir(), 'live-lock-'));
+  const hostDir = join(root, 'www.example.com');
+  const seedLock = (token, createdAt) => {
+    mkdirSync(join(hostDir, 'throttle.lock', token), { recursive: true });
+    writeFileSync(join(hostDir, 'throttle.lock', token, 'owner.json'), JSON.stringify({ pid: 40, createdAt, token }));
+  };
+  seedLock('first-owner', 1000);
+  assert.equal(session.tryAcquireLiveLock(hostDir, { now: () => 2000, pid: 41, pidAlive: () => true }), null, 'live, recent owner keeps the lock');
+  const dead = session.tryAcquireLiveLock(hostDir, { now: () => 2000, pid: 41, pidAlive: () => false });
+  assert.ok(dead && dead.reclaimed, 'dead owner reclaimed');
+  dead.release();
+  seedLock('second-owner', 1000);
+  const old = session.tryAcquireLiveLock(hostDir, { now: () => 62001, pid: 41, pidAlive: () => true });
+  assert.ok(old && old.reclaimed, 'owner older than 60 seconds reclaimed even while its pid is alive');
+  old.release();
+
+  const prior = session.tryAcquireLiveLock(hostDir, { now: () => 70000, pid: 41, pidAlive: () => true });
+  rmSync(join(hostDir, 'throttle.lock'), { recursive: true, force: true });
+  const replacement = session.tryAcquireLiveLock(hostDir, { now: () => 70001, pid: 42, pidAlive: () => true });
+  prior.release();
+  assert.equal(session.tryAcquireLiveLock(hostDir, { now: () => 70002, pid: 43, pidAlive: () => true }), null, 'an expired owner cannot remove its replacement');
+  replacement.release();
+  rmSync(root, { recursive: true, force: true });
+});
+await checkAsync('runLiveNavigation: the on-disk queue allows one in-flight navigation, preserves waiter order, and starts consecutive navigations one pace apart under a fake clock', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-throttle-'));
+  const page = { waitForTimeout: (ms) => new Promise((resolve) => setTimeout(resolve, Math.min(ms, 5))) };
+  const order = [];
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
+  const opts = { stateRoot, paceMs: 0, maxParallel: 1, pollMs: 1 };
+  let work;
+  const linesPromise = stderrOf(async () => {
+    const first = session.runLiveNavigation(page, 'https://www.example.com/one', async () => { order.push('first'); await firstGate; return 1; }, opts);
+    const second = session.runLiveNavigation(page, 'https://www.example.com/two', async () => { order.push('second'); return 2; }, opts);
+    const third = session.runLiveNavigation(page, 'https://www.example.com/three', async () => { order.push('third'); return 3; }, opts);
+    work = [first, second, third];
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(order, ['first'], 'one slot in flight');
+    releaseFirst();
+    assert.deepEqual(await Promise.all(work), [1, 2, 3]);
+  });
+  await linesPromise;
+  assert.deepEqual(order, ['first', 'second', 'third'], 'ticket order');
+
+  let clock = 1000;
+  const waits = [];
+  const fakePage = { waitForTimeout: async (ms) => { waits.push(ms); clock += ms; } };
+  const paceOpts = { stateRoot: mkdtempSync(join(tmpdir(), 'live-pace-')), paceMs: 13000, maxParallel: 1, now: () => clock };
+  await stderrOf(async () => {
+    await session.runLiveNavigation(fakePage, 'https://pace.example.com/one', async () => 1, paceOpts);
+    await session.runLiveNavigation(fakePage, 'https://pace.example.com/two', async () => 2, paceOpts);
+  });
+  assert.deepEqual(waits, [13000]);
+  rmSync(stateRoot, { recursive: true, force: true });
+  rmSync(paceOpts.stateRoot, { recursive: true, force: true });
+});
 await checkAsync('paceLiveNavigation: slots per host under an injected clock — the first navigation is free, the next waits one pace, concurrent callers queue up (0, pace, 2×pace), another host is independent, localhost is never paced, 0 disables; ONE stderr line per host on its first wait', async () => {
   session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-pace-api-'));
   const pageLog = () => { const waits = []; return { waits, waitForTimeout: async (ms) => { waits.push(ms); } }; };
   let t = 1000; const now = () => t;
+  const throttle = (paceMs) => ({ paceMs, now, stateRoot });
   const A = 'https://a.example.com/'; const B = 'https://b.example.com/x';
   const p = pageLog();
-  let lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, A, { paceMs: 2000, now }), 0, 'a free host'); });
+  let lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, A, throttle(2000)), 0, 'a free host'); });
   assert.deepEqual([p.waits, lines], [[], []]);
-  lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, A, { paceMs: 2000, now }), 2000, 'the second navigation waits one pace'); });
+  lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, A, throttle(2000)), 2000, 'the second navigation waits one pace'); });
   assert.deepEqual(p.waits, [2000]);
-  assert.deepEqual(lines, ['[live-session] pacing live navigations to a.example.com 2000 ms apart (STARDUST_LIVE_PACE_MS; 0 disables) — first wait 2000 ms']);
-  lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, `${A}deeper`, { paceMs: 2000, now }), 4000, 'the third queues behind the second'); });
+  assert.deepEqual(lines, ['[live-session] waiting to pace live navigations to a.example.com (2000 ms apart, 1 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 2000 ms']);
+  lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, `${A}deeper`, throttle(2000)), 4000, 'the third queues behind the second'); });
   assert.deepEqual(lines, [], 'logged once per host');
   t = 7000; // the host is free again
-  assert.equal(await session.paceLiveNavigation(p, A, { paceMs: 2000, now }), 0);
-  assert.equal(await session.paceLiveNavigation(p, B, { paceMs: 2000, now }), 0, 'another host is independent');
-  lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, B, { paceMs: 2000, now }), 2000); });
+  assert.equal(await session.paceLiveNavigation(p, A, throttle(2000)), 0);
+  assert.equal(await session.paceLiveNavigation(p, B, throttle(2000)), 0, 'another host is independent');
+  lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, B, throttle(2000)), 2000); });
   assert.equal(lines.length, 1, 'the other host logs its own first wait');
   for (const local of ['http://localhost:8791/x.html', 'http://127.0.0.1:3000/', 'file:///tmp/x.html']) {
-    assert.equal(await session.paceLiveNavigation(p, local, { paceMs: 2000, now }), 0, local);
-    assert.equal(await session.paceLiveNavigation(p, local, { paceMs: 2000, now }), 0, `${local} again — never paced`);
+    assert.equal(await session.paceLiveNavigation(p, local, throttle(2000)), 0, local);
+    assert.equal(await session.paceLiveNavigation(p, local, throttle(2000)), 0, `${local} again — never paced`);
   }
-  assert.equal(await session.paceLiveNavigation(p, B, { paceMs: 0, now }), 0, '0 disables');
+  assert.equal(await session.paceLiveNavigation(p, B, throttle(0)), 0, '0 disables');
   // concurrent callers in one process: each reserves its own slot before any of them awaits
   session.resetLivePacing();
   const q = pageLog();
-  const waited = await stderrOf(async () => { assert.deepEqual(await Promise.all([1, 2, 3].map(() => session.paceLiveNavigation(q, A, { paceMs: 1500, now }))), [0, 1500, 3000]); });
+  const concurrentRoot = mkdtempSync(join(tmpdir(), 'live-pace-concurrent-'));
+  const waited = await stderrOf(async () => {
+    const waits = await Promise.all([1, 2, 3].map(() => session.paceLiveNavigation(q, A, { paceMs: 1500, now, stateRoot: concurrentRoot })));
+    assert.equal(waits[0], 0);
+    assert.ok(waits[1] >= 1500 && waits[1] < 2000, `second waiter includes at most a queue poll (${waits[1]} ms)`);
+    assert.ok(waits[2] >= 3000 && waits[2] < 3500, `third waiter includes at most a queue poll (${waits[2]} ms)`);
+  });
   assert.equal(waited.length, 1, 'one line for the host');
   session.resetLivePacing();
+  rmSync(stateRoot, { recursive: true, force: true });
+  rmSync(concurrentRoot, { recursive: true, force: true });
 });
 await checkAsync('gotoLive paces through the environment: STARDUST_LIVE_PACE_MS=5000 → the second navigation to the host waits (through the page, before goto) and the pacing line is printed once; back at 0 nothing waits', async () => {
   session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-goto-pace-'));
   process.env.STARDUST_LIVE_PACE_MS = '5000';
   try {
     const first = stubPage(); const second = stubPage(); const third = stubPage();
     const lines = await stderrOf(async () => {
-      await session.gotoLive(first, LIVE_URL, { settleMs: 0 });
-      await session.gotoLive(second, LIVE_URL, { settleMs: 0 });
-      await session.gotoLive(third, LIVE_URL, { settleMs: 0 });
+      await session.gotoLive(first, LIVE_URL, { settleMs: 0, throttle: { stateRoot } });
+      await session.gotoLive(second, LIVE_URL, { settleMs: 0, throttle: { stateRoot } });
+      await session.gotoLive(third, LIVE_URL, { settleMs: 0, throttle: { stateRoot } });
     });
     assert.deepEqual(first.calls.waits, [], 'the first navigation is free');
     assert.equal(second.calls.waits.length, 1);
     assert.ok(second.calls.waits[0] > 4000 && second.calls.waits[0] <= 5000, `the second waits about one pace (${second.calls.waits[0]} ms)`);
     assert.ok(third.calls.waits[0] > 9000 && third.calls.waits[0] <= 10000, `the third queues behind it (${third.calls.waits[0]} ms)`);
-    assert.equal(lines.length, 1);
-    assert.match(lines[0], /^\[live-session\] pacing live navigations to www\.example\.com 5000 ms apart \(STARDUST_LIVE_PACE_MS; 0 disables\) — first wait \d+ ms$/);
+    assert.equal(lines.length, 1, JSON.stringify(lines));
+    assert.match(lines[0], /^\[live-session\] waiting to pace live navigations to www\.example\.com \(5000 ms apart, 1 max parallel; STARDUST_LIVE_PACE_MS \/ STARDUST_LIVE_MAX_PARALLEL; 0 disables either\) — first wait \d+ ms$/);
   } finally { process.env.STARDUST_LIVE_PACE_MS = '0'; session.resetLivePacing(); }
   const again = stubPage(); const andAgain = stubPage();
   await session.gotoLive(again, LIVE_URL, { settleMs: 0 });
   await session.gotoLive(andAgain, LIVE_URL, { settleMs: 0 });
   assert.deepEqual(andAgain.calls.waits, [], '0 disables');
+  rmSync(stateRoot, { recursive: true, force: true });
 });
 
 // ---- the honest identity: launchers on a stub chromium, header derivation, the context -----------------------------
@@ -642,6 +752,44 @@ await checkAsync('newLiveContext: the browser-derived or caller UA reaches the c
     const ctx = await session.newLiveContext(chrome, {});
     assert.equal(ctx.initScripts, 0, 'the explicit opt-out removes the webdriver spoof');
   });
+});
+await checkAsync('shared storage state: host jars stay isolated and private, a fresh context loads only its young host jar, caller state wins, and disabled state writes nothing', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-state-'));
+  const stored = {
+    cookies: [
+      { name: 'session', value: 'ok', domain: '.example.com', path: '/', expires: -1, httpOnly: true, secure: true, sameSite: 'Lax' },
+      { name: 'other', value: 'no', domain: '.other.example', path: '/', expires: -1, httpOnly: true, secure: true, sameSite: 'Lax' },
+    ],
+    origins: [
+      { origin: 'https://www.example.com', localStorage: [{ name: 'choice', value: 'yes' }] },
+      { origin: 'https://other.example', localStorage: [{ name: 'other', value: 'no' }] },
+    ],
+  };
+  const ctx = { storageState: async () => stored };
+  assert.equal(await session.persistLiveStorageState(ctx, LIVE_URL, { stateRoot, now: () => 1000, writeIntervalMs: 0 }), true);
+  const stateFile = join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'storage-state.json');
+  const hostState = JSON.parse(readFileSync(stateFile, 'utf8'));
+  assert.deepEqual(hostState.cookies.map((c) => c.name), ['session']);
+  assert.deepEqual(hostState.origins.map((o) => o.origin), ['https://www.example.com']);
+  assert.equal(statSync(stateFile).mode & 0o777, 0o600, 'state file is private');
+  assert.equal(statSync(session.liveHostStateDir(LIVE_URL, { stateRoot })).mode & 0o777, 0o700, 'host directory is private');
+
+  const browser = stubBrowser({ tier: 'chrome' });
+  await session.newLiveContext(browser, { stateUrl: LIVE_URL, stateRoot, stateNow: () => 1001, stateTtlMs: 5000 });
+  assert.deepEqual(browser.contexts[0].storageState, hostState, 'only the requested host state is loaded');
+  const noHost = stubBrowser({ tier: 'chrome' });
+  await session.newLiveContext(noHost, { stateRoot, stateNow: () => 1001, stateTtlMs: 5000 });
+  assert.ok(!('storageState' in noHost.contexts[0]), 'a caller without a target host does not receive unrelated state');
+  const own = { cookies: [], origins: [{ origin: 'https://caller.example', localStorage: [] }] };
+  const ownBrowser = stubBrowser({ tier: 'chrome' });
+  await session.newLiveContext(ownBrowser, { storageState: own, stateUrl: LIVE_URL, stateRoot, stateNow: () => 1001 });
+  assert.equal(ownBrowser.contexts[0].storageState, own, 'caller state is never replaced');
+
+  const disabledRoot = mkdtempSync(join(tmpdir(), 'live-state-off-'));
+  assert.equal(await session.persistLiveStorageState(ctx, LIVE_URL, { stateRoot: disabledRoot, env: { STARDUST_LIVE_STATE: '0' } }), false);
+  assert.deepEqual(readFileSync(stateFile, 'utf8').length > 0, true);
+  rmSync(stateRoot, { recursive: true, force: true });
+  rmSync(disabledRoot, { recursive: true, force: true });
 });
 
 // ---- the CloudFront / AWS WAF header signature ---------------------------------------------------------------------

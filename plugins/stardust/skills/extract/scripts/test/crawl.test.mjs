@@ -11,7 +11,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureGaps, localeRootPath, maxPages } from '../crawl.mjs';
+import { captureGaps, crawlerLiveBindings, localeRootPath, maxPages } from '../crawl.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
@@ -80,6 +80,31 @@ check('--help prints the usage header (naming captureGaps) and exits 0 without p
 check('maxPages: 0 is no cap (--all / --prep); missing or bad values fall back to 25; others are floored and at least 1', () => {
   assert.equal(maxPages('0'), Infinity); assert.equal(maxPages(undefined), 25); assert.equal(maxPages('abc'), 25); assert.equal(maxPages('40'), 40); assert.equal(maxPages('2.7'), 2);
 });
+
+await (async () => {
+  try {
+    const calls = [];
+    const browser = { newContext: async (opts) => { calls.push(['context', opts]); return { kind: 'fallback' }; } };
+    const fallback = crawlerLiveBindings();
+    assert.deepEqual(await fallback.newLiveContext(browser, { reducedMotion: 'reduce' }), { kind: 'fallback' });
+    assert.equal(await fallback.runLiveNavigation({}, 'https://www.example.com/', async () => { calls.push(['navigate']); return 7; }), 7);
+    assert.equal(await fallback.persistLiveStorageState({}, 'https://www.example.com/'), false);
+    assert.deepEqual(calls, [['context', { reducedMotion: 'reduce' }], ['navigate']]);
+
+    const shared = crawlerLiveBindings({
+      newLiveContext: async () => 'shared-context',
+      runLiveNavigation: async (_page, _url, navigate) => `shared-${await navigate()}`,
+      persistLiveStorageState: async () => true,
+    });
+    assert.equal(await shared.newLiveContext(browser, {}), 'shared-context');
+    assert.equal(await shared.runLiveNavigation({}, 'https://www.example.com/', async () => 'navigation'), 'shared-navigation');
+    assert.equal(await shared.persistLiveStorageState({}, 'https://www.example.com/'), true);
+    console.log('✓ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent\n  ${e.message.split('\n').join('\n  ')}`);
+  }
+})();
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');
 process.exit(failed ? 1 : 0);

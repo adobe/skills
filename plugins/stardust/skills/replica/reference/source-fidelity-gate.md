@@ -537,9 +537,11 @@ rather than erroring.
    HTTP 200 — Akamai bot-manager fingerprints on the *absence* of those
    headers, not just the UA. Every instrument sends them by default via the
    shared `diff/scripts/live-session.mjs`; `--ua` states a caller's identity
-   instead. Live navigations to one host are paced `STARDUST_LIVE_PACE_MS`
-   apart (default 2000 ms; 0 disables) — an Akamai-fronted origin answered
-   403 to back-to-back navigations and 200 once they were spaced.
+   instead. Live navigations to one host share cross-process pacing
+   (`STARDUST_LIVE_PACE_MS`, default 2000 ms) and an in-flight cap
+   (`STARDUST_LIVE_MAX_PARALLEL`, default 1); 0 disables either limit, and
+   fresh contexts reuse repository-scoped OS-temp browser state for up to
+   `STARDUST_LIVE_STATE_TTL_MS` (default 12 hours).
    The header set rides **document requests only** (F-B2, financial-services site):
    forcing it on every request makes cross-origin CORS-mode webfont fetches
    non-simple and kills them with `net::ERR_FAILED` — the capture then

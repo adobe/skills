@@ -71,7 +71,8 @@
  *     --dynamics              also record each page's dynamic surface (network endpoints, forms,
  *                             hydration hints) — set by the calling skill, off by default
  *
- * Writes (everything under --out; nothing outside it):
+ * Writes capture artifacts under --out. When the shared live-session helper is
+ * present, its repository-scoped throttle and browser state stay under OS temp:
  *   pages/<slug>.json              one record per captured page — slug, url, finalUrl, title,
  *                                  description, og, headings, body, codeBlocks, ctas, links,
  *                                  media {imgs, allImgCount, cssBackgrounds, modals, videos,
@@ -128,6 +129,21 @@ const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 // UA, colorScheme) must land everywhere or discovery renders under different
 // conditions than capture. Viewport here also saves a per-page CDP round-trip.
 const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
+
+const LIVE_SESSION_FALLBACKS = Object.freeze({
+  newLiveContext: (browser, options) => browser.newContext(options),
+  runLiveNavigation: (_page, _url, navigate) => navigate(),
+  persistLiveStorageState: async () => false,
+});
+
+/** Shared live-session helpers when present, with browser-neutral no-op fallbacks for standalone copies. */
+export function crawlerLiveBindings(shared = {}) {
+  return {
+    newLiveContext: shared.newLiveContext || LIVE_SESSION_FALLBACKS.newLiveContext,
+    runLiveNavigation: shared.runLiveNavigation || LIVE_SESSION_FALLBACKS.runLiveNavigation,
+    persistLiveStorageState: shared.persistLiveStorageState || LIVE_SESSION_FALLBACKS.persistLiveStorageState,
+  };
+}
 
 /** The discovery cap from --max: 0 means no cap (--all, --prep), a missing or bad value the default 25. Pure. */
 export const maxPages = (v) => (String(v).trim() === '0' ? Infinity : Math.max(1, Math.floor(+v) || 25));
@@ -203,8 +219,9 @@ async function launchHeadedStealth() {
 // workers) once the run is in stealth mode — the challenge re-fires per context
 // (no cross-context cookie sharing), so a worker that skipped the spoof would be
 // re-challenged even after the probe cleared it.
-async function newContext(browser, stealth) {
-  const ctx = await browser.newContext(CRAWL_CONTEXT);
+async function newContext(browser, stealth, stateUrl) {
+  const { newLiveContext } = crawlerLiveBindings(await sharedLiveSession());
+  const ctx = await newLiveContext(browser, { ...CRAWL_CONTEXT, stateUrl });
   if (stealth) {
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -252,7 +269,7 @@ function isChallengeResponse(resp) {
 async function clearChallenge(page, resp) {
   for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
     await page.waitForTimeout(4000);
-    const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 })
+    const reloaded = await sharedNavigate(page, page.url(), () => page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }))
       .catch(() => null);
     if (reloaded) resp = reloaded;
   }
@@ -389,18 +406,30 @@ async function discover(args, page) {
   return withEntry(links);
 }
 
-// The shared consent pass (diff/scripts/live-session.mjs acceptConsent — the vendor list every
-// gate instrument uses) runs first when live-session.mjs is beside this script (plugin tree,
-// project copy or a flat copy); the passes below stay the fallback when it is absent or misses.
-let sharedConsent;
-async function sharedAcceptConsent() {
-  if (sharedConsent === undefined) {
+// Shared live-session state is resolved in the plugin tree, sibling project copies, and flat copies.
+// Standalone crawlers keep the inline context/navigation/state no-ops above.
+let sharedLive;
+async function sharedLiveSession() {
+  if (sharedLive === undefined) {
     const here = path.dirname(SELF);
     const found = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs']
       .map((p) => path.resolve(here, p)).find((p) => existsSync(p));
-    sharedConsent = found ? (await import(pathToFileURL(found).href).catch(() => ({}))).acceptConsent || null : null;
+    sharedLive = found ? await import(pathToFileURL(found).href) : {};
   }
-  return sharedConsent;
+  return sharedLive;
+}
+async function sharedNavigate(page, url, navigate) {
+  const { runLiveNavigation } = crawlerLiveBindings(await sharedLiveSession());
+  return runLiveNavigation(page, url, navigate);
+}
+async function persistSharedState(page, url = page.url()) {
+  const { persistLiveStorageState } = crawlerLiveBindings(await sharedLiveSession());
+  return persistLiveStorageState(page, url);
+}
+
+// The shared consent pass runs first; the passes below stay the fallback when it is absent or misses.
+async function sharedAcceptConsent() {
+  return (await sharedLiveSession()).acceptConsent || null;
 }
 
 async function dismissConsent(page) {
@@ -855,7 +884,7 @@ async function capturePage(context, url, slug, args) {
   const page = await context.newPage();
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
-  let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+  let resp = await sharedNavigate(page, url, () => page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }));
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
   // bot-management challenge (Cloudflare cf-mitigated: challenge, etc.): the
@@ -873,7 +902,7 @@ async function capturePage(context, url, slug, args) {
       u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
       // guarded + short timeout: a hanging flipped-variant probe must not
       // replace the crisp HTTPError 404 with a raw TimeoutError.
-      const retry = await page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 })
+      const retry = await sharedNavigate(page, u.href, () => page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 }))
         .catch(() => null);
       if (retry && retry.status() < 400) {
         console.error(`[crawl] slash-retry OK ${url} -> ${u.href}`);
@@ -886,6 +915,7 @@ async function capturePage(context, url, slug, args) {
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
 
   if (args.consent) await dismissConsent(page);
+  await persistSharedState(page, resolvedUrl);
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
   // 4-step scroll to trigger lazy content
   for (let y = 0; y <= 1; y += 0.34) {
@@ -976,7 +1006,7 @@ async function main() {
 
   let stealth = false;
   let { browser, technique } = await launchWithFallback();
-  let context = await newContext(browser, stealth);
+  let context = await newContext(browser, stealth, args.url);
   let probe = await context.newPage();
 
   // bot-management probe on the entry URL; switch to headed real Chrome on reject.
@@ -987,7 +1017,7 @@ async function main() {
   //      the probe and only failed at capture-time (Cloudflare-fronted site finding).
   let botBlock = null; // 'fingerprint' | 'challenge'
   try {
-    const probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    const probeResp = await sharedNavigate(probe, args.url, () => probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 }));
     if (isChallengeResponse(probeResp)) botBlock = 'challenge';
   } catch (err) {
     if (isFingerprintBlock(err)) botBlock = 'fingerprint';
@@ -999,9 +1029,9 @@ async function main() {
     browser = await launchHeadedStealth();
     technique = 'headed-chrome-stealth';
     stealth = true;
-    context = await newContext(browser, stealth);
+    context = await newContext(browser, stealth, args.url);
     probe = await context.newPage();
-    let probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    let probeResp = await sharedNavigate(probe, args.url, () => probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 45000 }));
     probeResp = await clearChallenge(probe, probeResp);
     // If headed + stealth + the challenge-solve window STILL can't clear it, do
     // not proceed to capture the interstitial as if it were content — surface a
@@ -1014,6 +1044,7 @@ async function main() {
       );
     }
   }
+  await persistSharedState(probe);
 
   // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
   // sitemap fetch must use where the site actually lives, or discovery silently
@@ -1052,7 +1083,7 @@ async function main() {
   const slugs = assignSlugs(urls);
   let nextIdx = 0;
   async function worker() {
-    const ctx = await newContext(browser, stealth);
+    const ctx = await newContext(browser, stealth, args.url);
     while (nextIdx < urls.length) {
       const idx = nextIdx;
       nextIdx += 1;

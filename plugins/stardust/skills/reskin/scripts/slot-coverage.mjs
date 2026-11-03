@@ -113,15 +113,16 @@ try { ({ chromium } = await import('playwright')); } catch {
 
 const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).href);
 const model = JSON.parse(readFileSync(resolve(args.model), 'utf8'));
+const renderedUrl = toUrl(args.rendered);
 
 const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
 // UA + standard headers + webdriver spoof (live-session) — harmless on
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
   ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+  stateUrl: renderedUrl,
 });
 const page = await ctx.newPage();
-const renderedUrl = toUrl(args.rendered);
 let navErr = null;
 if (isLiveHttpUrl(renderedUrl)) {
   // A challenge interstitial or an HTTP >= 400 page must fail loud — this

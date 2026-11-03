@@ -216,7 +216,7 @@ export function parseArgs(argv) {
 }
 
 export async function measureUnits(browser, url, sels, { width, locale, warmup, n }) {
-  const { ctx, page } = await openPage(browser, { width, locale });
+  const { ctx, page } = await openPage(browser, { width, locale, stateUrl: url });
   try {
     const v = await visit(page, url, { warmup });
     const bySel = {};
