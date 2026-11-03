@@ -155,6 +155,15 @@ with:
 | `Core.Logger(...)` (inside body)      | `context.logger`                 |
 | `getAdobeCommerceClient(process.env)` | `getAdobeCommerceClient(params)` |
 
+If the body reads IMS credentials directly (any `OAUTH_*` or `AIO_COMMERCE_AUTH_IMS_*`
+key), resolve them with `resolveImsAuthParams(params)` from `@adobe/aio-commerce-lib-auth`
+instead. Runtime actions can receive the credentials through the
+`include-ims-credentials` annotation, without manually wiring individual params:
+
+    import { resolveImsAuthParams } from "@adobe/aio-commerce-lib-auth";
+
+    const imsAuthParams = resolveImsAuthParams(params);
+
 **5. Handle external data files (YAML, JSON, config)**
 
 Deployed App Builder actions are bundled by webpack. Only files that are statically
@@ -527,14 +536,13 @@ where the package is not yet a local dependency, the unscoped bin name
 The `init` command installs required dependencies and generates the full `src/` extension
 structure from `app.commerce.config.ts` in one step.
 
-It also wires the `post-app-deploy` hook to the desired-state
-`POST /installation` endpoint. A first deployment installs when no baseline
-exists. Later deployments plan an upgrade from the stored baseline:
+It also wires the `post-app-deploy` hook, which plans an upgrade after every
+deployment of an installed app:
 
-- `metadata.upgradeMode: "auto"` starts the planned upgrade and waits for its
-  lifecycle result.
-- `metadata.upgradeMode: "manual"` creates or reuses the plan and returns it
-  without starting execution.
+- `metadata.upgradeMode: "auto"` starts the planned upgrade immediately and shows its
+  progress until it finishes. Check the run later with
+  `npx @adobe/aio-commerce-lib-app upgrade status`.
+- `metadata.upgradeMode: "manual"` leaves the plan pending without starting it.
 
 **If the init command is denied or blocked (permission error, sandbox rejection,
 or non-zero exit with no network output):**
@@ -846,7 +854,7 @@ Keys matching any of: `COMMERCE_CONSUMER_KEY`, `COMMERCE_CONSUMER_SECRET`, `COMM
 
 **Rule 2 — IMS/SaaS auth credentials:**
 Keys matching any of: `OAUTH_BASE_URL`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRETS`, `OAUTH_CLIENT_SECRET`, `OAUTH_TECHNICAL_ACCOUNT_ID`, `OAUTH_TECHNICAL_ACCOUNT_EMAIL`, `OAUTH_ORG_ID`, `OAUTH_IMS_ORG_ID`, `OAUTH_SCOPES`, `OAUTH_HOST`, or any key starting with `AIO_COMMERCE_AUTH_IMS_`
-→ reason: `"IMS/SaaS auth credential managed by App Management; may still be needed for local development"`
+→ reason: `"IMS/SaaS auth credential injected at runtime by the include-ims-credentials action annotation"`
 
 **Rule 3 — Adobe I/O workspace credentials:**
 Keys matching any of: `IO_MANAGEMENT_BASE_URL`, `IO_CONSUMER_ID`, `IO_PROJECT_ID`, `IO_WORKSPACE_ID`, `IO_MANAGEMENT_API_KEY`, `AIO_RUNTIME_NAMESPACE`, `AIO_RUNTIME_AUTH`
@@ -876,6 +884,9 @@ After a key matches one of these rules, run:
 If any matching file is found, downgrade the flag — replace the rule's default reason with:
 `"review manually: still referenced in <relative path> — ensure App Management injects this value before removing"`
 This check does not apply to Rule 4 or Rule 5 (which already check runtime references), or Rule 8.
+
+For Rule 2 keys, use this reason instead:
+`"review manually: still referenced in <relative path> — add include-ims-credentials: true to the action annotations and resolve credentials with resolveImsAuthParams(params) instead of wiring this input"`
 
 **grep flag note:** All grep commands in Rules 1–9 that search for a KEY string must use the `-F` (fixed-string) flag to prevent env var key names from being treated as regex patterns.
 
