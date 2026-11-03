@@ -358,7 +358,8 @@ export async function runLiveNavigation(page, url, navigate, options = {}) {
 
 /** Forget process-local log and write-rate memory; shared disk state intentionally remains owned by all processes. */
 const lastStateWriteByHost = new Map();
-export function resetLivePacing() { pacedHosts.clear(); lastStateWriteByHost.clear(); }
+const stateWriteQueueByHost = new Map();
+export function resetLivePacing() { pacedHosts.clear(); lastStateWriteByHost.clear(); stateWriteQueueByHost.clear(); }
 
 function liveStorageState(url, {
   stateRoot = liveStateRoot(), now = Date.now, ttlMs = liveStateTtlMs(), env = process.env,
@@ -398,20 +399,34 @@ function storageStateForHost(state, url) {
  */
 export async function persistLiveStorageState(pageOrContext, url, {
   stateRoot = liveStateRoot(), now = Date.now, writeIntervalMs = LIVE_STATE_WRITE_INTERVAL_MS, env = process.env,
+  waitForRateLimit = false,
 } = {}) {
   const host = liveHost(url);
   if (!host || !liveStateEnabled(env)) return false;
   const context = typeof pageOrContext?.storageState === 'function'
     ? pageOrContext : typeof pageOrContext?.context === 'function' ? pageOrContext.context() : null;
   if (!context || typeof context.storageState !== 'function') return false;
-  const at = now();
-  const last = lastStateWriteByHost.get(host);
-  if (Number.isFinite(last) && at - last < writeIntervalMs) return false;
-  const state = storageStateForHost(await context.storageState(), url);
-  const hostDir = liveHostStateDir(url, { stateRoot });
-  atomicWriteJson(path.join(hostDir, 'storage-state.json'), state);
-  lastStateWriteByHost.set(host, at);
-  return true;
+  const previous = stateWriteQueueByHost.get(host) || Promise.resolve();
+  const write = previous.catch(() => {}).then(async () => {
+    let at = now();
+    const last = lastStateWriteByHost.get(host);
+    const remaining = Number.isFinite(last) ? Math.max(0, writeIntervalMs - (at - last)) : 0;
+    if (remaining > 0) {
+      if (!waitForRateLimit) return false;
+      if (typeof pageOrContext?.waitForTimeout === 'function') await pageOrContext.waitForTimeout(remaining);
+      else await new Promise((resolve) => { setTimeout(resolve, remaining); });
+      at = Math.max(now(), last + writeIntervalMs);
+    }
+    const state = storageStateForHost(await context.storageState(), url);
+    const hostDir = liveHostStateDir(url, { stateRoot });
+    atomicWriteJson(path.join(hostDir, 'storage-state.json'), state);
+    lastStateWriteByHost.set(host, at);
+    return true;
+  });
+  stateWriteQueueByHost.set(host, write);
+  try { return await write; } finally {
+    if (stateWriteQueueByHost.get(host) === write) stateWriteQueueByHost.delete(host);
+  }
 }
 
 // ---- identity: what the browser is, said once, derived never invented ----------------------------------------------
@@ -1047,7 +1062,7 @@ export async function acceptConsent(page, candidates = CONSENT_CANDIDATES) {
       await btn.click({ timeout: 3000 });
       await btn.waitForElementState('hidden', { timeout: 3000 });
       await page.waitForTimeout(1500);
-      if (typeof page.url === 'function') await persistLiveStorageState(page, page.url());
+      if (typeof page.url === 'function') await persistLiveStorageState(page, page.url(), { waitForRateLimit: true });
       return sel;
     } catch { /* candidate absent, or still showing after the click — try next */ }
   }

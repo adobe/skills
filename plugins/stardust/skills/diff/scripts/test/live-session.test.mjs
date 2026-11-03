@@ -785,6 +785,17 @@ await checkAsync('shared storage state: host jars stay isolated and private, a f
   await session.newLiveContext(ownBrowser, { storageState: own, stateUrl: LIVE_URL, stateRoot, stateNow: () => 1001 });
   assert.equal(ownBrowser.contexts[0].storageState, own, 'caller state is never replaced');
 
+  let clock = 2000;
+  const delayed = {
+    storageState: async () => ({ ...hostState, origins: [{ origin: 'https://www.example.com', localStorage: [{ name: 'consent', value: 'accepted' }] }] }),
+    waitForTimeout: async (ms) => { clock += ms; },
+  };
+  assert.equal(await session.persistLiveStorageState(delayed, LIVE_URL, {
+    stateRoot, now: () => clock, writeIntervalMs: 5000, waitForRateLimit: true,
+  }), true, 'a consent update waits out the write interval instead of being skipped');
+  assert.equal(clock, 6000);
+  assert.deepEqual(JSON.parse(readFileSync(stateFile, 'utf8')).origins[0].localStorage, [{ name: 'consent', value: 'accepted' }]);
+
   const disabledRoot = mkdtempSync(join(tmpdir(), 'live-state-off-'));
   assert.equal(await session.persistLiveStorageState(ctx, LIVE_URL, { stateRoot: disabledRoot, env: { STARDUST_LIVE_STATE: '0' } }), false);
   assert.deepEqual(readFileSync(stateFile, 'utf8').length > 0, true);
