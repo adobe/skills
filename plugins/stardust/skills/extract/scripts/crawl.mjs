@@ -136,7 +136,6 @@ const LIVE_SESSION_FALLBACKS = Object.freeze({
   persistLiveStorageState: async () => false,
   recordLiveBotSignal: async () => false,
   recordLiveNavigationSuccess: async () => false,
-  pageDenial: async () => ({ marker: null, skipped: null }),
 });
 
 /** Shared live-session helpers when present, with browser-neutral no-op fallbacks for standalone copies. */
@@ -147,27 +146,7 @@ export function crawlerLiveBindings(shared = {}) {
     persistLiveStorageState: shared.persistLiveStorageState || LIVE_SESSION_FALLBACKS.persistLiveStorageState,
     recordLiveBotSignal: shared.recordLiveBotSignal || LIVE_SESSION_FALLBACKS.recordLiveBotSignal,
     recordLiveNavigationSuccess: shared.recordLiveNavigationSuccess || LIVE_SESSION_FALLBACKS.recordLiveNavigationSuccess,
-    pageDenial: shared.pageDenial || LIVE_SESSION_FALLBACKS.pageDenial,
   };
-}
-
-/** Reject a late crawler denial after recording it in the shared host throttle. */
-export async function rejectSharedDenial(page, url, status, shared = {}) {
-  const { pageDenial, recordLiveBotSignal } = crawlerLiveBindings(shared);
-  const denial = await pageDenial(page);
-  if (!denial.marker) return denial;
-  const error = new Error(`bot challenge at ${url}: HTTP ${status} ${denial.marker}`);
-  error.name = 'BotChallengeError';
-  error.errorClass = 'BotChallengeError';
-  error.marker = `HTTP ${status} ${denial.marker}`;
-  error.url = url;
-  try {
-    await recordLiveBotSignal(url);
-  } catch (updateError) {
-    error.cause = updateError;
-    error.message += ` — shared throttle update failed: ${String(updateError && updateError.message ? updateError.message : updateError).split('\n')[0]}`;
-  }
-  throw error;
 }
 
 /** The discovery cap from --max: 0 means no cap (--all, --prep), a missing or bad value the default 25. Pure. */
@@ -271,7 +250,6 @@ export function isChallengeResponse(resp) {
   const h = resp.headers();
   // Cloudflare stamps this header specifically on managed/JS-challenge responses.
   if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return true;
-  if (h['x-amzn-waf-action']) return true;
   // A hard 403/429/503 that ALSO carries an edge/CDN signature is an edge
   // interstitial (Cloudflare / Akamai / F5 / Imperva) — headed real Chrome is the
   // correct response regardless of vendor. Requiring the edge signature (not the
@@ -282,14 +260,8 @@ export function isChallengeResponse(resp) {
     const server = (h['server'] || '').toLowerCase();
     if (h['cf-ray'] || server.includes('cloudflare')) return true;
     if (h['x-akamai-transformed'] || server.includes('akamai')) return true;
-    if (typeof resp.url === 'function' && resp.url().includes('edgesuite.net')) return true;
     if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return true;
-    if (status === 403 && (server.includes('cloudfront') || (h['x-cache'] || '').toLowerCase().includes('error from cloudfront'))) return true;
     // no edge signature — treat as a genuine app-level status, not a challenge.
-  }
-  if (status === 400) {
-    const server = (h.server || '').toLowerCase();
-    if (server.includes('akamaighost') || server.includes('akamai') || h['x-akamai-transformed']) return true;
   }
   return false;
 }
@@ -945,12 +917,8 @@ async function capturePage(context, url, slug, args) {
       u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
       // guarded + short timeout: a hanging flipped-variant probe must not
       // replace the crisp HTTPError 404 with a raw TimeoutError.
-      let retry = await sharedNavigate(page, u.href, () => page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 }))
+      const retry = await sharedNavigate(page, u.href, () => page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 }))
         .catch(() => null);
-      if (retry) retry = await clearChallenge(page, retry);
-      if (retry && isChallengeResponse(retry)) {
-        throw Object.assign(new Error(`bot-management challenge not cleared at ${u.href}`), { errorClass: 'BotChallengeError' });
-      }
       if (retry && retry.status() < 400) {
         console.error(`[crawl] slash-retry OK ${url} -> ${u.href}`);
         resp = retry; status = retry.status(); resolvedUrl = u.href;
@@ -962,6 +930,8 @@ async function capturePage(context, url, slug, args) {
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
 
   if (args.consent) await dismissConsent(page);
+  await recordSharedSuccess(resolvedUrl);
+  await persistSharedState(page, resolvedUrl);
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
   // 4-step scroll to trigger lazy content
   for (let y = 0; y <= 1; y += 0.34) {
@@ -977,9 +947,6 @@ async function capturePage(context, url, slug, args) {
   // JS-delayed reveal has no running animation at check time, so the gate
   // resolves before the reveal even starts. The 800ms floor is load-bearing.
   await page.waitForTimeout(800);
-  await rejectSharedDenial(page, resolvedUrl, status, await sharedLiveSession());
-  await recordSharedSuccess(resolvedUrl);
-  await persistSharedState(page, resolvedUrl);
 
   const rec = await page.evaluate(capture);
   // dynamic surface (opt-in): network recorder + DOM-side evidence → one `dynamic` section
