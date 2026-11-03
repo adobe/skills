@@ -6,6 +6,7 @@ Prints Markdown, like --help does; --format has no effect here.
 Topics:
   web doc              list the topics
   web doc extending    add your own commands on top of web (library surface, example, rules)
+  web doc header       rebuild a site's header 1:1: install, the loop, the ladder, reading the lines
 `;
 
 /**

@@ -2,7 +2,7 @@
 
 `web` drives a browser and analyzes pages for the web plugin's skills: session plumbing,
 bot-protection probing, page analysis (tree, reduce, collect, langs, overlays), site URL discovery
-(`site scan`), a caching proxy (`cache serve`), a HAR page cache (`cache record`, `cache proxy`,
+(`site scan`), header capture and checks for rebuilding a site's header 1:1 (`header`), a caching proxy (`cache serve`), a HAR page cache (`cache record`, `cache proxy`,
 and `browser open --cache`, which records every page a session loads and serves cached requests
 from disk), Chrome extension piloting and domain masking. It is the only consumer of `playwright-cli` in the
 plugin (`src/driver/playwright-cli.mjs`).
@@ -13,6 +13,8 @@ plugin (`src/driver/playwright-cli.mjs`).
 - `playwright-cli` >= 0.1.20 on PATH: `npm install -g @playwright/cli@latest`
   (`playwright-cli --version`)
 - `page langs` needs `cld3-asm` (optional dependency; `npm install` in this directory)
+- `header capture` and `header check` need `sharp`, `pngjs` and `pixelmatch` (optional
+  dependencies; `npm install` in this directory, or the pinned pnpm install in `web doc header`)
 - `mask` needs `mkcert` and sudo (macOS)
 
 ## Install / run
