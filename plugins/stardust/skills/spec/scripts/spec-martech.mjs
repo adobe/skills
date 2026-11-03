@@ -2,13 +2,15 @@
 /**
  * spec-martech.mjs — S9 martech from public artefacts: security headers + CSP of the origin; script/iframe hosts
  * and their reach (spec-parse signals) classified with the dynamics vendor table; the Adobe Launch library when
- * present (extensions, rules with page-path conditions and DOM selectors, data elements with their data-layer
- * paths, custom-code files and the hosts they load); OneTrust geo rule sets and cookie categories when present.
+ * present (extensions, the Web SDK extension's instances and datastreams, Target via at.js or Web SDK decisions, rules with page-path conditions and DOM
+ * selectors, data elements with their data-layer paths, custom-code files and the hosts they load); OneTrust geo rule sets and cookie categories when present;
+ * every other tag manager's library (GTM and gtag by container id, Tealium, Ensighten, ...) saved unparsed for the model to read.
  *
- *   node spec-martech.mjs [--config <file>] [--no-custom-code]
- *   node spec-martech.mjs --urls <url,url,...> [--out stardust/martech] [--no-custom-code]
+ *   node spec-martech.mjs [--config <file>] [--no-custom-code] [--no-tag-libraries]
+ *   node spec-martech.mjs --urls <url,url,...> [--out stardust/martech] [--no-custom-code] [--no-tag-libraries]
  *
- * Writes <work>/martech/headers.json, vendors.json, launch.json (+ launch.js, rc/ for custom code), onetrust.json.
+ * Writes <work>/martech/headers.json, vendors.json, launch.json (+ launch.js, rc/ for custom code), onetrust.json,
+ * tags.json (+ tags/ with each other tag-manager library), consent-mode.json (Google Consent Mode defaults, when seen).
  * --urls runs without a spec: the first URL is the origin's home, each URL's server HTML gives its page signals.
  * Everything read here is public (what any browser downloads); no credential is used.
  */
@@ -25,6 +27,67 @@ const get = async (u) => { const r = await fetch(u, { headers: { 'user-agent': U
 
 /** Balanced {...} starting at index i. Pure. */
 const block = (s, i) => { let d = 0; for (let j = i; j < s.length; j += 1) { if (s[j] === '{') d += 1; else if (s[j] === '}') { d -= 1; if (d === 0) return s.slice(i, j + 1); } } return s.slice(i); };
+
+const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g;
+
+/**
+ * The Web SDK extension (`adobe-alloy`) of a Launch container: version, whether it can use a self-hosted
+ * alloy.js ("preinstalled" library type), its library setting, and each instance with its datastream ids
+ * (a `%Data Element%` reference resolves to the ids its definition holds). Pure.
+ */
+function webSdkOf(js) {
+  const at = js.indexOf('"adobe-alloy":{displayName:');
+  if (at < 0) return null;
+  const ext = block(js, js.indexOf('{', at));
+  const s = ext.indexOf('settings:{');
+  const settings = s >= 0 ? block(ext, s + 'settings:'.length) : '';
+  const de = (name) => {
+    const i = [`${JSON.stringify(name)}:{`, `,${name}:{`].map((k) => js.indexOf(k)).find((x) => x >= 0);
+    return i === undefined ? '' : block(js, js.indexOf('{', i + 1));
+  };
+  const ids = (v) => { if (!v) return []; const ref = v.match(/^%(.+)%$/); return [...new Set((ref ? de(ref[1]) : v).match(UUID) || [])]; };
+  const instances = [...settings.matchAll(/\{name:"([^"]+)"/g)].map((m) => {
+    const b = block(settings, m.index);
+    const val = (k) => (b.match(new RegExp(`[{,]${k}:"([^"]*)"`)) || [])[1] || null;
+    return {
+      name: m[1], edgeDomain: val('edgeDomain'), defaultConsent: val('defaultConsent'),
+      datastream: { ref: val('edgeConfigId'), ids: ids(val('edgeConfigId')) },
+      stagingDatastream: { ref: val('stagingEdgeConfigId'), ids: ids(val('stagingEdgeConfigId')) },
+    };
+  });
+  return {
+    version: (ext.match(/\(\{version:"([\d.]+)"\}\)/) || [])[1] || null,
+    selfHostable: ext.includes('PREINSTALLED:"preinstalled"'),
+    library: (settings.match(/libraryCode:\{type:"([a-z]+)"/) || [])[1] || 'managed',
+    instances,
+  };
+}
+
+/**
+ * Adobe Target in a Launch container: the at.js extension (`adobe-target` v1, `adobe-target-v2`) and the
+ * Web SDK rules that render Target decisions (`renderDecisions` on a sendEvent action), plus whether the
+ * Web SDK prehides content while it waits for them. Null when neither is present. Pure.
+ */
+function targetOf(js) {
+  const atjs = ['adobe-target-v2', 'adobe-target'].find((k) => js.includes(`"${k}":{displayName:`) || js.includes(`,${k}:{displayName:`)) || null;
+  const renderRules = [...js.matchAll(/\{id:"(RL[0-9a-f]+)",name:"([^"]+)"/g)]
+    .filter((m) => /adobe-alloy\/[^"]*sendEvent[\s\S]*?renderDecisions:(?:!0|true)/.test(block(js, m.index)))
+    .map((m) => ({ id: m[1], name: m[2] }));
+  if (!atjs && !renderRules.length) return null;
+  return { atjs, renderRules, prehiding: /prehidingStyle:"[^"]+"/.test(js) };
+}
+
+/** Event names a rule's data-layer push listeners wait for: `*` for any push, null when the settings name none. Pure. */
+function pushEventsOf(b) {
+  return [...new Set([...b.matchAll(/modulePath:"[^"]*\/events\/[^"]*data-?layer[^"]*\.js",settings:/gi)].map((m) => {
+    const at = m.index + m[0].length;
+    if (b[at] !== '{') return null;
+    const s = block(b, at);
+    const named = s.match(/(?:specificEvent|eventKey|eventName|eventType|event)\s*:\s*"([^"]+)"/);
+    if (named) return named[1];
+    return /allEvents:(?:!0|true)/.test(s) ? '*' : null;
+  }))];
+}
 
 /** Parse a minified Adobe Launch container. Pure. */
 export function parseLaunch(js) {
@@ -49,13 +112,42 @@ export function parseLaunch(js) {
     const pathVals = [...b.matchAll(/paths:\[([^\]]*)\]/g)].flatMap((p) => [...p[1].matchAll(/value:"([^"]*)"/g)].map((x) => x[1]));
     return {
       id: m[1], name: m[2], events: [...new Set([...b.matchAll(/modulePath:"[^"]+\/events\/([^"]+)\.js"/g)].map((x) => x[1]))],
+      pushEvents: pushEventsOf(b),
       conditions: [...new Set([...b.matchAll(/modulePath:"[^"]+\/conditions\/([^"]+)\.js"/g)].map((x) => x[1]))],
       paths: pathVals, selectors: [...b.matchAll(/elementSelector:"([^"]*)"/g)].map((x) => x[1]),
       customCode: [...b.matchAll(/source:"(https:\/\/assets\.adobedtm\.com[^"]+)"/g)].map((x) => x[1]),
       consentGroups: [...new Set(b.match(/C000\d/g) || [])],
     };
   });
-  return { build, extensions: [...new Set(extensions)], dataElements, rules };
+  const orgId = (js.match(/company:\{orgId:"([^"]+)"/) || [])[1] || null;
+  return { build, orgId, extensions: [...new Set(extensions)], webSdk: webSdkOf(js), target: targetOf(js), dataElements, rules };
+}
+
+/**
+ * Libraries of tag managers other than Launch: script srcs the vendor table classes as a tag manager, plus GTM and
+ * gtag container ids from inline snippets (their srcs lose the id). At most 10. Pure.
+ */
+export function tagLibraries(sigs, vendorFor) {
+  const urls = new Map();
+  for (const s of sigs) {
+    (s.tagIds || []).forEach((id) => urls.set(`https://www.googletagmanager.com/${id.startsWith('GTM-') ? 'gtm.js' : 'gtag/js'}?id=${id}`, 'Google Tag Manager'));
+    s.scripts.forEach((src) => {
+      const u = src.startsWith('//') ? `https:${src}` : src; if (!/^https?:/.test(u)) return;
+      const role = vendorFor(new URL(u).hostname)?.role || '';
+      if (/^tag manager: /.test(role) && !/Adobe Launch|Google Tag Manager/.test(role)) urls.set(u, role.replace(/^tag manager: /, ''));
+    });
+  }
+  return [...urls].slice(0, 10).map(([url, vendor]) => ({ vendor, url, file: `${new URL(url).hostname}-${(new URL(url).pathname.split('/').pop() || 'tag').replace(/\.js$/, '')}${new URL(url).searchParams.get('id') ? `-${new URL(url).searchParams.get('id')}` : ''}.js` }));
+}
+
+/**
+ * Google Consent Mode, deterministic: pages whose inline scripts set a `consent` `default` (spec-parse), and saved
+ * libraries that call it (`gtag('consent','default'…)` or a template's `setDefaultConsentState`). Null when unseen. Pure.
+ */
+export function consentModeOf(sigs, tags = []) {
+  const pages = sigs.filter((s) => s.consentMode).length;
+  const libraries = tags.filter((t) => /['"]consent['"]\s*,\s*['"]default['"]|setDefaultConsentState/.test(t.js || '')).map((t) => `tags/${t.file}`);
+  return pages || libraries.length ? { pages, of: sigs.length, libraries } : null;
 }
 
 async function sources() {
@@ -110,6 +202,16 @@ async function main() {
     }
     writeJSON(join(out, 'launch.json'), launch);
   }
+  // other tag managers: saved unparsed, for the model to read
+  const tags = flag('no-tag-libraries') ? [] : (await pool(tagLibraries(sigs, vendorFor), 4, async (t) => ({ ...t, js: await get(t.url) })))
+    .filter((t) => t.js && t.js.length < 5e6);
+  if (tags.length) {
+    mkdirSync(join(out, 'tags'), { recursive: true });
+    tags.forEach((t) => writeFileSync(join(out, 'tags', t.file), t.js));
+    writeJSON(join(out, 'tags.json'), tags.map(({ vendor, url, file, js }) => ({ vendor, url, file: `tags/${file}`, bytes: js.length })));
+  }
+  const consentMode = consentModeOf(sigs, tags);
+  if (consentMode) writeJSON(join(out, 'consent-mode.json'), consentMode);
   // OneTrust: domain scripts from pages or Launch custom code
   const otIds = new Set();
   sigs.forEach((s) => (s.otDomainScripts || []).filter((x) => !x.endsWith('-test')).forEach((x) => otIds.add(x)));
@@ -128,7 +230,7 @@ async function main() {
     onetrust.push({ domainScript: id, version: conf.Version || null, ruleSets: sets });
   }
   if (onetrust.length) writeJSON(join(out, 'onetrust.json'), onetrust);
-  log(`${vendors.length} third-party/first-party hosts; Launch ${launch ? `${launch.rules.length} rules, ${launch.dataElements.length} data elements` : 'not found'}; OneTrust ${onetrust.length} domain script(s)`);
+  log(`${vendors.length} third-party/first-party hosts; Launch ${launch ? `${launch.rules.length} rules, ${launch.dataElements.length} data elements` : 'not found'}; ${tags.length} other tag-manager librar${tags.length === 1 ? 'y' : 'ies'} saved; OneTrust ${onetrust.length} domain script(s)`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((e) => { console.error(e.stack || e.message); process.exit(1); });

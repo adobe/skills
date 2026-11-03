@@ -2,7 +2,7 @@
 
 ## Detection Report Format
 
-Returned by the bundle injection (Step 5). Parse to enumerate overlays.
+Returned by the bundle injection (Step 2). Parse to enumerate overlays.
 
 ```jsonc
 {
@@ -35,17 +35,17 @@ Returned by the bundle injection (Step 5). Parse to enumerate overlays.
 
 ## Recipe Manifest Format
 
-Produced by Step 7. Combines hide and dismiss recipes for all overlays.
+Produced by Step 5. Combines hide and dismiss recipes for all overlays.
 
 ```json
 {
   "overlays": [
     {
       "id": "cookiebot",
-      "hide": { "css": ["#CybotCookiebotDialog { display: none !important; }"] },
-      "dismiss": { "steps": [{ "action": "click", "selector": "#accept-btn" }] }
+      "hide": { "css": ["#CybotCookiebotDialog { display:none!important }"] },
+      "dismiss": { "steps": [{ "action": "click", "selector": "#CybotCookiebotDialogBodyButtonDetails" }] }
     }
   ],
-  "scroll_fix": "document.body.style.overflow=''"
+  "scroll_fix": "html,body { overflow:auto!important; height:auto!important }"
 }
 ```

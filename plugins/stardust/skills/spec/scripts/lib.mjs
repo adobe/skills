@@ -309,6 +309,9 @@ export function genericRules(A, opts = {}) {
 
 /* ------------------------------------------------- profiles and layout ---- */
 /** Group aem-core grid members into rows: consecutive members narrower than 12 whose widths fill the grid. Pure. */
+/** Kinds that ship as code — counted, cropped, variant-signed and capture-picked alike. */
+export const CODED = new Set(['block', 'dynamic', 'widget']);
+
 export function groupRows(items, width, newline) {
   const out = []; let row = []; let sum = 0;
   const flush = () => { if (row.length > 1) out.push({ row }); else if (row.length) out.push(row[0]); row = []; sum = 0; };

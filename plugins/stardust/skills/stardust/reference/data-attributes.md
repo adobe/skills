@@ -7,8 +7,6 @@ sub-commands, between stardust and downstream tools (the stardust `deploy`
 and `rollout` skills for EDS conversion, `diff`, `audit`), and between two runs
 of stardust on the same site.
 
-Carried from stardust v1 (wireframe-guide.md) unchanged.
-
 ## Why
 
 Three reasons:
@@ -22,10 +20,10 @@ Three reasons:
    audit` give better feedback when section purpose is explicit. A
    `data-intent="emotional hook"` tells the critic what the section is
    for, not just what it looks like.
-3. **Downstream consumers.** A future `aem-eds-from-stardust` skill
-   (out of scope here) will map sections to EDS blocks. The data
-   attributes are the contract that lets a separate plugin ingest
-   stardust's output without re-parsing semantics.
+3. **Downstream consumers.** `deploy` and `rollout` map sections to
+   EDS blocks or widgets. The data attributes are the contract that
+   lets a separate plugin ingest stardust's output without re-parsing
+   semantics.
 
 ## Where they go
 
@@ -76,19 +74,13 @@ on the about page and the pricing page), use the fragment trio:
 - **`data-fragment-source`** — path to the source page. Only on
   `reuse` sections. Example: `"/recipes"`.
 
-The fragment vocabulary is the contract between stardust and a
-future shared-component extractor: pages with `data-fragment-role="source"`
-become the components, pages with `data-fragment-role="reuse"`
-become consumers.
-
 ## Template, module, and slot vocabulary
 
 Page-level identity, module-instance identity, and content-slot
-identity. Added with the migrate-template-canon refactor. These are the contract
-`migrate` consumes when forking an approved template's structure
-across sibling pages, and the contract downstream conversion plugins
-(EDS, CMS, framework) consume to rewrite stardust's HTML
-mechanically rather than re-deriving structure.
+identity: the contract `migrate` consumes when forking an approved
+template's structure across sibling pages, and the contract downstream
+conversion plugins (EDS, CMS, framework) consume to rewrite stardust's
+HTML mechanically rather than re-deriving structure.
 
 ### Page-level
 
@@ -104,6 +96,18 @@ mechanically rather than re-deriving structure.
   `DESIGN.json.extensions.modules[]`. Lives on the module's root
   element. Examples: `"hotline-211"`, `"donate-band"`,
   `"story-card"`.
+
+- **`data-widget="<path>/<name>"`** — an EDS widget
+  (`widgets/<path>/<name>.html|.css|.js`, code only, no authored
+  content), matching `DESIGN.json.extensions.widgets[]`. Widget when
+  the section carries no authored content — configuration only, or
+  everything arrives from code, index, API or user input; block when
+  authors fill rows. The mount is a link alone in its paragraph,
+  never a `data-placeholder`: `<p><a data-widget="<path>/<name>"
+  href="/widgets/<path>/<name>.html?<params>">…</a></p>`; query
+  params become `data-*` on the widget root. `<name>` is the file
+  stem, so it obeys block reserved-name rules (`widget` itself is
+  reserved).
 
 ### Slot identity
 

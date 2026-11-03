@@ -661,6 +661,7 @@ await (async () => {
     const { chromium } = await import('playwright');
     browser = await chromium.launch();
     const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
+    await page.route(/^https?:\/\//, (route) => route.abort());
     await page.setContent(brandedHtml(), { waitUntil: 'domcontentloaded' });
     const nav = page.locator('#site-nav');
     const toggle = page.locator('.nav-toggle');

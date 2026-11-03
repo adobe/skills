@@ -15,6 +15,12 @@ const SCRIPTS = `async function loadEager(doc) {
   document.documentElement.lang = 'en';
 }
 
+async function loadLazy(doc) {
+  loadHeader(doc.querySelector('header'));
+  loadFooter(doc.querySelector('footer'));
+  loadFonts();
+}
+
 function loadDelayed() {
   // eslint-disable-next-line import/no-cycle
   window.setTimeout(() => import('./delayed.js'), 3000);
@@ -63,6 +69,7 @@ await check('writes martech.js with enabled routes only, hooks loadEager + delay
   assert.ok(!js.includes('"'), 'config is emitted with single quotes');
   assert.match(file(root, 'scripts/scripts.js'), /function loadEager\(doc\) \{\n {2}import\('\.\/martech\.js'\)\.then\(\(m\) => m\.loadConsent\(\)\);/);
   assert.match(file(root, 'scripts/delayed.js'), /m\.loadTags\(\)/);
+  assert.ok(!file(root, 'scripts/scripts.js').includes('loadAnalytics'), 'no lazy hook without aemMartech');
   const again = run(root);
   assert.equal(again.status, 0);
   assert.match(again.stdout, /unchanged/);
@@ -100,7 +107,7 @@ await check('invalid contract: enabled CMP without its id, or a category the CMP
 
 const SITE = site();
 run(SITE);
-async function boot({ host = 'main--site--org.aem.page', search = '', groups, root = SITE } = {}) {
+async function boot({ host = 'main--site--org.aem.page', search = '', groups, root = SITE, delayed = true } = {}) {
   const added = [];
   const listeners = {};
   globalThis.window = {
@@ -116,7 +123,8 @@ async function boot({ host = 'main--site--org.aem.page', search = '', groups, ro
   seq += 1;
   const m = await import(`${pathToFileURL(join(root, 'scripts/martech.js')).href}?${seq}`);
   m.loadConsent();
-  m.loadTags();
+  m.loadAnalytics();
+  if (delayed) m.loadTags();
   return { win: globalThis.window, srcs: () => added.map((s) => s.src), added, fire: () => listeners.OneTrustGroupsUpdated?.() };
 }
 
@@ -153,6 +161,108 @@ await check('runtime: a gtag route defines gtag and configures the id from its s
   const b = await boot({ root, search: '?martech=on' });
   assert.deepEqual(b.srcs(), [CMP, GTAG]);
   assert.deepEqual(b.win.dataLayer.map((a) => [...a]), [['js', b.win.dataLayer[0][1]], ['config', 'G-TEST']]);
+});
+
+const AM = (over = {}) => ({
+  plugin: { name: 'aem-martech', path: 'plugins/martech', repo: 'https://example.test/aem-martech.git' },
+  config: { orgId: 'TEST@AdobeOrg', datastreamId: 'ds-test', alloyInstanceName: 'alloy', edgeDomain: null, defaultConsent: 'in', launchUrls: [LAUNCH] },
+  category: null,
+  enabled: true,
+  ...over,
+});
+const STUB = `const log = (globalThis.martechCalls ||= []);
+export const initMartech = async (w, o) => { log.push(['init', w, o]); };
+export const martechEager = async () => { log.push(['eager']); };
+export const martechLazy = async () => { log.push(['lazy']); };
+export const martechDelayed = async () => { log.push(['delayed']); };
+export const updateUserConsent = async (c) => { log.push(['consent', c]); };
+`;
+const amSite = (am, routes = [{ id: 'adobe-launch', src: LAUNCH, boot: null, category: null, enabled: false }]) => {
+  const root = site({ data: contract({ routes, aemMartech: am }) });
+  mkdirSync(join(root, 'plugins/martech/src'), { recursive: true });
+  writeFileSync(join(root, 'plugins/martech/src/index.js'), STUB);
+  return root;
+};
+
+await check('aemMartech: missing plugin, empty ids, the Launch route still enabled, or pending with no category are errors', () => {
+  const noPlugin = run(site({ data: contract({ aemMartech: AM() }) }));
+  assert.equal(noPlugin.status, 1); assert.match(noPlugin.stderr, /git subtree add --squash --prefix plugins\/martech/);
+  const noDs = run(amSite(AM({ config: { ...AM().config, datastreamId: null } })));
+  assert.equal(noDs.status, 1); assert.match(noDs.stderr, /config\.datastreamId/);
+  const twice = run(amSite(AM(), [{ id: 'adobe-launch', src: LAUNCH, boot: null, category: null, enabled: true }]));
+  assert.equal(twice.status, 1); assert.match(twice.stderr, /route `adobe-launch` is enabled and also in aemMartech\.config\.launchUrls/);
+  const pending = run(amSite(AM({ config: { ...AM().config, defaultConsent: 'pending' } })));
+  assert.equal(pending.status, 1); assert.match(pending.stderr, /nothing would ever be sent/);
+});
+
+await check('aemMartech disabled: martech.js is byte-identical to a contract without it', () => {
+  const a = site(); const b = site({ data: contract({ aemMartech: AM({ enabled: false }) }) });
+  run(a); run(b);
+  assert.equal(file(a, 'scripts/martech.js'), file(b, 'scripts/martech.js'));
+});
+
+await check('runtime: aemMartech inits the Web SDK with the source consent, then lazy + delayed (which loads Launch)', async () => {
+  const root = amSite(AM());
+  const r = run(root);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /Web SDK via aem-martech/);
+  globalThis.martechCalls = [];
+  const b = await boot({ root, search: '?martech=on' });
+  await new Promise((done) => { setTimeout(done, 20); });
+  assert.deepEqual(b.srcs(), [CMP]);
+  const [init, ...rest] = globalThis.martechCalls;
+  assert.deepEqual(init, ['init', { orgId: 'TEST@AdobeOrg', datastreamId: 'ds-test', defaultConsent: 'in' }, { alloyInstanceName: 'alloy', launchUrls: [LAUNCH], personalization: false }]);
+  assert.deepEqual(rest.map((c) => c[0]), ['eager', 'lazy', 'delayed']);
+});
+
+await check('aemMartech: loadAnalytics is hooked into loadLazy after loadFooter; re-run is unchanged; no loadLazy is an error', () => {
+  const root = amSite(AM());
+  assert.equal(run(root).status, 0);
+  assert.match(file(root, 'scripts/scripts.js'), /\n {2}loadFooter\(doc\.querySelector\('footer'\)\);\n {2}import\('\.\/martech\.js'\)\.then\(\(m\) => m\.loadAnalytics\(\)\);\n {2}loadFonts\(\);/);
+  assert.match(run(root).stdout, /unchanged/);
+  const noLazy = amSite(AM());
+  writeFileSync(join(noLazy, 'scripts/scripts.js'), SCRIPTS.replace(/async function loadLazy[\s\S]*?\n}\n/, ''));
+  const r = run(noLazy);
+  assert.equal(r.status, 1); assert.match(r.stderr, /no loadLazy\(\)/);
+});
+
+await check('runtime: aemMartech sends from the lazy phase, before (and without) the delayed phase', async () => {
+  const root = amSite(AM());
+  assert.equal(run(root).status, 0);
+  globalThis.martechCalls = [];
+  await boot({ root, search: '?martech=on', delayed: false });
+  await new Promise((done) => { setTimeout(done, 20); });
+  assert.deepEqual(globalThis.martechCalls.map((c) => c[0]), ['init', 'eager', 'lazy']);
+});
+
+await check('runtime: an aemMartech category starts the Web SDK pending (whatever the source value) and sets collect only once the CMP grants it', async () => {
+  const root = amSite(AM({ category: 'C0002' }));
+  assert.equal(run(root).status, 0);
+  globalThis.martechCalls = [];
+  const b = await boot({ root, host: 'www.example.test', groups: ',C0001,' });
+  await new Promise((done) => { setTimeout(done, 20); });
+  assert.equal(globalThis.martechCalls[0][1].defaultConsent, 'pending');
+  assert.ok(!globalThis.martechCalls.some((c) => c[0] === 'consent'));
+  b.win.OnetrustActiveGroups = ',C0001,C0002,';
+  b.fire();
+  assert.deepEqual(globalThis.martechCalls.find((c) => c[0] === 'consent'), ['consent', { collect: true }]);
+});
+
+await check('target: needs aemMartech and Web SDK decisions; enabled, it turns personalization on; off, martech.js is unchanged', async () => {
+  const T = (over = {}) => ({ atjs: null, webSdk: { renderRules: [{ id: 'RL5', name: 'Page view' }], prehiding: true }, enabled: true, ...over });
+  const withT = (am, target) => { const root = amSite(am); writeFileSync(join(root, 'stardust/martech-contract.json'), JSON.stringify({ ...JSON.parse(file(root, 'stardust/martech-contract.json')), target })); return root; };
+  const noAm = run(withT(AM({ enabled: false }), T()));
+  assert.equal(noAm.status, 1); assert.match(noAm.stderr, /target is enabled but aemMartech is not/);
+  const atjs = run(withT(AM(), T({ atjs: { from: 'launch', extension: 'adobe-target-v2' }, webSdk: null })));
+  assert.equal(atjs.status, 1); assert.match(atjs.stderr, /move the at\.js activities to the Web SDK first/);
+  const off = withT(AM(), T({ enabled: false })); run(off);
+  const plain = amSite(AM()); run(plain);
+  assert.equal(file(off, 'scripts/martech.js'), file(plain, 'scripts/martech.js'));
+  const root = withT(AM(), T());
+  assert.equal(run(root).status, 0);
+  globalThis.martechCalls = [];
+  await boot({ root, search: '?martech=on' });
+  await new Promise((done) => { setTimeout(done, 20); });
+  assert.equal(globalThis.martechCalls[0][2].personalization, true);
 });
 
 await check('--help prints the usage header', () => {

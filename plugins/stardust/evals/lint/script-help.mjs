@@ -29,10 +29,12 @@ const TIMEOUT_MS = 15000;
 // and has no argv handling of its own; a script that grows a CLI must leave this list.
 const EXEMPT = {
   'deploy/scripts/content-inventory.mjs': 'library: role-classified inventory + diff, imported by block-roundtrip and section-schema; no CLI',
+  'deploy/scripts/css-as-text.mjs': 'library: is this authored text CSS? (D15 / #134), imported by davids-model-lint and ew-editability-probe; no CLI',
   'deploy/scripts/eds-path.mjs': 'library: the delivered-path contract (deliveredUrl, daPath, pathKey) imported by spec, rollout and deploy; no CLI',
   'deploy/scripts/file-lock.mjs': 'library: cross-process lock + atomic merge for the shared deploy ledgers; no CLI',
   'deploy/scripts/diff-profiles.mjs': 'library: stack profiles (eds|generic) for the inventory classifiers; no CLI',
   'diff/scripts/content-inventory.mjs': 'library: the diff skill\'s copy of the inventory classifier, imported by content-diff; no CLI',
+  'diff/scripts/image-signature.mjs': 'library: icon pixel signatures, imported by content-diff and chrome-parity; no CLI',
   'diff/scripts/diff-profiles.mjs': 'library: the diff skill\'s copy of the stack profiles, imported by content-diff and visual-diff; no CLI',
   'diff/scripts/live-session.mjs': 'library: live-site browser session helpers (UA, stealth launch, overlay dismissal); no CLI',
   'diff/scripts/measure-live.mjs': 'library: settle + rect/type measurement shared by clip-probe, content-presence, unit-geometry; no CLI',

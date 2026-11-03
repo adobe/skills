@@ -29,7 +29,7 @@
 import { readFileSync, existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readJSON, isSourceParity, publicUrl } from './lib.mjs';
+import { readJSON, isSourceParity, publicUrl, scopeLine } from './lib.mjs';
 
 const UNFINISHED = new Set(['pending', 'content-pending', 'converting', 'deployed', 'stale']);
 const DELIVERED = new Set(['deployed', 'verified']);
@@ -139,10 +139,12 @@ async function main() {
   const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
   const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header });
 
-  if (JSON_OUT) console.log(JSON.stringify(verdict));
+  if (JSON_OUT) console.log(JSON.stringify(config.scope ? { ...verdict, scope: config.scope } : verdict));
   else {
     for (const g of verdict.gaps) console.log(g);
     console.log(`${verdict.complete ? '✓ complete' : `✗ ${verdict.gaps.length} gap(s)`}${verdict.liveChecked ? '' : ' (live probe skipped: --offline)'}`);
+    // "complete" is about the roster; a subset roster says so on the verdict
+    if (config.scope) console.log(`scope: ${scopeLine(config.scope)}`);
   }
   process.exit(verdict.complete ? 0 : 1);
 }

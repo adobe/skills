@@ -8,7 +8,7 @@
 // every file and flags nothing, a changed archetype flags the approved sibling. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,11 +24,12 @@ body:has(> .site-main) { margin: 0; }
 h1 { font-size: 2em; }
 @media (max-width: 640px) { .site-main .btn { width: 100%; } main p { margin: 0; } }
 @font-face { font-family: X; }`;
+const IMAGE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const page = (accent = 'red') => `<!doctype html><html><head><style>${STYLE.replace('red', accent)}</style></head><body>
 <header class="site-header" data-canon="header"><a href="/">Home</a></header>
 <main class="site-main" data-template="login">
   <section class="band layout-media-band" data-slot="s01" data-module="M2">
-    <img class="band-img" src="https://x.test/a.jpg" alt="bg">
+    <img class="band-img" src="${IMAGE}" alt="bg">
     <div class="container"><div class="panel"><div class="flow" data-slot-body>
         <h1 class="heading">Login</h1>
     </div></div></div>
@@ -66,7 +67,7 @@ check('moduleSkeletons: slot body emptied, band image blanked, per-page content 
   const m2 = modules.get('M2');
   assert.match(m2, /<div class="flow" data-slot-body><\/div><\/div><\/div>\s*<\/section>$/);
   assert.match(m2, /<img class="band-img" data-slot="media" alt="" src="">/);
-  assert.ok(!m2.includes('Login') && !m2.includes('a.jpg'));
+  assert.ok(!m2.includes('Login') && !m2.includes(IMAGE));
 });
 check('moduleSkeletons: a module without [data-slot-body] is a finding', () => {
   const { findings } = moduleSkeletons('<section data-module="M9"><p>x</p></section>');
@@ -255,6 +256,53 @@ check('bridge outside flow reskin: siblings not advanced, said so', () => {
   const r = sibRun(d, ['login']); assert.equal(r.status, 0, r.err);
   assert.match(r.out, /siblings: not advanced — state\.json flow is "redesign", not reskin/);
   assert.equal(readFileSync(join(d, 'stardust', 'state.json'), 'utf8'), before);
+});
+
+check('capped reskin handoff survives bridge and migrate into rollout as a subset', () => {
+  const d = mkdtempSync(join(tmpdir(), 'cfr-capped-'));
+  try {
+    sibProject(d, 'reskin');
+    const statePath = join(d, 'stardust/state.json');
+    const s = JSON.parse(readFileSync(statePath, 'utf8'));
+    s.site = { originUrl: 'https://example.test', totalDiscovered: 400, pageCap: 100 };
+    s.pages = s.pages.filter((p) => ['login', 'contact'].includes(p.slug));
+    for (const p of s.pages) {
+      p.url = `https://example.test/${p.slug}/`;
+      if (p.slug === 'contact') p.representative = 'login';
+    }
+    writeFileSync(statePath, JSON.stringify(s));
+    writeFileSync(join(d, 'stardust/reskin/pages/login.html'), page().replace('<head>', '<head><title>Login</title>'));
+
+    const bridge = sibRun(d, ['login']);
+    assert.equal(bridge.status, 0, bridge.err);
+    const bridged = JSON.parse(readFileSync(statePath, 'utf8'));
+    assert.deepEqual(bridged.site, s.site);
+    assert.equal(bridged.pages.find((p) => p.slug === 'contact').status, 'directed');
+
+    const skills = join(dirname(SCRIPT), '..', '..');
+    const migrate = spawnSync(process.execPath, [join(skills, 'migrate/scripts/migrate.mjs'), 'render', 'login'], { cwd: d, encoding: 'utf8' });
+    assert.equal(migrate.status, 0, migrate.stderr);
+    assert.deepEqual(JSON.parse(readFileSync(statePath, 'utf8')).site, s.site);
+    const inventory = spawnSync(process.execPath, [join(skills, 'rollout/scripts/inventory.mjs'), '--migrated', 'stardust/migrated', '--out', 'stardust/rollout', '--state', 'stardust/state.json'], { cwd: d, encoding: 'utf8' });
+    assert.equal(inventory.status, 0, inventory.stderr);
+    const rollout = JSON.parse(readFileSync(join(d, 'stardust/rollout/rollout.json'), 'utf8'));
+    assert.deepEqual(rollout.scope, { pages: 2, discovered: 400, capped: true, pageCap: 100 });
+    assert.match(inventory.stdout, /Scope\s+2 of 400 discovered pages in scope — a SUBSET: the other 398 are not delivered/);
+    const pages = JSON.parse(readFileSync(join(d, 'stardust/rollout/coverage/pages.json'), 'utf8')).pages;
+    assert.equal(pages.find((p) => p.slug === 'contact').delivery.status, 'content-pending');
+
+    const updated = JSON.parse(readFileSync(statePath, 'utf8'));
+    updated.site.totalDiscovered = 3;
+    updated.site.pageCap = 2;
+    writeFileSync(statePath, JSON.stringify(updated));
+    const closeCap = spawnSync(process.execPath, [join(skills, 'rollout/scripts/inventory.mjs'), '--migrated', 'stardust/migrated', '--out', 'stardust/rollout', '--state', 'stardust/state.json'], { cwd: d, encoding: 'utf8' });
+    assert.equal(closeCap.status, 0, closeCap.stderr);
+    const closeScope = JSON.parse(readFileSync(join(d, 'stardust/rollout/rollout.json'), 'utf8')).scope;
+    assert.deepEqual(closeScope, { pages: 2, discovered: 3, capped: true, pageCap: 2 });
+    assert.match(closeCap.stdout, /2 of 3 discovered pages in scope — a SUBSET: the other 1 are not delivered/);
+  } finally {
+    rmSync(d, { recursive: true, force: true });
+  }
 });
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

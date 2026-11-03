@@ -9,7 +9,7 @@
  * are different builds). Core = block on ≥ 50% of a variant's pages; the representative is a page with the most
  * common exact set, highest traffic first when views exist. Writes <work>/map/variants.json.
  */
-import { arg, helpAndExit, list, loadConfig, readJSON, readJSONL, writeJSON } from './lib.mjs';
+import { CODED, arg, helpAndExit, list, loadConfig, readJSON, readJSONL, writeJSON } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -41,7 +41,7 @@ function main() {
   const seen = new Set(); const byT = new Map();
   for (const r of rows) {
     if (seen.has(r.final_url)) continue; seen.add(r.final_url);
-    const toks = new Set(r.blocks.filter((b) => (b.kind === 'block' || b.kind === 'dynamic') && !b.nested_in).map((b) => (keep.has(b.block) && b.variant ? `${b.block}:${b.variant}` : b.block)));
+    const toks = new Set(r.blocks.filter((b) => CODED.has(b.kind) && !b.nested_in).map((b) => (keep.has(b.block) && b.variant ? `${b.block}:${b.variant}` : b.block)));
     const t = r.template || '(none)'; const key = [...toks].sort().join('|');
     if (!byT.has(t)) byT.set(t, new Map());
     const m = byT.get(t); if (!m.has(key)) m.set(key, { set: toks, pages: [] });

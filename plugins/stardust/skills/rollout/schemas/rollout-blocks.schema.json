@@ -31,8 +31,8 @@
         "label": { "type": "string" },
         "kind": {
           "type": "string",
-          "enum": ["chrome", "module", "section"],
-          "description": "chrome = header/nav/footer (delivered as fragments); module = brand module; section = reusable section archetype."
+          "enum": ["chrome", "module", "section", "widget"],
+          "description": "chrome = header/nav/footer (delivered as fragments); module = brand module; section = reusable section archetype; widget = code-only unit from the sidecar's widgets[] (widgets/<path>/<name>.html, no document rows — each page carries one /widgets/ link)."
         },
         "signature": {
           "type": "string",
@@ -58,7 +58,7 @@
               "type": ["string", "null"],
               "description": "Canonical EDS block name this block was converted to (blocks/<name>/). The dedup target. `default-content` records a module mapped to EDS default content (no block needed); such a row is never counted pending, whatever its status."
             },
-            "blockPath": { "type": ["string", "null"], "description": "Delivered block path / fragment path." },
+            "blockPath": { "type": ["string", "null"], "description": "Delivered block path / fragment path; for a widget the code path widgets/<path>/<name>.html." },
             "convertedAt": { "type": ["string", "null"], "format": "date-time" }
           }
         }
