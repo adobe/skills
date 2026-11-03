@@ -134,14 +134,14 @@ check('isFingerprintBlock: a network-level reject (ERR_HTTP2_PROTOCOL_ERROR, ERR
 });
 check('inlineWallMarker (the fallback rule): a wall title or h1 on a page under 2 KB of visible text, or on a self-reloading page of any size; a full page under such a title, a plain title, garbage → null', () => {
   assert.equal(WALL_TEXT_MAX_BYTES, 2048);
-  for (const t of ['One moment, please...', 'Just a moment…', 'Verifying your request', 'Verification required', 'Access Denied', 'Request blocked', 'Attention Required! | Cloudflare', 'Please verify you are human']) assert.ok(WALL_TITLE.test(t), t);
-  for (const t of ['Home', 'Our moments together', 'Verifiable credentials explained', 'Contact us']) assert.ok(!WALL_TITLE.test(t), `${t} is no wall title`);
+  for (const t of ['One moment, please...', 'Just a moment…', 'Verifying your request', 'Verifying your browser', 'Human Verification', 'Checking your browser before accessing', 'Pardon Our Interruption', 'Access Denied', 'Request blocked', 'Attention Required! | Cloudflare', 'Please verify you are human', "Verify you're human"]) assert.ok(WALL_TITLE.test(t), t);
+  for (const t of ['Home', 'Our moments together', 'Verifiable credentials explained', 'Contact us', 'Age verification', 'Verify your email', 'Email verification', 'Verification required', 'Two-factor verification']) assert.ok(!WALL_TITLE.test(t), `${t} is no wall title`);
   assert.equal(inlineWallMarker({ title: 'One moment, please...', h1: '', bytes: 300, selfReload: false }), 'interstitial page — "One moment, please..."');
   assert.equal(inlineWallMarker({ title: 'One moment, please...', h1: '', bytes: 300, selfReload: true }), 'interstitial page — "One moment, please..." (self-reloading)');
   assert.equal(inlineWallMarker({ title: 'One moment, please...', h1: '', bytes: 9000, selfReload: true }), 'interstitial page — "One moment, please..." (self-reloading)', 'a self-reloading page of any size');
   assert.equal(inlineWallMarker({ title: 'One moment, please...', h1: '', bytes: 9000, selfReload: false }), null, 'a full page under such a title is the page');
   assert.equal(inlineWallMarker({ title: 'Site', h1: 'Access Denied', bytes: 120, selfReload: false }), 'interstitial page — "Access Denied"', 'the h1 counts too');
-  assert.equal(inlineWallMarker({ title: `Verifying ${'x'.repeat(100)}`, h1: '', bytes: 120, selfReload: false }), `interstitial page — "${`Verifying ${'x'.repeat(100)}`.slice(0, 80)}"`, 'cut at 80 chars');
+  assert.equal(inlineWallMarker({ title: `Verifying your request ${'x'.repeat(100)}`, h1: '', bytes: 120, selfReload: false }), `interstitial page — "${`Verifying your request ${'x'.repeat(100)}`.slice(0, 80)}"`, 'cut at 80 chars');
   assert.equal(inlineWallMarker({ title: 'Welcome', h1: 'Welcome', bytes: 120, selfReload: true }), null, 'a plain title on a self-reloading page');
   for (const p of [null, undefined, {}, 'One moment', { title: 'One moment, please...', bytes: 'x', selfReload: false }]) assert.equal(inlineWallMarker(p), null, JSON.stringify(p));
   assert.equal(typeof wallProbeInPage, 'function', 'the in-page probe is exported for the browser tests');

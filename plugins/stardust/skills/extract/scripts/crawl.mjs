@@ -74,14 +74,15 @@
  *                             recorded as TimeoutError instead of eating the run's cap
  *
  * Browser and bot walls: real Chrome headless (channel: chrome — the installed browser's own identity,
- * no stealth flags) first, bundled Chromium only when Chrome is missing (technique chrome |
+ * no launch flags) first, bundled Chromium only when Chrome is missing (technique chrome |
  * chromium-fallback). A wall is NAMED within seconds, never captured as content: an edge challenge
  * (cf-mitigated, or a 403/429/503 with a Cloudflare / Akamai / F5 / Imperva signature, a 403 from
  * CloudFront / AWS WAF), or a 2xx VERIFICATION INTERSTITIAL served as a normal page ("One moment,
  * please…" reloading itself, "Just a moment…", CloudFront's "Request blocked" body — read from the
  * page, not the headers: this script's title rule, then live-session's vendor list when the module
  * is beside it). On the ENTRY page → one relaunch (technique chrome-escalated;
- * STARDUST_STEALTH=1 adds the stealth flags, STARDUST_HEADED_WINDOW=1 is not read here) with the
+ * the existing launch flags and webdriver spoof stay on, STARDUST_STEALTH=0 turns them off;
+ * STARDUST_HEADED_WINDOW=1 is not read here) with the
  * challenge-solve window, then a fatal `bot-management … not cleared` error naming the wall; on an
  * inner page → the page is recorded as failed with errorClass BotChallenge and the marker. Live
  * navigations to one host are spaced STARDUST_LIVE_PACE_MS apart (default 2000; 0 disables) when a
@@ -224,11 +225,12 @@ async function paceNavigation(page, url) {
   return typeof ls.paceLiveNavigation === 'function' ? ls.paceLiveNavigation(page, url) : 0;
 }
 
-// ---- the browser: real Chrome headless first, honest identity; bundled Chromium only when Chrome is missing ----
-// The browser presents itself as what it is — the installed Chrome, headless, under automation. No user agent is
-// set, no stealth flag is passed: the hands-off contract forbids stealth and spoofed identities, and the real
-// binary is what clears TLS/H2-fingerprint blocks anyway (not a window — the container has no display).
-const stealthEnabled = () => process.env.STARDUST_STEALTH === '1';
+// ---- the browser: real Chrome headless first, its own identity; bundled Chromium only when Chrome is missing ----
+// The default tier presents itself as what it is — the installed Chrome, headless, under automation: no user agent
+// is set, no launch flag is passed; the real binary is what clears TLS/H2-fingerprint blocks (not a window — the
+// container has no display). The escalation below keeps the launch flags and the navigator.webdriver spoof the
+// crawler always had; STARDUST_STEALTH=0 turns them off.
+const stealthEnabled = () => process.env.STARDUST_STEALTH !== '0';
 const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
 async function launchWithFallback() {
   const ls = await liveSession();
@@ -244,8 +246,8 @@ async function launchWithFallback() {
   }
 }
 // The one escalation after an entry-page block: a fresh real Chrome, window-free (the container has no display),
-// the stealth flags ONLY under STARDUST_STEALTH=1 (a visible policy decision, never a default). A launch failure is
-// one stderr line and null — the crawl continues with the browser it has.
+// with the existing launch flags unless STARDUST_STEALTH=0. A launch failure is one stderr line and null — the
+// crawl continues with the browser it has.
 async function launchEscalated() {
   const stealth = stealthEnabled();
   const opts = { headless: true, channel: 'chrome', ...(stealth ? { args: [...STEALTH_ARGS], ignoreDefaultArgs: ['--enable-automation'] } : {}) };
@@ -258,9 +260,9 @@ async function launchEscalated() {
     return null;
   }
 }
-// A context factory so the (STARDUST_STEALTH=1-only) webdriver spoof lands on EVERY context (probe + workers) once the
-// run escalated under it — the challenge re-fires per context (no cross-context cookie sharing). By default no init
-// script: navigator.webdriver stays true, which is the truth.
+// A context factory so the webdriver spoof lands on EVERY context (probe + workers) once the run escalated — the
+// challenge re-fires per context (no cross-context cookie sharing). Before the escalation, and under
+// STARDUST_STEALTH=0, no init script: navigator.webdriver stays true.
 async function newContext(browser, stealth) {
   const ctx = await browser.newContext(CRAWL_CONTEXT);
   if (stealth) {
@@ -319,7 +321,10 @@ export const isChallengeResponse = (resp) => challengeMarker(resp) !== null;
 // (live-session pageDenial: vendor signatures, the tiny one-error-heading page) runs when the module is beside this
 // script; the inline rule below is the fallback: a <title> or <h1> that names a wall on a page under 2 KB of visible
 // text, or one that reloads itself (<meta http-equiv=refresh> / location.reload) under such a title.
-export const WALL_TITLE = /one moment|just a moment|verif(?:y|ication)|access denied|request blocked|attention required/i;
+// "verify" alone is no wall word: an age or e-mail verification page is a page, and a small single-page-app entry page
+// under such a title would abort the crawl; the verification interstitials name the visitor ("verify you are human",
+// "verifying your request / browser", "human verification", "checking your browser").
+export const WALL_TITLE = /one moment|just a moment|verify (?:that )?you(?:'re| are)|verifying (?:(?:that )?you(?:'re| are)|your (?:request|browser|connection))|human verification|are you (?:a )?human|checking your browser|pardon our interruption|access denied|request blocked|attention required/i;
 export const WALL_TEXT_MAX_BYTES = 2048;
 /* eslint-disable no-undef */
 /** page.evaluate(wallProbeInPage) → { title, h1, bytes, selfReload } (self-contained: playwright serialises it). */
@@ -1175,12 +1180,12 @@ async function main() {
   //      only failed at capture-time (Cloudflare-fronted site finding);
   //   3. a 2xx VERIFICATION INTERSTITIAL the headers say nothing about ("One moment, please…" reloading itself) —
   //      read from the page; a crawler that trusted the 200 waited out the run's whole cap on it.
-  // Any of them → ONE relaunch (launchEscalated: fresh real Chrome, window-free; the stealth flags only under
-  // STARDUST_STEALTH=1) + the challenge-solve window, then fail fast naming the wall — never capture it as content
+  // Any of them → ONE relaunch (launchEscalated: fresh real Chrome, window-free, the existing launch flags unless
+  // STARDUST_STEALTH=0) + the challenge-solve window, then fail fast naming the wall — never capture it as content
   // (stop-condition (a) for the skill).
   const botBlock = await probeEntry(probe, args.url, { timeout: 30000 }); // { kind, marker } | null — the first verdict, for the log
   if (botBlock) {
-    console.error(`[crawl] bot-management block on the entry page (${botBlock.kind}: ${botBlock.marker}) — relaunching real Chrome (channel: chrome, window-free${stealthEnabled() ? ', STARDUST_STEALTH=1 flags' : ''}) and running the challenge-solve window`);
+    console.error(`[crawl] bot-management block on the entry page (${botBlock.kind}: ${botBlock.marker}) — relaunching real Chrome (channel: chrome, window-free${stealthEnabled() ? '' : ', STARDUST_STEALTH=0: automation-signal handling off'}) and running the challenge-solve window`);
     const escalated = await launchEscalated();
     if (escalated) {
       await browser.close().catch(() => {});

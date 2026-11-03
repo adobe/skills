@@ -721,9 +721,9 @@ this in the user report; do not engineer around it.
   `ERR_QUIC_PROTOCOL_ERROR`, or hangs through the hard-cap on a
   TLS/H2 fingerprint check, the issue is JA3/H2 fingerprinting on
   bundled-chromium-default headless mode — not auth, not network.
-  `crawl.mjs` runs the fallback itself, window-free and without
-  stealth: real Chrome headless (`channel: 'chrome'`, its own
-  identity) first, bundled Chromium only when Chrome is missing, one
+  `crawl.mjs` runs the fallback itself, window-free: real Chrome
+  headless (`channel: 'chrome'`, its own identity, no launch
+  flags) first, bundled Chromium only when Chrome is missing, one
   real-Chrome relaunch with the challenge-solve window on an
   entry-page block, and a wall — an edge 403 or a 200 verification
   interstitial — is named within seconds in `_crawl-log.json`

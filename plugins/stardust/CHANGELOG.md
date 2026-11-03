@@ -18,11 +18,17 @@ display exists.
   Cloudflare / Akamai / F5 / Imperva / CloudFront–AWS WAF, Akamai's 400 escalation) or a 2xx interstitial read from
   the page — the crawler's own title rule first (`wallProbeInPage` / `inlineWallMarker`: a wall title or h1 on a page
   under 2 KB of text or one reloading itself), then live-session's `pageDenial` vendor list when present. Any of them
-  → one window-free real-Chrome relaunch (technique `chrome-escalated`; the stealth flags only under
-  `STARDUST_STEALTH=1`; a relaunch failure is one stderr line) plus the challenge-solve window, then a fatal
+  → one window-free real-Chrome relaunch (technique `chrome-escalated`; the existing launch flags and
+  `navigator.webdriver` spoof stay on, `STARDUST_STEALTH=0` turns them off; a relaunch failure is one stderr line) plus the challenge-solve window, then a fatal
   `bot-management <kind> not cleared: <marker>`. On inner pages an uncleared challenge or a 2xx interstitial is
   recorded as errorClass `BotChallenge` with the marker — never as content, never as a bare `HTTPError`;
   `_crawl-log.json#discovery` carries `botBlock` + `botMarker`.
+- **The wall title names verification interstitials only** — "verify you are human", "verifying your request /
+  browser", "human verification", "checking your browser" and the vendor interstitial titles, never a bare "verify" or
+  "verification": an age or e-mail verification page is a page, and a small single-page-app entry page under such a
+  title would have aborted the crawl. **Readers of `fetchTechnique`** (`deploy/SKILL.md`, `deploy/da-deploy-protocol.md`,
+  `replica/reference/handoff-contract.md`) know the tier names (`chrome`, `chrome-escalated`, `chromium-fallback`; older
+  logs `headed-chrome*`) and verify source images with an in-page fetch from a browser of that tier, never a bare curl.
 - **`--page-timeout <s>`** (default 60; 0 = none) wraps each capture: a page that never settles is a `TimeoutError` and
   its tab is closed. Live navigations are paced per host when a live-session copy that paces is beside the script.
 - **Docs:** `extract/SKILL.md` § Bot-management block says what the crawler does itself; `scripts-index.md` lists the
