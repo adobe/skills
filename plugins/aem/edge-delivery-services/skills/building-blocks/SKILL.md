@@ -123,7 +123,7 @@ Follow the project's existing blocks and lint rules. Easy to get wrong:
 
 - **Move, don't copy:** move the delivered pictures, headings, paragraphs and links into the new structure. Copying their text or src into new elements, or rebuilding them with `innerHTML`, loses heading ids, image sizes and Universal Editor `data-aue-*` attributes.
 - **Cells vary:** authors leave cells out and add extra ones. Find content by what it is (e.g. the cell with a `picture`), not by index alone.
-- **Don't hold up the section:** a section stays hidden until all its blocks are decorated, and the first section gates LCP. Don't await slow fetches, large imports or third-party embeds in `decorate()`; load them with dynamic `import()` when the block comes into view (IntersectionObserver) or on interaction.
+- **Don't hold up the section:** a section stays hidden until all its blocks are decorated, and the first section gates LCP. Don't await slow fetches, large imports or third-party embeds in `decorate()`; load them with dynamic `import()` when the block comes into view (IntersectionObserver) or on interaction. Reserve their space up front (placeholder with the final size, e.g. `aspect-ratio`) so late content doesn't shift the layout (CLS).
 - **aem.js:** vendored, never edit it. Import its helpers (`createOptimizedPicture`, `readBlockConfig`, `loadScript`, ...) from `../../scripts/aem.js`; project helpers go in `scripts/`.
 
 ## Step 4: Add CSS Styling

@@ -136,7 +136,8 @@
     A section stays hidden until every block in it has been decorated, and the
     first section is loaded before anything else (LCP). Slow work awaited in
     decorate() (fetches, big imports, third-party embeds) delays the section;
-    defer it, e.g. until the block is in view.
+    defer it, e.g. until the block is in view, and reserve its space so the
+    late content doesn't shift the layout (CLS).
   question: >-
     What happens to the page if an EDS block's decorate() awaits a slow fetch
     or library load, and how should such work be handled?
