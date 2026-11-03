@@ -1,21 +1,27 @@
-// `web header check` on real renders of the fixture pages (ported from migration-lab's
-// web-header.test.sh, phase 0 of adobe/skills#533): the verdicts on known-good and known-bad pages,
-// CHECK_FAILED (exit 1) for a page that does not load, USAGE (exit 2) before any browser starts,
-// the source cache at 2x, and no browser session left open. Skipped without playwright-cli or the
-// image libraries (sharp, pngjs, pixelmatch: optional dependencies). About 1 min.
+// `web header capture` and `web header check` on real renders of the fixture pages (the checks'
+// cases ported from migration-lab's web-header.test.sh, phase 0 of adobe/skills#533): a capture
+// that finds a promo bar above the header and the menus, the checks clean on the captured page
+// itself, the verdicts on known-good and known-bad pages, CHECK_FAILED (exit 1) for a page that
+// does not load, USAGE (exit 2) before any browser starts, the source cache at 2x, and no browser
+// session left open. Skipped without playwright-cli or the image libraries (sharp, pngjs,
+// pixelmatch: optional dependencies). About 1.5 min.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { startFixtureDir } from './fixture-server.mjs';
+import { startFixture, startFixtureDir } from './fixture-server.mjs';
 
 const binPath = fileURLToPath(new URL('../dist/web.mjs', import.meta.url));
 const menusDir = new URL('./fixtures/header-menus/', import.meta.url);
 const textDir = new URL('./fixtures/header-text/', import.meta.url);
+const captureHtml = readFileSync(
+  new URL('./fixtures/header-capture/page.html', import.meta.url),
+  'utf8',
+);
 const probe = spawnSync('playwright-cli', ['--version']);
 const hasBrowser = !probe.error && probe.status === 0;
 const hasImaging = await Promise.all(['sharp', 'pngjs', 'pixelmatch'].map((m) => import(m))).then(
@@ -28,6 +34,7 @@ const skip = !hasBrowser
 let cwd;
 let menus;
 let text;
+let site;
 let refused;
 
 // Async spawn: spawnSync would block the event loop that serves the in-process fixtures.
@@ -51,7 +58,7 @@ function web(...args) {
  */
 async function sessionsOnFixtures() {
   const res = await web('browser', 'list');
-  const origins = [menus.url, text.url, refused];
+  const origins = [menus.url, text.url, site.url, refused];
   return (res.doc?.sessions ?? []).filter((s) => origins.some((o) => s.url?.startsWith(o)));
 }
 
@@ -69,6 +76,7 @@ before(async () => {
   cwd = mkdtempSync(join(tmpdir(), 'web-header-'));
   menus = await startFixtureDir(menusDir);
   text = await startFixtureDir(textDir);
+  site = await startFixture(captureHtml);
   refused = await closedPort();
 });
 
@@ -76,6 +84,7 @@ after(async () => {
   if (skip) return;
   await menus?.close();
   await text?.close();
+  await site?.close();
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -96,6 +105,48 @@ async function fails(status, code, ...args) {
 }
 
 const textFile = (name) => `${text.url}${name}`;
+
+test(
+  'capture: the promo bar above the header, the menus, the breakpoint; the checks clean on the page itself',
+  { skip },
+  async () => {
+    const dir = join(cwd, 'capture');
+    const res = await web('header', 'capture', site.url, dir);
+    assert.equal(res.status, 0, res.stdout);
+    const { page, open } = res.doc;
+    assert.deepEqual(
+      page.regions.map((r) => [r.id, r.selector, r.rect.y]),
+      [
+        ['header', 'body > div', 0],
+        ['header-2', 'body > header', 48],
+      ],
+    );
+    assert.deepEqual(
+      open.states.map((s) => [s.label, s.trigger, s.newLinks]),
+      [
+        ['Products', 'hover', 2],
+        ['Resources', 'hover', 3],
+      ],
+    );
+    assert.deepEqual(
+      open.states[0].panel.items.map((i) => i.href),
+      [`${site.url}products/a`, `${site.url}products/b`],
+    );
+    assert.equal(open.header.breakpoint.shownAt, 992);
+    assert.equal(open.mobileMenu.revealed, true);
+    for (const f of [
+      'page.json',
+      'overlays.json',
+      'desktop.png',
+      'regions/header-2.styles.txt',
+      'open/0.png',
+      'open/mobile-menu.png',
+    ])
+      assert.ok(existsSync(join(dir, f)), `no ${f}`);
+    await clean(true, 'menus', site.url, join(dir, 'open', 'open.json'));
+    await clean(true, 'panels', site.url, dir, join(cwd, 'panels'));
+  },
+);
 
 test('menus: hover menus that open as captured are clean', { skip }, async () => {
   const doc = await clean(

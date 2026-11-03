@@ -19,7 +19,8 @@ import { stitchTiles, TILED_SHOT } from './tiles.mjs';
  *   over most of the viewport) and the consent probe are hidden; the page is scrolled for lazy
  *   content, its animations finished; then shot full-page (<vp>.png).
  * - The header: the elements named by `header` (selectors), else the first `header`-like element
- *   shown at the top; one region each (`header`, `header-2`, ...) with its box per viewport.
+ *   shown at the top with the bands stacked above it (a promo bar outside the <header>); one
+ *   region each, top first (`header`, `header-2`, ...), with its box per viewport.
  * - Then the open menus (open-menus.mjs) and the header probes (probes.mjs).
  * Writes <dir>/{page.json, overlays.json, desktop.png, tablet.png, mobile.png,
  * regions/<id>[.<vp>].{png,styles.txt}, regions/<id>.{html,txt}, open/...}.
@@ -174,7 +175,7 @@ export async function captureHeader(url, dirArg, { header = [], patterns } = {})
       `async page => {
       ${load(url, prepBundle, join(dir, 'desktop.png'))}
       const named = ${JSON.stringify(header)};
-      const found = named.length ? named : [await page.evaluate(() => window.__plgFindHeader())].filter(Boolean);
+      const found = named.length ? named : await page.evaluate(() => window.__plgFindHeader());
       const page_ = JSON.parse(await page.evaluate(() => window.__plgExtract({ maxStyleNodes: 0 })));
       const regions = found.length ? JSON.parse(await page.evaluate((s) => window.__plgHeaderRegions(s), found)) : [];
       return JSON.stringify({ prep, found, regions, page: { ...page_, regions: undefined } });

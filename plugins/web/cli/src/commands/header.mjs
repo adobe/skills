@@ -140,10 +140,12 @@ Output:
 Notes:
   At 1440x900, 820x1180 and 390x844 the source is loaded held still (A/B services blocked,
   overlays hidden, lazy content loaded, animations finished) and shot (<dir>/<vp>.png); the header
-  (--header, else found at the top of the page) is one region per selector, with its box per
-  viewport (page.json; crops and style dumps in regions/). Then each menu is opened as the source
-  opens it (hover, else click; its visible label only; a fresh load per menu) and shot at 1440x900;
-  then the scroll probe, the breakpoint, and the burger at 390x844 (open/mobile-menu.png).
+  (--header, else the first header element at the top of the page with the bands stacked above
+  it, such as a promo bar) is one region per selector, top first (header, header-2, ...), with its
+  box per viewport (page.json; crops and style dumps in regions/). Then each menu is opened as
+  the source opens it (hover, else click; its visible label only; a fresh load per menu) and shot
+  at 1440x900; then the scroll probe, the breakpoint, and the burger at 390x844
+  (open/mobile-menu.png).
   The hide rules are in <dir>/overlays.json (hideCss): pass it to the text check (--hide-css).`,
   menus: `
 Output:

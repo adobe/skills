@@ -167,15 +167,33 @@
   // the header when none is named: the first of these that is shown at the top of the page and is
   // not most of the viewport (a full-height app shell is not a header)
   const HEADER_CANDIDATES = ['body > header', 'header', '[role=banner]', '#header', '.header'];
+  // the bands stacked above it at the top of the page (a promo or top bar outside the <header>):
+  // earlier siblings of the header or of an ancestor, shown, at least half the viewport wide,
+  // entirely above the header's top
+  const bandsAbove = (el, top) => {
+    const out = [];
+    for (let e = el; e && e.parentElement && e !== document.body; e = e.parentElement) {
+      for (let s = e.previousElementSibling; s; s = s.previousElementSibling) {
+        if (SKIP.has(s.tagName) || !visible(s)) continue;
+        const r = absRect(s);
+        if (r.h >= 10 && r.w >= 0.5 * innerWidth && r.y >= 0 && r.y + r.h <= top + 1) out.unshift(s);
+      }
+    }
+    return out.sort((a, b) => absRect(a).y - absRect(b).y);
+  };
+  // selectors, top first: [bands above..., the header]; [] when none is found
   window.__plgFindHeader = () => {
     for (const sel of HEADER_CANDIDATES) {
       for (const el of document.querySelectorAll(sel)) {
         if (!visible(el)) continue;
         const r = absRect(el);
-        if (r.y < 200 && r.h >= 20 && r.h < 0.8 * innerHeight) return cssPath(el);
+        if (r.y < 200 && r.h >= 20 && r.h < 0.8 * innerHeight) {
+          const above = r.y > 0 ? bandsAbove(el, r.y) : [];
+          return [...above, el].map(cssPath);
+        }
       }
     }
-    return null;
+    return [];
   };
 
   // one region record per selector (null when the page does not show it), as __plgExtract's
