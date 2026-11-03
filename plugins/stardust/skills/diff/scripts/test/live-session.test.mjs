@@ -11,9 +11,9 @@
 // defaultWaitUntil, and the live-URL guard — a localhost / loopback URL is never probed for a denial page.
 // The honest identity (stub chromium / browser, no launch): launchLiveBrowser tries real Chrome headless with no stealth
 // flags and falls back to bundled Chromium with one stderr line and the tier tag; launchStealthHeaded is window-free and
-// takes the stealth flags only under STARDUST_STEALTH=1; no userAgent lands on a context unless the caller passed one;
+// keeps the existing automation-signal handling unless STARDUST_STEALTH=0; no userAgent lands on a context unless passed;
 // the sec-ch-ua* trio is derived from the browser's version and the OS (or the caller's UA) on the Chrome tiers and left
-// to the browser on the bundled tier; the webdriver spoof is off by default. The CloudFront / AWS WAF header signature.
+// to the browser on the bundled tier; the webdriver spoof reaches every context by default. The edge header signature.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import * as session from '../live-session.mjs';
@@ -450,30 +450,48 @@ await checkAsync('launchLiveBrowser: Chrome not installed → bundled Chromium w
     assert.ok(!lines[0].includes('\n'), 'one line');
   });
 });
-await checkAsync('launchStealthHeaded: window-free real Chrome with NO stealth flags by default (same options as the default tier, tier "chrome"); STARDUST_STEALTH=1 adds the two stealth options and one stderr line naming the policy; STARDUST_HEADED_WINDOW=1 opens a window (tier "chrome-window"); the fallback keeps the flags it was given', async () => {
+await checkAsync('launchStealthHeaded: window-free real Chrome keeps both launch options by default; any STARDUST_STEALTH value except 0 keeps them; 0 removes them with one stderr line; STARDUST_HEADED_WINDOW=1 opens a window; fallback keeps the selected options', async () => {
   await withEnv({}, async () => {
     const chromium = stubChromium();
     let b;
     const lines = await stderrOf(async () => { b = await session.launchStealthHeaded(chromium); });
-    assert.deepEqual(chromium.calls, [{ headless: true, channel: 'chrome' }]);
+    assert.deepEqual(chromium.calls, [{ headless: true, channel: 'chrome', args: ['--disable-blink-features=AutomationControlled'], ignoreDefaultArgs: ['--enable-automation'] }]);
     assert.deepEqual([session.browserTier(b), lines], ['chrome', []]);
-    assert.equal(session.stealthEnabled(), false);
+    assert.equal(session.stealthEnabled(), true);
   });
-  await withEnv({ STARDUST_STEALTH: '1' }, async () => {
+  await withEnv({ STARDUST_STEALTH: 'anything' }, async () => {
     assert.equal(session.stealthEnabled(), true);
     const chromium = stubChromium();
     const lines = await stderrOf(async () => { await session.launchStealthHeaded(chromium); });
     assert.deepEqual(chromium.calls, [{ headless: true, channel: 'chrome', args: ['--disable-blink-features=AutomationControlled'], ignoreDefaultArgs: ['--enable-automation'] }]);
-    assert.equal(lines.length, 1);
-    assert.match(lines[0], /STARDUST_STEALTH=1: stealth launch flags and the navigator\.webdriver spoof are ON/);
+    assert.deepEqual(lines, []);
     const fallback = stubChromium({ chromeFails: true });
     await stderrOf(async () => { await session.launchStealthHeaded(fallback); });
     assert.deepEqual(fallback.calls[1], { headless: true, args: ['--disable-blink-features=AutomationControlled'], ignoreDefaultArgs: ['--enable-automation'] });
   });
+  await withEnv({ STARDUST_STEALTH: '0' }, async () => {
+    assert.equal(session.stealthEnabled(), false);
+    const chromium = stubChromium();
+    let initScripts = 0;
+    const browser = {
+      stardustTier: 'chrome',
+      version: () => '156.0.8078.74',
+      newContext: async () => ({ route: async () => {}, addInitScript: async () => { initScripts += 1; } }),
+    };
+    const lines = await stderrOf(async () => {
+      await session.launchStealthHeaded(chromium);
+      await session.newLiveContext(browser);
+      await session.newLiveContext(browser);
+    });
+    assert.deepEqual(chromium.calls, [{ headless: true, channel: 'chrome' }]);
+    assert.equal(initScripts, 0);
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /STARDUST_STEALTH=0: automation-signal handling is OFF for this process/);
+  });
   await withEnv({ STARDUST_HEADED_WINDOW: '1' }, async () => {
     const chromium = stubChromium();
     const b = await session.launchStealthHeaded(chromium);
-    assert.deepEqual(chromium.calls, [{ headless: false, channel: 'chrome' }]);
+    assert.deepEqual(chromium.calls, [{ headless: false, channel: 'chrome', args: ['--disable-blink-features=AutomationControlled'], ignoreDefaultArgs: ['--enable-automation'] }]);
     assert.equal(session.browserTier(b), 'chrome-window');
   });
 });
@@ -537,12 +555,12 @@ const drive = async (ctx, { type = 'document', headers = { 'user-agent': 'OwnUA/
   await ctx.routes[0].handler({ request: () => ({ resourceType: () => type, headers: () => headers }), continue: (o) => { continued = o === undefined ? 'bare' : o; } });
   return continued;
 };
-await checkAsync('newLiveContext: no userAgent and no extraHTTPHeaders on the context; the standard headers ride document requests only; on the Chrome tier the derived sec-ch-ua* trio replaces the request\'s, on the bundled tier the browser\'s own trio rides; no init script unless STARDUST_STEALTH=1', async () => {
+await checkAsync('newLiveContext: no userAgent or extraHTTPHeaders on the context; standard headers ride document requests only; derived hints replace Chrome request hints while bundled hints ride; the webdriver spoof reaches every context unless STARDUST_STEALTH=0', async () => {
   await withEnv({}, async () => {
     const chrome = stubBrowser({ tier: 'chrome' });
     const ctx = await session.newLiveContext(chrome, { locale: 'en', viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
     assert.deepEqual(chrome.contexts, [{ reducedMotion: 'reduce', locale: 'en-US', viewport: { width: 1440, height: 900 } }], 'no userAgent, no extraHTTPHeaders, the extras pass through');
-    assert.deepEqual([ctx.routes.length, ctx.routes[0].glob, ctx.initScripts], [1, '**/*', 0]);
+    assert.deepEqual([ctx.routes.length, ctx.routes[0].glob, ctx.initScripts], [1, '**/*', 1]);
     const doc = await drive(ctx);
     assert.equal(doc.headers['user-agent'], 'OwnUA/1', 'the request\'s own UA is kept');
     assert.equal(doc.headers.Accept, session.standardHeaders('en').Accept);
@@ -553,21 +571,23 @@ await checkAsync('newLiveContext: no userAgent and no extraHTTPHeaders on the co
     assert.equal(await drive(ctx, { type: 'font' }), 'bare', 'a subresource is continued untouched (F-B2)');
     const bundled = stubBrowser({ tier: 'chromium-fallback', version: '153.0.8010.12' });
     const bctx = await session.newLiveContext(bundled, { locale: 'en' });
+    assert.equal(bctx.initScripts, 1, 'the spoof reaches a bundled-browser context too');
     const bdoc = await drive(bctx);
     assert.equal(bdoc.headers['sec-ch-ua'], '"Own";v="1"', 'the bundled browser\'s own hints ride');
     assert.equal(bdoc.headers['sec-ch-ua-platform'], '"Own"');
     assert.equal(bdoc.headers['Accept-Language'], 'en-US,en;q=0.9', 'the standard headers still ride');
     const withUa = stubBrowser({ tier: 'chrome' });
     const uctx = await session.newLiveContext(withUa, { ua: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36' });
+    assert.equal(uctx.initScripts, 1, 'the spoof reaches a context with a caller-provided UA too');
     assert.equal(withUa.contexts[0].userAgent, 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36', 'the caller\'s UA is set');
     const udoc = await drive(uctx);
     assert.equal(udoc.headers['sec-ch-ua'], '"Chromium";v="143", "Not:A-Brand";v="8", "Google Chrome";v="143"', 'the hints follow the caller\'s UA');
     assert.equal(udoc.headers['sec-ch-ua-platform'], '"Linux"');
   });
-  await withEnv({ STARDUST_STEALTH: '1' }, async () => {
+  await withEnv({ STARDUST_STEALTH: '0' }, async () => {
     const chrome = stubBrowser({ tier: 'chrome' });
     const ctx = await session.newLiveContext(chrome, {});
-    assert.equal(ctx.initScripts, 1, 'the webdriver spoof is a stealth measure — behind the env only');
+    assert.equal(ctx.initScripts, 0, 'the explicit opt-out removes the webdriver spoof');
   });
 });
 

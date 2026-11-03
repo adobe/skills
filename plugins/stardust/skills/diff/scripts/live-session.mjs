@@ -9,12 +9,14 @@
  * crawler cleared Akamai while the headless gate instruments were served
  * "Access Denied" and would have silently measured it as the source.
  *
- * THE IDENTITY RULE — honest, never stealthy. The browser presents itself as
- * what it is: the installed Google Chrome, headless, under automation.
+ * THE IDENTITY RULE — real Chrome presents its real user agent and client
+ * hints; the automation-signal handling already present on main stays on.
+ * Set STARDUST_STEALTH=0 to turn that handling off.
  *   - Default tier (launchLiveBrowser): real Chrome headless (`channel:
  *     'chrome'`) — its own user agent, its own client hints, its own
- *     navigator.webdriver; bundled Chromium only when Chrome is not installed
- *     (tier 'chromium-fallback', one stderr line). No stealth flags.
+ *     identity; bundled Chromium only when Chrome is not installed (tier
+ *     'chromium-fallback', one stderr line). Every context gets the existing
+ *     navigator.webdriver spoof unless STARDUST_STEALTH=0.
  *   - No user agent is set on a context unless the caller passed `--ua`; the
  *     sec-ch-ua* client hints are derived from the browser's real version and
  *     the running OS (or from the caller's UA string), so the header identity
@@ -25,10 +27,9 @@
  *     manager fingerprints their absence; F-B2: on every request they make
  *     cross-origin font fetches non-simple → silent fallback type).
  *   - --headed (launchStealthHeaded) is the same real Chrome, window-free, plus
- *     the challenge-solve window (gotoLive `solveWindow`). The stealth launch
- *     flags and the navigator.webdriver spoof exist only behind
- *     STARDUST_STEALTH=1, a window only behind STARDUST_HEADED_WINDOW=1 — both
- *     are explicit operator switches, never defaults.
+ *     the challenge-solve window (gotoLive `solveWindow`) and the existing
+ *     launch flags. STARDUST_STEALTH=0 disables the flags and spoof with one
+ *     stderr line; STARDUST_HEADED_WINDOW=1 opens a window.
  *
  * Fail-loud contract: a challenge / edge block (header signature, CloudFront /
  * AWS WAF included) or a 2xx DENIAL page (pageDenial / denialMarker own the
@@ -93,8 +94,15 @@ export async function paceLiveNavigation(page, url, { paceMs = livePaceMs(), now
 export function resetLivePacing() { nextFreeByHost.clear(); pacedHosts.clear(); }
 
 // ---- identity: what the browser is, said once, derived never invented ----------------------------------------------
-/** The policy switch for the stealth launch flags and the navigator.webdriver spoof (the --headed tier only). */
-export const stealthEnabled = () => process.env.STARDUST_STEALTH === '1';
+/** Whether the existing automation-signal handling is active; only STARDUST_STEALTH=0 disables it. */
+export const stealthEnabled = () => process.env.STARDUST_STEALTH !== '0';
+let stealthDisabledReported = false;
+function reportStealthDisabled() {
+  if (!stealthDisabledReported) {
+    stealthDisabledReported = true;
+    console.error('[live-session] STARDUST_STEALTH=0: automation-signal handling is OFF for this process');
+  }
+}
 
 /** process.platform → the sec-ch-ua-platform label: darwin → macOS, win32 → Windows, anything else → Linux. */
 export function platformLabel(platform = process.platform) {
@@ -218,8 +226,8 @@ export function contextOptions({ ua, locale, viewport, identity = null } = {}) {
 /**
  * newContext + contextOptions, the header identity derived from the browser (browserIdentity: the real-Chrome
  * tiers state their own version and OS; a caller's `ua` states its own; a bundled Chromium is left to its own
- * hints). The navigator.webdriver spoof lands on the context ONLY under STARDUST_STEALTH=1 — by default the
- * browser says what it is: under automation. Extra Playwright context options pass through (reducedMotion, ...).
+ * hints). The existing navigator.webdriver spoof lands on every context unless STARDUST_STEALTH=0.
+ * Extra Playwright context options pass through (reducedMotion, ...).
  */
 export async function newLiveContext(browser, { ua, locale, viewport, authOrigin, authHeader, ...rest } = {}) {
   // F-B2 (financial-services site, 2026-08-25): the standard header set must ride on
@@ -242,7 +250,7 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     });
-  }
+  } else reportStealthDisabled();
   if (authOrigin && authHeader) await attachOriginAuth(ctx, authOrigin, authHeader);
   return ctx;
 }
@@ -564,8 +572,8 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
   return resp;
 }
 
-// The stealth launch flags — behind STARDUST_STEALTH=1 only (module docstring): strip the automation signals a
-// managed challenge probes for. Never a default: the honest browser is the contract for unattended runs.
+// The existing headed-tier launch flags strip the automation signals a managed challenge probes for.
+// STARDUST_STEALTH=0 disables them together with the per-context navigator.webdriver spoof.
 const STEALTH_LAUNCH = Object.freeze({ args: Object.freeze(['--disable-blink-features=AutomationControlled']), ignoreDefaultArgs: Object.freeze(['--enable-automation']) });
 
 // Chrome first, bundled Chromium when Chrome is not installed. The binary is what clears TLS/H2-fingerprint blocks
@@ -573,7 +581,6 @@ const STEALTH_LAUNCH = Object.freeze({ args: Object.freeze(['--disable-blink-fea
 // is the only browser whose identity is a normal Chrome's. Takes the caller's `chromium` so this module stays import-free.
 async function launchChromeFirst(chromium, { visible = false, stealth = false } = {}) {
   const opts = { headless: !visible, channel: 'chrome', ...(stealth ? { args: [...STEALTH_LAUNCH.args], ignoreDefaultArgs: [...STEALTH_LAUNCH.ignoreDefaultArgs] } : {}) };
-  if (stealth) console.error('[live-session] STARDUST_STEALTH=1: stealth launch flags and the navigator.webdriver spoof are ON for this session (policy decision — not for unattended runs)');
   try {
     const b = await chromium.launch(opts);
     b.stardustTier = visible ? 'chrome-window' : 'chrome';
@@ -588,8 +595,8 @@ async function launchChromeFirst(chromium, { visible = false, stealth = false } 
 }
 
 /**
- * THE DEFAULT TIER of every live instrument: real Chrome, headless, no stealth flags, no ignoreDefaultArgs —
- * the browser says what it is. Falls back to bundled Chromium with one stderr line when Chrome is not installed.
+ * THE DEFAULT TIER of every live instrument: real Chrome, headless, presenting its real user agent and client hints.
+ * Falls back to bundled Chromium with one stderr line when Chrome is not installed.
  * Tier tag (browserTier): 'chrome' | 'chromium-fallback'.
  */
 export function launchLiveBrowser(chromium) {
@@ -600,12 +607,14 @@ export function launchLiveBrowser(chromium) {
  * The --headed escalation tier: the same real Chrome, WINDOW-FREE by default (#125 — the window was never what
  * cleared a block, the binary was; visible windows blocked an operator's desktop under four parallel agents), plus
  * the challenge-solve window the callers enable with gotoLive `solveWindow`. A window is opt-in
- * (`STARDUST_HEADED_WINDOW=1`, for a challenge that genuinely needs a human); the stealth launch flags are opt-in
- * (`STARDUST_STEALTH=1`) — a policy decision kept separate and visible, never a default. Falls back like
- * launchLiveBrowser. Tier tag: 'chrome' | 'chrome-window' | 'chromium-fallback'.
+ * (`STARDUST_HEADED_WINDOW=1`, for a challenge that genuinely needs a human). The existing launch flags stay on;
+ * `STARDUST_STEALTH=0` disables them and the per-context navigator.webdriver spoof. Falls back like launchLiveBrowser.
+ * Tier tag: 'chrome' | 'chrome-window' | 'chromium-fallback'.
  */
 export function launchStealthHeaded(chromium) {
-  return launchChromeFirst(chromium, { visible: process.env.STARDUST_HEADED_WINDOW === '1', stealth: stealthEnabled() });
+  const stealth = stealthEnabled();
+  if (!stealth) reportStealthDisabled();
+  return launchChromeFirst(chromium, { visible: process.env.STARDUST_HEADED_WINDOW === '1', stealth });
 }
 /** The tier a browser from launchLiveBrowser / launchStealthHeaded / chromium.launch actually runs: 'chrome' |
  * 'chrome-window' | 'chromium-fallback' (Chrome elected, not installed) | 'chromium' (elected). Every probe records

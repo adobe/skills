@@ -269,7 +269,7 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
-# Every instrument runs real Chrome headless with its own identity (#151); --headed = the same browser + the challenge-solve window (#125); STARDUST_STEALTH=1 / STARDUST_HEADED_WINDOW=1 are the only ways to stealth flags / a window.
+# Every instrument runs real Chrome headless with its real user agent and client hints (#151); existing automation-signal handling stays on unless STARDUST_STEALTH=0; STARDUST_HEADED_WINDOW=1 opens the --headed window (#125).
 # gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL). Rounds run in
 # the BACKGROUND: start every round at once (the slots pace the Chromiums — no `sleep N;` staggering),
 # then `wait` prints verdict lines only; exit 75 = still going → `wait` again as your NEXT step, never

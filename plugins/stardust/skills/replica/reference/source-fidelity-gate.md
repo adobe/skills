@@ -526,9 +526,9 @@ rather than erroring.
 1. **Real Chrome presenting its own identity + the standard request headers
    on every capture and probe.** Every live instrument launches the installed
    Chrome headless (`launchLiveBrowser`; bundled Chromium only when Chrome is
-   missing, said on stderr) and sets no user agent, no stealth flag and no
-   `navigator.webdriver` spoof by default — the browser says what it is, its
-   client hints derived from its own version (#151). The UA alone was never
+   missing, said on stderr) and sets no user agent; client hints come from its version (#151).
+   Main's automation-signal handling stays on: every context gets the `navigator.webdriver`
+   spoof and the headed tier its launch flags; `STARDUST_STEALTH=0` turns both off. The UA alone was never
    sufficient either: field-proven (F-R1, a nonprofit site), a real-Chrome UA
    with Playwright's minimal default headers still got HTTP 403 from Akamai;
    adding the standard set every real Chrome sends (`Accept`,
@@ -629,8 +629,8 @@ rather than erroring.
     stitch-shot reads once more after its dismissal sweeps and leaves no PNG
     and no `capture.json`. The escalation ladder: default (real Chrome, its own
     identity + standard headers, paced) → `--headed` (the same browser plus the
-    challenge-solve window, window-free; `STARDUST_STEALTH=1` and
-    `STARDUST_HEADED_WINDOW=1` are explicit operator switches) → if STILL
+    challenge-solve window and existing launch flags, window-free; `STARDUST_STEALTH=0` disables
+    automation-signal handling, while `STARDUST_HEADED_WINDOW=1` opens a window) → if STILL
     blocked, the site needs crawl.mjs-class capture and **the gate must
     not silently degrade** — record the breakpoint as gate-blocked in the
     ledger and surface it to the user; a gate that can't read the live

@@ -27,7 +27,7 @@ export function writeCache(slug, data) { mkdirSync(MEASURE_DIR, { recursive: tru
 /** Launch the measurement browser (the same tier on BOTH sides of a compare so the instrument is symmetric).
  * 'chrome' (default) = real Chrome headless with its own identity, bundled Chromium only when Chrome is missing
  * (launchLiveBrowser); 'headed' (alias 'stealth', the probes' historical name) = the --headed escalation tier
- * (launchStealthHeaded: window-free, the stealth flags only under STARDUST_STEALTH=1); 'plain' = bundled Chromium. */
+ * (launchStealthHeaded: window-free, existing launch flags; STARDUST_STEALTH=0 disables them); 'plain' = bundled Chromium. */
 export async function openBrowser(chromium, { tier = 'chrome' } = {}) {
   if (tier === 'plain') { const b = await chromium.launch(); b.stardustTier = 'chromium'; return b; }
   if (tier === 'headed' || tier === 'stealth') return launchStealthHeaded(chromium);

@@ -69,10 +69,10 @@ carries its root as `[root]`; visual-diff takes one selector, default `main`), c
 `--chrome` / `--no-chrome` (default on — the `header` and `footer` roots, resolved as the first
 `<header>`/`[role=banner]` and `<footer>`/`[role=contentinfo]` outside the main root(s), are
 compared beside it; a side lacking one is measured as empty there and the root line says so),
-plus the live-target set (shared engine: `scripts/live-session.mjs` — the browser is real Chrome
-headless presenting **its own identity**: no stealth flag, no spoofed agent by default; every
-context sends the standard Chrome request headers, a bare context still 403s on Akamai-class bot
-management; live navigations to one host are paced `STARDUST_LIVE_PACE_MS` apart, default 2000):
+plus the live-target set (shared engine: `scripts/live-session.mjs` — real Chrome presents its real
+user agent and client hints; existing automation-signal handling stays on unless `STARDUST_STEALTH=0`;
+every context sends the standard Chrome request headers, and live navigations to one host are paced
+`STARDUST_LIVE_PACE_MS` apart, default 2000):
 
 - `--ua <string>` — user agent override (default: the browser's own).
 - `--wait-until <state>` — goto wait override. Default rule (one shared
@@ -90,8 +90,8 @@ management; live navigations to one host are paced `STARDUST_LIVE_PACE_MS` apart
   removed) AND timed marketing/newsletter modals, plus optional extra site-specific
   selectors; the mouse is parked afterwards.
 - `--headed` — escalation for bot-managed sites: the same real Chrome plus the challenge-solve
-  window, window-free; `STARDUST_STEALTH=1` (stealth flags) and `STARDUST_HEADED_WINDOW=1` (a
-  window) are explicit operator switches, never defaults.
+  window and existing launch flags, window-free; `STARDUST_STEALTH=0` disables the flags and
+  context spoof, while `STARDUST_HEADED_WINDOW=1` opens a window.
 - `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
   different locale per run otherwise).
 
