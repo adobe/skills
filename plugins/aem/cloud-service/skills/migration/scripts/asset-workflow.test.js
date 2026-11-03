@@ -201,14 +201,14 @@ test('run: parseJavaVersion handles modern and 1.x version strings', () => {
 test('run: pinned tool coordinates', () => {
   assert.strictEqual(RUN.TOOL_VERSION, '0.7.0');
   assert.strictEqual(RUN.TOOL_URL, 'https://github.com/adobe/aem-cloud-migration/releases/download/v0.7.0/wf-migrator-0.7.0.jar');
-  if (RUN.TOOL_SHA256 !== null) assert.match(RUN.TOOL_SHA256, /^[0-9a-f]{64}$/);
+  // SHA-256 of the wf-migrator-0.7.0.jar asset of the published v0.7.0 release.
+  assert.strictEqual(RUN.TOOL_SHA256, '735eb507c4844df41bc36fd67c2bd0b57415f2873fa3c2b907af747c063a3e30');
 });
 
-test('run: without a pinned checksum the tool is never downloaded; --jar is required', { skip: RUN.TOOL_SHA256 !== null }, () => withTmp('awt-', d => {
-  const r = RUN.ensureToolInstalled(d);
-  assert.ok(!r.installed);
-  assert.match(r.error, /--jar/);
-  assert.deepStrictEqual(fs.readdirSync(d), []);
+test('run: a downloaded jar whose checksum does not match is not treated as installed', () => withTmp('awt-', d => {
+  assert.ok(!RUN.isToolInstalled(d));
+  fs.writeFileSync(path.join(d, RUN.TOOL_JAR), 'not the release jar');
+  assert.ok(!RUN.isToolInstalled(d));
 }));
 
 test('run: checkProject needs a multi-module project with a content package', () => withTmp('awp-', d => {

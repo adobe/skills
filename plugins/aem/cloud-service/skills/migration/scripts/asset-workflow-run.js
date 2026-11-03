@@ -1,6 +1,6 @@
 'use strict';
 // Branch H one-command runner: pre-flight → gate (+ read-only custom Java step review) → baseline →
-// Adobe wf-migrator 0.7.0 (--jar until it is released) → verification → follow-ups → report. The tool
+// Adobe wf-migrator 0.7.0 (downloaded and checksum-verified, or --jar) → verification → follow-ups → report. The tool
 // makes every change; this runner only orchestrates, gates and checks. Exit codes: 0 verified, 1 verification or tool failure, 2 stopped before
 // changing anything (pre-flight failure or unacknowledged unsupported steps).
 //
@@ -18,14 +18,13 @@ const V = require('./asset-workflow-verify.js');
 const R = require('./asset-workflow-report.js');
 const S = require('./asset-workflow-custom-steps.js');
 
-// 0.7.0 is not released yet: it is adobe/aem-cloud-migration#25 (split handling, Completed step, ImageMagick,
-// runner config, XML formatting). The published v0.6.0 has none of those fixes; do not pin it.
+// 0.7.0 is the first release with the fixes this branch relies on (adobe/aem-cloud-migration#25: split handling,
+// Completed step, ImageMagick, runner config, XML formatting); v0.6.0 has none of them.
 const TOOL_VERSION = '0.7.0';
 const TOOL_JAR = `wf-migrator-${TOOL_VERSION}.jar`;
 const TOOL_URL = `https://github.com/adobe/aem-cloud-migration/releases/download/v${TOOL_VERSION}/${TOOL_JAR}`;
-const TOOL_PR = 'https://github.com/adobe/aem-cloud-migration/pull/25';
-// Set once Adobe publishes v0.7.0; until then the jar is never downloaded and --jar is required.
-const TOOL_SHA256 = null;
+// SHA-256 of the wf-migrator-0.7.0.jar asset on the v0.7.0 release.
+const TOOL_SHA256 = '735eb507c4844df41bc36fd67c2bd0b57415f2873fa3c2b907af747c063a3e30';
 const TOOL_DIR = path.join(__dirname, 'asset-workflow-tool');
 const MIN_JAVA = 11;
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'target', 'dist', '.idea', '.vscode']);
@@ -83,13 +82,12 @@ const toolJarPath = toolDir => path.join(toolDir || TOOL_DIR, TOOL_JAR);
 
 function isToolInstalled(toolDir) {
   const jar = toolJarPath(toolDir);
-  return !!TOOL_SHA256 && isFile(jar) && sha256(jar) === TOOL_SHA256;
+  return isFile(jar) && sha256(jar) === TOOL_SHA256;
 }
 
 function ensureToolInstalled(toolDir) {
   toolDir = toolDir || TOOL_DIR;
   const jar = toolJarPath(toolDir);
-  if (!TOOL_SHA256) return { installed: false, jar, error: `wf-migrator ${TOOL_VERSION} is not released yet (${TOOL_PR}), so it cannot be downloaded. Build it from that PR's branch (fix/skill-workarounds) with \`mvn clean install\` and pass --jar <path to the built target/wf-migrator-*.jar>; its pom still says 0.6.0, so the file is named wf-migrator-0.6.0.jar. Do not use the published v0.6.0 release.` };
   if (isToolInstalled(toolDir)) return { installed: true, alreadyPresent: true, jar };
   fs.mkdirSync(toolDir, { recursive: true });
   const tmp = `${jar}.part`;
@@ -402,7 +400,7 @@ function main(argv, log) {
 if (require.main === module) process.exitCode = main(process.argv.slice(2));
 
 module.exports = {
-  TOOL_VERSION, TOOL_URL, TOOL_PR, TOOL_SHA256, TOOL_DIR, TOOL_JAR, MIN_JAVA, BASELINE_MARKER,
+  TOOL_VERSION, TOOL_URL, TOOL_SHA256, TOOL_DIR, TOOL_JAR, MIN_JAVA, BASELINE_MARKER,
   parseJavaVersion, checkJava, checkCleanGitTree, checkProject, isToolInstalled, ensureToolInstalled, runMigrator,
   copyTree, baselineFromGit, checkReportDir, resetBaseline, affectedWorkflows, gateUnsupported, planPreview, parseArgs, migrate, main,
 };

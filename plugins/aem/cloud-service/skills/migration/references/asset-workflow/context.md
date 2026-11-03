@@ -22,21 +22,13 @@ Step categories and what happens to each are in [step-catalog.md](step-catalog.m
 | Java 11+ on `PATH` | runs the JAR | `checkJava` (stops with exit 2) |
 | A Maven multi-module project: root `pom.xml` with `<modules>` and at least one `content-package` module | the tool only scans content packages | `checkProject` |
 | A clean git tree (or `--allow-dirty`) | the tool rewrites files in place; the diff must be reviewable and `git checkout .` must undo it | `checkCleanGitTree` |
-| A `wf-migrator` **0.7.0** JAR, passed with `--jar <path>` | 0.7.0 is not released yet, so nothing can be downloaded (below) | `ensureToolInstalled` (stops with exit 2 and these instructions) |
+| The `wf-migrator` **0.7.0** JAR | downloaded on first run into `scripts/asset-workflow-tool/` (needs `curl` and network) and checked against the pinned SHA-256; or pass a local copy with `--jar <path>` | `ensureToolInstalled` (stops with exit 2 on a download failure or checksum mismatch) |
 
 The dry run (`--dry-run`) and `--verify-only` need neither Java nor the JAR.
 
-### Tool version: 0.7.0, not released yet
+### Tool version: 0.7.0
 
-The skill targets **wf-migrator 0.7.0**, which is [adobe/aem-cloud-migration#25](https://github.com/adobe/aem-cloud-migration/pull/25) — still open. Adobe's latest published release is **v0.6.0 (May 2024)**, which has none of the fixes below; do not use it with this skill. Until 0.7.0 is published (the runner then pins its SHA-256 and downloads it on first use), **`--jar` is required**. Tell the user how to get the JAR:
-
-```bash
-git clone https://github.com/adobe/aem-cloud-migration.git && cd aem-cloud-migration
-git checkout fix/skill-workarounds        # the branch of PR #25
-mvn clean install                         # JDK 11
-```
-
-The PR branch's pom still carries version `0.6.0`, so the build writes **`target/wf-migrator-0.6.0.jar`** — that file is the 0.7.0 code; pass it with `--jar`. It is not the published v0.6.0 release, so check where a JAR came from before using it. A JAR whose checksum is not pinned is reported as `custom jar` in the report.
+The skill pins **[wf-migrator v0.7.0](https://github.com/adobe/aem-cloud-migration/releases/tag/v0.7.0)** (URL and SHA-256 in `scripts/asset-workflow-run.js`) and downloads it on first use. The older **v0.6.0 (May 2024)** has none of the fixes below; do not use it with this skill. `--jar <path>` overrides the download (for example offline, or behind a proxy that blocks GitHub downloads); a JAR whose checksum is not the pinned one is reported as `custom jar` in the report.
 
 Behaviour that **needs 0.7.0** (marked _(0.7.0)_ under [What the tool does](#what-the-tool-does-wf-migrator-070)): steps inside OR/AND splits classified and removed, emptied branches filled with No Operation; the Completed step exactly once, as the last step; ImageMagick `CommandLineProcess` commands mapped to processing-profile renditions; one merged author runner config `.cfg.json`; XML formatting kept; per-profile absolute filter roots; packages that pass FileVault validation. The verification gates in [validation.md](validation.md) expect this output, so a v0.6.0 run fails them.
 
@@ -62,10 +54,10 @@ Run everything from the migration skill directory (`plugins/aem/cloud-service/sk
 3. **EXECUTE + VERIFY** — one command:
 
    ```bash
-   node scripts/asset-workflow-run.js <project> --jar <wf-migrator jar> --acknowledge CommandLineProcess
+   node scripts/asset-workflow-run.js <project> --acknowledge CommandLineProcess
    ```
 
-   `--jar` is required until wf-migrator 0.7.0 is released ([Tool version](#tool-version-070-not-released-yet)). Without it the run stops in pre-flight with instructions for building the JAR.
+   The first run downloads the pinned wf-migrator 0.7.0 JAR ([Tool version](#tool-version-070)); add `--jar <path>` to use a local copy instead.
 
    Pre-flight → baseline copy → run the tool and check it succeeded → verification gates → follow-ups → report. Exit `0` = verification passed; `1` = the tool or verification failed; `2` = a pre-flight or gate stop, or bad arguments.
 
@@ -83,7 +75,7 @@ Run everything from the migration skill directory (`plugins/aem/cloud-service/sk
 | `--acknowledge <list>` | Comma-separated step short names or FQCNs, `/var/workflow/models/<id>` paths, or `all`. Repeatable. |
 | `--verify-only` | Skip the tool; verify the current tree against the git `HEAD` baseline and write the report. |
 | `--baseline <dir>` | Baseline project copy for `--verify-only`, instead of git `HEAD`. |
-| `--jar <path>` | The `wf-migrator` 0.7.0 JAR to run. **Required** until 0.7.0 is released; afterwards it overrides the pinned download (a JAR that is not the pinned release is reported as `custom jar`). |
+| `--jar <path>` | A local `wf-migrator` JAR to run instead of the pinned 0.7.0 download (a JAR that is not the pinned release is reported as `custom jar`). |
 | `--report-dir <dir>` | Default `<project>/target/asset-workflow-migration`. Must not be the project folder or one of its parents. |
 | `--allow-dirty` | Run on a dirty git tree. |
 | `--json` | Print the full result object. |
@@ -92,7 +84,7 @@ Outputs in the report dir: `asset-workflow-report.md` (review + checklist), `ass
 
 ## What the tool does (wf-migrator 0.7.0)
 
-Items marked _(0.7.0)_ come from [adobe/aem-cloud-migration#25](https://github.com/adobe/aem-cloud-migration/pull/25); the published v0.6.0 does not do them.
+Items marked _(0.7.0)_ are new in v0.7.0 ([adobe/aem-cloud-migration#25](https://github.com/adobe/aem-cloud-migration/pull/25)); v0.6.0 does not do them.
 
 - Looks at **enabled launchers** on `/content/dam` asset paths and migrates a model when a step is `SUPPORTED`, custom Java, a script or `noop` — including steps inside OR/AND splits _(0.7.0)_.
 - Rewrites the migrated models, removing steps by category ([step-catalog.md](step-catalog.md)). At every depth _(0.7.0)_: an emptied split branch gets a No Operation step, and a split left with only No Operation steps is removed. The Completed step runs exactly once, as the last step _(0.7.0)_.

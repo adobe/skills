@@ -31,10 +31,10 @@ Two layers: the **verification gates** that `scripts/asset-workflow-run.js` runs
 `npm test` in `scripts/` runs the unit tests against a fixture project and the tool's recorded output, both kept in `scripts/fixtures/asset-workflow.js`. The end-to-end test runs the real JAR, checks its output still matches the recording, and is opt-in:
 
 ```bash
-ASSET_WF_E2E=1 ASSET_WF_JAR=/path/to/aem-cloud-migration/target/wf-migrator-0.6.0.jar npm test   # needs Java 11+, git
+ASSET_WF_E2E=1 npm test   # needs Java 11+, git, curl
 ```
 
-`ASSET_WF_JAR` is required until wf-migrator 0.7.0 is published: build the JAR from [adobe/aem-cloud-migration#25](https://github.com/adobe/aem-cloud-migration/pull/25) as described in [context.md](context.md#tool-version-070-not-released-yet) (its pom still says 0.6.0, hence the file name). Without it the end-to-end test is skipped. Once 0.7.0 is released and pinned, `ASSET_WF_E2E=1 npm test` alone downloads it.
+It downloads the pinned wf-migrator 0.7.0 JAR ([context.md](context.md#tool-version-070)); set `ASSET_WF_JAR=<path>` to test a local JAR instead.
 
 ## Post-deploy checks (on an RDE or dev environment)
 

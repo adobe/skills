@@ -1,8 +1,8 @@
 'use strict';
 // Branch H end to end with the real wf-migrator JAR. Opt in with ASSET_WF_E2E=1 (needs Java 11+ and git;
 // the catalog check also needs unzip).
-//   ASSET_WF_JAR=<path>     the wf-migrator 0.7.0 jar. Required until Adobe publishes 0.7.0 (it is
-//                           adobe/aem-cloud-migration#25); build it from that PR with `mvn clean install`.
+//   ASSET_WF_JAR=<path>     optional: a wf-migrator jar to use instead of downloading the pinned
+//                           0.7.0 release (checksum-verified) into scripts/asset-workflow-tool/.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs'); const os = require('os'); const path = require('path');
@@ -17,7 +17,6 @@ function skipReason() {
   const java = RUN.checkJava();
   if (!java.ok) return java.error;
   if (spawnSync('git', ['--version']).error) return 'git not found';
-  if (!process.env.ASSET_WF_JAR && !RUN.TOOL_SHA256) return `wf-migrator ${RUN.TOOL_VERSION} is not released yet (${RUN.TOOL_PR}); set ASSET_WF_JAR to a jar built from it`;
   return false;
 }
 const SKIP = skipReason();
