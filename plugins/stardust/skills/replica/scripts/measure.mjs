@@ -52,7 +52,7 @@
  *     --json               the full structure on stdout instead of the table
  *     --out <file>         also write that JSON to <file> (directories created)
  *     --timeout-ms <ms>    per-page navigation timeout (default 20000)
- *     --ua <string>        user agent (default: the real-Chrome desktop UA)
+ *     --ua <string>        user agent (default: the browser's own, without the headless token)
  *     --consent <sel>      extra consent-accept selector (live side; clicked, never removed)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; marketing modals etc.)
  *     --headed             headed stealth real Chrome (escalation for bot-managed live sites)
@@ -118,7 +118,6 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 
 // Current stable desktop Chrome on macOS — the platform token and minor version are frozen by
 // Chrome's UA reduction, so only the major matters.
-export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
 export const DEFAULT_PROPS = ['display', 'position', 'boxSizing', 'width', 'height', 'maxWidth', 'margin', 'padding', 'gap', 'backgroundColor', 'backgroundImage', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textTransform', 'textAlign', 'borderRadius', 'border', 'boxShadow', 'opacity', 'objectFit'];
 export const MATCH_CAP = 12;
 export const TEXT_MAX = 40;
@@ -141,7 +140,7 @@ async function loadLiveSession() {
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 export function parseArgs(argv) {
-  const o = { url: null, against: null, selectors: [], widths: [], props: DEFAULT_PROPS, allMatches: false, json: false, out: null, timeoutMs: 20000, ua: DEFAULT_UA, consent: null, dismiss: [], headed: false, locale: null };
+  const o = { url: null, against: null, selectors: [], widths: [], props: DEFAULT_PROPS, allMatches: false, json: false, out: null, timeoutMs: 20000, ua: null, consent: null, dismiss: [], headed: false, locale: null };
   // A value flag followed by nothing or by another --flag is a usage error naming the flag.
   const need = (i, flag) => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${flag} needs a value`); return argv[i + 1]; };
   for (let i = 0; i < argv.length; i += 1) {
@@ -242,7 +241,7 @@ async function measurePage(browser, url, o, session) {
   const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
-    : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
+    : await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common });
   const page = await context.newPage();
   const byWidth = {};
   try {
