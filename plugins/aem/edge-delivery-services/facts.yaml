@@ -14,6 +14,7 @@
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: block-css-location
   claim: >-
@@ -36,6 +37,7 @@
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: css-targets-decorated-dom
   claim: >-
@@ -79,6 +81,7 @@
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: mobile-first-breakpoints
   claim: >-
@@ -91,6 +94,7 @@
     in 4a3d34f (2024-05-29)
   used_by:
     - evals/css-block-scoping-and-custom-properties
+    - skills/code-review/SKILL.md
 
 - id: block-variant-classes
   claim: >-
@@ -147,6 +151,7 @@
   used_by:
     - evals/block-file-structure-and-performance-pat
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: reuse-authored-dom
   claim: >-
@@ -162,6 +167,7 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: delivered-pictures
   claim: >-
@@ -177,6 +183,7 @@
     blocks/cards/cards.js
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/code-review/SKILL.md
 
 - id: authored-cells-vary
   claim: >-
@@ -190,6 +197,7 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: block-dom-scope
   claim: >-
@@ -199,6 +207,7 @@
     Can an EDS block's decorate() look up or change elements outside the block?
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/code-review/SKILL.md
 
 - id: aem-js-vendored
   claim: >-
@@ -213,6 +222,7 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: no-build-step
   claim: >-
@@ -226,6 +236,7 @@
   source: aem-boilerplate 5cea543, AGENTS.md, .eslintrc.js import/extensions
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/code-review/SKILL.md
 
 - id: project-lint
   claim: >-
@@ -236,6 +247,7 @@
   source: aem-boilerplate 5cea543, package.json, .eslintrc.js, .stylelintrc.json
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/code-review/SKILL.md
 
 - id: no-innerhtml
   claim: >-
@@ -247,6 +259,7 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: programmatic-blocks
   claim: >-
@@ -272,6 +285,7 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: test-when-costly
   claim: >-
@@ -363,6 +377,7 @@
     scripts/consent-check.js
   used_by:
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: psi-on-preview
   claim: >-
@@ -373,7 +388,8 @@
     How do you check that an EDS code change doesn't hurt performance, and what
     score is expected?
   source: https://www.aem.live/developer/keeping-it-100
-  used_by: []
+  used_by:
+    - skills/code-review/SKILL.md
 
 - id: committed-files-served
   claim: >-
@@ -386,6 +402,7 @@
   source: aem-boilerplate 5cea543, AGENTS.md
   used_by:
     - skills/content-driven-development/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: authored-content-compat
   claim: >-
@@ -397,7 +414,8 @@
     You change an EDS block's content model. What about pages already
     authored with the old structure?
   source: aem-boilerplate 5cea543, AGENTS.md
-  used_by: []
+  used_by:
+    - skills/code-review/SKILL.md
 
 - id: strings-from-content
   claim: >-
@@ -408,4 +426,5 @@
     An EDS block needs a "Read more" button label. Where should that text come
     from?
   source: https://www.aem.live/docs/placeholders
-  used_by: []
+  used_by:
+    - skills/code-review/SKILL.md

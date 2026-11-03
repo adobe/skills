@@ -1,7 +1,7 @@
 {
   "name": "adobe/aem-edge-delivery-services",
   "version": "0.1.0",
-  "description": "Skills for building AEM Edge Delivery Services sites — site creation, block development, content modeling, testing, and page import.",
+  "description": "Skills for building AEM Edge Delivery Services sites — site creation, block development, content modeling, code review, testing, and page import.",
   "private": false,
   "skills": [
     "skills/analyze-and-plan",
@@ -12,6 +12,7 @@
     "skills/block-collection-and-party",
     "skills/block-inventory",
     "skills/building-blocks",
+    "skills/code-review",
     "skills/content-driven-development",
     "skills/content-modeling",
     "skills/da-auth",
