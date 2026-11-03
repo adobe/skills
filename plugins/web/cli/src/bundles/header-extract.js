@@ -179,7 +179,17 @@
         if (r.h >= 10 && r.w >= 0.5 * innerWidth && r.y >= 0 && r.y + r.h <= top + 1) out.unshift(s);
       }
     }
-    return out.sort((a, b) => absRect(a).y - absRect(b).y);
+    // top first; of bands that overlap (a wrapper and its copy, a placeholder under a fixed bar),
+    // the first in the page's order
+    let bottom = -Infinity;
+    return out
+      .sort((a, b) => absRect(a).y - absRect(b).y)
+      .filter((s) => {
+        const r = absRect(s);
+        if (r.y < bottom - 1) return false;
+        bottom = r.y + r.h;
+        return true;
+      });
   };
   // selectors, top first: [bands above..., the header]; [] when none is found
   window.__plgFindHeader = () => {

@@ -117,7 +117,7 @@ test(
     assert.deepEqual(
       page.regions.map((r) => [r.id, r.selector, r.rect.y]),
       [
-        ['header', 'body > div', 0],
+        ['header', 'body > div:nth-of-type(1)', 0],
         ['header-2', 'body > header', 48],
       ],
     );

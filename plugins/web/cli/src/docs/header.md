@@ -16,8 +16,8 @@ CLI as a package, pinned to a commit of adobe/skills, with pnpm's git subfolder 
 
 ```bash
 DIR="$HOME/.cache/adobe-skills/web-cli-<sha7>"
-[ -x "$DIR/node_modules/.bin/web" ] ||
-  npx -y pnpm@<version> add --dir "$DIR" "github:adobe/skills#<sha>&path:/plugins/web/cli"
+[ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&
+  npx -y pnpm@<version> add --dir "$DIR" "github:adobe/skills#<sha>&path:/plugins/web/cli"; }
 WEB="$DIR/node_modules/.bin/web"
 ```
 

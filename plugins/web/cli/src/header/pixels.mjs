@@ -90,7 +90,9 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
     // held still as the capture held the source (a rotating placeholder: the retailer, ap-1)
     await page.addInitScript(${STEADY});
     await page.goto(${JSON.stringify(edsUrl)}, { waitUntil: 'load', timeout: 60000 });
-    if (!${opt.static}) await page.waitForFunction(() => document.body.classList.contains('appear'), null, { timeout: 15000 });
+    // an EDS page shows its body once loaded (body.appear); a page that never does is not one
+    if (!${opt.static}) await page.waitForFunction(() => document.body.classList.contains('appear'), null, { timeout: 15000 })
+      .catch(() => { throw new Error('no body.appear 15 s after load: not an EDS page, or its scripts failed (a plain HTML page: --static)'); });
     // [data-block-status], not .block: the boilerplate's widget block drops its .block class
     await page.waitForFunction(() => [...document.querySelectorAll('[data-block-status]')]
       .every(b => b.dataset.blockStatus === 'loaded'), null, { timeout: 15000 }).catch(() => {});
