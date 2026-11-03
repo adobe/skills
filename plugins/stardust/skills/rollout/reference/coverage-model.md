@@ -72,6 +72,7 @@ archetype — prototype it, then re-fork its siblings.
 ## Idempotency rules (inventory)
 
 On every `inventory.mjs` run:
+- Archetype-only roster mapping follows [Phase A](../SKILL.md#phase-a--inventory-build-the-coverage).
 - A page's `sourceHash` is recomputed from its migrated HTML bytes (migrated
   pages) or from `state.json[].currentStatePath` content (content-pending pages).
 - If a page already exists in `pages.json`:

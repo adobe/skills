@@ -168,6 +168,31 @@ check('archetypes-only mode: a content-pending sibling inherits the archetype\'s
   assert.equal(fiji.path, '/tours/fiji');
   assert.equal(fiji.delivery.status, 'content-pending'); assert.deepEqual(fiji.blocks, ['hero', 'gallery']); assert.deepEqual(fiji.widgets, [{ id: 'tour-finder', href: '/widgets/tours/tour-finder.html?region=all' }]);
   assert.match(r.stdout, /^Widgets {5}1 distinct \(tour-finder\) on 2 pages/m, r.stdout);
+
+  page('tours/fiji/index.html', { slug: 'tours-fiji', type: 'program', template: 'tours-bali', modules: ['hero'] });
+  const migratedFiji = spawnSync(process.execPath, [SCRIPT, '--migrated', migrated, '--out', out2, '--state', state], { encoding: 'utf8' });
+  assert.equal(migratedFiji.status, 0, migratedFiji.stderr);
+  const deliveredFiji = JSON.parse(readFileSync(join(out2, 'coverage', 'pages.json'), 'utf8')).pages.find((p) => p.slug === 'tours-fiji');
+  assert.equal(deliveredFiji.delivery.status, 'pending', 'a migrated roster page leaves content-pending');
+});
+
+check('archetypes-only mode resolves roster types through reskin ledger handoff archetypes', () => {
+  const migratedHandoff = join(root, 'migrated-handoff');
+  const outHandoff = join(root, 'rollout-handoff');
+  const stateHandoff = join(root, 'roster-handoff.json');
+  mkdirSync(migratedHandoff, { recursive: true });
+  mkdirSync(join(root, 'stardust', 'reskin'), { recursive: true });
+  writeFileSync(join(migratedHandoff, 'index.html'), '<html><body>landing archetype</body></html>');
+  writeFileSync(join(migratedHandoff, '_meta.json'), JSON.stringify({ slug: 'index', type: 'landing', fidelityTier: 'archetype', renderBranch: 'A', modules: ['landing-hero'] }));
+  writeFileSync(join(root, 'stardust', 'reskin', 'ledger.json'), JSON.stringify({ handoff: { landing: { archetype: 'index' } } }));
+  writeFileSync(stateHandoff, JSON.stringify({ pages: [{ slug: 'about', url: 'https://example.com/about/', type: 'landing' }] }));
+
+  const r = spawnSync(process.execPath, [SCRIPT, '--migrated', migratedHandoff, '--out', outHandoff, '--state', stateHandoff], { encoding: 'utf8', cwd: root });
+  assert.equal(r.status, 0, r.stderr);
+  const about = JSON.parse(readFileSync(join(outHandoff, 'coverage', 'pages.json'), 'utf8')).pages.find((p) => p.slug === 'about');
+  assert.equal(about.templateId, 'index');
+  assert.equal(about.representative, 'index');
+  assert.deepEqual(about.blocks, ['landing-hero']);
 });
 
 check('scope: state.json site.totalDiscovered above the roster → rollout.json scope { capped: true } and a loud Scope line; equal → "the whole site"; no count → no line', () => {

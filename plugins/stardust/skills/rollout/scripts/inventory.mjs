@@ -29,7 +29,8 @@
  * Archetypes-only mode (`--state <state.json>`): the migrated tree holds only the
  * template archetypes (one per template); the full page roster lives in state.json.
  * Pages present only in state.json (not yet individually migrated) are merged in as
- * `content-pending` siblings — keyed to the archetype their `type` names, inheriting
+ * `content-pending` siblings — keyed to the archetype recorded in reskin's handoff
+ * ledger for their type (falling back to `representative` or the type slug), inheriting
  * that archetype's blocks, pushing no document. Block code ships from the archetypes;
  * sibling content is populated later by a separate content track.
  *
@@ -173,6 +174,8 @@ for (const relHtml of htmlFiles) {
       pinnedChanged.push(slug);
     } else if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
       delivery = { ...prior.delivery, status: 'stale' };
+    } else if (prior.delivery.status === 'content-pending') {
+      delivery = { ...prior.delivery, status: 'pending' };
     } else {
       delivery = prior.delivery;
     }
@@ -200,12 +203,13 @@ for (const relHtml of htmlFiles) {
 // --- Archetypes-only mode: merge content-pending siblings from state.json -------
 // In --state mode each migrated archetype is keyed by its own fine slug (the
 // archetypes are genuinely distinct templates that share only chrome). A roster
-// page's `type` names the archetype slug it clones; it joins that archetype's
-// template group as a `content-pending` sibling, inheriting the archetype's blocks
+// page resolves to its registered reskin handoff archetype for that type; it joins
+// that archetype's template group as a `content-pending` sibling, inheriting blocks
 // and pushing no document of its own.
 if (STATE) {
   for (const p of pages) p.templateId = p.slug;
   const archetypeBySlug = new Map(pages.map((p) => [p.slug, p]));
+  const handoff = readJSON('stardust/reskin/ledger.json', { handoff: {} }).handoff || {};
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
   const state = readJSON(STATE, { pages: [] });
@@ -213,9 +217,12 @@ if (STATE) {
     if (!sp || !sp.url) continue;
     const path = urlToDeliveredPath(sp.url);
     if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
-    // A roster sibling names the archetype it clones via `representative` (preferred)
-    // or its `type`; that archetype supplies the template grouping + block set.
-    const rep = archetypeBySlug.get(sp.representative) || archetypeBySlug.get(sp.type) || null;
+    // Reskin's registered handoff archetype is authoritative; other flows can name
+    // the archetype directly in `representative` or use the type as its slug.
+    const rep = archetypeBySlug.get(handoff[sp.type]?.archetype)
+      || archetypeBySlug.get(sp.representative)
+      || archetypeBySlug.get(sp.type)
+      || null;
     let slug = sp.slug && !usedSlugs.has(sp.slug) ? sp.slug : pathToSlug(path);
     while (usedSlugs.has(slug)) slug = `${slug}-x`;
     usedSlugs.add(slug);

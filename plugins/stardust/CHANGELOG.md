@@ -9,6 +9,9 @@ git history only (plus the branch-scoped notes in
 - **Capped rollout scope stays accurate.** Roster URLs with trailing slashes
   match their migrated archetypes rather than counting them twice, so a subset
   is not mistaken for the whole discovered site.
+- **Archetypes-only rollout honors reskin handoff.** Roster types resolve to
+  their registered archetype, and a sibling advances from `content-pending` to
+  `pending` when its migrated HTML appears.
 
 ### Renderer fidelity fixes measured on a 52-page school site
 

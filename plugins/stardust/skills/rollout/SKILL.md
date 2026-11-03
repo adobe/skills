@@ -85,9 +85,10 @@ Writes `coverage/pages.json` (one row per page: slug, delivered `path`,
 
 **Archetypes-only mode** (`--state`): pages with a `_meta.json` are seeded as in
 full mode; pages present only in `state.json` are seeded with `templateId` from
-`type`, `blocks` from the archetype sidecar, and `delivery.status:
-content-pending`. Trailing slashes in roster URLs do not create duplicate page
-rows for migrated archetypes.
+the archetype mapped by `stardust/reskin/ledger.json#handoff.<type>.archetype`
+(then `representative`, then the type slug), inherit that archetype's blocks and
+widgets, and start with `delivery.status: content-pending`. Trailing slashes in
+roster URLs do not create duplicate page rows for migrated archetypes.
 
 Inventory is **idempotent and incremental**: delivery status is preserved; a page
 whose migrated HTML changed after delivery is re-flagged `stale` (never a
