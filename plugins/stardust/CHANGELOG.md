@@ -4,6 +4,38 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.3 — the crawler names a bot wall in seconds instead of waiting out its cap (#152)
+
+Field learning (a hands-off replica run on a bot-managed site): the entry page answered 200 with a verification
+interstitial that reloaded itself every few seconds; the crawler captured it as content and waited out its whole cap
+on it. A CloudFront block on inner pages read as a plain HTTP error, and the headed escalation opened a window where no
+display exists.
+
+- **`extract/scripts/crawl.mjs`:** `launchWithFallback` launches real Chrome headless first — its own identity, no
+  stealth flags; bundled Chromium when Chrome is missing (technique `chrome` | `chromium-fallback`) — through
+  live-session's `launchLiveBrowser` when the module beside the script has it, inline otherwise. `probeEntry`
+  classifies the entry page in seconds: a network reject (`fingerprint`), an edge challenge (`challengeMarker`:
+  Cloudflare / Akamai / F5 / Imperva / CloudFront–AWS WAF, Akamai's 400 escalation) or a 2xx interstitial read from
+  the page — the crawler's own title rule first (`wallProbeInPage` / `inlineWallMarker`: a wall title or h1 on a page
+  under 2 KB of text or one reloading itself), then live-session's `pageDenial` vendor list when present. Any of them
+  → one window-free real-Chrome relaunch (technique `chrome-escalated`; the existing launch flags and
+  `navigator.webdriver` spoof stay on, `STARDUST_STEALTH=0` turns them off; a relaunch failure is one stderr line) plus the challenge-solve window, then a fatal
+  `bot-management <kind> not cleared: <marker>`. On inner pages an uncleared challenge or a 2xx interstitial is
+  recorded as errorClass `BotChallenge` with the marker — never as content, never as a bare `HTTPError`;
+  `_crawl-log.json#discovery` carries `botBlock` + `botMarker`.
+- **The wall title names verification interstitials only** — "verify you are human", "verifying your request /
+  browser", "human verification", "checking your browser" and the vendor interstitial titles, never a bare "verify" or
+  "verification": an age or e-mail verification page is a page, and a small single-page-app entry page under such a
+  title would have aborted the crawl. **Readers of `fetchTechnique`** (`deploy/SKILL.md`, `deploy/da-deploy-protocol.md`,
+  `replica/reference/handoff-contract.md`) know the tier names (`chrome`, `chrome-escalated`, `chromium-fallback`; older
+  logs `headed-chrome*`) and verify source images with an in-page fetch from a browser of that tier, never a bare curl.
+- **`--page-timeout <s>`** (default 60; 0 = none) wraps each capture: a page that never settles is a `TimeoutError` and
+  its tab is closed. Live navigations are paced per host when a live-session copy that paces is beside the script.
+- **Docs:** `extract/SKILL.md` § Bot-management block says what the crawler does itself; `scripts-index.md` lists the
+  flag.
+- Tests: `crawl.test.mjs` — the classifiers, the inline wall rule, `pageTimeoutMs`, `probeEntry` and `capturePage` on
+  stub pages (clean / interstitial / challenge / CloudFront / bare 403 / hung navigation / an unreadable wall probe).
+
 ## 0.36.2 — real Chrome identity, retained automation-signal handling and paced live navigation (#151)
 
 Field learning (hands-off replica runs on bot-managed sites): the gate instruments presented a hard-coded desktop user
