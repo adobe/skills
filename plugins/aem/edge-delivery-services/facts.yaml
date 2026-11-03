@@ -95,11 +95,13 @@
 - id: block-variant-classes
   claim: >-
     Block options are extra classes on the block element (`Columns (dark, wide)`
-    → `class="columns dark wide"`), styled as `.{block}.{option}`.
+    → `class="columns dark wide"`), styled as `.{block}.{option}`. An option
+    that only changes looks needs no JS.
   question: How do authors create a variant of an EDS block, and how is it styled?
   source: https://www.aem.live/developer/markup-sections-blocks (block options)
   used_by:
     - evals/css-block-scoping-and-custom-properties
+    - evals/javascript-block-decoration-patterns
 
 - id: css-logical-properties
   claim: >-
@@ -117,3 +119,126 @@
   question: How do you space items in a flex or grid layout?
   used_by:
     - evals/css-block-scoping-and-custom-properties
+
+- id: block-js-contract
+  claim: >-
+    aem.js imports `blocks/{block}/{block}.js` and awaits its default export,
+    called with the block element. It may be async.
+  question: >-
+    What does the JavaScript file of an EDS block named `cards` look like, and
+    how does the platform call it?
+  source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: decorate-gates-section
+  claim: >-
+    A section stays hidden until every block in it has been decorated, and the
+    first section is loaded before anything else (LCP). Slow work awaited in
+    decorate() (fetches, big imports, third-party embeds) delays the section;
+    defer it, e.g. until the block is in view.
+  question: >-
+    What happens to the page if an EDS block's decorate() awaits a slow fetch
+    or library load, and how should such work be handled?
+  source: >-
+    aem-boilerplate 5cea543, scripts/aem.js loadSection(), scripts/scripts.js
+    loadEager()
+  used_by:
+    - evals/block-file-structure-and-performance-pat
+
+- id: reuse-authored-dom
+  claim: >-
+    decorate() moves the delivered elements (pictures, headings, paragraphs,
+    links) into the new structure instead of copying their text or src into new
+    elements. Copies lose attributes such as heading ids, image dimensions and
+    Universal Editor instrumentation (`data-aue-*`).
+  question: >-
+    In an EDS block's decorate(), how do you turn the authored heading and
+    image into your own markup?
+  source: >-
+    adobe-rnd/aem-boilerplate-xwalk scripts/scripts.js moveInstrumentation()
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: delivered-pictures
+  claim: >-
+    Authored images arrive as `<picture>` with webp and fallback sources at
+    2000/750px widths. Keep it, or rebuild it at another size with
+    `createOptimizedPicture()` from aem.js; don't build a bare `<img>` from its
+    src.
+  question: >-
+    In what form do authored images reach an EDS block, and how do you render
+    one at a smaller size?
+  source: >-
+    aem-boilerplate 5cea543, scripts/aem.js createOptimizedPicture(),
+    blocks/cards/cards.js
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: authored-cells-vary
+  claim: >-
+    Authors leave cells out and add extra ones, so decorate() can't assume a
+    fixed row/cell shape; find content by what it is (e.g. the cell with a
+    picture), not by index alone.
+  question: >-
+    An EDS block's content model says each row has an image cell and a text
+    cell. What should decorate() assume about the rows it gets?
+  source: aem-boilerplate 5cea543, AGENTS.md
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: block-dom-scope
+  claim: >-
+    decorate() queries and changes only its own block. It does not query the
+    document or change the header, section or other blocks.
+  question: >-
+    Can an EDS block's decorate() look up or change elements outside the block?
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: aem-js-vendored
+  claim: >-
+    `scripts/aem.js` is vendored and never edited. Blocks import its helpers
+    (`createOptimizedPicture`, `readBlockConfig`, `toClassName`, `getMetadata`,
+    `loadCSS`, `loadScript`) as `../../scripts/aem.js`; project helpers go in
+    scripts.js or another file under `scripts/`.
+  question: >-
+    What is `scripts/aem.js` in an EDS project, can you change it, and how do
+    blocks use it?
+  source: aem-boilerplate 5cea543, AGENTS.md, scripts/aem.js exports
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: no-build-step
+  claim: >-
+    Code is served as-is as browser ES modules: no bundler, no transpiling, no
+    npm runtime dependencies (devDependencies only). Imports use relative paths
+    with `.js`; third-party scripts load with `loadScript()` or are copied into
+    the repo.
+  question: >-
+    How do you add a third-party library to an EDS block, and how are block
+    imports written?
+  source: aem-boilerplate 5cea543, AGENTS.md, .eslintrc.js import/extensions
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: project-lint
+  claim: >-
+    Boilerplate projects lint JS with ESLint airbnb-base (`.js` import
+    extensions required, property reassignment on parameters allowed) and CSS
+    with stylelint-config-standard, via `npm run lint`.
+  question: What lint setup does an EDS boilerplate project use, and how do you run it?
+  source: aem-boilerplate 5cea543, package.json, .eslintrc.js, .stylelintrc.json
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: programmatic-blocks
+  claim: >-
+    To add a block from code, `buildBlock(name, cells)` creates it; it only
+    renders after `decorateBlock()` and `loadBlock()`, unless it is built in
+    `buildAutoBlocks()` before the page's blocks are decorated.
+  question: >-
+    How do you create and render an EDS block from JavaScript instead of
+    authoring it?
+  source: aem-boilerplate 5cea543, scripts/aem.js, scripts/scripts.js decorateMain()
+  used_by: []
