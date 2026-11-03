@@ -1,6 +1,6 @@
 # Adobe for Developers
 
-Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.
+Search the [developer.adobe.com](https://developer.adobe.com/) docs. Manage [Adobe Developer Console](https://developer.adobe.com/console) projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.
 
 The plugin connects to the hosted Adobe for Developers MCP server at `https://adp-connector.adobe.io/mcp`. On first use, your client opens an Adobe IMS sign-in.
 
