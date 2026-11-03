@@ -488,16 +488,21 @@ async function withPageDeadline(promise, ms) {
 // runs its JS, sets a clearance cookie, then the real page becomes reachable.
 // Wait for that window and reload to pick up the cookie before treating the
 // status as a hard failure. No-op for a normal 200 (isChallengeResponse false),
-// so zero overhead on the common path.
+// so zero overhead on the common path. A challenged page is ONE shared bot signal,
+// however many reloads stay challenged: the reloads ask for the same page 4 s apart
+// and are the same wall, not new evidence (counted per reload, one walled inner
+// page took its host to the top of the backoff ladder within a single crawl). A
+// response the transport layer already counted (a marked 429) is the page's signal.
 export async function clearChallenge(page, resp, {
   recordBotSignal = recordSharedBotSignal, navigate = sharedNavigate, signalRecorded,
 } = {}) {
   const alreadyRecorded = signalRecorded || (await sharedLiveSession()).liveResponseSignalRecorded
     || LIVE_SESSION_FALLBACKS.liveResponseSignalRecorded;
+  let signalled = false;
   const recordSignal = async () => {
-    if (isChallengeResponse(resp) && !alreadyRecorded(resp)) {
-      await callSharedHook(recordBotSignal, [page.url()], page.url());
-    }
+    if (signalled || !isChallengeResponse(resp)) return;
+    signalled = true;
+    if (!alreadyRecorded(resp)) await callSharedHook(recordBotSignal, [page.url()], page.url());
   };
   await recordSignal();
   for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {

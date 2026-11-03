@@ -27,7 +27,7 @@ host. Fixed pacing was either too slow or not cautious enough.
   every few seconds per process) and `newLiveContext` loads it when it is younger than `STARDUST_LIVE_STATE_TTL_MS`
   (default 12 h) and the caller passed none, so a cleared challenge or an accepted consent carries over to the next
   instrument; save failures only warn, and `STARDUST_LIVE_STATE=0` disables it. The state never lives inside the repository.
-- **Every live instrument takes part:** the crawler (its entry probe and challenge reloads report the signal; a captured page counts as a clean navigation), census, gate probes, measure, parity, motion, anchor,
+- **Every live instrument takes part:** the crawler (its entry probe and a challenged page report the signal once each — the reloads that stay challenged are the same wall; a captured page counts as a clean navigation), census, gate probes, measure, parity, motion, anchor,
   sibling-variance and the reskin captures create their contexts through the shared helper (one-line changes), with
   inline no-op fallbacks where a project copy lacks the module. Tests: `diff/live-session` (throttle decisions with a
   fake clock and a temp dir, stale-lock reclaim, fairness, storage-state round trip), `extract/crawl` (fallbacks).

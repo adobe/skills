@@ -491,19 +491,21 @@ await (async () => {
     const blocked = { status: () => 403, headers: () => ({ 'cf-mitigated': 'challenge' }) };
     const clean = { status: () => 200, headers: () => ({}) };
     let signals = 0; let reloads = 0;
+    const hooks = { recordBotSignal: async () => { signals += 1; }, navigate: async (_page, _url, operation) => operation() };
     const page = {
       url: () => 'https://www.example.com/', waitForTimeout: async () => {},
-      reload: async () => (++reloads === 1 ? blocked : clean),
+      reload: async () => (++reloads <= 2 ? blocked : clean),
     };
-    assert.equal(await clearChallenge(page, blocked, {
-      recordBotSignal: async () => { signals += 1; },
-      navigate: async (_page, _url, operation) => operation(),
-    }), clean);
-    assert.equal(signals, 2, 'each newly observed unmarked challenge response reports a signal');
-    console.log('✓ clearChallenge: unmarked challenge reloads report their signals');
+    assert.equal(await clearChallenge(page, blocked, hooks), clean);
+    assert.equal(reloads, 3, 'two challenged reloads, then the page');
+    assert.equal(signals, 1, 'a challenged page is one signal, however many reloads stay challenged');
+    const stuck = { ...page, reload: async () => blocked };
+    assert.equal(await clearChallenge(stuck, blocked, hooks), blocked);
+    assert.equal(signals, 2, 'a page that never clears is still one signal (the next page is the next)');
+    console.log('✓ clearChallenge: a challenged page is one signal, however many reloads stay challenged');
   } catch (e) {
     failed += 1;
-    console.log(`✗ clearChallenge: unmarked challenge reloads report their signals\n  ${e.message}`);
+    console.log(`✗ clearChallenge: a challenged page is one signal, however many reloads stay challenged\n  ${e.message}`);
   }
 })();
 
