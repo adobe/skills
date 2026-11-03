@@ -47,4 +47,5 @@ These tools permanently delete or remove Developer Console resources:
 - `delete_workspace`
 - `unsubscribe_credential_from_service`
 
-The server marks them as destructive. In Claude Code and GitHub Copilot CLI the plugin's `PreToolUse` hook also asks for approval, even when a tool is on an allow list.
+The server marks them as destructive.
+In Claude Code and GitHub Copilot CLI the plugin's `PreToolUse` hook also asks for approval, even when a tool is on an allow list.
