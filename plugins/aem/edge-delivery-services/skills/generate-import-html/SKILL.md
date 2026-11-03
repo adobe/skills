@@ -3,7 +3,7 @@ name: generate-import-html
 description: "Use this when the page-import pipeline needs to produce structured HTML from authoring analysis for AEM Edge Delivery Services. Covers building section structure, applying block tables, handling metadata, and managing the images folder. Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
 ---
 
 # Generate Import HTML

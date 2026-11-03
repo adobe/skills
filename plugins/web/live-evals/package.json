@@ -8,7 +8,7 @@
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "1.0.4",
-    "promptfoo": "0.124.0",
+    "promptfoo": "0.125.1",
     "yaml": "2.9.1"
   }
 }
