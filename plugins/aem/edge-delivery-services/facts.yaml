@@ -232,6 +232,16 @@
   used_by:
     - evals/javascript-block-decoration-patterns
 
+- id: no-innerhtml
+  claim: >-
+    Build block markup with DOM APIs, not `innerHTML` strings: strings drop the
+    authored nodes and their attributes, and risk XSS.
+  question: >-
+    In an EDS block's decorate(), is it fine to build the new markup as an HTML
+    string and assign it with innerHTML?
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
 - id: programmatic-blocks
   claim: >-
     To add a block from code, `buildBlock(name, cells)` creates it; it only

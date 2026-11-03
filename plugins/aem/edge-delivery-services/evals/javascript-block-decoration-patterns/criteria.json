@@ -1,5 +1,5 @@
 {
-  "context": "The working directory is aem-boilerplate with no feature-highlights block. Tests whether the agent builds the block's decorate() to fit the platform: in the file aem.js loads, moving the delivered elements instead of copying them, keeping images optimized, handling rows with a missing cell, leaving CSS-only options to CSS, staying inside the block, and running as plain browser modules without touching aem.js. Backing facts: facts.yaml (block-js-contract, reuse-authored-dom, delivered-pictures, authored-cells-vary, block-variant-classes, block-dom-scope, aem-js-vendored, no-build-step, project-lint).",
+  "context": "The working directory is aem-boilerplate with no feature-highlights block. Tests whether the agent builds the block's decorate() to fit the platform: in the file aem.js loads, moving the delivered elements instead of copying them, keeping images optimized, handling rows with a missing cell, leaving CSS-only options to CSS, staying inside the block, and running as plain browser modules without touching aem.js. Backing facts: facts.yaml (block-js-contract, reuse-authored-dom, delivered-pictures, authored-cells-vary, block-variant-classes, block-dom-scope, aem-js-vendored, no-build-step, project-lint, no-innerhtml).",
   "type": "weighted_checklist",
   "checklist": [
     {
