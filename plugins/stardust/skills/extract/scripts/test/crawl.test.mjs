@@ -11,7 +11,9 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureGaps, crawlerLiveBindings, localeRootPath, maxPages } from '../crawl.mjs';
+import {
+  captureGaps, clearChallenge, crawlerLiveBindings, isChallengeResponse, localeRootPath, maxPages, rejectSharedDenial,
+} from '../crawl.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
@@ -80,6 +82,12 @@ check('--help prints the usage header (naming captureGaps) and exits 0 without p
 check('maxPages: 0 is no cap (--all / --prep); missing or bad values fall back to 25; others are floored and at least 1', () => {
   assert.equal(maxPages('0'), Infinity); assert.equal(maxPages(undefined), 25); assert.equal(maxPages('abc'), 25); assert.equal(maxPages('40'), 40); assert.equal(maxPages('2.7'), 2);
 });
+check('isChallengeResponse: shared edge signatures include CloudFront and WAF responses while a bare 403 stays an application error', () => {
+  const response = (status, headers = {}, url = 'https://www.example.com/') => ({ status: () => status, headers: () => headers, url: () => url });
+  assert.equal(isChallengeResponse(response(403, { server: 'CloudFront', 'x-cache': 'Error from cloudfront' })), true);
+  assert.equal(isChallengeResponse(response(202, { 'x-amzn-waf-action': 'challenge' })), true);
+  assert.equal(isChallengeResponse(response(403, {})), false);
+});
 
 await (async () => {
   try {
@@ -89,20 +97,88 @@ await (async () => {
     assert.deepEqual(await fallback.newLiveContext(browser, { reducedMotion: 'reduce' }), { kind: 'fallback' });
     assert.equal(await fallback.runLiveNavigation({}, 'https://www.example.com/', async () => { calls.push(['navigate']); return 7; }), 7);
     assert.equal(await fallback.persistLiveStorageState({}, 'https://www.example.com/'), false);
+    assert.equal(await fallback.recordLiveBotSignal('https://www.example.com/'), false);
+    assert.equal(await fallback.recordLiveNavigationSuccess('https://www.example.com/'), false);
+    assert.deepEqual(await fallback.pageDenial({}), { marker: null, skipped: null });
     assert.deepEqual(calls, [['context', { reducedMotion: 'reduce' }], ['navigate']]);
 
     const shared = crawlerLiveBindings({
       newLiveContext: async () => 'shared-context',
       runLiveNavigation: async (_page, _url, navigate) => `shared-${await navigate()}`,
       persistLiveStorageState: async () => true,
+      recordLiveBotSignal: async (url) => `signal-${url}`,
+      recordLiveNavigationSuccess: async (url) => `success-${url}`,
+      pageDenial: async () => ({ marker: 'denial page — blocked', skipped: null }),
     });
     assert.equal(await shared.newLiveContext(browser, {}), 'shared-context');
     assert.equal(await shared.runLiveNavigation({}, 'https://www.example.com/', async () => 'navigation'), 'shared-navigation');
     assert.equal(await shared.persistLiveStorageState({}, 'https://www.example.com/'), true);
+    assert.equal(await shared.recordLiveBotSignal('https://www.example.com/'), 'signal-https://www.example.com/');
+    assert.equal(await shared.recordLiveNavigationSuccess('https://www.example.com/'), 'success-https://www.example.com/');
+    assert.deepEqual(await shared.pageDenial({}), { marker: 'denial page — blocked', skipped: null });
     console.log('✓ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent');
   } catch (e) {
     failed += 1;
     console.log(`✗ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent\n  ${e.message.split('\n').join('\n  ')}`);
+  }
+})();
+
+await (async () => {
+  try {
+    const calls = [];
+    const clean = { status: () => 200, headers: () => ({}), url: () => 'https://www.example.com/path/' };
+    const blocked = { status: () => 403, headers: () => ({ server: 'CloudFront' }), url: () => 'https://www.example.com/path/' };
+    const page = {
+      url: () => 'https://www.example.com/path/',
+      waitForTimeout: async (ms) => { calls.push(['wait', ms]); },
+      reload: async () => { calls.push(['reload']); return clean; },
+    };
+    const response = await clearChallenge(page, blocked, {
+      recordBotSignal: async (url) => { calls.push(['signal', url]); },
+      navigate: async (_page, url, operation) => { calls.push(['navigate', url]); return operation(); },
+    });
+    assert.equal(response, clean);
+    assert.deepEqual(calls, [
+      ['signal', 'https://www.example.com/path/'],
+      ['wait', 4000],
+      ['navigate', 'https://www.example.com/path/'],
+      ['reload'],
+    ]);
+    console.log('✓ clearChallenge: an alternate-path edge response records the signal and reloads under shared navigation');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ clearChallenge: an alternate-path edge response records the signal and reloads under shared navigation\n  ${e.message.split('\n').join('\n  ')}`);
+  }
+})();
+
+await (async () => {
+  try {
+    const calls = [];
+    const shared = {
+      pageDenial: async () => ({ marker: 'denial page — blocked', skipped: null }),
+      recordLiveBotSignal: async (url) => { calls.push(url); },
+    };
+    await assert.rejects(rejectSharedDenial({}, 'https://www.example.com/path', 200, shared), (error) => {
+      assert.deepEqual([error.name, error.errorClass, error.marker, error.url], ['BotChallengeError', 'BotChallengeError', 'HTTP 200 denial page — blocked', 'https://www.example.com/path']);
+      return true;
+    });
+    assert.deepEqual(calls, ['https://www.example.com/path']);
+    assert.deepEqual(await rejectSharedDenial({}, 'https://www.example.com/path', 200, {
+      pageDenial: async () => ({ marker: null, skipped: null }),
+    }), { marker: null, skipped: null });
+    await assert.rejects(rejectSharedDenial({}, 'https://www.example.com/path', 200, {
+      pageDenial: async () => ({ marker: 'denial page — blocked', skipped: null }),
+      recordLiveBotSignal: async () => { throw new Error('state unavailable'); },
+    }), (error) => {
+      assert.equal(error.name, 'BotChallengeError');
+      assert.match(error.message, /shared throttle update failed: state unavailable/);
+      assert.equal(error.cause.message, 'state unavailable');
+      return true;
+    });
+    console.log('✓ rejectSharedDenial: a crawler-only denial records the shared bot signal before failing; a clean page proceeds');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ rejectSharedDenial: a crawler-only denial records the shared bot signal before failing; a clean page proceeds\n  ${e.message.split('\n').join('\n  ')}`);
   }
 })();
 

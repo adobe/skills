@@ -41,7 +41,7 @@ check('the exported surface the instruments import, the denial-page names includ
   for (const name of ['CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'challengeMarker', 'isChallengeResponse', 'gotoLive', 'launchLiveBrowser', 'launchStealthHeaded', 'browserTier', 'acceptConsent', 'dismissOverlays',
     'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'LIVE_MAX_PARALLEL_DEFAULT', 'LIVE_STATE_TTL_MS_DEFAULT',
     'livePaceMs', 'liveMaxParallel', 'liveStateTtlMs', 'liveStateEnabled', 'liveStateRoot', 'liveHostStateDir', 'paceSlot', 'liveThrottleDecision',
-    'tryAcquireLiveLock', 'paceLiveNavigation', 'runLiveNavigation', 'persistLiveStorageState', 'resetLivePacing',
+    'tryAcquireLiveLock', 'paceLiveNavigation', 'runLiveNavigation', 'recordLiveBotSignal', 'recordLiveNavigationSuccess', 'persistLiveStorageState', 'resetLivePacing',
     'browserUserAgent', 'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
   for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError', 'launchLiveBrowser', 'launchStealthHeaded', 'browserIdentity', 'browserUserAgent', 'challengeMarker']) assert.equal(typeof session[name], 'function', name);
   assert.ok(!('REAL_CHROME_UA' in session), 'no hard-coded user agent is exported any more — the browser presents its own');
@@ -197,6 +197,11 @@ await checkAsync('pageDenial: a read past the probe deadline is a failed read �
 // `probes` = what successive evaluate calls return (the last repeats; an Error entry throws); `reload` = the
 // status/headers a reload answers with.
 const LIVE_URL = 'https://www.example.com/';
+const GOTO_STATE_ROOT = mkdtempSync(join(tmpdir(), 'live-goto-tests-'));
+const gotoLive = (page, url, options = {}) => session.gotoLive(page, url, {
+  ...options,
+  throttle: { stateRoot: GOTO_STATE_ROOT, paceMs: 0, maxParallel: 0, ...options.throttle },
+});
 const stubPage = ({ status = 200, headers = {}, probes = [CLEAN_PROBE], reload = { status: 200, headers: {} } } = {}) => {
   const calls = { goto: 0, reload: 0, evaluate: 0, waits: [] };
   const response = (s, h) => ({ status: () => s, headers: () => h, url: () => LIVE_URL });
@@ -222,11 +227,11 @@ const HEADER_MESSAGE = (marker) => `bot challenge at ${LIVE_URL}: ${marker} — 
 await checkAsync('gotoLive: an ordinary 200 page returns its response after one probe read — no throw, no stderr', async () => {
   const page = stubPage();
   let resp;
-  const lines = await stderrOf(async () => { resp = await session.gotoLive(page, LIVE_URL, { settleMs: 0 }); });
+  const lines = await stderrOf(async () => { resp = await gotoLive(page, LIVE_URL, { settleMs: 0 }); });
   assert.equal(resp, page.last);
   assert.deepEqual([page.calls.goto, page.calls.reload, page.calls.evaluate, lines], [1, 0, 1, []]);
   const settled = stubPage();
-  await session.gotoLive(settled, LIVE_URL, { settleMs: 300 });
+  await gotoLive(settled, LIVE_URL, { settleMs: 300 });
   assert.deepEqual(settled.calls.waits, [300], 'the probe reads the page after the settle');
 });
 await checkAsync('gotoLive: a 200 whose page is a denial page throws BotChallengeError — "HTTP 200 denial page — …", origin blocked, --headed; regardless of httpError', async () => {
@@ -235,7 +240,7 @@ await checkAsync('gotoLive: a 200 whose page is a denial page throws BotChalleng
     [stubPage({ probes: [SIGNATURE_PAGES['access-denied']] }), { httpError: 'measure' }, 'HTTP 200 denial page — "Access Denied" + "Reference #"'],
     [stubPage({ status: 203, probes: [probe({ bytes: 300, headings: ['Access is blocked'] })] }), {}, 'HTTP 203 denial page — 300 B of text under one error heading "Access is blocked"'],
   ]) {
-    await assert.rejects(session.gotoLive(page, LIVE_URL, { settleMs: 0, ...opts }), (e) => {
+    await assert.rejects(gotoLive(page, LIVE_URL, { settleMs: 0, ...opts }), (e) => {
       assert.equal(e.name, 'BotChallengeError');
       assert.ok(e instanceof Error);
       assert.equal(e.marker, marker);
@@ -250,18 +255,18 @@ await checkAsync('gotoLive: a 200 whose page is a denial page throws BotChalleng
 await checkAsync('gotoLive: an entry status >= 400 is never probed — a 404 under httpError measure is returned (its warning only), a 404 under throw is a LiveHTTPError', async () => {
   const measured = stubPage({ status: 404, probes: [SIGNATURE_PAGES['access-denied']] });
   let resp;
-  const lines = await stderrOf(async () => { resp = await session.gotoLive(measured, LIVE_URL, { settleMs: 0, httpError: 'measure' }); });
+  const lines = await stderrOf(async () => { resp = await gotoLive(measured, LIVE_URL, { settleMs: 0, httpError: 'measure' }); });
   assert.equal(resp.status(), 404);
   assert.equal(measured.calls.evaluate, 0, 'no denial probe on a >= 400');
   assert.deepEqual(lines, [`[live-session] WARNING: HTTP 404 at ${LIVE_URL} — measuring the error page; flags will reflect it`]);
   const thrown = stubPage({ status: 404, probes: [SIGNATURE_PAGES['access-denied']] });
-  await assert.rejects(session.gotoLive(thrown, LIVE_URL, { settleMs: 0 }), { name: 'LiveHTTPError', status: 404 });
+  await assert.rejects(gotoLive(thrown, LIVE_URL, { settleMs: 0 }), { name: 'LiveHTTPError', status: 404 });
   assert.equal(thrown.calls.evaluate, 0);
 });
 await checkAsync('gotoLive: a probe that fails twice returns the response with ONE "denial-page check skipped" stderr line (retried once after 500 ms) — never a silent pass, never a false denial', async () => {
   const page = stubPage({ probes: [EVAL_ERROR] });
   let resp;
-  const lines = await stderrOf(async () => { resp = await session.gotoLive(page, LIVE_URL, { settleMs: 0 }); });
+  const lines = await stderrOf(async () => { resp = await gotoLive(page, LIVE_URL, { settleMs: 0 }); });
   assert.equal(resp.status(), 200);
   assert.equal(page.calls.evaluate, 2, 'one retry');
   assert.deepEqual(page.calls.waits, [500]);
@@ -269,29 +274,29 @@ await checkAsync('gotoLive: a probe that fails twice returns the response with O
 });
 await checkAsync('gotoLive solveWindow: a denial page clean after the first reload returns the reloaded response; still denied after 3 reloads, or reloads answered by an edge challenge, it throws; a reload the probe cannot read keeps the denial', async () => {
   const cleared = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment'], CLEAN_PROBE] });
-  const resp = await session.gotoLive(cleared, LIVE_URL, { settleMs: 0, solveWindow: true });
+  const resp = await gotoLive(cleared, LIVE_URL, { settleMs: 0, solveWindow: true });
   assert.equal(resp, cleared.last, 'the reloaded response');
   assert.deepEqual([cleared.calls.reload, cleared.calls.evaluate], [1, 2], 'one reload, then clean');
   assert.deepEqual(cleared.calls.waits, [4000]);
   const settled = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment'], CLEAN_PROBE] });
-  await session.gotoLive(settled, LIVE_URL, { settleMs: 250, solveWindow: true });
+  await gotoLive(settled, LIVE_URL, { settleMs: 250, solveWindow: true });
   assert.deepEqual(settled.calls.waits, [250, 4000, 250], 'each reload is settled like the entry before the re-probe');
   const stuck = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment']] });
-  await assert.rejects(session.gotoLive(stuck, LIVE_URL, { settleMs: 0, solveWindow: true }), { name: 'BotChallengeError', marker: 'HTTP 200 denial page — "Just a moment…"' });
+  await assert.rejects(gotoLive(stuck, LIVE_URL, { settleMs: 0, solveWindow: true }), { name: 'BotChallengeError', marker: 'HTTP 200 denial page — "Just a moment…"' });
   assert.deepEqual([stuck.calls.reload, stuck.calls.evaluate], [3, 4], 'the 3-attempt window');
   const edge = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment'], CLEAN_PROBE], reload: { status: 403, headers: { server: 'AkamaiGHost' } } });
-  await assert.rejects(session.gotoLive(edge, LIVE_URL, { settleMs: 0, solveWindow: true }), { name: 'BotChallengeError', marker: 'HTTP 200 denial page — "Just a moment…"' });
+  await assert.rejects(gotoLive(edge, LIVE_URL, { settleMs: 0, solveWindow: true }), { name: 'BotChallengeError', marker: 'HTTP 200 denial page — "Just a moment…"' });
   assert.deepEqual([edge.calls.reload, edge.calls.evaluate], [3, 1], 'an edge-challenged reload never re-reads the page as cleared');
   const unreadable = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment'], EVAL_ERROR, EVAL_ERROR, CLEAN_PROBE] });
   let out;
-  const lines = await stderrOf(async () => { out = await session.gotoLive(unreadable, LIVE_URL, { settleMs: 0, solveWindow: true }); });
+  const lines = await stderrOf(async () => { out = await gotoLive(unreadable, LIVE_URL, { settleMs: 0, solveWindow: true }); });
   assert.equal(out, unreadable.last);
   assert.deepEqual([unreadable.calls.reload, unreadable.calls.evaluate], [2, 4], 'the unreadable reload keeps the denial (fail closed); the next clean read clears it');
   assert.deepEqual(lines, [`[live-session] denial-page check skipped at ${LIVE_URL}: page.evaluate: Execution context was destroyed, most likely because of a navigation`]);
 });
 await checkAsync('gotoLive: the header-marker message is unchanged (botChallengeError builds it) and a header challenge is never probed', async () => {
   const page = stubPage({ status: 403, headers: { server: 'AkamaiGHost' } });
-  await assert.rejects(session.gotoLive(page, LIVE_URL, { settleMs: 0 }), (e) => {
+  await assert.rejects(gotoLive(page, LIVE_URL, { settleMs: 0 }), (e) => {
     assert.deepEqual([e.name, e.marker, e.url], ['BotChallengeError', 'HTTP 403 + Akamai edge signature', LIVE_URL]);
     assert.equal(e.message, HEADER_MESSAGE('HTTP 403 + Akamai edge signature'));
     return true;
@@ -299,6 +304,55 @@ await checkAsync('gotoLive: the header-marker message is unchanged (botChallenge
   assert.equal(page.calls.evaluate, 0);
   const built = session.botChallengeError(LIVE_URL, 'cf-mitigated: challenge');
   assert.deepEqual([built.name, built.marker, built.url, built.message], ['BotChallengeError', 'cf-mitigated: challenge', LIVE_URL, HEADER_MESSAGE('cf-mitigated: challenge')]);
+});
+await checkAsync('gotoLive: a bot signal in its error path updates the shared host throttle before the error escapes', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-goto-signal-'));
+  let clock = 5000;
+  const throttle = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pid: 401, pidAlive: () => true };
+  const page = stubPage({ status: 403, headers: { server: 'AkamaiGHost' } });
+  const lines = await stderrOf(async () => {
+    await assert.rejects(gotoLive(page, LIVE_URL, { settleMs: 0, throttle }), { name: 'BotChallengeError' });
+  });
+  assert.deepEqual(lines, ['[live-session] www.example.com: bot signal seen — one navigation at a time, 2000 ms apart from now on']);
+  clock += 1;
+  const shared = await session.recordLiveNavigationSuccess(LIVE_URL, { ...throttle, pid: 402 });
+  assert.deepEqual([shared.paceMs, shared.maxParallel, shared.signalSeen], [2000, 1, true]);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('gotoLive: a headed challenge that clears still records the observed header signal', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-goto-cleared-signal-'));
+  let clock = 6000;
+  const throttle = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pid: 451, pidAlive: () => true };
+  const page = stubPage({ status: 403, headers: { server: 'AkamaiGHost' }, reload: { status: 200, headers: {} } });
+  const wait = page.waitForTimeout;
+  page.waitForTimeout = async (ms) => { clock += ms; await wait(ms); };
+  let response;
+  const lines = await stderrOf(async () => {
+    response = await gotoLive(page, LIVE_URL, { settleMs: 0, solveWindow: true, throttle });
+  });
+  assert.equal(response.status(), 200);
+  assert.deepEqual(lines, ['[live-session] www.example.com: bot signal seen — one navigation at a time, 2000 ms apart from now on']);
+  clock += 1;
+  const shared = await session.recordLiveNavigationSuccess(LIVE_URL, { ...throttle, pid: 452 });
+  assert.deepEqual([shared.paceMs, shared.maxParallel, shared.signalSeen], [2000, 1, true]);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('gotoLive: a shared-state write failure remains attached to the original BotChallengeError', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'live-goto-signal-error-'));
+  const stateRoot = join(root, 'not-a-directory');
+  writeFileSync(stateRoot, 'occupied');
+  const page = stubPage({ status: 403, headers: { server: 'AkamaiGHost' } });
+  await assert.rejects(gotoLive(page, LIVE_URL, {
+    settleMs: 0,
+    throttle: { stateRoot, paceMs: 0, maxParallel: 0 },
+  }), (error) => {
+    assert.equal(error.name, 'BotChallengeError');
+    assert.equal(error.marker, 'HTTP 403 + Akamai edge signature');
+    assert.ok(error.cause instanceof Error);
+    assert.match(error.message, /shared throttle update failed/);
+    return true;
+  });
+  rmSync(root, { recursive: true, force: true });
 });
 
 // ---- the consent candidates, isLiveHttpUrl, defaultWaitUntil -------------------------------------------------------
@@ -334,16 +388,16 @@ await checkAsync('gotoLive: a localhost or loopback URL is never probed for a de
   for (const url of ['http://localhost:8791/404.html', 'http://127.0.0.1:3000/', 'http://[::1]/x']) {
     const page = stubPage({ probes: [SIGNATURE_PAGES['system-down']] });
     let resp;
-    const lines = await stderrOf(async () => { resp = await session.gotoLive(page, url, { settleMs: 0 }); });
+    const lines = await stderrOf(async () => { resp = await gotoLive(page, url, { settleMs: 0 }); });
     assert.equal(resp, page.last, url);
     assert.deepEqual([page.calls.goto, page.calls.evaluate, lines], [1, 0, []], `${url}: one hit, no probe, nothing on stderr`);
   }
 });
 
 // ---- per-host pacing of live navigations -----------------------------------------------------------------------------
-check('livePaceMs: STARDUST_LIVE_PACE_MS as a non-negative integer — unset, empty, negative or unparsable → 2000; 0 disables; fractions floored', () => {
-  assert.equal(session.LIVE_PACE_MS_DEFAULT, 2000);
-  for (const [v, want] of [[undefined, 2000], ['', 2000], ['  ', 2000], ['0', 0], ['13000', 13000], ['2500.7', 2500], ['abc', 2000], ['-5', 2000], ['Infinity', 2000]]) {
+check('livePaceMs: STARDUST_LIVE_PACE_MS as a non-negative integer — unset, empty, negative or unparsable → 1000; 0 disables; fractions floored', () => {
+  assert.equal(session.LIVE_PACE_MS_DEFAULT, 1000);
+  for (const [v, want] of [[undefined, 1000], ['', 1000], ['  ', 1000], ['0', 0], ['13000', 13000], ['2500.7', 2500], ['abc', 1000], ['-5', 1000], ['Infinity', 1000]]) {
     assert.equal(session.livePaceMs(v === undefined ? {} : { STARDUST_LIVE_PACE_MS: v }), want, String(v));
   }
   assert.equal(session.livePaceMs(), 0, 'this test file disabled it through the environment');
@@ -357,10 +411,10 @@ check('paceSlot (pure): a free host → no wait, the next free time one pace lat
   for (const pace of [-1, NaN, undefined, null, 'x']) assert.deepEqual(session.paceSlot(3000, 1000, pace), { wait: 0, nextFree: 1000 }, String(pace));
   assert.deepEqual(session.paceSlot(NaN, 1000, 2000), { wait: 0, nextFree: 3000 }, 'a garbage nextFree is a free host');
 });
-check('live throttle settings: parallel defaults to 1, state TTL defaults to 12 hours, non-negative integers are accepted, and STARDUST_LIVE_STATE=0 disables the jar', () => {
-  assert.equal(session.LIVE_MAX_PARALLEL_DEFAULT, 1);
+check('live throttle settings: parallel defaults to 2, state TTL defaults to 12 hours, non-negative integers are accepted, and STARDUST_LIVE_STATE=0 disables the jar', () => {
+  assert.equal(session.LIVE_MAX_PARALLEL_DEFAULT, 2);
   assert.equal(session.LIVE_STATE_TTL_MS_DEFAULT, 12 * 60 * 60 * 1000);
-  for (const [v, want] of [[undefined, 1], ['', 1], ['0', 0], ['3', 3], ['2.9', 2], ['bad', 1], ['-1', 1]]) {
+  for (const [v, want] of [[undefined, 2], ['', 2], ['0', 0], ['3', 3], ['2.9', 2], ['bad', 2], ['-1', 2]]) {
     assert.equal(session.liveMaxParallel(v === undefined ? {} : { STARDUST_LIVE_MAX_PARALLEL: v }), want, String(v));
   }
   for (const [v, want] of [[undefined, 12 * 60 * 60 * 1000], ['0', 0], ['9000', 9000], ['bad', 12 * 60 * 60 * 1000]]) {
@@ -368,6 +422,61 @@ check('live throttle settings: parallel defaults to 1, state TTL defaults to 12 
   }
   assert.equal(session.liveStateEnabled({}), true);
   assert.equal(session.liveStateEnabled({ STARDUST_LIVE_STATE: '0' }), false);
+});
+await checkAsync('adaptive throttle: each later bot signal climbs 1000 → 2000 → 4000 → 8000 → 15000, the cap adds no step, and parallelism stays at one', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-adaptive-ladder-'));
+  let clock = 1000;
+  const options = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pid: 101, pidAlive: () => true };
+  const states = [];
+  const lines = await stderrOf(async () => {
+    states.push(await session.recordLiveBotSignal(LIVE_URL, options));
+    const concurrent = await session.recordLiveBotSignal(LIVE_URL, options);
+    assert.deepEqual([concurrent.paceMs, concurrent.backedOff], [2000, false], 'a signal observed before the prior step took effect is folded into it');
+    clock += 1;
+    for (let i = 0; i < 4; i += 1) {
+      states.push(await session.recordLiveBotSignal(LIVE_URL, options));
+      clock += 1;
+    }
+  });
+  assert.deepEqual(states.map((s) => [s.paceMs, s.maxParallel, s.backedOff]), [
+    [2000, 1, true], [4000, 1, true], [8000, 1, true], [15000, 1, true], [15000, 1, false],
+  ]);
+  assert.deepEqual(lines, [2000, 4000, 8000, 15000].map((pace) => `[live-session] www.example.com: bot signal seen — one navigation at a time, ${pace} ms apart from now on`));
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('adaptive throttle: configured parallelism is the fresh ceiling, configured pace is the floor, and recovery halves pace once after 50 consecutive successes', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-adaptive-pinned-'));
+  let clock = 2000;
+  const options = { stateRoot, paceMs: 3000, maxParallel: 4, now: () => clock, pid: 201, pidAlive: () => true };
+  let state = await session.recordLiveNavigationSuccess(LIVE_URL, options);
+  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen, state.successes], [3000, 4, false, 1], 'fresh pinned limits');
+  await stderrOf(async () => {
+    state = await session.recordLiveBotSignal(LIVE_URL, options);
+    clock += 1;
+    state = await session.recordLiveBotSignal(LIVE_URL, options);
+  });
+  assert.deepEqual([state.paceMs, state.maxParallel, state.successes], [12000, 1, 0], 'the floor doubles and the signal resets successes');
+  clock += 1;
+  for (let i = 0; i < 49; i += 1) state = await session.recordLiveNavigationSuccess(LIVE_URL, options);
+  assert.deepEqual([state.paceMs, state.maxParallel, state.successes], [12000, 1, 49]);
+  state = await session.recordLiveNavigationSuccess(LIVE_URL, options);
+  assert.deepEqual([state.paceMs, state.maxParallel, state.successes], [6000, 1, 0], 'the fiftieth success halves once');
+  for (let i = 0; i < 50; i += 1) state = await session.recordLiveNavigationSuccess(LIVE_URL, options);
+  assert.deepEqual([state.paceMs, state.maxParallel, state.successes], [3000, 1, 0], 'recovery never crosses the configured floor');
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('adaptive throttle: a signal recorded by one process is visible to another process sharing the state root', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-adaptive-shared-'));
+  let clock = 3000;
+  await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, {
+    stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pid: 301, pidAlive: () => true,
+  }));
+  clock += 1;
+  const seen = await session.recordLiveNavigationSuccess(LIVE_URL, {
+    stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pid: 302, pidAlive: () => true,
+  });
+  assert.deepEqual([seen.paceMs, seen.maxParallel, seen.signalSeen, seen.successes], [2000, 1, true, 1]);
+  rmSync(stateRoot, { recursive: true, force: true });
 });
 check('liveThrottleDecision (pure): pace and slots both gate starts, 0 disables either gate, and ticket order is fair', () => {
   const waiters = [
@@ -462,7 +571,7 @@ await checkAsync('paceLiveNavigation: slots per host under an injected clock —
   assert.deepEqual([p.waits, lines], [[], []]);
   lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, A, throttle(2000)), 2000, 'the second navigation waits one pace'); });
   assert.deepEqual(p.waits, [2000]);
-  assert.deepEqual(lines, ['[live-session] waiting to pace live navigations to a.example.com (2000 ms apart, 1 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 2000 ms']);
+  assert.deepEqual(lines, ['[live-session] waiting to pace live navigations to a.example.com (2000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait 2000 ms']);
   lines = await stderrOf(async () => { assert.equal(await session.paceLiveNavigation(p, `${A}deeper`, throttle(2000)), 4000, 'the third queues behind the second'); });
   assert.deepEqual(lines, [], 'logged once per host');
   t = 7000; // the host is free again
@@ -497,20 +606,20 @@ await checkAsync('gotoLive paces through the environment: STARDUST_LIVE_PACE_MS=
   try {
     const first = stubPage(); const second = stubPage(); const third = stubPage();
     const lines = await stderrOf(async () => {
-      await session.gotoLive(first, LIVE_URL, { settleMs: 0, throttle: { stateRoot } });
-      await session.gotoLive(second, LIVE_URL, { settleMs: 0, throttle: { stateRoot } });
-      await session.gotoLive(third, LIVE_URL, { settleMs: 0, throttle: { stateRoot } });
+      await gotoLive(first, LIVE_URL, { settleMs: 0, throttle: { stateRoot, paceMs: 5000, maxParallel: 2 } });
+      await gotoLive(second, LIVE_URL, { settleMs: 0, throttle: { stateRoot, paceMs: 5000, maxParallel: 2 } });
+      await gotoLive(third, LIVE_URL, { settleMs: 0, throttle: { stateRoot, paceMs: 5000, maxParallel: 2 } });
     });
     assert.deepEqual(first.calls.waits, [], 'the first navigation is free');
     assert.equal(second.calls.waits.length, 1);
     assert.ok(second.calls.waits[0] > 4000 && second.calls.waits[0] <= 5000, `the second waits about one pace (${second.calls.waits[0]} ms)`);
     assert.ok(third.calls.waits[0] > 9000 && third.calls.waits[0] <= 10000, `the third queues behind it (${third.calls.waits[0]} ms)`);
     assert.equal(lines.length, 1, JSON.stringify(lines));
-    assert.match(lines[0], /^\[live-session\] waiting to pace live navigations to www\.example\.com \(5000 ms apart, 1 max parallel; STARDUST_LIVE_PACE_MS \/ STARDUST_LIVE_MAX_PARALLEL; 0 disables either\) — first wait \d+ ms$/);
+    assert.match(lines[0], /^\[live-session\] waiting to pace live navigations to www\.example\.com \(5000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS \/ STARDUST_LIVE_MAX_PARALLEL; 0 disables either\) — first wait \d+ ms$/);
   } finally { process.env.STARDUST_LIVE_PACE_MS = '0'; session.resetLivePacing(); }
   const again = stubPage(); const andAgain = stubPage();
-  await session.gotoLive(again, LIVE_URL, { settleMs: 0 });
-  await session.gotoLive(andAgain, LIVE_URL, { settleMs: 0 });
+  await gotoLive(again, LIVE_URL, { settleMs: 0 });
+  await gotoLive(andAgain, LIVE_URL, { settleMs: 0 });
   assert.deepEqual(andAgain.calls.waits, [], '0 disables');
   rmSync(stateRoot, { recursive: true, force: true });
 });
@@ -827,13 +936,14 @@ check('challengeMarker: a 403 with server CloudFront or x-cache "Error from clou
 });
 await checkAsync('gotoLive: a CloudFront 403 throws BotChallengeError with the CloudFront/AWS WAF marker — the page is never probed; a bare 403 stays a LiveHTTPError', async () => {
   const blocked = stubPage({ status: 403, headers: { server: 'CloudFront', 'x-cache': 'Error from cloudfront' } });
-  await assert.rejects(session.gotoLive(blocked, LIVE_URL, { settleMs: 0 }), { name: 'BotChallengeError', marker: 'HTTP 403 + CloudFront/AWS WAF edge signature (server/x-cache)' });
+  await assert.rejects(gotoLive(blocked, LIVE_URL, { settleMs: 0 }), { name: 'BotChallengeError', marker: 'HTTP 403 + CloudFront/AWS WAF edge signature (server/x-cache)' });
   assert.equal(blocked.calls.evaluate, 0);
   const waf = stubPage({ status: 202, headers: { 'x-amzn-waf-action': 'challenge' } });
-  await assert.rejects(session.gotoLive(waf, LIVE_URL, { settleMs: 0 }), { name: 'BotChallengeError', marker: 'HTTP 202 + CloudFront/AWS WAF edge signature (x-amzn-waf-action: challenge)' });
+  await assert.rejects(gotoLive(waf, LIVE_URL, { settleMs: 0 }), { name: 'BotChallengeError', marker: 'HTTP 202 + CloudFront/AWS WAF edge signature (x-amzn-waf-action: challenge)' });
   const bare = stubPage({ status: 403, headers: {} });
-  await assert.rejects(session.gotoLive(bare, LIVE_URL, { settleMs: 0 }), { name: 'LiveHTTPError', status: 403 });
+  await assert.rejects(gotoLive(bare, LIVE_URL, { settleMs: 0 }), { name: 'LiveHTTPError', status: 403 });
 });
 
+rmSync(GOTO_STATE_ROOT, { recursive: true, force: true });
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nlive-session: all ${checks} checks passed`);
 process.exit(failed ? 1 : 0);

@@ -37,9 +37,11 @@
  * parked. `--locale` pins Accept-Language + context locale for geo determinism.
  *
  * SHARED LIVE SESSION: live navigations to one host are coordinated across
- * processes. STARDUST_LIVE_PACE_MS (default 2000; 0 disables) sets the minimum
- * interval between starts; STARDUST_LIVE_MAX_PARALLEL (default 1; 0 disables)
- * caps in-flight navigations. A waiting process prints one stderr line per host.
+ * processes. Fresh hosts start at STARDUST_LIVE_PACE_MS (default 1000; 0
+ * disables) and STARDUST_LIVE_MAX_PARALLEL (default 2; 0 disables); a shared
+ * bot signal cuts the host to one in flight and doubles its pace up to 15000 ms,
+ * while each 50 clean navigations halves the pace no lower than its configured
+ * floor. A waiting process prints one stderr line per host.
  * A repository-scoped browser-state jar is loaded for new contexts and refreshed
  * after successful navigations. STARDUST_LIVE_STATE_TTL_MS defaults to 12 hours;
  * STARDUST_LIVE_STATE=0 disables jar reads and writes. The shared files live
@@ -60,12 +62,14 @@ import os from 'node:os';
 import path from 'node:path';
 
 // ---- shared throttle and browser state -----------------------------------------------------------------------------
-export const LIVE_PACE_MS_DEFAULT = 2000;
-export const LIVE_MAX_PARALLEL_DEFAULT = 1;
+export const LIVE_PACE_MS_DEFAULT = 1000;
+export const LIVE_MAX_PARALLEL_DEFAULT = 2;
 export const LIVE_STATE_TTL_MS_DEFAULT = 12 * 60 * 60 * 1000;
 const LIVE_LOCK_STALE_MS = 60000;
 const LIVE_LOCK_POLL_MS = 100;
 const LIVE_STATE_WRITE_INTERVAL_MS = 5000;
+const LIVE_BACKOFF_MAX_MS = 15000;
+const LIVE_RECOVERY_SUCCESSES = 50;
 
 function nonNegativeEnv(name, fallback, env = process.env) {
   const raw = env[name];
@@ -74,9 +78,9 @@ function nonNegativeEnv(name, fallback, env = process.env) {
   return Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback;
 }
 
-/** STARDUST_LIVE_PACE_MS as a non-negative integer; unset, empty or unparsable → the default (2000); 0 disables. */
+/** STARDUST_LIVE_PACE_MS as a non-negative integer; unset, empty or unparsable → the default (1000); 0 disables. */
 export const livePaceMs = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_PACE_MS', LIVE_PACE_MS_DEFAULT, env);
-/** STARDUST_LIVE_MAX_PARALLEL as a non-negative integer; default 1; 0 disables the in-flight cap. */
+/** STARDUST_LIVE_MAX_PARALLEL as a non-negative integer; default 2; 0 disables the in-flight cap. */
 export const liveMaxParallel = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_MAX_PARALLEL', LIVE_MAX_PARALLEL_DEFAULT, env);
 /** STARDUST_LIVE_STATE_TTL_MS as a non-negative integer; default 12 hours. */
 export const liveStateTtlMs = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_STATE_TTL_MS', LIVE_STATE_TTL_MS_DEFAULT, env);
@@ -194,14 +198,38 @@ export function tryAcquireLiveLock(hostDir, {
   return null;
 }
 
-const emptyThrottleState = () => ({ lastStart: null, nextTicket: 1, waiters: [], active: [] });
+const emptyThrottleState = () => ({
+  lastStart: null,
+  nextTicket: 1,
+  waiters: [],
+  active: [],
+  adaptive: { paceMs: null, signalSeen: false, successes: 0, lastBackoffAt: null },
+});
 function normalizedThrottleState(value) {
   if (!value || typeof value !== 'object') return emptyThrottleState();
+  const adaptive = value.adaptive && typeof value.adaptive === 'object' ? value.adaptive : {};
   return {
     lastStart: Number.isFinite(value.lastStart) ? value.lastStart : null,
     nextTicket: Number.isSafeInteger(value.nextTicket) && value.nextTicket > 0 ? value.nextTicket : 1,
     waiters: Array.isArray(value.waiters) ? value.waiters.filter((w) => w && typeof w.id === 'string') : [],
     active: Array.isArray(value.active) ? value.active.filter((a) => a && typeof a.id === 'string') : [],
+    adaptive: {
+      paceMs: Number.isFinite(adaptive.paceMs) && adaptive.paceMs >= 0 ? adaptive.paceMs : null,
+      signalSeen: adaptive.signalSeen === true,
+      successes: Number.isSafeInteger(adaptive.successes) && adaptive.successes >= 0 ? adaptive.successes : 0,
+      lastBackoffAt: Number.isFinite(adaptive.lastBackoffAt) ? adaptive.lastBackoffAt : null,
+    },
+  };
+}
+
+function adaptiveLimits(state, { paceMs, maxParallel }) {
+  const floor = Number.isFinite(paceMs) && paceMs > 0 ? Math.floor(paceMs) : 0;
+  const ceiling = Number.isFinite(maxParallel) && maxParallel > 0 ? Math.floor(maxParallel) : 0;
+  return {
+    paceMs: floor > 0 ? Math.max(floor, Number.isFinite(state.adaptive.paceMs) ? state.adaptive.paceMs : floor) : 0,
+    maxParallel: ceiling > 0 ? (state.adaptive.signalSeen ? 1 : ceiling) : 0,
+    signalSeen: state.adaptive.signalSeen,
+    successes: state.adaptive.successes,
   };
 }
 
@@ -250,6 +278,63 @@ function logSharedWait(host, paceMs, maxParallel, waitMs) {
   console.error(`[live-session] waiting to pace live navigations to ${host} (${paceMs} ms apart, ${maxParallel} max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait ${waitMs} ms`);
 }
 
+async function updateAdaptiveThrottle(url, update, {
+  paceMs = livePaceMs(), maxParallel = liveMaxParallel(), now = Date.now, stateRoot = liveStateRoot(),
+  pid = process.pid, pidAlive = pidIsAlive, pollMs = LIVE_LOCK_POLL_MS,
+} = {}) {
+  const host = liveHost(url);
+  if (!host) return { paceMs, maxParallel, signalSeen: false, successes: 0, backedOff: false };
+  const hostDir = liveHostStateDir(url, { stateRoot });
+  const observedAt = now();
+  let held;
+  while (!(held = tryAcquireLiveLock(hostDir, { now, pid, pidAlive }))) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  try {
+    const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
+    const result = update(state, { observedAt, appliedAt: now(), paceMs, maxParallel });
+    writeThrottleState(hostDir, state);
+    return { ...adaptiveLimits(state, { paceMs, maxParallel }), ...result };
+  } finally { held.release(); }
+}
+
+/** Record one host bot signal and return its effective shared throttle. */
+export async function recordLiveBotSignal(url, options = {}) {
+  const host = liveHost(url);
+  const state = await updateAdaptiveThrottle(url, (shared, {
+    observedAt, appliedAt, paceMs, maxParallel,
+  }) => {
+    if (Number.isFinite(shared.adaptive.lastBackoffAt) && observedAt <= shared.adaptive.lastBackoffAt) return { backedOff: false };
+    const before = adaptiveLimits(shared, { paceMs, maxParallel });
+    shared.adaptive.signalSeen = true;
+    shared.adaptive.successes = 0;
+    shared.adaptive.lastBackoffAt = appliedAt;
+    if (before.paceMs > 0) shared.adaptive.paceMs = Math.min(LIVE_BACKOFF_MAX_MS, before.paceMs * 2);
+    const after = adaptiveLimits(shared, { paceMs, maxParallel });
+    return { backedOff: after.paceMs > before.paceMs || after.maxParallel < before.maxParallel };
+  }, options);
+  if (host && state.backedOff) {
+    console.error(`[live-session] ${host}: bot signal seen — one navigation at a time, ${state.paceMs} ms apart from now on`);
+  }
+  return state;
+}
+
+/** Record one successful host navigation and return its effective shared throttle. */
+export async function recordLiveNavigationSuccess(url, options = {}) {
+  return updateAdaptiveThrottle(url, (shared, {
+    observedAt, paceMs, maxParallel,
+  }) => {
+    if (Number.isFinite(shared.adaptive.lastBackoffAt) && observedAt <= shared.adaptive.lastBackoffAt) return { backedOff: false };
+    shared.adaptive.successes += 1;
+    const before = adaptiveLimits(shared, { paceMs, maxParallel });
+    if (shared.adaptive.successes >= LIVE_RECOVERY_SUCCESSES) {
+      if (before.paceMs > paceMs && paceMs > 0) shared.adaptive.paceMs = Math.max(paceMs, Math.floor(before.paceMs / 2));
+      shared.adaptive.successes = 0;
+    }
+    return { backedOff: false };
+  }, options);
+}
+
 async function acquireLiveNavigation(page, url, {
   paceMs = livePaceMs(), maxParallel = liveMaxParallel(), now = Date.now, stateRoot = liveStateRoot(),
   pid = process.pid, pidAlive = pidIsAlive, pollMs = LIVE_LOCK_POLL_MS,
@@ -262,10 +347,12 @@ async function acquireLiveNavigation(page, url, {
   let totalWait = 0;
   let logicalNow = now();
   const clock = () => Math.max(now(), logicalNow);
-  const sleep = async (ms) => {
+  const configured = { paceMs, maxParallel };
+  const currentLimits = () => adaptiveLimits(readThrottleState(hostDir), configured);
+  const sleep = async (ms, limits = currentLimits()) => {
     const delay = Math.max(1, ms);
     const startedAt = clock();
-    logSharedWait(host, paceMs, maxParallel, delay);
+    logSharedWait(host, limits.paceMs, limits.maxParallel, delay);
     await page.waitForTimeout(delay);
     totalWait += delay;
     logicalNow = Math.max(logicalNow, startedAt + delay);
@@ -292,17 +379,20 @@ async function acquireLiveNavigation(page, url, {
     while (true) {
       held = await lock();
       let decision;
+      let limits;
       try {
         const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
-        decision = liveThrottleDecision(state, waiterId, clock(), { paceMs, maxParallel, pollMs });
+        limits = adaptiveLimits(state, configured);
+        decision = liveThrottleDecision(state, waiterId, clock(), { ...limits, pollMs });
         writeThrottleState(hostDir, decision.state);
       } finally { held.release(); }
       if (decision.canStart) {
         queued = false;
+        const holdsLease = limits.maxParallel > 0;
         return {
           wait: totalWait,
           release: async () => {
-            if (!(maxParallel > 0)) return;
+            if (!holdsLease) return;
             const releaseLock = await lock();
             try {
               const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
@@ -312,7 +402,7 @@ async function acquireLiveNavigation(page, url, {
           },
         };
       }
-      await sleep(decision.waitMs);
+      await sleep(decision.waitMs, limits);
     }
   } catch (e) {
     if (queued) {
@@ -899,7 +989,7 @@ export function botChallengeError(url, marker, { denial = false } = {}) {
  *     one stderr line ("denial-page check skipped"), never a pass.
  * Returns the response.
  */
-export async function gotoLive(page, url, {
+async function gotoLiveNavigation(page, url, {
   waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false,
   throttle = {},
 } = {}) {
@@ -909,6 +999,21 @@ export async function gotoLive(page, url, {
     err.name = 'LiveNavigationError';
     throw err;
   }
+  let signalRecorded = false;
+  const recordSignal = async (signalMarker, { denial = false } = {}) => {
+    try {
+      await recordLiveBotSignal(url, throttle);
+      signalRecorded = true;
+    } catch (updateError) {
+      const error = botChallengeError(url, signalMarker, { denial });
+      error.liveSignalRecorded = true;
+      error.cause = updateError;
+      error.message += ` — shared throttle update failed: ${String(updateError && updateError.message ? updateError.message : updateError).split('\n')[0]}`;
+      throw error;
+    }
+  };
+  let marker = challengeMarker(resp);
+  if (marker) await recordSignal(marker);
   // challenge-solve window (crawl.mjs clearChallenge semantics) — HEADED
   // sessions only (solveWindow). In plain headless the clearance never
   // lands, so the loop's up-to-3 extra hits are pure spent block budget:
@@ -917,11 +1022,19 @@ export async function gotoLive(page, url, {
     for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
       await page.waitForTimeout(4000);
       const reloaded = await runLiveNavigation(page, url, () => page.reload({ waitUntil, timeout: timeoutMs }), throttle).catch(() => null);
-      if (reloaded) resp = reloaded;
+      if (reloaded) {
+        resp = reloaded;
+        const reloadMarker = challengeMarker(resp);
+        if (reloadMarker) await recordSignal(reloadMarker);
+      }
     }
   }
-  const marker = challengeMarker(resp);
-  if (marker) throw botChallengeError(url, marker);
+  marker = challengeMarker(resp);
+  if (marker) {
+    const error = botChallengeError(url, marker);
+    error.liveSignalRecorded = signalRecorded;
+    throw error;
+  }
   const status = resp.status();
   if (status >= 400) {
     if (httpError === 'measure') {
@@ -938,24 +1051,53 @@ export async function gotoLive(page, url, {
   // only — localhost and loopback serve no vendor wall, and a tiny build page under an error heading is the page.
   if (status < 400 && isLiveHttpUrl(url)) {
     let d = await pageDenial(page);
+    if (d.marker) await recordSignal(`HTTP ${status} ${d.marker}`, { denial: true });
     for (let attempt = 0; solveWindow && attempt < 3 && d.marker; attempt += 1) {
       await page.waitForTimeout(4000);
       const reloaded = await runLiveNavigation(page, url, () => page.reload({ waitUntil, timeout: timeoutMs }), throttle).catch(() => null);
       if (reloaded) resp = reloaded;
       if (settleMs > 0) await page.waitForTimeout(settleMs); // the reloaded page is read (and returned) settled, like the entry
       // a reload answered by an edge challenge or an error status has not cleared the denial page
-      if (!challengeMarker(resp) && resp.status() < 400) {
+      const reloadMarker = challengeMarker(resp);
+      if (reloadMarker) await recordSignal(reloadMarker);
+      if (!reloadMarker && resp.status() < 400) {
         const next = await pageDenial(page);
         // nor has one the probe cannot read: only a verdict replaces the confirmed denial (fail closed)
         if (next.skipped) console.error(`[live-session] denial-page check skipped at ${url}: ${next.skipped}`);
-        else d = next;
+        else {
+          d = next;
+          if (d.marker) await recordSignal(`HTTP ${resp.status()} ${d.marker}`, { denial: true });
+        }
       }
     }
     if (d.skipped) console.error(`[live-session] denial-page check skipped at ${url}: ${d.skipped}`);
-    if (d.marker) throw botChallengeError(url, `HTTP ${status} ${d.marker}`, { denial: true });
+    if (d.marker) {
+      const error = botChallengeError(url, `HTTP ${status} ${d.marker}`, { denial: true });
+      error.liveSignalRecorded = signalRecorded;
+      throw error;
+    }
   }
   await persistLiveStorageState(page, url);
   return resp;
+}
+
+/** Navigate with adaptive per-host success and bot-signal accounting. */
+export async function gotoLive(page, url, options = {}) {
+  try {
+    const response = await gotoLiveNavigation(page, url, options);
+    if (response.status() < 400) await recordLiveNavigationSuccess(url, options.throttle);
+    return response;
+  } catch (error) {
+    if (error && error.name === 'BotChallengeError' && !error.liveSignalRecorded) {
+      try {
+        await recordLiveBotSignal(url, options.throttle);
+      } catch (updateError) {
+        error.cause = updateError;
+        error.message += ` — shared throttle update failed: ${String(updateError && updateError.message ? updateError.message : updateError).split('\n')[0]}`;
+      }
+    }
+    throw error;
+  }
 }
 
 // The existing headed-tier launch flags strip the automation signals a managed challenge probes for.

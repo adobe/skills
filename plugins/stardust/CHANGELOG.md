@@ -4,24 +4,24 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.36.6 — one patient visitor: live navigations are throttled across processes and the browser keeps its cookies between instruments (#155)
+## 0.36.6 — one patient visitor: shared live pacing adapts and the browser keeps its cookies between instruments (#155)
 
-Field learning (recorded hands-off replica runs on bot-managed sites): origins answered 403 to back-to-back live
-navigations and to three parallel browsers, and 200 every time once navigations were spaced a few seconds apart; every
-instrument opened a fresh browser context, so each capture looked like a new visitor that had never cleared a challenge
-or accepted consent; and parallel subagents each ran their own instruments against the same host. 0.36.2's pacing was
-per process; the instruments are many processes.
+Field learning (recorded hands-off replica runs): strict origins rejected clustered live navigations while friendly
+origins did not; every instrument opened a fresh browser context, so each capture looked like a new visitor that had
+never cleared a challenge or accepted consent; and parallel workers each ran their own instruments against the same
+host. Fixed pacing was either too slow or not cautious enough.
 
-- **Shared throttle (`diff/scripts/live-session.mjs`):** live navigations to one host are coordinated across every
-  process through small state files under the OS temp directory, scoped to the repository
-  (`stardust-live/<repository-path-sha1>/<host>/`): at most `STARDUST_LIVE_MAX_PARALLEL` (default 1) in flight per host
-  and at least `STARDUST_LIVE_PACE_MS` (default 2000) between starts, fair queueing, an atomic lock whose stale owner is
-  reclaimed; `0` disables either part; one stderr line per host the first time a process waits.
+- **Adaptive shared throttle (`diff/scripts/live-session.mjs`):** fresh hosts allow
+  `STARDUST_LIVE_MAX_PARALLEL` (default 2) in flight and start at `STARDUST_LIVE_PACE_MS` (default 1000) between starts.
+  A shared bot signal reduces the host to one navigation at a time and doubles the pace through 2000, 4000, 8000 and
+  15000 ms; every 50 clean navigations halves it no lower than the configured floor. Repository-scoped OS-temp state,
+  fair queueing and stale-lock recovery coordinate every process; `0` disables either limit, and only the first wait
+  plus each backoff step reaches stderr.
 - **Per-host browser state:** after a successful `gotoLive` the context's storage state is saved (atomic write, at most
   every few seconds per process) and `newLiveContext` loads it when it is younger than `STARDUST_LIVE_STATE_TTL_MS`
   (default 12 h) and the caller passed none, so a cleared challenge or an accepted consent carries over to the next
   instrument; `STARDUST_LIVE_STATE=0` disables it. The state never lives inside the repository.
-- **Every live instrument takes part:** the crawler, census, gate probes, measure, parity, motion, anchor,
+- **Every live instrument takes part:** the crawler (including late denial pages), census, gate probes, measure, parity, motion, anchor,
   sibling-variance and the reskin captures create their contexts through the shared helper (one-line changes), with
   inline no-op fallbacks where a project copy lacks the module. Tests: `diff/live-session` (throttle decisions with a
   fake clock and a temp dir, stale-lock reclaim, fairness, storage-state round trip), `extract/crawl` (fallbacks).
