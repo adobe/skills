@@ -1,6 +1,6 @@
 # Adobe for Developers
 
-Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.
+Search the [developer.adobe.com](https://developer.adobe.com/) docs. Manage [Adobe Developer Console](https://developer.adobe.com/console) projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.
 
 The plugin connects to the hosted Adobe for Developers MCP server at `https://adp-connector.adobe.io/mcp`. On first use, your client opens an Adobe IMS sign-in.
 
@@ -47,4 +47,5 @@ These tools permanently delete or remove Developer Console resources:
 - `delete_workspace`
 - `unsubscribe_credential_from_service`
 
-The server marks them as destructive. In Claude Code and GitHub Copilot CLI the plugin's `PreToolUse` hook also asks for approval, even when a tool is on an allow list.
+The server marks them as destructive.
+In Claude Code and GitHub Copilot CLI the plugin's `PreToolUse` hook also asks for approval, even when a tool is on an allow list.
