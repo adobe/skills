@@ -164,8 +164,16 @@ export function createDriver({
     return unwrapResult(call([`-s=${session}`, 'eval', wrapExpression(expr)]));
   }
 
-  function run(session, { code, file }) {
-    const exec1 = (path) => unwrapResult(call([`-s=${session}`, 'run-code', `--filename=${path}`]));
+  /**
+   * Run a Playwright code snippet (`code`, written to a temp file) or an existing script (`file`).
+   * `timeoutMs` overrides the driver's default exec timeout for this call only.
+   * @param {string} session
+   * @param {{ code?: string, file?: string, timeoutMs?: number }} opts
+   */
+  function run(session, { code, file, timeoutMs: callTimeoutMs }) {
+    const callOpts = callTimeoutMs === undefined ? undefined : { timeoutMs: callTimeoutMs };
+    const exec1 = (path) =>
+      unwrapResult(call([`-s=${session}`, 'run-code', `--filename=${path}`], callOpts));
     if (code === undefined) return exec1(file);
     runCounter += 1;
     return withTempFile(`${session}-run-${runCounter}.mjs`, code, exec1);

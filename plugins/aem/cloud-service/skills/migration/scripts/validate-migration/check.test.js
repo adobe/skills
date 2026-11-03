@@ -777,9 +777,21 @@ test('finalizeReporting requires an acknowledgement for the same run', () => {
   assert.ok(!record.reporting, 'the validation record is not mutated');
 });
 
+test('finalizeReporting accepts the AEM MCP Server result (success: true) as the receipt', () => {
+  const record = { run_id: 'vm-9', result: 'pass', classes: [] };
+  const finalized = finalizeReporting(record, {
+    success: true, run_id: 'vm-9', project_id: '0123456789abcdef01234567', stored_at: '2026-10-08T00:00:00Z', duplicate: true,
+  });
+  assert.strictEqual(finalized.reporting.status, 'recorded');
+  assert.strictEqual(finalized.reporting.duplicate, true);
+  assert.match(renderLocalReport(finalized), /completion: complete/);
+});
+
 test('finalizeReporting leaves failed or mismatched submissions incomplete', () => {
   const record = { run_id: 'vm-9', result: 'pass', classes: [] };
-  for (const receipt of [null, {}, { ok: true }, { ok: true, run_id: 'other' }]) {
+  for (const receipt of [null, {}, { ok: true }, { ok: true, run_id: 'other' }, { success: true, run_id: 'other' },
+    { success: 'true', run_id: 'vm-9' }, { error: 'denied', run_id: 'vm-9' },
+    { success: false, error: 'Invalid migration validation result payload.', details: ['x'], run_id: 'vm-9' }]) {
     const finalized = finalizeReporting(record, receipt);
     assert.strictEqual(finalized.reporting.status, 'failed');
     assert.match(renderLocalReport(finalized), /completion: incomplete/);

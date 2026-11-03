@@ -6,9 +6,10 @@ description: >-
   Cache original web pages locally with `web cache serve`, a caching reverse proxy for
   iterative migration work. Navigate pages through it (manually or with a browser) and every
   resource is saved to disk; restart it offline to replay the full site with no network,
-  bot detection or rate limits. Triggers on: page cache, cache page, cache site, cache
-  website, offline cache, warm cache, cache proxy, page-cache, site mirror, cache for
-  migration.
+  bot detection or rate limits. `web cache record` and `web cache proxy` cache a page as a HAR
+  and replay it at its real URLs to a browser opened with --proxy. Triggers on: page cache,
+  cache page, cache site, cache website, offline cache, warm cache, cache proxy, page-cache,
+  site mirror, cache for migration, HAR cache, record HAR.
 ---
 
 # page-cache
@@ -105,6 +106,47 @@ cookie-only requests for others are refused (403), so page JS cannot use the pro
 internal hosts. `/__stop` rejects cross-origin callers. Responses carry
 `access-control-allow-origin: *`, so another site open in the same browser can read cached pages;
 keep the proxy for local work.
+
+## HAR cache: real URLs
+
+`web cache record` loads a page in a browser, scrolls it and saves every request into
+`<cache>/<host>_<hash8>.har`. `web cache proxy` is a forward proxy on `127.0.0.1` that answers
+those requests at their real URLs, so a browser opened with `--proxy` sees the original site
+(absolute URLs, cookies, third-party CDNs) with no `?_origin=` rewriting.
+
+Pick it over `cache serve` when page scripts or absolute URLs break under the reverse proxy, or
+when assets come from several origins. Limits: the browser must be Playwright Chrome opened by
+`web browser open --proxy` (it trusts the proxy's self-signed certificate); a miss is fetched
+live (504 with `--offline`) and never stored; one `record` call per URL.
+
+```bash
+$WEB cache record https://example.com --cache .har-cache   # repeat per URL
+$WEB cache proxy --cache .har-cache --port 0 > .har-cache.json 2>.har-cache.log &
+PID=$!
+for _ in $(seq 50); do   # wait for the startup document
+  PROXY=$(jq -er .url .har-cache.json 2>/dev/null) && break
+  kill -0 "$PID" 2>/dev/null || { cat .har-cache.log >&2; break; }
+  sleep 0.2
+done
+S=$($WEB browser open https://example.com --proxy "$PROXY" | jq -r .session)
+$WEB page tree --session "$S"
+$WEB browser close --session "$S"
+curl -s "$PROXY/__status"   # { hits, misses, live, liveFailed, blocked, missed, entries }
+curl -s "$PROXY/__stop"
+```
+
+| `cache proxy` option | Default | Meaning |
+|--------|---------|---------|
+| `--port` | 3002 | `0` picks a free port; read it from the output `{ url, port, cache, offline, entries }` |
+| `--cache` | `.har-cache` | directory of `.har` files, read once at start |
+| `--offline` | off | a miss answers 504 instead of going live |
+| `--timeout` | 5000 | live fetch deadline (ms); a failed or timed-out fetch answers 502 |
+
+A tracker request missing from the cache (analytics, ad and tag-manager hosts) is refused
+with 403; a recorded one is served like any other hit. WebSocket upgrades are refused. The
+proxy writes its certificate and private key into the cache directory: do not commit it.
+Re-recording a URL replaces its HAR only once the new recording is complete; restart the proxy
+to pick it up.
 
 ## Notes
 

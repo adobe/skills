@@ -24,7 +24,7 @@ const isUtf8 = (ct) => {
   return !m || /^utf-?8$/i.test(m[1]);
 };
 const isText = (ct) => ct.includes('html') || ct.includes('css') || ct.includes('javascript');
-const isDirectRequest = (req) => {
+export const isDirectRequest = (req) => {
   const site = req.headers['sec-fetch-site'];
   return !site || site === 'none';
 };

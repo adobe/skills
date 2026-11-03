@@ -122,3 +122,16 @@ export function resolveLaunch(recipePath, explicit = {}, options = {}) {
   const set = Object.fromEntries(Object.entries(explicit).filter(([, v]) => v !== undefined));
   return { ...(recipePath ? loadRecipe(recipePath, options) : {}), ...set };
 }
+
+/**
+ * Copy of a Playwright config with extra launchOptions / contextOptions merged in.
+ * @param {object | undefined} config
+ * @param {{ launchOptions?: object, contextOptions?: object }} extra
+ * @returns {object}
+ */
+export function extendConfig(config, { launchOptions, contextOptions } = {}) {
+  const merged = { ...config };
+  if (launchOptions) merged.launchOptions = { ...merged.launchOptions, ...launchOptions };
+  if (contextOptions) merged.contextOptions = { ...merged.contextOptions, ...contextOptions };
+  return merged;
+}

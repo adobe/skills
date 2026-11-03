@@ -1,0 +1,11 @@
+{
+  "name": "adobe-for-developers",
+  "displayName": "Adobe for Developers",
+  "version": "1.0.0",
+  "description": "Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.",
+  "author": {
+    "name": "Adobe"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["adobe", "adobe-developer-platform", "developer-console", "credentials", "io-events", "documentation", "mcp"]
+}

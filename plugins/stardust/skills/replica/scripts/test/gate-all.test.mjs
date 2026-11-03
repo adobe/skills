@@ -4,16 +4,24 @@
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag); parseArgs defaults and
 // --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff; staleCapture (a
-// capture with no fixedLayers in its record is retaken, gate.sh's rule); disk (#150): a passed page keeps its records,
-// not its PNGs, and --skip-existing reuses that recorded pass — a run with stub instruments, no browser.
+// capture with no fixedLayers in its record is retaken, gate.sh's rule).
+// Fonts (gate rule 14): shotFonts reads a stitch capture record (a list = checked, null + fontCheck when the check
+// could not run, when the record predates the check or when there is none), fontsNotLoaded / fontChecksSkipped over
+// the two metas (explicit null only), verdict's font-not-loaded:<family> and font-check-skipped:<side> reasons failing
+// an otherwise passing row, the calibration line and the FAIL (fonts) cell; then the runner with stub instruments
+// (stitch-shot writes the record, pixel-compare the JSON): the meta carries fontsFailed, a dead face or a skipped
+// check fails the row (exit 2), the prototype stage reads the record of the archetype round's live.png it reuses (or the
+// frozen baseline's after a flagged round; one staleCapture refuses is captured afresh) — none is unchecked, never "all loaded".
+// Disk (#150): a passed page keeps its records, not its PNGs, and --skip-existing reuses that recorded pass — a run with
+// stub instruments, no browser.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, captureRecordOf, droppedPass, dropPassedCaptures, formatSummary, parseArgs, staleCapture, verdict } from '../gate-all.mjs';
+import { BATCH, captureRecordOf, dropPassedCaptures, droppedPass, fontChecksSkipped, fontsNotLoaded, formatSummary, parseArgs, shotFonts, staleCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -118,6 +126,172 @@ check('staleCapture: gate.sh\'s rule — a capture is reusable only when its cap
     assert.equal(staleCapture(live), true, 'a live round with no live.capture.json');
   } finally { rmSync(d, { recursive: true, force: true }); }
 });
+
+// ---- fonts (gate rule 14): a dead face on either side fails the row; a check that could not run is never a pass -----
+const live = (fontsFailed, extra = {}) => ({ instrument: 'stitch-live', url: 'https://origin.example/', ...extra, ...(fontsFailed === undefined ? {} : { fontsFailed }) });
+check('shotFonts: a record with a list is checked (strings only); null, an absent key or no record at all → fontsFailed null + a fontCheck saying why — never []', () => {
+  assert.deepEqual(shotFonts({ fontsFailed: ['Brand Sans', 7, '', 'Brand Serif'] }), { fontsFailed: ['Brand Sans', 'Brand Serif'] });
+  assert.deepEqual(shotFonts({ fontsFailed: [] }), { fontsFailed: [] });
+  assert.deepEqual(shotFonts({ fontsFailed: null, fontCheck: 'failed: fonts unavailable' }), { fontsFailed: null, fontCheck: 'failed: fonts unavailable' });
+  assert.deepEqual(shotFonts({ fontsFailed: null }), { fontsFailed: null, fontCheck: 'failed: the check could not run' });
+  assert.deepEqual(shotFonts({ url: 'x', height: 10 }), { fontsFailed: null, fontCheck: 'failed: the capture record predates the font check — re-copy stitch-shot.mjs' });
+  assert.deepEqual(shotFonts(null), { fontsFailed: null, fontCheck: 'failed: no readable capture record (stitch-shot wrote no capture record — re-copy stitch-shot.mjs)' });
+  assert.deepEqual(shotFonts(undefined, { missing: 'no live.capture.json beside live.png' }), { fontsFailed: null, fontCheck: 'failed: no live.capture.json beside live.png' });
+});
+check('fontsNotLoaded: the metas\' fontsFailed of both sides — sorted, unique; a meta without a list (null, absent, a crawl shot, a failed capture) adds none', () => {
+  assert.deepEqual(fontsNotLoaded(live(['B', 'A']), live(['A'])), ['A', 'B']);
+  assert.deepEqual(fontsNotLoaded({ instrument: 'crawl-fullpage' }, live(['Brand Sans'])), ['Brand Sans']);
+  assert.deepEqual(fontsNotLoaded(live(null), live(['A'])), ['A'], 'null is not a family list');
+  assert.deepEqual(fontsNotLoaded(null, { fontsFailed: 'Brand Sans' }), []);
+  assert.deepEqual(fontsNotLoaded(undefined, undefined), []);
+});
+check('fontChecksSkipped: the sides (origin, build) whose stitch-live meta says fontsFailed: null — explicit null only; [], an absent key (a meta from before the check) or another instrument adds none', () => {
+  assert.deepEqual(fontChecksSkipped(live(null), live([])), ['origin']);
+  assert.deepEqual(fontChecksSkipped(live(['A']), live(null)), ['build']);
+  assert.deepEqual(fontChecksSkipped(live(null), live(null)), ['origin', 'build']);
+  assert.deepEqual(fontChecksSkipped(live(undefined), live([])), [], 'absent key: a meta from before the check');
+  assert.deepEqual(fontChecksSkipped({ instrument: 'crawl-fullpage', asymmetric: true, fontsFailed: null }, null), []);
+  assert.deepEqual(fontChecksSkipped({ instrument: 'none', error: 'stitch exit 1', fontsFailed: null }, undefined), [], 'a failed capture is already a missing capture');
+});
+check('verdict: a dead face fails an otherwise passing row — one font-not-loaded:<family> reason each, the pixel-only calibration verdict unchanged; a skipped check adds font-check-skipped:<side> after them; the row carries both lists', () => {
+  const v = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), capture: { fonts: ['Brand Sans'], fontsSkipped: [] } });
+  assert.deepEqual([v.pass, v.pixelOnlyPass, v.passWithOverride, v.fontsNotLoaded, v.fontChecksSkipped, v.reasons], [false, true, false, ['Brand Sans'], [], ['font-not-loaded:Brand Sans']]);
+  const s = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), capture: { fonts: [], fontsSkipped: ['build'] } });
+  assert.deepEqual([s.pass, s.pixelOnlyPass, s.fontChecksSkipped, s.reasons], [false, true, ['build'], ['font-check-skipped:build']]);
+  const both = verdict({ pixel: px(1.5, 0), clip: clip(3), content: content(0, 0), capture: { fonts: ['A', 'B'], fontsSkipped: ['origin', 'build'] } });
+  assert.deepEqual(both.reasons, ['clipped 3 (text 3, controls 0)', 'font-not-loaded:A', 'font-not-loaded:B', 'font-check-skipped:origin', 'font-check-skipped:build'], 'after the element reasons, fonts then skipped sides');
+  assert.equal(verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), override: { verdict: 'PASS', reason: 'R-01' }, capture: { fonts: ['A'], fontsSkipped: [] } }).passWithOverride, true, 'an override shows beside the fonts reason as it does beside any other');
+  const none = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0) });
+  assert.deepEqual([none.pass, none.fontsNotLoaded, none.fontChecksSkipped], [true, [], []], 'no capture input: none');
+});
+check('formatSummary: the calibration line counts the rows and names the dead faces once, then the skipped checks; a row failing on fonts alone reads FAIL (fonts)', () => {
+  const pv = { writtenAt: 'now', breakpoint: 1440, verdict: 'V' };
+  const r0 = { slug: 'a', path: '/a', pct: 1.5, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, units: null, pass: false, pixelOnlyPass: true, fontsNotLoaded: ['Brand Sans'], fontChecksSkipped: [], reasons: ['font-not-loaded:Brand Sans'], override: null, error: null };
+  const totals = { pages: 1, pass: 0, pixelOnlyPass: 1, overridePass: 0, fail: 1, error: 0, failPixel: 0, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0, fontsNotLoaded: 1, fontChecksSkipped: 0 };
+  const md = formatSummary({ _provenance: pv, totals, rows: [r0] });
+  assert.match(md, /Failing by criterion: pixel 0, height 0, clip 0, content 0, fonts not loaded 1 \(Brand Sans\); content n\/a/);
+  assert.match(md, /\| `\/a` \|.*\| FAIL \(fonts\) \| font-not-loaded:Brand Sans \|/);
+  const r1 = { ...r0, slug: 'b', path: '/b', fontsNotLoaded: ['Brand Serif', 'Brand Sans'], fontChecksSkipped: ['build'], reasons: ['font-not-loaded:Brand Sans', 'font-not-loaded:Brand Serif', 'font-check-skipped:build'] };
+  const r2 = { ...r0, slug: 'c', path: '/c', clipped: 4, fontsNotLoaded: [], fontChecksSkipped: ['origin'], reasons: ['clipped 4', 'font-check-skipped:origin'] };
+  const md2 = formatSummary({ _provenance: pv, totals: { ...totals, pages: 3, fontsNotLoaded: 2, fontChecksSkipped: 2 }, rows: [r1, r2, r0] });
+  assert.match(md2, /, fonts not loaded 2 \(Brand Sans, Brand Serif\), font check skipped 2; content n\/a/);
+  assert.match(md2, /\| `\/b` \|.*\| FAIL \(fonts\) \|/, 'fonts and a skipped check only: FAIL (fonts)');
+  assert.match(md2, /\| `\/c` \|.*\| FAIL \(elements\) \|/, 'an element reason beside the skipped check: FAIL (elements)');
+  assert.doesNotMatch(formatSummary({ _provenance: pv, totals: { ...totals, fontsNotLoaded: 0 }, rows: [{ ...r0, pass: true, fontsNotLoaded: [], reasons: [] }] }), /fonts not loaded|font check skipped/);
+});
+
+// ---- the runner with stub instruments: the record → the meta → the row -------------------------------------------------
+// Sandbox: stardust/scripts/replica with the real gate-all.mjs and stubs for stitch-shot (writes the PNG and its capture
+// record, fixedLayers always: fontsFailed = STUB_FONTS_<ORIGIN|EDS> as a comma list, null + fontCheck under STUB_FONTS_NULL_<side>,
+// no record under STUB_NO_JSON_<side>; ORIGIN = a https://origin.example URL) and pixel-compare (a passing JSON). --no-probes: the
+// diff skill's scripts are not needed. realpath: the main-module guard compares process.argv[1] with import.meta.url.
+{
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-run-')));
+  const replica = join(root, 'stardust/scripts/replica');
+  mkdirSync(replica, { recursive: true });
+  cpSync(SCRIPT, join(replica, 'gate-all.mjs')); chmodSync(join(replica, 'gate-all.mjs'), 0o755);
+  const stub = (name, body) => writeFileSync(join(replica, name), `#!/usr/bin/env node\n${body}\n`);
+  stub('stitch-shot.mjs', `
+    import { writeFileSync } from 'node:fs';
+    const url = process.argv[2]; const out = process.argv[3];
+    const side = /^https:\\/\\/origin\\.example/.test(url) ? 'ORIGIN' : 'EDS';
+    const rc = Number(process.env['STUB_STITCH_RC_' + side] || 0);
+    if (rc) { console.error('stitch-shot error: stub exit ' + rc); process.exit(rc); }
+    writeFileSync(out, 'png');
+    const json = out.replace(/\\.png$/i, '') + '.capture.json';
+    const fonts = process.env['STUB_FONTS_NULL_' + side] ? { fontsFailed: null, fontCheck: 'failed: Execution context was destroyed' } : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
+    if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: true, ...fonts, fixedLayers: { capture: 'once', count: 0, late: 0 }, height: 2000 }, null, 2) + '\\n');
+    console.log('overflow: scrollWidth=1440 viewport=1440 delta=0'); console.log('stitched ' + out);`);
+  stub('pixel-compare.mjs', `console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 2000 }, pass: true, bands: [] }));`);
+  const pages = (extra = {}) => ({ pages: [{ slug: 'a', url: 'https://origin.example/a', liveUrl: 'https://served.example/a', status: 'deployed', template: 't', fidelityTier: 'thin', ...extra }] });
+  const runAll = (tag, args, env = {}, state = pages()) => {
+    const out = join(root, `out-${tag}`); const stateFile = join(root, `state-${tag}.json`);
+    writeFileSync(stateFile, JSON.stringify(state));
+    const r = spawnSync(process.execPath, [join(replica, 'gate-all.mjs'), '--state', stateFile, '--out', out, '--no-probes', ...args], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
+    const read = (f) => (existsSync(join(out, f)) ? JSON.parse(readFileSync(join(out, f), 'utf8')) : null);
+    return { status: r.status, stdout: r.stdout, stderr: r.stderr, summary: read('summary.json'), origin: read('a/origin.json'), eds: read('a/eds.json'), record: read('a/origin.capture.json'), out };
+  };
+  try {
+    check('runner: both stitches are asked for their capture record; the metas carry fontsFailed [] and the clean row passes (exit 0)', () => {
+      const r = runAll('clean', []);
+      assert.equal(r.status, 0, r.stderr);
+      assert.ok(existsSync(join(r.out, 'a/origin.capture.json')) && existsSync(join(r.out, 'a/eds.capture.json')), 'the records are beside the captures');
+      assert.deepEqual([r.origin.instrument, r.origin.fontsFailed, r.eds.fontsFailed], ['stitch-live', [], []]);
+      assert.ok(!('fontCheck' in r.origin) && !('fontCheck' in r.eds), 'a check that ran carries no fontCheck');
+      const row = r.summary.rows[0];
+      assert.deepEqual([row.pass, row.fontsNotLoaded, row.fontChecksSkipped, row.reasons], [true, [], [], []]);
+      assert.deepEqual([r.summary.totals.fontsNotLoaded, r.summary.totals.fontChecksSkipped], [0, 0]);
+    });
+    check('runner: a dead face on the served side → eds.json fontsFailed, the row fails with font-not-loaded:<family> (exit 2), the calibration line names it', () => {
+      const r = runAll('dead', [], { STUB_FONTS_EDS: 'Brand Sans,Brand Serif Fallback' });
+      assert.equal(r.status, 2, r.stderr);
+      assert.deepEqual(r.eds.fontsFailed, ['Brand Sans', 'Brand Serif Fallback']);
+      const row = r.summary.rows[0];
+      assert.deepEqual([row.pass, row.pixelOnlyPass, row.fontsNotLoaded, row.reasons], [false, true, ['Brand Sans', 'Brand Serif Fallback'], ['font-not-loaded:Brand Sans', 'font-not-loaded:Brand Serif Fallback']]);
+      assert.match(readFileSync(join(r.out, 'summary.md'), 'utf8'), /fonts not loaded 1 \(Brand Sans, Brand Serif Fallback\)/);
+      assert.match(readFileSync(join(r.out, 'summary.md'), 'utf8'), /FAIL \(fonts\)/);
+    });
+    check('runner: an origin whose font check could not run → origin.json fontsFailed null + fontCheck, the row fails with font-check-skipped:origin (exit 2) — never a pass', () => {
+      const r = runAll('skipped', [], { STUB_FONTS_NULL_ORIGIN: '1' });
+      assert.equal(r.status, 2, r.stderr);
+      assert.equal(r.origin.fontsFailed, null); assert.equal(r.origin.fontCheck, 'failed: Execution context was destroyed');
+      const row = r.summary.rows[0];
+      assert.deepEqual([row.pass, row.fontChecksSkipped, row.reasons], [false, ['origin'], ['font-check-skipped:origin']]);
+      assert.equal(r.summary.totals.fontChecksSkipped, 1);
+    });
+    check('runner: a stitch that writes no record (an older copy) → fontsFailed null with the re-copy note, font-check-skipped:build', () => {
+      const r = runAll('norec', [], { STUB_NO_JSON_EDS: '1' });
+      assert.equal(r.status, 2, r.stderr);
+      assert.equal(r.eds.fontsFailed, null); assert.match(r.eds.fontCheck, /^failed: no readable capture record \(stitch-shot wrote no capture record/);
+      assert.deepEqual(r.summary.rows[0].reasons, ['font-check-skipped:build']);
+    });
+    check('runner (prototype stage): the archetype round\'s live.png is reused with the font check of its live.capture.json, which goes with the copy — a record with fixedLayers but no fontsFailed predates the check (font-check-skipped:origin, the fix named), a dead face fails the row, [] passes; one staleCapture refuses (no record) is not reused: the origin is captured afresh, said once — never "all loaded"', () => {
+      const proto = pages({ prototypePath: 'stardust/prototypes/a.html' });
+      const cached = join(root, 'stardust/replica/gates/a-1440'); mkdirSync(cached, { recursive: true });
+      const protoArgs = ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'];
+      writeFileSync(join(cached, 'live.png'), 'png');
+      const none = runAll('proto-none', protoArgs, {}, proto);
+      assert.equal(none.status, 0, none.stderr);
+      assert.match(none.stdout, /live\.png predates the fixed-layer capture \(no fixedLayers in its record\) — not reused, capturing the origin/);
+      assert.ok(!/^reused /.test(none.origin.note || ''), `not reused: ${none.origin.note}`);
+      assert.deepEqual([none.origin.instrument, none.origin.fontsFailed, none.record.fontsFailed], ['stitch-live', [], []], 'captured afresh by the stub, its own record checked');
+      const layers = { capture: 'once', count: 0, late: 0 };
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fixedLayers: layers, height: 2000 }));
+      const pre = runAll('proto-pre', protoArgs, {}, proto);
+      assert.equal(pre.status, 2, pre.stderr);
+      assert.match(pre.origin.note, /^reused .*live\.png/);
+      assert.deepEqual([pre.origin.fontsFailed, pre.origin.fontCheck], [null, 'failed: the capture record predates the font check — re-copy stitch-shot.mjs']);
+      assert.deepEqual(pre.summary.rows[0].reasons, ['font-check-skipped:origin']);
+      assert.deepEqual(pre.record.fixedLayers, layers, 'the cached record went with the copy');
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: ['Brand Serif'], fixedLayers: layers, height: 2000 }));
+      const some = runAll('proto-some', protoArgs, {}, proto);
+      assert.equal(some.status, 2, some.stderr);
+      assert.deepEqual([some.origin.fontsFailed, some.summary.rows[0].reasons], [['Brand Serif'], ['font-not-loaded:Brand Serif']], 'the cached capture\'s dead face fails the prototype row');
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: [], fixedLayers: layers, height: 2000 }));
+      const clean = runAll('proto-clean', protoArgs, {}, proto);
+      assert.equal(clean.status, 0, clean.stderr);
+      assert.deepEqual([clean.origin.fontsFailed, clean.summary.rows[0].pass], [[], true]);
+    });
+    check('runner (prototype stage): after a --gate-against-baseline round (live.json origin "baseline", no live.capture.json) the frozen baseline\'s record stands in — its fixedLayers for the reuse, its fontsFailed for the font check — and the copy\'s record says where it came from', () => {
+      const proto = pages({ prototypePath: 'stardust/prototypes/a.html' });
+      const cached = join(root, 'stardust/replica/gates/a-1440');
+      const protoArgs = ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'];
+      rmSync(join(cached, 'live.capture.json'), { force: true });
+      writeFileSync(join(cached, 'live.json'), JSON.stringify({ origin: 'baseline' }));
+      writeFileSync(join(cached, 'baseline.json'), JSON.stringify({ fontsFailed: ['Brand Serif'], fixedLayers: { capture: 'once', count: 1, late: 0 } }));
+      const r = runAll('proto-baseline', protoArgs, {}, proto);
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.origin.note, /^reused .*live\.png/);
+      assert.deepEqual([r.origin.fontsFailed, r.summary.rows[0].reasons], [['Brand Serif'], ['font-not-loaded:Brand Serif']], 'the baseline\'s dead face fails the prototype row');
+      assert.deepEqual(r.record, { writtenBy: 'gate-all.mjs', copiedFrom: 'stardust/replica/gates/a-1440/live.png', fixedLayers: { capture: 'once', count: 1, late: 0 }, fontsFailed: ['Brand Serif'] });
+      writeFileSync(join(cached, 'baseline.json'), JSON.stringify({ fontsFailed: [], fixedLayers: { capture: 'once', count: 1, late: 0 } }));
+      const clean = runAll('proto-baseline-clean', protoArgs, {}, proto);
+      assert.equal(clean.status, 0, clean.stderr);
+      assert.deepEqual([clean.origin.fontsFailed, clean.summary.rows[0].pass], [[], true]);
+    });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}
+
 // ---- disk (#150): a passed page keeps its records, not its pictures ---------------------------------------------
 const pageDir = (files) => {
   const d = mkdtempSync(join(tmpdir(), 'gate-all-drop-'));

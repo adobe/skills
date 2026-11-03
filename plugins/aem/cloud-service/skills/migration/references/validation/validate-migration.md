@@ -96,8 +96,10 @@ Do not change credentials or SDK configuration without approval.
     `migration-runbook.json` (`project.id`) or an explicit `--project-id` /
     `--project-name` (explicit wins). With no linked project, validate locally: do not
     ask for one, and report that the outcome was not reported to CAM. With a linked
-    project, confirm `submit-migration-validation-result` is in your tools; never test
-    it with a fabricated outcome.
+    project, confirm the `submit-migration-validation-result` recipe (AEM MCP Server) or tool
+    is available; never test it with a fabricated outcome. If only a project name is linked,
+    resolve it to its ID with `list-cam-projects`, have the user confirm it, and pass
+    `--project-id` so the payload is filed under that exact project.
 
 2. **Prepare.** Run `node "$VALIDATOR/check.js" --stage prepare` with the selected
   scope/project/SDK flags. It builds, discovers, deploys bundle-runtime patterns
@@ -123,14 +125,15 @@ Do not change credentials or SDK configuration without approval.
   below. The agent coordinates recovery; the validator does not poll the SDK.
 
 5. **Submit (linked project only).** Forward the emitted `submit-migration-validation-result`
-   payload through MCP once on the final verification attempt, including failed validation outcomes.
-   Require `ok: true` and a matching `run_id` before saying "outcome recorded".
-  Save only the actual response's `ok`, `run_id`, `stored_at`, and `duplicate`
-  fields as `.validate-migration/<run_id>-receipt.json`. For failures save
-  `{ "ok": false, "error": "<credential-free summary>" }`; never persist raw
+   payload once on the final verification attempt, including failed validation outcomes
+   (AEM MCP Server: the recipe through `write-api`).
+   Require `success: true` (or `ok: true` from the deprecated tool) and a matching `run_id`
+   before saying "outcome recorded".
+  Save the actual result as `.validate-migration/<run_id>-receipt.json`. For failures save
+  `{ "success": false, "error": "<credential-free summary>" }`; never persist raw
   sensitive error text. Never fabricate an acknowledgement. Missing CAM config,
    rejection, or network failure leaves reporting incomplete; do not silently retry.
-   Request/response shape: [cam-mcp.md](../cam-mcp.md#tool-submit-migration-validation-result).
+   Rules and shapes: [cam-mcp.md](../cam-mcp.md#submitting-a-validation-outcome).
 
 6. **Finalize (linked project only).** Run the command below even after submission fails, using the
    saved validation JSON and actual MCP receipt. It updates both reports with

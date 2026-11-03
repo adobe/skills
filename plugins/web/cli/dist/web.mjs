@@ -3111,9 +3111,9 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * @param {string} [path]
    * @return {(string|null|Command)}
    */
-  executableDir(path3) {
-    if (path3 === void 0) return this._executableDir;
-    this._executableDir = path3;
+  executableDir(path9) {
+    if (path9 === void 0) return this._executableDir;
+    this._executableDir = path9;
     return this;
   }
   /**
@@ -3425,7 +3425,7 @@ function parsePositiveIntArg(value) {
 }
 
 // src/commands/browser.mjs
-import { existsSync as existsSync3 } from "node:fs";
+import { existsSync as existsSync4 } from "node:fs";
 
 // src/context.mjs
 import { existsSync as existsSync2 } from "node:fs";
@@ -3523,12 +3523,12 @@ function createDriver({
   }
   function withTempFile(name, content, fn) {
     mkdirSync(outputDir, { recursive: true });
-    const path3 = join(outputDir, name);
-    writeFileSync(path3, content);
+    const path9 = join(outputDir, name);
+    writeFileSync(path9, content);
     try {
-      return fn(path3);
+      return fn(path9);
     } finally {
-      rmSync(path3, { force: true });
+      rmSync(path9, { force: true });
     }
   }
   function list() {
@@ -3552,14 +3552,14 @@ function createDriver({
   function open2({ initScripts = [], initSources = [], ...launchOpts }) {
     mkdirSync(outputDir, { recursive: true });
     const sourcePaths = initSources.map((source, i) => {
-      const path3 = join(outputDir, `${launchOpts.session}-init-${i}.js`);
-      writeFileSync(path3, source);
-      return path3;
+      const path9 = join(outputDir, `${launchOpts.session}-init-${i}.js`);
+      writeFileSync(path9, source);
+      return path9;
     });
     try {
       return launch2({ ...launchOpts, initScripts: [...initScripts, ...sourcePaths] });
     } finally {
-      for (const path3 of sourcePaths) rmSync(path3, { force: true });
+      for (const path9 of sourcePaths) rmSync(path9, { force: true });
     }
   }
   function launch2({ session, url, headed, config, cdpPort, persistent, initScripts }) {
@@ -3569,10 +3569,10 @@ function createDriver({
       });
     }
     const body = JSON.stringify(buildConfig({ config, initScripts, cdpPort }));
-    withTempFile(`${session}-cli-config.json`, body, (path3) => {
+    withTempFile(`${session}-cli-config.json`, body, (path9) => {
       const args = [`-s=${session}`, "open"];
       if (url) args.push(url);
-      args.push(`--config=${path3}`);
+      args.push(`--config=${path9}`);
       if (headed) args.push("--headed");
       if (persistent) args.push("--persistent");
       call(args);
@@ -3582,8 +3582,9 @@ function createDriver({
   function evaluate(session, expr) {
     return unwrapResult(call([`-s=${session}`, "eval", wrapExpression(expr)]));
   }
-  function run(session, { code, file }) {
-    const exec1 = (path3) => unwrapResult(call([`-s=${session}`, "run-code", `--filename=${path3}`]));
+  function run(session, { code, file, timeoutMs: callTimeoutMs }) {
+    const callOpts = callTimeoutMs === void 0 ? void 0 : { timeoutMs: callTimeoutMs };
+    const exec1 = (path9) => unwrapResult(call([`-s=${session}`, "run-code", `--filename=${path9}`], callOpts));
     if (code === void 0) return exec1(file);
     runCounter += 1;
     return withTempFile(`${session}-run-${runCounter}.mjs`, code, exec1);
@@ -3628,13 +3629,13 @@ function createDriver({
         code: `async page => { const s = await page.context().newCDPSession(page); return s.send(${JSON.stringify(method)}, ${JSON.stringify(params)}) }`
       });
     },
-    screenshot(session, { path: path3, fullPage, selector }) {
+    screenshot(session, { path: path9, fullPage, selector }) {
       const args = [`-s=${session}`, "screenshot"];
       if (selector) args.push(selector);
-      args.push(`--filename=${path3}`);
+      args.push(`--filename=${path9}`);
       if (fullPage) args.push("--full-page");
       call(args);
-      return { path: path3 };
+      return { path: path9 };
     },
     pageHealth(session) {
       return evaluate(
@@ -4069,27 +4070,27 @@ var SCHEMA = {
 };
 var TYPES = Object.keys(SCHEMA);
 var HINT = "produce one with: web probe <url> --save-recipe, or web page overlays --save-recipe";
-function readRecipe(path3) {
+function readRecipe(path9) {
   let recipe;
   try {
-    recipe = JSON.parse(readFileSync(path3, "utf8"));
+    recipe = JSON.parse(readFileSync(path9, "utf8"));
   } catch (err) {
-    throw new CliError("USAGE", `cannot read recipe ${path3}: ${err.message}`, { hint: HINT });
+    throw new CliError("USAGE", `cannot read recipe ${path9}: ${err.message}`, { hint: HINT });
   }
   if (!isObject(recipe)) {
-    throw new CliError("USAGE", `recipe ${path3} must be a JSON object`, { hint: HINT });
+    throw new CliError("USAGE", `recipe ${path9} must be a JSON object`, { hint: HINT });
   }
   const unknown = Object.keys(recipe).filter((key) => !TYPES.includes(key));
   if (unknown.length > 0) {
-    throw new CliError("USAGE", `recipe ${path3} has unknown keys: ${unknown.join(", ")}`, {
+    throw new CliError("USAGE", `recipe ${path9} has unknown keys: ${unknown.join(", ")}`, {
       hint: `a recipe holds one array per type (${TYPES.join(", ")}); ${HINT}`
     });
   }
-  for (const [type, entries] of Object.entries(recipe)) checkEntries(path3, type, entries);
+  for (const [type, entries] of Object.entries(recipe)) checkEntries(path9, type, entries);
   return recipe;
 }
-function checkEntries(path3, type, entries) {
-  const invalid = (where, expected) => new CliError("USAGE", `recipe ${path3}: ${where} must be ${expected}`, { hint: HINT });
+function checkEntries(path9, type, entries) {
+  const invalid = (where, expected) => new CliError("USAGE", `recipe ${path9}: ${where} must be ${expected}`, { hint: HINT });
   if (!Array.isArray(entries)) throw invalid(type, "an array");
   entries.forEach((entry, i) => {
     if (!isObject(entry)) throw invalid(`${type}[${i}]`, "an object");
@@ -4098,8 +4099,8 @@ function checkEntries(path3, type, entries) {
     }
   });
 }
-function saveRecipe(path3, type, entries) {
-  const file = resolve2(path3);
+function saveRecipe(path9, type, entries) {
+  const file = resolve2(path9);
   const recipe = existsSync(file) ? readRecipe(file) : {};
   writeFileSync2(file, `${JSON.stringify({ ...recipe, [type]: entries }, null, 2)}
 `);
@@ -4124,8 +4125,8 @@ function hideScript(rules) {
 `;
 }
 var withoutTypes = (recipe, skip) => Object.fromEntries(Object.entries(recipe).filter(([type]) => !skip.includes(type)));
-function loadRecipe(path3, { skip = [] } = {}) {
-  const { probe = [], overlays = [] } = withoutTypes(readRecipe(path3), skip);
+function loadRecipe(path9, { skip = [] } = {}) {
+  const { probe = [], overlays = [] } = withoutTypes(readRecipe(path9), skip);
   const initSources = [];
   if (probe[0]?.stealth) initSources.push(loadBundle("stealth-init.js"));
   const rules = overlays.flatMap((entry) => entry.rules ?? []);
@@ -4135,6 +4136,12 @@ function loadRecipe(path3, { skip = [] } = {}) {
 function resolveLaunch(recipePath, explicit = {}, options = {}) {
   const set = Object.fromEntries(Object.entries(explicit).filter(([, v]) => v !== void 0));
   return { ...recipePath ? loadRecipe(recipePath, options) : {}, ...set };
+}
+function extendConfig(config, { launchOptions, contextOptions } = {}) {
+  const merged = { ...config };
+  if (launchOptions) merged.launchOptions = { ...merged.launchOptions, ...launchOptions };
+  if (contextOptions) merged.contextOptions = { ...merged.contextOptions, ...contextOptions };
+  return merged;
 }
 
 // src/context.mjs
@@ -4239,16 +4246,278 @@ function artifactDir(outputDir, session, command) {
   return dir;
 }
 
+// src/cache/hooks.mjs
+var HOOKS = `async page => {
+  const context = page.context();
+  if (context.__webCache) return 'already';
+  const state = { errors: 0, pending: new Set() };
+  context.__webCache = state;
+  const served = new WeakSet();
+  // Each top-level navigation is its own recording (one page HAR). A request belongs to the
+  // recording current when it was routed, so a late response never lands in the next page.
+  const currentRecording = new WeakMap();
+  const recordingOf = new WeakMap();
+  let lastRecording = 0;
+  const pageOf = (request) => {
+    try {
+      return request.frame().page();
+    } catch {
+      return null;
+    }
+  };
+  const chainStart = (request) => {
+    let first = request;
+    try {
+      while (first.redirectedFrom()) first = first.redirectedFrom();
+    } catch {
+      // Keep the furthest request reached.
+    }
+    return first;
+  };
+  // Redirect hops are never routed: they take the recording of the request that started them.
+  const recordingFor = (request) => {
+    const page = pageOf(request);
+    return (
+      recordingOf.get(request) ??
+      recordingOf.get(chainStart(request)) ??
+      (page && currentRecording.get(page)) ??
+      0
+    );
+  };
+  const startRecording = (request) => {
+    lastRecording += 1;
+    const page = pageOf(request);
+    if (page) currentRecording.set(page, lastRecording);
+    recordingOf.set(request, lastRecording);
+  };
+  const isMainNavigation = (request) => {
+    try {
+      return request.isNavigationRequest() && !request.frame().parentFrame();
+    } catch {
+      return false;
+    }
+  };
+  const startOf = (request) => {
+    try {
+      const { startTime } = request.timing();
+      return startTime > 0 ? startTime : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const fail = () => {
+    state.errors += 1;
+  };
+  await context.route('**/*', async (route) => {
+    const request = route.request();
+    const url = request.url();
+    if (request.method() !== 'GET' || !/^https?:/.test(url)) return route.fallback();
+    let response;
+    let fulfilled = false;
+    try {
+      const nav = isMainNavigation(request);
+      const redirect = Boolean(request.redirectedFrom());
+      if (nav && !redirect) startRecording(request);
+      else recordingOf.set(request, recordingFor(request));
+      const data = { url, page: recordingOf.get(request), nav, redirect };
+      const options = { data, timeout: LOOKUP_TIMEOUT_MS, maxRedirects: 0 };
+      response = await context.request.post(KEEPER + '/lookup', options);
+      if (response.headers()['x-web-cache'] === 'hit') {
+        served.add(request);
+        await route.fulfill({ response });
+        fulfilled = true;
+      }
+    } catch {
+      served.delete(request);
+      fail();
+    } finally {
+      // Playwright keeps every APIResponse body until disposed.
+      if (response) await response.dispose().catch(fail);
+    }
+    if (!fulfilled) await route.fallback().catch(fail);
+  });
+  const store = async (response) => {
+    const request = response.request();
+    if (served.has(request) || request.method() !== 'GET') return;
+    // An event stream's body only ends when the stream closes: never wait for it.
+    if ((response.headers()['content-type'] ?? '').includes('text/event-stream')) return;
+    const status = response.status();
+    let body;
+    try {
+      body = await response.body();
+    } catch {
+      if (status < 300 || status > 399) return;
+    }
+    try {
+      const data = {
+        startedAt: startOf(request),
+        page: recordingFor(request),
+        method: 'GET',
+        url: request.url(),
+        status,
+        statusText: response.statusText(),
+        requestHeaders: await request.headersArray(),
+        headers: await response.headersArray(),
+        mimeType: response.headers()['content-type'] ?? '',
+        body: body ? body.toString('base64') : '',
+      };
+      const ack = await context.request.post(KEEPER + '/store', { data, timeout: STORE_TIMEOUT_MS });
+      await ack.dispose();
+    } catch {
+      fail();
+    }
+  };
+  context.on('response', (response) => {
+    const pending = store(response);
+    state.pending.add(pending);
+    return pending.finally(() => state.pending.delete(pending));
+  });
+  return 'installed';
+}`;
+function cacheHooksCode(port) {
+  if (!Number.isInteger(port) || port <= 0) throw new Error(`invalid keeper port: ${port}`);
+  return HOOKS.replaceAll("KEEPER", JSON.stringify(`http://127.0.0.1:${port}`)).replace("LOOKUP_TIMEOUT_MS", "1000").replace("STORE_TIMEOUT_MS", "10000");
+}
+var CACHE_STATS_CODE = `async page => {
+  const state = page.context().__webCache;
+  if (!state) return 0;
+  const flushed = Promise.allSettled([...state.pending]).then(() => true);
+  const deadline = page.waitForTimeout(5000).then(() => false, () => false);
+  const done = await Promise.race([flushed, deadline]);
+  return state.errors + (done ? 0 : state.pending.size);
+}`;
+
+// src/cache/keeper-process.mjs
+import { spawn, spawnSync as spawnSync2 } from "node:child_process";
+import {
+  closeSync,
+  existsSync as existsSync3,
+  mkdirSync as mkdirSync3,
+  openSync,
+  readFileSync as readFileSync2,
+  rmSync as rmSync2,
+  writeFileSync as writeFileSync3
+} from "node:fs";
+import path2 from "node:path";
+var START_TIMEOUT_MS = 1e4;
+var STOP_TIMEOUT_MS = 1e3;
+var stateFile = (outputDir, session) => artifactPath(outputDir, session, "cache", "keeper.json");
+var logFile = (outputDir, session) => artifactPath(outputDir, session, "cache", "keeper.log");
+function isKeeperProcess(pid) {
+  const res = spawnSync2("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8" });
+  return res.status === 0 && res.stdout.includes("cache keeper");
+}
+function cliErrorFrom(stdout) {
+  try {
+    const { error } = JSON.parse(stdout);
+    if (error?.code) return new CliError(error.code, error.message, { hint: error.hint });
+  } catch {
+  }
+  return null;
+}
+function readReady(child, log) {
+  return new Promise((resolve7, reject) => {
+    let out = "";
+    const failed = (detail) => new CliError("INTERNAL", `cache keeper did not start: ${detail}`, {
+      hint: `see ${log}`
+    });
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(failed(`no answer within ${START_TIMEOUT_MS} ms`));
+    }, START_TIMEOUT_MS);
+    child.stdout.on("data", (chunk) => {
+      out += chunk;
+      const newline = out.indexOf("\n");
+      if (newline < 0) return;
+      try {
+        const ready = JSON.parse(out.slice(0, newline));
+        if (Number.isInteger(ready.port)) {
+          clearTimeout(timer);
+          resolve7(ready);
+        }
+      } catch {
+      }
+    });
+    child.once("error", (err) => {
+      clearTimeout(timer);
+      reject(failed(err.message));
+    });
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      reject(cliErrorFrom(out) ?? failed(`exit ${code}`));
+    });
+  });
+}
+async function stopKeeper({ session, outputDir }) {
+  const file = stateFile(outputDir, session);
+  if (!existsSync3(file)) return null;
+  const { pid, port } = JSON.parse(readFileSync2(file, "utf8"));
+  rmSync2(file, { force: true });
+  const base = `http://127.0.0.1:${port}`;
+  try {
+    const status2 = await fetch(`${base}/__status`, {
+      signal: AbortSignal.timeout(STOP_TIMEOUT_MS)
+    }).then((res) => res.json());
+    await fetch(`${base}/__stop`, { signal: AbortSignal.timeout(STOP_TIMEOUT_MS) });
+    const { hits, misses, stored, errors } = status2;
+    return { hits, misses, stored, errors };
+  } catch {
+    if (isKeeperProcess(pid)) {
+      try {
+        process.kill(pid);
+      } catch {
+      }
+    }
+    return null;
+  }
+}
+async function startKeeperProcess({
+  cacheDir,
+  session,
+  outputDir,
+  argv1 = process.argv[1]
+}) {
+  await stopKeeper({ session, outputDir });
+  const dir = path2.resolve(cacheDir);
+  mkdirSync3(outputDir, { recursive: true });
+  const log = logFile(outputDir, session);
+  const logFd = openSync(log, "w");
+  const args = [argv1, "cache", "keeper", "--cache", dir, "--session", session];
+  const child = spawn(process.execPath, [...args, "--output", outputDir], {
+    detached: true,
+    stdio: ["ignore", "pipe", logFd]
+  });
+  closeSync(logFd);
+  const ready = await readReady(child, log);
+  child.removeAllListeners("exit");
+  child.stdout.destroy();
+  child.unref();
+  const state = { pid: child.pid, port: ready.port, dir };
+  writeFileSync3(stateFile(outputDir, session), JSON.stringify(state));
+  return { ...state, entries: ready.entries };
+}
+function hasKeeper({ session, outputDir }) {
+  return existsSync3(stateFile(outputDir, session));
+}
+
 // src/commands/browser.mjs
 var HELP = {
   OPEN: `
 Example:
   S=$(web browser open https://example.com --headed | jq -r .session)
 Output:
-  { session, url, headed, cdpPort? }
+  { session, url, headed, cdpPort?, proxy?, cache?: { dir, entries } }
 Notes:
   Without --session a name web-<4 hex> is generated and returned. An open name exits 2
   (SESSION_EXISTS). --recipe applies a recipe from \`web probe\`. Leaves the browser open.
+  --proxy routes the browser through web cache proxy (certificate errors ignored).
+  --cache <dir> records every page the session loads into per-page HARs (the cache record
+  format) and serves cached requests from disk; all network requests are made by the
+  browser. A background keeper serves the cache until browser close. Not with --proxy.
+  Every response is recorded with its original status (errors included, redirect hops with
+  redirectURL); only 2xx/3xx are served from the cache, errors are re-checked live. Redirect
+  hops after the first are always fetched live (Playwright does not route them). Service
+  workers are blocked in a cache session.
 `,
   ATTACH: `
 Example:
@@ -4270,7 +4539,9 @@ Notes:
 Example:
   web browser close --session "$S"
 Output:
-  { session, status }
+  { session, status, cache?: { hits, misses, stored, errors } | null }
+Notes:
+  cache is present for a session opened with --cache; null when its keeper had stopped.
 Exit codes:
   2 NO_SESSION when the session is not open.
 `,
@@ -4330,6 +4601,63 @@ function sessionUrl(driver, { name, status: status2 }) {
     return null;
   }
 }
+function assertUrl(value) {
+  try {
+    new URL(value);
+  } catch {
+    throw new CliError("USAGE", `invalid --proxy url: ${value}`, {
+      hint: "pass an absolute URL such as http://127.0.0.1:3002"
+    });
+  }
+}
+function closeQuietly(driver, session) {
+  try {
+    driver.close(session);
+  } catch (err) {
+    process.stderr.write(`warning: failed to close session ${session}: ${err.message}
+`);
+  }
+}
+async function openWithCache({ driver, keeper, openArgs, url, cacheDir, outputDir }) {
+  const { session } = openArgs;
+  if (driver.list().some((s) => s.name === session && s.status === "open")) {
+    throw new CliError("SESSION_EXISTS", `session '${session}' is already open`, {
+      hint: "choose another --session or run: web browser close --session <name>"
+    });
+  }
+  const started = await keeper.start({ cacheDir, session, outputDir });
+  try {
+    const config = extendConfig(openArgs.config, { contextOptions: { serviceWorkers: "block" } });
+    driver.open({ ...openArgs, url: void 0, config });
+    driver.run(session, { code: cacheHooksCode(started.port) });
+    if (url) driver.goto(session, url);
+  } catch (err) {
+    await keeper.stop({ session, outputDir });
+    closeQuietly(driver, session);
+    throw err;
+  }
+  return { dir: started.dir, entries: started.entries };
+}
+function flushCache(driver, session, stderr) {
+  try {
+    return driver.run(session, { code: CACHE_STATS_CODE });
+  } catch (err) {
+    stderr.write(`warning: cannot flush cache recordings for ${session}: ${err.message}
+`);
+    return 0;
+  }
+}
+async function closeCache({ driver, keeper, session, outputDir, stderr }) {
+  const hookErrors = flushCache(driver, session, stderr);
+  driver.close(session);
+  const stats = await keeper.stop({ session, outputDir });
+  if (!stats) {
+    stderr.write(`warning: cache keeper for ${session} was not running
+`);
+    return null;
+  }
+  return { ...stats, errors: stats.errors + hookErrors };
+}
 function parseParams(json) {
   if (json === void 0) return {};
   try {
@@ -4345,23 +4673,52 @@ function registerBrowser(program2, deps) {
     const ctx = createContext(command, deps);
     await fn(ctx, ...args.slice(0, -2));
   });
+  const keeper = deps.keeper ?? { start: startKeeperProcess, stop: stopKeeper };
+  const stderr = deps.stderr ?? process.stderr;
   const openSession = (ctx) => {
     requireOpenSession(ctx.driver, ctx.opts.session);
     return ctx.opts.session;
   };
   action(
-    browser.command("open [url]").description("open a browser session").addHelpText("after", HELP.OPEN).option("--cdp-port <n>", "remote debugging port", parseIntArg).option("--persistent", "use a persistent profile"),
-    ({ opts, driver, print, recipe }, url) => {
+    browser.command("open [url]").description("open a browser session").addHelpText("after", HELP.OPEN).option("--cdp-port <n>", "remote debugging port", parseIntArg).option("--persistent", "use a persistent profile").option("--proxy <url>", "route the browser through a web cache proxy").option("--cache <dir>", "record and replay the session in HARs under <dir>"),
+    async ({ opts, driver, print, recipe }, url) => {
       const session = opts.session ?? generateSessionName();
-      const cdpPort = opts.cdpPort;
-      driver.open({
+      const { cdpPort, proxy } = opts;
+      if (proxy && opts.cache) {
+        throw new CliError("USAGE", "--cache and --proxy cannot be combined", {
+          hint: "use --cache to record while browsing, or --proxy to replay via cache proxy"
+        });
+      }
+      if (proxy) assertUrl(proxy);
+      const launch2 = resolveLaunch(recipe, { persistent: opts.persistent });
+      const config = proxy ? extendConfig(launch2.config, {
+        launchOptions: { proxy: { server: proxy } },
+        contextOptions: { ignoreHTTPSErrors: true }
+      }) : launch2.config;
+      const openArgs = {
         session,
         url,
         headed: opts.headed,
         cdpPort,
-        ...resolveLaunch(recipe, { persistent: opts.persistent })
+        ...launch2,
+        ...config && { config }
+      };
+      let cache;
+      if (opts.cache) {
+        const cacheDir = opts.cache;
+        const outputDir = opts.output;
+        cache = await openWithCache({ driver, keeper, openArgs, url, cacheDir, outputDir });
+      } else {
+        driver.open(openArgs);
+      }
+      print({
+        session,
+        url,
+        headed: Boolean(opts.headed),
+        ...cdpPort && { cdpPort },
+        ...proxy && { proxy },
+        ...opts.cache && { cache }
       });
-      print({ session, url, headed: Boolean(opts.headed), ...cdpPort && { cdpPort } });
     }
   );
   action(
@@ -4386,17 +4743,31 @@ function registerBrowser(program2, deps) {
   );
   action(
     browser.command("close").description("close the session").addHelpText("after", HELP.CLOSE),
-    (ctx) => {
+    async (ctx) => {
       const session = openSession(ctx);
-      ctx.driver.close(session);
-      ctx.print({ session, status: "closed" });
+      const outputDir = ctx.opts.output;
+      if (!hasKeeper({ session, outputDir })) {
+        ctx.driver.close(session);
+        return ctx.print({ session, status: "closed" });
+      }
+      const { driver } = ctx;
+      const cache = await closeCache({ driver, keeper, session, outputDir, stderr });
+      return ctx.print({ session, status: "closed", cache });
     }
   );
   action(
     browser.command("close-all").description("close every session").addHelpText("after", HELP.CLOSE_ALL),
-    (ctx) => {
-      const closed = ctx.driver.list().map((s) => s.name);
+    async (ctx) => {
+      const outputDir = ctx.opts.output;
+      const sessions = ctx.driver.list();
+      for (const { name, status: status2 } of sessions) {
+        if (status2 === "open" && hasKeeper({ session: name, outputDir })) {
+          flushCache(ctx.driver, name, stderr);
+        }
+      }
+      const closed = sessions.map((s) => s.name);
       ctx.driver.closeAll();
+      for (const session of closed) await keeper.stop({ session, outputDir });
       ctx.print({ closed });
     }
   );
@@ -4409,7 +4780,7 @@ function registerBrowser(program2, deps) {
   action(
     browser.command("run <file-or-code>").description("run a Playwright script or code").addHelpText("after", HELP.RUN),
     (ctx, arg) => {
-      const target = existsSync3(arg) ? { file: arg } : { code: arg };
+      const target = existsSync4(arg) ? { file: arg } : { code: arg };
       ctx.print({ result: ctx.driver.run(openSession(ctx), target) });
     }
   );
@@ -4425,13 +4796,13 @@ function registerBrowser(program2, deps) {
     (ctx) => {
       const session = openSession(ctx);
       const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
-      const path3 = artifactPath(ctx.opts.output, session, "screenshot", `${stamp}.png`);
+      const path9 = artifactPath(ctx.opts.output, session, "screenshot", `${stamp}.png`);
       ctx.driver.screenshot(session, {
-        path: path3,
+        path: path9,
         fullPage: ctx.opts.fullPage,
         selector: ctx.opts.selector
       });
-      ctx.print({ path: path3 });
+      ctx.print({ path: path9 });
     }
   );
   return browser;
@@ -4440,7 +4811,7 @@ function registerBrowser(program2, deps) {
 // src/commands/probe.mjs
 import { randomBytes as randomBytes2 } from "node:crypto";
 import { join as join2 } from "node:path";
-import { rmSync as rmSync2, writeFileSync as writeFileSync3 } from "node:fs";
+import { rmSync as rmSync3, writeFileSync as writeFileSync4 } from "node:fs";
 
 // src/driver/blocked.mjs
 var ERROR_TITLE_PATTERN = /error|denied|blocked|not satisfied|403|captcha|challenge|attention required|just a moment/i;
@@ -4599,7 +4970,7 @@ async function runStep(driver, { url, dir, stepDef, headed, log }) {
   const initScripts = [];
   try {
     if (stepDef.stealth) {
-      writeFileSync3(stealthPath, loadBundle("stealth-init.js"));
+      writeFileSync4(stealthPath, loadBundle("stealth-init.js"));
       initScripts.push(stealthPath);
     }
     const launch2 = {
@@ -4630,7 +5001,7 @@ async function runStep(driver, { url, dir, stepDef, headed, log }) {
     const step = { ...base, result: "error", health, durationMs: Date.now() - start };
     return { step, networkLines: [], browserConfig };
   } finally {
-    rmSync2(stealthPath, { force: true });
+    rmSync3(stealthPath, { force: true });
   }
 }
 function observe(driver, session, log) {
@@ -4687,7 +5058,7 @@ async function runProbe(driver, { url, outputDir, headed, recipeFile, log = () =
       steps.map((s) => s.health)
     )
   };
-  writeFileSync3(join2(dir, "probe-report.json"), JSON.stringify(report, null, 2));
+  writeFileSync4(join2(dir, "probe-report.json"), JSON.stringify(report, null, 2));
   if (!success) return { report, recipePath: null };
   const entry = {
     url,
@@ -4731,13 +5102,13 @@ function registerProbe(program2, deps) {
 // src/commands/ext.mjs
 import { createHash } from "node:crypto";
 import {
-  existsSync as existsSync4,
-  mkdirSync as mkdirSync3,
-  readFileSync as readFileSync2,
+  existsSync as existsSync5,
+  mkdirSync as mkdirSync4,
+  readFileSync as readFileSync3,
   realpathSync,
   statSync,
   unlinkSync,
-  writeFileSync as writeFileSync4
+  writeFileSync as writeFileSync5
 } from "node:fs";
 import { dirname, join as join3, resolve as resolve4 } from "node:path";
 var HELP3 = {
@@ -4789,11 +5160,11 @@ var FALLBACK_NOTES = {
 var LOAD_FAILED_HINT = "check manifest.json and the extension build; see chrome://extensions";
 function readManifest(dir) {
   const hint = "pass the built extension directory that contains manifest.json";
-  if (!existsSync4(dir) || !statSync(dir).isDirectory()) {
+  if (!existsSync5(dir) || !statSync(dir).isDirectory()) {
     throw new CliError("USAGE", `extension directory not found: ${dir}`, { hint });
   }
   try {
-    return JSON.parse(readFileSync2(join3(dir, "manifest.json"), "utf8"));
+    return JSON.parse(readFileSync3(join3(dir, "manifest.json"), "utf8"));
   } catch (err) {
     throw new CliError("USAGE", `cannot read manifest.json in ${dir}: ${err.message}`, { hint });
   }
@@ -4813,8 +5184,8 @@ function surfacePath(manifest, surface) {
   };
   return paths[surface];
 }
-function extensionIdForPath(path3) {
-  const hex = createHash("sha256").update(path3).digest("hex").slice(0, 32);
+function extensionIdForPath(path9) {
+  const hex = createHash("sha256").update(path9).digest("hex").slice(0, 32);
   return [...hex].map((c) => String.fromCharCode(97 + Number.parseInt(c, 16))).join("");
 }
 function verifyCode(extensionId) {
@@ -4865,8 +5236,8 @@ function sidepanelCode(extensionId, panelPath) {
     return { fallback: 'panel-not-found' };
   }`;
 }
-function openTabCode(path3, extensionId) {
-  const url = `chrome-extension://${extensionId}/${path3.replace(/^\//, "")}`;
+function openTabCode(path9, extensionId) {
+  const url = `chrome-extension://${extensionId}/${path9.replace(/^\//, "")}`;
   return `async page => {
     const p = await page.context().newPage();
     await p.goto(${JSON.stringify(url)});
@@ -4878,7 +5249,7 @@ function sessionFile(ctx) {
 }
 function loadSessionFile(ctx) {
   const file = sessionFile(ctx);
-  if (!existsSync4(file)) {
+  if (!existsSync5(file)) {
     const name = ctx.opts.session;
     throw new CliError("NO_SESSION", `no ext session ${name}`, {
       hint: `run: web ext launch <dist-dir> --session ${name}`
@@ -4888,7 +5259,7 @@ function loadSessionFile(ctx) {
 }
 function parseSessionFile(file) {
   try {
-    return JSON.parse(readFileSync2(file, "utf8"));
+    return JSON.parse(readFileSync3(file, "utf8"));
   } catch {
     throw new CliError("FAILURE", `corrupt ext session file ${file}`, {
       hint: "run: web ext close --session <name> then launch again"
@@ -4933,8 +5304,8 @@ function launch(ctx, distDir) {
   verifyLoaded(driver, { session, extensionId, name: manifest.name });
   const info = { session, extensionId, extensionPath: abs, surfaces, cdpPort };
   const file = artifactPath(opts.output, session, "ext", "session.json");
-  mkdirSync3(dirname(file), { recursive: true });
-  writeFileSync4(file, JSON.stringify(info));
+  mkdirSync4(dirname(file), { recursive: true });
+  writeFileSync5(file, JSON.stringify(info));
   print(info);
 }
 function open(ctx, surface) {
@@ -4947,17 +5318,17 @@ function open(ctx, surface) {
       hint: `available surfaces: ${avail}`
     });
   }
-  const path3 = surfacePath(readManifest(info.extensionPath), surface);
-  const openTab = () => driver.run(opts.session, { code: openTabCode(path3, info.extensionId) });
+  const path9 = surfacePath(readManifest(info.extensionPath), surface);
+  const openTab = () => driver.run(opts.session, { code: openTabCode(path9, info.extensionId) });
   if (surface !== "sidepanel") return print({ surface, url: openTab() });
-  const code = sidepanelCode(info.extensionId, path3);
+  const code = sidepanelCode(info.extensionId, path9);
   const res = driver.run(opts.session, { code });
   if (res?.url) return print({ surface, url: res.url, targetId: res.targetId });
   print({ surface, url: openTab(), note: FALLBACK_NOTES[res?.fallback] });
 }
 function status({ driver, opts, print }) {
   const file = artifactPath(opts.output, opts.session, "ext", "session.json");
-  const info = existsSync4(file) ? parseSessionFile(file) : null;
+  const info = existsSync5(file) ? parseSessionFile(file) : null;
   const isOpen = driver.list().some((s) => s.name === opts.session && s.status === "open");
   print({
     session: opts.session,
@@ -4970,7 +5341,7 @@ function close(ctx) {
   const { driver, opts, print } = ctx;
   driver.close(opts.session);
   const file = sessionFile(ctx);
-  if (existsSync4(file)) unlinkSync(file);
+  if (existsSync5(file)) unlinkSync(file);
   print({ session: opts.session, status: "closed" });
 }
 function needSession(ctx) {
@@ -5008,7 +5379,7 @@ function registerExt(program2, deps) {
 
 // src/commands/mask.mjs
 import { execFileSync, execSync } from "node:child_process";
-import { mkdtempSync, readFileSync as readFileSync3, rmSync as rmSync3, writeFileSync as writeFileSync5 } from "node:fs";
+import { mkdtempSync, readFileSync as readFileSync4, rmSync as rmSync4, writeFileSync as writeFileSync6 } from "node:fs";
 import { request as httpRequest } from "node:http";
 import { createServer as createHttpsServer, request as httpsRequest } from "node:https";
 import { tmpdir } from "node:os";
@@ -5033,20 +5404,20 @@ function requireMkcert({ exec = execSync } = {}) {
   }
 }
 function addHostsEntry(hostsFile, entry, log) {
-  const hosts = readFileSync3(hostsFile, "utf8");
+  const hosts = readFileSync4(hostsFile, "utf8");
   if (hosts.includes(entry)) {
     log(`Hosts entry already exists: ${entry}`);
     return;
   }
-  writeFileSync5(hostsFile, `${hosts.trimEnd()}
+  writeFileSync6(hostsFile, `${hosts.trimEnd()}
 ${entry}
 `);
   log(`Added to ${hostsFile}: ${entry}`);
 }
 function removeHostsEntry(hostsFile, entry, log) {
   try {
-    const kept = readFileSync3(hostsFile, "utf8").split("\n").filter((line) => line.trim() !== entry).join("\n");
-    writeFileSync5(hostsFile, kept);
+    const kept = readFileSync4(hostsFile, "utf8").split("\n").filter((line) => line.trim() !== entry).join("\n");
+    writeFileSync6(hostsFile, kept);
     log(`Removed from ${hostsFile}: ${entry}`);
   } catch (err) {
     log(`Warning: could not clean ${hostsFile}: ${err.message}`);
@@ -5080,13 +5451,13 @@ function makeProxy({ target, displayDomain, log }) {
 }
 async function startMask({
   displayDomain,
-  targetUrl,
+  targetUrl: targetUrl2,
   hostsFile = "/etc/hosts",
   port = 443,
   log = (s) => process.stderr.write(`${s}
 `)
 }) {
-  const target = new URL(targetUrl);
+  const target = new URL(targetUrl2);
   const entry = `127.0.0.1 ${displayDomain}`;
   const certDir = mkdtempSync(join4(tmpdir(), "domain-mask-"));
   const keyFile = join4(certDir, "key.pem");
@@ -5099,7 +5470,7 @@ async function startMask({
     log("Generated trusted certificate via mkcert");
     addHostsEntry(hostsFile, entry, log);
     server = createHttpsServer(
-      { key: readFileSync3(keyFile), cert: readFileSync3(certFile) },
+      { key: readFileSync4(keyFile), cert: readFileSync4(certFile) },
       makeProxy({ target, displayDomain, log })
     );
     await new Promise((resolve7, reject) => {
@@ -5108,7 +5479,7 @@ async function startMask({
     });
   } catch (err) {
     removeHostsEntry(hostsFile, entry, log);
-    rmSync3(certDir, { recursive: true, force: true });
+    rmSync4(certDir, { recursive: true, force: true });
     throw err;
   }
   const actual = server.address().port;
@@ -5122,7 +5493,7 @@ async function startMask({
     });
     removeHostsEntry(hostsFile, entry, log);
     try {
-      rmSync3(certDir, { recursive: true });
+      rmSync4(certDir, { recursive: true });
     } catch (err) {
       log(`Warning: could not remove ${certDir}: ${err.message}`);
     }
@@ -5153,24 +5524,24 @@ Output:
 Notes:
   Runs in the foreground until Ctrl-C, then restores /etc/hosts and removes certs.
   Needs sudo (hosts file, port 443) and mkcert. Without root it exits 2 (USAGE).`
-  ).action(async (displayDomain, targetUrl, _opts, command) => {
+  ).action(async (displayDomain, targetUrl2, _opts, command) => {
     if (!validateDisplayDomain(displayDomain)) {
       throw new CliError("USAGE", "invalid domain name", {
         hint: "use letters, digits, dots and hyphens, e.g. wknd.adventures"
       });
     }
     try {
-      new URL(targetUrl);
+      new URL(targetUrl2);
     } catch {
-      throw new CliError("USAGE", `invalid target URL: ${targetUrl}`, {
+      throw new CliError("USAGE", `invalid target URL: ${targetUrl2}`, {
         hint: "pass an absolute URL such as https://example.com"
       });
     }
     requireRoot({ getuid: deps.getuid });
     requireMkcert();
-    const { url, stop } = await startMask({ displayDomain, targetUrl });
+    const { url, stop } = await startMask({ displayDomain, targetUrl: targetUrl2 });
     const { format } = command.optsWithGlobals();
-    emit({ url, displayDomain, targetUrl }, { format, stdout });
+    emit({ url, displayDomain, targetUrl: targetUrl2 }, { format, stdout });
     await waitForSignal(stop);
   });
 }
@@ -5191,7 +5562,7 @@ function preparePage(driver, session, { unpin = false, settleMs } = {}) {
 }
 
 // src/page/run.mjs
-import { existsSync as existsSync5 } from "node:fs";
+import { existsSync as existsSync6 } from "node:fs";
 async function runPageCommand(command, deps, { url, fn, records }) {
   const ctx = createContext(command, deps);
   if (!url && !ctx.opts.session) {
@@ -5208,7 +5579,7 @@ async function runPageCommand(command, deps, { url, fn, records }) {
       session: ctx.opts.session,
       url,
       headed: ctx.opts.headed,
-      recipePath: recording && !existsSync5(ctx.recipe ?? "") ? void 0 : ctx.recipe,
+      recipePath: recording && !existsSync6(ctx.recipe ?? "") ? void 0 : ctx.recipe,
       recipeSkip: recording ? [records] : [],
       recipeExplicit: ctx.recipeExplicit && !recording
     },
@@ -5555,11 +5926,11 @@ function registerReduce(group, deps) {
 }
 
 // src/commands/page/collect.mjs
-import { writeFileSync as writeFileSync7 } from "node:fs";
+import { writeFileSync as writeFileSync8 } from "node:fs";
 import { join as join6 } from "node:path";
 
 // src/page/icons.mjs
-import { mkdirSync as mkdirSync4, writeFileSync as writeFileSync6 } from "node:fs";
+import { mkdirSync as mkdirSync5, writeFileSync as writeFileSync7 } from "node:fs";
 import { join as join5 } from "node:path";
 var ICON_MAX_SIZE = 48;
 var KNOWN_PATTERNS = [
@@ -5665,7 +6036,7 @@ function dropSpriteDuplicates(svgs) {
   });
 }
 function writeIcons(svgs, url, iconsDir) {
-  mkdirSync4(iconsDir, { recursive: true });
+  mkdirSync5(iconsDir, { recursive: true });
   const icons = [];
   let unnamedIndex = 1;
   const usedNames = /* @__PURE__ */ new Set();
@@ -5699,7 +6070,7 @@ function writeIcons(svgs, url, iconsDir) {
     usedNames.add(name);
     const optimized = optimizeSvg(svgContent, classification);
     const filename = `${name}.svg`;
-    writeFileSync6(join5(iconsDir, filename), optimized);
+    writeFileSync7(join5(iconsDir, filename), optimized);
     const context = [
       entry.containerTag ? entry.containerTag.toLowerCase() : "",
       entry.parentTag ? entry.parentTag.toLowerCase() : "",
@@ -5715,7 +6086,7 @@ function writeIcons(svgs, url, iconsDir) {
     });
   }
   const manifest = { url, icons };
-  writeFileSync6(join5(iconsDir, "icons.json"), JSON.stringify(manifest, null, 2));
+  writeFileSync7(join5(iconsDir, "icons.json"), JSON.stringify(manifest, null, 2));
   return manifest;
 }
 
@@ -5728,15 +6099,15 @@ function extract(driver, session, what) {
   const data = driver.run(session, { code });
   return typeof data === "string" ? JSON.parse(data) : data;
 }
-function writeJson(path3, value) {
-  writeFileSync7(path3, `${JSON.stringify(value, null, 2)}
+function writeJson(path9, value) {
+  writeFileSync8(path9, `${JSON.stringify(value, null, 2)}
 `);
-  return path3;
+  return path9;
 }
-function takeScreenshot(driver, session, path3, stderr) {
+function takeScreenshot(driver, session, path9, stderr) {
   try {
-    driver.screenshot(session, { path: path3 });
-    return path3;
+    driver.screenshot(session, { path: path9 });
+    return path9;
   } catch (err) {
     stderr.write(`Warning: screenshot failed - ${err.message}
 `);
@@ -5759,27 +6130,27 @@ function collectPage(driver, session, { what, outputDir, stderr = process.stderr
   const data = extract(driver, session, what);
   const { url } = driver.pageHealth(session);
   const dir = artifactDir(outputDir, session, "collect");
-  const path3 = (name) => join6(dir, name);
+  const path9 = (name) => join6(dir, name);
   const files = {};
   const results = {};
   if (data.svgs) {
-    const iconsDir = path3("icons");
+    const iconsDir = path9("icons");
     results.icons = writeIcons(data.svgs, url, iconsDir);
     files.icons = iconsDir;
   }
   for (const name of DATA_COLLECTORS.filter((n) => data[n])) {
     results[name] = data[name];
-    files[name] = writeJson(path3(`${name}.json`), data[name]);
+    files[name] = writeJson(path9(`${name}.json`), data[name]);
   }
   if (what !== "all") return { ...results[what], files };
-  const screenshot = takeScreenshot(driver, session, path3("screenshot.jpg"), stderr);
+  const screenshot = takeScreenshot(driver, session, path9("screenshot.jpg"), stderr);
   const collection = {
     url,
     collectedAt: (/* @__PURE__ */ new Date()).toISOString(),
     screenshot,
     collectors: results
   };
-  files.collection = writeJson(path3("collection.json"), collection);
+  files.collection = writeJson(path9("collection.json"), collection);
   return { ...collection, files };
 }
 function registerCollect(group, deps) {
@@ -5801,7 +6172,7 @@ function registerCollect(group, deps) {
 }
 
 // src/page/langs-detect.mjs
-import { existsSync as existsSync6 } from "node:fs";
+import { existsSync as existsSync7 } from "node:fs";
 import { dirname as dirname2, join as join7 } from "node:path";
 import { fileURLToPath } from "node:url";
 var MIN_BLOCK_BYTES = 50;
@@ -5893,7 +6264,7 @@ function detectLanguages(signals, detector) {
 }
 function findPackageDir(start) {
   let dir = start;
-  while (!existsSync6(join7(dir, "package.json")) && dirname2(dir) !== dir) dir = dirname2(dir);
+  while (!existsSync7(join7(dir, "package.json")) && dirname2(dir) !== dir) dir = dirname2(dir);
   return dir;
 }
 async function loadDetector(importer = (m) => import(m)) {
@@ -5932,9 +6303,9 @@ function registerLangs(group, deps) {
 
 // src/page/overlay-db.mjs
 import fs2 from "node:fs";
-import path2 from "node:path";
+import path3 from "node:path";
 import os from "node:os";
-var CACHE_DIR = path2.join(
+var CACHE_DIR = path3.join(
   process.env.HOME || process.env.USERPROFILE || os.homedir(),
   ".cache",
   "page-prep"
@@ -6134,8 +6505,8 @@ async function loadRawPatterns({
   cacheDir = CACHE_DIR,
   stderr = process.stderr
 } = {}) {
-  const patternsFile = path2.join(cacheDir, "patterns.json");
-  const lastFetchFile = path2.join(cacheDir, "last-fetch");
+  const patternsFile = path3.join(cacheDir, "patterns.json");
+  const lastFetchFile = path3.join(cacheDir, "last-fetch");
   const cached = readCache(patternsFile);
   if (cached && !refresh && !isCacheStale(lastFetchFile)) return cached;
   try {
@@ -6307,7 +6678,7 @@ import { resolve as resolve6 } from "node:path";
 // src/cache/proxy.mjs
 import { createServer } from "node:http";
 import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync7, mkdirSync as mkdirSync5, readdirSync, readFileSync as readFileSync4, writeFileSync as writeFileSync8 } from "node:fs";
+import { existsSync as existsSync8, mkdirSync as mkdirSync6, readdirSync, readFileSync as readFileSync5, writeFileSync as writeFileSync9 } from "node:fs";
 import { dirname as dirname3, extname, join as join8, resolve as resolve5, sep } from "node:path";
 var UNCACHEABLE_REQUEST_HEADERS = [
   "host",
@@ -6354,7 +6725,7 @@ function cachePath(cacheDir, url) {
   if (!full.startsWith(`${root}${sep}`)) throw new Error(`cache path escapes ${root}: ${url}`);
   return full;
 }
-var sidecarPath = (bodyPath) => `${bodyPath}{meta}.json`;
+var sidecarPath = (bodyPath2) => `${bodyPath2}{meta}.json`;
 function countFiles(dir) {
   let n = 0;
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -6378,7 +6749,7 @@ function rewriteOrigin(buf, origin, contentType) {
   );
   return Buffer.from(text, "utf-8");
 }
-var withOrigin = (path3, origin) => `${path3}${path3.includes("?") ? "&" : "?"}_origin=${encodeURIComponent(origin)}`;
+var withOrigin = (path9, origin) => `${path9}${path9.includes("?") ? "&" : "?"}_origin=${encodeURIComponent(origin)}`;
 function absolutizeCssUrls(buf, cssUrl, contentType) {
   if (!isUtf8(contentType)) return buf;
   const text = buf.toString("utf-8").replace(/url\(\s*(['"]?)([^)'"]*?)\1\s*\)/gi, (m, q, ref) => {
@@ -6411,22 +6782,22 @@ async function startCacheProxy({
   }
 }) {
   const dir = resolve5(cacheDir);
-  mkdirSync5(dir, { recursive: true });
+  mkdirSync6(dir, { recursive: true });
   const alsoSet = new Set(also.map((o) => new URL(o).origin));
   const allowed = new Set(alsoSet);
   const inFlight = /* @__PURE__ */ new Map();
   const stats = { hits: 0, misses: 0, errors: 0 };
   const read = (url) => {
     const fp = cachePath(dir, url);
-    if (!existsSync7(fp) || !existsSync7(sidecarPath(fp))) return null;
-    const { headers, status: status2 } = JSON.parse(readFileSync4(sidecarPath(fp), "utf-8"));
-    return { body: readFileSync4(fp), headers, status: status2 };
+    if (!existsSync8(fp) || !existsSync8(sidecarPath(fp))) return null;
+    const { headers, status: status2 } = JSON.parse(readFileSync5(sidecarPath(fp), "utf-8"));
+    return { body: readFileSync5(fp), headers, status: status2 };
   };
   const write = (url, { body, headers, status: status2 }) => {
     const fp = cachePath(dir, url);
-    mkdirSync5(dirname3(fp), { recursive: true });
-    writeFileSync8(fp, body);
-    writeFileSync8(sidecarPath(fp), JSON.stringify({ headers, status: status2 }));
+    mkdirSync6(dirname3(fp), { recursive: true });
+    writeFileSync9(fp, body);
+    writeFileSync9(sidecarPath(fp), JSON.stringify({ headers, status: status2 }));
   };
   async function fetchAndStore(req, origin, originUrl) {
     log(`[fetch] ${originUrl}`);
@@ -6519,7 +6890,7 @@ async function startCacheProxy({
     const qs = reqUrl.search.slice(1).split("&").filter((p) => p && !p.startsWith("_origin=")).join("&");
     const originUrl = `${origin}${reqUrl.pathname}${qs ? `?${qs}` : ""}`;
     const cookie = alsoSet.has(origin) ? void 0 : `page-cache-origin=${encodeURIComponent(origin)}; Path=/`;
-    const send = (entry, extra = {}) => {
+    const send2 = (entry, extra = {}) => {
       const ct = entry.headers["content-type"] || "";
       const body = isText2(ct) ? rewriteAlso(entry.body, alsoSet, ct) : entry.body;
       res.writeHead(entry.status, {
@@ -6532,7 +6903,7 @@ async function startCacheProxy({
     const hit = (entry) => {
       stats.hits += 1;
       log(`[hit] ${originUrl}`);
-      send(entry, { "x-page-cache": "hit", "access-control-allow-origin": "*" });
+      send2(entry, { "x-page-cache": "hit", "access-control-allow-origin": "*" });
     };
     const cached = read(originUrl);
     if (cached) return hit(cached);
@@ -6552,7 +6923,7 @@ async function startCacheProxy({
       stats.misses += 1;
       const promise = fetchAndStore(req, origin, originUrl);
       inFlight.set(originUrl, promise);
-      send(await promise);
+      send2(await promise);
     } catch (err) {
       stats.errors += 1;
       log(`[error] ${originUrl}: ${err.message}`);
@@ -6586,8 +6957,612 @@ async function startCacheProxy({
   return { port: actual, url: `http://localhost:${actual}`, stats, closed, stop };
 }
 
+// src/cache/har-proxy.mjs
+import { createServer as createServer2 } from "node:http";
+import { mkdirSync as mkdirSync8 } from "node:fs";
+import path6 from "node:path";
+import tls from "node:tls";
+
+// src/cache/cert.mjs
+import { execFileSync as execFileSync2 } from "node:child_process";
+import { existsSync as existsSync9, mkdirSync as mkdirSync7, readFileSync as readFileSync6 } from "node:fs";
+import path4 from "node:path";
+function ensureCert(dir) {
+  const certDir = path4.join(dir, ".cert");
+  const keyPath = path4.join(certDir, "key.pem");
+  const certPath = path4.join(certDir, "cert.pem");
+  if (!existsSync9(keyPath) || !existsSync9(certPath)) {
+    mkdirSync7(certDir, { recursive: true });
+    try {
+      execFileSync2(
+        "openssl",
+        [
+          "req",
+          "-x509",
+          "-newkey",
+          "rsa:2048",
+          "-nodes",
+          "-subj",
+          "/CN=web-cache",
+          "-days",
+          "3650"
+        ].concat(["-keyout", keyPath, "-out", certPath]),
+        { stdio: "ignore" }
+      );
+    } catch (err) {
+      if (err.code === "ENOENT") {
+        throw new CliError("USAGE", "openssl not found", { hint: "install openssl" });
+      }
+      throw err;
+    }
+  }
+  return { key: readFileSync6(keyPath), cert: readFileSync6(certPath) };
+}
+
+// src/cache/har.mjs
+import { createHash as createHash3 } from "node:crypto";
+import { existsSync as existsSync10, readFileSync as readFileSync7, readdirSync as readdirSync2, realpathSync as realpathSync2, writeFileSync as writeFileSync10 } from "node:fs";
+import path5 from "node:path";
+var STRIPPED_HEADERS = /* @__PURE__ */ new Set(["content-encoding", "content-length", "transfer-encoding"]);
+function harFileName(url) {
+  const sha8 = createHash3("sha256").update(url).digest("hex").slice(0, 8);
+  return `${new URL(url).hostname}_${sha8}.har`;
+}
+function readHar(file) {
+  try {
+    const har = JSON.parse(readFileSync7(file, "utf8"));
+    if (!Array.isArray(har?.log?.entries)) throw new Error("missing log.entries");
+    return har;
+  } catch (err) {
+    throw new CliError("USAGE", `cannot read HAR ${path5.basename(file)}: ${err.message}`, {
+      hint: "Re-record it with `web cache record`, or delete the file."
+    });
+  }
+}
+function dropFailedEntries(harPath) {
+  const har = readHar(harPath);
+  const before = har.log.entries.length;
+  har.log.entries = har.log.entries.filter((e) => e.response.status > 0);
+  writeFileSync10(harPath, JSON.stringify(har));
+  return { entries: har.log.entries.length, dropped: before - har.log.entries.length };
+}
+function cleanHeaders(list) {
+  const headers = {};
+  for (const { name, value } of list ?? []) {
+    const key = name.toLowerCase();
+    if (key.startsWith(":") || STRIPPED_HEADERS.has(key)) continue;
+    const prev = headers[key];
+    if (key === "set-cookie") headers[key] = [...prev ?? [], value];
+    else headers[key] = prev === void 0 ? value : `${prev}, ${value}`;
+  }
+  return headers;
+}
+function realOrSelf(p) {
+  return existsSync10(p) ? realpathSync2(p) : p;
+}
+function bodyPath(dir, file) {
+  const root = realpathSync2(dir);
+  const resolved = realOrSelf(path5.resolve(root, file));
+  return resolved.startsWith(root + path5.sep) ? resolved : null;
+}
+function bodyReader(dir, content = {}) {
+  if (content._file) {
+    const file = bodyPath(dir, content._file);
+    if (!file) {
+      throw new CliError("USAGE", `HAR body path escapes the cache dir: ${content._file}`, {
+        hint: "Delete the HAR file, or re-record it with `web cache record`."
+      });
+    }
+    return () => readFileSync7(file);
+  }
+  if (content.text) {
+    const encoding = content.encoding === "base64" ? "base64" : "utf8";
+    return () => Buffer.from(content.text, encoding);
+  }
+  return () => Buffer.alloc(0);
+}
+function loadHarIndex(dir) {
+  const index = /* @__PURE__ */ new Map();
+  for (const name of readdirSync2(dir).filter((f) => f.endsWith(".har")).sort()) {
+    for (const { request, response } of readHar(path5.join(dir, name)).log.entries) {
+      const key = `${request.method} ${request.url}`;
+      const body = bodyReader(dir, response.content);
+      if (response.status === 304 && index.has(key)) continue;
+      index.set(key, {
+        status: response.status,
+        headers: cleanHeaders(response.headers),
+        body,
+        file: response.content?._file
+      });
+    }
+  }
+  return index;
+}
+
+// src/cache/har-proxy.mjs
+var TRACKER_HOSTS = /(^|\.)(google-analytics|analytics\.google|googletagmanager|doubleclick|googlesyndication|demdex|2o7\.net|omtrdc|clarity\.ms|hotjar|segment\.(io|com)|intellimize|stackadapt|attn\.tv|monorail|visualwebsiteoptimizer|semrush|owox)/;
+var TRACKER_ENDPOINTS = /(^|\.)facebook\.(com|net)\/tr\b|(^|\.)stripe\.com\/(0|\?)|^[^/]+\/cdn-cgi\/rum/;
+function isTracker(url) {
+  const { hostname, pathname, search } = new URL(url);
+  return TRACKER_HOSTS.test(hostname) || TRACKER_ENDPOINTS.test(`${hostname}${pathname}${search}`);
+}
+var UNFORWARDED_REQUEST_HEADERS = [
+  "connection",
+  "keep-alive",
+  "proxy-connection",
+  "proxy-authorization",
+  "te",
+  "trailer",
+  "transfer-encoding",
+  "upgrade",
+  "expect",
+  "host",
+  "accept-encoding",
+  "content-length"
+];
+var UNRELAYED_RESPONSE_HEADERS = /* @__PURE__ */ new Set([
+  "content-encoding",
+  "content-length",
+  "transfer-encoding",
+  "set-cookie"
+]);
+function send(res, { method, status: status2, headers, body }) {
+  const noLength = method === "HEAD" || status2 === 204 || status2 === 304;
+  const length = noLength ? {} : { "content-length": body.length };
+  res.writeHead(status2, { ...headers, ...length });
+  res.end(method === "HEAD" ? void 0 : body);
+}
+var readBody = async (req) => {
+  const chunks2 = [];
+  for await (const chunk of req) chunks2.push(chunk);
+  return Buffer.concat(chunks2);
+};
+async function fetchLive(req, url, timeoutMs) {
+  const headers = { ...req.headers };
+  for (const k of UNFORWARDED_REQUEST_HEADERS) delete headers[k];
+  const hasBody = req.method !== "GET" && req.method !== "HEAD";
+  const resp = await fetch(url, {
+    method: req.method,
+    headers,
+    body: hasBody ? await readBody(req) : void 0,
+    redirect: "manual",
+    signal: AbortSignal.timeout(timeoutMs)
+  });
+  const relayed = {};
+  for (const [k, v] of resp.headers) if (!UNRELAYED_RESPONSE_HEADERS.has(k)) relayed[k] = v;
+  const cookies = resp.headers.getSetCookie();
+  if (cookies.length) relayed["set-cookie"] = cookies;
+  return { status: resp.status, headers: relayed, body: Buffer.from(await resp.arrayBuffer()) };
+}
+function targetUrl(req) {
+  if (req.socket.encrypted) return `https://${req.headers.host?.replace(/:443$/, "")}${req.url}`;
+  return /^https?:\/\//.test(req.url) ? req.url : null;
+}
+async function startHarProxy({
+  port = 3002,
+  cacheDir,
+  offline = false,
+  timeoutMs = 5e3,
+  log = () => {
+  }
+}) {
+  const dir = path6.resolve(cacheDir);
+  mkdirSync8(dir, { recursive: true });
+  const index = loadHarIndex(dir);
+  const { key, cert } = ensureCert(dir);
+  const entries = index.size;
+  const stats = { hits: 0, misses: 0, live: 0, liveFailed: 0, blocked: 0, missed: /* @__PURE__ */ new Set() };
+  const text = (res, status2, message) => {
+    res.writeHead(status2, { "content-type": "text/plain" });
+    res.end(message);
+  };
+  function control(req, res) {
+    const { pathname } = new URL(req.url, "http://localhost");
+    if (pathname === "/__status") {
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ ...stats, entries, missed: [...stats.missed] }));
+    }
+    if (pathname !== "/__stop") return text(res, 404, "Not found.\n");
+    if (!isDirectRequest(req)) return text(res, 403, "Forbidden.\n");
+    text(res, 200, "Shutting down.\n");
+    return stop();
+  }
+  async function handle(req, res) {
+    const url = targetUrl(req);
+    if (!url) return control(req, res);
+    const hit = index.get(`${req.method} ${url}`);
+    if (hit) {
+      stats.hits += 1;
+      log(`[hit] ${url}`);
+      return send(res, { method: req.method, ...hit, body: hit.body() });
+    }
+    if (isTracker(url)) {
+      stats.blocked += 1;
+      log(`[blocked] ${url}`);
+      return send(res, { method: req.method, status: 403, headers: {}, body: Buffer.alloc(0) });
+    }
+    stats.misses += 1;
+    stats.missed.add(url);
+    if (offline) {
+      log(`[miss] ${url} (offline)`);
+      return text(res, 504, `Cache miss (offline): ${url}
+`);
+    }
+    try {
+      const live = await fetchLive(req, url, timeoutMs);
+      stats.live += 1;
+      log(`[live] ${url}`);
+      return send(res, { method: req.method, ...live });
+    } catch (err) {
+      stats.liveFailed += 1;
+      log(`[live-failed] ${url}: ${err.message}`);
+      return text(res, 502, `Live fetch failed: ${url}: ${err.message}
+`);
+    }
+  }
+  const server = createServer2((req, res) => {
+    handle(req, res).catch((err) => {
+      log(`[error] ${err.message}`);
+      if (!res.headersSent) text(res, 500, `Proxy error: ${err.message}
+`);
+    });
+  });
+  server.on("connect", (req, socket, head) => {
+    socket.on("error", (err) => log(`[tunnel-error] ${req.url}: ${err.message}`));
+    socket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+    if (head.length) socket.unshift(head);
+    const tlsSocket = new tls.TLSSocket(socket, {
+      isServer: true,
+      key,
+      cert,
+      ALPNProtocols: ["http/1.1"]
+    });
+    server.emit("connection", tlsSocket);
+  });
+  server.on("upgrade", (req, socket) => socket.destroy());
+  await new Promise((ok, fail2) => {
+    server.once("error", fail2);
+    server.listen(port, "127.0.0.1", ok);
+  });
+  const actual = server.address().port;
+  const closed = new Promise((ok) => server.once("close", ok));
+  const stop = () => {
+    server.close();
+    server.closeAllConnections();
+    return closed;
+  };
+  return { port: actual, url: `http://127.0.0.1:${actual}`, entries, stats, closed, stop };
+}
+
+// src/cache/record.mjs
+import { existsSync as existsSync11, mkdirSync as mkdirSync9, readFileSync as readFileSync8, renameSync, rmSync as rmSync5, statSync as statSync2 } from "node:fs";
+import path7 from "node:path";
+var SCROLL_TIMEOUT_MS = 18e4;
+var LOAD_AND_SCROLL = `async page => {
+  await page.waitForLoadState('load');
+  await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+  for (let i = 0; i < 150; i++) {
+    const h = await page.evaluate(() => document.documentElement.scrollHeight);
+    if (i * 300 > h) break;
+    await page.mouse.wheel(0, 300);
+    await page.waitForTimeout(600);
+  }
+  await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
+}`;
+var FLUSH_HAR = "async page => { await page.context().close() }";
+function harBytes(harPath) {
+  const { log } = JSON.parse(readFileSync8(harPath, "utf8"));
+  const dir = path7.dirname(harPath);
+  return log.entries.reduce((sum, { response }) => {
+    const file = response.content?._file && bodyPath(dir, response.content._file);
+    return file ? sum + statSync2(file).size : sum;
+  }, statSync2(harPath).size);
+}
+function closeQuietly2(driver, session) {
+  try {
+    driver.close(session);
+  } catch (err) {
+    process.stderr.write(`warning: failed to close session ${session}: ${err.message}
+`);
+  }
+}
+function recordPage(driver, { url, cacheDir, headed, recipe }) {
+  const dir = path7.resolve(cacheDir);
+  mkdirSync9(dir, { recursive: true });
+  const har = path7.join(dir, harFileName(url));
+  const launch2 = resolveLaunch(recipe, { headed });
+  const tmp = `${har}.tmp`;
+  const config = extendConfig(launch2.config, {
+    contextOptions: { recordHar: { path: tmp, content: "attach" } }
+  });
+  const session = generateSessionName();
+  rmSync5(tmp, { force: true });
+  try {
+    try {
+      driver.open({ session, url, headed, ...launch2, config });
+      assertNotBlocked(driver.pageHealth(session));
+      driver.run(session, { code: LOAD_AND_SCROLL, timeoutMs: SCROLL_TIMEOUT_MS });
+      driver.run(session, { code: FLUSH_HAR });
+    } catch (err) {
+      closeQuietly2(driver, session);
+      throw err;
+    }
+    if (!existsSync11(tmp)) throw new CliError("INTERNAL", `HAR not written: ${har}`);
+    const { entries, dropped } = dropFailedEntries(tmp);
+    renameSync(tmp, har);
+    return { url, har, entries, dropped, bytes: harBytes(har) };
+  } finally {
+    rmSync5(tmp, { force: true });
+  }
+}
+
+// src/cache/keeper.mjs
+import { createHash as createHash4 } from "node:crypto";
+import { existsSync as existsSync12, mkdirSync as mkdirSync10, readFileSync as readFileSync9, renameSync as renameSync2, writeFileSync as writeFileSync11 } from "node:fs";
+import { createServer as createServer3 } from "node:http";
+import path8 from "node:path";
+var EXTENSIONS = {
+  "text/html": "html",
+  "text/css": "css",
+  "text/javascript": "js",
+  "application/javascript": "js",
+  "application/json": "json",
+  "image/svg+xml": "svg",
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/avif": "avif",
+  "font/woff": "woff",
+  "font/woff2": "woff2",
+  "font/ttf": "ttf",
+  "font/otf": "otf",
+  "image/x-icon": "ico",
+  "image/vnd.microsoft.icon": "ico"
+};
+var mimeOf = (contentType = "") => contentType.split(";")[0].trim().toLowerCase();
+function isRecordable({ method, url, status: status2 }) {
+  if (method !== "GET" || status2 <= 0 || status2 === 206 || status2 === 304) return false;
+  return /^https?:\/\//.test(url) && !isTracker(url);
+}
+var isCacheable = (status2) => status2 >= 200 && status2 <= 399;
+var PAGE_ID = "page_1";
+var OPEN_RECORDINGS = 16;
+function redirectUrl(url, headers) {
+  const location = headers.find(({ name }) => name.toLowerCase() === "location")?.value;
+  if (!location) return "";
+  try {
+    return new URL(location, url).href;
+  } catch {
+    return location;
+  }
+}
+var fromWebPage = (req) => {
+  const site = req.headers["sec-fetch-site"];
+  return Boolean(req.headers.origin) || site !== void 0 && site !== "none";
+};
+var tmpCounter = 0;
+function writeAtomic(file, data) {
+  tmpCounter += 1;
+  const tmp = `${file}.${process.pid}-${tmpCounter}.tmp`;
+  writeFileSync11(tmp, data);
+  renameSync2(tmp, file);
+}
+var readJson = async (req) => {
+  const chunks2 = [];
+  for await (const chunk of req) chunks2.push(chunk);
+  return JSON.parse(Buffer.concat(chunks2).toString("utf8"));
+};
+function harEntry({
+  startedAt = Date.now(),
+  method,
+  url,
+  requestHeaders,
+  status: status2,
+  statusText,
+  headers,
+  mimeType,
+  size,
+  file
+}) {
+  return {
+    pageref: PAGE_ID,
+    startedDateTime: new Date(Number.isFinite(startedAt) ? startedAt : Date.now()).toISOString(),
+    time: 0,
+    request: {
+      method,
+      url,
+      httpVersion: "",
+      cookies: [],
+      headers: requestHeaders,
+      queryString: [],
+      headersSize: -1,
+      bodySize: 0
+    },
+    response: {
+      status: status2,
+      statusText,
+      httpVersion: "",
+      cookies: [],
+      headers,
+      content: { size, mimeType, ...file && { _file: file } },
+      redirectURL: redirectUrl(url, headers),
+      headersSize: -1,
+      bodySize: -1
+    },
+    cache: {},
+    timings: { send: 0, wait: 0, receive: 0 }
+  };
+}
+var headerList = (headers) => Object.entries(headers).flatMap(
+  ([name, value]) => (Array.isArray(value) ? value : [value]).map((v) => ({ name, value: v }))
+);
+function createStore(dir) {
+  const index = loadHarIndex(dir);
+  for (const [key, { status: status2 }] of index) if (!isCacheable(status2)) index.delete(key);
+  const entries = index.size;
+  const pages = /* @__PURE__ */ new Map();
+  function writeBody(body, mimeType) {
+    const ext = EXTENSIONS[mimeOf(mimeType)] ?? "bin";
+    const name = `${createHash4("sha1").update(body).digest("hex")}.${ext}`;
+    const file = path8.join(dir, name);
+    if (!existsSync12(file)) writeAtomic(file, body);
+    return name;
+  }
+  function append(page, entry) {
+    const current = pages.get(page);
+    if (!current) return;
+    const { entries: entries2 } = current.har.log;
+    const at = entries2.findLastIndex((e) => e.startedDateTime <= entry.startedDateTime);
+    entries2.splice(at + 1, 0, entry);
+    writeAtomic(current.file, JSON.stringify(current.har));
+  }
+  function startPage(page, url) {
+    const startedDateTime = (/* @__PURE__ */ new Date()).toISOString();
+    const harPages = [{ startedDateTime, id: PAGE_ID, title: url, pageTimings: {} }];
+    const creator = { name: "web-cli", version: "1" };
+    const har = { log: { version: "1.2", creator, pages: harPages, entries: [] } };
+    pages.set(page, { file: path8.join(dir, harFileName(url)), har });
+    if (pages.size > OPEN_RECORDINGS) pages.delete(pages.keys().next().value);
+  }
+  function lookup({ url, page }) {
+    const hit = index.get(`GET ${url}`);
+    if (!hit) return null;
+    const body = hit.body();
+    const mimeType = mimeOf(String(hit.headers["content-type"] ?? ""));
+    const file = hit.file ?? (body.length ? writeBody(body, mimeType) : void 0);
+    const headers = headerList(hit.headers);
+    append(
+      page,
+      harEntry({
+        method: "GET",
+        url,
+        requestHeaders: [],
+        status: hit.status,
+        statusText: "",
+        headers,
+        mimeType,
+        size: body.length,
+        file
+      })
+    );
+    return { status: hit.status, headers: hit.headers, body };
+  }
+  function store(response) {
+    const body = Buffer.from(response.body ?? "", "base64");
+    const mimeType = mimeOf(response.mimeType);
+    const file = body.length ? writeBody(body, mimeType) : void 0;
+    append(response.page, harEntry({ ...response, mimeType, size: body.length, file }));
+    if (!isCacheable(response.status)) {
+      index.delete(`GET ${response.url}`);
+      return;
+    }
+    const read = file ? () => readFileSync9(path8.join(dir, file)) : () => Buffer.alloc(0);
+    index.set(`GET ${response.url}`, {
+      status: response.status,
+      headers: cleanHeaders(response.headers),
+      body: read,
+      file
+    });
+  }
+  return { entries, lookup, store, startPage };
+}
+async function startKeeper({
+  cacheDir,
+  port = 0,
+  isSessionOpen,
+  livenessMs = 3e4,
+  log = () => {
+  }
+}) {
+  const dir = path8.resolve(cacheDir);
+  mkdirSync10(dir, { recursive: true });
+  const cache = createStore(dir);
+  const stats = { hits: 0, misses: 0, stored: 0, errors: 0 };
+  const reply = (res, status2, headers = {}, body = "") => {
+    res.writeHead(status2, headers);
+    res.end(body);
+  };
+  function onLookup(req, res, query) {
+    if (query.nav && !query.redirect) cache.startPage(query.page, query.url);
+    const hit = cache.lookup(query);
+    if (!hit) {
+      stats.misses += 1;
+      return reply(res, 404, { "x-web-cache": "miss" });
+    }
+    stats.hits += 1;
+    log(`[hit] ${query.url}`);
+    return reply(res, hit.status, { ...hit.headers, "x-web-cache": "hit" }, hit.body);
+  }
+  function onStore(req, res, response) {
+    if (isRecordable(response)) {
+      cache.store(response);
+      stats.stored += 1;
+      log(`[stored] ${response.url}`);
+    }
+    reply(res, 204);
+  }
+  async function handle(req, res) {
+    if (fromWebPage(req)) return reply(res, 403, {}, "Forbidden.\n");
+    const { pathname } = new URL(req.url, "http://localhost");
+    if (pathname === "/__status") {
+      const body = JSON.stringify({ ...stats, entries: cache.entries });
+      return reply(res, 200, { "content-type": "application/json" }, body);
+    }
+    if (pathname === "/__stop") {
+      reply(res, 200, {}, "Shutting down.\n");
+      return stop();
+    }
+    const handler = { "/lookup": onLookup, "/store": onStore }[pathname];
+    if (req.method !== "POST" || !handler) return reply(res, 404, {}, "Not found.\n");
+    let payload;
+    try {
+      payload = await readJson(req);
+    } catch (err) {
+      stats.errors += 1;
+      return reply(res, 400, {}, `Invalid JSON: ${err.message}
+`);
+    }
+    return handler(req, res, payload);
+  }
+  const server = createServer3((req, res) => {
+    handle(req, res).catch((err) => {
+      stats.errors += 1;
+      log(`[error] ${err.message}`);
+      if (!res.headersSent) reply(res, 500, {}, `Keeper error: ${err.message}
+`);
+    });
+  });
+  await new Promise((ok, fail2) => {
+    server.once("error", fail2);
+    server.listen(port, "127.0.0.1", ok);
+  });
+  const closed = new Promise((ok) => server.once("close", ok));
+  const stop = () => {
+    server.close();
+    server.closeAllConnections();
+    return closed;
+  };
+  if (isSessionOpen) {
+    const timer = setInterval(() => {
+      if (!isSessionOpen()) stop();
+    }, livenessMs);
+    timer.unref();
+    closed.then(() => clearInterval(timer));
+  }
+  const actual = server.address().port;
+  return {
+    port: actual,
+    url: `http://127.0.0.1:${actual}`,
+    entries: cache.entries,
+    stats,
+    closed,
+    stop
+  };
+}
+
 // src/commands/cache.mjs
-var HELP10 = `
+var SERVE_HELP = `
 Example:
   web cache serve --cache .page-cache &            # online: fetch once, save to disk
   playwright-cli open "http://localhost:3001/?_origin=https://example.com"
@@ -6599,6 +7574,30 @@ Notes:
   Binds 127.0.0.1 only. Open pages as <url>/path?_origin=<origin>; later requests follow the
   origin cookie. GET /__status returns hit/miss counts. A cache miss offline answers 504.
   --also names other origins (an image CDN) whose assets are cached and served like the page's.`;
+var RECORD_HELP = `
+Example:
+  web cache record https://example.com --cache .har-cache
+Output:
+  { url, har, entries, dropped, bytes }
+Notes:
+  Loads the page in a browser (recipe and --headed apply), scrolls to trigger lazy content and
+  saves every request to <cache>/<host>_<hash8>.har; failed requests are dropped.
+  One URL per call: loop for more. Re-recording a URL replaces its HAR.
+  Once cache proxy has run, the cache directory holds a private key: do not commit it.`;
+var PROXY_HELP = `
+Example:
+  web cache proxy --cache .har-cache &
+  web browser open https://example.com --proxy http://127.0.0.1:3002
+Output:
+  { url, port, cache, offline, entries } printed once the proxy listens; then it runs until
+  Ctrl-C, SIGTERM or GET /__stop.
+Notes:
+  A forward proxy on 127.0.0.1 that answers the real URLs recorded by cache record; HTTPS is
+  intercepted with a self-signed certificate (browser open --proxy accepts it). HARs are read
+  at start: restart to pick up new recordings. A miss is fetched live and never stored;
+  --offline answers it 504. A tracker miss is refused with 403, a failed or timed-out live
+  fetch answers 502, WebSocket upgrades are refused. GET /__status returns hit, miss, live and
+  blocked counts and the missed URLs.`;
 function waitUntilStopped(proxy) {
   return new Promise((ok) => {
     const stop = () => proxy.stop();
@@ -6611,9 +7610,8 @@ function waitUntilStopped(proxy) {
     });
   });
 }
-function registerCache(program2, deps = {}) {
-  const { stdout = process.stdout, stderr = process.stderr } = deps;
-  program2.command("cache").description("cache original pages locally for offline replay").command("serve").description("run the caching reverse proxy").option("--port <n>", "port to listen on (0 = any free port)", parseIntArg, 3001).option("--cache <dir>", "cache directory", ".page-cache").option("--offline", "serve from the cache only, never fetch").option("--timeout <ms>", "upstream fetch deadline", parsePositiveIntArg, 3e4).option("--also <origins>", "other origins whose assets the pages use, comma-separated").addHelpText("after", HELP10).action(async (opts, command) => {
+function registerServe(group, { stdout, stderr }) {
+  group.command("serve").description("run the caching reverse proxy").option("--port <n>", "port to listen on (0 = any free port)", parseIntArg, 3001).option("--cache <dir>", "cache directory", ".page-cache").option("--offline", "serve from the cache only, never fetch").option("--timeout <ms>", "upstream fetch deadline", parsePositiveIntArg, 3e4).option("--also <origins>", "other origins whose assets the pages use, comma-separated").addHelpText("after", SERVE_HELP).action(async (opts, command) => {
     const also = (opts.also ?? "").split(",").map((o) => o.trim()).filter(Boolean);
     for (const o of also) {
       try {
@@ -6650,6 +7648,91 @@ function registerCache(program2, deps = {}) {
     );
     await waitUntilStopped(proxy);
   });
+}
+function registerRecord(group, deps) {
+  group.command("record <url>").description("record a page and its resources into a HAR").option("--cache <dir>", "cache directory", ".har-cache").addHelpText("after", RECORD_HELP).action((url, opts, command) => {
+    try {
+      new URL(url);
+    } catch {
+      throw new CliError("USAGE", `invalid url: ${url}`, {
+        hint: "pass an absolute URL such as https://example.com"
+      });
+    }
+    const ctx = createContext(command, deps);
+    const result = recordPage(ctx.driver, {
+      url,
+      cacheDir: opts.cache,
+      headed: Boolean(ctx.opts.headed),
+      recipe: ctx.recipe
+    });
+    ctx.print(result);
+  });
+}
+function registerProxy(group, { stdout, stderr }) {
+  group.command("proxy").description("run a forward proxy that replays recorded HARs").option("--port <n>", "port to listen on (0 = any free port)", parseIntArg, 3002).option("--cache <dir>", "cache directory", ".har-cache").option("--timeout <ms>", "live fetch deadline for misses", parsePositiveIntArg, 5e3).option("--offline", "answer misses 504, never fetch").addHelpText("after", PROXY_HELP).action(async (opts, command) => {
+    const offline = Boolean(opts.offline);
+    const startFailed = (err) => {
+      if (err instanceof CliError) throw err;
+      throw new CliError("INTERNAL", `cannot start proxy on port ${opts.port}: ${err.message}`, {
+        hint: "pick another --port, or 0 for any free port"
+      });
+    };
+    const proxy = await startHarProxy({
+      port: opts.port,
+      cacheDir: opts.cache,
+      offline,
+      timeoutMs: opts.timeout,
+      log: (line) => stderr.write(`${line}
+`)
+    }).catch(startFailed);
+    const { format } = command.optsWithGlobals();
+    emit(
+      {
+        url: proxy.url,
+        port: proxy.port,
+        cache: resolve6(opts.cache),
+        offline,
+        entries: proxy.entries
+      },
+      { format, stdout }
+    );
+    await waitUntilStopped(proxy);
+  });
+}
+function sessionChecker(session, outputDir) {
+  return () => {
+    try {
+      const sessions = createDriver({ outputDir }).list();
+      return sessions.some((s) => s.name === session && s.status === "open");
+    } catch {
+      return false;
+    }
+  };
+}
+function registerKeeper(group, { stdout, stderr }) {
+  group.command("keeper", { hidden: true }).description("internal: the session cache keeper started by browser open --cache").requiredOption("--cache <dir>", "cache directory").action(async (opts, command) => {
+    const { session, output } = command.optsWithGlobals();
+    const keeper = await startKeeper({
+      cacheDir: opts.cache,
+      ...session && { isSessionOpen: sessionChecker(session, output) },
+      log: (line) => stderr.write(`${line}
+`)
+    });
+    stdout.write(`${JSON.stringify({ port: keeper.port, entries: keeper.entries })}
+`);
+    await waitUntilStopped(keeper);
+  });
+}
+function registerCache(program2, deps = {}) {
+  const { stdout = process.stdout, stderr = process.stderr } = deps;
+  const group = program2.command("cache").description("cache original pages locally for offline replay").addHelpText(
+    "after",
+    "\nTo record while browsing, open the session with: web browser open <url> --cache <dir>\n"
+  );
+  registerServe(group, { stdout, stderr });
+  registerRecord(group, deps);
+  registerProxy(group, { stdout, stderr });
+  registerKeeper(group, { stdout, stderr });
 }
 
 // src/site/crawl.mjs
@@ -6792,7 +7875,7 @@ async function crawl(origin, options = {}) {
 }
 
 // src/commands/site.mjs
-var HELP11 = `
+var HELP10 = `
 Example:
   web site scan https://example.com --exclude '**/archive/**' --limit 500 > urls.json
 Output:
@@ -6807,7 +7890,7 @@ Notes:
 var collect = (value, previous) => [...previous, value];
 function registerSite(program2, deps = {}) {
   const { stdout = process.stdout } = deps;
-  program2.command("site").description("discover a website: scan").command("scan <origin>").description("list the URLs of a site from its sitemaps or by following links").option("--strategy <name>", "sitemaps or http", "sitemaps").option("--include <glob>", "keep only matching URLs (repeatable)", collect, []).option("--exclude <glob>", "drop matching URLs (repeatable)", collect, []).option("--limit <n>", "stop after n valid URLs", parsePositiveIntArg).option("--timeout <ms>", "per-request timeout", parsePositiveIntArg, 1e4).option("--user-agent <ua>", "User-Agent header").addHelpText("after", HELP11).action(async (origin, opts, command) => {
+  program2.command("site").description("discover a website: scan").command("scan <origin>").description("list the URLs of a site from its sitemaps or by following links").option("--strategy <name>", "sitemaps or http", "sitemaps").option("--include <glob>", "keep only matching URLs (repeatable)", collect, []).option("--exclude <glob>", "drop matching URLs (repeatable)", collect, []).option("--limit <n>", "stop after n valid URLs", parsePositiveIntArg).option("--timeout <ms>", "per-request timeout", parsePositiveIntArg, 1e4).option("--user-agent <ua>", "User-Agent header").addHelpText("after", HELP10).action(async (origin, opts, command) => {
     if (!["sitemaps", "http"].includes(opts.strategy)) {
       throw new CliError("USAGE", `unknown strategy ${opts.strategy}`, {
         hint: "one of: sitemaps, http"
@@ -6849,7 +7932,7 @@ var listDocs = () => Object.keys(FILES2).map((f) => f.replace(/\.md$/, ""));
 var loadDoc = (topic) => FILES2[`${topic}.md`] ?? null;
 
 // src/commands/doc.mjs
-var HELP12 = `
+var HELP11 = `
 Prints Markdown, like --help does; --format has no effect here.
 Topics:
   web doc              list the topics
@@ -6857,7 +7940,7 @@ Topics:
 `;
 function registerDoc(program2, deps) {
   const out = deps.stdout ?? process.stdout;
-  program2.command("doc [topic]").description("read the long-form docs shipped with the CLI (text)").addHelpText("after", HELP12).action((topic) => {
+  program2.command("doc [topic]").description("read the long-form docs shipped with the CLI (text)").addHelpText("after", HELP11).action((topic) => {
     if (!topic) {
       out.write(
         `${listDocs().map((t) => `web doc ${t}`).join("\n")}
