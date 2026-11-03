@@ -44,9 +44,9 @@ the CLI's dependencies: from under a minute to a few minutes, depending on the n
 the test below skips it.
 
 ```bash
-DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-245493c"
+DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-3568dde"
 [ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&
-  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#245493c8d761855562a49111e9c9ea56f8548306&path:/plugins/web/cli"; }
+  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#3568dde960c5b6f8e04786c51c90771c34b91f24&path:/plugins/web/cli"; }
 WEB="$DIR/node_modules/.bin/web"
 "$WEB" header --help
 ```
