@@ -308,20 +308,24 @@ un-floating override.
 
 ## Fonts policy
 
-- **Same public source when available.** Extract intercepts the page's own
-  font loads; woff2 files that are freely licensed or already self-hostable
-  are self-hosted in the prototype (UC1-E1: same-source fonts, zero
-  substitutes needed, which is why the type matched exactly).
-- **Licensed commercial kits: substitute, never rehost** (prior art: the airport-site migration —
-  e.g. a domain-locked Monotype kit). Rules:
-  - Never re-host a commercial font on the new public domain.
-  - Pick a **metric-matched** substitute (or have the user supply their
-    licensed kit).
-  - Keep the brand family name FIRST in the font stack so a licensed
-    drop-in later wins without a code change.
-  - Surface the substitution to the user and log it in the progress ledger —
-    a substituted face is a permanent, justified gate residual (the width
-    probe will fork; record it as expected).
+Deploy § 4 principle 2 (#80) applies from the first archetype on:
+
+- **Self-host the source's own faces as-is.** Extract saves every font response under
+  `stardust/current/assets/fonts/`; ship those files — the same families, weights and styles — as
+  `@font-face` in the shared canon CSS (at delivery `styles/fonts.css`, per deploy § 4).
+- **Brand family FIRST in every stack; a metric-matched substitute only as the fallback entry
+  after it** — never a calibrated stand-in (no derived font files, no hand-tuned metrics), so a
+  licensed drop-in later wins without a code change.
+- **A `local()` source only for a face the gate's browser has.** The gate renders on Linux: a
+  fallback face whose `local()` names a macOS or Windows platform font resolves to nothing there,
+  the stack falls through to the browser default and every type metric forks. Name the
+  Linux-available metric fallbacks — Liberation Sans / Arimo (Arial class), Liberation Serif /
+  Tinos (Times class), Liberation Mono / Cousine (Courier class) — or self-host the fallback. The
+  capture names every dead face (`fontsFailed`, `source-fidelity-gate.md` § Hardening rule 14):
+  fix the stack before the next round.
+- **Proprietary faces raise deploy's licensing alert** (deploy § 4 principle 2, #80 — the banner,
+  `fonts/LICENSING.md`, the hand-off line; the remove path is deploy's) plus ONE register entry
+  for all of them (`preserve-direction.md` § 3).
 
 ## Asset harvest and the capture-state policy
 

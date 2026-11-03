@@ -52,13 +52,16 @@
  *     itself), then clicks the first slick-convention carousel dot so both
  *     sides capture slide 1 deterministically. All symmetric — applied
  *     identically to live and prototype, so it cannot bias the diff.
- *   - FONT-LOAD assertion before capture (F-B2 companion): a webfont that
- *     failed to fetch renders the whole capture in fallback type — the same
+ *   - FONT-LOAD assertion before capture (F-B2 companion): a face that
+ *     failed to load renders the capture in fallback type — the same
  *     silent-false-measurement class as capturing a challenge page. After
- *     document.fonts.ready, any declared FontFace with status 'error' is
- *     reported LOUDLY with the family names; the operator must decide
- *     whether the failure is instrument-induced (a capture defect — fix the
- *     instrument) or real on the live site (capture-state — log it).
+ *     document.fonts.ready every DEAD FACE (deadFontFaces: status 'error'
+ *     with no loaded face of the same family, weight and style — a fetch
+ *     that failed, or a local() source this browser lacks) is reported
+ *     LOUDLY and recorded as the capture record's fontsFailed; a check that
+ *     could not run is fontsFailed null + fontCheck, never "every face
+ *     loaded". The operator decides: instrument-induced (fix the capture)
+ *     or real on the live site (capture-state — log it).
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
@@ -108,8 +111,9 @@
  * Writes <out.png> and <stem>.capture.json beside it (live.png →
  * live.capture.json): { writtenBy, url, width, vh, height (the PNG's),
  * chunks, denialCheck ('ok' | 'skipped: <reason>' — the denial-page read
- * after the dismissal sweeps), fixedLayers ('once', the count, late = those that
- * appeared after scroll 0), at }. Removed when a capture starts, written
+ * after the dismissal sweeps), fontsFailed ([] | the dead faces' families |
+ * null + fontCheck "failed: <msg>"), fixedLayers ('once', the count, late = those
+ * that appeared after scroll 0), at }. Removed when a capture starts, written
  * with the PNG — a failed or refused capture leaves none. A --freeze-baseline
  * capture writes baseline.json instead (HELP § Origin baseline), fixedLayers included.
  *
@@ -182,9 +186,12 @@ bookkeeping — no browser, no network:
                     A round without the flag retakes a live.png whose record says "baseline". Exit 0; 1 usage.
 
 Writes <out.png> and <stem>.capture.json beside it (live.png → live.capture.json; removed when a capture starts, so a
-failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, at } — denialCheck = 'ok' |
-'skipped: <reason>' (the denial-page read after the dismissal sweeps). A --freeze-baseline capture writes baseline.json
-instead. Fixed/sticky layers are captured once: chunk 1, or where one turns fixed later (a WARNING); a backdrop
+failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, fontsFailed, fixedLayers, at } — denialCheck = 'ok' |
+'skipped: <reason>' (the denial-page read after the dismissal sweeps); fontsFailed = [] (every declared face loaded), or the
+dead faces' families (status error with no loaded face of the same family, weight and style: a file that failed to fetch,
+or a local() source this browser cannot resolve), or null + fontCheck "failed: <msg>" when the check could not run (one
+stderr line — never a pass). gate.sh prints it per side, gate-all fails the row. A --freeze-baseline capture writes
+baseline.json instead. Fixed/sticky layers are captured once: chunk 1, or where one turns fixed later (a WARNING); a backdrop
 (negative z-index, or ≥ 90 % of the viewport) stays in every chunk. A fixed layer left showing that reads like
 consent / sign-up copy is a WARNING.
 Run the SAME command shape against the live page and the served prototype.
@@ -398,6 +405,62 @@ export function recordCommand(argv) {
   }
   writeJsonAtomic(file, liveRecord({ origin: o.origin, url: o.url, width: o.width, at: o.at, baseline }));
   return 0;
+}
+
+// ── The font check (header § FONT-LOAD assertion) — pure, no browser: the tests read these ──────────────────────────
+
+/** Family names for the record: surrounding quotes stripped, trimmed, empties dropped, unique, sorted. */
+export function fontFamilies(list) {
+  const names = (list || []).map((f) => String(f ?? '').trim().replace(/^(["'])(.*)\1$/, '$2').trim());
+  return [...new Set(names.filter(Boolean))].sort();
+}
+
+/**
+ * A face's identity for the dead-face rule: family (unquoted, case-folded) + weight + style — normal = 400, bold = 700,
+ * an absent descriptor is the default. `f` is { family, weight, style } (a FontFace's descriptors) or a bare family.
+ */
+export function faceKey(f) {
+  const face = typeof f === 'string' ? { family: f } : f || {};
+  const family = fontFamilies([face.family])[0] || '';
+  const w = String(face.weight ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const weight = !w || w === 'normal' ? '400' : w === 'bold' ? '700' : w;
+  const style = String(face.style ?? '').trim().toLowerCase() || 'normal';
+  return `${family.toLowerCase()}|${weight}|${style}`;
+}
+
+/**
+ * The dead faces of a capture. `faces` = every FontFace of document.fonts after document.fonts.ready, as
+ * { family, weight, style, status }. A face is dead when its status is 'error' and no face with the same key (faceKey:
+ * family + weight + style) has status 'loaded' — a file that failed to fetch, or a local() source naming a font this
+ * browser does not have (a FontFace does not say which; the family is what the fix needs). A failed declaration beside
+ * a loaded twin is not dead (the text in that weight and style renders in the family); an 'unloaded' face was never
+ * needed by any text and is not dead either. → the dead faces' families: unquoted, unique, sorted (fontFamilies).
+ */
+export function deadFontFaces(faces) {
+  const list = Array.isArray(faces) ? faces.filter((f) => f && typeof f === 'object') : [];
+  const loaded = new Set(list.filter((f) => f.status === 'loaded').map(faceKey));
+  return fontFamilies(list.filter((f) => f.status === 'error' && !loaded.has(faceKey(f))).map((f) => f.family));
+}
+
+/**
+ * The font check's outcome for the capture record: a face list → { fontsFailed } (checked; [] = every declared face
+ * loaded, else the dead faces); an evaluate error, or no list → { fontsFailed: null, fontCheck: 'failed: <first line>' }
+ * — a check that could not run is recorded as not checked, never as [].
+ */
+export function fontCheckOutcome(faces, error) {
+  if (error == null && Array.isArray(faces)) return { fontsFailed: deadFontFaces(faces) };
+  const why = error != null ? String((error && error.message) || error).split('\n')[0] : 'no face list returned';
+  return { fontsFailed: null, fontCheck: `failed: ${why}` };
+}
+
+/**
+ * The stderr lines for a font check's outcome (fontCheckOutcome): one WARNING naming the dead faces, or one saying the
+ * check could not run (the record says fontsFailed: null); none when every declared face loaded.
+ */
+export function fontCheckLines({ fontsFailed, fontCheck } = {}) {
+  if (!Array.isArray(fontsFailed)) return [`stitch-shot WARNING: font-load check failed (${String(fontCheck || 'failed: unknown').replace(/^failed: /, '')}) — the record says fontsFailed: null (not checked): no face is known to have loaded`];
+  if (!fontsFailed.length) return [];
+  return [`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${fontsFailed.join(', ')} — this capture renders fallback type for them (silent false measurement, F-B2 class): the file failed to fetch, or a local() source names a font this browser does not have (recreation-procedure.md § Fonts policy). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`];
 }
 
 // Dismiss both overlay classes (consent + timed marketing modals) via
@@ -618,7 +681,7 @@ async function main() {
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(800);
 
-    // Font-load assertion (F-B2 companion): a webfont that failed to fetch
+    // Font-load assertion (F-B2 companion — header § FONT-LOAD, deadFontFaces): a face that failed to load
     // renders the ENTIRE capture in fallback type — wrong wraps, wrong
     // heights, wrong doc height — with no error anywhere, the same silent
     // false-measurement class as capturing a challenge page. Report failed
@@ -629,17 +692,17 @@ async function main() {
     // browsers too (capture-state — fallback is then the truthful capture).
     // The gate doc (source-fidelity-gate.md § Hardening rule 14) owns the
     // decision procedure; this warning is what triggers it.
-    const failedFonts = await page.evaluate(async () => {
+    let fontError = null;
+    const faces = await page.evaluate(async () => {
       await document.fonts.ready;
-      return [...new Set([...document.fonts].filter((f) => f.status === 'error').map((f) => f.family))];
-    }).catch(() => []);
-    if (failedFonts.length) {
-      console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
-    }
+      return [...document.fonts].map((f) => ({ family: f.family, weight: f.weight, style: f.style, status: f.status }));
+    }).catch((e) => { fontError = e; return null; });
+    const fonts = fontCheckOutcome(faces, fontError);
+    for (const line of fontCheckLines(fonts)) console.error(line);
     // --freeze-baseline never freezes a capture whose fonts failed: a baseline in fallback type would bake the
     // wrong wraps and heights into every later round. Nothing is written — fix the capture, then re-freeze.
-    if (opts.freezeBaseline && failedFonts.length) {
-      console.error(`stitch-shot: not freezing a baseline — the capture's font load failed (${failedFonts.join(', ')}); fix the capture, then re-freeze`);
+    if (opts.freezeBaseline && (fonts.fontsFailed === null || fonts.fontsFailed.length)) {
+      console.error(`stitch-shot: not freezing a baseline — ${fonts.fontsFailed === null ? `the font check could not run (${fonts.fontCheck})` : `the capture's font load failed (${fonts.fontsFailed.join(', ')})`}; fix the capture, then re-freeze`);
       process.exitCode = 2;
       return;
     }
@@ -712,10 +775,10 @@ async function main() {
     if (opts.freezeBaseline) { const tmp = `${out}.${process.pid}.tmp`; writeFileSync(tmp, pngBuf); renameSync(tmp, out); }
     else writeFileSync(out, pngBuf);
     if (opts.freezeBaseline) {
-      writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: failedFonts, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers } }));
+      writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: fonts.fontsFailed, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers } }));
       console.log(`froze origin baseline in ${baselineDir}: ${BASELINE_PNG} + ${BASELINE_JSON} (${opts.width}x${totalH}px)`);
     }
-    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, at: new Date().toISOString() }, null, 2)}\n`);
+    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, ...fonts, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, at: new Date().toISOString() }, null, 2)}\n`);
     if (opts.checkBaseline) {
       const base = readBaselineProvenance(baselineDir);
       if (!base) console.log(`check-baseline: no frozen baseline in ${baselineDir} — freeze one first (nothing to compare)`);
