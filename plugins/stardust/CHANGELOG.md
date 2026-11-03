@@ -4,6 +4,21 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.5 — the style census runs one live page at a time unless an operator allows more (#154)
+
+Field learning (a recorded hands-off replica run on a bot-managed site): right after the crawl, the style census — a
+second full live pass at two widths — was started with `--concurrency 2`, although the option's default is 1 and its
+help text warned to raise it only on an origin known to have no bot manager. The origin stopped accepting connections
+and 17 of 20 census page loads timed out, which ended the run. The warning was advice; it is now a guard.
+
+- **`extract/scripts/style-census.mjs`:** `--concurrency <n>` above 1 is honoured only with the new explicit
+  `--parallel-live-ok`, or when every input is local (`file:`, `localhost`, `127.0.0.1`); otherwise one stderr line
+  (`--concurrency 2 ignored — one live page at a time unless --parallel-live-ok …`) and the census runs at 1.
+- **Browser tier:** when the shared live-session module beside the script exports `launchLiveBrowser`, the census
+  launches through it (the identity-preserving default tier, paced per host); `--headed` keeps the shared escalation
+  tier; a copy without the module keeps the plain headless launch. Tests: `extract/style-census` (+ guard, local
+  exemption, help text, launcher fallback).
+
 ## 0.36.4 — chrome-explore paces itself and keeps a per-width request budget (#153)
 
 Field learning (a hands-off replica run on a site behind an edge rate rule): the crawl, the style census and the cap
