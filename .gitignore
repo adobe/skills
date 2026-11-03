@@ -22,3 +22,7 @@ dist/
 
 # OMC state
 .omc/
+
+!plugins/web/cli/dist/
+.playwright-cli/
+.web/

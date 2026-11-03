@@ -91,6 +91,7 @@ export function topLevel(main, R, isBody = false) {
 
 /* ------------------------------------------------------------ signals ---- */
 const host = (u) => { try { return new URL(u).hostname; } catch { return null; } };
+const CONSENT_DEFAULT = /['"]consent['"]\s*,\s*['"]default['"]/;
 export function pageSignals(doc, html, origin) {
   const body = query(doc, 'body') || doc;
   const meta = {};
@@ -102,12 +103,15 @@ export function pageSignals(doc, html, origin) {
   const hreflang = queryAll(doc, 'link').filter((l) => l.attrs.rel === 'alternate' && l.attrs.hreflang && l.attrs.hreflang !== 'x-default').map((l) => l.attrs.hreflang);
   const jsonld = [...html.matchAll(/<script[^>]+application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => (m[1].match(/"@type"\s*:\s*"([^"]+)"/) || [])[1]).filter(Boolean);
   const inline = ['adobeDataLayer', 'digitalData', 'dataLayer', '_satellite', 'OneTrust', 'Munchkin', 'mktoForm', 'gtag(', 'fbq('].filter((k) => html.includes(k));
+  const tagIds = [...new Set([...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].flatMap((m) => m[1].match(/\b(?:GTM-[A-Z0-9]{4,10}|G-[A-Z0-9]{4,12})\b/g) || []))];
+  // Google Consent Mode default set inline: gtag('consent', 'default', …) or dataLayer.push(['consent', 'default', …])
+  const consentMode = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)].some((m) => CONSENT_DEFAULT.test(m[1]));
   const otDomainScripts = [...new Set(queryAll(doc, 'script').map((x) => x.attrs['data-domain-script']).filter(Boolean))];
   const html5 = query(doc, 'html');
   return {
     lang: html5?.attrs.lang || null, canonical: queryAll(doc, 'link').find((l) => l.attrs.rel === 'canonical')?.attrs.href || null,
     meta, bodyData, scripts: [...new Set(scripts)], scriptHosts: [...new Set(scripts.map((s) => host(new URL(s, origin).href)).filter(Boolean))],
-    iframeHosts: [...new Set(iframes.map((s) => host(new URL(s, origin).href)).filter(Boolean))], forms: [...new Set(forms)], hreflang, jsonld, inline, otDomainScripts,
+    iframeHosts: [...new Set(iframes.map((s) => host(new URL(s, origin).href)).filter(Boolean))], forms: [...new Set(forms)], hreflang, jsonld, inline, otDomainScripts, tagIds, consentMode,
   };
 }
 

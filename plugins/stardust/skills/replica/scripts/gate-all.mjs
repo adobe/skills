@@ -26,7 +26,8 @@
  * (shown BESIDE the number, never replacing it), clip-allow.json, presence.json (session-variable
  * regions); repeated units come from stardust/replica/units.json (unit-geometry.mjs header; a legacy
  * <out>/units.json per page still reads). Origin fallback: live stitch → previous origin
- * (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`, asymmetric, flagged).
+ * (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`, asymmetric, flagged). A cached live.png or a
+ * --skip-existing capture is reused only when its capture record has fixedLayers (gate.sh's rule; staleCapture).
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
@@ -36,10 +37,10 @@
  *        [--compare-only] [--warmup <url>] [--vh <px>]
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs and
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs` are exported.
+ * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs`, `staleCapture` are exported.
  */
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -53,7 +54,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --out <dir>               stardust/replica/gates/all-<width>
   --width <px>              1440
   --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched)
-  --skip-existing           reuse captures in the page dir
+  --skip-existing           reuse captures in the page dir (a stitch with no fixedLayers in its capture record —
+                            taken before fixed layers were captured once — is retaken, as is such a cached live.png)
   --recapture-eds           (with --skip-existing) re-shoot eds.png only
   --recapture-origin        re-shoot origin.png (previous kept on failure)
   --eds-host <host>         gate a code branch host against the same content
@@ -145,6 +147,21 @@ const PIXEL = join(HERE, 'pixel-compare.mjs');
 const DIFF_DIR = firstExisting(['../../diff/scripts', '../diff']);
 const { unitsFor } = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'unit-geometry.mjs')).href) : { unitsFor: () => [] };
 const readJson = (p, d = null) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : d);
+const readJsonSafe = (p) => { try { return readJson(p); } catch { return null; } };
+
+// The staleness rule gate.sh applies to a cached live.png, for any stitched capture gate-all would reuse: one taken
+// before fixed / sticky layers were captured once has no fixedLayers in its capture record (<stem>.capture.json,
+// stitch-shot's sidecar) and repeats a sticky header at every seam — compared with a side captured the new way, an
+// asymmetric diff. A live.png copied from the frozen baseline (live.json origin "baseline") has no capture record;
+// baseline.json's fixedLayers decides. → true when the capture must be retaken.
+export const captureRecordOf = (png) => `${png.replace(/\.png$/i, '')}.capture.json`;
+export function staleCapture(png) {
+  const rec = readJsonSafe(captureRecordOf(png));
+  if (rec) return !rec.fixedLayers;
+  const live = basename(png) === 'live.png' ? readJsonSafe(join(dirname(png), 'live.json')) : null;
+  if (live && live.origin === 'baseline') return !(readJsonSafe(join(dirname(png), 'baseline.json')) || {}).fixedLayers;
+  return true;
+}
 
 function run(cmd, args, { timeoutMs = 480000 } = {}) {
   return new Promise((res) => {
@@ -180,16 +197,34 @@ async function main() {
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
+  // --skip-existing reuses a capture and its meta — unless it is a stitch taken before fixed layers were captured once
+  // (staleCapture): retaken, one log line, so both sides of the compare capture alike.
+  const reusable = (p, side, png, meta) => {
+    if (!existsSync(png) || !existsSync(meta)) return false;
+    if ((readJsonSafe(meta) || {}).instrument !== 'stitch-live' || !staleCapture(png)) return true;
+    log(`${side} ${p.slug}: ${png} predates the fixed-layer capture (no fixedLayers in its record) — retaking it`);
+    return false;
+  };
   const stitchArgs = (url, out) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : [])];
 
   async function captureOrigin(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'origin.png'); const meta = join(d, 'origin.json');
-    if (opts.skip && !opts.recaptureOrigin && existsSync(out) && existsSync(meta)) { rec(p, 'origin', readJson(meta)); return; }
+    if (opts.skip && !opts.recaptureOrigin && reusable(p, 'origin', out, meta)) { rec(p, 'origin', readJson(meta)); return; }
+    rmSync(captureRecordOf(out), { force: true }); // a copied origin carries its source's record, or none
     const crawlShot = join(opts.crawlShots, `${p.slug}.png`);
     const cachedLive = join('stardust/replica/gates', `${p.slug}-${opts.width}`, 'live.png');
+    let useCached = opts.stage === 'prototype' && existsSync(cachedLive);
+    if (useCached && staleCapture(cachedLive)) { useCached = false; log(`origin ${p.slug}: ${cachedLive} predates the fixed-layer capture (no fixedLayers in its record) — not reused, capturing the origin`); }
     let r;
-    if (opts.stage === 'prototype' && existsSync(cachedLive)) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)` }; }
+    if (useCached) {
+      copyFileSync(cachedLive, out);
+      // its record goes with it (a frozen-baseline copy has none: baseline.json's fixedLayers stands in), so a later
+      // --skip-existing round reads the same rule
+      const src = readJsonSafe(captureRecordOf(cachedLive)) || { writtenBy: 'gate-all.mjs', copiedFrom: cachedLive, fixedLayers: (readJsonSafe(join(dirname(cachedLive), 'baseline.json')) || {}).fixedLayers };
+      writeFileSync(captureRecordOf(out), `${JSON.stringify(src, null, 2)}\n`);
+      r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)` };
+    }
     else if (opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked) {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
       else r = { instrument: 'none', error: `origin blocked and no crawl shot at ${crawlShot}` };
@@ -206,7 +241,7 @@ async function main() {
   async function captureEds(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'eds.png'); const meta = join(d, 'eds.json');
-    if (opts.skip && !opts.recaptureEds && existsSync(out) && existsSync(meta)) { rec(p, 'eds', readJson(meta)); return; }
+    if (opts.skip && !opts.recaptureEds && reusable(p, 'eds', out, meta)) { rec(p, 'eds', readJson(meta)); return; }
     const s = await run('node', stitchArgs(edsUrl(p), out));
     const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);

@@ -1,0 +1,48 @@
+### Result
+{"url":"https://shop.northwind-outdoor.com/en/trailhead-2","htmlLang":"en","nestedLangs":[{"lang":"de","count":1}],"hreflang":[{"hreflang":"en","href":"https://shop.northwind-outdoor.com/en/trailhead-2"},{"hreflang":"de","href":"https://shop.northwind-outdoor.com/de/trailhead-2"}],"metaContentLanguage":null,"text":"Trailhead 2 Backpacking Tent\nThe Trailhead 2 is a freestanding two-person tent built for long weekends on the trail. It packs down to the size of a water bottle, pitches in under three minutes, and keeps you dry when the weather turns. Two doors and two vestibules mean nobody climbs over anybody at night.\nThe ripstop nylon fly is silicone-coated on both sides, the floor is rated to 3000 millimetres, and every seam is taped at the factory. Aluminium poles are colour-coded so setup works even in the dark.\nEnvío y devoluciones\nEnviamos a toda España y Portugal en un plazo de tres a cinco días laborables. Si la tienda no te convence, puedes devolverla sin usar dentro de los treinta días siguientes a la compra y te reembolsaremos el importe completo. Los gastos de envío de la devolución corren de nuestra cuenta cuando el producto llega dañado o defectuoso.\nPara cualquier duda sobre tu pedido, escribe a nuestro equipo de atención al cliente y te responderemos en menos de veinticuatro horas, de lunes a viernes.\nGarantie\nAuf alle Zelte gewähren wir eine Garantie von fünf Jahren auf Material- und Verarbeitungsfehler. Bitte bewahren Sie Ihren Kaufbeleg auf und wenden Sie sich im Garantiefall direkt an unseren Kundenservice.\nWhat's in the box\nTent body, rain fly, two aluminium poles, eight stakes, four guylines, a repair sleeve and a stuff sack. Footprint sold separately.","wordCount":232}
+### Ran Playwright code
+```js
+await (// playwright-cli run-code script — extract language signals and visible text.
+// Usage: playwright-cli run-code --filename=collect.js
+async page => {
+  return await page.evaluate(() => {
+    const htmlLang = document.documentElement.getAttribute('lang') || null;
+
+    const langCounts = new Map();
+    for (const el of document.querySelectorAll('[lang]')) {
+      if (el === document.documentElement) continue;
+      const lang = el.getAttribute('lang');
+      if (lang) langCounts.set(lang, (langCounts.get(lang) || 0) + 1);
+    }
+    const nestedLangs = [...langCounts.entries()]
+      .map(([lang, count]) => ({ lang, count }));
+
+    const hreflang = [...document.querySelectorAll('link[rel="alternate"][hreflang]')]
+      .map((l) => ({ hreflang: l.getAttribute('hreflang'), href: l.getAttribute('href') }));
+
+    const metaEl = document.querySelector(
+      'meta[http-equiv="content-language"], meta[name="language"]'
+    );
+    const metaContentLanguage = metaEl ? metaEl.getAttribute('content') : null;
+
+    // Visible body text, one line per block, so detect.mjs can classify each
+    // block separately. Nav/footer stay in: language switchers live there.
+    const text = document.body.innerText
+      .split('\n')
+      .map((line) => line.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join('\n');
+
+    return {
+      url: window.location.href,
+      htmlLang,
+      nestedLangs,
+      hreflang,
+      metaContentLanguage,
+      text,
+      wordCount: text.split(/\s+/).filter((w) => w.length > 0).length,
+    };
+  });
+}
+)(page);
+```

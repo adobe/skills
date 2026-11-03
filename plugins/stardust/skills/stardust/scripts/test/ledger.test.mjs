@@ -5,7 +5,8 @@
 // and last output, --next / --owner, the value-flag swallow rule, an explicit --dir that must exist,
 // usage errors, the start guard (an end needs an open start: warning, or exit 2 under --strict with
 // nothing written) and the journal check on end (a journal.md without a "## " heading naming the
-// phase warns, never changes the exit code). Run: node <this file>.
+// phase warns, never changes the exit code); --track (the guard pairs on skill + phase + track, `last
+// --track` filters) and replica's first-page-first phases. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
@@ -49,6 +50,9 @@ check('checkPhase: canonical and alias forms pass case-insensitively; unknown sk
   assert.equal(checkPhase('stardust:rollout', 'c-deliver'), null);
   assert.equal(checkPhase('stardust:rollout', 'I-dashboard'), null);
   assert.equal(checkPhase('stardust:replica', 'source-fidelity-gate'), null);
+  assert.equal(checkPhase('stardust:replica', 'first-page'), null, 'first page first: Track A');
+  assert.equal(checkPhase('stardust:replica', 'reconcile-first-page'), null, 'first page first: RECONCILE');
+  assert.equal(checkPhase('stardust:replica', 'reconcile'), null, 'first page first: the RECONCILE alias');
   assert.equal(checkPhase('stardust:dynamics', 'triage'), null);
   assert.equal(checkPhase('stardust:deploy', '7-blocks'), null);
   assert.equal(checkPhase('stardust:prototype', 'approval'), null);
@@ -273,6 +277,53 @@ check('journal check on end: no journal → silent; "## " headings that do not n
   const ok = runIn(jdir, 'replica', 'preserve-direction', 'end', '--strict', '--detail', 'x'); assert.equal(ok.code, 0, ok.err); assert.equal(ok.err, '');
   assert.equal(runIn(jdir, 'replica', 'extract', 'start').code, 0);
   const ok2 = runIn(jdir, 'replica', 'Extract', 'end', '--detail', 'x'); assert.equal(ok2.code, 0, ok2.err); assert.doesNotMatch(ok2.err, /journal\.md|matching start/);
+});
+
+// ---- tracks (replica first page first: two tracks run the same skill's phases at once) ------------
+check('first page first: the reconcile alias is written as reconcile-first-page and pairs with it under --strict', () => {
+  assert.equal(canonicalPhase('stardust:replica', 'reconcile'), 'reconcile-first-page');
+  assert.equal(canonicalPhase('stardust:replica', 'RECONCILE'), 'reconcile-first-page');
+  const rdir = join(root, 'reconcile'); mkdirSync(rdir);
+  const s = runIn(rdir, 'replica', 'reconcile', 'start', '--strict'); assert.equal(s.code, 0, s.err); assert.equal(JSON.parse(s.out).phase, 'reconcile-first-page');
+  const e = runIn(rdir, 'replica', 'reconcile-first-page', 'end', '--strict', '--detail', '7 checks: 6 confirmed, 1 corrected'); assert.equal(e.code, 0, e.err);
+  const e2 = runIn(rdir, 'replica', 'Reconcile', 'end', '--strict', '--detail', 'x'); assert.equal(e2.code, 2, 'the alias end finds the start already closed');
+});
+check('buildLine: --track lands as `track` right after event, lower-cased; a track that is not one token is a usage error', () => {
+  const l = buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: 'First-Page', detail: 'x' });
+  assert.deepEqual(Object.keys(l), ['ts', 'skill', 'phase', 'event', 'track', 'detail']); assert.equal(l.track, 'first-page');
+  assert.deepEqual(Object.keys(buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: ' ' })), ['ts', 'skill', 'phase', 'event'], 'a blank track is dropped');
+  assert.throws(() => buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: 'first page' }), /track "first page" must be one token/);
+});
+check('checkOpenStart pairs on skill + phase + track: another track\'s start does not count, untagged pairs only with untagged', () => {
+  const L = (phase, event, track) => ({ ts: 't', skill: 'stardust:replica', phase, event, ...(track ? { track } : {}) });
+  const both = [L('extract', 'start', 'site-scope'), L('extract', 'start', 'first-page')];
+  assert.equal(checkOpenStart(both, 'stardust:replica', 'extract', 'first-page'), null);
+  assert.equal(checkOpenStart(both, 'stardust:replica', 'extract', 'site-scope'), null);
+  assert.match(checkOpenStart(both, 'stardust:replica', 'extract'), /no matching start/, 'an untagged end does not close a tagged start');
+  assert.match(checkOpenStart([L('extract', 'start')], 'stardust:replica', 'extract', 'first-page'), /extract \(track first-page\) has no matching start .*node ledger\.mjs replica extract start --track first-page$/, 'a tagged end does not close an untagged start');
+  const closed = [...both, L('extract', 'end', 'first-page')];
+  assert.match(checkOpenStart(closed, 'stardust:replica', 'extract', 'first-page'), /no matching start/, 'first-page closed by its own end');
+  assert.equal(checkOpenStart(closed, 'stardust:replica', 'extract', 'site-scope'), null, 'site-scope still open: the other track\'s end did not close it');
+});
+check('CLI: two tracks interleave the same replica phases; each end closes only its own start under --strict; last --track reads one track; tail names the track', () => {
+  const tdir = join(root, 'tracks'); mkdirSync(tdir);
+  assert.equal(runIn(tdir, 'replica', 'first-page', 'start', '--track', 'first-page', '--strict').code, 0);
+  assert.equal(runIn(tdir, 'replica', 'extract', 'start', '--track', 'site-scope', '--strict').code, 0);
+  assert.equal(runIn(tdir, 'replica', 'extract', 'start', '--track', 'first-page', '--strict').code, 0);
+  const a = runIn(tdir, 'replica', 'extract', 'end', '--track', 'first-page', '--strict', '--detail', '1 page'); assert.equal(a.code, 0, a.err);
+  assert.equal(JSON.parse(a.out).track, 'first-page');
+  const again = runIn(tdir, 'replica', 'extract', 'end', '--track', 'first-page', '--strict', '--detail', 'x');
+  assert.equal(again.code, 2, 'first-page extract already closed — the site-scope start does not reopen it'); assert.match(again.err, /track first-page/);
+  const untagged = runIn(tdir, 'replica', 'extract', 'end', '--strict', '--detail', 'x'); assert.equal(untagged.code, 2, 'an untagged end does not close a tagged start');
+  assert.equal(runIn(tdir, 'replica', 'preserve-direction', 'start', '--track', 'first-page').code, 0);
+  const b = runIn(tdir, 'replica', 'extract', 'end', '--track', 'site-scope', '--strict', '--detail', 'roster 94 of 2,532'); assert.equal(b.code, 0, b.err);
+  const last = JSON.parse(runIn(tdir, 'last', 'replica').out); assert.equal(last.track, 'site-scope', 'last <skill> is the latest line of either track, naming it');
+  const lastA = JSON.parse(runIn(tdir, 'last', 'replica', '--track', 'first-page').out); assert.equal(lastA.phase, 'preserve-direction'); assert.equal(lastA.track, 'first-page');
+  const lastB = JSON.parse(runIn(tdir, 'last', 'replica', '--track', 'site-scope').out); assert.equal(lastB.phase, 'extract'); assert.equal(lastB.event, 'end');
+  const none = runIn(tdir, 'last', 'replica', '--track', 'nope'); assert.equal(none.out, ''); assert.match(none.err, /no lines for stardust:replica on track nope/);
+  assert.match(runIn(tdir, 'tail', '-n', '1').out, /stardust:replica extract end \[site-scope\] roster 94 of 2,532$/m);
+  assert.equal(runIn(tdir, 'replica', 'extract', 'start', '--track').code, 2, '--track needs a value');
+  assert.match(runIn(tdir, '--help').out, /--track <name>/);
 });
 
 rmSync(root, { recursive: true, force: true });

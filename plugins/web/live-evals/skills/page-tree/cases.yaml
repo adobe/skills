@@ -1,0 +1,27 @@
+# `check` selects the assertion in assert.mjs. Fixture ground truth comes from running the
+# skill's own capture on layout.html (1280px viewport).
+- description: fixture, default capture
+  vars:
+    check: layout-default
+    url: http://localhost:8765/layout.html
+    task: Capture the rendered layout of the page below as a spatial tree. Save the text tree to ./out/tree.txt and the node map (node ID to CSS selector) to ./out/nodemap.json.
+- description: fixture, narrow elements included
+  vars:
+    check: layout-narrow
+    url: http://localhost:8765/layout.html
+    task: Capture the rendered layout of the page below as a spatial tree, including elements down to 300px wide so that individual cards show up. Save the text tree to ./out/tree.txt and the node map to ./out/nodemap.json.
+- description: aem.live, default capture
+  vars:
+    check: tree-valid
+    url: https://www.aem.live/
+    task: Capture the rendered layout of the page below as a spatial tree. Save the text tree to ./out/tree.txt and the node map (node ID to CSS selector) to ./out/nodemap.json.
+- description: live, stripe.com/fr-ch, long page with grids
+  vars:
+    check: tree-live-long
+    url: https://stripe.com/fr-ch
+    task: Capture the rendered layout of the page below as a spatial tree. Save the text tree to ./out/tree.txt and the node map (node ID to CSS selector) to ./out/nodemap.json.
+- description: live, wknd-adventures.com, image-background hero
+  vars:
+    check: tree-live-image
+    url: https://wknd-adventures.com/
+    task: Capture the rendered layout of the page below as a spatial tree. Save the text tree to ./out/tree.txt and the node map (node ID to CSS selector) to ./out/nodemap.json.

@@ -6,13 +6,13 @@
 // line is echoed so the agent's transcript carries the record.
 //
 //   node ledger.mjs <skill> <phase> <start|end|blocked> [--detail "…"] [--artifact <path>]
-//                   [--next "…"] [--owner "…"] [--dir <stardust dir>] [--strict]
+//                   [--next "…"] [--owner "…"] [--track <name>] [--dir <stardust dir>] [--strict]
 //   node ledger.mjs tail [-n 5] [--dir <stardust dir>]
-//   node ledger.mjs last [<skill>] [--dir <stardust dir>]
+//   node ledger.mjs last [<skill>] [--track <name>] [--dir <stardust dir>]
 //
 // `--next` (what the next phase or the human does now) and `--owner` (who does it) are optional
 // and land in the line as `next` / `owner` when given — an `end` line without `--next` is still
-// accepted. A value flag (`--detail`, `--artifact`, `--next`, `--owner`, `--dir`, `-n`) followed
+// accepted. A value flag (`--detail`, `--artifact`, `--next`, `--owner`, `--track`, `--dir`, `-n`) followed
 // by nothing or by another flag is a usage error naming the flag, so a forgotten value never
 // swallows the next flag as its text. The default ledger dir (`stardust/`) is created on first
 // write; an explicit `--dir` that does not exist is a usage error (exit 2) — a mistyped directory
@@ -25,8 +25,13 @@
 // 2 and writes nothing. `blocked` without a --detail is treated the same way (the contract wants the
 // blocker reason in `detail`).
 //
-// The start guard: an `end` needs an open `start` — an earlier line for the same skill + phase with
-// event `start` and no `end` for that pair after it. Without one the `end` warns (plain mode) or is
+// `--track <name>` (one token) tags the line with the run track that wrote it, as `track` after `event`:
+// when two tracks run the same skill's phases at once (replica's first page first: `first-page` and
+// `site-scope`), the start guard pairs on skill + phase + track, so one track's `end` never closes the
+// other's `start`, and `last <skill> --track <name>` reads one track's position. Untagged lines pair
+// only with untagged lines.
+// The start guard: an `end` needs an open `start` — an earlier line for the same skill + phase (+ track)
+// with event `start` and no `end` for that pair after it. Without one the `end` warns (plain mode) or is
 // refused under --strict (exit 2, nothing written, one stderr line naming the missing start). The
 // `start` line is the FIRST command of a phase, before any script runs: a recorded hands-off run wrote
 // a phase's `start` and `end` one second apart after 109 minutes of work, so a supervisor tailing the
@@ -105,6 +110,8 @@ export const PHASES = {
     recreate: [], // ### Phase 3 — RECREATE
     'source-fidelity-gate': ['gate'], // ### Phase 4 — SOURCE-FIDELITY GATE
     handoff: [], // ### Phase 5 — HANDOFF
+    'first-page': [], // reference/first-page-first.md § Track A
+    'reconcile-first-page': ['reconcile'], // reference/first-page-first.md § RECONCILE
   },
   // skills/dynamics/SKILL.md
   dynamics: {
@@ -161,19 +168,20 @@ export const phaseTableText = () => Object.entries(PHASES)
   .join('\n');
 const HELP = `Usage:
   node ledger.mjs <skill> <phase> <start|end|blocked> [--detail "…"] [--artifact <path>]
-                  [--next "…"] [--owner "…"] [--dir <d>] [--strict]
+                  [--next "…"] [--owner "…"] [--track <name>] [--dir <d>] [--strict]
   node ledger.mjs tail [-n ${DEFAULT_TAIL}] [--dir <d>]
-  node ledger.mjs last [<skill>] [--dir <d>]
+  node ledger.mjs last [<skill>] [--track <name>] [--dir <d>]
   (--dir defaults to ${DEFAULT_DIR}; the ledger is <dir>/${FILE_NAME}, created on first write;
    an explicit --dir must already exist)
 
-Appends one run-status.md line { ts, skill, phase, event, detail?, artifact?, next?, owner? } and
-prints it. --next / --owner are optional (an end line without --next is fine). A value flag followed
+Appends one run-status.md line { ts, skill, phase, event, track?, detail?, artifact?, next?, owner? }
+and prints it. --track tags the line with the run track that wrote it (two tracks running one
+skill). --next / --owner are optional (an end line without --next is fine). A value flag followed
 by nothing or by another flag is a usage error.
 <skill> may be given as "extract" or "stardust:extract". A known <phase> is written in the table's
 own form (aliases and case are normalised). Unknown skill/phase → warning on stderr, line still
 written; with --strict → exit 2, nothing written. Exit codes: 0 ok, 2 usage/strict.
-An end needs an open start (same skill + phase, no later end): missing → warning, or exit 2 under
+An end needs an open start (same skill + phase + track, no later end): missing → warning, or exit 2 under
 --strict. Write the start line FIRST, before any script of the phase runs. On end, a <dir>/${JOURNAL_NAME}
 without a "## " heading naming the phase gets a warning (never an exit-code change).
 Known skills: ${Object.keys(PHASES).join(', ')}
@@ -214,11 +222,16 @@ export function canonicalPhase(skill, phase) {
   return phase;
 }
 
-export function buildLine({ skill, phase, event, detail, artifact, next, owner, ts = nowIso() }) {
+export function buildLine({ skill, phase, event, track, detail, artifact, next, owner, ts = nowIso() }) {
   if (!EVENTS.includes(event)) throw new UsageError(`event must be one of ${EVENTS.join('|')}, got "${event}"`);
   const p = String(phase || '').trim();
   if (!p || /\s/.test(p)) throw new UsageError(`phase "${phase}" must be a single token (the skill's own phase name)`);
   const line = { ts, skill: normaliseSkill(skill), phase: p, event };
+  if (track != null && String(track).trim()) {
+    const t = String(track).trim().toLowerCase();
+    if (!/^[a-z][a-z0-9-]*$/.test(t)) throw new UsageError(`track "${track}" must be one token (letters, digits, dashes)`);
+    line.track = t;
+  }
   if (detail != null && String(detail).trim()) line.detail = oneLine(detail);
   if (artifact != null && String(artifact).trim()) line.artifact = String(artifact).trim();
   if (next != null && String(next).trim()) line.next = oneLine(next);
@@ -226,20 +239,25 @@ export function buildLine({ skill, phase, event, detail, artifact, next, owner, 
   return line;
 }
 
-// The start guard. Null when the ledger holds an open `start` for (skill, phase) — a start line for that
-// pair with no end line for it afterwards (a `blocked` in between keeps it open); otherwise the warning
-// text, naming the start command that is missing. Lines are compared in their canonical forms, so a
-// hand-written alias or a differently-cased phase still pairs with its end.
-export function checkOpenStart(lines, skill, phase) {
+// The start guard. Null when the ledger holds an open `start` for (skill, phase, track) — a start line for
+// that triple with no end line for it afterwards (a `blocked` in between keeps it open); otherwise the
+// warning text, naming the start command that is missing. Lines are compared in their canonical forms, so
+// a hand-written alias or a differently-cased phase still pairs with its end. An untagged end pairs only
+// with untagged lines; a tagged one only with lines of its own track.
+const trackOf = (l) => (l && l.track ? String(l.track).toLowerCase() : null);
+export function checkOpenStart(lines, skill, phase, track = null) {
   const want = String(phase).toLowerCase();
+  const wantTrack = track ? String(track).toLowerCase() : null;
   let open = false;
   for (const l of lines) {
     if (!l || String(l.skill || '').toLowerCase() !== skill) continue;
     if (String(canonicalPhase(skill, String(l.phase || ''))).toLowerCase() !== want) continue;
+    if (trackOf(l) !== wantTrack) continue;
     if (l.event === 'start') open = true;
     else if (l.event === 'end') open = false;
   }
-  return open ? null : `end for ${skill} ${phase} has no matching start (no earlier start line for this skill and phase without a later end) — the start line is the FIRST command of a phase, before any script runs: node ledger.mjs ${bareSkill(skill)} ${phase} start`;
+  const t = wantTrack ? ` --track ${wantTrack}` : '';
+  return open ? null : `end for ${skill} ${phase}${wantTrack ? ` (track ${wantTrack})` : ''} has no matching start (no earlier start line for this skill and phase${wantTrack ? ' on this track' : ''} without a later end) — the start line is the FIRST command of a phase, before any script runs: node ledger.mjs ${bareSkill(skill)} ${phase} start${t}`;
 }
 
 export const journalPath = (dir) => join(dir, JOURNAL_NAME);
@@ -290,11 +308,11 @@ export function appendLine(dir, line) {
   return file;
 }
 
-export const formatTail = (l) => [l.ts, l.skill, l.phase, l.event, l.detail ? (l.detail.length > DETAIL_HEAD ? `${l.detail.slice(0, DETAIL_HEAD - 1)}…` : l.detail) : ''].join(' ').trimEnd();
+export const formatTail = (l) => [l.ts, l.skill, l.phase, l.event, ...(l.track ? [`[${l.track}]`] : []), l.detail ? (l.detail.length > DETAIL_HEAD ? `${l.detail.slice(0, DETAIL_HEAD - 1)}…` : l.detail) : ''].join(' ').trimEnd();
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, dirGiven: false, strict: false, n: DEFAULT_TAIL, detail: null, artifact: null, next: null, owner: null };
+  const opts = { dir: DEFAULT_DIR, dirGiven: false, strict: false, n: DEFAULT_TAIL, detail: null, artifact: null, next: null, owner: null, track: null };
   const pos = [];
   const isFlag = (v) => v.startsWith('--') || v === '-n' || v === '-h';
   for (let i = 0; i < argv.length; i += 1) {
@@ -312,6 +330,7 @@ function parseArgs(argv) {
     else if (a === '--artifact') opts.artifact = need();
     else if (a === '--next') opts.next = need();
     else if (a === '--owner') opts.owner = need();
+    else if (a === '--track') opts.track = need();
     else if (a === '-n') { opts.n = Number(need()); if (!Number.isInteger(opts.n) || opts.n < 1) throw new UsageError('-n needs a positive integer'); }
     else if (a.startsWith('-') && a !== '-') throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
@@ -338,15 +357,16 @@ export function main(argv) {
     const want = pos[1] ? normaliseSkill(pos[1]) : null;
     const { lines, malformed, file } = readLines(opts.dir);
     if (malformed) console.error(`ledger: ${malformed} malformed line(s) skipped in ${file}`);
-    const hit = lines.filter((l) => !want || l.skill === want).at(-1);
-    if (!hit) { console.error(`ledger: no lines${want ? ` for ${want}` : ''} in ${file}`); return 0; }
+    const track = opts.track ? String(opts.track).toLowerCase() : null;
+    const hit = lines.filter((l) => (!want || l.skill === want) && (!track || trackOf(l) === track)).at(-1);
+    if (!hit) { console.error(`ledger: no lines${want ? ` for ${want}` : ''}${track ? ` on track ${track}` : ''} in ${file}`); return 0; }
     console.log(JSON.stringify(hit));
     return 0;
   }
 
   if (pos.length !== 3) throw new UsageError(`expected <skill> <phase> <start|end|blocked>, got ${pos.length} argument(s)\n${HELP}`);
   const [skill, phase, event] = pos;
-  const line = buildLine({ skill, phase, event, detail: opts.detail, artifact: opts.artifact, next: opts.next, owner: opts.owner });
+  const line = buildLine({ skill, phase, event, track: opts.track, detail: opts.detail, artifact: opts.artifact, next: opts.next, owner: opts.owner });
   const canon = canonicalPhase(line.skill, line.phase);
   if (canon !== line.phase) {
     console.error(`ledger: phase "${line.phase}" written as "${canon}" (the table's form for ${line.skill})`);
@@ -355,7 +375,7 @@ export function main(argv) {
   const warnings = [
     checkPhase(line.skill, line.phase),
     event === 'blocked' && !line.detail ? 'blocked without --detail (the contract wants the blocker reason there)' : null,
-    event === 'end' ? checkOpenStart(readLines(opts.dir).lines, line.skill, line.phase) : null,
+    event === 'end' ? checkOpenStart(readLines(opts.dir).lines, line.skill, line.phase, line.track) : null,
   ].filter(Boolean);
   if (warnings.length && opts.strict) throw new UsageError(`strict: ${warnings.join('; ')} — nothing written`);
   for (const w of warnings) console.error(`ledger: warning: ${w}`);

@@ -31,8 +31,7 @@ under `stardust/current/` written by `$stardust extract`.
 
 ### `DESIGN.json.extensions`
 
-The `extensions` object grows with the migrate-template-canon
-refactor:
+The `extensions` object:
 
 - **`extensions.canon`** — pinned token values, compositional moves
   (free-text), and references to `stardust/canon/*` chrome and CSS
@@ -43,9 +42,11 @@ refactor:
   `canonicalRendering` reference. Auto-detected during `$stardust
   extract --prep`; promoted/refined during `$stardust direct
   --prep`.
+- **`extensions.widgets[]`** — EDS widgets (`{ id, path, params }`):
+  candidates marked as widgets in `direct --prep`. Per page, the
+  rendered references live in `_meta.json.widgets[]`.
 - **`extensions.colorReservations[]`** — colors reserved to specific
-  modules or contexts (e.g., centennial-red reserved to a
-  `trh-100-lockup` module). Validated at migrate time; violation
+  modules or contexts. Validated at migrate time; violation
   refuses the page.
 - **`extensions.metadata`** — site-level metadata defaults: site
   name, default OG image, theme color, organization JSON-LD,
