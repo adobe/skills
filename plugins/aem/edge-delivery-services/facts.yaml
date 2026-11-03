@@ -361,7 +361,8 @@
   source: >-
     aem-boilerplate 5cea543, scripts/scripts.js loadDelayed(),
     scripts/consent-check.js
-  used_by: []
+  used_by:
+    - skills/building-blocks/SKILL.md
 
 - id: psi-on-preview
   claim: >-
@@ -383,7 +384,8 @@
     Can you commit images, docs or other non-code files to an EDS project
     repo? What happens to them?
   source: aem-boilerplate 5cea543, AGENTS.md
-  used_by: []
+  used_by:
+    - skills/content-driven-development/SKILL.md
 
 - id: authored-content-compat
   claim: >-

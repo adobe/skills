@@ -156,7 +156,6 @@ See the [`stardust`](plugins/stardust/README.md) documentation for the complete 
 | `building-blocks` | Implement blocks and core functionality |
 | `testing-blocks` | Browser testing and validation |
 | `content-modeling` | Design author-friendly content models |
-| `code-review` | Self-review and PR review |
 
 ##### Discovering Blocks
 
