@@ -1,0 +1,42 @@
+<!doctype html><meta charset="utf-8" /><title>Fixed consent banner and a narrow fixed button</title>
+<link rel="stylesheet" href="_base.css" />
+<style>
+  #cmp {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 1280px;
+    height: 200px;
+    background: #eee;
+    padding: 20px;
+    z-index: 2000;
+  }
+  #chat {
+    position: fixed;
+    right: 20px;
+    bottom: 220px;
+    width: 300px;
+    height: 60px;
+    background: #06c;
+    color: #fff;
+  }
+</style>
+<div id="utility">English</div>
+<div class="content">
+  Body
+  <div class="deep">
+    <div class="deeper">
+      <div id="cmp">
+        We use cookies
+        <div
+          id="cmp-close"
+          style="position: fixed; top: 20px; left: 20px; width: 200px; height: 40px"
+        >
+          Close
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="footer">Footer</div>
+<div id="chat">Chat</div>

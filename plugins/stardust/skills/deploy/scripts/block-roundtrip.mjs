@@ -37,6 +37,12 @@
  *                        texts (⚪ advisory). Shared instrument: ew-editability-probe.mjs.
  *     --json             dump per-block inventories (+ the editability survey)
  *
+ * Widgets (aem.live/docs/widgets): a paragraph holding only a link whose href contains
+ * `/widgets/` (or `a[data-widget]`) is an EDS widget named by the file stem. It is listed as
+ * `widget:<name>` and skipped — no prototype diff (its heading/CTA are code, not authored),
+ * no `blocks/<name>/<name>.js` to inline, and its paragraph is removed before the EW survey
+ * (`data-block-name="widget"` is editability-exempt). `--blocks <name>` may name a widget.
+ *
  * Writes: nothing — the verdict (and the --json dump) goes to stdout.
  *
  * EW contract in two sentences (deploy SKILL.md § Experience Workspace editability
@@ -76,8 +82,41 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.exit(0);
 }
 
-// playwright is imported only past the --help guard, so --help answers on a checkout without it.
-const { chromium } = await import('playwright');
+// ── pure helpers (exported for scripts/test/block-roundtrip.test.mjs) ──
+
+// File stem of a widget href (`/widgets/search/site-search.html?q=docs` → `site-search`); null
+// when the href is not a widget link. The stem is the widget's block class on the rendered page.
+export function widgetStem(href) {
+  if (typeof href !== 'string') return null;
+  const path = href.replace(/[?#].*$/, '');
+  const m = path.match(/\/widgets\/(?:[^/]+\/)*([^/]+?)(?:\.[a-z0-9]+)?$/i);
+  return m && m[1] ? m[1] : null;
+}
+
+// Widget mounts authored in a <main> HTML string: every <p> whose only content is one <a> with a
+// `/widgets/` href or a data-widget attribute → [{ name, href }] in document order (deduped by href).
+export function widgetLinks(mainHtml) {
+  const out = [];
+  const seen = new Set();
+  const re = /<p\b[^>]*>\s*(<a\b[^>]*>)(?:(?!<a\b)[\s\S])*?<\/a>\s*<\/p>/gi; // one <a>, alone in its <p> — same rule as dropWidgets and the stock auto-block
+  let m;
+  while ((m = re.exec(mainHtml || '')) !== null) {
+    const a = m[1];
+    const href = (a.match(/\bhref=(["'])(.*?)\1/i) || [])[2] || '';
+    const isWidget = /\/widgets\//i.test(href) || /\bdata-widget=/i.test(a);
+    const name = widgetStem(href) || (((a.match(/\bdata-widget=(["'])(.*?)\1/i) || [])[2] || '').split('/').pop() || null);
+    if (!isWidget || !name || seen.has(href || name)) continue;
+    seen.add(href || name);
+    out.push({ name, href });
+  }
+  return out;
+}
+
+// Split the requested block names into real blocks and widgets (a widget may be named in --blocks).
+export function splitWidgets(names, widgets) {
+  const widgetNames = new Set(widgets.map((w) => w.name));
+  return { blocks: names.filter((n) => !widgetNames.has(n)), widgets: names.filter((n) => widgetNames.has(n)) };
+}
 
 function parseArgs(argv) {
   const [, , proto, content, ...rest] = argv;
@@ -185,7 +224,14 @@ async function main() {
   // over-swallows past a shallow/empty metadata block and silently deletes real
   // sections).
   const dropMetadata = () => document.querySelectorAll('main div.metadata, main div.section-metadata').forEach((el) => el.remove());
+  // Widget mounts: a <p> holding only a /widgets/ link. On live the loader replaces the paragraph
+  // with code-rendered DOM, so the harness drops it before inventory/EW instrumentation — its
+  // link text would otherwise read as an authored CTA.
+  const widgets = widgetLinks(mainHtml);
+  const dropWidgets = () => document.querySelectorAll('main p > a[href*="/widgets/"], main p > a[data-widget]').forEach((a) => { const p = a.parentElement; if (p.childElementCount === 1 && p.textContent.trim() === a.textContent.trim()) p.remove(); });
 
+  // playwright is imported only past the --help guard, so --help (and the test import) answers on a checkout without it.
+  const { chromium } = await import('playwright');
   const browser = await chromium.launch();
   let failed = false;
   try {
@@ -195,9 +241,12 @@ async function main() {
     // First pass with no block CSS just to discover block names when --blocks omitted.
     await harness.setContent(`<!doctype html><html><head><meta charset="utf-8"></head><body><main>${mainHtml}</main></body></html>`);
     await harness.evaluate(dropMetadata);
+    await harness.evaluate(dropWidgets);
     const discovered = await harness.evaluate(tagHarnessSections, opts.blocks);
-    const names = opts.blocks || Object.keys(discovered);
-    if (!names.length) throw new Error('no block divs found in the content page');
+    const requested = splitWidgets(opts.blocks || Object.keys(discovered), widgets);
+    const names = requested.blocks;
+    const listedWidgets = opts.blocks ? widgets.filter((w) => requested.widgets.includes(w.name)) : widgets;
+    if (!names.length && !listedWidgets.length) throw new Error('no block divs or widget links found in the content page');
 
     const blockCss = names.map((n) => { try { return fs.readFileSync(`${blocksDir}/${n}/${n}.css`, 'utf8'); } catch { return ''; } }).join('\n');
     // body.appear satisfies the vanilla foundation's body{display:none} gate the
@@ -207,6 +256,7 @@ async function main() {
       { waitUntil: 'networkidle' },
     );
     await harness.evaluate(dropMetadata);
+    await harness.evaluate(dropWidgets);
     const harnessCounts = await harness.evaluate(tagHarnessSections, names);
     // AFTER tagging (which reads the raw authored shape), mimic the vanilla
     // runtime's decorateButtons/decorateSections/decorateBlock DOM — .section
@@ -251,6 +301,10 @@ async function main() {
     if (decorateErrs.length) process.stdout.write(`🔴 decorate errors (these alone fail the gate — an erroring/uninstalled block renders raw rows that can false-match the prototype):\n${decorateErrs.map((e) => `  ${e}`).join('\n')}\n`);
     let totalRed = 0;
     const dump = {};
+    listedWidgets.forEach((w) => {
+      process.stdout.write(`\n■ widget:${w.name}: ⚪ EDS widget (${w.href}) — code-driven, no authored rows; heading/CTA not diffed, no blocks/${w.name} JS inlined; renders as div.${w.name}[data-block-name="widget"] via the stock loader (qa-gate: the dev server must serve widgets/)\n`);
+      if (opts.json) dump[`widget:${w.name}`] = { widget: w };
+    });
     for (const name of names) {
       const nProto = protoCounts[name] || 0;
       const nHarness = (harnessCounts[name] || 0);
@@ -306,4 +360,4 @@ async function main() {
   process.exit(failed ? 2 : 0);
 }
 
-main().catch((e) => { process.stderr.write(`block-roundtrip error: ${e.message}\n`); process.exit(1); });
+if (process.argv[1] && /block-roundtrip\.mjs$/.test(process.argv[1])) main().catch((e) => { process.stderr.write(`block-roundtrip error: ${e.message}\n`); process.exit(1); });

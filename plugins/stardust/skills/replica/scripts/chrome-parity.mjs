@@ -29,12 +29,13 @@
  *     --tolerance <px>   ignore rect/size deltas ≤ this        (default 1)
  *     --consent <sel>    extra consent-accept selector (live side)
  *     --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
+ *     --no-dismiss       dismiss no overlay at all (gate.sh --no-dismiss pass-through)
  *     --headed           headed stealth real Chrome (bot-managed live sites)
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
  *     --json             machine-readable output
  *     --live-cache <f>   reuse the live side's measurement from <f> (JSON) when it
- *                        exists for the same URL, width and region selectors; probe
- *                        and write it otherwise. Same contract as gate.sh's live.png:
+ *                        exists for the same probe version, URL, width and region
+ *                        selectors; probe and write it otherwise. Same contract as gate.sh's live.png:
  *                        one live navigation per breakpoint per full gate run, delete
  *                        the file to re-probe. Convention:
  *                        stardust/replica/gates/<slug>-<w>/chrome-live.json
@@ -45,7 +46,17 @@
  *
  * Output per region: the region box delta, then one line per paired element
  * listing only the properties that differ, then MISSING (live-only) / EXTRA
- * (build-only) texts and the icon inventory. Exit 0 = parity within tolerance,
+ * (build-only) texts and the icon inventory. Only real deltas print:
+ *   - a page without <header> gets its header auto-detected (the outermost
+ *     full-width, top-anchored bar with a link) and the line says which element;
+ *   - text in a `display: contents` element is measured by its text box;
+ *   - the region background is the PAINTED one (the region's own, else a child
+ *     covering it, else the nearest ancestor's);
+ *   - icons pair by pixels too (../../diff/scripts/image-signature.mjs): a
+ *     re-hosted file or an svg drawn as <img> is no delta;
+ *   - a region whose box and EVERY paired text moved by one Δy is ONE advisory
+ *     OFFSET line (content identical — the page above differs in height), not
+ *     counted in the exit code. Exit 0 = parity within tolerance,
  * 2 = deltas printed (fix them, re-run), 1 = error, 3 = bot challenge on the
  * live side (fail loud — never measured).
  *
@@ -56,8 +67,7 @@
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
-import { chromium } from 'playwright';
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -69,6 +79,8 @@ if (!LIVE_SESSION) {
   process.exit(1);
 }
 const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+// image-signature.mjs sits beside live-session.mjs in either layout
+const { sameImage, signElements } = await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'image-signature.mjs')).href);
 
 const HELP = `chrome-parity — computed-style + rect diff of matched chrome elements (live vs build)
 
@@ -79,10 +91,14 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --tolerance <px>   ignore rect/size deltas ≤ this (default 1)
   --consent <sel>    extra consent-accept selector (live side)
   --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
+  --no-dismiss       dismiss no overlay at all (gate.sh --no-dismiss pass-through)
   --headed           headed stealth real Chrome (bot-managed live sites)
   --locale <tag>     pin Accept-Language + locale
   --json             machine-readable output
   --live-cache <f>   reuse/write the live side's measurement (JSON) — one live hit per breakpoint
+  --accepted <file>  accepted changes ({ accepted: [{ probe: "chrome-parity", kind, text?, root?: <region>, reason }] });
+                     a matching delta prints as accepted and is not counted (default stardust/replica/accepted.json);
+                     text matches inside the delta's own text, never its message; no text = EVERY delta of that kind
   --help             this text
 
 Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error, 3 bot challenge (live side).`;
@@ -91,7 +107,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], headed: false, locale: null, json: false, liveCache: null };
+  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, json: false, liveCache: null, accepted: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--region') {
@@ -105,10 +121,12 @@ function parseArgs(argv) {
     else if (a === '--tolerance') { opts.tolerance = Number(rest[i += 1]); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--no-dismiss') { opts.noDismiss = true; }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
     else if (a === '--live-cache') { opts.liveCache = rest[i += 1]; }
+    else if (a === '--accepted') { opts.accepted = rest[i += 1]; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -126,11 +144,30 @@ function parseArgs(argv) {
 // ---------------------------------------------------------------- in-page probe
 
 /* eslint-disable no-undef */
-function probeRegion(sel) {
+export function probeRegion(args) {
+  const [sel, regionName] = Array.isArray(args) ? args : [args, 'r'];
   const root = document.querySelector(sel);
   if (!root) return { found: false, sel };
-  const rect = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y + window.scrollY), w: Math.round(r.width), h: Math.round(r.height) }; };
-  const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  const box = (r) => ({ x: Math.round(r.x), y: Math.round(r.y + window.scrollY), w: Math.round(r.width), h: Math.round(r.height) });
+  // a display:contents element has no box of its own — its text does
+  const textRect = (el) => {
+    const range = document.createRange(); range.selectNodeContents(el);
+    const rs = [...range.getClientRects()].filter((r) => r.width && r.height);
+    if (!rs.length) return null;
+    const x = Math.min(...rs.map((r) => r.left)); const y = Math.min(...rs.map((r) => r.top));
+    return { x, y, width: Math.max(...rs.map((r) => r.right)) - x, height: Math.max(...rs.map((r) => r.bottom)) - y };
+  };
+  // a text box spans the glyphs; a block spans its line height — widen the text box to the line height to compare alike
+  const lineBox = (el, r) => {
+    const lh = parseFloat(getComputedStyle(el).lineHeight);
+    return lh > r.height ? { x: r.x, y: r.y - (lh - r.height) / 2, width: r.width, height: lh } : r;
+  };
+  const rect = (el) => {
+    if (el.getClientRects().length) return box(el.getBoundingClientRect());
+    const t = textRect(el);
+    return box(t ? lineBox(el, t) : el.getBoundingClientRect());
+  };
+  const visible = (el) => getComputedStyle(el).visibility !== 'hidden' && (el.getClientRects().length > 0 || (getComputedStyle(el).display === 'contents' && Boolean(textRect(el))));
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const STYLE = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'textTransform', 'color', 'backgroundColor', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderRadius', 'textDecorationLine'];
   const styles = (el) => {
@@ -148,7 +185,8 @@ function probeRegion(sel) {
     const box = el.closest('a, button') || el;
     atoms.push({ key: own.toLowerCase(), text: own, tag: el.tagName.toLowerCase(), rect: rect(el), box: rect(box), boxTag: box.tagName.toLowerCase(), style: styles(el), boxStyle: box === el ? null : { backgroundColor: getComputedStyle(box).backgroundColor, borderRadius: getComputedStyle(box).borderRadius, paddingTop: getComputedStyle(box).paddingTop, paddingLeft: getComputedStyle(box).paddingLeft } });
   }
-  const icons = [...root.querySelectorAll('svg, img')].filter(visible).map((el) => ({
+  const icons = [...root.querySelectorAll('svg, img')].filter(visible).map((el, i) => (el.setAttribute('data-sd-icon', `${regionName}-${i}`), {
+    ref: `${regionName}-${i}`,
     tag: el.tagName.toLowerCase(),
     rect: rect(el),
     sig: el.tagName.toLowerCase() === 'svg'
@@ -156,8 +194,34 @@ function probeRegion(sel) {
       : (el.currentSrc || el.getAttribute('src') || '').split('/').pop().split('?')[0].slice(0, 40),
     near: norm((el.closest('a, button, li, [aria-label]') || el).getAttribute?.('aria-label') || (el.closest('a, button, li') || {}).textContent || '').slice(0, 30),
   }));
+  // the PAINTED background: the region's own, else a child covering ≥ 90 % of it, else the nearest ancestor's
+  const clear = (c) => !c || c === 'transparent' || /rgba\(\d+, \d+, \d+, 0\)/.test(c);
+  const painted = () => {
+    const own = getComputedStyle(root).backgroundColor;
+    if (!clear(own)) return own;
+    const R = root.getBoundingClientRect(); const area = R.width * R.height;
+    for (const c of root.querySelectorAll(':scope > *, :scope > * > *')) {
+      const r = c.getBoundingClientRect(); const bg = getComputedStyle(c).backgroundColor;
+      if (!clear(bg) && area && r.width * r.height >= 0.9 * area) return bg;
+    }
+    for (let a = root.parentElement; a; a = a.parentElement) { const bg = getComputedStyle(a).backgroundColor; if (!clear(bg)) return bg; }
+    return own;
+  };
   const cs = getComputedStyle(root);
-  return { found: true, sel, rect: rect(root), position: cs.position, backgroundColor: cs.backgroundColor, atoms, icons };
+  return { found: true, sel, rect: rect(root), position: cs.position, backgroundColor: painted(), atoms, icons };
+}
+// In the page: the header of a page that has no <header> — the outermost full-width bar anchored at the top (≤ 10 px)
+// that carries a link, 30–400 px tall. Tagged data-sd-region="header"; returns its description, or null.
+export function detectHeader() {
+  const vw = window.innerWidth;
+  const bars = [...document.querySelectorAll('body *')].filter((el) => {
+    const r = el.getBoundingClientRect();
+    return r.top >= -1 && r.top <= 10 && r.width >= 0.9 * vw && r.height >= 30 && r.height <= 400 && el.querySelector('a[href]') && getComputedStyle(el).visibility !== 'hidden';
+  });
+  const outer = bars.find((el) => !bars.some((o) => o !== el && o.contains(el)));
+  if (!outer) return null;
+  outer.setAttribute('data-sd-region', 'header');
+  return `${outer.tagName.toLowerCase()}${outer.id ? `#${outer.id}` : ''}${[...outer.classList].slice(0, 2).map((c) => `.${c}`).join('')}`;
 }
 /* eslint-enable no-undef */
 
@@ -194,7 +258,7 @@ function pairAtoms(live, build) {
   return { pairs, missing, extra };
 }
 
-function compareRegion(name, L, B, tol) {
+export function compareRegion(name, L, B, tol) {
   const r = { name, findings: [], pairs: 0 };
   if (!L.found || !B.found) {
     r.findings.push({ kind: 'REGION', msg: `${!L.found ? `live: no element matches "${L.sel}"` : ''}${!L.found && !B.found ? '; ' : ''}${!B.found ? `build: no element matches "${B.sel}"` : ''} — pass --region ${name}=<liveSel>|<buildSel>` });
@@ -214,7 +278,8 @@ function compareRegion(name, L, B, tol) {
       if (bd.length) d.push(`<${a.boxTag}> box ${a.box.w}×${a.box.h} → ${b.box.w}×${b.box.h}`);
       if (a.boxStyle && b.boxStyle) d.push(...diffStyle(a.boxStyle, b.boxStyle, tol).map((s) => `<${a.boxTag}> ${s}`));
     }
-    if (a.tag !== b.tag) d.unshift(`tag <${a.tag}> → <${b.tag}>`);
+    // a tag change alone (same style, same box — a div title rebuilt as a heading) is invisible: context, not a delta
+    if (d.length && a.tag !== b.tag) d.unshift(`tag <${a.tag}> → <${b.tag}>`);
     if (d.length) r.findings.push({ kind: 'PAIR', text: a.text, msg: d.join('; ') });
   }
   for (const m of missing) r.findings.push({ kind: 'MISSING', text: m.text, msg: `live <${m.tag}> "${m.text.slice(0, 48)}" has no build element with the same text` });
@@ -225,11 +290,44 @@ function compareRegion(name, L, B, tol) {
   for (let i = 0; i < n; i += 1) {
     const a = L.icons[i]; const b = B.icons[i];
     const d = diffRect(a.rect, b.rect, tol).filter((s) => /Δ[wh]/.test(s));
-    if (a.sig !== b.sig) d.push(`signature "${a.sig}" → "${b.sig}"`);
+    const pixelsSame = sameImage({ sig: a.px, size: `${a.rect.w}×${a.rect.h}` }, { sig: b.px, size: `${b.rect.w}×${b.rect.h}` });
+    if (a.sig !== b.sig && !pixelsSame) d.push(`signature "${a.sig}" → "${b.sig}"`);
     if (d.length) r.findings.push({ kind: 'ICON', text: a.near, msg: `icon #${i}${a.near ? ` near "${a.near}"` : ''}: ${d.join('; ')}` });
   }
   r.inventory = { live: { atoms: L.atoms.length, icons: L.icons.length }, build: { atoms: B.atoms.length, icons: B.icons.length } };
+  r.findings = collapseOffset(r.findings, r.pairs);
   return r;
+}
+
+// Pure: an owner's accepted list ({ probe?, kind, text?, root?, reason }) marks a matching delta accepted — kind equal,
+// text a case-insensitive substring of the finding's own text (the item it is about — never its message wording, so
+// "link" does not accept every MISSING; a finding without text matches no text entry), root = the region name when
+// given; an entry without text accepts EVERY delta of its kind. Accepted deltas print with their reason and never count.
+export function markAccepted(region, list) {
+  for (const f of region.findings) {
+    const subject = String(f.text || '').toLowerCase();
+    const hit = (list || []).find((a) => a && (!a.probe || a.probe === 'chrome-parity') && a.kind === f.kind && (!a.root || a.root === region.name) && (!a.text || (subject && subject.includes(String(a.text).toLowerCase()))));
+    if (hit) { f.accepted = hit.reason || 'accepted'; f.advisory = true; }
+  }
+  return region;
+}
+
+// Pure: a region whose own box moved by ONE Δy, with EVERY paired text (≥ 2) moved by that Δy (±2 px), is one advisory
+// OFFSET line — the chrome is identical, the page above it is a different height. Texts that moved inside a box that did
+// not (a nav row sitting low in a fixed-height header), or only some of the texts, are real deltas and stay. A pair that
+// moved AND changed otherwise counts as moved but is kept as it is; other findings are kept as they are.
+const DY_ONLY = /^(?:tag <\w+> → <\w+>; )?Δy ([+-]?\d+)px \(\d+→\d+\)$/;
+const DY_ANY = /(?:^|[;,] )Δy ([+-]?\d+)px \(/;
+export function collapseOffset(findings, paired) {
+  const box = findings.find((f) => f.kind === 'REGION BOX');
+  if (!box || !DY_ONLY.test(box.msg) || !(paired >= 2)) return findings;
+  const dy = Number(box.msg.match(DY_ONLY)[1]);
+  const moved = findings.filter((f) => f.kind === 'PAIR' && DY_ANY.test(f.msg) && Math.abs(Number(f.msg.match(DY_ANY)[1]) - dy) <= 2);
+  if (moved.length !== paired) return findings;
+  const shifts = [box, ...moved.filter((f) => DY_ONLY.test(f.msg))];
+  const texts = shifts.length - 1;
+  const offset = { kind: 'OFFSET', advisory: true, msg: `the region${texts ? ` and its ${texts} paired text(s)` : ''} sit Δy ${dy > 0 ? '+' : ''}${dy}px from live as one block — content identical; the page above is a different height (fix that, or a live feed rendered another length)` };
+  return [offset, ...findings.filter((f) => !shifts.includes(f))];
 }
 
 // ---------------------------------------------------------------------- main
@@ -248,22 +346,37 @@ async function probeSide(browser, url, opts, isLive) {
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed && isLive });
-  await dismissOverlays(page, { extra: isLive ? [...(opts.consent ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  if (!opts.noDismiss) await dismissOverlays(page, { extra: isLive ? [...(opts.consent ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   await settleTop(page);
   const out = {};
-  for (const reg of opts.regions) out[reg.name] = await page.evaluate(probeRegion, isLive ? reg.live : reg.build);
+  for (const reg of opts.regions) {
+    const sel = isLive ? reg.live : reg.build;
+    out[reg.name] = await page.evaluate(probeRegion, [sel, reg.name]);
+    // the default header region on a page with no <header>: auto-detect the bar (an explicit --region is never second-guessed)
+    if (!out[reg.name].found && reg.name === 'header' && sel === 'header') {
+      const found = await page.evaluate(detectHeader);
+      if (found) { out[reg.name] = await page.evaluate(probeRegion, ['[data-sd-region="header"]', reg.name]); out[reg.name].autoDetected = found; }
+    }
+  }
+  const icons = Object.values(out).flatMap((r) => (r.found ? r.icons : []));
+  const sigs = await signElements(page, icons.map((ic) => ({ ref: ic.ref, selector: `[data-sd-icon="${ic.ref}"]` })));
+  icons.forEach((ic) => { if (sigs.has(ic.ref)) ic.px = sigs.get(ic.ref); });
   await ctx.close();
   return out;
 }
 
-// --live-cache: the live side's probe result keyed on URL + width + live
-// selectors. A key mismatch re-probes and overwrites (never measures a stale
-// site or the wrong breakpoint silently).
-function cacheKey(live, opts) { return { url: live, width: opts.width, regions: opts.regions.map((r) => `${r.name}=${r.live}`) }; }
-function readLiveCache(file, live, opts) {
+// --live-cache: the live side's probe result keyed on probe version + URL +
+// width + live selectors. A key mismatch re-probes and overwrites (never
+// measures a stale site or the wrong breakpoint silently, and never compares an
+// older probe's live record against this probe's build). Bump PROBE_VERSION
+// whenever probeRegion / detectHeader / probeSide change what they record.
+export const PROBE_VERSION = 2; // 2 = 0.34.13: painted background, header auto-detect, icon px signatures
+export function cacheKey(live, opts) { return { probe: PROBE_VERSION, url: live, width: opts.width, regions: opts.regions.map((r) => `${r.name}=${r.live}`) }; }
+export function readLiveCache(file, live, opts) {
   if (!file || !existsSync(file)) return null;
   try {
     const c = JSON.parse(readFileSync(file, 'utf8'));
+    if (!c.key || c.key.probe !== PROBE_VERSION) { console.error(`chrome-parity: --live-cache ${file} was written by another probe version (${c.key && c.key.probe ? c.key.probe : 'pre-0.34.13'}, now ${PROBE_VERSION}) — re-probing live`); return null; }
     if (JSON.stringify(c.key) !== JSON.stringify(cacheKey(live, opts))) { console.error(`chrome-parity: --live-cache ${file} was probed for a different url/width/regions — re-probing live`); return null; }
     return c;
   } catch (e) { console.error(`chrome-parity: --live-cache ${file} unreadable (${e.message}) — re-probing live`); return null; }
@@ -271,6 +384,8 @@ function readLiveCache(file, live, opts) {
 
 async function main() {
   const { live, build, opts } = parseArgs(process.argv);
+  let chromium;
+  try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   let total = 0;
   try {
@@ -282,16 +397,20 @@ async function main() {
     }
     const liveNote = cached ? ` (live side from cache ${opts.liveCache}, probed ${cached.probedAt} — delete the file to re-probe)` : '';
     const B = await probeSide(browser, build, opts, false);
-    const regions = opts.regions.map((reg) => compareRegion(reg.name, L[reg.name], B[reg.name], opts.tolerance));
-    total = regions.reduce((n, r) => n + r.findings.length, 0);
+    const acceptedFile = opts.accepted || (existsSync('stardust/replica/accepted.json') ? 'stardust/replica/accepted.json' : null);
+    const acceptedList = acceptedFile ? (JSON.parse(readFileSync(acceptedFile, 'utf8')).accepted || []) : [];
+    const regions = opts.regions.map((reg) => markAccepted(compareRegion(reg.name, L[reg.name], B[reg.name], opts.tolerance), acceptedList));
+    total = regions.reduce((n, r) => n + r.findings.filter((f) => !f.advisory).length, 0);
     if (opts.json) {
       console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, regions, raw: { live: L, build: B } }, null, 2));
     } else {
       console.log(`chrome-parity @ ${opts.width}px, tolerance ${opts.tolerance}px\n  live:  ${live}${liveNote}\n  build: ${build}`);
       for (const r of regions) {
         const inv = r.inventory ? ` — ${r.pairs} paired of ${r.inventory.live.atoms}/${r.inventory.build.atoms} texts, ${r.inventory.live.icons}/${r.inventory.build.icons} icons` : '';
-        console.log(`\n■ ${r.name}: ${r.findings.length ? `${r.findings.length} delta(s)` : '✓ parity'}${inv}`);
-        for (const f of r.findings) console.log(`  ${f.kind.padEnd(12)} ${f.text ? `"${f.text.slice(0, 40)}"  ` : ''}${f.msg}`);
+        const n = r.findings.filter((f) => !f.advisory).length;
+        console.log(`\n■ ${r.name}: ${n ? `${n} delta(s)` : '✓ parity'}${inv}`);
+        for (const [side, P] of [['live', L], ['build', B]]) if (P[r.name] && P[r.name].autoDetected) console.log(`  (${side} has no <header>: auto-detected ${P[r.name].autoDetected} — pass --region header=<liveSel>|<buildSel> to override)`);
+        for (const f of r.findings) console.log(`  ${f.accepted ? '🟢 ' : ''}${f.kind.padEnd(12)} ${f.text ? `"${f.text.slice(0, 40)}"  ` : ''}${f.msg}${f.accepted ? `  — accepted: ${f.accepted}` : ''}`);
       }
       console.log(`\n${total ? `✗ ${total} delta(s) — fix these before any pixel iteration on chrome; re-run until quiet, then crop-compare confirms.` : '✓ chrome parity within tolerance — run crop-compare (pass bar item 5) to confirm in pixels.'}`);
     }
@@ -301,5 +420,9 @@ async function main() {
   process.exit(total ? 2 : 0);
 }
 
-// exit 3 = bot challenge on the live side (fail loud, never measured).
-main().catch((e) => { console.error(`chrome-parity error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+// exit 3 = bot challenge on the live side (fail loud, never measured). Main only as the entry point — the test imports
+// the pure parts.
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  main().catch((e) => { console.error(`chrome-parity error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+}

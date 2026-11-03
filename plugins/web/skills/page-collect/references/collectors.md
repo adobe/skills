@@ -3,6 +3,18 @@
 Detailed extraction sources, output schema, and limitations for each
 `page-collect` collector.
 
+## Contents
+
+Each collector section covers extraction sources, the output JSON schema, and
+known limitations:
+
+- icons (also classification logic and SVG optimization steps)
+- metadata
+- text
+- forms
+- videos
+- socials
+
 ---
 
 ## icons
@@ -64,8 +76,7 @@ approach.
 ### Known Limitations
 
 - Icon fonts: detected and flagged with `source: "icon-font"` and
-  `nameConfidence: "low"` but no SVG is extracted. See
-  icon-font-maps.md for future auto-conversion plans.
+  `nameConfidence: "low"` but no SVG is extracted.
 - Dynamically loaded SVGs (injected after JS interaction) may be missed
   unless the page is fully idle before collection runs.
 - Sprites referencing external files (e.g. `<use href="/sprite.svg#id">`)

@@ -39,7 +39,7 @@ PRs go through three tiers of quality checks:
 
 2. **Tessl Skill Review** (`tessl skill review`) — LLM-based scoring of content quality, activation quality, and security. Runs automatically on every PR for changed skills. Must score at least 50%.
 
-3. **Tessl Evals** (`tessl eval run`) — end-to-end agent evaluation that measures whether the skill actually improves agent behavior. Runs only when explicitly requested and only for skills that include a `tile.json`.
+3. **Tessl Evals** (`tessl eval run`) — end-to-end agent evaluation that measures whether the skill actually improves agent behavior. Runs only when explicitly requested and only for plugins that include a `.tessl-plugin/plugin.json`, using the scenarios in the plugin's `evals/` directory.
 
 ## Requesting Evals
 
@@ -52,7 +52,7 @@ git push
 
 Things to know:
 
-- Evals only run for skills that have a `tile.json` in their tile directory
+- Evals only run for plugins that have a `.tessl-plugin/plugin.json`; scenarios live in `<plugin>/evals/<scenario>/` (`task.md`, `criteria.json`, optional `resources/`)
 - Evals require the `TESSL_TOKEN` GitHub Actions secret
 - GitHub Actions secrets are not available to PRs from forks, so external contributors cannot run evals directly
 - If you need evals for a fork-based PR, ask a maintainer to run them from a branch in the main repo

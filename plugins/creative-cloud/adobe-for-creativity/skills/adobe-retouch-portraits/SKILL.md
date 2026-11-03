@@ -14,7 +14,7 @@ license: Apache-2.0
 compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Local files are staged to Creative Cloud first; raw local paths are never passed to image tools."
 allowed-tools: adobe_mandatory_init image_list_presets asset_add_file read_widget_context asset_initialize_file_upload asset_finalize_file_upload asset_preview_file image_auto_straighten image_apply_auto_tone image_apply_adjustments image_select_subject image_apply_preset image_apply_lens_blur image_apply_effects image_apply_gaussian_blur image_crop_and_resize image_fill_area create_firefly_board
 metadata:
-  version: 4.0.0
+  version: 4.1.0
   visibility: public
   surface: [claude, codex]
 ---
@@ -69,7 +69,7 @@ If the user asks you to generatively modify a person (e.g. "change her hair colo
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-retouch-portraits", "skill_version": "4.0.0" }
+{ "skill_name": "adobe-retouch-portraits", "skill_version": "4.1.0" }
 ```
 
 This also tells you which widgets this surface supports and whether egress is enabled. If `asset_add_file` and `asset_preview_file` are available, follow the default flow (Steps 1, 2c, and 8 as written). If one is not available (e.g. Codex), use that step's *No-widget fallback*. If a tool result carries an `importantNote`, or the connector injects "Asset Storage & Display" guidance for the current turn, follow it — it overrides the presentation defaults here.
@@ -334,7 +334,7 @@ asset_preview_file({
 > Before: <sourceURIs[0]>
 > After:  <processed_preview_url>
 > ```
-> UI clients that render image URLs inline will show both automatically. In Codex or other non-UI agents, download both to the workspace (`curl -L -o before.jpg "<sourceURIs[0]>"`, `curl -L -o after.jpg "<processed_preview_url>"`) and reference those local paths instead.
+> UI clients that render image URLs inline show both automatically. In Codex or other non-UI agents, download both assets to the workspace using native file-download tools to save `<sourceURIs[0]>` as `before.jpg` and `<processed_preview_url>` as `after.jpg`, then reference those local paths instead.
 
 3. Post this message:
 ```
@@ -564,7 +564,7 @@ asset_preview_file({
 > portrait_2.jpg → <final_url_2>
 > // ... one entry per image
 > ```
-> UI clients that render image URLs inline will display them automatically. In Codex or other non-UI agents, download each to the workspace (`curl -L -o portrait_1.jpg "<final_url_1>"`, etc.) and reference those local paths instead.
+> UI clients that render image URLs inline will display them automatically. In Codex or other non-UI agents, download each image to the workspace using native file-download tools (saving `<final_url_1>` as `portrait_1.jpg`, etc.) and reference those local paths instead.
 
 ### Create Firefly Board
 

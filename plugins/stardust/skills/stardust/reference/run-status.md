@@ -22,6 +22,7 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 | `skill` | yes | the skill writing the line (`stardust:extract`, `stardust:deploy`, …) |
 | `phase` | yes | the skill's own phase name, as its SKILL.md names it |
 | `event` | yes | `start` \| `end` \| `blocked` |
+| `track` | no | the writing track, when two run at once (replica's first page first: `first-page`, `site-scope`); `start`/`end` pair per track |
 | `detail` | no | one human-readable line (counts, blocker reason) |
 | `artifact` | no | path to the phase's primary output, when one exists |
 

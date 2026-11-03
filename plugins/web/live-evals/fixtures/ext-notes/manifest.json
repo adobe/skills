@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Notes Tester",
+  "version": "1.0.0",
+  "description": "Tiny extension used to test cdp-ext-pilot.",
+  "permissions": ["sidePanel", "storage"],
+  "action": { "default_popup": "popup.html" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "options_page": "options.html",
+  "background": { "service_worker": "background.js" }
+}

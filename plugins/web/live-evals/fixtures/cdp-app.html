@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CDP demo app</title>
+</head>
+<body>
+<h1>Greeter</h1>
+<form id="greeter">
+  <label>Name <input id="name" name="name" type="text"></label>
+  <button type="submit" id="submit">Submit</button>
+  <button type="reset" id="reset">Reset</button>
+</form>
+<p id="result" role="status"></p>
+<script>
+  console.log('app-ready');
+  fetch('/api/ping.json').then((r) => r.json()).then((d) => { window.__ping = d; });
+  document.getElementById('greeter').addEventListener('submit', (e) => {
+    e.preventDefault();
+    document.getElementById('result').textContent = 'Hello, ' + document.getElementById('name').value + '!';
+  });
+</script>
+</body>
+</html>

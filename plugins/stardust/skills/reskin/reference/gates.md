@@ -30,6 +30,8 @@ siblings of `../reskin/`.
 
 Every gate script (`capture-content`, `dom-equality`, `donor-probe`, `slot-coverage`) needs `diff/live-session.mjs`
 and exits 2 without it, even for a local file; only `capture-content` also fails `--help`.
+`stitch-shot --hide` also needs the current `diff/live-session.mjs`: it checks the unhidden page for late denial
+content before capturing, and refuses an older copy rather than hiding a denial page.
 
 ## (a) Content gate
 

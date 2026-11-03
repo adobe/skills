@@ -9,8 +9,9 @@
  * depth-aware internal links via the page map, asset bundling with rewritten references
  * (six detection shapes, CSS files rewritten inside), provenance comment first in <head>,
  * canon `:root` first in the first <style>, default JSON-LD when the page has none,
- * data-template / data-section attributes, the _meta.json sidecar, strict validation
- * (refuse = nothing written), and the sha-based idempotent skip.
+ * data-template / data-section attributes, the _meta.json sidecar (modules[] from data-module,
+ * widgets[] {id, href} from `a[data-widget]` mounts — whose href stays verbatim, the one sanctioned
+ * .html link), strict validation (refuse = nothing written), and the sha-based idempotent skip.
  *
  * Usage:
  *   node migrate.mjs render <slug…|--all> [--force] [--state stardust/state.json]
@@ -82,7 +83,7 @@ export const RENDERABLE = new Set(['approved', 'migrated', 'directed']);
 // asset-bundling.md § Prefix resolution — the default set, longest first.
 export const ASSET_PREFIXES = ['../current/assets/', '../../../assets/', '../../assets/', '../assets/', './assets/', '/assets/', 'assets/'];
 const SKIP_SCHEMES = /^(#|mailto:|tel:|javascript:|data:)/i;
-const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
+const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'widgets', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
   'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion'];
 const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations'];
 const SELF = fileURLToPath(import.meta.url);
@@ -166,7 +167,7 @@ export function rewriteLinks(html, ctx) {
   const prefix = relPrefix(ctx.depth); const broken = []; let links = 0;
   const out = html.replace(/<(a|area)\b([^>]*)>/gi, (m, tag, attrs) => {
     const hm = attrs.match(/(?<![\w-])href\s*=\s*(["'])(.*?)\1/s);
-    if (!hm) return m;
+    if (!hm || /(?<![\w-])data-widget\s*=/.test(attrs)) return m; // widget mounts keep /widgets/<path>/<name>.html
     const raw = hm[2]; const hadAmp = raw.includes('&amp;'); const href = raw.replace(/&amp;/g, '&').trim();
     const c = classifyHref(href, ctx);
     if (c.kind !== 'internal') return m;
@@ -211,6 +212,28 @@ export function tagSections(main, template) {
   return { html: `<main${attrs}>${out}${inner.slice(last)}</main>`, slots, sections: n };
 }
 export const modulesIn = (main) => [...new Set([...main.matchAll(/(?<![\w-])data-module\s*=\s*(["'])(.*?)\1/gs)].map((x) => x[2].trim()).filter(Boolean))];
+// widgets[]: one {id, href} per a[data-widget] mount; id = file stem of the href path (falls back to the data-widget value), deduped per page
+/** The mount href a `data-widget="<path>/<name>"` value implies: /widgets/<path>/<name>.html. Pure. */
+export const widgetHref = (dataWidget) => `/widgets/${String(dataWidget).trim().replace(/^\/?(?:widgets\/)?/, '').replace(/\.html?$/i, '')}.html`;
+/** A `data-widget` mount that forgot its href gets it (the live auto-block keys on the href, never on data-widget); `warn` is told. Pure. */
+export function fixWidgetMounts(html, warn = () => {}) {
+  return html.replace(/<a\b([^>]*)>/gi, (tag, attrs) => {
+    const w = attrs.match(/(?<![\w-])data-widget\s*=\s*(["'])(.*?)\1/s);
+    if (!w || /(?<![\w-])href\s*=/.test(attrs)) return tag;
+    warn(`widget mount data-widget="${w[2]}" had no href — set to ${widgetHref(w[2])}`);
+    return `<a${attrs} href="${widgetHref(w[2])}">`;
+  });
+}
+export function widgetsIn(main) {
+  const out = new Map();
+  for (const [, attrs] of main.matchAll(/<a\b([^>]*)>/gi)) {
+    const w = attrs.match(/(?<![\w-])data-widget\s*=\s*(["'])(.*?)\1/s); if (!w) continue;
+    const h = attrs.match(/(?<![\w-])href\s*=\s*(["'])(.*?)\1/s); const href = h ? h[2].replace(/&amp;/g, '&').trim() : widgetHref(w[2]);
+    const stem = posix.basename((href || w[2].trim()).split(/[?#]/)[0]).replace(/\.html?$/i, '');
+    if (stem && !out.has(stem)) out.set(stem, { id: stem, href });
+  }
+  return [...out.values()];
+}
 
 // ---- assets (asset-bundling.md § Detection / Prefix resolution / Copy / Rewrite / Edge cases) ------
 export const splitRef = (ref) => { const m = ref.match(/^([^?#]*)(.*)$/s); return { path: m[1], suffix: m[2] }; };
@@ -426,6 +449,7 @@ export function renderPage(run, page, entry) {
   if (mi < 0 || mj < mi) throw new Refusal(slug, 2, 'no <main> element', 'wrap the page content in <main>');
   const template = branch === 'A' ? slug : branch === "A'" ? archetype.slug : (page.type || 'unique');
   const tagged = tagSections(sourceHtml.slice(mi, mj + 7), template);
+  tagged.html = fixWidgetMounts(tagged.html, (msg) => console.warn(`${slug}: ${msg}`));
   let html = sourceHtml.slice(0, mi) + tagged.html + sourceHtml.slice(mj + 7);
   const modules = modulesIn(tagged.html); const modulesOut = modules.length ? modules : (old?.modules?.length ? old.modules : []);
   const depth = depthOf(outputPath); const prefix = relPrefix(depth);
@@ -448,7 +472,7 @@ export function renderPage(run, page, entry) {
   // sidecar: spec keys first, then the tier/judgment fields; recorded judgments are carried over
   const carried = (old?.migrationDecisions || []).filter((d) => !(d && d._driver));
   const driverDecisions = [...report.missing.map((m) => ({ kind: 'asset-missing', ref: m.ref, subpath: m.subpath, _driver: true })), ...report.traversal.map((ref) => ({ kind: 'asset-path-traversal', ref, _driver: true }))];
-  const meta = { slug, type: page.type ?? null, renderBranch: branch, template: archetype ? archetype.slug : null, modules: modulesOut, slotsFilled: tagged.slots, canonShas, migrationDecisions: [...carried, ...driverDecisions], metadata: head.metadata, jsonLd: head.jsonLd, migratedAt: at, ...keys,
+  const meta = { slug, type: page.type ?? null, renderBranch: branch, template: archetype ? archetype.slug : null, modules: modulesOut, widgets: widgetsIn(tagged.html), slotsFilled: tagged.slots, canonShas, migrationDecisions: [...carried, ...driverDecisions], metadata: head.metadata, jsonLd: head.jsonLd, migratedAt: at, ...keys,
     fidelityTier: tier, archetypeSource: archetype ? archetype.slug : null, assetsBundled: report.refs.size, missingAssets: report.missing, brokenInternalLinks: linked.broken, outputPath, outputPathDefault, sidecar: sideRel };
   const defaults = { gatesPassed: [], gateEvidence: {}, variants: [], contentDeviations: [], deviations: [] };
   for (const k of CARRIED) meta[k] = old?.[k] ?? defaults[k];

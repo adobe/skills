@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/adobe/skills/compare/find-test-content-v1.2.1...find-test-content-v1.2.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **aem-eds:** fix broken scripts and stale guidance in EDS skills ([#510](https://github.com/adobe/skills/issues/510)) ([8675969](https://github.com/adobe/skills/commit/8675969bff61b915c6868e29bf0f507326cdf893))
+
 ## [1.2.1](https://github.com/adobe/skills/compare/find-test-content-v1.2.0...find-test-content-v1.2.1) (2026-09-17)
 
 

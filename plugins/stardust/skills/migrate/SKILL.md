@@ -209,7 +209,10 @@ the render is the encoder's input, its gate is the row after PUT. For each page 
   proposed file or archetype). Refuse when `[data-placeholder]`
   elements or non-empty `_provenance.unsourcedContent[]` are
   present — the user fills the missing content in the proposed
-  file before re-invoking migrate. No bypass flag.
+  file before re-invoking migrate. No bypass flag: shipping
+  placeholders to a public site is the failure mode this gate
+  exists to prevent. Widget mounts are links (`a[data-widget]`),
+  never `data-placeholder`, so the gate does not fire on them.
 - **Render branch selection** (LLM judgment per T&M §
   Render path selection): A / A′ / B. **Declare the page's
   `fidelityTier`** from the branch — A → `archetype` (craft-gated),
@@ -219,7 +222,8 @@ the render is the encoder's input, its gate is the row after PUT. For each page 
   B/bodyless → `thin` — per `reference/fidelity-tiers.md`. Record
   `fidelityTier`, `archetypeSource`, `template` (the archetype's slug;
   the archetype's own sidecar leaves it null), `modules[]` (the page's
-  block ids — composite sections only) and `gatesPassed[]` in
+  block ids — composite sections only), `widgets[]` (derived from the
+  page's `a[data-widget]` mounts) and `gatesPassed[]` in
   `_meta.json` so coverage shows what was craft-gated vs cloned and
   rollout groups and dedups from the sidecars, without a census.
 - **Render** per the chosen branch's procedure in T&M.
@@ -527,11 +531,9 @@ work, they just mark it as out-of-step.
   output path. Refuse to write the second one and surface to
   the user — manual slug rename needed.
 - **Placeholder content in proposed/archetype file.** Refuse
-  to ship a page whose source contains `[data-placeholder]`
-  elements. Surface the unsourced list and recommend sourcing
-  real content (re-prototype, or edit the proposed file
-  directly). There is no bypass flag — shipping placeholders to
-  a public site is the failure mode this gate exists to prevent.
+  (Phase 2 placeholder gate); surface the unsourced list and
+  recommend sourcing real content (re-prototype, or edit the
+  proposed file directly).
 - **Color reservation violated.** Refuse the page; surface to
   user with the offending color and the reserved-for context.
 - **Brand-faithful inversion conflict.** A hard rule declared

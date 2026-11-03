@@ -35,10 +35,10 @@ The contract the two scripts maintain. Design rationale is in
 ```
 
 - **content-pending** — inventoried from `state.json` in archetypes-only mode;
-  no migrated HTML exists yet. Block code is live (deployed via the archetype);
-  the document push is deferred to the content track. Advances automatically to
-  `pending` when `migrate` emits the page's HTML and `inventory` is re-run. Not
-  a failure — these pages are tracked, not lost.
+  no migrated HTML exists yet. Block and widget code is live (deployed via the
+  archetype, whose `blocks` and `widgets` the sibling inherits); the document push
+  is deferred to the content track. Advances to `pending` when `migrate` emits the
+  page's HTML and `inventory` is re-run. Tracked, not lost.
 - **pending** — inventoried with migrated HTML, not yet delivered. New pages start
   here (full mode) or transition here from `content-pending`.
 - **converting** — `deploy` is mid-flight on this page.

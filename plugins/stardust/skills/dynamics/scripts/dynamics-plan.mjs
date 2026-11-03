@@ -4,7 +4,11 @@
  *
  * Turns `_dynamics.json` into a draft inventory: one row per finding with the
  * four axes pre-filled from the catalogue (class · disposition · reproducibility
- * · status) plus pattern, phase and the owner decision it needs. Two probes
+ * · status) plus pattern, phase, the owner decision it needs and `target`, the
+ * delivery form (block | widget | runtime | content | embed — reference/triage.md
+ * § Target): `widget` for client-compute tools, search boxes, definition-driven
+ * forms with no authored copy (form-less control groups), locators and the
+ * chrome's sign-in / account / cart UI. Two probes
  * sharpen the draft when a target exists:
  *   --target-origin <eds host>   GET every recorded first-party API path on the
  *                                target; 4xx / network error → `hostBound`
@@ -88,6 +92,21 @@ const RULES = [
 ];
 const PII = /ssn|social.?security|dob|date.?of.?birth|passport|account.?number|iban|card.?number|cvv|minor|guardian|upload/i;
 
+// target: the delivery form per pattern (reference/triage.md § Target); widget where no authored rows remain.
+const TARGET_BY_PATTERN = {
+  'search-index-backed': 'widget', 'client-compute': 'widget', 'modal-loader': 'runtime', 'chrome-interaction': 'runtime', 'locale-tree': 'runtime',
+  'listing-index-backed': 'block', 'off-origin-data': 'block', forms: 'block', 'media-as-url': 'content', 'sheet-sync': 'content',
+  'client-rendered-page': 'content', 'settled-dom-snapshot': 'content', 'read-settings': 'content', 'consent-gated-tags': 'embed', 'embed-passthrough': 'embed',
+};
+const LOCATOR = /locator|store finder|dealer finder|branch finder|find a (store|branch|dealer|location)/i;
+export function targetFor(pattern, f) {
+  const base = TARGET_BY_PATTERN[pattern] ?? null;
+  if (pattern === 'decided-out' || (base && base !== 'block')) return base; // settled by the pattern: nothing to build, or not a block
+  if (LOCATOR.test(f.feature || '')) return 'widget';
+  if (pattern === 'forms' && /form-less control group/.test(f.feature || '')) return 'widget'; // definition-driven, no authored copy
+  return base;
+}
+
 /* ---------------------------------------------------- target-host probe -- */
 const hostBound = {};
 if (TARGET && TARGET !== true) {
@@ -119,7 +138,7 @@ function knowledgeRows(dir) {
   const live = readFileSync(join(dir, 'urls.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((u) => u.outcome === 'page' && u.in_sitemap === 1).length;
   return readJSON(join(dir, 'features.json')).map((f) => Object.assign({
     id: `spec-${f.id}`, source: 'spec', class: f.class, feature: f.name, pages: f.reach_pages, probed: live, reach: { pages: f.reach_pages, of: live }, evidence: [f.evidence].flat().filter(Boolean).slice(0, 4),
-    pattern: f.pattern || 'inspect', disposition: f.disposition, reproducibility: f.reproducibility, status: f.status || 'pending', phase: 'spec',
+    pattern: f.pattern || 'inspect', disposition: f.disposition, target: f.target || targetFor(f.pattern || 'inspect', { feature: f.name }), reproducibility: f.reproducibility, status: f.status || 'pending', phase: 'spec',
     decision: (f.decisions || []).map((q) => (qs[q] ? `${q}: ${qs[q].effective}${qs[q].answer ? ' (answered)' : ' (default)'}` : q)).join(' · ') || 'none',
   }, f.disposition === 'decided-out' && !(f.decisions || []).some((q) => qs[q]?.answer)
     ? { flags: ['decided-out without a recorded owner answer: confirm with the owner or pick another disposition (triage.md)'] } : {}));
@@ -143,12 +162,12 @@ function knowledgeParity(dir) {
 
 /* ---------------------------------------------------- header contract -- */
 const CHROME_ROWS = {
-  menu: { class: 'M', pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', decision: 'none (the header contract is the spec)' },
-  drawer: { class: 'M', pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'self', decision: 'none (the header contract is the spec)' },
-  search: { class: 'S', pattern: 'search-index-backed', disposition: 'index-backed', repro: 'self', decision: 'none (results from the query index; overlay and typeahead per the contract)' },
-  cart: { class: 'X', pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'needs-backend', decision: 'the commerce backend on the new host (the drawer ships per the contract either way)' },
-  account: { class: 'X', pattern: 'chrome-interaction', disposition: 'rebuild-native', repro: 'needs-backend', decision: 'sign-in on the new host (the menu ships per the contract either way)' },
-  locale: { class: 'I18N', pattern: 'locale-tree', disposition: 'rebuild-native', repro: 'needs-business-decision', decision: 'which locales the switcher lists' },
+  menu: { class: 'M', pattern: 'chrome-interaction', disposition: 'rebuild-native', target: 'runtime', repro: 'self', decision: 'none (the header contract is the spec)' },
+  drawer: { class: 'M', pattern: 'chrome-interaction', disposition: 'rebuild-native', target: 'runtime', repro: 'self', decision: 'none (the header contract is the spec)' },
+  search: { class: 'S', pattern: 'search-index-backed', disposition: 'index-backed', target: 'widget', repro: 'self', decision: 'none (results from the query index; overlay and typeahead per the contract)' },
+  cart: { class: 'X', pattern: 'chrome-interaction', disposition: 'rebuild-native', target: 'widget', repro: 'needs-backend', decision: 'the commerce backend on the new host (the drawer ships per the contract either way)' },
+  account: { class: 'X', pattern: 'chrome-interaction', disposition: 'rebuild-native', target: 'widget', repro: 'needs-backend', decision: 'sign-in on the new host (the menu ships per the contract either way)' },
+  locale: { class: 'I18N', pattern: 'locale-tree', disposition: 'rebuild-native', target: 'runtime', repro: 'needs-business-decision', decision: 'which locales the switcher lists' },
 };
 /** One row per control family of the header contract, with what it opens at each width. */
 function chromeRows(contract) {
@@ -164,7 +183,7 @@ function chromeRows(contract) {
   return Object.entries(fam).map(([kind, f]) => {
     const r = CHROME_ROWS[kind];
     return { id: `chrome-${kind}`, source: 'header-contract', class: r.class, feature: `header ${kind}: ${[...f.names].join(', ')} (chrome only)`, pages: 1, probed: 1, reach: null, evidence: [...f.at],
-      pattern: r.pattern, disposition: r.disposition, reproducibility: r.repro, status: 'pending', phase: 'interactive', decision: r.decision };
+      pattern: r.pattern, disposition: r.disposition, target: r.target, reproducibility: r.repro, status: 'pending', phase: 'interactive', decision: r.decision };
   });
 }
 
@@ -174,7 +193,7 @@ const rows = d.findings.map((f) => {
   const pii = f.class === 'F' && PII.test((f.signature || []).join(' ') + (f.evidence || []).join(' '));
   const row = {
     id: f.id, class: f.class, feature: f.feature, pages: f.pages.length, probed, reach: f.reach || null, evidence: (f.evidence || []).slice(0, 4),
-    pattern: rule.pattern, disposition: rule.disposition, reproducibility: pii ? 'needs-business-decision' : rule.repro, status: 'pending', phase: rule.phase, decision: rule.decision,
+    pattern: rule.pattern, disposition: rule.disposition, target: targetFor(rule.pattern, f), reproducibility: pii ? 'needs-business-decision' : rule.repro, status: 'pending', phase: rule.phase, decision: rule.decision,
   };
   if (pii) row.flags = ['regulated-pii: never auto-wire; submission blocked until a human configures the secured endpoint'];
   if (hostBound[f.id]) { row.hostBound = hostBound[f.id]; if (/dead/.test(row.hostBound)) row.disposition = 'data-fed'; }
@@ -202,9 +221,9 @@ const batch = rows.filter((r) => r.reproducibility !== 'self' && r.status === 'p
 const md = [
   `<!-- stardust provenance: skill=stardust:dynamics · phase=plan draft · ${draft._provenance.writtenAt} · input ${IN} (${probed} pages, ${rows.length} findings)${TARGET ? ` · target probe ${TARGET}` : ''}${MIGRATED ? ` · reconciled against ${MIGRATED}` : ''}${KNOWLEDGE ? ` · spec knowledge ${KNOWLEDGE}` : ''} -->`,
   '# Dynamic features — draft inventory (curate into `stardust/dynamic-features.md`)', '',
-  'One row per detected finding. Merge duplicates, drop noise, keep every axis honest. Columns: disposition = what we do · reproducibility = what it needs · status = where it stands (reference/triage.md).', '',
-  '| # | id | class | feature | pages | disposition | reproducibility | status | pattern | decision needed | notes |', '|---|---|---|---|---|---|---|---|---|---|---|',
-  ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.class} | ${r.feature.replace(/\|/g, '/')} | ${r.pages}/${r.probed}${r.reach ? ` (reach ${r.reach.pages}/${r.reach.of})` : ''} | ${r.disposition} | ${r.reproducibility} | ${r.status} | ${r.pattern} | ${r.decision} | ${[r.hostBound && `**${r.hostBound}**`, r.alreadyDelivered, ...(r.flags || [])].filter(Boolean).join('; ')} |`),
+  'One row per detected finding. Merge duplicates, drop noise, keep every axis honest. Columns: disposition = what we do · target = the delivery form (widget where no authored rows remain) · reproducibility = what it needs · status = where it stands (reference/triage.md).', '',
+  '| # | id | class | feature | pages | disposition | target | reproducibility | status | pattern | decision needed | notes |', '|---|---|---|---|---|---|---|---|---|---|---|---|',
+  ...rows.map((r, i) => `| ${i + 1} | ${r.id} | ${r.class} | ${r.feature.replace(/\|/g, '/')} | ${r.pages}/${r.probed}${r.reach ? ` (reach ${r.reach.pages}/${r.reach.of})` : ''} | ${r.disposition} | ${r.target || '—'} | ${r.reproducibility} | ${r.status} | ${r.pattern} | ${r.decision} | ${[r.hostBound && `**${r.hostBound}**`, r.alreadyDelivered, ...(r.flags || [])].filter(Boolean).join('; ')} |`),
   '', '## Triage', '',
   `- **Ships autonomously (reproducibility \`self\`):** ${self.length} row(s) — ${[...new Set(self.map((r) => r.pattern))].join(', ') || 'none'}.`,
   `- **One owner decision batch:** ${batch.length} row(s) — ${[...new Set(batch.map((r) => r.decision))].slice(0, 6).join(' · ') || 'none'}.`,

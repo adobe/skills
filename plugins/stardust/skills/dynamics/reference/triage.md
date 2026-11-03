@@ -1,7 +1,7 @@
 # Triage — the four axes and the inventory
 
 One row per feature in `stardust/dynamic-features.md`. Four axes per row; each answers a different
-question and none can be inferred from another.
+question and none can be inferred from another. A fifth column, **target**, names the delivery form.
 
 | axis | question | values |
 |---|---|---|
@@ -9,6 +9,7 @@ question and none can be inferred from another.
 | **disposition** | what do we do? | `rebuild-native` · `index-backed` · `data-fed` · `embed-passthrough` · `client-only` · `static-snapshot` · `decided-out` |
 | **reproducibility** | what does it need to ship? | `self` · `needs-credential` · `needs-human-capture` · `needs-backend` · `needs-business-decision` |
 | **status** | where does it stand? | `pending` · `in-progress` · `interim` · `done` · `scaffolded-awaiting-owner` · `delivered-by-capture` · `decided-out` · `skipped-source-broken` |
+| **target** | what form ships it? | `block` · `widget` · `runtime` · `content` · `embed` |
 
 Flags, when they apply: `regulated-pii` (forms), `host-bound` (APIs dead on the target),
 `source-nonfunctional` (the source itself fails for a real user), `environment-limit` (the test
@@ -16,9 +17,8 @@ network cannot reach a hand-off target).
 
 ## Dispositions
 
-- **rebuild-native** — behaviour rebuilt in block or runtime JavaScript with no external data:
-  modal loaders, chrome interactions, search results blocks, forms, clock-dependent strings. The
-  largest class of work on a greenfield rebuild.
+- **rebuild-native** — behaviour rebuilt in block, widget or runtime JavaScript with no external
+  data: modal loaders, chrome interactions, search results, forms, clock-dependent strings.
 - **index-backed** — fed by the site's own query index: listings, related rails, search.
 - **data-fed** — fed by data that lives outside the page: an API kept same-origin, a snapshot
   served from the code bus or a sheet, endpoint indirection for an existing library
@@ -32,16 +32,22 @@ network cannot reach a hand-off target).
 - **decided-out** — cannot or must not exist off-origin (session-bound, regulated capture, no
   consumer on the migrated pages). A register row with the production statement, never a silent gap.
 
+**Target.** Widget when the section carries no authored content — configuration only, or everything
+arrives from code, index, API or user input; block when authors fill rows. `widget`
+(`widgets/<path>/<name>`, `../../stardust/reference/data-attributes.md`) wherever the disposition
+leaves no authored rows: client-only tools, the search box and its results, definition-driven forms
+with no authored copy, locators, the chrome's sign-in/account UI when kept. `runtime` = page-wide JS
+(modal loader, chrome), `content` = snapshot or player URL, `embed` = passthrough iframe or tag. A
+block whose only rows are key-value config is a widget smell.
+
 ## Reproducibility — the axis that bounds the phase
 
 Only `self` ships autonomously. Everything else is emitted as **one decision batch** — one message
 listing every credential, capture, backend and business decision — never one question at a time.
 Under hands-off mode the batch is recorded, each decision becomes a named assumption, and the
 interim path ships (`interim` or `scaffolded-awaiting-owner`). An assumption is the run's, never the
-owner's: it cannot set `decided-out` (a recorded run put a live-indexed site search out of scope by
-assumption and cited it as the owner's). On the finance-site case one of five
-gaps was `self`; the other four each gated on something external. Naming that up front is what turns
-dynamics from an open-ended stall into a bounded phase.
+owner's: it cannot set `decided-out`. Naming every external gate up front is what turns dynamics
+from an open-ended stall into a bounded phase.
 
 ## Rules
 
@@ -49,8 +55,7 @@ dynamics from an open-ended stall into a bounded phase.
    evidence before scheduling work (`dynamics-plan.mjs --migrated`). The capture pipeline had
    already baked review text on 48 of 64 detail pages that a source-only scan flagged as a gap.
 2. **Never fabricate** legal or financial copy for a page captured empty. `CR` with an empty main
-   is a hard content gap → `needs-human-capture`; headless re-capture fails on bot-walled SPAs too,
-   so the escalation is a human browser, batched with every other such page.
+   is a hard content gap → `needs-human-capture`, batched (patterns.md § client-rendered-page).
 3. **Never auto-wire a regulated form.** `regulated-pii` (SSN, date of birth, account numbers,
    minors, document upload) → rebuild the UI with submission blocked until a human configures the
    secured endpoint; surface as a mandatory decision. Most intake help pages deep-link to an
@@ -69,11 +74,10 @@ dynamics from an open-ended stall into a bounded phase.
    target means no `helix-query.yaml` in the code branch (listings and search, class L / S):
    author it, push, publish live, poll (no more often than every 5 s, bounded) —
    listings.md § Getting an index at all. The sheet-backed interim index ships only when the
-   code branch is not writable; a 403 from the configuration service is never the reason (a
-   recorded hands-off run read one missing yaml file as "cannot be configured").
-9. **Search parity is count and titles.** Record `expectCount` / `expectTitles` per probe term at
-   detect time on the `search-query` check in `parity.json`; ranking, dedupe and the dropdown cap
-   follow patterns.md § search-index-backed.
+   code branch is not writable; a 403 from the configuration service is never the reason
+   (patterns.md § search-index-backed).
+9. **Search parity is count and titles** — `expectCount` / `expectTitles` per probe term on the
+   `search-query` check in `parity.json` (patterns.md § search-index-backed).
 
 ## `stardust/dynamic-features.md`
 
@@ -85,8 +89,8 @@ dynamics from an open-ended stall into a bounded phase.
 listings.md. "none" when there are no listing blocks.>
 
 ## Features
-| # | id | feature | class | reach | disposition | reproducibility | status | pattern | decision / owner | evidence |
-|---|---|---|---|---|---|---|---|---|---|---|
+| # | id | feature | class | reach | disposition | target | reproducibility | status | pattern | decision / owner | evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|
 
 ## Decision batch
 <every non-self row, grouped by what it needs, one message to the owner>

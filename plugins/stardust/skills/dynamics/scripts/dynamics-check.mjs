@@ -143,13 +143,15 @@ export function compareSearchResults(results, { expectIncludes, expectCount, exp
 const DEFAULT_CONTRACT = 'stardust/martech-contract.json';
 const hostOf = (u) => { try { return new URL(u).host; } catch { return ''; } };
 
-/** off by default: nothing on `/`; with `?martech=on` a category-gated route waits for consent; enabled ones load on accept */
+/** off by default: nothing on `/`; with `?martech=on` a category-gated route waits for consent; enabled ones load on accept.
+ * The Web SDK (`aemMartech`) counts as one more route whose host is its edge domain. */
 export function martechChecks(contract) {
   const { cmp } = contract.consent || {};
-  const routes = contract.routes || [];
+  const am = contract.aemMartech;
+  const routes = [...(contract.routes || []), ...(am ? [{ id: 'aem-martech', edge: am.config?.edgeDomain || am.plugin?.edge || 'edge.adobedc.net', category: am.category, enabled: am.enabled }] : [])];
   const enabled = routes.filter((r) => r.enabled);
   const base = { type: 'martech', productionHosts: contract.productionHosts || [] };
-  const host = (r) => hostOf(r.src);
+  const host = (r) => r.edge || hostOf(r.src);
   const checks = [{ ...base, path: '/', mode: 'gate', forbiddenHosts: [...new Set([...routes.map(host), hostOf(cmp?.src)])].filter(Boolean).sort() }];
   const gated = enabled.filter((r) => r.category).map(host);
   if (gated.length) checks.push({ ...base, path: '/?martech=on', mode: 'gate', forbiddenHosts: [...new Set(gated)].sort() });
