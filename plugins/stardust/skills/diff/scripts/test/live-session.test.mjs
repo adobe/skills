@@ -17,11 +17,22 @@
 // every context by default. The edge header signature.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { mkdirSync, mkdtempSync as createTempDirectory, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as session from '../live-session.mjs';
 
+const testRoots = new Set();
+const mkdtempSync = (prefix) => {
+  const root = createTempDirectory(prefix);
+  testRoots.add(root);
+  return root;
+};
+process.once('exit', () => {
+  for (const root of testRoots) rmSync(root, { recursive: true, force: true });
+});
 // the stub pages below navigate one host back-to-back; the per-host pacing has its own tests (they set the pace themselves)
 process.env.STARDUST_LIVE_PACE_MS = '0';
 
@@ -35,6 +46,12 @@ const stderrOf = async (fn) => {
   console.error = (...a) => { lines.push(a.join(' ')); };
   try { await fn(); } finally { console.error = saved; }
   return lines;
+};
+const withFsFault = async (name, fault, fn) => {
+  const original = fs[name];
+  fs[name] = (...args) => fault(original, ...args);
+  syncBuiltinESMExports();
+  try { return await fn(); } finally { fs[name] = original; syncBuiltinESMExports(); }
 };
 
 check('the exported surface the instruments import, the denial-page names included', () => {
@@ -200,7 +217,7 @@ const LIVE_URL = 'https://www.example.com/';
 const GOTO_STATE_ROOT = mkdtempSync(join(tmpdir(), 'live-goto-tests-'));
 const gotoLive = (page, url, options = {}) => session.gotoLive(page, url, {
   ...options,
-  throttle: { stateRoot: GOTO_STATE_ROOT, paceMs: 0, maxParallel: 0, ...options.throttle },
+  throttle: { stateRoot: GOTO_STATE_ROOT, paceMs: 0, maxParallel: 0, now: () => 1000, ...options.throttle },
 });
 const stubPage = ({ status = 200, headers = {}, probes = [CLEAN_PROBE], reload = { status: 200, headers: {} } } = {}) => {
   const calls = { goto: 0, reload: 0, evaluate: 0, waits: [] };
@@ -362,7 +379,7 @@ await checkAsync('gotoLive: an unavailable shared throttle does not shorten a de
   const lines = await stderrOf(async () => {
     await assert.rejects(gotoLive(page, LIVE_URL, {
       settleMs: 0, solveWindow: true,
-      throttle: { stateRoot, paceMs: 0, maxParallel: 0 },
+      throttle: { stateRoot, paceMs: 0, maxParallel: 0, now: () => 1000 },
     }), (error) => {
       assert.equal(error.name, 'BotChallengeError');
       assert.equal(error.marker, 'HTTP 200 denial page — "System Down"');
@@ -560,6 +577,8 @@ check('liveThrottleDecision (pure): pace and slots both gate starts, 0 disables 
   assert.equal(d.state.lastStart, 2500);
   d = session.liveThrottleDecision(busy, 'first', 1000, { paceMs: 0, maxParallel: 0 });
   assert.equal(d.canStart, true, 'both gates disabled');
+  assert.equal(d.state.adaptive.holdUntil, null, 'older state without hold fields is normalized');
+  assert.equal(d.state.adaptive.answered, false, 'older state is not treated as an answer');
   assert.ok(!d.state.active.some((a) => a.id === 'first'), 'a disabled slot cap adds no lease');
   d = session.liveThrottleDecision({ ...busy, active: [] }, 'first', 1000, { paceMs: 2000, maxParallel: 0 });
   assert.deepEqual([d.canStart, d.waitMs], [false, 1500], 'pace remains enabled');
@@ -614,21 +633,30 @@ check('tryAcquireLiveLock: an atomic mkdir lock excludes a live owner and reclai
 });
 await checkAsync('runLiveNavigation: the on-disk queue allows one in-flight navigation, preserves waiter order, and starts consecutive navigations one pace apart under a fake clock', async () => {
   const stateRoot = mkdtempSync(join(tmpdir(), 'live-throttle-'));
-  const page = { waitForTimeout: (ms) => new Promise((resolve) => setTimeout(resolve, Math.min(ms, 5))) };
+  let slotClock = 1000;
+  const pendingSleeps = [];
+  const page = { waitForTimeout: (ms) => new Promise((resolve) => { pendingSleeps.push({ ms, resolve }); }) };
   const order = [];
   let releaseFirst;
   const firstGate = new Promise((resolve) => { releaseFirst = resolve; });
-  const opts = { stateRoot, paceMs: 0, maxParallel: 1, pollMs: 1 };
+  const opts = { stateRoot, paceMs: 0, maxParallel: 1, pollMs: 1, now: () => slotClock };
   let work;
   const linesPromise = stderrOf(async () => {
     const first = session.runLiveNavigation(page, 'https://www.example.com/one', async () => { order.push('first'); await firstGate; return 1; }, opts);
     const second = session.runLiveNavigation(page, 'https://www.example.com/two', async () => { order.push('second'); return 2; }, opts);
     const third = session.runLiveNavigation(page, 'https://www.example.com/three', async () => { order.push('third'); return 3; }, opts);
     work = [first, second, third];
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    for (let turn = 0; turn < 10; turn += 1) await Promise.resolve();
     assert.deepEqual(order, ['first'], 'one slot in flight');
     releaseFirst();
-    assert.deepEqual(await Promise.all(work), [1, 2, 3]);
+    let completed = false;
+    const results = Promise.all(work).then((values) => { completed = true; return values; });
+    for (let turn = 0; turn < 100 && !completed; turn += 1) {
+      await Promise.resolve();
+      for (const sleep of pendingSleeps.splice(0)) { slotClock += sleep.ms; sleep.resolve(); }
+    }
+    assert.ok(completed, 'all queued work completes under the injected clock');
+    assert.deepEqual(await results, [1, 2, 3]);
   });
   await linesPromise;
   assert.deepEqual(order, ['first', 'second', 'third'], 'ticket order');
@@ -687,7 +715,10 @@ await checkAsync('runLiveNavigation: Retry-After holds still apply when pace and
 await checkAsync('runLiveNavigation: Retry-After HTTP-date is relative to now and values above 120 seconds are capped', async () => {
   for (const [label, header, expected] of [
     ['date', new Date(Date.UTC(2026, 0, 1, 0, 0, 5)).toUTCString(), 5000],
+    ['past', new Date(Date.UTC(2025, 11, 31, 23, 59, 59)).toUTCString(), 0],
     ['cap', '999', session.LIVE_RETRY_AFTER_MAX_MS],
+    ['huge', '9'.repeat(400), session.LIVE_RETRY_AFTER_MAX_MS],
+    ['fraction', '0.5', 500],
   ]) {
     const stateRoot = mkdtempSync(join(tmpdir(), `live-retry-after-${label}-`));
     const clock = Date.UTC(2026, 0, 1, 0, 0, 0);
@@ -698,8 +729,188 @@ await checkAsync('runLiveNavigation: Retry-After HTTP-date is relative to now an
     await stderrOf(() => session.runLiveNavigation({ waitForTimeout: async () => {} }, LIVE_URL, async () => response, options));
     const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
     assert.equal(state.adaptive.holdUntil, clock + expected, label);
+    assert.equal(state.adaptive.answered, false, 'a response signal is not a success');
     rmSync(stateRoot, { recursive: true, force: true });
   }
+});
+await checkAsync('runLiveNavigation: negative and non-date Retry-After values never become date holds', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-invalid-retry-after-'));
+  try {
+    for (const header of ['-1', '-10', '+1', '1e3', 'tomorrow', '']) {
+      const url = `https://retry-${encodeURIComponent(header || 'empty').replace(/%/g, '')}.example.com/`;
+      const options = { stateRoot, paceMs: 0, maxParallel: 0, now: () => 1000 };
+      await session.runLiveNavigation({}, url, async () => ({
+        status: () => 429, headers: () => ({ 'retry-after': header }),
+      }), options);
+      const state = JSON.parse(readFileSync(join(session.liveHostStateDir(url, { stateRoot }), 'throttle.json'), 'utf8'));
+      assert.equal(state.adaptive.holdUntil, null, header);
+    }
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('runLiveNavigation: local origins never create throttle state for response signals', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-local-signals-'));
+  try {
+    for (const url of ['http://localhost/', 'http://localhost./', 'http://app.localhost/', 'http://127.0.0.2/',
+      'http://127.255.255.255/', 'http://[::1]/', 'http://[::ffff:127.0.0.1]/']) {
+      assert.equal(session.isLiveHttpUrl(url), false, url);
+      for (const status of [429, 503]) {
+        const response = { status: () => status, headers: () => ({ 'retry-after': '3' }) };
+        assert.equal(await session.runLiveNavigation({}, url, async () => response, {
+          stateRoot, paceMs: 1000, maxParallel: 2, now: () => 1000,
+        }), response);
+        assert.equal(response.liveSignalRecorded, undefined, url);
+      }
+    }
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('runLiveNavigation: a redirect to a local response origin cannot signal the requested live host', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-local-redirect-signal-'));
+  try {
+    for (const status of [429, 503]) {
+      const response = { status: () => status, headers: () => ({ 'retry-after': '3' }), url: () => 'http://127.0.0.2/' };
+      await stderrOf(() => session.runLiveNavigation({}, LIVE_URL, async () => response, {
+        stateRoot, paceMs: 0, maxParallel: 1, now: () => 1000,
+      }));
+      const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+      assert.equal(state.adaptive.signalSeen, false);
+      assert.equal(response.liveSignalRecorded, undefined);
+      const page = stubPage({ status, headers: { 'cf-mitigated': 'challenge' } });
+      page.goto = async () => ({ ...response, headers: () => ({ 'cf-mitigated': 'challenge' }) });
+      await stderrOf(() => assert.rejects(gotoLive(page, LIVE_URL, {
+        settleMs: 0, throttle: { stateRoot, paceMs: 0, maxParallel: 1, now: () => 1000 },
+      }), { name: 'BotChallengeError' }));
+      const afterChallenge = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+      assert.equal(afterChallenge.adaptive.signalSeen, false, 'the application layer observes the response origin guard');
+    }
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('runLiveNavigation: a status-only 429 stub still records a signal', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-status-only-signal-'));
+  try {
+    const response = { status: () => 429 };
+    await stderrOf(() => session.runLiveNavigation({}, LIVE_URL, async () => response, {
+      stateRoot, paceMs: 0, maxParallel: 0, now: () => 1000,
+    }));
+    const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+    assert.equal(state.adaptive.signalSeen, true);
+    assert.equal(response.liveSignalRecorded, true);
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('gotoLive: an immutable 429 response preserves the challenge error and records one step', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-frozen-response-'));
+  try {
+    let clock = 1000;
+    const response = Object.freeze({ status: () => 429, headers: () => ({ 'cf-mitigated': 'challenge' }), url: () => LIVE_URL });
+    const page = stubPage();
+    page.goto = async () => response;
+    await stderrOf(async () => {
+      await assert.rejects(gotoLive(page, LIVE_URL, {
+        settleMs: 0, throttle: { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock++ },
+      }), { name: 'BotChallengeError' });
+    });
+    const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+    assert.equal(state.adaptive.paceMs, 2000);
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('runLiveNavigation: reusing one response object does not count the signal twice', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-reused-response-'));
+  try {
+    let clock = 1000;
+    const response = { status: () => 429, headers: () => ({}) };
+    const page = { waitForTimeout: async (ms) => { clock += ms; } };
+    const options = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock };
+    await stderrOf(async () => {
+      await session.runLiveNavigation(page, LIVE_URL, async () => response, options);
+      clock += 1;
+      await session.runLiveNavigation(page, LIVE_URL, async () => response, options);
+    });
+    const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+    assert.equal(state.adaptive.paceMs, 2000);
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('runLiveNavigation: every process observes a hold, pace, lease expiry and the slot ceiling', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-hold-interactions-'));
+  try {
+    let clock = 1000;
+    const options = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pidAlive: () => true };
+    await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, { ...options, pid: 10, retryAfterMs: 4000 }));
+    const stateFile = join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json');
+    const held = JSON.parse(readFileSync(stateFile, 'utf8'));
+    held.lastStart = 4000;
+    held.active = [{ id: 'other', pid: 20, startedAt: 1000, expiresAt: 5500 }];
+    writeFileSync(stateFile, JSON.stringify(held));
+    const starts = [];
+    const page = { waitForTimeout: async (ms) => { assert.ok(ms > 0); clock += ms; } };
+    await stderrOf(async () => {
+      await session.runLiveNavigation(page, LIVE_URL, async () => { starts.push(clock); }, { ...options, pid: 30 });
+      await session.runLiveNavigation(page, LIVE_URL, async () => { starts.push(clock); }, { ...options, pid: 40 });
+    });
+    assert.deepEqual(starts, [6000, 8000], 'the shared hold and pace block both processes; the expired lease clears');
+    clock += 1;
+    await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, { ...options, retryAfterMs: 10000 }));
+    const before = JSON.parse(readFileSync(stateFile, 'utf8'));
+    const response = { status: () => 200, headers: () => ({}) };
+    let startedAt;
+    const lines = await stderrOf(async () => {
+      assert.equal(await session.runLiveNavigation(page, LIVE_URL, async () => { startedAt = clock; return response; }, {
+        ...options, maxWaitMs: 50,
+      }), response);
+    });
+    assert.equal(startedAt, 8051, 'a shorter slot ceiling intentionally proceeds before the hold expires');
+    const after = JSON.parse(readFileSync(stateFile, 'utf8'));
+    assert.deepEqual(after.waiters, []);
+    assert.deepEqual(after.active, []);
+    assert.equal(after.adaptive.holdUntil, before.adaptive.holdUntil, 'the ceiling does not erase another process hold');
+    assert.ok(lines.some((line) => line.includes('proceeding without one')));
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('gotoLive: a clean navigation after a hold counts toward recovery', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-hold-success-'));
+  try {
+    let clock = 1000;
+    const throttle = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock };
+    await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, { ...throttle, retryAfterMs: 2000 }));
+    const page = stubPage();
+    page.waitForTimeout = async (ms) => { clock += ms; };
+    await stderrOf(() => gotoLive(page, LIVE_URL, { settleMs: 0, throttle }));
+    const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+    assert.equal(clock, 3000);
+    assert.equal(state.adaptive.successes, 1);
+    assert.equal(state.adaptive.answered, true);
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('adaptive throttle: TTL expiry clears answered and hold before transport classification', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-answered-ttl-'));
+  try {
+    let clock = 1000;
+    const options = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, adaptiveTtlMs: 5000 };
+    await session.recordLiveNavigationSuccess(LIVE_URL, options);
+    clock += 1;
+    await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, { ...options, retryAfterMs: 10000 }));
+    clock = 6002;
+    const result = await session.recordLiveBotSignal(LIVE_URL, { ...options, kind: 'transport' });
+    assert.equal(result.signalSeen, false);
+    assert.equal(result.holdUntil, null);
+    const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+    assert.equal(state.adaptive.answered, false);
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('shared throttle: warning deduplication is per host and resetLivePacing clears it', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'live-warning-reset-'));
+  try {
+    session.resetLivePacing();
+    const stateRoot = join(root, 'blocked');
+    writeFileSync(stateRoot, 'occupied');
+    const options = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => 1000 };
+    const lines = await stderrOf(async () => {
+      await session.recordLiveBotSignal(LIVE_URL, options);
+      await session.recordLiveNavigationSuccess(LIVE_URL, options);
+      await session.recordLiveBotSignal('https://other.example.com/', options);
+      session.resetLivePacing();
+      await session.recordLiveBotSignal(LIVE_URL, options);
+    });
+    assert.equal(lines.length, 3);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 await checkAsync('runLiveNavigation: 503 signals only with Retry-After; missing or unparsable Retry-After has no hold', async () => {
   for (const [status, retryAfter, signalSeen, hold] of [
@@ -731,8 +942,9 @@ await checkAsync('runLiveNavigation: transport errors signal only after the host
     const options = {
       stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pid: 610 + index, pidAlive: () => true,
     };
+    const page = { waitForTimeout: async (ms) => { clock += ms; } };
     await assert.rejects(
-      session.runLiveNavigation({ waitForTimeout: async () => {} }, LIVE_URL, async () => { throw error; }, options),
+      session.runLiveNavigation(page, LIVE_URL, async () => { throw error; }, options),
       (thrown) => thrown === error,
     );
     let state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
@@ -741,14 +953,14 @@ await checkAsync('runLiveNavigation: transport errors signal only after the host
     clock += 1;
     const lines = await stderrOf(async () => {
       await assert.rejects(
-        session.runLiveNavigation({ waitForTimeout: async () => {} }, LIVE_URL, async () => { throw error; }, options),
+        session.runLiveNavigation(page, LIVE_URL, async () => { throw error; }, options),
         (thrown) => thrown === error,
       );
     });
     state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
     assert.deepEqual([state.adaptive.signalSeen, state.adaptive.paceMs], [true, 2000]);
     assert.equal(state.active.length, 0, 'the failed navigation released its lease');
-    assert.equal(lines.length, 1);
+    assert.equal(lines.filter((line) => line.includes('bot signal seen')).length, 1);
     rmSync(stateRoot, { recursive: true, force: true });
   }
   const stateRoot = mkdtempSync(join(tmpdir(), 'live-transport-plain-'));
@@ -770,11 +982,13 @@ check('isTransportError: Playwright timeouts and connection failures classify; a
   assert.equal(session.isTransportError(timeout), true);
   assert.equal(session.isTransportError(new Error('page.goto: Timeout 45000ms exceeded')), true);
   for (const code of [
-    'ERR_CONNECTION_RESET', 'ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_CLOSED', 'ERR_TIMED_OUT',
+    'ERR_CONNECTION_RESET', 'ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_CLOSED', 'ERR_CONNECTION_ABORTED', 'ERR_TIMED_OUT',
     'ERR_EMPTY_RESPONSE', 'ERR_HTTP2_PROTOCOL_ERROR', 'ERR_QUIC_PROTOCOL_ERROR', 'ERR_SSL_PROTOCOL_ERROR',
     'ERR_NETWORK_CHANGED',
   ]) assert.equal(session.isTransportError(new Error(`page.goto: net::${code} at ${LIVE_URL}`)), true, code);
   assert.equal(session.isTransportError(new Error('boom')), false);
+  assert.equal(session.isTransportError(Object.assign(new Error('aborted'), { name: 'AbortError' })), false);
+  assert.equal(session.isTransportError(new Error('page.goto: net::ERR_ABORTED')), false);
   assert.equal(session.isTransportError(null), false);
 });
 await checkAsync('runLiveNavigation: stale waiters are dropped and a lost waiter re-queues at a fresh ticket', async () => {
@@ -888,6 +1102,27 @@ await checkAsync('runLiveNavigation: handing a lease back is best effort — a l
   assert.equal(state.active.length, 1, 'the lease is left to expire at expiresAt');
   rmSync(stateRoot, { recursive: true, force: true });
 });
+await checkAsync('runLiveNavigation: a stuck release lock remains bounded when the slot ceiling is disabled', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-release-no-ceiling-'));
+  try {
+    const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+    let waited = 0;
+    const page = { waitForTimeout: async (ms) => {
+      assert.ok(ms > 0);
+      waited += ms;
+      if (waited > 10000) throw new Error('unbounded release');
+    } };
+    await stderrOf(async () => {
+      assert.equal(await session.runLiveNavigation(page, LIVE_URL, async () => {
+        const ownerDir = join(hostDir, 'throttle.lock', 'held');
+        mkdirSync(ownerDir, { recursive: true });
+        writeFileSync(join(ownerDir, 'owner.json'), JSON.stringify({ pid: process.pid, createdAt: 1000 }));
+        return 7;
+      }, { stateRoot, paceMs: 0, maxParallel: 1, maxWaitMs: 0, now: () => 1000 }), 7);
+    });
+    assert.equal(waited, 10000);
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
 await checkAsync('runLiveNavigation: lock contention reaches the wait ceiling without spinning', async () => {
   session.resetLivePacing();
   const stateRoot = mkdtempSync(join(tmpdir(), 'live-lock-ceiling-'));
@@ -932,6 +1167,48 @@ await checkAsync('shared throttle: corrupt JSON warns once, navigation proceeds,
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^\[live-session\] WARNING: shared throttle unavailable for www\.example\.com: Unexpected token .+ — proceeding unthrottled$/);
   rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('shared throttle: an unreadable state is not overwritten as an empty queue', async () => {
+  session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-unreadable-state-'));
+  try {
+    const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+    mkdirSync(hostDir, { recursive: true });
+    const stateFile = join(hostDir, 'throttle.json');
+    const original = JSON.stringify({ active: [{ id: 'other', pid: process.pid, expiresAt: 99999 }] });
+    writeFileSync(stateFile, original);
+    const lines = await stderrOf(() => withFsFault('readFileSync', (read, file, ...rest) => {
+      if (file === stateFile) throw Object.assign(new Error('state unreadable'), { code: 'EACCES' });
+      return read(file, ...rest);
+    }, async () => {
+      assert.equal(await session.runLiveNavigation({}, LIVE_URL, async () => 7, {
+        stateRoot, paceMs: 0, maxParallel: 1, now: () => 1000,
+      }), 7);
+    }));
+    assert.equal(readFileSync(stateFile, 'utf8'), original);
+    assert.equal(lines.length, 1);
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('shared throttle: a failed waiter heartbeat removes the queued waiter when cleanup can write', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-waiter-cleanup-'));
+  try {
+    const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+    mkdirSync(hostDir, { recursive: true });
+    const stateFile = join(hostDir, 'throttle.json');
+    writeFileSync(stateFile, JSON.stringify({ active: [{ id: 'other', pid: process.pid, expiresAt: 99999 }] }));
+    let writes = 0;
+    await stderrOf(() => withFsFault('renameSync', (rename, source, target) => {
+      if (target === stateFile && ++writes === 2) throw new Error('heartbeat write failed');
+      return rename(source, target);
+    }, async () => {
+      assert.equal(await session.runLiveNavigation({}, LIVE_URL, async () => 7, {
+        stateRoot, paceMs: 0, maxParallel: 1, now: () => 1000,
+      }), 7);
+    }));
+    const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+    assert.deepEqual(state.waiters, []);
+    assert.deepEqual(state.active.map((lease) => lease.id), ['other']);
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
 });
 await checkAsync('shared throttle: an unwritable root warns once and every bookkeeping entry point skips without failing navigation', async () => {
   session.resetLivePacing();
@@ -988,6 +1265,94 @@ await checkAsync('adaptive throttle: a foreign live lock skips bookkeeping after
   assert.match(lines[0], new RegExp(`shared throttle unavailable for www\\.example\\.com: .*${session.LIVE_BOOKKEEPING_WAIT_MS} ms.*proceeding unthrottled`));
   rmSync(stateRoot, { recursive: true, force: true });
 });
+await checkAsync('shared throttle: preparation failures cannot reject accounting or replace navigation outcomes', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-preparation-errors-'));
+  try {
+    const error = Object.assign(new Error('navigation failed'), { name: 'TimeoutError' });
+    for (const options of [
+      null,
+      { stateRoot, now: () => { throw new Error('clock unavailable'); } },
+      { stateRoot, now: () => { throw null; } },
+      { stateRoot: 42, now: () => 1000 },
+    ]) {
+      await stderrOf(async () => {
+        await assert.doesNotReject(() => session.recordLiveBotSignal(LIVE_URL, options));
+        await assert.doesNotReject(() => session.recordLiveNavigationSuccess(LIVE_URL, options));
+        await assert.rejects(session.runLiveNavigation({}, LIVE_URL, async () => { throw error; }, options),
+          (thrown) => thrown === error);
+      });
+    }
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('shared throttle: a failure after granting a lease leaves no active entry on the no-op path', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-grant-cleanup-'));
+  try {
+    const stateFile = join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json');
+    let writes = 0;
+    await stderrOf(() => withFsFault('chmodSync', (chmod, file, mode) => {
+      if (file === stateFile && ++writes === 2) throw new Error('grant chmod failed');
+      return chmod(file, mode);
+    }, async () => {
+      assert.equal(await session.runLiveNavigation({}, LIVE_URL, async () => 7, {
+        stateRoot, paceMs: 0, maxParallel: 1, now: () => 1000,
+      }), 7);
+    }));
+    const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+    assert.deepEqual(state.waiters, []);
+    assert.deepEqual(state.active, []);
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('shared throttle: queued lock contention is bounded even with a disabled slot ceiling', async () => {
+  for (const maxWaitMs of [50, 0]) {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'live-queued-lock-bound-'));
+    try {
+      const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+      mkdirSync(hostDir, { recursive: true });
+      writeFileSync(join(hostDir, 'throttle.json'), JSON.stringify({
+        active: [{ id: 'held', pid: process.pid, startedAt: 1000, expiresAt: 999999 }],
+      }));
+      let waited = 0;
+      const page = { waitForTimeout: async (ms) => {
+        waited += ms;
+        if (waited > 10100) throw new Error('unbounded lock wait');
+        const ownerDir = join(hostDir, 'throttle.lock', 'held');
+        mkdirSync(ownerDir, { recursive: true });
+        writeFileSync(join(ownerDir, 'owner.json'), JSON.stringify({ pid: process.pid, createdAt: 1000 }));
+      } };
+      await stderrOf(async () => {
+        assert.equal(await session.runLiveNavigation(page, LIVE_URL, async () => 'result', {
+          stateRoot, paceMs: 0, maxParallel: 1, maxWaitMs, pollMs: 50, now: () => 1000,
+        }), 'result');
+      });
+      assert.ok(waited <= (maxWaitMs || 10100), `${maxWaitMs}: waited ${waited}`);
+      rmSync(join(hostDir, 'throttle.lock'), { recursive: true, force: true });
+      await session.recordLiveNavigationSuccess(LIVE_URL, { stateRoot, now: () => 61001 });
+      assert.deepEqual(JSON.parse(readFileSync(join(hostDir, 'throttle.json'), 'utf8')).waiters, [],
+        'a waiter left behind by unavailable cleanup expires by its heartbeat');
+    } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+  }
+});
+await checkAsync('adaptive throttle: zero or invalid poll intervals cannot spin on a stuck lock', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-zero-poll-'));
+  try {
+    const ownerDir = join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.lock', 'held');
+    mkdirSync(ownerDir, { recursive: true });
+    writeFileSync(join(ownerDir, 'owner.json'), JSON.stringify({ pid: process.pid, createdAt: 1000 }));
+    for (const pollMs of [0, -1, NaN]) {
+      let waited = 0; let calls = 0;
+      await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, {
+        stateRoot, now: () => 1000, pollMs,
+        waitForTimeout: async (ms) => {
+          calls += 1;
+          assert.ok(ms > 0 && Number.isFinite(ms), 'each sleep is positive and finite');
+          waited += ms;
+        },
+      }));
+      assert.equal(waited, 10000);
+      assert.ok(calls <= 10000);
+    }
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
 await checkAsync('paceLiveNavigation: slots per host under an injected clock — the first navigation is free, the next waits one pace, concurrent callers queue up (0, pace, 2×pace), another host is independent, localhost is never paced, 0 disables; ONE stderr line per host on its first wait', async () => {
   session.resetLivePacing();
   const stateRoot = mkdtempSync(join(tmpdir(), 'live-pace-api-'));
@@ -1035,14 +1400,14 @@ await checkAsync('gotoLive paces through the environment: STARDUST_LIVE_PACE_MS=
   try {
     const first = stubPage(); const second = stubPage(); const third = stubPage();
     const lines = await stderrOf(async () => {
-      await gotoLive(first, LIVE_URL, { settleMs: 0, throttle: { stateRoot, paceMs: 5000, maxParallel: 2 } });
-      await gotoLive(second, LIVE_URL, { settleMs: 0, throttle: { stateRoot, paceMs: 5000, maxParallel: 2 } });
-      await gotoLive(third, LIVE_URL, { settleMs: 0, throttle: { stateRoot, paceMs: 5000, maxParallel: 2 } });
+      await gotoLive(first, LIVE_URL, { settleMs: 0, throttle: { stateRoot, paceMs: 5000, maxParallel: 2, now: () => 1000 } });
+      await gotoLive(second, LIVE_URL, { settleMs: 0, throttle: { stateRoot, paceMs: 5000, maxParallel: 2, now: () => 1000 } });
+      await gotoLive(third, LIVE_URL, { settleMs: 0, throttle: { stateRoot, paceMs: 5000, maxParallel: 2, now: () => 1000 } });
     });
     assert.deepEqual(first.calls.waits, [], 'the first navigation is free');
     assert.equal(second.calls.waits.length, 1);
-    assert.ok(second.calls.waits[0] > 4000 && second.calls.waits[0] <= 5000, `the second waits about one pace (${second.calls.waits[0]} ms)`);
-    assert.ok(third.calls.waits[0] > 9000 && third.calls.waits[0] <= 10000, `the third queues behind it (${third.calls.waits[0]} ms)`);
+    assert.equal(second.calls.waits[0], 5000);
+    assert.equal(third.calls.waits[0], 10000);
     assert.equal(lines.length, 1, JSON.stringify(lines));
     assert.match(lines[0], /^\[live-session\] waiting to pace live navigations to www\.example\.com \(5000 ms apart, 2 max parallel; STARDUST_LIVE_PACE_MS \/ STARDUST_LIVE_MAX_PARALLEL; 0 disables either\) — first wait \d+ ms$/);
   } finally { process.env.STARDUST_LIVE_PACE_MS = '0'; session.resetLivePacing(); }
@@ -1254,6 +1619,79 @@ const drive = async (ctx, { type = 'document', headers = { 'user-agent': 'OwnUA/
   await ctx.routes[0].handler({ request: () => ({ resourceType: () => type, headers: () => headers }), continue: (o) => { continued = o === undefined ? 'bare' : o; } });
   return continued;
 };
+await checkAsync('shared storage state: read preparation failures warn instead of rejecting a new context', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-state-stat-error-'));
+  try {
+    const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+    mkdirSync(hostDir, { recursive: true });
+    writeFileSync(join(hostDir, 'storage-state.json'), '{}');
+    const browser = stubBrowser({ tier: 'chrome' });
+    const lines = await stderrOf(async () => {
+      await assert.doesNotReject(() => session.newLiveContext(browser, {
+        stateUrl: LIVE_URL, stateRoot, stateNow: () => { throw new Error('state clock unavailable'); },
+      }));
+    });
+    assert.equal(lines.length, 1);
+    assert.ok(!('storageState' in browser.contexts[0]));
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('gotoLive: invalid throttle preparation cannot replace a navigation result or error', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-goto-preparation-'));
+  try {
+    const page = stubPage();
+    await stderrOf(async () => {
+      assert.equal(await session.gotoLive(page, LIVE_URL, { settleMs: 0, throttle: null }), page.last);
+    });
+    assert.equal(page.calls.goto, 1);
+    let navigated = false;
+    const throttle = {
+      stateRoot, paceMs: 0, maxParallel: 0, now: () => 1000,
+      get env() { if (navigated) throw new Error('state options unavailable'); return {}; },
+    };
+    page.goto = async () => { navigated = true; return page.last; };
+    await stderrOf(async () => {
+      assert.equal(await session.gotoLive(page, LIVE_URL, { settleMs: 0, throttle }), page.last);
+    });
+    const navigationError = Object.assign(new Error('navigation failed'), { name: 'TimeoutError' });
+    page.goto = async () => { throw navigationError; };
+    await stderrOf(() => assert.rejects(session.gotoLive(page, LIVE_URL, { settleMs: 0, throttle: null }),
+      (error) => error === navigationError));
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('shared storage state: malformed preparation and falsy errors still create a context', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-state-invalid-read-'));
+  try {
+    mkdirSync(session.liveHostStateDir(LIVE_URL, { stateRoot }), { recursive: true });
+    writeFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'storage-state.json'), '{}');
+    for (const options of [
+      { stateRoot: 42, stateNow: () => 1000 },
+      { stateRoot, stateEnv: null, stateNow: () => 1000 },
+      { stateRoot, stateNow: () => { throw null; } },
+    ]) {
+      const browser = stubBrowser();
+      await stderrOf(() => assert.doesNotReject(() => session.newLiveContext(browser, { stateUrl: LIVE_URL, ...options })));
+      assert.equal(browser.contexts.length, 1);
+      assert.ok(!('storageState' in browser.contexts[0]));
+    }
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
+await checkAsync('shared storage state: stat errors and invalid save options never escape bookkeeping', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-state-fs-boundary-'));
+  try {
+    const stateFile = join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'storage-state.json');
+    mkdirSync(session.liveHostStateDir(LIVE_URL, { stateRoot }), { recursive: true });
+    writeFileSync(stateFile, '{}');
+    await stderrOf(() => withFsFault('statSync', (stat, file, ...rest) => {
+      if (file === stateFile) throw new Error('state stat unavailable');
+      return stat(file, ...rest);
+    }, () => assert.doesNotReject(() => session.newLiveContext(stubBrowser(), {
+      stateUrl: LIVE_URL, stateRoot, stateNow: () => 1000,
+    }))));
+    await stderrOf(async () => {
+      assert.equal(await session.persistLiveStorageState({}, LIVE_URL, null), false);
+    });
+  } finally { rmSync(stateRoot, { recursive: true, force: true }); }
+});
 await checkAsync('newLiveContext: the browser-derived or caller UA reaches the context; standard headers ride document requests only; Chrome hints match the UA major while bundled hints ride; the webdriver spoof reaches every context unless STARDUST_STEALTH=0', async () => {
   await withEnv({}, async () => {
     const chrome = stubBrowser({ tier: 'chrome' });
@@ -1335,7 +1773,7 @@ await checkAsync('shared storage state: host jars stay isolated and private, a f
   assert.deepEqual(JSON.parse(readFileSync(stateFile, 'utf8')).origins[0].localStorage, [{ name: 'consent', value: 'accepted' }]);
 
   const disabledRoot = mkdtempSync(join(tmpdir(), 'live-state-off-'));
-  assert.equal(await session.persistLiveStorageState(ctx, LIVE_URL, { stateRoot: disabledRoot, env: { STARDUST_LIVE_STATE: '0' } }), false);
+  assert.equal(await session.persistLiveStorageState(ctx, LIVE_URL, { stateRoot: disabledRoot, now: () => 1000, env: { STARDUST_LIVE_STATE: '0' } }), false);
   assert.deepEqual(readFileSync(stateFile, 'utf8').length > 0, true);
   rmSync(stateRoot, { recursive: true, force: true });
   rmSync(disabledRoot, { recursive: true, force: true });
@@ -1348,8 +1786,8 @@ await checkAsync('shared storage state: capture and write failures return false,
   page.context = () => context;
   let response;
   const lines = await stderrOf(async () => {
-    assert.equal(await session.persistLiveStorageState(context, LIVE_URL, { stateRoot, writeIntervalMs: 0 }), false);
-    assert.equal(await session.persistLiveStorageState(context, LIVE_URL, { stateRoot, writeIntervalMs: 0 }), false);
+    assert.equal(await session.persistLiveStorageState(context, LIVE_URL, { stateRoot, now: () => 1000, writeIntervalMs: 0 }), false);
+    assert.equal(await session.persistLiveStorageState(context, LIVE_URL, { stateRoot, now: () => 1000, writeIntervalMs: 0 }), false);
     response = await gotoLive(page, LIVE_URL, {
       settleMs: 0,
       throttle: { stateRoot, paceMs: 0, maxParallel: 0 },
@@ -1364,7 +1802,7 @@ await checkAsync('shared storage state: capture and write failures return false,
     assert.equal(await session.persistLiveStorageState(
       { storageState: async () => ({ cookies: [], origins: [] }) },
       'https://write-failure.example.com/',
-      { stateRoot: blockedRoot, writeIntervalMs: 0 },
+      { stateRoot: blockedRoot, now: () => 1000, writeIntervalMs: 0 },
     ), false);
   });
   assert.equal(writeLines.length, 1);

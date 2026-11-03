@@ -7,11 +7,12 @@
 // and writes nothing. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as crawl from '../crawl.mjs';
+import * as session from '../../../diff/scripts/live-session.mjs';
 
 const {
   captureGaps, clearChallenge, crawlerLiveBindings, isChallengeResponse, localeRootPath, maxPages,
@@ -199,6 +200,182 @@ await (async () => {
     rmSync(out, { recursive: true, force: true });
   }
 })();
+
+await (async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'crawl-response-signal-'));
+  const saved = console.error;
+  console.error = () => {};
+  try {
+    let clock = 1000;
+    const options = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock++ };
+    const blocked = Object.freeze({
+      status: () => 429, headers: () => ({ 'cf-mitigated': 'challenge' }), url: () => 'https://www.example.com/',
+    });
+    const clean = { status: () => 200, headers: () => ({}) };
+    const page = { url: () => 'https://www.example.com/', waitForTimeout: async (ms) => { clock += ms; }, reload: async () => clean };
+    const navigate = (p, url, operation) => session.runLiveNavigation(p, url, operation, options);
+    const response = await navigate(page, page.url(), async () => blocked);
+    assert.equal(await clearChallenge(page, response, {
+      recordBotSignal: (url) => session.recordLiveBotSignal(url, options),
+      navigate,
+    }), clean);
+    const state = await session.recordLiveNavigationSuccess(page.url(), options);
+    assert.equal(state.paceMs, 2000, 'the transport and challenge layers share one signal mark');
+    console.log('✓ clearChallenge: a marked immutable 429 takes exactly one shared backoff step');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ clearChallenge: a marked immutable 429 takes exactly one shared backoff step\n  ${e.message}`);
+  } finally {
+    console.error = saved;
+    rmSync(stateRoot, { recursive: true, force: true });
+  }
+})();
+
+await (async () => {
+  const out = mkdtempSync(join(tmpdir(), 'crawl-rejecting-navigation-'));
+  try {
+    const url = 'https://www.example.com/';
+    const response = { status: () => 200, headers: () => ({ 'content-type': 'text/html' }) };
+    let starts = 0; let closes = 0;
+    const page = {
+      goto: async () => { starts += 1; return response; },
+      url: () => url, waitForTimeout: async () => {},
+      evaluate: async (fn) => (fn.name === 'capture' ? {
+        finalUrl: url, headings: ['Captured'], _signals: { mainTextLen: 8, realImageCount: 0 },
+      } : undefined),
+      content: async () => '<main>Captured</main>', screenshot: async () => {},
+      close: async () => { closes += 1; },
+    };
+    for (const afterNavigation of [false, true]) {
+      const record = await crawl.capturePage({ newPage: async () => page }, url, 'page', {
+        consent: false, dynamics: false, wait: 'fast', out,
+      }, {
+        runLiveNavigation: async (_page, _url, operation) => {
+          if (afterNavigation) await operation();
+          throw new Error('navigation bookkeeping unavailable');
+        },
+        recordLiveNavigationSuccess: async () => { throw new Error('success unavailable'); },
+        persistLiveStorageState: async () => { throw new Error('state unavailable'); },
+        recordLiveBotSignal: async () => { throw new Error('signal unavailable'); },
+      });
+      assert.equal(record.headings[0], 'Captured');
+    }
+    assert.equal(starts, 2, 'a rejecting hook never duplicates the navigation');
+    assert.equal(closes, 2);
+    console.log('✓ capturePage: rejecting navigation hooks still capture exactly once');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ capturePage: rejecting navigation hooks still capture exactly once\n  ${e.message}`);
+  } finally { rmSync(out, { recursive: true, force: true }); }
+})();
+
+await (async () => {
+  try {
+    const blocked = { status: () => 403, headers: () => ({ 'cf-mitigated': 'challenge' }) };
+    const clean = { status: () => 200, headers: () => ({}) };
+    let signals = 0; let reloads = 0;
+    const page = {
+      url: () => 'https://www.example.com/', waitForTimeout: async () => {},
+      reload: async () => (++reloads === 1 ? blocked : clean),
+    };
+    assert.equal(await clearChallenge(page, blocked, {
+      recordBotSignal: async () => { signals += 1; },
+      navigate: async (_page, _url, operation) => operation(),
+    }), clean);
+    assert.equal(signals, 2, 'each newly observed unmarked challenge response reports a signal');
+    console.log('✓ clearChallenge: unmarked challenge reloads report their signals');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ clearChallenge: unmarked challenge reloads report their signals\n  ${e.message}`);
+  }
+})();
+
+await (async () => {
+  try {
+    const error = Object.assign(new Error('navigation failed'), { name: 'TimeoutError' });
+    const live = crawlerLiveBindings({
+      runLiveNavigation: async (_page, _url, operation) => operation(),
+    });
+    await assert.rejects(live.runLiveNavigation({}, 'https://www.example.com/', async () => { throw error; }),
+      (thrown) => thrown === error);
+    const blocked = { status: () => 403, headers: () => ({ 'cf-mitigated': 'challenge' }) };
+    const waits = [];
+    assert.equal(await clearChallenge({
+      url: () => 'https://www.example.com/', waitForTimeout: async (ms) => { waits.push(ms); },
+    }, blocked, {
+      recordBotSignal: async () => { throw null; },
+      navigate: async () => { throw new Error('navigation bookkeeping unavailable'); },
+    }), blocked);
+    assert.deepEqual(waits, [4000, 4000, 4000]);
+    console.log('✓ shared hooks: navigation errors retain their identity and rejected hooks do not shorten the challenge window');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ shared hooks: navigation errors retain their identity and rejected hooks do not shorten the challenge window\n  ${e.message}`);
+  }
+})();
+
+check('entry probe: rejecting shared hooks still finish discovery, challenge clearing and capture once', () => {
+  const root = mkdtempSync(join(tmpdir(), 'crawl-entry-hooks-'));
+  try {
+    const copy = join(root, 'crawl.mjs');
+    writeFileSync(copy, readFileSync(SCRIPT, 'utf8'));
+    const dependencyDir = join(root, 'node_modules', 'playwright');
+    mkdirSync(dependencyDir, { recursive: true });
+    writeFileSync(join(dependencyDir, 'package.json'), JSON.stringify({ type: 'module', exports: './index.js' }));
+    writeFileSync(join(dependencyDir, 'index.js'), `
+      const calls = { starts: 0, reloads: 0, signals: 0, successes: 0, saves: 0, waited: 0 };
+      globalThis.captureCalls = calls;
+      process.on('exit', () => console.log(JSON.stringify(calls)));
+      const url = 'https://www.example.com/';
+      const response = (blocked) => ({
+        status: () => blocked ? Number(process.env.TEST_STATUS) : 200,
+        headers: () => blocked ? { 'cf-mitigated': 'challenge' } : { 'content-type': 'text/html' },
+        liveSignalRecorded: blocked && process.env.TEST_STATUS === '429',
+      });
+      export const chromium = { launch: async () => ({
+        close: async () => {},
+        newContext: async () => ({
+          addInitScript: async () => {}, close: async () => {},
+          newPage: async () => ({
+            url: () => url,
+            goto: async () => response(++calls.starts <= 2),
+            reload: async () => { calls.reloads += 1; return response(false); },
+            waitForTimeout: async (ms) => { calls.waited += ms; },
+            evaluate: async (fn) => fn.name === 'capture' ? {
+              finalUrl: url, headings: ['Captured'], links: [], _contentHash: 'captured',
+              _signals: { mainTextLen: 8, realImageCount: 0 },
+            } : null,
+            content: async () => '<main>Captured</main>', screenshot: async () => {}, close: async () => {},
+          }),
+        }),
+      }) };
+    `);
+    writeFileSync(join(root, 'live-session.mjs'), `
+      export const runLiveNavigation = async () => { throw new Error('navigation bookkeeping unavailable'); };
+      export const recordLiveBotSignal = async () => { captureCalls.signals += 1; throw new Error('signal unavailable'); };
+      export const recordLiveNavigationSuccess = async () => { captureCalls.successes += 1; throw new Error('success unavailable'); };
+      export const persistLiveStorageState = async () => { captureCalls.saves += 1; throw new Error('state unavailable'); };
+    `);
+    for (const status of ['403', '429']) {
+      const out = join(root, `capture-${status}`);
+      const result = spawnSync(process.execPath, [copy, '--url', 'https://www.example.com/', '--pages', '/',
+        '--out', out, '--no-consent-dismiss', '--wait', 'fast'], {
+        cwd: root, encoding: 'utf8', env: { ...process.env, TEST_STATUS: status }, timeout: 10000,
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const log = JSON.parse(readFileSync(join(out, '_crawl-log.json'), 'utf8'));
+      assert.deepEqual(log.crawl.failures, []);
+      assert.equal(log.discovery.botBlock, 'challenge');
+      const calls = JSON.parse(result.stdout.trim());
+      assert.equal(calls.starts, 3, 'each probe and capture navigates exactly once');
+      assert.equal(calls.reloads, 1);
+      assert.equal(calls.signals, status === '429' ? 0 : 2, 'marked response signals are not counted again');
+      assert.equal(calls.successes, 1);
+      assert.equal(calls.saves, 2);
+      assert.equal((result.stderr.match(/WARNING: shared live-session bookkeeping unavailable/g) || []).length, 1);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');
 process.exit(failed ? 1 : 0);

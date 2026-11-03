@@ -20,8 +20,9 @@ host. Fixed pacing was either too slow or not cautious enough.
   the configured parallelism, and a host's backoff is forgotten `STARDUST_LIVE_STATE_TTL_MS` after its last signal.
   Repository-scoped OS-temp state,
   fair queueing and stale-lock recovery coordinate every process. Lost waiters re-queue and stale waiters/leases expire;
-  `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) caps slot waits. `0` disables either throttle limit.
-  Bookkeeping is best effort: one warning per host, then navigation proceeds unthrottled.
+  `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) caps slot waits, even during a hold, without clearing it.
+  `0` disables either throttle limit, not holds. Bookkeeping lock waits cap at 10 s; failures warn once per host,
+  then navigation proceeds unthrottled; transport response marks prevent duplicate challenge accounting.
 - **Per-host browser state:** after a successful `gotoLive` the context's storage state is saved (atomic write, at most
   every few seconds per process) and `newLiveContext` loads it when it is younger than `STARDUST_LIVE_STATE_TTL_MS`
   (default 12 h) and the caller passed none, so a cleared challenge or an accepted consent carries over to the next

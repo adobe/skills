@@ -47,7 +47,9 @@
  * one more such window restores the configured parallelism, and a host's
  * backoff is forgotten STARDUST_LIVE_STATE_TTL_MS after its last signal (0
  * keeps it). STARDUST_LIVE_MAX_WAIT_MS caps shared-slot waits (default 300000;
- * 0 disables). A waiting process prints one stderr line per host.
+ * 0 disables); that ceiling may bypass a Retry-After hold without clearing it.
+ * Bookkeeping lock waits cap at 10 s; failures warn once per host and proceed
+ * unthrottled. A waiting process prints one stderr line per host.
  * A repository-scoped browser-state jar is loaded for new contexts and refreshed
  * after successful navigations. STARDUST_LIVE_STATE_TTL_MS defaults to 12 hours;
  * STARDUST_LIVE_STATE=0 disables jar reads and writes. The shared files live
@@ -286,6 +288,7 @@ function readThrottleState(hostDir, host) {
   try {
     return normalizedThrottleState(JSON.parse(readFileSync(file, 'utf8')));
   } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
     warnSharedThrottle(host, error);
     return emptyThrottleState();
   }
@@ -347,15 +350,10 @@ function warnStateSave(host, error) {
   console.error(`[live-session] WARNING: cannot save shared browser state for ${host}: ${String(error && error.message ? error.message : error).split('\n')[0]}`);
 }
 
-async function updateAdaptiveThrottle(url, update, {
-  paceMs = livePaceMs(), maxParallel = liveMaxParallel(), now = Date.now, stateRoot = liveStateRoot(),
-  pid = process.pid, pidAlive = pidIsAlive, pollMs = LIVE_LOCK_POLL_MS, adaptiveTtlMs = liveStateTtlMs(),
-  waitForTimeout = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-} = {}) {
+async function updateAdaptiveThrottle(url, update, options = {}) {
   const host = liveHost(url);
+  let paceMs = livePaceMs(); let maxParallel = liveMaxParallel();
   if (!host) return { paceMs, maxParallel, signalSeen: false, successes: 0, backedOff: false };
-  const hostDir = liveHostStateDir(url, { stateRoot });
-  const observedAt = now();
   const skipped = () => ({
     ...adaptiveLimits(emptyThrottleState(), { paceMs, maxParallel }),
     backedOff: false, recovered: false, skipped: true,
@@ -363,12 +361,22 @@ async function updateAdaptiveThrottle(url, update, {
   let held = null;
   let result;
   let failure;
+  let failed = false;
   let waited = 0;
   try {
+    const {
+      now = Date.now, stateRoot, pid = process.pid, pidAlive = pidIsAlive,
+      pollMs = LIVE_LOCK_POLL_MS, adaptiveTtlMs = liveStateTtlMs(),
+      waitForTimeout = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    } = options;
+    ({ paceMs = paceMs, maxParallel = maxParallel } = options);
+    const hostDir = liveHostStateDir(url, { stateRoot });
+    const observedAt = now();
+    const interval = Number.isFinite(pollMs) && pollMs > 0 ? Math.max(1, Math.floor(pollMs)) : LIVE_LOCK_POLL_MS;
     while (!(held = tryAcquireLiveLock(hostDir, { now, pid, pidAlive }))) {
       const remaining = LIVE_BOOKKEEPING_WAIT_MS - waited;
       if (remaining <= 0) throw new Error(`shared throttle bookkeeping lock wait exceeded ${LIVE_BOOKKEEPING_WAIT_MS} ms`);
-      const delay = Math.min(pollMs, remaining);
+      const delay = Math.min(interval, remaining);
       await waitForTimeout(delay);
       waited += delay;
     }
@@ -378,11 +386,12 @@ async function updateAdaptiveThrottle(url, update, {
     result = { ...adaptiveLimits(state, { paceMs, maxParallel }), ...updated };
   } catch (error) {
     failure = error;
+    failed = true;
   }
   if (held) {
-    try { held.release(); } catch (error) { failure = failure || error; }
+    try { held.release(); } catch (error) { if (!failed) failure = error; failed = true; }
   }
-  if (failure) {
+  if (failed) {
     warnSharedThrottle(host, failure);
     return skipped();
   }
@@ -392,11 +401,12 @@ async function updateAdaptiveThrottle(url, update, {
 /** Record one host bot signal and return its effective shared throttle. */
 export async function recordLiveBotSignal(url, options = {}) {
   const host = liveHost(url);
-  const retryAfterMs = Number.isFinite(options.retryAfterMs)
-    ? Math.max(0, Math.min(LIVE_RETRY_AFTER_MAX_MS, options.retryAfterMs)) : undefined;
+  let retryAfterMs;
   const state = await updateAdaptiveThrottle(url, (shared, {
     observedAt, appliedAt, paceMs, maxParallel,
   }) => {
+    retryAfterMs = Number.isFinite(options.retryAfterMs)
+      ? Math.max(0, Math.min(LIVE_RETRY_AFTER_MAX_MS, options.retryAfterMs)) : undefined;
     if (options.kind === 'transport' && !shared.adaptive.answered) return { backedOff: false };
     if (retryAfterMs !== undefined) {
       shared.adaptive.holdUntil = Math.max(shared.adaptive.holdUntil ?? 0, appliedAt + retryAfterMs);
@@ -445,77 +455,87 @@ export async function recordLiveNavigationSuccess(url, options = {}) {
   return state;
 }
 
-async function acquireLiveNavigation(page, url, {
-  paceMs = livePaceMs(), maxParallel = liveMaxParallel(), now = Date.now, stateRoot = liveStateRoot(),
-  pid = process.pid, pidAlive = pidIsAlive, pollMs = LIVE_LOCK_POLL_MS,
-  leaseMs = LIVE_LEASE_MS_DEFAULT, maxWaitMs = liveMaxWaitMs(), adaptiveTtlMs = liveStateTtlMs(),
-} = {}) {
+async function acquireLiveNavigation(page, url, options = {}) {
   const host = liveHost(url);
   if (!host) return { wait: 0, release: async () => {} };
-  const hostDir = liveHostStateDir(url, { stateRoot });
-  if (!(paceMs > 0) && !(maxParallel > 0)) {
-    try {
-      const observedAt = now();
-      const state = cleanThrottleState(readThrottleState(hostDir, host), pidAlive, observedAt, adaptiveTtlMs);
-      if (!Number.isFinite(state.adaptive.holdUntil) || state.adaptive.holdUntil <= observedAt) {
-        return { wait: 0, release: async () => {} };
-      }
-    } catch (error) {
-      warnSharedThrottle(host, error);
-      return { wait: 0, release: async () => {} };
-    }
-  }
-  const waiterId = `${pid}-${crypto.randomBytes(10).toString('hex')}`;
+  let hostDir; let waiterId; let clock;
   let queued = false;
   let totalWait = 0;
-  let logicalNow = now();
-  const clock = () => Math.max(now(), logicalNow);
-  const configured = { paceMs, maxParallel };
-  const reachedCeiling = () => maxWaitMs > 0 && totalWait >= maxWaitMs;
-  const currentLimits = () => adaptiveLimits(readThrottleState(hostDir, host), configured);
-  const sleep = async (ms, limits = currentLimits()) => {
-    const remaining = maxWaitMs > 0 ? Math.max(0, maxWaitMs - totalWait) : Infinity;
-    if (remaining === 0) {
-      const delay = Math.max(1, Math.min(ms, pollMs));
-      const startedAt = clock();
-      await page.waitForTimeout(delay);
-      logicalNow = Math.max(logicalNow, startedAt + delay);
-      return;
-    }
-    const delay = Math.max(1, Math.min(ms, remaining));
-    const startedAt = clock();
-    logSharedWait(host, limits.paceMs, limits.maxParallel, delay);
-    await page.waitForTimeout(delay);
-    totalWait += delay;
-    logicalNow = Math.max(logicalNow, startedAt + delay);
-  };
-  const enqueue = (state) => {
-    const queuedAt = clock();
-    const ticket = state.nextTicket;
-    state.nextTicket += 1;
-    state.waiters.push({
-      id: waiterId, pid, ticket, queuedAt, seenAt: queuedAt,
-    });
-    queued = true;
-  };
-  const proceedWithoutLease = async () => {
-    const state = cleanThrottleState(readThrottleState(hostDir, host), pidAlive, clock(), adaptiveTtlMs);
-    state.waiters = state.waiters.filter((w) => w.id !== waiterId);
-    writeThrottleState(hostDir, state);
-    queued = false;
-    logMaxWait(host, totalWait);
-    return { wait: totalWait, release: async () => {} };
-  };
-  const lock = async () => {
-    while (true) {
-      const held = tryAcquireLiveLock(hostDir, { now: clock, pid, pidAlive });
-      if (held) return held;
-      if (!queued && reachedCeiling()) return null;
-      await sleep(pollMs);
-    }
-  };
-
   try {
+    const {
+      paceMs = livePaceMs(), maxParallel = liveMaxParallel(), now = Date.now, stateRoot,
+      pid = process.pid, pidAlive = pidIsAlive, pollMs: configuredPollMs = LIVE_LOCK_POLL_MS,
+      leaseMs = LIVE_LEASE_MS_DEFAULT, maxWaitMs = liveMaxWaitMs(), adaptiveTtlMs = liveStateTtlMs(),
+    } = options;
+    const pollMs = Number.isFinite(configuredPollMs) && configuredPollMs > 0
+      ? Math.max(1, Math.floor(configuredPollMs)) : LIVE_LOCK_POLL_MS;
+    hostDir = liveHostStateDir(url, { stateRoot });
+    if (!(paceMs > 0) && !(maxParallel > 0)) {
+      try {
+        const observedAt = now();
+        const state = cleanThrottleState(readThrottleState(hostDir, host), pidAlive, observedAt, adaptiveTtlMs);
+        if (!Number.isFinite(state.adaptive.holdUntil) || state.adaptive.holdUntil <= observedAt) {
+          return { wait: 0, release: async () => {} };
+        }
+      } catch (error) {
+        warnSharedThrottle(host, error);
+        return { wait: 0, release: async () => {} };
+      }
+    }
+    waiterId = `${pid}-${crypto.randomBytes(10).toString('hex')}`;
+    let logicalNow = now();
+    clock = () => Math.max(now(), logicalNow);
+    const configured = { paceMs, maxParallel };
+    const reachedCeiling = () => maxWaitMs > 0 && totalWait >= maxWaitMs;
+    const currentLimits = () => adaptiveLimits(readThrottleState(hostDir, host), configured);
+    const sleep = async (ms, limits = currentLimits()) => {
+      const remaining = maxWaitMs > 0 ? Math.max(0, maxWaitMs - totalWait) : Infinity;
+      if (remaining === 0) {
+        const delay = Math.max(1, Math.min(ms, pollMs));
+        const startedAt = clock();
+        await page.waitForTimeout(delay);
+        logicalNow = Math.max(logicalNow, startedAt + delay);
+        return;
+      }
+      const delay = Math.max(1, Math.min(ms, remaining));
+      const startedAt = clock();
+      logSharedWait(host, limits.paceMs, limits.maxParallel, delay);
+      await page.waitForTimeout(delay);
+      totalWait += delay;
+      logicalNow = Math.max(logicalNow, startedAt + delay);
+    };
+    const enqueue = (state) => {
+      const queuedAt = clock();
+      const ticket = state.nextTicket;
+      state.nextTicket += 1;
+      state.waiters.push({
+        id: waiterId, pid, ticket, queuedAt, seenAt: queuedAt,
+      });
+      queued = true;
+    };
+    const proceedWithoutLease = async () => {
+      const state = cleanThrottleState(readThrottleState(hostDir, host), pidAlive, clock(), adaptiveTtlMs);
+      state.waiters = state.waiters.filter((w) => w.id !== waiterId);
+      writeThrottleState(hostDir, state);
+      queued = false;
+      logMaxWait(host, totalWait);
+      return { wait: totalWait, release: async () => {} };
+    };
+    const lock = async () => {
+      let waited = 0;
+      while (waited <= LIVE_BOOKKEEPING_WAIT_MS) {
+        const held = tryAcquireLiveLock(hostDir, { now: clock, pid, pidAlive });
+        if (held) return held;
+        if (reachedCeiling()) return null;
+        const remaining = LIVE_BOOKKEEPING_WAIT_MS - waited;
+        if (remaining <= 0) throw new Error(`shared throttle lock wait exceeded ${LIVE_BOOKKEEPING_WAIT_MS} ms`);
+        const delay = Math.min(pollMs, remaining, maxWaitMs > 0 ? maxWaitMs - totalWait : Infinity);
+        await sleep(delay);
+        waited += delay;
+      }
+      return null;
+    };
+
     let held = await lock();
     if (!held) {
       logMaxWait(host, totalWait);
@@ -530,6 +550,10 @@ async function acquireLiveNavigation(page, url, {
 
     while (true) {
       held = await lock();
+      if (!held) {
+        logMaxWait(host, totalWait);
+        throw new Error('shared throttle lock unavailable at the slot wait ceiling');
+      }
       let decision;
       let limits;
       try {
@@ -557,13 +581,13 @@ async function acquireLiveNavigation(page, url, {
             // never fails on the bookkeeping.
             try {
               const releaseLock = await lock();
-              if (!releaseLock) return;
+              if (!releaseLock) throw new Error('shared throttle lease release lock unavailable at the slot wait ceiling');
               try {
                 const state = cleanThrottleState(readThrottleState(hostDir, host), pidAlive, clock(), adaptiveTtlMs);
                 state.active = state.active.filter((a) => a.id !== waiterId);
                 writeThrottleState(hostDir, state);
               } finally { releaseLock.release(); }
-            } catch { /* the lease expires at expiresAt */ }
+            } catch (error) { warnSharedThrottle(host, error); }
           },
         };
       }
@@ -572,13 +596,16 @@ async function acquireLiveNavigation(page, url, {
   } catch (e) {
     if (queued) {
       try {
-        const held = await lock();
-        try {
-          const state = readThrottleState(hostDir, host);
-          state.waiters = state.waiters.filter((w) => w.id !== waiterId);
-          writeThrottleState(hostDir, state);
-        } finally { held.release(); }
-      } catch { /* preserve the original coordination error */ }
+        const held = tryAcquireLiveLock(hostDir, { now: clock });
+        if (held) {
+          try {
+            const state = readThrottleState(hostDir, host);
+            state.waiters = state.waiters.filter((w) => w.id !== waiterId);
+            state.active = state.active.filter((a) => a.id !== waiterId);
+            writeThrottleState(hostDir, state);
+          } finally { held.release(); }
+        }
+      } catch { /* stale waiters and leases expire if cleanup is unavailable */ }
     }
     warnSharedThrottle(host, e);
     return { wait: totalWait, release: async () => {} };
@@ -606,6 +633,10 @@ export async function paceLiveNavigation(page, url, options = {}) {
   return lease.wait;
 }
 
+const recordedLiveResponses = new WeakSet();
+/** Whether this response's transport signal has already been accounted for, including immutable responses. */
+export const liveResponseSignalRecorded = (response) => Boolean(response && (recordedLiveResponses.has(response) || response.liveSignalRecorded));
+
 /** Run one live navigation under the shared per-host pace and in-flight lease. */
 export async function runLiveNavigation(page, url, navigate, options = {}) {
   const lease = await acquireLiveNavigation(page, url, options);
@@ -614,20 +645,27 @@ export async function runLiveNavigation(page, url, navigate, options = {}) {
     try {
       response = await navigate();
     } catch (error) {
-      if (isTransportError(error)) await recordLiveBotSignal(url, { ...options, kind: 'transport' });
+      try {
+        if (isTransportError(error)) await recordLiveBotSignal(url, options == null ? options : { ...options, kind: 'transport' });
+      } catch (bookkeepingError) { warnSharedThrottle(liveHost(url), bookkeepingError); }
       throw error;
     }
-    if (response && typeof response.status === 'function' && typeof response.headers === 'function') {
-      const status = response.status();
-      const headers = response.headers() || {};
-      const retryAfterHeader = Object.entries(headers)
-        .find(([name]) => name.toLowerCase() === 'retry-after');
-      if (status === 429 || (status === 503 && retryAfterHeader)) {
-        const retryAfterMs = parseRetryAfter(retryAfterHeader && retryAfterHeader[1], options.now || Date.now);
-        await recordLiveBotSignal(url, { ...options, retryAfterMs });
-        Object.defineProperty(response, 'liveSignalRecorded', { value: true });
+    try {
+      const responseUrl = response && typeof response.url === 'function' ? response.url() : url;
+      if (liveHost(url) && liveHost(responseUrl) && response && typeof response.status === 'function' && !liveResponseSignalRecorded(response)) {
+        const status = response.status();
+        const headers = typeof response.headers === 'function' ? response.headers() || {} : {};
+        const retryAfterHeader = Object.entries(headers)
+          .find(([name]) => name.toLowerCase() === 'retry-after');
+        if (status === 429 || (status === 503 && retryAfterHeader)) {
+          const retryAfterMs = parseRetryAfter(retryAfterHeader && retryAfterHeader[1], options.now || Date.now);
+          recordedLiveResponses.add(response);
+          try { Object.defineProperty(response, 'liveSignalRecorded', { value: true }); }
+          catch { /* immutable responses retain the mark in recordedLiveResponses */ }
+          await recordLiveBotSignal(url, { ...options, retryAfterMs });
+        }
       }
-    }
+    } catch (error) { warnSharedThrottle(liveHost(url), error); }
     return response;
   } finally { await lease.release(); }
 }
@@ -638,6 +676,8 @@ function parseRetryAfter(value, now) {
   let delay;
   if (/^\d+(?:\.\d+)?$/.test(text)) delay = Number(text) * 1000;
   else {
+    // HTTP-date begins with a weekday, not a signed number accepted by Date.parse.
+    if (!/^[A-Za-z]{3,9}[ ,]/.test(text)) return undefined;
     const at = Date.parse(text);
     if (!Number.isFinite(at)) return undefined;
     delay = Math.max(0, at - now());
@@ -667,21 +707,23 @@ export function resetLivePacing() {
   stateWriteQueueByHost.clear();
 }
 
-function liveStorageState(url, {
-  stateRoot = liveStateRoot(), now = Date.now, ttlMs = liveStateTtlMs(), env = process.env,
-} = {}) {
-  const hostDir = liveHostStateDir(url, { stateRoot });
-  if (!liveStateEnabled(env) || !hostDir) return null;
-  const file = path.join(hostDir, 'storage-state.json');
-  if (!existsSync(file) || now() - statSync(file).mtimeMs > ttlMs) return null;
+function liveStorageState(url, options = {}) {
+  const host = liveHost(url);
+  if (!host) return null;
+  let file = host;
   try {
+    const { stateRoot, now = Date.now, ttlMs = liveStateTtlMs(), env = process.env } = options;
+    const hostDir = liveHostStateDir(url, { stateRoot });
+    if (!liveStateEnabled(env)) return null;
+    file = path.join(hostDir, 'storage-state.json');
+    if (!existsSync(file) || now() - statSync(file).mtimeMs > ttlMs) return null;
     const state = JSON.parse(readFileSync(file, 'utf8'));
     return {
       cookies: Array.isArray(state.cookies) ? state.cookies : [],
       origins: Array.isArray(state.origins) ? state.origins : [],
     };
   } catch (e) {
-    console.error(`[live-session] WARNING: cannot read shared browser state ${file}: ${String(e.message).split('\n')[0]}`);
+    console.error(`[live-session] WARNING: cannot read shared browser state ${file}: ${String(e && e.message ? e.message : e).split('\n')[0]}`);
     return null;
   }
 }
@@ -703,14 +745,16 @@ function storageStateForHost(state, url) {
  * Persist a page or context's Playwright storage state to its host jar, atomically and rate-limited per process.
  * Returns true when a file was written.
  */
-export async function persistLiveStorageState(pageOrContext, url, {
-  stateRoot = liveStateRoot(), now = Date.now, writeIntervalMs = LIVE_STATE_WRITE_INTERVAL_MS, env = process.env,
-  waitForRateLimit = false,
-} = {}) {
+export async function persistLiveStorageState(pageOrContext, url, options = {}) {
   const host = liveHost(url);
-  if (!host || !liveStateEnabled(env)) return false;
+  if (!host) return false;
   let write;
   try {
+    const {
+      stateRoot, now = Date.now, writeIntervalMs = LIVE_STATE_WRITE_INTERVAL_MS, env = process.env,
+      waitForRateLimit = false,
+    } = options;
+    if (!liveStateEnabled(env)) return false;
     const context = typeof pageOrContext?.storageState === 'function'
       ? pageOrContext : typeof pageOrContext?.context === 'function' ? pageOrContext.context() : null;
     if (!context || typeof context.storageState !== 'function') return false;
@@ -840,7 +884,10 @@ function acceptLanguage(locale) {
 export function isLiveHttpUrl(url) {
   try {
     const u = new URL(url);
-    const local = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(u.hostname);
+    const hostname = u.hostname.toLowerCase().replace(/\.$/, '');
+    const local = hostname === 'localhost' || hostname.endsWith('.localhost')
+      || /^127\./.test(hostname) || /^\[::ffff:7f[0-9a-f]{2}:[0-9a-f]{1,4}\]$/.test(hostname)
+      || ['[::1]', '0.0.0.0'].includes(hostname);
     return (u.protocol === 'http:' || u.protocol === 'https:') && !local;
   } catch { return false; }
 }
@@ -1215,7 +1262,11 @@ async function gotoLiveNavigation(page, url, {
   waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false,
   throttle = {},
 } = {}) {
-  const throttleOptions = { ...throttle, leaseMs: throttle.leaseMs ?? timeoutMs + settleMs + 30000 };
+  let throttleOptions = null;
+  try {
+    if (!throttle || typeof throttle !== 'object') throw new TypeError('invalid shared throttle options');
+    throttleOptions = { ...throttle, leaseMs: throttle.leaseMs ?? timeoutMs + settleMs + 30000 };
+  } catch (error) { warnSharedThrottle(liveHost(url), error); }
   let resp = await runLiveNavigation(page, url, () => page.goto(url, { waitUntil, timeout: timeoutMs }), throttleOptions);
   if (!resp) {
     const err = new Error(`no response navigating to ${url} — network-level failure or non-HTTP navigation`);
@@ -1224,7 +1275,7 @@ async function gotoLiveNavigation(page, url, {
   }
   let signalRecorded = false;
   const recordSignal = async () => {
-    if (resp.liveSignalRecorded) {
+    if (liveResponseSignalRecorded(resp) || (typeof resp.url === 'function' && !isLiveHttpUrl(resp.url()))) {
       signalRecorded = true;
       return;
     }
@@ -1296,7 +1347,7 @@ async function gotoLiveNavigation(page, url, {
       throw error;
     }
   }
-  await persistLiveStorageState(page, url, { stateRoot: throttle.stateRoot });
+  if (throttleOptions) await persistLiveStorageState(page, url, throttleOptions);
   return resp;
 }
 
@@ -1304,11 +1355,14 @@ async function gotoLiveNavigation(page, url, {
 export async function gotoLive(page, url, options = {}) {
   try {
     const response = await gotoLiveNavigation(page, url, options);
-    if (response.status() < 400) await recordLiveNavigationSuccess(url, options.throttle);
+    try {
+      if (response.status() < 400) await recordLiveNavigationSuccess(url, options.throttle);
+    } catch (error) { warnSharedThrottle(liveHost(url), error); }
     return response;
   } catch (error) {
     if (error && error.name === 'BotChallengeError' && !error.liveSignalRecorded) {
-      await recordLiveBotSignal(url, options.throttle);
+      try { await recordLiveBotSignal(url, options.throttle); }
+      catch (bookkeepingError) { warnSharedThrottle(liveHost(url), bookkeepingError); }
     }
     throw error;
   }

@@ -136,16 +136,52 @@ const LIVE_SESSION_FALLBACKS = Object.freeze({
   persistLiveStorageState: async () => false,
   recordLiveBotSignal: async () => false,
   recordLiveNavigationSuccess: async () => false,
+  liveResponseSignalRecorded: (response) => Boolean(response && response.liveSignalRecorded),
 });
+
+const sharedHookWarningHosts = new Set();
+function warnSharedHook(url, error) {
+  let host;
+  try { host = new URL(url).host; } catch { host = 'unknown host'; }
+  if (sharedHookWarningHosts.has(host)) return;
+  sharedHookWarningHosts.add(host);
+  console.error(`[crawl] WARNING: shared live-session bookkeeping unavailable for ${host}: ${String(error && error.message ? error.message : error).split('\n')[0]} — continuing without it`);
+}
+async function callSharedHook(hook, args, url) {
+  try { return await hook(...args); }
+  catch (error) { warnSharedHook(url, error); return false; }
+}
 
 /** Shared live-session helpers when present, with browser-neutral no-op fallbacks for standalone copies. */
 export function crawlerLiveBindings(shared = {}) {
   return {
     newLiveContext: shared.newLiveContext || LIVE_SESSION_FALLBACKS.newLiveContext,
-    runLiveNavigation: shared.runLiveNavigation || LIVE_SESSION_FALLBACKS.runLiveNavigation,
-    persistLiveStorageState: shared.persistLiveStorageState || LIVE_SESSION_FALLBACKS.persistLiveStorageState,
-    recordLiveBotSignal: shared.recordLiveBotSignal || LIVE_SESSION_FALLBACKS.recordLiveBotSignal,
-    recordLiveNavigationSuccess: shared.recordLiveNavigationSuccess || LIVE_SESSION_FALLBACKS.recordLiveNavigationSuccess,
+    runLiveNavigation: async (page, url, navigate) => {
+      let operation;
+      const run = () => {
+        if (!operation) {
+          operation = Promise.resolve().then(navigate);
+          operation.catch(() => {});
+        }
+        return operation;
+      };
+      try {
+        return await (shared.runLiveNavigation || LIVE_SESSION_FALLBACKS.runLiveNavigation)(page, url, run);
+      } catch (error) {
+        if (!operation) { warnSharedHook(url, error); return run(); }
+        const response = await operation; // the navigation's own rejection still escapes unchanged
+        warnSharedHook(url, error);
+        return response;
+      }
+    },
+    persistLiveStorageState: (page, url) => callSharedHook(
+      shared.persistLiveStorageState || LIVE_SESSION_FALLBACKS.persistLiveStorageState, [page, url], url,
+    ),
+    recordLiveBotSignal: (url) => callSharedHook(shared.recordLiveBotSignal || LIVE_SESSION_FALLBACKS.recordLiveBotSignal, [url], url),
+    recordLiveNavigationSuccess: (url) => callSharedHook(
+      shared.recordLiveNavigationSuccess || LIVE_SESSION_FALLBACKS.recordLiveNavigationSuccess, [url], url,
+    ),
+    liveResponseSignalRecorded: shared.liveResponseSignalRecorded || LIVE_SESSION_FALLBACKS.liveResponseSignalRecorded,
   };
 }
 
@@ -271,14 +307,21 @@ export function isChallengeResponse(resp) {
 // status as a hard failure. No-op for a normal 200 (isChallengeResponse false),
 // so zero overhead on the common path.
 export async function clearChallenge(page, resp, {
-  recordBotSignal = recordSharedBotSignal, navigate = sharedNavigate,
+  recordBotSignal = recordSharedBotSignal, navigate = sharedNavigate, signalRecorded,
 } = {}) {
-  if (isChallengeResponse(resp)) await recordBotSignal(page.url()).catch(() => {});
+  const alreadyRecorded = signalRecorded || (await sharedLiveSession()).liveResponseSignalRecorded
+    || LIVE_SESSION_FALLBACKS.liveResponseSignalRecorded;
+  const recordSignal = async () => {
+    if (isChallengeResponse(resp) && !alreadyRecorded(resp)) {
+      await callSharedHook(recordBotSignal, [page.url()], page.url());
+    }
+  };
+  await recordSignal();
   for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
     await page.waitForTimeout(4000);
     const reloaded = await navigate(page, page.url(), () => page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }))
       .catch(() => null);
-    if (reloaded) resp = reloaded;
+    if (reloaded) { resp = reloaded; await recordSignal(); }
   }
   return resp;
 }
@@ -433,8 +476,9 @@ async function persistSharedState(page, url = page.url()) {
   const { persistLiveStorageState } = crawlerLiveBindings(await sharedLiveSession());
   return persistLiveStorageState(page, url);
 }
-async function recordSharedBotSignal(url) {
-  const { recordLiveBotSignal } = crawlerLiveBindings(await sharedLiveSession());
+async function recordSharedBotSignal(url, response) {
+  const { recordLiveBotSignal, liveResponseSignalRecorded } = crawlerLiveBindings(await sharedLiveSession());
+  if (liveResponseSignalRecorded(response)) return false;
   return recordLiveBotSignal(url);
 }
 async function recordSharedSuccess(url) {
@@ -911,7 +955,9 @@ export async function capturePage(context, url, slug, args, sharedBindings = nul
   // worker's fresh context is re-challenged even after the probe cleared it, so
   // give the interstitial its JS-solve window and reload before validating —
   // otherwise a solvable 403 is thrown as a fatal HTTPError.
-  resp = await clearChallenge(page, resp, { recordBotSignal, navigate: navigateLive });
+  resp = await clearChallenge(page, resp, {
+    recordBotSignal, navigate: navigateLive, signalRecorded: live && live.liveResponseSignalRecorded,
+  });
   let status = resp.status();
   // 404 on a slash variant: retry ONCE with the trailing slash flipped before
   // recording a failure (stardust-style e2e finding — slash-required hosts).
@@ -1040,7 +1086,7 @@ async function main() {
   try {
     const probeResp = await sharedNavigate(probe, args.url, () => probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 }));
     if (isChallengeResponse(probeResp)) {
-      await recordSharedBotSignal(args.url).catch(() => {});
+      await recordSharedBotSignal(args.url, probeResp).catch(() => {});
       botBlock = 'challenge';
     }
   } catch (err) {
