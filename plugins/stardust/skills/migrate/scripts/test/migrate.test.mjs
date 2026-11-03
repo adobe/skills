@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { buildPageMap, foldPath, siteUrlOf, tagSections } from '../migrate.mjs';
+import { buildPageMap, fixWidgetMounts, foldPath, siteUrlOf, tagSections, widgetHref, widgetsIn } from '../migrate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -76,7 +76,9 @@ write(`${P}/home-proposed.html`, `<!doctype html>
 <main>
   <section class="hero"><img src="assets/img/hero.jpg" srcset="assets/img/hero.jpg 1x, assets/img/hero@2x.jpg 2x" alt=""><h1>Welcome</h1></section>
   <section class="cards" data-module="cards"><a href="/tours/">Tours</a> <a href="https://example.test/about/history.html?utm_source=x&amp;keep=1#team">History</a></section>
-  <div style="background:url(assets/img/bg.png)"><a href="/contact/">Contact</a> <a href="/nowhere/">Nowhere</a> <a href="mailto:a@example.test">Mail</a> <a href="#top">Top</a> <a href="https://elsewhere.example/x">Else</a></div>
+  <div style="background:url(assets/img/bg.png)"><a href="/contact/">Contact</a> <a href="/nowhere/">Nowhere</a> <a href="mailto:a@example.test">Mail</a> <a href="#top">Top</a> <a href="https://elsewhere.example/x">Else</a>
+    <p><a data-widget="search/site-search" href="/widgets/search/site-search.html?q=docs&amp;scope=all">Search</a></p>
+    <p><a data-widget="search/site-search" href="/widgets/search/site-search.html?q=tours">Search tours</a></p></div>
 </main>
 <footer>© Example</footer>
 </body>
@@ -148,6 +150,13 @@ check('<main> gets data-template and positional data-section 1..3; modules[] fro
   assert.match(home, /<main data-template="home">/);
   for (const n of [1, 2, 3]) assert.match(home, new RegExp(`data-section="${n}"`));
   assert.ok(!/data-section="4"/.test(home)); assert.deepEqual(homeMeta.modules, ['cards']); assert.equal(homeMeta.slotsFilled.length, 3);
+});
+check('widgets[] from a[data-widget] mounts: id = href file stem, deduped, href kept verbatim and never flagged broken', () => {
+  assert.deepEqual(homeMeta.widgets, [{ id: 'site-search', href: '/widgets/search/site-search.html?q=docs&scope=all' }]);
+  assert.match(home, /<a data-widget="search\/site-search" href="\/widgets\/search\/site-search\.html\?q=docs&amp;scope=all">/);
+  assert.match(home, /href="\/widgets\/search\/site-search\.html\?q=tours">/);
+  assert.ok(!homeMeta.brokenInternalLinks.some((b) => /widgets/.test(b.href)));
+  assert.deepEqual(json(`${OUT}/tours/_meta.json`).widgets, []);
 });
 check('internal links: relative with explicit leaf, tracking stripped, broken flagged, others untouched', () => {
   assert.match(home, /href="\.\/tours\/index\.html"/);
@@ -266,6 +275,26 @@ check('modules --clear empties the list; summary lists every page with — for p
   const pm = run(['pagemap']); assert.equal(pm.status, 0); assert.match(pm.out, /^7 entries, 0 collision\(s\)$/m);
 });
 
+check('summary finds Figma-sourced sidecars using the same site paths as render', () => {
+  const project = join(tmp, 'figma-summary');
+  const frame = 'https://www.figma.com/design/SYNTHETICKEY/File?node-id=1-1';
+  write('figma-summary/stardust/state.json', JSON.stringify({ pages: [
+    { slug: 'index', source: 'figma', url: frame, status: 'migrated' },
+    { slug: 'plans', source: 'figma', url: frame, path: '/commercial/plans/', status: 'migrated' },
+    { slug: 'pricing', source: 'figma', url: frame, status: 'extracted' },
+    { slug: 'about', url: 'https://example.test/about.html', status: 'migrated' },
+  ] }));
+  write('figma-summary/stardust/migrated/_meta.json', JSON.stringify({ renderBranch: 'A', fidelityTier: 'archetype', gatesPassed: ['content'] }));
+  write('figma-summary/stardust/migrated/commercial/plans/_meta.json', JSON.stringify({ renderBranch: 'A', fidelityTier: 'archetype', gatesPassed: ['content', 'visual'] }));
+  write('figma-summary/stardust/migrated/about._meta.json', JSON.stringify({ renderBranch: 'B', fidelityTier: 'sibling' }));
+  const result = run(['summary', '--json'], project); assert.equal(result.status, 0, result.err);
+  const rows = Object.fromEntries(JSON.parse(result.out).map((row) => [row.slug, row]));
+  assert.equal(rows.index.outputPath, 'index.html'); assert.equal(rows.index.sidecar, true); assert.equal(rows.index.gates, 1);
+  assert.equal(rows.plans.outputPath, 'commercial/plans/index.html'); assert.equal(rows.plans.sidecar, true); assert.equal(rows.plans.gates, 2);
+  assert.equal(rows.pricing.outputPath, 'pricing/index.html'); assert.equal(rows.pricing.sidecar, false);
+  assert.equal(rows.about.outputPath, 'about.html'); assert.equal(rows.about.sidecar, true);
+});
+
 // ---- refusals: placeholder gate, empty <title>, output-path collision --------------------------
 console.log('refusals');
 const s1 = json(STATE);
@@ -378,6 +407,16 @@ check('--help in an empty cwd: exit 0, usage on stdout, nothing written', () => 
   const r = run(['--help'], empty); assert.equal(r.status, 0); assert.match(r.out, /usage/i); assert.match(r.out, /Writes:/);
   assert.deepEqual(readdirSync(empty), []);
   rmSync(empty, { recursive: true, force: true });
+});
+
+// ---- widget mounts (pure) ---------------------------------------------------------------------
+check('a data-widget mount without href gets /widgets/<path>/<name>.html in the HTML and never emits href:null', () => {
+  const warned = [];
+  const fixed = fixWidgetMounts('<p><a data-widget="search/site-search">Search</a></p><p><a data-widget="x/y" href="/widgets/x/y.html?a=1">Y</a></p><p><a href="/about">about</a></p>', (m) => warned.push(m));
+  assert.equal(fixed, '<p><a data-widget="search/site-search" href="/widgets/search/site-search.html">Search</a></p><p><a data-widget="x/y" href="/widgets/x/y.html?a=1">Y</a></p><p><a href="/about">about</a></p>');
+  assert.equal(warned.length, 1); assert.match(warned[0], /site-search.*no href/);
+  assert.equal(widgetHref('/widgets/search/site-search.html'), '/widgets/search/site-search.html', 'idempotent on a full path');
+  assert.deepEqual(widgetsIn('<p><a data-widget="search/site-search">S</a></p>'), [{ id: 'site-search', href: '/widgets/search/site-search.html' }]);
 });
 
 // ---- done -----------------------------------------------------------------------------------

@@ -52,7 +52,8 @@ there and marks dead ones **host-bound** — the signal a pixel gate reports as 
 
 `node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] [--knowledge] [--chrome] --out stardust/dynamics`
 drafts one row per finding with the four axes pre-filled — **class · disposition ·
-reproducibility · status** — plus pattern, phase and the owner decision; `--knowledge` adds a spec's
+reproducibility · status** — plus pattern, phase, the owner decision and `target`, the delivery form
+(`widget` where no authored rows remain — `reference/triage.md` § Target); `--knowledge` adds a spec's
 curated features, decisions from its open questions; `--chrome` a row per header-contract family (cart and
 account decide their backend, the UI ships). Curate it into `stardust/dynamic-features.md` (§ Listings
 contract + § Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
@@ -61,8 +62,8 @@ contract + § Features + § Decision batch + § Register) and `stardust/dynamic-
 - **Reconcile against the migrated output** before scheduling anything.
 - Only reproducibility `self` ships autonomously; everything else is **one decision batch**.
 - Never fabricate copy for a blank client-rendered capture; never auto-wire a `regulated-pii` form;
-  a search box implies a results page (class S over the site's own pages is `self` once the index
-  exists); decided-out is explicit and owner-stated — a hands-off assumption never writes it.
+  a search box implies a results page; decided-out is explicit and owner-stated — a hands-off
+  assumption never writes it.
 - **Gate:** a row without a disposition fails prepare-migration 4.5 / replica Phase 2 / rollout B2.
   The static migration continues regardless.
 - **Martech only on request:** when the owner asks to keep tags or consent, add `--martech`

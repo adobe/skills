@@ -59,13 +59,14 @@ for (const url of URLS) {
       title: norm(root.querySelector('h1')?.textContent), intro: norm(container.querySelector('p')?.textContent).slice(0, 300), action: form?.getAttribute('action') || '', method: (form?.getAttribute('method') || 'post').toLowerCase(), hasFormTag: !!form,
       hidden: [...container.querySelectorAll('input[type=hidden]')].map((i) => i.name).filter(Boolean).slice(0, 20), submitLabel: norm(submit?.textContent) || norm(submit?.value) || 'Submit', fields: merged,
       piiSignals: merged.filter((f) => /ssn|social.?security|dob|birth|passport|account.?number|iban|card|cvv|minor|guardian|upload/i.test(`${f.name} ${f.label}`)).map((f) => f.name || f.label),
+      protection: (() => { const w = container.querySelector('[data-sitekey]'); const s = [...document.scripts].map((x) => x.src).find((x) => /recaptcha|hcaptcha|turnstile/i.test(x)) || ''; return (w || s) ? { vendor: `${w?.className || ''} ${s}`.match(/hcaptcha|turnstile/i)?.[0].toLowerCase() || 'recaptcha', siteKey: w?.dataset.sitekey || s.match(/render=([\w-]{20,})/)?.[1] || null, widget: !!w } : null; })(),
     };
   }, EXCLUDE);
   await page.close();
   if (!def) { console.error(`[forms] ${url}: no content-area controls`); continue; }
   const name = slug(new URL(url).pathname.replace(/\/$/, '').split('/').pop() || 'form');
   writeJSON(join(OUT, `${name}.json`), { _provenance: provenance('snapshot-forms', { source: url, settleMs: SETTLE }), ...def });
-  console.error(`[forms] ${name}: ${def.fields.length} fields (${def.fields.filter((f) => f.hiddenNow).length} conditional, ${def.fields.filter((f) => f.options?.length).length} with options) · submit "${def.submitLabel}" · form tag ${def.hasFormTag}${def.piiSignals.length ? ` · REGULATED-PII: ${def.piiSignals.join(',')}` : ''}`);
+  console.error(`[forms] ${name}: ${def.fields.length} fields (${def.fields.filter((f) => f.hiddenNow).length} conditional, ${def.fields.filter((f) => f.options?.length).length} with options) · submit "${def.submitLabel}" · form tag ${def.hasFormTag}${def.piiSignals.length ? ` · REGULATED-PII: ${def.piiSignals.join(',')}` : ''}${def.protection ? ` · PROTECTION: ${def.protection.vendor}` : ''}`);
 }
 await browser.close().catch(() => {});
 setTimeout(() => process.exit(0), 200).unref();

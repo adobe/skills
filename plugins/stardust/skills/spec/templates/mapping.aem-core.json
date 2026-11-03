@@ -13,7 +13,7 @@
   "video": { "kind": "block", "block": "video" },
   "download": { "kind": "block", "block": "cards", "variant": "download" },
   "form-container": { "kind": "block", "block": "form" },
-  "search": { "kind": "dynamic", "block": "search" },
+  "search": { "kind": "widget", "block": "search" },
   "languagenavigation": { "kind": "metadata", "block": "language-navigation" },
   "pdfviewer": { "kind": "block", "block": "embed", "variant": "pdf" },
   "target": { "kind": "drop" }
