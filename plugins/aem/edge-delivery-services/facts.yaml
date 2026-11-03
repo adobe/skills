@@ -297,6 +297,7 @@
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
     - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: test-when-costly
   claim: >-
@@ -306,6 +307,8 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: unit-vs-e2e-split
   claim: >-
@@ -319,6 +322,8 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: e2e-locate-by-a11y-tree
   claim: >-
@@ -332,6 +337,7 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: block-status-loaded
   claim: >-
@@ -353,6 +359,8 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: analytics-assert-event
   claim: >-
@@ -374,6 +382,7 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: martech-after-consent
   claim: >-

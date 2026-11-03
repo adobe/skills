@@ -33,7 +33,10 @@ cat >> head.html <<'EOF'
   gtag('config', 'G-SUMMER2026');
 </script>
 EOF
-npm pkg set dependencies.dayjs=1.11.13
+npm pkg set dependencies.dayjs=1.11.13 \
+  scripts.test='vitest run' \
+  devDependencies.vitest=3.2.4 \
+  devDependencies.jsdom=26.1.0
 mkdir -p images
 head -c 65536 /dev/urandom > images/summer-hero.jpg
 

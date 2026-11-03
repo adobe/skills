@@ -17,7 +17,8 @@ Review the change as you normally would, and also check the EDS rules below. Tre
 - No build step, bundler or npm runtime dependencies. Imports are relative with `.js`; third-party code loads with `loadScript()` or is copied into the repo.
 - Martech and analytics load last, from `loadDelayed()` in scripts.js (behind consent in `consented.js`, or `delayed.js` in older projects), never in head.html or the eager phase.
 - Every committed file is served. No content images or media in the repo; files that must not be served are in `.hlxignore`.
-- `npm run lint` passes. Tests use the project's own tools.
+- `npm run lint` passes.
+- Tests use the project's own tools and are aimed: only where a wrong answer is plausible and costly (no coverage padding); unit tests for logic and malformed input, E2E for interactions, a11y and analytics on the library page, located by role, no visual asserts.
 
 ## Block JS
 
