@@ -40,6 +40,9 @@
  * processes. Fresh hosts start at STARDUST_LIVE_PACE_MS (default 1000; 0
  * disables) and STARDUST_LIVE_MAX_PARALLEL (default 2; 0 disables); a shared
  * bot signal cuts the host to one in flight and doubles its pace up to 15000 ms;
+ * signals are an edge challenge, a denial page, any 429 (Retry-After honoured
+ * up to 120 s), a 503 with Retry-After, or a timeout or connection error after
+ * that host has answered;
  * each 50 clean navigations halves the pace down to its configured floor, then
  * one more such window restores the configured parallelism, and a host's
  * backoff is forgotten STARDUST_LIVE_STATE_TTL_MS after its last signal (0
@@ -71,6 +74,7 @@ export const LIVE_MAX_WAIT_MS_DEFAULT = 300000;
 export const LIVE_LEASE_MS_DEFAULT = 120000;
 export const LIVE_WAITER_STALE_MS = 60000;
 export const LIVE_STATE_TTL_MS_DEFAULT = 12 * 60 * 60 * 1000;
+export const LIVE_RETRY_AFTER_MAX_MS = 120000;
 const LIVE_LOCK_STALE_MS = 60000;
 const LIVE_LOCK_POLL_MS = 100;
 const LIVE_STATE_WRITE_INTERVAL_MS = 5000;
@@ -211,7 +215,9 @@ const emptyThrottleState = () => ({
   nextTicket: 1,
   waiters: [],
   active: [],
-  adaptive: { paceMs: null, signalSeen: false, successes: 0, lastBackoffAt: null },
+  adaptive: {
+    paceMs: null, signalSeen: false, successes: 0, lastBackoffAt: null, holdUntil: null, answered: false,
+  },
 });
 function normalizedThrottleState(value) {
   if (!value || typeof value !== 'object') return emptyThrottleState();
@@ -226,6 +232,8 @@ function normalizedThrottleState(value) {
       signalSeen: adaptive.signalSeen === true,
       successes: Number.isSafeInteger(adaptive.successes) && adaptive.successes >= 0 ? adaptive.successes : 0,
       lastBackoffAt: Number.isFinite(adaptive.lastBackoffAt) ? adaptive.lastBackoffAt : null,
+      holdUntil: Number.isFinite(adaptive.holdUntil) ? adaptive.holdUntil : null,
+      answered: adaptive.answered === true,
     },
   };
 }
@@ -238,6 +246,7 @@ function adaptiveLimits(state, { paceMs, maxParallel }) {
     maxParallel: ceiling > 0 ? (state.adaptive.signalSeen ? 1 : ceiling) : 0,
     signalSeen: state.adaptive.signalSeen,
     successes: state.adaptive.successes,
+    holdUntil: state.adaptive.holdUntil,
   };
 }
 
@@ -259,8 +268,11 @@ export function liveThrottleDecision(value, waiterId, now, {
   const head = state.waiters[0];
   if (!head || head.id !== waiterId) return { canStart: false, waitMs: pollMs, state };
   const paceWait = paceMs > 0 && Number.isFinite(state.lastStart) ? Math.max(0, state.lastStart + paceMs - now) : 0;
+  const holdWait = Number.isFinite(state.adaptive.holdUntil) ? Math.max(0, state.adaptive.holdUntil - now) : 0;
   const slotWait = maxParallel > 0 && state.active.length >= maxParallel ? pollMs : 0;
-  if (paceWait > 0 || slotWait > 0) return { canStart: false, waitMs: Math.max(paceWait, slotWait), state };
+  if (paceWait > 0 || holdWait > 0 || slotWait > 0) return {
+    canStart: false, waitMs: Math.max(paceWait, holdWait, slotWait), state,
+  };
   state.waiters = state.waiters.filter((w) => w.id !== waiterId);
   if (paceMs > 0) state.lastStart = now;
   if (maxParallel > 0) state.active.push({ ...waiter, startedAt: now, expiresAt: now + leaseMs });
@@ -345,20 +357,27 @@ async function updateAdaptiveThrottle(url, update, {
 /** Record one host bot signal and return its effective shared throttle. */
 export async function recordLiveBotSignal(url, options = {}) {
   const host = liveHost(url);
+  const retryAfterMs = Number.isFinite(options.retryAfterMs)
+    ? Math.max(0, Math.min(LIVE_RETRY_AFTER_MAX_MS, options.retryAfterMs)) : undefined;
   const state = await updateAdaptiveThrottle(url, (shared, {
     observedAt, appliedAt, paceMs, maxParallel,
   }) => {
+    if (options.kind === 'transport' && !shared.adaptive.answered) return { backedOff: false };
     if (Number.isFinite(shared.adaptive.lastBackoffAt) && observedAt <= shared.adaptive.lastBackoffAt) return { backedOff: false };
     const before = adaptiveLimits(shared, { paceMs, maxParallel });
     shared.adaptive.signalSeen = true;
     shared.adaptive.successes = 0;
     shared.adaptive.lastBackoffAt = appliedAt;
+    if (retryAfterMs !== undefined) {
+      shared.adaptive.holdUntil = Math.max(shared.adaptive.holdUntil ?? 0, appliedAt + retryAfterMs);
+    }
     if (before.paceMs > 0) shared.adaptive.paceMs = Math.min(LIVE_BACKOFF_MAX_MS, before.paceMs * 2);
     const after = adaptiveLimits(shared, { paceMs, maxParallel });
     return { backedOff: after.paceMs > before.paceMs || after.maxParallel < before.maxParallel };
   }, options);
   if (host && state.backedOff) {
-    console.error(`[live-session] ${host}: bot signal seen — one navigation at a time, ${state.paceMs} ms apart from now on`);
+    const retryAfter = retryAfterMs === undefined ? '' : ` (Retry-After ${retryAfterMs / 1000} s honoured)`;
+    console.error(`[live-session] ${host}: bot signal seen — one navigation at a time, ${state.paceMs} ms apart from now on${retryAfter}`);
   }
   return state;
 }
@@ -373,6 +392,7 @@ export async function recordLiveNavigationSuccess(url, options = {}) {
   const state = await updateAdaptiveThrottle(url, (shared, {
     observedAt, paceMs, maxParallel,
   }) => {
+    shared.adaptive.answered = true;
     if (Number.isFinite(shared.adaptive.lastBackoffAt) && observedAt <= shared.adaptive.lastBackoffAt) return { backedOff: false, recovered: false };
     shared.adaptive.successes += 1;
     const before = adaptiveLimits(shared, { paceMs, maxParallel });
@@ -541,7 +561,49 @@ export async function paceLiveNavigation(page, url, options = {}) {
 /** Run one live navigation under the shared per-host pace and in-flight lease. */
 export async function runLiveNavigation(page, url, navigate, options = {}) {
   const lease = await acquireLiveNavigation(page, url, options);
-  try { return await navigate(); } finally { await lease.release(); }
+  try {
+    let response;
+    try {
+      response = await navigate();
+    } catch (error) {
+      if (isTransportError(error)) await recordLiveBotSignal(url, { ...options, kind: 'transport' });
+      throw error;
+    }
+    if (response && typeof response.status === 'function' && typeof response.headers === 'function') {
+      const status = response.status();
+      const headers = response.headers() || {};
+      const retryAfterHeader = Object.entries(headers)
+        .find(([name]) => name.toLowerCase() === 'retry-after');
+      if (status === 429 || (status === 503 && retryAfterHeader)) {
+        const retryAfterMs = parseRetryAfter(retryAfterHeader && retryAfterHeader[1], options.now || Date.now);
+        await recordLiveBotSignal(url, { ...options, retryAfterMs });
+        Object.defineProperty(response, 'liveSignalRecorded', { value: true });
+      }
+    }
+    return response;
+  } finally { await lease.release(); }
+}
+
+function parseRetryAfter(value, now) {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const text = value.trim();
+  let delay;
+  if (/^\d+(?:\.\d+)?$/.test(text)) delay = Number(text) * 1000;
+  else {
+    const at = Date.parse(text);
+    if (!Number.isFinite(at)) return undefined;
+    delay = Math.max(0, at - now());
+  }
+  return Math.min(LIVE_RETRY_AFTER_MAX_MS, delay);
+}
+
+/** Whether an error is a Playwright timeout or a browser transport failure. */
+export function isTransportError(error) {
+  if (!error) return false;
+  if (error.name === 'TimeoutError') return true;
+  const message = String(error.message || error);
+  if (/Timeout \d+ms exceeded/.test(message)) return true;
+  return /net::(?:ERR_CONNECTION_[A-Z_]+|ERR_TIMED_OUT|ERR_EMPTY_RESPONSE|ERR_HTTP2_PROTOCOL_ERROR|ERR_QUIC_PROTOCOL_ERROR|ERR_SSL_PROTOCOL_ERROR|ERR_NETWORK_CHANGED)\b/.test(message);
 }
 
 /** Forget process-local log and write-rate memory; shared disk state intentionally remains owned by all processes. */
@@ -1113,6 +1175,10 @@ async function gotoLiveNavigation(page, url, {
   }
   let signalRecorded = false;
   const recordSignal = async (signalMarker, { denial = false } = {}) => {
+    if (resp.liveSignalRecorded) {
+      signalRecorded = true;
+      return;
+    }
     try {
       await recordLiveBotSignal(url, throttle);
       signalRecorded = true;

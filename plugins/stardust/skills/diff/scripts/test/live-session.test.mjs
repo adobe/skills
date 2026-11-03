@@ -39,9 +39,9 @@ const stderrOf = async (fn) => {
 
 check('the exported surface the instruments import, the denial-page names included', () => {
   for (const name of ['CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'challengeMarker', 'isChallengeResponse', 'gotoLive', 'launchLiveBrowser', 'launchStealthHeaded', 'browserTier', 'acceptConsent', 'dismissOverlays',
-    'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'LIVE_MAX_PARALLEL_DEFAULT', 'LIVE_MAX_WAIT_MS_DEFAULT', 'LIVE_LEASE_MS_DEFAULT', 'LIVE_WAITER_STALE_MS', 'LIVE_STATE_TTL_MS_DEFAULT',
+    'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'LIVE_MAX_PARALLEL_DEFAULT', 'LIVE_MAX_WAIT_MS_DEFAULT', 'LIVE_LEASE_MS_DEFAULT', 'LIVE_WAITER_STALE_MS', 'LIVE_STATE_TTL_MS_DEFAULT', 'LIVE_RETRY_AFTER_MAX_MS',
     'livePaceMs', 'liveMaxParallel', 'liveMaxWaitMs', 'liveStateTtlMs', 'liveStateEnabled', 'liveStateRoot', 'liveHostStateDir', 'paceSlot', 'liveThrottleDecision',
-    'tryAcquireLiveLock', 'paceLiveNavigation', 'runLiveNavigation', 'recordLiveBotSignal', 'recordLiveNavigationSuccess', 'persistLiveStorageState', 'resetLivePacing',
+    'tryAcquireLiveLock', 'paceLiveNavigation', 'runLiveNavigation', 'isTransportError', 'recordLiveBotSignal', 'recordLiveNavigationSuccess', 'persistLiveStorageState', 'resetLivePacing',
     'browserUserAgent', 'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
   for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError', 'launchLiveBrowser', 'launchStealthHeaded', 'browserIdentity', 'browserUserAgent', 'challengeMarker']) assert.equal(typeof session[name], 'function', name);
   assert.ok(!('REAL_CHROME_UA' in session), 'no hard-coded user agent is exported any more — the browser presents its own');
@@ -319,6 +319,22 @@ await checkAsync('gotoLive: a bot signal in its error path updates the shared ho
   assert.deepEqual([shared.paceMs, shared.maxParallel, shared.signalSeen], [2000, 1, true]);
   rmSync(stateRoot, { recursive: true, force: true });
 });
+await checkAsync('gotoLive: a 429 edge challenge already recorded by runLiveNavigation takes exactly one backoff step', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-goto-response-signal-'));
+  let clock = 7000;
+  const throttle = {
+    stateRoot, paceMs: 1000, maxParallel: 2, now: () => { const value = clock; clock += 1; return value; },
+    pid: 453, pidAlive: () => true,
+  };
+  const page = stubPage({ status: 429, headers: { 'cf-mitigated': 'challenge' } });
+  await stderrOf(async () => {
+    await assert.rejects(gotoLive(page, LIVE_URL, { settleMs: 0, throttle }), { name: 'BotChallengeError' });
+  });
+  const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+  assert.deepEqual([state.adaptive.paceMs, state.adaptive.signalSeen], [2000, true]);
+  assert.equal(page.last.liveSignalRecorded, true);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
 await checkAsync('gotoLive: a headed challenge that clears still records the observed header signal', async () => {
   const stateRoot = mkdtempSync(join(tmpdir(), 'live-goto-cleared-signal-'));
   let clock = 6000;
@@ -483,15 +499,19 @@ await checkAsync('adaptive throttle: a host\'s backoff is forgotten STARDUST_LIV
   const stateRoot = mkdtempSync(join(tmpdir(), 'live-adaptive-ttl-'));
   let clock = 10000;
   const base = { stateRoot, paceMs: 1000, maxParallel: 2, pid: 501, pidAlive: () => true };
-  await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, { ...base, now: () => clock }));
+  await session.recordLiveNavigationSuccess(LIVE_URL, { ...base, now: () => clock });
+  clock += 1;
+  await stderrOf(() => session.recordLiveBotSignal(LIVE_URL, { ...base, now: () => clock, retryAfterMs: 2000 }));
   clock += 1;
   let state = await session.recordLiveNavigationSuccess(LIVE_URL, { ...base, now: () => clock, adaptiveTtlMs: 5000 });
-  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen], [2000, 1, true], 'within the TTL the backoff holds');
+  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen, state.holdUntil], [2000, 1, true, 12001], 'within the TTL the backoff and hold remain');
   clock += 5001;
   state = await session.recordLiveNavigationSuccess(LIVE_URL, { ...base, now: () => clock, adaptiveTtlMs: 0 });
-  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen], [2000, 1, true], 'TTL 0 keeps the backoff');
+  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen, state.holdUntil], [2000, 1, true, 12001], 'TTL 0 keeps the backoff and hold');
   state = await session.recordLiveNavigationSuccess(LIVE_URL, { ...base, now: () => clock, adaptiveTtlMs: 5000 });
-  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen, state.successes], [1000, 2, false, 1], 'past the TTL the host starts fresh');
+  assert.deepEqual([state.paceMs, state.maxParallel, state.signalSeen, state.successes, state.holdUntil], [1000, 2, false, 1, null], 'past the TTL the host starts fresh');
+  const reset = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+  assert.equal(reset.adaptive.answered, true, 'the post-expiry success answers the fresh run');
   rmSync(stateRoot, { recursive: true, force: true });
 });
 await checkAsync('adaptive throttle: a signal recorded by one process is visible to another process sharing the state root', async () => {
@@ -608,6 +628,123 @@ await checkAsync('runLiveNavigation: the on-disk queue allows one in-flight navi
   assert.deepEqual(waits, [13000]);
   rmSync(stateRoot, { recursive: true, force: true });
   rmSync(paceOpts.stateRoot, { recursive: true, force: true });
+});
+await checkAsync('runLiveNavigation: 429 Retry-After seconds records one signal, marks the response, and holds the next start', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-retry-after-seconds-'));
+  let clock = 1000;
+  const waits = [];
+  const page = { waitForTimeout: async (ms) => { waits.push(ms); clock += ms; } };
+  const options = {
+    stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pid: 601, pidAlive: () => true,
+  };
+  const response = { status: () => 429, headers: () => ({ 'retry-after': '2' }) };
+  const lines = await stderrOf(async () => {
+    assert.equal(await session.runLiveNavigation(page, LIVE_URL, async () => response, options), response);
+  });
+  const stateFile = join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json');
+  let state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  assert.deepEqual([state.adaptive.signalSeen, state.adaptive.paceMs, state.adaptive.holdUntil], [true, 2000, 3000]);
+  assert.equal(response.liveSignalRecorded, true);
+  assert.deepEqual(lines, ['[live-session] www.example.com: bot signal seen — one navigation at a time, 2000 ms apart from now on (Retry-After 2 s honoured)']);
+  await stderrOf(() => session.runLiveNavigation(page, `${LIVE_URL}next`, async () => ({ status: () => 200, headers: () => ({}) }), options));
+  assert.ok(waits.reduce((sum, ms) => sum + ms, 0) >= 2000, `waited ${waits.join('+')} ms`);
+  assert.ok(clock >= 3000, `started at ${clock}`);
+  state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  assert.equal(state.adaptive.holdUntil, 3000);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('runLiveNavigation: Retry-After HTTP-date is relative to now and values above 120 seconds are capped', async () => {
+  for (const [label, header, expected] of [
+    ['date', new Date(Date.UTC(2026, 0, 1, 0, 0, 5)).toUTCString(), 5000],
+    ['cap', '999', session.LIVE_RETRY_AFTER_MAX_MS],
+  ]) {
+    const stateRoot = mkdtempSync(join(tmpdir(), `live-retry-after-${label}-`));
+    const clock = Date.UTC(2026, 0, 1, 0, 0, 0);
+    const options = {
+      stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pid: 602, pidAlive: () => true,
+    };
+    const response = { status: () => 429, headers: () => ({ 'Retry-After': header }) };
+    await stderrOf(() => session.runLiveNavigation({ waitForTimeout: async () => {} }, LIVE_URL, async () => response, options));
+    const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+    assert.equal(state.adaptive.holdUntil, clock + expected, label);
+    rmSync(stateRoot, { recursive: true, force: true });
+  }
+});
+await checkAsync('runLiveNavigation: 503 signals only with Retry-After; missing or unparsable Retry-After has no hold', async () => {
+  for (const [status, retryAfter, signalSeen, hold] of [
+    [503, '3', true, 4000],
+    [503, undefined, false, null],
+    [429, 'later', true, null],
+  ]) {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'live-response-signal-'));
+    const options = {
+      stateRoot, paceMs: 1000, maxParallel: 2, now: () => 1000, pid: 603, pidAlive: () => true,
+    };
+    const headers = retryAfter === undefined ? {} : { 'retry-after': retryAfter };
+    const response = { status: () => status, headers: () => headers };
+    await stderrOf(() => session.runLiveNavigation({ waitForTimeout: async () => {} }, LIVE_URL, async () => response, options));
+    const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+    assert.deepEqual([state.adaptive.signalSeen, state.adaptive.holdUntil ?? null], [signalSeen, hold], `${status}/${retryAfter}`);
+    assert.equal(response.liveSignalRecorded, signalSeen ? true : undefined);
+    rmSync(stateRoot, { recursive: true, force: true });
+  }
+});
+await checkAsync('runLiveNavigation: transport errors signal only after the host answered and always rethrow the original error', async () => {
+  const cases = [
+    Object.assign(new Error('page.goto: Timeout 30000ms exceeded'), { name: 'TimeoutError' }),
+    new Error('page.goto: net::ERR_CONNECTION_RESET at https://www.example.com/'),
+  ];
+  for (const [index, error] of cases.entries()) {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'live-transport-signal-'));
+    let clock = 1000;
+    const options = {
+      stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock, pid: 610 + index, pidAlive: () => true,
+    };
+    await assert.rejects(
+      session.runLiveNavigation({ waitForTimeout: async () => {} }, LIVE_URL, async () => { throw error; }, options),
+      (thrown) => thrown === error,
+    );
+    let state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+    assert.equal(state.adaptive.signalSeen, false, 'no answer yet');
+    await session.recordLiveNavigationSuccess(LIVE_URL, options);
+    clock += 1;
+    const lines = await stderrOf(async () => {
+      await assert.rejects(
+        session.runLiveNavigation({ waitForTimeout: async () => {} }, LIVE_URL, async () => { throw error; }, options),
+        (thrown) => thrown === error,
+      );
+    });
+    state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+    assert.deepEqual([state.adaptive.signalSeen, state.adaptive.paceMs], [true, 2000]);
+    assert.equal(state.active.length, 0, 'the failed navigation released its lease');
+    assert.equal(lines.length, 1);
+    rmSync(stateRoot, { recursive: true, force: true });
+  }
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-transport-plain-'));
+  const error = new Error('boom');
+  const options = {
+    stateRoot, paceMs: 1000, maxParallel: 2, now: () => 1000, pid: 620, pidAlive: () => true,
+  };
+  await session.recordLiveNavigationSuccess(LIVE_URL, options);
+  await assert.rejects(
+    session.runLiveNavigation({ waitForTimeout: async () => {} }, LIVE_URL, async () => { throw error; }, options),
+    (thrown) => thrown === error,
+  );
+  const state = JSON.parse(readFileSync(join(session.liveHostStateDir(LIVE_URL, { stateRoot }), 'throttle.json'), 'utf8'));
+  assert.equal(state.adaptive.signalSeen, false);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+check('isTransportError: Playwright timeouts and connection failures classify; a plain error does not', () => {
+  const timeout = Object.assign(new Error('anything'), { name: 'TimeoutError' });
+  assert.equal(session.isTransportError(timeout), true);
+  assert.equal(session.isTransportError(new Error('page.goto: Timeout 45000ms exceeded')), true);
+  for (const code of [
+    'ERR_CONNECTION_RESET', 'ERR_CONNECTION_REFUSED', 'ERR_CONNECTION_CLOSED', 'ERR_TIMED_OUT',
+    'ERR_EMPTY_RESPONSE', 'ERR_HTTP2_PROTOCOL_ERROR', 'ERR_QUIC_PROTOCOL_ERROR', 'ERR_SSL_PROTOCOL_ERROR',
+    'ERR_NETWORK_CHANGED',
+  ]) assert.equal(session.isTransportError(new Error(`page.goto: net::${code} at ${LIVE_URL}`)), true, code);
+  assert.equal(session.isTransportError(new Error('boom')), false);
+  assert.equal(session.isTransportError(null), false);
 });
 await checkAsync('runLiveNavigation: stale waiters are dropped and a lost waiter re-queues at a fresh ticket', async () => {
   session.resetLivePacing();

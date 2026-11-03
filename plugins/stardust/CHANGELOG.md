@@ -14,7 +14,9 @@ host. Fixed pacing was either too slow or not cautious enough.
 - **Adaptive shared throttle (`diff/scripts/live-session.mjs`):** fresh hosts allow
   `STARDUST_LIVE_MAX_PARALLEL` (default 2) in flight and start at `STARDUST_LIVE_PACE_MS` (default 1000) between starts.
   A shared bot signal reduces the host to one navigation at a time and doubles the pace through 2000, 4000, 8000 and
-  15000 ms; every 50 clean navigations halves the pace down to the configured floor, then one more such window restores
+  15000 ms. Signals are an edge challenge, a denial page, any 429 (`Retry-After` honoured up to 120 s), a 503 with
+  `Retry-After`, or a timeout or connection error after that host has answered. Every 50 clean navigations halves the
+  pace down to the configured floor, then one more such window restores
   the configured parallelism, and a host's backoff is forgotten `STARDUST_LIVE_STATE_TTL_MS` after its last signal.
   Repository-scoped OS-temp state,
   fair queueing and stale-lock recovery coordinate every process. Lost waiters re-queue and stale waiters/leases expire;
