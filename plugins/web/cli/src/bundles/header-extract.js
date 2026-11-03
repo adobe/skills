@@ -1,4 +1,5 @@
-/* Browser-side: injected into the source page. Defines window.__plgExtract(). */
+/* Browser-side: injected into the source page. Defines window.__plgExtract(), __plgRegionsBySelector(),
+ * __plgFindHeader() and __plgHeaderRegions() (web header capture). */
 (() => {
   const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'LINK', 'META', 'TEMPLATE', 'IFRAME']);
   const STYLE_PROPS = [
@@ -160,6 +161,40 @@
       const el = document.querySelector(sel);
       if (!el || !visible(el)) return null;
       return { rect: absRect(el), styles: styleLines(el, maxStyleNodes).join('\n') };
+    }),
+  );
+
+  // the header when none is named: the first of these that is shown at the top of the page and is
+  // not most of the viewport (a full-height app shell is not a header)
+  const HEADER_CANDIDATES = ['body > header', 'header', '[role=banner]', '#header', '.header'];
+  window.__plgFindHeader = () => {
+    for (const sel of HEADER_CANDIDATES) {
+      for (const el of document.querySelectorAll(sel)) {
+        if (!visible(el)) continue;
+        const r = absRect(el);
+        if (r.y < 200 && r.h >= 20 && r.h < 0.8 * innerHeight) return cssPath(el);
+      }
+    }
+    return null;
+  };
+
+  // one region record per selector (null when the page does not show it), as __plgExtract's
+  window.__plgHeaderRegions = (selectors, maxStyleNodes = 400) => JSON.stringify(
+    selectors.map((sel, i) => {
+      const el = document.querySelector(sel);
+      if (!el || !visible(el)) return null;
+      const cs = getComputedStyle(el);
+      return {
+        id: i ? `header-${i + 1}` : 'header',
+        tag: el.tagName.toLowerCase(),
+        selector: sel,
+        rect: absRect(el),
+        background: { color: cs.backgroundColor, image: cs.backgroundImage },
+        text: el.innerText.replace(/\s+/g, ' ').trim().slice(0, 160),
+        fullText: el.innerText.replace(/\s+/g, ' ').trim(),
+        html: cleanHtml(el),
+        styles: styleLines(el, maxStyleNodes).join('\n'),
+      };
     }),
   );
 

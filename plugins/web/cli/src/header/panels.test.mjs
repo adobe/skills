@@ -1,7 +1,9 @@
-import test from 'node:test';
+import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
-import { PNG } from 'pngjs';
-import { boxMismatch, hrefDiff, mobileVerdict, panelVerdict } from './open-panels.mjs';
+import { boxMismatch, hrefDiff, mobileVerdict, panelVerdict } from './panels.mjs';
+import { loadImaging, PNG } from './imaging.mjs';
+
+before(() => loadImaging());
 
 const png = (w, h, paint = () => [255, 255, 255]) => {
   const p = new PNG({ width: w, height: h });
@@ -33,16 +35,28 @@ test('boxMismatch: a box past the shot is clipped; a box fully outside scores nu
 test('hrefDiff: equal multisets; the page origin reads as the source origin', () => {
   const src = 'https://www.example.com';
   const expected = [`${src}/a`, `${src}/b`, 'https://other.com/x'];
-  assert.deepEqual(hrefDiff(expected, ['http://localhost:3500/a', `${src}/b`, 'https://other.com/x'],
-    'http://localhost:3500', src), { missing: [], extra: [] });
+  assert.deepEqual(
+    hrefDiff(
+      expected,
+      ['http://localhost:3500/a', `${src}/b`, 'https://other.com/x'],
+      'http://localhost:3500',
+      src,
+    ),
+    { missing: [], extra: [] },
+  );
 });
 
 test('hrefDiff: a missing link, an invented one, and a duplicate count', () => {
   const s = 'https://e.com';
-  assert.deepEqual(hrefDiff([`${s}/a`, `${s}/a`, `${s}/b`], [`${s}/a`, `${s}/c`], 'http://localhost:1', s),
-    { missing: [`${s}/a`, `${s}/b`], extra: [`${s}/c`] });
-  assert.deepEqual(hrefDiff([`${s}/a`], [`${s}/a/`], 'http://localhost:1', s),
-    { missing: [`${s}/a`], extra: [`${s}/a/`] }, 'hrefs are compared exactly');
+  assert.deepEqual(
+    hrefDiff([`${s}/a`, `${s}/a`, `${s}/b`], [`${s}/a`, `${s}/c`], 'http://localhost:1', s),
+    { missing: [`${s}/a`, `${s}/b`], extra: [`${s}/c`] },
+  );
+  assert.deepEqual(
+    hrefDiff([`${s}/a`], [`${s}/a/`], 'http://localhost:1', s),
+    { missing: [`${s}/a`], extra: [`${s}/a/`] },
+    'hrefs are compared exactly',
+  );
 });
 
 test('panelVerdict: at the bar passes, over it or with wrong hrefs fails', () => {
@@ -56,7 +70,9 @@ test('panelVerdict: at the bar passes, over it or with wrong hrefs fails', () =>
 test('mobileVerdict: 2.0 % passes, more or no toggle fails', () => {
   assert.deepEqual(mobileVerdict({ mismatch: 2 }), []);
   assert.equal(mobileVerdict({ mismatch: 2.01 }).length, 1);
-  assert.deepEqual(mobileVerdict({ error: 'no mobile menu toggle found' }), ['no mobile menu toggle found']);
+  assert.deepEqual(mobileVerdict({ error: 'no mobile menu toggle found' }), [
+    'no mobile menu toggle found',
+  ]);
 });
 
 test('boxMismatch: a semi-transparent source pixel equals its colour on white', () => {

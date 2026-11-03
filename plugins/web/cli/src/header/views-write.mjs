@@ -5,9 +5,18 @@
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import sharp from 'sharp';
-import { BOX, clusters, cropPlan, diffMask, fits, GAP, LABEL_H, overviewScale, PANELS }
-  from './views.mjs';
+import {
+  BOX,
+  clusters,
+  cropPlan,
+  diffMask,
+  fits,
+  GAP,
+  LABEL_H,
+  overviewScale,
+  PANELS,
+} from './views.mjs';
+import { sharp } from './imaging.mjs';
 
 const GREY = { r: 136, g: 136, b: 136, alpha: 1 };
 const b64Bytes = (bytes) => Math.ceil(bytes / 3) * 4;
@@ -24,25 +33,34 @@ export function padTo(img, w, h) {
 }
 
 async function sheetPng({ pa, pb, d, w, h }) {
-  const png = (buf) => sharp(buf, { raw: raw(w, h) }).png().toBuffer();
+  const png = (buf) =>
+    sharp(buf, { raw: raw(w, h) })
+      .png()
+      .toBuffer();
   return sharp({ create: { width: w * 3 + 40, height: h, channels: 4, background: GREY } })
     .composite([
       { input: await png(pa), left: 0, top: 0 },
       { input: await png(pb), left: w + 20, top: 0 },
       { input: await png(d), left: 2 * w + 40, top: 0 },
-    ]).png().toBuffer();
+    ])
+    .png()
+    .toBuffer();
 }
 
 /** Today's `side.png`: source | EDS | diff, shrunk to at most 1800 px wide (for humans). */
 export async function writeSheet(region, file) {
   const sheet = await sheetPng(region);
-  await sharp(sheet).resize({ width: Math.min(1800, region.w * 3 + 40) }).png().toFile(file);
+  await sharp(sheet)
+    .resize({ width: Math.min(1800, region.w * 3 + 40) })
+    .png()
+    .toFile(file);
 }
 
 function label(text, width) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${LABEL_H}">`
-    + `<rect width="100%" height="100%" fill="#333"/><text x="6" y="14" fill="#fff" `
-    + `font-family="monospace" font-size="12">${text}</text></svg>`;
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${LABEL_H}">` +
+    `<rect width="100%" height="100%" fill="#333"/><text x="6" y="14" fill="#fff" ` +
+    `font-family="monospace" font-size="12">${text}</text></svg>`;
   return Buffer.from(svg);
 }
 
@@ -60,12 +78,18 @@ async function cropPng(region, p) {
   const names = [`SOURCE x=${p.x} y=${p.y} ${p.w}x${p.h}`, 'EDS', 'DIFF (red = differs)'];
   const layers = [region.pa, region.pb, region.d].flatMap((buf, i) => [
     { input: label(names[i], p.w), left: 0, top: i * (panelH + GAP) },
-    { input: extract(buf, region, p), raw: raw(p.w, p.h), left: 0,
-      top: i * (panelH + GAP) + LABEL_H },
+    {
+      input: extract(buf, region, p),
+      raw: raw(p.w, p.h),
+      left: 0,
+      top: i * (panelH + GAP) + LABEL_H,
+    },
   ]);
   const h = PANELS * panelH + (PANELS - 1) * GAP;
   return sharp({ create: { width: p.w, height: h, channels: 4, background: GREY } })
-    .composite(layers).png().toBuffer();
+    .composite(layers)
+    .png()
+    .toBuffer();
 }
 
 async function overviewPng(region) {
@@ -75,11 +99,18 @@ async function overviewPng(region) {
   for (;;) {
     const [w, h] = [Math.max(1, Math.round(sw * s)), Math.max(1, Math.round(sh * s))];
     const body = await sharp(sheet).resize({ width: w, height: h, fit: 'fill' }).png().toBuffer();
-    const text = `OVERVIEW scaled to ${Math.round(s * 100)} %: not for pixel judgment `
-      + '(SOURCE | EDS | DIFF)';
-    const png = await sharp({ create: { width: w, height: h + LABEL_H, channels: 4,
-      background: GREY } }).composite([{ input: label(text, w), left: 0, top: 0 },
-      { input: body, left: 0, top: LABEL_H }]).png().toBuffer();
+    const text =
+      `OVERVIEW scaled to ${Math.round(s * 100)} %: not for pixel judgment ` +
+      '(SOURCE | EDS | DIFF)';
+    const png = await sharp({
+      create: { width: w, height: h + LABEL_H, channels: 4, background: GREY },
+    })
+      .composite([
+        { input: label(text, w), left: 0, top: 0 },
+        { input: body, left: 0, top: LABEL_H },
+      ])
+      .png()
+      .toBuffer();
     if (fits({ w, h: h + LABEL_H, b64Bytes: b64Bytes(png.length) })) return { png, s, w, h };
     s *= 0.9;
   }
@@ -107,9 +138,21 @@ export async function writeViews(region, dir, { box = BOX } = {}) {
   const plan = cropPlan(clusters(mask, w, h), { w, h }, { box });
   const o = await overviewPng(region);
   writeFileSync(join(dir, 'overview.png'), o.png);
-  const views = [{ file: 'overview.png', role: 'overview', x: 0, y: 0, w, h, scale: o.s,
-    imgW: o.w, imgH: o.h + LABEL_H, b64Bytes: b64Bytes(o.png.length),
-    diffPixels: countIn(mask, w, { x: 0, y: 0, w, h }) }];
+  const views = [
+    {
+      file: 'overview.png',
+      role: 'overview',
+      x: 0,
+      y: 0,
+      w,
+      h,
+      scale: o.s,
+      imgW: o.w,
+      imgH: o.h + LABEL_H,
+      b64Bytes: b64Bytes(o.png.length),
+      diffPixels: countIn(mask, w, { x: 0, y: 0, w, h }),
+    },
+  ];
   const queue = [...plan.pieces];
   while (queue.length) {
     const p = queue.shift();
@@ -122,10 +165,20 @@ export async function writeViews(region, dir, { box = BOX } = {}) {
     const file = `crop-${views.length}.png`;
     writeFileSync(join(dir, file), png);
     const { width, height } = await sharp(png).metadata();
-    views.push({ file, role: 'crop', ...p, scale: 1, imgW: width, imgH: height,
-      b64Bytes: b64Bytes(png.length), diffPixels: countIn(mask, w, p) });
+    views.push({
+      file,
+      role: 'crop',
+      ...p,
+      scale: 1,
+      imgW: width,
+      imgH: height,
+      b64Bytes: b64Bytes(png.length),
+      diffPixels: countIn(mask, w, p),
+    });
   }
-  writeFileSync(join(dir, 'views.json'), `${JSON.stringify({ box, mode: plan.mode, views },
-    null, 2)}\n`);
+  writeFileSync(
+    join(dir, 'views.json'),
+    `${JSON.stringify({ box, mode: plan.mode, views }, null, 2)}\n`,
+  );
   return { mode: plan.mode, views };
 }

@@ -1,19 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
-import { AB_TESTS, STEADY } from './ab-tests.mjs';
+import { AB_TESTS, STEADY } from './steady.mjs';
 
 const re = new Function(`return ${AB_TESTS}`)();
 
 test('AB_TESTS: A/B and personalisation services are blocked', () => {
-  for (const u of ['https://api.intellimize.co/prediction/117761985', 'https://cdn.optimizely.com/js/1.js',
-    'https://dev.visualwebsiteoptimizer.com/j.php', 'https://adobe.tt.omtrdc.net/rest/v1/delivery',
-    'https://try.abtasty.com/x.js', 'https://abc.kameleoon.eu/engine.js']) assert.ok(re.test(u), u);
+  for (const u of [
+    'https://api.intellimize.co/prediction/117761985',
+    'https://cdn.optimizely.com/js/1.js',
+    'https://dev.visualwebsiteoptimizer.com/j.php',
+    'https://adobe.tt.omtrdc.net/rest/v1/delivery',
+    'https://try.abtasty.com/x.js',
+    'https://abc.kameleoon.eu/engine.js',
+  ])
+    assert.ok(re.test(u), u);
 });
 
 test('AB_TESTS: the page and its own assets are not', () => {
-  for (const u of ['https://webflow.com/resources/marketing-head-v2.js', 'https://www.optimizely.com.example.org/',
-    'https://stripe.com/fr-ch', 'https://example.com/intellimize.co.js']) assert.ok(!re.test(u), u);
+  for (const u of [
+    'https://webflow.com/resources/marketing-head-v2.js',
+    'https://www.optimizely.com.example.org/',
+    'https://stripe.com/fr-ch',
+    'https://example.com/intellimize.co.js',
+  ])
+    assert.ok(!re.test(u), u);
 });
 
 function page() {
@@ -21,27 +32,46 @@ function page() {
   const fired = [];
   let now = 0;
   class HTMLDialogElement {
-    showModal() { fired.push('modal'); }
+    showModal() {
+      fired.push('modal');
+    }
 
-    close() { fired.push('close'); }
+    close() {
+      fired.push('close');
+    }
   }
   const window = {
-    setInterval: (fn, delay) => { fired.push(`interval ${delay}`); return 1; },
+    setInterval: (fn, delay) => {
+      fired.push(`interval ${delay}`);
+      return 1;
+    },
   };
   Object.assign(window, {
     window,
     HTMLDialogElement,
     performance: { now: () => now },
-    addEventListener: (type, fn) => { listeners[type] = fn; },
+    addEventListener: (type, fn) => {
+      listeners[type] = fn;
+    },
   });
   vm.createContext(window);
   vm.runInContext(`(${STEADY})()`, window);
-  return { window, fired, input: (type, key) => listeners[type]({ type, key }), at: (t) => { now = t; } };
+  return {
+    window,
+    fired,
+    input: (type, key) => listeners[type]({ type, key }),
+    at: (t) => {
+      now = t;
+    },
+  };
 }
 
 test('STEADY stops intervals of 2 s or more and keeps shorter ones', () => {
   const p = page();
-  assert.equal(p.window.setInterval(() => {}, 3000), 0);
+  assert.equal(
+    p.window.setInterval(() => {}, 3000),
+    0,
+  );
   p.window.setInterval(() => {}, 500);
   assert.deepEqual(p.fired, ['interval 500']);
 });
@@ -61,5 +91,14 @@ test('STEADY closes a modal dialog at once unless a click, Enter or Space came w
   d.showModal();
   p.input('keydown', 'Enter');
   d.showModal();
-  assert.deepEqual(p.fired, ['modal', 'close', 'modal', 'modal', 'close', 'modal', 'close', 'modal']);
+  assert.deepEqual(p.fired, [
+    'modal',
+    'close',
+    'modal',
+    'modal',
+    'close',
+    'modal',
+    'close',
+    'modal',
+  ]);
 });

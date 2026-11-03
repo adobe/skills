@@ -3433,7 +3433,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 // src/driver/exec.mjs
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 function execPlaywrightCli(args, { timeoutMs = 6e4, cwd = process.cwd() } = {}) {
   const res = spawnSync("playwright-cli", [...args, "--json"], {
     encoding: "utf8",
@@ -3443,6 +3443,32 @@ function execPlaywrightCli(args, { timeoutMs = 6e4, cwd = process.cwd() } = {}) 
   });
   const { status: status2, error } = res;
   return { stdout: res.stdout ?? "", stderr: res.stderr ?? "", status: status2, error };
+}
+function execPlaywrightCliAsync(args, { timeoutMs = 6e4, cwd = process.cwd() } = {}) {
+  return new Promise((resolvePromise) => {
+    const child = spawn("playwright-cli", [...args, "--json"], { cwd });
+    const out = [];
+    const err = [];
+    let error;
+    const timer = setTimeout(() => {
+      error = Object.assign(new Error(`timed out after ${timeoutMs} ms`), { code: "ETIMEDOUT" });
+      child.kill("SIGTERM");
+    }, timeoutMs);
+    child.stdout.on("data", (d) => out.push(d));
+    child.stderr.on("data", (d) => err.push(d));
+    child.on("error", (e) => {
+      error = e;
+    });
+    child.on("close", (status2) => {
+      clearTimeout(timer);
+      resolvePromise({
+        stdout: Buffer.concat(out).toString("utf8"),
+        stderr: Buffer.concat(err).toString("utf8"),
+        status: error ? null : status2,
+        ...error ? { error } : {}
+      });
+    });
+  });
 }
 
 // src/driver/playwright-cli.mjs
@@ -3464,10 +3490,10 @@ function tryParse(text) {
   }
 }
 function unwrapResult(doc) {
-  const raw = doc?.result;
-  if (typeof raw !== "string") return raw;
-  const parsed = tryParse(raw);
-  return parsed === void 0 ? raw : parsed;
+  const raw2 = doc?.result;
+  if (typeof raw2 !== "string") return raw2;
+  const parsed = tryParse(raw2);
+  return parsed === void 0 ? raw2 : parsed;
 }
 function wrapExpression(expr) {
   try {
@@ -3497,6 +3523,7 @@ function spawnError(error, args) {
 }
 function createDriver({
   exec = execPlaywrightCli,
+  execAsync = execPlaywrightCliAsync,
   outputDir,
   debug = Boolean(process.env.WEB_DEBUG),
   timeoutMs = 6e4
@@ -3505,7 +3532,14 @@ function createDriver({
   function call(args, opts) {
     if (debug) process.stderr.write(`playwright-cli ${args.join(" ")}
 `);
-    const res = exec(args, { timeoutMs, ...opts });
+    return settle2(args, exec(args, { timeoutMs, ...opts }));
+  }
+  async function callAsync(args, opts) {
+    if (debug) process.stderr.write(`playwright-cli ${args.join(" ")}
+`);
+    return settle2(args, await execAsync(args, { timeoutMs, ...opts }));
+  }
+  function settle2(args, res) {
     if (res.error) throw spawnError(res.error, args);
     if (res.status === null) {
       throw new CliError("PLAYWRIGHT_CLI", "playwright-cli terminated by signal");
@@ -3580,12 +3614,26 @@ function createDriver({
   function evaluate(session, expr) {
     return unwrapResult(call([`-s=${session}`, "eval", wrapExpression(expr)]));
   }
-  function run(session, { code, file, timeoutMs: callTimeoutMs }) {
+  function run2(session, { code, file, timeoutMs: callTimeoutMs }) {
     const callOpts = callTimeoutMs === void 0 ? void 0 : { timeoutMs: callTimeoutMs };
     const exec1 = (path9) => unwrapResult(call([`-s=${session}`, "run-code", `--filename=${path9}`], callOpts));
     if (code === void 0) return exec1(file);
     runCounter += 1;
     return withTempFile(`${session}-run-${runCounter}.mjs`, code, exec1);
+  }
+  async function runAsync(session, { code, file, timeoutMs: callTimeoutMs }) {
+    const callOpts = callTimeoutMs === void 0 ? void 0 : { timeoutMs: callTimeoutMs };
+    const exec1 = async (path10) => unwrapResult(await callAsync([`-s=${session}`, "run-code", `--filename=${path10}`], callOpts));
+    if (code === void 0) return exec1(file);
+    runCounter += 1;
+    mkdirSync(outputDir, { recursive: true });
+    const path9 = join(outputDir, `${session}-run-${runCounter}.mjs`);
+    writeFileSync(path9, code);
+    try {
+      return await exec1(path9);
+    } finally {
+      rmSync(path9, { force: true });
+    }
   }
   return {
     ensureAvailable() {
@@ -3618,12 +3666,13 @@ function createDriver({
       call(["close-all"]);
     },
     evaluate,
-    run,
+    run: run2,
+    runAsync,
     inject(session, source) {
-      run(session, { code: `async page => { await page.evaluate(${JSON.stringify(source)}) }` });
+      run2(session, { code: `async page => { await page.evaluate(${JSON.stringify(source)}) }` });
     },
     cdp(session, method, params = {}) {
-      return run(session, {
+      return run2(session, {
         code: `async page => { const s = await page.context().newCDPSession(page); return s.send(${JSON.stringify(method)}, ${JSON.stringify(params)}) }`
       });
     },
@@ -3655,7 +3704,7 @@ import { existsSync, readFileSync, writeFileSync as writeFileSync2 } from "node:
 import { resolve as resolve2 } from "node:path";
 
 // inline:bundles
-var FILES = { "langs-collect.js": `// playwright-cli run-code script \u2014 extract language signals and visible text.
+var FILES = { "header-extract.js": "/* Browser-side: injected into the source page. Defines window.__plgExtract(), __plgRegionsBySelector(),\n * __plgFindHeader() and __plgHeaderRegions() (web header capture). */\n(() => {\n  const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'LINK', 'META', 'TEMPLATE', 'IFRAME']);\n  const STYLE_PROPS = [\n    'display', 'position', 'flex-direction', 'flex-wrap', 'justify-content', 'align-items', 'gap',\n    'grid-template-columns', 'width', 'max-width', 'height', 'min-height',\n    'margin-top', 'margin-right', 'margin-bottom', 'margin-left',\n    'padding-top', 'padding-right', 'padding-bottom', 'padding-left',\n    'font-family', 'font-size', 'font-weight', 'font-style', 'line-height', 'letter-spacing',\n    'text-transform', 'text-align', 'text-decoration-line', 'color',\n    'background-color', 'background-image', 'background-size', 'background-position',\n    'border-top', 'border-right', 'border-bottom', 'border-left', 'border-radius',\n    'box-shadow', 'opacity', 'object-fit', 'list-style-type', 'overflow', 'z-index',\n    // how glyphs render (s2b: without them a header's text was 1:1 in metrics, not in pixels)\n    '-webkit-font-smoothing', 'text-rendering', 'font-feature-settings', 'font-variation-settings',\n    'font-kerning',\n  ];\n  const INHERITED = new Set(['font-family', 'font-size', 'font-weight', 'font-style', 'line-height',\n    'letter-spacing', 'text-transform', 'text-align', 'color', 'list-style-type',\n    '-webkit-font-smoothing', 'text-rendering', 'font-feature-settings', 'font-variation-settings',\n    'font-kerning']);\n  const DEFAULTS = {\n    position: 'static', 'flex-direction': 'row', 'flex-wrap': 'nowrap', 'justify-content': 'normal',\n    'align-items': 'normal', gap: 'normal', 'grid-template-columns': 'none', 'max-width': 'none',\n    'min-height': 'auto', 'background-color': 'rgba(0, 0, 0, 0)', 'background-image': 'none',\n    'background-size': 'auto', 'background-position': '0% 0%', 'border-radius': '0px',\n    'box-shadow': 'none', opacity: '1', 'object-fit': 'fill', overflow: 'visible', 'z-index': 'auto',\n    'text-decoration-line': 'none',\n  };\n\n  const visible = (el) => {\n    const r = el.getBoundingClientRect();\n    if (r.width < 1 || r.height < 1) return false;\n    const s = getComputedStyle(el);\n    return s.visibility !== 'hidden' && s.display !== 'none' && Number(s.opacity) > 0;\n  };\n  const absRect = (el) => {\n    const r = el.getBoundingClientRect();\n    return { x: Math.round(r.x + scrollX), y: Math.round(r.y + scrollY),\n      w: Math.round(r.width), h: Math.round(r.height) };\n  };\n  const cssPath = (el) => {\n    const parts = [];\n    for (let e = el; e && e !== document.body; e = e.parentElement) {\n      if (e.id && /^[a-z][\\w-]*$/i.test(e.id)) { parts.unshift(`#${e.id}`); break; }\n      const sibs = [...e.parentElement.children].filter((c) => c.tagName === e.tagName);\n      const idx = sibs.indexOf(e) + 1;\n      parts.unshift(`${e.tagName.toLowerCase()}${sibs.length > 1 ? `:nth-of-type(${idx})` : ''}`);\n    }\n    return parts.length && parts[0].startsWith('#') ? parts.join(' > ') : `body > ${parts.join(' > ')}`;\n  };\n\n  const LANDMARKS = new Set(['HEADER', 'FOOTER', 'SECTION', 'NAV', 'ASIDE', 'ARTICLE']);\n  function regionsOf(container, vw, vh, depth = 0) {\n    const kids = [...container.children].filter((c) => !SKIP.has(c.tagName) && visible(c));\n    const out = [];\n    let lastBottom = -1;\n    for (const k of kids) {\n      const r = absRect(k);\n      if (r.w < vw * 0.9) continue;\n      if (r.y + r.h <= lastBottom + 2) continue;\n      const stacked = [...k.children].filter((c) => !SKIP.has(c.tagName) && visible(c)\n        && absRect(c).w >= vw * 0.9);\n      const isWrapper = !LANDMARKS.has(k.tagName) && depth < 6\n        && (stacked.length >= 2 || (stacked.length === 1 && Math.abs(absRect(stacked[0]).h - r.h) < 4));\n      const isMain = k.tagName === 'MAIN' && stacked.length >= 2;\n      if ((isWrapper || isMain) && r.h > vh * 0.5) {\n        out.push(...regionsOf(k, vw, vh, depth + 1));\n      } else {\n        out.push(k);\n      }\n      lastBottom = Math.max(lastBottom, r.y + r.h);\n    }\n    return out;\n  }\n\n  function compactProps(props) {\n    const map = new Map(props);\n    const out = [];\n    for (const box of ['margin', 'padding', 'border']) {\n      const sides = ['top', 'right', 'bottom', 'left'].map((d) => map.get(`${box}-${d}`));\n      if (sides.every((v) => v === undefined)) continue;\n      const vals = sides.map((v) => v ?? (box === 'border' ? 'none' : '0px'));\n      ['top', 'right', 'bottom', 'left'].forEach((d) => map.delete(`${box}-${d}`));\n      if (box === 'border') {\n        if (vals.every((v) => v === vals[0])) out.push(`border:${vals[0]}`);\n        else ['top', 'right', 'bottom', 'left'].forEach((d, i) => { if (vals[i] !== 'none') out.push(`border-${d}:${vals[i]}`); });\n      } else {\n        out.push(`${box}:${vals.join(' ')}`);\n      }\n    }\n    if (map.has('font-family')) map.set('font-family', map.get('font-family').split(',')[0]);\n    if (map.get('min-height') === '0px') map.delete('min-height');\n    return [...[...map].map(([k, v]) => `${k}:${v}`), ...out].join('; ');\n  }\n\n  function styleLines(root, maxNodes) {\n    const lines = [];\n    const rootRect = absRect(root);\n    const walk = (el, depth, parentStyle) => {\n      if (lines.length >= maxNodes || SKIP.has(el.tagName) || !visible(el)) return;\n      const cs = getComputedStyle(el);\n      const props = [];\n      for (const p of STYLE_PROPS) {\n        const v = cs.getPropertyValue(p);\n        if (INHERITED.has(p) ? (parentStyle && parentStyle.getPropertyValue(p) === v) : DEFAULTS[p] === v) continue;\n        if ((p === 'width' || p === 'height') && el.tagName !== 'IMG' && el.tagName !== 'svg') continue;\n        if (p.startsWith('border-') && p !== 'border-radius' && v.startsWith('0px')) continue;\n        if (p.startsWith('margin') || p.startsWith('padding')) { if (v === '0px') continue; }\n        if (p === 'display' && ['block', 'inline'].includes(v)) continue;\n        props.push([p, v.length > 160 ? `${v.slice(0, 160)}\u2026` : v]);\n      }\n      const compact = compactProps(props);\n      const r = absRect(el);\n      const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim())\n        .join(' ').replace(/\\s+/g, ' ').slice(0, 60);\n      const cls = typeof el.className === 'string' ? el.className.trim().split(/\\s+/)\n        .filter((c) => c && !c.startsWith('css-')).slice(0, 3).join('.') : '';\n      lines.push(`${'  '.repeat(depth)}${el.tagName.toLowerCase()}${cls ? `.${cls}` : ''} `\n        + `@${r.x - rootRect.x},${r.y - rootRect.y} ${r.w}x${r.h}${own ? ` \"${own}\"` : ''} { ${compact} }`);\n      if (el.tagName === 'svg') return;\n      for (const c of el.children) walk(c, depth + 1, cs);\n    };\n    walk(root, 0, root.parentElement ? getComputedStyle(root.parentElement) : null);\n    return lines;\n  }\n\n  function cleanHtml(root) {\n    const clone = root.cloneNode(true);\n    const live = [root, ...root.querySelectorAll('*')];\n    const copies = [clone, ...clone.querySelectorAll('*')];\n    copies.forEach((c, i) => {\n      const src = live[i];\n      if (src && src.tagName === 'IMG' && src.currentSrc) c.setAttribute('src', src.currentSrc);\n      if (src && !SKIP.has(src.tagName) && src.nodeType === 1 && src.tagName !== 'svg'\n        && !(src instanceof SVGElement) && !visible(src) && src.tagName !== 'BR') c.setAttribute('data-plg-hidden', '');\n    });\n    clone.querySelectorAll('script,style,noscript,template,link,meta').forEach((n) => n.remove());\n    // hidden content (dropdowns, mobile-only items) is kept but marked; nested marks are redundant\n    clone.querySelectorAll('[data-plg-hidden] [data-plg-hidden]').forEach((n) => n.removeAttribute('data-plg-hidden'));\n    clone.querySelectorAll('[data-plg-hidden]').forEach((n) => {\n      n.removeAttribute('data-plg-hidden');\n      n.setAttribute('hidden-on-desktop', '');\n    });\n    clone.querySelectorAll('*').forEach((n) => {\n      [...n.attributes].forEach((a) => {\n        if (/^(on|data-(?!src))/.test(a.name) || a.name === 'style' || a.name === 'srcset' || a.name === 'sizes') n.removeAttribute(a.name);\n        if (a.name === 'class') {\n          const keep = a.value.split(/\\s+/).filter((c) => c && !c.startsWith('css-')).join(' ');\n          if (keep) n.setAttribute('class', keep); else n.removeAttribute('class');\n        }\n      });\n      if (n.tagName === 'A' && n.getAttribute('href')) n.setAttribute('href', n.href);\n    });\n    return clone.outerHTML.replace(/\\s{2,}/g, ' ');\n  }\n\n  window.__plgRegionsBySelector = (selectors, maxStyleNodes = 400) => JSON.stringify(\n    selectors.map((sel) => {\n      const el = document.querySelector(sel);\n      if (!el || !visible(el)) return null;\n      return { rect: absRect(el), styles: styleLines(el, maxStyleNodes).join('\\n') };\n    }),\n  );\n\n  // the header when none is named: the first of these that is shown at the top of the page and is\n  // not most of the viewport (a full-height app shell is not a header)\n  const HEADER_CANDIDATES = ['body > header', 'header', '[role=banner]', '#header', '.header'];\n  window.__plgFindHeader = () => {\n    for (const sel of HEADER_CANDIDATES) {\n      for (const el of document.querySelectorAll(sel)) {\n        if (!visible(el)) continue;\n        const r = absRect(el);\n        if (r.y < 200 && r.h >= 20 && r.h < 0.8 * innerHeight) return cssPath(el);\n      }\n    }\n    return null;\n  };\n\n  // one region record per selector (null when the page does not show it), as __plgExtract's\n  window.__plgHeaderRegions = (selectors, maxStyleNodes = 400) => JSON.stringify(\n    selectors.map((sel, i) => {\n      const el = document.querySelector(sel);\n      if (!el || !visible(el)) return null;\n      const cs = getComputedStyle(el);\n      return {\n        id: i ? `header-${i + 1}` : 'header',\n        tag: el.tagName.toLowerCase(),\n        selector: sel,\n        rect: absRect(el),\n        background: { color: cs.backgroundColor, image: cs.backgroundImage },\n        text: el.innerText.replace(/\\s+/g, ' ').trim().slice(0, 160),\n        fullText: el.innerText.replace(/\\s+/g, ' ').trim(),\n        html: cleanHtml(el),\n        styles: styleLines(el, maxStyleNodes).join('\\n'),\n      };\n    }),\n  );\n\n  window.__plgExtract = ({ maxStyleNodes = 400 } = {}) => {\n    const vw = document.documentElement.clientWidth;\n    const vh = innerHeight;\n    const regions = regionsOf(document.body, vw, vh).map((el, i) => {\n      const rect = absRect(el);\n      const cs = getComputedStyle(el);\n      return {\n        id: `r${i + 1}`,\n        tag: el.tagName.toLowerCase(),\n        selector: cssPath(el),\n        rect,\n        background: { color: cs.backgroundColor, image: cs.backgroundImage },\n        text: el.innerText.replace(/\\s+/g, ' ').trim().slice(0, 160),\n        fullText: el.innerText.replace(/\\s+/g, ' ').trim(),\n        html: cleanHtml(el),\n        styles: styleLines(el, maxStyleNodes).join('\\n'),\n      };\n    });\n    const images = [...document.images].filter(visible).map((img) => ({\n      src: img.currentSrc || img.src, alt: img.alt, rect: absRect(img),\n      natural: { w: img.naturalWidth, h: img.naturalHeight },\n    }));\n    const bgImages = [...document.querySelectorAll('body *')].filter(visible).map((el) => {\n      const m = getComputedStyle(el).backgroundImage.match(/url\\(\"?([^\")]+)\"?\\)/);\n      return m ? { src: new URL(m[1], location.href).href, selector: cssPath(el), rect: absRect(el) } : null;\n    }).filter(Boolean);\n    const fontFaces = [];\n    for (const sheet of document.styleSheets) {\n      let rules = [];\n      try { rules = [...sheet.cssRules]; } catch { continue; }\n      for (const r of rules) {\n        if (r instanceof CSSFontFaceRule) {\n          fontFaces.push({ css: r.cssText, base: sheet.href || location.href });\n        }\n      }\n    }\n    const usedFonts = new Set();\n    document.querySelectorAll('body *').forEach((el) => { if (visible(el)) usedFonts.add(getComputedStyle(el).fontFamily); });\n    const body = getComputedStyle(document.body);\n    // how body's line-height inherits: a child with another font size keeps the px value, or\n    // scales it (a unitless ratio, which the computed value no longer shows)\n    const probe = document.createElement('span');\n    probe.style.fontSize = '10px';\n    document.body.append(probe);\n    const probeLh = getComputedStyle(probe).lineHeight;\n    probe.remove();\n    const lineHeightInherited = probeLh === body.lineHeight || probeLh === 'normal' ? body.lineHeight\n      : String(+(parseFloat(probeLh) / 10).toFixed(4));\n    return JSON.stringify({\n      url: location.href, title: document.title,\n      meta: [...document.querySelectorAll('meta[name],meta[property]')].map((m) => ({\n        name: m.getAttribute('name') || m.getAttribute('property'), content: m.content })),\n      viewport: { w: vw, h: vh }, pageHeight: document.documentElement.scrollHeight,\n      body: { font: body.fontFamily, size: body.fontSize, color: body.color, bg: body.backgroundColor, lineHeight: body.lineHeight,\n        lineHeightInherited,\n        // inherited by every text, so never in a region's dump (only where an element resets them)\n        fontSmoothing: body.webkitFontSmoothing, textRendering: body.textRendering,\n        fontFeatureSettings: body.fontFeatureSettings, fontVariationSettings: body.fontVariationSettings,\n        fontKerning: body.fontKerning },\n      usedFonts: [...usedFonts], fontFaces, images, bgImages, regions,\n    });\n  };\n})();\n", "header-freeze.css": "/* Injected before screenshots on both the source and the EDS page: CSS motion jumps to its end\n   state (like the reduced-motion technique), so marquees and fades do not depend on timing.\n   JS-driven motion (carousel timers, rotating words) is not covered. */\n*, *::before, *::after {\n  animation-delay: 0s !important;\n  animation-duration: 0s !important;\n  animation-iteration-count: 1 !important;\n  transition-delay: 0s !important;\n  transition-duration: 0s !important;\n  caret-color: transparent !important;\n}\n", "header-toggles.js": "/* Browser-side: injected into the source and the EDS page. Defines\n   window.__plgToggles(): the top navigation's menu toggles (elements that open a menu), and\n   window.__plgVisibleLinks(): how many links are visible in the viewport. The same rules on both\n   sides, so an open state can be compared label by label. */\n(() => {\n  const shown = (el) => {\n    const r = el.getBoundingClientRect();\n    if (r.width < 2 || r.height < 2 || r.bottom < 0 || r.top > innerHeight) return false;\n    const s = getComputedStyle(el);\n    // ancestors count too: a closed dropdown hidden by its panel's opacity (wpbeginner) is not shown\n    return s.visibility !== 'hidden' && s.display !== 'none' && Number(s.opacity) > 0.05\n      && el.checkVisibility({ opacityProperty: true, visibilityProperty: true });\n  };\n  const label = (el) => (el.innerText || el.getAttribute('aria-label') || '').trim().replace(/\\s+/g, ' ');\n  // a toggle: in the top bar, visible, and it either says it expands (aria) or owns a hidden submenu\n  window.__plgToggles = () => {\n    const cands = [...document.querySelectorAll('header button, header a, header [role=\"button\"], nav button, nav a, nav [role=\"button\"]')]\n      .filter((el) => shown(el) && el.getBoundingClientRect().top < 200);\n    const out = [];\n    for (const el of cands) {\n      const text = label(el);\n      if (!text || text.length > 40) continue;\n      const aria = el.hasAttribute('aria-expanded') || el.getAttribute('aria-haspopup') === 'true';\n      const li = el.closest('li');\n      const sub = li && [...li.querySelectorAll('ul, [role=\"menu\"], div')].some((m) => m !== el && !m.contains(el) && !shown(m) && m.querySelector('a'));\n      if ((aria || sub) && !out.some((o) => o.label === text)) out.push({ label: text });\n    }\n    return out.slice(0, 8);\n  };\n  window.__plgVisibleLinks = () => [...document.querySelectorAll('a[href]')].filter(shown).length;\n  // waits (up to `ms`) until more links are visible than `before`: a site that delays its JS until\n  // the first interaction replays the click ~1.5 s later (wpbeginner's mobile menu)\n  window.__plgWaitReveal = async (before, ms = 5000) => {\n    for (let t = 0; t < ms; t += 100) {\n      if (window.__plgVisibleLinks() > before) return true;\n      await new Promise((r) => { setTimeout(r, 100); });\n    }\n    return false;\n  };\n\n  // remember the links visible with every menu closed, to find what an opened menu revealed\n  window.__plgMarkVisibleLinks = () => {\n    window.__plgClosed = new Set([...document.querySelectorAll('a[href]')].filter(shown));\n  };\n\n  // the opened panel: the smallest visible element holding most newly revealed links, with\n  // the styles a header template needs (background, shadow, padding, radius, box)\n  window.__plgOpenPanel = () => {\n    const fresh = [...document.querySelectorAll('a[href]')].filter((a) => shown(a)\n      && !(window.__plgClosed || new Set()).has(a));\n    if (!fresh.length) return null;\n    let el = fresh[0].parentElement;\n    const need = Math.ceil(fresh.length * 0.8);\n    while (el && el !== document.body && fresh.filter((a) => el.contains(a)).length < need) el = el.parentElement;\n    // the whole panel: climb while the ancestor is still only the panel (it does not hold the\n    // closed-state links, i.e. the bar) and is not the page\n    let box = el;\n    for (let x = el.parentElement; x && x !== document.body; x = x.parentElement) {\n      const holdsBar = [...(window.__plgClosed || [])].some((a) => x.contains(a));\n      const xr = x.getBoundingClientRect();\n      const br = box.getBoundingClientRect();\n      // an ancestor that does not contain the panel's box is a positioning parent (the menu item)\n      const contains = xr.left <= br.left + 2 && xr.top <= br.top + 2 && xr.right >= br.right - 2 && xr.bottom >= br.bottom - 2;\n      if (holdsBar || !contains || xr.height > innerHeight * 1.5) break;\n      box = x;\n    }\n    document.querySelectorAll('[data-plg-panel]').forEach((x) => x.removeAttribute('data-plg-panel'));\n    box.setAttribute('data-plg-panel', '');\n    const cs = getComputedStyle(box);\n    const r = box.getBoundingClientRect();\n    return {\n      rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },\n      background: cs.backgroundColor, shadow: cs.boxShadow, padding: cs.padding,\n      radius: cs.borderRadius, border: cs.borderTopWidth === '0px' ? 'none' : `${cs.borderTopWidth} ${cs.borderTopStyle} ${cs.borderTopColor}`,\n      links: fresh.length,\n      // what the menu holds, for whoever rebuilds it: every revealed link, and the panel's text\n      // in reading order (column titles, descriptions)\n      items: fresh.map((a) => ({ text: a.innerText.trim().replace(/\\s+/g, ' '), href: a.href })),\n      text: box.innerText.trim(),\n    };\n  };\n\n  // the innermost shown element whose text is the label: not only text-only leaves, since a\n  // trigger often holds its label next to an icon (stripe-v3-clef-01: <button>Produits<svg/></button>)\n  const labelEl = (label) => [...document.querySelectorAll('body *')]\n    .find((n) => n.textContent.trim() === label && shown(n)\n      && ![...n.children].some((c) => c.textContent.trim() === label));\n  // the bar holding a nav label: its widest ancestor (at least 90 % of the viewport)\n  const barOf = (label) => {\n    const el = labelEl(label);\n    if (!el) return null;\n    let bar = el;\n    for (let x = el; x && x !== document.body; x = x.parentElement) {\n      if (x.getBoundingClientRect().width >= innerWidth * 0.9) { bar = x; break; }\n    }\n    return bar;\n  };\n  window.__plgLabelVisible = (label) => {\n    if (!label) return true;\n    return !!labelEl(label);\n  };\n\n  // scroll behaviour of the bar: static (scrolls away), sticky (stays), hide-on-scroll (hides\n  // while scrolling down, comes back when scrolling up)\n  window.__plgScrollProbe = async (label) => {\n    const bar = barOf(label);\n    if (!bar) return { behavior: null };\n    const wait = (ms) => new Promise((r) => { setTimeout(r, ms); });\n    const onTop = () => { const r = bar.getBoundingClientRect(); return r.bottom > 0 && r.top < 200 && shown(bar); };\n    scrollTo(0, 1200); await wait(400);\n    scrollTo(0, 1600); await wait(400);\n    const down = onTop();\n    scrollTo(0, 1400); await wait(500);\n    const up = onTop();\n    scrollTo(0, 0); await wait(200);\n    let behavior = 'static';\n    if (down) behavior = 'sticky';\n    else if (up) behavior = 'hide-on-scroll';\n    return { behavior, barHeight: Math.round(bar.getBoundingClientRect().height) };\n  };\n\n  // the mobile menu toggle: named like one, else one that says it expands, else the rightmost\n  // header button (a promo bar's close button is a header button too)\n  window.__plgMobileToggle = () => {\n    const vis = [...document.querySelectorAll('header button, header [role=button], header [aria-controls], header [aria-expanded], button[aria-label]')]\n      .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top < 200; });\n    const named = (b) => /menu|navigation|nav-toggle|hamburger|burger/i.test([b.getAttribute('aria-label'), b.className, b.title, b.parentElement?.className].join(' '));\n    return vis.find(named) || vis.find((b) => b.hasAttribute('aria-expanded') || b.hasAttribute('aria-controls'))\n      || vis.sort((x, y) => y.getBoundingClientRect().right - x.getBoundingClientRect().right)[0] || null;\n  };\n})();\n", "langs-collect.js": `// playwright-cli run-code script \u2014 extract language signals and visible text.
 // Usage: playwright-cli run-code --filename=collect.js
 async page => {
   return await page.evaluate(() => {
@@ -4173,11 +4222,11 @@ function requireOpenSession(driver, name) {
 }
 async function withSession(driver, opts, fn) {
   const { session, url, headed, recipePath, recipeExplicit, recipeSkip, ...launch2 } = opts;
-  const resolve7 = () => resolveLaunch(recipePath, launch2, { skip: recipeSkip });
+  const resolve13 = () => resolveLaunch(recipePath, launch2, { skip: recipeSkip });
   if (session) {
     const isOpen = driver.list().some((s) => s.name === session && s.status === "open");
     if (!isOpen && url) {
-      driver.open({ session, url, headed, ...resolve7() });
+      driver.open({ session, url, headed, ...resolve13() });
     } else {
       requireOpenSession(driver, session);
       if (recipePath && recipeExplicit) {
@@ -4196,7 +4245,7 @@ async function withSession(driver, opts, fn) {
   let owned = true;
   try {
     try {
-      driver.open({ session: name, url, headed, ...resolve7() });
+      driver.open({ session: name, url, headed, ...resolve13() });
     } catch (err) {
       owned = err?.code !== "SESSION_EXISTS";
       throw err;
@@ -4386,7 +4435,7 @@ var CACHE_STATS_CODE = `async page => {
 }`;
 
 // src/cache/keeper-process.mjs
-import { spawn, spawnSync as spawnSync2 } from "node:child_process";
+import { spawn as spawn2, spawnSync as spawnSync2 } from "node:child_process";
 import {
   closeSync,
   existsSync as existsSync3,
@@ -4414,7 +4463,7 @@ function cliErrorFrom(stdout) {
   return null;
 }
 function readReady(child, log) {
-  return new Promise((resolve7, reject) => {
+  return new Promise((resolve13, reject) => {
     let out = "";
     const failed = (detail) => new CliError("INTERNAL", `cache keeper did not start: ${detail}`, {
       hint: `see ${log}`
@@ -4431,7 +4480,7 @@ function readReady(child, log) {
         const ready = JSON.parse(out.slice(0, newline));
         if (Number.isInteger(ready.port)) {
           clearTimeout(timer);
-          resolve7(ready);
+          resolve13(ready);
         }
       } catch {
       }
@@ -4481,7 +4530,7 @@ async function startKeeperProcess({
   const log = logFile(outputDir, session);
   const logFd = openSync(log, "w");
   const args = [argv1, "cache", "keeper", "--cache", dir, "--session", session];
-  const child = spawn(process.execPath, [...args, "--output", outputDir], {
+  const child = spawn2(process.execPath, [...args, "--output", outputDir], {
     detached: true,
     stdio: ["ignore", "pipe", logFd]
   });
@@ -4673,7 +4722,7 @@ function registerBrowser(program2, deps) {
   });
   const keeper = deps.keeper ?? { start: startKeeperProcess, stop: stopKeeper };
   const stderr = deps.stderr ?? process.stderr;
-  const openSession = (ctx) => {
+  const openSession2 = (ctx) => {
     requireOpenSession(ctx.driver, ctx.opts.session);
     return ctx.opts.session;
   };
@@ -4742,7 +4791,7 @@ function registerBrowser(program2, deps) {
   action(
     browser.command("close").description("close the session").addHelpText("after", HELP.CLOSE),
     async (ctx) => {
-      const session = openSession(ctx);
+      const session = openSession2(ctx);
       const outputDir = ctx.opts.output;
       if (!hasKeeper({ session, outputDir })) {
         ctx.driver.close(session);
@@ -4772,27 +4821,27 @@ function registerBrowser(program2, deps) {
   action(
     browser.command("eval <expr>").description("evaluate a JS expression").addHelpText("after", HELP.EVAL),
     (ctx, expr) => {
-      ctx.print({ result: ctx.driver.evaluate(openSession(ctx), expr) });
+      ctx.print({ result: ctx.driver.evaluate(openSession2(ctx), expr) });
     }
   );
   action(
     browser.command("run <file-or-code>").description("run a Playwright script or code").addHelpText("after", HELP.RUN),
     (ctx, arg) => {
       const target = existsSync4(arg) ? { file: arg } : { code: arg };
-      ctx.print({ result: ctx.driver.run(openSession(ctx), target) });
+      ctx.print({ result: ctx.driver.run(openSession2(ctx), target) });
     }
   );
   action(
     browser.command("cdp <method> [params-json]").description("send a raw CDP command").addHelpText("after", HELP.CDP),
     (ctx, method, json) => {
       const params = parseParams(json);
-      ctx.print({ result: ctx.driver.cdp(openSession(ctx), method, params) });
+      ctx.print({ result: ctx.driver.cdp(openSession2(ctx), method, params) });
     }
   );
   action(
     browser.command("screenshot").description("take a screenshot").addHelpText("after", HELP.SHOT).option("--full-page", "capture the full page").option("--selector <css>", "capture one element"),
     (ctx) => {
-      const session = openSession(ctx);
+      const session = openSession2(ctx);
       const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
       const path9 = artifactPath(ctx.opts.output, session, "screenshot", `${stamp}.png`);
       ctx.driver.screenshot(session, {
@@ -5471,9 +5520,9 @@ async function startMask({
       { key: readFileSync4(keyFile), cert: readFileSync4(certFile) },
       makeProxy({ target, displayDomain, log })
     );
-    await new Promise((resolve7, reject) => {
+    await new Promise((resolve13, reject) => {
       server.once("error", reject);
-      server.listen(port, resolve7);
+      server.listen(port, resolve13);
     });
   } catch (err) {
     removeHostsEntry(hostsFile, entry, log);
@@ -5485,8 +5534,8 @@ async function startMask({
   log(`${url} -> ${target.origin}`);
   const stop = async () => {
     log("Shutting down...");
-    await new Promise((resolve7) => {
-      server.close(resolve7);
+    await new Promise((resolve13) => {
+      server.close(resolve13);
       server.closeAllConnections();
     });
     removeHostsEntry(hostsFile, entry, log);
@@ -5499,12 +5548,12 @@ async function startMask({
   return { url, certDir, stop };
 }
 function waitForSignal(stop) {
-  return new Promise((resolve7) => {
+  return new Promise((resolve13) => {
     const handler = async () => {
       process.off("SIGINT", handler);
       process.off("SIGTERM", handler);
       await stop();
-      resolve7();
+      resolve13();
     };
     process.on("SIGINT", handler);
     process.on("SIGTERM", handler);
@@ -5611,16 +5660,16 @@ Exit codes:
 function captureTree(driver, session, { minWidth = 900, settleMs } = {}) {
   preparePage(driver, session, { settleMs });
   driver.inject(session, loadBundle("page-tree.js"));
-  let raw = driver.evaluate(
+  let raw2 = driver.evaluate(
     session,
     `JSON.stringify(window.__visualTree.captureVisualTree(${Number(minWidth)}))`
   );
-  if (typeof raw === "string") raw = JSON.parse(raw);
+  if (typeof raw2 === "string") raw2 = JSON.parse(raw2);
   return {
-    text: raw.textFormat,
-    tree: raw.data,
-    nodeMap: raw.nodeMap,
-    rootBackground: raw.rootBackground
+    text: raw2.textFormat,
+    tree: raw2.data,
+    nodeMap: raw2.nodeMap,
+    rootBackground: raw2.rootBackground
   };
 }
 function registerTree(group, deps) {
@@ -5882,8 +5931,8 @@ function registerBands(group, deps) {
 // src/commands/page/reduce.mjs
 var DETECT = "window.xp.detectSections(document.body, window, { autoDetect: true, highlightBoxes: false, highlightSections: false }).then(() => JSON.stringify(window.__reduceForSkill(document.body, window)))";
 function detect(driver, session) {
-  const raw = driver.evaluate(session, DETECT);
-  return typeof raw === "string" ? JSON.parse(raw) : raw;
+  const raw2 = driver.evaluate(session, DETECT);
+  return typeof raw2 === "string" ? JSON.parse(raw2) : raw2;
 }
 var HELP6 = `
 Example:
@@ -6194,17 +6243,17 @@ function aggregate(results) {
 }
 function chunks(block) {
   const out = [];
-  let current = "";
+  let current2 = "";
   for (const word of block.split(" ")) {
-    const next = current ? `${current} ${word}` : word;
-    if (current && Buffer.byteLength(next) > MAX_CLD3_BYTES) {
-      out.push(current);
-      current = word;
+    const next = current2 ? `${current2} ${word}` : word;
+    if (current2 && Buffer.byteLength(next) > MAX_CLD3_BYTES) {
+      out.push(current2);
+      current2 = word;
     } else {
-      current = next;
+      current2 = next;
     }
   }
-  if (current) out.push(current);
+  if (current2) out.push(current2);
   return out;
 }
 function primarySubtag(code) {
@@ -6214,8 +6263,8 @@ function primarySubtag(code) {
 function reconcile(declared, detectedList) {
   const detectedCodes = new Set(detectedList.filter((r) => r.is_reliable).map((r) => r.language));
   const declaredCodes = /* @__PURE__ */ new Set();
-  const add = (raw) => {
-    const p = primarySubtag(raw);
+  const add = (raw2) => {
+    const p = primarySubtag(raw2);
     if (p) declaredCodes.add(p);
   };
   if (declared.htmlLang) add(declared.htmlLang);
@@ -6456,11 +6505,11 @@ function buildHideExpression(report, ids) {
   const style = `Object.assign(document.createElement('style'), { textContent: ${css} })`;
   return `document.head.appendChild(${style}) && 'ok'`;
 }
-async function settle(promise, label, stderr) {
+async function settle(promise, label2, stderr) {
   try {
     return await promise;
   } catch (err) {
-    stderr.write(`Warning: ${label} fetch failed: ${err.message}
+    stderr.write(`Warning: ${label2} fetch failed: ${err.message}
 `);
     return void 0;
   }
@@ -7408,12 +7457,12 @@ function createStore(dir) {
     return name;
   }
   function append(page, entry) {
-    const current = pages.get(page);
-    if (!current) return;
-    const { entries: entries2 } = current.har.log;
+    const current2 = pages.get(page);
+    if (!current2) return;
+    const { entries: entries2 } = current2.har.log;
     const at = entries2.findLastIndex((e) => e.startedDateTime <= entry.startedDateTime);
     entries2.splice(at + 1, 0, entry);
-    writeAtomic(current.file, JSON.stringify(current.har));
+    writeAtomic(current2.file, JSON.stringify(current2.har));
   }
   function startPage(page, url) {
     const startedDateTime = (/* @__PURE__ */ new Date()).toISOString();
@@ -7793,10 +7842,10 @@ async function crawl(origin, options = {}) {
     if (exclude.some((re) => re.test(target))) return false;
     return include.length === 0 || include.some((re) => re.test(target));
   };
-  const accept = (raw) => {
+  const accept = (raw2) => {
     let u;
     try {
-      u = new URL(raw);
+      u = new URL(raw2);
     } catch {
       return null;
     }
@@ -7805,8 +7854,8 @@ async function crawl(origin, options = {}) {
     seen.add(u.href);
     return matches(u) ? u : null;
   };
-  const keep = (raw) => {
-    const u = accept(raw);
+  const keep = (raw2) => {
+    const u = accept(raw2);
     if (u) urls.push({ url: u.href, lang: langOf(u.pathname) });
   };
   async function walkSitemaps() {
@@ -7956,6 +8005,2236 @@ function registerDoc(program2, deps) {
   });
 }
 
+// src/commands/header.mjs
+import { existsSync as existsSync16, mkdtempSync as mkdtempSync2, readFileSync as readFileSync16, rmSync as rmSync8 } from "node:fs";
+import { tmpdir as tmpdir2 } from "node:os";
+import { join as join17, resolve as resolve12 } from "node:path";
+
+// src/header/browser.mjs
+import { randomBytes as randomBytes3 } from "node:crypto";
+function decode2(value) {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+function launchConfig({ width = 1440, height = 900, scale = 1 } = {}) {
+  return {
+    browserName: "chromium",
+    contextOptions: { viewport: { width, height }, deviceScaleFactor: scale, bypassCSP: true }
+  };
+}
+function webBrowser(driver, {
+  runTimeoutMs = 20 * 6e4,
+  newName = () => `web-${randomBytes3(3).toString("hex")}`,
+  warn = (line) => process.stderr.write(`${line}
+`)
+} = {}) {
+  const names = /* @__PURE__ */ new Map();
+  const unclosed = /* @__PURE__ */ new Map();
+  const sessionOf = (name) => {
+    const session = names.get(name);
+    if (!session) throw new Error(`session ${name} is not open (openSession first)`);
+    return session;
+  };
+  function close2(session) {
+    try {
+      driver.close(session);
+      unclosed.delete(session);
+      return true;
+    } catch (e) {
+      unclosed.set(session, e?.message ?? String(e));
+      return false;
+    }
+  }
+  function closeSession2(name) {
+    const session = names.get(name);
+    if (!session) return;
+    names.delete(name);
+    close2(session);
+  }
+  function openSession2(name, size = {}) {
+    closeSession2(name);
+    for (let attempt = 1; ; attempt += 1) {
+      const session = newName();
+      try {
+        driver.open({ session, config: launchConfig(size) });
+        names.set(name, session);
+        return session;
+      } catch (e) {
+        if (e?.code === "SESSION_EXISTS" && attempt < 3) continue;
+        if (e?.code !== "SESSION_EXISTS") close2(session);
+        throw e;
+      }
+    }
+  }
+  return {
+    openSession: openSession2,
+    closeSession: closeSession2,
+    runCode: (name, source, { timeout = 0 } = {}) => decode2(driver.run(sessionOf(name), { code: source, timeoutMs: timeout || runTimeoutMs })),
+    runCodeAsync: async (name, source, { timeout = 0 } = {}) => decode2(
+      await driver.runAsync(sessionOf(name), {
+        code: source,
+        timeoutMs: timeout || runTimeoutMs
+      })
+    ),
+    /** Closes every session still open, retries the closes that failed, reports what is left. */
+    closeAll() {
+      [...names.keys()].forEach(closeSession2);
+      for (const session of unclosed.keys()) {
+        if (!close2(session)) {
+          warn(
+            `warning: browser session ${session} could not be closed (${unclosed.get(session)}): playwright-cli -s=${session} close`
+          );
+        }
+      }
+      return [...unclosed.keys()];
+    },
+    sessions: () => [...names.values()]
+  };
+}
+var current = null;
+function useBrowser(browser) {
+  current = browser;
+}
+var active = () => {
+  if (!current) throw new Error("no browser: the header checks run inside a `web header` command");
+  return current;
+};
+var openSession = (...args) => active().openSession(...args);
+var closeSession = (...args) => active().closeSession(...args);
+var runCode = (...args) => active().runCode(...args);
+var runCodeAsync = (...args) => active().runCodeAsync(...args);
+
+// src/header/capture.mjs
+import { mkdirSync as mkdirSync12, writeFileSync as writeFileSync14 } from "node:fs";
+import { join as join12, resolve as resolve9 } from "node:path";
+
+// src/header/imaging.mjs
+var loaded = {};
+var IMAGING_HINT = 'install the CLI as a package so its optional dependencies come with it: npx -y pnpm add --dir <dir> "github:adobe/skills#<ref>&path:/plugins/web/cli" (or npm install in plugins/web/cli)';
+async function loadImaging(load2) {
+  if (loaded.sharp && !load2) return;
+  const importers = {
+    sharp: () => load2 ? load2("sharp") : import("sharp"),
+    pngjs: () => load2 ? load2("pngjs") : import("pngjs"),
+    pixelmatch: () => load2 ? load2("pixelmatch") : import("pixelmatch")
+  };
+  const mods = {};
+  for (const [name, importer] of Object.entries(importers)) {
+    try {
+      mods[name] = await importer();
+    } catch (e) {
+      throw new CliError("UNSUPPORTED", `the header commands need ${name}: ${e?.message ?? e}`, {
+        hint: IMAGING_HINT
+      });
+    }
+  }
+  loaded.sharp = mods.sharp.default ?? mods.sharp;
+  loaded.PNG = mods.pngjs.PNG ?? mods.pngjs.default?.PNG;
+  loaded.pixelmatch = mods.pixelmatch.default ?? mods.pixelmatch;
+}
+var need = (name) => {
+  if (!loaded[name]) throw new Error(`${name} is not loaded: call loadImaging() first`);
+  return loaded[name];
+};
+var sharp = (...args) => need("sharp")(...args);
+var pixelmatch = (...args) => need("pixelmatch")(...args);
+var PNG = new Proxy(function PNG2() {
+}, {
+  construct: (_target, args) => new (need("PNG"))(...args),
+  get: (_target, key) => need("PNG")[key]
+});
+
+// src/header/probes.mjs
+import { readFileSync as readFileSync10, writeFileSync as writeFileSync12 } from "node:fs";
+import { join as join9, resolve as resolve7 } from "node:path";
+
+// src/header/steady.mjs
+var AB_TESTS = String.raw`/^https?:\/\/([^/]*\.)?(intellimize\.co|optimizely\.com|visualwebsiteoptimizer\.com|tt\.omtrdc\.net|abtasty\.com|kameleoon\.(eu|io)|convertexperiments\.com)(:\d+)?\//`;
+var STEADY = `() => {
+  let input = -Infinity;
+  // Escape is no opening input: menus.mjs presses it before every menu, and the splash opened
+  const opens = (e) => e.type === 'pointerdown' || e.key === 'Enter' || e.key === ' ';
+  for (const type of ['pointerdown', 'keydown']) {
+    addEventListener(type, (e) => { if (opens(e)) input = performance.now(); }, { capture: true });
+  }
+  const showModal = HTMLDialogElement.prototype.showModal;
+  HTMLDialogElement.prototype.showModal = function showModalUnlessSplash() {
+    showModal.call(this);
+    if (performance.now() - input >= 1000) this.close();
+    return undefined;
+  };
+  const setInterval = window.setInterval;
+  window.setInterval = function setIntervalUnlessRotation(fn, delay, ...rest) {
+    if (Number(delay) >= 2000) return 0;
+    return setInterval(fn, delay, ...rest);
+  };
+}`;
+
+// src/header/overlay-probe.mjs
+var SELECTOR_OF = `(el) => {
+  const one = (s) => { try { return document.querySelectorAll(s).length === 1; } catch { return false; } };
+  const selectorOf = (e) => {
+    if (e.id && one('#' + CSS.escape(e.id))) return '#' + CSS.escape(e.id);
+    const tag = e.tagName.toLowerCase();
+    const cls = [...e.classList].map((c) => tag + '.' + CSS.escape(c)).find(one);
+    if (cls) return cls;
+    const up = e.parentElement;
+    const nth = [...up.children].filter((c) => c.tagName === e.tagName).indexOf(e) + 1;
+    return (up === document.body ? 'body' : selectorOf(up)) + ' > ' + tag + ':nth-of-type(' + nth + ')';
+  };
+  return selectorOf(el);
+}`;
+var VISIBLE_OVERLAYS = `() => {
+  const CMP = ['#onetrust-banner-sdk', '#onetrust-consent-sdk', '#CybotCookiebotDialog',
+    '#usercentrics-root', '#usercentrics-cmp-ui', '#didomi-host', '#didomi-popup', '.fc-consent-root',
+    '#qc-cmp2-container', '#truste-consent-track', '#ch2-dialog', '#ch2-container',
+    '[id^="sp_message_container"]', '.cky-consent-container', '#cookie-law-info-bar',
+    '#moove_gdpr_cookie_info_bar', '.osano-cm-window', '#cmpbox', '#cookiescript_injected'];
+  const WORDS = /cookie|consent|gdpr|rgpd|datenschutz|tout accepter|accept all|alle akzeptieren/i;
+  const vis = (e) => {
+    const r = e.getBoundingClientRect();
+    const cs = getComputedStyle(e);
+    return r.width >= 2 && r.height >= 2 && r.bottom > 0 && r.top < innerHeight
+      && cs.display !== 'none' && cs.visibility !== 'hidden' && +cs.opacity > 0.05;
+  };
+  // a layer is only visible if its ancestors are too (display:none on a parent hides it)
+  const shown = (e) => vis(e) && e.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+  const layer = (e) => {
+    const cs = getComputedStyle(e);
+    return cs.position === 'fixed' || cs.position === 'sticky' || e.matches('[role=dialog], [role=alertdialog], [aria-modal=true], dialog[open]');
+  };
+  // the page itself, not a layer over it: a sticky header with a "Cookie settings" link, a fixed app shell
+  const page = (e) => e.matches('header, nav, [role=navigation]') || e.querySelector('header, nav, [role=navigation]')
+    || (e.innerText || '').length >= 0.3 * document.body.innerText.length;
+  const hits = [];
+  for (const e of document.querySelectorAll(CMP.join(','))) if (shown(e)) hits.push(e);
+  for (const e of document.querySelectorAll('body *')) {
+    if (hits.some((h) => h.contains(e) || e.contains(h)) || !layer(e) || !shown(e) || page(e)) continue;
+    const r = e.getBoundingClientRect();
+    if (r.width * r.height < 0.02 * innerWidth * innerHeight) continue;
+    if (WORDS.test(e.innerText || '')) hits.push(e);
+  }
+  // a layer inside an open shadow root (wpbeginner's WPConsent): its zero-height host is the hit
+  for (const host of document.querySelectorAll('body *')) {
+    if (!host.shadowRoot || hits.some((h) => h.contains(host))) continue;
+    const inner = [...host.shadowRoot.querySelectorAll('*')].find((e) => layer(e) && shown(e)
+      && WORDS.test(e.innerText || ''));
+    if (inner) hits.push(host);
+  }
+  const selectorOf = ${SELECTOR_OF};
+  return hits.map((e) => {
+    const r = e.getBoundingClientRect();
+    return { selector: selectorOf(e),
+      text: (e.innerText || '').trim().replace(/\\s+/g, ' ').slice(0, 80),
+      rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) } };
+  });
+}`;
+
+// src/header/probes.mjs
+var togglesJs = loadBundle("header-toggles.js");
+function headerProbes(url, outArg) {
+  const out = resolve7(outArg);
+  const hideCss = JSON.parse(readFileSync10(join9(out, "overlays.json"), "utf8")).hideCss || "";
+  const openFile = join9(out, "open", "open.json");
+  const openStates = JSON.parse(readFileSync10(openFile, "utf8"));
+  const t0 = Date.now();
+  openSession("plg-src-h", { width: 1440, height: 900 });
+  try {
+    openStates.header = runCode(
+      "plg-src-h",
+      `async page => {
+    await page.context().route(${AB_TESTS}, (r) => r.abort());
+    await page.context().addInitScript(${STEADY});
+    await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForLoadState('load').catch(() => {});
+    if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
+    await page.addScriptTag({ content: ${JSON.stringify(togglesJs)} });
+    await page.waitForTimeout(1200);
+    const label = ${JSON.stringify(openStates.states[0]?.label || null)};
+    const scroll = await page.evaluate(async (lbl) => window.__plgScrollProbe(lbl), label);
+    // breakpoint: the smallest probed width that still shows the desktop nav (the real one lies
+    // between it and the next probed width)
+    // a label not found at 1440 gives no breakpoint, not a bogus one (stripe-v3-clef-01 got 1440)
+    if (!(await page.evaluate((lbl) => window.__plgLabelVisible(lbl), label))) {
+      return JSON.stringify({ scroll, breakpoint: null });
+    }
+    let shownAt = 1440;
+    let hiddenAt = null;
+    for (const w of [1366, 1280, 1200, 1140, 1100, 1024, 992, 960, 900, 850, 800, 768]) {
+      await page.setViewportSize({ width: w, height: 900 });
+      await page.waitForTimeout(250);
+      if (!(await page.evaluate((lbl) => window.__plgLabelVisible(lbl), label))) { hiddenAt = w; break; }
+      shownAt = w;
+    }
+    return JSON.stringify({ scroll, breakpoint: { shownAt, hiddenAt } });
+  }`
+    );
+  } finally {
+    closeSession("plg-src-h");
+  }
+  openSession("plg-src-mm", { width: 390, height: 844 });
+  try {
+    openStates.mobileMenu = runCode(
+      "plg-src-mm",
+      `async page => {
+    await page.context().route(${AB_TESTS}, (r) => r.abort());
+    await page.context().addInitScript(${STEADY});
+    await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForLoadState('load').catch(() => {});
+    if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
+    await page.addScriptTag({ content: ${JSON.stringify(togglesJs)} });
+    await page.waitForTimeout(1200);
+    const toggle = await page.evaluateHandle(() => window.__plgMobileToggle());
+    if (!(await toggle.asElement())) return JSON.stringify({ toggle: false });
+    const before = await page.evaluate(() => window.__plgVisibleLinks());
+    await toggle.asElement().click();
+    const revealed = await page.evaluate((n) => window.__plgWaitReveal(n), before);
+    await page.waitForTimeout(700);
+    // a consent layer shown by JS that the click loaded (wpbeginner) is hidden like the capture's
+    const lateOverlays = (await page.evaluate(${VISIBLE_OVERLAYS})).map((o) => o.selector);
+    if (lateOverlays.length) await page.addStyleTag({ content: lateOverlays.join(', ') + ' { display: none !important; }' });
+    await page.screenshot({ path: ${JSON.stringify(join9(out, "open", "mobile-menu.png"))} });
+    const label = ${JSON.stringify(openStates.states[0]?.label || null)};
+    let item = false;
+    if (label) {
+      const el = page.getByText(label, { exact: true }).filter({ visible: true }).first();
+      try { await el.click({ timeout: 3000 }); item = true; } catch { /* no expandable item */ }
+      await page.waitForTimeout(700);
+      if (item) await page.screenshot({ path: ${JSON.stringify(join9(out, "open", "mobile-item.png"))} });
+    }
+    return JSON.stringify({ toggle: true, revealed, lateOverlays, item });
+  }`
+    );
+  } finally {
+    closeSession("plg-src-mm");
+  }
+  writeFileSync12(openFile, JSON.stringify(openStates, null, 2));
+  const line = `[${((Date.now() - t0) / 1e3).toFixed(1)}s] header ${JSON.stringify(openStates.header)}; mobile menu ${JSON.stringify(openStates.mobileMenu)}`;
+  return { open: openStates, line };
+}
+
+// src/header/open-menus.mjs
+import { mkdirSync as mkdirSync11, readFileSync as readFileSync11, writeFileSync as writeFileSync13 } from "node:fs";
+import { join as join10, resolve as resolve8 } from "node:path";
+var freezeCss = loadBundle("header-freeze.css");
+var togglesJs2 = loadBundle("header-toggles.js");
+var extractor = loadBundle("header-extract.js");
+function openMenus(url, outArg) {
+  const out = resolve8(outArg);
+  const hideCss = JSON.parse(readFileSync11(join10(out, "overlays.json"), "utf8")).hideCss || "";
+  const t0 = Date.now();
+  mkdirSync11(join10(out, "open"), { recursive: true });
+  openSession("plg-src-o", { width: 1440, height: 900 });
+  let openStates;
+  try {
+    openStates = runCode(
+      "plg-src-o",
+      `async first => {
+  await first.context().route(${AB_TESTS}, (r) => r.abort());
+  await first.context().addInitScript(${STEADY});
+  // a fresh page per state: the previous one may still navigate from JS after a toggle's click
+  // (link tracking) and overtake the reload (wpbeginner); closing it stops that
+  let page = first;
+  let loaded = false;
+  const load = async () => {
+    if (loaded) {
+      const old = page;
+      page = await old.context().newPage();
+      await old.close();
+    }
+    loaded = true;
+    await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForLoadState('load').catch(() => {});
+    if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
+    await page.addStyleTag({ content: ${JSON.stringify(freezeCss)} });
+    await page.addScriptTag({ content: ${JSON.stringify(togglesJs2)} });
+    await page.addScriptTag({ content: ${JSON.stringify(extractor)} });
+    await page.waitForTimeout(1200);
+  };
+  const states = [];
+  const dumps = [];
+  await load();
+  const toggles = await page.evaluate(() => window.__plgToggles());
+  await page.evaluate(() => window.__plgMarkVisibleLinks());
+  const closed = await page.evaluate(() => window.__plgVisibleLinks());
+  const closedOverlays = await page.evaluate(${VISIBLE_OVERLAYS});
+  for (const [i, t] of toggles.entries()) {
+    if (i) { await load(); await page.evaluate(() => window.__plgMarkVisibleLinks()); }
+    const el = page.locator('header, nav').getByText(t.label, { exact: true }).first();
+    // hover first: a menu that opens on hover is a hover menu, whatever a click would do
+    let trigger = 'hover';
+    try { await el.hover({ timeout: 3000 }); } catch { /* not hoverable */ }
+    await page.waitForTimeout(700);
+    let links = await page.evaluate(() => window.__plgVisibleLinks());
+    if (links - closed <= 0) {
+      trigger = 'click';
+      try { await el.click({ timeout: 3000 }); } catch { states.push({ ...t, error: 'not clickable' }); continue; }
+      await page.waitForTimeout(700);
+      // a toggle that is a plain link leaves the page (wpbeginner): no open state, not a crash
+      try { links = await page.evaluate(() => window.__plgVisibleLinks()); } catch (e) {
+        states.push({ ...t, error: 'navigates: ' + e.message.split('\\n')[0].slice(0, 80) });
+        continue;
+      }
+    }
+    const file = ${JSON.stringify(join10(out, "open"))} + '/' + i + '.png';
+    await page.screenshot({ path: file });
+    const visibleOverlays = await page.evaluate(${VISIBLE_OVERLAYS});
+    const panel = await page.evaluate(() => window.__plgOpenPanel());
+    // the open panel's computed styles, in the same compact dump as the regions: the header
+    // template fills its panel and tab values from it
+    const dump = panel ? JSON.parse(await page.evaluate(() => window.__plgRegionsBySelector(['[data-plg-panel]'], 600)))[0] : null;
+    if (dump) dumps.push({ file: i + '.styles.txt', styles: dump.styles });
+    states.push({ ...t, file: i + '.png', links, newLinks: links - closed, trigger, panel, visibleOverlays });
+    await page.mouse.move(720, 880);
+  }
+  return JSON.stringify({ closedLinks: closed, closedOverlays, states, dumps });
+}`
+    );
+  } finally {
+    closeSession("plg-src-o");
+  }
+  for (const d of openStates.dumps || []) writeFileSync13(join10(out, "open", d.file), d.styles);
+  delete openStates.dumps;
+  writeFileSync13(join10(out, "open", "open.json"), JSON.stringify(openStates, null, 2));
+  const line = `[${((Date.now() - t0) / 1e3).toFixed(1)}s] open states: ${openStates.states.map((st) => `${st.label}(+${st.newLinks ?? st.error}, ${st.trigger})`).join(" ")}`;
+  return { open: openStates, line };
+}
+
+// src/header/tiles.mjs
+import { readdirSync as readdirSync3, rmSync as rmSync6 } from "node:fs";
+import { basename, dirname as dirname4, join as join11 } from "node:path";
+var TILED_SHOT = `async (page, path) => {
+  const h = await page.evaluate(() => document.documentElement.scrollHeight);
+  if (h <= 16000) return page.screenshot({ path, fullPage: true });
+  const width = await page.evaluate(() => document.documentElement.clientWidth);
+  for (let y = 0, n = 0; y < h; y += 8000, n += 1) {
+    await page.screenshot({ path: path + '.tile-' + n + '.png', fullPage: true,
+      clip: { x: 0, y, width, height: Math.min(8000, h - y) } });
+  }
+}`;
+async function stitchTiles(path9) {
+  const prefix = `${basename(path9)}.tile-`;
+  const tiles = readdirSync3(dirname4(path9)).filter((f) => f.startsWith(prefix)).sort((a, b) => parseInt(a.slice(prefix.length), 10) - parseInt(b.slice(prefix.length), 10)).map((f) => join11(dirname4(path9), f));
+  if (!tiles.length) return;
+  const metas = await Promise.all(tiles.map((t) => sharp(t).metadata()));
+  let top = 0;
+  const parts = tiles.map((input, i) => {
+    const p = { input, left: 0, top };
+    top += metas[i].height;
+    return p;
+  });
+  await sharp({ create: { width: metas[0].width, height: top, channels: 4, background: "#fff" } }).composite(parts).png().toFile(path9);
+  tiles.forEach((t) => rmSync6(t));
+}
+
+// src/header/capture.mjs
+var VIEWPORTS = { desktop: [1440, 900], tablet: [820, 1180], mobile: [390, 844] };
+var settleSource = (prepBundle) => `
+  async function settle(page) {
+    await page.waitForLoadState('load');
+    await page.waitForTimeout(1500);
+    const report = await page.evaluate(src => (0, eval)(src), ${JSON.stringify(prepBundle)});
+    const rep = typeof report === 'string' ? JSON.parse(report) : report;
+    // page-prep's selector can be a bare tag or a shared class ("div"): a rule matching more than its
+    // overlay hides the page, so only rules whose selector matches one element are applied
+    const prepFound = rep.overlays || [];
+    const counts = await page.evaluate((sels) => sels.map((s) => {
+      try { return document.querySelectorAll(s).length; } catch { return 0; }
+    }), prepFound.map((o) => o.selector));
+    rep.skippedHide = prepFound.filter((o, i) => counts[i] !== 1).map((o) => o.selector);
+    const hide = prepFound.filter((o, i) => counts[i] === 1).flatMap(o => o.hide || []).join('\\n')
+      + (rep.scroll_fix ? '\\nhtml,body{overflow:auto!important;position:static!important}' : '');
+    if (hide) await page.addStyleTag({ content: hide });
+    // overlays page-prep didn't know (geo pickers, platform consent dialogs): visible dialogs, and
+    // fixed layers over most of the viewport holding only a small part of the page's text (a
+    // modal and its backdrop, not a fixed app shell), are hidden in every session alike
+    const overlays = await page.evaluate(() => {
+      const vis = (e) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e);
+        return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden' && +cs.opacity > 0; };
+      const vw = innerWidth * innerHeight;
+      const found = [...document.querySelectorAll('[role=dialog], [role=alertdialog], [aria-modal=true], dialog[open]')]
+        .filter(vis);
+      for (const e of document.querySelectorAll('body *')) {
+        const cs = getComputedStyle(e);
+        if (cs.position !== 'fixed' || !vis(e)) continue;
+        const r = e.getBoundingClientRect();
+        if (r.width * r.height >= 0.5 * vw && (parseInt(cs.zIndex, 10) || 0) >= 10
+          && e.innerText.length < 0.3 * document.body.innerText.length) found.push(e);
+      }
+      found.forEach((e) => e.setAttribute('data-plg-overlay', ''));
+      // as selectors too: the attribute exists only in this session, open-menus.mjs loads afresh
+      return found.map(${SELECTOR_OF});
+    });
+    const heuristicCss = overlays.map((sel) => sel + ' { display:none!important }').join('\\n');
+    if (overlays.length) {
+      await page.addStyleTag({ content: '[data-plg-overlay] { display: none !important; } html, body { overflow: auto !important; }' });
+    }
+    const h = await page.evaluate(() => document.documentElement.scrollHeight);
+    // each step waits (up to 2 s) until the images in view have loaded and stopped changing: lazy
+    // loaders that cancel a download when the image leaves the viewport miss a fast scroll on a busy machine
+    const inViewLoaded = () => new Promise((done) => {
+      const t0 = performance.now();
+      let last = t0;
+      const mo = new MutationObserver(() => { last = performance.now(); });
+      mo.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['src', 'srcset', 'class'] });
+      const inView = (i) => { const r = i.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight && r.width > 0; };
+      const check = () => {
+        const now = performance.now();
+        const quiet = now - t0 >= 100 && now - last >= 100 && [...document.images].filter(inView).every((i) => i.complete);
+        if (quiet || now - t0 > 2000) { mo.disconnect(); done(); } else setTimeout(check, 50);
+      };
+      setTimeout(check, 50);
+    });
+    for (let y = 0; y < h; y += 500) { await page.evaluate(v => scrollTo(0, v), y); await page.evaluate(inViewLoaded); }
+    await page.evaluate(() => scrollTo(0, 0));
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(1000);
+    // freeze time (carousels, rotating banners, rAF loops, CSS/Web animations, videos): the
+    // screenshot and the snapshot taken later in the same session must show the same state
+    await page.evaluate(() => {
+      const top = setTimeout(() => {}, 0);
+      for (let i = 0; i <= top; i += 1) { clearTimeout(i); clearInterval(i); }
+      window.requestAnimationFrame = () => 0;
+      // page code must not react to the animations we finish (slideshows advance on animationend)
+      for (const t of ['animationstart', 'animationend', 'animationiteration', 'animationcancel',
+        'transitionrun', 'transitionstart', 'transitionend', 'transitioncancel']) {
+        window.addEventListener(t, (e) => e.stopImmediatePropagation(), true);
+      }
+      for (const a of document.getAnimations()) {
+        // scroll- and view-driven animations show the scroll position, not time: finishing one
+        // jumps to its end (a header's "scrolled" look at the top of the page)
+        if (a.timeline && !(a.timeline instanceof DocumentTimeline)) continue;
+        try {
+          if (a.effect && a.effect.getComputedTiming().endTime !== Infinity) a.finish(); else a.pause();
+        } catch { /* animation without a finite end or already gone */ }
+      }
+      document.querySelectorAll('video').forEach((v) => v.pause());
+    });
+    await page.waitForTimeout(300);
+    // consent layers neither page-prep nor the heuristic hid (stripe's cookie card): hidden by
+    // selector, so open-menus.mjs and the snapshot hide them too; then probed again for the pre-flight
+    rep.probeHidden = await page.evaluate(${VISIBLE_OVERLAYS});
+    const probeCss = rep.probeHidden.map((o) => o.selector + ' { display:none!important }').join('\\n');
+    if (probeCss) await page.addStyleTag({ content: probeCss });
+    await page.evaluate((sels) => sels.forEach((s) => document.querySelectorAll(s)
+      .forEach((e) => e.setAttribute('data-plg-overlay', ''))), rep.probeHidden.map((o) => o.selector));
+    // fresh sessions (open-menus.mjs) get selectors; the snapshot gets the attribute: serializing
+    // drops hidden top-level elements, which would move a positional selector onto the page
+    rep.hideCss = [hide, heuristicCss, probeCss].filter(Boolean).join('\\n');
+    rep.snapshotHideCss = [hide, '[data-plg-overlay] { display:none!important }'].filter(Boolean).join('\\n');
+    rep.plgOverlays = overlays;
+    rep.visibleOverlays = await page.evaluate(${VISIBLE_OVERLAYS});
+    return rep;
+  }`;
+var SEED_RANDOM = `(() => { let s = 0x2f6b9a1d; Math.random = () => { s = (s + 0x6d2b79f5) | 0;
+  let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();`;
+var extractor2 = loadBundle("header-extract.js");
+var load = (url, prepBundle, shot) => `
+    ${settleSource(prepBundle)}
+    await page.addInitScript(${JSON.stringify(SEED_RANDOM)});
+    await page.route(${AB_TESTS}, (r) => r.abort());
+    await page.addInitScript(${STEADY});
+    await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const prep = await settle(page);
+    await (${TILED_SHOT})(page, ${JSON.stringify(shot)});
+    await page.addScriptTag({ content: ${JSON.stringify(extractor2)} });`;
+async function crop(file, rect, dest) {
+  const m = await sharp(file).metadata();
+  const top = Math.max(0, rect.y);
+  const h = Math.min(rect.h, m.height - top);
+  if (h > 0)
+    await sharp(file).extract({ left: 0, top, width: m.width, height: h }).png().toFile(dest);
+}
+async function captureHeader(url, dirArg, { header = [], patterns } = {}) {
+  const dir = resolve9(dirArg);
+  mkdirSync12(join12(dir, "regions"), { recursive: true });
+  const prepBundle = buildBundle(
+    patterns ?? await loadPatterns(),
+    loadBundle("overlay-detect.js")
+  );
+  const lines = [];
+  openSession("hdr-src-desktop", { width: VIEWPORTS.desktop[0], height: VIEWPORTS.desktop[1] });
+  let desktop;
+  try {
+    desktop = runCode(
+      "hdr-src-desktop",
+      `async page => {
+      ${load(url, prepBundle, join12(dir, "desktop.png"))}
+      const named = ${JSON.stringify(header)};
+      const found = named.length ? named : [await page.evaluate(() => window.__plgFindHeader())].filter(Boolean);
+      const page_ = JSON.parse(await page.evaluate(() => window.__plgExtract({ maxStyleNodes: 0 })));
+      const regions = found.length ? JSON.parse(await page.evaluate((s) => window.__plgHeaderRegions(s), found)) : [];
+      return JSON.stringify({ prep, found, regions, page: { ...page_, regions: undefined } });
+    }`
+    );
+  } finally {
+    closeSession("hdr-src-desktop");
+  }
+  const missing = desktop.found.filter((_, i) => !desktop.regions[i]);
+  if (!desktop.found.length) {
+    throw new CliError("USAGE", `no header found on ${url}`, {
+      hint: "name it: --header <selector>"
+    });
+  }
+  if (missing.length) {
+    throw new CliError("USAGE", `--header ${missing.join(", ")}: not shown on ${url} at 1440x900`);
+  }
+  await stitchTiles(join12(dir, "desktop.png"));
+  const selectors = desktop.regions.map((r) => r.selector);
+  const others = await Promise.all(
+    ["tablet", "mobile"].map(async (vp) => {
+      const name = `hdr-src-${vp}`;
+      openSession(name, { width: VIEWPORTS[vp][0], height: VIEWPORTS[vp][1] });
+      try {
+        return await runCodeAsync(
+          name,
+          `async page => {
+        ${load(url, prepBundle, join12(dir, `${vp}.png`))}
+        const regions = JSON.parse(await page.evaluate((s) => window.__plgRegionsBySelector(s), ${JSON.stringify(selectors)}));
+        return JSON.stringify({ visibleOverlays: prep.visibleOverlays, regions });
+      }`
+        );
+      } finally {
+        closeSession(name);
+      }
+    })
+  );
+  const byVp = { tablet: others[0], mobile: others[1] };
+  for (const vp of ["tablet", "mobile"]) await stitchTiles(join12(dir, `${vp}.png`));
+  const regions = [];
+  for (const [i, r] of desktop.regions.entries()) {
+    const { html, styles, fullText, ...rest } = r;
+    await crop(join12(dir, "desktop.png"), r.rect, join12(dir, "regions", `${r.id}.png`));
+    writeFileSync14(join12(dir, "regions", `${r.id}.html`), html);
+    writeFileSync14(join12(dir, "regions", `${r.id}.styles.txt`), styles);
+    writeFileSync14(join12(dir, "regions", `${r.id}.txt`), fullText);
+    const record = { ...rest };
+    for (const vp of ["tablet", "mobile"]) {
+      const m = byVp[vp].regions[i];
+      record[`${vp}Rect`] = m ? m.rect : null;
+      if (!m) continue;
+      await crop(join12(dir, `${vp}.png`), m.rect, join12(dir, "regions", `${r.id}.${vp}.png`));
+      writeFileSync14(join12(dir, "regions", `${r.id}.${vp}.styles.txt`), m.styles);
+    }
+    regions.push(record);
+  }
+  const page = { ...desktop.page, url, regions };
+  const overlays = {
+    ...desktop.prep,
+    visibleOverlays: {
+      desktop: desktop.prep.visibleOverlays,
+      tablet: byVp.tablet.visibleOverlays,
+      mobile: byVp.mobile.visibleOverlays
+    }
+  };
+  writeFileSync14(join12(dir, "page.json"), JSON.stringify(page, null, 2));
+  writeFileSync14(join12(dir, "overlays.json"), JSON.stringify(overlays, null, 2));
+  lines.push(
+    `header: ${regions.map(
+      (r) => `${r.id} ${r.selector} @${r.rect.y}+${r.rect.h} (tablet ${r.tabletRect ? `+${r.tabletRect.h}` : "not shown"}, mobile ${r.mobileRect ? `+${r.mobileRect.h}` : "not shown"})`
+    ).join("; ")}`
+  );
+  const hidden = (overlays.overlays || []).length + (overlays.probeHidden || []).length + (overlays.plgOverlays || []).length;
+  lines.push(
+    `overlays: ${hidden} hidden${overlays.visibleOverlays.desktop?.length ? `, still visible: ${overlays.visibleOverlays.desktop.map((o) => o.selector).join(", ")}` : ""}`
+  );
+  const menus = openMenus(url, dir);
+  const probes = headerProbes(url, dir);
+  lines.push(menus.line, probes.line);
+  return { page, overlays, open: probes.open, lines };
+}
+
+// src/header/cls-at.mjs
+function clsAt(url, width, session = `cls-at-${width}`) {
+  openSession(session, { width, height: 900 });
+  try {
+    return Number(
+      runCode(
+        session,
+        `async page => {
+      await page.addInitScript(${STEADY});
+      await page.addInitScript(() => {
+        window.__cls = 0;
+        new PerformanceObserver((l) => { for (const e of l.getEntries()) if (!e.hadRecentInput) window.__cls += e.value; })
+          .observe({ type: 'layout-shift', buffered: true });
+      });
+      await page.goto(${JSON.stringify(url)}, { waitUntil: 'load', timeout: 60000 });
+      await page.waitForTimeout(4000);
+      return String(await page.evaluate(() => Math.round(window.__cls * 1000) / 1000));
+    }`
+      )
+    );
+  } finally {
+    closeSession(session);
+  }
+}
+
+// src/header/menus.mjs
+import { readFileSync as readFileSync12 } from "node:fs";
+function verdict({ expected, opened, left }) {
+  if (opened == null) {
+    return { ok: false, problems: ["could not be opened (label not found or covered)"] };
+  }
+  const problems = [];
+  if (opened < Math.ceil(expected * 0.8)) problems.push(`opens ${opened} of ${expected} links`);
+  if (left == null) problems.push("could not be closed (label covered or not clickable once open)");
+  else if (left > 0) problems.push("stays open when the pointer leaves");
+  return { ok: !problems.length, problems };
+}
+var TOGGLES = loadBundle("header-toggles.js");
+var PROBE = `async (page, url, menus) => {
+  await page.context().addInitScript(${STEADY});
+  await page.goto(url, { waitUntil: 'load' });
+  await page.addScriptTag({ content: ${JSON.stringify(TOGGLES)} });
+  await page.waitForTimeout(2500);
+  // the page's own header: body > header on EDS (a block may hold a <header>), else the first
+  const scope = (await page.$('body > header')) ? 'body > header' : 'header';
+  // visible links in the viewport, counted as the capture counts them (toggles.js: ancestor
+  // opacity, so a closed dropdown is not shown); the difference with every menu closed is what a
+  // menu shows
+  const shown = () => page.evaluate(() => window.__plgVisibleLinks());
+  const away = async () => {
+    const vh = await page.evaluate(() => innerHeight);
+    await page.mouse.move(5, vh - 5);
+    await page.waitForTimeout(800);
+  };
+  const out = [];
+  for (const m of menus) {
+    await away();
+    await page.keyboard.press('Escape');
+    const closed = await shown();
+    // the visible label: a closed panel can hold the same text (a column heading) before it
+    const label = page.locator(scope).getByText(m.label, { exact: true }).filter({ visible: true }).first();
+    let opened = null;
+    let left = null;
+    try {
+      if (m.trigger === 'click') await label.click({ timeout: 4000 });
+      else await label.hover({ timeout: 4000 });
+      await page.waitForTimeout(700);
+      opened = (await shown()) - closed;
+      // a click menu closes as on the source: its label clicked again (backlinko's panel fills
+      // the viewport, so an outside click lands in it)
+      if (m.trigger === 'click') await label.click({ timeout: 4000 }); else await away();
+      await page.waitForTimeout(500);
+      left = (await shown()) - closed;
+    } catch { /* opening failed: opened stays null; closing failed: left stays null */ }
+    out.push({ label: m.label, trigger: m.trigger, expected: m.newLinks, opened, left });
+  }
+  return JSON.stringify(out);
+}`;
+function checkMenus(url, openFile, session = "staged-menus") {
+  const menus = JSON.parse(readFileSync12(openFile, "utf8")).states.filter((s) => s.newLinks > 0).map((s) => ({ label: s.label, trigger: s.trigger, newLinks: s.newLinks }));
+  openSession(session, { width: 1440, height: 900 });
+  let rows;
+  try {
+    const args = `${JSON.stringify(url)}, ${JSON.stringify(menus)}`;
+    rows = runCode(session, `async page => (${PROBE})(page, ${args})`);
+  } finally {
+    closeSession(session);
+  }
+  const lines = [];
+  const checked = rows.map((r) => ({ ...r, ...verdict(r) }));
+  for (const r of checked) {
+    const counts = `${r.opened ?? "-"} of ${r.expected} links`;
+    lines.push(
+      `${r.ok ? "OK  " : "FAIL"} ${r.label} (${r.trigger}): ${counts}${r.problems.length ? ` - ${r.problems.join("; ")}` : ""}`
+    );
+  }
+  const failed = checked.filter((r) => !r.ok).length;
+  lines.push(failed ? `menus: ${failed} of ${rows.length} fail` : `menus: ${rows.length} ok`);
+  return { ok: failed === 0, menus: checked, lines };
+}
+
+// src/header/panels.mjs
+import { existsSync as existsSync13, mkdirSync as mkdirSync13, readFileSync as readFileSync13, rmSync as rmSync7, writeFileSync as writeFileSync15 } from "node:fs";
+import { join as join13, resolve as resolve10 } from "node:path";
+var MAX_PANEL = 1.5;
+var MAX_MOBILE = 2;
+function onWhite(data) {
+  const out = Buffer.from(data);
+  for (let i = 0; i < out.length; i += 4) {
+    const a = out[i + 3] / 255;
+    for (let c = 0; c < 3; c += 1) out[i + c] = Math.round(out[i + c] * a + 255 * (1 - a));
+    out[i + 3] = 255;
+  }
+  return out;
+}
+function boxMismatch(a, b, rect = null) {
+  const x = Math.max(0, rect?.x ?? 0);
+  const y = Math.max(0, rect?.y ?? 0);
+  const w = Math.min(rect?.w ?? Infinity, a.width - x, b.width - x);
+  const h = Math.min(rect?.h ?? Infinity, a.height - y, b.height - y);
+  if (w <= 0 || h <= 0) return null;
+  const crop2 = (img) => {
+    const o = new PNG({ width: w, height: h });
+    PNG.bitblt(img, o, x, y, w, h, 0, 0);
+    return onWhite(o.data);
+  };
+  return +(100 * pixelmatch(crop2(a), crop2(b), null, w, h, { threshold: 0.1 }) / (w * h)).toFixed(
+    2
+  );
+}
+function hrefDiff(expected, got, pageOrigin, sourceOrigin) {
+  const norm = (h) => h.startsWith(`${pageOrigin}/`) ? sourceOrigin + h.slice(pageOrigin.length) : h;
+  const left = [...expected];
+  const extra = [];
+  for (const h of got.map(norm)) {
+    const i = left.indexOf(h);
+    if (i === -1) extra.push(h);
+    else left.splice(i, 1);
+  }
+  return { missing: left, extra };
+}
+function panelVerdict({ error, mismatch, missing = [], extra = [] }) {
+  if (error) return [error];
+  const problems = [];
+  if (mismatch == null || mismatch > MAX_PANEL)
+    problems.push(`panel mismatch ${mismatch ?? "-"} % > ${MAX_PANEL} %`);
+  if (missing.length)
+    problems.push(`${missing.length} href(s) missing: ${missing.slice(0, 3).join(" ")}`);
+  if (extra.length)
+    problems.push(`${extra.length} href(s) not in the capture: ${extra.slice(0, 3).join(" ")}`);
+  return problems;
+}
+function mobileVerdict({ error, mismatch }) {
+  if (error) return [error];
+  return mismatch == null || mismatch > MAX_MOBILE ? [`mobile menu mismatch ${mismatch ?? "-"} % > ${MAX_MOBILE} %`] : [];
+}
+var FREEZE = loadBundle("header-freeze.css");
+var TOGGLES2 = loadBundle("header-toggles.js");
+var LOAD = (url, hideCss, freeze) => `let page = first;
+  let loaded = false;
+  const load = async () => {
+    if (loaded) { const old = page; page = await old.context().newPage(); await old.close(); }
+    loaded = true;
+    await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForLoadState('load').catch(() => {});
+    if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
+    if (${freeze}) await page.addStyleTag({ content: ${JSON.stringify(FREEZE)} });
+    await page.addScriptTag({ content: ${JSON.stringify(TOGGLES2)} });
+    // an EDS header is decorated after load: wait for its block, then the capture's 1200 ms (later,
+    // the source itself changes: wpbeginner's panels moved 1 px, 0.7-1.2 % at 2.5 s)
+    await page.waitForFunction(() => !window.hlx
+      || document.querySelector('body > header .header[data-block-status="loaded"]'), null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+  };`;
+function shootPanels(session, url, states, out, hideCss) {
+  openSession(session, { width: 1440, height: 900 });
+  try {
+    return runCode(
+      session,
+      `async first => {
+  await first.context().route(${AB_TESTS}, (r) => r.abort());
+  await first.context().addInitScript(${STEADY});
+  ${LOAD(url, hideCss, true)}
+  const res = [];
+  for (const st of ${JSON.stringify(states)}) {
+    await load();
+    await page.evaluate(() => window.__plgMarkVisibleLinks());
+    // the visible label: a closed panel can hold the same text (a column heading) before it
+    const el = page.locator('header, nav').getByText(st.label, { exact: true }).filter({ visible: true }).first();
+    try {
+      if (st.trigger === 'click') await el.click({ timeout: 3000 }); else await el.hover({ timeout: 3000 });
+    } catch { res.push({ label: st.label, error: 'could not be opened (label not found or covered)' }); continue; }
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: ${JSON.stringify(out)} + '/' + st.file });
+    const panel = await page.evaluate(() => window.__plgOpenPanel());
+    res.push({ label: st.label, file: st.file, hrefs: (panel?.items || []).map((i) => i.href) });
+  }
+  return JSON.stringify(res);
+}`
+    );
+  } finally {
+    closeSession(session);
+  }
+}
+function shootMobile(session, url, out, hideCss, isSource) {
+  openSession(session, { width: 390, height: 844 });
+  try {
+    return runCode(
+      session,
+      `async first => {
+  await first.context().route(${AB_TESTS}, (r) => r.abort());
+  await first.context().addInitScript(${STEADY});
+  ${LOAD(url, hideCss, false)}
+  await load();
+  const toggle = await page.evaluateHandle(() => window.__plgMobileToggle());
+  if (!(await toggle.asElement())) return JSON.stringify({ error: 'no mobile menu toggle found' });
+  const before = await page.evaluate(() => window.__plgVisibleLinks());
+  await toggle.asElement().click();
+  await page.evaluate((n) => window.__plgWaitReveal(n), before);
+  await page.waitForTimeout(700);
+  // on the source, a consent layer the click's JS showed is hidden as header-probes.mjs hides it
+  if (${isSource}) {
+    const late = (await page.evaluate(${VISIBLE_OVERLAYS})).map((o) => o.selector);
+    if (late.length) await page.addStyleTag({ content: late.join(', ') + ' { display: none !important; }' });
+  }
+  await page.screenshot({ path: ${JSON.stringify(join13(out, "mobile-menu.png"))} });
+  return JSON.stringify({});
+}`
+    );
+  } finally {
+    closeSession(session);
+  }
+}
+var readPng = (f) => PNG.sync.read(readFileSync13(f));
+function checkPanels(url, srcArg, outArg, session = "open-panels") {
+  const lines = [];
+  const src = resolve10(srcArg);
+  const out = resolve10(outArg);
+  const open2 = JSON.parse(readFileSync13(join13(src, "open", "open.json"), "utf8"));
+  const sourceUrl = JSON.parse(readFileSync13(join13(src, "page.json"), "utf8")).url;
+  const isSource = new URL(url).origin === new URL(sourceUrl).origin;
+  const hideCss = isSource ? JSON.parse(readFileSync13(join13(src, "overlays.json"), "utf8")).hideCss || "" : "";
+  rmSync7(out, { recursive: true, force: true });
+  mkdirSync13(out, { recursive: true });
+  const states = open2.states.filter((st) => st.file && st.panel?.rect);
+  const shots = shootPanels(`${session}-d`, url, states, out, hideCss);
+  const rows = shots.map((s) => {
+    const st = states.find((x) => x.label === s.label);
+    if (s.error) return { label: s.label, error: s.error };
+    const mismatch = boxMismatch(
+      readPng(join13(src, "open", st.file)),
+      readPng(join13(out, s.file)),
+      st.panel.rect
+    );
+    const diff = hrefDiff(
+      st.panel.items.map((i) => i.href),
+      s.hrefs,
+      new URL(url).origin,
+      new URL(sourceUrl).origin
+    );
+    return {
+      label: s.label,
+      trigger: st.trigger,
+      mismatch,
+      links: s.hrefs.length,
+      expected: st.panel.items.length,
+      ...diff
+    };
+  });
+  const srcMobile = join13(src, "open", "mobile-menu.png");
+  let mobile = null;
+  if (existsSync13(srcMobile)) {
+    const m = shootMobile(`${session}-m`, url, out, hideCss, isSource);
+    mobile = m.error ? m : { mismatch: boxMismatch(readPng(srcMobile), readPng(join13(out, "mobile-menu.png"))) };
+  }
+  let failed = 0;
+  for (const r of rows) {
+    r.problems = panelVerdict(r);
+    if (r.problems.length) failed += 1;
+    lines.push(
+      `${r.problems.length ? "FAIL" : "OK  "} ${r.label} (${r.trigger ?? "-"}): panel ${r.mismatch ?? "-"} %, ${r.links ?? "-"} of ${r.expected ?? "-"} hrefs${r.problems.length ? ` - ${r.problems.join("; ")}` : ""}`
+    );
+  }
+  if (mobile) {
+    mobile.problems = mobileVerdict(mobile);
+    if (mobile.problems.length) failed += 1;
+    lines.push(
+      `${mobile.problems.length ? "FAIL" : "OK  "} mobile menu: ${mobile.mismatch ?? "-"} %${mobile.problems.length ? ` - ${mobile.problems.join("; ")}` : ""}`
+    );
+  } else lines.push("n/a  mobile menu: no source shot");
+  const total = rows.length + (mobile ? 1 : 0);
+  writeFileSync15(join13(out, "panels.json"), JSON.stringify({ url, panels: rows, mobile }, null, 1));
+  lines.push(failed ? `open panels: ${failed} of ${total} fail` : `open panels: ${total} ok`);
+  return { ok: failed === 0, panels: rows, mobile, lines };
+}
+
+// src/header/pixels.mjs
+import { existsSync as existsSync14, mkdirSync as mkdirSync15, readFileSync as readFileSync14, writeFileSync as writeFileSync17 } from "node:fs";
+import { join as join15, resolve as resolve11 } from "node:path";
+
+// src/header/cls.mjs
+function clsOf(shifts) {
+  const r = (x) => Math.round(x * 1e3) / 1e3;
+  const by = /* @__PURE__ */ new Map();
+  for (const s of shifts) for (const p of s.at) by.set(p, (by.get(p) ?? 0) + s.v);
+  const seen = /* @__PURE__ */ new Map();
+  for (const s of shifts) {
+    for (const [p, h] of Object.entries(s.heights ?? {})) {
+      const hs = seen.get(p) ?? [];
+      if (hs.at(-1) !== h && (hs.length || h > 0)) hs.push(h);
+      seen.set(p, hs);
+    }
+  }
+  return {
+    value: r(shifts.reduce((t, s) => t + s.v, 0)),
+    by: [...by].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([p, v]) => [p, r(v)]),
+    resized: [...seen].filter(([, hs]) => hs.length > 1)
+  };
+}
+
+// src/header/views-write.mjs
+import { mkdirSync as mkdirSync14, writeFileSync as writeFileSync16 } from "node:fs";
+import { join as join14 } from "node:path";
+
+// src/header/views.mjs
+var BOX = { maxW: 2e3, maxH: 2e3, maxTokens: 4784, maxB64: 4718592 };
+var PANELS = 3;
+var LABEL_H = 20;
+var GAP = 8;
+var tokensOf = (w, h) => Math.ceil(w / 28) * Math.ceil(h / 28);
+function fits({ w, h, b64Bytes: b64Bytes2 = 0 }, box = BOX) {
+  return w <= box.maxW && h <= box.maxH && tokensOf(w, h) <= box.maxTokens && b64Bytes2 <= box.maxB64;
+}
+var maxPieceH = (box = BOX) => Math.floor((box.maxH - PANELS * LABEL_H - (PANELS - 1) * GAP) / PANELS);
+var stackedSize = (w, h) => ({ w, h: PANELS * (LABEL_H + h) + (PANELS - 1) * GAP });
+function diffMask(rgba, w, h) {
+  const mask = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    const o = i * 4;
+    if (rgba[o] === 255 && rgba[o + 1] === 0 && rgba[o + 2] === 0) mask[i] = 1;
+  }
+  return mask;
+}
+function cellsOf(mask, w, h, cell) {
+  const cols = Math.ceil(w / cell);
+  const cells = /* @__PURE__ */ new Map();
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!mask[y * w + x]) continue;
+      const k = Math.floor(y / cell) * cols + Math.floor(x / cell);
+      const c = cells.get(k) ?? { x0: x, y0: y, x1: x, y1: y, n: 0 };
+      c.x0 = Math.min(c.x0, x);
+      c.y0 = Math.min(c.y0, y);
+      c.x1 = Math.max(c.x1, x);
+      c.y1 = Math.max(c.y1, y);
+      c.n++;
+      cells.set(k, c);
+    }
+  }
+  return { cells, cols };
+}
+function clusters(mask, w, h, { cell = 24, pad = 16 } = {}) {
+  const { cells, cols } = cellsOf(mask, w, h, cell);
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const start of cells.keys()) {
+    if (seen.has(start)) continue;
+    const box = { x0: Infinity, y0: Infinity, x1: -1, y1: -1, n: 0 };
+    const stack2 = [start];
+    seen.add(start);
+    while (stack2.length) {
+      const k = stack2.pop();
+      const c = cells.get(k);
+      Object.assign(box, {
+        x0: Math.min(box.x0, c.x0),
+        y0: Math.min(box.y0, c.y0),
+        x1: Math.max(box.x1, c.x1),
+        y1: Math.max(box.y1, c.y1),
+        n: box.n + c.n
+      });
+      const [cy, cx] = [Math.floor(k / cols), k % cols];
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nk = (cy + dy) * cols + (cx + dx);
+          if (cx + dx < 0 || cx + dx >= cols || seen.has(nk) || !cells.has(nk)) continue;
+          seen.add(nk);
+          stack2.push(nk);
+        }
+      }
+    }
+    const x = Math.max(0, box.x0 - pad);
+    const y = Math.max(0, box.y0 - pad);
+    out.push({
+      x,
+      y,
+      w: Math.min(w, box.x1 + 1 + pad) - x,
+      h: Math.min(h, box.y1 + 1 + pad) - y,
+      pixels: box.n
+    });
+  }
+  return out.sort((a, b) => a.y - b.y || a.x - b.x);
+}
+function maxPieceW(pieceH, box) {
+  const rows = Math.ceil(stackedSize(1, pieceH).h / 28);
+  return Math.min(box.maxW, Math.floor(box.maxTokens / rows) * 28);
+}
+function split(rect, box) {
+  const ph = maxPieceH(box);
+  const pieces = [];
+  for (let y = rect.y; y < rect.y + rect.h; y += ph) {
+    const h = Math.min(ph, rect.y + rect.h - y);
+    const pw = maxPieceW(h, box);
+    for (let x = rect.x; x < rect.x + rect.w; x += pw) {
+      pieces.push({ x, y, w: Math.min(pw, rect.x + rect.w - x), h });
+    }
+  }
+  return pieces;
+}
+var MIN_W = 480;
+var MIN_H = 160;
+function grow(r, w, h) {
+  const gw = Math.min(w, Math.max(r.w, MIN_W));
+  const gh = Math.min(h, Math.max(r.h, MIN_H));
+  const x = Math.min(Math.max(0, Math.round(r.x + r.w / 2 - gw / 2)), w - gw);
+  const y = Math.min(Math.max(0, Math.round(r.y + r.h / 2 - gh / 2)), h - gh);
+  return { x, y, w: gw, h: gh };
+}
+function cropPlan(rects, { w, h }, { box = BOX, coverage = 0.6 } = {}) {
+  if (!rects.length) return { mode: "none", pieces: [] };
+  const area = rects.reduce((s, r) => s + r.w * r.h, 0);
+  if (area / (w * h) > coverage) return { mode: "bands", pieces: split({ x: 0, y: 0, w, h }, box) };
+  return { mode: "crops", pieces: rects.flatMap((r) => split(grow(r, w, h), box)) };
+}
+function overviewScale(w, h, box = BOX) {
+  let s = Math.min(1, box.maxW / w, box.maxH / h);
+  while (tokensOf(Math.round(w * s), Math.round(h * s)) > box.maxTokens) s *= 0.99;
+  return s;
+}
+
+// src/header/views-write.mjs
+var GREY = { r: 136, g: 136, b: 136, alpha: 1 };
+var b64Bytes = (bytes) => Math.ceil(bytes / 3) * 4;
+var raw = (w, h) => ({ width: w, height: h, channels: 4 });
+function padTo(img, w, h) {
+  const buf = Buffer.alloc(w * h * 4);
+  for (let i = 0; i < w * h; i += 1) buf.writeUInt32BE(4278255615, i * 4);
+  for (let y = 0; y < img.h; y += 1) {
+    img.data.copy(buf, y * w * 4, y * img.w * 4, y * img.w * 4 + Math.min(img.w, w) * 4);
+  }
+  return buf;
+}
+async function sheetPng({ pa, pb, d, w, h }) {
+  const png = (buf) => sharp(buf, { raw: raw(w, h) }).png().toBuffer();
+  return sharp({ create: { width: w * 3 + 40, height: h, channels: 4, background: GREY } }).composite([
+    { input: await png(pa), left: 0, top: 0 },
+    { input: await png(pb), left: w + 20, top: 0 },
+    { input: await png(d), left: 2 * w + 40, top: 0 }
+  ]).png().toBuffer();
+}
+async function writeSheet(region, file) {
+  const sheet = await sheetPng(region);
+  await sharp(sheet).resize({ width: Math.min(1800, region.w * 3 + 40) }).png().toFile(file);
+}
+function label(text, width) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${LABEL_H}"><rect width="100%" height="100%" fill="#333"/><text x="6" y="14" fill="#fff" font-family="monospace" font-size="12">${text}</text></svg>`;
+  return Buffer.from(svg);
+}
+function extract2(buf, { w: fullW }, p) {
+  const out = Buffer.alloc(p.w * p.h * 4);
+  for (let y = 0; y < p.h; y++) {
+    const from = ((p.y + y) * fullW + p.x) * 4;
+    buf.copy(out, y * p.w * 4, from, from + p.w * 4);
+  }
+  return out;
+}
+async function cropPng(region, p) {
+  const panelH = LABEL_H + p.h;
+  const names = [`SOURCE x=${p.x} y=${p.y} ${p.w}x${p.h}`, "EDS", "DIFF (red = differs)"];
+  const layers = [region.pa, region.pb, region.d].flatMap((buf, i) => [
+    { input: label(names[i], p.w), left: 0, top: i * (panelH + GAP) },
+    {
+      input: extract2(buf, region, p),
+      raw: raw(p.w, p.h),
+      left: 0,
+      top: i * (panelH + GAP) + LABEL_H
+    }
+  ]);
+  const h = PANELS * panelH + (PANELS - 1) * GAP;
+  return sharp({ create: { width: p.w, height: h, channels: 4, background: GREY } }).composite(layers).png().toBuffer();
+}
+async function overviewPng(region) {
+  const sheet = await sheetPng(region);
+  const [sw, sh] = [region.w * 3 + 40, region.h];
+  let s = overviewScale(sw, sh + LABEL_H);
+  for (; ; ) {
+    const [w, h] = [Math.max(1, Math.round(sw * s)), Math.max(1, Math.round(sh * s))];
+    const body = await sharp(sheet).resize({ width: w, height: h, fit: "fill" }).png().toBuffer();
+    const text = `OVERVIEW scaled to ${Math.round(s * 100)} %: not for pixel judgment (SOURCE | EDS | DIFF)`;
+    const png = await sharp({
+      create: { width: w, height: h + LABEL_H, channels: 4, background: GREY }
+    }).composite([
+      { input: label(text, w), left: 0, top: 0 },
+      { input: body, left: 0, top: LABEL_H }
+    ]).png().toBuffer();
+    if (fits({ w, h: h + LABEL_H, b64Bytes: b64Bytes(png.length) })) return { png, s, w, h };
+    s *= 0.9;
+  }
+}
+var countIn = (mask, fullW, p) => {
+  let n = 0;
+  for (let y = p.y; y < p.y + p.h; y++) {
+    for (let x = p.x; x < p.x + p.w; x++) n += mask[y * fullW + x];
+  }
+  return n;
+};
+async function writeViews(region, dir, { box = BOX } = {}) {
+  mkdirSync14(dir, { recursive: true });
+  const { w, h } = region;
+  const mask = diffMask(region.d, w, h);
+  const plan = cropPlan(clusters(mask, w, h), { w, h }, { box });
+  const o = await overviewPng(region);
+  writeFileSync16(join14(dir, "overview.png"), o.png);
+  const views = [
+    {
+      file: "overview.png",
+      role: "overview",
+      x: 0,
+      y: 0,
+      w,
+      h,
+      scale: o.s,
+      imgW: o.w,
+      imgH: o.h + LABEL_H,
+      b64Bytes: b64Bytes(o.png.length),
+      diffPixels: countIn(mask, w, { x: 0, y: 0, w, h })
+    }
+  ];
+  const queue = [...plan.pieces];
+  while (queue.length) {
+    const p = queue.shift();
+    const png = await cropPng(region, p);
+    if (b64Bytes(png.length) > box.maxB64 && p.h > 1) {
+      const top = Math.ceil(p.h / 2);
+      queue.unshift({ ...p, h: top }, { ...p, y: p.y + top, h: p.h - top });
+      continue;
+    }
+    const file = `crop-${views.length}.png`;
+    writeFileSync16(join14(dir, file), png);
+    const { width, height } = await sharp(png).metadata();
+    views.push({
+      file,
+      role: "crop",
+      ...p,
+      scale: 1,
+      imgW: width,
+      imgH: height,
+      b64Bytes: b64Bytes(png.length),
+      diffPixels: countIn(mask, w, p)
+    });
+  }
+  writeFileSync16(
+    join14(dir, "views.json"),
+    `${JSON.stringify({ box, mode: plan.mode, views }, null, 2)}
+`
+  );
+  return { mode: plan.mode, views };
+}
+
+// src/header/pixels.mjs
+var OPTIONS = {
+  map: { type: "string" },
+  only: { type: "string" },
+  session: { type: "string", default: "plg-cmp" },
+  mobile: { type: "boolean", default: false },
+  tablet: { type: "boolean", default: false },
+  "no-full": { type: "boolean", default: false },
+  static: { type: "boolean", default: false }
+};
+async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
+  const opt = {
+    ...Object.fromEntries(
+      Object.entries(OPTIONS).filter(([, v]) => "default" in v).map(([k, v]) => [k, v.default])
+    ),
+    ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== void 0))
+  };
+  const lines = [];
+  const srcDir = resolve11(srcArg);
+  const out = resolve11(outArg);
+  mkdirSync15(join15(out, "regions"), { recursive: true });
+  const source = JSON.parse(readFileSync14(join15(srcDir, "page.json"), "utf8"));
+  const map = opt.map ? JSON.parse(readFileSync14(resolve11(opt.map), "utf8")) : {};
+  const only = opt.only ? new Set(opt.only.split(",")) : null;
+  const vp = opt.mobile && "mobile" || opt.tablet && "tablet" || "desktop";
+  const [width, height] = { desktop: [1440, 900], tablet: [820, 1180], mobile: [390, 844] }[vp];
+  const shot = join15(out, `eds-${vp}.png`);
+  const srcShot = join15(srcDir, `${vp}.png`);
+  openSession(opt.session, { width, height });
+  const rects = runCode(
+    opt.session,
+    `async page => {
+    // layout shift while the page loads (blocks and their CSS arrive late): its total, and the
+    // section, header or footer each moved element belongs to
+    await page.addInitScript(() => {
+      window.__plgShifts = [];
+      const where = (n) => {
+        const s = n && n.closest && n.closest('main > .section, body > header, body > footer, main');
+        if (!s) return '?';
+        return s.matches('.section') ? '.' + [...s.classList].filter((c) => c !== 'section').join('.') : s.tagName.toLowerCase();
+      };
+      // the boxes' heights on every frame while loading: one that resized above the moved ones
+      // is the cause (a box's first appearance, from 0, is not a resize)
+      window.__plgHeights = [];
+      const t0 = performance.now();
+      const sample = () => {
+        if (document.body) {
+          window.__plgHeights.push(Object.fromEntries([...document.querySelectorAll('main > .section, body > header, body > footer')]
+            .map((b) => [where(b), Math.round(b.getBoundingClientRect().height)])));
+        }
+        if (performance.now() - t0 < 5000) requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+      new PerformanceObserver((l) => { for (const e of l.getEntries()) {
+        if (!e.hadRecentInput) window.__plgShifts.push({ v: e.value, at: [...new Set((e.sources || []).map((s) => where(s.node)))] });
+      } }).observe({ type: 'layout-shift', buffered: true });
+    });
+    // held still as the capture held the source (a rotating placeholder: the retailer, ap-1)
+    await page.addInitScript(${STEADY});
+    await page.goto(${JSON.stringify(edsUrl)}, { waitUntil: 'load', timeout: 60000 });
+    if (!${opt.static}) await page.waitForFunction(() => document.body.classList.contains('appear'), null, { timeout: 15000 });
+    // [data-block-status], not .block: the boilerplate's widget block drops its .block class
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-block-status]')]
+      .every(b => b.dataset.blockStatus === 'loaded'), null, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(500);
+    const shifts = await page.evaluate(() => [...window.__plgShifts,
+      ...window.__plgHeights.map((heights) => ({ v: 0, at: [], heights }))]);
+    const h = await page.evaluate(() => document.documentElement.scrollHeight);
+    for (let y = 0; y < h; y += 600) { await page.evaluate(v => scrollTo(0, v), y); await page.waitForTimeout(60); }
+    await page.evaluate(() => scrollTo(0, 0));
+    // [data-block-status], not .block: the boilerplate's widget block drops its .block class
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-block-status]')]
+      .every(b => b.dataset.blockStatus === 'loaded'), null, { timeout: 15000 }).catch(() => {});
+    await page.evaluate(() => document.fonts.ready);
+    // images inside legacy shadow roots are invisible to document.images: collect them deeply
+    await page.evaluate(() => {
+      window.__plgImgs = () => [...document.images, ...[...document.querySelectorAll('*')]
+        .filter(e => e.shadowRoot).flatMap(e => [...e.shadowRoot.querySelectorAll('img')])];
+      window.__plgImgs().forEach(i => { i.loading = 'eager'; });
+    });
+    await page.waitForFunction(() => window.__plgImgs().every(i => i.complete), null, { timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(400);
+    await (${TILED_SHOT})(page, ${JSON.stringify(shot)});
+    const map = ${JSON.stringify(map)};
+    // a page wider than the viewport scrolls sideways: no region crop shows it
+    const rects = { __overflow: await page.evaluate(() => document.documentElement.scrollWidth
+      - document.documentElement.clientWidth), __shifts: shifts };
+    for (const [id, sel] of Object.entries(map)) {
+      rects[id] = await page.evaluate(s => {
+        const els = [...document.querySelectorAll(s)];
+        if (!els.length) return null;
+        const rs = els.map(e => e.getBoundingClientRect());
+        const top = Math.min(...rs.map(r => r.top)) + scrollY;
+        const bottom = Math.max(...rs.map(r => r.bottom)) + scrollY;
+        const deep = e => [e.innerText, ...[...e.querySelectorAll('*')].filter(x => x.shadowRoot).map(x => x.shadowRoot.firstElementChild?.innerText || '')].join(' ');
+        const text = els.map(deep).join(' ');
+        return { y: Math.round(top), h: Math.round(bottom - top), text };
+      }, sel);
+    }
+    return JSON.stringify(rects);
+  }`
+  );
+  closeSession(opt.session);
+  await stitchTiles(shot);
+  async function loadPng(file, top = 0, height2 = null) {
+    const img = sharp(file);
+    const meta = await img.metadata();
+    const h = height2 ?? meta.height;
+    const t = Math.min(Math.max(0, top), meta.height - 1);
+    const hh = Math.max(1, Math.min(h, meta.height - t));
+    const { data, info } = await img.extract({ left: 0, top: t, width: Math.min(meta.width, width), height: hh }).flatten({ background: "#ffffff" }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return { data, w: info.width, h: info.height };
+  }
+  async function diff(a, b, diffFile, sideFile) {
+    const w = Math.max(a.w, b.w);
+    const h = Math.max(a.h, b.h);
+    const pa = padTo(a, w, h);
+    const pb = padTo(b, w, h);
+    const d = new PNG({ width: w, height: h });
+    const n = pixelmatch(pa, pb, d.data, w, h, { threshold: 0.1 });
+    if (diffFile) writeFileSync17(diffFile, PNG.sync.write(d));
+    const region = { pa, pb, d: d.data, w, h };
+    if (sideFile) await writeSheet(region, sideFile);
+    return { mismatch: +(100 * n / (w * h)).toFixed(2), w, h, region };
+  }
+  const cls = clsOf(rects.__shifts ?? []);
+  const report = { edsUrl, viewport: vp, width, overflow: rects.__overflow, cls, regions: {} };
+  if (!opt["no-full"]) {
+    const { region: _full, ...full } = await diff(
+      await loadPng(srcShot),
+      await loadPng(shot),
+      join15(out, `full-diff-${vp}.png`)
+    );
+    report.full = full;
+    report.full.srcH = (await sharp(srcShot).metadata()).height;
+    report.full.edsH = (await sharp(shot).metadata()).height;
+  }
+  const words = (t) => (t || "").toLowerCase().replace(/[’‘]/g, "'").replace(/[“”]/g, '"').split(/[^\p{L}\p{N}']+/u).filter(Boolean);
+  function textRecall(srcText, edsText) {
+    const bag = /* @__PURE__ */ new Map();
+    words(edsText).forEach((w) => bag.set(w, (bag.get(w) || 0) + 1));
+    const src = words(srcText);
+    const lost = [];
+    for (const w of src) {
+      if (bag.get(w)) bag.set(w, bag.get(w) - 1);
+      else lost.push(w);
+    }
+    return { recall: src.length ? +(100 * (1 - lost.length / src.length)).toFixed(1) : 100, lost };
+  }
+  const rows = [];
+  const slicesFile = join15(srcDir, "slices.json");
+  const slices = existsSync14(slicesFile) ? JSON.parse(readFileSync14(slicesFile, "utf8")) : [];
+  const byId = Object.fromEntries([...source.regions, ...slices].map((r) => [r.id, r]));
+  const rectOf = (r) => vp === "desktop" ? r.rect : r[`${vp}Rect`];
+  const unknown = [];
+  const notShown = [];
+  for (const key of Object.keys(map)) {
+    const ids = key.split("+");
+    if (only && !ids.some((id) => only.has(id))) continue;
+    if (ids.some((id) => !byId[id])) {
+      unknown.push(key);
+      continue;
+    }
+    const parts = ids.map((id) => byId[id]).filter((p) => rectOf(p));
+    if (!parts.length) {
+      notShown.push(key);
+      continue;
+    }
+    const er = rects[key];
+    if (!er) continue;
+    const top = Math.min(...parts.map((p) => rectOf(p).y));
+    const srcH = Math.max(...parts.map((p) => rectOf(p).y + rectOf(p).h)) - top;
+    const a = await loadPng(srcShot, top, srcH);
+    const b = await loadPng(shot, er.y, er.h);
+    const base = join15(out, "regions", `${key}${vp === "desktop" ? "" : `.${vp}`}`);
+    const side = `${base}.side.png`;
+    const { region, ...r } = await diff(a, b, null, side);
+    const views = await writeViews(region, `${base}.views`);
+    const srcText = ids.map((id) => {
+      const f = join15(srcDir, "regions", `${id}.txt`);
+      return existsSync14(f) ? readFileSync14(f, "utf8") : "";
+    }).join(" ");
+    const t = vp !== "desktop" ? { recall: null, lost: [] } : textRecall(srcText, er.text);
+    const leftovers = [...new Set(er.text.match(/:[a-z][a-z0-9-]*:/gi) || [])];
+    report.regions[key] = {
+      srcY: top,
+      srcH,
+      edsY: er.y,
+      edsH: er.h,
+      ...r,
+      textRecall: t.recall,
+      lostWords: t.lost.slice(0, 40),
+      leftovers,
+      views: `${base}.views`,
+      viewsMode: views.mode
+    };
+    rows.push(
+      `${key.padEnd(7)} src@${top}+${srcH}  eds@${er.y}+${er.h}  dH=${er.h - srcH}  mismatch=${r.mismatch}%${t.recall === null ? "" : `  text=${t.recall}%`}${t.lost.length ? ` lost:[${t.lost.slice(0, 8).join(" ")}${t.lost.length > 8 ? " \u2026" : ""}]` : ""}${leftovers.length ? ` UNRENDERED:${leftovers.join(",")}` : ""}  side=${side}  views=${views.views.length} ${views.mode}`
+    );
+  }
+  const missing = Object.keys(map).filter(
+    (k) => !rects[k] && (!only || k.split("+").some((id) => only.has(id)))
+  );
+  Object.assign(report, { missing, unknown, notShown });
+  writeFileSync17(join15(out, `report-${vp}.json`), JSON.stringify(report, null, 2));
+  if (report.full) {
+    lines.push(
+      `FULL ${vp}: mismatch=${report.full.mismatch}% (src h=${report.full.srcH}, eds h=${report.full.edsH})${report.overflow > 0 ? `  OVERFLOW: the page is ${report.overflow}px wider than the viewport` : ""}${cls.value > 0.1 ? `  CLS ${cls.value} > 0.1 (moved: ${cls.by.map(([k, v]) => `${k} ${v}`).join(", ")}; resized while loading: ${cls.resized.map(([k, hs]) => `${k} ${hs.join("->")}px`).join(", ") || "none"})` : ""}`
+    );
+  }
+  rows.forEach((r) => lines.push(r));
+  if (missing.length)
+    lines.push(`MISSING in EDS (selector matched nothing): ${missing.join(", ")}`);
+  if (unknown.length)
+    lines.push(`UNKNOWN in the capture (no region with that id): ${unknown.join(", ")}`);
+  if (notShown.length)
+    lines.push(`NOT SHOWN at ${vp} on the source (not compared): ${notShown.join(", ")}`);
+  return { report, lines };
+}
+
+// src/header/text.mjs
+import { copyFileSync, existsSync as existsSync15, mkdirSync as mkdirSync16, readFileSync as readFileSync15, writeFileSync as writeFileSync18 } from "node:fs";
+import { createHash as createHash5 } from "node:crypto";
+import { dirname as dirname5, join as join16 } from "node:path";
+var TOGGLES3 = loadBundle("header-toggles.js");
+var PROPS = [
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "fontStyle",
+  "fontStretch",
+  "letterSpacing",
+  "wordSpacing",
+  "lineHeight",
+  "textTransform",
+  "fontFeatureSettings",
+  "fontVariationSettings",
+  "fontKerning",
+  "fontOpticalSizing",
+  "fontSynthesis",
+  "textRendering",
+  "webkitFontSmoothing",
+  "color",
+  "textDecorationLine",
+  "textShadow"
+];
+function diffTexts(srcAll, pageAll, tolerance = 0.5) {
+  const isIcon = (x) => x.kind === "icon";
+  const src = srcAll.filter((x) => !isIcon(x));
+  const left = pageAll.filter((x) => !isIcon(x));
+  const rows = [];
+  const onlySource = [];
+  const icons = pairIcons(srcAll.filter(isIcon), pageAll.filter(isIcon));
+  for (const [s, p] of icons.pairs) {
+    const diffs = ["x", "y"].filter((k) => Math.abs(s.rect[k] - p.rect[k]) > tolerance).map((k) => [k, s.rect[k], p.rect[k]]);
+    if (diffs.length) rows.push({ text: s.text, diffs });
+  }
+  const iconsOneSide = [
+    ...icons.onlySource.map((x) => `source: ${x.text} at ${x.rect.x},${x.rect.y}`),
+    ...icons.onlyPage.map((x) => `page: ${x.text} at ${x.rect.x},${x.rect.y}`)
+  ];
+  for (const s of src) {
+    const i = left.findIndex((p2) => p2.text === s.text);
+    if (i === -1) {
+      onlySource.push(s.text);
+      continue;
+    }
+    const [p] = left.splice(i, 1);
+    const first = (f) => f.split(",")[0].trim().replace(/^["']|["']$/g, "").toLowerCase();
+    const same = (k) => k === "fontFamily" ? first(s.styles[k]) === first(p.styles[k]) : s.styles[k] === p.styles[k];
+    const diffs = PROPS.filter((k) => !same(k)).map((k) => [k, s.styles[k], p.styles[k]]);
+    for (const k of ["x", "y", "w", "h"]) {
+      if (Math.abs(s.rect[k] - p.rect[k]) > tolerance) diffs.push([k, s.rect[k], p.rect[k]]);
+    }
+    if (diffs.length) rows.push({ text: s.text, diffs });
+  }
+  return { rows, onlySource, onlyPage: left.map((p) => p.text), iconsOneSide };
+}
+function pairIcons(src, page, max = 40) {
+  const d = (a, b) => Math.hypot(a.rect.x - b.rect.x, a.rect.y - b.rect.y);
+  const cands = src.flatMap((s) => page.map((p) => [d(s, p), s, p])).filter(([dist]) => dist <= max).sort((a, b) => a[0] - b[0]);
+  const used = /* @__PURE__ */ new Set();
+  const pairs = [];
+  for (const [, s, p] of cands) {
+    if (used.has(s) || used.has(p)) continue;
+    used.add(s);
+    used.add(p);
+    pairs.push([s, p]);
+  }
+  return {
+    pairs,
+    onlySource: src.filter((s) => !used.has(s)),
+    onlyPage: page.filter((p) => !used.has(p))
+  };
+}
+var COLLECT = `(args) => {
+  const [scope, bandArg, props] = args;
+  // the band: above the page's main content (the header), or the whole viewport
+  const mainTop = document.querySelector('main')?.getBoundingClientRect().top ?? null;
+  const band = bandArg === 'main' ? (mainTop ?? innerHeight) : bandArg === 'viewport' ? innerHeight : bandArg;
+  // the page's own header (EDS: body > header); a page without one (the source itself) by the band
+  const root = (scope && document.querySelector(scope)) || document.body;
+  const texts = [];
+  // open shadow roots too: the page's legacy regions render the source's markup in one, so their
+  // texts match the source's instead of showing as "only on the source" (PR #14 review)
+  const deep = (r) => [...r.querySelectorAll('*')].flatMap((e) => (e.shadowRoot ? [e, ...deep(e.shadowRoot)] : [e]));
+  for (const el of deep(root)) {
+    const nodes = [...el.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim());
+    if (!nodes.length) continue;
+    const own = nodes.map((n) => n.textContent).join('').trim().replace(/\\s+/g, ' ');
+    // the text's own box (a Range over its text nodes), not the element's: a button and a span
+    // holding the same glyphs at the same place have different boxes
+    const range = document.createRange();
+    range.setStartBefore(nodes[0]);
+    range.setEndAfter(nodes.at(-1));
+    const r = range.getBoundingClientRect();
+    // seen: more than a screen-reader pixel, in the band and the viewport, not covered (a text
+    // under an open sheet or an off-canvas panel is not on screen)
+    if (r.width < 2 || r.height < 2 || r.top >= band || r.bottom <= 0 || r.right <= 0 || r.left >= innerWidth) continue;
+    if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+    const er = el.getBoundingClientRect();
+    if (er.width < 2 || er.height < 2) continue;
+    const cx = Math.min(innerWidth - 1, Math.max(0, r.left + r.width / 2));
+    const cy = Math.min(innerHeight - 1, Math.max(0, r.top + r.height / 2));
+    // hit-tested in the element's own tree: from the document, a shadow text hits its host
+    const tree = el.getRootNode();
+    const hit = (tree.elementFromPoint ? tree : document).elementFromPoint(cx, cy);
+    if (hit && !el.contains(hit) && !hit.contains(el)) continue;
+    const cs = getComputedStyle(el);
+    const round = (v) => Math.round(v * 10) / 10;
+    texts.push({ text: own, rect: { x: round(r.x), y: round(r.y), w: round(r.width), h: round(r.height) },
+      styles: Object.fromEntries(props.map((k) => [k, cs[k]])) });
+  }
+  // icons: every graphic of its own (an svg or img not part of a text: a close X, a search glass, a
+  // logo; a chevron beside a label is the label's) and every icon-only control drawn by CSS, by its
+  // centre, paired by position: v1-6's close X sat up to 25 px off between the sampled widths, unseen
+  // by the texts. Labelled by its control's accessible name, for the report only
+  const seen = (e) => { const r = e.getBoundingClientRect(); return r.width >= 2 && r.height >= 2
+    && e.checkVisibility({ opacityProperty: true, visibilityProperty: true }); };
+  const hasSeenText = (e) => [e, ...deep(e)].some((d) => [...d.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim()) && seen(d));
+  const all = deep(root);
+  const isControl = (e) => e.matches('a[href], button, [role="button"]');
+  // a graphic of its own (not part of a control or element with text: a chevron is the text's)...
+  const graphics = all.filter((e) => (e.matches('img') || (e.matches('svg') && !e.parentElement?.closest('svg'))) && seen(e)
+    && !hasSeenText(e.closest('a[href], button, [role="button"], li, p') || e));
+  // ...or an icon-only control drawn by CSS (no svg or img: its own box)
+  for (const c of all.filter((e) => isControl(e) && seen(e) && !hasSeenText(e) && !e.querySelector('svg, img'))) graphics.push(c);
+  for (const g of graphics) {
+    const control = g.closest('a[href], button, [role="button"]') || g;
+    const r = g.getBoundingClientRect();
+    if (r.top >= band || r.bottom <= 0 || r.right <= 0 || r.left >= innerWidth) continue;
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const tree = g.getRootNode();
+    const hit = (tree.elementFromPoint ? tree : document).elementFromPoint(Math.min(innerWidth - 1, Math.max(0, cx)), Math.min(innerHeight - 1, Math.max(0, cy)));
+    if (hit && !control.contains(hit) && !hit.contains(control) && !g.contains(hit)) continue;
+    const img = control.querySelector('img[alt]');
+    const name = (control.getAttribute('aria-label') || control.getAttribute('title') || (img && img.alt)
+      || control.textContent || '').trim().replace(/\\s+/g, ' ');
+    const round = (v) => Math.round(v * 10) / 10;
+    texts.push({ text: 'icon' + (name ? ' "' + name + '"' : ''), kind: 'icon', rect: { x: round(cx), y: round(cy), w: 0, h: 0 }, styles: {} });
+  }
+  return { texts, mainTop: mainTop == null ? null : Math.round(mainTop * 10) / 10 };
+}`;
+var OPEN = (open2, trigger, mobileMenu) => `
+  if (${JSON.stringify(Boolean(mobileMenu))}) {
+    const before = await page.evaluate(() => window.__plgVisibleLinks());
+    const toggle = await page.evaluateHandle(() => window.__plgMobileToggle());
+    if (await toggle.asElement()) {
+      await toggle.asElement().click();
+      await page.evaluate((n) => window.__plgWaitReveal(n), before);
+    }
+    await page.waitForTimeout(700);
+  } else if (${JSON.stringify(open2 || "")}) {
+    await page.evaluate(() => window.__plgMarkVisibleLinks());
+    const el = page.locator('header, nav').getByText(${JSON.stringify(open2 || "")}, { exact: true }).filter({ visible: true }).first();
+    if (${JSON.stringify(trigger)} === 'click') await el.click({ timeout: 3000 }); else await el.hover({ timeout: 3000 });
+    await page.waitForTimeout(700);
+    // the open panel's bottom: its 2x pixels are told apart from the page's below it
+    panelBottom = await page.evaluate(() => { const p = window.__plgOpenPanel(); return p ? p.rect.y + p.rect.h : null; });
+  }`;
+var SCROLL_TO = (y) => `
+    await page.mouse.move(innerW / 2, 300);
+    await page.mouse.wheel(0, ${y} - (await page.evaluate(() => scrollY)));
+    await page.waitForTimeout(1000);`;
+async function collect2(session, url, {
+  scope,
+  band,
+  width,
+  height,
+  scale,
+  hideCss,
+  open: open2,
+  trigger,
+  mobileMenu,
+  shot,
+  steps,
+  hideLate = false
+}) {
+  openSession(session, { width, height, scale });
+  try {
+    const late = hideLate ? `
+  {
+    const sel = (await page.evaluate(${VISIBLE_OVERLAYS})).map((o) => o.selector);
+    if (sel.length) await page.addStyleTag({ content: sel.join(', ') + ' { display: none !important; }' });
+  }` : "";
+    const states = steps.map(
+      (y, i) => `
+  ${i ? SCROLL_TO(y) : ""}
+  ${late}
+  if (${JSON.stringify(Boolean(shot))}) await page.screenshot({ path: ${JSON.stringify(shot ? shot(i) : "")} });
+  out.push({ y: ${y}, panelBottom, ...(await page.evaluate(${COLLECT}, [${JSON.stringify(scope)}, ${JSON.stringify(band)}, ${JSON.stringify(PROPS)}])) });`
+    ).join("\n");
+    return await runCodeAsync(
+      session,
+      `async page => {
+  const innerW = ${width};
+  await page.context().route(${AB_TESTS}, (r) => r.abort());
+  await page.context().addInitScript(${STEADY});
+  // as the capture loads it: a slow third-party script must not fail the load (backlinko timed out)
+  await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  await page.waitForLoadState('load', { timeout: 30000 }).catch(() => {});
+  if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
+  await page.addScriptTag({ content: ${JSON.stringify(TOGGLES3)} });
+  await page.waitForFunction(() => !window.hlx
+    || document.querySelector('body > header .header[data-block-status="loaded"]'), null, { timeout: 10000 }).catch(() => {});
+  // web fonts loaded before anything is measured: a late font (WP tutorials' Typekit, 8 browsers at
+  // once) moved texts 1 px and read as a difference
+  await page.evaluate(() => document.fonts.ready).catch(() => {});
+  await page.waitForTimeout(1200);
+  let panelBottom = null;
+  ${OPEN(open2, trigger, mobileMenu)}
+  const out = [];
+  ${states}
+  return JSON.stringify(out);
+}`,
+      { timeout: 18e4 }
+    );
+  } finally {
+    closeSession(session);
+  }
+}
+function diffShown(headerTexts, srcAll, pageAll, tolerance) {
+  const isIcon = (x) => x.kind === "icon";
+  const src = srcAll.filter((x) => !isIcon(x));
+  const page = pageAll.filter((x) => !isIcon(x));
+  const icons = diffTexts(srcAll.filter(isIcon), pageAll.filter(isIcon), tolerance);
+  const iconRows = icons.rows;
+  const onScreen = (list, t) => list.some((x) => x.text === t);
+  const rows = headerTexts.filter((t) => onScreen(src, t) !== onScreen(page, t)).map((t) => ({ text: t, diffs: [["shown", onScreen(src, t), onScreen(page, t)]] }));
+  const keep = (list) => list.filter((x) => headerTexts.includes(x.text));
+  return [...rows, ...diffTexts(keep(src), keep(page), tolerance).rows, ...iconRows];
+}
+var BELOW = "(the page below the header)";
+async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
+  const whole = o.open || o["mobile-menu"] || o.scroll;
+  const band = o.band === "auto" ? whole ? "viewport" : "main" : +o.band;
+  const tag = `${size.width}x${size.height}`;
+  const steps = o.scroll ? [0, ...o.scroll.split(",").map(Number)] : [0];
+  const name = (side) => o.shots ? (i) => `${o.shots}-${tag}${o.scroll ? `-${i}y${steps[i]}` : ""}-${side}.png` : null;
+  const opts = {
+    ...size,
+    band,
+    open: o.open,
+    trigger: o.trigger,
+    mobileMenu: o["mobile-menu"],
+    scale: +o.scale,
+    steps
+  };
+  const pageHide = new URL(pageUrl).origin === new URL(srcUrl).origin ? hideCss : "";
+  const pageScope = whole ? null : "body > header";
+  const [src, page, base] = await Promise.all([
+    sourceStates(srcUrl, { ...opts, hideCss, shot: name("source"), hideLate: true }, o, tag),
+    // the page's header by its element, not by a band: a fixed header over a main at 0 (the
+    // retailer) left no band, and every header text counted as missing
+    collect2(`${o.session}-${tag}-p`, pageUrl, {
+      ...opts,
+      band: whole ? band : "viewport",
+      scope: pageScope,
+      hideCss: pageHide,
+      shot: name("page"),
+      hideLate: Boolean(pageHide)
+    }),
+    // the baseline: the same page before the unit (the shell, every region legacy): what it already
+    // differs by (the body's legacy slices, a band the shell places in main) is not the unit's
+    o.baseline ? sourceStates(
+      o.baseline,
+      { ...opts, scope: pageScope, hideCss: "", shot: name("baseline"), hideLate: false },
+      o,
+      `${tag}-b`
+    ) : null
+  ]);
+  const headerTexts = src[0].texts.filter((t) => t.kind !== "icon" && (src[0].mainTop == null || t.rect.y < src[0].mainTop)).map((t) => t.text);
+  const judge = (s, p0, i) => {
+    const p = whole || i || s.mainTop == null ? p0 : { ...p0, texts: p0.texts.filter((t) => t.rect.y < s.mainTop) };
+    const r = o.scroll && i ? {
+      rows: diffShown(headerTexts, s.texts, p.texts, +o.tolerance),
+      onlySource: [],
+      onlyPage: []
+    } : diffTexts(s.texts, p.texts, +o.tolerance);
+    if (!(o.open || o["mobile-menu"]) && !i && s.mainTop != null && Math.abs(s.mainTop - p.mainTop) > +o.tolerance) {
+      r.rows.push({ text: BELOW, diffs: [["y", s.mainTop, p.mainTop]] });
+    }
+    return r;
+  };
+  return src.map((s, i) => {
+    const at = o.scroll ? `${tag} y${s.y}` : tag;
+    let r = judge(s, page[i], i);
+    let inherited = 0;
+    if (base) ({ r, inherited } = minusBaseline(r, judge(s, base[i], i), headerTexts));
+    const rows = whole || i ? null : Math.ceil(s.mainTop * +o.scale);
+    const px = o.shots ? differingPixels(name("source")(i), name("page")(i), rows, base ? name("baseline")(i) : null) : null;
+    const panelRows = o.open && s.panelBottom != null ? Math.ceil(s.panelBottom * +o.scale) : null;
+    const pxPanel = px && panelRows ? differingPixels(
+      name("source")(i),
+      name("page")(i),
+      panelRows,
+      base ? name("baseline")(i) : null
+    ) : null;
+    return {
+      tag: at,
+      matched: s.texts.length - r.onlySource.length,
+      px,
+      pxPanel,
+      inherited,
+      shots: o.shots && name("*")(i),
+      ...r
+    };
+  });
+}
+async function sourceStates(srcUrl, opts, o, tag) {
+  const dir = o["source-cache"];
+  const load2 = (shot2) => collect2(`${o.session}-${tag}-s`, srcUrl, { ...opts, scope: opts.scope ?? null, shot: shot2 });
+  if (!dir) return load2(opts.shot);
+  const { shot, ...shape } = opts;
+  const key = cacheKey({
+    srcUrl,
+    shape,
+    shots: Boolean(shot),
+    collector: cacheKey({
+      COLLECT,
+      OPEN: OPEN(shape.open, shape.trigger, shape.mobileMenu),
+      PROPS
+    })
+  });
+  const file = join16(dir, `${key}.json`);
+  const cached = (i) => join16(dir, `${key}-${i}.png`);
+  if (!existsSync15(file)) {
+    mkdirSync16(dir, { recursive: true });
+    const states2 = await load2(shot ? cached : null);
+    writeFileSync18(file, JSON.stringify(states2));
+  }
+  const states = JSON.parse(readFileSync15(file, "utf8"));
+  if (shot)
+    states.forEach((_, i) => {
+      mkdirSync16(dirname5(shot(i)), { recursive: true });
+      copyFileSync(cached(i), shot(i));
+    });
+  return states;
+}
+function cacheKey(value) {
+  const sorted = (v) => v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(
+    Object.keys(v).sort().map((k) => [k, sorted(v[k])])
+  ) : v;
+  return createHash5("sha1").update(JSON.stringify(sorted(value))).digest("hex").slice(0, 16);
+}
+async function pool(fns, n) {
+  const out = [];
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, fns.length) }, async () => {
+      while (next < fns.length) {
+        const i = next;
+        next += 1;
+        out[i] = await fns[i]();
+      }
+    })
+  );
+  return out;
+}
+function differingPixels(a, b, rows = null, base = null) {
+  const imgs = [a, b, ...base ? [base] : []].map((f) => PNG.sync.read(readFileSync15(f)));
+  const w = Math.min(...imgs.map((i) => i.width));
+  const h = Math.min(rows ?? Infinity, ...imgs.map((i) => i.height));
+  const [A, B, C] = imgs.map((img) => {
+    const o = new PNG({ width: w, height: h });
+    PNG.bitblt(img, o, 0, 0, w, h, 0, 0);
+    return onWhite(o.data);
+  });
+  if (!C) return pixelmatch(A, B, null, w, h, { threshold: 0.1 });
+  const mask = (x, y) => {
+    const d = new PNG({ width: w, height: h });
+    pixelmatch(x, y, d.data, w, h, { threshold: 0.1, diffMask: true });
+    return d.data;
+  };
+  const [ab, ac, bc] = [mask(A, B), mask(A, C), mask(B, C)];
+  let n = 0;
+  for (let i = 3; i < ab.length; i += 4) if (ab[i] && !(ac[i] && !bc[i])) n += 1;
+  return n;
+}
+function minusBaseline(r, b, own = []) {
+  let inherited = 0;
+  const key = (text, [k, src, val]) => JSON.stringify([text, k, src, val]);
+  const mine = /* @__PURE__ */ new Set([...own, BELOW]);
+  const known = new Set(
+    b.rows.filter((row) => !mine.has(row.text)).flatMap((row) => row.diffs.map((d) => key(row.text, d)))
+  );
+  const rows = r.rows.map((row) => ({
+    ...row,
+    diffs: row.diffs.filter((d) => {
+      const old = known.has(key(row.text, d));
+      inherited += old ? 1 : 0;
+      return !old;
+    })
+  })).filter((row) => row.diffs.length);
+  const drop = (list, base) => list.filter((t) => {
+    const old = !mine.has(t) && base.includes(t);
+    inherited += old ? 1 : 0;
+    return !old;
+  });
+  return {
+    r: {
+      ...r,
+      rows,
+      onlySource: drop(r.onlySource, b.onlySource),
+      onlyPage: drop(r.onlyPage, b.onlyPage)
+    },
+    inherited
+  };
+}
+function captureHideCss(overlaysPath) {
+  const css = JSON.parse(readFileSync15(overlaysPath, "utf8")).hideCss || "";
+  const open2 = join16(dirname5(overlaysPath), "open", "open.json");
+  const late = existsSync15(open2) ? JSON.parse(readFileSync15(open2, "utf8")).mobileMenu?.lateOverlays || [] : [];
+  return [css, late.length ? `${late.join(", ")} { display: none !important; }` : ""].filter(Boolean).join("\n");
+}
+var parseSizes = (s) => s.split(",").map((x) => {
+  const [w, h = "900"] = x.split("x");
+  if (!(+w > 0 && +h > 0)) throw new Error(`bad size "${x}": use WIDTH or WIDTHxHEIGHT`);
+  return { width: +w, height: +h };
+});
+var OPTIONS2 = {
+  sizes: { type: "string", default: "1440x900" },
+  band: { type: "string", default: "auto" },
+  "hide-css": { type: "string" },
+  open: { type: "string" },
+  trigger: { type: "string", default: "hover" },
+  "mobile-menu": { type: "boolean", default: false },
+  scroll: { type: "string" },
+  scale: { type: "string", default: "1" },
+  tolerance: { type: "string", default: "0.05" },
+  shots: { type: "string" },
+  "source-cache": { type: "string" },
+  baseline: { type: "string" },
+  parallel: { type: "string", default: "4" },
+  session: { type: "string", default: "text-styles" }
+};
+async function checkText(srcUrl, pageUrl, opts = {}) {
+  const defaults = Object.fromEntries(
+    Object.entries(OPTIONS2).filter(([, v]) => "default" in v).map(([k, v]) => [k, v.default])
+  );
+  const o = {
+    ...defaults,
+    ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== void 0))
+  };
+  const parallel = Number(o.parallel);
+  if (!Number.isInteger(parallel) || parallel < 1)
+    throw new Error(`--parallel must be a positive integer, not "${o.parallel}"`);
+  const sizes = parseSizes(o.sizes);
+  const hideCss = o["hide-css"] ? captureHideCss(o["hide-css"]) : "";
+  const run2 = (size) => compareAt(srcUrl, pageUrl, size, o, hideCss).catch((e) => [
+    {
+      tag: `${size.width}x${size.height}`,
+      matched: 0,
+      px: null,
+      onlySource: [],
+      onlyPage: [],
+      failed: true,
+      rows: [
+        {
+          text: "(could not be compared)",
+          diffs: [
+            [
+              "error",
+              e.message.split("\n").find((l) => /Error/.test(l)) || e.message.slice(0, 120),
+              ""
+            ]
+          ]
+        }
+      ]
+    }
+  ]);
+  const results = (await pool(
+    sizes.map((size) => () => run2(size)),
+    parallel
+  )).flat();
+  if (results.length < sizes.length)
+    throw new Error(`${sizes.length} sizes asked, ${results.length} compared`);
+  const lines = [];
+  let differ = 0;
+  const failed = [];
+  for (const r of results) {
+    for (const row of r.rows)
+      lines.push(
+        `${r.tag} "${row.text}": ${row.diffs.map(([k, a, b]) => `${k} ${a} -> ${b}`).join("; ")}`
+      );
+    if (r.onlySource.length)
+      lines.push(`${r.tag} only on the source: ${r.onlySource.map((t) => `"${t}"`).join(", ")}`);
+    if (r.onlyPage.length)
+      lines.push(`${r.tag} only on the page: ${r.onlyPage.map((t) => `"${t}"`).join(", ")}`);
+    if (r.iconsOneSide?.length)
+      lines.push(
+        `${r.tag} icons on one side only (not judged here; the 2x pixels are): ${r.iconsOneSide.join(", ")}`
+      );
+    const unmatched = r.onlySource.length + r.onlyPage.length;
+    lines.push(
+      `${r.tag} text styles: ${r.rows.length} differ of ${r.matched} matched texts${unmatched ? `, ${unmatched} on one side only` : ""}${r.inherited ? ` (${r.inherited} inherited from the baseline, not counted)` : ""}${r.px == null ? "" : `; ${r.px} differing pixels at ${o.scale}x${r.pxPanel == null ? "" : ` (${r.pxPanel} in the header and open panel, ${r.px - r.pxPanel} below them)`} (${r.shots})`}`
+    );
+    if (r.rows.length || r.onlySource.length || r.onlyPage.length || r.px) {
+      differ += 1;
+      failed.push(r.tag.split(" ")[0]);
+    }
+  }
+  const notCleanAt = [...new Set(failed)];
+  if (notCleanAt.length)
+    lines.push(`not clean at: ${notCleanAt.join(",")} (re-run those with --sizes while fixing)`);
+  const failedAt = [...new Set(results.filter((r) => r.failed).map((r) => r.tag.split(" ")[0]))];
+  return { ok: differ === 0, sizes: results, notCleanAt, failedAt, lines };
+}
+
+// src/commands/header.mjs
+var MAX_CLS = 0.05;
+var CHECK_FAILED = "CHECK_FAILED";
+var usage = (message) => new CliError("USAGE", message, { hint: "run: web header check <check> --help" });
+function asCheckFailure(e) {
+  if (e instanceof CliError && ["USAGE", "UNSUPPORTED", CHECK_FAILED].includes(e.code)) return e;
+  const code = typeof e?.code === "string" ? `${e.code}: ` : "";
+  return new CliError(CHECK_FAILED, `${code}${e?.message ?? String(e)}`, {
+    hint: "the check did not run to its end, so nothing was measured: fix the cause (the page, the browser) and re-run the same command"
+  });
+}
+var positiveInt = (v) => {
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) throw usage(`expected a positive integer, got "${v}"`);
+  return n;
+};
+var positiveNumber = (v) => {
+  if (!(Number(v) > 0)) throw usage(`expected a positive number, got "${v}"`);
+  return v;
+};
+var nonNegativeNumber = (v) => {
+  if (!(Number(v) >= 0) || v.trim() === "") throw usage(`expected a number >= 0, got "${v}"`);
+  return Number(v);
+};
+var numberList = (v) => {
+  if (!v.split(",").every((x) => x.trim() !== "" && Number.isFinite(Number(x))))
+    throw usage(`expected numbers separated by commas, got "${v}"`);
+  return v;
+};
+var sizeList = (v) => {
+  try {
+    parseSizes(v);
+  } catch (e) {
+    throw usage(e.message);
+  }
+  return v;
+};
+async function run(command, deps, fn, { images = false } = {}) {
+  const opts = command.optsWithGlobals();
+  if (images) await (deps.loadImaging ?? loadImaging)();
+  const scratch = mkdtempSync2(join17(tmpdir2(), "web-header-"));
+  const driver = (deps.driverFactory ?? createDriver)({ outputDir: scratch });
+  driver.ensureAvailable?.();
+  const browser = webBrowser(driver);
+  useBrowser(browser);
+  const signals = ["SIGINT", "SIGTERM"].map((signal) => {
+    const handler = () => {
+      browser.closeAll();
+      rmSync8(scratch, { recursive: true, force: true });
+      process.kill(process.pid, signal);
+    };
+    process.once(signal, handler);
+    return [signal, handler];
+  });
+  try {
+    let doc;
+    try {
+      doc = await fn(opts);
+    } catch (e) {
+      throw asCheckFailure(e);
+    }
+    emit(doc, { format: opts.format, text: doc.text, stdout: deps.stdout ?? process.stdout });
+  } finally {
+    signals.forEach(([signal, handler]) => process.removeListener(signal, handler));
+    browser.closeAll();
+    useBrowser(null);
+    rmSync8(scratch, { recursive: true, force: true });
+  }
+}
+var collect3 = (value, list) => [...list, value];
+var GROUP_HELP4 = `
+Use to rebuild a site's header 1:1: capture the source once (header capture), then run the checks
+on the page you build until every one is clean. web doc header has the loop and how to read each
+check. The checks need sharp, pngjs and pixelmatch (optional dependencies): install the CLI as a
+package (web doc header, Install).
+`;
+var EXIT_HELP = `
+Exit codes:
+  0 the check ran, clean or not (read clean, or the lines) \xB7 1 CHECK_FAILED: it did not run to its
+  end, nothing is certified (an error document) \xB7 2 usage, playwright-cli or the image libraries
+  (sharp, pngjs, pixelmatch: optional dependencies, see web doc header) missing`;
+var HELP12 = {
+  capture: `
+Output:
+  { dir, page: { url, title, regions: [{ id, selector, rect, tabletRect, mobileRect }] },
+    open, text }: open is <dir>/open/open.json:
+  { closedLinks, closedOverlays, states: [{ label, trigger, file, links, newLinks,
+    panel: { rect, background, shadow, padding, radius, border, links, items: [{ text, href }], text },
+    visibleOverlays }], header: { scroll, breakpoint: { shownAt, hiddenAt } },
+    mobileMenu: { toggle, revealed, lateOverlays, item } }
+Notes:
+  At 1440x900, 820x1180 and 390x844 the source is loaded held still (A/B services blocked,
+  overlays hidden, lazy content loaded, animations finished) and shot (<dir>/<vp>.png); the header
+  (--header, else found at the top of the page) is one region per selector, with its box per
+  viewport (page.json; crops and style dumps in regions/). Then each menu is opened as the source
+  opens it (hover, else click; its visible label only; a fresh load per menu) and shot at 1440x900;
+  then the scroll probe, the breakpoint, and the burger at 390x844 (open/mobile-menu.png).
+  The hide rules are in <dir>/overlays.json (hideCss): pass it to the text check (--hide-css).`,
+  menus: `
+Output:
+  { clean, menus: [{ label, trigger, expected, opened, left, ok, problems }], text }
+Notes:
+  At 1440x900 each menu of open.json (newLinks > 0) is opened as the source opens it, its links
+  counted (at least 80 % of the capture's), and closed as the source closes it.`,
+  panels: `
+Output:
+  { clean, panels: [{ label, trigger, mismatch, links, expected, missing, extra, problems }],
+    mobile: { mismatch, problems } | null, outDir, text }
+Notes:
+  The pixel mismatch inside each source panel box (<= 1.5 %), the revealed hrefs against the
+  capture's (as multisets), the mobile menu against open/mobile-menu.png (<= 2.0 %).
+  <outDir> is cleared first; panels.json and the shots are written there.`,
+  pixels: `
+Output:
+  { clean, compared, missing, notShown, viewport, regions: { <key>: { srcH, edsH, mismatch, ... } },
+    full, cls, overflow, text }
+Notes:
+  compare.mjs on one width (desktop 1440x900, --tablet 820x1180, --mobile 390x844): the regions of
+  --map (region ids of the capture -> selectors on the page), the full page, CLS while loading.
+  A map key naming no region of the capture is a usage error. missing: keys whose selector matched
+  nothing on the page (not clean); notShown: keys the source does not show at this width (not
+  compared). clean: at least one region compared, none missing, every compared one with height
+  delta 0 and mismatch 0 % (the ladder's step 2); nothing to compare at this width is CHECK_FAILED.`,
+  cls: `
+Output:
+  { clean, cls: { <width>: value }, max, text }
+Notes:
+  The layout shift of a load at each width (4 s after load, the page held still); clean: every
+  value under --max (the bar's 0.05).`,
+  text: `
+Output:
+  { clean, notCleanAt, sizes: [{ tag, matched, rows, onlySource, onlyPage, px, ... }], text }
+Notes:
+  Every visible text of the source's header and the page's (with --open or --mobile-menu, of the
+  viewport), matched by text: computed properties and boxes; icons by position; where the page
+  below the header starts; --scale 2 --shots also counts differing pixels. Sizes WIDTH or
+  WIDTHxHEIGHT (900 tall by default), a fresh load each, --parallel at a time.
+  A size that could not be compared fails the command (CHECK_FAILED); its message names those
+  sizes and holds the other sizes' lines.`
+};
+function checkMap(mapFile, sourceDir) {
+  let map;
+  try {
+    map = JSON.parse(readFileSync16(mapFile, "utf8"));
+  } catch (e) {
+    throw usage(`--map ${mapFile}: ${e.message}`);
+  }
+  if (!existsSync16(join17(sourceDir, "page.json")))
+    throw usage(`${sourceDir} is not a capture: no page.json`);
+  const page = JSON.parse(readFileSync16(join17(sourceDir, "page.json"), "utf8"));
+  const slicesFile = join17(sourceDir, "slices.json");
+  const slices = existsSync16(slicesFile) ? JSON.parse(readFileSync16(slicesFile, "utf8")) : [];
+  const ids = new Set([...page.regions, ...slices].map((r) => r.id));
+  const bad = Object.keys(map).filter((k) => k.split("+").some((id) => !ids.has(id)));
+  if (!Object.keys(map).length) throw usage(`--map ${mapFile}: no region`);
+  if (bad.length)
+    throw usage(
+      `--map ${mapFile}: no region ${bad.join(", ")} in ${sourceDir}/page.json (its regions: ${[...ids].join(", ")})`
+    );
+  return map;
+}
+function pixelsVerdict({ regions, missing = [], unknown = [], notShown = [], viewport }) {
+  const compared = Object.keys(regions);
+  if (!compared.length && !missing.length && !unknown.length) {
+    throw new CliError(
+      CHECK_FAILED,
+      `nothing compared at ${viewport}: the source shows none of the requested regions at this width (${notShown.join(", ") || "none requested"})`
+    );
+  }
+  const clean = compared.length > 0 && !missing.length && !unknown.length && compared.every((k) => regions[k].edsH === regions[k].srcH && regions[k].mismatch === 0);
+  return { clean, compared };
+}
+function registerHeader(program2, deps) {
+  const header = program2.command("header").description("capture a site header and compare a page with it").addHelpText("after", GROUP_HELP4);
+  header.command("capture <url> <dir>").description("capture the header: its region, open menus, breakpoint, scroll and mobile menu").addHelpText("after", HELP12.capture + EXIT_HELP).option(
+    "--header <selector>",
+    "a part of the source's header (repeat for several)",
+    collect3,
+    []
+  ).action(
+    (url, dir, o, command) => run(
+      command,
+      deps,
+      async () => {
+        const { page, open: open2, lines } = await captureHeader(url, dir, { header: o.header });
+        return { dir: resolve12(dir), page, open: open2, text: lines.join("\n") };
+      },
+      { images: true }
+    )
+  );
+  const check = header.command("check").description("compare a page with the captured source");
+  check.command("menus <page> <openJson>").description("the menus open and close as on the source").addHelpText("after", HELP12.menus + EXIT_HELP).action(
+    (page, openJson, _o, command) => run(command, deps, () => {
+      const { ok, menus, lines } = checkMenus(page, openJson);
+      return { clean: ok, menus, text: lines.join("\n") };
+    })
+  );
+  check.command("panels <page> <sourceDir> <outDir>").description("each open panel's pixels and hrefs, and the mobile menu").addHelpText("after", HELP12.panels + EXIT_HELP).action(
+    (page, sourceDir, outDir, _o, command) => run(
+      command,
+      deps,
+      () => {
+        const { ok, panels, mobile, lines } = checkPanels(page, sourceDir, outDir);
+        return { clean: ok, panels, mobile, outDir: resolve12(outDir), text: lines.join("\n") };
+      },
+      { images: true }
+    )
+  );
+  check.command("pixels <page> <sourceDir> <outDir>").description("the header region (and the full page) against the source, at one width").addHelpText("after", HELP12.pixels + EXIT_HELP).requiredOption("--map <file>", "region ids of the capture -> selectors on the page (JSON)").option("--only <ids>", "only these region ids").option("--tablet", "at 820x1180").option("--mobile", "at 390x844").option("--no-full", "skip the full-page comparison").option("--static", "a plain HTML page: do not wait for EDS decoration").action(
+    (page, sourceDir, outDir, o, command) => run(
+      command,
+      deps,
+      async () => {
+        checkMap(o.map, sourceDir);
+        const { report, lines } = await comparePage(page, sourceDir, outDir, {
+          map: o.map,
+          only: o.only,
+          tablet: o.tablet,
+          mobile: o.mobile,
+          "no-full": o.full === false,
+          static: o.static
+        });
+        return { ...pixelsVerdict(report), ...report, text: lines.join("\n") };
+      },
+      { images: true }
+    )
+  );
+  check.command("cls <page> <widths>").description("the layout shift of a load at each width").addHelpText("after", HELP12.cls + EXIT_HELP).option("--max <n>", "the threshold", nonNegativeNumber, MAX_CLS).action(
+    (page, widths, o, command) => run(command, deps, () => {
+      const asked = [...new Set(widths.split(","))];
+      if (!asked.every((w) => positiveInt(w))) throw usage(`expected widths, got "${widths}"`);
+      const rows = asked.map((w) => {
+        const v = clsAt(page, +w);
+        if (!Number.isFinite(v)) throw new CliError(CHECK_FAILED, `CLS at ${w}: no value (${v})`);
+        return [w, v];
+      });
+      return {
+        clean: rows.every(([, v]) => v < o.max),
+        cls: Object.fromEntries(rows),
+        max: o.max,
+        text: rows.map(([w, v]) => `${v < o.max ? "OK  " : "FAIL"} CLS at ${w}: ${v}`).join("\n")
+      };
+    })
+  );
+  check.command("text <source> <page>").description("texts, glyph properties, positions and icons against the source").addHelpText("after", HELP12.text + EXIT_HELP).option("--sizes <list>", "WIDTH or WIDTHxHEIGHT, comma-separated", sizeList, "1440x900").option("--open <label>", "a menu opened as the source opens it").option("--trigger <how>", "hover or click (with --open)", "hover").option("--mobile-menu", "the burger opened").option("--scroll <ys>", "wheel to each y in turn and compare there (600,500,0)", numberList).option("--scale <n>", "device scale factor", positiveNumber, "1").option("--shots <prefix>", "write both viewports and count differing pixels").option("--hide-css <overlays.json>", "the capture's overlay hide rules").option("--source-cache <dir>", "reuse the source's states from <dir>").option(
+    "--baseline <url>",
+    "the page before the work: what it already differs by is not counted"
+  ).option("--band <band>", "auto, or the header band in px", "auto").option(
+    "--tolerance <px>",
+    "positions within this are equal",
+    (v) => String(nonNegativeNumber(v)),
+    "0.05"
+  ).option("--parallel <n>", "sizes at a time", positiveInt, 4).action(
+    (source, page, o, command) => run(
+      command,
+      deps,
+      async () => {
+        const { ok, sizes, notCleanAt, failedAt, lines } = await checkText(source, page, {
+          sizes: o.sizes,
+          open: o.open,
+          trigger: o.trigger,
+          "mobile-menu": Boolean(o.mobileMenu),
+          scroll: o.scroll,
+          scale: o.scale,
+          shots: o.shots,
+          "hide-css": o.hideCss,
+          "source-cache": o.sourceCache,
+          baseline: o.baseline,
+          band: o.band,
+          tolerance: o.tolerance,
+          parallel: o.parallel
+        });
+        if (failedAt.length) {
+          const all = new Set(sizes.map((r) => r.tag.split(" ")[0])).size;
+          throw new CliError(
+            CHECK_FAILED,
+            `${failedAt.length} of ${all} sizes could not be compared (${failedAt.join(",")}); the lines of this run:
+${lines.join("\n")}`,
+            { hint: `re-run those with --sizes ${failedAt.join(",")}` }
+          );
+        }
+        return { clean: ok, notCleanAt, sizes, text: lines.join("\n") };
+      },
+      { images: true }
+    )
+  );
+}
+
 // src/cli.mjs
 var ROOT_HELP = `
 Output contract:
@@ -8020,6 +10299,7 @@ function createProgram(deps = {}) {
   registerMask(program2, deps);
   registerSite(program2, deps);
   registerCache(program2, deps);
+  registerHeader(program2, deps);
   registerDoc(program2, deps);
   deps.extend?.(program2, deps);
   return program2;
@@ -8034,8 +10314,8 @@ async function runCli(argv, deps = {}) {
       const help = err.code === "commander.helpDisplayed" || err.code === "commander.help";
       if (help || err.code === "commander.version") return EXIT.OK;
       const message = err.message.replace(/^error: /, "").trimEnd();
-      const usage = new CliError("USAGE", message, { hint: "run: web <command> --help" });
-      return fail(usage, { stdout, stderr });
+      const usage2 = new CliError("USAGE", message, { hint: "run: web <command> --help" });
+      return fail(usage2, { stdout, stderr });
     }
     const wrapped = err instanceof Error ? err : new CliError("INTERNAL", String(err));
     return fail(wrapped, { stdout, stderr });

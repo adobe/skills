@@ -11,8 +11,9 @@ export const GAP = 8;
 export const tokensOf = (w, h) => Math.ceil(w / 28) * Math.ceil(h / 28);
 
 export function fits({ w, h, b64Bytes = 0 }, box = BOX) {
-  return w <= box.maxW && h <= box.maxH && tokensOf(w, h) <= box.maxTokens
-    && b64Bytes <= box.maxB64;
+  return (
+    w <= box.maxW && h <= box.maxH && tokensOf(w, h) <= box.maxTokens && b64Bytes <= box.maxB64
+  );
 }
 
 export const maxPieceH = (box = BOX) =>
@@ -63,8 +64,13 @@ export function clusters(mask, w, h, { cell = 24, pad = 16 } = {}) {
     while (stack.length) {
       const k = stack.pop();
       const c = cells.get(k);
-      Object.assign(box, { x0: Math.min(box.x0, c.x0), y0: Math.min(box.y0, c.y0),
-        x1: Math.max(box.x1, c.x1), y1: Math.max(box.y1, c.y1), n: box.n + c.n });
+      Object.assign(box, {
+        x0: Math.min(box.x0, c.x0),
+        y0: Math.min(box.y0, c.y0),
+        x1: Math.max(box.x1, c.x1),
+        y1: Math.max(box.y1, c.y1),
+        n: box.n + c.n,
+      });
       const [cy, cx] = [Math.floor(k / cols), k % cols];
       for (let dy = -1; dy <= 1; dy++) {
         for (let dx = -1; dx <= 1; dx++) {
@@ -77,8 +83,13 @@ export function clusters(mask, w, h, { cell = 24, pad = 16 } = {}) {
     }
     const x = Math.max(0, box.x0 - pad);
     const y = Math.max(0, box.y0 - pad);
-    out.push({ x, y, w: Math.min(w, box.x1 + 1 + pad) - x, h: Math.min(h, box.y1 + 1 + pad) - y,
-      pixels: box.n });
+    out.push({
+      x,
+      y,
+      w: Math.min(w, box.x1 + 1 + pad) - x,
+      h: Math.min(h, box.y1 + 1 + pad) - y,
+      pixels: box.n,
+    });
   }
   return out.sort((a, b) => a.y - b.y || a.x - b.x);
 }

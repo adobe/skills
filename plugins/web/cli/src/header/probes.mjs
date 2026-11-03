@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Source header probes, for the header template (clef/header.mjs): scroll behaviour and the
  * desktop/mobile breakpoint (desktop session), and the mobile menu opened, then its first
@@ -8,15 +7,13 @@
  * open/mobile-item.png.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { closeSession, openSession, runCode } from './lib/browser.mjs';
-import { isMain } from './lib/is-main.mjs';
-import { AB_TESTS, STEADY } from './lib/ab-tests.mjs';
-import { VISIBLE_OVERLAYS } from './lib/overlay-probe.mjs';
+import { join, resolve } from 'node:path';
+import { closeSession, openSession, runCode } from './browser.mjs';
+import { AB_TESTS, STEADY } from './steady.mjs';
+import { VISIBLE_OVERLAYS } from './overlay-probe.mjs';
+import { loadBundle } from '#src/bundles/index.mjs';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const togglesJs = join(here, 'lib/toggles.js');
+const togglesJs = loadBundle('header-toggles.js');
 
 /**
  * The probes as a function (the web-header binary's `header capture`): adds `header` and
@@ -32,13 +29,15 @@ export function headerProbes(url, outArg) {
 
   openSession('plg-src-h', { width: 1440, height: 900 });
   try {
-    openStates.header = runCode('plg-src-h', `async page => {
+    openStates.header = runCode(
+      'plg-src-h',
+      `async page => {
     await page.context().route(${AB_TESTS}, (r) => r.abort());
     await page.context().addInitScript(${STEADY});
     await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForLoadState('load').catch(() => {});
     if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
-    await page.addScriptTag({ path: ${JSON.stringify(togglesJs)} });
+    await page.addScriptTag({ content: ${JSON.stringify(togglesJs)} });
     await page.waitForTimeout(1200);
     const label = ${JSON.stringify(openStates.states[0]?.label || null)};
     const scroll = await page.evaluate(async (lbl) => window.__plgScrollProbe(lbl), label);
@@ -57,19 +56,22 @@ export function headerProbes(url, outArg) {
       shownAt = w;
     }
     return JSON.stringify({ scroll, breakpoint: { shownAt, hiddenAt } });
-  }`);
+  }`,
+    );
   } finally {
     closeSession('plg-src-h');
   }
   openSession('plg-src-mm', { width: 390, height: 844 });
   try {
-    openStates.mobileMenu = runCode('plg-src-mm', `async page => {
+    openStates.mobileMenu = runCode(
+      'plg-src-mm',
+      `async page => {
     await page.context().route(${AB_TESTS}, (r) => r.abort());
     await page.context().addInitScript(${STEADY});
     await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForLoadState('load').catch(() => {});
     if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
-    await page.addScriptTag({ path: ${JSON.stringify(togglesJs)} });
+    await page.addScriptTag({ content: ${JSON.stringify(togglesJs)} });
     await page.waitForTimeout(1200);
     const toggle = await page.evaluateHandle(() => window.__plgMobileToggle());
     if (!(await toggle.asElement())) return JSON.stringify({ toggle: false });
@@ -90,21 +92,14 @@ export function headerProbes(url, outArg) {
       if (item) await page.screenshot({ path: ${JSON.stringify(join(out, 'open', 'mobile-item.png'))} });
     }
     return JSON.stringify({ toggle: true, revealed, lateOverlays, item });
-  }`);
+  }`,
+    );
   } finally {
     closeSession('plg-src-mm');
   }
   writeFileSync(openFile, JSON.stringify(openStates, null, 2));
-  const line = `[${((Date.now() - t0) / 1000).toFixed(1)}s] header ${JSON.stringify(openStates.header)}; `
-    + `mobile menu ${JSON.stringify(openStates.mobileMenu)}`;
+  const line =
+    `[${((Date.now() - t0) / 1000).toFixed(1)}s] header ${JSON.stringify(openStates.header)}; ` +
+    `mobile menu ${JSON.stringify(openStates.mobileMenu)}`;
   return { open: openStates, line };
-}
-
-if (isMain(import.meta.url)) {
-  const [url, outArg] = process.argv.slice(2);
-  if (!url || !outArg) {
-    console.error('usage: node header-probes.mjs <url> <sourceDir>');
-    process.exit(2);
-  }
-  console.log(headerProbes(url, outArg).line);
 }

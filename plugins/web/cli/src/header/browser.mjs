@@ -1,24 +1,21 @@
 /**
- * pw.mjs's API on the web CLI's driver (`createDriver` from ../vendor/web-cli/lib.mjs): the
- * tools run unchanged under the `web-header` binary (lib/browser.mjs useBrowser()).
- * - A tool names its sessions (`plg-src-o`, `<id>-panels`); each name gets a session of its own
- *   with a generated name (`web-<6 hex>`), as the CLI's rules ask: names are global per machine.
- * - The viewport, device scale factor and bypassCSP go in the launch config, as pw.mjs sets them.
- * - runCode is the driver's run (synchronous). runCodeAsync runs the same call in a worker
- *   thread with a driver of its own, so a tool's parallel sizes stay parallel (text-styles.mjs).
- * - A call without a timeout gets `runTimeoutMs` (20 min): pw.mjs's runCode had none, and the
- *   driver's default (60 s) is shorter than one menu sweep.
- * - No browser is left behind untracked (PR #27 review): a launch that fails after Chromium may
- *   have started is closed; a close that fails (closing a session that is not open does not fail)
- *   is retried by closeAll(), and one that still fails is reported with its session name.
+ * The browser the header checks drive, on the CLI's driver. The checks name their sessions
+ * (`plg-src-o`, `<id>-panels`) and call openSession / runCode / runCodeAsync / closeSession; the
+ * `header` commands point those at a `webBrowser` for the length of one command (useBrowser).
+ * - Each name gets a session of its own with a generated name (`web-<6 hex>`): session names are
+ *   global per machine.
+ * - The viewport, device scale factor and bypassCSP (the checks inject their scripts) go in the
+ *   launch config.
+ * - runCode is the driver's run; runCodeAsync its runAsync, so a check's parallel sizes run at once.
+ * - A call without a timeout gets `runTimeoutMs` (20 min): one menu sweep takes longer than the
+ *   driver's default (60 s).
+ * - No browser is left behind untracked: a launch that fails after Chromium may have started is
+ *   closed; a close that fails is retried by closeAll(), and one that still fails is reported with
+ *   its session name.
  */
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { Worker } from 'node:worker_threads';
 
-/** A run result as pw.mjs decodes it: the tools' functions return a JSON string, or nothing. */
+/** A run result: the checks' snippets return a JSON string, or nothing. */
 export function decode(value) {
   if (typeof value !== 'string') return value;
   try {
@@ -37,16 +34,18 @@ export function launchConfig({ width = 1440, height = 900, scale = 1 } = {}) {
 }
 
 /**
- * `driver`: the CLI's driver (or a fake one in tests). `runAsync(session, code, timeoutMs)`: how
- * runCodeAsync runs a call off the main thread (default: a worker with a driver on `libUrl`).
+ * `driver`: the CLI's driver (or a fake one in tests).
+ * @param {object} driver
+ * @param {{ runTimeoutMs?: number, newName?: () => string, warn?: (line: string) => void }} [opts]
  */
-export function webBrowser(driver, {
-  runTimeoutMs = 20 * 60_000,
-  libUrl = new URL('../vendor/web-cli/lib.mjs', import.meta.url).href,
-  runAsync = (session, code, timeoutMs) => runInWorker(libUrl, session, code, timeoutMs),
-  newName = () => `web-${randomBytes(3).toString('hex')}`,
-  warn = (line) => process.stderr.write(`${line}\n`),
-} = {}) {
+export function webBrowser(
+  driver,
+  {
+    runTimeoutMs = 20 * 60_000,
+    newName = () => `web-${randomBytes(3).toString('hex')}`,
+    warn = (line) => process.stderr.write(`${line}\n`),
+  } = {},
+) {
   const names = new Map();
   // sessions whose close failed: closeAll() tries them again, then reports those still open
   const unclosed = new Map();
@@ -95,13 +94,21 @@ export function webBrowser(driver, {
     runCode: (name, source, { timeout = 0 } = {}) =>
       decode(driver.run(sessionOf(name), { code: source, timeoutMs: timeout || runTimeoutMs })),
     runCodeAsync: async (name, source, { timeout = 0 } = {}) =>
-      decode(await runAsync(sessionOf(name), source, timeout || runTimeoutMs)),
+      decode(
+        await driver.runAsync(sessionOf(name), {
+          code: source,
+          timeoutMs: timeout || runTimeoutMs,
+        }),
+      ),
     /** Closes every session still open, retries the closes that failed, reports what is left. */
     closeAll() {
       [...names.keys()].forEach(closeSession);
-      for (const session of unclosed.keys()) { // deleting the current key while iterating is safe
+      for (const session of unclosed.keys()) {
         if (!close(session)) {
-          warn(`warning: browser session ${session} could not be closed (${unclosed.get(session)}): playwright-cli -s=${session} close`);
+          warn(
+            `warning: browser session ${session} could not be closed (${unclosed.get(session)}): ` +
+              `playwright-cli -s=${session} close`,
+          );
         }
       }
       return [...unclosed.keys()];
@@ -110,15 +117,19 @@ export function webBrowser(driver, {
   };
 }
 
-/** One driver.run in a worker thread; its temp files in a folder of their own. */
-function runInWorker(libUrl, session, code, timeoutMs) {
-  const outputDir = mkdtempSync(join(tmpdir(), 'web-run-'));
-  const worker = new Worker(new URL('./web-run-worker.mjs', import.meta.url), {
-    workerData: { libUrl, outputDir, session, code, timeoutMs },
-  });
-  return new Promise((resolve, reject) => {
-    worker.once('message', (m) => (m.ok ? resolve(m.value) : reject(Object.assign(new Error(m.message), { code: m.code }))));
-    worker.once('error', reject);
-    worker.once('exit', (c) => c && reject(new Error(`run worker exited ${c}`)));
-  }).finally(() => rmSync(outputDir, { recursive: true, force: true }));
+let current = null;
+
+/** Every check's browser call from now on goes to `browser` (null: none, calls throw). */
+export function useBrowser(browser) {
+  current = browser;
 }
+
+const active = () => {
+  if (!current) throw new Error('no browser: the header checks run inside a `web header` command');
+  return current;
+};
+
+export const openSession = (...args) => active().openSession(...args);
+export const closeSession = (...args) => active().closeSession(...args);
+export const runCode = (...args) => active().runCode(...args);
+export const runCodeAsync = (...args) => active().runCodeAsync(...args);

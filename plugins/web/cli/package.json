@@ -34,6 +34,9 @@
     "#src/*": "./src/*"
   },
   "optionalDependencies": {
-    "cld3-asm": "4.0.0"
+    "cld3-asm": "4.0.0",
+    "pixelmatch": "7.2.0",
+    "pngjs": "7.0.0",
+    "sharp": "0.35.5"
   }
 }

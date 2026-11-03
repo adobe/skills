@@ -3,11 +3,12 @@ import { randomFillSync } from 'node:crypto';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { test } from 'node:test';
-import pixelmatch from 'pixelmatch';
-import sharp from 'sharp';
+import { before, test } from 'node:test';
 import { BOX, fits } from './views.mjs';
 import { padTo, writeSheet, writeViews } from './views-write.mjs';
+import { loadImaging, pixelmatch, sharp } from './imaging.mjs';
+
+before(() => loadImaging());
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'views-write-'));
 const solid = (w, h, [r, g, b]) => {
@@ -36,7 +37,10 @@ test('identical images give an overview only', async () => {
   const dir = tmp();
   const r = await writeViews({ pa, pb: pa, d: diffOf(pa, pa, 300, 200), w: 300, h: 200 }, dir);
   assert.equal(r.mode, 'none');
-  assert.deepEqual(viewsJson(dir).views.map((v) => v.role), ['overview']);
+  assert.deepEqual(
+    viewsJson(dir).views.map((v) => v.role),
+    ['overview'],
+  );
   await checkFiles(dir);
 });
 
@@ -68,7 +72,10 @@ test('busy regions that differ everywhere are split until every PNG fits', async
   assert.equal(r.mode, 'bands');
   const views = viewsJson(dir).views;
   assert.ok(views.every((v) => v.b64Bytes <= BOX.maxB64));
-  assert.equal(views.filter((v) => v.role === 'crop').reduce((s, v) => s + v.h, 0), h);
+  assert.equal(
+    views.filter((v) => v.role === 'crop').reduce((s, v) => s + v.h, 0),
+    h,
+  );
   await checkFiles(dir);
 });
 
@@ -82,7 +89,7 @@ test('source and EDS of different heights are padded to one size', async () => {
   assert.equal(r.mode, 'crops');
 });
 
-test('writeSheet keeps today\'s side-by-side sheet, 1800 px wide at desktop', async () => {
+test("writeSheet keeps today's side-by-side sheet, 1800 px wide at desktop", async () => {
   const pa = solid(1440, 100, [0, 0, 0]);
   const file = join(tmp(), 'side.png');
   await writeSheet({ pa, pb: pa, d: diffOf(pa, pa, 1440, 100), w: 1440, h: 100 }, file);

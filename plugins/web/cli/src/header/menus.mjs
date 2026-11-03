@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Do the page's top-nav menus work like the source's? For each menu the capture opened
  * (`source/open/open.json`), on the EDS page at 1440 px: open it the way the source does (hover
@@ -10,10 +9,9 @@
  * Prints one line per menu; exit 1 when one fails.
  */
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { closeSession, openSession, runCode } from './lib/browser.mjs';
-import { STEADY } from './lib/ab-tests.mjs';
-import { isMain } from './lib/is-main.mjs';
+import { closeSession, openSession, runCode } from './browser.mjs';
+import { STEADY } from './steady.mjs';
+import { loadBundle } from '#src/bundles/index.mjs';
 
 /**
  * Problems of one menu: too few links (under 80 % of the capture's), not closing, not opening.
@@ -30,12 +28,12 @@ export function verdict({ expected, opened, left }) {
   return { ok: !problems.length, problems };
 }
 
-const TOGGLES = fileURLToPath(new URL('./lib/toggles.js', import.meta.url));
+const TOGGLES = loadBundle('header-toggles.js');
 
 const PROBE = `async (page, url, menus) => {
   await page.context().addInitScript(${STEADY});
   await page.goto(url, { waitUntil: 'load' });
-  await page.addScriptTag({ path: ${JSON.stringify(TOGGLES)} });
+  await page.addScriptTag({ content: ${JSON.stringify(TOGGLES)} });
   await page.waitForTimeout(2500);
   // the page's own header: body > header on EDS (a block may hold a <header>), else the first
   const scope = (await page.$('body > header')) ? 'body > header' : 'header';
@@ -78,7 +76,8 @@ const PROBE = `async (page, url, menus) => {
  * `menus` one row per menu with its verdict, `lines` what the command prints.
  */
 export function checkMenus(url, openFile, session = 'staged-menus') {
-  const menus = JSON.parse(readFileSync(openFile, 'utf8')).states.filter((s) => s.newLinks > 0)
+  const menus = JSON.parse(readFileSync(openFile, 'utf8'))
+    .states.filter((s) => s.newLinks > 0)
     .map((s) => ({ label: s.label, trigger: s.trigger, newLinks: s.newLinks }));
   openSession(session, { width: 1440, height: 900 });
   let rows;
@@ -92,22 +91,12 @@ export function checkMenus(url, openFile, session = 'staged-menus') {
   const checked = rows.map((r) => ({ ...r, ...verdict(r) }));
   for (const r of checked) {
     const counts = `${r.opened ?? '-'} of ${r.expected} links`;
-    lines.push(`${r.ok ? 'OK  ' : 'FAIL'} ${r.label} (${r.trigger}): ${counts}`
-      + `${r.problems.length ? ` - ${r.problems.join('; ')}` : ''}`);
+    lines.push(
+      `${r.ok ? 'OK  ' : 'FAIL'} ${r.label} (${r.trigger}): ${counts}` +
+        `${r.problems.length ? ` - ${r.problems.join('; ')}` : ''}`,
+    );
   }
   const failed = checked.filter((r) => !r.ok).length;
   lines.push(failed ? `menus: ${failed} of ${rows.length} fail` : `menus: ${rows.length} ok`);
   return { ok: failed === 0, menus: checked, lines };
 }
-
-function main([url, openFile, session]) {
-  if (!openFile) {
-    console.error('usage: node menus.mjs <page url> <open.json> [session]');
-    process.exit(2);
-  }
-  const { ok, lines } = checkMenus(url, openFile, session);
-  lines.forEach((l) => console.log(l));
-  process.exit(ok ? 0 : 1);
-}
-
-if (isMain(import.meta.url)) main(process.argv.slice(2));

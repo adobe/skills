@@ -45,7 +45,7 @@ async function bundle(entry, name) {
     format: 'esm',
     target: 'node22',
     outfile: `dist/${name}`,
-    external: ['cld3-asm'],
+    external: ['cld3-asm', 'pixelmatch', 'pngjs', 'sharp'],
     legalComments: 'none',
     write: false,
     plugins: [inlinePlugin],

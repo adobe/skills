@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Source open states: each top-nav menu opened in turn (viewport shot + visible link count), so
  * the built menus can be compared with the source's (open-states.mjs). A fresh load per toggle,
@@ -8,17 +7,15 @@
  * layers still visible when it was shot (visibleOverlays, lib/overlay-probe.mjs).
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { closeSession, openSession, runCode } from './lib/browser.mjs';
-import { isMain } from './lib/is-main.mjs';
-import { VISIBLE_OVERLAYS } from './lib/overlay-probe.mjs';
-import { AB_TESTS, STEADY } from './lib/ab-tests.mjs';
+import { join, resolve } from 'node:path';
+import { closeSession, openSession, runCode } from './browser.mjs';
+import { VISIBLE_OVERLAYS } from './overlay-probe.mjs';
+import { AB_TESTS, STEADY } from './steady.mjs';
+import { loadBundle } from '#src/bundles/index.mjs';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const freezeCss = join(here, 'lib/freeze.css');
-const togglesJs = join(here, 'lib/toggles.js');
-const extractor = join(here, 'lib/extract-page.js');
+const freezeCss = loadBundle('header-freeze.css');
+const togglesJs = loadBundle('header-toggles.js');
+const extractor = loadBundle('header-extract.js');
 
 /**
  * The capture step as a function (the web-header binary's `header capture`): writes
@@ -32,7 +29,9 @@ export function openMenus(url, outArg) {
   openSession('plg-src-o', { width: 1440, height: 900 });
   let openStates;
   try {
-    openStates = runCode('plg-src-o', `async first => {
+    openStates = runCode(
+      'plg-src-o',
+      `async first => {
   await first.context().route(${AB_TESTS}, (r) => r.abort());
   await first.context().addInitScript(${STEADY});
   // a fresh page per state: the previous one may still navigate from JS after a toggle's click
@@ -49,9 +48,9 @@ export function openMenus(url, outArg) {
     await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForLoadState('load').catch(() => {});
     if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
-    await page.addStyleTag({ path: ${JSON.stringify(freezeCss)} });
-    await page.addScriptTag({ path: ${JSON.stringify(togglesJs)} });
-    await page.addScriptTag({ path: ${JSON.stringify(extractor)} });
+    await page.addStyleTag({ content: ${JSON.stringify(freezeCss)} });
+    await page.addScriptTag({ content: ${JSON.stringify(togglesJs)} });
+    await page.addScriptTag({ content: ${JSON.stringify(extractor)} });
     await page.waitForTimeout(1200);
   };
   const states = [];
@@ -91,7 +90,8 @@ export function openMenus(url, outArg) {
     await page.mouse.move(720, 880);
   }
   return JSON.stringify({ closedLinks: closed, closedOverlays, states, dumps });
-}`);
+}`,
+    );
   } finally {
     closeSession('plg-src-o');
   }
@@ -99,15 +99,7 @@ export function openMenus(url, outArg) {
   delete openStates.dumps;
   writeFileSync(join(out, 'open', 'open.json'), JSON.stringify(openStates, null, 2));
   const line = `[${((Date.now() - t0) / 1000).toFixed(1)}s] open states: ${openStates.states
-    .map((st) => `${st.label}(+${st.newLinks ?? st.error}, ${st.trigger})`).join(' ')}`;
+    .map((st) => `${st.label}(+${st.newLinks ?? st.error}, ${st.trigger})`)
+    .join(' ')}`;
   return { open: openStates, line };
-}
-
-if (isMain(import.meta.url)) {
-  const [url, outArg] = process.argv.slice(2);
-  if (!url || !outArg) {
-    console.error('usage: node open-menus.mjs <url> <sourceDir>');
-    process.exit(2);
-  }
-  console.log(openMenus(url, outArg).line);
 }

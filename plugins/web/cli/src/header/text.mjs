@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Font and text-position differences between the source and the page, for the last pixels of a
  * header that already has the right layout: every visible text, matched by its text, with the
@@ -23,24 +22,36 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
-import { closeSession, openSession, runCodeAsync } from './lib/browser.mjs';
-import { AB_TESTS, STEADY } from './lib/ab-tests.mjs';
-import { VISIBLE_OVERLAYS } from './lib/overlay-probe.mjs';
-import { PNG } from 'pngjs';
-import pixelmatch from 'pixelmatch';
-import { onWhite } from './open-panels.mjs';
-import { isMain } from './lib/is-main.mjs';
+import { closeSession, openSession, runCodeAsync } from './browser.mjs';
+import { AB_TESTS, STEADY } from './steady.mjs';
+import { VISIBLE_OVERLAYS } from './overlay-probe.mjs';
+import { onWhite } from './panels.mjs';
+import { PNG, pixelmatch } from './imaging.mjs';
+import { loadBundle } from '#src/bundles/index.mjs';
 
-const TOGGLES = fileURLToPath(new URL('./lib/toggles.js', import.meta.url));
-const USAGE = 'usage: node text-styles.mjs <source url> <page url> [--sizes 1440x900,820,390x844] '
-  + '[--open <label> --trigger click | --mobile-menu] [--hide-css overlays.json] [--scale 2]';
+const TOGGLES = loadBundle('header-toggles.js');
 
-export const PROPS = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'fontStretch', 'letterSpacing',
-  'wordSpacing', 'lineHeight', 'textTransform', 'fontFeatureSettings', 'fontVariationSettings',
-  'fontKerning', 'fontOpticalSizing', 'fontSynthesis', 'textRendering', 'webkitFontSmoothing',
-  'color', 'textDecorationLine', 'textShadow'];
+export const PROPS = [
+  'fontFamily',
+  'fontSize',
+  'fontWeight',
+  'fontStyle',
+  'fontStretch',
+  'letterSpacing',
+  'wordSpacing',
+  'lineHeight',
+  'textTransform',
+  'fontFeatureSettings',
+  'fontVariationSettings',
+  'fontKerning',
+  'fontOpticalSizing',
+  'fontSynthesis',
+  'textRendering',
+  'webkitFontSmoothing',
+  'color',
+  'textDecorationLine',
+  'textShadow',
+];
 
 /** Differences between two text lists ({ text, rect, styles }), matched by text in order. */
 export function diffTexts(srcAll, pageAll, tolerance = 0.5) {
@@ -53,21 +64,34 @@ export function diffTexts(srcAll, pageAll, tolerance = 0.5) {
   // otherwise; what must hold is where they sit
   const icons = pairIcons(srcAll.filter(isIcon), pageAll.filter(isIcon));
   for (const [s, p] of icons.pairs) {
-    const diffs = ['x', 'y'].filter((k) => Math.abs(s.rect[k] - p.rect[k]) > tolerance).map((k) => [k, s.rect[k], p.rect[k]]);
+    const diffs = ['x', 'y']
+      .filter((k) => Math.abs(s.rect[k] - p.rect[k]) > tolerance)
+      .map((k) => [k, s.rect[k], p.rect[k]]);
     if (diffs.length) rows.push({ text: s.text, diffs });
   }
   // an icon on one side only is reported, not judged: a build may draw it with CSS where the source
   // has an svg (no element to pair); the 2x pixels judge it. A paired icon out of place fails
-  const iconsOneSide = [...icons.onlySource.map((x) => `source: ${x.text} at ${x.rect.x},${x.rect.y}`),
-    ...icons.onlyPage.map((x) => `page: ${x.text} at ${x.rect.x},${x.rect.y}`)];
+  const iconsOneSide = [
+    ...icons.onlySource.map((x) => `source: ${x.text} at ${x.rect.x},${x.rect.y}`),
+    ...icons.onlyPage.map((x) => `page: ${x.text} at ${x.rect.x},${x.rect.y}`),
+  ];
   for (const s of src) {
     const i = left.findIndex((p) => p.text === s.text);
-    if (i === -1) { onlySource.push(s.text); continue; }
+    if (i === -1) {
+      onlySource.push(s.text);
+      continue;
+    }
     const [p] = left.splice(i, 1);
     // the family that renders is the first one (both sides load the source's fonts); names match
     // case-insensitively (a linter lowercases them)
-    const first = (f) => f.split(',')[0].trim().replace(/^["']|["']$/g, '').toLowerCase();
-    const same = (k) => (k === 'fontFamily' ? first(s.styles[k]) === first(p.styles[k]) : s.styles[k] === p.styles[k]);
+    const first = (f) =>
+      f
+        .split(',')[0]
+        .trim()
+        .replace(/^["']|["']$/g, '')
+        .toLowerCase();
+    const same = (k) =>
+      k === 'fontFamily' ? first(s.styles[k]) === first(p.styles[k]) : s.styles[k] === p.styles[k];
     const diffs = PROPS.filter((k) => !same(k)).map((k) => [k, s.styles[k], p.styles[k]]);
     for (const k of ['x', 'y', 'w', 'h']) {
       if (Math.abs(s.rect[k] - p.rect[k]) > tolerance) diffs.push([k, s.rect[k], p.rect[k]]);
@@ -80,14 +104,23 @@ export function diffTexts(srcAll, pageAll, tolerance = 0.5) {
 /** Icons paired nearest first, within `max` px of each other; the rest are on one side only. */
 export function pairIcons(src, page, max = 40) {
   const d = (a, b) => Math.hypot(a.rect.x - b.rect.x, a.rect.y - b.rect.y);
-  const cands = src.flatMap((s) => page.map((p) => [d(s, p), s, p])).filter(([dist]) => dist <= max).sort((a, b) => a[0] - b[0]);
+  const cands = src
+    .flatMap((s) => page.map((p) => [d(s, p), s, p]))
+    .filter(([dist]) => dist <= max)
+    .sort((a, b) => a[0] - b[0]);
   const used = new Set();
   const pairs = [];
   for (const [, s, p] of cands) {
     if (used.has(s) || used.has(p)) continue;
-    used.add(s); used.add(p); pairs.push([s, p]);
+    used.add(s);
+    used.add(p);
+    pairs.push([s, p]);
   }
-  return { pairs, onlySource: src.filter((s) => !used.has(s)), onlyPage: page.filter((p) => !used.has(p)) };
+  return {
+    pairs,
+    onlySource: src.filter((s) => !used.has(s)),
+    onlyPage: page.filter((p) => !used.has(p)),
+  };
 }
 
 const COLLECT = `(args) => {
@@ -188,23 +221,48 @@ const SCROLL_TO = (y) => `
     await page.waitForTimeout(1000);`;
 
 /** The page's texts at each step ([0] without --scroll), each with its shot when asked. */
-async function collect(session, url, { scope, band, width, height, scale, hideCss, open, trigger, mobileMenu, shot, steps, hideLate = false }) {
+async function collect(
+  session,
+  url,
+  {
+    scope,
+    band,
+    width,
+    height,
+    scale,
+    hideCss,
+    open,
+    trigger,
+    mobileMenu,
+    shot,
+    steps,
+    hideLate = false,
+  },
+) {
   openSession(session, { width, height, scale });
   try {
     // on the source, a consent layer that an interaction's JS shows (wpbeginner: the click or the
     // wheel loads it) is hidden before each state, as header-probes.mjs hides it for its shot
-    const late = hideLate ? `
+    const late = hideLate
+      ? `
   {
     const sel = (await page.evaluate(${VISIBLE_OVERLAYS})).map((o) => o.selector);
     if (sel.length) await page.addStyleTag({ content: sel.join(', ') + ' { display: none !important; }' });
-  }` : '';
-    const states = steps.map((y, i) => `
+  }`
+      : '';
+    const states = steps
+      .map(
+        (y, i) => `
   ${i ? SCROLL_TO(y) : ''}
   ${late}
   if (${JSON.stringify(Boolean(shot))}) await page.screenshot({ path: ${JSON.stringify(shot ? shot(i) : '')} });
-  out.push({ y: ${y}, panelBottom, ...(await page.evaluate(${COLLECT}, [${JSON.stringify(scope)}, ${JSON.stringify(band)}, ${JSON.stringify(PROPS)}])) });`).join('\n');
+  out.push({ y: ${y}, panelBottom, ...(await page.evaluate(${COLLECT}, [${JSON.stringify(scope)}, ${JSON.stringify(band)}, ${JSON.stringify(PROPS)}])) });`,
+      )
+      .join('\n');
     // bounded: a stuck call fails this size (reported, not clean) instead of holding the sweep
-    return await runCodeAsync(session, `async page => {
+    return await runCodeAsync(
+      session,
+      `async page => {
   const innerW = ${width};
   await page.context().route(${AB_TESTS}, (r) => r.abort());
   await page.context().addInitScript(${STEADY});
@@ -212,7 +270,7 @@ async function collect(session, url, { scope, band, width, height, scale, hideCs
   await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForLoadState('load', { timeout: 30000 }).catch(() => {});
   if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
-  await page.addScriptTag({ path: ${JSON.stringify(TOGGLES)} });
+  await page.addScriptTag({ content: ${JSON.stringify(TOGGLES)} });
   await page.waitForFunction(() => !window.hlx
     || document.querySelector('body > header .header[data-block-status="loaded"]'), null, { timeout: 10000 }).catch(() => {});
   // web fonts loaded before anything is measured: a late font (WP tutorials' Typekit, 8 browsers at
@@ -224,7 +282,9 @@ async function collect(session, url, { scope, band, width, height, scale, hideCs
   const out = [];
   ${states}
   return JSON.stringify(out);
-}`, { timeout: 180000 });
+}`,
+      { timeout: 180000 },
+    );
   } finally {
     closeSession(session);
   }
@@ -242,7 +302,8 @@ export function diffShown(headerTexts, srcAll, pageAll, tolerance) {
   const icons = diffTexts(srcAll.filter(isIcon), pageAll.filter(isIcon), tolerance);
   const iconRows = icons.rows;
   const onScreen = (list, t) => list.some((x) => x.text === t);
-  const rows = headerTexts.filter((t) => onScreen(src, t) !== onScreen(page, t))
+  const rows = headerTexts
+    .filter((t) => onScreen(src, t) !== onScreen(page, t))
     .map((t) => ({ text: t, diffs: [['shown', onScreen(src, t), onScreen(page, t)]] }));
   const keep = (list) => list.filter((x) => headerTexts.includes(x.text));
   return [...rows, ...diffTexts(keep(src), keep(page), tolerance).rows, ...iconRows];
@@ -256,8 +317,17 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
   const band = o.band === 'auto' ? (whole ? 'viewport' : 'main') : +o.band;
   const tag = `${size.width}x${size.height}`;
   const steps = o.scroll ? [0, ...o.scroll.split(',').map(Number)] : [0];
-  const name = (side) => (o.shots ? (i) => `${o.shots}-${tag}${o.scroll ? `-${i}y${steps[i]}` : ''}-${side}.png` : null);
-  const opts = { ...size, band, open: o.open, trigger: o.trigger, mobileMenu: o['mobile-menu'], scale: +o.scale, steps };
+  const name = (side) =>
+    o.shots ? (i) => `${o.shots}-${tag}${o.scroll ? `-${i}y${steps[i]}` : ''}-${side}.png` : null;
+  const opts = {
+    ...size,
+    band,
+    open: o.open,
+    trigger: o.trigger,
+    mobileMenu: o['mobile-menu'],
+    scale: +o.scale,
+    steps,
+  };
   // the capture's hide rules on the page too only when it is the source itself (a floor)
   const pageHide = new URL(pageUrl).origin === new URL(srcUrl).origin ? hideCss : '';
   const pageScope = whole ? null : 'body > header';
@@ -265,19 +335,49 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
     sourceStates(srcUrl, { ...opts, hideCss, shot: name('source'), hideLate: true }, o, tag),
     // the page's header by its element, not by a band: a fixed header over a main at 0 (the
     // retailer) left no band, and every header text counted as missing
-    collect(`${o.session}-${tag}-p`, pageUrl, { ...opts, band: whole ? band : 'viewport', scope: pageScope, hideCss: pageHide, shot: name('page'), hideLate: Boolean(pageHide) }),
+    collect(`${o.session}-${tag}-p`, pageUrl, {
+      ...opts,
+      band: whole ? band : 'viewport',
+      scope: pageScope,
+      hideCss: pageHide,
+      shot: name('page'),
+      hideLate: Boolean(pageHide),
+    }),
     // the baseline: the same page before the unit (the shell, every region legacy): what it already
     // differs by (the body's legacy slices, a band the shell places in main) is not the unit's
-    o.baseline ? sourceStates(o.baseline, { ...opts, scope: pageScope, hideCss: '', shot: name('baseline'), hideLate: false }, o, `${tag}-b`) : null,
+    o.baseline
+      ? sourceStates(
+          o.baseline,
+          { ...opts, scope: pageScope, hideCss: '', shot: name('baseline'), hideLate: false },
+          o,
+          `${tag}-b`,
+        )
+      : null,
   ]);
-  const headerTexts = src[0].texts.filter((t) => t.kind !== 'icon' && (src[0].mainTop == null || t.rect.y < src[0].mainTop)).map((t) => t.text);
+  const headerTexts = src[0].texts
+    .filter((t) => t.kind !== 'icon' && (src[0].mainTop == null || t.rect.y < src[0].mainTop))
+    .map((t) => t.text);
   const judge = (s, p0, i) => {
     // closed: the page's header texts in the source's header band (a floating button the
     // retailer's header holds sits below its band on the source, in its body)
-    const p = whole || i || s.mainTop == null ? p0 : { ...p0, texts: p0.texts.filter((t) => t.rect.y < s.mainTop) };
-    const r = o.scroll && i ? { rows: diffShown(headerTexts, s.texts, p.texts, +o.tolerance), onlySource: [], onlyPage: [] }
-      : diffTexts(s.texts, p.texts, +o.tolerance);
-    if (!(o.open || o['mobile-menu']) && !i && s.mainTop != null && Math.abs(s.mainTop - p.mainTop) > +o.tolerance) {
+    const p =
+      whole || i || s.mainTop == null
+        ? p0
+        : { ...p0, texts: p0.texts.filter((t) => t.rect.y < s.mainTop) };
+    const r =
+      o.scroll && i
+        ? {
+            rows: diffShown(headerTexts, s.texts, p.texts, +o.tolerance),
+            onlySource: [],
+            onlyPage: [],
+          }
+        : diffTexts(s.texts, p.texts, +o.tolerance);
+    if (
+      !(o.open || o['mobile-menu']) &&
+      !i &&
+      s.mainTop != null &&
+      Math.abs(s.mainTop - p.mainTop) > +o.tolerance
+    ) {
       r.rows.push({ text: BELOW, diffs: [['y', s.mainTop, p.mainTop]] });
     }
     return r;
@@ -288,12 +388,30 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
     let inherited = 0;
     if (base) ({ r, inherited } = minusBaseline(r, judge(s, base[i], i), headerTexts));
     const rows = whole || i ? null : Math.ceil(s.mainTop * +o.scale);
-    const px = o.shots ? differingPixels(name('source')(i), name('page')(i), rows, base ? name('baseline')(i) : null) : null;
+    const px = o.shots
+      ? differingPixels(name('source')(i), name('page')(i), rows, base ? name('baseline')(i) : null)
+      : null;
     // an open menu: how many of them are in the header and its panel (above the source panel's
     // bottom); the rest is the page under it (the retailer's legacy body at 1200 and 992 px)
     const panelRows = o.open && s.panelBottom != null ? Math.ceil(s.panelBottom * +o.scale) : null;
-    const pxPanel = px && panelRows ? differingPixels(name('source')(i), name('page')(i), panelRows, base ? name('baseline')(i) : null) : null;
-    return { tag: at, matched: s.texts.length - r.onlySource.length, px, pxPanel, inherited, shots: o.shots && name('*')(i), ...r };
+    const pxPanel =
+      px && panelRows
+        ? differingPixels(
+            name('source')(i),
+            name('page')(i),
+            panelRows,
+            base ? name('baseline')(i) : null,
+          )
+        : null;
+    return {
+      tag: at,
+      matched: s.texts.length - r.onlySource.length,
+      px,
+      pxPanel,
+      inherited,
+      shots: o.shots && name('*')(i),
+      ...r,
+    };
   });
 }
 
@@ -304,11 +422,21 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
  */
 async function sourceStates(srcUrl, opts, o, tag) {
   const dir = o['source-cache'];
-  const load = (shot) => collect(`${o.session}-${tag}-s`, srcUrl, { ...opts, scope: opts.scope ?? null, shot });
+  const load = (shot) =>
+    collect(`${o.session}-${tag}-s`, srcUrl, { ...opts, scope: opts.scope ?? null, shot });
   if (!dir) return load(opts.shot);
   const { shot, ...shape } = opts;
   // the collector's code is part of the key: a changed collector must not reuse old states
-  const key = cacheKey({ srcUrl, shape, shots: Boolean(shot), collector: cacheKey({ COLLECT, OPEN: OPEN(shape.open, shape.trigger, shape.mobileMenu), PROPS }) });
+  const key = cacheKey({
+    srcUrl,
+    shape,
+    shots: Boolean(shot),
+    collector: cacheKey({
+      COLLECT,
+      OPEN: OPEN(shape.open, shape.trigger, shape.mobileMenu),
+      PROPS,
+    }),
+  });
   const file = join(dir, `${key}.json`);
   const cached = (i) => join(dir, `${key}-${i}.png`);
   if (!existsSync(file)) {
@@ -318,24 +446,43 @@ async function sourceStates(srcUrl, opts, o, tag) {
   }
   const states = JSON.parse(readFileSync(file, 'utf8'));
   // the asked shot names may be in a folder nothing created yet (Playwright's writer creates it, a copy does not)
-  if (shot) states.forEach((_, i) => { mkdirSync(dirname(shot(i)), { recursive: true }); copyFileSync(cached(i), shot(i)); });
+  if (shot)
+    states.forEach((_, i) => {
+      mkdirSync(dirname(shot(i)), { recursive: true });
+      copyFileSync(cached(i), shot(i));
+    });
   return states;
 }
 
 /** A stable key for a source state: the same inputs give the same key, whatever the key order. */
 export function cacheKey(value) {
-  const sorted = (v) => (v && typeof v === 'object' && !Array.isArray(v)
-    ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sorted(v[k])])) : v);
-  return createHash('sha1').update(JSON.stringify(sorted(value))).digest('hex').slice(0, 16);
+  const sorted = (v) =>
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.fromEntries(
+          Object.keys(v)
+            .sort()
+            .map((k) => [k, sorted(v[k])]),
+        )
+      : v;
+  return createHash('sha1')
+    .update(JSON.stringify(sorted(value)))
+    .digest('hex')
+    .slice(0, 16);
 }
 
 /** Runs async fns with at most n in flight, results in order. */
 async function pool(fns, n) {
   const out = [];
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(n, fns.length) }, async () => {
-    while (next < fns.length) { const i = next; next += 1; out[i] = await fns[i](); }
-  }));
+  await Promise.all(
+    Array.from({ length: Math.min(n, fns.length) }, async () => {
+      while (next < fns.length) {
+        const i = next;
+        next += 1;
+        out[i] = await fns[i]();
+      }
+    }),
+  );
   return out;
 }
 
@@ -348,9 +495,17 @@ export function differingPixels(a, b, rows = null, base = null) {
   const imgs = [a, b, ...(base ? [base] : [])].map((f) => PNG.sync.read(readFileSync(f)));
   const w = Math.min(...imgs.map((i) => i.width));
   const h = Math.min(rows ?? Infinity, ...imgs.map((i) => i.height));
-  const [A, B, C] = imgs.map((img) => { const o = new PNG({ width: w, height: h }); PNG.bitblt(img, o, 0, 0, w, h, 0, 0); return onWhite(o.data); });
+  const [A, B, C] = imgs.map((img) => {
+    const o = new PNG({ width: w, height: h });
+    PNG.bitblt(img, o, 0, 0, w, h, 0, 0);
+    return onWhite(o.data);
+  });
   if (!C) return pixelmatch(A, B, null, w, h, { threshold: 0.1 });
-  const mask = (x, y) => { const d = new PNG({ width: w, height: h }); pixelmatch(x, y, d.data, w, h, { threshold: 0.1, diffMask: true }); return d.data; };
+  const mask = (x, y) => {
+    const d = new PNG({ width: w, height: h });
+    pixelmatch(x, y, d.data, w, h, { threshold: 0.1, diffMask: true });
+    return d.data;
+  };
   const [ab, ac, bc] = [mask(A, B), mask(A, C), mask(B, C)];
   // diffMask: a differing pixel is opaque (alpha 255), an equal one transparent
   let n = 0;
@@ -368,11 +523,36 @@ export function minusBaseline(r, b, own = []) {
   let inherited = 0;
   const key = (text, [k, src, val]) => JSON.stringify([text, k, src, val]);
   const mine = new Set([...own, BELOW]);
-  const known = new Set(b.rows.filter((row) => !mine.has(row.text)).flatMap((row) => row.diffs.map((d) => key(row.text, d))));
-  const rows = r.rows.map((row) => ({ ...row, diffs: row.diffs.filter((d) => { const old = known.has(key(row.text, d)); inherited += old ? 1 : 0; return !old; }) }))
+  const known = new Set(
+    b.rows
+      .filter((row) => !mine.has(row.text))
+      .flatMap((row) => row.diffs.map((d) => key(row.text, d))),
+  );
+  const rows = r.rows
+    .map((row) => ({
+      ...row,
+      diffs: row.diffs.filter((d) => {
+        const old = known.has(key(row.text, d));
+        inherited += old ? 1 : 0;
+        return !old;
+      }),
+    }))
     .filter((row) => row.diffs.length);
-  const drop = (list, base) => list.filter((t) => { const old = !mine.has(t) && base.includes(t); inherited += old ? 1 : 0; return !old; });
-  return { r: { ...r, rows, onlySource: drop(r.onlySource, b.onlySource), onlyPage: drop(r.onlyPage, b.onlyPage) }, inherited };
+  const drop = (list, base) =>
+    list.filter((t) => {
+      const old = !mine.has(t) && base.includes(t);
+      inherited += old ? 1 : 0;
+      return !old;
+    });
+  return {
+    r: {
+      ...r,
+      rows,
+      onlySource: drop(r.onlySource, b.onlySource),
+      onlyPage: drop(r.onlyPage, b.onlyPage),
+    },
+    inherited,
+  };
 }
 
 /**
@@ -383,23 +563,38 @@ export function minusBaseline(r, b, own = []) {
 export function captureHideCss(overlaysPath) {
   const css = JSON.parse(readFileSync(overlaysPath, 'utf8')).hideCss || '';
   const open = join(dirname(overlaysPath), 'open', 'open.json');
-  const late = existsSync(open) ? JSON.parse(readFileSync(open, 'utf8')).mobileMenu?.lateOverlays || [] : [];
-  return [css, late.length ? `${late.join(', ')} { display: none !important; }` : ''].filter(Boolean).join('\n');
+  const late = existsSync(open)
+    ? JSON.parse(readFileSync(open, 'utf8')).mobileMenu?.lateOverlays || []
+    : [];
+  return [css, late.length ? `${late.join(', ')} { display: none !important; }` : '']
+    .filter(Boolean)
+    .join('\n');
 }
 
-export const parseSizes = (s) => s.split(',').map((x) => {
-  const [w, h = '900'] = x.split('x');
-  if (!(+w > 0 && +h > 0)) throw new Error(`bad size "${x}": use WIDTH or WIDTHxHEIGHT`);
-  return { width: +w, height: +h };
-});
+export const parseSizes = (s) =>
+  s.split(',').map((x) => {
+    const [w, h = '900'] = x.split('x');
+    if (!(+w > 0 && +h > 0)) throw new Error(`bad size "${x}": use WIDTH or WIDTHxHEIGHT`);
+    return { width: +w, height: +h };
+  });
 
 /** The command's options (node:util parseArgs), with their defaults. */
 export const OPTIONS = {
-  sizes: { type: 'string', default: '1440x900' }, band: { type: 'string', default: 'auto' },
-  'hide-css': { type: 'string' }, open: { type: 'string' }, trigger: { type: 'string', default: 'hover' },
-  'mobile-menu': { type: 'boolean', default: false }, scroll: { type: 'string' }, scale: { type: 'string', default: '1' },
-  tolerance: { type: 'string', default: '0.05' }, shots: { type: 'string' }, 'source-cache': { type: 'string' }, baseline: { type: 'string' }, parallel: { type: 'string', default: '4' },
-  session: { type: 'string', default: 'text-styles' } };
+  sizes: { type: 'string', default: '1440x900' },
+  band: { type: 'string', default: 'auto' },
+  'hide-css': { type: 'string' },
+  open: { type: 'string' },
+  trigger: { type: 'string', default: 'hover' },
+  'mobile-menu': { type: 'boolean', default: false },
+  scroll: { type: 'string' },
+  scale: { type: 'string', default: '1' },
+  tolerance: { type: 'string', default: '0.05' },
+  shots: { type: 'string' },
+  'source-cache': { type: 'string' },
+  baseline: { type: 'string' },
+  parallel: { type: 'string', default: '4' },
+  session: { type: 'string', default: 'text-styles' },
+};
 
 /**
  * The check as a function (the web-header binary's `header check text`): { ok, sizes, notCleanAt,
@@ -408,57 +603,86 @@ export const OPTIONS = {
  * `opts`: OPTIONS by name; missing ones take their defaults.
  */
 export async function checkText(srcUrl, pageUrl, opts = {}) {
-  const defaults = Object.fromEntries(Object.entries(OPTIONS).filter(([, v]) => 'default' in v).map(([k, v]) => [k, v.default]));
-  const o = { ...defaults, ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)) };
+  const defaults = Object.fromEntries(
+    Object.entries(OPTIONS)
+      .filter(([, v]) => 'default' in v)
+      .map(([k, v]) => [k, v.default]),
+  );
+  const o = {
+    ...defaults,
+    ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)),
+  };
   // a pool of 0 workers (--parallel 0, a fraction, a word) ran nothing and read as clean (PR #27 review)
   const parallel = Number(o.parallel);
-  if (!Number.isInteger(parallel) || parallel < 1) throw new Error(`--parallel must be a positive integer, not "${o.parallel}"`);
+  if (!Number.isInteger(parallel) || parallel < 1)
+    throw new Error(`--parallel must be a positive integer, not "${o.parallel}"`);
   const sizes = parseSizes(o.sizes);
   const hideCss = o['hide-css'] ? captureHideCss(o['hide-css']) : '';
   // each size is two browsers (source, page): --parallel sizes at a time
   // a size that cannot be loaded is reported (not clean, `failed`), the others still run
-  const run = (size) => compareAt(srcUrl, pageUrl, size, o, hideCss).catch((e) => [{ tag: `${size.width}x${size.height}`,
-    matched: 0, px: null, onlySource: [], onlyPage: [], failed: true,
-    rows: [{ text: '(could not be compared)', diffs: [['error', e.message.split('\n').find((l) => /Error/.test(l)) || e.message.slice(0, 120), '']] }] }]);
-  const results = (await pool(sizes.map((size) => () => run(size)), parallel)).flat();
-  if (results.length < sizes.length) throw new Error(`${sizes.length} sizes asked, ${results.length} compared`);
+  const run = (size) =>
+    compareAt(srcUrl, pageUrl, size, o, hideCss).catch((e) => [
+      {
+        tag: `${size.width}x${size.height}`,
+        matched: 0,
+        px: null,
+        onlySource: [],
+        onlyPage: [],
+        failed: true,
+        rows: [
+          {
+            text: '(could not be compared)',
+            diffs: [
+              [
+                'error',
+                e.message.split('\n').find((l) => /Error/.test(l)) || e.message.slice(0, 120),
+                '',
+              ],
+            ],
+          },
+        ],
+      },
+    ]);
+  const results = (
+    await pool(
+      sizes.map((size) => () => run(size)),
+      parallel,
+    )
+  ).flat();
+  if (results.length < sizes.length)
+    throw new Error(`${sizes.length} sizes asked, ${results.length} compared`);
   const lines = [];
   let differ = 0;
   const failed = [];
   for (const r of results) {
-    for (const row of r.rows) lines.push(`${r.tag} "${row.text}": ${row.diffs.map(([k, a, b]) => `${k} ${a} -> ${b}`).join('; ')}`);
-    if (r.onlySource.length) lines.push(`${r.tag} only on the source: ${r.onlySource.map((t) => `"${t}"`).join(', ')}`);
-    if (r.onlyPage.length) lines.push(`${r.tag} only on the page: ${r.onlyPage.map((t) => `"${t}"`).join(', ')}`);
-    if (r.iconsOneSide?.length) lines.push(`${r.tag} icons on one side only (not judged here; the 2x pixels are): ${r.iconsOneSide.join(', ')}`);
+    for (const row of r.rows)
+      lines.push(
+        `${r.tag} "${row.text}": ${row.diffs.map(([k, a, b]) => `${k} ${a} -> ${b}`).join('; ')}`,
+      );
+    if (r.onlySource.length)
+      lines.push(`${r.tag} only on the source: ${r.onlySource.map((t) => `"${t}"`).join(', ')}`);
+    if (r.onlyPage.length)
+      lines.push(`${r.tag} only on the page: ${r.onlyPage.map((t) => `"${t}"`).join(', ')}`);
+    if (r.iconsOneSide?.length)
+      lines.push(
+        `${r.tag} icons on one side only (not judged here; the 2x pixels are): ${r.iconsOneSide.join(', ')}`,
+      );
     const unmatched = r.onlySource.length + r.onlyPage.length;
-    lines.push(`${r.tag} text styles: ${r.rows.length} differ of ${r.matched} matched texts`
-      + `${unmatched ? `, ${unmatched} on one side only` : ''}${r.inherited ? ` (${r.inherited} inherited from the baseline, not counted)` : ''}`
-      + `${r.px == null ? '' : `; ${r.px} differing pixels at ${o.scale}x${r.pxPanel == null ? '' : ` (${r.pxPanel} in the header and open panel, ${r.px - r.pxPanel} below them)`} (${r.shots})`}`);
+    lines.push(
+      `${r.tag} text styles: ${r.rows.length} differ of ${r.matched} matched texts` +
+        `${unmatched ? `, ${unmatched} on one side only` : ''}${r.inherited ? ` (${r.inherited} inherited from the baseline, not counted)` : ''}` +
+        `${r.px == null ? '' : `; ${r.px} differing pixels at ${o.scale}x${r.pxPanel == null ? '' : ` (${r.pxPanel} in the header and open panel, ${r.px - r.pxPanel} below them)`} (${r.shots})`}`,
+    );
     // a text on one side only is a difference too: a changed or missing label (PR #14 review)
-    if (r.rows.length || r.onlySource.length || r.onlyPage.length || r.px) { differ += 1; failed.push(r.tag.split(' ')[0]); }
+    if (r.rows.length || r.onlySource.length || r.onlyPage.length || r.px) {
+      differ += 1;
+      failed.push(r.tag.split(' ')[0]);
+    }
   }
   const notCleanAt = [...new Set(failed)];
-  if (notCleanAt.length) lines.push(`not clean at: ${notCleanAt.join(',')} (re-run those with --sizes while fixing)`);
+  if (notCleanAt.length)
+    lines.push(`not clean at: ${notCleanAt.join(',')} (re-run those with --sizes while fixing)`);
   // the sizes whose comparison did not run to its end: a failed measurement, not a difference
   const failedAt = [...new Set(results.filter((r) => r.failed).map((r) => r.tag.split(' ')[0]))];
   return { ok: differ === 0, sizes: results, notCleanAt, failedAt, lines };
 }
-
-async function main(argv) {
-  const { positionals: [srcUrl, pageUrl], values: o } = parseArgs({ args: argv, allowPositionals: true, options: OPTIONS });
-  if (!srcUrl || !pageUrl) {
-    console.error(USAGE);
-    process.exit(2);
-  }
-  let result;
-  try {
-    result = await checkText(srcUrl, pageUrl, o);
-  } catch (e) { // a bad option (--parallel, --sizes)
-    console.error(`text-styles: ${e.message}`);
-    process.exit(2);
-  }
-  result.lines.forEach((l) => console.log(l));
-  process.exit(result.ok ? 0 : 1);
-}
-
-if (isMain(import.meta.url)) await main(process.argv.slice(2));

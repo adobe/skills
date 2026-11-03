@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Renders the EDS page and compares it with the captured source, full page and per region.
  * Usage: node compare.mjs <edsUrl> <sourceDir> <outDir>
@@ -15,20 +14,20 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { parseArgs } from 'node:util';
-import pixelmatch from 'pixelmatch';
-import { PNG } from 'pngjs';
-import sharp from 'sharp';
-import { STEADY } from './lib/ab-tests.mjs';
-import { clsOf } from './lib/cls.mjs';
-import { closeSession, openSession, runCode, stitchTiles, TILED_SHOT } from './lib/browser.mjs';
-import { isMain } from './lib/is-main.mjs';
-import { padTo, writeSheet, writeViews } from './lib/views-write.mjs';
+import { STEADY } from './steady.mjs';
+import { clsOf } from './cls.mjs';
+import { closeSession, openSession, runCode } from './browser.mjs';
+import { stitchTiles, TILED_SHOT } from './tiles.mjs';
+import { padTo, writeSheet, writeViews } from './views-write.mjs';
+import { PNG, pixelmatch, sharp } from './imaging.mjs';
 
 /** The command's options (node:util parseArgs), with their defaults. */
 export const OPTIONS = {
-  map: { type: 'string' }, only: { type: 'string' }, session: { type: 'string', default: 'plg-cmp' },
-  mobile: { type: 'boolean', default: false }, tablet: { type: 'boolean', default: false },
+  map: { type: 'string' },
+  only: { type: 'string' },
+  session: { type: 'string', default: 'plg-cmp' },
+  mobile: { type: 'boolean', default: false },
+  tablet: { type: 'boolean', default: false },
   'no-full': { type: 'boolean', default: false },
   static: { type: 'boolean', default: false },
 };
@@ -39,8 +38,14 @@ export const OPTIONS = {
  * command prints). `opts`: OPTIONS by name; missing ones take their defaults.
  */
 export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
-  const opt = { ...Object.fromEntries(Object.entries(OPTIONS).filter(([, v]) => 'default' in v).map(([k, v]) => [k, v.default])),
-    ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)) };
+  const opt = {
+    ...Object.fromEntries(
+      Object.entries(OPTIONS)
+        .filter(([, v]) => 'default' in v)
+        .map(([k, v]) => [k, v.default]),
+    ),
+    ...Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)),
+  };
   const lines = [];
   const srcDir = resolve(srcArg);
   const out = resolve(outArg);
@@ -54,7 +59,9 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
   const srcShot = join(srcDir, `${vp}.png`);
 
   openSession(opt.session, { width, height });
-  const rects = runCode(opt.session, `async page => {
+  const rects = runCode(
+    opt.session,
+    `async page => {
     // layout shift while the page loads (blocks and their CSS arrive late): its total, and the
     // section, header or footer each moved element belongs to
     await page.addInitScript(() => {
@@ -123,7 +130,8 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
       }, sel);
     }
     return JSON.stringify(rects);
-  }`);
+  }`,
+  );
   closeSession(opt.session);
   await stitchTiles(shot);
 
@@ -133,9 +141,13 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
     const h = height ?? meta.height;
     const t = Math.min(Math.max(0, top), meta.height - 1);
     const hh = Math.max(1, Math.min(h, meta.height - t));
-    const { data, info } = await img.extract({ left: 0, top: t, width: Math.min(meta.width, width), height: hh })
+    const { data, info } = await img
+      .extract({ left: 0, top: t, width: Math.min(meta.width, width), height: hh })
       // on white, as a browser shows it: a semi-transparent row in a shot is not a difference (s2b)
-      .flatten({ background: '#ffffff' }).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      .flatten({ background: '#ffffff' })
+      .ensureAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
     return { data, w: info.width, h: info.height };
   }
 
@@ -149,20 +161,28 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
     if (diffFile) writeFileSync(diffFile, PNG.sync.write(d));
     const region = { pa, pb, d: d.data, w, h };
     if (sideFile) await writeSheet(region, sideFile);
-    return { mismatch: +(100 * n / (w * h)).toFixed(2), w, h, region };
+    return { mismatch: +((100 * n) / (w * h)).toFixed(2), w, h, region };
   }
 
   const cls = clsOf(rects.__shifts ?? []);
   const report = { edsUrl, viewport: vp, width, overflow: rects.__overflow, cls, regions: {} };
   if (!opt['no-full']) {
-    const { region: _full, ...full } = await diff(await loadPng(srcShot), await loadPng(shot),
-      join(out, `full-diff-${vp}.png`));
+    const { region: _full, ...full } = await diff(
+      await loadPng(srcShot),
+      await loadPng(shot),
+      join(out, `full-diff-${vp}.png`),
+    );
     report.full = full;
     report.full.srcH = (await sharp(srcShot).metadata()).height;
     report.full.edsH = (await sharp(shot).metadata()).height;
   }
-  const words = (t) => (t || '').toLowerCase().replace(/[’‘]/g, "'").replace(/[“”]/g, '"')
-    .split(/[^\p{L}\p{N}']+/u).filter(Boolean);
+  const words = (t) =>
+    (t || '')
+      .toLowerCase()
+      .replace(/[’‘]/g, "'")
+      .replace(/[“”]/g, '"')
+      .split(/[^\p{L}\p{N}']+/u)
+      .filter(Boolean);
   function textRecall(srcText, edsText) {
     const bag = new Map();
     words(edsText).forEach((w) => bag.set(w, (bag.get(w) || 0) + 1));
@@ -187,9 +207,15 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
   for (const key of Object.keys(map)) {
     const ids = key.split('+');
     if (only && !ids.some((id) => only.has(id))) continue;
-    if (ids.some((id) => !byId[id])) { unknown.push(key); continue; }
+    if (ids.some((id) => !byId[id])) {
+      unknown.push(key);
+      continue;
+    }
     const parts = ids.map((id) => byId[id]).filter((p) => rectOf(p));
-    if (!parts.length) { notShown.push(key); continue; }
+    if (!parts.length) {
+      notShown.push(key);
+      continue;
+    }
     const er = rects[key];
     if (!er) continue;
     const top = Math.min(...parts.map((p) => rectOf(p).y));
@@ -201,44 +227,60 @@ export async function comparePage(edsUrl, srcArg, outArg, opts = {}) {
     const { region, ...r } = await diff(a, b, null, side);
     // full-resolution views for the agent: side.png is shrunk to 1800 px (s8)
     const views = await writeViews(region, `${base}.views`);
-    const srcText = ids.map((id) => {
-      const f = join(srcDir, 'regions', `${id}.txt`);
-      return existsSync(f) ? readFileSync(f, 'utf8') : '';
-    }).join(' ');
+    const srcText = ids
+      .map((id) => {
+        const f = join(srcDir, 'regions', `${id}.txt`);
+        return existsSync(f) ? readFileSync(f, 'utf8') : '';
+      })
+      .join(' ');
     // region text files hold the desktop text; at other widths menus etc. are legitimately hidden
     const t = vp !== 'desktop' ? { recall: null, lost: [] } : textRecall(srcText, er.text);
-    const leftovers = [...new Set((er.text.match(/:[a-z][a-z0-9-]*:/gi) || []))];
-    report.regions[key] = { srcY: top, srcH, edsY: er.y, edsH: er.h, ...r, textRecall: t.recall,
-      lostWords: t.lost.slice(0, 40), leftovers, views: `${base}.views`, viewsMode: views.mode };
-    rows.push(`${key.padEnd(7)} src@${top}+${srcH}  eds@${er.y}+${er.h}  dH=${er.h - srcH}  `
-      + `mismatch=${r.mismatch}%${t.recall === null ? '' : `  text=${t.recall}%`}`
-      + `${t.lost.length ? ` lost:[${t.lost.slice(0, 8).join(' ')}${t.lost.length > 8 ? ' …' : ''}]` : ''}`
-      + `${leftovers.length ? ` UNRENDERED:${leftovers.join(',')}` : ''}  side=${side}`
-      + `  views=${views.views.length} ${views.mode}`);
+    const leftovers = [...new Set(er.text.match(/:[a-z][a-z0-9-]*:/gi) || [])];
+    report.regions[key] = {
+      srcY: top,
+      srcH,
+      edsY: er.y,
+      edsH: er.h,
+      ...r,
+      textRecall: t.recall,
+      lostWords: t.lost.slice(0, 40),
+      leftovers,
+      views: `${base}.views`,
+      viewsMode: views.mode,
+    };
+    rows.push(
+      `${key.padEnd(7)} src@${top}+${srcH}  eds@${er.y}+${er.h}  dH=${er.h - srcH}  ` +
+        `mismatch=${r.mismatch}%${t.recall === null ? '' : `  text=${t.recall}%`}` +
+        `${t.lost.length ? ` lost:[${t.lost.slice(0, 8).join(' ')}${t.lost.length > 8 ? ' …' : ''}]` : ''}` +
+        `${leftovers.length ? ` UNRENDERED:${leftovers.join(',')}` : ''}  side=${side}` +
+        `  views=${views.views.length} ${views.mode}`,
+    );
   }
   // the page has no element for a requested key (its selector matched nothing)
-  const missing = Object.keys(map).filter((k) => !rects[k] && (!only || k.split('+').some((id) => only.has(id))));
+  const missing = Object.keys(map).filter(
+    (k) => !rects[k] && (!only || k.split('+').some((id) => only.has(id))),
+  );
   Object.assign(report, { missing, unknown, notShown });
   writeFileSync(join(out, `report-${vp}.json`), JSON.stringify(report, null, 2));
   if (report.full) {
-    lines.push(`FULL ${vp}: mismatch=${report.full.mismatch}% `
-      + `(src h=${report.full.srcH}, eds h=${report.full.edsH})`
-      + `${report.overflow > 0 ? `  OVERFLOW: the page is ${report.overflow}px wider than the viewport` : ''}`
-      + `${cls.value > 0.1 ? `  CLS ${cls.value} > 0.1 (moved: ${cls.by.map(([k, v]) => `${k} ${v}`).join(', ')}; `
-        + `resized while loading: ${cls.resized.map(([k, hs]) => `${k} ${hs.join('->')}px`).join(', ') || 'none'})` : ''}`);
+    lines.push(
+      `FULL ${vp}: mismatch=${report.full.mismatch}% ` +
+        `(src h=${report.full.srcH}, eds h=${report.full.edsH})` +
+        `${report.overflow > 0 ? `  OVERFLOW: the page is ${report.overflow}px wider than the viewport` : ''}` +
+        `${
+          cls.value > 0.1
+            ? `  CLS ${cls.value} > 0.1 (moved: ${cls.by.map(([k, v]) => `${k} ${v}`).join(', ')}; ` +
+              `resized while loading: ${cls.resized.map(([k, hs]) => `${k} ${hs.join('->')}px`).join(', ') || 'none'})`
+            : ''
+        }`,
+    );
   }
   rows.forEach((r) => lines.push(r));
-  if (missing.length) lines.push(`MISSING in EDS (selector matched nothing): ${missing.join(', ')}`);
-  if (unknown.length) lines.push(`UNKNOWN in the capture (no region with that id): ${unknown.join(', ')}`);
-  if (notShown.length) lines.push(`NOT SHOWN at ${vp} on the source (not compared): ${notShown.join(', ')}`);
+  if (missing.length)
+    lines.push(`MISSING in EDS (selector matched nothing): ${missing.join(', ')}`);
+  if (unknown.length)
+    lines.push(`UNKNOWN in the capture (no region with that id): ${unknown.join(', ')}`);
+  if (notShown.length)
+    lines.push(`NOT SHOWN at ${vp} on the source (not compared): ${notShown.join(', ')}`);
   return { report, lines };
-}
-
-if (isMain(import.meta.url)) {
-  const { values, positionals: [edsUrl, srcArg, outArg] } = parseArgs({ allowPositionals: true, options: OPTIONS });
-  if (!edsUrl || !srcArg || !outArg) {
-    console.error('usage: node compare.mjs <edsUrl> <sourceDir> <outDir> [--map map.json] [--only ids]');
-    process.exit(2);
-  }
-  (await comparePage(edsUrl, srcArg, outArg, values)).lines.forEach((l) => console.log(l));
 }

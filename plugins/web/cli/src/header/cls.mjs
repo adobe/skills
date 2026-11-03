@@ -19,7 +19,12 @@ export function clsOf(shifts) {
       seen.set(p, hs);
     }
   }
-  return { value: r(shifts.reduce((t, s) => t + s.v, 0)),
-    by: [...by].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([p, v]) => [p, r(v)]),
-    resized: [...seen].filter(([, hs]) => hs.length > 1) };
+  return {
+    value: r(shifts.reduce((t, s) => t + s.v, 0)),
+    by: [...by]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([p, v]) => [p, r(v)]),
+    resized: [...seen].filter(([, hs]) => hs.length > 1),
+  };
 }

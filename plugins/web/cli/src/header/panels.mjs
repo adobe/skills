@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Are the page's open menus 1:1 with the source's? No Clef: pixels and hrefs only.
  * Desktop (1440 x 900): each menu the capture opened (`source/open/open.json`) is opened on the
@@ -13,13 +12,11 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { PNG } from 'pngjs';
-import pixelmatch from 'pixelmatch';
-import { closeSession, openSession, runCode } from './lib/browser.mjs';
-import { AB_TESTS, STEADY } from './lib/ab-tests.mjs';
-import { VISIBLE_OVERLAYS } from './lib/overlay-probe.mjs';
-import { isMain } from './lib/is-main.mjs';
+import { closeSession, openSession, runCode } from './browser.mjs';
+import { AB_TESTS, STEADY } from './steady.mjs';
+import { VISIBLE_OVERLAYS } from './overlay-probe.mjs';
+import { PNG, pixelmatch } from './imaging.mjs';
+import { loadBundle } from '#src/bundles/index.mjs';
 
 // the s2b 1:1 bar (sp-fast-s2b-header-quality/README.md), fixed before the runs
 export const MAX_PANEL = 1.5;
@@ -49,7 +46,9 @@ export function boxMismatch(a, b, rect = null) {
     PNG.bitblt(img, o, x, y, w, h, 0, 0);
     return onWhite(o.data);
   };
-  return +((100 * pixelmatch(crop(a), crop(b), null, w, h, { threshold: 0.1 })) / (w * h)).toFixed(2);
+  return +((100 * pixelmatch(crop(a), crop(b), null, w, h, { threshold: 0.1 })) / (w * h)).toFixed(
+    2,
+  );
 }
 
 /**
@@ -57,12 +56,14 @@ export function boxMismatch(a, b, rect = null) {
  * origin is read as the same path on the source's origin (a relative link to the source's path).
  */
 export function hrefDiff(expected, got, pageOrigin, sourceOrigin) {
-  const norm = (h) => (h.startsWith(`${pageOrigin}/`) ? sourceOrigin + h.slice(pageOrigin.length) : h);
+  const norm = (h) =>
+    h.startsWith(`${pageOrigin}/`) ? sourceOrigin + h.slice(pageOrigin.length) : h;
   const left = [...expected];
   const extra = [];
   for (const h of got.map(norm)) {
     const i = left.indexOf(h);
-    if (i === -1) extra.push(h); else left.splice(i, 1);
+    if (i === -1) extra.push(h);
+    else left.splice(i, 1);
   }
   return { missing: left, extra };
 }
@@ -71,21 +72,25 @@ export function hrefDiff(expected, got, pageOrigin, sourceOrigin) {
 export function panelVerdict({ error, mismatch, missing = [], extra = [] }) {
   if (error) return [error];
   const problems = [];
-  if (mismatch == null || mismatch > MAX_PANEL) problems.push(`panel mismatch ${mismatch ?? '-'} % > ${MAX_PANEL} %`);
-  if (missing.length) problems.push(`${missing.length} href(s) missing: ${missing.slice(0, 3).join(' ')}`);
-  if (extra.length) problems.push(`${extra.length} href(s) not in the capture: ${extra.slice(0, 3).join(' ')}`);
+  if (mismatch == null || mismatch > MAX_PANEL)
+    problems.push(`panel mismatch ${mismatch ?? '-'} % > ${MAX_PANEL} %`);
+  if (missing.length)
+    problems.push(`${missing.length} href(s) missing: ${missing.slice(0, 3).join(' ')}`);
+  if (extra.length)
+    problems.push(`${extra.length} href(s) not in the capture: ${extra.slice(0, 3).join(' ')}`);
   return problems;
 }
 
 /** Problems of the mobile menu: no toggle, or the open viewport over the bar. */
 export function mobileVerdict({ error, mismatch }) {
   if (error) return [error];
-  return mismatch == null || mismatch > MAX_MOBILE ? [`mobile menu mismatch ${mismatch ?? '-'} % > ${MAX_MOBILE} %`] : [];
+  return mismatch == null || mismatch > MAX_MOBILE
+    ? [`mobile menu mismatch ${mismatch ?? '-'} % > ${MAX_MOBILE} %`]
+    : [];
 }
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const FREEZE = join(here, 'lib/freeze.css');
-const TOGGLES = join(here, 'lib/toggles.js');
+const FREEZE = loadBundle('header-freeze.css');
+const TOGGLES = loadBundle('header-toggles.js');
 
 // a fresh page per load (open-menus.mjs: a JS navigation from the previous one can overtake it)
 const LOAD = (url, hideCss, freeze) => `let page = first;
@@ -96,8 +101,8 @@ const LOAD = (url, hideCss, freeze) => `let page = first;
     await page.goto(${JSON.stringify(url)}, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForLoadState('load').catch(() => {});
     if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
-    if (${freeze}) await page.addStyleTag({ path: ${JSON.stringify(FREEZE)} });
-    await page.addScriptTag({ path: ${JSON.stringify(TOGGLES)} });
+    if (${freeze}) await page.addStyleTag({ content: ${JSON.stringify(FREEZE)} });
+    await page.addScriptTag({ content: ${JSON.stringify(TOGGLES)} });
     // an EDS header is decorated after load: wait for its block, then the capture's 1200 ms (later,
     // the source itself changes: wpbeginner's panels moved 1 px, 0.7-1.2 % at 2.5 s)
     await page.waitForFunction(() => !window.hlx
@@ -108,7 +113,9 @@ const LOAD = (url, hideCss, freeze) => `let page = first;
 function shootPanels(session, url, states, out, hideCss) {
   openSession(session, { width: 1440, height: 900 });
   try {
-    return runCode(session, `async first => {
+    return runCode(
+      session,
+      `async first => {
   await first.context().route(${AB_TESTS}, (r) => r.abort());
   await first.context().addInitScript(${STEADY});
   ${LOAD(url, hideCss, true)}
@@ -127,7 +134,8 @@ function shootPanels(session, url, states, out, hideCss) {
     res.push({ label: st.label, file: st.file, hrefs: (panel?.items || []).map((i) => i.href) });
   }
   return JSON.stringify(res);
-}`);
+}`,
+    );
   } finally {
     closeSession(session);
   }
@@ -136,7 +144,9 @@ function shootPanels(session, url, states, out, hideCss) {
 function shootMobile(session, url, out, hideCss, isSource) {
   openSession(session, { width: 390, height: 844 });
   try {
-    return runCode(session, `async first => {
+    return runCode(
+      session,
+      `async first => {
   await first.context().route(${AB_TESTS}, (r) => r.abort());
   await first.context().addInitScript(${STEADY});
   ${LOAD(url, hideCss, false)}
@@ -154,7 +164,8 @@ function shootMobile(session, url, out, hideCss, isSource) {
   }
   await page.screenshot({ path: ${JSON.stringify(join(out, 'mobile-menu.png'))} });
   return JSON.stringify({});
-}`);
+}`,
+    );
   } finally {
     closeSession(session);
   }
@@ -173,7 +184,9 @@ export function checkPanels(url, srcArg, outArg, session = 'open-panels') {
   const open = JSON.parse(readFileSync(join(src, 'open', 'open.json'), 'utf8'));
   const sourceUrl = JSON.parse(readFileSync(join(src, 'page.json'), 'utf8')).url;
   const isSource = new URL(url).origin === new URL(sourceUrl).origin;
-  const hideCss = isSource ? JSON.parse(readFileSync(join(src, 'overlays.json'), 'utf8')).hideCss || '' : '';
+  const hideCss = isSource
+    ? JSON.parse(readFileSync(join(src, 'overlays.json'), 'utf8')).hideCss || ''
+    : '';
   // shots of an earlier run must not be scored
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
@@ -183,44 +196,54 @@ export function checkPanels(url, srcArg, outArg, session = 'open-panels') {
   const rows = shots.map((s) => {
     const st = states.find((x) => x.label === s.label);
     if (s.error) return { label: s.label, error: s.error };
-    const mismatch = boxMismatch(readPng(join(src, 'open', st.file)), readPng(join(out, s.file)), st.panel.rect);
-    const diff = hrefDiff(st.panel.items.map((i) => i.href), s.hrefs, new URL(url).origin, new URL(sourceUrl).origin);
-    return { label: s.label, trigger: st.trigger, mismatch, links: s.hrefs.length, expected: st.panel.items.length, ...diff };
+    const mismatch = boxMismatch(
+      readPng(join(src, 'open', st.file)),
+      readPng(join(out, s.file)),
+      st.panel.rect,
+    );
+    const diff = hrefDiff(
+      st.panel.items.map((i) => i.href),
+      s.hrefs,
+      new URL(url).origin,
+      new URL(sourceUrl).origin,
+    );
+    return {
+      label: s.label,
+      trigger: st.trigger,
+      mismatch,
+      links: s.hrefs.length,
+      expected: st.panel.items.length,
+      ...diff,
+    };
   });
   const srcMobile = join(src, 'open', 'mobile-menu.png');
   let mobile = null;
   if (existsSync(srcMobile)) {
     const m = shootMobile(`${session}-m`, url, out, hideCss, isSource);
-    mobile = m.error ? m : { mismatch: boxMismatch(readPng(srcMobile), readPng(join(out, 'mobile-menu.png'))) };
+    mobile = m.error
+      ? m
+      : { mismatch: boxMismatch(readPng(srcMobile), readPng(join(out, 'mobile-menu.png'))) };
   }
 
   let failed = 0;
   for (const r of rows) {
     r.problems = panelVerdict(r);
     if (r.problems.length) failed += 1;
-    lines.push(`${r.problems.length ? 'FAIL' : 'OK  '} ${r.label} (${r.trigger ?? '-'}): panel ${r.mismatch ?? '-'} %, `
-      + `${r.links ?? '-'} of ${r.expected ?? '-'} hrefs${r.problems.length ? ` - ${r.problems.join('; ')}` : ''}`);
+    lines.push(
+      `${r.problems.length ? 'FAIL' : 'OK  '} ${r.label} (${r.trigger ?? '-'}): panel ${r.mismatch ?? '-'} %, ` +
+        `${r.links ?? '-'} of ${r.expected ?? '-'} hrefs${r.problems.length ? ` - ${r.problems.join('; ')}` : ''}`,
+    );
   }
   if (mobile) {
     mobile.problems = mobileVerdict(mobile);
     if (mobile.problems.length) failed += 1;
-    lines.push(`${mobile.problems.length ? 'FAIL' : 'OK  '} mobile menu: ${mobile.mismatch ?? '-'} %`
-      + `${mobile.problems.length ? ` - ${mobile.problems.join('; ')}` : ''}`);
+    lines.push(
+      `${mobile.problems.length ? 'FAIL' : 'OK  '} mobile menu: ${mobile.mismatch ?? '-'} %` +
+        `${mobile.problems.length ? ` - ${mobile.problems.join('; ')}` : ''}`,
+    );
   } else lines.push('n/a  mobile menu: no source shot');
   const total = rows.length + (mobile ? 1 : 0);
   writeFileSync(join(out, 'panels.json'), JSON.stringify({ url, panels: rows, mobile }, null, 1));
   lines.push(failed ? `open panels: ${failed} of ${total} fail` : `open panels: ${total} ok`);
   return { ok: failed === 0, panels: rows, mobile, lines };
 }
-
-function main([url, srcArg, outArg, session]) {
-  if (!url || !srcArg || !outArg) {
-    console.error('usage: node open-panels.mjs <page url> <sourceDir> <outDir> [session]');
-    process.exit(2);
-  }
-  const { ok, lines } = checkPanels(url, srcArg, outArg, session);
-  lines.forEach((l) => console.log(l));
-  process.exit(ok ? 0 : 1);
-}
-
-if (isMain(import.meta.url)) main(process.argv.slice(2));
