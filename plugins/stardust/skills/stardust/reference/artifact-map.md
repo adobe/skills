@@ -382,13 +382,13 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `canon/**` | yes | prototype | the design canon |
 | `canon-source/**` except `assets/screenshots/` | yes | extract | donor capture |
 | `current/` text: `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `_brand-extraction.json`, `_crawl-log.json`, `_dynamics.json`, `brand-review.html`, `pages/*.json`, `pages/*.html` | yes | extract | `pages/*.json` feeds nine skills; the substrate of the pipeline |
-| `current/assets/**` except `screenshots/` | yes | extract | fonts, logo, source media (#150) |
+| `current/assets/**` except `screenshots/` | yes | extract | fonts, logo, source media (#156) |
 | `current/assets/screenshots/` | **no** | extract | rewritten on every extract |
 | `current/brand-sources/*/assets/screenshots/` | **no** | extract | screenshots |
 | `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
 | `validation/**` | **no** | master / prototype | clean-pass screenshots |
 | `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB) |
-| `replica/gates/**` except `*.png` | yes | replica | tables, verdicts, capture records: a resumed run reads them (#150) |
+| `replica/gates/**` except `*.png` | yes | replica | tables, verdicts, capture records: a resumed run reads them (#156) |
 | `**/gates/**/*.png` except `baseline.png` | **no** | replica | captures and diffs, re-taken when needed (`gate-all.mjs --help`) |
 | `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger |
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |

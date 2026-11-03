@@ -12,7 +12,7 @@
 // (stitch-shot writes the record, pixel-compare the JSON): the meta carries fontsFailed, a dead face or a skipped
 // check fails the row (exit 2), the prototype stage reads the record of the archetype round's live.png it reuses (or the
 // frozen baseline's after a flagged round; one staleCapture refuses is captured afresh) — none is unchecked, never "all loaded".
-// Disk (#150): a passed page keeps its records, not its PNGs, and --skip-existing reuses that recorded pass — a run with
+// Disk (#156): a passed page keeps its records, not its PNGs, and --skip-existing reuses that recorded pass — a run with
 // stub instruments, no browser.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -292,7 +292,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
   } finally { rmSync(root, { recursive: true, force: true }); }
 }
 
-// ---- disk (#150): a passed page keeps its records, not its pictures ---------------------------------------------
+// ---- disk (#156): a passed page keeps its records, not its pictures ---------------------------------------------
 const pageDir = (files) => {
   const d = mkdtempSync(join(tmpdir(), 'gate-all-drop-'));
   for (const [name, body] of Object.entries(files)) writeFileSync(join(d, name), typeof body === 'string' ? body : JSON.stringify(body));
@@ -342,7 +342,7 @@ const [url, out] = process.argv.slice(2); appendFileSync(process.env.STUB_LOG, u
 if (process.env.STUB_PNGS) appendFileSync(process.env.STUB_PNGS, readdirSync('stardust/replica/gates', { recursive: true }).filter((f) => f.endsWith('.png')).length + '\\n');
 if (url === process.env.STUB_KILL) { process.kill(process.ppid, 'SIGKILL'); process.exit(1); }
 if (url === process.env.STUB_FAIL) { console.error('capture failed'); process.exit(1); }
-writeFileSync(out, 'png'); writeFileSync(out.replace(/\\.png$/, '.capture.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 } }));\n`);
+writeFileSync(out, 'png'); writeFileSync(out.replace(/\\.png$/, '.capture.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 }, fontsFailed: [] }));\n`);
   writeFileSync(join(rep, 'pixel-compare.mjs'), `import { writeFileSync } from 'node:fs';
 const a = process.argv.slice(2); writeFileSync(a[a.indexOf('--out') + 1], 'png');
 const pct = a[0].includes('/bad/') ? 30 : 1;

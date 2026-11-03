@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.37.0 — a resumed run keeps its gate verdicts, not its pictures (#150)
+## 0.37.0 — a resumed run keeps its gate verdicts, not its pictures (#156)
 
 Field learning (a recorded 550-page site-scope replica run in a 20 GB container): the disk filled after every page
 was published. The tracked tree was 5.3 GiB, 82 % PNG: gate captures and diffs of every page (3.3 GiB, a fifth of

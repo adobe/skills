@@ -1,6 +1,6 @@
 # Disk lifecycle — design note
 
-Status: shipped in 0.37.0 (#150): the ignore file, `gate-all.mjs` and `gate.sh`. This note keeps the reasoning, what
+Status: shipped in 0.37.0 (#156): the ignore file, `gate-all.mjs` and `gate.sh`. This note keeps the reasoning, what
 was measured, and what was left out.
 
 ## The problem, measured

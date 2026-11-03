@@ -448,7 +448,7 @@ r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl12', '--ma
 check('… so the next unflagged round captures live (LIVE,BUILD) instead of reusing baseline bytes', r.status === 0 && attempts().join(',') === 'LIVE,BUILD' && livePng('blon') === 'png', `attempts ${attempts().join(',')} ${r.stderr}`);
 check('the frozen baseline itself is untouched by every round above', readFileSync(join(root, gdir('blon'), 'baseline.png'), 'utf8') === 'baseline-png-bytes' && JSON.parse(readFileSync(join(root, gdir('blon'), 'baseline.json'), 'utf8')).capturedAt === PROV.capturedAt);
 
-// Disk (#150): a round keeps only its own diff image and vdiff dir; earlier rounds keep their text and JSON evidence.
+// Disk (#156): a round keeps only its own diff image and vdiff dir; earlier rounds keep their text and JSON evidence.
 const kdir = join(root, 'stardust/replica/gates/keep-1440');
 for (const d of ['vdiff-iter1', 'vdiff-iter2']) mkdirSync(join(kdir, d), { recursive: true });
 for (const f of ['diff-iter1.png', 'diff-final.png', 'vdiff-iter1/eds-full.png', 'diff-iter2.png', 'vdiff-iter2/eds-full.png', 'chrome-header-diff.png', 'baseline.png', 'verdict-iter1.json', 'content-diff-iter1.txt']) writeFileSync(join(kdir, f), 'x');

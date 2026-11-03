@@ -15,7 +15,7 @@
  * for the repeated-unit families stardust/replica/units.json declares for the page. Writes
  * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json],
  * <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead. A page that passes keeps its
- * records, not its PNGs (#150, disk): every PNG in its dir is deleted, pixel.json notes the drop with the masks and
+ * records, not its PNGs (#156, disk): every PNG in its dir is deleted, pixel.json notes the drop with the masks and
  * eds URL it was measured with, and a --skip-existing / --compare-only run reuses that pass while both hold. Pages go
  * through in batches of BATCH, so a passed batch's PNGs are gone before the next is captured; a page captured again
  * loses its recorded pass first, and a missing capture is written to pixel.json — a failed or interrupted re-capture
@@ -95,7 +95,7 @@ Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND cl
   A dead font face on either side (the capture record's fontsFailed, <slug>/<side>.capture.json) fails the row:
   font-not-loaded:<family>; so does a font check that could not run (fontsFailed null, or no record): font-check-skipped:<origin|build>.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header).
-A page that passes keeps its records, not its PNGs (#150): --recapture-eds / --recapture-origin, or a run
+A page that passes keeps its records, not its PNGs (#156): --recapture-eds / --recapture-origin, or a run
 without --skip-existing, shoots it again. Pages go through in batches of ${BATCH}: a passed batch's PNGs are deleted
 before the next batch is captured.
 Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
@@ -224,7 +224,7 @@ export function staleCapture(png) {
   return true;
 }
 
-// Disk (#150): a passed page keeps its records, not its pictures. Every PNG in its dir goes (an extra capture put
+// Disk (#156): a passed page keeps its records, not its pictures. Every PNG in its dir goes (an extra capture put
 // there too); pixel.json records the drop with the masks and eds URL the pass was measured with → PNGs deleted.
 export function dropPassedCaptures(d, { masks = [], edsUrl }) {
   const pixel = readJsonSafe(join(d, 'pixel.json'));
@@ -429,7 +429,7 @@ async function main() {
     await pool(shoot, 4, compare);
     for (const p of batch) if (rowOf(p).pass) dropped += dropPassedCaptures(dir(p), measuredWith(p));
   }
-  if (dropped) log(`dropped ${dropped} PNG(s) of passed pages — their records stay (#150)`);
+  if (dropped) log(`dropped ${dropped} PNG(s) of passed pages — their records stay (#156)`);
   const rows = pages.map(rowOf);
   const n = (f) => rows.filter(f).length;
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.override), fail: n((r) => !r.pass && r.pct != null), error: n((r) => r.pct == null),
