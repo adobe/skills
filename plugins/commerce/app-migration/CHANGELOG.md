@@ -1,5 +1,13 @@
 # @adobe/aio-commerce-plugin-app-migration
 
+## 1.3.3
+
+### Patch Changes
+
+- [#744](https://github.com/adobe/aio-commerce-sdk/pull/744) [`8f28544`](https://github.com/adobe/aio-commerce-sdk/commit/8f2854444cba44b3a41e6572b2f388487f2872c5) Thanks [@iivvaannxx](https://github.com/iivvaannxx)! - Install, upgrade and uninstall now plan the operation and validate the plan before anything changes. Uninstalling removes what the app installed and what it can prove it owns, even without an installation record, and runs the uninstall of every custom installation step that ran and is still configured. Every lifecycle operation uses the Commerce instance stored at association.
+
+- [#712](https://github.com/adobe/aio-commerce-sdk/pull/712) [`d78221e`](https://github.com/adobe/aio-commerce-sdk/commit/d78221e01894d2209b7864aca6a5fbfab93c7192) Thanks [@obarcelonap](https://github.com/obarcelonap)! - Guide migrated projects to use the `include-ims-credentials` annotation and `resolveImsAuthParams` instead of manually wired IMS credential inputs.
+
 ## 1.3.2
 
 ### Patch Changes

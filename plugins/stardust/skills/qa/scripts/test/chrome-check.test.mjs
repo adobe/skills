@@ -4,7 +4,7 @@
 // chrome-explore.test.mjs for the browser run).
 // Run: node plugins/stardust/skills/qa/scripts/test/chrome-check.test.mjs
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../checks/chrome.mjs';
@@ -17,5 +17,9 @@ await check('no contract: one header-contract-missing info finding', async () =>
   const f = await run({ base: 'https://example.com', opts: { headerContract: join(dir, 'none.json'), outDir: dir } });
   assert.deepEqual(f.map((x) => [x.check, x.id, x.severity]), [['chrome', 'header-contract-missing', 'info']]);
   rmSync(dir, { recursive: true });
+});
+await check('the live build exploration is unbudgeted and unpaced', () => {
+  const source = readFileSync(new URL('../checks/chrome.mjs', import.meta.url), 'utf8');
+  for (const flag of ['--max-requests', '--pace-ms', '--reload-pause-ms']) assert.match(source, new RegExp(`'${flag}', '0'`));
 });
 process.exit(failed ? 1 : 0);
