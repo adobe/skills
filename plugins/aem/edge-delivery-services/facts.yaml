@@ -145,6 +145,7 @@
     loadEager()
   used_by:
     - evals/block-file-structure-and-performance-pat
+    - skills/building-blocks/SKILL.md
 
 - id: reuse-authored-dom
   claim: >-
@@ -159,6 +160,7 @@
     adobe-rnd/aem-boilerplate-xwalk scripts/scripts.js moveInstrumentation()
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/building-blocks/SKILL.md
 
 - id: delivered-pictures
   claim: >-
@@ -186,6 +188,7 @@
   source: aem-boilerplate 5cea543, AGENTS.md
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/building-blocks/SKILL.md
 
 - id: block-dom-scope
   claim: >-
@@ -208,6 +211,7 @@
   source: aem-boilerplate 5cea543, AGENTS.md, scripts/aem.js exports
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/building-blocks/SKILL.md
 
 - id: no-build-step
   claim: >-
@@ -241,6 +245,7 @@
     string and assign it with innerHTML?
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/building-blocks/SKILL.md
 
 - id: programmatic-blocks
   claim: >-
