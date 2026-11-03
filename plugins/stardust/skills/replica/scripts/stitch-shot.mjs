@@ -86,6 +86,13 @@
  *                         built-in candidates (OneTrust, "Accept all", …)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
+ *     --hide <sel,...>    remove the matched elements from the capture
+ *                         (display:none, applied before the settle pass): no
+ *                         band at their place, no space they reserved, and a
+ *                         fixed bar is not repeated in every chunk. --dismiss
+ *                         CLICKS its selectors and leaves layout as it was;
+ *                         this one removes. Space reserved outside the
+ *                         element (a body or main offset) stays.
  *     --no-dismiss        dismiss no overlay at all (gate.sh --no-dismiss)
  *     --headed            escalation: headed stealth real Chrome
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
@@ -150,6 +157,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --settle          slow-scroll lazyload settle pass before capture
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
+  --hide <sel,…>    remove the matched elements from the capture (display:none, before the settle
+                    pass: no band, no reserved space, a fixed bar not repeated per chunk); --dismiss
+                    only clicks. Default none; selectors are comma-separated, so none holds a comma
   --no-dismiss      dismiss no overlay at all (gate.sh --no-dismiss pass-through)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
@@ -198,7 +208,7 @@ export class UsageError extends Error { constructor(msg) { super(msg); this.name
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], hide: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -206,6 +216,7 @@ export function parseArgs(argv) {
     else if (a === '--settle') { opts.settle = true; }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--hide') { opts.hide = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--no-dismiss') { opts.noDismiss = true; }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
@@ -494,12 +505,15 @@ export const sidecarOf = (out) => `${out.replace(/\.png$/i, '')}.capture.json`;
 // status. Returns capture.json's denialCheck: 'ok' (read, no marker) | 'skipped: <reason>' (the probe failed twice,
 // or a live-session.mjs copy that predates pageDenial) — a skip is one stderr line AND on the record, never a
 // silent pass.
-export async function recheckDenial(session, page, url, status) {
+export async function recheckDenial(session, page, url, status, { captureStyle = null } = {}) {
+  if (captureStyle && session.DENIAL_CAPTURE_STYLE_OPTION !== 1) {
+    throw new Error('stitch-shot: live-session.mjs cannot check denial pages safely with --hide; copy the updated diff skill scripts alongside');
+  }
   if (typeof session.pageDenial !== 'function' || typeof session.botChallengeError !== 'function') {
     console.error('stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)');
     return 'skipped: live-session.mjs predates pageDenial';
   }
-  const { marker, skipped } = await session.pageDenial(page);
+  const { marker, skipped } = await session.pageDenial(page, captureStyle ? { captureStyle } : undefined);
   if (skipped) console.error(`stitch-shot: denial-page check skipped (${skipped})`);
   if (marker) throw session.botChallengeError(url, `HTTP ${status} ${marker}`, { denial: true });
   return skipped ? `skipped: ${skipped}` : 'ok';
@@ -545,6 +559,11 @@ async function main() {
     // solveWindow only under --headed: headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     const entry = await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
+    // One rule per selector, so an invalid one drops only itself; a stylesheet rule also covers elements
+    // the page adds later.
+    const hideStyle = opts.hide.length
+      ? await page.addStyleTag({ content: opts.hide.map((sel) => `${sel}{display:none!important}`).join('\n') })
+      : null;
     await page.waitForTimeout(opts.wait);
     // --no-dismiss: the capture shows whatever the site shows (the gate's --no-dismiss reaches both sides).
     if (opts.noDismiss) console.log('overlays left as the page shows them (--no-dismiss)');
@@ -569,8 +588,8 @@ async function main() {
       if (!opts.noDismiss) await dismissAndLog(page, url, opts);
     }
 
-    // A denial page a script rendered after domcontentloaded (gotoLive read the entry): exit 3, no PNG, no sidecar.
-    const denialCheck = await recheckDenial(liveSession, page, url, entry.status());
+    // The denial probe temporarily ignores capture-only hiding in one page evaluation.
+    const denialCheck = await recheckDenial(liveSession, page, url, entry.status(), { captureStyle: hideStyle });
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });

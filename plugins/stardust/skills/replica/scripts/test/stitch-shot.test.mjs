@@ -146,6 +146,11 @@ await check('recheckDenial: a live-session copy that predates pageDenial / botCh
     assert.equal(out, 'skipped: live-session.mjs predates pageDenial');
   }
 });
+await check('recheckDenial: --hide requires a live-session copy that can inspect the unhidden page', async () => {
+  for (const stale of [{}, { pageDenial: session.pageDenial, botChallengeError: session.botChallengeError }]) {
+    await assert.rejects(recheckDenial(stale, pageOf({}), 'https://x.test/', 200, { captureStyle: {} }), /copy the updated diff skill scripts/);
+  }
+});
 await check('--help in an empty cwd: exit 0, usage, exit 3 named for an edge interstitial or a 2xx denial page with --headed, the capture.json record — nothing written, no playwright needed; importing this module started no capture', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'stitch-help-'));
   try {
@@ -170,6 +175,26 @@ const runIn = (args, cwd) => { const r = spawnSync(process.execPath, [SCRIPT, ..
 const tmp = (tag) => mkdtempSync(join(tmpdir(), `stitch-${tag}-`));
 const AT = '2026-10-19T08:00:00.000Z';
 const URL_A = 'https://origin.example/';
+await check('--help, baseline and record work when browser dependencies cannot be loaded', () => {
+  const cwd = tmp('no-browser');
+  try {
+    const loader = join(cwd, 'block-browser.mjs');
+    writeFileSync(loader, `export function resolve(name, context, next) {
+  if (name === 'playwright' || name === 'pngjs') throw new Error('browser dependency requested');
+  return next(name, context);
+}\n`);
+    const run = (args) => spawnSync(process.execPath, ['--no-warnings', '--experimental-loader', loader, SCRIPT, ...args], { cwd, encoding: 'utf8', timeout: 15000 });
+    const help = run(['--help']);
+    assert.equal(help.status, 0, help.stderr);
+    assert.match(help.stdout, /--hide/);
+    const baseline = run(['baseline', cwd]);
+    assert.equal(baseline.status, 1, baseline.stderr);
+    assert.match(baseline.stdout, /no frozen baseline/i);
+    const record = run(['record', join(cwd, 'live.json'), '--origin', 'live', '--url', URL_A, '--width', '1440']);
+    assert.equal(record.status, 0, record.stderr);
+    assert.equal(JSON.parse(readFileSync(join(cwd, 'live.json'), 'utf8')).origin, 'live');
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
 const freeze = (dir, prov = {}) => {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, BASELINE_PNG), 'frozen-png');

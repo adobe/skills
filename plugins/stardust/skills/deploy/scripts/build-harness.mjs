@@ -43,7 +43,7 @@
  * WARN (stderr): a section-metadata block without key/value rows or not a
  * direct child of a section (left in place), an unreadable auto-detected
  * ledger, a captured file outside <root> or missing, an orphan </div>.
- * Writes: <outHarness> only (its parent directory must already exist).
+ * Writes: <outHarness> only (its parent directory is created when missing).
  * Output: a full HTML doc loading /styles/styles.css + /scripts/scripts.js
  * (which imports aem.js, adds body.appear, and loads the sections — the same
  * boot as head.html), body = empty <header>/<footer> (the runtime's
@@ -59,9 +59,11 @@
  * `href="data:,"` when none does — zero favicon requests either way (probe
  * determinism, no guaranteed 404 per load).
  */
-import { readFileSync, writeFileSync, existsSync } from 'fs';
 import {
-  isAbsolute, join, relative, sep,
+  existsSync, mkdirSync, readFileSync, writeFileSync,
+} from 'fs';
+import {
+  dirname, isAbsolute, join, relative, sep,
 } from 'path';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -388,5 +390,6 @@ ${faviconLink}</head>
 ${main}
 <footer></footer>
 </body></html>`;
+mkdirSync(dirname(outFile), { recursive: true });
 writeFileSync(outFile, doc);
 process.stdout.write(`harness written: ${outFile} (${doc.length} bytes)\n`);

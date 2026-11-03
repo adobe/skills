@@ -27,10 +27,11 @@ const stderrOf = async (fn) => {
 
 check('the exported surface the instruments import, the denial-page names included', () => {
   for (const name of ['REAL_CHROME_UA', 'CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'isChallengeResponse', 'gotoLive', 'launchStealthHeaded', 'browserTier', 'acceptConsent', 'dismissOverlays',
-    'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
+    'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_CAPTURE_STYLE_OPTION', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
   for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.equal(typeof session[name], 'function', name);
   assert.equal(session.DENIAL_TEXT_MAX_BYTES, 2048);
   assert.equal(session.DENIAL_PROBE_MS, 10000);
+  assert.equal(session.DENIAL_CAPTURE_STYLE_OPTION, 1);
   assert.ok(session.DENIAL_ERROR_HEADING instanceof RegExp && session.DENIAL_ERROR_HEADING.flags.includes('i'), 'a case-insensitive RegExp');
 });
 
@@ -163,6 +164,29 @@ await checkAsync('pageDenial: a readable page → its marker (or null); a read t
   const broken = pageWith(() => { throw new Error('Execution context was destroyed, most likely because of a navigation\n    at denialProbeInPage'); });
   assert.deepEqual(await session.pageDenial(broken), { marker: null, skipped: 'Execution context was destroyed, most likely because of a navigation' });
   assert.deepEqual([broken.calls.evaluate, broken.calls.waits], [2, [500]]);
+});
+await checkAsync('pageDenial forwards the capture-only stylesheet to the in-page probe', async () => {
+  const captureStyle = {};
+  const page = {
+    evaluate: async (fn, style) => { assert.equal(fn, session.denialProbeInPage); assert.equal(style, captureStyle); return SIGNATURE_PAGES['system-down']; },
+    waitForTimeout: async () => {},
+  };
+  assert.deepEqual(await session.pageDenial(page, { captureStyle }), { marker: 'denial page — "System Down"', skipped: null });
+});
+check('denialProbeInPage restores a capture stylesheet even when the probe throws', () => {
+  const captureStyle = { disabled: false };
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    get() { assert.equal(captureStyle.disabled, true); throw new Error('probe failed'); },
+  });
+  try {
+    assert.throws(() => session.denialProbeInPage(captureStyle), /probe failed/);
+    assert.equal(captureStyle.disabled, false);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'document', previous);
+    else delete globalThis.document;
+  }
 });
 await checkAsync('pageDenial: a read past the probe deadline is a failed read — a page whose evaluate never settles → skipped "denial-page probe: deadline 50 ms exceeded" after two reads', async () => {
   const wedged = pageWith(() => new Promise(() => {}));

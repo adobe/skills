@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "blocking": false,
+  "text": {
+    "allow": [
+      { "id": "T1", "from": "&amp;", "to": "&", "why": "the source markup double-escapes the ampersand in the second feature, so the source shows a literal &amp;; the preview renders & after the authoring round trip" }
+    ]
+  },
+  "images": "count+alt+width",
+  "links": { "localize": { "sourceHost": "src.test" } },
+  "metadata": {
+    "ignore": ["canonical", "og:url", "og:image", "twitter:image"],
+    "jsonLd": "count-only",
+    "absent": []
+  }
+}

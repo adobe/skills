@@ -253,6 +253,7 @@ export function isChallengeResponse(response) {
 // button", or an article titled "System Down", is no denial page; a pair ("Access Denied" + "Reference #") is
 // specific enough anywhere.
 export const DENIAL_TEXT_MAX_BYTES = 2048;
+export const DENIAL_CAPTURE_STYLE_OPTION = 1;
 // One probe read's deadline (pageDenial): page.evaluate has no timeout of its own, and a renderer stuck in a busy
 // loop never answers it — unbounded, the read inside gotoLive would undo the bounded navigation the callers rely on.
 export const DENIAL_PROBE_MS = 10000;
@@ -288,21 +289,28 @@ export function normalizeDenialText(s) {
  * page.evaluate(denialProbeInPage) → { title, text, bytes, headings, frames }: the title; the body's visible text,
  * whitespace-collapsed, first 32768 chars; `bytes` = UTF-8 length of the FULL collapsed text; the collapsed texts
  * of the displayed headings (h1–h6, [role=heading]; display, visibility and a ≥ 1×1 box), ≤ 10; iframe srcs, ≤ 10.
+ * A capture-only stylesheet, when supplied, is disabled for this synchronous read and restored before returning.
  * Self-contained: playwright serialises it.
  */
 /* eslint-disable no-undef */
-export function denialProbeInPage() {
-  const collapse = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-  const full = collapse(document.body ? document.body.innerText : '');
-  const headings = [];
-  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')) {
-    if (headings.length >= 10) break;
-    const cs = getComputedStyle(el);
-    const r = el.getBoundingClientRect();
-    if (cs.display !== 'none' && cs.visibility !== 'hidden' && r.width >= 1 && r.height >= 1) headings.push(collapse(el.innerText));
+export function denialProbeInPage(captureStyle = null) {
+  const wasDisabled = captureStyle?.disabled;
+  if (captureStyle) captureStyle.disabled = true;
+  try {
+    const collapse = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const full = collapse(document.body ? document.body.innerText : '');
+    const headings = [];
+    for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')) {
+      if (headings.length >= 10) break;
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      if (cs.display !== 'none' && cs.visibility !== 'hidden' && r.width >= 1 && r.height >= 1) headings.push(collapse(el.innerText));
+    }
+    const frames = [...document.querySelectorAll('iframe[src]')].slice(0, 10).map((f) => f.src || f.getAttribute('src'));
+    return { title: document.title, text: full.slice(0, 32768), bytes: new TextEncoder().encode(full).length, headings, frames };
+  } finally {
+    if (captureStyle) captureStyle.disabled = wasDisabled;
   }
-  const frames = [...document.querySelectorAll('iframe[src]')].slice(0, 10).map((f) => f.src || f.getAttribute('src'));
-  return { title: document.title, text: full.slice(0, 32768), bytes: new TextEncoder().encode(full).length, headings, frames };
 }
 /* eslint-enable no-undef */
 
@@ -363,14 +371,15 @@ export function withDeadline(promise, ms, label = 'step') {
  * probe'): a wedged renderer never answers page.evaluate, so a read past the deadline is a failed read, like an
  * evaluate error (a navigation under the probe). A failed read is retried once after 500 ms; failing twice →
  * { marker: null, skipped: '<first line of the error>' } — the caller says the check was skipped, it never
- * silently passes.
+ * silently passes. `captureStyle` is an optional Playwright element handle for a capture-only stylesheet.
  */
-export async function pageDenial(page, { probeMs = DENIAL_PROBE_MS } = {}) {
+export async function pageDenial(page, { probeMs = DENIAL_PROBE_MS, captureStyle = null } = {}) {
   let last = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (attempt) await page.waitForTimeout(500).catch(() => {});
     try {
-      return { marker: denialMarker(await withDeadline(page.evaluate(denialProbeInPage), probeMs, 'denial-page probe')), skipped: null };
+      const probe = captureStyle ? page.evaluate(denialProbeInPage, captureStyle) : page.evaluate(denialProbeInPage);
+      return { marker: denialMarker(await withDeadline(probe, probeMs, 'denial-page probe')), skipped: null };
     } catch (e) { last = e; }
   }
   return { marker: null, skipped: String(last && last.message ? last.message : last).split('\n')[0] };
