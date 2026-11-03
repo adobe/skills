@@ -40,27 +40,27 @@ If it fails, run `npm run lint:fix`, then fix what remains by hand.
 
 ## Step 2: Browser Validation (MANDATORY)
 
-Load the test content URL(s) and check:
-- the block renders correctly, including every variant
-- mobile, tablet and desktop widths (e.g. 375px, 768px, 1200px)
+Exercise the block in a real browser on the test content URL(s): every variant, mobile, tablet and desktop widths (e.g. 375px, 768px, 1200px), and every interaction. Use whatever tooling you have: browser/Playwright MCP tools, a throwaway Playwright script (delete it afterwards), or a manual browser.
+
+Check for yourself:
 - no console errors
 - interactions work
-- acceptance criteria and designs, if provided, are met
+- functional acceptance criteria are met
 
-Use whatever browser tooling you have: browser/Playwright MCP tools, a throwaway Playwright script (delete it afterwards), or a manual browser. Look at screenshots: this is where visual and layout problems get caught.
+Don't judge visuals yourself. Take screenshots of each variant at each width and present them to the user to check against the design, or give them the URLs to check. Report what they confirm or flag; don't claim the block looks right on your own judgment.
 
 **Proof required:**
-- screenshots of the test content (at least one viewport)
+- screenshots (or URLs) handed to the user for visual review
 - confirmation of no console errors
-- confirmation that acceptance criteria are met (if provided)
+- confirmation that functional acceptance criteria are met (if provided)
 
-**Mark complete when:** browser validation is done, with screenshots.
+**Mark complete when:** the block has been exercised in a browser and the user has the screenshots or URLs.
 
 ---
 
 ## Step 3: Committed Tests
 
-Committed tests guard behavior that the manual check in Step 2 won't keep catching. Write a test only when a wrong answer is plausible and costly to miss. 100% coverage is not the goal, and neither is a test per variant or per branch; a block with static decoration and no behavior may need no tests at all.
+Committed tests guard functional behavior so it doesn't silently regress. Write a test only when a wrong answer is plausible and costly to miss. 100% coverage is not the goal, and neither is a test per variant or per branch; a block with static decoration and no behavior may need no tests at all.
 
 **Use the project's test tools.** Find them in `package.json` scripts, test config and existing tests, and follow their file locations and naming. Don't add a second framework. aem-boilerplate ships without one; if the project has no test setup, ask the user before adding one.
 
@@ -68,14 +68,15 @@ Committed tests guard behavior that the manual check in Step 2 won't keep catchi
 - pure logic: parsing, index math, ID generation, URL handling
 - malformed or missing authored input: an absent cell, an empty row, a failed fetch. Mock the input; authors omit and add cells.
 
-**Browser (E2E) tests** cover what a manual click-through won't catch:
+**Browser (E2E) tests** assert the block's functional behavior:
+- interactions: clicking, toggling, switching state
 - accessibility behavior: focus, keyboard, ARIA state
 - analytics: assert that the event fired (read the data layer or wrap the tracking call), not only that a tracking attribute exists
 
 Rules for E2E specs:
 - Run them against the block's library page (the canonical example content). It is author-facing reference content and the happy path: don't add rows to it to drive a test. Cover edge cases in unit tests or on a separate drafts page.
 - Locate elements by role and accessible name. Don't use classes or ids the block's own decorate() adds, or authored copy; when you need a label, read it from the page at runtime. The block root class (`.{block}`) comes from aem.js and is stable.
-- Assert behavior, not visuals: no computed CSS, geometry or screenshot comparisons.
+- Assert behavior, not visuals: no computed CSS, geometry or screenshot comparisons. Visuals are the user's call in Step 2.
 
 **Mark complete when:** the tests are written, or you have decided none are worth committing.
 
@@ -108,6 +109,6 @@ If a test fails, decide whether the code or the expectation is wrong, fix that, 
 
 **Outputs to return to building-blocks:**
 - confirmation that linting passes
-- screenshots from browser validation
+- screenshots or URLs handed to the user for visual review, and what they confirmed
 - the tests committed (or why none were) and confirmation they pass
 - issues found and resolved

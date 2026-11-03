@@ -285,9 +285,9 @@
 - id: unit-vs-e2e-split
   claim: >-
     Unit tests: pure logic and malformed or missing authored input (absent
-    cells, empty rows), run against decorate() with a DOM shim. E2E: what a
-    manual click-through won't catch, i.e. accessibility behavior (focus,
-    keyboard, ARIA state) and analytics.
+    cells, empty rows), run against decorate() with a DOM shim. E2E: the
+    block's functional behavior, i.e. interactions, accessibility behavior
+    (focus, keyboard, ARIA state) and analytics.
   question: >-
     For an EDS block, what belongs in unit tests and what in browser (E2E)
     tests?
@@ -321,8 +321,9 @@
 - id: e2e-no-visual-asserts
   claim: >-
     E2E specs assert behavior, not visuals: no computed CSS, geometry or
-    screenshot comparisons. Visuals are checked by looking during manual
-    browser validation.
+    screenshot comparisons. The agent still exercises the block in a browser,
+    but hands screenshots or URLs to the user to judge visuals instead of
+    judging them itself.
   question: Should a Playwright spec for an EDS block assert CSS values, element sizes or screenshots?
   used_by:
     - evals/testing-blocks-existing-test-setup
