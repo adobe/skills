@@ -271,14 +271,16 @@
   source: aem-boilerplate 5cea543, package.json has no test script or test dependencies
   used_by:
     - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
 
 - id: test-when-costly
   claim: >-
     Write a test only when a wrong answer is plausible and costly to miss.
-    No coverage targets.
+    100% coverage is not the goal, nor a test per variant or branch.
   question: How do you decide which tests to write for an EDS block, and is there a coverage target?
   used_by:
     - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
 
 - id: unit-vs-e2e-split
   claim: >-
@@ -291,6 +293,7 @@
     tests?
   used_by:
     - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
 
 - id: e2e-locate-by-a11y-tree
   claim: >-
@@ -303,6 +306,7 @@
     inside the block so the spec survives refactors and content edits?
   used_by:
     - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
 
 - id: block-status-loaded
   claim: >-
@@ -312,6 +316,7 @@
   source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
   used_by:
     - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
 
 - id: e2e-no-visual-asserts
   claim: >-
@@ -321,6 +326,7 @@
   question: Should a Playwright spec for an EDS block assert CSS values, element sizes or screenshots?
   used_by:
     - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
 
 - id: analytics-assert-event
   claim: >-
@@ -329,6 +335,7 @@
   question: How do you test that clicking an element in an EDS block sends an analytics event?
   used_by:
     - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
 
 - id: e2e-library-content
   claim: >-
@@ -340,3 +347,4 @@
     cases go?
   used_by:
     - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md

@@ -1,6 +1,6 @@
 ---
 name: testing-blocks
-description: "Use this when you have made AEM Edge Delivery Services code changes to blocks, scripts, or styles and need to validate them before opening a pull request. Covers unit testing for utilities and logic, browser testing with Playwright, linting, and guidance on what to test and how."
+description: "Use this when you have made AEM Edge Delivery Services code changes to blocks, scripts, or styles and need to validate them before opening a pull request. Covers linting, browser validation, and which unit and browser (E2E) tests to commit using the project's own test tools."
 license: Apache-2.0
 metadata:
   version: "2.0.2"
@@ -8,285 +8,106 @@ metadata:
 
 # Testing Blocks
 
-This skill guides you through testing code changes in AEM Edge Delivery Services projects. Testing follows a value-versus-cost philosophy: create and maintain tests when the value they bring exceeds the cost of creation and maintenance.
+Validate code changes in AEM Edge Delivery Services projects before opening a pull request.
 
-**CRITICAL: Browser validation is MANDATORY. You cannot complete this skill without providing proof of functional testing in a real browser environment.**
+**CRITICAL: Browser validation is MANDATORY. You cannot complete this skill without proof of testing in a real browser.**
 
 ## Related Skills
 
-- **content-driven-development**: Test content created during CDD serves as the basis for testing
-- **building-blocks**: Invokes this skill during Step 5 for comprehensive testing
-- **block-collection-and-party**: May provide reference test patterns from similar blocks
-
-## When to Use This Skill
-
-Use this skill:
-- ✅ After implementing or modifying blocks
-- ✅ After changes to core scripts (scripts.js, delayed.js, aem.js)
-- ✅ After style changes (styles.css, lazy-styles.css)
-- ✅ After configuration changes that affect functionality
-- ✅ Before opening any pull request with code changes
-
-This skill is typically invoked by the **building-blocks** skill during Step 5 (Test Implementation).
+- **content-driven-development**: test content created during CDD is what you validate against
+- **building-blocks**: invokes this skill in Step 5
 
 ## Testing Workflow
 
 Track your progress:
 
 - [ ] Step 1: Run linting and fix issues
-- [ ] Step 2: Perform browser validation (MANDATORY)
-- [ ] Step 3: Determine if unit tests are needed (optional)
-- [ ] Step 4: Run existing tests and verify they pass
+- [ ] Step 2: Validate in a browser (MANDATORY)
+- [ ] Step 3: Decide which tests to commit, and write them
+- [ ] Step 4: Run the project's tests
 
 ## Step 1: Run Linting
-
-**Run linting first to catch code quality issues:**
 
 ```bash
 npm run lint
 ```
 
-**If linting fails:**
-```bash
-npm run lint:fix
-```
+If it fails, run `npm run lint:fix`, then fix what remains by hand.
 
-**Manually fix remaining issues** that auto-fix couldn't handle.
-
-**Success criteria:**
-- ✅ Linting passes with no errors
-- ✅ Code follows project standards
-
-**Mark complete when:** `npm run lint` passes with no errors
+**Mark complete when:** `npm run lint` passes.
 
 ---
 
 ## Step 2: Browser Validation (MANDATORY)
 
-**CRITICAL: You must test in a real browser and provide proof.**
+Load the test content URL(s) and check:
+- the block renders correctly, including every variant
+- mobile, tablet and desktop widths (e.g. 375px, 768px, 1200px)
+- no console errors
+- interactions work
+- acceptance criteria and designs, if provided, are met
 
-### What to Test
+Use whatever browser tooling you have: browser/Playwright MCP tools, a throwaway Playwright script (delete it afterwards), or a manual browser. Look at screenshots: this is where visual and layout problems get caught.
 
-Load test content URL(s) in browser and validate:
-- ✅ Block/functionality renders correctly
-- ✅ Responsive behavior (mobile, tablet, desktop viewports)
-- ✅ No console errors
-- ✅ Visual appearance matches requirements/acceptance criteria
-- ✅ Interactive behavior works (if applicable)
-- ✅ All variants render correctly (if applicable)
+**Proof required:**
+- screenshots of the test content (at least one viewport)
+- confirmation of no console errors
+- confirmation that acceptance criteria are met (if provided)
 
-### How to Test
-
-**Choose the method that makes most sense given your available tools:**
-
-**Option 1: Browser/Playwright MCP (Recommended)**
-
-If you have MCP browser or Playwright tools available, use them directly:
-- Navigate to test content URL
-- Take accessibility snapshots to inspect rendered content (preferred for interaction)
-- Take screenshots at different viewports for visual validation
-  - Consider both full-page screenshots and element-specific screenshots of the block being tested
-- Interact with elements as needed
-- Most efficient for agents with tool access
-
-**Option 2: Playwright automation**
-
-Write one (or more) temporary test scripts to validate functionality with playwright and capture snapshots/screenshots for inspection and validation.
-
-```javascript
-// test-my-block.mjs (temporary - don't commit)
-import { writeFile } from 'fs/promises';
-import { chromium } from 'playwright';
-
-async function test() {
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
-
-  // Capture console output before navigating
-  page.on('console', msg => console.log('Browser:', msg.text()));
-
-  // Navigate and wait for block
-  await page.goto('http://localhost:3000/path/to/test');
-  await page.waitForSelector('.my-block');
-
-  // Inspect accessibility tree (useful for validating structure)
-  const ariaSnapshot = await page.locator('.my-block').ariaSnapshot();
-  console.log('Accessibility tree:', ariaSnapshot);
-
-  // Optionally save to file for easier analysis
-  await writeFile('accessibility-tree.yml', ariaSnapshot);
-
-  // Test viewports and take screenshots
-  await page.setViewportSize({ width: 375, height: 667 });
-  await page.screenshot({ path: 'mobile.png', fullPage: true });
-  await page.locator('.my-block').screenshot({ path: 'mobile-block.png' });
-
-  await page.setViewportSize({ width: 768, height: 1024 });
-  await page.screenshot({ path: 'tablet.png', fullPage: true });
-  await page.locator('.my-block').screenshot({ path: 'tablet-block.png' });
-
-  await page.setViewportSize({ width: 1200, height: 800 });
-  await page.screenshot({ path: 'desktop.png', fullPage: true });
-  await page.locator('.my-block').screenshot({ path: 'desktop-block.png' });
-
-  await browser.close();
-}
-
-test().catch(console.error);
-```
-
-Run: `node test-my-block.mjs` then delete the script and analyze the resulting artifacts.
-
-**Option 3: Manual browser testing**
-
-Use a standard web browser with dev tools:
-1. Navigate to test content: `http://localhost:3000/path/to/test/content`
-2. Use browser dev tools responsive mode to test viewports:
-   - Mobile: <600px (e.g., 375px)
-   - Tablet: 600-900px (e.g., 768px)
-   - Desktop: >900px (e.g., 1200px)
-3. Check console for errors at each viewport
-4. Take screenshots as proof (browser screenshot tool or dev tools)
-
-### Validation Against Acceptance Criteria
-
-**If acceptance criteria provided (from CDD Step 2):**
-- Review each criterion
-- Test specific scenarios mentioned
-- Verify all criteria are met
-
-**If design/mockup screenshots provided:**
-- Compare implementation to design
-- Verify visual alignment
-- Note any intentional deviations
-
-### Proof of Testing
-
-**You must provide:**
-- ✅ Screenshots of test content in browser (at least one viewport)
-- ✅ Confirmation no console errors
-- ✅ Confirmation acceptance criteria met (if provided)
-
-**Success criteria:**
-- ✅ All test content loads and renders correctly
-- ✅ Responsive behavior validated across viewports
-- ✅ No console errors
-- ✅ Screenshots captured as proof
-- ✅ Acceptance criteria validated (if provided)
-
-**Mark complete when:** Browser testing complete with screenshots as proof
+**Mark complete when:** browser validation is done, with screenshots.
 
 ---
 
-## Step 3: Unit Tests (Optional)
+## Step 3: Committed Tests
 
-**Determine if unit tests are needed for this change.**
+Committed tests guard behavior that the manual check in Step 2 won't keep catching. Write a test only when a wrong answer is plausible and costly to miss. 100% coverage is not the goal, and neither is a test per variant or per branch; a block with static decoration and no behavior may need no tests at all.
 
-**Write unit tests when:**
-- ✅ Logic-heavy functions (calculations, transformations)
-- ✅ Utility functions used across multiple blocks
-- ✅ Data processing or API integrations
-- ✅ Complex business logic
+**Use the project's test tools.** Find them in `package.json` scripts, test config and existing tests, and follow their file locations and naming. Don't add a second framework. aem-boilerplate ships without one; if the project has no test setup, ask the user before adding one.
 
-**Skip unit tests when:**
-- ❌ Simple DOM manipulation
-- ❌ CSS-only changes
-- ❌ Straightforward decoration logic
-- ❌ Changes easily validated in browser
+**Unit tests** (run against decorate() or exported helpers with a DOM shim such as jsdom):
+- pure logic: parsing, index math, ID generation, URL handling
+- malformed or missing authored input: an absent cell, an empty row, a failed fetch. Mock the input; authors omit and add cells.
 
-**For guidance on what to test:** See [references/testing-philosophy.md](references/testing-philosophy.md)
+**Browser (E2E) tests** cover what a manual click-through won't catch:
+- accessibility behavior: focus, keyboard, ARIA state
+- analytics: assert that the event fired (read the data layer or wrap the tracking call), not only that a tracking attribute exists
 
-**If unit tests needed:**
+Rules for E2E specs:
+- Run them against the block's library page (the canonical example content). It is author-facing reference content and the happy path: don't add rows to it to drive a test. Cover edge cases in unit tests or on a separate drafts page.
+- Locate elements by role and accessible name. Don't use classes or ids the block's own decorate() adds, or authored copy; when you need a label, read it from the page at runtime. The block root class (`.{block}`) comes from aem.js and is stable.
+- Assert behavior, not visuals: no computed CSS, geometry or screenshot comparisons.
 
-```bash
-# Verify test setup (see references/vitest-setup.md if not configured)
-npm test
-
-# Write test for utility function
-# test/utils/my-utility.test.js
-import { describe, it, expect } from 'vitest';
-import { myUtility } from '../../scripts/utils/my-utility.js';
-
-describe('myUtility', () => {
-  it('should transform input correctly', () => {
-    expect(myUtility('input')).toBe('OUTPUT');
-  });
-});
-```
-
-**For detailed unit testing guidance:** See [references/unit-testing.md](references/unit-testing.md)
-
-**Success criteria:**
-- ✅ Unit tests written for logic-heavy code
-- ✅ Tests pass: `npm test`
-- ✅ OR determined unit tests not needed
-
-**Mark complete when:** Unit tests written and passing, or determined not needed
+**Mark complete when:** the tests are written, or you have decided none are worth committing.
 
 ---
 
-## Step 4: Run Existing Tests
+## Step 4: Run the Project's Tests
 
-**If `package.json` defines a `test` script** (the boilerplate has none), verify your changes don't break existing functionality:
+If `package.json` defines test scripts (the boilerplate has none), run them, including any new tests. E2E suites usually need the dev server (`aem up`) running.
 
-```bash
-npm test
-```
+If a test fails, decide whether the code or the expectation is wrong, fix that, and re-run.
 
-**If tests fail:**
-1. Read error message carefully
-2. Run single test to isolate: `npm test -- path/to/test.js`
-3. Fix code or update test if expectations changed
-4. Re-run full test suite
-
-**Success criteria:**
-- ✅ All existing tests pass
-- ✅ No regressions introduced
-
-**Mark complete when:** `npm test` passes with no failures, or the project has no `test` script
+**Mark complete when:** all tests pass, or the project has no tests.
 
 ## Troubleshooting
 
-For detailed troubleshooting guide, see [references/troubleshooting.md](references/troubleshooting.md).
-
-**Common issues:**
-
-### Tests fail
-- Read error message carefully
-- Run single test: `npm test -- path/to/test.js`
-- Fix code or update test
-
-### Linting fails
-- Run `npm run lint:fix`
-- Manually fix remaining issues
-
 ### Browser tests fail
-- Verify dev server running: `aem up --html-folder drafts`
+- Verify the dev server is running: `aem up --html-folder drafts`
 - Check test content exists in `drafts/tmp/`
 - For local drafts, verify the URL includes the html folder: `http://localhost:3000/drafts/tmp/my-block`
-- Add waits: `await page.waitForSelector('.block')`
-
-## Resources
-
-- **Unit Testing:** [references/unit-testing.md](references/unit-testing.md) - Complete guide to writing and maintaining unit tests
-- **Troubleshooting:** [references/troubleshooting.md](references/troubleshooting.md) - Solutions to common testing issues
-- **Vitest Setup:** [references/vitest-setup.md](references/vitest-setup.md) - One-time configuration guide
-- **Testing Philosophy:** [references/testing-philosophy.md](references/testing-philosophy.md) - Guide on what and how to test
+- Wait for the block before interacting: `.{block}[data-block-status="loaded"]`
 
 ## Integration with Building Blocks Skill
 
-The **building-blocks** skill invokes this skill during Step 5 (Test Implementation).
-
 **Inputs received from building-blocks:**
-- Block name being tested
-- Test content URL(s) (from CDD Step 4)
-- Any variants that need testing
-- Screenshots of existing implementation/design/mockup to verify against (if provided)
-- Acceptance criteria to verify (from CDD Step 2)
+- block name
+- test content URL(s) (from CDD Step 4)
+- variants to test
+- screenshots of the existing implementation, design or mockup (if provided)
+- acceptance criteria (from CDD Step 2)
 
-**Expected outputs to return to building-blocks:**
-- ✅ Confirmation all testing steps complete
-- ✅ Screenshots from browser testing as proof
-- ✅ Confirmation linting passes
-- ✅ Confirmation tests pass
-- ✅ Any issues discovered and resolved
+**Outputs to return to building-blocks:**
+- confirmation that linting passes
+- screenshots from browser validation
+- the tests committed (or why none were) and confirmation they pass
+- issues found and resolved
