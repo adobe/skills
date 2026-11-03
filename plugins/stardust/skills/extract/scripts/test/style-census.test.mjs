@@ -134,7 +134,10 @@ await check('parseArgs: live concurrency needs explicit approval; local URLs and
     assert.equal(parseArgs(['--concurrency', '2', '--parallel-live-ok']).concurrency, 2);
     assert.equal(parseArgs(['--urls', 'http://localhost/a,http://127.0.0.1/b', '--concurrency', '2']).concurrency, 2);
     assert.equal(parseArgs(['--urls', 'file:///tmp/a.html,file:///tmp/b.html', '--concurrency', '2']).concurrency, 2);
+    assert.equal(parseArgs(['--urls', 'http://[::1]:8080/c,http://0.0.0.0/d,http://app.localhost/e', '--concurrency', '2']).concurrency, 2, 'IPv6 loopback, the any-address and *.localhost are local too');
     assert.deepEqual(warnings, []);
+    assert.equal(parseArgs(['--urls', 'http://[::1]/a,https://www.example.com/b', '--concurrency', '2']).concurrency, 1, 'one live input among local ones keeps the guard');
+    assert.equal(warnings.length, 1);
   } finally {
     console.error = original;
   }

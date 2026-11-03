@@ -12,7 +12,8 @@ help text warned to raise it only on an origin known to have no bot manager. The
 and 17 of 20 census page loads timed out, which ended the run. The warning was advice; it is now a guard.
 
 - **`extract/scripts/style-census.mjs`:** `--concurrency <n>` above 1 is honoured only with the new explicit
-  `--parallel-live-ok`, or when every input is local (`file:`, `localhost`, `127.0.0.1`); otherwise one stderr line
+  `--parallel-live-ok`, or when every input is local (`file:`, `localhost` and `*.localhost`, `127.0.0.1`, `[::1]`,
+  `0.0.0.0`); otherwise one stderr line
   (`--concurrency 2 ignored — one live page at a time unless --parallel-live-ok …`) and the census runs at 1.
 - **Browser tier:** when the shared live-session module beside the script exports `launchLiveBrowser`, the census
   launches through it (the identity-preserving default tier, paced per host); `--headed` keeps the shared escalation

@@ -114,7 +114,7 @@ async function loadLiveSession() {
 const isLocalInput = (value) => {
   try {
     const u = new URL(value);
-    return u.protocol === 'file:' || ['localhost', '127.0.0.1'].includes(u.hostname);
+    return u.protocol === 'file:' || ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(u.hostname) || u.hostname.endsWith('.localhost');
   } catch { return false; }
 };
 
