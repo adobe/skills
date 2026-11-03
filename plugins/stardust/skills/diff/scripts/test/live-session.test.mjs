@@ -39,8 +39,8 @@ const stderrOf = async (fn) => {
 
 check('the exported surface the instruments import, the denial-page names included', () => {
   for (const name of ['CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'challengeMarker', 'isChallengeResponse', 'gotoLive', 'launchLiveBrowser', 'launchStealthHeaded', 'browserTier', 'acceptConsent', 'dismissOverlays',
-    'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'LIVE_MAX_PARALLEL_DEFAULT', 'LIVE_STATE_TTL_MS_DEFAULT',
-    'livePaceMs', 'liveMaxParallel', 'liveStateTtlMs', 'liveStateEnabled', 'liveStateRoot', 'liveHostStateDir', 'paceSlot', 'liveThrottleDecision',
+    'stealthEnabled', 'platformLabel', 'chromeMajor', 'browserIdentity', 'LIVE_PACE_MS_DEFAULT', 'LIVE_MAX_PARALLEL_DEFAULT', 'LIVE_MAX_WAIT_MS_DEFAULT', 'LIVE_LEASE_MS_DEFAULT', 'LIVE_WAITER_STALE_MS', 'LIVE_STATE_TTL_MS_DEFAULT',
+    'livePaceMs', 'liveMaxParallel', 'liveMaxWaitMs', 'liveStateTtlMs', 'liveStateEnabled', 'liveStateRoot', 'liveHostStateDir', 'paceSlot', 'liveThrottleDecision',
     'tryAcquireLiveLock', 'paceLiveNavigation', 'runLiveNavigation', 'recordLiveBotSignal', 'recordLiveNavigationSuccess', 'persistLiveStorageState', 'resetLivePacing',
     'browserUserAgent', 'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
   for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError', 'launchLiveBrowser', 'launchStealthHeaded', 'browserIdentity', 'browserUserAgent', 'challengeMarker']) assert.equal(typeof session[name], 'function', name);
@@ -411,14 +411,20 @@ check('paceSlot (pure): a free host → no wait, the next free time one pace lat
   for (const pace of [-1, NaN, undefined, null, 'x']) assert.deepEqual(session.paceSlot(3000, 1000, pace), { wait: 0, nextFree: 1000 }, String(pace));
   assert.deepEqual(session.paceSlot(NaN, 1000, 2000), { wait: 0, nextFree: 3000 }, 'a garbage nextFree is a free host');
 });
-check('live throttle settings: parallel defaults to 2, state TTL defaults to 12 hours, non-negative integers are accepted, and STARDUST_LIVE_STATE=0 disables the jar', () => {
+check('live throttle settings: parallel, total wait and state TTL use non-negative environment values, and STARDUST_LIVE_STATE=0 disables the jar', () => {
   assert.equal(session.LIVE_MAX_PARALLEL_DEFAULT, 2);
+  assert.equal(session.LIVE_MAX_WAIT_MS_DEFAULT, 300000);
+  assert.equal(session.LIVE_LEASE_MS_DEFAULT, 120000);
+  assert.equal(session.LIVE_WAITER_STALE_MS, 60000);
   assert.equal(session.LIVE_STATE_TTL_MS_DEFAULT, 12 * 60 * 60 * 1000);
   for (const [v, want] of [[undefined, 2], ['', 2], ['0', 0], ['3', 3], ['2.9', 2], ['bad', 2], ['-1', 2]]) {
     assert.equal(session.liveMaxParallel(v === undefined ? {} : { STARDUST_LIVE_MAX_PARALLEL: v }), want, String(v));
   }
   for (const [v, want] of [[undefined, 12 * 60 * 60 * 1000], ['0', 0], ['9000', 9000], ['bad', 12 * 60 * 60 * 1000]]) {
     assert.equal(session.liveStateTtlMs(v === undefined ? {} : { STARDUST_LIVE_STATE_TTL_MS: v }), want, String(v));
+  }
+  for (const [v, want] of [[undefined, 300000], ['', 300000], ['0', 0], ['4500', 4500], ['7.9', 7], ['bad', 300000], ['-1', 300000]]) {
+    assert.equal(session.liveMaxWaitMs(v === undefined ? {} : { STARDUST_LIVE_MAX_WAIT_MS: v }), want, String(v));
   }
   assert.equal(session.liveStateEnabled({}), true);
   assert.equal(session.liveStateEnabled({ STARDUST_LIVE_STATE: '0' }), false);
@@ -501,6 +507,27 @@ check('liveThrottleDecision (pure): pace and slots both gate starts, 0 disables 
   d = session.liveThrottleDecision(busy, 'first', 1000, { paceMs: 0, maxParallel: 2 });
   assert.equal(d.canStart, true, 'a second slot is available');
 });
+check('liveThrottleDecision (pure): a missing waiter re-queues, waiting heartbeats, and a granted lease expires', () => {
+  const missing = session.liveThrottleDecision({ nextTicket: 1, waiters: [], active: [] }, 'lost', 1000, { pollMs: 25 });
+  assert.deepEqual([missing.canStart, missing.requeue, missing.waitMs], [false, true, 25]);
+
+  const waiting = session.liveThrottleDecision({
+    lastStart: 1000,
+    nextTicket: 2,
+    waiters: [{ id: 'waiting', pid: 10, ticket: 1, queuedAt: 900 }],
+    active: [],
+  }, 'waiting', 1500, { paceMs: 1000, maxParallel: 1 });
+  assert.equal(waiting.canStart, false);
+  assert.equal(waiting.state.waiters[0].seenAt, 1500);
+
+  const granted = session.liveThrottleDecision({
+    nextTicket: 2,
+    waiters: [{ id: 'granted', pid: 10, ticket: 1, queuedAt: 900 }],
+    active: [],
+  }, 'granted', 2000, { paceMs: 0, maxParallel: 1, leaseMs: 3000 });
+  assert.equal(granted.canStart, true);
+  assert.equal(granted.state.active[0].expiresAt, 5000);
+});
 check('tryAcquireLiveLock: an atomic mkdir lock excludes a live owner and reclaims a dead or older-than-60-second owner', () => {
   const root = mkdtempSync(join(tmpdir(), 'live-lock-'));
   const hostDir = join(root, 'www.example.com');
@@ -558,6 +585,139 @@ await checkAsync('runLiveNavigation: the on-disk queue allows one in-flight navi
   assert.deepEqual(waits, [13000]);
   rmSync(stateRoot, { recursive: true, force: true });
   rmSync(paceOpts.stateRoot, { recursive: true, force: true });
+});
+await checkAsync('runLiveNavigation: stale waiters are dropped and a lost waiter re-queues at a fresh ticket', async () => {
+  session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-requeue-'));
+  const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+  mkdirSync(hostDir, { recursive: true });
+  const stateFile = join(hostDir, 'throttle.json');
+  writeFileSync(stateFile, JSON.stringify({
+    lastStart: null,
+    nextTicket: 5,
+    waiters: [{ id: 'stale', pid: 90, ticket: 4, queuedAt: 0, seenAt: 0 }],
+    active: [{ id: 'held', pid: 91, startedAt: 61000, expiresAt: 120000 }],
+  }));
+  let clock = 61001;
+  let firstWait = true;
+  const page = {
+    waitForTimeout: async (ms) => {
+      clock += ms;
+      if (firstWait) {
+        firstWait = false;
+        const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+        state.waiters = [];
+        state.active = [];
+        writeFileSync(stateFile, JSON.stringify(state));
+      }
+    },
+  };
+  let navigated = false;
+  const lines = await stderrOf(async () => {
+    await session.runLiveNavigation(page, LIVE_URL, async () => { navigated = true; }, {
+      stateRoot, paceMs: 0, maxParallel: 1, maxWaitMs: 0, pollMs: 10,
+      now: () => clock, pid: 92, pidAlive: () => true,
+    });
+  });
+  const state = JSON.parse(readFileSync(stateFile, 'utf8'));
+  assert.equal(navigated, true);
+  assert.equal(state.nextTicket, 7, 'the replacement took a new ticket');
+  assert.deepEqual(state.waiters, []);
+  assert.deepEqual(lines.filter((line) => line.includes('lost its place')), [
+    '[live-session] www.example.com: lost its place in the shared queue — re-queued',
+  ]);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('runLiveNavigation: an expired lease frees the only shared slot', async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-expired-lease-'));
+  const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+  mkdirSync(hostDir, { recursive: true });
+  writeFileSync(join(hostDir, 'throttle.json'), JSON.stringify({
+    lastStart: null,
+    nextTicket: 1,
+    waiters: [],
+    active: [{ id: 'expired', pid: 80, startedAt: 1000, expiresAt: 1999 }],
+  }));
+  const waits = [];
+  const result = await session.runLiveNavigation({ waitForTimeout: async (ms) => { waits.push(ms); } }, LIVE_URL, async () => 7, {
+    stateRoot, paceMs: 0, maxParallel: 1, now: () => 2000, pid: 81, pidAlive: () => true,
+  });
+  assert.equal(result, 7);
+  assert.deepEqual(waits, []);
+  assert.deepEqual(JSON.parse(readFileSync(join(hostDir, 'throttle.json'), 'utf8')).active, []);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('runLiveNavigation: the total wait ceiling removes the waiter and proceeds without a lease', async () => {
+  session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-wait-ceiling-'));
+  const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+  mkdirSync(hostDir, { recursive: true });
+  const stateFile = join(hostDir, 'throttle.json');
+  writeFileSync(stateFile, JSON.stringify({
+    lastStart: null,
+    nextTicket: 1,
+    waiters: [],
+    active: [{ id: 'held', pid: 70, startedAt: 1000, expiresAt: 100000 }],
+  }));
+  let clock = 1000;
+  const waits = [];
+  let navigated = false;
+  const lines = await stderrOf(async () => {
+    await session.runLiveNavigation({
+      waitForTimeout: async (ms) => { waits.push(ms); clock += ms; },
+    }, LIVE_URL, async () => { navigated = true; }, {
+      stateRoot, paceMs: 0, maxParallel: 1, maxWaitMs: 200, pollMs: 100,
+      now: () => clock, pid: 71, pidAlive: () => true,
+    });
+  });
+  assert.equal(navigated, true);
+  assert.deepEqual(waits, [100, 100]);
+  assert.deepEqual(JSON.parse(readFileSync(stateFile, 'utf8')).waiters, []);
+  assert.deepEqual(lines.filter((line) => line.includes('proceeding without one')), [
+    '[live-session] www.example.com: waited 200 ms for a shared slot — proceeding without one (STARDUST_LIVE_MAX_WAIT_MS)',
+  ]);
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('runLiveNavigation: handing a lease back is best effort — a lock another process holds past the wait ceiling neither throws nor loses the navigation result', async () => {
+  session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-release-'));
+  const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+  mkdirSync(hostDir, { recursive: true });
+  let clock = 1000;
+  const page = { waitForTimeout: async (ms) => { clock += ms; } };
+  const result = await session.runLiveNavigation(page, LIVE_URL, async () => {
+    // another live process takes the lock while this navigation runs and keeps it (fresh owner, live pid)
+    const ownerDir = join(hostDir, 'throttle.lock', 'other-owner');
+    mkdirSync(ownerDir, { recursive: true });
+    writeFileSync(join(ownerDir, 'owner.json'), JSON.stringify({ pid: 60, createdAt: clock, token: 'other-owner' }));
+    return 'navigated';
+  }, { stateRoot, paceMs: 0, maxParallel: 1, maxWaitMs: 50, pollMs: 10, now: () => clock, pid: 51, pidAlive: () => true });
+  assert.equal(result, 'navigated', 'the navigation result survives a lease that could not be handed back');
+  const state = JSON.parse(readFileSync(join(hostDir, 'throttle.json'), 'utf8'));
+  assert.equal(state.active.length, 1, 'the lease is left to expire at expiresAt');
+  rmSync(stateRoot, { recursive: true, force: true });
+});
+await checkAsync('runLiveNavigation: lock contention reaches the wait ceiling without spinning', async () => {
+  session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-lock-ceiling-'));
+  const hostDir = session.liveHostStateDir(LIVE_URL, { stateRoot });
+  const ownerDir = join(hostDir, 'throttle.lock', 'other-owner');
+  mkdirSync(ownerDir, { recursive: true });
+  writeFileSync(join(ownerDir, 'owner.json'), JSON.stringify({ pid: 60, createdAt: 0, token: 'other-owner' }));
+  let clock = 1;
+  let nowCalls = 0;
+  const waits = [];
+  let navigated = false;
+  await stderrOf(() => session.runLiveNavigation({
+    waitForTimeout: async (ms) => { waits.push(ms); clock += ms; },
+  }, LIVE_URL, async () => { navigated = true; }, {
+    stateRoot, paceMs: 0, maxParallel: 1, maxWaitMs: 2, pollMs: 1,
+    now: () => { nowCalls += 1; return clock++; }, pid: 61, pidAlive: () => true,
+  }));
+  assert.equal(navigated, true);
+  assert.deepEqual(waits, [1, 1]);
+  assert.ok(nowCalls < 50, `deadline handling used ${nowCalls} clock reads`);
+  rmSync(stateRoot, { recursive: true, force: true });
 });
 await checkAsync('paceLiveNavigation: slots per host under an injected clock — the first navigation is free, the next waits one pace, concurrent callers queue up (0, pace, 2×pace), another host is independent, localhost is never paced, 0 disables; ONE stderr line per host on its first wait', async () => {
   session.resetLivePacing();
@@ -910,6 +1070,37 @@ await checkAsync('shared storage state: host jars stay isolated and private, a f
   assert.deepEqual(readFileSync(stateFile, 'utf8').length > 0, true);
   rmSync(stateRoot, { recursive: true, force: true });
   rmSync(disabledRoot, { recursive: true, force: true });
+});
+await checkAsync('shared storage state: capture and write failures return false, warn once per host, and never fail gotoLive', async () => {
+  session.resetLivePacing();
+  const stateRoot = mkdtempSync(join(tmpdir(), 'live-state-errors-'));
+  const context = { storageState: async () => { throw new Error('state capture failed\nmore detail'); } };
+  const page = stubPage();
+  page.context = () => context;
+  let response;
+  const lines = await stderrOf(async () => {
+    assert.equal(await session.persistLiveStorageState(context, LIVE_URL, { stateRoot, writeIntervalMs: 0 }), false);
+    assert.equal(await session.persistLiveStorageState(context, LIVE_URL, { stateRoot, writeIntervalMs: 0 }), false);
+    response = await gotoLive(page, LIVE_URL, {
+      settleMs: 0,
+      throttle: { stateRoot, paceMs: 0, maxParallel: 0 },
+    });
+  });
+  assert.equal(response, page.last);
+  assert.deepEqual(lines, ['[live-session] WARNING: cannot save shared browser state for www.example.com: state capture failed']);
+
+  const blockedRoot = join(stateRoot, 'not-a-directory');
+  writeFileSync(blockedRoot, 'occupied');
+  const writeLines = await stderrOf(async () => {
+    assert.equal(await session.persistLiveStorageState(
+      { storageState: async () => ({ cookies: [], origins: [] }) },
+      'https://write-failure.example.com/',
+      { stateRoot: blockedRoot, writeIntervalMs: 0 },
+    ), false);
+  });
+  assert.equal(writeLines.length, 1);
+  assert.match(writeLines[0], /^\[live-session\] WARNING: cannot save shared browser state for write-failure\.example\.com: ENOTDIR: not a directory, mkdir /);
+  rmSync(stateRoot, { recursive: true, force: true });
 });
 
 // ---- the CloudFront / AWS WAF header signature ---------------------------------------------------------------------

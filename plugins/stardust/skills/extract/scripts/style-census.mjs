@@ -449,6 +449,25 @@ async function measure(contexts, url, width, o, session) {
   }
 }
 
+/** Select and cache the shared live context for one URL; local URLs keep the caller's local context. */
+export async function liveContextFor(session, browser, liveContexts, url, options) {
+  if (!session.isLiveHttpUrl(url)) return null;
+  const host = new URL(url).host;
+  if (!liveContexts.has(host)) {
+    liveContexts.set(host, session.newLiveContext(browser, { ...options, stateUrl: url }));
+  }
+  let context = liveContexts.get(host);
+  if (!context || typeof context.then !== 'function') return context;
+  try {
+    context = await context;
+    liveContexts.set(host, context);
+    return context;
+  } catch (error) {
+    liveContexts.delete(host);
+    throw error;
+  }
+}
+
 async function main(argv) {
   const o = parseArgs(argv);
   const urls = listUrls(o);
@@ -461,6 +480,7 @@ async function main(argv) {
   for (const url of urls) for (const width of o.widths) jobs.push({ url, width });
   const pages = {};
   const failed = [];
+  const liveContexts = new Map();
   // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   let next = 0;
@@ -468,7 +488,6 @@ async function main(argv) {
   async function worker() {
     const viewport = { width: o.widths[0], height: VIEWPORT_H };
     const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
-    const liveContexts = new Map();
     const contexts = {
       local: await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common }),
     };
@@ -477,15 +496,10 @@ async function main(argv) {
       next += 1;
       const t0 = Date.now();
       try {
-        if (isLiveHttpUrl(url)) {
-          const host = new URL(url).host;
-          if (!liveContexts.has(host)) {
-            liveContexts.set(host, await session.newLiveContext(browser, {
-              ua: o.ua, locale: o.locale, viewport, stateUrl: url, ...common,
-            }));
-          }
-          contexts.live = liveContexts.get(host);
-        }
+        const liveContext = await liveContextFor(session, browser, liveContexts, url, {
+          ua: o.ua, locale: o.locale, viewport, ...common,
+        });
+        if (liveContext) contexts.live = liveContext;
         const rec = await measure(contexts, url, width, o, session);
         pages[url] = pages[url] || {};
         pages[url][width] = rec;
@@ -498,10 +512,10 @@ async function main(argv) {
         if (e.name === 'BotChallengeError' && !challenge) { challenge = e; next = jobs.length; }
       }
     }
-    await Promise.all([...liveContexts.values()].map((ctx) => ctx.close().catch(() => {})));
     await contexts.local.close().catch(() => {});
   }
   await Promise.all(Array.from({ length: Math.min(o.concurrency, jobs.length) }, worker));
+  await Promise.all([...liveContexts.values()].map((ctx) => ctx.close().catch(() => {})));
   await browser.close();
 
   const measured = Object.values(pages).reduce((n, byWidth) => n + Object.keys(byWidth).length, 0);

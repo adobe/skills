@@ -72,7 +72,8 @@ compared beside it; a side lacking one is measured as empty there and the root l
 plus the live-target set (shared engine: `scripts/live-session.mjs` — real Chrome presents its
 user agent without the headless token and matching client hints; automation-signal handling stays on unless
 `STARDUST_STEALTH=0`; every context sends standard Chrome request headers, and live navigations to one host are paced
-`STARDUST_LIVE_PACE_MS` apart, default 1000):
+`STARDUST_LIVE_PACE_MS` apart (default 1000), capped by `STARDUST_LIVE_MAX_PARALLEL` (default 2)
+and `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables):
 
 - `--ua <string>` — user agent override (default: the browser's own with `HeadlessChrome` replaced by `Chrome`).
 - `--wait-until <state>` — goto wait override. Default rule (one shared

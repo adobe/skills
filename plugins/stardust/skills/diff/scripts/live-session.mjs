@@ -41,7 +41,8 @@
  * disables) and STARDUST_LIVE_MAX_PARALLEL (default 2; 0 disables); a shared
  * bot signal cuts the host to one in flight and doubles its pace up to 15000 ms,
  * while each 50 clean navigations halves the pace no lower than its configured
- * floor. A waiting process prints one stderr line per host.
+ * floor. STARDUST_LIVE_MAX_WAIT_MS caps shared-slot waits (default 300000; 0
+ * disables). A waiting process prints one stderr line per host.
  * A repository-scoped browser-state jar is loaded for new contexts and refreshed
  * after successful navigations. STARDUST_LIVE_STATE_TTL_MS defaults to 12 hours;
  * STARDUST_LIVE_STATE=0 disables jar reads and writes. The shared files live
@@ -64,6 +65,9 @@ import path from 'node:path';
 // ---- shared throttle and browser state -----------------------------------------------------------------------------
 export const LIVE_PACE_MS_DEFAULT = 1000;
 export const LIVE_MAX_PARALLEL_DEFAULT = 2;
+export const LIVE_MAX_WAIT_MS_DEFAULT = 300000;
+export const LIVE_LEASE_MS_DEFAULT = 120000;
+export const LIVE_WAITER_STALE_MS = 60000;
 export const LIVE_STATE_TTL_MS_DEFAULT = 12 * 60 * 60 * 1000;
 const LIVE_LOCK_STALE_MS = 60000;
 const LIVE_LOCK_POLL_MS = 100;
@@ -82,6 +86,8 @@ function nonNegativeEnv(name, fallback, env = process.env) {
 export const livePaceMs = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_PACE_MS', LIVE_PACE_MS_DEFAULT, env);
 /** STARDUST_LIVE_MAX_PARALLEL as a non-negative integer; default 2; 0 disables the in-flight cap. */
 export const liveMaxParallel = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_MAX_PARALLEL', LIVE_MAX_PARALLEL_DEFAULT, env);
+/** STARDUST_LIVE_MAX_WAIT_MS as a non-negative integer; default 300000; 0 disables the wait ceiling. */
+export const liveMaxWaitMs = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_MAX_WAIT_MS', LIVE_MAX_WAIT_MS_DEFAULT, env);
 /** STARDUST_LIVE_STATE_TTL_MS as a non-negative integer; default 12 hours. */
 export const liveStateTtlMs = (env = process.env) => nonNegativeEnv('STARDUST_LIVE_STATE_TTL_MS', LIVE_STATE_TTL_MS_DEFAULT, env);
 /** The shared browser-state switch; only the exact value 0 disables reads and writes. */
@@ -239,17 +245,23 @@ function adaptiveLimits(state, { paceMs, maxParallel }) {
  */
 export function liveThrottleDecision(value, waiterId, now, {
   paceMs = livePaceMs(), maxParallel = liveMaxParallel(), pollMs = LIVE_LOCK_POLL_MS,
+  leaseMs = LIVE_LEASE_MS_DEFAULT,
 } = {}) {
   const state = normalizedThrottleState(value);
-  const waiter = state.waiters.find((w) => w.id === waiterId);
+  const waiterIndex = state.waiters.findIndex((w) => w.id === waiterId);
+  if (waiterIndex < 0) return {
+    canStart: false, requeue: true, waitMs: pollMs, state,
+  };
+  const waiter = { ...state.waiters[waiterIndex], seenAt: now };
+  state.waiters[waiterIndex] = waiter;
   const head = state.waiters[0];
-  if (!waiter || !head || head.id !== waiterId) return { canStart: false, waitMs: pollMs, state };
+  if (!head || head.id !== waiterId) return { canStart: false, waitMs: pollMs, state };
   const paceWait = paceMs > 0 && Number.isFinite(state.lastStart) ? Math.max(0, state.lastStart + paceMs - now) : 0;
   const slotWait = maxParallel > 0 && state.active.length >= maxParallel ? pollMs : 0;
   if (paceWait > 0 || slotWait > 0) return { canStart: false, waitMs: Math.max(paceWait, slotWait), state };
   state.waiters = state.waiters.filter((w) => w.id !== waiterId);
   if (paceMs > 0) state.lastStart = now;
-  if (maxParallel > 0) state.active.push({ ...waiter, startedAt: now });
+  if (maxParallel > 0) state.active.push({ ...waiter, startedAt: now, expiresAt: now + leaseMs });
   return { canStart: true, waitMs: 0, state };
 }
 
@@ -263,19 +275,44 @@ function writeThrottleState(hostDir, state) {
   atomicWriteJson(path.join(hostDir, 'throttle.json'), state);
 }
 
-function cleanDeadOwners(state, pidAlive) {
+function cleanThrottleState(state, pidAlive, now) {
   return {
     ...state,
-    waiters: state.waiters.filter((w) => pidAlive(w.pid)),
-    active: state.active.filter((a) => pidAlive(a.pid)),
+    waiters: state.waiters.filter((w) => {
+      const seenAt = Number.isFinite(w.seenAt) ? w.seenAt : w.queuedAt;
+      return pidAlive(w.pid) && !(Number.isFinite(seenAt) && now - seenAt > LIVE_WAITER_STALE_MS);
+    }),
+    active: state.active.filter((a) => {
+      const expiresAt = Number.isFinite(a.expiresAt)
+        ? a.expiresAt : Number.isFinite(a.startedAt) ? a.startedAt + LIVE_LEASE_MS_DEFAULT : now;
+      return pidAlive(a.pid) && now < expiresAt;
+    }),
   };
 }
 
 const pacedHosts = new Set();
+const requeuedHosts = new Set();
+const maxWaitHosts = new Set();
+const stateSaveWarningHosts = new Set();
 function logSharedWait(host, paceMs, maxParallel, waitMs) {
   if (pacedHosts.has(host)) return;
   pacedHosts.add(host);
   console.error(`[live-session] waiting to pace live navigations to ${host} (${paceMs} ms apart, ${maxParallel} max parallel; STARDUST_LIVE_PACE_MS / STARDUST_LIVE_MAX_PARALLEL; 0 disables either) — first wait ${waitMs} ms`);
+}
+function logRequeued(host) {
+  if (requeuedHosts.has(host)) return;
+  requeuedHosts.add(host);
+  console.error(`[live-session] ${host}: lost its place in the shared queue — re-queued`);
+}
+function logMaxWait(host, waitMs) {
+  if (maxWaitHosts.has(host)) return;
+  maxWaitHosts.add(host);
+  console.error(`[live-session] ${host}: waited ${waitMs} ms for a shared slot — proceeding without one (STARDUST_LIVE_MAX_WAIT_MS)`);
+}
+function warnStateSave(host, error) {
+  if (stateSaveWarningHosts.has(host)) return;
+  stateSaveWarningHosts.add(host);
+  console.error(`[live-session] WARNING: cannot save shared browser state for ${host}: ${String(error && error.message ? error.message : error).split('\n')[0]}`);
 }
 
 async function updateAdaptiveThrottle(url, update, {
@@ -291,7 +328,7 @@ async function updateAdaptiveThrottle(url, update, {
     await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
   try {
-    const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
+    const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, now());
     const result = update(state, { observedAt, appliedAt: now(), paceMs, maxParallel });
     writeThrottleState(hostDir, state);
     return { ...adaptiveLimits(state, { paceMs, maxParallel }), ...result };
@@ -338,6 +375,7 @@ export async function recordLiveNavigationSuccess(url, options = {}) {
 async function acquireLiveNavigation(page, url, {
   paceMs = livePaceMs(), maxParallel = liveMaxParallel(), now = Date.now, stateRoot = liveStateRoot(),
   pid = process.pid, pidAlive = pidIsAlive, pollMs = LIVE_LOCK_POLL_MS,
+  leaseMs = LIVE_LEASE_MS_DEFAULT, maxWaitMs = liveMaxWaitMs(),
 } = {}) {
   const host = liveHost(url);
   if (!host || (!(paceMs > 0) && !(maxParallel > 0))) return { wait: 0, release: async () => {} };
@@ -348,32 +386,61 @@ async function acquireLiveNavigation(page, url, {
   let logicalNow = now();
   const clock = () => Math.max(now(), logicalNow);
   const configured = { paceMs, maxParallel };
+  const reachedCeiling = () => maxWaitMs > 0 && totalWait >= maxWaitMs;
   const currentLimits = () => adaptiveLimits(readThrottleState(hostDir), configured);
   const sleep = async (ms, limits = currentLimits()) => {
-    const delay = Math.max(1, ms);
+    const remaining = maxWaitMs > 0 ? Math.max(0, maxWaitMs - totalWait) : Infinity;
+    if (remaining === 0) {
+      const delay = Math.max(1, Math.min(ms, pollMs));
+      const startedAt = clock();
+      await page.waitForTimeout(delay);
+      logicalNow = Math.max(logicalNow, startedAt + delay);
+      return;
+    }
+    const delay = Math.max(1, Math.min(ms, remaining));
     const startedAt = clock();
     logSharedWait(host, limits.paceMs, limits.maxParallel, delay);
     await page.waitForTimeout(delay);
     totalWait += delay;
     logicalNow = Math.max(logicalNow, startedAt + delay);
   };
+  const enqueue = (state) => {
+    const queuedAt = clock();
+    const ticket = state.nextTicket;
+    state.nextTicket += 1;
+    state.waiters.push({
+      id: waiterId, pid, ticket, queuedAt, seenAt: queuedAt,
+    });
+    queued = true;
+  };
+  const proceedWithoutLease = async () => {
+    const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock());
+    state.waiters = state.waiters.filter((w) => w.id !== waiterId);
+    writeThrottleState(hostDir, state);
+    queued = false;
+    logMaxWait(host, totalWait);
+    return { wait: totalWait, release: async () => {} };
+  };
   const lock = async () => {
     while (true) {
       const held = tryAcquireLiveLock(hostDir, { now: clock, pid, pidAlive });
       if (held) return held;
+      if (!queued && reachedCeiling()) return null;
       await sleep(pollMs);
     }
   };
 
   try {
     let held = await lock();
+    if (!held) {
+      logMaxWait(host, totalWait);
+      return { wait: totalWait, release: async () => {} };
+    }
     try {
-      const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
-      const ticket = state.nextTicket;
-      state.nextTicket += 1;
-      state.waiters.push({ id: waiterId, pid, ticket, queuedAt: clock() });
+      if (reachedCeiling()) return await proceedWithoutLease(held);
+      const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock());
+      enqueue(state);
       writeThrottleState(hostDir, state);
-      queued = true;
     } finally { held.release(); }
 
     while (true) {
@@ -381,9 +448,16 @@ async function acquireLiveNavigation(page, url, {
       let decision;
       let limits;
       try {
-        const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
+        if (reachedCeiling()) return await proceedWithoutLease(held);
+        const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock());
         limits = adaptiveLimits(state, configured);
-        decision = liveThrottleDecision(state, waiterId, clock(), { ...limits, pollMs });
+        decision = liveThrottleDecision(state, waiterId, clock(), {
+          ...limits, pollMs, leaseMs,
+        });
+        if (decision.requeue) {
+          enqueue(decision.state);
+          logRequeued(host);
+        }
         writeThrottleState(hostDir, decision.state);
       } finally { held.release(); }
       if (decision.canStart) {
@@ -393,16 +467,22 @@ async function acquireLiveNavigation(page, url, {
           wait: totalWait,
           release: async () => {
             if (!holdsLease) return;
-            const releaseLock = await lock();
+            // Best effort: a lease that cannot be handed back (the lock held by another process past the wait
+            // ceiling, an unwritable state file) expires on its own at expiresAt; a navigation that succeeded
+            // never fails on the bookkeeping.
             try {
-              const state = cleanDeadOwners(readThrottleState(hostDir), pidAlive);
-              state.active = state.active.filter((a) => a.id !== waiterId);
-              writeThrottleState(hostDir, state);
-            } finally { releaseLock.release(); }
+              const releaseLock = await lock();
+              if (!releaseLock) return;
+              try {
+                const state = cleanThrottleState(readThrottleState(hostDir), pidAlive, clock());
+                state.active = state.active.filter((a) => a.id !== waiterId);
+                writeThrottleState(hostDir, state);
+              } finally { releaseLock.release(); }
+            } catch { /* the lease expires at expiresAt */ }
           },
         };
       }
-      await sleep(decision.waitMs, limits);
+      await sleep(Math.min(decision.waitMs, Math.floor(LIVE_WAITER_STALE_MS / 2)), limits);
     }
   } catch (e) {
     if (queued) {
@@ -449,7 +529,14 @@ export async function runLiveNavigation(page, url, navigate, options = {}) {
 /** Forget process-local log and write-rate memory; shared disk state intentionally remains owned by all processes. */
 const lastStateWriteByHost = new Map();
 const stateWriteQueueByHost = new Map();
-export function resetLivePacing() { pacedHosts.clear(); lastStateWriteByHost.clear(); stateWriteQueueByHost.clear(); }
+export function resetLivePacing() {
+  pacedHosts.clear();
+  requeuedHosts.clear();
+  maxWaitHosts.clear();
+  stateSaveWarningHosts.clear();
+  lastStateWriteByHost.clear();
+  stateWriteQueueByHost.clear();
+}
 
 function liveStorageState(url, {
   stateRoot = liveStateRoot(), now = Date.now, ttlMs = liveStateTtlMs(), env = process.env,
@@ -493,29 +580,35 @@ export async function persistLiveStorageState(pageOrContext, url, {
 } = {}) {
   const host = liveHost(url);
   if (!host || !liveStateEnabled(env)) return false;
-  const context = typeof pageOrContext?.storageState === 'function'
-    ? pageOrContext : typeof pageOrContext?.context === 'function' ? pageOrContext.context() : null;
-  if (!context || typeof context.storageState !== 'function') return false;
-  const previous = stateWriteQueueByHost.get(host) || Promise.resolve();
-  const write = previous.catch(() => {}).then(async () => {
-    let at = now();
-    const last = lastStateWriteByHost.get(host);
-    const remaining = Number.isFinite(last) ? Math.max(0, writeIntervalMs - (at - last)) : 0;
-    if (remaining > 0) {
-      if (!waitForRateLimit) return false;
-      if (typeof pageOrContext?.waitForTimeout === 'function') await pageOrContext.waitForTimeout(remaining);
-      else await new Promise((resolve) => { setTimeout(resolve, remaining); });
-      at = Math.max(now(), last + writeIntervalMs);
-    }
-    const state = storageStateForHost(await context.storageState(), url);
-    const hostDir = liveHostStateDir(url, { stateRoot });
-    atomicWriteJson(path.join(hostDir, 'storage-state.json'), state);
-    lastStateWriteByHost.set(host, at);
-    return true;
-  });
-  stateWriteQueueByHost.set(host, write);
-  try { return await write; } finally {
-    if (stateWriteQueueByHost.get(host) === write) stateWriteQueueByHost.delete(host);
+  let write;
+  try {
+    const context = typeof pageOrContext?.storageState === 'function'
+      ? pageOrContext : typeof pageOrContext?.context === 'function' ? pageOrContext.context() : null;
+    if (!context || typeof context.storageState !== 'function') return false;
+    const previous = stateWriteQueueByHost.get(host) || Promise.resolve();
+    write = previous.catch(() => {}).then(async () => {
+      let at = now();
+      const last = lastStateWriteByHost.get(host);
+      const remaining = Number.isFinite(last) ? Math.max(0, writeIntervalMs - (at - last)) : 0;
+      if (remaining > 0) {
+        if (!waitForRateLimit) return false;
+        if (typeof pageOrContext?.waitForTimeout === 'function') await pageOrContext.waitForTimeout(remaining);
+        else await new Promise((resolve) => { setTimeout(resolve, remaining); });
+        at = Math.max(now(), last + writeIntervalMs);
+      }
+      const state = storageStateForHost(await context.storageState(), url);
+      const hostDir = liveHostStateDir(url, { stateRoot });
+      atomicWriteJson(path.join(hostDir, 'storage-state.json'), state);
+      lastStateWriteByHost.set(host, at);
+      return true;
+    });
+    stateWriteQueueByHost.set(host, write);
+    return await write;
+  } catch (error) {
+    warnStateSave(host, error);
+    return false;
+  } finally {
+    if (write && stateWriteQueueByHost.get(host) === write) stateWriteQueueByHost.delete(host);
   }
 }
 
@@ -993,7 +1086,8 @@ async function gotoLiveNavigation(page, url, {
   waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false,
   throttle = {},
 } = {}) {
-  let resp = await runLiveNavigation(page, url, () => page.goto(url, { waitUntil, timeout: timeoutMs }), throttle);
+  const throttleOptions = { ...throttle, leaseMs: throttle.leaseMs ?? timeoutMs + settleMs + 30000 };
+  let resp = await runLiveNavigation(page, url, () => page.goto(url, { waitUntil, timeout: timeoutMs }), throttleOptions);
   if (!resp) {
     const err = new Error(`no response navigating to ${url} — network-level failure or non-HTTP navigation`);
     err.name = 'LiveNavigationError';
@@ -1021,7 +1115,7 @@ async function gotoLiveNavigation(page, url, {
   if (solveWindow) {
     for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
       await page.waitForTimeout(4000);
-      const reloaded = await runLiveNavigation(page, url, () => page.reload({ waitUntil, timeout: timeoutMs }), throttle).catch(() => null);
+      const reloaded = await runLiveNavigation(page, url, () => page.reload({ waitUntil, timeout: timeoutMs }), throttleOptions).catch(() => null);
       if (reloaded) {
         resp = reloaded;
         const reloadMarker = challengeMarker(resp);
@@ -1054,7 +1148,7 @@ async function gotoLiveNavigation(page, url, {
     if (d.marker) await recordSignal(`HTTP ${status} ${d.marker}`, { denial: true });
     for (let attempt = 0; solveWindow && attempt < 3 && d.marker; attempt += 1) {
       await page.waitForTimeout(4000);
-      const reloaded = await runLiveNavigation(page, url, () => page.reload({ waitUntil, timeout: timeoutMs }), throttle).catch(() => null);
+      const reloaded = await runLiveNavigation(page, url, () => page.reload({ waitUntil, timeout: timeoutMs }), throttleOptions).catch(() => null);
       if (reloaded) resp = reloaded;
       if (settleMs > 0) await page.waitForTimeout(settleMs); // the reloaded page is read (and returned) settled, like the entry
       // a reload answered by an edge challenge or an error status has not cleared the denial page
@@ -1077,7 +1171,7 @@ async function gotoLiveNavigation(page, url, {
       throw error;
     }
   }
-  await persistLiveStorageState(page, url);
+  await persistLiveStorageState(page, url, { stateRoot: throttle.stateRoot });
   return resp;
 }
 

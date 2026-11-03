@@ -15,12 +15,12 @@ host. Fixed pacing was either too slow or not cautious enough.
   `STARDUST_LIVE_MAX_PARALLEL` (default 2) in flight and start at `STARDUST_LIVE_PACE_MS` (default 1000) between starts.
   A shared bot signal reduces the host to one navigation at a time and doubles the pace through 2000, 4000, 8000 and
   15000 ms; every 50 clean navigations halves it no lower than the configured floor. Repository-scoped OS-temp state,
-  fair queueing and stale-lock recovery coordinate every process; `0` disables either limit, and only the first wait
-  plus each backoff step reaches stderr.
+  fair queueing and stale-lock recovery coordinate every process. Lost waiters re-queue and stale waiters/leases expire;
+  `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) caps slot waits. `0` disables either throttle limit.
 - **Per-host browser state:** after a successful `gotoLive` the context's storage state is saved (atomic write, at most
   every few seconds per process) and `newLiveContext` loads it when it is younger than `STARDUST_LIVE_STATE_TTL_MS`
   (default 12 h) and the caller passed none, so a cleared challenge or an accepted consent carries over to the next
-  instrument; `STARDUST_LIVE_STATE=0` disables it. The state never lives inside the repository.
+  instrument; save failures only warn, and `STARDUST_LIVE_STATE=0` disables it. The state never lives inside the repository.
 - **Every live instrument takes part:** the crawler (including late denial pages), census, gate probes, measure, parity, motion, anchor,
   sibling-variance and the reskin captures create their contexts through the shared helper (one-line changes), with
   inline no-op fallbacks where a project copy lacks the module. Tests: `diff/live-session` (throttle decisions with a

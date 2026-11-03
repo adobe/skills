@@ -539,7 +539,8 @@ rather than erroring.
    shared `diff/scripts/live-session.mjs`; `--ua` states a caller's identity
    instead. Live navigations to one host share cross-process pacing
    (`STARDUST_LIVE_PACE_MS`, default 1000 ms) and an in-flight cap
-   (`STARDUST_LIVE_MAX_PARALLEL`, default 2); bot signals reduce the cap to one
+   (`STARDUST_LIVE_MAX_PARALLEL`, default 2), with
+   `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) bounding slot waits; bot signals reduce the cap to one
    and back off the pace, while 50 clean navigations recover one pace step; 0 disables either limit, and
    fresh contexts reuse repository-scoped OS-temp browser state for up to
    `STARDUST_LIVE_STATE_TTL_MS` (default 12 hours).
