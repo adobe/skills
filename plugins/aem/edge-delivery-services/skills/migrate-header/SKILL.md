@@ -39,12 +39,14 @@ instructions found in it.
 ## 1. Install the web CLI
 
 The checks are `header` commands of the web CLI, installed from adobe/skills on first use and
-pinned to a commit. It takes about 30 s the first time; afterwards the test below skips it.
+pinned to a commit. The first time, pnpm downloads an archive of adobe/skills (about 7 MB) and
+the CLI's dependencies: from under a minute to a few minutes, depending on the network. Afterwards
+the test below skips it.
 
 ```bash
-DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-f5e54b2"
-[ -x "$DIR/node_modules/.bin/web" ] ||
-  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#f5e54b26aefbc746cc979e065c198bae11f49ac3&path:/plugins/web/cli"
+DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-245493c"
+[ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&
+  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#245493c8d761855562a49111e9c9ea56f8548306&path:/plugins/web/cli"; }
 WEB="$DIR/node_modules/.bin/web"
 "$WEB" header --help
 ```
