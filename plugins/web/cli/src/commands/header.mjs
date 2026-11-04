@@ -263,8 +263,10 @@ export function registerHeader(program, deps) {
         command,
         deps,
         async () => {
-          const { page, open, lines } = await captureHeader(url, dir, { header: o.header });
-          return { dir: resolve(dir), page, open, text: lines.join('\n') };
+          const { page, open, incomplete, lines } = await captureHeader(url, dir, {
+            header: o.header,
+          });
+          return { dir: resolve(dir), page, open, incomplete, text: lines.join('\n') };
         },
         { images: true },
       ),
@@ -277,8 +279,8 @@ export function registerHeader(program, deps) {
     .addHelpText('after', HELP.menus + EXIT_HELP)
     .action((page, openJson, _o, command) =>
       run(command, deps, () => {
-        const { ok, menus, lines } = checkMenus(page, openJson);
-        return { clean: ok, menus, text: lines.join('\n') };
+        const { ok, menus, notChecked, lines } = checkMenus(page, openJson);
+        return { clean: ok, menus, notChecked, text: lines.join('\n') };
       }),
     );
   check
@@ -290,8 +292,15 @@ export function registerHeader(program, deps) {
         command,
         deps,
         () => {
-          const { ok, panels, mobile, lines } = checkPanels(page, sourceDir, outDir);
-          return { clean: ok, panels, mobile, outDir: resolve(outDir), text: lines.join('\n') };
+          const { ok, panels, mobile, notChecked, lines } = checkPanels(page, sourceDir, outDir);
+          return {
+            clean: ok,
+            panels,
+            mobile,
+            notChecked,
+            outDir: resolve(outDir),
+            text: lines.join('\n'),
+          };
         },
         { images: true },
       ),

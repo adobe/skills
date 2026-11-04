@@ -260,8 +260,17 @@ export async function captureHeader(url, dirArg, { header = [], patterns } = {})
   lines.push(
     `overlays: ${hidden} hidden${overlays.visibleOverlays.desktop?.length ? `, still visible: ${overlays.visibleOverlays.desktop.map((o) => o.selector).join(', ')}` : ''}`,
   );
-  const menus = openMenus(url, dir);
-  const probes = headerProbes(url, dir);
+  // the header's own selectors reach menu discovery: a header that is a <div> (--header) has its
+  // menus found there, not only in header and nav elements
+  const roots = regions.map((r) => r.selector);
+  const menus = openMenus(url, dir, roots);
+  const probes = headerProbes(url, dir, roots);
   lines.push(menus.line, probes.line);
-  return { page, overlays, open: probes.open, lines };
+  // a menu found and not opened is a menu no check covers: the capture is incomplete
+  if (menus.incomplete.length)
+    lines.push(
+      `incomplete: ${menus.incomplete.length} menu(s) not opened (${menus.incomplete.join('; ')}): ` +
+        'capture again with the header named (--header), or check them by hand',
+    );
+  return { page, overlays, open: probes.open, incomplete: menus.incomplete, lines };
 }

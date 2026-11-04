@@ -1,7 +1,8 @@
 /* Browser-side: injected into the source and the EDS page. Defines
-   window.__plgToggles(): the top navigation's menu toggles (elements that open a menu), and
+   window.__plgToggles(roots): the top navigation's menu toggles (elements that open a menu), and
    window.__plgVisibleLinks(): how many links are visible in the viewport. The same rules on both
-   sides, so an open state can be compared label by label. */
+   sides, so an open state can be compared label by label. `roots`: the header's own selectors
+   (the capture's regions, a `--header` given by hand), searched besides header and nav. */
 (() => {
   const shown = (el) => {
     const r = el.getBoundingClientRect();
@@ -12,9 +13,12 @@
       && el.checkVisibility({ opacityProperty: true, visibilityProperty: true });
   };
   const label = (el) => (el.innerText || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ');
+  // `header, nav` and the header's own roots, each with `tail` (a header that is a <div>)
+  const within = (roots, tail) => ['header', 'nav', ...roots]
+    .flatMap((r) => tail.map((t) => `${r} ${t}`)).join(', ');
   // a toggle: in the top bar, visible, and it either says it expands (aria) or owns a hidden submenu
-  window.__plgToggles = () => {
-    const cands = [...document.querySelectorAll('header button, header a, header [role="button"], nav button, nav a, nav [role="button"]')]
+  window.__plgToggles = (roots = []) => {
+    const cands = [...new Set(document.querySelectorAll(within(roots, ['button', 'a', '[role="button"]'])))]
       .filter((el) => shown(el) && el.getBoundingClientRect().top < 200);
     const out = [];
     for (const el of cands) {
@@ -120,12 +124,17 @@
   };
 
   // the mobile menu toggle: named like one, else one that says it expands, else the rightmost
-  // header button (a promo bar's close button is a header button too)
-  window.__plgMobileToggle = () => {
-    const vis = [...document.querySelectorAll('header button, header [role=button], header [aria-controls], header [aria-expanded], button[aria-label]')]
-      .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top < 200; });
-    const named = (b) => /menu|navigation|nav-toggle|hamburger|burger/i.test([b.getAttribute('aria-label'), b.className, b.title, b.parentElement?.className].join(' '));
-    return vis.find(named) || vis.find((b) => b.hasAttribute('aria-expanded') || b.hasAttribute('aria-controls'))
-      || vis.sort((x, y) => y.getBoundingClientRect().right - x.getBoundingClientRect().right)[0] || null;
+  // header button (a promo bar's close button is a header button too); in header elements first,
+  // then in the header's own roots (a header that is a <div>)
+  window.__plgMobileToggle = (roots = []) => {
+    const pick = (sel) => {
+      const vis = [...new Set(document.querySelectorAll(sel))]
+        .filter((b) => { const r = b.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top < 200; });
+      const named = (b) => /menu|navigation|nav-toggle|hamburger|burger/i.test([b.getAttribute('aria-label'), b.className, b.title, b.parentElement?.className].join(' '));
+      return vis.find(named) || vis.find((b) => b.hasAttribute('aria-expanded') || b.hasAttribute('aria-controls'))
+        || vis.sort((x, y) => y.getBoundingClientRect().right - x.getBoundingClientRect().right)[0] || null;
+    };
+    return pick('header button, header [role=button], header [aria-controls], header [aria-expanded], button[aria-label]')
+      || (roots.length ? pick(roots.flatMap((r) => [`${r} button`, `${r} [role=button]`, `${r} [aria-controls]`, `${r} [aria-expanded]`]).join(', ')) : null);
   };
 })();

@@ -20,7 +20,7 @@ const togglesJs = loadBundle('header-toggles.js');
  * `mobileMenu` to <sourceDir>/open/open.json and returns { open, line } (its content, the line the
  * command prints).
  */
-export function headerProbes(url, outArg) {
+export function headerProbes(url, outArg, roots = []) {
   const out = resolve(outArg);
   const hideCss = JSON.parse(readFileSync(join(out, 'overlays.json'), 'utf8')).hideCss || '';
   const openFile = join(out, 'open', 'open.json');
@@ -41,19 +41,27 @@ export function headerProbes(url, outArg) {
     await page.waitForTimeout(1200);
     const label = ${JSON.stringify(openStates.states[0]?.label || null)};
     const scroll = await page.evaluate(async (lbl) => window.__plgScrollProbe(lbl), label);
-    // breakpoint: the smallest probed width that still shows the desktop nav (the real one lies
-    // between it and the next probed width)
+    // breakpoint: the smallest width that still shows the desktop nav, found among probed widths,
+    // then narrowed to the pixel between it and the next one (a source switching at 1000 px is
+    // shown at 1000, not at the 1024 probed)
     // a label not found at 1440 gives no breakpoint, not a bogus one (a payments site got 1440)
     if (!(await page.evaluate((lbl) => window.__plgLabelVisible(lbl), label))) {
       return JSON.stringify({ scroll, breakpoint: null });
     }
     let shownAt = 1440;
     let hiddenAt = null;
-    for (const w of [1366, 1280, 1200, 1140, 1100, 1024, 992, 960, 900, 850, 800, 768]) {
+    const shownWith = async (w) => {
       await page.setViewportSize({ width: w, height: 900 });
       await page.waitForTimeout(250);
-      if (!(await page.evaluate((lbl) => window.__plgLabelVisible(lbl), label))) { hiddenAt = w; break; }
+      return page.evaluate((lbl) => window.__plgLabelVisible(lbl), label);
+    };
+    for (const w of [1366, 1280, 1200, 1140, 1100, 1024, 992, 960, 900, 850, 800, 768]) {
+      if (!(await shownWith(w))) { hiddenAt = w; break; }
       shownAt = w;
+    }
+    while (hiddenAt != null && shownAt - hiddenAt > 1) {
+      const mid = Math.floor((shownAt + hiddenAt) / 2);
+      if (await shownWith(mid)) shownAt = mid; else hiddenAt = mid;
     }
     return JSON.stringify({ scroll, breakpoint: { shownAt, hiddenAt } });
   }`,
@@ -73,7 +81,7 @@ export function headerProbes(url, outArg) {
     if (${JSON.stringify(hideCss)}) await page.addStyleTag({ content: ${JSON.stringify(hideCss)} });
     await page.addScriptTag({ content: ${JSON.stringify(togglesJs)} });
     await page.waitForTimeout(1200);
-    const toggle = await page.evaluateHandle(() => window.__plgMobileToggle());
+    const toggle = await page.evaluateHandle((r) => window.__plgMobileToggle(r), ${JSON.stringify(roots)});
     if (!(await toggle.asElement())) return JSON.stringify({ toggle: false });
     const before = await page.evaluate(() => window.__plgVisibleLinks());
     await toggle.asElement().click();

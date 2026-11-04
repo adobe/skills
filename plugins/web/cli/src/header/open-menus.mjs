@@ -18,9 +18,11 @@ const extractor = loadBundle('header-extract.js');
 
 /**
  * The capture step as a function (the web-header binary's `header capture`): writes
- * <sourceDir>/open/ and returns { open, line } (open.json's content, the line the command prints).
+ * <sourceDir>/open/ and returns { open, line, incomplete } (open.json's content, the line the
+ * command prints, the menus it found but could not open). `roots`: the header's selectors (its
+ * regions), where the toggles are looked for besides header and nav.
  */
-export function openMenus(url, outArg) {
+export function openMenus(url, outArg, roots = []) {
   const out = resolve(outArg);
   const hideCss = JSON.parse(readFileSync(join(out, 'overlays.json'), 'utf8')).hideCss || '';
   const t0 = Date.now();
@@ -55,13 +57,15 @@ export function openMenus(url, outArg) {
   const states = [];
   const dumps = [];
   await load();
-  const toggles = await page.evaluate(() => window.__plgToggles());
+  const roots = ${JSON.stringify(roots)};
+  const toggles = await page.evaluate((r) => window.__plgToggles(r), roots);
   await page.evaluate(() => window.__plgMarkVisibleLinks());
   const closed = await page.evaluate(() => window.__plgVisibleLinks());
   const closedOverlays = await page.evaluate(${VISIBLE_OVERLAYS});
   for (const [i, t] of toggles.entries()) {
     if (i) { await load(); await page.evaluate(() => window.__plgMarkVisibleLinks()); }
-    const el = page.locator('header, nav').getByText(t.label, { exact: true }).first();
+    // the visible label: a closed panel can hold the same text (a column heading) before it
+    const el = page.locator(['header', 'nav', ...roots].join(', ')).getByText(t.label, { exact: true }).filter({ visible: true }).first();
     // hover first: a menu that opens on hover is a hover menu, whatever a click would do
     let trigger = 'hover';
     try { await el.hover({ timeout: 3000 }); } catch { /* not hoverable */ }
@@ -97,8 +101,22 @@ export function openMenus(url, outArg) {
   for (const d of openStates.dumps || []) writeFileSync(join(out, 'open', d.file), d.styles);
   delete openStates.dumps;
   writeFileSync(join(out, 'open', 'open.json'), JSON.stringify(openStates, null, 2));
+  // a toggle that is a plain link (it navigates) is not a menu; one that could not be opened is a
+  // menu the checks would not cover: the capture says so
+  const incomplete = notOpened(openStates);
   const line = `[${((Date.now() - t0) / 1000).toFixed(1)}s] open states: ${openStates.states
-    .map((st) => `${st.label}(+${st.newLinks ?? st.error}, ${st.trigger})`)
+    .map((st) =>
+      st.error
+        ? `${st.label}(${/^navigates/.test(st.error) ? 'a link, not a menu' : `NOT OPENED: ${st.error}`})`
+        : `${st.label}(+${st.newLinks}, ${st.trigger})`,
+    )
     .join(' ')}`;
-  return { open: openStates, line };
+  return { open: openStates, line, incomplete };
+}
+
+/** The menus a capture found and could not open (open.json `states`): `<label>: <reason>`. */
+export function notOpened(open) {
+  return (open.states || [])
+    .filter((st) => st.error && !/^navigates/.test(st.error))
+    .map((st) => `${st.label}: ${st.error}`);
 }

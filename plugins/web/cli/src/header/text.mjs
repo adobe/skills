@@ -8,7 +8,10 @@
  * (the burger, as panels.mjs opens it): the whole viewport on both sides.
  * `web header check text <source url> <page url>` (its --help lists the options).
  * --baseline: the page before the work: differences it already has against the source,
- *   with the same value on the page (texts, positions, pixels), are not counted.
+ *   with the same value on the page (texts, positions, pixels), are not counted, except in the
+ *   header and an open panel or mobile menu (on either page), which are always the work's.
+ * --open / --mobile-menu: the menu must show new links on the source and on the page, else the
+ *   size fails (CHECK_FAILED); only the baseline may stay as loaded.
  * --source-cache: the source's states are loaded once and reused from <dir> (one file per state).
  * --scroll: after the load, wheel to each y in turn (1 s each) and compare there: every header text
  * shown or hidden alike, positions of the shown ones, the whole viewport's pixels at 2x.
@@ -197,6 +200,8 @@ const COLLECT = `(args) => {
   const painted = (root) => {
     let bottom = 0;
     for (const e of [root, ...root.querySelectorAll('*')]) {
+      // an open panel or mobile menu is not the bar: it is told apart by its own box
+      if (e.closest('[data-plg-panel]')) continue;
       const r = e.getBoundingClientRect();
       if (r.bottom <= 0 || r.top >= innerHeight || r.width < 1 || r.height < 1) continue;
       const cs = getComputedStyle(e);
@@ -227,26 +232,45 @@ const COLLECT = `(args) => {
 // then used as loaded, for what its body already differed by (a failed open fails the source and
 // the page, not the baseline)
 const OPEN = (open, trigger, mobileMenu, optional = false) => `
+  // the page named in a failure (run-code has no URL global)
+  const host = () => page.evaluate(() => location.host).catch(() => page.url());
   if (${JSON.stringify(Boolean(mobileMenu))}) {
+    await page.evaluate(() => window.__plgMarkVisibleLinks());
     const before = await page.evaluate(() => window.__plgVisibleLinks());
     const toggle = await page.evaluateHandle(() => window.__plgMobileToggle());
+    let opened = false;
     if (await toggle.asElement()) {
       try {
         await toggle.asElement().click();
-        await page.evaluate((n) => window.__plgWaitReveal(n), before);
+        opened = await page.evaluate((n) => window.__plgWaitReveal(n), before);
       } catch (e) {
         if (!${JSON.stringify(Boolean(optional))}) throw e;
       }
     }
+    // shown on the source and on the page, or not compared: a missing toggle, or one that
+    // reveals no link (a search button), would compare two closed headers as an open menu
+    if (!opened && !${JSON.stringify(Boolean(optional))})
+      throw new Error('the mobile menu did not open on ' + (await host()) + ((await toggle.asElement()) ? ': no link revealed' : ': no toggle found'));
     await page.waitForTimeout(700);
+    if (opened) panel = await page.evaluate(() => window.__plgOpenPanel()?.rect ?? null);
   } else if (${JSON.stringify(open || '')}) {
+    const label = ${JSON.stringify(open || '')};
     await page.evaluate(() => window.__plgMarkVisibleLinks());
-    const el = page.locator('header, nav').getByText(${JSON.stringify(open || '')}, { exact: true }).filter({ visible: true }).first();
+    const before = await page.evaluate(() => window.__plgVisibleLinks());
+    // the visible label in header or nav, else anywhere on the page (a header that is a <div>)
+    const inHeader = page.locator('header, nav').getByText(label, { exact: true }).filter({ visible: true });
+    const el = (await inHeader.count()) ? inHeader.first() : page.getByText(label, { exact: true }).filter({ visible: true }).first();
     try {
       if (${JSON.stringify(trigger)} === 'click') await el.click({ timeout: 3000 }); else await el.hover({ timeout: 3000 });
+      // opened on the source and on the page, or not compared (the same rule as the mobile menu)
+      if (!(await page.evaluate((n) => window.__plgWaitReveal(n, 3000), before)))
+        throw new Error('"' + label + '" did not open on ' + (await host()) + ': no link revealed');
       await page.waitForTimeout(700);
-      // the open panel's bottom: its 2x pixels are told apart from the page's below it
-      panelBottom = await page.evaluate(() => { const p = window.__plgOpenPanel(); return p ? p.rect.y + p.rect.h : null; });
+      // the open panel: its texts are the header's, and its 2x pixels are told apart from the
+      // page's below it
+      const p = await page.evaluate(() => window.__plgOpenPanel());
+      panel = p ? p.rect : null;
+      panelBottom = p ? p.rect.y + p.rect.h : null;
     } catch (e) {
       if (!${JSON.stringify(Boolean(optional))}) throw e;
     }
@@ -296,7 +320,7 @@ async function collect(
   ${i ? SCROLL_TO(y) : ''}
   ${late}
   if (${JSON.stringify(Boolean(shot))}) await page.screenshot({ path: ${JSON.stringify(shot ? shot(i) : '')} });
-  out.push({ y: ${y}, panelBottom, ...(await page.evaluate(${COLLECT}, [${JSON.stringify(scope)}, ${JSON.stringify(band)}, ${JSON.stringify(PROPS)}])) });`,
+  out.push({ y: ${y}, panelBottom, panel, ...(await page.evaluate(${COLLECT}, [${JSON.stringify(scope)}, ${JSON.stringify(band)}, ${JSON.stringify(PROPS)}])) });`,
       )
       .join('\n');
     // bounded: a stuck call fails this size (reported, not clean) instead of holding the sweep
@@ -318,6 +342,7 @@ async function collect(
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   await page.waitForTimeout(1200);
   let panelBottom = null;
+  let panel = null;
   ${OPEN(open, trigger, mobileMenu, optionalOpen)}
   const out = [];
   ${states}
@@ -350,6 +375,13 @@ export function diffShown(headerTexts, srcAll, pageAll, tolerance) {
 }
 
 const BELOW = '(the page below the header)';
+
+/** A box `q` holds a text's or an icon's centre (an icon's rect is its centre). */
+const holds = (q, r) => {
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  return cx >= q.x && cx <= q.x + q.w && cy >= q.y && cy <= q.y + q.h;
+};
 
 /** One size: per state, the differences, the texts on one side only, the header's bottom, the pixels. */
 async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
@@ -431,12 +463,39 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
   };
   return src.map((s, i) => {
     const at = o.scroll ? `${tag} y${s.y}` : tag;
-    let r = judge(s, page[i], i);
+    const p = page[i];
+    let r = judge(s, p, i);
     let inherited = 0;
-    if (base) ({ r, inherited } = minusBaseline(r, judge(s, base[i], i), headerTexts));
+    // the header's, never the baseline's: what lies in the header (closed: all that is compared;
+    // else down to the lower of its two bottoms at this step) or in an open panel or mobile menu,
+    // texts and icons alike, on either side (a label the page kept from its old header too)
+    const band = whole ? Math.max(s.headerBottom ?? 0, p.headerBottom ?? 0) : Infinity;
+    const panels = [s.panel, p.panel].filter(Boolean);
+    const own = (st) =>
+      st.texts
+        .filter((t) => t.rect.y < band || panels.some((q) => holds(q, t.rect)))
+        .map((t) => t.text);
+    if (base)
+      ({ r, inherited } = minusBaseline(r, judge(s, base[i], i), [
+        ...headerTexts,
+        ...own(s),
+        ...own(p),
+      ]));
     const rows = whole || i ? null : Math.ceil(s.mainTop * +o.scale);
+    // the same areas at the shots' scale: the baseline is not subtracted there
+    const k = +o.scale;
+    const mine = {
+      rows: band === Infinity ? Infinity : Math.ceil(band * k),
+      rects: panels.map((q) => ({ x: q.x * k, y: q.y * k, w: q.w * k, h: q.h * k })),
+    };
     const px = o.shots
-      ? differingPixels(name('source')(i), name('page')(i), rows, base ? name('baseline')(i) : null)
+      ? differingPixels(
+          name('source')(i),
+          name('page')(i),
+          rows,
+          base ? name('baseline')(i) : null,
+          mine,
+        )
       : null;
     // an open menu: how many of them are in the header and its panel (above the source panel's
     // bottom); the rest is the page under it (a body that is not the source's)
@@ -448,13 +507,14 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
             name('page')(i),
             panelRows,
             base ? name('baseline')(i) : null,
+            mine,
           )
         : null;
     // a scroll step: how many of them are in the header (down to the lower of what the source's
     // and the page's headers paint there); the rest is the page below it (a body that is not the
     // source's, moved by a new header height)
     const headerRows = o.scroll
-      ? Math.ceil(Math.max(s.headerBottom ?? 0, page[i].headerBottom ?? 0) * +o.scale)
+      ? Math.ceil(Math.max(s.headerBottom ?? 0, p.headerBottom ?? 0) * +o.scale)
       : null;
     const pxHeader =
       px && headerRows != null
@@ -464,6 +524,7 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
               name('page')(i),
               headerRows,
               base ? name('baseline')(i) : null,
+              mine,
             )
           : 0
         : null;
@@ -554,9 +615,10 @@ async function pool(fns, n) {
 /**
  * Pixels that differ between two shots (on white), down to row `rows` (the header) or all. With a
  * baseline shot (the page before the work), a pixel where the page still equals the baseline and
- * the baseline already differed from the source is the baseline's, not counted.
+ * the baseline already differed from the source is the baseline's, not counted, outside `own`
+ * ({ rows, rects }: the header's rows and its open panels' boxes, at the shots' scale).
  */
-export function differingPixels(a, b, rows = null, base = null) {
+export function differingPixels(a, b, rows = null, base = null, own = null) {
   const imgs = [a, b, ...(base ? [base] : [])].map((f) => PNG.sync.read(readFileSync(f)));
   const w = Math.min(...imgs.map((i) => i.width));
   const h = Math.min(rows ?? Infinity, ...imgs.map((i) => i.height));
@@ -572,9 +634,20 @@ export function differingPixels(a, b, rows = null, base = null) {
     return d.data;
   };
   const [ab, ac, bc] = [mask(A, B), mask(A, C), mask(B, C)];
+  // `own`: the header's rows and its open panels' boxes, where nothing is the baseline's (a
+  // header defect the page kept from the page before the work is still a defect)
+  const mine = (p) => {
+    if (!own) return false;
+    const x = p % w;
+    const y = (p - x) / w;
+    return (
+      y < own.rows || own.rects.some((q) => x >= q.x && x < q.x + q.w && y >= q.y && y < q.y + q.h)
+    );
+  };
   // diffMask: a differing pixel is opaque (alpha 255), an equal one transparent
   let n = 0;
-  for (let i = 3; i < ab.length; i += 4) if (ab[i] && !(ac[i] && !bc[i])) n += 1;
+  for (let i = 3; i < ab.length; i += 4)
+    if (ab[i] && (mine((i - 3) / 4) || !(ac[i] && !bc[i]))) n += 1;
   return n;
 }
 

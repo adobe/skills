@@ -82,8 +82,10 @@ Read the lines, not the exit status: 0 means the check ran, clean or not.
 
 `--source-cache <dir>` keeps the source's states between runs (loaded once, shared by every text
 command). `--baseline <url>` points at your page before the header work: a difference it already
-had, with the same value on your page, is reported as inherited and not counted. The header's own
-texts and where the page below it starts are never inherited. A baseline whose old header has no
+had, with the same value on your page, is reported as inherited and not counted. What lies in
+the header or in an open panel or mobile menu (texts, icons, 2x pixels, on either page) and where
+the page below the header starts are never inherited: a header defect your page kept from the
+page before the work is still a defect. A baseline whose old header has no
 such menu (`--open`) or no burger (`--mobile-menu`) is used as loaded.
 
 On a page whose body is not the source's, the checks judge the header itself. Two things around
@@ -122,7 +124,9 @@ not clean at: 1000x900,700x900 (re-run those with --sizes while fixing)
 
 `menus`: `OK   <label> (<trigger>): 3 of 3 links`, or `FAIL` with the reason (did not open, could
 not be closed, too few links). `panels`: `OK   <label> (<trigger>): panel 0.4 %, 12 of 12 hrefs`,
-then `mobile menu: 0.8 %`. `pixels`: one row per region,
+then `mobile menu: 0.8 %`. In both, `NOT CHECKED <label>: <reason>`: a menu the capture found
+and could not open (its line `incomplete:`), not clean; capture again with the header named
+(`--header`), whose selectors menu discovery also searches. `pixels`: one row per region,
 `header  src@0+96  eds@0+96  dH=0  mismatch=0%  side=<file>` (`src`: the source, `eds`: your page;
 `side.png` shows both), then `MISSING` (a map selector that matched nothing on your page) and
 `NOT SHOWN` (a region the source does not show at this width: not compared).
@@ -133,7 +137,9 @@ then `mobile menu: 0.8 %`. `pixels`: one row per region,
 - **1**: `CHECK_FAILED`, the check did not run to its end (a page that did not load, a size that
   could not be compared, a browser call that failed). Nothing was checked, so it is not a result:
   fix the cause (is the dev server up?) and run the same command again. For `text`, the message
-  names the sizes that failed and holds the other sizes' lines.
+  names the sizes that failed and holds the other sizes' lines; `did not open on <host>`: with
+  `--open` or `--mobile-menu`, that page showed no new link once triggered (the baseline alone
+  may stay closed).
 - **2**: a usage error (a bad option, a map key that names no region of the capture), or
   `playwright-cli` or the image libraries missing, before any browser starts.
 

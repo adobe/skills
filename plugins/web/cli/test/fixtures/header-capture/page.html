@@ -17,7 +17,7 @@
   nav li:hover ul { display: flex; }
   .burger { display: none; }
   main { padding: 24px; }
-  @media (width < 992px) {
+  @media (width < 1000px) {
     nav { display: none; }
     .burger { display: block; margin-left: auto; }
     body.open nav { display: block; position: absolute; top: 113px; left: 0; right: 0; padding: 12px 24px; background: #fff; }
@@ -33,7 +33,7 @@
   <nav>
     <ul>
       <li><a href="/products">Products</a>
-        <ul><li><a href="/products/a">Product A</a></li><li><a href="/products/b">Product B</a></li></ul>
+        <ul><li class="title">Resources</li><li><a href="/products/a">Product A</a></li><li><a href="/products/b">Product B</a></li></ul>
       </li>
       <li><a href="/resources">Resources</a>
         <ul><li><a href="/blog">Blog</a></li><li><a href="/guides">Guides</a></li><li><a href="/help">Help</a></li></ul>
@@ -45,7 +45,7 @@
 </header>
 <main>
   <h1>Header capture fixture</h1>
-  <p>A fixed promo bar over an empty spacer above the header, two hover menus, a burger under 992 px.</p>
+  <p>A fixed promo bar over an empty spacer above the header, two hover menus (the first one's panel titled like the second), a burger under 1000 px.</p>
 </main>
 </body>
 </html>

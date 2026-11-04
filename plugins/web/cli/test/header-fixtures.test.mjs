@@ -8,7 +8,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,6 +20,10 @@ const menusDir = new URL('./fixtures/header-menus/', import.meta.url);
 const textDir = new URL('./fixtures/header-text/', import.meta.url);
 const captureHtml = readFileSync(
   new URL('./fixtures/header-capture/page.html', import.meta.url),
+  'utf8',
+);
+const customHtml = readFileSync(
+  new URL('./fixtures/header-capture/custom.html', import.meta.url),
   'utf8',
 );
 const probe = spawnSync('playwright-cli', ['--version']);
@@ -35,6 +39,7 @@ let cwd;
 let menus;
 let text;
 let site;
+let custom;
 let refused;
 
 // Async spawn: spawnSync would block the event loop that serves the in-process fixtures.
@@ -58,7 +63,7 @@ function web(...args) {
  */
 async function sessionsOnFixtures() {
   const res = await web('browser', 'list');
-  const origins = [menus.url, text.url, site.url, refused];
+  const origins = [menus.url, text.url, site.url, custom.url, refused];
   return (res.doc?.sessions ?? []).filter((s) => origins.some((o) => s.url?.startsWith(o)));
 }
 
@@ -77,6 +82,7 @@ before(async () => {
   menus = await startFixtureDir(menusDir);
   text = await startFixtureDir(textDir);
   site = await startFixture(captureHtml);
+  custom = await startFixture(customHtml);
   refused = await closedPort();
 });
 
@@ -85,6 +91,7 @@ after(async () => {
   await menus?.close();
   await text?.close();
   await site?.close();
+  await custom?.close();
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -132,7 +139,10 @@ test(
       open.states[0].panel.items.map((i) => i.href),
       [`${site.url}products/a`, `${site.url}products/b`],
     );
-    assert.equal(open.header.breakpoint.shownAt, 992);
+    // the second menu opened by its visible label, not by the first panel's hidden title
+    assert.deepEqual(res.doc.incomplete, []);
+    // the breakpoint to the pixel (1000), not the probed 1024
+    assert.deepEqual(open.header.breakpoint, { shownAt: 1000, hiddenAt: 999 });
     assert.equal(open.mobileMenu.revealed, true);
     for (const f of [
       'page.json',
@@ -145,6 +155,48 @@ test(
       assert.ok(existsSync(join(dir, f)), `no ${f}`);
     await clean(true, 'menus', site.url, join(dir, 'open', 'open.json'));
     await clean(true, 'panels', site.url, dir, join(cwd, 'panels'));
+  },
+);
+
+test('capture --header: a header that is a div has its menus found', { skip }, async () => {
+  const dir = join(cwd, 'capture-custom');
+  const res = await web('header', 'capture', custom.url, dir, '--header', '#custom');
+  assert.equal(res.status, 0, res.stdout);
+  assert.deepEqual(
+    res.doc.page.regions.map((r) => r.selector),
+    ['#custom'],
+  );
+  assert.deepEqual(
+    res.doc.open.states.map((s) => [s.label, s.trigger, s.newLinks]),
+    [['Shop', 'click', 2]],
+  );
+  assert.deepEqual(res.doc.incomplete, []);
+});
+
+test(
+  'menus and panels: a menu the capture could not open is not checked, and not clean',
+  { skip },
+  async () => {
+    const dir = join(cwd, 'capture-incomplete');
+    mkdirSync(join(dir, 'open'), { recursive: true });
+    const open = {
+      closedLinks: 0,
+      states: [{ label: 'Produits', error: 'not clickable' }],
+    };
+    writeFileSync(join(dir, 'open', 'open.json'), JSON.stringify(open));
+    writeFileSync(join(dir, 'page.json'), JSON.stringify({ url: `${menus.url}menus.html` }));
+    writeFileSync(join(dir, 'overlays.json'), JSON.stringify({ hideCss: '' }));
+    const m = await clean(false, 'menus', `${menus.url}menus.html`, join(dir, 'open', 'open.json'));
+    assert.deepEqual(m.notChecked, ['Produits: not clickable']);
+    assert.match(m.text, /NOT CHECKED Produits: not clickable/);
+    const p = await clean(
+      false,
+      'panels',
+      `${menus.url}menus.html`,
+      dir,
+      join(cwd, 'panels-incomplete'),
+    );
+    assert.deepEqual(p.notChecked, ['Produits: not clickable']);
   },
 );
 
@@ -323,6 +375,101 @@ test(
     // the same 80 px bar on both sides; the source's ends 8 px lower (a red band the page lacks):
     // the header's rows go down to the source's bottom, at load and scrolled
     for (const step of doc.sizes) assert.ok(step.pxHeader > 0, doc.text);
+  },
+);
+
+test(
+  'text --mobile-menu on a page without one: CHECK_FAILED, not a clean closed header',
+  { skip },
+  async () => {
+    // its only header button (Close) reveals nothing: no mobile menu was compared
+    const doc = await fails(
+      1,
+      'CHECK_FAILED',
+      'text',
+      textFile('src.html'),
+      textFile('src.html'),
+      '--sizes',
+      '390x844',
+      '--mobile-menu',
+    );
+    assert.match(doc.error.message, /the mobile menu did not open/);
+  },
+);
+
+test('text --open on a label that opens nothing: CHECK_FAILED', { skip }, async () => {
+  const doc = await fails(
+    1,
+    'CHECK_FAILED',
+    'text',
+    textFile('src.html'),
+    textFile('src.html'),
+    '--sizes',
+    '1000',
+    '--open',
+    'About',
+  );
+  assert.match(doc.error.message, /"About" did not open/);
+});
+
+test(
+  'text --baseline: a header icon the page kept wrong from the baseline is still a difference',
+  { skip },
+  async () => {
+    const doc = await clean(
+      false,
+      'text',
+      textFile('src.html'),
+      textFile('icon-moved.html'),
+      '--sizes',
+      '1000',
+      '--baseline',
+      textFile('icon-moved.html'),
+      '--scale',
+      '2',
+      '--shots',
+      join(cwd, 'icon-kept', 'shot'),
+    );
+    assert.match(doc.text, /"icon "Close"": x 907 -> 927/);
+    assert.ok(doc.sizes[0].px > 0, doc.text);
+  },
+);
+
+test(
+  'text --baseline: a label the page kept from its old header is still a difference',
+  { skip },
+  async () => {
+    const doc = await clean(
+      false,
+      'text',
+      textFile('src.html'),
+      textFile('leftover.html'),
+      '--sizes',
+      '1000',
+      '--baseline',
+      textFile('leftover.html'),
+    );
+    assert.match(doc.text, /only on the page: "Old"/);
+  },
+);
+
+test(
+  'text --open --baseline without the menu: a panel link missing on the page is still a difference',
+  { skip },
+  async () => {
+    const doc = await clean(
+      false,
+      'text',
+      `${menus.url}menus.html`,
+      `${menus.url}menus-missing.html`,
+      '--sizes',
+      '1000',
+      '--open',
+      'Produits',
+      '--baseline',
+      textFile('src.html'),
+    );
+    assert.match(doc.text, /only on the source: "P2"/);
   },
 );
 

@@ -10,6 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { closeSession, openSession, runCode } from './browser.mjs';
 import { STEADY } from './steady.mjs';
+import { notOpened } from './open-menus.mjs';
 import { loadBundle } from '#src/bundles/index.mjs';
 
 /**
@@ -75,8 +76,11 @@ const PROBE = `async (page, url, menus) => {
  * `menus` one row per menu with its verdict, `lines` what the command prints.
  */
 export function checkMenus(url, openFile, session = 'staged-menus') {
-  const menus = JSON.parse(readFileSync(openFile, 'utf8'))
-    .states.filter((s) => s.newLinks > 0)
+  const open = JSON.parse(readFileSync(openFile, 'utf8'));
+  // a menu the capture found and could not open is not checked here: not clean, and said so
+  const skipped = notOpened(open);
+  const menus = open.states
+    .filter((s) => s.newLinks > 0)
     .map((s) => ({ label: s.label, trigger: s.trigger, newLinks: s.newLinks }));
   openSession(session, { width: 1440, height: 900 });
   let rows;
@@ -95,7 +99,12 @@ export function checkMenus(url, openFile, session = 'staged-menus') {
         `${r.problems.length ? ` - ${r.problems.join('; ')}` : ''}`,
     );
   }
+  for (const s of skipped) lines.push(`NOT CHECKED ${s} (not opened at capture)`);
   const failed = checked.filter((r) => !r.ok).length;
-  lines.push(failed ? `menus: ${failed} of ${rows.length} fail` : `menus: ${rows.length} ok`);
-  return { ok: failed === 0, menus: checked, lines };
+  lines.push(
+    failed
+      ? `menus: ${failed} of ${rows.length} fail`
+      : `menus: ${rows.length} ok${skipped.length ? `, ${skipped.length} not checked` : ''}`,
+  );
+  return { ok: failed === 0 && !skipped.length, menus: checked, notChecked: skipped, lines };
 }

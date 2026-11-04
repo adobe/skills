@@ -17,6 +17,7 @@ import { AB_TESTS, STEADY } from './steady.mjs';
 import { VISIBLE_OVERLAYS } from './overlay-probe.mjs';
 import { PNG, pixelmatch } from './imaging.mjs';
 import { loadBundle } from '#src/bundles/index.mjs';
+import { notOpened } from './open-menus.mjs';
 
 // the 1:1 bar of the header runs these checks come from (adobe/skills#533), fixed before them
 export const MAX_PANEL = 1.5;
@@ -242,8 +243,15 @@ export function checkPanels(url, srcArg, outArg, session = 'open-panels') {
         `${mobile.problems.length ? ` - ${mobile.problems.join('; ')}` : ''}`,
     );
   } else lines.push('n/a  mobile menu: no source shot');
+  // a menu the capture found and could not open has no panel to compare: not clean, and said so
+  const skipped = notOpened(open);
+  for (const s of skipped) lines.push(`NOT CHECKED ${s} (not opened at capture)`);
   const total = rows.length + (mobile ? 1 : 0);
   writeFileSync(join(out, 'panels.json'), JSON.stringify({ url, panels: rows, mobile }, null, 1));
-  lines.push(failed ? `open panels: ${failed} of ${total} fail` : `open panels: ${total} ok`);
-  return { ok: failed === 0, panels: rows, mobile, lines };
+  lines.push(
+    failed
+      ? `open panels: ${failed} of ${total} fail`
+      : `open panels: ${total} ok${skipped.length ? `, ${skipped.length} not checked` : ''}`,
+  );
+  return { ok: failed === 0 && !skipped.length, panels: rows, mobile, notChecked: skipped, lines };
 }
