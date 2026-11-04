@@ -44,9 +44,9 @@ the CLI's dependencies: from under a minute to a few minutes, depending on the n
 the test below skips it.
 
 ```bash
-DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-610215d"
+DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-3666c34"
 [ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&
-  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#610215d6b6e230eef05eb837e348997696c25302&path:/plugins/web/cli"; }
+  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#3666c344211dd55cab23008172afb6b393c0c9da&path:/plugins/web/cli"; }
 WEB="$DIR/node_modules/.bin/web"
 "$WEB" header --help
 ```
@@ -163,6 +163,24 @@ There is no time limit. Stop when every step is clean, or when you cannot get cl
 10. **The checks are not the target.** `$WEB doc header` and a command's `--help` explain a line.
     What must match is the source, at every width and state, including where no check looks.
 
+## What the checks cannot see
+
+Your page's body is not the source's, so the checks judge the header itself: its regions'
+pixels, its texts in every state, where the page below it starts, and the 2x pixels down to the
+bottom of the header and of an open panel. Around it, three things are not compared 1:1:
+- **A header the source's top content shows through** (transparent over a hero): its region's
+  pixels and 2x rows include what lies behind it, the source's hero on one side and your page's
+  body on the other. Never paint a background the source does not have to get past them: compare
+  the header's own backgrounds (`regions/<id>.styles.txt`) with yours, and name the checks this
+  leaves unclean in your final answer.
+- **What the header paints over the body**: a shadow under the bar, a backdrop that dims the
+  page while a menu is open, a panel over the first section. The body shows through it, so it is
+  counted `below it` or `below them`, with the body: compare those rows of the 2x shots with the
+  live source by eye, and the computed values on both pages (`box-shadow`, a backdrop's
+  `background-color` and `opacity`).
+- **The header over the site's real content** (a sticky header over the page's sections, the
+  space above the first block): check it on a page of the site once its content is migrated.
+
 ## Done
 
 Every step of the ladder clean, or the differences left named with their reason. Only a pixel
@@ -175,6 +193,7 @@ Final answer:
   `drafts/fragments/*`, `icons/*`);
 - the last output line of each ladder step;
 - any change to `header.js`, with its reason;
+- what you checked by eye (What the checks cannot see), and how;
 - anything left, with its reason.
 
 Then hand over the content: the nav document and its fragments are authored in the site's content

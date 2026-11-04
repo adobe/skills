@@ -89,11 +89,13 @@ per command: `closed`, `open-<label>`, `mobile-menu`, `scroll`): `0 differing pi
 size. Open the two shots of a size that is not clean (`<prefix>-<size>-source.png` and
 `-page.png`).
 - An open menu's count is split: `in the header and open panel` is yours. `below them` is yours
-  too when your header moved the page; otherwise it is the body of a page that is not the source
-  page.
-- A scroll step's count is split the same way: `in the header` (down to what your header shows
-  at that step) is yours; `below it` is the body, moved by your header's new height on a page that
-  is not the source page.
+  too when your header moved the page or paints over it (a backdrop: compare those rows by eye);
+  otherwise it is the body of a page that is not the source page.
+- A scroll step's count is split the same way: `in the header` (down to the lower of the
+  source's and your header's bottom at that step) is yours; `below it` is the body, moved by your
+  header's new height on a page that is not the source page, and the header's shadow over it
+  (compare those rows by eye).
+- A header the source's content shows through: SKILL.md, What the checks cannot see.
 - At 2x a sub-pixel position shows: an icon drawn as an `<img>` or a CSS mask where the source
   has an inline SVG, or a `top: -0.5px` nudge.
 
