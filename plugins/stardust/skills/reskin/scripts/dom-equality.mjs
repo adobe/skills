@@ -116,6 +116,7 @@ async function capture(url, scopeList, normalize) {
   // local/file targets, mandatory on live ones (F-G/F-R1).
   const ctx = await newLiveContext(browser, {
     ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+    stateUrl: url,
   });
   const page = await ctx.newPage();
   let navErr = null;

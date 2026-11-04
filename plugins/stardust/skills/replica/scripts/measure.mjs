@@ -240,7 +240,7 @@ async function measurePage(browser, url, o, session) {
   const viewport = { width: o.widths[0], height: VIEWPORT_H };
   const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
   const context = live
-    ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
+    ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, stateUrl: url, ...common })
     : await browser.newContext({ ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common });
   const page = await context.newPage();
   const byWidth = {};

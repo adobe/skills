@@ -143,6 +143,7 @@ const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromi
 // harmless on local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
   ua: opts.ua, locale: opts.locale, viewport: { width: 1440, height: 900 },
+  stateUrl: opts.url,
 });
 const page = await ctx.newPage();
 if (isLiveHttpUrl(opts.url)) {

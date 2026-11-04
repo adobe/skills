@@ -518,7 +518,9 @@ async function main() {
   const doc = { tool: 'chrome-explore', url, at: new Date().toISOString(), shots: shotsDir, widths: {} };
   try {
     for (const width of widths) {
-      const { ctx, page } = await openPage(browser, { width, height: width < TOUCH_BELOW ? 844 : 900, locale: opts.locale });
+      const { ctx, page } = await openPage(browser, {
+        width, height: width < TOUCH_BELOW ? 844 : 900, locale: opts.locale, stateUrl: url,
+      });
       ctx.on('page', (p) => { if (p !== page) p.close().catch(() => {}); });
       const gotoFn = (p, u) => visit(p, u, { warmup: opts.warmup, settle: { passes: 1, quietMs: 800 } });
       const r = await exploreWidth(page, { url, width, rootSel: opts.rootSel, maxStates: opts.maxStates, maxDepth: opts.maxDepth, probe: probe || navWord, shotsDir, gotoFn, paceMs: opts.paceMs, reloadPauseMs: opts.reloadPauseMs, maxRequests: opts.maxRequests, maxTypeahead: opts.maxTypeahead });

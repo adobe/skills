@@ -34,8 +34,10 @@ export async function openBrowser(chromium, { tier = 'chrome' } = {}) {
   return launchLiveBrowser(chromium); // the best available: Chrome, else Chromium (tagged 'chromium-fallback')
 }
 
-export async function openPage(browser, { width = 1440, height = 900, locale = 'en-US', ua = null } = {}) {
-  const ctx = await newLiveContext(browser, { ua, locale, viewport: { width, height } });
+export async function openPage(browser, {
+  width = 1440, height = 900, locale = 'en-US', ua = null, stateUrl,
+} = {}) {
+  const ctx = await newLiveContext(browser, { ua, locale, viewport: { width, height }, stateUrl });
   const page = await ctx.newPage();
   return { ctx, page };
 }

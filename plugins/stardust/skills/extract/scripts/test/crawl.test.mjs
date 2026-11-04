@@ -13,14 +13,22 @@
 // the per-page deadline and the tab is closed. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureGaps, localeRootPath, maxPages, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage } from '../crawl.mjs';
+import * as crawl from '../crawl.mjs';
+import * as session from '../../../diff/scripts/live-session.mjs';
+
+const {
+  captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage,
+} = crawl;
 
 // the stub pages below navigate one host back-to-back; live-session's per-host pacing has its own tests
 process.env.STARDUST_LIVE_PACE_MS = '0';
+process.env.STARDUST_LIVE_MAX_PARALLEL = '0';
+process.env.STARDUST_LIVE_STATE = '0';
+process.env.TMPDIR = mkdtempSync(join(tmpdir(), 'crawl-live-state-')); // the shared throttle's state root for this process
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
@@ -164,6 +172,7 @@ const stubPage = ({ responses = [{ status: 200, headers: HTML }], gotoError = nu
   const resp = (r) => ({ status: () => r.status, headers: () => r.headers || {}, url: () => URL_ });
   const page = {
     calls,
+    url: () => URL_, // the shared navigation and the challenge window read the page's URL
     goto: async (u) => { calls.goto.push(u); if (gotoError) throw gotoError; if (hang) return new Promise(() => {}); return resp(responses[Math.min(calls.goto.length, responses.length) - 1]); },
     reload: async () => { calls.reload += 1; return resp(reload || responses[responses.length - 1]); },
     waitForTimeout: async (ms) => { calls.waits.push(ms); },
@@ -291,6 +300,300 @@ await checkAsync('capturePage: a wall read the probe cannot make is ONE "wall ch
     assert.equal(rec.title, 'Home');
     assert.deepEqual(lines, ['[crawl] wall check skipped on p: Execution context was destroyed, most likely because of a navigation']);
   } finally { rmSync(out, { recursive: true, force: true }); }
+});
+
+check('isChallengeResponse: the crawler keeps its own edge rule and a bare 403 stays an application error', () => {
+  const response = (status, headers = {}, url = 'https://www.example.com/') => ({ status: () => status, headers: () => headers, url: () => url });
+  assert.equal(isChallengeResponse(response(403, { 'cf-ray': 'abc' })), true);
+  assert.equal(isChallengeResponse(response(429, { server: 'AkamaiGHost' })), true);
+  assert.equal(isChallengeResponse(response(403, {})), false);
+});
+
+await (async () => {
+  try {
+    const calls = [];
+    const browser = { newContext: async (opts) => { calls.push(['context', opts]); return { kind: 'fallback' }; } };
+    const fallback = crawlerLiveBindings();
+    assert.deepEqual(await fallback.newLiveContext(browser, { reducedMotion: 'reduce' }), { kind: 'fallback' });
+    assert.equal(await fallback.runLiveNavigation({}, 'https://www.example.com/', async () => { calls.push(['navigate']); return 7; }), 7);
+    assert.equal(await fallback.persistLiveStorageState({}, 'https://www.example.com/'), false);
+    assert.equal(await fallback.recordLiveBotSignal('https://www.example.com/'), false);
+    assert.equal(await fallback.recordLiveNavigationSuccess('https://www.example.com/'), false);
+    assert.deepEqual(calls, [['context', { reducedMotion: 'reduce' }], ['navigate']]);
+
+    const shared = crawlerLiveBindings({
+      newLiveContext: async () => 'shared-context',
+      runLiveNavigation: async (_page, _url, navigate) => `shared-${await navigate()}`,
+      persistLiveStorageState: async () => true,
+      recordLiveBotSignal: async (url) => `signal-${url}`,
+      recordLiveNavigationSuccess: async (url) => `success-${url}`,
+    });
+    assert.equal(await shared.newLiveContext(browser, {}), 'shared-context');
+    assert.equal(await shared.runLiveNavigation({}, 'https://www.example.com/', async () => 'navigation'), 'shared-navigation');
+    assert.equal(await shared.persistLiveStorageState({}, 'https://www.example.com/'), true);
+    assert.equal(await shared.recordLiveBotSignal('https://www.example.com/'), 'signal-https://www.example.com/');
+    assert.equal(await shared.recordLiveNavigationSuccess('https://www.example.com/'), 'success-https://www.example.com/');
+    console.log('✓ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent\n  ${e.message.split('\n').join('\n  ')}`);
+  }
+})();
+
+await (async () => {
+  try {
+    const calls = [];
+    const clean = { status: () => 200, headers: () => ({}), url: () => 'https://www.example.com/path/' };
+    const blocked = { status: () => 403, headers: () => ({ 'cf-ray': 'abc' }), url: () => 'https://www.example.com/path/' };
+    const page = {
+      url: () => 'https://www.example.com/path/',
+      waitForTimeout: async (ms) => { calls.push(['wait', ms]); },
+      reload: async () => { calls.push(['reload']); return clean; },
+    };
+    const response = await clearChallenge(page, blocked, {
+      recordBotSignal: async (url) => { calls.push(['signal', url]); },
+      navigate: async (_page, url, operation) => { calls.push(['navigate', url]); return operation(); },
+    });
+    assert.equal(response, clean);
+    assert.deepEqual(calls, [
+      ['signal', 'https://www.example.com/path/'],
+      ['wait', 4000],
+      ['navigate', 'https://www.example.com/path/'],
+      ['reload'],
+    ]);
+    calls.length = 0;
+    assert.equal(await clearChallenge(page, blocked, {
+      recordBotSignal: async () => { throw new Error('signal unavailable'); },
+      navigate: async (_page, url, operation) => { calls.push(['navigate', url]); return operation(); },
+    }), clean);
+    assert.deepEqual(calls, [
+      ['wait', 4000],
+      ['navigate', 'https://www.example.com/path/'],
+      ['reload'],
+    ]);
+    console.log('✓ clearChallenge: an alternate-path edge response records the signal and reloads under shared navigation');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ clearChallenge: an alternate-path edge response records the signal and reloads under shared navigation\n  ${e.message.split('\n').join('\n  ')}`);
+  }
+})();
+
+await (async () => {
+  const out = mkdtempSync(join(tmpdir(), 'crawl-capture-bindings-'));
+  try {
+    assert.equal(typeof crawl.capturePage, 'function', 'capturePage is exported for its binding-level test');
+    const url = 'https://www.example.com/page';
+    const response = { status: () => 200, headers: () => ({ 'content-type': 'text/html' }) };
+    const record = {
+      finalUrl: url,
+      headings: ['Captured'],
+      links: [],
+      _contentHash: 'content',
+      _signals: { mainTextLen: 8, realImageCount: 0 },
+    };
+    const page = {
+      goto: async () => response,
+      url: () => url,
+      waitForTimeout: async () => {},
+      evaluate: async (fn) => (fn.name === 'capture' ? record : undefined),
+      content: async () => '<main>Captured</main>',
+      screenshot: async () => {},
+      close: async () => {},
+    };
+    const context = { newPage: async () => page };
+    const captured = await crawl.capturePage(context, url, 'page', {
+      consent: false, dynamics: false, wait: 'fast', out,
+    }, {
+      runLiveNavigation: async (_page, _url, navigate) => navigate(),
+      recordLiveNavigationSuccess: async () => { throw new Error('success unavailable'); },
+      persistLiveStorageState: async () => { throw new Error('state unavailable'); },
+    });
+    assert.equal(captured.headings[0], 'Captured');
+    console.log('✓ capturePage: rejecting shared success and storage hooks do not fail a completed capture');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ capturePage: rejecting shared success and storage hooks do not fail a completed capture\n  ${e.message.split('\n').join('\n  ')}`);
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+})();
+
+await (async () => {
+  const stateRoot = mkdtempSync(join(tmpdir(), 'crawl-response-signal-'));
+  const saved = console.error;
+  console.error = () => {};
+  try {
+    let clock = 1000;
+    const options = { stateRoot, paceMs: 1000, maxParallel: 2, now: () => clock++ };
+    const blocked = Object.freeze({
+      status: () => 429, headers: () => ({ 'cf-mitigated': 'challenge' }), url: () => 'https://www.example.com/',
+    });
+    const clean = { status: () => 200, headers: () => ({}) };
+    const page = { url: () => 'https://www.example.com/', waitForTimeout: async (ms) => { clock += ms; }, reload: async () => clean };
+    const navigate = (p, url, operation) => session.runLiveNavigation(p, url, operation, options);
+    const response = await navigate(page, page.url(), async () => blocked);
+    assert.equal(await clearChallenge(page, response, {
+      recordBotSignal: (url) => session.recordLiveBotSignal(url, options),
+      navigate,
+    }), clean);
+    const state = await session.recordLiveNavigationSuccess(page.url(), options);
+    assert.equal(state.paceMs, 2000, 'the transport and challenge layers share one signal mark');
+    console.log('✓ clearChallenge: a marked immutable 429 takes exactly one shared backoff step');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ clearChallenge: a marked immutable 429 takes exactly one shared backoff step\n  ${e.message}`);
+  } finally {
+    console.error = saved;
+    rmSync(stateRoot, { recursive: true, force: true });
+  }
+})();
+
+await (async () => {
+  const out = mkdtempSync(join(tmpdir(), 'crawl-rejecting-navigation-'));
+  try {
+    const url = 'https://www.example.com/';
+    const response = { status: () => 200, headers: () => ({ 'content-type': 'text/html' }) };
+    let starts = 0; let closes = 0;
+    const page = {
+      goto: async () => { starts += 1; return response; },
+      url: () => url, waitForTimeout: async () => {},
+      evaluate: async (fn) => (fn.name === 'capture' ? {
+        finalUrl: url, headings: ['Captured'], _signals: { mainTextLen: 8, realImageCount: 0 },
+      } : undefined),
+      content: async () => '<main>Captured</main>', screenshot: async () => {},
+      close: async () => { closes += 1; },
+    };
+    for (const afterNavigation of [false, true]) {
+      const record = await crawl.capturePage({ newPage: async () => page }, url, 'page', {
+        consent: false, dynamics: false, wait: 'fast', out,
+      }, {
+        runLiveNavigation: async (_page, _url, operation) => {
+          if (afterNavigation) await operation();
+          throw new Error('navigation bookkeeping unavailable');
+        },
+        recordLiveNavigationSuccess: async () => { throw new Error('success unavailable'); },
+        persistLiveStorageState: async () => { throw new Error('state unavailable'); },
+        recordLiveBotSignal: async () => { throw new Error('signal unavailable'); },
+      });
+      assert.equal(record.headings[0], 'Captured');
+    }
+    assert.equal(starts, 2, 'a rejecting hook never duplicates the navigation');
+    assert.equal(closes, 2);
+    console.log('✓ capturePage: rejecting navigation hooks still capture exactly once');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ capturePage: rejecting navigation hooks still capture exactly once\n  ${e.message}`);
+  } finally { rmSync(out, { recursive: true, force: true }); }
+})();
+
+await (async () => {
+  try {
+    const blocked = { status: () => 403, headers: () => ({ 'cf-mitigated': 'challenge' }) };
+    const clean = { status: () => 200, headers: () => ({}) };
+    let signals = 0; let reloads = 0;
+    const hooks = { recordBotSignal: async () => { signals += 1; }, navigate: async (_page, _url, operation) => operation() };
+    const page = {
+      url: () => 'https://www.example.com/', waitForTimeout: async () => {},
+      reload: async () => (++reloads <= 2 ? blocked : clean),
+    };
+    assert.equal(await clearChallenge(page, blocked, hooks), clean);
+    assert.equal(reloads, 3, 'two challenged reloads, then the page');
+    assert.equal(signals, 1, 'a challenged page is one signal, however many reloads stay challenged');
+    const stuck = { ...page, reload: async () => blocked };
+    assert.equal(await clearChallenge(stuck, blocked, hooks), blocked);
+    assert.equal(signals, 2, 'a page that never clears is still one signal (the next page is the next)');
+    console.log('✓ clearChallenge: a challenged page is one signal, however many reloads stay challenged');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ clearChallenge: a challenged page is one signal, however many reloads stay challenged\n  ${e.message}`);
+  }
+})();
+
+await (async () => {
+  try {
+    const error = Object.assign(new Error('navigation failed'), { name: 'TimeoutError' });
+    const live = crawlerLiveBindings({
+      runLiveNavigation: async (_page, _url, operation) => operation(),
+    });
+    await assert.rejects(live.runLiveNavigation({}, 'https://www.example.com/', async () => { throw error; }),
+      (thrown) => thrown === error);
+    const blocked = { status: () => 403, headers: () => ({ 'cf-mitigated': 'challenge' }) };
+    const waits = [];
+    assert.equal(await clearChallenge({
+      url: () => 'https://www.example.com/', waitForTimeout: async (ms) => { waits.push(ms); },
+    }, blocked, {
+      recordBotSignal: async () => { throw null; },
+      navigate: async () => { throw new Error('navigation bookkeeping unavailable'); },
+    }), blocked);
+    assert.deepEqual(waits, [4000, 4000, 4000]);
+    console.log('✓ shared hooks: navigation errors retain their identity and rejected hooks do not shorten the challenge window');
+  } catch (e) {
+    failed += 1;
+    console.log(`✗ shared hooks: navigation errors retain their identity and rejected hooks do not shorten the challenge window\n  ${e.message}`);
+  }
+})();
+
+check('entry probe: rejecting shared hooks still finish discovery, challenge clearing and capture once', () => {
+  const root = mkdtempSync(join(tmpdir(), 'crawl-entry-hooks-'));
+  try {
+    const copy = join(root, 'crawl.mjs');
+    writeFileSync(copy, readFileSync(SCRIPT, 'utf8'));
+    const dependencyDir = join(root, 'node_modules', 'playwright');
+    mkdirSync(dependencyDir, { recursive: true });
+    writeFileSync(join(dependencyDir, 'package.json'), JSON.stringify({ type: 'module', exports: './index.js' }));
+    writeFileSync(join(dependencyDir, 'index.js'), `
+      const calls = { starts: 0, reloads: 0, signals: 0, successes: 0, saves: 0, waited: 0 };
+      globalThis.captureCalls = calls;
+      process.on('exit', () => console.log(JSON.stringify(calls)));
+      const url = 'https://www.example.com/';
+      const response = (blocked) => ({
+        status: () => blocked ? Number(process.env.TEST_STATUS) : 200,
+        headers: () => blocked ? { 'cf-mitigated': 'challenge' } : { 'content-type': 'text/html' },
+        liveSignalRecorded: blocked && process.env.TEST_STATUS === '429',
+      });
+      export const chromium = { launch: async () => ({
+        close: async () => {},
+        newContext: async () => ({
+          addInitScript: async () => {}, close: async () => {},
+          newPage: async () => ({
+            url: () => url,
+            goto: async () => response(++calls.starts <= 2),
+            reload: async () => { calls.reloads += 1; return response(false); },
+            waitForTimeout: async (ms) => { calls.waited += ms; },
+            evaluate: async (fn) => fn.name === 'capture' ? {
+              finalUrl: url, headings: ['Captured'], links: [], _contentHash: 'captured',
+              _signals: { mainTextLen: 8, realImageCount: 0 },
+            } : null,
+            content: async () => '<main>Captured</main>', screenshot: async () => {}, close: async () => {},
+          }),
+        }),
+      }) };
+    `);
+    writeFileSync(join(root, 'live-session.mjs'), `
+      export const runLiveNavigation = async () => { throw new Error('navigation bookkeeping unavailable'); };
+      export const recordLiveBotSignal = async () => { captureCalls.signals += 1; throw new Error('signal unavailable'); };
+      export const recordLiveNavigationSuccess = async () => { captureCalls.successes += 1; throw new Error('success unavailable'); };
+      export const persistLiveStorageState = async () => { captureCalls.saves += 1; throw new Error('state unavailable'); };
+    `);
+    for (const status of ['403', '429']) {
+      const out = join(root, `capture-${status}`);
+      const result = spawnSync(process.execPath, [copy, '--url', 'https://www.example.com/', '--pages', '/',
+        '--out', out, '--no-consent-dismiss', '--wait', 'fast'], {
+        cwd: root, encoding: 'utf8', env: { ...process.env, TEST_STATUS: status }, timeout: 10000,
+      });
+      assert.equal(result.status, 0, result.stderr);
+      const log = JSON.parse(readFileSync(join(out, '_crawl-log.json'), 'utf8'));
+      assert.deepEqual(log.crawl.failures, []);
+      assert.equal(log.discovery.botBlock, 'challenge');
+      const calls = JSON.parse(result.stdout.trim());
+      assert.equal(calls.starts, 3, 'each probe and capture navigates exactly once');
+      assert.equal(calls.reloads, 1);
+      assert.equal(calls.signals, status === '429' ? 0 : 2, 'marked response signals are not counted again');
+      assert.equal(calls.successes, 1);
+      assert.equal(calls.saves, 2);
+      assert.equal((result.stderr.match(/WARNING: shared live-session bookkeeping unavailable/g) || []).length, 1);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');
