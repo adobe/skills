@@ -187,28 +187,37 @@ const COLLECT = `(args) => {
     const round = (v) => Math.round(v * 10) / 10;
     texts.push({ text: 'icon' + (name ? ' "' + name + '"' : ''), kind: 'icon', rect: { x: round(cx), y: round(cy), w: 0, h: 0 }, styles: {} });
   }
-  // the page's own header (EDS: body > header): the bottom of what it paints in the viewport (a
-  // text, an image, a background, a border, a shadow), not its box (a bar that slid away under a
-  // promo bar paints nothing below it): a scroll step's 2x pixels are told apart from the body's
-  const hdr = document.querySelector('body > header');
-  let headerBottom = null;
-  if (hdr) {
-    headerBottom = 0;
-    for (const e of hdr.querySelectorAll('*')) {
+  // where the header ends at this step: the bottom of what it paints in the viewport (a text, an
+  // image, a background, a border), not its box (a bar that slid away under a promo bar paints
+  // nothing below it), and not its shadow (the body shows through it: on a page whose body is not
+  // the source's, those rows differ by design). The header: the page's own (EDS: body > header),
+  // the bars pinned at the top (fixed or sticky, at least half the viewport wide, starting within
+  // the header as loaded: not a chat button), and a header still in the flow above main. Measured
+  // on both sides: the lower of the two splits a scroll step's 2x pixels from the body's
+  const painted = (root) => {
+    let bottom = 0;
+    for (const e of [root, ...root.querySelectorAll('*')]) {
       const r = e.getBoundingClientRect();
       if (r.bottom <= 0 || r.top >= innerHeight || r.width < 1 || r.height < 1) continue;
       const cs = getComputedStyle(e);
       if (cs.visibility === 'hidden' || +cs.opacity === 0) continue;
-      const shadow = cs.boxShadow === 'none' ? 0
-        : (cs.boxShadow.match(/-?[\d.]+px/g) || []).slice(1, 4).reduce((a, v) => a + parseFloat(v), 0);
       const paints = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())
         || /^(img|svg|picture|video|canvas|input|button)$/i.test(e.tagName)
         || cs.backgroundColor !== 'rgba(0, 0, 0, 0)' || cs.backgroundImage !== 'none'
-        || parseFloat(cs.borderBottomWidth) > 0 || shadow > 0;
-      if (paints) headerBottom = Math.max(headerBottom, Math.min(r.bottom + Math.max(shadow, 0), innerHeight));
+        || parseFloat(cs.borderBottomWidth) > 0;
+      if (paints) bottom = Math.max(bottom, Math.min(r.bottom, innerHeight));
     }
-    headerBottom = Math.round(headerBottom * 10) / 10;
-  }
+    return bottom;
+  };
+  // the header's height as loaded (the first state): a pinned bar starts within it
+  window.__plgTop0 ??= Math.max(mainTop ?? 0, 0);
+  const headers = [document.querySelector('body > header'), ...[...document.body.querySelectorAll('*')].filter((e) => {
+    const pos = getComputedStyle(e).position;
+    if (pos !== 'fixed' && pos !== 'sticky') return false;
+    const r = e.getBoundingClientRect();
+    return r.bottom > 0 && r.top <= window.__plgTop0 + 1 && r.width >= innerWidth / 2;
+  })].filter(Boolean);
+  const headerBottom = Math.round(Math.max(mainTop > 0 ? Math.min(mainTop, innerHeight) : 0, ...headers.map(painted)) * 10) / 10;
   return { texts, mainTop: mainTop == null ? null : Math.round(mainTop * 10) / 10, headerBottom };
 }`;
 
@@ -441,10 +450,12 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
             base ? name('baseline')(i) : null,
           )
         : null;
-    // a scroll step: how many of them are in the page's header (down to what it paints there);
-    // the rest is the page below it (a body that is not the source's, moved by a new header height)
-    const headerRows =
-      o.scroll && page[i].headerBottom != null ? Math.ceil(page[i].headerBottom * +o.scale) : null;
+    // a scroll step: how many of them are in the header (down to the lower of what the source's
+    // and the page's headers paint there); the rest is the page below it (a body that is not the
+    // source's, moved by a new header height)
+    const headerRows = o.scroll
+      ? Math.ceil(Math.max(s.headerBottom ?? 0, page[i].headerBottom ?? 0) * +o.scale)
+      : null;
     const pxHeader =
       px && headerRows != null
         ? headerRows

@@ -303,6 +303,30 @@ test(
 );
 
 test(
+  "text --scroll at 2x: a band the page lacks at the bottom of a sticky header is the header's",
+  { skip },
+  async () => {
+    const doc = await clean(
+      false,
+      'text',
+      textFile('sticky.html'),
+      textFile('sticky-flat.html'),
+      '--sizes',
+      '1000',
+      '--scroll',
+      '300',
+      '--scale',
+      '2',
+      '--shots',
+      join(cwd, 'band', 'shot'),
+    );
+    // the same 80 px bar on both sides; the source's ends 8 px lower (a red band the page lacks):
+    // the header's rows go down to the source's bottom, at load and scrolled
+    for (const step of doc.sizes) assert.ok(step.pxHeader > 0, doc.text);
+  },
+);
+
+test(
   'text --open with a baseline that has no such menu: the baseline is used as loaded',
   { skip },
   async () => {

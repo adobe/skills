@@ -86,6 +86,11 @@ had, with the same value on your page, is reported as inherited and not counted.
 texts and where the page below it starts are never inherited. A baseline whose old header has no
 such menu (`--open`) or no burger (`--mobile-menu`) is used as loaded.
 
+On a page whose body is not the source's, the checks judge the header itself. Two things around
+it are not compared 1:1: a header the source's content shows through (its region's pixels
+include what lies behind it), and what a header paints over the body (its shadow, a backdrop
+while a menu is open: counted below it, with the body).
+
 ## Reading the lines
 
 `text` (one line per difference, then a summary per size):
@@ -110,8 +115,9 @@ not clean at: 1000x900,700x900 (re-run those with --sizes while fixing)
   position differs.
 - `only on the source` / `only on the page`: a label missing or changed.
 - `; N differing pixels at 2x (… in the header and open panel, … below them)`: with `--shots`;
-  with `--scroll`, `(… in the header, … below it)`: down to what your header (`body > header`)
-  shows at that step, and the page below it.
+  with `--scroll`, `(… in the header, … below it)`: down to the lower of the source's and your
+  header's bottom at that step (what they paint, not a shadow), and the page below it with the
+  header's shadow over it.
 - `not clean at:` the sizes to re-run with `--sizes` while fixing.
 
 `menus`: `OK   <label> (<trigger>): 3 of 3 links`, or `FAIL` with the reason (did not open, could
