@@ -1,8 +1,8 @@
-# Featured workflows & custom INDD templates
+# Featured workflows & custom INDD/PSD/MOGRT templates
 
-Load this when the user names a featured workflow (retargeting, localization, banner advertising,
-packaging, product banners at scale, etc.) or supplies a custom `.indd` template to rewire. For
-creative-brief intake with a narrower scope, see [`intake.md`](intake.md) — it covers product
+Load this when the user explicitly requests a featured/predefined workflow or supplies a custom
+INDD/PSD/MOGRT template to compose around or rewire. A use-case name alone does not select a
+featured workflow. For creative-brief intake with a narrower scope, see [`intake.md`](intake.md) — it covers product
 banners at scale only.
 
 > **Featured ≠ golden.** Featured workflows are agent-facing cookie-cutter TEMPLATES to build upon
@@ -10,8 +10,9 @@ banners at scale only.
 > user-facing "run `<use case>`" request ("run banners at scale", "run product assets", "run social
 > video adaptation"/"run SVA") — those are GOLDEN runs, resolved via `list_golden_workflows` (see
 > [`diagnostics.md`](diagnostics.md) → "Running a golden demo by name"). Use this featured path only
-> when the user EXPLICITLY asks for a featured/predefined template, supplies a custom template, or an
-> agent needs a base graph to compose from.
+> when the user EXPLICITLY asks for a featured/predefined template. New workflows, including those
+> with custom templates or creative briefs, default to composition from scratch (Flow B).
+> Existing-graph template swaps use `current_graph`, not an unsolicited featured base.
 
 ## Featured workflow routing
 
@@ -32,7 +33,9 @@ banners at scale only.
 | `composite-imagery-3d` | 3D composite |
 | `3d-spin-video` | 360 spin video |
 
-When the user asks to run a named workflow, ALWAYS call `get_featured_workflow` first. If found:
+Only when the user explicitly asks to look up/use a featured or predefined workflow/template,
+call `get_featured_workflow`. Do not infer this from "create banners at scale", "build retargeting",
+an attached template, or a brief. If found:
 
 1. Present workflow details and confirm with the user.
 2. Ask about templates if not already specified (defaults vs custom `.indd` files).
@@ -87,30 +90,40 @@ from the `session_id`.
 
 ## Custom template handling — Flow A: featured workflow + custom INDD or PSD
 
-When the user provides custom `.indd` or `.psd` templates instead of using defaults, use the
+When the user explicitly selects a featured base and provides custom `.indd` or `.psd` templates
+instead of using its defaults (or swaps a template on an existing Matrix graph), use the
 deterministic fast path — do **not** hand-roll the tag diff or write the wiring instructions
 yourself.
 
 **Fast path (deterministic, always preferred):** Call `compose_workflow` with `customTemplateUrl`
 (or `filePath`) plus one of:
-- `featuredWorkflowName` — rewire a named featured base (e.g. "product banners at scale")
+- `featuredWorkflowName` — rewire an explicitly requested featured base (e.g. "product banners at scale")
 - `current_graph` — rewire an authoritative Matrix (`nodes`/`edges`) graph you already have (e.g. a
   draft or a Builder-published `ui.json` sidecar); execution-format graphs are not rewireable
 
-> **One of `featuredWorkflowName` / `current_graph` is REQUIRED.** `compose_workflow` rewires an
-> existing base — it does not build a workflow around a template from scratch. A bare
-> `customTemplateUrl` with neither returns `no_base_graph` (fast, actionable) rather than composing.
+> **For a swap, one of `featuredWorkflowName` / `current_graph` is REQUIRED.** A bare
+> `customTemplateUrl` without a base or message returns `no_base_graph`. For a new workflow,
+> pass a message and follow Flow B instead of selecting a featured base.
 > For a saved/draft/published workflow, get `current_graph` from `run_workflow_submit` →
 > `status: "needs_rewire"` → `currentGraph` (see the backstop note below); never send a bare
-> `customTemplateUrl` and expect a net-new graph — that path used to hang the graph agent to its
-> timeout.
+> `customTemplateUrl` and discard the existing graph when the user requested a swap.
 
 Add `mergeNodeId` when the base has more than one merge node. **If the user has provided a CSV,
 always pass it — inline as `csvData`, or by reference as `csvUrl` (a presigned/public URL the
 server fetches and reads; prefer this for large or multi-line files). If both are given, `csvUrl`
 wins.** This is the *only* input that controls parse-data vs. direct-wire
 routing for `@image` columns: a full column routes through parse-data (per-row images from the
-CSV); an empty column direct-wires a constant image. Without `csvData`, the server falls back to
+CSV); an empty column is left UNWIRED (no image is supplied for that tag). A **partially-filled**
+image column (some rows name a file, some are blank) is valid: compose returns a warning (not
+`csv_validation_failed`) and wires it exactly like a full one (through parse-data); the blank rows
+render without that image (InDesign: empty field; Photoshop: the template's placeholder smart
+object stays; MOGRT: the `.mogrt` default). An image node between parse-data and the merge (e.g.
+`remove-background`, crop, upscale) is skipped for the blank rows rather than failing.
+For a multi-template CSV with a `Template` (Template Match) column (FFENT-20222), column fill is
+evaluated **per template**: an image column may be filled only for the rows routed to templates that
+bind that tag and left blank for the others — fill is read within each template's routed rows,
+not across the whole CSV (a blank `Template` cell routes to every template).
+Without `csvData`, the server falls back to
 direct-wiring ALL image ports regardless of what the CSV contains — causing item-count mismatches
 at runtime when text ports emit N rows but the image port only receives the number of uploaded
 input images.
@@ -304,7 +317,9 @@ local backstop so you don't burn a long merge to discover a missing column or a 
 > `@`-cell to the correct wired asset by basename (`csvFanout.mergeCsvMediaIntoCellOutputs`). If the
 > user has provided a CSV with filled `@image` columns, submit it **unchanged**. Presigned-URL
 > substitution defeats filename matching and the URLs expire (~1h). Empty `@image` columns
-> direct-wire a constant `input-images → merge-data` (deterministic — already handled). Only revisit
+> are left UNWIRED — no image is supplied for that tag (deterministic — already handled); a
+> partially-filled image column is valid — its blank rows simply get no image — so submit that
+> CSV unchanged too. Only revisit
 > the CSV if a run fails **and** the diagnosis specifically points to a filename↔asset mismatch — and
 > only after telling the user what you intend to change.
 
@@ -321,75 +336,214 @@ local backstop so you don't burn a long merge to discover a missing column or a 
 > strictly better: deterministic wiring, reuses all freed pipelines, supports CSV pipeline forking,
 > and includes structural validation backstops the LLM path lacks. `get_indesign_tags` and
 > `get_psd_tags` remain available as standalone tools for debug inspection **and for the sanctioned
-> post-compose tag ↔ CSV pre-flight above** — never to drive the wiring, which the deterministic path
-> owns.
+> post-compose tag ↔ CSV pre-flight above**. On Flow A, deterministic rewiring owns the wiring;
+> on Flow B below, `compose_workflow` extracts the tags itself and passes them to the graph agent.
 
 ## Custom INDD/PSD workflow — Flow B: user supplies their own template, no featured base
 
-When the user wants to build a workflow around an InDesign **or Photoshop** template they provide —
-**not** starting from a featured workflow — always extract tags first. The graph agent cannot guess
-merge port names without them.
+When the user wants to build a workflow around an InDesign, Photoshop or Illustrator template they
+provide — **not** starting from a featured workflow. **This is the default for create/build/compose
+with supplied templates**, including banners at scale. Do not call `get_featured_workflow` /
+`list_featured_workflows`, set `featuredWorkflowName`, or require the user to say "from scratch".
 
-**Step 1 — Extract tags.** Pick the tool by extension:
+The split of responsibilities:
 
-```
-get_indesign_tags(templateUrl = <user's .indd presigned URL>)   # .indd / .idml / .zip
-get_psd_tags(templateUrl      = <user's .psd  presigned URL>)    # .psd
-```
+- **You (the skill):** gather the required files and the user's intent — see
+  [`intake.md`](intake.md) Step 4 (template + CSV required; sizes, copy and image sources inferred
+  from the files; then fonts; then output format and delivery).
+- **`compose_workflow`:** extracts the template's tags (INDD vs PSD by extension), validates the CSV
+  against them, and gives both to the graph agent as evidence.
+- **Graph agent:** chooses the latest eligible merge/rendition versions, Parse Data routing, image
+  and font wiring, renderer branches per format, and Preview / save sinks.
 
-Both return `[{ name: "background", type: "image" }, { name: "headline", type: "text" }, ...]`.
-(PSD `type: "image"` = a `{{layerName}}` smart object; `type: "text"` = a `{{variable}}` text layer.
-PSD returns no missing-fonts / linked-asset report, so fonts must be asked about explicitly.)
+**Step 1 — Upload** the template, CSV, fonts and any images ([`asset-input.md`](asset-input.md)).
+Do not call `get_indesign_tags` / `get_psd_tags` / `list_actions` first — compose does this.
 
-**Step 2 — Compose with explicit tag context.** Embed the tag list in the compose message so the
-agent wires all ports correctly. For INDD wire to `merge-data`; for PSD wire to `merge-photoshop-data`:
+**Step 2 — Compose once.**
 
 ```
 compose_workflow(
-  message = "Create a merge-data workflow. The <InDesign|Photoshop> template has these tags:
-             <tag list with types, e.g. 'background [image], headline [text], logo [image]'>.
-             Wire: input-images → merge.<imageTagName> for each image tag;
-                   input-text → merge.<textTagName> for each text tag.
-             Template URL: <url>."
+  message            = "<user's intent: goal, output formats, preview vs save>",
+  customTemplateUrl  = "<template URL>",
+  customTemplateName = "<original template filename>",
+  csvUrl             = "<the customer CSV URL>",
+  fonts              = [{ presignedUrl, name, storageType }],   # if supplied
+  lightPayload       = true
 )
 ```
 
-**Step 3 — Validate.**
+Follow the message contract in [`compose.md`](compose.md) → "Writing the compose `message`": state
+intent; never name node versions, ports, tags, columns or wiring. On `csv_validation_failed`,
+`csv_fetch_failed`, `tag_extraction_failed`, or a graph-agent refusal/clarification, follow
+[`compose.md`](compose.md) → "Compose errors and refusals": show the reason, get the fix from the
+user, re-compose at most once — never fall back to a message-only or legacy compose.
 
-Prefer the lean form that validates the cached compose session without re-sending the graph:
+**Step 3 — Offer next steps** ([`intake.md`](intake.md) Step 6): run now, save to Workflow Builder,
+or both. A compose request doesn't itself authorize running or saving. `compose_workflow` already
+validates on this path; a separate `validate_workflow(session_id)` is optional.
 
-```
-validate_workflow(session_id = <compose_workflow result: session_id>)
-```
+**Step 4 — Run (if chosen).** Use node IDs from the composed result (`next_step.required_inputs`;
+resolve the session if needed, not a featured lookup). Supply the CSV as `content[]` with
+`mimeType: "text/csv"` on the `text/csv` node from `required_inputs`. Compose gives each CSV `@`
+image column its own Input node wired to the matching Parse Data column port
+(`<parse>__csv-media-<column>`); put that column's images (with original `name`) only on its node,
+never on the CSV node. An `optional` column node (blank in the CSV) may be left empty — submit prunes
+it. Only legacy sessions without column nodes fall back to the single `image/*` node listed. Add the prepared template binding returned by compose. Fixed-port merges
+use `content[]` on their wired template source; per-tag (v1) merges use `inputs[].template` on the
+merge node. Never transfer one version's attachment convention to another. Re-supply the CSV at
+submit; compose uses it for evidence only. After a corrected run, save the accepted session/batch
+if persistence was requested; an earlier pre-run save is not automatically updated. Inspect the
+accepted graph with `resolve_workflow_session`; use `view: "composition"` only when inspecting the
+original authoring graph deliberately.
 
-(Re-sending `graph = <compose_workflow result: matrix_graph>` also works but forces the model to
-re-emit the whole graph.) Note the deterministic custom-template path already validates inside
-`compose_workflow`, so this separate call is often redundant there.
+### Legacy per-tag merges — explicit v1 requests or existing v1 graphs only
 
-Retry once on failure (same as Flow A, Step 4b).
+Only when the user explicitly asks for the per-tag (v1) merge, or is editing a graph that already
+uses one: per-tag merges have ports named exactly like the template tags (case-sensitive), fed by
+`parse-data` outputs. Populated image columns feed uploaded images into `parse-data` for per-row
+filename matching; entirely empty image columns stay unconnected; a partially-filled column is wired
+like a populated one (blank rows get no image; with a `Template` Match column, fill is read per
+template). An empty column cannot select a constant image from a generic pool unless the user
+explicitly asks for that constant. Never introduce this pattern for a new workflow on your own, and
+never ask the graph agent for it as a retry after an error.
 
-**Step 4** — Show graph, collect inputs, `run_workflow_submit`.
+### Standalone tag inspection (only when the user asks)
 
-## Node selection: `merge-data` (INDD) / `merge-photoshop-data` (PSD) vs `merge-data-v2`
+`get_indesign_tags` / `get_psd_tags` return `[{ name, type }]` (PSD `type: "image"` = a
+`{{layerName}}` smart object; `type: "text"` = a `{{variable}}` text layer). Use them when the user
+asks what tags a template has, or to show a mismatch after `csv_validation_failed` — not as a
+compose pre-step. PSD returns no missing-fonts report, so ask about fonts explicitly.
+
+> **`get_psd_tags_v2`** extracts the same PSD tags through the Photoshop V2 API and additionally
+> returns `artboardCount`, the number of top-level artboards. Use it when the artboard count
+> matters (e.g. confirming a multi-size banner template). **`artboardCount: null` means UNKNOWN,
+> not zero** — re-run, or ask the user, rather than reporting "0 artboards".
+
+## Motion graphics (`.mogrt`) templates
+
+Pass the `.mogrt` as `mogrtTemplateUrl` (`customTemplateUrl` / `filePath` ending in `.mogrt` are
+auto-detected). What `compose_workflow` does depends on whether a base graph or a message is supplied:
+
+| Request | Call | Result |
+| --- | --- | --- |
+| Render the template on its own ("render this mogrt with my headline") | `compose_workflow(mogrtTemplateUrl)` | Template controls + output presets; `next_step` → `run_dgr_render` |
+| Swap a new `.mogrt` into an existing DGR workflow (Flow A) | `compose_workflow(mogrtTemplateUrl, current_graph \| featuredWorkflowName)` | Deterministic re-wire of the DGR node + a `session_id` |
+| Build a new workflow around a `.mogrt` (reframe/translate first, CSV variants, social video adaptation — Flow B) | `compose_workflow(message, mogrtTemplateUrl)` | A composed workflow + a `session_id`, `.mogrt` pre-filled |
+
+**Flow B — new workflow around a `.mogrt`.** Pass the user's request as `message` with the `.mogrt`
+as `mogrtTemplateUrl` — one call; do not describe the template and hand-write a second prompt.
+`compose_workflow` describes the `.mogrt`, adds its port controls (`isPortControl: true` —
+text/media/audio, by `variableId` and label) to the message so the graph agent can connect produced
+content (e.g. a reframed video, translated audio) to real control slots, and pre-fills the `.mogrt` on
+the input-files node feeding the DGR `templates` port. `templateControls` lists the controls. Then
+`run_workflow_submit({ session_id, inputs })` with the user's other assets; the `.mogrt` is applied
+automatically. Controls left unconnected take a CSV column (matched by `variableId` or label) or the
+template default. A DGR node's control ports are named by the template's control `variableId`s,
+so the agent can wire them once the `.mogrt` is described.
+
+**Flow A — swap a `.mogrt` into an existing workflow.** `compose_workflow(mogrtTemplateUrl,
+current_graph)` (the Matrix nodes/edges graph, e.g. from `needs_rewire.currentGraph`) describes the new
+template and re-wires the DGR node with no graph agent; `controlDiff` reports what changed:
+
+- `kept` — wired control ports the new template still has;
+- `reattached` — a wired port whose control is gone moved to an unwired control of the same kind
+  (text/media/audio): `by: "label"` when the control labels match (the same `variableId`-then-label
+  order the DGR backend uses to match CSV columns across templates), else `by: "position"` — the next
+  one in template order. Control `variableId`s are positional, so a re-authored template often
+  renumbers the same slot. Position moves also appear in `rewireWarnings`; confirm them with the user;
+- `removed` — no same-kind control left; the connection is dropped (and an orphaned `input-*` source
+  deleted);
+- `unwired` — new controls with nothing wired; at run time they take a CSV column or the template default.
+
+The rewire only re-maps connections that already exist. If the base graph connects nothing to the
+template's controls (e.g. the graph agent built it without the `.mogrt`), nothing is connected and
+`rewireWarnings` says so — use Flow B (`compose_workflow(message, mogrtTemplateUrl)`) instead.
+
+The `.mogrt` is pre-filled on its input-files node (`next_step.required_inputs`); a
+`run_workflow_submit` with the returned `session_id` applies it automatically. `workflow.actions` shows
+`dgr-merge-template` when a CSV is wired to `data` — the execution-time form of `dgr-render-template`,
+expected. The server does not check CSV headers against the controls — run the coverage check below.
+
+On a bare rerun, a new `.mogrt` whose controls still cover every wired port runs as-is; one that drops a
+wired port returns `needs_rewire` with `staleControls` (route through Flow A) — see
+[`diagnostics.md`](diagnostics.md).
+
+### How a DGR render works
+
+A DGR node (`dgr-render-template`) renders each `.mogrt` once per CSV row per output preset. Its inputs:
+
+- **`templates`** — one or more `.mogrt` files. A `.mogrt` fixes the layout and aspect ratio, so each
+  output shape (vertical, square, …) is its own `.mogrt`.
+- **`data`** — the CSV file itself. DGR reads the rows and fans out on its own, so the CSV connects
+  directly to `data`, not through `parse-data`/`iterate`.
+- **One port per control** (text/media/audio), named by the control's `variableId`. These only exist
+  once the `.mogrt` is described, which is why composing a template workflow needs the `.mogrt` up front
+  (ask for it if the user hasn't supplied it; a golden demo run by name already has its `.mogrt` files).
+- **Output presets** — the frame each video is encoded at; a row's `preset_id` cell overrides them.
+
+Unlike InDesign/PSD merges, there are no per-tag merge ports, no `parse-data` step, and media columns
+don't need a leading `@`.
+
+**How each control gets its value, per row** (first match wins): a value wired to its port → the
+matching Reframe/Translate output → a CSV column named after its `variableId` or label (case, spacing and
+a leading `@` ignored) → the template default. A missing value never fails the row; DGR renders the
+template default and logs a warning. Details:
+
+- Media cells are a URL or a filename matched (case-insensitively, by basename) to an uploaded asset's
+  `name`.
+- Reframe/Translate outputs are matched by aspect ratio, by the row's `Language`/`Locale` cell (exact,
+  e.g. `fr-FR`), and — when several sources go through one Reframe/Translate — by the CSV column naming
+  the control, which holds each row's **original** source filename.
+- Reserved columns (not controls): `Language`/`Locale`, `preset_id`, `output_filename` (unique per row).
+
+**Languages.** `video-translate`/`audio-translate` take only target languages (`targetLocaleCodes`); the
+source language is detected from the media. Because each row picks the translation matching its
+`Language` cell, the targets are every `Language` value in the CSV, including the source language.
+
+**Output count and shape.** Videos = `.mogrt` files × CSV rows (no CSV = 1) × presets per row. State the
+number before submitting. Each video is encoded at its preset's frame: a preset of a different shape than
+the `.mogrt` boxes the design with bars. `compose_workflow` doesn't set presets and a session submit
+can't, so composed DGR nodes use the default `ffs_video_api_land_1080p_hq` (16:9), as the Social Video
+Adaptation golden does. To render each `.mogrt` in its own shape, set matching presets (with Smart
+Matching for several `.mogrt` files) in the Workflow Builder, or use `run_dgr_render` with `presets` for a
+template-only render.
+
+The authoritative behavior is `packages/actions-dgr/src/mergeTemplateHandler.ts`; see
+`packages/actions-dgr/docs/dgr-integration-contracts.md`.
+
+### Pre-flight control ↔ CSV coverage check (`.mogrt` **and** CSV) — before submit
+
+Best-effort, like the InDesign/PSD check: skip it if you can't read the CSV header; never ask the user to
+paste the CSV for it. Using `templateControls` (or `get_dgr_template_description`), report controls that
+will silently fall back to the template default:
+
+- a text/media/audio control with no matching column and nothing wired (may be intended);
+- media cells that don't match any uploaded asset's name;
+- several sources through one Reframe/Translate with no column naming the control;
+- translated media with no `Language` column, or values that aren't exactly the target locale codes.
+
+Don't flag headers that differ only in case, spacing or a leading `@`.
+
+## Node selection: use the live catalog
 
 The template format determines the merge node and the rendition node:
 
 | Format | Merge node | Rendition node | Tag tool |
 |--------|-----------|----------------|----------|
-| InDesign (`.indd`/`.idml`/`.zip`) | `merge-data` | `InDesign Create rendition` | `get_indesign_tags` |
-| Photoshop (`.psd`) | `merge-photoshop-data` (`data-merge-psd`) | `Photoshop Create rendition` | `get_psd_tags` |
+| InDesign (`.indd`/`.idml`/`.zip`) | Latest eligible `merge-data` family version | Latest compatible InDesign rendition | `get_indesign_tags` |
+| Photoshop (`.psd`) | Latest eligible `data-merge-psd` family version | Latest compatible Photoshop rendition | `get_psd_tags` |
 
 | Scenario | Use | Why |
 |----------|-----|-----|
 | Featured workflow (re-wiring) | The **same merge node** as in the original featured workflow (`merge-data` for INDD, `merge-photoshop-data` for PSD) | The deterministic `compose_workflow` rewire targets the existing node by ID; node type never changes |
-| Custom workflow, INDD only (Flow B) | `merge-data` with tags from `get_indesign_tags` | Production-available; dynamic ports wired using discovered tag names |
-| Custom workflow, PSD only (Flow B) | `merge-photoshop-data` with tags from `get_psd_tags` | Same, for Photoshop smart-object / text-layer tags |
-| Custom workflow, INDD + CSV (dev mode only) | `merge-data-v2` node type (fixed `template`/`data` ports — distinct from the "v2" featured-workflow version) | Only when `RW_IN_DEVELOPMENT=true`; no per-tag wiring needed |
+| New custom workflow (Flow B) | Latest eligible catalog version | Availability and ports come from the catalog, not a historical skill list |
+| Explicit older-version request | Requested version if available and compatible | Preserve the user's choice; explain unsupported combinations |
+| Fixed-port CSV merge | Real template/CSV/image/font ports | No invented per-tag overrides; template is a wired file |
 
 **`parse-data` output ports are dynamic** — one output port per CSV column, named after the
 slugified column header (e.g. `Product Name` → `product_name`). The agent cannot wire them without
-knowing the column names. When the user's workflow involves `parse-data`, ask them for their CSV
-column names and include those names explicitly in the `compose_workflow` message.
+knowing the column names. When the user's workflow involves `parse-data`, read the supplied CSV's
+headers (ask only if unavailable) and include those names explicitly in the `compose_workflow` message.
 
 ## Featured-workflow anti-patterns
 

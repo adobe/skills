@@ -2,15 +2,15 @@
 name: run-workflow
 description: >-
   Use the run-workflow MCP to discover, compose, execute, publish, and save
-  Adobe Firefly workflows. TRIGGER when: user asks what the MCP can do; wants
-  to process images/video/3D via workflow; wants to build/run/save/publish a
+  Firefly workflows. TRIGGER when: user asks what the MCP can do; wants
+  to process images/video/3D models (.usdz/.glb) via workflow; wants to build/run/save/publish a
   workflow; wants to list/view saved or recent workflows, presets/interfaces,
   or golden demos (e.g. 'run banners at scale'); pastes any
-  workflow/batch/execution ID; names a featured workflow (retargeting, product
-  banners, localization, packaging, banner advertising) — call
-  get_featured_workflow first. NOTE: 'banners at scale' = GOLDEN DEMO
-  (list_golden_workflows), NOT the featured workflow 'Product Banners At
-  Scale'. BARE ID = INSPECT ONLY — call inspect_run, never
+  workflow/batch/execution ID. Create/compose requests default to
+  compose_workflow from scratch, including banners at scale and creative
+  briefs. Call get_featured_workflow ONLY when explicitly asked for a
+  featured/predefined template. Bare 'run banners at scale' = GOLDEN DEMO
+  (list_golden_workflows). BARE ID = INSPECT ONLY — call inspect_run, never
   run_workflow_submit. ALWAYS call list_actions first for action/node
   discovery; a "what tools" question is answered directly from your visible
   tool list, no call. DO NOT TRIGGER for direct Firefly API calls without
@@ -24,10 +24,13 @@ metadata:
 
 # run-workflow MCP
 
-<!-- SYNC: This skill is maintained in three locations that must be kept identical:
-     `.claude/skills/run-workflow/` (source), `.cursor/skills/run-workflow/` (Cursor),
-     and `packages/mcp-server/references/` (reference files only, bundled with the MCP server).
-     Change one, change all three. See docs/CODE_PATTERNS.md → "run-workflow skill twins". -->
+<!-- SOURCE OF TRUTH: this folder (SKILL.md + references/) is the only copy of the skill; it ships
+     via the npm package and the Artifactory zip. Bump skill-version.json with every change.
+     See packages/mcp-server/CLAUDE.md → "Skill source of truth". -->
+
+**Requires an enterprise Adobe account with a Firefly Services or Firefly Creative Production
+entitlement, assigned via the Adobe Admin Console. Not available to individual/personal Adobe
+accounts.**
 
 Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP
 server. Never answer capability questions from training knowledge — always ground answers in live
@@ -41,8 +44,8 @@ This file is the always-loaded core. Deeper procedures live in `references/` and
 
 | Read this reference when… | File |
 | --- | --- |
-| User uploads/pastes a document that reads like a creative/marketing brief (not a bare ID, not a named workflow) | [`references/intake.md`](references/intake.md) |
-| User names a featured workflow, or supplies a custom `.indd`/`.psd` template to rewire | [`references/featured-and-templates.md`](references/featured-and-templates.md) |
+| User uploads/pastes a document that reads like a creative/marketing brief (not a bare ID, not a named workflow), **or** asks to create/compose a banners-at-scale / template + CSV data-merge workflow (required inputs, what to infer vs ask, one compose call, run/save offer) | [`references/intake.md`](references/intake.md) |
+| User explicitly requests a featured/predefined workflow, supplies a custom `.indd`/`.psd` template to compose around or rewire, or a `.mogrt` motion graphics template (DGR video template — incl. CSV ↔ control mapping and expected video count) | [`references/featured-and-templates.md`](references/featured-and-templates.md) |
 | Composing a non-trivial graph, wants multi-variant outputs, or a required input is missing | [`references/compose.md`](references/compose.md) |
 | Inspecting a run, listing history, or a workflow failed (error tables, `inspect_run` routing) | [`references/diagnostics.md`](references/diagnostics.md) |
 | Uploading files, resolving inline pastes, macOS permission error, saving outputs | [`references/asset-input.md`](references/asset-input.md) |
@@ -107,7 +110,9 @@ Translate to these labels when listing — full field mapping in [`references/di
 | "Show me the tools" / "show me the MCP tools" / "what tools do you have" / "what tools are available" | Answer directly from your own visible tool list (name + one-line description each) — do NOT call `list_actions` or any other tool |
 | "What actions are available?" / "show me the nodes/actions I can use" / "what can I use to build workflows" / "show me the catalog" / "what can you do" (as a workflow-capability question) | `list_actions` |
 | "What parameters does action X accept?" | `get_action_schema` |
-| "Build / compose / create a workflow for…" | `compose_workflow` |
+| "Build / compose / create a workflow for…" (including banners at scale, named use cases, supplied templates, and creative briefs) | `compose_workflow` from scratch — no featured lookup or featured base unless explicitly requested; see [`references/compose.md`](references/compose.md) |
+| A **3D product** request — "composite my product/model into a scene", "packshots of my 3D model", "360/spin video of my product" — or any supplied `.usdz` / `.glb` (the only 3D formats accepted) | `compose_workflow` with `message` + the scene's URL as `sceneUrl`; see [`references/compose.md`](references/compose.md) |
+| A workflow with **Composite images (3D)** — or the user asks which cameras / objects a 3D model has, or wants a specific one ("use the close-up camera", "focus on the bottle, not the table") | `describe_scene` once before composing → use a name only if the user gave it exactly, or there's a single candidate / `main_camera`; otherwise ask the user with the returned names → pass the exact names as `compose_workflow` `sceneCamera` / `sceneHeroAsset`. Never guess names. Render 3D / 360 spin video: only when the user names a camera |
 | Upload a local file to get a URL | `upload_asset` |
 | Execute a workflow — only with explicit run/execute keywords. Returns a `batchId` immediately (async); safe for any size | `run_workflow_submit` |
 | Check whether a running execution is done — **always pass `includeOutputs: true`** on every poll | `run_workflow_get_status` |
@@ -127,7 +132,7 @@ Translate to these labels when listing — full field mapping in [`references/di
 | Generate a curl command for a published workflowId | `generate_curl` |
 | Display output images inline in chat (not in Claude Desktop — 1MB cap; only after presenting URLs per the Presenting outputs sequence) | `display_asset` |
 | See newly registered actions (catalog stale) | `refresh_catalog` |
-| Run a named/featured workflow (retargeting, **product** banners at scale, localization, packaging…) — a per-use-case TEMPLATE, distinct from a golden demo (see note below) | `get_featured_workflow` → see [`references/featured-and-templates.md`](references/featured-and-templates.md) |
+| Explicitly look up/use a featured or predefined workflow/template (e.g. "use the featured Product Banners At Scale template") | `get_featured_workflow` → see [`references/featured-and-templates.md`](references/featured-and-templates.md); a use-case name alone is not an explicit featured request |
 | "List golden workflows" / "what are the golden demos" (FFCPE's homepage showcase cards — Banners at Scale, Product Assets, Social Video Adaptation — different from featured workflows, which are per-use-case templates, not showcase demos) | `list_golden_workflows` — one call, already formatted; render `renderedTable` verbatim |
 | "Run/execute **`<golden demo name>`**" (e.g. "run banners at scale", "run the social video adaptation demo") — an EXECUTE intent naming a golden demo, not a plain listing request | `list_golden_workflows` first to resolve the name to its `workflowId` — a use-case name like "Banners at Scale" matches more than one row; list them and ask which before proceeding, never guess — then submit `run_workflow_submit({ workflowId, inputs: [] })` directly (baked defaults, no confirmation needed — see the **ASK-FIRST (assets)** rule under **Key rules**), unless their prompt already asked for their own assets, in which case collect and pass `inputs`. Never route a bare "run `<use case>`" to `get_featured_workflow` — that's the agent-facing template path, not the user run path. |
 
@@ -200,7 +205,9 @@ showcase card with 2 sub-demos, resolved via `list_golden_workflows`. "Product B
 a featured-workflow TEMPLATE (agent-facing, resolved via `get_featured_workflow`). A bare user
 "run banners at scale" (or any bare "run `<use case>`") is a GOLDEN request — resolve it via
 `list_golden_workflows`, never `get_featured_workflow`. Reach for `get_featured_workflow` only when
-the user EXPLICITLY asks for a featured/predefined template, or as a `compose_workflow` precursor.
+the user EXPLICITLY asks for a featured/predefined template. It is **not** a default
+`compose_workflow` precursor. "Create a banners at scale workflow with attached assets" means
+compose a new graph, not run a golden demo or rewire a featured base.
 
 For the Type/channel taxonomy (`batchSource` vs `invocationSource`) and run-centric routing
 details, see [`references/diagnostics.md`](references/diagnostics.md).
@@ -213,8 +220,19 @@ details, see [`references/diagnostics.md`](references/diagnostics.md).
                          single-action keyword (remove-background, upscale, crop, expand, generate,
                          etc.). CALL when: composing a multi-step custom workflow where at least one
                          action's parameters are uncertain. See references/compose.md.
+1a. gather inputs     — for template/CSV data merges (banners at scale): template + CSV are
+                         REQUIRED; infer sizes/copy/image sources from the files; then ask optional
+                         items (fonts) and intent (output format, preview vs save). See
+                         references/intake.md Step 4. Skip only if the user says "just compose".
 2. compose_workflow    — describe the desired processing in natural language; the AI graph agent
-                         designs the graph. DO NOT manually specify actions or connections.
+                         designs the graph. DO NOT manually specify actions, connections, node
+                         versions, ports or tags. Templates/CSV/fonts go in customTemplateUrl /
+                         csvUrl / fonts — ONE call; compose extracts tags + validates the CSV itself.
+2b. offer next steps   — after compose: Run now / Save to Workflow Builder (save_workflow) / both.
+2c. validate edits     — if you already edited the graph, use validate_workflow with the edited
+                         workflow or graph; never compose just to validate an unchanged graph.
+                         A session_id alone still refers to the cached, unedited composition.
+                         To execute the edit, submit explicit actions/connections with its inputs.
 3. run_workflow_submit — execute with inputs; pass session_id from step 2. Pass ALL images in ONE
                          call. Returns a batchId immediately (async); does NOT block on completion.
                          → For featured workflow runs (session_id from get_featured_workflow OR from
@@ -223,7 +241,10 @@ details, see [`references/diagnostics.md`](references/diagnostics.md).
                            references/featured-and-templates.md. No deliberation needed.
 4. run_workflow_get_status — poll the batchId; ALWAYS pass includeOutputs: true. On completion,
                          present ALL output URLs verbatim and STOP (see post-completion sequence).
-5. download_output     — ONLY after the user asks; saveTo a folder they choose.
+5. download_output     — ONLY after the user asks; saveTo a folder they choose. In hosted mode
+                         saveTo is not accepted — download_output instead returns a same-domain
+                         downloadUrl + downloadToken to GET directly (no local filesystem, and the
+                         caller's own sandbox may not have egress to the output's storage domain).
 6. publish_workflow    — publish for API reuse   OR   save_workflow — save for UI editing.
 ```
 
@@ -279,8 +300,10 @@ order — post the outputs, then make a single combined offer. Never split the o
    - Presigned URLs expire in ~1 hour. Nothing else in this message beyond the outputs.
 2. **In ONE message, offer a single combined choice** — never split into separate "download?" and
    "next steps?" turns:
-   - **Download to your machine** — call `download_output` with a `saveTo` folder they choose and
-     report the exact saved paths; or
+   - **Download to your machine** — call `download_output`. In stdio mode, pass a `saveTo` folder
+     they choose and report the exact saved paths. In hosted mode there is no local filesystem —
+     `download_output` instead returns a `downloadUrl` + `downloadToken`; have the sandbox GET
+     `downloadUrl` with the token in the `x-download-token` header; or
    - **The links above are enough** — no download needed; or
    - **What's next** — save to Workflow Builder (`save_workflow`), publish as an API
      (`publish_workflow`), or start a new workflow.
@@ -317,7 +340,19 @@ order — post the outputs, then make a single combined offer. Never split the o
   [`references/diagnostics.md`](references/diagnostics.md).
 - **session_id** — `compose_workflow` and `get_featured_workflow` both return one. Retain it for the
   whole conversation; pass it to `run_workflow_submit`, `publish_workflow`, `save_workflow`
-  instead of re-serializing actions/connections. The server holds it for 2 hours.
+  instead of re-serializing actions/connections. The server holds it for 2 hours. After submit,
+  a session save uses the latest accepted submission, including its images, CSV, templates,
+  fonts and connections; it does not save the original empty composition. For the exact run,
+  pass both `session_id` and `batch_id` to `save_workflow`. An expired/missing snapshot is an
+  error: never re-compose to replace the graph being saved. Like Workflow Builder, saving stores
+  input files (including Input Assets fonts) and Data Merge templates in the draft's ACP folder so
+  they reload in the Builder after run URLs expire; reruns from MCP behave as before. Other asset
+  URLs (images/video, on-node fonts, Photoshop action files) are kept as-is. Assets that could not
+  be stored are listed in `assetPersistence` — the draft is still saved; tell the user which files
+  to re-attach.
+  `resolve_workflow_session` also returns the latest accepted submission by default; use
+  `view: "composition"` only to inspect the original authoring graph. A draft saved before a run
+  is not updated automatically: save the corrected submission again after running it.
 - **Batch inputs** — pass ALL images/assets into a SINGLE `run_workflow_submit` call (use the
   `content` array on the input node). Never make separate calls per image.
 - **publish vs save** — `publish_workflow` creates a reusable API endpoint (`workflowId` + curl):
@@ -335,6 +370,26 @@ order — post the outputs, then make a single combined offer. Never split the o
 
 These traps are non-obvious and not clearly covered by the sections above:
 
+- **Looking up featured workflows before composing a new workflow** — don't call
+  `get_featured_workflow` / `list_featured_workflows` or pass `featuredWorkflowName` just because
+  the request resembles a catalog use case. Attached templates and creative briefs do not authorize
+  a featured base. Compose from scratch unless the user explicitly requests a featured/predefined
+  template; custom INDD/PSD creation follows Flow B in
+  [`references/featured-and-templates.md`](references/featured-and-templates.md).
+- **Pre-calling `get_indesign_tags` / `get_psd_tags` / `list_actions` before a template compose** —
+  `compose_workflow(customTemplateUrl, csvUrl)` extracts tags and validates the CSV itself; the
+  extra calls only add latency. Use them only when the user asks to inspect tags/actions.
+- **Dictating graph design in the compose `message`** — naming node versions ("legacy",
+  "per-tag", "v1"/"v2"), ports, tag/column lists or wiring. The graph agent picks the latest
+  eligible nodes and refuses invented ports. Describe intent; pass a version only if the user
+  explicitly asked for one. See [`references/compose.md`](references/compose.md).
+- **Switching paths after a compose error** — on `csv_validation_failed` / `csv_fetch_failed` /
+  `tag_extraction_failed` or a graph-agent refusal, show the reason and get the fix from the user.
+  Never retry by dropping the template/CSV for a message-only compose or by requesting a legacy
+  node, or by rewriting the message as explicit wiring. Re-compose at most once, after the cause is
+  fixed, with the same intent-only message.
+- **Composing banners at scale without the template and CSV** — both are required; ask for them
+  first unless the user explicitly says to compose with only what they gave.
 - **Conflating "tools" with "actions/nodes"** — these are different vocabularies. "Show me the
   tools" / "what MCP tools do you have" asks about the MCP tool surface (`list_actions`,
   `compose_workflow`, `run_workflow_submit`, etc.) — answer directly from your own visible tool
@@ -416,7 +471,8 @@ These traps are non-obvious and not clearly covered by the sections above:
   reproducing a preset/interface run (`rerun.method: "inline_exact"` and `isInterface: true`). See
   [`references/diagnostics.md`](references/diagnostics.md).
 - **Calling `display_asset` in Claude Desktop** — the 1MB response cap makes inline display fail;
-  present text URLs only and offer `download_output` with `saveTo` for local saving.
+  present text URLs only and offer `download_output` for local saving (stdio: `saveTo` a path;
+  hosted: it returns a `downloadUrl`/`downloadToken` to GET instead).
 - **Dropping `createdBy`/`workflowId` when a large `list_all_workflows` result gets grep/jq'd,
   or separately re-pasting the standalone `typeSummary` field before `renderedTable`** — select
   and render the response's `renderedTable` field verbatim (it already contains, in order: golden
@@ -444,10 +500,14 @@ These traps are non-obvious and not clearly covered by the sections above:
   published first run, discover input node ids via the submit preflight (`workflowId` + `inputs: []` →
   `needs_reattach.rerunAssets.inputs[].nodeId`), NOT from `inspect_run` (which reports `rerunAssets:
   none` for a never-run published workflow). See [`references/diagnostics.md`](references/diagnostics.md).
-- **Overriding a 3D-scene node (`input-3d`) via `inputs[]`** — that override is NOT wired on the MCP
-  path; the ingestion layer used to silently drop it. `run_workflow_submit` now returns
-  `status:"unsupported_override"` (with the `nodeId`/`actionType`) instead — route the user to the
-  Workflow Builder for 3D-scene wiring rather than resubmitting. See [`references/diagnostics.md`](references/diagnostics.md).
+- **Overriding a 3D-scene (`input-3d`) or IBL (`input-ibl`) node via `inputs[]`** — both are supported
+  on the by-`workflowId`/interface path and on the inline/compose path (`input-ibl` → `parameters.images`,
+  `input-3d` → `parameters.scenes`; `input-3d` accepts only `.usdz`/`.glb`). For "prompt + 3D file →
+  run", pass the file to `compose_workflow` as `sceneUrl` instead: it binds the URL to
+  every `input-3d` node (no processing at compose time), so a
+  `session_id` submit needs no `inputs[]`. For Composite images (3D), pick the camera/hero object as the UI
+  requires (ask unless the user gave the exact name or there's one candidate — see `describe_scene`) and pass `sceneCamera` / `sceneHeroAsset`. URLs may come from `upload_asset` (local path — accepts `.usdz/.glb/.gltf/.exr/.hdr`), a
+  presigned URL, or a chat upload. See [`references/diagnostics.md`](references/diagnostics.md).
 - **Trusting `resolvedVia` without checking `durabilityCoverage`** — every `rerunAssets` /
   `needs_reattach` envelope now carries `durabilityCoverage: "authoritative" | "warmth-guessed"`.
   `authoritative` (CAS/preset — a real durability map) means the `warm-url` / `durable-storage` /

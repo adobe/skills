@@ -545,6 +545,7 @@ guess from URLs: when you supply `inputs[].template` for a `merge-data` / `data-
 **without** a composed `session_id`, it **describes the new template** (`get_indesign_tags` /
 `get_psd_tags`, session-cached) and **diffs its tags against the merge node's current ports**
 (`computeTagDiff`). The diff — not the URL — decides the outcome:
+
 - **Empty diff** (no placeholder added, removed, or text↔image type-changed): the existing wiring is
   valid for the new template, so the submit **proceeds as-is** — no compose round-trip. The backend
   still swaps in the supplied template file; the graph just reproduces the same ports. (This is the
@@ -556,7 +557,7 @@ guess from URLs: when you supply `inputs[].template` for a `merge-data` / `data-
   placeholders changed. Route it through compose: `compose_workflow({ current_graph: <that
   currentGraph>, customTemplateUrl: <the new template url>, csvData: <the customer CSV> })` —
   **passing `current_graph` is required**; a bare `customTemplateUrl` with no base graph returns
-  `no_base_graph` (compose rewires an existing base, it does not build net-new). Then
+  `no_base_graph`. Do not substitute a new message-only composition for an existing graph swap. Then
   `run_workflow_submit({ session_id, inputs })` with the returned session. If compose returns
   `csv_validation_failed`, the CSV headers don't cover the new template's tags — surface that and stop;
   do not force the run. (If the new template's tags can't be read at all, the guard falls back to
@@ -584,12 +585,17 @@ A template supplied **with** a `session_id`/`useSessionDefaults` is already rewi
 happy-path) and passes through. Only the two **dynamic-port** merges (`merge-data`, `data-merge-psd`)
 carry a template in their **own** params and rewire. Every other template consumer has **fixed or
 hybrid** ports and takes its template from an **upstream `input-*` node** → the consumer's template
-port — so it **never** rewires: **DGR** (`dgr-render-template`/`dgr-merge-template`), InDesign data-merge
-**v2** (`merge-data-v2`), Illustrator data-merge (`data-merge-illustrator`), and `data-merge-html5`. For
-these, a replacement template (e.g. a new DGR `.mogrt`) is attached as `inputs[].content` on that
-**upstream input node** (audited as `assetRole: "input"`), NOT as an `inputs[].template` on the consumer
-node — the durable/expired mogrt is reused/reattached exactly like any other input asset. Graphs with no
-template consumer at all are tag-free and submit as-is.
+port: **DGR** (`dgr-render-template`/`dgr-merge-template`), InDesign data-merge **v2** (`merge-data-v2`),
+Illustrator data-merge (`data-merge-illustrator`), and `data-merge-html5`. For these, a replacement
+template (e.g. a new DGR `.mogrt`) is attached as `inputs[].content` on that **upstream input node**
+(audited as `assetRole: "input"`), NOT as an `inputs[].template` on the consumer node — the
+durable/expired mogrt is reused/reattached exactly like any other input asset. Of these only **DGR** can
+need a rewire: its control ports are named by the `.mogrt`'s control `variableId`s, and the backend
+silently ignores a port the template has no control for. A new `.mogrt` whose controls still cover every
+wired control port submits as-is; one that drops a wired port returns `needs_rewire` with `staleControls`
+→ `compose_workflow({ current_graph: currentGraph, mogrtTemplateUrl })`, then resubmit with the returned
+`session_id` (`no_editable_graph` when there's no Matrix graph). The other port-wired nodes never rewire.
+Graphs with no template consumer at all are tag-free and submit as-is.
 
 **Prefer `by_id` for a durable published rerun.** A published workflow's durable assets are re-minted
 only on the backend *definition* resolve path, so a `workflowId` (`by_id`) rerun re-resolves them
@@ -650,11 +656,11 @@ force you to rediscover each on a separate submit (a slow one-problem-per-round-
 two or more coexist, are returned as a single `status: "needs_preflight"` whose `blockers[]` array holds
 each individual result verbatim (its own `status`, `reason`, and `hint`). Fix **every** blocker, then
 resubmit **once** — fixing only one just surfaces the rest. When exactly one fires it still returns its
-own single status (back-compat). The `invalid_input_target` and `unsupported_override` guards are NOT
-aggregated — a mis-targeted input or an unhonorable `input-3d` override is a malformed submit (and a
-mis-placed asset may itself be the "missing" template), so they short-circuit first; fix the graph, then
-resubmit. A `needs_rewire` / `no_editable_graph` / `graph_unresolved` diagnosis likewise routes through
-`compose_workflow` or the Workflow Builder and is not aggregated.
+own single status (back-compat). The `invalid_input_target` guard is NOT aggregated — a mis-targeted
+input is a malformed submit (and a mis-placed asset may itself be the "missing" template), so it
+short-circuits first; fix the graph, then resubmit. A `needs_rewire` / `no_editable_graph` /
+`graph_unresolved` diagnosis likewise routes through `compose_workflow` or the Workflow Builder and is
+not aggregated.
 
 The fastest way to avoid the whole cascade on a **first run from a draft**: call `inspect_run(workflowId)`
 BEFORE submitting to read the required inputs and any empty template slot up front, gather them from the
@@ -720,20 +726,56 @@ lists every input node in the graph:
   it alone; re-sending it as an input is unnecessary and, if it targets a non-input node, is exactly
   what trips this guard.
 
-### 3D-scene override on an `input-3d` node (`unsupported_override`)
+### 3D-scene and IBL overrides (`input-3d` / `input-ibl`)
 
-`input-3d` is a valid input node, so it passes the `invalid_input_target` guard — but 3D-scene wiring
-is **not on the MCP path yet**, so an asset supplied via `inputs[]` for an `input-3d` node has no
-ingestion mapping and would be **silently dropped** (the run would proceed with the ORIGINAL scene while
-you believe your swap took). To make that honest, `run_workflow_submit` detects an override (a `content[]`
-or `template`) targeting an `input-3d` node and returns `status: "unsupported_override"` carrying
-`{ nodeId, actionType }` instead of no-op'ing.
+`input-3d` and `input-ibl` are valid input nodes, so they pass the `invalid_input_target` guard.
+Overriding either via `inputs[]` is **SUPPORTED on the by-`workflowId`/interface path** — the backend
+wires it — so submitting `{ workflowId, inputs: [{ node_id:<input-3d>, content:[{type:"model",url}]},
+{ node_id:<input-ibl>, content:[{type:"image",url}]}] }` against a published 3D interface (e.g. the 3D
+golden demos) correctly swaps in the new scene/IBL env map. The scene/IBL URL can come from
+`upload_asset`, a presigned URL, or a chat upload.
 
-- To change the 3D scene/asset, open the workflow in the **Workflow Builder** (which owns 3D-scene
-  wiring end to end) and re-save/re-publish it — do NOT resubmit the same override.
-- To rerun with the existing 3D scene unchanged, drop that `inputs[]` entry and resubmit.
-- This is the only currently-unsupported override on an otherwise-valid input node; every other
-  `input-*` type ingests its `inputs[]` asset normally.
+`input-ibl` overrides are also **SUPPORTED on the inline/compose path**: they use the same `images`
+ingestion mapping as `input-images` and are merged into `parameters.images`.
+
+`input-3d` overrides are **SUPPORTED on the inline/compose path** too (inline `actions`/`connections`,
+or a `session_id` with no `workflowId`): `{ node_id:<input-3d>, content:[{ url, name? }] }` becomes the
+node's `parameters.scenes[]` in the same shape the Workflow Builder sends. Only `.usdz` and `.glb` are
+accepted (the Input 3D node's file types); any other extension is rejected before submit.
+
+**Prefer `compose_workflow`'s `sceneUrl` for a 3D run** ("prompt + 3D file → run"). It binds the scene
+URL to **every** `input-3d` node as a session default, so `run_workflow_submit({ session_id })` applies
+it with no `inputs[]`. Compose runs no scene processing — the scene is fetched and processed when the
+workflow runs, and `.glb` is accepted directly (no conversion). Unset, the backend defaults the camera /
+hero object (Composite images: the scene's `main_camera`, else its
+first camera, and hero `root`; Render 3D: the default camera views; 360 spin video: auto-framing).
+
+**Choosing a camera / hero object.** The Workflow Builder requires a Camera and Hero object pick on
+Composite images (3D); Render 3D and 360 spin video cameras are optional. So:
+
+- **Workflow with Composite images (3D)** — call `describe_scene({ sceneUrl })` once before composing
+  (`sceneOptions { cameraNames, heroAssets, materialNames }`, `hasCameras`), then:
+  - **Hero object:** use a name only if the user gave that exact name or the scene has a single
+    candidate; otherwise **ask the user**, listing `heroAssets`. Don't infer it from the prompt's
+    wording — "my headphones" can match a group, its parts, and a `HeroAsset` node.
+  - **Camera:** use a name only if the user gave that exact name, or the scene has `main_camera` or a
+    single camera; otherwise **ask the user**, listing `cameraNames`.
+  - `hasCameras: false` → tell the user Composite will fail with this scene and ask for one with a
+    camera, instead of running.
+- **Render 3D / 360 spin video only** — no describe; set a camera only when the user names one.
+- **Any workflow, when the user asks** which cameras / objects a scene has — `describe_scene` and list
+  them.
+
+Pass the choice as `compose_workflow({ …, sceneUrl, sceneCamera?, sceneHeroAsset? })` with the exact
+names. The camera applies to Composite images (3D) and 360 spin video, and is rendered in addition to
+Render 3D's preset views; the hero object applies to Composite images (3D) only. A choice no node can
+take comes back in `sceneWarnings`. Never guess a name — an unknown one fails at run time.
+`error: "scene_describe_failed"` → don't block: compose without a choice (backend defaults) and tell
+the user.
+
+- `error: "unsupported_scene_format"` → not `.usdz`/`.glb`.
+- Composite images (3D) needs a camera in the scene; a scene with none fails at run time — ask the user
+  for a scene that includes one.
 
 ### Write-files output destination (`needs_output_destination` + auto-backfill of the default folder)
 
@@ -789,6 +831,28 @@ auto-corrected; the graph is rejected as-is.
   proceeded. `DISCONNECTED_NODE` is intentionally non-blocking because it also fires on a partially-wired
   graph and on any catalog drift (an unrecognized node type isn't classed as a source), so blocking on
   it would regress runnable submits.
+- **Fan-in ports take several connections — but never the same one twice.** A port whose catalog
+  entry declares `allowMultiple` (`write-files.inputs`, `workfront-push-assets.media`, and
+  `collect.items` as of FFENT-16998) is exempt from `MULTIPLE_CONNECTIONS_TO_PORT` — joining
+  separate branches into it is the intended shape. What stays blocked is the *same* upstream
+  `(source, sourcePort)` pair connected to that port more than once: `DUPLICATE_CONNECTIONS_TO_PORT`.
+  The runtime clones one output **per connection**, so a duplicate silently doubles every item
+  rather than failing; remove the extra connection rather than re-pointing it. When the action
+  catalog is unavailable the cardinality check is **skipped** rather than applied blind (a cold
+  catalog would otherwise reject every valid fan-in graph), but the duplicate check still runs — it
+  needs no catalog to be correct.
+- **A Collect node that lost a branch completes with a warning, not a failure.** When one of a
+  fan-in Collect's upstream branches fails to deliver, the run still succeeds and Collect returns
+  the surviving subset. The only signal is a non-fatal `warnings[]` on that node's status entry
+  ("...N of M branch(es) connected to the Collect node did not deliver a result...").
+  `run_workflow_get_status` keeps it in the default response (it survives the per-node output
+  stripping), so check `outputs[].outputs[]` for `warnings` before concluding a short collection was
+  the intended result.
+- **A short collection with NO warning is the normal shape, not a silent dropout.** A branch that ran
+  fine and legitimately produced nothing — a Filter matching no items, an untaken If/Else branch — is
+  absent from the collection and deliberately does not warn; only a branch whose output could not be
+  read does. So an unwarned Collect returning fewer items than you expected points upstream at a
+  filter/condition, not at a lost branch.
 - **Templated merge nodes are exempt from the required-input check.** A `merge-data` / `data-merge-psd`
   node resolves its ports from the template at runtime, so an unconnected "required" port on one is never
   flagged `UNCONNECTED_REQUIRED_INPUT` (a missing *template* is the separate `missing_template` guard
@@ -936,3 +1000,28 @@ with no InDesign/PSD template attached:
   via `inputs[]: { node_id, template: { presignedUrl, name, storageType } }` (see
   [`featured-and-templates.md`](featured-and-templates.md)). Do not resubmit the same graph unchanged.
 
+**DGR video shows the template's default content (or the wrong clip/voiceover)** — the run completes,
+but videos show the `.mogrt`'s placeholder media/text, or every row reuses one source. DGR never fails a
+row for a missing value; it renders the template default and logs a warning (`no upstream … variant
+matched control …` or `Invalid media cell … control skipped`) in the `inspect_run` logs. Causes:
+
+1. **No value reached the control** — no CSV column matches its `variableId`/label and nothing is wired.
+   **Fix:** add the column, or recompose with the `.mogrt` (Flow B).
+2. **Media filename not found** among the uploaded assets. **Fix:** make the cell match the asset's
+   `name`, or use a URL.
+3. **Several sources through one Reframe/Translate, no CSV column naming the control.** **Fix:** add that
+   column with each row's **original** source filename. (Don't apply the InDesign "renamed asset" fix:
+   Reframe/Translate outputs are matched by their original name.)
+4. **Locale mismatch** — the row's `Language` cell isn't exactly a translated locale (`fr-FR`, not `fr`),
+   or that locale (including the source language) isn't in `targetLocaleCodes`. **Fix:** correct the cells
+   or the targets.
+5. **Aspect mismatch** — Reframe didn't produce the `.mogrt`'s aspect ratio. **Fix:** add it to Reframe.
+
+**DGR run produced an unexpected number or shape of videos** — count = `.mogrt` files × CSV rows ×
+presets per row (see [`featured-and-templates.md`](featured-and-templates.md)); a failed `.mogrt` drops
+only its own videos. A design boxed in a landscape frame means no matching preset was set (the default is
+16:9 `ffs_video_api_land_1080p_hq`).
+
+**`dgr-merge-template requires a template (mogrt) input`** — the `.mogrt` didn't reach the input-files
+node on the `templates` port; on a session submit it's usually an expired presigned URL. Re-upload it
+and re-attach it as `inputs[].content` on that input node (see the rerun section above).
