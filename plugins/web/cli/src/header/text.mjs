@@ -187,27 +187,60 @@ const COLLECT = `(args) => {
     const round = (v) => Math.round(v * 10) / 10;
     texts.push({ text: 'icon' + (name ? ' "' + name + '"' : ''), kind: 'icon', rect: { x: round(cx), y: round(cy), w: 0, h: 0 }, styles: {} });
   }
-  return { texts, mainTop: mainTop == null ? null : Math.round(mainTop * 10) / 10 };
+  // the page's own header (EDS: body > header): the bottom of what it paints in the viewport (a
+  // text, an image, a background, a border, a shadow), not its box (a bar that slid away under a
+  // promo bar paints nothing below it): a scroll step's 2x pixels are told apart from the body's
+  const hdr = document.querySelector('body > header');
+  let headerBottom = null;
+  if (hdr) {
+    headerBottom = 0;
+    for (const e of hdr.querySelectorAll('*')) {
+      const r = e.getBoundingClientRect();
+      if (r.bottom <= 0 || r.top >= innerHeight || r.width < 1 || r.height < 1) continue;
+      const cs = getComputedStyle(e);
+      if (cs.visibility === 'hidden' || +cs.opacity === 0) continue;
+      const shadow = cs.boxShadow === 'none' ? 0
+        : (cs.boxShadow.match(/-?[\d.]+px/g) || []).slice(1, 4).reduce((a, v) => a + parseFloat(v), 0);
+      const paints = [...e.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())
+        || /^(img|svg|picture|video|canvas|input|button)$/i.test(e.tagName)
+        || cs.backgroundColor !== 'rgba(0, 0, 0, 0)' || cs.backgroundImage !== 'none'
+        || parseFloat(cs.borderBottomWidth) > 0 || shadow > 0;
+      if (paints) headerBottom = Math.max(headerBottom, Math.min(r.bottom + Math.max(shadow, 0), innerHeight));
+    }
+    headerBottom = Math.round(headerBottom * 10) / 10;
+  }
+  return { texts, mainTop: mainTop == null ? null : Math.round(mainTop * 10) / 10, headerBottom };
 }`;
 
 // opens the state to compare: a menu by its visible label, or the mobile menu's burger as
 // open-panels.mjs opens it (waiting for its links: a site may replay the click late)
-const OPEN = (open, trigger, mobileMenu) => `
+// `optional`: the baseline (the page before the work) may have no such menu, or no burger: it is
+// then used as loaded, for what its body already differed by (a failed open fails the source and
+// the page, not the baseline)
+const OPEN = (open, trigger, mobileMenu, optional = false) => `
   if (${JSON.stringify(Boolean(mobileMenu))}) {
     const before = await page.evaluate(() => window.__plgVisibleLinks());
     const toggle = await page.evaluateHandle(() => window.__plgMobileToggle());
     if (await toggle.asElement()) {
-      await toggle.asElement().click();
-      await page.evaluate((n) => window.__plgWaitReveal(n), before);
+      try {
+        await toggle.asElement().click();
+        await page.evaluate((n) => window.__plgWaitReveal(n), before);
+      } catch (e) {
+        if (!${JSON.stringify(Boolean(optional))}) throw e;
+      }
     }
     await page.waitForTimeout(700);
   } else if (${JSON.stringify(open || '')}) {
     await page.evaluate(() => window.__plgMarkVisibleLinks());
     const el = page.locator('header, nav').getByText(${JSON.stringify(open || '')}, { exact: true }).filter({ visible: true }).first();
-    if (${JSON.stringify(trigger)} === 'click') await el.click({ timeout: 3000 }); else await el.hover({ timeout: 3000 });
-    await page.waitForTimeout(700);
-    // the open panel's bottom: its 2x pixels are told apart from the page's below it
-    panelBottom = await page.evaluate(() => { const p = window.__plgOpenPanel(); return p ? p.rect.y + p.rect.h : null; });
+    try {
+      if (${JSON.stringify(trigger)} === 'click') await el.click({ timeout: 3000 }); else await el.hover({ timeout: 3000 });
+      await page.waitForTimeout(700);
+      // the open panel's bottom: its 2x pixels are told apart from the page's below it
+      panelBottom = await page.evaluate(() => { const p = window.__plgOpenPanel(); return p ? p.rect.y + p.rect.h : null; });
+    } catch (e) {
+      if (!${JSON.stringify(Boolean(optional))}) throw e;
+    }
   }`;
 
 // a scroll step: the wheel (scroll listeners see a user's scroll), then time for the header's
@@ -234,6 +267,7 @@ async function collect(
     shot,
     steps,
     hideLate = false,
+    optionalOpen = false,
   },
 ) {
   openSession(session, { width, height, scale });
@@ -275,7 +309,7 @@ async function collect(
   await page.evaluate(() => document.fonts.ready).catch(() => {});
   await page.waitForTimeout(1200);
   let panelBottom = null;
-  ${OPEN(open, trigger, mobileMenu)}
+  ${OPEN(open, trigger, mobileMenu, optionalOpen)}
   const out = [];
   ${states}
   return JSON.stringify(out);
@@ -345,7 +379,14 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
     o.baseline
       ? sourceStates(
           o.baseline,
-          { ...opts, scope: pageScope, hideCss: '', shot: name('baseline'), hideLate: false },
+          {
+            ...opts,
+            scope: pageScope,
+            hideCss: '',
+            shot: name('baseline'),
+            hideLate: false,
+            optionalOpen: true,
+          },
           o,
           `${tag}-b`,
         )
@@ -400,11 +441,27 @@ async function compareAt(srcUrl, pageUrl, size, o, hideCss) {
             base ? name('baseline')(i) : null,
           )
         : null;
+    // a scroll step: how many of them are in the page's header (down to what it paints there);
+    // the rest is the page below it (a body that is not the source's, moved by a new header height)
+    const headerRows =
+      o.scroll && page[i].headerBottom != null ? Math.ceil(page[i].headerBottom * +o.scale) : null;
+    const pxHeader =
+      px && headerRows != null
+        ? headerRows
+          ? differingPixels(
+              name('source')(i),
+              name('page')(i),
+              headerRows,
+              base ? name('baseline')(i) : null,
+            )
+          : 0
+        : null;
     return {
       tag: at,
       matched: s.texts.length - r.onlySource.length,
       px,
       pxPanel,
+      pxHeader,
       inherited,
       shots: o.shots && name('*')(i),
       ...r,
@@ -430,7 +487,7 @@ async function sourceStates(srcUrl, opts, o, tag) {
     shots: Boolean(shot),
     collector: cacheKey({
       COLLECT,
-      OPEN: OPEN(shape.open, shape.trigger, shape.mobileMenu),
+      OPEN: OPEN(shape.open, shape.trigger, shape.mobileMenu, shape.optionalOpen),
       PROPS,
     }),
   });
@@ -668,7 +725,7 @@ export async function checkText(srcUrl, pageUrl, opts = {}) {
     lines.push(
       `${r.tag} text styles: ${r.rows.length} differ of ${r.matched} matched texts` +
         `${unmatched ? `, ${unmatched} on one side only` : ''}${r.inherited ? ` (${r.inherited} inherited from the baseline, not counted)` : ''}` +
-        `${r.px == null ? '' : `; ${r.px} differing pixels at ${o.scale}x${r.pxPanel == null ? '' : ` (${r.pxPanel} in the header and open panel, ${r.px - r.pxPanel} below them)`} (${r.shots})`}`,
+        `${r.px == null ? '' : `; ${r.px} differing pixels at ${o.scale}x${r.pxPanel == null ? '' : ` (${r.pxPanel} in the header and open panel, ${r.px - r.pxPanel} below them)`}${r.pxHeader == null ? '' : ` (${r.pxHeader} in the header, ${r.px - r.pxHeader} below it)`} (${r.shots})`}`,
     );
     // a text on one side only is a difference too: a changed or missing label
     if (r.rows.length || r.onlySource.length || r.onlyPage.length || r.px) {

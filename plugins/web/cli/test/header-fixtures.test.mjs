@@ -107,7 +107,7 @@ async function fails(status, code, ...args) {
 const textFile = (name) => `${text.url}${name}`;
 
 test(
-  'capture: the promo bar above the header, the menus, the breakpoint; the checks clean on the page itself',
+  'capture: the promo bar above the header (not its empty spacer), the menus, the breakpoint; the checks clean on the page itself',
   { skip },
   async () => {
     const dir = join(cwd, 'capture');
@@ -117,7 +117,7 @@ test(
     assert.deepEqual(
       page.regions.map((r) => [r.id, r.selector, r.rect.y]),
       [
-        ['header', 'body > div:nth-of-type(1)', 0],
+        ['header', 'body > div:nth-of-type(2)', 0],
         ['header-2', 'body > header', 48],
       ],
     );
@@ -266,6 +266,60 @@ test(
     assert.ok(
       existsSync(join(cwd, 'b', 'new', 'shot-1000x900-source.png')),
       'no copied source shot',
+    );
+  },
+);
+
+test(
+  'text --scroll at 2x on a page with a body of its own: the pixels in its header told apart',
+  { skip },
+  async () => {
+    const doc = await clean(
+      false,
+      'text',
+      textFile('src.html'),
+      textFile('body.html'),
+      '--sizes',
+      '1000',
+      '--scroll',
+      '300',
+      '--scale',
+      '2',
+      '--shots',
+      join(cwd, 'scroll', 'shot'),
+    );
+    // as loaded: the same header, another body; scrolled 300 px: an empty body on both sides (no
+    // pixel, no split)
+    const [loaded, scrolled] = doc.sizes;
+    assert.ok(loaded.px > 0, doc.text);
+    assert.equal(loaded.pxHeader, 0, doc.text);
+    assert.equal(scrolled.px, 0, doc.text);
+    assert.equal(scrolled.pxHeader, null, doc.text);
+    assert.match(
+      doc.text,
+      /1000x900 y0 .*; \d+ differing pixels at 2x \(0 in the header, \d+ below it\)/,
+    );
+  },
+);
+
+test(
+  'text --open with a baseline that has no such menu: the baseline is used as loaded',
+  { skip },
+  async () => {
+    // the page before the work (its old header) has no "Produits" menu to open: not a failure
+    await clean(
+      true,
+      'text',
+      `${menus.url}menus.html`,
+      `${menus.url}menus.html`,
+      '--sizes',
+      '1000',
+      '--open',
+      'Produits',
+      '--trigger',
+      'hover',
+      '--baseline',
+      textFile('src.html'),
     );
   },
 );

@@ -83,7 +83,8 @@ Read the lines, not the exit status: 0 means the check ran, clean or not.
 `--source-cache <dir>` keeps the source's states between runs (loaded once, shared by every text
 command). `--baseline <url>` points at your page before the header work: a difference it already
 had, with the same value on your page, is reported as inherited and not counted. The header's own
-texts and where the page below it starts are never inherited.
+texts and where the page below it starts are never inherited. A baseline whose old header has no
+such menu (`--open`) or no burger (`--mobile-menu`) is used as loaded.
 
 ## Reading the lines
 
@@ -108,7 +109,9 @@ not clean at: 1000x900,700x900 (re-run those with --sizes while fixing)
 - `(the page below the header)`: where the page's main content starts. The header's height or
   position differs.
 - `only on the source` / `only on the page`: a label missing or changed.
-- `; N differing pixels at 2x (… in the header and open panel, … below them)`: with `--shots`.
+- `; N differing pixels at 2x (… in the header and open panel, … below them)`: with `--shots`;
+  with `--scroll`, `(… in the header, … below it)`: down to what your header (`body > header`)
+  shows at that step, and the page below it.
 - `not clean at:` the sizes to re-run with `--sizes` while fixing.
 
 `menus`: `OK   <label> (<trigger>): 3 of 3 links`, or `FAIL` with the reason (did not open, could

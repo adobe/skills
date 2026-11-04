@@ -168,28 +168,31 @@
   // not most of the viewport (a full-height app shell is not a header)
   const HEADER_CANDIDATES = ['body > header', 'header', '[role=banner]', '#header', '.header'];
   // the bands stacked above it at the top of the page (a promo or top bar outside the <header>):
-  // earlier siblings of the header or of an ancestor, shown, at least half the viewport wide,
-  // entirely above the header's top
+  // earlier siblings of the header or of an ancestor, shown, holding content (text, a link, an
+  // image: an empty spacer that reserves a fixed bar's height is not a band), at least half the
+  // viewport wide, entirely above the header's top
+  const content = (e) => e.innerText.trim().length
+    + e.querySelectorAll('a, img, svg, picture, video, canvas, button, input').length;
   const bandsAbove = (el, top) => {
     const out = [];
     for (let e = el; e && e.parentElement && e !== document.body; e = e.parentElement) {
       for (let s = e.previousElementSibling; s; s = s.previousElementSibling) {
-        if (SKIP.has(s.tagName) || !visible(s)) continue;
+        if (SKIP.has(s.tagName) || !visible(s) || !content(s)) continue;
         const r = absRect(s);
         if (r.h >= 10 && r.w >= 0.5 * innerWidth && r.y >= 0 && r.y + r.h <= top + 1) out.unshift(s);
       }
     }
-    // top first; of bands that overlap (a wrapper and its copy, a placeholder under a fixed bar),
-    // the first in the page's order
-    let bottom = -Infinity;
-    return out
-      .sort((a, b) => absRect(a).y - absRect(b).y)
-      .filter((s) => {
-        const r = absRect(s);
-        if (r.y < bottom - 1) return false;
-        bottom = r.y + r.h;
-        return true;
-      });
+    // top first; of bands that overlap (a fixed bar over its spacer, a wrapper and its copy), the
+    // one with the most content, else the first in the page's order
+    const kept = [];
+    for (const s of out.sort((a, b) => absRect(a).y - absRect(b).y)) {
+      const last = kept[kept.length - 1];
+      const lr = last && absRect(last);
+      if (last && absRect(s).y < lr.y + lr.h - 1) {
+        if (content(s) > content(last)) kept[kept.length - 1] = s;
+      } else kept.push(s);
+    }
+    return kept;
   };
   // selectors, top first: [bands above..., the header]; [] when none is found
   window.__plgFindHeader = () => {

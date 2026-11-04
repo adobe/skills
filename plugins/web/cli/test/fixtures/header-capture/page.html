@@ -6,7 +6,9 @@
 <title>Header capture fixture</title>
 <style>
   body { margin: 0; font: 16px/1.5 sans-serif; }
-  .promo { padding: 12px; background: #222; color: #fff; text-align: center; }
+  /* as an SEO blog does it: an empty spacer reserves the height of a fixed promo bar */
+  .promo-spacer { height: 48px; }
+  .promo { position: fixed; top: 0; left: 0; right: 0; z-index: 2; box-sizing: border-box; height: 48px; padding: 12px; background: #222; color: #fff; text-align: center; }
   .promo a { color: #fff; }
   header { display: flex; align-items: center; gap: 24px; height: 64px; padding: 0 24px; border-bottom: 1px solid #ddd; }
   nav > ul { display: flex; gap: 24px; margin: 0; padding: 0; list-style: none; }
@@ -24,8 +26,8 @@
 </style>
 </head>
 <body>
+<div class="promo-spacer"></div>
 <div class="promo">Free shipping this week <a href="/shipping">Details</a></div>
-<div class="promo-layer" style="position: absolute; top: 0; left: 0; right: 0; height: 48px; pointer-events: none;"></div>
 <header>
   <a href="/" class="logo">Logo</a>
   <nav>
@@ -43,7 +45,7 @@
 </header>
 <main>
   <h1>Header capture fixture</h1>
-  <p>A promo bar above the header (with an empty layer over it), two hover menus, a burger under 992 px.</p>
+  <p>A fixed promo bar over an empty spacer above the header, two hover menus, a burger under 992 px.</p>
 </main>
 </body>
 </html>
