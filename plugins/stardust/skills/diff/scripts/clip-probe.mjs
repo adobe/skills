@@ -347,7 +347,7 @@ async function main() {
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
   let res;
   try {
-    const { ctx, page } = await openPage(browser, { width: opts.width, locale: opts.locale });
+    const { ctx, page } = await openPage(browser, { width: opts.width, locale: opts.locale, stateUrl: opts.url });
     res = await probe(page, opts.url, opts);
     res.tier = browserTier(browser);
     await ctx.close();

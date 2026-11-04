@@ -12,8 +12,11 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS } from '../style-census.mjs';
 import * as censusModule from '../style-census.mjs';
+
+const {
+  aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS,
+} = censusModule;
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'style-census.mjs');
@@ -51,6 +54,47 @@ about.iconFont = { families: ['icomoon'], glyphs: [{ class: 'icon icon-search', 
 const pages = { 'https://x.test/about': { 1440: about }, 'https://x.test/': { 1440: home, 360: base() } };
 
 // ---- part (a): pure ------------------------------------------------------------------------------------
+await check('liveContextFor: session.isLiveHttpUrl selects live URLs and one context is cached per host', async () => {
+  assert.equal(typeof censusModule.liveContextFor, 'function');
+  const calls = [];
+  const browser = { kind: 'browser' };
+  const session = {
+    isLiveHttpUrl: (url) => /^https?:/.test(url) && url.includes('selected'),
+    newLiveContext: async (actualBrowser, options) => {
+      calls.push({ actualBrowser, options });
+      return { host: new URL(options.stateUrl).host };
+    },
+  };
+  const contexts = new Map();
+  const options = {
+    ua: 'test-agent', locale: 'en-GB', viewport: { width: 1440, height: 900 },
+    reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true,
+  };
+  const first = await censusModule.liveContextFor(session, browser, contexts, 'https://selected.example/a', options);
+  const second = await censusModule.liveContextFor(session, browser, contexts, 'https://selected.example/b', options);
+  assert.equal(first, second, 'two URLs on one host share the context');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].actualBrowser, browser);
+  assert.deepEqual(calls[0].options, { ...options, stateUrl: 'https://selected.example/a' });
+  assert.equal(await censusModule.liveContextFor(session, browser, contexts, 'file:///tmp/selected.html', options), null, 'file URLs stay local');
+  assert.equal(await censusModule.liveContextFor(session, browser, contexts, 'https://ordinary.example/', options), null, 'the session predicate decides');
+  assert.equal(calls.length, 1, 'local URLs create no live context');
+  // a job list that starts local: the local job gets null (measure() reads contexts.local for it), the live job that
+  // follows gets its context before measure() reads contexts.live
+  const mixed = new Map();
+  assert.equal(await censusModule.liveContextFor(session, browser, mixed, 'file:///tmp/first.html', options), null);
+  assert.equal((await censusModule.liveContextFor(session, browser, mixed, 'https://selected.example/later', options)).host, 'selected.example');
+
+  const concurrentContexts = new Map();
+  calls.length = 0;
+  const [concurrentFirst, concurrentSecond] = await Promise.all([
+    censusModule.liveContextFor(session, browser, concurrentContexts, 'https://selected.example/a', options),
+    censusModule.liveContextFor(session, browser, concurrentContexts, 'https://selected.example/b', options),
+  ]);
+  assert.equal(concurrentFirst, concurrentSecond, 'concurrent jobs share the in-flight context creation');
+  assert.equal(calls.length, 1);
+});
+
 await check('parseColor: rgb/rgba/percent alpha/color(srgb); alpha 0 and junk are not colours; toHex incl. alpha suffix', () => {
   assert.deepEqual(parseColor('rgb(20, 122, 255)'), { r: 20, g: 122, b: 255, a: 1 });
   assert.deepEqual(parseColor('rgba(0, 0, 0, 0.5)'), { r: 0, g: 0, b: 0, a: 0.5 });

@@ -4,6 +4,34 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.6 — one patient visitor: shared live pacing adapts and the browser keeps its cookies between instruments (#155)
+
+Field learning (recorded hands-off replica runs): strict origins rejected clustered live navigations while friendly
+origins did not; every instrument opened a fresh browser context, so each capture looked like a new visitor that had
+never cleared a challenge or accepted consent; and parallel workers each ran their own instruments against the same
+host. Fixed pacing was either too slow or not cautious enough.
+
+- **Adaptive shared throttle (`diff/scripts/live-session.mjs`):** fresh hosts allow
+  `STARDUST_LIVE_MAX_PARALLEL` (default 2) in flight and start at `STARDUST_LIVE_PACE_MS` (default 1000) between starts.
+  A shared bot signal reduces the host to one navigation at a time and doubles the pace through 2000, 4000, 8000 and
+  15000 ms. Signals are an edge challenge, a denial page, any 429 (`Retry-After` honoured up to 120 s), a 503 with
+  `Retry-After`, or a timeout or connection error after that host has answered. Every 50 clean navigations halves the
+  pace down to the configured floor, then one more such window restores
+  the configured parallelism, and a host's backoff is forgotten `STARDUST_LIVE_STATE_TTL_MS` after its last signal.
+  Repository-scoped OS-temp state,
+  fair queueing and stale-lock recovery coordinate every process. Lost waiters re-queue and stale waiters/leases expire;
+  `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) caps slot waits, even during a hold, without clearing it.
+  `0` disables either throttle limit, not holds. Bookkeeping lock waits cap at 10 s; failures warn once per host,
+  then navigation proceeds unthrottled; transport response marks prevent duplicate challenge accounting.
+- **Per-host browser state:** after a successful `gotoLive` the context's storage state is saved (atomic write, at most
+  every few seconds per process) and `newLiveContext` loads it when it is younger than `STARDUST_LIVE_STATE_TTL_MS`
+  (default 12 h) and the caller passed none, so a cleared challenge or an accepted consent carries over to the next
+  instrument; save failures only warn, and `STARDUST_LIVE_STATE=0` disables it. The state never lives inside the repository.
+- **Every live instrument takes part:** the crawler (its entry probe and a challenged page report the signal once each — the reloads that stay challenged are the same wall; a captured page counts as a clean navigation), census, gate probes, measure, parity, motion, anchor,
+  sibling-variance and the reskin captures create their contexts through the shared helper (one-line changes), with
+  inline no-op fallbacks where a project copy lacks the module. Tests: `diff/live-session` (throttle decisions with a
+  fake clock and a temp dir, stale-lock reclaim, fairness, storage-state round trip), `extract/crawl` (fallbacks).
+
 ## 0.36.5 — the style census runs one live page at a time unless an operator allows more (#154)
 
 Field learning (a recorded hands-off replica run on a bot-managed site): right after the crawl, the style census — a

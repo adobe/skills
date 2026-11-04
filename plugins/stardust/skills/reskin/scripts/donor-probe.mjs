@@ -158,14 +158,15 @@ function compare(entry, got, want) {
   return String(got) === String(want);
 }
 
+const renderedUrl = toUrl(args.rendered);
 const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
 // UA + standard headers + webdriver spoof (live-session) — harmless on
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
   ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+  stateUrl: renderedUrl,
 });
 const page = await ctx.newPage();
-const renderedUrl = toUrl(args.rendered);
 if (isLiveHttpUrl(renderedUrl)) {
   // A challenge/blocked interstitial must fail loud — its computed styles
   // are not the rendered page's.

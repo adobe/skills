@@ -529,17 +529,22 @@ rather than erroring.
    missing, said on stderr), presents its user agent without the headless token,
    and derives Chrome-tier client hints from its version; bundled hints ride (#151).
    Main's automation-signal handling stays on: every context gets the `navigator.webdriver`
-   spoof and the headed tier its launch flags; `STARDUST_STEALTH=0` turns both off. The UA alone was never
-   sufficient either: field-proven (F-R1, a nonprofit site), a real-Chrome UA
-   with Playwright's minimal default headers still got HTTP 403 from Akamai;
-   adding the standard set every real Chrome sends (`Accept`,
-   `Accept-Language`, `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced
-   HTTP 200 — Akamai bot-manager fingerprints on the *absence* of those
-   headers, not just the UA. Every instrument sends them by default via the
+   spoof and the headed tier its launch flags; `STARDUST_STEALTH=0` turns both off.
+   The standard set (`Accept`, `Accept-Language`, `Upgrade-Insecure-Requests`, `sec-ch-ua*`)
+   avoids the missing-header fingerprint (F-R1). Every instrument sends it by default via the
    shared `diff/scripts/live-session.mjs`; `--ua` states a caller's identity
-   instead. Live navigations to one host are paced `STARDUST_LIVE_PACE_MS`
-   apart (default 2000 ms; 0 disables) — an Akamai-fronted origin answered
-   403 to back-to-back navigations and 200 once they were spaced.
+   instead. Live navigations to one host share cross-process pacing
+   (`STARDUST_LIVE_PACE_MS`, default 1000 ms) and an in-flight cap
+   (`STARDUST_LIVE_MAX_PARALLEL`, default 2), with
+   `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) bounding slot waits, even during a hold;
+   bookkeeping lock waits cap at 10 s and failures warn once per host, then proceed unthrottled.
+   Transport response marks prevent duplicate challenge accounting. Bot signals reduce the cap to one
+   and back off the pace: edge challenges, denial pages, any 429, a 503 with `Retry-After`, and post-answer timeout or
+   connection errors; 50 clean navigations recover one pace step, one more window the parallelism, and the
+   backoff is forgotten `STARDUST_LIVE_STATE_TTL_MS` after the last signal; `Retry-After` holds are capped at 120 s.
+   0 disables either limit, not holds, and
+   fresh contexts reuse repository-scoped OS-temp browser state for up to
+   `STARDUST_LIVE_STATE_TTL_MS` (default 12 hours).
    The header set rides **document requests only** (F-B2, financial-services site):
    forcing it on every request makes cross-origin CORS-mode webfont fetches
    non-simple and kills them with `net::ERR_FAILED` — the capture then

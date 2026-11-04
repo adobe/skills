@@ -328,7 +328,7 @@ export function parseArgs(argv) {
 
 /** Inventory one side: visit + settle, presence inventory, clip inventory. */
 export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null }) {
-  const { ctx, page } = await openPage(browser, { width, locale });
+  const { ctx, page } = await openPage(browser, { width, locale, stateUrl: url });
   try {
     const v = await visit(page, url, { warmup, settle: { passes: settlePasses }, httpError });
     const inv = await page.evaluate(inPage(presenceInventoryInPage, countWords ? { rootSel, variableSels, countWords } : { rootSel, variableSels }, morePrelude(moreWords)));
