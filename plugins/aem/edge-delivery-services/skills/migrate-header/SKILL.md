@@ -44,9 +44,9 @@ the CLI's dependencies: from under a minute to a few minutes, depending on the n
 the test below skips it.
 
 ```bash
-DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-3666c34"
+DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-0242a4a"
 [ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&
-  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#3666c344211dd55cab23008172afb6b393c0c9da&path:/plugins/web/cli"; }
+  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#0242a4adf5a0a8f75331e862655ab0a3559d4358&path:/plugins/web/cli"; }
 WEB="$DIR/node_modules/.bin/web"
 "$WEB" header --help
 ```
@@ -75,7 +75,10 @@ The capture prints the header's regions, top first: the first header element at 
 page, with the bands stacked above it (a promo bar outside the `<header>`). Check them against
 `desktop.png` before going on: every band of the source's header is a region whose
 `regions/<id>.html` holds its texts and links, and nothing else is a region. If not, capture
-again with the bands named, top first: `--header "<selector>"` (repeat).
+again with the bands named, top first: `--header "<selector>"` (repeat). Every menu of the
+source's nav is an open state: a line `incomplete: … not opened` names a menu no check will
+cover. Capture again with the header named, or check that menu by hand and name it in your final
+answer.
 Add `.migrate-header/` and `drafts/` to `.gitignore`.
 
 ## 3. Serve your page

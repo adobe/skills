@@ -62,7 +62,8 @@ mkdir -p blocks/tabs && cp <skill>/assets/tabs/tabs.js <skill>/assets/tabs/tabs.
 ```
 
 - **Breakpoint.** In `header.js`, `const BREAKPOINT = 1024;` becomes the source's desktop
-  breakpoint (`open.json` `header.breakpoint.shownAt`, the width where the desktop nav appears).
+  breakpoint (`open.json` `header.breakpoint.shownAt`, the width where the desktop nav appears,
+  to the pixel: `hiddenAt` is one pixel less).
   In `header.css`, replace every `width >= 1024px` with that value and every `width <= 1023px`
   with the value minus one.
 - **Keep `header.js` generic.** Tune `header.css`: its custom properties first, then rules. A

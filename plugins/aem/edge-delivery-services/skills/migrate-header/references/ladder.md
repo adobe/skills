@@ -31,6 +31,8 @@ node <skill>/scripts/hrefs-check.mjs <src> drafts
   next to the source's in `<src>/open/`: open both when a line fails.
 - `hrefs-check.mjs`: every link of the nav document and its fragments is a link of the capture
   (or a fragment of yours). It prints each other one and exits 1.
+- `NOT CHECKED <label>` (`menus`, `panels`): a menu the capture found and could not open. Not
+  clean: capture again (SKILL.md step 2), or check that menu by hand and name it.
 
 ## 2. Pixels at 1x
 
@@ -118,6 +120,8 @@ npx stylelint "blocks/header/*.css" "blocks/tabs/*.css"
 - A check that could not run to its end prints an error document (`CHECK_FAILED`, exit 1).
   Nothing was checked, so it is not a result. Fix the cause (is `aem up` still running? does
   the page load?) and run the same command again. For `text`, the message names the sizes that
-  failed and holds the other sizes' lines: re-run those sizes.
+  failed and holds the other sizes' lines: re-run those sizes. `did not open on <host>` (with
+  `--open` or `--mobile-menu`): that page's menu showed no link once triggered. On your page, it
+  is your menu or burger to fix; on the source, a wrong label or trigger.
 - Exit 2 is a usage error (a bad option, a map key naming no region of the capture), or
   `playwright-cli` or the CLI's image libraries missing.
