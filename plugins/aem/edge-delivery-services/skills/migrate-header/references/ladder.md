@@ -91,6 +91,9 @@ size. Open the two shots of a size that is not clean (`<prefix>-<size>-source.pn
 - An open menu's count is split: `in the header and open panel` is yours. `below them` is yours
   too when your header moved the page; otherwise it is the body of a page that is not the source
   page.
+- A scroll step's count is split the same way: `in the header` (down to what your header shows
+  at that step) is yours; `below it` is the body, moved by your header's new height on a page that
+  is not the source page.
 - At 2x a sub-pixel position shows: an icon drawn as an `<img>` or a CSS mask where the source
   has an inline SVG, or a `top: -0.5px` nudge.
 

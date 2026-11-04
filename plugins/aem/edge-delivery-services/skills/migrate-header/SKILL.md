@@ -44,9 +44,9 @@ the CLI's dependencies: from under a minute to a few minutes, depending on the n
 the test below skips it.
 
 ```bash
-DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-3568dde"
+DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-610215d"
 [ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&
-  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#3568dde960c5b6f8e04786c51c90771c34b91f24&path:/plugins/web/cli"; }
+  npx -y pnpm@12.16.1 add --dir "$DIR" "github:adobe/skills#610215d6b6e230eef05eb837e348997696c25302&path:/plugins/web/cli"; }
 WEB="$DIR/node_modules/.bin/web"
 "$WEB" header --help
 ```
@@ -73,8 +73,9 @@ $WEB header capture <source> .migrate-header/source --format text
 
 The capture prints the header's regions, top first: the first header element at the top of the
 page, with the bands stacked above it (a promo bar outside the `<header>`). Check them against
-`desktop.png` before going on: every band of the source's header is a region, and nothing else
-is. If not, capture again with the bands named, top first: `--header "<selector>"` (repeat).
+`desktop.png` before going on: every band of the source's header is a region whose
+`regions/<id>.html` holds its texts and links, and nothing else is a region. If not, capture
+again with the bands named, top first: `--header "<selector>"` (repeat).
 Add `.migrate-header/` and `drafts/` to `.gitignore`.
 
 ## 3. Serve your page
@@ -141,9 +142,13 @@ There is no time limit. Stop when every step is clean, or when you cannot get cl
 5. **Scroll as the source does.** Find out on the live source what each band does when the page
    scrolls down and back up (stays, scrolls away, slides away and returns, gains a shadow), and
    build that by the source's mechanism. `open.json` `header.scroll` is a probe's guess: check it.
-6. **Content.** Every menu link keeps its href from the capture. A control the source gives no
-   href stays a button or text: never invent a URL. Never use screenshots or crops of the source
-   as content or backgrounds. Never change texts, headings or links to get past a check.
+6. **Content.** Every link of the nav document and its fragments is one of the capture's
+   (`hrefs-check.mjs` clean). A control the source gives no href stays a button or text, even
+   when a click on the source goes somewhere through its script: never write a URL for it, and
+   say in your final answer what it does on the source. A link the source shows but the capture
+   lacks means a band is missing from the capture: capture again (step 2), do not add it by hand.
+   Never use screenshots or crops of the source as content or backgrounds. Never change texts,
+   headings or links to get past a check.
 7. **Moving texts.** The checks load both pages with every `setInterval` of 2 s or more stopped
    and no splash dialog opened, so a text that rotates on the source (a search placeholder, a
    promo ticker) shows its first item. Build the rotation as the source does it (the same items,
