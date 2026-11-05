@@ -1,5 +1,5 @@
 {
-  "description": "Preview a block change from a git worktree (random branch, setup.sh) of aem-boilerplate 5cea543 (main checkout and worktree built by setup.sh)",
+  "description": "Preview a block change from a git worktree (random branch, setup.sh) of aem-boilerplate 5cea543",
   "fixtures": {
     "project": {
       "type": "directory",

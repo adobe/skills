@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 project=$(pwd)
-main="$project/../mysite"
-wt="$project/../wt-tmp"
+base=$(mktemp -d)
+main="$base/mysite"
+wt="$base/wt-tmp"
 
 port_for() {
   node -e 'let h=0;for(const c of process.argv[1]){h=((h<<5)-h)+c.charCodeAt(0);h&=h;}console.log(3000+Math.abs(h)%1000)' "$1"

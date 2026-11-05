@@ -1,5 +1,5 @@
 {
-  "context": "The working directory is a git worktree (branch stats-block-<random>, chosen by setup so its port is free and not 3000) of aem-boilerplate 5cea543 with a stats block and a test page content/drafts/stats.html; the main checkout is ../mysite. In real use the main checkout's own `aem up` usually runs on 3000, so a server there is not this checkout's. Facts (@adobe/aem-cli 16.22.16): in a git worktree with no explicit port, `aem up` listens on 3000 + hash(branch) % 1000 (never 3000 here) and logs `Git worktree detected. Using port N for branch <branch>`; outside a worktree the default is 3000. `--stop-other` is on by default, so `aem up` on a port where another AEM CLI runs stops that server; `--no-stop-other` makes it exit with `Port N already in use` instead. An explicit `--port` other than 3000 is fine. Whether the agent serves the page from content/ with or without --html-folder is not graded here. Grade the shell commands listed in the prompt (their output is not shown; infer the agent's port from the `aem up` command, the URLs its successful checks use, and ANSWER.md) and ANSWER.md. Backing facts: facts.yaml (aem-cli-worktree-port, aem-cli-stop-other, aem-cli-no-stop-other).",
+  "context": "The working directory is a git worktree (branch stats-block-<random>, chosen by setup so its port is free and not 3000) of aem-boilerplate 5cea543 with a stats block and a test page content/drafts/stats.html; the main checkout is a separate folder created by setup (the other entry in `git worktree list`). In real use the main checkout's own `aem up` usually runs on 3000, so a server there is not this checkout's. Facts (@adobe/aem-cli 16.22.16): in a git worktree with no explicit port, `aem up` listens on 3000 + hash(branch) % 1000 (never 3000 here) and logs `Git worktree detected. Using port N for branch <branch>`; outside a worktree the default is 3000. `--stop-other` is on by default, so `aem up` on a port where another AEM CLI runs stops that server; `--no-stop-other` makes it exit with `Port N already in use` instead. An explicit `--port` other than 3000 is fine. Whether the agent serves the page from content/ with or without --html-folder is not graded here. Grade the shell commands listed in the prompt (their output is not shown; infer the agent's port from the `aem up` command, the URLs its successful checks use, and ANSWER.md) and ANSWER.md. Backing facts: facts.yaml (aem-cli-worktree-port, aem-cli-stop-other, aem-cli-no-stop-other).",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -30,7 +30,7 @@
     {
       "name": "Main checkout untouched",
       "max_score": 10,
-      "description": "Nothing in ../mysite was changed (no edits, no .env, no git operations other than reads) and no project files other than ANSWER.md (and optionally .env with a non-3000 AEM_PORT) were changed."
+      "description": "Nothing in the main checkout (the other entry in `git worktree list`) was changed (no edits, no .env, no git operations other than reads) and no project files other than ANSWER.md (and optionally .env with a non-3000 AEM_PORT) were changed."
     }
   ]
 }
