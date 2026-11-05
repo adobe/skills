@@ -22,6 +22,7 @@
     "skills/identify-page-structure",
     "skills/page-decomposition",
     "skills/page-import",
+    "skills/migrate-header",
     "skills/preview-import",
     "skills/scrape-webpage",
     "skills/slicc-handoff",

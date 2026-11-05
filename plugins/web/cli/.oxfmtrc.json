@@ -2,5 +2,9 @@
   "printWidth": 100,
   "singleQuote": true,
   "trailingComma": "all",
-  "ignorePatterns": ["src/bundles/**", "dist/**"]
+  "ignorePatterns": [
+    "src/bundles/**",
+    "dist/**",
+    "test/fixtures/header-*/**"
+  ]
 }

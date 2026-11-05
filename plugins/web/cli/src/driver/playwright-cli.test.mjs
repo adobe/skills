@@ -215,6 +215,64 @@ test('run passes a per-call timeoutMs to exec and defaults to the driver timeout
   assert.equal(execOpts[1].timeoutMs, 60_000);
 });
 
+/** A driver whose async exec answers after `delayMs`, recording how many calls overlap. */
+function setupAsync(responder = () => '{"result":"1"}', delayMs = 30) {
+  const outputDir = mkdtempSync(join(tmpdir(), 'web-driver-test-'));
+  const seen = { calls: [], opts: [], files: [], running: 0, peak: 0 };
+  const execAsync = async (args, opts) => {
+    seen.calls.push(args);
+    seen.opts.push(opts);
+    const file = args[2]?.slice('--filename='.length);
+    if (file && existsSync(file)) seen.files.push(readFileSync(file, 'utf8'));
+    seen.running += 1;
+    seen.peak = Math.max(seen.peak, seen.running);
+    await new Promise((r) => setTimeout(r, delayMs));
+    seen.running -= 1;
+    const out = responder(args);
+    return typeof out === 'string' ? { stdout: out, stderr: '', status: 0 } : out;
+  };
+  const exec = () => assert.fail('runAsync must not use the synchronous exec');
+  return { seen, outputDir, driver: createDriver({ exec, execAsync, outputDir }) };
+}
+
+test('runAsync runs sessions at once, each code in a temp file of its own, removed after', async () => {
+  const { driver, seen, outputDir } = setupAsync((args) =>
+    JSON.stringify({ result: JSON.stringify(args[0]) }),
+  );
+  const results = await Promise.all([
+    driver.runAsync('a', { code: 'async page => 1' }),
+    driver.runAsync('b', { code: 'async page => 2' }),
+    driver.runAsync('c', { code: 'async page => 3' }),
+  ]);
+  assert.deepEqual(results, ['-s=a', '-s=b', '-s=c']);
+  assert.equal(seen.peak, 3);
+  assert.deepEqual(seen.files, ['async page => 1', 'async page => 2', 'async page => 3']);
+  assert.equal(new Set(seen.calls.map((a) => a[2])).size, 3);
+  for (const args of seen.calls)
+    assert.equal(existsSync(args[2].slice('--filename='.length)), false);
+  assert.ok(seen.calls.every((a) => a[2].startsWith(`--filename=${outputDir}`)));
+});
+
+test('runAsync passes the per-call timeout and reports errors as run does', async () => {
+  const { driver, seen } = setupAsync((args) =>
+    args[0] === '-s=gone'
+      ? '{"isError":true,"error":"Browser \'gone\' is not open, please run open first"}'
+      : '{"result":"2"}',
+  );
+  assert.equal(await driver.runAsync('s', { file: '/p/f.mjs', timeoutMs: 180_000 }), 2);
+  await driver.runAsync('s', { file: '/p/f.mjs' });
+  assert.equal(seen.opts[0].timeoutMs, 180_000);
+  assert.equal(seen.opts[1].timeoutMs, 60_000);
+  await assert.rejects(driver.runAsync('gone', { file: '/p/f.mjs' }), { code: 'NO_SESSION' });
+  const timedOut = setupAsync(() => ({
+    stdout: '',
+    stderr: '',
+    status: null,
+    error: Object.assign(new Error('t'), { code: 'ETIMEDOUT' }),
+  }));
+  await assert.rejects(timedOut.driver.runAsync('s', { code: 'x' }), { code: 'TIMEOUT' });
+});
+
 test('attach uses --session and no -s', () => {
   const { driver, calls } = setup();
   assert.deepEqual(driver.attach({ session: 'a', cdpUrl: 'http://127.0.0.1:9222' }), {

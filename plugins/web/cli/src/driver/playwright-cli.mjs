@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { execPlaywrightCli } from './exec.mjs';
+import { execPlaywrightCli, execPlaywrightCliAsync } from './exec.mjs';
 import { CliError, redactCredentials } from '#src/errors.mjs';
 
 const MIN_VERSION = '0.1.20';
@@ -70,12 +70,13 @@ function spawnError(error, args) {
 /**
  * `timeoutMs` bounds one playwright-cli call; `navigationTimeoutMs`, when set, becomes the
  * navigation timeout of the browsers this driver launches (playwright-cli's default is 60 s).
- * @param {{ exec?: typeof execPlaywrightCli, outputDir: string, debug?: boolean, timeoutMs?: number,
- *   navigationTimeoutMs?: number, sleep?: (ms: number) => void,
- *   stderr?: { write(c: string): unknown } }} opts
+ * @param {{ exec?: typeof execPlaywrightCli, execAsync?: typeof execPlaywrightCliAsync,
+ *   outputDir: string, debug?: boolean, timeoutMs?: number, navigationTimeoutMs?: number,
+ *   sleep?: (ms: number) => void, stderr?: { write(c: string): unknown } }} opts
  */
 export function createDriver({
   exec = execPlaywrightCli,
+  execAsync = execPlaywrightCliAsync,
   outputDir,
   debug = Boolean(process.env.WEB_DEBUG),
   timeoutMs = 60_000,
@@ -87,7 +88,16 @@ export function createDriver({
 
   function call(args, opts) {
     if (debug) process.stderr.write(`playwright-cli ${redactCredentials(args.join(' '))}\n`);
-    const res = exec(args, { timeoutMs, ...opts });
+    return settle(args, exec(args, { timeoutMs, ...opts }));
+  }
+
+  async function callAsync(args, opts) {
+    if (debug) process.stderr.write(`playwright-cli ${redactCredentials(args.join(' '))}\n`);
+    return settle(args, await execAsync(args, { timeoutMs, ...opts }));
+  }
+
+  /** A finished playwright-cli call: its JSON document, or the CliError it reports. */
+  function settle(args, res) {
     if (res.error) throw spawnError(res.error, args);
     if (res.status === null) {
       throw new CliError('PLAYWRIGHT_CLI', 'playwright-cli terminated by signal');
@@ -200,6 +210,28 @@ export function createDriver({
     return withTempFile(`${session}-run-${runCounter}.mjs`, code, exec1);
   }
 
+  /**
+   * `run` without blocking the event loop, so several sessions run at once; same arguments and
+   * result. Its temp file has a name of its own, as each `run`'s has.
+   * @param {string} session
+   * @param {{ code?: string, file?: string, timeoutMs?: number }} opts
+   */
+  async function runAsync(session, { code, file, timeoutMs: callTimeoutMs }) {
+    const callOpts = callTimeoutMs === undefined ? undefined : { timeoutMs: callTimeoutMs };
+    const exec1 = async (path) =>
+      unwrapResult(await callAsync([`-s=${session}`, 'run-code', `--filename=${path}`], callOpts));
+    if (code === undefined) return exec1(file);
+    runCounter += 1;
+    mkdirSync(outputDir, { recursive: true });
+    const path = join(outputDir, `${session}-run-${runCounter}.mjs`);
+    writeFileSync(path, code);
+    try {
+      return await exec1(path);
+    } finally {
+      rmSync(path, { force: true });
+    }
+  }
+
   return {
     ensureAvailable() {
       const res = exec(['--version'], { timeoutMs: 10_000 });
@@ -245,6 +277,7 @@ export function createDriver({
     },
     evaluate,
     run,
+    runAsync,
     inject(session, source) {
       run(session, { code: `async page => { await page.evaluate(${JSON.stringify(source)}) }` });
     },
