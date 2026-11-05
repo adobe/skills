@@ -132,29 +132,33 @@ function migrate(o) {
   const stop = error => ({ ok: false, exitCode: 2, error });
   if (reportDir === root || root.startsWith(reportDir + path.sep)) return stop(`--report-dir ${reportDir} must not be the project folder or one of its parents.`);
 
+  // Cheap local checks first, so a stop is explained the same way on every machine.
   const project = checkProject(root);
   if (!project.ok) return stop(project.error);
-  const java = checkJava();
-  if (!java.ok) return stop(java.error);
   const clean = checkCleanGitTree(root, [reportDir]);
   if (!clean.ok && !o.allowDirty) return stop(clean.error);
+  if (o.jar && !isFile(path.resolve(o.jar))) return stop(`--jar ${path.resolve(o.jar)} does not exist.`);
+  const java = checkJava();
+  if (!java.ok) return stop(java.error);
 
   let jar;
-  if (o.jar) {
-    jar = path.resolve(o.jar);
-    if (!isFile(jar)) return stop(`--jar ${jar} does not exist.`);
-  } else {
+  if (o.jar) jar = path.resolve(o.jar);
+  else {
     const inst = ensureToolInstalled(TOOL_DIR);
     if (!inst.installed) return stop(inst.error);
     jar = inst.jar;
   }
 
+  // The git undo is only safe when the tree was clean before the run; otherwise it would also discard the user's own changes.
+  const undo = clean.ok
+    ? 'To undo: git checkout . && git clean -fd'
+    : 'The project had uncommitted changes (or no git) before the run, so do NOT use git checkout/clean to undo; review the changes file by file.';
   const run = runMigrator(root, reportDir, jar);
   fs.writeFileSync(path.join(reportDir, 'wf-migrator.log'), run.log);
   const jarSha = sha256(jar);
   const version = jarSha === TOOL_SHA256 ? TOOL_VERSION : `custom jar (sha256 ${jarSha.slice(0, 12)}…)`;
-  if (!run.ok) return { ok: false, exitCode: 1, version, reportDir, error: `wf-migrator failed: ${run.error}. See ${path.join(reportDir, 'wf-migrator.log')}; the project may be partly changed (git checkout . && git clean -fd to undo).` };
-  return { ok: true, exitCode: 0, version, reportDir, reportPath: run.reportPath, warnings: run.warnings };
+  if (!run.ok) return { ok: false, exitCode: 1, version, reportDir, undo, error: `wf-migrator failed: ${run.error}. See ${path.join(reportDir, 'wf-migrator.log')}; the project may be partly changed. ${undo}` };
+  return { ok: true, exitCode: 0, version, reportDir, reportPath: run.reportPath, warnings: run.warnings, undo };
 }
 
 function main(argv, log = console.log) {
@@ -164,7 +168,7 @@ function main(argv, log = console.log) {
   if (!r.ok) { log(r.error); return r.exitCode; }
   log(`wf-migrator ${r.version} finished. Read ${r.reportPath} and review \`git diff\` with the user.`);
   for (const w of r.warnings) log(`WARNING: ${w}`);
-  log('To undo: git checkout . && git clean -fd');
+  log(r.undo);
   return 0;
 }
 
@@ -182,18 +186,20 @@ function runAssetWorkflowScan(workspaceRoot) {
       const p = path.join(dir, e.name);
       if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) visit(p); continue; }
       if (!e.name.endsWith('.xml') || !/\/workflow\/launcher\/config\//.test(p.split(path.sep).join('/'))) continue;
-      const xml = read(p);
-      const attr = n => (new RegExp(`\\s${n}="([^"]*)"`).exec(xml) || [])[1] || '';
-      if (attr('jcr:primaryType') !== 'cq:WorkflowLauncher' || attr('enabled') !== '{Boolean}true') continue;
-      const glob = attr('glob');
-      if (!glob.includes('/content/dam') || glob.includes('collections') || glob.includes('metadata')) continue;
-      const id = e.name === '.content.xml' ? path.basename(dir) : e.name.replace(/\.xml$/, '');
-      findings.push({
-        location: path.relative(workspaceRoot, p) || p,
-        detail: `Enabled DAM asset launcher ${id} (glob ${glob}) → workflow ${attr('workflow')} (Branch H)`,
-        severity: 'medium',
-      });
-      rawFindings.push({ pattern: 'assetWorkflowMigration', file: p, line: null, snippet: `launcher=${id} workflow=${attr('workflow')}` });
+      // A launcher is either the root of its own .content.xml or one of several child nodes in the config folder's file.
+      for (const m of read(p).matchAll(/<([\w:.-]+)\s([^>]*\bjcr:primaryType="cq:WorkflowLauncher"[^>]*)>/g)) {
+        const attr = n => (new RegExp(`(?:^|\\s)${n}="([^"]*)"`).exec(m[2]) || [])[1] || '';
+        if (attr('enabled') !== '{Boolean}true') continue;
+        const glob = attr('glob');
+        if (!glob.includes('/content/dam') || glob.includes('collections') || glob.includes('metadata')) continue;
+        const id = m[1] !== 'jcr:root' ? m[1] : e.name === '.content.xml' ? path.basename(dir) : e.name.replace(/\.xml$/, '');
+        findings.push({
+          location: path.relative(workspaceRoot, p) || p,
+          detail: `Enabled DAM asset launcher ${id} (glob ${glob}) → workflow ${attr('workflow')} (Branch H)`,
+          severity: 'medium',
+        });
+        rawFindings.push({ pattern: 'assetWorkflowMigration', file: p, line: null, snippet: `launcher=${id} workflow=${attr('workflow')}` });
+      }
     }
   };
   visit(path.resolve(workspaceRoot));

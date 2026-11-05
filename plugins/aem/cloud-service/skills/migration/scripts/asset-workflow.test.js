@@ -115,3 +115,46 @@ test('runAssetWorkflowScan lists only enabled DAM asset launchers', () => {
   assert.strictEqual(r.rawFindings[0].pattern, 'assetWorkflowMigration');
   assert.strictEqual(runAssetWorkflowScan('').ok, false);
 });
+
+test('runAssetWorkflowScan finds launchers stored as child nodes of the config folder', () => {
+  const root = tmp();
+  write(root, 'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config/.content.xml', `<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" jcr:primaryType="sling:Folder">
+    <update_asset_create jcr:primaryType="cq:WorkflowLauncher" enabled="{Boolean}true" glob="/content/dam(/.*/)renditions/original" workflow="/var/workflow/models/dam/update_asset"/>
+    <old jcr:primaryType="cq:WorkflowLauncher" enabled="{Boolean}false" glob="/content/dam(/.*)" workflow="/var/workflow/models/x"/>
+    <writeback
+        jcr:primaryType="cq:WorkflowLauncher"
+        enabled="{Boolean}true"
+        glob="/content/dam(/.*/)jcr:content/metadata"
+        workflow="/var/workflow/models/dam-xmp-writeback"/>
+  </jcr:root>`);
+  const r = runAssetWorkflowScan(root);
+  assert.deepStrictEqual(r.findings.map(f => f.detail.split(' ')[4]), ['update_asset_create']);
+});
+
+// A stub java on PATH lets main() run end to end without the real tool.
+function withStubJavaOnPath(fn) {
+  const bin = tmp();
+  fs.writeFileSync(path.join(bin, 'java'), '#!/bin/sh\nif [ "$1" = "-version" ]; then echo \'openjdk version "21.0.2"\' >&2; exit 0; fi\necho "Migration complete."\necho "# report" > migration-report.md\n', { mode: 0o755 });
+  const saved = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${saved}`;
+  try { return fn(); } finally { process.env.PATH = saved; }
+}
+
+test('main offers the git undo only when the tree was clean before the run', { skip: process.platform === 'win32' }, () => {
+  const root = tmp();
+  project(root);
+  git(root, 'init', '-q');
+  git(root, 'add', '-A');
+  git(root, '-c', 'user.email=a@b.c', '-c', 'user.name=t', 'commit', '-q', '-m', 'init');
+  const jar = write(tmp(), 'fake.jar', 'x');
+  withStubJavaOnPath(() => {
+    const out = [];
+    assert.strictEqual(main([root, '--jar', jar], m => out.push(m)), 0);
+    assert.match(out.join('\n'), /To undo: git checkout \. && git clean -fd/);
+    write(root, 'mine.txt', 'uncommitted work');
+    out.length = 0;
+    assert.strictEqual(main([root, '--jar', jar, '--allow-dirty'], m => out.push(m)), 0);
+    assert.doesNotMatch(out.join('\n'), /To undo: git/);
+    assert.match(out.join('\n'), /do NOT use git checkout\/clean/);
+  });
+});
