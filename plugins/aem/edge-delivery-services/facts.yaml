@@ -1,0 +1,175 @@
+# Facts the EDS skills and evals rely on.
+# question: asked unaided to quiz whether models know the claim (the answer key).
+# source: external and re-checkable only; omitted for maintainer-endorsed practice.
+# used_by: paths relative to this plugin.
+#
+# aem-cli facts, checked against @adobe/aem-cli 16.22.16 (npm tarball).
+
+- id: aem-cli-hlx-conflict
+  claim: >-
+    `npm install -g @adobe/aem-cli` fails with `EEXIST ... File exists: .../hlx`
+    while the old `@adobe/helix-cli` package is installed, because both ship
+    the `hlx` binary. Fix: `npm uninstall -g @adobe/helix-cli`, then install
+    again.
+  question: >-
+    Installing `@adobe/aem-cli` globally fails with `File exists: .../hlx`.
+    Why, and how do you fix it?
+  source: "@adobe/aem-cli 16.22.16 README.md, 'npm install fails with File exists'"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-setup-and-troubleshooting
+
+- id: aem-cli-env-file
+  claim: >-
+    `aem` loads the project's `.env` and reads options from `AEM_`-prefixed
+    variables named after the flag (`AEM_PORT`, `AEM_TLS_CERT`, `AEM_TLS_KEY`,
+    `AEM_PAGES_URL`, `AEM_NO_OPEN`).
+  question: >-
+    How do you persist `aem up` options (port, TLS cert/key, pages URL, no
+    browser) so they apply on every start without passing flags?
+  source: "@adobe/aem-cli 16.22.16 src/cli.js (dotenv, yargs .env('AEM_')); README.md"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-setup-and-troubleshooting
+
+- id: aem-cli-extra-ca-not-dotenv
+  claim: >-
+    Behind a TLS-intercepting proxy, `unable to get local issuer certificate`
+    is fixed with `NODE_EXTRA_CA_CERTS=<corporate CA>` set in the shell or CI
+    before `aem` starts. Node reads it only at process start, so putting it in
+    `.env` has no effect.
+  question: >-
+    `aem up` fails with `unable to get local issuer certificate` on a corporate
+    network. How do you fix it, and can the fix go in the project's `.env`?
+  source: "Node.js docs, NODE_EXTRA_CA_CERTS; @adobe/aem-cli 16.22.16 src/cli.js loads .env after start"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-setup-and-troubleshooting
+
+- id: aem-cli-content-dir
+  claim: >-
+    `aem up` serves files from the project's `./content/` folder first and
+    proxies only missing paths: `content/drafts/x.html` is served at
+    `/drafts/x` (and `/drafts/x.plain.html`) with no flag. `--html-folder` is
+    only needed for HTML outside `./content/`.
+  question: >-
+    With the AEM CLI, how do you serve a local HTML test page (not yet in any
+    content source) through `aem up` so it renders with the project's blocks?
+  source: "@adobe/aem-cli 16.22.16 src/server/HelixServer.js (CONTENT_DIR lookup), src/server/BaseServer.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-content-clone
+  claim: >-
+    `aem content clone --path <folder>` (or `--all`) clones da.live content
+    into `./content/` after a browser sign-in; `--path` is required otherwise.
+    Changes go back with `aem content add`, `aem content commit -m`, and
+    `aem content push`.
+  question: >-
+    How do you get a DA (da.live) project's pages onto your machine with the
+    AEM CLI, edit them, and send the edits back?
+  source: "@adobe/aem-cli 16.22.16 src/content/clone.js (--path required unless --all), src/content/*.cmd.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-push-no-preview
+  claim: >-
+    `aem content push` only writes the DA source; it does not preview or
+    publish. Pages need a preview (Sidekick or the admin API) before
+    `.aem.page` URLs show the change.
+  question: >-
+    After `aem content push`, is the change visible on the site's `.aem.page`
+    URL? If not, what else is needed?
+  source: "@adobe/aem-cli 16.22.16 src/content/push.cmd.js (putSource only, no preview call)"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-da-token-file
+  claim: >-
+    `aem content` caches the DA sign-in token in `.hlx/.da-token.json` in the
+    project (git-ignored); other DA environments use `.da-token-<label>.json`.
+  question: >-
+    Where does the AEM CLI store the DA (da.live) token after `aem content`
+    signs you in?
+  source: "@adobe/aem-cli 16.22.16 src/content/da-auth.js resolveDaTokenFile()"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-worktree-port
+  claim: >-
+    `aem up` defaults to port 3000, except in a git worktree: there, with no
+    explicit port, it picks 3000 + hash(branch) % 1000 and logs
+    `Git worktree detected. Using port N`. Use the logged port.
+  question: >-
+    Which port does `aem up` listen on when run without `--port`, and does
+    that change when the project is a git worktree?
+  source: "@adobe/aem-cli 16.22.16 src/up.cmd.js, src/git-utils.js hashBranchToPort()"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-worktree-port
+
+- id: aem-cli-stop-other
+  claim: >-
+    `aem up` has `--stop-other` on by default: starting it on a port where
+    another AEM CLI runs stops that other server (even one from another
+    checkout). Use another port (`--port`/`AEM_PORT`) to keep both.
+  question: >-
+    Another project's `aem up` is already running on port 3000. What happens
+    if you run `aem up` with default settings in a second checkout?
+  source: "@adobe/aem-cli 16.22.16 src/up.js (stop-other, default true)"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-worktree-port
+
+- id: aem-cli-min-versions
+  claim: >-
+    `aem content` and `./content/` serving need @adobe/aem-cli 16.18 or newer
+    (`.plain.html` from `./content/` 16.19.12, explicit port honoured in
+    worktrees 16.22.12). Check with `aem --version`; upgrade with
+    `npm install -g @adobe/aem-cli@latest`. Node 18+ is required.
+  question: >-
+    Which @adobe/aem-cli version do you need for `aem content` and serving
+    `./content/`, and how do you check and upgrade it?
+  source: "@adobe/aem-cli 16.22.16 CHANGELOG.md, package.json engines"
+  used_by:
+    - skills/aem-cli/SKILL.md
+
+- id: aem-cli-import-port
+  claim: >-
+    `aem import` starts the importer server and UI on port 3001 by default.
+  question: Which port does `aem import` use by default?
+  source: "@adobe/aem-cli 16.22.16 src/import.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+
+- id: aem-cli-clone-existing-content
+  claim: >-
+    `aem content clone` refuses to run when `./content/` already exists
+    (`'content' already exists. Use --force to overwrite.`); `--force` deletes
+    the folder first, including any local pages in it.
+  question: >-
+    You already have local test pages in `./content/` and now run
+    `aem content clone --path /drafts`. What happens to them?
+  source: "@adobe/aem-cli 16.22.16 src/content/clone.cmd.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-no-stop-other
+  claim: >-
+    `aem up --no-stop-other` leaves a server already on the port running and
+    exits with `Port N already in use by another process.` instead of
+    stopping it; then reuse that server if it is this checkout's, or start on
+    another port with `--port`.
+  question: >-
+    How do you start `aem up` so it can never stop a dev server another
+    checkout already runs on the same port, and what happens if the port is
+    taken?
+  source: "@adobe/aem-cli 16.22.16 src/up.js (stop-other), src/server/BaseServer.js; checked live"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-worktree-port
