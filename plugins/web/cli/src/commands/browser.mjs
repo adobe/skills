@@ -24,6 +24,8 @@ Notes:
   redirectURL); only 2xx/3xx are served from the cache, errors are re-checked live. Redirect
   hops after the first are always fetched live (Playwright does not route them). Service
   workers are blocked in a cache session.
+  To fill the cache past bot protection, a recipe can point at a remote browser (Bright
+  Data's Browser API, any CDP endpoint): see web doc remote-browser.
 `,
   ATTACH: `
 Example:

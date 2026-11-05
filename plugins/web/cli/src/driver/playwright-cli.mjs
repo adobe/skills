@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execPlaywrightCli } from './exec.mjs';
-import { CliError } from '#src/errors.mjs';
+import { CliError, redactCredentials } from '#src/errors.mjs';
 
 const MIN_VERSION = '0.1.20';
 const INSTALL_HINT = 'npm install -g @playwright/cli@latest';
@@ -39,6 +39,15 @@ function wrapExpression(expr) {
   }
 }
 
+// Bright Data's Browser API refuses a navigation with this while it throttles a target.
+const RATE_LIMITED = /bucket_rate_limit|rate limit has been applied/i;
+const RATE_LIMIT_DELAYS_MS = [5_000, 15_000, 30_000];
+
+/** Block the (synchronous) driver for `ms`. */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 function toCliError(message) {
   if (/not open, please run open first/.test(message)) {
     return new CliError('NO_SESSION', message, {
@@ -59,18 +68,25 @@ function spawnError(error, args) {
 }
 
 /**
- * @param {{ exec?: typeof execPlaywrightCli, outputDir: string, debug?: boolean, timeoutMs?: number }} opts
+ * `timeoutMs` bounds one playwright-cli call; `navigationTimeoutMs`, when set, becomes the
+ * navigation timeout of the browsers this driver launches (playwright-cli's default is 60 s).
+ * @param {{ exec?: typeof execPlaywrightCli, outputDir: string, debug?: boolean, timeoutMs?: number,
+ *   navigationTimeoutMs?: number, sleep?: (ms: number) => void,
+ *   stderr?: { write(c: string): unknown } }} opts
  */
 export function createDriver({
   exec = execPlaywrightCli,
   outputDir,
   debug = Boolean(process.env.WEB_DEBUG),
   timeoutMs = 60_000,
+  navigationTimeoutMs,
+  sleep = sleepSync,
+  stderr = process.stderr,
 }) {
   let runCounter = 0;
 
   function call(args, opts) {
-    if (debug) process.stderr.write(`playwright-cli ${args.join(' ')}\n`);
+    if (debug) process.stderr.write(`playwright-cli ${redactCredentials(args.join(' '))}\n`);
     const res = exec(args, { timeoutMs, ...opts });
     if (res.error) throw spawnError(res.error, args);
     if (res.status === null) {
@@ -114,7 +130,12 @@ export function createDriver({
       launchOptions.args = [...(launchOptions.args ?? []), `--remote-debugging-port=${cdpPort}`];
     }
     const initScript = [...(config.initScript ?? []), ...initScripts].map((p) => resolve(p));
-    return { browser: { ...config, launchOptions, initScript } };
+    const browser = { ...config, launchOptions, initScript };
+    // A remote browser (cdpEndpoint) gets its own context, so contextOptions apply (recordHar,
+    // serviceWorkers, proxy); without it playwright-cli reuses the remote default context.
+    if (browser.cdpEndpoint && browser.isolated === undefined) browser.isolated = true;
+    const timeouts = navigationTimeoutMs ? { timeouts: { navigation: navigationTimeoutMs } } : {};
+    return { browser, ...timeouts };
   }
 
   /**
@@ -195,8 +216,19 @@ export function createDriver({
       }
     },
     open,
+    /** Navigate; a navigation a remote browser refuses for rate limiting is retried. */
     goto(session, url) {
-      call([`-s=${session}`, 'goto', url]);
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          call([`-s=${session}`, 'goto', url]);
+          return;
+        } catch (err) {
+          const delay = RATE_LIMIT_DELAYS_MS[attempt];
+          if (delay === undefined || !RATE_LIMITED.test(err.message)) throw err;
+          stderr.write(`warning: rate limited, retrying ${url} in ${delay / 1000} s\n`);
+          sleep(delay);
+        }
+      }
     },
     attach({ session, cdpUrl }) {
       call(['attach', `--cdp=${cdpUrl}`, `--session=${session}`]);

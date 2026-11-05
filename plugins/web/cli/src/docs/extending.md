@@ -60,9 +60,10 @@ Everything exported by the library; nothing else is public.
 - `fail(err, { stdout, stderr })`: print an error document, return its exit code.
 - `CliError(code, message, { hint })` and `EXIT`: codes map to exits, `USAGE NO_SESSION
   SESSION_EXISTS PLAYWRIGHT_CLI UNSUPPORTED` → 2, `BLOCKED` → 3, others → 1.
-- `createDriver({ outputDir, timeoutMs })`: the playwright-cli driver (`open`, `attach`,
-  `goto`, `close`, `closeAll`, `list`, `evaluate`, `run`, `inject`, `cdp`, `screenshot`,
-  `pageHealth`, `requests`, `responseHeaders`). Only this module spawns `playwright-cli`.
+- `createDriver({ outputDir, timeoutMs, navigationTimeoutMs })`: the playwright-cli driver
+  (`open`, `attach`, `goto`, `close`, `closeAll`, `list`, `evaluate`, `run`, `inject`, `cdp`,
+  `screenshot`, `pageHealth`, `requests`, `responseHeaders`). Only this module spawns
+  `playwright-cli`.
 
 `deps` also accepts `env`, `stdout`, `stderr` and `driverFactory` (a fake driver for tests;
 see `src/lib.test.mjs` in the package for a complete example).

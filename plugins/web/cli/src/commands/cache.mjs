@@ -7,7 +7,7 @@ import { startHarProxy } from '#src/cache/har-proxy.mjs';
 import { recordPage } from '#src/cache/record.mjs';
 import { startKeeper } from '#src/cache/keeper.mjs';
 import { createDriver } from '#src/driver/playwright-cli.mjs';
-import { createContext } from '#src/context.mjs';
+import { createContext, stepTimeout } from '#src/context.mjs';
 
 const SERVE_HELP = `
 Example:
@@ -28,10 +28,12 @@ Example:
 Output:
   { url, har, entries, dropped, bytes }
 Notes:
-  Loads the page in a browser (recipe and --headed apply), scrolls to trigger lazy content and
+  Loads the page in a browser (recipe and --headed apply; WEB_TIMEOUT bounds the wait for the
+  load event, default 30 s), scrolls to trigger lazy content and
   saves every request to <cache>/<host>_<hash8>.har; failed requests are dropped.
   One URL per call: loop for more. Re-recording a URL replaces its HAR.
-  Once cache proxy has run, the cache directory holds a private key: do not commit it.`;
+  Once cache proxy has run, the cache directory holds a private key: do not commit it.
+  A recipe with a cdpEndpoint records through a remote browser: web doc remote-browser.`;
 
 const PROXY_HELP = `
 Example:
@@ -127,11 +129,13 @@ function registerRecord(group, deps) {
         });
       }
       const ctx = createContext(command, deps);
+      const loadTimeoutMs = stepTimeout(deps.env ?? process.env);
       const result = recordPage(ctx.driver, {
         url,
         cacheDir: opts.cache,
         headed: Boolean(ctx.opts.headed),
         recipe: ctx.recipe,
+        ...(loadTimeoutMs && { loadTimeoutMs }),
       });
       ctx.print(result);
     });

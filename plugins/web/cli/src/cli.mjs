@@ -38,7 +38,12 @@ Artifacts:
 Requires playwright-cli >= 0.1.20 on PATH (npm install -g @playwright/cli@latest).
 
 Long-form docs ship in the binary: web doc (topics), web doc extending (add your own
-commands on top of web through the library export of @adobe/web-cli).
+commands on top of web through the library export of @adobe/web-cli), web doc remote-browser
+(fill the cache through a remote browser past bot protection).
+
+Environment:
+  WEB_TIMEOUT=<ms> bounds each browser step (navigation and playwright-cli call; default
+  60000). Raise it for remote browsers that are slow to load a page.
 
 Typical flows:
   one-shot:  web page tree <url>

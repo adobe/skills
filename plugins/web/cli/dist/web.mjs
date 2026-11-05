@@ -3393,6 +3393,12 @@ function exitCodeFor(code) {
   if (code === "BLOCKED") return EXIT.BLOCKED;
   return USAGE_CODES.has(code) ? EXIT.USAGE : EXIT.FAILURE;
 }
+var URL_USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@'"`]+@/gi;
+var AUTH_TOKEN = /\b(Basic|Bearer)\s+[A-Za-z0-9+/=._~-]{8,}/g;
+function redactCredentials(text) {
+  if (typeof text !== "string") return text;
+  return text.replace(URL_USERINFO, "$1[redacted]@").replace(AUTH_TOKEN, "$1 [redacted]");
+}
 
 // src/output.mjs
 function emit(result, { format, text, stdout = process.stdout }) {
@@ -3403,10 +3409,11 @@ function emit(result, { format, text, stdout = process.stdout }) {
 }
 function fail(err, { stdout = process.stdout, stderr = process.stderr } = {}) {
   const e = err instanceof CliError ? err : new CliError("INTERNAL", err?.message ?? String(err));
-  const doc = { error: { code: e.code, message: e.message, hint: e.hint } };
+  const message = redactCredentials(e.message);
+  const doc = { error: { code: e.code, message, hint: redactCredentials(e.hint) } };
   stdout.write(`${JSON.stringify(doc, null, 2)}
 `);
-  stderr.write(`${e.code}: ${e.message}
+  stderr.write(`${e.code}: ${message}
 `);
   return exitCodeFor(e.code);
 }
@@ -3480,6 +3487,11 @@ function wrapExpression(expr) {
     return `(() => { ${expr} })()`;
   }
 }
+var RATE_LIMITED = /bucket_rate_limit|rate limit has been applied/i;
+var RATE_LIMIT_DELAYS_MS = [5e3, 15e3, 3e4];
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
 function toCliError(message) {
   if (/not open, please run open first/.test(message)) {
     return new CliError("NO_SESSION", message, {
@@ -3501,11 +3513,14 @@ function createDriver({
   exec = execPlaywrightCli,
   outputDir,
   debug = Boolean(process.env.WEB_DEBUG),
-  timeoutMs = 6e4
+  timeoutMs = 6e4,
+  navigationTimeoutMs,
+  sleep = sleepSync,
+  stderr = process.stderr
 }) {
   let runCounter = 0;
   function call(args, opts) {
-    if (debug) process.stderr.write(`playwright-cli ${args.join(" ")}
+    if (debug) process.stderr.write(`playwright-cli ${redactCredentials(args.join(" "))}
 `);
     const res = exec(args, { timeoutMs, ...opts });
     if (res.error) throw spawnError(res.error, args);
@@ -3547,7 +3562,10 @@ function createDriver({
       launchOptions.args = [...launchOptions.args ?? [], `--remote-debugging-port=${cdpPort}`];
     }
     const initScript = [...config.initScript ?? [], ...initScripts].map((p) => resolve(p));
-    return { browser: { ...config, launchOptions, initScript } };
+    const browser = { ...config, launchOptions, initScript };
+    if (browser.cdpEndpoint && browser.isolated === void 0) browser.isolated = true;
+    const timeouts = navigationTimeoutMs ? { timeouts: { navigation: navigationTimeoutMs } } : {};
+    return { browser, ...timeouts };
   }
   function open2({ initScripts = [], initSources = [], ...launchOpts }) {
     mkdirSync(outputDir, { recursive: true });
@@ -3605,8 +3623,20 @@ function createDriver({
       }
     },
     open: open2,
+    /** Navigate; a navigation a remote browser refuses for rate limiting is retried. */
     goto(session, url) {
-      call([`-s=${session}`, "goto", url]);
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          call([`-s=${session}`, "goto", url]);
+          return;
+        } catch (err) {
+          const delay = RATE_LIMIT_DELAYS_MS[attempt];
+          if (delay === void 0 || !RATE_LIMITED.test(err.message)) throw err;
+          stderr.write(`warning: rate limited, retrying ${url} in ${delay / 1e3} s
+`);
+          sleep(delay);
+        }
+      }
     },
     attach({ session, cdpUrl }) {
       call(["attach", `--cdp=${cdpUrl}`, `--session=${session}`]);
@@ -4125,13 +4155,37 @@ function hideScript(rules) {
 `;
 }
 var withoutTypes = (recipe, skip) => Object.fromEntries(Object.entries(recipe).filter(([type]) => !skip.includes(type)));
-function loadRecipe(path9, { skip = [] } = {}) {
+var ENV_REF = /^env:([A-Za-z_][A-Za-z0-9_]*)$/;
+function fromEnv(path9, field, value, env) {
+  const name = typeof value === "string" && value.match(ENV_REF)?.[1];
+  if (!name) return value;
+  const resolved = env[name];
+  if (!resolved) {
+    throw new CliError("USAGE", `recipe ${path9}: ${field} reads ${name}, which is not set`, {
+      hint: `export ${name} before running web`
+    });
+  }
+  return resolved;
+}
+function resolveEnvRefs(path9, config, env) {
+  if (!config) return config;
+  const out = { ...config };
+  if ("cdpEndpoint" in out) out.cdpEndpoint = fromEnv(path9, "cdpEndpoint", out.cdpEndpoint, env);
+  if (isObject(out.cdpHeaders)) {
+    out.cdpHeaders = Object.fromEntries(
+      Object.entries(out.cdpHeaders).map(([k, v]) => [k, fromEnv(path9, `cdpHeaders.${k}`, v, env)])
+    );
+  }
+  return out;
+}
+function loadRecipe(path9, { skip = [], env = process.env } = {}) {
   const { probe = [], overlays = [] } = withoutTypes(readRecipe(path9), skip);
   const initSources = [];
   if (probe[0]?.stealth) initSources.push(loadBundle("stealth-init.js"));
   const rules = overlays.flatMap((entry) => entry.rules ?? []);
   if (rules.length > 0) initSources.push(hideScript(rules));
-  return { config: probe[0]?.config, persistent: probe[0]?.persistent === true, initSources };
+  const config = resolveEnvRefs(path9, probe[0]?.config, env);
+  return { config, persistent: probe[0]?.persistent === true, initSources };
 }
 function resolveLaunch(recipePath, explicit = {}, options = {}) {
   const set = Object.fromEntries(Object.entries(explicit).filter(([, v]) => v !== void 0));
@@ -4145,11 +4199,26 @@ function extendConfig(config, { launchOptions, contextOptions } = {}) {
 }
 
 // src/context.mjs
+var CALL_MARGIN_MS = 5e3;
+function stepTimeout(env) {
+  const raw = env.WEB_TIMEOUT;
+  if (raw === void 0 || raw === "") return void 0;
+  const ms = Number(raw);
+  if (!Number.isInteger(ms) || ms <= 0) {
+    throw new CliError("USAGE", `WEB_TIMEOUT must be a positive integer (ms), got: ${raw}`, {
+      hint: "e.g. WEB_TIMEOUT=120000 for remote browsers that take up to 2 minutes to load"
+    });
+  }
+  return ms;
+}
 function createContext(command, deps, { timeoutMs } = {}) {
   const opts = command.optsWithGlobals();
+  const step = stepTimeout(deps.env ?? process.env);
+  const callTimeout = step === void 0 ? timeoutMs : step + CALL_MARGIN_MS;
   const driver = (deps.driverFactory ?? createDriver)({
     outputDir: opts.output,
-    ...timeoutMs === void 0 ? {} : { timeoutMs }
+    ...callTimeout === void 0 ? {} : { timeoutMs: callTimeout },
+    ...step === void 0 ? {} : { navigationTimeoutMs: step }
   });
   driver.ensureAvailable();
   const print = (result, text) => emit(result, { format: opts.format, text, stdout: deps.stdout ?? process.stdout });
@@ -4518,6 +4587,8 @@ Notes:
   redirectURL); only 2xx/3xx are served from the cache, errors are re-checked live. Redirect
   hops after the first are always fetched live (Playwright does not route them). Service
   workers are blocked in a cache session.
+  To fill the cache past bot protection, a recipe can point at a remote browser (Bright
+  Data's Browser API, any CDP endpoint): see web doc remote-browser.
 `,
   ATTACH: `
 Example:
@@ -7237,9 +7308,10 @@ async function startHarProxy({
 // src/cache/record.mjs
 import { existsSync as existsSync11, mkdirSync as mkdirSync9, readFileSync as readFileSync8, renameSync, rmSync as rmSync5, statSync as statSync2 } from "node:fs";
 import path7 from "node:path";
-var SCROLL_TIMEOUT_MS = 18e4;
-var LOAD_AND_SCROLL = `async page => {
-  await page.waitForLoadState('load');
+var SCROLL_TIMEOUT_MS = 15e4;
+var LOAD_TIMEOUT_MS = 3e4;
+var loadAndScroll = (loadTimeoutMs) => `async page => {
+  await page.waitForLoadState('load', { timeout: ${loadTimeoutMs} });
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   for (let i = 0; i < 150; i++) {
     const h = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -7266,7 +7338,7 @@ function closeQuietly2(driver, session) {
 `);
   }
 }
-function recordPage(driver, { url, cacheDir, headed, recipe }) {
+function recordPage(driver, { url, cacheDir, headed, recipe, loadTimeoutMs = LOAD_TIMEOUT_MS }) {
   const dir = path7.resolve(cacheDir);
   mkdirSync9(dir, { recursive: true });
   const har = path7.join(dir, harFileName(url));
@@ -7279,9 +7351,13 @@ function recordPage(driver, { url, cacheDir, headed, recipe }) {
   rmSync5(tmp, { force: true });
   try {
     try {
-      driver.open({ session, url, headed, ...launch2, config });
+      driver.open({ session, headed, ...launch2, config });
+      driver.goto(session, url);
       assertNotBlocked(driver.pageHealth(session));
-      driver.run(session, { code: LOAD_AND_SCROLL, timeoutMs: SCROLL_TIMEOUT_MS });
+      driver.run(session, {
+        code: loadAndScroll(loadTimeoutMs),
+        timeoutMs: loadTimeoutMs + SCROLL_TIMEOUT_MS
+      });
       driver.run(session, { code: FLUSH_HAR });
     } catch (err) {
       closeQuietly2(driver, session);
@@ -7580,10 +7656,12 @@ Example:
 Output:
   { url, har, entries, dropped, bytes }
 Notes:
-  Loads the page in a browser (recipe and --headed apply), scrolls to trigger lazy content and
+  Loads the page in a browser (recipe and --headed apply; WEB_TIMEOUT bounds the wait for the
+  load event, default 30 s), scrolls to trigger lazy content and
   saves every request to <cache>/<host>_<hash8>.har; failed requests are dropped.
   One URL per call: loop for more. Re-recording a URL replaces its HAR.
-  Once cache proxy has run, the cache directory holds a private key: do not commit it.`;
+  Once cache proxy has run, the cache directory holds a private key: do not commit it.
+  A recipe with a cdpEndpoint records through a remote browser: web doc remote-browser.`;
 var PROXY_HELP = `
 Example:
   web cache proxy --cache .har-cache &
@@ -7659,11 +7737,13 @@ function registerRecord(group, deps) {
       });
     }
     const ctx = createContext(command, deps);
+    const loadTimeoutMs = stepTimeout(deps.env ?? process.env);
     const result = recordPage(ctx.driver, {
       url,
       cacheDir: opts.cache,
       headed: Boolean(ctx.opts.headed),
-      recipe: ctx.recipe
+      recipe: ctx.recipe,
+      ...loadTimeoutMs && { loadTimeoutMs }
     });
     ctx.print(result);
   });
@@ -7925,7 +8005,7 @@ ${result.urls.map((u) => u.url).join("\n")}`;
 }
 
 // inline:docs
-var FILES2 = { "extending.md": "# Extending `web` with your own commands\n\n`@adobe/web-cli` is also a library (`dist/lib.mjs`, the package's `exports`). A program\ncan build the stock `web` program, add its own subcommands and ship the result as its own\nbinary. The added commands get the same contract as the built-in ones: one JSON document on\nstdout, `--format text`, `--session` and one-shot browsers, `--output` artifacts, the\nblocked-page gate, JSON errors and exit codes 0/1/2/3.\n\n## Minimal program\n\n```js\n#!/usr/bin/env node\nimport { runCli, runPageCommand, CliError } from '@adobe/web-cli';\n\nconst extend = (program, deps) =>\n  program\n    .command('acme')\n    .command('audit [url]')\n    .option('--strict')\n    .action((url, _opts, command) =>\n      runPageCommand(command, deps, {\n        url,\n        fn: (driver, session, opts) => {\n          const n = driver.run(session, { code: 'document.querySelectorAll(\"h1\").length' });\n          if (opts.strict && n !== 1) throw new CliError('EMPTY_RESULT', `${n} h1 elements`);\n          return { h1: n };\n        },\n      }),\n    );\n\nprocess.exitCode = await runCli(process.argv, { extend });\n```\n\n`acme-web acme audit https://example.com` prints `{ \"h1\": 1, \"url\", \"session\", \"durationMs\" }`;\n`acme-web page tree \u2026` and every other stock command keep working. The skills of the web\nplugin run through the extended binary with `WEB=acme-web`.\n\n## Surface\n\nEverything exported by the library; nothing else is public.\n\n- `runCli(argv, deps)`: build the program, parse, print errors as JSON, return the exit\n  code. `deps.extend(program, deps)` runs after the stock groups are registered.\n- `createProgram(deps)`: the commander root alone, when you need to own parsing; thrown\n  errors are then yours to print (`fail`).\n- `runPageCommand(command, deps, { url, fn, records })`: run `fn(driver, session, opts)` on a page.\n  Resolves `<url>` or `--session`, applies the recipe (`--recipe`, `$WEB_RECIPE` or\n  `./recipe.json`) and `--headed`, rejects blocked\n  pages, adds `url`, `session` and `durationMs`, prints. `records` names the recipe type a\n  `--save-recipe` command replaces; recording launches without that type.\n- `createContext(command, deps)`: `{ opts, driver, print, recipe }` (`recipe` is the path to launch\n  browsers with, if any) for commands that are not\n  \"one page\"; `opts` merges the global and the command options.\n- `withSession(driver, { session, url, headed, recipePath }, fn)`: the session rule on\n  its own: opens an ephemeral or named browser, runs `fn(name)`, closes only ephemeral ones.\n- `artifactDir(outputDir, session, command)` and `artifactPath(\u2026, name)`: where to write\n  files, `<output>/<session>-<command>/<name>`, absolute.\n- `emit(result, { format, text, stdout })`: print one result document (JSON, or `text`\n  with `--format text`).\n- `fail(err, { stdout, stderr })`: print an error document, return its exit code.\n- `CliError(code, message, { hint })` and `EXIT`: codes map to exits, `USAGE NO_SESSION\n  SESSION_EXISTS PLAYWRIGHT_CLI UNSUPPORTED` \u2192 2, `BLOCKED` \u2192 3, others \u2192 1.\n- `createDriver({ outputDir, timeoutMs })`: the playwright-cli driver (`open`, `attach`,\n  `goto`, `close`, `closeAll`, `list`, `evaluate`, `run`, `inject`, `cdp`, `screenshot`,\n  `pageHealth`, `requests`, `responseHeaders`). Only this module spawns `playwright-cli`.\n\n`deps` also accepts `env`, `stdout`, `stderr` and `driverFactory` (a fake driver for tests;\nsee `src/lib.test.mjs` in the package for a complete example).\n\n## Rules for added commands\n\n- Print exactly one document on stdout through `emit` or `runPageCommand`; logs go to stderr.\n- Throw `CliError` with a code from the list above and a `hint` that names the next command.\n- Never spawn `playwright-cli` yourself; go through the driver so `WEB_DEBUG=1` and\n  session rules keep working.\n- Never invent a fixed session name; reuse the name `web browser open` returns.\n- Write files under `artifactDir` with stable names so callers can find them without parsing.\n" };
+var FILES2 = { "extending.md": "# Extending `web` with your own commands\n\n`@adobe/web-cli` is also a library (`dist/lib.mjs`, the package's `exports`). A program\ncan build the stock `web` program, add its own subcommands and ship the result as its own\nbinary. The added commands get the same contract as the built-in ones: one JSON document on\nstdout, `--format text`, `--session` and one-shot browsers, `--output` artifacts, the\nblocked-page gate, JSON errors and exit codes 0/1/2/3.\n\n## Minimal program\n\n```js\n#!/usr/bin/env node\nimport { runCli, runPageCommand, CliError } from '@adobe/web-cli';\n\nconst extend = (program, deps) =>\n  program\n    .command('acme')\n    .command('audit [url]')\n    .option('--strict')\n    .action((url, _opts, command) =>\n      runPageCommand(command, deps, {\n        url,\n        fn: (driver, session, opts) => {\n          const n = driver.run(session, { code: 'document.querySelectorAll(\"h1\").length' });\n          if (opts.strict && n !== 1) throw new CliError('EMPTY_RESULT', `${n} h1 elements`);\n          return { h1: n };\n        },\n      }),\n    );\n\nprocess.exitCode = await runCli(process.argv, { extend });\n```\n\n`acme-web acme audit https://example.com` prints `{ \"h1\": 1, \"url\", \"session\", \"durationMs\" }`;\n`acme-web page tree \u2026` and every other stock command keep working. The skills of the web\nplugin run through the extended binary with `WEB=acme-web`.\n\n## Surface\n\nEverything exported by the library; nothing else is public.\n\n- `runCli(argv, deps)`: build the program, parse, print errors as JSON, return the exit\n  code. `deps.extend(program, deps)` runs after the stock groups are registered.\n- `createProgram(deps)`: the commander root alone, when you need to own parsing; thrown\n  errors are then yours to print (`fail`).\n- `runPageCommand(command, deps, { url, fn, records })`: run `fn(driver, session, opts)` on a page.\n  Resolves `<url>` or `--session`, applies the recipe (`--recipe`, `$WEB_RECIPE` or\n  `./recipe.json`) and `--headed`, rejects blocked\n  pages, adds `url`, `session` and `durationMs`, prints. `records` names the recipe type a\n  `--save-recipe` command replaces; recording launches without that type.\n- `createContext(command, deps)`: `{ opts, driver, print, recipe }` (`recipe` is the path to launch\n  browsers with, if any) for commands that are not\n  \"one page\"; `opts` merges the global and the command options.\n- `withSession(driver, { session, url, headed, recipePath }, fn)`: the session rule on\n  its own: opens an ephemeral or named browser, runs `fn(name)`, closes only ephemeral ones.\n- `artifactDir(outputDir, session, command)` and `artifactPath(\u2026, name)`: where to write\n  files, `<output>/<session>-<command>/<name>`, absolute.\n- `emit(result, { format, text, stdout })`: print one result document (JSON, or `text`\n  with `--format text`).\n- `fail(err, { stdout, stderr })`: print an error document, return its exit code.\n- `CliError(code, message, { hint })` and `EXIT`: codes map to exits, `USAGE NO_SESSION\n  SESSION_EXISTS PLAYWRIGHT_CLI UNSUPPORTED` \u2192 2, `BLOCKED` \u2192 3, others \u2192 1.\n- `createDriver({ outputDir, timeoutMs, navigationTimeoutMs })`: the playwright-cli driver\n  (`open`, `attach`, `goto`, `close`, `closeAll`, `list`, `evaluate`, `run`, `inject`, `cdp`,\n  `screenshot`, `pageHealth`, `requests`, `responseHeaders`). Only this module spawns\n  `playwright-cli`.\n\n`deps` also accepts `env`, `stdout`, `stderr` and `driverFactory` (a fake driver for tests;\nsee `src/lib.test.mjs` in the package for a complete example).\n\n## Rules for added commands\n\n- Print exactly one document on stdout through `emit` or `runPageCommand`; logs go to stderr.\n- Throw `CliError` with a code from the list above and a `hint` that names the next command.\n- Never spawn `playwright-cli` yourself; go through the driver so `WEB_DEBUG=1` and\n  session rules keep working.\n- Never invent a fixed session name; reuse the name `web browser open` returns.\n- Write files under `artifactDir` with stable names so callers can find them without parsing.\n", "remote-browser.md": '# Remote browsers: fill the cache past bot protection\n\nWhen a site blocks the local browser (challenge pages, Access Denied after a few pages),\nlet a remote browser load it instead: an unblocking service such as Bright Data\'s Browser\nAPI, or any Chrome that exposes a DevTools (CDP) endpoint. A recipe points every `web`\ncommand that launches a browser at that endpoint. The cache commands then record what the\nremote browser loads into the usual HARs, and downstream agents replay them offline at the\nreal URLs, never reaching the site.\n\n## Recipe\n\n```json\n{\n  "probe": [\n    {\n      "config": {\n        "cdpEndpoint": "env:BD_WSS_ENDPOINT",\n        "cdpTimeout": 120000\n      }\n    }\n  ]\n}\n```\n\n- `cdpEndpoint`: the remote browser, `wss://\u2026` or `http://host:port`. `env:NAME` reads it\n  from the environment, so the file holds no credentials and can be committed. `cdpHeaders`\n  values accept `env:NAME` too (`{ "Authorization": "env:REMOTE_AUTH" }`).\n- `cdpTimeout`: how long connecting may take (ms).\n- `isolated` defaults to `true` with a `cdpEndpoint`: `web` opens its own browser context\n  on the remote browser, which the cache needs (HAR recording, service worker blocking).\n  `false` reuses the remote browser\'s default context; `cache record` then fails with\n  `HAR not written`.\n- Do not add `stealth` or overlay rules meant for a local browser: an unblocking service\n  manages the fingerprint itself.\n\nPass it with `--recipe <file>` or `WEB_RECIPE=<file>`. A file named `recipe.json` in the\nworking directory is loaded by every command; `web probe --save-recipe` rewrites its\n`probe` entries, so keep the remote recipe in its own file.\n\n## Timeouts\n\nA remote unblocking browser can take up to two minutes on a first navigation. Every\nplaywright-cli call is bounded by 60 s by default, and so is navigation. Raise both:\n\n```bash\nexport WEB_TIMEOUT=120000   # ms per browser step: navigation timeout, call timeout +5 s\n```\n\nIt also bounds how long `cache record` waits for the page\'s load event (30 s otherwise).\n\nA navigation refused for rate limiting (`bucket_rate_limit`) is retried after 5, 15 and\n30 s. It happens when several remote sessions start at once: fill one site at a time.\n\n## Fill\n\nThe session cache stores everything the remote browser loads and serves repeat requests\nfrom disk, so a second pass costs no remote traffic. Misses are still fetched by the remote\nbrowser, never from this machine.\n\n```bash\nexport WEB_RECIPE=$PWD/remote-recipe.json WEB_TIMEOUT=120000\nS=$(web browser open https://example.com/ --cache .site-cache | jq -r .session)\nweb page tree https://example.com/about --session "$S" >/dev/null   # navigate more pages\nweb browser run "async page => { for (let i = 0; i < 10; i++) { await page.mouse.wheel(0, 800); await page.waitForTimeout(400) } }" --session "$S"\nweb browser close --session "$S"   # \u2192 cache: { hits, misses, stored, errors }\n```\n\n`web cache record <url> --cache .site-cache` works with the same recipe (one page per call,\neverything fetched again each time).\n\n## Replay downstream\n\nNo network, no remote browser: a miss answers 504.\n\n```bash\nweb cache proxy --cache .site-cache --offline --port 0 > proxy.json &\nP=$(jq -r .url proxy.json)     # wait until the file is written\nS=$(web browser open https://example.com/ --proxy "$P" | jq -r .session)\ncurl -s "$P/__status"          # hits, misses, missed: URLs to fill again\n```\n\nWhat usually stays missed is harmless: analytics beacons whose URLs carry timestamps, bot\ndetection sensors, CAPTCHA widgets.\n\n## Bright Data Browser API\n\n- Endpoint: `wss://<zone user>:<password>@brd.superproxy.io:9222`, from the zone\'s\n  Overview tab. Pin a country by adding `-country-<cc>` to the user\n  (`brd-customer-\u2026-zone-\u2026-country-se`).\n- One session navigates one domain; open a new session for another site. Assets from other\n  domains (CDNs) load normally.\n- Sessions end after 5 minutes idle and 60 minutes in total.\n- Billed by traffic: the session cache\'s hits are free, `cache record` pays every time.\n- Password entry is disabled unless the account passed Bright Data\'s KYC.\n\n## Credentials\n\n- Keep the endpoint in the environment (`env:NAME`), not in the recipe or on the command\n  line: a `wss://user:pass@\u2026` argument is visible to `ps`.\n- `web` redacts `user:pass@` and Basic/Bearer tokens from its error messages and from the\n  `WEB_DEBUG=1` echo. Logs written by other tools are not covered.\n' };
 
 // src/docs/index.mjs
 var listDocs = () => Object.keys(FILES2).map((f) => f.replace(/\.md$/, ""));
@@ -7936,7 +8016,8 @@ var HELP11 = `
 Prints Markdown, like --help does; --format has no effect here.
 Topics:
   web doc              list the topics
-  web doc extending    add your own commands on top of web (library surface, example, rules)
+  web doc extending       add your own commands on top of web (library surface, example, rules)
+  web doc remote-browser  fill the cache through a remote browser (Bright Data, any CDP endpoint)
 `;
 function registerDoc(program2, deps) {
   const out = deps.stdout ?? process.stdout;
@@ -7987,7 +8068,12 @@ Artifacts:
 Requires playwright-cli >= 0.1.20 on PATH (npm install -g @playwright/cli@latest).
 
 Long-form docs ship in the binary: web doc (topics), web doc extending (add your own
-commands on top of web through the library export of @adobe/web-cli).
+commands on top of web through the library export of @adobe/web-cli), web doc remote-browser
+(fill the cache through a remote browser past bot protection).
+
+Environment:
+  WEB_TIMEOUT=<ms> bounds each browser step (navigation and playwright-cli call; default
+  60000). Raise it for remote browsers that are slow to load a page.
 
 Typical flows:
   one-shot:  web page tree <url>

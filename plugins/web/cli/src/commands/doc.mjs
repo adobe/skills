@@ -5,7 +5,8 @@ const HELP = `
 Prints Markdown, like --help does; --format has no effect here.
 Topics:
   web doc              list the topics
-  web doc extending    add your own commands on top of web (library surface, example, rules)
+  web doc extending       add your own commands on top of web (library surface, example, rules)
+  web doc remote-browser  fill the cache through a remote browser (Bright Data, any CDP endpoint)
 `;
 
 /**
