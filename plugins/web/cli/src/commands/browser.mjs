@@ -1,6 +1,6 @@
 import { parseIntArg } from '#src/args.mjs';
 import { existsSync } from 'node:fs';
-import { CliError } from '#src/errors.mjs';
+import { CliError, redactCredentials } from '#src/errors.mjs';
 import { createContext } from '#src/context.mjs';
 import { extendConfig, resolveLaunch } from '#src/recipe.mjs';
 import { artifactPath, generateSessionName, requireOpenSession } from '#src/session.mjs';
@@ -24,6 +24,8 @@ Notes:
   redirectURL); only 2xx/3xx are served from the cache, errors are re-checked live. Redirect
   hops after the first are always fetched live (Playwright does not route them). Service
   workers are blocked in a cache session.
+  To fill the cache past bot protection, a recipe can point at a remote browser (Bright
+  Data's Browser API, any CDP endpoint): see web doc remote-browser.
 `,
   ATTACH: `
 Example:
@@ -125,7 +127,9 @@ function closeQuietly(driver, session) {
   try {
     driver.close(session);
   } catch (err) {
-    process.stderr.write(`warning: failed to close session ${session}: ${err.message}\n`);
+    process.stderr.write(
+      `warning: failed to close session ${session}: ${redactCredentials(err.message)}\n`,
+    );
   }
 }
 
@@ -160,7 +164,9 @@ function flushCache(driver, session, stderr) {
   try {
     return driver.run(session, { code: CACHE_STATS_CODE });
   } catch (err) {
-    stderr.write(`warning: cannot flush cache recordings for ${session}: ${err.message}\n`);
+    stderr.write(
+      `warning: cannot flush cache recordings for ${session}: ${redactCredentials(err.message)}\n`,
+    );
     return 0;
   }
 }
@@ -218,7 +224,7 @@ export function registerBrowser(program, deps) {
       .option('--persistent', 'use a persistent profile')
       .option('--proxy <url>', 'route the browser through a web cache proxy')
       .option('--cache <dir>', 'record and replay the session in HARs under <dir>'),
-    async ({ opts, driver, print, recipe }, url) => {
+    async ({ opts, driver, print, recipe, env }, url) => {
       const session = opts.session ?? generateSessionName();
       const { cdpPort, proxy } = opts;
       if (proxy && opts.cache) {
@@ -227,7 +233,14 @@ export function registerBrowser(program, deps) {
         });
       }
       if (proxy) assertUrl(proxy);
-      const launch = resolveLaunch(recipe, { persistent: opts.persistent });
+      const launch = resolveLaunch(recipe, { persistent: opts.persistent }, { env });
+      if (proxy && launch.config?.cdpEndpoint) {
+        // A remote browser is already running: launchOptions.proxy cannot route it, so the
+        // pages would load live through the remote browser instead of from the cache.
+        throw new CliError('USAGE', '--proxy cannot route a remote browser (recipe cdpEndpoint)', {
+          hint: 'replay with a local browser: WEB_RECIPE= web browser open <url> --proxy <url>, or --recipe <a local recipe>',
+        });
+      }
       const config = proxy
         ? extendConfig(launch.config, {
             launchOptions: { proxy: { server: proxy } },

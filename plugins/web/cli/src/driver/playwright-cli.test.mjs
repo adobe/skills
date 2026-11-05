@@ -395,3 +395,107 @@ test('exec receives the driver-level timeoutMs on every call', () => {
   driver.evaluate('s', 'x');
   assert.deepEqual(seen, [30000]);
 });
+
+const configOf = (calls) => {
+  const flag = calls.flat().find((a) => a.startsWith('--config='));
+  return flag && JSON.parse(readFileSync(flag.slice(9), 'utf8'));
+};
+
+test('open with a cdpEndpoint defaults to an isolated context; an explicit value wins', () => {
+  let body;
+  const { driver } = setup((args) => {
+    body = configOf([args]) ?? body;
+    return '{"browsers":[]}';
+  });
+  driver.open({ session: 'a', config: { cdpEndpoint: 'wss://remote:9222' } });
+  assert.equal(body.browser.isolated, true);
+  driver.open({ session: 'b', config: { cdpEndpoint: 'wss://remote:9222', isolated: false } });
+  assert.equal(body.browser.isolated, false);
+  driver.open({ session: 'c', config: {} });
+  assert.equal(body.browser.isolated, undefined);
+});
+
+test('open writes navigationTimeoutMs as the playwright-cli navigation timeout', () => {
+  const calls = [];
+  const outputDir = mkdtempSync(join(tmpdir(), 'web-driver-test-'));
+  let body;
+  const exec = (args) => {
+    calls.push(args);
+    body = configOf([args]) ?? body;
+    return { stdout: '{"browsers":[]}', stderr: '', status: 0 };
+  };
+  createDriver({ exec, outputDir, navigationTimeoutMs: 120_000 }).open({ session: 'a' });
+  assert.deepEqual(body.timeouts, { navigation: 120_000 });
+  createDriver({ exec, outputDir }).open({ session: 'b' });
+  assert.equal(body.timeouts, undefined);
+});
+
+function gotoSetup(failures, message) {
+  let left = failures;
+  const slept = [];
+  const warnings = [];
+  const outputDir = mkdtempSync(join(tmpdir(), 'web-driver-test-'));
+  const calls = [];
+  const exec = (args) => {
+    calls.push(args);
+    if (args[1] === 'goto' && left > 0) {
+      left -= 1;
+      return { stdout: JSON.stringify({ isError: true, error: message }), stderr: '', status: 1 };
+    }
+    return { stdout: '{}', stderr: '', status: 0 };
+  };
+  const driver = createDriver({
+    exec,
+    outputDir,
+    sleep: (ms) => slept.push(ms),
+    stderr: { write: (c) => warnings.push(c) },
+  });
+  return { driver, calls, slept, warnings };
+}
+
+const RATE_LIMIT =
+  'page.goto: Protocol error (Page.navigate): A global adaptive rate limit has been applied. Please retry in a few seconds. (bucket_rate_limit)';
+
+test('goto retries a rate-limited navigation with growing delays', () => {
+  const { driver, calls, slept, warnings } = gotoSetup(2, RATE_LIMIT);
+  driver.goto('s', 'https://x.test/');
+  assert.equal(calls.filter((c) => c[1] === 'goto').length, 3);
+  assert.deepEqual(slept, [5_000, 15_000]);
+  assert.equal(warnings.length, 2);
+  assert.match(warnings[0], /rate limited, retrying https:\/\/x\.test\/ in 5 s/);
+});
+
+test('goto gives up after three rate-limit retries', () => {
+  const { driver, calls, slept } = gotoSetup(10, RATE_LIMIT);
+  assert.throws(() => driver.goto('s', 'https://x.test/'), /bucket_rate_limit/);
+  assert.equal(calls.length, 4);
+  assert.deepEqual(slept, [5_000, 15_000, 30_000]);
+});
+
+test('goto does not retry other failures', () => {
+  const { driver, calls, slept } = gotoSetup(1, 'net::ERR_NAME_NOT_RESOLVED');
+  assert.throws(() => driver.goto('s', 'https://x.test/'), /ERR_NAME_NOT_RESOLVED/);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(slept, []);
+});
+
+test('debug echo redacts endpoint credentials', () => {
+  const lines = [];
+  const original = process.stderr.write;
+  process.stderr.write = (c) => lines.push(String(c));
+  try {
+    const { driver } = setup(() => '{}', { debug: true });
+    driver.attach({ session: 'a', cdpUrl: 'wss://user-x:secret@remote.test:9222' });
+  } finally {
+    process.stderr.write = original;
+  }
+  assert.match(lines.join(''), /--cdp=wss:\/\/\[redacted\]@remote\.test:9222/);
+  assert.doesNotMatch(lines.join(''), /secret/);
+});
+
+test('the rate-limit retry warning redacts credentials in the URL', () => {
+  const { driver, warnings } = gotoSetup(1, RATE_LIMIT);
+  driver.goto('s', 'https://alice:password@example.test/');
+  assert.match(warnings.join(''), /https:\/\/\[redacted\]@example\.test\//);
+  assert.doesNotMatch(warnings.join(''), /alice|password/);
+});

@@ -41,6 +41,14 @@ ship the result as its own binary, with the output, session and exit-code contra
 guide, the exported surface and the rules live in `web doc extending`
 (source: `src/docs/extending.md`); `src/lib.test.mjs` is a runnable example.
 
+## Sites that block the local browser
+
+A recipe with a `cdpEndpoint` makes every command that launches a browser use a remote one
+instead, such as Bright Data's Browser API, so `browser open --cache` and `cache record` fill
+the HAR cache past bot protection and `cache proxy --offline` replays it downstream. Recipe,
+`WEB_TIMEOUT`, credentials and Bright Data specifics: `web doc remote-browser`
+(source: `src/docs/remote-browser.md`).
+
 ## Long-form docs inside the binary
 
 `web doc` lists the topics and `web doc <topic>` prints Markdown to stdout, like `--help`.

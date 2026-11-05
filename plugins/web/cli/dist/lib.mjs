@@ -3391,6 +3391,13 @@ function exitCodeFor(code) {
   if (code === "BLOCKED") return EXIT.BLOCKED;
   return USAGE_CODES.has(code) ? EXIT.USAGE : EXIT.FAILURE;
 }
+var URL_USERINFO = /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#@]+@/gi;
+var AUTH_HEADER = /\b(authorization\s*[:=]\s*["']?)([a-z][a-z0-9_-]*)\s+[^\s"',;]+/gi;
+var AUTH_TOKEN = /\b(basic|bearer)\s+[A-Za-z0-9+/=._~-]{8,}/gi;
+function redactCredentials(text) {
+  if (typeof text !== "string") return text;
+  return text.replace(URL_USERINFO, "$1[redacted]@").replace(AUTH_HEADER, "$1$2 [redacted]").replace(AUTH_TOKEN, "$1 [redacted]");
+}
 
 // src/output.mjs
 function emit(result, { format, text, stdout = process.stdout }) {
@@ -3401,10 +3408,11 @@ function emit(result, { format, text, stdout = process.stdout }) {
 }
 function fail(err, { stdout = process.stdout, stderr = process.stderr } = {}) {
   const e = err instanceof CliError ? err : new CliError("INTERNAL", err?.message ?? String(err));
-  const doc = { error: { code: e.code, message: e.message, hint: e.hint } };
+  const message = redactCredentials(e.message);
+  const doc = { error: { code: e.code, message, hint: redactCredentials(e.hint) } };
   stdout.write(`${JSON.stringify(doc, null, 2)}
 `);
-  stderr.write(`${e.code}: ${e.message}
+  stderr.write(`${e.code}: ${message}
 `);
   return exitCodeFor(e.code);
 }
@@ -3504,6 +3512,11 @@ function wrapExpression(expr) {
     return `(() => { ${expr} })()`;
   }
 }
+var RATE_LIMITED = /bucket_rate_limit|rate limit has been applied/i;
+var RATE_LIMIT_DELAYS_MS = [5e3, 15e3, 3e4];
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
 function toCliError(message) {
   if (/not open, please run open first/.test(message)) {
     return new CliError("NO_SESSION", message, {
@@ -3526,16 +3539,19 @@ function createDriver({
   execAsync = execPlaywrightCliAsync,
   outputDir,
   debug = Boolean(process.env.WEB_DEBUG),
-  timeoutMs = 6e4
+  timeoutMs = 6e4,
+  navigationTimeoutMs,
+  sleep = sleepSync,
+  stderr = process.stderr
 }) {
   let runCounter = 0;
   function call(args, opts) {
-    if (debug) process.stderr.write(`playwright-cli ${args.join(" ")}
+    if (debug) process.stderr.write(`playwright-cli ${redactCredentials(args.join(" "))}
 `);
     return settle2(args, exec(args, { timeoutMs, ...opts }));
   }
   async function callAsync(args, opts) {
-    if (debug) process.stderr.write(`playwright-cli ${args.join(" ")}
+    if (debug) process.stderr.write(`playwright-cli ${redactCredentials(args.join(" "))}
 `);
     return settle2(args, await execAsync(args, { timeoutMs, ...opts }));
   }
@@ -3579,7 +3595,10 @@ function createDriver({
       launchOptions.args = [...launchOptions.args ?? [], `--remote-debugging-port=${cdpPort}`];
     }
     const initScript = [...config.initScript ?? [], ...initScripts].map((p) => resolve(p));
-    return { browser: { ...config, launchOptions, initScript } };
+    const browser = { ...config, launchOptions, initScript };
+    if (browser.cdpEndpoint && browser.isolated === void 0) browser.isolated = true;
+    const timeouts = navigationTimeoutMs ? { timeouts: { navigation: navigationTimeoutMs } } : {};
+    return { browser, ...timeouts };
   }
   function open2({ initScripts = [], initSources = [], ...launchOpts }) {
     mkdirSync(outputDir, { recursive: true });
@@ -3651,8 +3670,22 @@ function createDriver({
       }
     },
     open: open2,
+    /** Navigate; a navigation a remote browser refuses for rate limiting is retried. */
     goto(session, url) {
-      call([`-s=${session}`, "goto", url]);
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          call([`-s=${session}`, "goto", url]);
+          return;
+        } catch (err) {
+          const delay = RATE_LIMIT_DELAYS_MS[attempt];
+          if (delay === void 0 || !RATE_LIMITED.test(err.message)) throw err;
+          stderr.write(
+            `warning: rate limited, retrying ${redactCredentials(url)} in ${delay / 1e3} s
+`
+          );
+          sleep(delay);
+        }
+      }
     },
     attach({ session, cdpUrl }) {
       call(["attach", `--cdp=${cdpUrl}`, `--session=${session}`]);
@@ -4172,13 +4205,37 @@ function hideScript(rules) {
 `;
 }
 var withoutTypes = (recipe, skip) => Object.fromEntries(Object.entries(recipe).filter(([type]) => !skip.includes(type)));
-function loadRecipe(path9, { skip = [] } = {}) {
+var ENV_REF = /^env:([A-Za-z_][A-Za-z0-9_]*)$/;
+function fromEnv(path9, field, value, env) {
+  const name = typeof value === "string" && value.match(ENV_REF)?.[1];
+  if (!name) return value;
+  const resolved = env[name];
+  if (!resolved) {
+    throw new CliError("USAGE", `recipe ${path9}: ${field} reads ${name}, which is not set`, {
+      hint: `export ${name} before running web`
+    });
+  }
+  return resolved;
+}
+function resolveEnvRefs(path9, config, env) {
+  if (!config) return config;
+  const out = { ...config };
+  if ("cdpEndpoint" in out) out.cdpEndpoint = fromEnv(path9, "cdpEndpoint", out.cdpEndpoint, env);
+  if (isObject(out.cdpHeaders)) {
+    out.cdpHeaders = Object.fromEntries(
+      Object.entries(out.cdpHeaders).map(([k, v]) => [k, fromEnv(path9, `cdpHeaders.${k}`, v, env)])
+    );
+  }
+  return out;
+}
+function loadRecipe(path9, { skip = [], env = process.env } = {}) {
   const { probe = [], overlays = [] } = withoutTypes(readRecipe(path9), skip);
   const initSources = [];
   if (probe[0]?.stealth) initSources.push(loadBundle("stealth-init.js"));
   const rules = overlays.flatMap((entry) => entry.rules ?? []);
   if (rules.length > 0) initSources.push(hideScript(rules));
-  return { config: probe[0]?.config, persistent: probe[0]?.persistent === true, initSources };
+  const config = resolveEnvRefs(path9, probe[0]?.config, env);
+  return { config, persistent: probe[0]?.persistent === true, initSources };
 }
 function resolveLaunch(recipePath, explicit = {}, options = {}) {
   const set = Object.fromEntries(Object.entries(explicit).filter(([, v]) => v !== void 0));
@@ -4192,17 +4249,33 @@ function extendConfig(config, { launchOptions, contextOptions } = {}) {
 }
 
 // src/context.mjs
+var CALL_MARGIN_MS = 5e3;
+function stepTimeout(env) {
+  const raw2 = env.WEB_TIMEOUT;
+  if (raw2 === void 0 || raw2 === "") return void 0;
+  const ms = Number(raw2);
+  if (!Number.isInteger(ms) || ms <= 0) {
+    throw new CliError("USAGE", `WEB_TIMEOUT must be a positive integer (ms), got: ${raw2}`, {
+      hint: "e.g. WEB_TIMEOUT=120000 for remote browsers that take up to 2 minutes to load"
+    });
+  }
+  return ms;
+}
 function createContext(command, deps, { timeoutMs } = {}) {
   const opts = command.optsWithGlobals();
+  const env = deps.env ?? process.env;
+  const step = stepTimeout(env);
+  const callTimeout = step === void 0 ? timeoutMs : step + CALL_MARGIN_MS;
   const driver = (deps.driverFactory ?? createDriver)({
     outputDir: opts.output,
-    ...timeoutMs === void 0 ? {} : { timeoutMs }
+    ...callTimeout === void 0 ? {} : { timeoutMs: callTimeout },
+    ...step === void 0 ? {} : { navigationTimeoutMs: step }
   });
   driver.ensureAvailable();
   const print = (result, text) => emit(result, { format: opts.format, text, stdout: deps.stdout ?? process.stdout });
   const recipe = opts.recipe ?? (existsSync2(DEFAULT_RECIPE) ? DEFAULT_RECIPE : void 0);
   const recipeExplicit = command.getOptionValueSourceWithGlobals("recipe") === "cli";
-  return { opts, driver, print, recipe, recipeExplicit };
+  return { opts, driver, print, recipe, recipeExplicit, env };
 }
 
 // src/session.mjs
@@ -4221,8 +4294,8 @@ function requireOpenSession(driver, name) {
   }
 }
 async function withSession(driver, opts, fn) {
-  const { session, url, headed, recipePath, recipeExplicit, recipeSkip, ...launch2 } = opts;
-  const resolve13 = () => resolveLaunch(recipePath, launch2, { skip: recipeSkip });
+  const { session, url, headed, recipePath, recipeExplicit, recipeSkip, env, ...launch2 } = opts;
+  const resolve13 = () => resolveLaunch(recipePath, launch2, { skip: recipeSkip, env });
   if (session) {
     const isOpen = driver.list().some((s) => s.name === session && s.status === "open");
     if (!isOpen && url) {
@@ -4280,8 +4353,10 @@ function closeQuietlyIf(driver, name, failed) {
     driver.close(name);
   } catch (err) {
     if (!failed) throw err;
-    process.stderr.write(`warning: failed to close session ${name}: ${err.message}
-`);
+    process.stderr.write(
+      `warning: failed to close session ${name}: ${redactCredentials(err.message)}
+`
+    );
   }
 }
 function artifactPath(outputDir, session, command, name) {
@@ -4565,6 +4640,8 @@ Notes:
   redirectURL); only 2xx/3xx are served from the cache, errors are re-checked live. Redirect
   hops after the first are always fetched live (Playwright does not route them). Service
   workers are blocked in a cache session.
+  To fill the cache past bot protection, a recipe can point at a remote browser (Bright
+  Data's Browser API, any CDP endpoint): see web doc remote-browser.
 `,
   ATTACH: `
 Example:
@@ -4661,8 +4738,10 @@ function closeQuietly(driver, session) {
   try {
     driver.close(session);
   } catch (err) {
-    process.stderr.write(`warning: failed to close session ${session}: ${err.message}
-`);
+    process.stderr.write(
+      `warning: failed to close session ${session}: ${redactCredentials(err.message)}
+`
+    );
   }
 }
 async function openWithCache({ driver, keeper, openArgs, url, cacheDir, outputDir }) {
@@ -4689,8 +4768,10 @@ function flushCache(driver, session, stderr) {
   try {
     return driver.run(session, { code: CACHE_STATS_CODE });
   } catch (err) {
-    stderr.write(`warning: cannot flush cache recordings for ${session}: ${err.message}
-`);
+    stderr.write(
+      `warning: cannot flush cache recordings for ${session}: ${redactCredentials(err.message)}
+`
+    );
     return 0;
   }
 }
@@ -4728,7 +4809,7 @@ function registerBrowser(program2, deps) {
   };
   action(
     browser.command("open [url]").description("open a browser session").addHelpText("after", HELP.OPEN).option("--cdp-port <n>", "remote debugging port", parseIntArg).option("--persistent", "use a persistent profile").option("--proxy <url>", "route the browser through a web cache proxy").option("--cache <dir>", "record and replay the session in HARs under <dir>"),
-    async ({ opts, driver, print, recipe }, url) => {
+    async ({ opts, driver, print, recipe, env }, url) => {
       const session = opts.session ?? generateSessionName();
       const { cdpPort, proxy } = opts;
       if (proxy && opts.cache) {
@@ -4737,7 +4818,12 @@ function registerBrowser(program2, deps) {
         });
       }
       if (proxy) assertUrl(proxy);
-      const launch2 = resolveLaunch(recipe, { persistent: opts.persistent });
+      const launch2 = resolveLaunch(recipe, { persistent: opts.persistent }, { env });
+      if (proxy && launch2.config?.cdpEndpoint) {
+        throw new CliError("USAGE", "--proxy cannot route a remote browser (recipe cdpEndpoint)", {
+          hint: "replay with a local browser: WEB_RECIPE= web browser open <url> --proxy <url>, or --recipe <a local recipe>"
+        });
+      }
       const config = proxy ? extendConfig(launch2.config, {
         launchOptions: { proxy: { server: proxy } },
         contextOptions: { ignoreHTTPSErrors: true }
@@ -5128,7 +5214,7 @@ function registerProbe(program2, deps) {
       );
     }
     const stderr = deps.stderr ?? process.stderr;
-    const log = (msg) => stderr.write(`${msg}
+    const log = (msg) => stderr.write(`${redactCredentials(String(msg))}
 `);
     const { report, recipePath } = await runProbe(driver, {
       url,
@@ -5325,7 +5411,7 @@ function verifyLoaded(driver, { session, extensionId, name }) {
   throw new CliError("FAILURE", "extension did not load", { hint: LOAD_FAILED_HINT });
 }
 function launch(ctx, distDir) {
-  const { opts, driver, print, recipe } = ctx;
+  const { opts, driver, print, recipe, env } = ctx;
   const abs = resolve4(distDir);
   const manifest = readManifest(abs);
   const surfaces = availableSurfaces(manifest);
@@ -5336,16 +5422,20 @@ function launch(ctx, distDir) {
     url: "about:blank",
     headed: Boolean(opts.headed),
     cdpPort,
-    ...resolveLaunch(recipe, {
-      persistent: true,
-      config: {
-        browserName: "chromium",
-        launchOptions: {
-          channel: "chromium",
-          args: [`--load-extension=${abs}`, `--disable-extensions-except=${abs}`]
+    ...resolveLaunch(
+      recipe,
+      {
+        persistent: true,
+        config: {
+          browserName: "chromium",
+          launchOptions: {
+            channel: "chromium",
+            args: [`--load-extension=${abs}`, `--disable-extensions-except=${abs}`]
+          }
         }
-      }
-    })
+      },
+      { env }
+    )
   });
   const extensionId = extensionIdForPath(realpathSync(abs));
   verifyLoaded(driver, { session, extensionId, name: manifest.name });
@@ -5628,7 +5718,8 @@ async function runPageCommand(command, deps, { url, fn, records }) {
       headed: ctx.opts.headed,
       recipePath: recording && !existsSync6(ctx.recipe ?? "") ? void 0 : ctx.recipe,
       recipeSkip: recording ? [records] : [],
-      recipeExplicit: ctx.recipeExplicit && !recording
+      recipeExplicit: ctx.recipeExplicit && !recording,
+      env: ctx.env
     },
     async (name) => {
       health = ctx.driver.pageHealth(name);
@@ -7284,9 +7375,10 @@ async function startHarProxy({
 // src/cache/record.mjs
 import { existsSync as existsSync11, mkdirSync as mkdirSync9, readFileSync as readFileSync8, renameSync, rmSync as rmSync5, statSync as statSync2 } from "node:fs";
 import path7 from "node:path";
-var SCROLL_TIMEOUT_MS = 18e4;
-var LOAD_AND_SCROLL = `async page => {
-  await page.waitForLoadState('load');
+var SCROLL_TIMEOUT_MS = 15e4;
+var LOAD_TIMEOUT_MS = 3e4;
+var loadAndScroll = (loadTimeoutMs) => `async page => {
+  await page.waitForLoadState('load', { timeout: ${loadTimeoutMs} });
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   for (let i = 0; i < 150; i++) {
     const h = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -7309,15 +7401,17 @@ function closeQuietly2(driver, session) {
   try {
     driver.close(session);
   } catch (err) {
-    process.stderr.write(`warning: failed to close session ${session}: ${err.message}
-`);
+    process.stderr.write(
+      `warning: failed to close session ${session}: ${redactCredentials(err.message)}
+`
+    );
   }
 }
-function recordPage(driver, { url, cacheDir, headed, recipe }) {
+function recordPage(driver, { url, cacheDir, headed, recipe, loadTimeoutMs = LOAD_TIMEOUT_MS, env = process.env }) {
   const dir = path7.resolve(cacheDir);
   mkdirSync9(dir, { recursive: true });
   const har = path7.join(dir, harFileName(url));
-  const launch2 = resolveLaunch(recipe, { headed });
+  const launch2 = resolveLaunch(recipe, { headed }, { env });
   const tmp = `${har}.tmp`;
   const config = extendConfig(launch2.config, {
     contextOptions: { recordHar: { path: tmp, content: "attach" } }
@@ -7326,9 +7420,13 @@ function recordPage(driver, { url, cacheDir, headed, recipe }) {
   rmSync5(tmp, { force: true });
   try {
     try {
-      driver.open({ session, url, headed, ...launch2, config });
+      driver.open({ session, headed, ...launch2, config });
+      driver.goto(session, url);
       assertNotBlocked(driver.pageHealth(session));
-      driver.run(session, { code: LOAD_AND_SCROLL, timeoutMs: SCROLL_TIMEOUT_MS });
+      driver.run(session, {
+        code: loadAndScroll(loadTimeoutMs),
+        timeoutMs: loadTimeoutMs + SCROLL_TIMEOUT_MS
+      });
       driver.run(session, { code: FLUSH_HAR });
     } catch (err) {
       closeQuietly2(driver, session);
@@ -7627,10 +7725,12 @@ Example:
 Output:
   { url, har, entries, dropped, bytes }
 Notes:
-  Loads the page in a browser (recipe and --headed apply), scrolls to trigger lazy content and
+  Loads the page in a browser (recipe and --headed apply; WEB_TIMEOUT bounds the wait for the
+  load event, default 30 s), scrolls to trigger lazy content and
   saves every request to <cache>/<host>_<hash8>.har; failed requests are dropped.
   One URL per call: loop for more. Re-recording a URL replaces its HAR.
-  Once cache proxy has run, the cache directory holds a private key: do not commit it.`;
+  Once cache proxy has run, the cache directory holds a private key: do not commit it.
+  A recipe with a cdpEndpoint records through a remote browser: web doc remote-browser.`;
 var PROXY_HELP = `
 Example:
   web cache proxy --cache .har-cache &
@@ -7706,11 +7806,14 @@ function registerRecord(group, deps) {
       });
     }
     const ctx = createContext(command, deps);
+    const loadTimeoutMs = stepTimeout(ctx.env);
     const result = recordPage(ctx.driver, {
       url,
       cacheDir: opts.cache,
       headed: Boolean(ctx.opts.headed),
-      recipe: ctx.recipe
+      recipe: ctx.recipe,
+      env: ctx.env,
+      ...loadTimeoutMs && { loadTimeoutMs }
     });
     ctx.print(result);
   });
@@ -7972,7 +8075,7 @@ ${result.urls.map((u) => u.url).join("\n")}`;
 }
 
 // inline:docs
-var FILES2 = { "extending.md": "# Extending `web` with your own commands\n\n`@adobe/web-cli` is also a library (`dist/lib.mjs`, the package's `exports`). A program\ncan build the stock `web` program, add its own subcommands and ship the result as its own\nbinary. The added commands get the same contract as the built-in ones: one JSON document on\nstdout, `--format text`, `--session` and one-shot browsers, `--output` artifacts, the\nblocked-page gate, JSON errors and exit codes 0/1/2/3.\n\n## Minimal program\n\n```js\n#!/usr/bin/env node\nimport { runCli, runPageCommand, CliError } from '@adobe/web-cli';\n\nconst extend = (program, deps) =>\n  program\n    .command('acme')\n    .command('audit [url]')\n    .option('--strict')\n    .action((url, _opts, command) =>\n      runPageCommand(command, deps, {\n        url,\n        fn: (driver, session, opts) => {\n          const n = driver.run(session, { code: 'document.querySelectorAll(\"h1\").length' });\n          if (opts.strict && n !== 1) throw new CliError('EMPTY_RESULT', `${n} h1 elements`);\n          return { h1: n };\n        },\n      }),\n    );\n\nprocess.exitCode = await runCli(process.argv, { extend });\n```\n\n`acme-web acme audit https://example.com` prints `{ \"h1\": 1, \"url\", \"session\", \"durationMs\" }`;\n`acme-web page tree \u2026` and every other stock command keep working. The skills of the web\nplugin run through the extended binary with `WEB=acme-web`.\n\n## Surface\n\nEverything exported by the library; nothing else is public.\n\n- `runCli(argv, deps)`: build the program, parse, print errors as JSON, return the exit\n  code. `deps.extend(program, deps)` runs after the stock groups are registered.\n- `createProgram(deps)`: the commander root alone, when you need to own parsing; thrown\n  errors are then yours to print (`fail`).\n- `runPageCommand(command, deps, { url, fn, records })`: run `fn(driver, session, opts)` on a page.\n  Resolves `<url>` or `--session`, applies the recipe (`--recipe`, `$WEB_RECIPE` or\n  `./recipe.json`) and `--headed`, rejects blocked\n  pages, adds `url`, `session` and `durationMs`, prints. `records` names the recipe type a\n  `--save-recipe` command replaces; recording launches without that type.\n- `createContext(command, deps)`: `{ opts, driver, print, recipe }` (`recipe` is the path to launch\n  browsers with, if any) for commands that are not\n  \"one page\"; `opts` merges the global and the command options.\n- `withSession(driver, { session, url, headed, recipePath }, fn)`: the session rule on\n  its own: opens an ephemeral or named browser, runs `fn(name)`, closes only ephemeral ones.\n- `artifactDir(outputDir, session, command)` and `artifactPath(\u2026, name)`: where to write\n  files, `<output>/<session>-<command>/<name>`, absolute.\n- `emit(result, { format, text, stdout })`: print one result document (JSON, or `text`\n  with `--format text`).\n- `fail(err, { stdout, stderr })`: print an error document, return its exit code.\n- `CliError(code, message, { hint })` and `EXIT`: codes map to exits, `USAGE NO_SESSION\n  SESSION_EXISTS PLAYWRIGHT_CLI UNSUPPORTED` \u2192 2, `BLOCKED` \u2192 3, others \u2192 1.\n- `createDriver({ outputDir, timeoutMs })`: the playwright-cli driver (`open`, `attach`,\n  `goto`, `close`, `closeAll`, `list`, `evaluate`, `run`, `inject`, `cdp`, `screenshot`,\n  `pageHealth`, `requests`, `responseHeaders`). Only this module spawns `playwright-cli`.\n\n`deps` also accepts `env`, `stdout`, `stderr` and `driverFactory` (a fake driver for tests;\nsee `src/lib.test.mjs` in the package for a complete example).\n\n## Rules for added commands\n\n- Print exactly one document on stdout through `emit` or `runPageCommand`; logs go to stderr.\n- Throw `CliError` with a code from the list above and a `hint` that names the next command.\n- Never spawn `playwright-cli` yourself; go through the driver so `WEB_DEBUG=1` and\n  session rules keep working.\n- Never invent a fixed session name; reuse the name `web browser open` returns.\n- Write files under `artifactDir` with stable names so callers can find them without parsing.\n", "header.md": '# Rebuilding a header 1:1: `web header`\n\n`web header capture` records a site\'s header as data: its region, every menu open, the\nbreakpoint, the scroll behaviour and the mobile menu. `web header check <check>` compares a page\nyou build with that capture and with the live source. Use the checks as a ladder: each step\nclean before the next, and the header is done when every step is clean.\n\nThe goal is a header nobody can tell from the source when swiping between the two: at any width,\nclosed, with every menu open, with the mobile menu open, and while scrolling down and back up.\n\n## Install\n\nThe checks need `sharp`, `pngjs` and `pixelmatch`, which are optional dependencies of the CLI.\nWithout them a `header` command exits 2 (`UNSUPPORTED`) before any browser starts. Install the\nCLI as a package, pinned to a commit of adobe/skills, with pnpm\'s git subfolder install:\n\n```bash\nDIR="$HOME/.cache/adobe-skills/web-cli-<sha7>"\n[ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&\n  npx -y pnpm@<version> add --dir "$DIR" "github:adobe/skills#<sha>&path:/plugins/web/cli"; }\nWEB="$DIR/node_modules/.bin/web"\n```\n\nIn a clone of adobe/skills, `npm install` in `plugins/web/cli` does the same for\n`node plugins/web/cli/dist/web.mjs`. The checks also need `playwright-cli` on PATH, like every\nbrowser command.\n\n## How the pages are held still\n\nBoth pages are loaded the same way in every check, so a difference is the build\'s and not the\nload\'s:\n\n- A/B-testing services are blocked, and `Math.random` is seeded.\n- Every `setInterval` of 2 s or more is stopped, so a rotating text shows its first item.\n- No splash dialog is opened.\n- Consent and other overlays are hidden by the capture\'s rules (`<dir>/overlays.json`).\n- Lazy content is loaded and animations are finished before anything is measured.\n\nChecked against itself, a source scores 0 on every check. A reading on the source\'s own body\n(a carousel, its own load shift) is the source\'s, not the build\'s.\n\n## The loop\n\n1. Capture the source once: `$WEB header capture <source-url> <src>`. It writes\n   `<src>/page.json` (the header\'s regions and their boxes at 1440x900, 820x1180 and 390x844),\n   `<src>/overlays.json`, full-page shots, `<src>/regions/` (crops and computed-style dumps) and\n   `<src>/open/` (`open.json`, a shot and a style dump per open menu, `mobile-menu.png`).\n2. Build the header on your page, served locally, from the source\'s computed styles and the\n   capture\'s data: copy how the source does it (a transform, content sizing, a flex column),\n   not the numbers of one shot.\n3. Run the ladder below on your page. Fix, re-run only what was not clean, and run every command\n   in full once at the end.\n\n## The ladder\n\nEach command prints one JSON document with `clean`; `--format text` prints the check\'s lines.\nRead the lines, not the exit status: 0 means the check ran, clean or not.\n\n1. **Structure and links**\n   - `$WEB header check menus <page> <src>/open/open.json`: every menu of the capture opens on\n     the page as the source opens it (hover or click, on its visible label), reveals at least\n     80 % of the source\'s links, and closes as the source closes it.\n   - `$WEB header check panels <page> <src> <out>/open`: the pixel mismatch inside each source\n     panel\'s box (at most 1.5 %), the revealed hrefs against the capture\'s (as multisets), and\n     the mobile menu against `<src>/open/mobile-menu.png` (at most 2.0 %).\n2. **Pixels at 1x**: `$WEB header check pixels <page> <src> <out> --map <map.json>` at desktop,\n   `--tablet` and `--mobile`. The map gives the capture\'s region ids -> selectors on your page\n   (`{ "header": "header .nav-wrapper" }`). Clean: every region with height delta 0 and\n   mismatch 0 %. The `FULL` line is the whole page, so you can see a header that changes the page\n   outside its own region. `$WEB header check cls <page> 1440,1200,992` gives the layout shift of\n   a load at each width (clean under 0.05).\n3. **Text properties and positions**, every text of the header matched with the source\'s:\n   - closed: `$WEB header check text <source-url> <page> --sizes 1440,1200,1100,992,900,820,700,650,480,390x844 --hide-css <src>/overlays.json --source-cache <src>/text-cache`\n   - each menu open: `\u2026 --sizes 1440,1200,<bp>,1440x700,<bp>x800 --open "<label>" --trigger <hover|click>`\n     (`<bp>`: `open.json` `header.breakpoint.shownAt`, the widths under it left out; labels and\n     triggers in `open.json`; the short windows show a panel that does not fit)\n   - the mobile menu open: `\u2026 --sizes 390x844,460x1000,600x1200,820x1100 --mobile-menu`\n   - scrolling: `\u2026 --sizes 1440,820,390x844 --scroll 600,500,0` (wheel down to 600, back up to\n     500, then to the top; each step compared)\n4. **2x pixels**: the same text commands with `--scale 2 --shots <out>/x2/<state>`: `0\n   differing pixels` at every size. Open the two shots of a size that is not clean.\n\n`--source-cache <dir>` keeps the source\'s states between runs (loaded once, shared by every text\ncommand). `--baseline <url>` points at your page before the header work: a difference it already\nhad, with the same value on your page, is reported as inherited and not counted. What lies in\nthe header or in an open panel or mobile menu (texts, icons, 2x pixels, on either page) and where\nthe page below the header starts are never inherited: a header defect your page kept from the\npage before the work is still a defect. A baseline whose old header has no\nsuch menu (`--open`) or no burger (`--mobile-menu`) is used as loaded.\n\nOn a page whose body is not the source\'s, the checks judge the header itself. Two things around\nit are not compared 1:1: a header the source\'s content shows through (its region\'s pixels\ninclude what lies behind it), and what a header paints over the body (its shadow, a backdrop\nwhile a menu is open: counted below it, with the body).\n\n## Reading the lines\n\n`text` (one line per difference, then a summary per size):\n\n```\n1000x900 "Blog": fontWeight 600 -> 700; letterSpacing normal -> 0.2px\n1000x900 "icon "Close"": x 907 -> 927\n1000x900 "(the page below the header)": y 96 -> 104\n1000x900 only on the source: "About"\n1000x900 only on the page: "Different label"\n1000x900 text styles: 1 differ of 4 matched texts, 2 on one side only\nnot clean at: 1000x900,700x900 (re-run those with --sizes while fixing)\n```\n\n- `"<text>": <property> <source> -> <page>`: a computed property (camelCase) or a box (`x`, `y`, `w`, `h`)\n  of that text on the source and on your page. Fix the property, not the box: a box follows from\n  the font, the padding, the layout.\n- `icon "<name>"`: icons (an svg or img of its own, or an icon-only control drawn by CSS) are\n  paired by position. Draw each icon as the source does: where the source has an inline SVG, so\n  does the build (an `<img>` or a CSS mask snaps to whole pixels and shows at 2x).\n- `(the page below the header)`: where the page\'s main content starts. The header\'s height or\n  position differs.\n- `only on the source` / `only on the page`: a label missing or changed.\n- `; N differing pixels at 2x (\u2026 in the header and open panel, \u2026 below them)`: with `--shots`;\n  with `--scroll`, `(\u2026 in the header, \u2026 below it)`: down to the lower of the source\'s and your\n  header\'s bottom at that step (what they paint, not a shadow), and the page below it with the\n  header\'s shadow over it.\n- `not clean at:` the sizes to re-run with `--sizes` while fixing.\n\n`menus`: `OK   <label> (<trigger>): 3 of 3 links`, or `FAIL` with the reason (did not open, could\nnot be closed, too few links). `panels`: `OK   <label> (<trigger>): panel 0.4 %, 12 of 12 hrefs`,\nthen `mobile menu: 0.8 %`. In both, `NOT CHECKED <label>: <reason>`: a menu the capture found\nand could not open (its line `incomplete:`), not clean; capture again with the header named\n(`--header`), whose selectors menu discovery also searches. `pixels`: one row per region,\n`header  src@0+96  eds@0+96  dH=0  mismatch=0%  side=<file>` (`src`: the source, `eds`: your page;\n`side.png` shows both), then `MISSING` (a map selector that matched nothing on your page) and\n`NOT SHOWN` (a region the source does not show at this width: not compared).\n\n## Exit codes\n\n- **0**: the check ran, `clean` true or false.\n- **1**: `CHECK_FAILED`, the check did not run to its end (a page that did not load, a size that\n  could not be compared, a browser call that failed). Nothing was checked, so it is not a result:\n  fix the cause (is the dev server up?) and run the same command again. For `text`, the message\n  names the sizes that failed and holds the other sizes\' lines; `did not open on <host>`: with\n  `--open` or `--mobile-menu`, that page showed no new link once triggered (the baseline alone\n  may stay closed).\n- **2**: a usage error (a bad option, a map key that names no region of the capture), or\n  `playwright-cli` or the image libraries missing, before any browser starts.\n\n## Browsers\n\nEach command opens its own browsers under generated session names and closes them when it ends,\nhowever it ends. Several commands can run at once. `text --parallel <n>` (default 4) loads that\nmany sizes at a time.\n' };
+var FILES2 = { "extending.md": "# Extending `web` with your own commands\n\n`@adobe/web-cli` is also a library (`dist/lib.mjs`, the package's `exports`). A program\ncan build the stock `web` program, add its own subcommands and ship the result as its own\nbinary. The added commands get the same contract as the built-in ones: one JSON document on\nstdout, `--format text`, `--session` and one-shot browsers, `--output` artifacts, the\nblocked-page gate, JSON errors and exit codes 0/1/2/3.\n\n## Minimal program\n\n```js\n#!/usr/bin/env node\nimport { runCli, runPageCommand, CliError } from '@adobe/web-cli';\n\nconst extend = (program, deps) =>\n  program\n    .command('acme')\n    .command('audit [url]')\n    .option('--strict')\n    .action((url, _opts, command) =>\n      runPageCommand(command, deps, {\n        url,\n        fn: (driver, session, opts) => {\n          const n = driver.run(session, { code: 'document.querySelectorAll(\"h1\").length' });\n          if (opts.strict && n !== 1) throw new CliError('EMPTY_RESULT', `${n} h1 elements`);\n          return { h1: n };\n        },\n      }),\n    );\n\nprocess.exitCode = await runCli(process.argv, { extend });\n```\n\n`acme-web acme audit https://example.com` prints `{ \"h1\": 1, \"url\", \"session\", \"durationMs\" }`;\n`acme-web page tree \u2026` and every other stock command keep working. The skills of the web\nplugin run through the extended binary with `WEB=acme-web`.\n\n## Surface\n\nEverything exported by the library; nothing else is public.\n\n- `runCli(argv, deps)`: build the program, parse, print errors as JSON, return the exit\n  code. `deps.extend(program, deps)` runs after the stock groups are registered.\n- `createProgram(deps)`: the commander root alone, when you need to own parsing; thrown\n  errors are then yours to print (`fail`).\n- `runPageCommand(command, deps, { url, fn, records })`: run `fn(driver, session, opts)` on a page.\n  Resolves `<url>` or `--session`, applies the recipe (`--recipe`, `$WEB_RECIPE` or\n  `./recipe.json`) and `--headed`, rejects blocked\n  pages, adds `url`, `session` and `durationMs`, prints. `records` names the recipe type a\n  `--save-recipe` command replaces; recording launches without that type.\n- `createContext(command, deps)`: `{ opts, driver, print, recipe, env }` (`recipe` is the path to\n  launch browsers with, if any; `env` is `deps.env` or `process.env`) for commands that are not\n  \"one page\"; `opts` merges the global and the command options.\n- `withSession(driver, { session, url, headed, recipePath, env }, fn)`: the session rule on\n  its own: opens an ephemeral or named browser, runs `fn(name)`, closes only ephemeral ones.\n  Pass `env: ctx.env` so the recipe's `env:NAME` references read the command's environment.\n- `artifactDir(outputDir, session, command)` and `artifactPath(\u2026, name)`: where to write\n  files, `<output>/<session>-<command>/<name>`, absolute.\n- `emit(result, { format, text, stdout })`: print one result document (JSON, or `text`\n  with `--format text`).\n- `fail(err, { stdout, stderr })`: print an error document, return its exit code.\n- `CliError(code, message, { hint })` and `EXIT`: codes map to exits, `USAGE NO_SESSION\n  SESSION_EXISTS PLAYWRIGHT_CLI UNSUPPORTED` \u2192 2, `BLOCKED` \u2192 3, others \u2192 1.\n- `createDriver({ outputDir, timeoutMs, navigationTimeoutMs })`: the playwright-cli driver\n  (`open`, `attach`, `goto`, `close`, `closeAll`, `list`, `evaluate`, `run`, `inject`, `cdp`,\n  `screenshot`, `pageHealth`, `requests`, `responseHeaders`). Only this module spawns\n  `playwright-cli`.\n\n`deps` also accepts `env`, `stdout`, `stderr` and `driverFactory` (a fake driver for tests;\nsee `src/lib.test.mjs` in the package for a complete example).\n\n## Rules for added commands\n\n- Print exactly one document on stdout through `emit` or `runPageCommand`; logs go to stderr.\n- Throw `CliError` with a code from the list above and a `hint` that names the next command.\n- Never spawn `playwright-cli` yourself; go through the driver so `WEB_DEBUG=1` and\n  session rules keep working.\n- Never invent a fixed session name; reuse the name `web browser open` returns.\n- Write files under `artifactDir` with stable names so callers can find them without parsing.\n", "header.md": '# Rebuilding a header 1:1: `web header`\n\n`web header capture` records a site\'s header as data: its region, every menu open, the\nbreakpoint, the scroll behaviour and the mobile menu. `web header check <check>` compares a page\nyou build with that capture and with the live source. Use the checks as a ladder: each step\nclean before the next, and the header is done when every step is clean.\n\nThe goal is a header nobody can tell from the source when swiping between the two: at any width,\nclosed, with every menu open, with the mobile menu open, and while scrolling down and back up.\n\n## Install\n\nThe checks need `sharp`, `pngjs` and `pixelmatch`, which are optional dependencies of the CLI.\nWithout them a `header` command exits 2 (`UNSUPPORTED`) before any browser starts. Install the\nCLI as a package, pinned to a commit of adobe/skills, with pnpm\'s git subfolder install:\n\n```bash\nDIR="$HOME/.cache/adobe-skills/web-cli-<sha7>"\n[ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&\n  npx -y pnpm@<version> add --dir "$DIR" "github:adobe/skills#<sha>&path:/plugins/web/cli"; }\nWEB="$DIR/node_modules/.bin/web"\n```\n\nIn a clone of adobe/skills, `npm install` in `plugins/web/cli` does the same for\n`node plugins/web/cli/dist/web.mjs`. The checks also need `playwright-cli` on PATH, like every\nbrowser command.\n\n## How the pages are held still\n\nBoth pages are loaded the same way in every check, so a difference is the build\'s and not the\nload\'s:\n\n- A/B-testing services are blocked, and `Math.random` is seeded.\n- Every `setInterval` of 2 s or more is stopped, so a rotating text shows its first item.\n- No splash dialog is opened.\n- Consent and other overlays are hidden by the capture\'s rules (`<dir>/overlays.json`).\n- Lazy content is loaded and animations are finished before anything is measured.\n\nChecked against itself, a source scores 0 on every check. A reading on the source\'s own body\n(a carousel, its own load shift) is the source\'s, not the build\'s.\n\n## The loop\n\n1. Capture the source once: `$WEB header capture <source-url> <src>`. It writes\n   `<src>/page.json` (the header\'s regions and their boxes at 1440x900, 820x1180 and 390x844),\n   `<src>/overlays.json`, full-page shots, `<src>/regions/` (crops and computed-style dumps) and\n   `<src>/open/` (`open.json`, a shot and a style dump per open menu, `mobile-menu.png`).\n2. Build the header on your page, served locally, from the source\'s computed styles and the\n   capture\'s data: copy how the source does it (a transform, content sizing, a flex column),\n   not the numbers of one shot.\n3. Run the ladder below on your page. Fix, re-run only what was not clean, and run every command\n   in full once at the end.\n\n## The ladder\n\nEach command prints one JSON document with `clean`; `--format text` prints the check\'s lines.\nRead the lines, not the exit status: 0 means the check ran, clean or not.\n\n1. **Structure and links**\n   - `$WEB header check menus <page> <src>/open/open.json`: every menu of the capture opens on\n     the page as the source opens it (hover or click, on its visible label), reveals at least\n     80 % of the source\'s links, and closes as the source closes it.\n   - `$WEB header check panels <page> <src> <out>/open`: the pixel mismatch inside each source\n     panel\'s box (at most 1.5 %), the revealed hrefs against the capture\'s (as multisets), and\n     the mobile menu against `<src>/open/mobile-menu.png` (at most 2.0 %).\n2. **Pixels at 1x**: `$WEB header check pixels <page> <src> <out> --map <map.json>` at desktop,\n   `--tablet` and `--mobile`. The map gives the capture\'s region ids -> selectors on your page\n   (`{ "header": "header .nav-wrapper" }`). Clean: every region with height delta 0 and\n   mismatch 0 %. The `FULL` line is the whole page, so you can see a header that changes the page\n   outside its own region. `$WEB header check cls <page> 1440,1200,992` gives the layout shift of\n   a load at each width (clean under 0.05).\n3. **Text properties and positions**, every text of the header matched with the source\'s:\n   - closed: `$WEB header check text <source-url> <page> --sizes 1440,1200,1100,992,900,820,700,650,480,390x844 --hide-css <src>/overlays.json --source-cache <src>/text-cache`\n   - each menu open: `\u2026 --sizes 1440,1200,<bp>,1440x700,<bp>x800 --open "<label>" --trigger <hover|click>`\n     (`<bp>`: `open.json` `header.breakpoint.shownAt`, the widths under it left out; labels and\n     triggers in `open.json`; the short windows show a panel that does not fit)\n   - the mobile menu open: `\u2026 --sizes 390x844,460x1000,600x1200,820x1100 --mobile-menu`\n   - scrolling: `\u2026 --sizes 1440,820,390x844 --scroll 600,500,0` (wheel down to 600, back up to\n     500, then to the top; each step compared)\n4. **2x pixels**: the same text commands with `--scale 2 --shots <out>/x2/<state>`: `0\n   differing pixels` at every size. Open the two shots of a size that is not clean.\n\n`--source-cache <dir>` keeps the source\'s states between runs (loaded once, shared by every text\ncommand). `--baseline <url>` points at your page before the header work: a difference it already\nhad, with the same value on your page, is reported as inherited and not counted. What lies in\nthe header or in an open panel or mobile menu (texts, icons, 2x pixels, on either page) and where\nthe page below the header starts are never inherited: a header defect your page kept from the\npage before the work is still a defect. A baseline whose old header has no\nsuch menu (`--open`) or no burger (`--mobile-menu`) is used as loaded.\n\nOn a page whose body is not the source\'s, the checks judge the header itself. Two things around\nit are not compared 1:1: a header the source\'s content shows through (its region\'s pixels\ninclude what lies behind it), and what a header paints over the body (its shadow, a backdrop\nwhile a menu is open: counted below it, with the body).\n\n## Reading the lines\n\n`text` (one line per difference, then a summary per size):\n\n```\n1000x900 "Blog": fontWeight 600 -> 700; letterSpacing normal -> 0.2px\n1000x900 "icon "Close"": x 907 -> 927\n1000x900 "(the page below the header)": y 96 -> 104\n1000x900 only on the source: "About"\n1000x900 only on the page: "Different label"\n1000x900 text styles: 1 differ of 4 matched texts, 2 on one side only\nnot clean at: 1000x900,700x900 (re-run those with --sizes while fixing)\n```\n\n- `"<text>": <property> <source> -> <page>`: a computed property (camelCase) or a box (`x`, `y`, `w`, `h`)\n  of that text on the source and on your page. Fix the property, not the box: a box follows from\n  the font, the padding, the layout.\n- `icon "<name>"`: icons (an svg or img of its own, or an icon-only control drawn by CSS) are\n  paired by position. Draw each icon as the source does: where the source has an inline SVG, so\n  does the build (an `<img>` or a CSS mask snaps to whole pixels and shows at 2x).\n- `(the page below the header)`: where the page\'s main content starts. The header\'s height or\n  position differs.\n- `only on the source` / `only on the page`: a label missing or changed.\n- `; N differing pixels at 2x (\u2026 in the header and open panel, \u2026 below them)`: with `--shots`;\n  with `--scroll`, `(\u2026 in the header, \u2026 below it)`: down to the lower of the source\'s and your\n  header\'s bottom at that step (what they paint, not a shadow), and the page below it with the\n  header\'s shadow over it.\n- `not clean at:` the sizes to re-run with `--sizes` while fixing.\n\n`menus`: `OK   <label> (<trigger>): 3 of 3 links`, or `FAIL` with the reason (did not open, could\nnot be closed, too few links). `panels`: `OK   <label> (<trigger>): panel 0.4 %, 12 of 12 hrefs`,\nthen `mobile menu: 0.8 %`. In both, `NOT CHECKED <label>: <reason>`: a menu the capture found\nand could not open (its line `incomplete:`), not clean; capture again with the header named\n(`--header`), whose selectors menu discovery also searches. `pixels`: one row per region,\n`header  src@0+96  eds@0+96  dH=0  mismatch=0%  side=<file>` (`src`: the source, `eds`: your page;\n`side.png` shows both), then `MISSING` (a map selector that matched nothing on your page) and\n`NOT SHOWN` (a region the source does not show at this width: not compared).\n\n## Exit codes\n\n- **0**: the check ran, `clean` true or false.\n- **1**: `CHECK_FAILED`, the check did not run to its end (a page that did not load, a size that\n  could not be compared, a browser call that failed). Nothing was checked, so it is not a result:\n  fix the cause (is the dev server up?) and run the same command again. For `text`, the message\n  names the sizes that failed and holds the other sizes\' lines; `did not open on <host>`: with\n  `--open` or `--mobile-menu`, that page showed no new link once triggered (the baseline alone\n  may stay closed).\n- **2**: a usage error (a bad option, a map key that names no region of the capture), or\n  `playwright-cli` or the image libraries missing, before any browser starts.\n\n## Browsers\n\nEach command opens its own browsers under generated session names and closes them when it ends,\nhowever it ends. Several commands can run at once. `text --parallel <n>` (default 4) loads that\nmany sizes at a time.\n', "remote-browser.md": '# Remote browsers: fill the cache past bot protection\n\nWhen a site blocks the local browser (challenge pages, Access Denied after a few pages),\nlet a remote browser load it instead: an unblocking service such as Bright Data\'s Browser\nAPI, or any Chrome that exposes a DevTools (CDP) endpoint. A recipe points every `web`\ncommand that launches a browser at that endpoint. The cache commands then record what the\nremote browser loads into the usual HARs, and downstream agents replay them offline at the\nreal URLs, never reaching the site.\n\n## Recipe\n\n```json\n{\n  "probe": [\n    {\n      "config": {\n        "cdpEndpoint": "env:BD_WSS_ENDPOINT",\n        "cdpTimeout": 120000\n      }\n    }\n  ]\n}\n```\n\n- `cdpEndpoint`: the remote browser, `wss://\u2026` or `http://host:port`. `env:NAME` reads it\n  from the environment, so the file holds no credentials and can be committed. `cdpHeaders`\n  values accept `env:NAME` too (`{ "Authorization": "env:REMOTE_AUTH" }`).\n- `cdpTimeout`: how long connecting may take (ms).\n- `isolated` defaults to `true` with a `cdpEndpoint`: `web` opens its own browser context\n  on the remote browser, which the cache needs (HAR recording, service worker blocking).\n  `false` reuses the remote browser\'s default context; `cache record` then fails with\n  `HAR not written`.\n- Do not add `stealth` or overlay rules meant for a local browser: an unblocking service\n  manages the fingerprint itself.\n\nPass it with `--recipe <file>` or `WEB_RECIPE=<file>`. A file named `recipe.json` in the\nworking directory is loaded by every command; `web probe --save-recipe` rewrites its\n`probe` entries, so keep the remote recipe in its own file.\n\n## Timeouts\n\nA remote unblocking browser can take up to two minutes on a first navigation. Every\nplaywright-cli call is bounded by 60 s by default, and so is navigation. Raise both:\n\n```bash\nexport WEB_TIMEOUT=120000   # ms per browser step: navigation timeout, call timeout +5 s\n```\n\nIt also bounds how long `cache record` waits for the page\'s load event (30 s otherwise).\n\nA navigation refused for rate limiting (`bucket_rate_limit`) is retried after 5, 15 and\n30 s. It happens when several remote sessions start at once: fill one site at a time.\n\n## Fill\n\nThe session cache stores everything the remote browser loads and serves repeat requests\nfrom disk, so a second pass costs no remote traffic. Misses are still fetched by the remote\nbrowser, never from this machine.\n\n```bash\nexport WEB_RECIPE=$PWD/remote-recipe.json WEB_TIMEOUT=120000\nS=$(web browser open https://example.com/ --cache .site-cache | jq -r .session)\nweb page tree https://example.com/about --session "$S" >/dev/null   # navigate more pages\nweb browser run "async page => { for (let i = 0; i < 10; i++) { await page.mouse.wheel(0, 800); await page.waitForTimeout(400) } }" --session "$S"\nweb browser close --session "$S"   # \u2192 cache: { hits, misses, stored, errors }\n```\n\n`web cache record <url> --cache .site-cache` works with the same recipe (one page per call,\neverything fetched again each time).\n\n## Replay downstream\n\nNo network, no remote browser: a local browser reads the cache through the proxy, and a miss\nanswers 504. Replay must not use the remote recipe: `--proxy` cannot route a browser that is\nalready running, so `browser open --proxy` refuses a recipe with a `cdpEndpoint` (exit 2).\n`WEB_RECIPE=` (empty) opens without any recipe, `./recipe.json` included; `--recipe <file>`\npicks a local one.\n\n```bash\nweb cache proxy --cache .site-cache --offline --port 0 > proxy.json &\nP=$(jq -r .url proxy.json)     # wait until the file is written\nS=$(WEB_RECIPE= web browser open https://example.com/ --proxy "$P" | jq -r .session)\ncurl -s "$P/__status"          # hits, misses, missed: URLs to fill again\n```\n\nWhat usually stays missed is harmless: analytics beacons whose URLs carry timestamps, bot\ndetection sensors, CAPTCHA widgets.\n\n## Bright Data Browser API\n\n- Endpoint: `wss://<zone user>:<password>@brd.superproxy.io:9222`, from the zone\'s\n  Overview tab. Pin a country by adding `-country-<cc>` to the user\n  (`brd-customer-\u2026-zone-\u2026-country-se`).\n- One session navigates one domain; open a new session for another site. Assets from other\n  domains (CDNs) load normally.\n- Sessions end after 5 minutes idle and 60 minutes in total.\n- Billed by traffic: the session cache\'s hits are free, `cache record` pays every time.\n- Password entry is disabled unless the account passed Bright Data\'s KYC.\n\n## Credentials\n\n- Keep the endpoint in the environment (`env:NAME`), not in the recipe or on the command\n  line: a `wss://user:pass@\u2026` argument is visible to `ps`.\n- `web` redacts URL credentials (`scheme://user:pass@`), `Authorization` header values and\n  `Basic`/`Bearer` tokens from what it prints: error documents, argument errors, warnings\n  and the `WEB_DEBUG=1` echo. Other secrets in a message (a token in a query string) and\n  logs written by other tools, such as playwright-cli\'s own daemon logs, are not covered.\n' };
 
 // src/docs/index.mjs
 var listDocs = () => Object.keys(FILES2).map((f) => f.replace(/\.md$/, ""));
@@ -7982,9 +8085,10 @@ var loadDoc = (topic) => FILES2[`${topic}.md`] ?? null;
 var HELP11 = `
 Prints Markdown, like --help does; --format has no effect here.
 Topics:
-  web doc              list the topics
-  web doc extending    add your own commands on top of web (library surface, example, rules)
-  web doc header       rebuild a site's header 1:1: install, the loop, the ladder, reading the lines
+  web doc                 list the topics
+  web doc extending       add your own commands on top of web (library surface, example, rules)
+  web doc header          rebuild a site's header 1:1: install, the loop, the ladder, reading the lines
+  web doc remote-browser  fill the cache through a remote browser (Bright Data, any CDP endpoint)
 `;
 function registerDoc(program2, deps) {
   const out = deps.stdout ?? process.stdout;
@@ -10419,7 +10523,12 @@ Artifacts:
 Requires playwright-cli >= 0.1.20 on PATH (npm install -g @playwright/cli@latest).
 
 Long-form docs ship in the binary: web doc (topics), web doc extending (add your own
-commands on top of web through the library export of @adobe/web-cli).
+commands on top of web through the library export of @adobe/web-cli), web doc remote-browser
+(fill the cache through a remote browser past bot protection).
+
+Environment:
+  WEB_TIMEOUT=<ms> bounds each browser step (navigation and playwright-cli call; default
+  60000). Raise it for remote browsers that are slow to load a page.
 
 Typical flows:
   one-shot:  web page tree <url>
@@ -10445,7 +10554,8 @@ function createProgram(deps = {}) {
     env.WEB_RECIPE
   ).configureOutput({
     writeOut: (s) => stdout.write(s),
-    writeErr: (s) => stderr.write(s)
+    // Commander echoes the arguments it rejects: redact them like every other diagnostic.
+    writeErr: (s) => stderr.write(redactCredentials(s))
   }).addHelpText("after", ROOT_HELP).showHelpAfterError().showSuggestionAfterError().exitOverride();
   registerBrowser(program2, deps);
   registerProbe(program2, deps);
