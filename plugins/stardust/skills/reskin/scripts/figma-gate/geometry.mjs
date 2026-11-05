@@ -2,7 +2,9 @@
 // measured on the page (measure-live's measureInPage, one page load per width) and compared with the same
 // measure taken from the Figma box tree, or with a token. All values are relative to the section on the
 // page and to the module root in Figma. measureInPage rounds to whole px, tolerancePx (default 1) absorbs
-// Figma's half pixels. expected, observed and judge are pure.
+// Figma's half pixels. A section in a rail page's grid column (mapping "rail": a source sidebar beside the
+// content) is narrower than the module's Figma frame by design: its root width entry is UNASSERTED with the
+// reason, its inner entries are measured as usual. expected, observed, judge and inColumn are pure.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findBox } from './boxes.mjs';
@@ -79,6 +81,26 @@ export function judge(entry, want, got, why) {
   return { status: Math.abs(got - want) <= tol + 1e-9 ? 'PASS' : 'FAIL', detail };
 }
 
+// A root width entry of a section that sits in a grid column narrower than main (column: { w, of } measured in
+// the page, or null) → the UNASSERTED override, else null. The rail placement is gate (a′) S4's to judge.
+export function inColumn(entry, base, want, column) {
+  if (!column || entry.measure !== 'width' || !base.node || base.node !== base.root) return null;
+  return { status: 'UNASSERTED', detail: `rail column: the section is ${column.w}px of ${column.of}px beside a rail (mapping "rail", gate (a′) S4), not the module root's ${fmt(want)}` };
+}
+
+// In the page: per section selector, { w, of } when its parent is a grid of two or more columns and the
+// section does not span it, else null.
+const columnsInPage = (sels) => Object.fromEntries(sels.map((sel) => {
+  const el = document.querySelector(sel);
+  const parent = el?.parentElement;
+  if (!parent) return [sel, null];
+  const cs = getComputedStyle(parent);
+  const tracks = /grid/.test(cs.display) ? cs.gridTemplateColumns.split(/\s+/).filter(Boolean).length : 1;
+  const w = el.getBoundingClientRect().width;
+  const of = parent.getBoundingClientRect().width;
+  return [sel, tracks > 1 && w < of - 1 ? { w: Math.round(w), of: Math.round(of) } : null];
+}));
+
 // checks is validateChecks(...).sections; join is runJoin's result (its sections hold the selectors). On a preview an
 // entry is measured by its previewSelector (selectorFor). Each result carries root, the checks root it was measured
 // against. Writes <out>/geometry.json.
@@ -114,9 +136,11 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
         const page = await target.open(browser, width);
         try {
           const { items } = await page.evaluate(measureInPage, { sels, all: true });
-          for (const sectionSel of new Set(at.map((p) => p.sectionSel))) {
+          const sectionSels = [...new Set(at.map((p) => p.sectionSel))];
+          const columns = await page.evaluate(columnsInPage, sectionSels.filter(Boolean));
+          for (const sectionSel of sectionSels) {
             const own = at.filter((p) => p.sectionSel === sectionSel);
-            observed(own.map((p) => ({ ...p.entry, selector: p.selector })), items, sectionSel).forEach((o, i) => measured.set(own[i], o));
+            observed(own.map((p) => ({ ...p.entry, selector: p.selector })), items, sectionSel).forEach((o, i) => measured.set(own[i], { ...o, column: columns[sectionSel] ?? null }));
           }
         } finally { await page.context().close(); }
       }
@@ -126,9 +150,9 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
   const results = planned.map((p) => {
     if (p.error) return { ...p.base, want: null, got: null, status: 'FAIL', detail: p.error };
     const o = measured.get(p);
-    return { ...p.base, want: p.want, got: o.value, ...judge(p.entry, p.want, o.value, o.why) };
+    return { ...p.base, want: p.want, got: o.value, ...(inColumn(p.entry, p.base, p.want, o.column) ?? judge(p.entry, p.want, o.value, o.why)) };
   });
-  const result = { pass: results.every((r) => r.status === 'PASS'), results };
+  const result = { pass: results.every((r) => r.status === 'PASS' || r.status === 'UNASSERTED'), results };
   mkdirSync(out, { recursive: true });
   writeFileSync(join(out, 'geometry.json'), `${JSON.stringify({ version: 1, url: target.url, regime: target.regime, checksStamp: stampsOf(checks), ...result }, null, 2)}\n`);
   return result;

@@ -73,18 +73,19 @@ Copies: `stardust/scripts/<skill>/`; see `--help`. `lib` = no CLI; `<d>` = direc
 - `replica/sibling-variance.mjs` — sibling template deltas: `<archetype> <sibling>… --probe name=<sel>`
 - `replica/stitch-shot.mjs` — stitched capture: `<u> <out.png> [--width] [--vh] [--settle] [--consent] [--dismiss] [--hide] [--no-dismiss] [--freeze-baseline] [--check-baseline]`
 - `reskin/canon-from-reskin.mjs` — reskin → migrate bridge: `<slug> [--force] [--visual-threshold 10]`
-- `reskin/capture-content.mjs` — capture content model: `--url <u> --out <d> [--scope 'a,b']`
+- `reskin/capture-content.mjs` — content model: `--url <u> --out <d> [--scope 'a,b']`
 - `reskin/deployed-gate.mjs` — preview gates: `preview --org --repo --branch --path | chrome | all` `--page <s>`; 124 = no verdict
-- `reskin/dom-equality.mjs` — content gate, source vs rendered: `--source <u|f> --rendered <u|f> --report <p>`
+- `reskin/dom-equality.mjs` — content gate: `--source <u|f> --rendered <u|f> --report <p>`
 - `reskin/donor-probe.mjs` — design-adoption gate: `--tokens <donor.json> --rendered <u|f> [--spec <json>] [--viewport <w>] [--no-sanity] [--json <p>]`
 - `reskin/figma-donor.mjs` — Figma donor/content: `capture <u> [--list] [--frames a,b] [--refresh] | curate | stamp [--confidential] | init | pages | content | blocklist | ack`; 3 = blocked
 - `reskin/figma-gate.mjs` — Figma checks: `boxes [--module Mn] | all --page <s> --url <u|f>`; 124 = no verdict
 - `reskin/figma-text-gate.mjs` — Figma text: `--model <f> --rendered <u|f> [--nodes <f>]`
+- `reskin/placement.mjs` — rail placement (lib)
 - `reskin/reskin-ledger.mjs` — ledger from gate evidence: `record <slug> [--stage] | eyeball | residual [--by] | show`
-- `reskin/reskin-preflight.mjs` — migrate ready? 0 = yes: `[--dir] [--root] [--json]`
+- `reskin/reskin-preflight.mjs` — ready? 0 = yes: `[--dir] [--root] [--json]`
 - `reskin/slot-coverage.mjs` — slot coverage: `--model <f> --rendered <u|f> [--deltas]`
-- `reskin/source-coverage.mjs` — source coverage: `--model <f> --target <u|f> [--declared <f>]`
-- `reskin/source-normalize.mjs` — default normalize ledger: no flags
+- `reskin/source-coverage.mjs` — gate a′: `--model <f> --target <u|f> [--declared <f>]`
+- `reskin/source-normalize.mjs` — default normalize ledger
 - `reskin/stream-render.mjs` — renderer: `<slug> [--mapping] [--out] [--localize-images] [--register]`; `--check [<slug>…]` checks mapping; `--deploy-map` emits `--map`
 - `reskin/vocabulary-check.mjs` — deploy 2c vocabulary: `[--modules <f>] [--project .] [--library <d>] [--json <p>]`
 - `rollout/assemble.mjs` — sitemap/robots/manifest; verify sitemap: `[--canon <d>] [--out <d>] [--verify-origin <o>]`

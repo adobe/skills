@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyRecord, applyStep10, fragmentVerdict, gateVerdicts, mobileStatic, overall, ownerAccepted, step10Verdict, WAIVED } from '../reskin-ledger.mjs';
+import { applyRecord, applyStep10, fragmentVerdict, gateVerdicts, mobileStatic, overall, ownerAccepted, step10Verdict, WAIVED, reportVerdict } from '../reskin-ledger.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'reskin-ledger.mjs');
 let failed = 0;
@@ -88,7 +88,7 @@ check('chrome: deployed.chrome is never accepted; a header or footer residual co
   assert.equal(ownerAccepted({ gate: 'footer', verdict: 'accepted', by: 'site owner' }), true);
   assert.equal(ownerAccepted({ gate: 'footer', verdict: 'needs-owner', by: 'site owner' }), false);
   const base = { state, slug: 'login', reports: R('PASS'), mobile: mob(), prototypeSha: 'x', at: 't' };
-  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: { verdict: 'PASS', hard: true }, inherited: 'PASS', chrome: { verdict: 'FAIL 2/9', hard: true } };
+  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: { verdict: 'PASS', hard: true }, inherited: 'PASS', chrome: { verdict: 'FAIL 2/9', hard: true }, coverage: 'PASS' };
   const owned = { pages: { login: { residuals: [{ gate: 'deployed.chrome', verdict: 'accepted', by: 'site owner' }] } } };
   assert.equal(applyRecord(owned, { ...base, m2: { deployed: dep } }).pages.login.status, 'failing', 'a chrome FAIL stays failing');
   assert.equal(applyRecord({}, { ...base, m2: { deployed: { ...dep, chrome: { verdict: 'PASS', hard: true } } } }).pages.login.status, 'gated');
@@ -120,6 +120,23 @@ check('--help exits 0; usage errors exit 2', () => {
   const r = run(['--help'], mkdtempSync(join(tmpdir(), 'rl-'))); assert.equal(r.status, 0); assert.match(r.stdout, /usage: node reskin-ledger\.mjs/);
   assert.equal(run([]).status, 2); assert.equal(run(['bogus']).status, 2); assert.equal(run(['record', 'x', '--stage']).status, 2);
 });
+check('reportVerdict: an .md report by its Overall line; source-coverage .json by its verdict (ADVISORY passes)', () => {
+  assert.equal(reportVerdict('x/dom-equality.md', '**Overall: FAIL**'), 'FAIL');
+  assert.equal(reportVerdict('x/source-coverage.json', JSON.stringify({ verdict: 'PASS' })), 'PASS');
+  assert.equal(reportVerdict('x/source-coverage.json', JSON.stringify({ verdict: 'FAIL 1/4' })), 'FAIL');
+  assert.equal(reportVerdict('x/source-coverage.json', JSON.stringify({ verdict: 'ADVISORY 1/4 (blocking false)' })), 'PASS');
+  assert.equal(reportVerdict('x/source-coverage.json', 'not json'), 'UNKNOWN');
+});
+check('CLI: record refuses a page whose (a′) source-coverage report is missing (a misplaced rail cannot record as gated)', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rl-'));
+  const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
+  w('stardust/state.json', JSON.stringify(state)); w('stardust/prototypes/login-proposed.html', MOBILE_OK);
+  for (const f of ['dom-equality', 'slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  const r = run(['record', 'login'], root);
+  assert.equal(r.status, 1); assert.match(r.stderr, /source-coverage\.json/);
+  w('stardust/reskin/reports/login-source-coverage.json', JSON.stringify({ verdict: 'FAIL 1/2', rows: [{ check: 'S4', verdict: 'FAIL' }] }));
+  const r2 = run(['record', 'login'], root); assert.equal(r2.status, 0, r2.stderr); assert.match(r2.stdout, /FAIL\s+reskin-source-coverage/);
+});
 check('CLI: refuses without reports, then record → eyeball → residual → show', () => {
   const root = mkdtempSync(join(tmpdir(), 'rl-'));
   const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
@@ -127,6 +144,7 @@ check('CLI: refuses without reports, then record → eyeball → residual → sh
   const r0 = run(['record', 'login'], root); assert.equal(r0.status, 1); assert.match(r0.stderr, /missing gate report/);
   assert.equal(run(['record', 'nope'], root).status, 1);
   for (const f of ['dom-equality', 'slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  w('stardust/reskin/gates/login/source-coverage.json', JSON.stringify({ verdict: 'PASS', rows: [] }));
   const r1 = run(['record', 'login'], root); assert.equal(r1.status, 0, r1.stderr); assert.match(r1.stdout, /archetype of form/);
   assert.equal(run(['eyeball', 'login', '--verdict', 'maybe'], root).status, 2);
   assert.equal(run(['eyeball', 'login', '--verdict', 'pass', '--note', 'side by side ok'], root).status, 0);
@@ -148,6 +166,7 @@ check('CLI: a Figma-sourced page records figma-text.json as its content gate', (
   const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
   w('stardust/state.json', JSON.stringify(state)); w('stardust/prototypes/login-proposed.html', MOBILE_OK);
   for (const f of ['slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  w('stardust/reskin/gates/login/source-coverage.json', JSON.stringify({ verdict: 'PASS', rows: [] }));
   assert.match(run(['record', 'login'], root).stderr, /figma-text\.json/);
   w('stardust/reskin/gates/login/figma-text.json', JSON.stringify({ gate: 'figma-text', verdict: 'FAIL' }));
   run(['record', 'login'], root);
@@ -162,6 +181,7 @@ check('CLI: chrome residuals and the eyeball refuse what an agent may not waive'
   const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
   w('stardust/state.json', JSON.stringify(state)); w('stardust/prototypes/login-proposed.html', MOBILE_OK);
   for (const f of ['dom-equality', 'slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  w('stardust/reskin/gates/login/source-coverage.json', JSON.stringify({ verdict: 'PASS', rows: [] }));
   assert.equal(run(['record', 'login'], root).status, 0);
   const res = (...a) => run(['residual', 'login', '--cause', 'c', ...a], root);
   assert.match(res('--gate', 'deployed.chrome', '--verdict', 'accepted', '--by', 'site owner').stderr, /cannot be accepted/);
@@ -185,6 +205,7 @@ check('CLI: figma-gate exact evidence is gates.exact; a font.unserved failure is
   const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
   w('stardust/state.json', JSON.stringify(state)); w('stardust/prototypes/login-proposed.html', MOBILE_OK);
   for (const f of ['dom-equality', 'slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  w('stardust/reskin/gates/login/source-coverage.json', JSON.stringify({ verdict: 'PASS', rows: [] }));
   const exact = (frag) => w('stardust/.work/reskin/gates/login/exact/summary.json', JSON.stringify({ gate: 'exact', ledgerFragment: frag }));
   const file = join(root, 'stardust/reskin/ledger.json');
   const page = () => JSON.parse(readFileSync(file, 'utf8')).pages.login;
@@ -213,6 +234,7 @@ check('CLI: residual --remove and --rename-cause edit a residual through the CLI
   const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
   w('stardust/state.json', JSON.stringify(state)); w('stardust/prototypes/login-proposed.html', MOBILE_OK);
   for (const f of ['dom-equality', 'slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  w('stardust/reskin/gates/login/source-coverage.json', JSON.stringify({ verdict: 'PASS', rows: [] }));
   assert.equal(run(['record', 'login'], root).status, 0);
   const res = (...a) => run(['residual', 'login', ...a], root);
   assert.equal(res('--gate', 'mobile-adapt-runtime', '--cause', 'no Playwrite', '--verdict', 'accepted').status, 0);

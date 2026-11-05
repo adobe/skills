@@ -706,6 +706,7 @@ check('--register CLI: state gets prototypePath + prototyped (written by stardus
   assert.equal(st._provenance.writtenBy, 'stardust:reskin');
   const rep = join(root, 'stardust', 'reskin', 'reports'); mkdirSync(rep, { recursive: true });
   for (const f of ['content-gate', 'slot-coverage', 'donor-probe']) writeFileSync(join(rep, `login-${f}.md`), '**Overall: PASS**\n');
+  writeFileSync(join(rep, 'login-source-coverage.json'), JSON.stringify({ verdict: 'PASS', rows: [] }));
   const led = spawnSync(process.execPath, [LEDGER, 'record', 'login'], { cwd: root, encoding: 'utf8' });
   assert.equal(led.status, 0, led.stderr);
   const L = JSON.parse(readFileSync(join(root, 'stardust', 'reskin', 'ledger.json'), 'utf8'));

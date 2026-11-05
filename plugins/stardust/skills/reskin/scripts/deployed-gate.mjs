@@ -15,7 +15,9 @@
 //            pre-delivery gates are recorded as run by deploy. Blocking.
 //   chrome   A6: the header and footer at 1440 and 360 against the mapped chrome (links, logo, text, menu toggle, no raw
 //            icon words, no header covering main). Blocking and never waivable.
-//   all      The whole leg in one run: content, tokens, parity, sanity, inherited, chrome in this process, then figma-gate
+//   coverage A7: gate (a′), source-coverage.mjs against the preview (residue carried, band tone, S4 placement: a
+//            source rail beside the content, never stacked after it). Blocking. Runs inside `all`.
+//   all      The whole leg in one run: content, tokens, parity, sanity, inherited, chrome, coverage in this process, then figma-gate
 //            all --target preview as a child process when the page has a figma-checks file. One verdict line per
 //            step, and summary.json with the ledger fragment for pages.<slug>.gates.deployed.
 //   stamp    Whether summary.json's codeStamp still matches the project's code: current, or stale (re-run the leg).
@@ -211,11 +213,14 @@ chrome   A6. The header and footer every page inherits, at 1440 and 360. Never w
          row, 3 on a bot challenge, 124 on a row in error. A page that answers HTTP 400 or more is a row in error,
          never a pass.
 all      The whole leg: content, tokens, parity, sanity, inherited and chrome in turn, each as above and in this process,
+         then coverage (A7): source-coverage.mjs --target <preview url> as a child, with the page's content model and
+         <dir>/reskin/coverage/<slug>.json when present, its report coverage.json beside preview.json (FAIL k/n blocks;
+         ADVISORY and a page with no content model, "n/a: …", pass),
          then figma-gate.mjs all --target preview as a child process (the one beside this script) when
          <dir>/reskin/figma-checks/<slug>.json exists, else "ADVISORY figma not run: no figma checks". Reads
          preview.json once: no record, or one with problems, is exit 2, before any step starts; a skipped leg is one "ADVISORY <step> not
          run: skipped" line per step (figma included) and exit 0. First it deletes the previous content.json,
-         tokens.json, parity.json, sanity.json, inherited.json, chrome.json and summary.json, so a stale file never feeds the
+         tokens.json, parity.json, sanity.json, inherited.json, chrome.json, coverage.json and summary.json, so a stale file never feeds the
          ledger fragment. A setup error in a step (its own exit 2) stops the run with exit 2 and no summary.json,
          except a stalled decoration, "stalled decoration: <what>": the gate measured nothing because blocks of the
          preview never decorated, and that is the step's FAIL, "FAIL <step>: stalled decoration: <what>", with the
@@ -227,7 +232,7 @@ all      The whole leg: content, tokens, parity, sanity, inherited and chrome in
          line is a stalled decoration ("<step> CRASH: stalled decoration: <what>", how figma-gate says a preview
          never decorated), which is FAIL figma as it is for the other steps, 1 FAIL, 0 PASS; an exit 0 or 1 that
          left no summary.json of the preview regime, or any other exit, is ERROR (exit 124).
-         Prints one verdict line per step, in the order content, tokens, parity, sanity, inherited, chrome, figma, each
+         Prints one verdict line per step, in the order content, tokens, parity, sanity, inherited, chrome, coverage, figma, each
          matching run-bg's default verdict filter, with the step's findings indented below it:
            PASS <step>            FAIL <step> <k/n, or the failing gates or steps>      ERROR (exit N) <step>: <why>
            FAIL <step>: stalled decoration: <what>      a gate that stalled on the preview's decoration
@@ -238,7 +243,7 @@ all      The whole leg: content, tokens, parity, sanity, inherited and chrome in
              codeStamp, ledgerFragment, invocation }
          ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.deployed:
            { regime: "preview", url, originOverride?, content, tokens, parity, sanity: { verdict, hard: true },
-             inherited, chrome: { verdict, hard: true }, figma, codeStamp, invocation }
+             inherited, chrome: { verdict, hard: true }, coverage, figma, codeStamp, invocation }
          codeStamp is sha256 (hex, first 16 characters) over the sorted relative paths and contents of the project
          root's blocks/, styles/, scripts/ (node_modules and .DS_Store ignored) and head.html, taken as the run starts.
          originOverride is preview.json's, { env: "DEPLOY_VERIFY_ORIGIN", origin }, and only when the measured origin
@@ -491,9 +496,9 @@ async function chromeStep(ctx) {
 
 // ---- all: the whole leg in one run ---------------------------------------------------------------------------------------
 
-const ALL_STEPS = ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome', 'figma'];
+const ALL_STEPS = ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome', 'coverage', 'figma'];
 // What a previous run left: the step records and the summary built from them (each step deletes its own evidence).
-const STALE_RECORDS = ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'chrome.json', 'summary.json'];
+const STALE_RECORDS = ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'chrome.json', 'coverage.json', 'summary.json'];
 const HEADLINE = /^(PASS|FAIL|ERROR \(exit \d+\)) /;
 const ERROR_LINE = /^ERROR \(exit \d+\) /;
 const MAX_WHY = 300;
@@ -529,6 +534,15 @@ const STALLED = /^(?:figma-gate: )?(?:\w+ CRASH: )?(?:donor-probe at \d+px: )?(?
 function stalled(step, message) {
   const what = STALLED.exec(message)?.[1].trim().slice(0, MAX_WHY);
   return what ? outcome('FAIL', 1, `FAIL ${step}: stalled decoration: ${what}`, `FAIL stalled decoration: ${what}`) : null;
+}
+
+// gate (a′) on the preview: PASS (or ADVISORY / n/a, both passing) or FAIL k/n with its failing S-rows.
+function coverageOutcome(result) {
+  const v = String(result.verdict || '');
+  if (/^n\/a/.test(v)) return outcome('PASS', 0, 'PASS coverage (n/a)', v, [`  ${v}`]);
+  if (/^ADVISORY/.test(v)) return outcome('PASS', 0, advisoryLine(`coverage ${v}`), v, result.lines);
+  if (/^FAIL/.test(v)) return outcome('FAIL', 1, `FAIL coverage ${v.replace(/^FAIL\s*/, '')}`, v, result.lines);
+  return outcome('PASS', 0, 'PASS coverage', 'PASS', result.lines);
 }
 
 function contentOutcome(result) {
@@ -626,8 +640,8 @@ async function allStep(ctx) {
 
   let run = {};
   if (!preview.skipped) {
-    const [{ runContent }, { runTokens }, { runParity, parityLines }, { runSanity, sanityLines }, { runInherited, inheritedLines }, { runChrome, chromeLines }] = await Promise.all([
-      helper('content'), helper('eds-spec'), helper('parity'), helper('sanity'), helper('inherited'), helper('chrome'),
+    const [{ runContent }, { runTokens }, { runParity, parityLines }, { runSanity, sanityLines }, { runInherited, inheritedLines }, { runChrome, chromeLines }, { runCoverage }] = await Promise.all([
+      helper('content'), helper('eds-spec'), helper('parity'), helper('sanity'), helper('inherited'), helper('chrome'), helper('coverage'),
     ]);
     const base = { dir, slug, preview, env };
     const withPage = { ...base, reskinPage: opts.reskin };
@@ -638,6 +652,7 @@ async function allStep(ctx) {
       sanity: async () => { const r = await (runners.sanity ?? runSanity)(withPage); return rowsOutcome('sanity', r, sanityLines(r), 'sanity (hard)'); },
       inherited: async () => { const r = await (runners.inherited ?? runInherited)(base); return rowsOutcome('inherited', r, inheritedLines(r)); },
       chrome: async () => { const r = await (runners.chrome ?? runChrome)(base); return rowsOutcome('chrome', r, chromeLines(r), 'chrome (hard)'); },
+      coverage: async () => coverageOutcome(await (runners.coverage ?? runCoverage)(base)),
       figma: () => figmaOutcome({ ...base, reskin, figmaGate, UsageError, waiverBudget: opts['waiver-budget'] }),
     };
   } else log(`SKIPPED deployed leg: ${preview.reason}`);
@@ -673,8 +688,8 @@ async function allStep(ctx) {
   const invocation = invocationOf(argv);
   const url = preview.url ?? null;
   const override = preview.originOverride ? { originOverride: preview.originOverride } : {};
-  const ledgerFragment = { regime: 'preview', url, ...override, content: ledger.content, tokens: ledger.tokens, parity: ledger.parity, sanity: { verdict: ledger.sanity, hard: true }, inherited: ledger.inherited, chrome: { verdict: ledger.chrome, hard: true }, figma: ledger.figma, codeStamp: stamp, invocation };
-  const readArtifacts = ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'chrome.json'].filter((f) => existsSync(join(deployed, f)));
+  const ledgerFragment = { regime: 'preview', url, ...override, content: ledger.content, tokens: ledger.tokens, parity: ledger.parity, sanity: { verdict: ledger.sanity, hard: true }, inherited: ledger.inherited, chrome: { verdict: ledger.chrome, hard: true }, coverage: ledger.coverage, figma: ledger.figma, codeStamp: stamp, invocation };
+  const readArtifacts = ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'chrome.json', 'coverage.json'].filter((f) => existsSync(join(deployed, f)));
   const summary = {
     _provenance: provenance({ at: new Date().toISOString(), readArtifacts, note: 'deployed-gate.mjs all', writtenBy: 'stardust:reskin/deployed-gate.mjs' }),
     page: slug, url, regime: 'preview', ...override, steps: recorded, codeStamp: stamp, ledgerFragment, invocation,

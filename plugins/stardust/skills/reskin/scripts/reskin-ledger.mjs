@@ -8,8 +8,9 @@
  * only the human judgments — the side-by-side eyeball and residual verdicts — are entered.
  *
  *   record <slug> [--stage prototype|migrated]
- *       prototype (default): reads <dir>/reskin/gates/<slug>/{dom-equality,slot-coverage,donor-probe}.md
- *       (or reskin/reports/<slug>-{content-gate,slot-coverage,donor-probe}.md), checks the page's
+ *       prototype (default): reads <dir>/reskin/gates/<slug>/{dom-equality,slot-coverage,donor-probe}.md and
+ *       source-coverage.json (or reskin/reports/<slug>-{content-gate,slot-coverage,donor-probe}.md and
+ *       -source-coverage.json, gate (a′)), checks the page's
  *       prototype for the mobile-adapt static rules and runs <dir>/scripts/prototype/mobile-nav-audit.mjs
  *       on it. Sets pages[slug] = { status: gated|failing, gates, prototypeSha, … }. An approved or
  *       migrated page also lands in handoff.<type>.gates.<slug> (PASS gates only, migrate's input), and
@@ -24,7 +25,7 @@
  *       accepted (M2a D7): a broken page or broken chrome is fixed, not waived.
  *       (f) evidence: <dir>/.work/reskin/gates/<slug>/exact/summary.json (figma-gate exact, Figma-only sites) —
  *       its ledgerFragment becomes gates.exact (blocking), kept from the ledger without fresh evidence.
- *       migrated: reads <dir>/reskin/gates/<slug>/migrated/*.md — the sibling gate on migrate's output —
+ *       migrated: reads <dir>/reskin/gates/<slug>/migrated/*.md and source-coverage.json — the sibling gate on migrate's output —
  *       into pages[slug].migratedGates and handoff.<type>.siblings.<slug>.
  *   eyeball <slug> --verdict pass|fail [--note "…"]     the side-by-side donor judgment (Phase 5); pass is
  *       refused while the page's deployed.chrome fragment fails
@@ -58,7 +59,8 @@ const HELP = `usage: node reskin-ledger.mjs <command> [args] [--dir stardust]
 Writes stardust/reskin/ledger.json from evidence (gate reports, the mobile-adapt audit) plus the two
 human judgments. reskin-preflight and migrate read it.
 
-  record <slug> [--stage prototype|migrated]   gate verdicts → pages[slug], handoff.<type>
+  record <slug> [--stage prototype|migrated]   gate verdicts → pages[slug], handoff.<type>; needs the (a), (b)
+      and (a′) source-coverage reports (reports/<slug>-source-coverage.json, gates/<slug>/migrated/source-coverage.json)
   eyeball <slug> --verdict pass|fail [--note "…"]   pass refused while deployed.chrome fails
   step10 <slug> --eyeball pass|fail --cls <n> --header pass|fail|"n/a: <why>" [--note "…"] [--by <who>]
       deploy's Step 10 receipts → gates.step10 (CLS < 0.1 passes; any value may be "unresolved: <why>",
@@ -77,7 +79,19 @@ export const GATE_FILES = {
   'reskin-dom-equality': ['dom-equality.md', '-content-gate.md'],
   'reskin-slot-coverage': ['slot-coverage.md', '-slot-coverage.md'],
   'reskin-donor-probe': ['donor-probe.md', '-donor-probe.md'],
+  // gate (a′): residue carried, settled, band tone and placement (S4: a source rail beside the content). Required,
+  // so a page whose sidebar renders above the footer cannot record as gated without a declared why.
+  'reskin-source-coverage': ['source-coverage.json', '-source-coverage.json'],
 };
+// The verdict of one gate report: a .md report's **Overall:** line, a .json report's `verdict`
+// (source-coverage: PASS | FAIL k/n | ADVISORY … — an ADVISORY run was declared non-blocking).
+export function reportVerdict(file, text) {
+  if (!file.endsWith('.json')) return overall(text) || 'UNKNOWN';
+  let v; try { v = JSON.parse(text).verdict; } catch { return 'UNKNOWN'; }
+  if (typeof v !== 'string') return 'UNKNOWN';
+  if (/^(PASS|ADVISORY)/.test(v)) return 'PASS';
+  return /^FAIL/.test(v) ? 'FAIL' : 'UNKNOWN';
+}
 // Prototype gate-stack items a registered reskin page does not run (spec D4): the human waives them by
 // approving; the tier record lists them so nobody reads `approved` as "the full prototype stack passed".
 export const WAIVED = ['critique', 'audit', 'anti-template', 'content-sourcing', 'motion-validation'];
@@ -88,7 +102,7 @@ const VERDICTS = ['accepted', 'needs-owner', 'blocked'];
 // pages.<slug>.gates.figma / gates.deployed. Their values are 'PASS' | 'FAIL k/n' | 'ADVISORY …' |
 // 'n/a: …' | 'not run: …' | 'CRASH: …'. Blocking families: figma B0 join, B1 geometry, B3 ramp (B2 pixel
 // is advisory, B4 register informational); deployed A1 content … A5 inherited, plus its figma re-run.
-export const M2_FAMILIES = { figma: ['join', 'geometry', 'ramp'], deployed: ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome'] };
+export const M2_FAMILIES = { figma: ['join', 'geometry', 'ramp'], deployed: ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome', 'coverage'] };
 // A residual that may never be accepted (M2a D7: a deployed hard-sanity or chrome failure is fixed, not waived).
 export const NEVER_ACCEPTED = ['deployed.sanity', 'deployed.chrome'];
 // Every page inherits the chrome, so a header or footer residual is the site owner's to accept, never an agent's.
@@ -274,13 +288,13 @@ function findReports(dir, slug, stage) {
     const d = join(dir, 'reskin', 'gates', slug, 'migrated');
     for (const [g, [file]] of Object.entries(GATE_FILES)) {
       const f = join(d, file);
-      if (existsSync(f)) out[g] = { verdict: overall(readFileSync(f, 'utf8')) || 'UNKNOWN', report: f }; else missing.push(f);
+      if (existsSync(f)) out[g] = { verdict: reportVerdict(f, readFileSync(f, 'utf8')), report: f }; else missing.push(f);
     }
     return { out, missing };
   }
   for (const [g, [file, suffix]] of Object.entries(GATE_FILES)) {
     const f = [join(dir, 'reskin', 'gates', slug, file), join(dir, 'reskin', 'reports', `${slug}${suffix}`)].find(existsSync);
-    if (f) { out[g] = { verdict: overall(readFileSync(f, 'utf8')) || 'UNKNOWN', report: f }; continue; }
+    if (f) { out[g] = { verdict: reportVerdict(f, readFileSync(f, 'utf8')), report: f }; continue; }
     // A Figma-sourced page has no source DOM: figma-text-gate stands in for dom-equality (SKILL.md Phase 5).
     const ft = g === 'reskin-dom-equality' && join(dir, 'reskin', 'gates', slug, 'figma-text.json');
     if (ft && existsSync(ft)) {

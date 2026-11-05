@@ -256,6 +256,17 @@ experiment's top two failure modes:
    page chrome such as a breadcrumb/section-nav layout, a tone variant)
    or declare it dropped in `stardust/reskin/coverage/<slug>.json`.
    Gate (a′) holds the decision.
+4. **WHERE EACH REGION SITS.** DOM order is not page order: a section
+   sidebar commonly follows `<main>` in the DOM and is moved beside the
+   content by CSS. The capture records every slot's and residue region's
+   `placement` (`placement.mjs`: `rail-start | rail-end | band | main`
+   against the content column at 1440, `hiddenMobile` from a 390 pass) and
+   prints a `placement:` line for each rail. A rail is a Phase 3 decision
+   like a dark band: `mapping.json` `"rail"` renders it beside the content
+   (`stream-render --check` refuses a source rail the mapping does not
+   place), and gate (a′) S4 FAILs a target that stacks it after the content.
+   Recorded: two migrations rendered the source's left section-nav above the
+   footer, every gate green.
 
 ### Phase 2′ — CONTENT FROM FIGMA (Figma-only projects)
 
@@ -642,9 +653,10 @@ node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --caus
 node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass --cls 0.04 --header "n/a: <why>" --by user   # (e) only
 ```
 
-`record` reads the three gate reports (`reports/<slug>-{content-gate,
+`record` reads the gate reports (`reports/<slug>-{content-gate,
 slot-coverage,donor-probe}.md` or `gates/<slug>/{dom-equality,
-slot-coverage,donor-probe}.md`, `**Overall: PASS|FAIL**`), runs the
+slot-coverage,donor-probe}.md`, `**Overall: PASS|FAIL**`, and (a′)'s
+`reports/<slug>-source-coverage.json`, required), runs the
 prototype's mobile-adapt audit (static rules + `mobile-nav-audit.mjs`),
 reads (d)'s `.work/reskin/gates/<slug>/figma/summary.json` into
 `gates.figma` (and M2a's `…/deployed/summary.json` into
