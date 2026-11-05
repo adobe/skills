@@ -1,3 +1,10 @@
+# [2.4.0](https://github.com/adobe/skills/compare/web-cli-v2.3.0...web-cli-v2.4.0) (2026-11-05)
+
+
+### Features
+
+* **web-cli:** fill the cache through a remote browser past bot protection ([#555](https://github.com/adobe/skills/issues/555)) ([6f654d7](https://github.com/adobe/skills/commit/6f654d73acad548fab05604c3af6bf533c250530))
+
 # [2.3.0](https://github.com/adobe/skills/compare/web-cli-v2.2.0...web-cli-v2.3.0) (2026-11-05)
 
 
