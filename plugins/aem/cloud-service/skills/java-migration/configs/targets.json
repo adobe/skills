@@ -1,0 +1,20 @@
+{
+  "25": {
+    "enabled": true,
+    "availability": "evaluation-only",
+    "validation": "Real AEM builds, installed-agent behavior, Cloud Manager and runtime validation are blocked until independently exercised.",
+    "source_versions": [8, 11, 17, 21],
+    "rewrite_runtime_minimum": 17,
+    "rewrite_plugin": "6.45.0",
+    "java_artifact": "org.openrewrite.recipe:rewrite-migrate-java:3.40.0",
+    "mockito_artifact": "org.openrewrite.recipe:rewrite-testing-frameworks:3.40.0",
+    "java_recipe": "adobe.aem.Java25Evaluation",
+    "mockito_recipe": "adobe.aem.MockitoMigration",
+    "plugin_config": "plugin-configuration-25.json",
+    "filevault_minimum": "1.4.0",
+    "jdk_environment": ["JAVA{version}_HOME", "JDK{version}_HOME", "JAVA_HOME"],
+    "compatibility_checked": "2026-11-05",
+    "compatibility_url": "https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/implementing/using-cloud-manager/create-application-project/build-environment-details",
+    "compatibility_warning": "Cloud Manager documents only 17/21 java-version values; other values are ignored. Java 25 runtime rollout is described as upcoming. Setting 25 is an evaluation artifact, not a supported pipeline configuration."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "org.ow2.asm:asm": "9.8",
+  "org.ow2.asm:asm-analysis": "9.8",
+  "org.ow2.asm:asm-commons": "9.8",
+  "org.ow2.asm:asm-tree": "9.8",
+  "org.ow2.asm:asm-util": "9.8",
+  "net.bytebuddy:byte-buddy": "1.17.8",
+  "net.bytebuddy:byte-buddy-agent": "1.17.8"
+}

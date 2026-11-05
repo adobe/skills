@@ -1,0 +1,13 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent><groupId>example</groupId><artifactId>migration-fixture</artifactId><version>1.0</version></parent>
+  <artifactId>core</artifactId>
+  <properties><maven.compiler.release>8</maven.compiler.release></properties>
+  <dependencies>
+    <dependency><groupId>org.apache.sling</groupId><artifactId>org.apache.sling.testing.sling-mock.junit5</artifactId><version>3.5.0</version><classifier>jdk11</classifier><scope>test</scope></dependency>
+  </dependencies>
+  <build><plugins>
+    <plugin><artifactId>maven-compiler-plugin</artifactId><configuration><source>1.8</source><target>1.8</target></configuration></plugin>
+  </plugins></build>
+  <profiles><profile><id>local</id><properties><maven.compiler.release>17</maven.compiler.release></properties></profile></profiles>
+</project>
