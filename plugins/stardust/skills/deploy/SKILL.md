@@ -326,14 +326,16 @@ Rebrand `styles/styles.css` — replace the boilerplate's DEMO layer (roboto tok
 - **The reservation collapses block-internal `<header>` elements (#107).** The stock `header { height: var(--nav-height) }` + visibility rules match EVERY `<header>` on the page, not just the chrome host — a block whose `decorate()` emits a semantic `<header>` (natural when porting prototype DOM verbatim) gets it clamped to nav height and hidden, and every such block breaks at once while all text gates stay green. Do not emit `<header>` in block DOM — use a `<div class="…-head">`. (Scoping the stock selector to `body > header` would fix it at the root but edits the boilerplate's structural layer — if you are already adding the `border-box` reset above, scope the reservation in the same pass; otherwise the warning is the fix.)
 - **Overlay chrome — the #81 case with NO reservation (#108).** When the prototype's header is transparent and floats OVER the hero (hero content starts at `y=0` behind it), reserving `--nav-height` would push the hero DOWN below where the source renders it. Set `--nav-height: 0` and position the header absolutely (`header { position: absolute; top: 0; left: 0; right: 0; }` with the block styling its own ground) — nothing is in flow, so the late chrome load shifts nothing (measured CLS 0.0004 with this pattern on a real page).
 - **The hero must eager-load its LCP image AND reserve its media slot (#100).** The metadata block leaves the page's FIRST section empty, so the runtime's `loadSection(main.querySelector('.section'), waitForFirstImage)` eager-izes NOTHING — the hero's pipeline-emitted `<img loading="lazy">` stays lazy. And a hero image styled `width: auto` (contain-in-a-max-height layouts) has a **zero-height box until it loads**, so the hero grows by the image's full height when it lands, shifting every section below (a real page measured CLS 0.134 attributed to the section under the hero). Both halves in the hero block: `decorate()` sets `loading="eager"` + `fetchpriority="high"` on its first `<img>`, and the CSS reserves the media slot (`min-height` on the figure per breakpoint, or an explicit `aspect-ratio`). Same Step 10 CLS probe (#101).
-- **Third-party players mount after the first contentful paint (#157).** A player iframe built in `decorate()` of a first-section block starts the vendor's ~0.5 MB player JS before first paint, and lab tests count it toward FCP/LCP (a ~1 s page measured lab LCP 8.5 s). Same `src`, later mount: `decorate()` reserves the box (the live iframe's `aspect-ratio`); the iframe is created after the paint entry (`load` where paint timing is unsupported — an `IntersectionObserver` alone fires at once above the fold), with `createElement` from a parsed `https:` URL on the block's host list, never `innerHTML` or the raw authored string (a `javascript:` `src` runs in the page's origin). Gate: qa `player-before-paint`.
+- **Third-party players mount after the first contentful paint (#157).** A player iframe built in `decorate()` of a first-section block starts the vendor's ~0.5 MB player JS before first paint, and lab tests count it toward FCP/LCP (a ~1 s page measured lab LCP 8.5 s). Same `src`, later mount: `decorate()` reserves the box (the live iframe's `aspect-ratio`); the authored link stays in it until the iframe replaces it after the paint entry (`load` where paint timing is unsupported — an `IntersectionObserver` alone fires at once above the fold), with `createElement` from a parsed `https:` URL on the block's host list, never `innerHTML` or the raw authored string (a `javascript:` `src` runs in the page's origin). Gate: qa `player-before-paint`.
   ```js
   const PLAYER_HOSTS = ['www.youtube.com', 'www.youtube-nocookie.com', 'player.vimeo.com'];
   function afterFirstPaint(fn) {
     const painted = (l) => l.getEntriesByName('first-contentful-paint').length > 0;
     if (painted(performance)) { fn(); return; }
-    if (!PerformanceObserver.supportedEntryTypes?.includes('paint')) {
-      window.addEventListener('load', fn, { once: true }); return;
+    if (!window.PerformanceObserver?.supportedEntryTypes?.includes('paint')) { // no paint timing
+      if (document.readyState === 'complete') fn();
+      else window.addEventListener('load', fn, { once: true });
+      return;
     }
     const po = new PerformanceObserver((l) => { if (painted(l)) { po.disconnect(); fn(); } });
     po.observe({ type: 'paint', buffered: true });
@@ -344,11 +346,13 @@ Rebrand `styles/styles.css` — replace the boilerplate's DEMO layer (roboto tok
     const box = document.createElement('div');
     box.className = 'player'; // CSS: aspect-ratio of the live iframe; iframe width/height 100%
     a.replaceWith(box);
+    box.append(a); // stays paintable until mount: a player-only section still reaches FCP
     afterFirstPaint(() => {
       const f = document.createElement('iframe');
+      const title = a.textContent.trim() || 'Video';
       const allow = 'encrypted-media; picture-in-picture; fullscreen';
-      Object.assign(f, { src: url.href, title: a.textContent.trim() || 'Video', loading: 'lazy', allow });
-      box.append(f);
+      Object.assign(f, { src: url.href, title, loading: 'lazy', allow });
+      a.replaceWith(f);
     });
   }
   ```

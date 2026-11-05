@@ -24,21 +24,34 @@ const LCP_GOOD_MS = 2500;
 const CLS_GOOD = 0.1;
 const NEUTRAL_HOST = 'https://www.google.com';
 const DEGRADED_TTFB_MS = 1500;
-// player documents and scripts only — thumbnail CDNs (ytimg, vimeocdn) serve a click-to-load poster
 const PLAYER_HOSTS = ['youtube.com', 'youtube-nocookie.com', 'vimeo.com', 'brightcove.net', 'wistia.com',
   'wistia.net', 'jwplayer.com', 'vidyard.com', 'dailymotion.com'];
+// the player itself: its document, scripts and API calls — a click-to-load poster (image) is not one
+const PLAYER_TYPES = ['document', 'script', 'xhr', 'fetch'];
 
-/** Pure: player-host requests that started before the first contentful paint. `requests` is
- *  `[{ url, t }]` with `t` and `fcp` in epoch ms; a missing FCP judges nothing. Hosts match on
- *  the hostname or a dot-bounded suffix, never a substring of the URL. */
+/** Pure: player requests that started before the first contentful paint. `requests` is
+ *  `[{ url, type, t }]` (Playwright resource type; `t` and `fcp` in epoch ms); a missing FCP judges
+ *  nothing. Hosts match on the hostname or a dot-bounded suffix, never a substring of the URL. */
 export function judgePlayerRequests(requests, fcp, hosts = PLAYER_HOSTS) {
   if (!Number.isFinite(fcp) || fcp <= 0) return [];
   const isPlayer = (u) => {
     let h; try { h = new URL(u).hostname; } catch { return false; }
     return hosts.some((d) => h === d || h.endsWith(`.${d}`));
   };
-  return requests.filter((r) => r.t < fcp && isPlayer(r.url))
-    .map((r) => ({ url: r.url, msBeforeFcp: Math.round(fcp - r.t) }));
+  return requests.filter((r) => r.t < fcp && PLAYER_TYPES.includes(r.type) && isPlayer(r.url))
+    .map((r) => ({ url: r.url, type: r.type, msBeforeFcp: Math.round(fcp - r.t) }));
+}
+
+/** Every request of `page`, any frame (out-of-process iframes included). The returned snapshot
+ *  dates each from the browser's own start time (`timing().startTime`), never from when this
+ *  process handled the event — a busy process hears of a pre-paint request after the paint. */
+export function collectRequests(page) {
+  const seen = [];
+  page.on('request', (r) => seen.push({ r, heard: Date.now() }));
+  return () => seen.map(({ r, heard }) => {
+    const start = r.timing().startTime;
+    return { url: r.url(), type: r.resourceType(), t: start > 0 ? start : heard };
+  });
 }
 
 function representatives(inventory, cap) {
@@ -67,11 +80,11 @@ export async function run(ctx) {
     if (ttfb > DEGRADED_TTFB_MS) {
       degraded = true;
       findings.push(finding('perf', 'network-degraded', 'info', '',
-        `neutral-host TTFB ${ttfb}ms > ${DEGRADED_TTFB_MS}ms — perf findings downgraded to info this run`));
+        `neutral-host TTFB ${ttfb}ms > ${DEGRADED_TTFB_MS}ms — perf findings except player-before-paint downgraded to info this run`));
     }
   } catch {
     degraded = true;
-    findings.push(finding('perf', 'network-degraded', 'info', '', 'neutral-host probe failed — perf findings downgraded to info'));
+    findings.push(finding('perf', 'network-degraded', 'info', '', 'neutral-host probe failed — perf findings except player-before-paint downgraded to info'));
   }
   const sev = (s) => (degraded ? 'info' : s);
 
@@ -92,8 +105,7 @@ export async function run(ctx) {
       transfer += e.encodedDataLength;
       if (types.get(e.requestId) === 'Script') jsTransfer += e.encodedDataLength;
     });
-    const requests = []; // every frame, out-of-process iframes included
-    page.on('request', (r) => requests.push({ url: r.url(), t: Date.now() }));
+    const requests = collectRequests(page);
 
     try {
       await page.goto(pageUrl(base, p.url || p.path), { waitUntil: 'load', timeout: 60000 });
@@ -138,7 +150,7 @@ export async function run(ctx) {
       findings.push(finding('perf', 'cls-poor', sev('warn'), p.path,
         `lab CLS ${vitals.cls} > ${CLS_GOOD}`, vitals));
     }
-    const early = judgePlayerRequests(requests, vitals.fcp);
+    const early = judgePlayerRequests(requests(), vitals.fcp);
     if (early.length) {
       findings.push(finding('perf', 'player-before-paint', 'warn', p.path,
         `${early.length} player request(s) started before first contentful paint, first ${early[0].url} — mount the player after first paint (deploy #157)`,

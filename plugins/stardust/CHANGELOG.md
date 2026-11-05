@@ -11,11 +11,16 @@ iframe in `decorate()`, so the player's JS started while the section was still l
 FCP/LCP: a page painting in about 1 s measured lab LCP up to 8.5 s, scores 52–100 run to run. `lcp-poor` saw the
 symptom, nothing named the cause.
 
-- **Rule** (`deploy/SKILL.md` #157 + checklist row): same `src`, later mount — an `aspect-ratio` box at decorate time,
-  the iframe created after the first contentful paint from an allow-listed `https:` URL with `createElement`.
+- **Rule** (`deploy/SKILL.md` #157 + checklist row): same `src`, later mount — an `aspect-ratio` box at decorate time
+  that keeps the authored link (a player-only section still paints), replaced by the iframe after the first contentful
+  paint (without paint timing: at `load`, or at once when already loaded), from an allow-listed `https:` URL with
+  `createElement`.
   Pointers from replica's live-data embeds bullet (deferral noted in the progress ledger) and dynamics' `media-as-url`.
-- **`qa/scripts/checks/perf.mjs`:** `player-before-paint` (warn, never downgraded) lists player-host requests from any
-  frame that started before first contentful paint; pure `judgePlayerRequests`, test `qa/player-before-paint`.
+- **`qa/scripts/checks/perf.mjs`:** `player-before-paint` (warn, never downgraded) lists player document, script and API
+  requests from any frame that started before first contentful paint, dated by the browser's request start time, not
+  by when the QA process heard of them; posters on player hosts are not flagged. Tests: `qa/player-before-paint` (pure
+  `judgePlayerRequests`), `qa/player-before-paint-browser` (collector under a stalled event loop, snippet lifecycle,
+  untrusted links; Playwright from the project, routed, no network).
 - **dynamics `modal-loader` example:** the player iframe is built with `createElement` from a parsed `https:` URL on a
   dot-bounded host match, no longer interpolated into `innerHTML`.
 
