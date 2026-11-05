@@ -48,7 +48,7 @@ the archetype (`ledger.handoff.<type>.archetype`, else the type's first
 | the side-by-side eyeball recorded and `pass` | `pages[a].eyeball` |
 | the prototype on disk is the one that was gated | `pages[a].prototypeSha` vs the file |
 | Figma donors: `figma.join`, `figma.geometry`, `figma.ramp` PASS (M2b B0/B1/B3; B2 pixel is advisory, B4 register informational) | `pages[a].gates.figma` |
-| when a preview deploy was gated (M2a): `deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited` PASS, and the Figma re-run `deployed.figma.*` | `pages[a].gates.deployed` |
+| when a preview deploy was gated (M2a): `deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited`, `.coverage` PASS, and the Figma re-run `deployed.figma.*` | `pages[a].gates.deployed` |
 | the preview evidence still describes the EDS code: its `codeStamp` equals the project's now (`deployed-gate stamp`); a block, CSS or script change after the run fails it until `deployed-gate all` and `record` re-run | `pages[a].gates.deployed.codeStamp` |
 
 `reskin-ledger.mjs record <a>` reads the M2 evidence itself:
@@ -154,8 +154,10 @@ sibling tier.
 
 The archetype gate proves the prototype; migrate re-renders siblings from the
 canon, so each migrated page is gated again on migrate's output — the same
-three gates against the source URL, reports in
+three gates against the source URL, plus gate (a′) (`source-coverage.mjs`,
+whose S4 holds a source rail beside the content), reports in
 `stardust/reskin/gates/<slug>/migrated/{dom-equality,slot-coverage,donor-probe}.md`
+and `…/migrated/source-coverage.json`
 — and recorded with `reskin-ledger.mjs record <slug> --stage migrated`
 (`pages[slug].migratedStatus`, `handoff.<type>.siblings`). Preflight warns
 (`sibling-gates`) on migrated pages without a passing one; rollout does not

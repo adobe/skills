@@ -96,7 +96,9 @@ geometry B1. Runs the join first (drift stops here, exit 1), validates the check
          geometry entry on the page (one page load per width) against the same measure taken from its Figma
          node (relative to the module root) or its token: width, height, left, right, top, gapX, gapY and
          the paddings, within tolerancePx (default 1: measure-live rounds to whole px, Figma has half pixels).
-         Prints "geometry PASS n/n" or "geometry FAIL k/n" plus one indented line per failing entry
+         Prints "geometry PASS n/n" or "geometry FAIL k/n" plus one indented line per failing entry; a root width
+         entry of a section in a rail page's grid column (narrower than main by mapping "rail") is UNASSERTED, its
+         reason printed, out of n and noted " (k unasserted)"
          ("<slot> <id> <measure> (node <id>): 540 vs 560 (±1)", or "unmeasurable: <why>" when the selector
          matched nothing, a gap has fewer than two matches or the box has no size); writes
          <dir>/.work/reskin/gates/<slug>/figma/geometry.json (figma-preview/ on --target preview); exit 1 on any FAIL. Each result carries root, the
@@ -397,9 +399,12 @@ async function geometryStep({ dir, opts, log, UsageError, ready: given }) {
     return 1;
   }
   const { pass, results } = await runGeometry({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, out: ready.out });
-  const failing = results.filter((r) => r.status !== 'PASS');
-  log(pass ? `geometry PASS ${results.length}/${results.length}` : `geometry FAIL ${failing.length}/${results.length}`);
-  for (const r of failing) log(`  ${r.slot} ${r.id} ${r.measure}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
+  const failing = results.filter((r) => r.status === 'FAIL');
+  const unasserted = results.filter((r) => r.status === 'UNASSERTED');
+  const n = results.length - unasserted.length;
+  const note = rampNote(unasserted.length, 0);
+  log(pass ? `geometry PASS ${n}/${n}${note}` : `geometry FAIL ${failing.length}/${n}${note}`);
+  for (const r of [...failing, ...unasserted]) log(`  ${r.slot} ${r.id} ${r.measure}${r.node ? ` (node ${r.node})` : ''}: ${r.detail}`);
   return pass ? 0 : 1;
 }
 
@@ -502,8 +507,10 @@ const NOT_RUN_DRIFT = 'not run: section drift';
 const VERDICT_WORDS = { geometry: { 0: 'PASS', 1: 'FAIL' }, ramp: { 0: 'PASS', 1: 'FAIL' }, pixel: { 0: 'advisory', 124: 'no verdict' }, register: { 0: 'written' } };
 
 function geometryFragment(file) {
-  const bad = file.results.filter((r) => r.status !== 'PASS').length;
-  return bad ? `FAIL ${bad}/${file.results.length}` : `PASS ${file.results.length}/${file.results.length}`;
+  const bad = file.results.filter((r) => r.status === 'FAIL').length;
+  const unasserted = file.results.filter((r) => r.status === 'UNASSERTED').length;
+  const n = file.results.length - unasserted;
+  return `${bad ? `FAIL ${bad}` : `PASS ${n}`}/${n}${rampNote(unasserted, 0)}`;
 }
 
 // " (k unasserted)", " (j unserved)" or both in one parenthesis: what a ramp verdict leaves out of its n.

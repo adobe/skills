@@ -284,6 +284,7 @@ against the local reskin page (Phase 5) and again on the aem.page preview
 | S1 residue carried | `residue[]` (not `chrome`) | each region ≥ `--min-chars` (20): one target element outside header/footer, ≤ 3× its text, holds ≥ 60% of its text lines — else declared, else **FAIL**; shorter regions are `info` |
 | S2 settled | `_provenance.settle` | missing (pre-0.40 model) or `stable: false` is **WARN**: re-capture; never fails; `n/a` on a Figma-sourced model (`_provenance.source.kind: figma`: no settle step) |
 | S3 tone carried | `sections[].tone` | a `dark` slot's first heading (else text) sits on a dark background in the target — else declared, else **FAIL** (also when the probe text is gone); `tinted` → other is WARN; `page` is not checked |
+| S4 placement carried | `sections[].placement`, `residue[].placement` | every slot or carried residue region the source sets as a rail (`rail-start` / `rail-end`, `placement.mjs`) sits beside the target's content column on the same side at 1440 — the content is the bigger sibling branch the rail's host climbs to (main's other sections, or the content wrapper beside an aside) — else declared (`placement`), else **FAIL**; a residue region S1 did not find is S1's, not S4's |
 
 The target is settled the same way as the source (scroll, then text stable
 3 × 500 ms, ≤ 15 s) before it is measured. Declared drops,
@@ -293,8 +294,14 @@ The target is settled the same way as the source (scroll, then text stable
 { "version": 1,
   "residue": [ { "match": "<substring of the sel or the first line>", "why": "…" } ],
   "tones":   [ { "slot": "s01", "to": "tinted", "why": "donor hero module is a light band" } ],
+  "placement": [ { "slot": "s09", "to": "main", "why": "…" } ],
   "blocking": true }
 ```
+
+The report (`--out reports/<slug>-source-coverage.json`, or
+`gates/<slug>/migrated/source-coverage.json` for a sibling) is one of the gate
+reports `reskin-ledger.mjs record` requires: a page without it is refused, a
+FAIL records the page `failing`.
 
 Every entry needs a `why`; an unknown key, a bad slot id or tone is exit 2,
 every problem listed. `"blocking": false` reports FAILs as ADVISORY (exit 0).
@@ -306,7 +313,10 @@ while the deployed pages had no breadcrumb or section sidebar (outside
 by XHR after the capture read the page) and light bands where the source's
 callouts were dark (tone was a mapping judgment nothing measured). (a′)
 FAILs all three on the original render, PASSes the fixed preview, and PASSes
-a declared hero change.
+a declared hero change. S4 came from two later migrations whose section sidebars
+all carried (S1 green) and all rendered after the content, above the footer:
+the source set the sidebar left of the content by CSS while it followed `<main>`
+in the DOM, and every stage before S4 read DOM order only.
 
 ## (b) Design-adoption gate
 
@@ -451,7 +461,7 @@ raises the share; `summary.json` and the fragment record it.
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
 | B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading; a `chrome` row whose Donor module is an included module joins the page's header or footer as section `header` / `footer` | exact; drift names the slot |
-| B1 geometry | blocks | width, height, left, right, top, gaps, paddings of page boxes against Figma nodes (relative to the module root) or a token | ±1px (Figma has half pixels, `measure-live` rounds) unless an entry says why |
+| B1 geometry | blocks | width, height, left, right, top, gaps, paddings of page boxes against Figma nodes (relative to the module root) or a token; a root width entry of a section in a rail page's grid column (narrower than main by mapping `rail`) is UNASSERTED with the reason, out of n — S4 holds the placement, and the rail is never dropped to make the module full width | ±1px (Figma has half pixels, `measure-live` rounds) unless an entry says why |
 | B3 ramp | blocks | the `:root` block `donor-tokens.json` yields, and per type entry fontSize, fontWeight, lineHeight, letterSpacing, first fontFamily, color against the Figma text node | exact; lineHeight and letterSpacing ±0.1px |
 | B2 pixel | advisory | the section's slice of the frame image against the section's screenshot | none: orientation only; reference classes (light text 3%, inverted 3.5%, raster ground 4%) are uncalibrated |
 | B4 register | informational | `mandated` (passes on results of this checks file, every text style covered, no waiver; results of an older file give a `stale` row: re-run `all`), `waived` (one row per waiver), `unmandated`, `out-of-kit`, `conflict` and `pre-existing`, with Figma node links | none |

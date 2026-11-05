@@ -106,6 +106,7 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rootTokens } from './render/root-tokens.mjs';
 import { donorModulesEds } from './figma/eds-map.mjs';
+import { railSide } from './placement.mjs';
 
 const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--model-dir <d>] [--out <file>]
          [--localize-images] [--register [--type <t>]]
@@ -768,6 +769,30 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   const embedAfter = new Set((model._provenance?.normalize?.ledger || [])
     .filter((e) => /disposition:\s*embed/i.test(e.why || '') && /embed/i.test(e.what || ''))
     .map((e) => (e.what.match(/under\s+["“]([^"”]+)["”]/) || [])[1]?.trim().toLowerCase()).filter(Boolean));
+  // Rails (mapping-json.md § rail): a slot the source sets BESIDE the content column (a section sidebar)
+  // renders in a grid column next to it at desktop, never stacked after it. Every other slot keeps its
+  // stream order on an explicit grid row; band slots (a breadcrumb over column and rail) span both columns.
+  const railOf = (s) => { const r = pageMap.slots?.[s.slot]?.rail; return r === 'start' || r === 'end' ? r : null; };
+  const railSlots = model.sections.filter(railOf);
+  const railSideOfPage = railSlots.length ? railOf(railSlots[0]) : null;
+  const rows = new Map(); let row = 0;
+  if (railSideOfPage) {
+    for (const s of model.sections) if (!railOf(s)) rows.set(s.slot, (row += 1));
+    if (railSlots.some((s) => railOf(s) !== railSideOfPage)) warnings.push(`rail: slots ask for both sides — every rail renders on the ${railSideOfPage} side`);
+  }
+  const bandOf = (s) => { const m = pageMap.slots?.[s.slot] || {}; return m.band === true || (m.band === undefined && s.placement?.region === 'band'); };
+  const firstContentRow = railSideOfPage ? Math.min(...model.sections.filter((s) => !railOf(s) && !bandOf(s)).map((s) => rows.get(s.slot)), row) : 0;
+  const railWidthOf = (s) => {
+    const w = pageMap.slots?.[s.slot]?.railWidth;
+    if (typeof w === 'string' && /^\d+(\.\d+)?(px|rem|%)$/.test(w)) return w;
+    if (w !== undefined) warnings.push(`${s.slot}: railWidth "${w}" is not a length (px | rem | %) — the captured width is used`);
+    return s.rect?.w ? `${s.rect.w}px` : '320px';
+  };
+  const railMobileOf = (s) => {
+    const v = pageMap.slots?.[s.slot]?.railMobile;
+    if (['hidden', 'top', 'bottom'].includes(v)) return v;
+    return s.placement?.hiddenMobile ? 'hidden' : 'top';
+  };
   const sections = model.sections.map((s, i) => {
     const m = pageMap.slots?.[s.slot] || {};
     const layout = (m.layout || 'stack').split(/\s+/);
@@ -806,7 +831,10 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : []), ...(ctx.band && backdropCss(ctx.bandImage) ? [backdropCss(ctx.bandImage)] : [])];
     const cardTone = ['dark', 'light', 'accent'].includes(m.cardTone) ? m.cardTone : null;
     if (m.cardTone && !cardTone) warnings.push(`${s.slot}: unknown cardTone "${m.cardTone}" (dark | light | accent) — ignored`);
-    const cls = ['band', ...layout.map((l) => `layout-${l}`), ...(cardTone ? [`cards-${cardTone}`] : []), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []), ...(tone && m.bleed === true ? ['bleed'] : []), ...(m.align === 'center' ? ['align-center'] : []), ...(mediaFirst ? ['media-first'] : [])].join(' ');
+    const rail = railSideOfPage ? railOf(s) : null;
+    const railCls = !railSideOfPage ? [] : rail ? ['in-rail', `rail-mobile-${railMobileOf(s)}`] : bandOf(s) ? ['in-band'] : [];
+    if (railSideOfPage) vars.push(rail ? `grid-row: ${firstContentRow} / ${row + 1}` : `grid-row: ${rows.get(s.slot)}`);
+    const cls = ['band', ...layout.map((l) => `layout-${l}`), ...(cardTone ? [`cards-${cardTone}`] : []), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []), ...(tone && m.bleed === true ? ['bleed'] : []), ...(m.align === 'center' ? ['align-center'] : []), ...(mediaFirst ? ['media-first'] : []), ...railCls].join(' ');
     const bi = ctx.bandImage;
     const media = !bi ? '' : ctx.split && backdropCss(bi) ? `<span class="split-img img-backdrop" style="${backdropCss(bi)}"><img ${img(bi.currentSrc || bi.src)} alt="${esc(bi.alt)}"${imgOpacity(bi)}></span>`
       : `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(bi.currentSrc || bi.src)} alt="${esc(bi.alt)}"${imgOpacity(bi)}>`;
@@ -876,6 +904,24 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   ${['h2', 'h3', 'h4', 'h5', 'h6'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main .band .flow .heading.role-${h} { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.3')}; }`).join('\n  ')}
   .site-main .heading-display .heading { font-size: ${v('--type-display-font-size', '2em')}; line-height: ${v('--type-display-line-height', '1.2')}; }
   .site-main .inset > .container { max-width: none; padding: 0 var(--band-inset); }
+  /* rails (mapping-json.md § rail): the source's side column sits beside the content, never after it */
+  @media (min-width: 901px) {
+    .site-main.has-rail { display: grid; grid-template-columns: var(--rail-width) minmax(0, 1fr); align-items: start; }
+    .site-main.has-rail.rail-end { grid-template-columns: minmax(0, 1fr) var(--rail-width); }
+    .site-main.has-rail > section { grid-column: 2; min-width: 0; }
+    .site-main.has-rail.rail-end > section { grid-column: 1; }
+    .site-main.has-rail > section.in-band { grid-column: 1 / -1; }
+    .site-main.has-rail > section.in-rail { grid-column: 1; }
+    .site-main.has-rail.rail-end > section.in-rail { grid-column: 2; }
+  }
+  /* one column at 900px and under: normal flow (the page's own margins), a flex column only to move a rail */
+  @media (max-width: 900px) {
+    .site-main.has-rail.rail-reorder { display: flex; flex-direction: column; }
+    .site-main.has-rail.rail-reorder > section.in-band { order: -2; }
+    .site-main.has-rail.rail-reorder > section.rail-mobile-top { order: -1; }
+    .site-main.has-rail.rail-reorder > section.rail-mobile-bottom { order: 1; }
+    .site-main.has-rail > section.rail-mobile-hidden { display: none; }
+  }
   ${['h2', 'h3', 'h4'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main ${h}.heading { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.2')}; font-weight: ${v(`--type-${h}-font-weight`, 'inherit')}; }`).join('\n  ')}
   ${has('--type-h3-font-size') ? `.site-main .card .heading { font-size: var(--type-h3-font-size); line-height: ${v('--type-h3-line-height', '1.2')}; font-weight: ${v('--type-h3-font-weight', 'inherit')}; }` : ''}
   ${has('--radii-label') ? `.site-main .band:not([class*="heading-"]) .flow > h2.heading:first-child, .site-main .heading-h2 .flow > .heading:first-child { display: inline-block; justify-self: start; background: ${v('--palette-accent', 'transparent')}; border-radius: var(--radii-label); padding: 0 7px; }` : ''}
@@ -1063,7 +1109,7 @@ ${css}
 <header class="site-header" data-canon="header">
   ${headerHtml}
 </header>
-<main class="site-main" data-template="${esc(pageMap.template || slug)}">
+<main class="site-main${railSideOfPage ? ` has-rail rail-${railSideOfPage}${railSlots.some((r) => railMobileOf(r) !== 'hidden') ? ' rail-reorder' : ''}` : ''}"${railSideOfPage ? ` style="--rail-width: ${railWidthOf(railSlots[0])}"` : ''} data-template="${esc(pageMap.template || slug)}">
   ${sections.join('\n  ')}
 </main>
 <footer class="site-footer${['dark', 'light', 'accent'].includes(mapping.chrome?.footerTone) ? ` tone-${mapping.chrome.footerTone}` : ''}" data-canon="footer">
@@ -1086,7 +1132,9 @@ export const MAPPING_SCHEMA = {
   top: ['chrome', 'pages', 'blocks', 'library'],
   chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign', 'kit'],
   page: ['template', 'slots', 'defaultContent'],
-  slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split', 'bleed', 'align', 'cardTone', 'block', 'variant', 'instance'],
+  slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split', 'bleed', 'align', 'cardTone', 'block', 'variant', 'instance', 'rail', 'railWidth', 'railMobile', 'band'],
+  rail: ['start', 'end', 'none'],
+  railMobile: ['hidden', 'top', 'bottom'],
   align: ['center'],
   layout: ['stack', 'grid-2', 'media-band', 'split', 'cards'],
   width: ['narrow', 'wide'],
@@ -1162,6 +1210,18 @@ export function checkMapping(mapping, { models = {}, chromeModel = null, slugs =
       if (m.block !== undefined && !(typeof m.block === 'string' && BLOCK_TOKEN.test(m.block))) out.push(`${sat}.block: ${JSON.stringify(m.block)} is not an EDS block name (lower-case letters, digits, hyphens)`);
       if (m.variant !== undefined && !(Array.isArray(m.variant) && m.variant.every((t) => typeof t === 'string' && BLOCK_TOKEN.test(t)))) out.push(`${sat}.variant: ${JSON.stringify(m.variant)} is not an array of class tokens`);
       if (m.instance !== undefined && !(typeof m.instance === 'string' && /^I?\d+:\d+(?:;\d+:\d+)*$/.test(m.instance))) out.push(`${sat}.instance: ${JSON.stringify(m.instance)} is not a Figma node id`);
+      for (const k of ['rail', 'railMobile']) if (m[k] !== undefined && !one(m[k], S[k])) out.push(`${sat}.${k}: "${m[k]}" is not ${S[k].join(' | ')}`);
+      if (m.railWidth !== undefined && !(typeof m.railWidth === 'string' && /^\d+(\.\d+)?(px|rem|%)$/.test(m.railWidth))) out.push(`${sat}.railWidth: ${JSON.stringify(m.railWidth)} is not a length (px | rem | %)`);
+      if (m.band !== undefined && typeof m.band !== 'boolean') out.push(`${sat}.band: ${JSON.stringify(m.band)} is not true | false`);
+    }
+    // A slot the source places beside the content column must be placed by the mapping: stacking it in
+    // stream order puts a section sidebar above the footer (the recorded failure, two migrations).
+    if (model) {
+      for (const sec of model.sections || []) {
+        const side = railSide(sec.placement?.region);
+        const m = pm.slots[sec.slot];
+        if (side && !(isObj(m) && one(m.rail, S.rail))) out.push(`${at}.slots.${sec.slot}: the source sets this slot as a ${side} rail beside the content (placement ${sec.placement.region}${sec.rect?.w ? `, ${sec.rect.w}px` : ''}${sec.placement.hiddenMobile ? ', hidden on mobile' : ''}) — set "rail": "${side}" (or "rail": "none" with a coverage/<slug>.json placement declaration): reference/mapping-json.md § rail`);
+      }
     }
   }
   return out;

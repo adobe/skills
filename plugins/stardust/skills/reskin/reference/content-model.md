@@ -83,6 +83,20 @@ three levels down, else the nearest opaque ancestor): `dark` below relative
 luminance 0.2, `tinted` when it differs from the page background, else `page`.
 None of these feed the byte gates; gate (a′) reads them.
 
+## Placement
+
+DOM order is not page order. Every slot carries `rect` (its document box at 1440) and `placement`, and every
+residue region `placement`, classified by `scripts/placement.mjs` against the page's content column (the slot
+holding the h1, else the slot with the most text that is not a breadcrumb):
+
+```json
+"placement": { "region": "rail-start", "hiddenMobile": true }
+```
+
+`region` is `rail-start` / `rail-end` (beside the column: a section sidebar, a local nav), `band` (wider than the
+column and over it: a breadcrumb spanning column and rail) or `main`. `hiddenMobile` is set when the region has no
+box at 390px. A rail is a mapping decision (`mapping-json.md` § rail) and gate (a′) S4 holds it.
+
 ## Slot taxonomy
 
 A **slot** is one coherent content unit — the atom of the Phase 3

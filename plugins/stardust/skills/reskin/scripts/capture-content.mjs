@@ -80,6 +80,7 @@ import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadNormalize, IMG_VISIBLE } from './source-normalize.mjs';
+import { placements } from './placement.mjs';
 
 // live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
 // the plugin tree (skills/reskin/scripts ↔ skills/diff/scripts) and the
@@ -664,6 +665,11 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
     return { tone, bg: `rgb(${c.slice(0, 3).map(Math.round).join(', ')})`, ...(painter && tone !== 'page' ? { toneEl: selPath(painter) } : {}) };
   };
   sections.forEach((s, i) => Object.assign(s, toneOf(sectionEls[i])));
+  // Placement input (placement.mjs, source-coverage S4): each slot's document box at 1440 and whether it
+  // holds the h1. The elements stay on window for the mobile visibility pass.
+  const docRect = (el) => { const r = el.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y + window.scrollY), w: Math.round(r.width), h: Math.round(r.height) }; };
+  sections.forEach((s, i) => { s.rect = docRect(sectionEls[i]); if (sectionEls[i].querySelector('h1') || sectionEls[i].matches('h1')) s.hasH1 = true; });
+  window.__stardustSlotEls = sectionEls;
 
   // Residue inventory (source-coverage S1): every visible, text-bearing region OUTSIDE the scopes —
   // the siblings of each scope's ancestor chain that hold no scope. A sidebar, a breadcrumb, a
@@ -699,8 +705,12 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
     }
     return out;
   };
-  const residue = [...residueEls]
+  const residueKept = [...residueEls]
     .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; })
+    .filter((el) => norm(el.innerText).length > 0)
+    .sort((a, b) => (a.getBoundingClientRect().y - b.getBoundingClientRect().y) || (a.getBoundingClientRect().x - b.getBoundingClientRect().x));
+  window.__stardustResidueEls = residueKept;
+  const residue = residueKept
     .map((el) => {
       const text = norm(el.innerText);
       const r = el.getBoundingClientRect();
@@ -711,9 +721,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
         lines: textLines(el),
         rect: { x: Math.round(r.x), y: Math.round(r.y + window.scrollY), w: Math.round(r.width), h: Math.round(r.height) },
       };
-    })
-    .filter((r) => r.textLen > 0)
-    .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
+    });
   const bodyText = norm(document.body.innerText || '');
   const h1 = document.querySelector('h1');
   const h1Text = h1 ? norm(h1.innerText) : null;
@@ -746,6 +754,28 @@ if (model.error) {
   }
   await browser.close();
   process.exit(2);
+}
+
+// Placement (placement.mjs): classify every slot and residue region against the content column at 1440,
+// then record which ones the source hides on a phone (a desktop-only sidebar). Shown at 390 = rendered with
+// a box; the 1440 viewport is restored before the screenshot.
+{
+  const items = [
+    ...model.sections.map((s) => ({ rect: s.rect, hasH1: !!s.hasH1, textLen: (s.visibleText || '').length, kind: s.rootTag === 'nav' && /breadcrumb/i.test(s.rootClass || '') ? 'breadcrumb' : 'slot' })),
+    ...model.residue.map((r) => ({ rect: r.rect, textLen: r.textLen, kind: r.kind })),
+  ];
+  const placed = placements(items);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(600);
+  const shown = await page.evaluate(() => {
+    const vis = (el) => { if (!el?.isConnected) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
+    return { slots: (window.__stardustSlotEls || []).map(vis), residue: (window.__stardustResidueEls || []).map(vis) };
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(300);
+  const n = model.sections.length;
+  model.sections.forEach((s, i) => { s.placement = { region: placed[i].region, ...(shown.slots[i] === false ? { hiddenMobile: true } : {}) }; delete s.hasH1; });
+  model.residue.forEach((r, i) => { r.placement = { region: placed[n + i].region, ...(shown.residue[i] === false ? { hiddenMobile: true } : {}) }; });
 }
 
 const shot = `${opts.out.replace(/\/$/, '')}/source-full.png`;
@@ -800,6 +830,11 @@ console.log(`[capture-content] settle: ${settle.stable ? 'stable' : 'NOT stable'
 if (!settle.stable) console.log(`[capture-content] WARNING: page text still growing at the ${SETTLE_CAP_MS}ms settle cap — a feed or widget may be incomplete in the reference; re-capture or raise CAPTURE_SETTLE_CAP_MS.`);
 const tones = model.sections.filter((s) => s.tone !== 'page').map((s) => `${s.slot}:${s.tone}`);
 console.log(`[capture-content] tones: ${tones.length ? tones.join(' ') : 'all slots on the page colour'}`);
+{
+  const rails = [...model.sections.map((s) => ({ id: s.slot, p: s.placement, w: s.rect?.w })), ...model.residue.map((r) => ({ id: `residue ${r.sel}`, p: r.placement, w: r.rect?.w }))]
+    .filter((x) => x.p && /^rail/.test(x.p.region));
+  if (rails.length) console.log(`[capture-content] placement: ${rails.map((x) => `${x.id} ${x.p.region} (${x.w}px${x.p.hiddenMobile ? ', hidden on mobile' : ''})`).join(' · ')} — a rail renders beside the content, never stacked after it: set mapping.json "rail" (reference/mapping-json.md § rail)`);
+}
 for (const r of model.residue.filter((x) => x.kind !== 'chrome')) {
   console.log(`[capture-content] residue (${r.kind}) ${r.sel} — ${r.textLen} chars outside the scope: "${r.lines.slice(0, 4).join(' | ').slice(0, 100)}"`);
 }

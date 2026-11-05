@@ -58,10 +58,11 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
    (`metadata.absent`); its `content` step runs `figma-text-gate` in place of `dom-equality` (no live source),
    with `text-ops.json` beside the model. On the preview EDS may emit a description or canonical the design has
    none of: move such a key from `metadata.absent` to `metadata.ignore`, with the why in `mapping.md`.
-6. **`deployed-gate all` under `run-bg`;** copy `summary.json`'s `ledgerFragment` into the ledger.
-   Then **gate (a′) on the preview**: `source-coverage.mjs --model … --target <preview-url> --declared
-   stardust/reskin/coverage/<slug>.json` (`gates.md` § (a′)). A breadcrumb or section sidebar that EDS builds as page
-   chrome, or a feed block that renders client-side, exists only here; the local page cannot prove it.
+6. **`deployed-gate all` under `run-bg`;** copy `summary.json`'s `ledgerFragment` into the ledger. `all` runs
+   **gate (a′) on the preview** as its `coverage` step (`source-coverage.mjs --target <preview-url>` with the page's
+   model and `coverage/<slug>.json`; `gates.md` § (a′)), blocking: a breadcrumb or section sidebar that EDS builds as
+   page chrome, a feed block that renders client-side, or a rail EDS stacks after the content (S4) exists only here;
+   the local page cannot prove it.
 7. **Step 10's deployed checks stay mandatory before handoff**, run as `deploy` specifies, not re-built here: the
    desktop and mobile eyeball, the delayed-font/nav CLS probe (CLS < 0.1; `deployed-gate` and `qa-gate` measure settled
    pages) and the header-behavior checks `chrome` (A6) does not cover. Record each result, or `unresolved: <why>`, under
@@ -70,6 +71,16 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
 The preview must be reachable without auth: a protected preview is out of scope. `preview` stops with exit 2 on a
 401 or 403 rather than poll, and the gates send no Authorization header. A sandbox repo's preview is public by
 default.
+
+## Rails
+
+A slot mapped `"rail"` stays a rail on EDS. Author it as its own section with a section-metadata `style` value
+(`section-nav`, `rail`), and lay the page out in the project CSS/JS the way the reskin page does: on `main`
+holding that section, a grid at > 900px (the rail column at its `railWidth`, the other sections in a content
+column on explicit rows in document order, a band section such as the breadcrumb across both), one column at
+≤ 900px in normal flow with the rail per its `railMobile`. Keep every section a direct child of `main` (the joins and parity pair
+`main > .section`). Gate (a′) S4 on the preview (`--target <preview url>`) FAILs a rail EDS renders after the
+content, which parity cannot see when the reskin page shares the mistake.
 
 ## The delta file
 
@@ -114,7 +125,7 @@ Applied entries are reported (a "Declared deltas" section, a `deltas applied:` l
 
 ```json
 { "regime": "preview", "url": "<preview url>", "content": "PASS", "tokens": "PASS", "parity": "FAIL 1/8",
-  "sanity": { "verdict": "PASS", "hard": true }, "inherited": "PASS", "chrome": { "verdict": "PASS", "hard": true },
+  "sanity": { "verdict": "PASS", "hard": true }, "inherited": "PASS", "chrome": { "verdict": "PASS", "hard": true }, "coverage": "PASS",
   "figma": { "regime": "preview" },
   "codeStamp": "<16 hex>", "invocation": "deployed-gate.mjs all --page <slug> …" }
 ```
@@ -142,7 +153,7 @@ measured nothing: the step fails and the run goes on, `sanity` records its own h
 `ADVISORY <gates> (deltas.blocking false)`, `not run: <why>` or
 `ERROR (exit N): <why>`; `figma` is figma-gate's own fragment, or one of those (`not run: no figma checks`).
 `invocation` is the exact argument list. A residual's `class` is
-`deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited` or `.chrome` (M2b's are `figma.*`; a font declared
+`deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited`, `.chrome` or `.coverage` (M2b's are `figma.*`; a font declared
 but not served — `tokens`' `font.unserved` line or an UNSERVED ramp result — has the cause `font.unserved`, gates.md
 § Unserved donor font); a `deployed.sanity` or `deployed.chrome` residual is never `accepted`, and a header or footer
 one (`step10.header`, …) only with `--by <owner>`, never an agent's name (`reskin-ledger.mjs` refuses; a hands-off run

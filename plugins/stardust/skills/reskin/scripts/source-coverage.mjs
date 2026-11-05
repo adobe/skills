@@ -15,6 +15,10 @@
  *                   or one captured unstable, is reported — re-capture (n/a on a Figma-sourced model:
  *                   nothing renders late in a design file). The target is settled the
  *                   same way before it is measured, so a client-rendered block is read rendered.
+ *   S4 placement  — a slot or residue region the source sets BESIDE the content column (a section
+ *                   sidebar: capture's `placement.region` rail-start | rail-end) must sit beside the
+ *                   target's content column on the same side at 1440 — not stacked after the content
+ *                   above the footer. Declared moves (`placement` in --declared) pass with their why.
  *   S3 attribute  — the band tone behind each slot (`sections[].tone`: dark | tinted | page,
  *                   measured from the painted background). A source dark band whose heading does not
  *                   sit on a dark band in the target fails unless declared; tinted → page is advisory.
@@ -25,6 +29,8 @@
  *                                       "residue": [{ "match": "<substring of sel or first line>",
  *                                                     "why": "…" }],
  *                                       "tones": [{ "slot": "s01", "to": "tinted|page", "why": "…" }],
+ *                                       "placement": [{ "slot": "s09" | "match": "<sel or first line>",
+ *                                                       "to": "rail-start|rail-end|band|main", "why": "…" }],
  *                                       "blocking": true }
  *       [--min-chars 20]              residue regions shorter than this are listed, never gated
  *       [--out <report.json>]
@@ -35,6 +41,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
+import { contentColumn, regionOf } from './placement.mjs';
 
 const USAGE = 'usage: node source-coverage.mjs --model <content-model.json> --target <url|file> [--declared <coverage.json>] [--min-chars 20] [--out <report.json>]';
 
@@ -57,7 +64,7 @@ export function parseArgs(argv) {
 export function readDeclared(json) {
   const problems = [];
   const d = json || {};
-  const known = ['version', 'residue', 'tones', 'blocking'];
+  const known = ['version', 'residue', 'tones', 'placement', 'blocking'];
   Object.keys(d).forEach((k) => { if (!known.includes(k)) problems.push(`unknown key "${k}"`); });
   if (d.version !== 1) problems.push('version must be 1');
   (d.residue || []).forEach((r, i) => {
@@ -69,7 +76,36 @@ export function readDeclared(json) {
     if (!['dark', 'tinted', 'page'].includes(t.to)) problems.push(`tones[${i}]: to must be dark | tinted | page`);
     if (!t.why) problems.push(`tones[${i}]: why required`);
   });
-  return { declared: { residue: d.residue || [], tones: d.tones || [], blocking: d.blocking !== false }, problems };
+  (d.placement || []).forEach((t, i) => {
+    if (!t.slot && !t.match) problems.push(`placement[${i}]: slot (sNN) or match required`);
+    if (!['rail-start', 'rail-end', 'band', 'main'].includes(t.to)) problems.push(`placement[${i}]: to must be rail-start | rail-end | band | main`);
+    if (!t.why) problems.push(`placement[${i}]: why required`);
+  });
+  return { declared: { residue: d.residue || [], tones: d.tones || [], placement: d.placement || [], blocking: d.blocking !== false }, problems };
+}
+
+/**
+ * The regions the source sets beside its content column (placement.mjs), each with the text lines the
+ * target is searched by: [{ key, slot?, sel?, region, lines }]. Pure; exported for tests.
+ */
+export function railItems(model) {
+  const out = [];
+  for (const s of model.sections || []) {
+    if (!/^rail-/.test(s.placement?.region || '')) continue;
+    const lines = [...(s.headings || []).map((h) => h.text || h), ...(s.ctas || []).map((c) => c.text)].filter((t) => typeof t === 'string' && t.trim().length >= 2);
+    out.push({ key: s.slot, slot: s.slot, region: s.placement.region, lines: lines.length ? lines.slice(0, 20) : [(s.visibleText || '').slice(0, 80)] });
+  }
+  (model.residue || []).filter((r) => r.kind !== 'chrome').forEach((r) => {
+    if (/^rail-/.test(r.placement?.region || '')) out.push({ key: `residue:${r.sel}`, sel: r.sel, region: r.placement.region, lines: (r.lines || []).slice(0, 20) });
+  });
+  return out;
+}
+
+// Target placement of one rail item from the measured boxes: target.rails[key] = { rect, items } where items are
+// the target's top-level content blocks ({ rect, hasH1, textLen }) without the rail itself. Pure.
+export function targetRegion(m) {
+  if (!m || !m.rect) return null;
+  return regionOf(m.rect, contentColumn(m.items || []));
 }
 
 /**
@@ -109,6 +145,18 @@ export function judge(model, target, declared, minChars) {
     rows.push({ check: 'S3', slot: s.slot, source: s.tone, target: got ?? 'not found', verdict, ...(decl ? { why: decl.why } : {}), probe: probeOf(s) });
   });
 
+  railItems(model).forEach((it) => {
+    const s1 = rows.find((r) => r.check === 'S1' && it.sel && r.sel === it.sel);
+    if (s1 && s1.verdict !== 'carried') return; // dropped (S1 FAIL) or declared dropped: S1 owns it, nothing to place
+    const got = targetRegion(target.rails?.[it.key]);
+    const decl = (declared.placement || []).find((d) => (d.slot && d.slot === it.slot) || (d.match && ((it.sel || '').includes(d.match) || (it.lines[0] || '').includes(d.match))));
+    let verdict;
+    if (got === it.region) verdict = 'carried';
+    else if (decl && (got === null || decl.to === got)) verdict = 'declared';
+    else verdict = 'FAIL';
+    rows.push({ check: 'S4', key: it.key, source: it.region, target: got ?? 'not found', verdict, ...(decl ? { why: decl.why } : {}), sample: it.lines.slice(0, 3).join(' | ').slice(0, 100) });
+  });
+
   const fails = rows.filter((r) => r.verdict === 'FAIL').length;
   const gated = rows.filter((r) => ['carried', 'declared', 'FAIL'].includes(r.verdict)).length;
   let verdict = 'PASS';
@@ -142,7 +190,8 @@ async function measureTarget(url, model, minChars) {
   }
   const residue = (model.residue || []).filter((r) => r.kind !== 'chrome');
   const probes = (model.sections || []).filter((s) => s.tone && s.tone !== 'page').map((s) => ({ slot: s.slot, probe: probeOf(s) }));
-  const result = await page.evaluate(({ residue, probes, minChars }) => {
+  const rails = railItems(model);
+  const result = await page.evaluate(({ residue, probes, minChars, rails }) => {
     const norm = (s) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
     const CHROME = 'header, footer, [role="banner"], [role="contentinfo"]';
     const els = [...document.body.querySelectorAll('*')].filter((e) => !e.closest(CHROME) && !['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(e.tagName));
@@ -178,8 +227,40 @@ async function measureTarget(url, model, minChars) {
       const same = c.slice(0, 3).every((v, i) => Math.abs(v - pageBg[i]) < 6);
       slotTones[slot] = lum(c) < 0.2 ? 'dark' : (same ? 'page' : 'tinted');
     });
-    return { regions, slotTones };
-  }, { residue, probes, minChars });
+    // S4: the rail's box and the content it should sit beside. From the rail's host, climb to the branch whose
+    // parent holds a sibling with more text than it (the content column: main's other sections on a reskin page
+    // or a preview, the content wrapper beside an aside in any layout); those siblings are the content blocks.
+    const docRect = (e) => { const r = e.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y + window.scrollY), w: Math.round(r.width), h: Math.round(r.height) }; };
+    const shownBox = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+    const lenOf = (e) => norm(e.innerText).length;
+    const railRects = {};
+    rails.forEach((it) => {
+      let host = it.slot ? document.querySelector(`[data-slot="${it.slot}"]`) : null;
+      if (!host) {
+        const lines = it.lines.map(norm).filter((l) => l.length >= 2);
+        let best = null; let bestHit = 0;
+        els.forEach((e) => {
+          const t = textOf(e);
+          if (!t) return;
+          const hit = lines.filter((l) => t.includes(l)).length / (lines.length || 1);
+          if (hit >= 0.6 && (hit > bestHit || (hit === bestHit && t.length < textOf(best).length))) { best = e; bestHit = hit; }
+        });
+        host = best;
+      }
+      if (!host) { railRects[it.key] = null; return; }
+      let top = host; let sibs = [];
+      while (top.parentElement && top.parentElement !== document.documentElement) {
+        sibs = [...top.parentElement.children].filter((c) => c !== top && shownBox(c) && !['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(c.tagName) && !c.closest(CHROME));
+        if (sibs.some((c) => lenOf(c) > lenOf(top))) break;
+        top = top.parentElement; sibs = [];
+      }
+      railRects[it.key] = {
+        rect: docRect(top),
+        items: sibs.map((b) => ({ rect: docRect(b), hasH1: !!(b.matches('h1') || b.querySelector('h1')), textLen: lenOf(b) })),
+      };
+    });
+    return { regions, slotTones, rails: railRects };
+  }, { residue, probes, minChars, rails });
   await browser.close();
   return { ...result, settledMs: Date.now() - t0 };
 }
@@ -190,7 +271,7 @@ async function main() {
   if (o.help) { console.log(USAGE); process.exit(0); }
   if (!o.model || !o.target) { console.error(USAGE); process.exit(2); }
   const model = JSON.parse(readFileSync(o.model, 'utf8'));
-  let declared = { residue: [], tones: [], blocking: true };
+  let declared = { residue: [], tones: [], placement: [], blocking: true };
   if (o.declared) {
     if (!existsSync(o.declared)) { console.error(`[source-coverage] declared file not found: ${o.declared}`); process.exit(2); }
     const r = readDeclared(JSON.parse(readFileSync(o.declared, 'utf8')));
@@ -203,6 +284,7 @@ async function main() {
   res.rows.forEach((r) => {
     if (r.check === 'S1') console.log(`[source-coverage] S1 ${r.verdict.padEnd(8)} ${r.kind} ${r.sel} — ${r.textLen} chars, recall ${r.recall}${r.why ? ` (declared: ${r.why})` : ''} "${r.sample}"`);
     else if (r.check === 'S2') console.log(`[source-coverage] S2 ${r.verdict.padEnd(8)} ${r.detail}`);
+    else if (r.check === 'S4') console.log(`[source-coverage] S4 ${r.verdict.padEnd(8)} ${r.key} ${r.source} → ${r.target}${r.why ? ` (declared: ${r.why})` : ''} "${r.sample}"${r.verdict === 'FAIL' ? ' — the source sets it beside the content; render it there (mapping.json "rail")' : ''}`);
     else console.log(`[source-coverage] S3 ${r.verdict.padEnd(8)} ${r.slot} ${r.source} → ${r.target}${r.why ? ` (declared: ${r.why})` : ''} "${r.probe}"`);
   });
   console.log(`[source-coverage] ${res.verdict}`);

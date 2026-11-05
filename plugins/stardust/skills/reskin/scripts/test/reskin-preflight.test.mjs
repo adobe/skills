@@ -161,7 +161,7 @@ check('the reskin predicate: missing ledger, failing gate, open residual, no eye
   assert.match(ag(L(gated({ prototypeSha: sha(proto) })), { 'stardust/state.json': st, 'stardust/prototypes/login-proposed.html': '<html>v2</html>' }).detail, /prototype changed/);
 });
 check('the reskin predicate: deployed evidence whose codeStamp no longer matches the EDS code fails archetype-gates', () => {
-  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: 'PASS', inherited: 'PASS', chrome: { verdict: 'PASS', hard: true }, codeStamp: 'aaaa000011112222' };
+  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: 'PASS', inherited: 'PASS', chrome: { verdict: 'PASS', hard: true }, coverage: 'PASS', codeStamp: 'aaaa000011112222' };
   const files = project({ 'stardust/reskin/ledger.json': JSON.stringify({ pages: { login: gated({ gates: { ...gated().gates, deployed: dep } }) }, handoff: { form: { archetype: 'login', gates: {} } } }) });
   const ag = (stamp) => preflight(files, { stamp }).find((x) => x.check === 'archetype-gates');
   assert.equal(ag(() => 'aaaa000011112222').level, 'ok');
@@ -171,7 +171,7 @@ check('the reskin predicate: deployed evidence whose codeStamp no longer matches
 check('the reskin predicate reads M2 fragments: figma B0/B1/B3, deployed A1–A6 + figma re-run, D7 sanity and chrome', () => {
   const ag = (page) => preflight(project({ 'stardust/reskin/ledger.json': JSON.stringify({ pages: { login: page }, handoff: { form: { archetype: 'login', gates: {} } } }) })).find((x) => x.check === 'archetype-gates');
   const fig = { regime: 'local', join: 'PASS', geometry: 'PASS 12/12', ramp: 'PASS', pixel: 'ADVISORY 4.1%', register: { a: 1 } };
-  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'ADVISORY 2%', sanity: 'PASS', inherited: 'n/a: no contract', chrome: { verdict: 'PASS', hard: true }, figma: { ...fig, regime: 'preview' } };
+  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'ADVISORY 2%', sanity: 'PASS', inherited: 'n/a: no contract', chrome: { verdict: 'PASS', hard: true }, coverage: 'PASS', figma: { ...fig, regime: 'preview' } };
   assert.equal(ag(gated({ gates: { figma: fig, deployed: dep } })).level, 'ok');
   assert.match(ag(gated({ gates: { figma: { ...fig, geometry: 'FAIL 3/12' } } })).detail, /figma\.geometry FAIL/);
   assert.match(ag(gated({ gates: { figma: { missing: 'figma-gate all not run' } } })).detail, /figma\.join NOT-RUN/);

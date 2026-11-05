@@ -79,9 +79,29 @@ read by the renderer.
 | `block` | string | an EDS block name (Figma-only sites, seeded by `figma-donor.mjs content --all`) | `section[data-block]` |
 | `variant` | string[] | class tokens | `section[data-block-variant]` (with `block`) |
 | `instance` | string | the Figma kit instance node id (`12:34`) | `section[data-kit-instance]` (with `block`) |
+| `rail` | string | `start` \| `end` \| `none` | the slot renders in a side column beside the content (§ rail); `none` keeps stream order for a source rail, with a coverage `placement` declaration |
+| `railWidth` | string | a length; default the captured width (`rect.w`), else `320px` | the rail column's width |
+| `railMobile` | string | `hidden` \| `top` \| `bottom`; default `hidden` when the source hides it on a phone (`placement.hiddenMobile`), else `top` | the rail at ≤ 900px |
+| `band` | boolean | default `true` for a slot captured `placement.region: band` | on a rail page, the slot spans the content and the rail (a breadcrumb) |
 
 The renderer warns and ignores a bad `tone`, `heading`, `inset` or `split`, falls back for `columns`, and
 emits an unknown `layout` word as a class with no style; `--check` reports all of them.
+
+## rail
+
+A section sidebar, local nav or related-links rail sits BESIDE the content on the source, and is often
+after `<main>` in the DOM, moved there by CSS. The capture classifies it (`content-model.md` § Placement:
+`sections[].placement.region` `rail-start` | `rail-end`); stacking slots in stream order would render it after
+the content, above the footer. `"rail": "start"` (or `"end"`) on that slot makes `main` a grid at > 900px:
+the rail in its own column (`railWidth`), every other slot on an explicit grid row in stream order, band slots
+(`placement.region: band`, or `"band": true`) across both columns. The DOM keeps stream order, so the content
+gate's text order is unchanged. At ≤ 900px the page is one column in normal flow and the rail follows `railMobile`
+(a flex column only when it moves, `top` / `bottom`: flex items stop the sections' margins collapsing).
+
+`--check` with the page's content model is a problem for every slot the source places as a rail whose mapping
+has no `rail`: decide it like a dark band — `start`/`end`, or `none` with a `placement` entry in
+`coverage/<slug>.json` (`gates.md` § (a′) S4). On EDS the rail is the section's style (a `section-nav` /
+`rail` section-metadata value) and the template CSS lays it out the same way (`deployed-leg.md` § Rails).
 
 ## Readers
 
