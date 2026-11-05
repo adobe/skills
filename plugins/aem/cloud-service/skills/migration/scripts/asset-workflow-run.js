@@ -13,9 +13,8 @@ const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const C = require('./asset-workflow-catalog.js');
 const I = require('./asset-workflow-inventory.js');
-const F = require('./asset-workflow-followup.js');
-const V = require('./asset-workflow-verify.js');
-const R = require('./asset-workflow-report.js');
+const K = require('./asset-workflow-check.js');
+const { ackMatches } = K;
 const S = require('./asset-workflow-custom-steps.js');
 
 // 0.7.0 is the first release with the fixes this branch relies on (adobe/aem-cloud-migration#25: split handling,
@@ -198,8 +197,6 @@ function baselineFromGit(root, dest) {
 
 // ── Plan / gate ───────────────────────────────────────────────────────
 
-const ackMatches = (acks, process) => acks.includes('all') || acks.includes(process) || acks.includes(C.shortName(process));
-
 const affectedWorkflows = I.affectedWorkflows;
 
 // Steps the tool removes without a sure replacement (UNSUPPORTED ones, and command lines, of which it maps
@@ -344,10 +341,10 @@ function runMigration(o, temps) {
   const post = I.buildInventory(root);
   const toolReport = path.join(reportDir, 'tool', 'migration-report.md');
   if (tool.skipped && isFile(toolReport)) tool.reportPath = toolReport;
-  const followUps = F.collectFollowUps({ pre, post, acknowledge: o.acknowledge, toolReport: isFile(toolReport) ? fs.readFileSync(toolReport, 'utf8') : '' });
-  const verify = V.verifyMigration(pre, post, { followUps, acknowledge: o.acknowledge });
-  const md = R.renderReport({ pre, post, followUps, verify, tool, gate, customSteps: result.customSteps });
-  result.report = R.writeReport(reportDir, md);
+  const followUps = K.collectFollowUps({ pre, post, acknowledge: o.acknowledge, toolReport: isFile(toolReport) ? fs.readFileSync(toolReport, 'utf8') : '' });
+  const verify = K.verifyMigration(pre, post, { followUps, acknowledge: o.acknowledge });
+  const md = K.renderReport({ pre, post, followUps, verify, tool, gate, customSteps: result.customSteps });
+  result.report = K.writeReport(reportDir, md);
   Object.assign(result, { stage: 'done', ok: verify.ok, exitCode: verify.ok ? 0 : 1, tool, followUps: { workflows: followUps.workflows.map(w => w.confPath), manual: followUps.manual, runner: followUps.runner }, verify });
   fs.writeFileSync(path.join(reportDir, 'asset-workflow-result.json'), JSON.stringify(result, null, 2) + '\n');
   return result;

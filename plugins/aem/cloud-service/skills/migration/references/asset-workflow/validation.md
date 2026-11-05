@@ -4,12 +4,12 @@ Two layers: the **verification gates** that `scripts/asset-workflow-run.js` runs
 
 ## Verification gates (automatic)
 
-`scripts/asset-workflow-verify.js` (`verifyMigration(pre, post, { followUps, acknowledge })`) compares the pre-run inventory with the result. Any **failure** makes the run exit `1` with `Verification: FAIL`; the report lists each one. Do not present the migration as done until every failure is fixed or explained to the user. After fixing by hand, re-run with `--verify-only` — it re-verifies the current tree against the git `HEAD` baseline without running the tool. A failure that comes from the tool's own output is a tool bug: report it at [adobe/aem-cloud-migration](https://github.com/adobe/aem-cloud-migration/issues).
+`scripts/asset-workflow-check.js` (`verifyMigration(pre, post, { followUps, acknowledge })`) compares the pre-run inventory with the result. Any **failure** makes the run exit `1` with `Verification: FAIL`; the report lists each one. Do not present the migration as done until every failure is fixed or explained to the user. After fixing by hand, re-run with `--verify-only` — it re-verifies the current tree against the git `HEAD` baseline without running the tool. A failure that comes from the tool's own output is a tool bug: report it at [adobe/aem-cloud-migration](https://github.com/adobe/aem-cloud-migration/issues).
 
 | Failure | Meaning | What to do |
 |---|---|---|
 | `custom-step-loss` | A `SUPPORTED`/`CUSTOM`/`SCRIPT` step (or its whole model) that ran before is gone. | Restore it from the baseline (`git show HEAD:<file>`) into the post-processing model. |
-| `unsupported-step-removed` | An `UNSUPPORTED` or `CommandLineProcess` step was removed (or no longer runs because its renditions-only workflow's launcher was disabled) and was not acknowledged. | Implement the remediation ([step-catalog.md](step-catalog.md#steps-that-need-acknowledging)), then acknowledge it. |
+| `unsupported-step-removed` | An `UNSUPPORTED` or `CommandLineProcess` step was removed (or no longer runs because its renditions-only workflow's launcher was disabled) and was not acknowledged. | Implement the remediation ([context.md](context.md#steps-that-need-acknowledging)), then acknowledge it. |
 | `custom-workflow-not-wired` | A model with real work has no Custom Workflow Runner entry. | Add `<path or expression>:<runtime model path>` to the author runner `.cfg.json`. |
 | `runner-config-missing` / `runner-config-unparseable` / `runner-entry-malformed` | No usable author runner config, or an entry that is not `<pattern>:<model>`. | Fix the `.cfg.json` under `config.author`. |
 | `runner-config-duplicate-pid` | More than one runner config applies on author; only one wins. | Merge them into one `config.author/…CustomDamWorkflowRunnerImpl.cfg.json`. |

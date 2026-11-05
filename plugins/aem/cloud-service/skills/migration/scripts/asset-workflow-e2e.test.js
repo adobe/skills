@@ -9,7 +9,7 @@ const fs = require('fs'); const os = require('os'); const path = require('path')
 const { spawnSync } = require('child_process');
 const RUN = require('./asset-workflow-run.js');
 const CAT = require('./asset-workflow-catalog.js');
-const F = require('./asset-workflow-followup.js');
+const F = require('./asset-workflow-check.js');
 const T = require('./fixtures/asset-workflow.js');
 
 function skipReason() {

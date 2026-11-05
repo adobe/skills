@@ -136,8 +136,6 @@ function classifyStep(process) {
 
 // NOOP is not in the tool's catalogue; the tool keeps it at the top level as an unknown step.
 const isKept = cat => KEPT.has(cat) || cat === 'NOOP';
-// A workflow is migrated only if it has a step that is kept and is not merely OPTIONAL/REQUIRED.
-const triggersMigration = cat => isKept(cat) && cat !== 'OPTIONAL' && cat !== 'REQUIRED' && cat !== 'NOOP';
 // Steps that justify running a post-processing workflow (the rule the tool uses to decide whether a model can run on Cloud Service).
 const isRealWork = cat => cat === 'SUPPORTED' || cat === 'CUSTOM' || cat === 'SCRIPT';
 
@@ -145,5 +143,5 @@ const shortName = process => (process && !process.startsWith('/') ? process.spli
 
 module.exports = {
   CATALOG, COMPLETED_PROCESS, NOOP_SCRIPT, DOCS, REMEDIATION,
-  classifyStep, isKept, triggersMigration, isRealWork, shortName, remediationFor, requiresAck,
+  classifyStep, isKept, isRealWork, shortName, remediationFor, requiresAck,
 };
