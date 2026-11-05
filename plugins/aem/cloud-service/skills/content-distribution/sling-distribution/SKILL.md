@@ -600,7 +600,7 @@ LOG.error("Package dropped: {}", packageId);
 While you can't directly query distribution queues via the API in Cloud Service, you can monitor via:
 
 1. **Events**: Track `AGENT_PACKAGE_QUEUED` and `AGENT_PACKAGE_DISTRIBUTED` events
-2. **Felix Console**: View Sling jobs at `/system/console/slingjobs`
+2. **Distribution UI**: **Tools > Deployment > Distribution** (persisted and fully published queues)
 3. **Logs**: Check distribution logs in Cloud Manager
 
 ### Example: Queue Depth Monitoring
