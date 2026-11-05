@@ -215,11 +215,18 @@ async function measureTarget(url, model, minChars) {
     const lum = ([r, g, b]) => { const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
     const pageBg = opaque(document.body) || opaque(document.documentElement) || [255, 255, 255];
     const slotTones = {};
+    const seen = new Map();
     probes.forEach(({ slot, probe }) => {
       const p = norm(probe);
       if (!p) { slotTones[slot] = null; return; }
-      const hosts = els.filter((e) => textOf(e).includes(p));
-      const host = hosts.reduce((a, e) => (!a || textOf(e).length < textOf(a).length ? e : a), null);
+      // Two bands can open with the same text ("Ready to apply?"): inside the slot's own [data-slot] when the
+      // target has one, else the k-th innermost match in document order for the k-th slot with that text.
+      const k = seen.get(p) || 0;
+      seen.set(p, k + 1);
+      const own = document.querySelector(`[data-slot="${CSS.escape(slot)}"]`);
+      const pool = own ? els.filter((e) => own.contains(e)) : els;
+      const inner = pool.filter((e) => textOf(e).includes(p) && ![...e.children].some((c) => textOf(c).includes(p)));
+      const host = own ? inner[0] : (inner[k] ?? inner[0]);
       if (!host) { slotTones[slot] = null; return; }
       let c = null;
       for (let e = host; e && e !== document.documentElement; e = e.parentElement) { c = opaque(e); if (c) break; }

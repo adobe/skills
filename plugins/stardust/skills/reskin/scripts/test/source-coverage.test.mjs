@@ -151,6 +151,19 @@ if (playwrightOk) {
     assert.match(rep.verdict, /^FAIL 2\//);
   });
 
+  await check('S3: two bands that open with the same heading are told apart (the slot\'s [data-slot], else the k-th match in order)', () => {
+    const twin = write('twin-model.json', JSON.stringify({ sections: [
+      { slot: 's01', tone: 'tinted', headings: [{ text: 'Ready to apply?' }], visibleText: 'Ready to apply? Enrol now.' },
+      { slot: 's02', tone: 'dark', headings: [{ text: 'Ready to apply?' }], visibleText: 'Ready to apply? Book a tour.' },
+    ], residue: [] }));
+    const bands = (attr) => `<main><section ${attr('s01')} style="background:#f2f2f2;padding:20px"><h2>Ready to apply?</h2><p>Enrol now.</p></section><section ${attr('s02')} style="background:rgb(99,0,25);color:#fff;padding:20px"><h2>Ready to apply?</h2><p>Book a tour.</p></section></main>`;
+    for (const [name, attr] of [['twin-slots', (id) => `data-slot="${id}"`], ['twin-plain', () => 'class="section"']]) {
+      const r = spawnSync(process.execPath, [GATE, '--model', twin, '--target', write(`${name}.html`, doc(bands(attr)))], { encoding: 'utf8', cwd: scratch });
+      assert.match(r.stdout, /S3 carried\s+s02 dark → dark/, `${name}\n${r.stdout}`);
+      assert.match(r.stdout, /S3 carried\s+s01 tinted → tinted/, `${name}\n${r.stdout}`);
+    }
+  });
+
   await check('the same drops declared with a why PASS; an invalid declared file exits 2', () => {
     const slot = model.sections.find((s) => s.tone === 'dark').slot;
     const decl = write('declared.json', JSON.stringify({ version: 1, residue: [{ match: 'aside', why: 'section menu moved to the header' }], tones: [{ slot, to: 'tinted', why: 'donor band is light' }] }));
