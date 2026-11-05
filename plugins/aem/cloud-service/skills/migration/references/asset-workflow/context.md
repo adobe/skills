@@ -1,185 +1,62 @@
 # Asset Workflow Migration — Context (Branch H)
 
-Migrates on-premise / AMS **DAM asset-processing workflows** (enabled `DAM Update Asset` launchers, overlaid or custom asset workflow models, custom process steps) to AEM as a Cloud Service. On Cloud Service the **asset microservices** create renditions and extract metadata; anything else the old workflow did must run afterwards as a **post-processing workflow** started by the **Custom Workflow Runner** (`com.adobe.cq.dam.processor.nui.impl.workflow.CustomDamWorkflowRunnerImpl`), and custom renditions move to **processing profiles**.
+Migrates on-premise / AMS **DAM asset-processing workflows** (enabled `DAM Update Asset` launchers, overlaid or custom asset workflow models, custom process steps) to AEM as a Cloud Service. On Cloud Service the **asset microservices** create renditions and extract metadata; anything else the old workflow did runs afterwards as a **post-processing workflow** started by the **Custom Workflow Runner** (`CustomDamWorkflowRunnerImpl`), and custom renditions move to **processing profiles**.
 
-This branch wraps Adobe's own **Asset Workflow Migration Tool** ([`adobe/aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration), `wf-migrator` JAR). **The tool makes every change to the project**; the Node scripts under `scripts/` only orchestrate it: a pre-run gate, verification gates on its output, and a report with a post-deploy checklist. They never edit project files. Adobe docs: [Asset Workflow Migration Tool](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/migration-journey/refactoring-tools/asset-workflow-migration-tool), [asset microservices and post-processing workflows](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/manage/asset-microservices-configure-and-use).
+This branch runs Adobe's own **Asset Workflow Migration Tool** ([`adobe/aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration), `wf-migrator` JAR). **The tool makes every change to the project.** `scripts/asset-workflow-run.js` only checks the environment, runs the tool and checks it finished; your job is to gather the user's decisions and guide the review. Do not re-implement or hand-patch what the tool does — if its output is wrong, tell the user and report it to the tool's repository.
+
+Adobe docs: [Asset Workflow Migration Tool](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/migration-journey/refactoring-tools/asset-workflow-migration-tool), [asset microservices and post-processing workflows](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/assets/manage/asset-microservices-configure-and-use). Step categories (what the tool keeps, removes or maps): [`workflowSteps.properties`](https://github.com/adobe/aem-cloud-migration/blob/master/src/main/resources/workflowSteps.properties).
 
 ## Does this project need it?
 
-Only workflows that still do something on Cloud Service need migrating. Run the dry run (below) or the Step 0 runbook (pattern `assetWorkflowMigration`, content-scan): it lists every enabled asset launcher whose model has
+Only workflows that still do something on Cloud Service need migrating. The Step 0 runbook (pattern `assetWorkflowMigration`) lists enabled launchers whose glob is under `/content/dam`; it does not read the models. Open each launcher's model with the user:
 
-- **real work** — a `SUPPORTED`, custom Java (`CUSTOM`) or ECMA (`SCRIPT`) step, at the top level or inside a split. It becomes a post-processing workflow; or
-- **renditions only** — rendition steps (`NUI_MIGRATED`, including ImageMagick `CommandLineProcess`) or `UNSUPPORTED` steps, but no real work. The tool disables the launcher and does not migrate the model; the renditions it can map go to a `Migrated from <model>` processing profile, which has to be attached to the folders the launcher covered.
-
-Workflows made only of OOTB rendition / metadata steps with their standard settings need nothing — the microservices already do that work.
-
-## Step categories
-
-Categories are those of Adobe's tool (`workflowSteps.properties` in [`adobe/aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration/blob/master/src/main/resources/workflowSteps.properties), wf-migrator 0.7.0). The machine-readable copy is `scripts/asset-workflow-catalog.js` — keep both in sync with `TOOL_VERSION` in `scripts/asset-workflow-run.js` when the tool is upgraded.
-
-| Category | Kept? | Meaning | Examples |
-|---|---|---|---|
-| `SUPPORTED` | Kept | Runs in a post-processing workflow. **Real work** — a reason to migrate. | `CreateVersionProcess`, `ReplicationWorkflowProcess`, `XMPWritebackProcess`, `AutoTagAssetProcess`, language-copy steps |
-| `REQUIRED` | Kept | `DamUpdateAssetWorkflowCompletedProcess` — must be the **last** step of every post-processing workflow. | — |
-| `OPTIONAL` | Kept | Kept when the model is migrated, but never a reason to migrate it. | `SendTransientWorkflowCompletedEmailProcess` |
-| `CUSTOM` | Kept | A Java process step not in the catalog — project code. **Real work.** Must be deployable on Cloud Service and must not write renditions; the runner reviews each one ([below](#custom-java-step-review)). | `com.acme.dam.TagFromFolderProcess` |
-| `SCRIPT` | Kept | An ECMA script step (process is a path). **Real work.** Review like custom code. | `/apps/acme/workflow/scripts/notify.ecma` |
-| `NOOP` | Kept | `/libs/workflow/scripts/noop.ecma` placeholder (often an OR-split "else" branch). Not real work: a split whose branches hold only `noop` steps is removed. | — |
-| `UNNECESSARY` | Removed | The microservices handle it. No action. | `GateKeeperProcess`, `DeleteImagePreviewProcess` |
-| `NUI_OOTB` | Removed | The default microservices processing already does it. | `MetadataProcessorProcess`, `AssetOffloadingProcess` |
-| `DMS7_OOTB` | Removed | Built-in Dynamic Media processing (when Dynamic Media is enabled). | `Scene7UploadProcess`, `DMImageProcess` |
-| `NUI_MIGRATED` | Removed | Mapped by the tool to a rendition in the generated processing profile (only renditions that are not standard). `CommandLineProcess` is mapped only for simple ImageMagick commands — **gated**; see below. | `CreateWebEnabledImageProcess`, `ThumbnailProcess`, `FFMpegTranscodeProcess`, `CommandLineProcess` |
-| `UNSUPPORTED` | Removed | No direct equivalent — **gated**; see below. | `CreateSubAssetsProcess`, `IDSJobProcess` |
-
-**When is a model migrated?** The tool migrates a model when a step at any depth (top level or inside an OR/AND split) is kept and is not only `OPTIONAL` / `REQUIRED`. Inside split branches removable steps are dropped; an emptied branch gets a No Operation step and a split left with only No Operation steps is removed.
-
-A model with rendition or `UNSUPPORTED` steps but no real work (**renditions only**, e.g. OOTB steps plus a `CommandLineProcess`) is not migrated: once its launcher is disabled nothing in it would run. The model file is left unchanged.
-
-The tool writes the renditions it maps to a `Migrated from <model>` processing profile, but they are only generated once that profile is attached to the folders the launcher covered (checklist: `profiles-to-attach`; the report lists the folders).
-
-### Steps that need acknowledging
-
-The tool removes `UNSUPPORTED` steps and `CommandLineProcess` steps from the models it migrates, and in the models it does not migrate they stop running once the launcher is disabled. What they produced may have no replacement, so the run **stops** before calling the tool until each one is acknowledged with `--acknowledge <ShortName|fqcn>`. Remediation per step (also printed by the dry run and written into the report):
-
-| Step | Replacement on Cloud Service |
-|---|---|
-| `CommandLineProcess` | The tool maps simple ImageMagick conversions to processing-profile renditions (below) and lists every other command under "Migration Issues" in its report (checklist: `needs-custom-worker`) — those need an [Asset Compute custom worker](https://experienceleague.adobe.com/en/docs/asset-compute/using/extend/understand-extensibility). |
-| `CameraRawHandlingProcess` | Camera RAW is processed by the microservices by default; check the standard renditions cover it. |
-| `PdfRasterizerHandlingProcess` | PDF previews come from the microservices; add a profile rendition for custom sizes. |
-| `AddPropertyWorkflowProcess` | Write the property from a custom post-processing step, or use a metadata profile. |
-| `CreateSubAssetsProcess` | Sub-assets for multi-page documents come from the microservices. |
-| `DownloadAssetProcess` | No replacement needed. |
-| `ExtractImagesProcess` (Word) | A custom worker, if images must be extracted. |
-| `ExtractPlainProcess` (Word) | Text extraction for search is done by the microservices. |
-| `IDSJobProcess`, `INDDMediaExtractProcess`, `INDDPageExtractProcess` | InDesign Server is not supported; a custom worker. |
-| `LightboxUpdateAssetProcess` | Lightbox does not exist on Cloud Service; remove. |
-| `ProductAssetsUploadProcess` | PIM upload is not supported; remove or re-implement as custom code. |
-| `SendDownloadAssetEmailProcess` | Download emails come from the Cloud Service download feature; remove. |
-| `StartTrainingProcess`, `TransferTrainingDataProcess` | Smart-tag training is managed by Adobe; remove. |
-| `SwitchEngineHandlingProcess`, `BatchThumbnailProcess`, `CreateThumbnailProcess` | Renditions come from the microservices; add profile renditions for custom sizes. |
-
-### `CommandLineProcess` → processing-profile renditions (done by the tool)
-
-The tool maps each ImageMagick `convert` command in the step's `COMMANDS` argument that only resizes, sets the quality or converts the format, and each `THUMBNAILS` size, to a rendition of the model's processing profile. Standard rendition names (`cq5dam.thumbnail.48.48.png`, `140.100`, `319.319`) produced at their standard size are dropped. Anything else — percent or other geometries, other options, other tools or output formats, a standard rendition name used for a different size, or a second, different definition of the same rendition name — is listed under **Migration Issues** in `tool/migration-report.md` and needs a custom worker. Check the generated renditions against the source system (names, sizes, formats) on an RDE.
+- **Custom or supported steps** (custom Java, ECMA script, `CreateVersionProcess`, `ReplicationWorkflowProcess`, …) — becomes a post-processing workflow.
+- **Only OOTB rendition / metadata steps with standard settings** — nothing to migrate; the microservices already do that work.
+- **Non-standard renditions** (e.g. `CreateWebEnabledImageProcess` with custom sizes, simple ImageMagick `CommandLineProcess`) — the tool maps them to a `Migrated from <model>` processing profile.
 
 ## Prerequisites
 
-| Need | Why | Checked by |
-|---|---|---|
-| Java 11+ on `PATH` | runs the JAR | `checkJava` (stops with exit 2) |
-| A Maven multi-module project: root `pom.xml` with `<modules>` and at least one `content-package` module | the tool only scans content packages | `checkProject` |
-| A clean git tree (or `--allow-dirty`) | the tool rewrites files in place; the diff must be reviewable and `git checkout .` must undo it | `checkCleanGitTree` |
-| The `wf-migrator` **0.7.0** JAR | downloaded on first run into `scripts/asset-workflow-tool/` (needs `curl` and network) and checked against the pinned SHA-256; or pass a local copy with `--jar <path>` | `ensureToolInstalled` (stops with exit 2 on a download failure or checksum mismatch) |
+- **Java 11+** on `PATH`, `curl` (the first run downloads the pinned JAR) and `git`.
+- A **Maven multi-module project** with at least one `content-package` module (the tool rewrites those, adds `aem-cloud-migration.*` modules and edits the reactor POM).
+- A **clean git tree**. The tool rewrites files in place, so the diff and the undo come from git. The script stops on a dirty tree; `--allow-dirty` overrides that.
 
-The dry run (`--dry-run`) and `--verify-only` need neither Java nor the JAR.
+## Tool version 0.7.0
 
-### Tool version: 0.7.0
+The script pins `wf-migrator` **0.7.0** and checks the SHA-256 of the download. `--jar <path>` uses a local copy instead (the script then reports a custom JAR). Do not use 0.6.0 or older: they lack split handling, the `Completed` step, ImageMagick renditions, runner config merging and XML formatting ([adobe/aem-cloud-migration#25](https://github.com/adobe/aem-cloud-migration/pull/25)). To upgrade, change `TOOL_VERSION`, `TOOL_URL` and `TOOL_SHA256` in `asset-workflow-run.js` and run the opt-in end-to-end test (`ASSET_WF_E2E=1 npm test`).
 
-The skill pins **[wf-migrator v0.7.0](https://github.com/adobe/aem-cloud-migration/releases/tag/v0.7.0)** (URL and SHA-256 in `scripts/asset-workflow-run.js`) and downloads it on first use. The older **v0.6.0 (May 2024)** has none of the fixes below; do not use it with this skill. `--jar <path>` overrides the download (for example offline, or behind a proxy that blocks GitHub downloads); a JAR whose checksum is not the pinned one is reported as `custom jar` in the report.
+## Run
 
-Behaviour that **needs 0.7.0** (marked _(0.7.0)_ under [What the tool does](#what-the-tool-does-wf-migrator-070)): steps inside OR/AND splits classified and removed, emptied branches filled with No Operation; the Completed step exactly once, as the last step; ImageMagick `CommandLineProcess` commands mapped to processing-profile renditions; one merged author runner config `.cfg.json`; XML formatting kept; per-profile absolute filter roots; packages that pass FileVault validation. The verification gates in [validation.md](validation.md) expect this output, so a v0.6.0 run fails them.
+```bash
+node scripts/asset-workflow-run.js <projectRoot>   # [--jar <path>] [--report-dir <dir>] [--allow-dirty]
+```
 
-## The flow
+The tool exits `0` even when it fails, so the script counts a run as successful only if it printed `Migration complete.` **and** wrote `migration-report.md` (default `<project>/target/asset-workflow-migration/`, with `wf-migrator.log` next to it). Exit codes: `0` done, `1` tool failed, `2` stopped before changing anything. Never present a failed run as done.
 
-Run everything from the migration skill directory (`plugins/aem/cloud-service/skills/migration/`). `<project>` is the Maven root.
+What the tool does: disables the asset launchers, rewrites the models it migrates, writes processing profiles and a Custom Workflow Runner config (`/apps/aem-cloud-migration/config.author/…CustomDamWorkflowRunnerImpl.cfg.json`) into new `aem-cloud-migration.*` modules, **deletes every `jcr_root/var` workflow path** from the project and its filters (runtime models are regenerated on sync), and writes the report.
 
-1. **INVENTORY + PLAN** — dry run; changes nothing:
+## Review with the user
 
-   ```bash
-   node scripts/asset-workflow-run.js <project> --dry-run
-   ```
+Do this before anything is committed. To undo everything: `git checkout . && git clean -fd`.
 
-   Prints, per affected model: launchers (glob + conditions), steps kept and removed (`*` = inside a split), then the **gate**: each removed step that may have no replacement — every `UNSUPPORTED` step and every `CommandLineProcess` (`STOP`) — and each packaged runtime model under `/var/workflow` with no design-time model (`STOP` — the tool deletes it). It also prints the [custom Java step review](#custom-java-step-review): one line per kept custom step with its outcome and evidence.
+1. **Go through `migration-report.md` section by section**: launchers disabled, runner configurations, models changed, paths deleted, processing profiles, **Migration Issues**.
+2. **Check the script's warnings and `wf-migrator.log`.** The tool prints `Migration complete.` even when it skipped a launcher or model it could not parse (`Unable to parse …`), and it still deletes the `var` paths. A skipped model is **not** migrated: fix its XML and rerun from a clean tree.
+3. **Read `git diff`.** Confirm each migrated model ends with `DAM Update Asset Completed` and each runner entry points at the right model and glob.
+4. **Look at what the report does not list.** The tool disables the launcher of a model that has only rendition steps (for example OOTB steps plus a `CommandLineProcess`) but does not migrate or list that model. Open every model behind a disabled launcher and flag:
+   - `CommandLineProcess` commands that are not simple ImageMagick conversions. The report lists the ones it could not map under *Migration Issues*; they need an [Asset Compute custom worker](https://experienceleague.adobe.com/en/docs/asset-compute/using/extend/understand-extensibility).
+   - Steps categorized `UNSUPPORTED` in `workflowSteps.properties` (for example `CreateSubAssetsProcess`, `IDSJobProcess`, `ExtractImagesProcess`). Ask whether what they produced is still needed and agree a replacement: a custom worker, a profile rendition, or dropping it.
+5. **Custom Java steps** (a `PROCESS` that is not an Adobe class; the tool keeps them). For each one in the project source, check with the user that it:
+   - **runs on Cloud Service** — it uses only APIs available there. Hand code that needs changes to the matching Branch B patterns (`asset-manager`, `replication`, `scr-to-osgi-ds`) instead of editing it here;
+   - **does not write renditions** — renditions come from the processing profile; a step that writes them needs a custom worker instead.
+6. Record decisions and anything accepted as-is, then let the user commit.
 
-2. **CONFIRM WITH THE USER** — show the plan, then ask one decision at a time:
-   - Each `STOP` step: is its remediation (printed under it; see [above](#steps-that-need-acknowledging)) acceptable? Acknowledge with `--acknowledge <ShortName|fqcn>`.
-   - Each `STOP` runtime model: export it into `/conf/global/settings/workflow/models/<id>` first, or acknowledge its `/var/workflow/models/<id>` path if it is obsolete.
-   - Each custom Java step that needs action: read its helpers and agree the outcome ([below](#custom-java-step-review)). This does not block the tool, which keeps the steps either way.
+## Post-deploy checks (RDE or dev environment)
 
-   Never pass `--acknowledge all` without the user's explicit agreement: it silences the gate that stops the tool deleting work.
+Deploy the migrated project (an RDE is quickest: [`aem-rde` skill](../../../aem-rde/SKILL.md)) and work through these with the user:
 
-3. **EXECUTE + VERIFY** — one command:
-
-   ```bash
-   node scripts/asset-workflow-run.js <project> --acknowledge CommandLineProcess
-   ```
-
-   The first run downloads the pinned wf-migrator 0.7.0 JAR ([Tool version](#tool-version-070)); add `--jar <path>` to use a local copy instead.
-
-   Pre-flight → baseline copy → run the tool and check it succeeded → verification gates → follow-ups → report. Exit `0` = verification passed; `1` = the tool or verification failed; `2` = a pre-flight or gate stop, or bad arguments.
-
-4. **REVIEW** — read `target/asset-workflow-migration/asset-workflow-report.md` with the user and review `git diff`. On a verification failure follow [validation.md](validation.md); never present a failed run as done. To undo: `git checkout . && git clean -fd`.
-
-5. **POST-DEPLOY** — the report's **checklist** (sync models, attach profiles, custom workers, launcher conditions, overlapping workflows, …) can only be done on the Cloud Service environment. Hand it over explicitly; [validation.md](validation.md) lists the RDE checks.
-
-**Already ran the tool by hand, or fixed something after a failed verification?** Use `--verify-only`: it rebuilds the pre-tool baseline from git `HEAD` (or `--baseline <dir>`) and re-runs the gates and the report on the current tree, without Java and without changing anything.
-
-### Options
-
-| Option | Effect |
-|---|---|
-| `--dry-run` | Inventory, plan and gate only. No changes. |
-| `--acknowledge <list>` | Comma-separated step short names or FQCNs, `/var/workflow/models/<id>` paths, or `all`. Repeatable. |
-| `--verify-only` | Skip the tool; verify the current tree against the git `HEAD` baseline and write the report. |
-| `--baseline <dir>` | Baseline project copy for `--verify-only`, instead of git `HEAD`. |
-| `--jar <path>` | A local `wf-migrator` JAR to run instead of the pinned 0.7.0 download (a JAR that is not the pinned release is reported as `custom jar`). |
-| `--report-dir <dir>` | Default `<project>/target/asset-workflow-migration`. Must not be the project folder or one of its parents. |
-| `--allow-dirty` | Run on a dirty git tree. |
-| `--json` | Print the full result object. |
-
-Outputs in the report dir: `asset-workflow-report.md` (review + checklist), `asset-workflow-result.json`, `tool/migration-report.md` and `tool/wf-migrator.log` (the tool's own output), and `baseline/` (the pre-run copy used by verification; emptied on every run, and only if this runner created it). A dry run uses a temporary baseline and leaves the report dir alone.
-
-## What the tool does (wf-migrator 0.7.0)
-
-Items marked _(0.7.0)_ are new in v0.7.0 ([adobe/aem-cloud-migration#25](https://github.com/adobe/aem-cloud-migration/pull/25)); v0.6.0 does not do them.
-
-- Looks at **enabled launchers** on `/content/dam` asset paths and migrates a model when a step is `SUPPORTED`, custom Java, a script or `noop` — including steps inside OR/AND splits _(0.7.0)_.
-- Rewrites the migrated models, removing steps by category ([above](#step-categories)). At every depth _(0.7.0)_: an emptied split branch gets a No Operation step, and a split left with only No Operation steps is removed. The Completed step runs exactly once, as the last step _(0.7.0)_.
-- Maps rendition steps to renditions of a `Migrated from <model>` processing profile — including those inside splits _(0.7.0)_ — and simple ImageMagick `CommandLineProcess` commands _(0.7.0)_; lists every command it cannot map under **Migration Issues** in its report _(0.7.0)_.
-- Disables **every** asset launcher (including those of workflows it does not migrate) and deletes everything under `jcr_root/var/workflow`.
-- Writes the Custom Workflow Runner config in the new `aem-cloud-migration.apps` module: one author `…CustomDamWorkflowRunnerImpl.cfg.json`, merged with any existing runner config _(0.7.0)_. Profiles go to `aem-cloud-migration.content` with per-profile absolute filter roots _(0.7.0)_. Both are wired into the POMs, and the packages pass FileVault validation _(0.7.0)_. Changed XML files keep their formatting and comments _(0.7.0)_.
-- Writes `migration-report.md`. The exit code is `0` whether or not the run succeeds, so the skill also checks the log and the report.
-
-## What the skill adds
-
-| Area | What the skill does |
-|---|---|
-| Pre-run gate | Stops before the tool runs on removed steps that may have no replacement (`UNSUPPORTED` steps, `CommandLineProcess`) and on runtime models with no design-time model, until each is acknowledged |
-| Tool success | Success = exit `0` + `Migration complete.` in the log + `migration-report.md` |
-| Verification | Compares the project before and after the run: no real work lost, every migrated model wired, Completed last, launchers disabled, filters and runner config valid ([validation.md](validation.md)) |
-| Custom Java step review | Read-only review of each custom Java step the tool keeps, classified by what its class does ([below](#custom-java-step-review)) |
-| Follow-ups | Read-only checklist from the tool's output and report: profiles to attach (with the folders, from literal launcher globs), commands that need a custom worker, launcher conditions the runner cannot express, overlapping runner entries, OR routing to review, steps now before Completed, models to sync |
-
-Report tool behaviour that needs a fix at [adobe/aem-cloud-migration](https://github.com/adobe/aem-cloud-migration/issues) — the skill does not patch the tool's output.
-
-## Scope and honest automation
-
-What cannot be generated is left as a precise checklist rather than guessed:
-
-- **Custom workers.** ImageMagick options with no processing-profile equivalent (`-resize 25%`, watermarks, colour profiles, …) and InDesign / Word extraction need an [Asset Compute custom worker](https://experienceleague.adobe.com/en/docs/asset-compute/using/extend/understand-extensibility) built in App Builder.
-- **Custom Java steps** are kept by the tool and reviewed read-only by the skill ([below](#custom-java-step-review)). The skill never edits Java: rewrites go through a processing profile, a custom worker or a Branch B pattern, each agreed with the user. For workflow-code questions beyond the review, use the [`aem-workflow` skill](../../../aem-workflow/SKILL.md).
-- **Not verified against AEM:** which runner entry wins when several match one asset (merge the models into one); sizes of format-only renditions (no `wid`/`hei`). The report flags each one; confirm them on an RDE ([`aem-rde` skill](../../../aem-rde/SKILL.md)).
-
-## Custom Java step review
-
-The tool keeps every custom Java (`CUSTOM`) process step in the workflows it migrates, but on Cloud Service those steps run after the asset microservices, which own renditions and the binary. The runner reviews each kept step **read-only** (`asset-workflow-custom-steps.js`) and writes the result to the dry-run output, the **Custom Java steps** section of `asset-workflow-report.md` and `customSteps` in `asset-workflow-result.json`. It never edits project code.
-
-**Finding the class.** The model's `PROCESS` value (an FQCN) is matched to `src/main/java/<package path>.java` in any module. If there is no match, the runner looks for a class whose `process.label` property equals `PROCESS` (`@Component(property = "process.label=…")` or SCR `@Property(name = "process.label", value = "…")`). No match, or more than one, means **unresolved**. Comments are ignored.
-
-| Outcome | Found in the class | Action |
-|---|---|---|
-| `processing-profile-or-worker` | `addRendition`, `RenditionMaker`, `Layer`, `Gfx`, `AssetHandler` | Move the work to a processing-profile rendition or an [Asset Compute custom worker](https://experienceleague.adobe.com/en/docs/asset-compute/using/extend/understand-extensibility), then drop the step |
-| `custom-worker` | `Runtime.exec`, `ProcessBuilder`, `CommandLineProcess`, commons-exec | Re-implement as an Asset Compute custom worker |
-| `manual-review` | `getOriginal().getStream()`, `java.io.File*`, temp files | Review: avoid loading the binary or using local files, or move the work to a custom worker |
-| `pattern-handoff` | `com.day.cq.dam.api.AssetManager` → [asset-manager](../../../code-assessment/asset-manager/SKILL.md); `Replicator` → [replication](../../../code-assessment/replication/SKILL.md); Felix SCR annotations → [scr-to-osgi-ds](../../../code-assessment/references/scr-to-osgi-ds.md) | Fix it with that pattern (Branch B, its own session), then keep it |
-| `keep-post-processing` | none of the above | Keep it as a post-processing step |
-| `unresolved` | source not in the workspace | Not reviewed |
-
-The first three are checked in that order and the first match wins; hand-offs are listed with any outcome. Every signal comes with its line number.
-
-**Scope: the step's class only.** Helpers, base classes and called services are not scanned. The review lists the project classes the step imports as **helpers**. The agent then:
-
-1. Reads each listed helper, and the base class and any services the step calls, before accepting `keep-post-processing` — a helper can write renditions or shell out where the scan cannot see it.
-2. Judges the ambiguous cases from the code (for example a `getOriginal()` used only for metadata, or `java.io.File` used only for a path name), and tells the user when its judgement differs from the outcome.
-3. For an **unresolved** step, asks the user where the class lives (another repository, a dependency) and reviews it there. Never guess what an unseen class does.
-4. Runs hand-offs as separate Branch B sessions. Branch H never changes Java.
+1. **Build and deploy.** `mvn clean install`; the new `aem-cloud-migration.*` modules must be in the all-package.
+2. **Sync each migrated model**: open it in the workflow model editor and click **Sync**. `GET /var/workflow/models/<id>.json` must return `200`.
+3. **Check the runner config** is active: the Developer Console (OSGi configurations) shows `CustomDamWorkflowRunnerImpl` with the expected `postProcWorkflowsByPath` / `postProcWorkflowsByExpression`. Look for overlapping entries; Adobe does not document which one wins when several match, so merge the models if the wrong one runs.
+4. **Attach processing profiles**: Folder → Properties → Asset Processing. The tool cannot attach them; the report names the folders the old launchers covered.
+5. **Upload test assets** to every mapped folder, one per mime type each old launcher handled. Check that the profile's renditions exist, and that **Tools → Workflow → Instances / Archive** shows one instance of the expected model per asset and that its custom steps did their work.
+6. **Launcher conditions.** A launcher's `conditions` (for example `jcr:content/jcr:mimeType!=video/.*`) do not carry over to the runner. Upload an asset the old condition excluded and check the post-processing workflow handles or skips it as intended; add a guard step otherwise.
+7. **Custom workers.** For every *Migration Issues* entry that needs one, deploy the App Builder worker, add it to a processing profile and repeat step 5.

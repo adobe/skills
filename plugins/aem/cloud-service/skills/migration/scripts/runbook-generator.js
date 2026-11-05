@@ -97,7 +97,7 @@ const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runDispatcherScan } = require('./dispatcher-inventory.js');
 const { runInputStreamScan } = require('./input-stream-runner.js');
-const { runAssetWorkflowScan } = require('./asset-workflow-inventory.js');
+const { runAssetWorkflowScan } = require('./asset-workflow-run.js');
 
 // Canonical pattern taxonomy for the runbook — every pattern the migration
 // skill can address. Each declares a detection `strategy`:
@@ -285,7 +285,7 @@ const PATTERN_META = {
     strategy: 'content-scan',
     bpaSlugs: [],
     heuristic: true,
-    description: 'Enabled DAM workflow launchers whose models do custom work (custom/unsupported steps or splits). On AEMaaCS, renditions and metadata come from Asset Compute processing profiles and the rest runs as a post-processing workflow. Branch H wraps Adobe\'s aem-cloud-migration wf-migrator with a gate for removed steps, verification and a post-deploy checklist.',
+    description: 'Enabled DAM asset workflow launchers (heuristic; models are not read). On AEMaaCS, renditions and metadata come from Asset Compute processing profiles and the rest runs as a post-processing workflow. Branch H runs Adobe\'s aem-cloud-migration wf-migrator and guides review of its report and diff.',
     promptPattern: 'asset workflow migration',
     sampleOverride: 'Use the migration skill: migrate my DAM asset workflows to AEM as a Cloud Service post-processing workflows and processing profiles.',
   },

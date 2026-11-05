@@ -1,86 +1,66 @@
 'use strict';
-// Branch H end to end with the real wf-migrator JAR. Opt in with ASSET_WF_E2E=1 (needs Java 11+ and git;
-// the catalog check also needs unzip).
-//   ASSET_WF_JAR=<path>     optional: a wf-migrator jar to use instead of downloading the pinned
-//                           0.7.0 release (checksum-verified) into scripts/asset-workflow-tool/.
+// Opt-in end-to-end test against the real wf-migrator JAR. Needs Java 11+ and network (or ASSET_WF_JAR).
+//   ASSET_WF_E2E=1 node --test asset-workflow-e2e.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
-const fs = require('fs'); const os = require('os'); const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { spawnSync } = require('child_process');
-const RUN = require('./asset-workflow-run.js');
-const CAT = require('./asset-workflow-catalog.js');
-const F = require('./asset-workflow-check.js');
-const T = require('./fixtures/asset-workflow.js');
+const { checkJava, ensureToolInstalled, TOOL_DIR, migrate } = require('./asset-workflow-run.js');
 
-function skipReason() {
-  if (process.env.ASSET_WF_E2E !== '1') return 'set ASSET_WF_E2E=1 to run the real migration tool';
-  const java = RUN.checkJava();
-  if (!java.ok) return java.error;
-  if (spawnSync('git', ['--version']).error) return 'git not found';
-  return false;
-}
-const SKIP = skipReason();
+const enabled = process.env.ASSET_WF_E2E === '1';
+const skip = !enabled ? 'set ASSET_WF_E2E=1 to run' : !checkJava().ok ? 'Java 11+ not available' : false;
 
-function jar() {
-  if (process.env.ASSET_WF_JAR) return path.resolve(process.env.ASSET_WF_JAR);
-  const inst = RUN.ensureToolInstalled(RUN.TOOL_DIR);
-  assert.ok(inst.installed, inst.error);
-  return inst.jar;
+function write(root, rel, content) {
+  const full = path.join(root, rel);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  fs.writeFileSync(full, content);
 }
 
-function withTmp(fn) {
-  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'awe2e-'));
-  try { return fn(d); } finally { fs.rmSync(d, { recursive: true, force: true }); }
+const PKG = 'ui.content/src/main/content';
+const STEP = (name, process) => `<${name} jcr:primaryType="nt:unstructured" jcr:title="${name}" sling:resourceType="cq/workflow/components/model/process">
+      <metaData jcr:primaryType="nt:unstructured" PROCESS="${process}" PROCESS_AUTO_ADVANCE="true"/>
+    </${name}>`;
+
+function buildProject(root) {
+  write(root, 'pom.xml', '<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><groupId>com.example</groupId><artifactId>wfmin</artifactId><version>1.0.0-SNAPSHOT</version><packaging>pom</packaging><modules><module>ui.content</module></modules></project>');
+  write(root, 'ui.content/pom.xml', '<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><parent><groupId>com.example</groupId><artifactId>wfmin</artifactId><version>1.0.0-SNAPSHOT</version></parent><artifactId>wfmin.ui.content</artifactId><packaging>content-package</packaging></project>');
+  write(root, `${PKG}/META-INF/vault/filter.xml`, '<?xml version="1.0" encoding="UTF-8"?>\n<workspaceFilter version="1.0">\n  <filter root="/conf/global/settings/workflow"/>\n  <filter root="/var/workflow/models"/>\n</workspaceFilter>\n');
+  write(root, `${PKG}/jcr_root/conf/global/settings/workflow/launcher/config/wfmin-campaigns/.content.xml`,
+    '<?xml version="1.0" encoding="UTF-8"?>\n<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:nt="http://www.jcp.org/jcr/nt/1.0"\n  jcr:primaryType="cq:WorkflowLauncher" condition="" conditions="[]" description="WF Min campaigns" enabled="{Boolean}true" eventType="{Long}1"\n  excludeList="event-user-data:changedByWorkflowProcess" glob="/content/dam/(wfmin-campaigns|wfmin-events)/.*/renditions/original" nodetype="nt:file" runModes="author"\n  workflow="/var/workflow/models/wfmin-campaigns"/>\n');
+  write(root, `${PKG}/jcr_root/conf/global/settings/workflow/models/wfmin-campaigns/.content.xml`,
+    `<?xml version="1.0" encoding="UTF-8"?>
+<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:nt="http://www.jcp.org/jcr/nt/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0"
+  jcr:primaryType="cq:Page">
+  <jcr:content cq:template="/libs/cq/workflow/templates/model" jcr:primaryType="cq:PageContent" jcr:title="wfmin campaigns" transient="false" sling:resourceType="cq/workflow/components/pages/model">
+    <flow jcr:primaryType="nt:unstructured" sling:resourceType="foundation/components/parsys">
+      ${STEP('tag', 'com.example.wfmin.core.workflow.TagByFolderProcess')}
+      ${STEP('gate', 'com.day.cq.dam.core.process.GateKeeperProcess')}
+    </flow>
+  </jcr:content>
+</jcr:root>
+`);
+  const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8' });
+  git('init', '-q');
+  git('add', '-A');
+  git('-c', 'user.email=a@b.c', '-c', 'user.name=t', 'commit', '-q', '-m', 'init');
 }
 
-const git = (cwd, ...args) => {
-  const r = spawnSync('git', ['-c', 'user.name=e2e', '-c', 'user.email=e2e@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf8' });
-  assert.strictEqual(r.status, 0, r.stderr);
-  return r.stdout;
-};
-
-test('E2E: the step catalog matches the tool\'s workflowSteps.properties', { skip: SKIP }, t => {
-  const r = spawnSync('unzip', ['-p', jar(), 'workflowSteps.properties'], { encoding: 'utf8' });
-  if (r.error) return t.skip('unzip not found');
-  assert.strictEqual(r.status, 0, r.stderr);
-  const fromJar = {};
-  for (const line of r.stdout.split(/\r?\n/)) {
-    const m = /^\s*([A-Z0-9_]+)\s*=(.*)$/.exec(line);
-    if (m) fromJar[m[1]] = m[2].split(',').map(s => s.trim()).filter(Boolean).sort();
+test('the real tool migrates a small project', { skip, timeout: 900000 }, () => {
+  let jar = process.env.ASSET_WF_JAR;
+  if (!jar) {
+    const inst = ensureToolInstalled(TOOL_DIR);
+    assert.ok(inst.installed, inst.error);
+    jar = inst.jar;
   }
-  const fromCatalog = Object.fromEntries(Object.entries(CAT.CATALOG).map(([k, v]) => [k, [...v].sort()]));
-  assert.deepStrictEqual(fromCatalog, fromJar, 'update CATALOG in asset-workflow-catalog.js to match the tool release');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'awf-e2e-'));
+  buildProject(root);
+  const r = migrate({ root, jar });
+  assert.ok(r.ok, r.error);
+  assert.deepStrictEqual(r.warnings, []);
+  assert.ok(fs.statSync(r.reportPath).size > 0, 'migration-report.md is written');
+  const files = spawnSync('git', ['status', '--porcelain', '-uall'], { cwd: root, encoding: 'utf8' }).stdout;
+  assert.match(files, /aem-cloud-migration/, 'the tool adds its aem-cloud-migration.* modules');
+  assert.match(files, /CustomDamWorkflowRunnerImpl\.cfg\.json/, 'the tool writes the post-processing runner config');
 });
-
-test('E2E: wf-migrator output still matches the recorded output the unit tests use', { skip: SKIP }, () => withTmp(d => {
-  const project = T.materializeProject(path.join(d, 'project'));
-  const run = RUN.runMigrator(project, path.join(d, 'report'), jar());
-  assert.ok(run.ok, `${run.error}\n${run.stdout}`);
-  assert.deepStrictEqual(T.diffAgainstSnapshot(project), [], 'the tool output changed; update TOOL_WRITTEN / TOOL_DELETED in fixtures/asset-workflow.js');
-  assert.deepStrictEqual(F.parseToolIssues(fs.readFileSync(run.reportPath, 'utf8')), F.parseToolIssues(T.TOOL_REPORT), 'update TOOL_REPORT in fixtures/asset-workflow.js');
-}));
-
-test('E2E: migrate runs the tool and passes verification; a verify-only re-run agrees', { skip: SKIP }, () => withTmp(d => {
-  const project = T.materializeProject(path.join(d, 'project'));
-  git(project, 'init', '-q');
-  git(project, 'add', '-A');
-  git(project, 'commit', '-q', '-m', 'baseline');
-  const args = [project, '--jar', jar(), '--acknowledge', 'CommandLineProcess,/var/workflow/models/wfmin-legacy'];
-
-  const lines = [];
-  assert.strictEqual(RUN.main(args, l => lines.push(l)), 0, lines.join('\n'));
-  const reportDir = path.join(project, 'target', 'asset-workflow-migration');
-  const result = JSON.parse(fs.readFileSync(path.join(reportDir, 'asset-workflow-result.json'), 'utf8'));
-  assert.ok(result.tool.ok && result.verify.ok);
-  if (!process.env.ASSET_WF_JAR) assert.strictEqual(result.tool.version, RUN.TOOL_VERSION);
-  assert.ok(fs.existsSync(path.join(reportDir, 'tool', 'migration-report.md')));
-  assert.ok(fs.existsSync(path.join(reportDir, 'asset-workflow-report.md')));
-  const changed = git(project, 'status', '--porcelain', '-uall', '--', '.', ':(exclude)target').split('\n').filter(Boolean);
-  assert.ok(changed.some(l => l.includes('CustomDamWorkflowRunnerImpl.cfg.json')), changed.join('\n'));
-
-  assert.ok(result.followUps.manual.some(m => m.code === 'needs-custom-worker'), 'issues from the tool report reach the checklist');
-
-  const again = RUN.migrate(RUN.parseArgs([...args, '--verify-only']));
-  assert.strictEqual(again.exitCode, 0, again.error);
-  assert.ok(again.verify.ok);
-}));

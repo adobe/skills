@@ -1396,16 +1396,19 @@ test('bpaIncomplete: when BPA DOES report the pattern, BPA still owns it (no fal
 
 // ── content-scan: asset workflows (Branch H) ────────────────────────────────
 
-test('gatherFindings content-scans enabled asset workflows that do custom work', async () => {
-  const { materializeProject } = require('./fixtures/asset-workflow.js');
+test('gatherFindings content-scans enabled DAM asset launchers', async () => {
   const root = mkworkspace();
-  materializeProject(path.join(root, 'aem-project'));
+  const launcher = (enabled, glob) => `<jcr:root jcr:primaryType="cq:WorkflowLauncher" enabled="{Boolean}${enabled}" glob="${glob}" workflow="/var/workflow/models/x"/>`;
+  const base = 'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config';
+  write(root, `${base}/on/.content.xml`, launcher(true, '/content/dam/(a|b)/.*/renditions/original'));
+  write(root, `${base}/off/.content.xml`, launcher(false, '/content/dam(/.*/)renditions/original'));
+  write(root, `${base}/meta.xml`, launcher(true, '/content/dam/collections/.*'));
+  write(root, `${base}/pages/.content.xml`, launcher(true, '/content/we-retail/.*'));
   const gathered = await gatherFindings({ workspaceRoot: root });
   assert.strictEqual(gathered.sourceByPattern.assetWorkflowMigration, 'content-scan');
   const details = gathered.findingsByPattern.assetWorkflowMigration.map(f => f.detail);
-  assert.strictEqual(details.length, 3, details.join('\n'));
-  assert.ok(details.some(d => /models\/dam\/update_asset .*1 unsupported step/.test(d)), details.join('\n'));
-  assert.ok(details.every(d => /Branch H/.test(d)));
+  assert.strictEqual(details.length, 1, details.join('\n'));
+  assert.match(details[0], /launcher on .*Branch H/);
   assert.ok(!gathered.needsLlmScan.includes('assetWorkflowMigration'));
 });
 
