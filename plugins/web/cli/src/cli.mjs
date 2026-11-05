@@ -9,6 +9,7 @@ import { registerPage } from '#src/commands/page.mjs';
 import { registerCache } from '#src/commands/cache.mjs';
 import { registerSite } from '#src/commands/site.mjs';
 import { registerDoc } from '#src/commands/doc.mjs';
+import { registerHeader } from '#src/commands/header.mjs';
 
 const ROOT_HELP = `
 Output contract:
@@ -93,6 +94,7 @@ export function createProgram(deps = {}) {
   registerMask(program, deps);
   registerSite(program, deps);
   registerCache(program, deps);
+  registerHeader(program, deps);
   registerDoc(program, deps);
   deps.extend?.(program, deps);
   return program;

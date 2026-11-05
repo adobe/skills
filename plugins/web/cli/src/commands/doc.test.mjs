@@ -20,7 +20,7 @@ const run = async (...args) => {
 test('doc without a topic lists the topics as commands', async () => {
   const { code, out } = await run();
   assert.equal(code, 0);
-  assert.equal(out, 'web doc extending\n');
+  assert.equal(out, 'web doc extending\nweb doc header\n');
 });
 
 test('doc <topic> prints the Markdown text, not JSON', async () => {

@@ -174,6 +174,7 @@ See the [`stardust`](plugins/stardust/README.md) documentation for the complete 
 | Skill | Description |
 |-------|-------------|
 | `page-import` | Import webpages into canonical EDS block format (orchestrator) |
+| `migrate-header` | Rebuild a site's header as the EDS header block, 1:1 with the source: captures its states with the `web` CLI (`web header capture`), configures a header template and its nav document, then checks it against the live source (`web header check`) closed, with every menu open, on mobile and while scrolling |
 | `scrape-webpage` | Scrape and analyze webpage content |
 | `identify-page-structure` | Analyze page sections |
 | `page-decomposition` | Analyze content sequences |
