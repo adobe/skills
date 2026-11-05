@@ -1,7 +1,7 @@
 # Check the stats block change
 
-This checkout is a git worktree of my site; the main checkout is at
-`../mysite`.
+This checkout is a git worktree of my site; `git worktree list` shows the
+main checkout.
 
 I made the stats values bigger and bolder in `blocks/stats/stats.css`. Start
 the local dev server for this checkout, check that the test page
