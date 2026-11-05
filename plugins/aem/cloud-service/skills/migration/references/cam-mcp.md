@@ -113,6 +113,11 @@ Records a **Branch G** validation outcome ([validate-migration.md](validation/va
 against a CAM project, with the `submit-migration-validation-result` recipe (AEM MCP Server, `write-api`)
 or the deprecated tool of the same name.
 
+> **Paused.** Submitting validation outcomes is switched off until the legal review is complete.
+> Do not call the recipe or the deprecated tool, and do not ask for a project to submit to.
+> Fetching findings (above) is unaffected. The validator emits no payload while paused; set
+> `VALIDATE_MIGRATION_CAM_REPORTING=1` to re-enable it, after which the rules below apply again.
+
 - Submit only when a project is linked: the nearest `migration-runbook.json` (`project.id`) or an explicit
   `--project-id` / `--project-name` (explicit wins). With no linked project, validation stays local; do
   not ask for a project just to submit.

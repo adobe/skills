@@ -23,6 +23,8 @@ global bin.
 # URLs and never contacts AEM or asks for AEM credentials.
 node "$VALIDATOR/init.js"
 
+# Reporting to CAM is paused until the legal review is done: steps 4 and 5 below are skipped,
+# no payload is emitted and verify exits 0 (pass) / 1 (fail). Set VALIDATE_MIGRATION_CAM_REPORTING=1 to re-enable.
 # Per branch, from your project root:
 #   1. build + deploy, list the Bundle-SymbolicNames to diagnose
 node "$VALIDATOR/check.js" --stage prepare
