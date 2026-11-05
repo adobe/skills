@@ -8,6 +8,9 @@
  *   - transfer weight (encoded bytes over the wire) vs budget
  *   - JS transfer weight vs budget
  *   - LCP and CLS via buffered PerformanceObserver
+ *   - player-host requests (any frame) that start before the first contentful
+ *     paint (deploy SKILL.md #157) — never downgraded on a degraded network: a
+ *     player mounted after first paint cannot request before it
  *
  * Network-degradation control: TTFB to a neutral host first — if the network
  * itself is slow, findings are downgraded to info (a degraded measurement
@@ -21,6 +24,22 @@ const LCP_GOOD_MS = 2500;
 const CLS_GOOD = 0.1;
 const NEUTRAL_HOST = 'https://www.google.com';
 const DEGRADED_TTFB_MS = 1500;
+// player documents and scripts only — thumbnail CDNs (ytimg, vimeocdn) serve a click-to-load poster
+const PLAYER_HOSTS = ['youtube.com', 'youtube-nocookie.com', 'vimeo.com', 'brightcove.net', 'wistia.com',
+  'wistia.net', 'jwplayer.com', 'vidyard.com', 'dailymotion.com'];
+
+/** Pure: player-host requests that started before the first contentful paint. `requests` is
+ *  `[{ url, t }]` with `t` and `fcp` in epoch ms; a missing FCP judges nothing. Hosts match on
+ *  the hostname or a dot-bounded suffix, never a substring of the URL. */
+export function judgePlayerRequests(requests, fcp, hosts = PLAYER_HOSTS) {
+  if (!Number.isFinite(fcp) || fcp <= 0) return [];
+  const isPlayer = (u) => {
+    let h; try { h = new URL(u).hostname; } catch { return false; }
+    return hosts.some((d) => h === d || h.endsWith(`.${d}`));
+  };
+  return requests.filter((r) => r.t < fcp && isPlayer(r.url))
+    .map((r) => ({ url: r.url, msBeforeFcp: Math.round(fcp - r.t) }));
+}
 
 function representatives(inventory, cap) {
   const byTemplate = new Map();
@@ -73,6 +92,8 @@ export async function run(ctx) {
       transfer += e.encodedDataLength;
       if (types.get(e.requestId) === 'Script') jsTransfer += e.encodedDataLength;
     });
+    const requests = []; // every frame, out-of-process iframes included
+    page.on('request', (r) => requests.push({ url: r.url(), t: Date.now() }));
 
     try {
       await page.goto(pageUrl(base, p.url || p.path), { waitUntil: 'load', timeout: 60000 });
@@ -85,6 +106,8 @@ export async function run(ctx) {
 
     const vitals = await page.evaluate(() => new Promise((resolve) => {
       let lcp = 0; let cls = 0;
+      const paint = performance.getEntriesByName('first-contentful-paint')[0];
+      const fcp = paint ? performance.timeOrigin + paint.startTime : 0;
       try {
         new PerformanceObserver((l) => {
           for (const e of l.getEntries()) lcp = Math.max(lcp, e.startTime);
@@ -93,7 +116,7 @@ export async function run(ctx) {
           for (const e of l.getEntries()) if (!e.hadRecentInput) cls += e.value;
         }).observe({ type: 'layout-shift', buffered: true });
       } catch { /* not supported */ }
-      setTimeout(() => resolve({ lcp: Math.round(lcp), cls: +cls.toFixed(3) }), 500);
+      setTimeout(() => resolve({ lcp: Math.round(lcp), cls: +cls.toFixed(3), fcp }), 500);
     }));
 
     const kb = Math.round(transfer / 1024);
@@ -115,6 +138,13 @@ export async function run(ctx) {
       findings.push(finding('perf', 'cls-poor', sev('warn'), p.path,
         `lab CLS ${vitals.cls} > ${CLS_GOOD}`, vitals));
     }
+    const early = judgePlayerRequests(requests, vitals.fcp);
+    if (early.length) {
+      findings.push(finding('perf', 'player-before-paint', 'warn', p.path,
+        `${early.length} player request(s) started before first contentful paint, first ${early[0].url} — mount the player after first paint (deploy #157)`,
+        { requests: early.slice(0, 5) }));
+    }
+    delete vitals.fcp;
     findings.push(finding('perf', 'measurement', 'info', p.path,
       `transfer ${kb}KB (js ${jsKb}KB), LCP ${vitals.lcp}ms, CLS ${vitals.cls}${degraded ? ' [degraded network]' : ''}`,
       { kb, jsKb, ...vitals, template: p.template }));

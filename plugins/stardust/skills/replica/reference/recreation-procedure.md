@@ -369,13 +369,14 @@ instrument.** Two recurring cases:
   moving target. This is the one content class where confirm-justify stays
   legitimate under widget mirroring (§ Granularity parity).
 - **Live-data embeds** (stock tickers, YouTube/euroland-style iframe
-  widgets) — the winning move is loading the SAME live embed (same src) on
-  both sides so the moving data cancels out in the pixel diff, NOT freezing
-  a snapshot (confirmed in two independent 2026-08 sessions: a same-src
-  YouTube iframe canceled to zero; a euroland share ticker mirrored same-src
-  stopped contributing). A frozen snapshot guarantees a permanent residual
-  the size of the widget; a mirrored live embed usually zeroes out, and any
-  residual left (frame-timing skew) is logged as permanent.
+  widgets) — load the SAME live embed (same src) on both sides so the
+  moving data cancels out in the pixel diff, NOT a frozen snapshot (a
+  same-src player and a share ticker each zeroed out, recorded). A snapshot
+  guarantees a permanent residual the size of the widget; any residual left
+  (frame-timing skew) is logged as permanent. Same src, later mount: a
+  player is created after first paint (`../../deploy/SKILL.md` #157) — the
+  gates capture a settled page, so pixels are unchanged; when the source
+  loaded it eagerly, note the deferral in the progress ledger.
 - **Randomized decorative elements** (inline positions/paths regenerated per
   page load — generative line art, particle fields): the live side never
   pixel-matches ITSELF across captures, so no prototype can zero it out.
