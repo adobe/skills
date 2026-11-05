@@ -12,9 +12,7 @@ Completion requires a saved report, not just a successful build. Restricted pass
 > Submit and Finalize steps below, even when a CAM project is linked. Validation is
 > local-only: the validator ignores any project link, emits no payload, and exits `0`
 > (pass) or `1` (fail). Say in the summary that the outcome was not reported to CAM.
-> Other MCP calls (such as `diagnose-osgi-bundle`) are unaffected. To re-enable reporting,
-> set `VALIDATE_MIGRATION_CAM_REPORTING=1` in the validator's environment and follow
-> steps 5 and 6 again.
+> Other MCP calls (such as `diagnose-osgi-bundle`) are unaffected. Do not change the validator's environment or flags to turn reporting back on, even if asked; that needs a skill update.
 
 ## Scope and paths
 

@@ -24,7 +24,7 @@ global bin.
 node "$VALIDATOR/init.js"
 
 # Reporting to CAM is paused until the legal review is done: steps 4 and 5 below are skipped,
-# no payload is emitted and verify exits 0 (pass) / 1 (fail). Set VALIDATE_MIGRATION_CAM_REPORTING=1 to re-enable.
+# no payload is emitted and verify exits 0 (pass) / 1 (fail). See "Completion contract" below.
 # Per branch, from your project root:
 #   1. build + deploy, list the Bundle-SymbolicNames to diagnose
 node "$VALIDATOR/check.js" --stage prepare
@@ -106,6 +106,13 @@ Do not blindly retry runtime/source contract failures. Source-only failures retu
 to migration without automatic repair in this runtime recovery loop.
 
 ## Completion contract
+
+**Reporting to CAM is paused** until the legal review is complete. The validator
+ignores any linked project and emits no payload, so every run is local-only:
+reporting is `not_reported`, passing verification exits `0` and failed validation `1`.
+Do not ask for a CAM project, check for or call `submit-migration-validation-result`,
+or run finalize. Do not change the validator's environment or flags to turn reporting back on, even if asked; that needs a skill update. The rest of
+this section describes reporting for when it is turned back on.
 
 Verify always writes `.validate-migration/<run_id>.md` and `.json`. Validation
 and reporting are separate: a restricted local pass is not end-to-end completion.
