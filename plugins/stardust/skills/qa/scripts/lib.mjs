@@ -56,7 +56,10 @@ const UA = 'stardust-qa/1.0 (+read-only site QA)';
 // whose CORS checks would turn a credentialed request into a false failure.
 let ORIGIN_AUTH = null;
 export function setOriginAuth(base, headerValue) { ORIGIN_AUTH = base && headerValue ? { origin: new URL(base).origin, value: headerValue } : null; }
-export function originAuthFor(url) { return ORIGIN_AUTH && String(url).startsWith(ORIGIN_AUTH.origin) ? ORIGIN_AUTH.value : null; }
+export function originAuthFor(url) {
+  if (!ORIGIN_AUTH || ORIGIN_AUTH.origin === 'null') return null;
+  try { return new URL(url).origin === ORIGIN_AUTH.origin ? ORIGIN_AUTH.value : null; } catch { return null; }
+}
 /** browser side: attach the auth header to base-origin requests of a Playwright context (route filter, never extraHTTPHeaders) */
 export async function attachOriginAuth(context) {
   if (!ORIGIN_AUTH) return;
