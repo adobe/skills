@@ -1,0 +1,10 @@
+{
+  "description": "Prepare local and DA test content for a new block in aem-boilerplate 5cea543 (cloned by setup.sh, git remote myorg/mysite)",
+  "fixtures": {
+    "block": {
+      "type": "directory",
+      "path": "./fixtures/stats",
+      "installPath": "blocks/stats"
+    }
+  }
+}
