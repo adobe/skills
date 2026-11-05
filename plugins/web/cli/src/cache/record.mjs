@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { CliError } from '#src/errors.mjs';
+import { CliError, redactCredentials } from '#src/errors.mjs';
 import { assertNotBlocked } from '#src/driver/blocked.mjs';
 import { bodyPath, dropFailedEntries, harFileName } from '#src/cache/har.mjs';
 import { extendConfig, resolveLaunch } from '#src/recipe.mjs';
@@ -40,7 +40,9 @@ function closeQuietly(driver, session) {
   try {
     driver.close(session);
   } catch (err) {
-    process.stderr.write(`warning: failed to close session ${session}: ${err.message}\n`);
+    process.stderr.write(
+      `warning: failed to close session ${session}: ${redactCredentials(err.message)}\n`,
+    );
   }
 }
 
@@ -50,20 +52,21 @@ function closeQuietly(driver, session) {
  * ends the playwright-cli session, so the session is closed only when something fails.
  * The HAR is written to `<har>.tmp` (not indexed by the proxy) and replaces `<har>` only once
  * complete, so a failed refresh keeps the previous recording.
- * `loadTimeoutMs` bounds the wait for the page's load event (default 30 s).
+ * `loadTimeoutMs` bounds the wait for the page's load event (default 30 s). `env` resolves
+ * `env:NAME` references in the recipe.
  * @param {object} driver
  * @param {{ url: string, cacheDir: string, headed?: boolean, recipe?: string,
- *   loadTimeoutMs?: number }} opts
+ *   loadTimeoutMs?: number, env?: NodeJS.ProcessEnv }} opts
  * @returns {{ url: string, har: string, entries: number, dropped: number, bytes: number }}
  */
 export function recordPage(
   driver,
-  { url, cacheDir, headed, recipe, loadTimeoutMs = LOAD_TIMEOUT_MS },
+  { url, cacheDir, headed, recipe, loadTimeoutMs = LOAD_TIMEOUT_MS, env = process.env },
 ) {
   const dir = path.resolve(cacheDir);
   mkdirSync(dir, { recursive: true });
   const har = path.join(dir, harFileName(url));
-  const launch = resolveLaunch(recipe, { headed });
+  const launch = resolveLaunch(recipe, { headed }, { env });
   const tmp = `${har}.tmp`;
   const config = extendConfig(launch.config, {
     contextOptions: { recordHar: { path: tmp, content: 'attach' } },

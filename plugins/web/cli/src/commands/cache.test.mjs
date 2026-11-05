@@ -87,6 +87,24 @@ test('cache record prints { url, har, entries, dropped, bytes }', async () => {
   );
 });
 
+test('cache record resolves the recipe endpoint from the injected env only', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'cache-record-'));
+  const recipe = join(dir, 'remote.json');
+  writeFileSync(recipe, JSON.stringify({ probe: [{ config: { cdpEndpoint: 'env:RECORD_WSS' } }] }));
+  assert.equal(process.env.RECORD_WSS, undefined);
+  const { calls, driver } = recordDriver();
+  const stdout = sink();
+  const code = await runCli(['node', 'web', 'cache', 'record', 'https://a.test', '--cache', dir], {
+    stdout,
+    stderr: sink(),
+    env: { WEB_RECIPE: recipe, RECORD_WSS: 'wss://u:p@record.test:9222', WEB_TIMEOUT: '90000' },
+    driverFactory: () => driver,
+  });
+  assert.equal(code, 0, stdout.buf);
+  const open = calls.find(([n]) => n === 'open')[1];
+  assert.equal(open.config.cdpEndpoint, 'wss://u:p@record.test:9222');
+});
+
 test('cache record rejects a non-URL with exit 2 USAGE before opening a browser', async () => {
   const { calls, driver } = recordDriver();
   const stdout = sink();

@@ -38,6 +38,16 @@ test('fail wraps unknown errors as INTERNAL exit 1', () => {
   assert.equal(code, 1);
 });
 
+test('fail redacts quoted userinfo and short header tokens on stdout and stderr', () => {
+  const stdout = sink();
+  const stderr = sink();
+  const message = "ws error wss://alice:pa'ssword@127.0.0.1:1/ (Authorization: Basic dTpw)";
+  fail(new CliError('PLAYWRIGHT_CLI', message), { stdout, stderr });
+  for (const out of [stdout.buf, stderr.buf]) {
+    assert.doesNotMatch(out, /alice|pa'ssword|dTpw/);
+  }
+});
+
 test('fail redacts endpoint credentials from message and hint, stdout and stderr', () => {
   const stdout = sink();
   const stderr = sink();

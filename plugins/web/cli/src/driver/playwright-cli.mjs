@@ -225,7 +225,9 @@ export function createDriver({
         } catch (err) {
           const delay = RATE_LIMIT_DELAYS_MS[attempt];
           if (delay === undefined || !RATE_LIMITED.test(err.message)) throw err;
-          stderr.write(`warning: rate limited, retrying ${url} in ${delay / 1000} s\n`);
+          stderr.write(
+            `warning: rate limited, retrying ${redactCredentials(url)} in ${delay / 1000} s\n`,
+          );
           sleep(delay);
         }
       }

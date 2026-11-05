@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { CliError } from '#src/errors.mjs';
+import { CliError, redactCredentials } from '#src/errors.mjs';
 import { resolveLaunch } from '#src/recipe.mjs';
 
 /** @returns {string} `web-` plus 4 hex characters */
@@ -25,14 +25,14 @@ export function requireOpenSession(driver, name) {
 /**
  * Run `fn` against a given session (opened on demand when a url is given), or against an ephemeral one closed afterwards.
  * Explicit `config`, `persistent`, `initScripts` win over values loaded from `recipePath`.
- * `recipeSkip` lists recipe types not to apply. A recipe cannot change a browser that is already open: with `recipeExplicit` that warns.
+ * `recipeSkip` lists recipe types not to apply; `env` resolves `env:NAME` references in the recipe. A recipe cannot change a browser that is already open: with `recipeExplicit` that warns.
  * @param {object} driver
  * @param {object} opts session, url, headed, recipePath, config, persistent, initScripts
  * @param {(session: string) => unknown} fn
  */
 export async function withSession(driver, opts, fn) {
-  const { session, url, headed, recipePath, recipeExplicit, recipeSkip, ...launch } = opts;
-  const resolve = () => resolveLaunch(recipePath, launch, { skip: recipeSkip });
+  const { session, url, headed, recipePath, recipeExplicit, recipeSkip, env, ...launch } = opts;
+  const resolve = () => resolveLaunch(recipePath, launch, { skip: recipeSkip, env });
   if (session) {
     const isOpen = driver.list().some((s) => s.name === session && s.status === 'open');
     if (!isOpen && url) {
@@ -92,7 +92,9 @@ function closeQuietlyIf(driver, name, failed) {
     driver.close(name);
   } catch (err) {
     if (!failed) throw err;
-    process.stderr.write(`warning: failed to close session ${name}: ${err.message}\n`);
+    process.stderr.write(
+      `warning: failed to close session ${name}: ${redactCredentials(err.message)}\n`,
+    );
   }
 }
 

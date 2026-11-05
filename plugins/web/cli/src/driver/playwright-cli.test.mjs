@@ -434,3 +434,10 @@ test('debug echo redacts endpoint credentials', () => {
   assert.match(lines.join(''), /--cdp=wss:\/\/\[redacted\]@remote\.test:9222/);
   assert.doesNotMatch(lines.join(''), /secret/);
 });
+
+test('the rate-limit retry warning redacts credentials in the URL', () => {
+  const { driver, warnings } = gotoSetup(1, RATE_LIMIT);
+  driver.goto('s', 'https://alice:password@example.test/');
+  assert.match(warnings.join(''), /https:\/\/\[redacted\]@example\.test\//);
+  assert.doesNotMatch(warnings.join(''), /alice|password/);
+});

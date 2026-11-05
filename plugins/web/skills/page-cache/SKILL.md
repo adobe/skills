@@ -155,7 +155,8 @@ When filling stops at a challenge page or Access Denied, fill through a remote b
 gets past bot protection (Bright Data's Browser API, any Chrome DevTools endpoint): a recipe
 with `"cdpEndpoint": "env:<VAR>"` makes `browser open --cache` and `cache record` load pages
 there, while the HARs are written locally; `cache proxy --offline` then replays them
-downstream with no network. Set `WEB_TIMEOUT=120000` for slow first loads and fill one site at
+downstream with no network, to a local browser (`WEB_RECIPE= $WEB browser open <url> --proxy …`:
+`--proxy` refuses a remote-browser recipe). Set `WEB_TIMEOUT=120000` for slow first loads and fill one site at
 a time. Recipe, credentials and Bright Data specifics: `$WEB doc remote-browser`.
 
 ## Notes

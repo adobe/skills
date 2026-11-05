@@ -70,12 +70,16 @@ everything fetched again each time).
 
 ## Replay downstream
 
-No network, no remote browser: a miss answers 504.
+No network, no remote browser: a local browser reads the cache through the proxy, and a miss
+answers 504. Replay must not use the remote recipe: `--proxy` cannot route a browser that is
+already running, so `browser open --proxy` refuses a recipe with a `cdpEndpoint` (exit 2).
+`WEB_RECIPE=` (empty) opens without any recipe, `./recipe.json` included; `--recipe <file>`
+picks a local one.
 
 ```bash
 web cache proxy --cache .site-cache --offline --port 0 > proxy.json &
 P=$(jq -r .url proxy.json)     # wait until the file is written
-S=$(web browser open https://example.com/ --proxy "$P" | jq -r .session)
+S=$(WEB_RECIPE= web browser open https://example.com/ --proxy "$P" | jq -r .session)
 curl -s "$P/__status"          # hits, misses, missed: URLs to fill again
 ```
 
@@ -97,5 +101,7 @@ detection sensors, CAPTCHA widgets.
 
 - Keep the endpoint in the environment (`env:NAME`), not in the recipe or on the command
   line: a `wss://user:pass@…` argument is visible to `ps`.
-- `web` redacts `user:pass@` and Basic/Bearer tokens from its error messages and from the
-  `WEB_DEBUG=1` echo. Logs written by other tools are not covered.
+- `web` redacts URL credentials (`scheme://user:pass@`), `Authorization` header values and
+  `Basic`/`Bearer` tokens from what it prints: error documents, argument errors, warnings
+  and the `WEB_DEBUG=1` echo. Other secrets in a message (a token in a query string) and
+  logs written by other tools, such as playwright-cli's own daemon logs, are not covered.

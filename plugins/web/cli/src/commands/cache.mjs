@@ -129,12 +129,13 @@ function registerRecord(group, deps) {
         });
       }
       const ctx = createContext(command, deps);
-      const loadTimeoutMs = stepTimeout(deps.env ?? process.env);
+      const loadTimeoutMs = stepTimeout(ctx.env);
       const result = recordPage(ctx.driver, {
         url,
         cacheDir: opts.cache,
         headed: Boolean(ctx.opts.headed),
         recipe: ctx.recipe,
+        env: ctx.env,
         ...(loadTimeoutMs && { loadTimeoutMs }),
       });
       ctx.print(result);

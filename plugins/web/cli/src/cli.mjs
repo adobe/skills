@@ -1,5 +1,5 @@
 import { Command, CommanderError, Option } from 'commander';
-import { CliError, EXIT } from '#src/errors.mjs';
+import { CliError, EXIT, redactCredentials } from '#src/errors.mjs';
 import { fail } from '#src/output.mjs';
 import { registerBrowser } from '#src/commands/browser.mjs';
 import { registerProbe } from '#src/commands/probe.mjs';
@@ -85,7 +85,8 @@ export function createProgram(deps = {}) {
     )
     .configureOutput({
       writeOut: (s) => stdout.write(s),
-      writeErr: (s) => stderr.write(s),
+      // Commander echoes the arguments it rejects: redact them like every other diagnostic.
+      writeErr: (s) => stderr.write(redactCredentials(s)),
     })
     .addHelpText('after', ROOT_HELP)
     .showHelpAfterError()

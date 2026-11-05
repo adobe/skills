@@ -48,11 +48,12 @@ Everything exported by the library; nothing else is public.
   `./recipe.json`) and `--headed`, rejects blocked
   pages, adds `url`, `session` and `durationMs`, prints. `records` names the recipe type a
   `--save-recipe` command replaces; recording launches without that type.
-- `createContext(command, deps)`: `{ opts, driver, print, recipe }` (`recipe` is the path to launch
-  browsers with, if any) for commands that are not
+- `createContext(command, deps)`: `{ opts, driver, print, recipe, env }` (`recipe` is the path to
+  launch browsers with, if any; `env` is `deps.env` or `process.env`) for commands that are not
   "one page"; `opts` merges the global and the command options.
-- `withSession(driver, { session, url, headed, recipePath }, fn)`: the session rule on
+- `withSession(driver, { session, url, headed, recipePath, env }, fn)`: the session rule on
   its own: opens an ephemeral or named browser, runs `fn(name)`, closes only ephemeral ones.
+  Pass `env: ctx.env` so the recipe's `env:NAME` references read the command's environment.
 - `artifactDir(outputDir, session, command)` and `artifactPath(…, name)`: where to write
   files, `<output>/<session>-<command>/<name>`, absolute.
 - `emit(result, { format, text, stdout })`: print one result document (JSON, or `text`

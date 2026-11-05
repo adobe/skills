@@ -26,7 +26,8 @@ export function stepTimeout(env) {
 }
 
 /**
- * Shared per-command context. `recipe` is the recipe to launch browsers with: `--recipe`,
+ * Shared per-command context. `env` is the environment the command reads (`deps.env`, else
+ * `process.env`). `recipe` is the recipe to launch browsers with: `--recipe`,
  * else `WEB_RECIPE`, else `./recipe.json` when it exists.
  * `recipeExplicit` is true when `--recipe` was typed, not defaulted.
  * `WEB_TIMEOUT` (see stepTimeout) overrides the command's own call timeout and sets the
@@ -37,7 +38,8 @@ export function stepTimeout(env) {
  */
 export function createContext(command, deps, { timeoutMs } = {}) {
   const opts = command.optsWithGlobals();
-  const step = stepTimeout(deps.env ?? process.env);
+  const env = deps.env ?? process.env;
+  const step = stepTimeout(env);
   const callTimeout = step === undefined ? timeoutMs : step + CALL_MARGIN_MS;
   const driver = (deps.driverFactory ?? createDriver)({
     outputDir: opts.output,
@@ -49,5 +51,5 @@ export function createContext(command, deps, { timeoutMs } = {}) {
     emit(result, { format: opts.format, text, stdout: deps.stdout ?? process.stdout });
   const recipe = opts.recipe ?? (existsSync(DEFAULT_RECIPE) ? DEFAULT_RECIPE : undefined);
   const recipeExplicit = command.getOptionValueSourceWithGlobals('recipe') === 'cli';
-  return { opts, driver, print, recipe, recipeExplicit };
+  return { opts, driver, print, recipe, recipeExplicit, env };
 }
