@@ -15,7 +15,6 @@ Investigate cloud runtime incidents involving the Adobe Dispatcher Apache HTTP S
 ## Variant Scope
 
 - This skill is cloud-service-only.
-- Scope is fixed by this skill directory; do not ask the user to choose deployment variant.
 
 ## MCP Tool Contract
 

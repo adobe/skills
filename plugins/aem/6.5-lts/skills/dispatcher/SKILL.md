@@ -1,12 +1,11 @@
 ---
 name: dispatcher
 description: |
-  Single entry point for all AEM 6.5 LTS Dispatcher skills. Covers config authoring,
-  technical advisory, incident response, performance tuning, security hardening, and full lifecycle
-  orchestration for the Adobe Dispatcher Apache HTTP Server module and its HTTPD/dispatcher configuration
-  in AEM 6.5 LTS and AMS environments.
+  Use for AEM 6.5 LTS or AMS Dispatcher work: author or validate .any filters, vhosts, rewrite
+  and cache rules, investigate incidents, and review performance or security. Routes LTS/AMS work
+  to specialist skills; use the Cloud Service Dispatcher skill for AEM as a Cloud Service.
 license: Apache-2.0
-compatibility: Requires Dispatcher MCP for AMS (`AEM_DEPLOYMENT_MODE=ams`) or AMS Dispatcher MCP SDK (pre-set to `ams`).
+compatibility: AEM 6.5 LTS/AMS Dispatcher configuration; no AMS Dispatcher MCP is currently available.
 allowed-tools: validate lint sdk trace_request inspect_cache monitor_metrics tail_logs
 metadata:
   mcp-tool-contract: core-7-tools
@@ -36,15 +35,7 @@ Route user requests to the appropriate specialist skill based on intent.
 
 ## MCP Tool Contract
 
-All specialist skills share the same core-7 MCP tool set:
-
-- `validate` — static config validation
-- `lint` — deep/order-aware linting
-- `sdk` — SDK check-files and diff-baseline
-- `trace_request` — trace a request through dispatcher
-- `inspect_cache` — inspect cache state
-- `monitor_metrics` — runtime metrics
-- `tail_logs` — log tailing
+No AMS Dispatcher MCP is currently available. For 6.5 LTS/AMS, limit work to explanation and static review; report each tool-dependent check as NOT VERIFIED and never fabricate tool output.
 
 ## Specialist Skills
 

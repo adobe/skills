@@ -15,7 +15,6 @@ Deliver evidence-backed security findings and remediations for cloud workflows t
 ## Variant Scope
 
 - This skill is cloud-service-only.
-- Scope is fixed by this skill directory; do not ask the user to choose deployment variant.
 
 ## MCP Tool Contract
 
