@@ -1,6 +1,6 @@
 ---
 name: da-auth
-description: "Use this when another step needs to call the admin.da.live API, for example before pushing HTML content, listing documents, or triggering a DA preview, and you do not already have a valid DA_TOKEN in scope from an earlier step in the same session. Covers obtaining a valid Adobe IMS access token for the DA (Document Authoring) API."
+description: "Use this when another step needs to call the admin.da.live API or the AEM API at api.aem.live (Source Bus content, status, preview and publish for sites edited in Experience Workspace), for example before pushing HTML content, listing documents, or triggering a preview, and you do not already have a valid DA_TOKEN in scope from an earlier step in the same session. Covers obtaining a valid Adobe IMS access token; the same token works for both APIs."
 license: Apache-2.0
 metadata:
   version: "1.1.0"
@@ -8,17 +8,18 @@ metadata:
 
 # DA Authentication
 
-Gets a valid Adobe IMS access token and stores it in `DA_TOKEN` for use in subsequent `admin.da.live` API calls.
+Gets a valid Adobe IMS access token and stores it in `DA_TOKEN` for use in subsequent `admin.da.live` or `api.aem.live` API calls. The token is a plain IMS token, not DA-specific: the variable keeps its name for compatibility with the skills that read it.
 
 ## When to Use This Skill
 
-Use this skill whenever you need to call the DA Admin API (`admin.da.live`) and do not already have a valid token in scope. Common cases:
+Use this skill whenever you need to call the DA Admin API (`admin.da.live`) or the AEM API (`api.aem.live`) and do not already have a valid token in scope. Common cases:
 - Pushing or updating page content in DA
 - Listing documents in a DA repository
 - Triggering a DA content preview
+- Sites whose content lives in the **Source Bus** and is edited in **Experience Workspace**: reading or writing page source, checking status, previewing or publishing through `api.aem.live` (see [Which API holds the content](#which-api-holds-the-content))
 
 Do NOT use this skill when:
-- You already obtained a `DA_TOKEN` earlier in the same session and it has not expired (tokens are valid for ~1 hour with a 60-second buffer)
+- You already obtained a `DA_TOKEN` earlier in the same session and it has not expired (check `expires_at` in the cache with a 60-second buffer; lifetimes from 1 to 3 hours occur)
 - The **create-site** skill is already handling authentication as part of its own flow
 - A DA MCP server is active in the session — use its authentication tool directly instead
 
@@ -95,7 +96,9 @@ If a DA MCP server is configured in the session, use its authentication tool to 
 
 ## Step 3: Verify the Token Works
 
-Confirm the token is accepted by the DA API before proceeding:
+Confirm the token is accepted by the API the calling skill will use before proceeding.
+
+DA (`admin.da.live`):
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}" \
@@ -103,7 +106,30 @@ curl -s -o /dev/null -w "%{http_code}" \
   "https://admin.da.live/list/{{ORG}}/{{REPO}}"
 ```
 
+AEM API (`api.aem.live`, Source Bus / Experience Workspace sites):
+
+```bash
+curl -s -o /dev/null -w "%{http_code}" \
+  -H "Authorization: Bearer {{DA_TOKEN}}" \
+  "https://api.aem.live/{{ORG}}/sites/{{SITE}}/status/"
+```
+
 Success: HTTP `200`. The token is valid — `DA_TOKEN` is ready for use by the calling skill.
+
+Never echo the token or put it in a URL, a file in the repository, or a command shown to the user; read it from the cache when a command needs it.
+
+## Which API holds the content
+
+A site's content lives in one place, and pushing to the other one changes nothing the site serves. A site can have documents in both (for example the boilerplate `index`, `nav` and `footer` created in DA during onboarding, while authors work in Experience Workspace), so a non-empty DA listing does not prove DA is the source. Check before writing:
+
+```bash
+# Source Bus (Experience Workspace sites): a JSON list of source documents, [] when empty
+curl -s -H "Authorization: Bearer {{DA_TOKEN}}" "https://api.aem.live/{{ORG}}/sites/{{SITE}}/source/"
+# DA
+curl -s -H "Authorization: Bearer {{DA_TOKEN}}" "https://admin.da.live/list/{{ORG}}/{{REPO}}"
+```
+
+If the user says the site is edited in Experience Workspace, or calls it a Source Bus site, use `api.aem.live` (API reference: https://www.aem.live/docs/api.html). Otherwise ask, rather than inferring it from which listing has documents.
 
 ## Troubleshooting
 
@@ -114,9 +140,11 @@ Success: HTTP `200`. The token is valid — `DA_TOKEN` is ready for use by the c
 | `npx github:adobe-rnd/da-auth-helper` fails | Network restrictions on GitHub package registry | Use Option B (DA MCP server) or Option C (manual token paste) |
 | Step 3 returns `401` | Token expired between steps | Re-run Step 2 to refresh |
 | Step 3 returns `403` | Authenticated user lacks access to `{{ORG}}/{{REPO}}` | Ask the user to verify their DA permissions for that org/repo |
+| Content pushed, but the page does not change | Content went to DA while the site reads the Source Bus (or the reverse) | Check [Which API holds the content](#which-api-holds-the-content) |
 
 ## Reference
 
 - DA Auth Helper: https://github.com/adobe-rnd/da-auth-helper
 - DA Admin API: https://opensource.adobe.com/da-admin/
+- AEM API (Source Bus, status, preview, publish): https://www.aem.live/docs/api.html
 - Token cache location: `~/.aem/da-token.json`
