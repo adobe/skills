@@ -1,0 +1,15 @@
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 24px;
+  text-align: center;
+}
+
+.stats .stats-value {
+  font-size: var(--heading-font-size-xxl);
+  font-weight: 800;
+}
+
+.stats .stats-label {
+  color: var(--dark-color);
+}
