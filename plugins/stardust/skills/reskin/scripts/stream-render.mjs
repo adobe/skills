@@ -456,7 +456,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
           // levels (h3/h4/h5 on visually equal card titles) render alike.
           const r = /^h[2-6]$/.test(n.role || '') && has(`--type-${n.role}-font-size`) ? ` role-${n.role}` : '';
           // A heading holding a link (a Figma hyperlink run, a live h2 > a) keeps the link.
-          out.push(`<${n.level || 'h2'} class="heading${r}">${n.children?.some((c) => c.kind === 'cta') ? inlineHtml(n.children) : txt(n)}</${n.level || 'h2'}>`); break;
+          out.push(`<${n.level || 'h2'} class="heading${r}${n.srOnly ? ' sr-only' : ''}">${n.children?.some((c) => c.kind === 'cta') ? inlineHtml(n.children) : txt(n)}</${n.level || 'h2'}>`); break;
         }
         case 'paragraph':
           // A paragraph holding only images, one of them content-sized, is a figure (a model captured
@@ -464,7 +464,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
           if (n.children?.length && n.children.every((c) => c.kind === 'image') && n.children.some((c) => c.rw >= 200)) {
             out.push(...n.children.map((c) => `<figure class="media media-wide"><img ${img(c.currentSrc || c.src)} alt="${esc(c.alt)}"></figure>`)); break;
           }
-          out.push(`<p class="${n.children?.some((c) => c.kind === 'cta') ? 'aux' : 'lead'}">${n.children ? inlineHtml(n.children) : txt(n)}</p>`); break;
+          out.push(`<p class="${n.children?.some((c) => c.kind === 'cta') ? 'aux' : 'lead'}${n.srOnly ? ' sr-only' : ''}">${n.children ? inlineHtml(n.children) : txt(n)}</p>`); break;
         case 'listItem': {
           const items = [n]; while (ordered[i + 1]?.kind === 'listItem') items.push(ordered[++i]);
           out.push(`<ul class="list">${items.map((li) => `<li>${li.children ? inlineHtml(li.children) : txt(li)}</li>`).join('')}</ul>`); break;
@@ -769,18 +769,32 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   const embedAfter = new Set((model._provenance?.normalize?.ledger || [])
     .filter((e) => /disposition:\s*embed/i.test(e.why || '') && /embed/i.test(e.what || ''))
     .map((e) => (e.what.match(/under\s+["“]([^"”]+)["”]/) || [])[1]?.trim().toLowerCase()).filter(Boolean));
+  function bandOfPlacement(s) { const m = pageMap.slots?.[s.slot] || {}; return m.band === true || (m.band === undefined && s.placement?.region === 'band'); }
   // Rails (mapping-json.md § rail): a slot the source sets BESIDE the content column (a section sidebar)
   // renders in a grid column next to it at desktop, never stacked after it. Every other slot keeps its
   // stream order on an explicit grid row; band slots (a breadcrumb over column and rail) span both columns.
   const railOf = (s) => { const r = pageMap.slots?.[s.slot]?.rail; return r === 'start' || r === 'end' ? r : null; };
   const railSlots = model.sections.filter(railOf);
   const railSideOfPage = railSlots.length ? railOf(railSlots[0]) : null;
+  // "rail": "top" carries the rail as a band ABOVE the content (a donor with no side column): visually after
+  // the leading bands (the breadcrumb) and before the first content slot, by flex order — the DOM keeps the
+  // source's stream order, so the reading order and the content gate are the source's.
+  const topOf = (s) => !railSideOfPage && pageMap.slots?.[s.slot]?.rail === 'top';
+  const topSlots = model.sections.filter(topOf);
+  const orderOf = new Map();
+  if (topSlots.length) {
+    const rest = model.sections.filter((s) => !topOf(s));
+    const lead = rest.findIndex((s) => !bandOfPlacement(s));
+    const cut = lead < 0 ? rest.length : lead;
+    [...rest.slice(0, cut), ...topSlots, ...rest.slice(cut)].forEach((s, k) => orderOf.set(s.slot, k + 1));
+  }
+  if (railSideOfPage && model.sections.some((s) => pageMap.slots?.[s.slot]?.rail === 'top')) warnings.push(`rail: a page with a ${railSideOfPage} rail renders its "top" slots in stream order`);
   const rows = new Map(); let row = 0;
   if (railSideOfPage) {
     for (const s of model.sections) if (!railOf(s)) rows.set(s.slot, (row += 1));
     if (railSlots.some((s) => railOf(s) !== railSideOfPage)) warnings.push(`rail: slots ask for both sides — every rail renders on the ${railSideOfPage} side`);
   }
-  const bandOf = (s) => { const m = pageMap.slots?.[s.slot] || {}; return m.band === true || (m.band === undefined && s.placement?.region === 'band'); };
+  const bandOf = (s) => bandOfPlacement(s);
   const firstContentRow = railSideOfPage ? Math.min(...model.sections.filter((s) => !railOf(s) && !bandOf(s)).map((s) => rows.get(s.slot)), row) : 0;
   const railWidthOf = (s) => {
     const w = pageMap.slots?.[s.slot]?.railWidth;
@@ -834,6 +848,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const rail = railSideOfPage ? railOf(s) : null;
     const railCls = !railSideOfPage ? [] : rail ? ['in-rail', `rail-mobile-${railMobileOf(s)}`] : bandOf(s) ? ['in-band'] : [];
     if (railSideOfPage) vars.push(rail ? `grid-row: ${firstContentRow} / ${row + 1}` : `grid-row: ${rows.get(s.slot)}`);
+    if (topSlots.length) { vars.push(`order: ${orderOf.get(s.slot)}`); if (topOf(s)) railCls.push('in-top', `rail-mobile-${railMobileOf(s)}`); }
     const cls = ['band', ...layout.map((l) => `layout-${l}`), ...(cardTone ? [`cards-${cardTone}`] : []), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []), ...(tone && m.bleed === true ? ['bleed'] : []), ...(m.align === 'center' ? ['align-center'] : []), ...(mediaFirst ? ['media-first'] : []), ...railCls].join(' ');
     const bi = ctx.bandImage;
     const media = !bi ? '' : ctx.split && backdropCss(bi) ? `<span class="split-img img-backdrop" style="${backdropCss(bi)}"><img ${img(bi.currentSrc || bi.src)} alt="${esc(bi.alt)}"${imgOpacity(bi)}></span>`
@@ -921,7 +936,11 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-main.has-rail.rail-reorder > section.rail-mobile-top { order: -1; }
     .site-main.has-rail.rail-reorder > section.rail-mobile-bottom { order: 1; }
     .site-main.has-rail > section.rail-mobile-hidden { display: none; }
+    .site-main.rail-top > section.rail-mobile-hidden { display: none; }
+    .site-main.rail-top > section.rail-mobile-bottom { order: 9999; }
   }
+  .site-main.rail-top { display: flex; flex-direction: column; }
+  .site-main.rail-top > section { min-width: 0; }
   ${['h2', 'h3', 'h4'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main ${h}.heading { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.2')}; font-weight: ${v(`--type-${h}-font-weight`, 'inherit')}; }`).join('\n  ')}
   ${has('--type-h3-font-size') ? `.site-main .card .heading { font-size: var(--type-h3-font-size); line-height: ${v('--type-h3-line-height', '1.2')}; font-weight: ${v('--type-h3-font-weight', 'inherit')}; }` : ''}
   ${has('--radii-label') ? `.site-main .band:not([class*="heading-"]) .flow > h2.heading:first-child, .site-main .heading-h2 .flow > .heading:first-child { display: inline-block; justify-self: start; background: ${v('--palette-accent', 'transparent')}; border-radius: var(--radii-label); padding: 0 7px; }` : ''}
@@ -1109,7 +1128,7 @@ ${css}
 <header class="site-header" data-canon="header">
   ${headerHtml}
 </header>
-<main class="site-main${railSideOfPage ? ` has-rail rail-${railSideOfPage}${railSlots.some((r) => railMobileOf(r) !== 'hidden') ? ' rail-reorder' : ''}` : ''}"${railSideOfPage ? ` style="--rail-width: ${railWidthOf(railSlots[0])}"` : ''} data-template="${esc(pageMap.template || slug)}">
+<main class="site-main${railSideOfPage ? ` has-rail rail-${railSideOfPage}${railSlots.some((r) => railMobileOf(r) !== 'hidden') ? ' rail-reorder' : ''}` : topSlots.length ? ' rail-top' : ''}"${railSideOfPage ? ` style="--rail-width: ${railWidthOf(railSlots[0])}"` : ''} data-template="${esc(pageMap.template || slug)}">
   ${sections.join('\n  ')}
 </main>
 <footer class="site-footer${['dark', 'light', 'accent'].includes(mapping.chrome?.footerTone) ? ` tone-${mapping.chrome.footerTone}` : ''}" data-canon="footer">
@@ -1133,7 +1152,7 @@ export const MAPPING_SCHEMA = {
   chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign', 'kit'],
   page: ['template', 'slots', 'defaultContent'],
   slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split', 'bleed', 'align', 'cardTone', 'block', 'variant', 'instance', 'rail', 'railWidth', 'railMobile', 'band'],
-  rail: ['start', 'end', 'none'],
+  rail: ['start', 'end', 'top', 'none'],
   railMobile: ['hidden', 'top', 'bottom'],
   align: ['center'],
   layout: ['stack', 'grid-2', 'media-band', 'split', 'cards'],
@@ -1148,7 +1167,7 @@ const annotation = (k) => k.startsWith('_') || k.startsWith('$');
 // Validates a parsed mapping.json. models: { <slug>: content model | null } (null/absent: slot ids not
 // checked); chromeModel: the chrome content model or null; slugs: pages that must be present.
 // Returns ["<path>: <problem>", …]; empty when valid.
-export function checkMapping(mapping, { models = {}, chromeModel = null, slugs = [] } = {}) {
+export function checkMapping(mapping, { models = {}, chromeModel = null, slugs = [], coverage = null } = {}) {
   const S = MAPPING_SCHEMA; const out = [];
   const one = (v, allowed) => allowed.includes(v);
   const unknown = (o, allowed, at) => { for (const k of Object.keys(o)) if (!annotation(k) && !allowed.includes(k)) out.push(`${at}${k}: unknown key (allowed: ${allowed.join(', ')})`); };
@@ -1220,7 +1239,12 @@ export function checkMapping(mapping, { models = {}, chromeModel = null, slugs =
       for (const sec of model.sections || []) {
         const side = railSide(sec.placement?.region);
         const m = pm.slots[sec.slot];
-        if (side && !(isObj(m) && one(m.rail, S.rail))) out.push(`${at}.slots.${sec.slot}: the source sets this slot as a ${side} rail beside the content (placement ${sec.placement.region}${sec.rect?.w ? `, ${sec.rect.w}px` : ''}${sec.placement.hiddenMobile ? ', hidden on mobile' : ''}) — set "rail": "${side}" (or "rail": "none" with a coverage/<slug>.json placement declaration): reference/mapping-json.md § rail`);
+        if (side && !(isObj(m) && one(m.rail, S.rail))) out.push(`${at}.slots.${sec.slot}: the source sets this slot as a ${side} rail beside the content (placement ${sec.placement.region}${sec.rect?.w ? `, ${sec.rect.w}px` : ''}${sec.placement.hiddenMobile ? ', hidden on mobile' : ''}) — set "rail": "${side}", "top" (a band above the content) or "none", the last two with a coverage/<slug>.json placement declaration: reference/mapping-json.md § rail`);
+        // A rail carried elsewhere is a declared move gate (a′) S4 verifies: "top" must be declared to: "top".
+        else if (side && coverage && (m.rail === 'top' || m.rail === 'none')) {
+          const decl = (coverage[slug] || []).find((d) => d.slot === sec.slot && (m.rail !== 'top' || d.to === 'top'));
+          if (!decl) out.push(`${at}.slots.${sec.slot}: "rail": "${m.rail}" moves the source's ${side} rail — declare it in coverage/${slug}.json: "placement": [{ "slot": "${sec.slot}", "to": "${m.rail === 'top' ? 'top' : 'band'}", "why": "…" }]`);
+        }
       }
     }
   }
@@ -1381,7 +1405,9 @@ function checkCli(o, mappingFile, modelDir) {
   }
   const chromeDir = isObj(mapping?.chrome) && typeof mapping.chrome.model === 'string' ? mapping.chrome.model : null;
   const chromeModel = chromeDir ? optionalJson(join(chromeDir, 'content-model.json')) : null;
-  const problems = checkMapping(mapping, { models, chromeModel, slugs });
+  const coverage = {};
+  for (const slug of Object.keys(models)) coverage[slug] = optionalJson(join(dirname(mappingFile), 'coverage', `${slug}.json`))?.placement || [];
+  const problems = checkMapping(mapping, { models, chromeModel, slugs, coverage });
   if (chromeDir && !chromeModel) problems.push(`chrome.model: no content-model.json under ${chromeDir}`);
   if (unmodelled.length) console.error(`note: no content model under ${modelDir} for ${unmodelled.join(', ')} — their slot ids are not checked`);
   for (const p of problems) console.log(p);

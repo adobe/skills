@@ -78,7 +78,10 @@ A slot mapped `"rail"` stays a rail on EDS. Author it as its own section with a 
 (`section-nav`, `rail`), and lay the page out in the project CSS/JS the way the reskin page does: on `main`
 holding that section, a grid at > 900px (the rail column at its `railWidth`, the other sections in a content
 column on explicit rows in document order, a band section such as the breadcrumb across both), one column at
-≤ 900px in normal flow with the rail per its `railMobile`. Keep every section a direct child of `main` (the joins and parity pair
+≤ 900px in normal flow with the rail per its `railMobile`. A slot mapped `"rail": "top"` is a full-width section
+above the content instead: `main` a flex column, the breadcrumb first, the rail next, the rest in document order
+(`order`), the authored order unchanged. A heading the reskin page renders `.sr-only` (a sidebar's
+"Section navigation") stays visually hidden on EDS (the section style's CSS), its text in the document. Keep every section a direct child of `main` (the joins and parity pair
 `main > .section`). Gate (a′) S4 on the preview (`--target <preview url>`) FAILs a rail EDS renders after the
 content, which parity cannot see when the reskin page shares the mistake.
 

@@ -520,6 +520,8 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       }
       if (!isVisible(el)) return null;
       const n = { kind, text: norm(el.innerText), display: getComputedStyle(el).display };
+      // visually hidden (an sr-only heading such as a sidebar's "Section navigation"): carried, never shown
+      if (kind !== 'cta' && isSrOnly(el)) n.srOnly = true;
       withClamp(n, clampOf(el) || inherited);
       if (kind === 'heading') n.level = el.tagName.toLowerCase();
       if (kind === 'cta') {

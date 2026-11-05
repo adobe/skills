@@ -78,7 +78,7 @@ export function readDeclared(json) {
   });
   (d.placement || []).forEach((t, i) => {
     if (!t.slot && !t.match) problems.push(`placement[${i}]: slot (sNN) or match required`);
-    if (!['rail-start', 'rail-end', 'band', 'main'].includes(t.to)) problems.push(`placement[${i}]: to must be rail-start | rail-end | band | main`);
+    if (!['rail-start', 'rail-end', 'top', 'band', 'main'].includes(t.to)) problems.push(`placement[${i}]: to must be rail-start | rail-end | top | band | main`);
     if (!t.why) problems.push(`placement[${i}]: why required`);
   });
   return { declared: { residue: d.residue || [], tones: d.tones || [], placement: d.placement || [], blocking: d.blocking !== false }, problems };
@@ -106,6 +106,14 @@ export function railItems(model) {
 export function targetRegion(m) {
   if (!m || !m.rect) return null;
   return regionOf(m.rect, contentColumn(m.items || []));
+}
+
+// "top": the rail's box ends above the content's start — the block holding the h1, else the one with the most
+// text (a band carried there, never after the content). Pure.
+export function isAboveContent(m) {
+  if (!m?.rect || !m.items?.length) return false;
+  const ref = m.items.find((it) => it.hasH1) || [...m.items].sort((a, b) => (b.textLen || 0) - (a.textLen || 0))[0];
+  return m.rect.y + m.rect.h <= ref.rect.y + 2;
 }
 
 /**
@@ -148,8 +156,10 @@ export function judge(model, target, declared, minChars) {
   railItems(model).forEach((it) => {
     const s1 = rows.find((r) => r.check === 'S1' && it.sel && r.sel === it.sel);
     if (s1 && s1.verdict !== 'carried') return; // dropped (S1 FAIL) or declared dropped: S1 owns it, nothing to place
-    const got = targetRegion(target.rails?.[it.key]);
     const decl = (declared.placement || []).find((d) => (d.slot && d.slot === it.slot) || (d.match && ((it.sel || '').includes(d.match) || (it.lines[0] || '').includes(d.match))));
+    const m = target.rails?.[it.key];
+    // a rail declared "top" is measured as top or not: a band stacked after the content is a FAIL either way
+    const got = decl?.to === 'top' && m?.rect ? (isAboveContent(m) ? 'top' : 'below content') : targetRegion(m);
     let verdict;
     if (got === it.region) verdict = 'carried';
     else if (decl && (got === null || decl.to === got)) verdict = 'declared';

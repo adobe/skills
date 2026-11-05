@@ -14,7 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { contentColumn, placements, railSide, regionOf } from '../placement.mjs';
 import { checkMapping, render } from '../stream-render.mjs';
-import { judge, railItems, targetRegion } from '../source-coverage.mjs';
+import { isAboveContent, judge, railItems, targetRegion } from '../source-coverage.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CAPTURE = join(HERE, '..', 'capture-content.mjs');
@@ -115,6 +115,41 @@ await check('source-coverage S4: beside → carried, stacked → FAIL, declared 
   assert.equal(s4(judge(MODEL, t(stacked), declared, 20)).verdict, 'declared');
 });
 
+await check('stream-render: rail top → the rail is a band above the content (after the breadcrumb) by flex order, the DOM in stream order', () => {
+  const { html } = render({ slug: 'learning', model: MODEL, tokens: TOKENS, mapping: mapping('top') });
+  assert.match(html, /<main class="site-main rail-top" data-template/);
+  const tag = (slot) => html.match(new RegExp(`<section class="([^"]*)"(?: style="([^"]*)")? data-slot="${slot}"`));
+  assert.match(tag('s01')[2], /order: 1/);
+  assert.match(tag('s04')[2], /order: 2/, 'right after the breadcrumb band');
+  assert.match(tag('s04')[1], /\bin-top\b.*\brail-mobile-hidden\b/);
+  assert.match(tag('s02')[2], /order: 3/);
+  assert.match(tag('s03')[2], /order: 4/);
+  assert.ok(html.indexOf('data-slot="s03"') < html.indexOf('data-slot="s04"'), 'the DOM keeps the source order');
+  assert.match(html, /\.site-main\.rail-top \{ display: flex; flex-direction: column; \}/);
+});
+
+await check('--check: rail top | none need a coverage placement declaration (top: to "top") when the coverage files are read', () => {
+  const cov = (placement) => ({ learning: placement });
+  const miss = checkMapping(mapping('top'), { models: { learning: MODEL }, coverage: cov([]) });
+  assert.equal(miss.length, 1);
+  assert.match(miss[0], /"rail": "top" moves the source's start rail — declare it in coverage\/learning\.json: "placement": \[\{ "slot": "s04", "to": "top"/);
+  assert.deepEqual(checkMapping(mapping('top'), { models: { learning: MODEL }, coverage: cov([{ slot: 's04', to: 'top', why: 'the donor has no side column' }]) }), []);
+  assert.equal(checkMapping(mapping('top'), { models: { learning: MODEL }, coverage: cov([{ slot: 's04', to: 'band', why: 'x' }]) }).length, 1, 'top must be declared to "top"');
+  assert.equal(checkMapping(mapping('none'), { models: { learning: MODEL }, coverage: cov([]) }).length, 1);
+});
+
+await check('source-coverage S4: declared top → declared only when the rail renders above the content; stacked after it FAILs', () => {
+  const items = [H1, BODY].map((x) => ({ rect: x.rect, hasH1: !!x.hasH1, textLen: x.textLen }));
+  const above = { rect: { x: 0, y: 200, w: 1440, h: 40 }, items };
+  const below = { rect: { x: 0, y: 4200, w: 1440, h: 350 }, items };
+  assert.equal(isAboveContent(above), true);
+  assert.equal(isAboveContent(below), false);
+  const top = { residue: [], tones: [], placement: [{ slot: 's04', to: 'top', why: 'the donor has no side column' }], blocking: true };
+  const s4 = (m) => judge(MODEL, { regions: [], slotTones: {}, rails: { s04: m } }, top, 20).rows.find((r) => r.check === 'S4');
+  assert.deepEqual([s4(above).verdict, s4(above).target], ['declared', 'top']);
+  assert.deepEqual([s4(below).verdict, s4(below).target], ['FAIL', 'below content']);
+});
+
 let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  placement page cases (playwright not importable here; run this test where it is)'); }
 
@@ -125,7 +160,7 @@ if (playwrightOk) {
     @media (max-width: 900px){ aside{display:none} main{width:auto} }
   </style></head><body><header>Site</header><div class="crumbs"><nav class="breadcrumbs"><a href="/">Home</a> <a href="/l">Learning</a></nav></div>
   <div class="layout"><main><section><h1>Learning</h1><p>${'Body copy. '.repeat(80)}</p></section><section><h2>More</h2><p>${'More copy. '.repeat(80)}</p></section></main>
-  <aside class="sidebar"><h2>Section navigation</h2><ul><li><a href="/a">Careers</a></li><li><a href="/b">Wellbeing</a></li></ul></aside></div><footer>Footer</footer></body></html>`;
+  <aside class="sidebar"><h2 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Section navigation</h2><ul><li><a href="/a">Careers</a></li><li><a href="/b">Wellbeing</a></li></ul></aside></div><footer>Footer</footer></body></html>`;
   const src = join(scratch, 'source.html');
   writeFileSync(src, SOURCE);
   const out = join(scratch, 'model');
@@ -139,6 +174,15 @@ if (playwrightOk) {
     assert.equal(bySlot.s02.region, 'main');
     assert.deepEqual(bySlot.s04, { region: 'rail-start', hiddenMobile: true });
     assert.match(cap.stdout, /placement: s04 rail-start \(400px, hidden on mobile\)/);
+  });
+
+  await check('capture: the sidebar\'s screen-reader-only heading is srOnly in the stream, and renders .sr-only (never a visible title)', () => {
+    const s04 = model.sections.find((s) => s.slot === 's04');
+    const h = s04.ordered.find((n) => n.kind === 'heading');
+    assert.equal(h.text, 'Section navigation');
+    assert.equal(h.srOnly, true);
+    const { html } = render({ slug: 'learning', model, tokens: TOKENS, mapping: { pages: { learning: { slots: { s04: { rail: 'start' } } } } } });
+    assert.match(html, /<h2 class="heading[^"]*\bsr-only\b[^"]*">Section navigation<\/h2>/);
   });
 
   const gate = (name, body) => {
@@ -155,6 +199,19 @@ if (playwrightOk) {
     const r = gate('stacked', { css: '', html: CRUMBS + CONTENT + RAIL });
     assert.equal(r.status, 1, r.stdout);
     assert.match(r.stdout, /S4 FAIL\s+s04 rail-start → /);
+  });
+
+  await check('source-coverage S4: a rail declared "top" passes rendered above the content, FAILs stacked after it', () => {
+    if (!model) throw new Error('capture failed');
+    const decl = join(scratch, 'top.json');
+    writeFileSync(decl, JSON.stringify({ version: 1, placement: [{ slot: 's04', to: 'top', why: 'the donor has no side column' }] }));
+    const css = '.m{display:flex;flex-direction:column} .m>[data-slot=s01]{order:1} .m>[data-slot=s04]{order:2} .m>[data-slot=s02]{order:3} .m>[data-slot=s03]{order:4}';
+    const top = spawnSync(process.execPath, [GATE, '--model', join(out, 'content-model.json'), '--target', (writeFileSync(join(scratch, 'top.html'), `<!doctype html><html><head><style>body{margin:0;font:16px Arial} ${css}</style></head><body><main class="m">${CRUMBS + CONTENT + RAIL}</main></body></html>`), join(scratch, 'top.html')), '--declared', decl], { encoding: 'utf8' });
+    assert.match(top.stdout, /S4 declared\s+s04 rail-start → top/);
+    assert.equal(top.status, 0, top.stdout);
+    const stacked = spawnSync(process.execPath, [GATE, '--model', join(out, 'content-model.json'), '--target', join(scratch, 'stacked.html'), '--declared', decl], { encoding: 'utf8' });
+    assert.match(stacked.stdout, /S4 FAIL\s+s04 rail-start → below content/);
+    assert.equal(stacked.status, 1);
   });
 
   await check('source-coverage S4: a target that sets it beside the content passes', () => {

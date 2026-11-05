@@ -79,7 +79,7 @@ read by the renderer.
 | `block` | string | an EDS block name (Figma-only sites, seeded by `figma-donor.mjs content --all`) | `section[data-block]` |
 | `variant` | string[] | class tokens | `section[data-block-variant]` (with `block`) |
 | `instance` | string | the Figma kit instance node id (`12:34`) | `section[data-kit-instance]` (with `block`) |
-| `rail` | string | `start` \| `end` \| `none` | the slot renders in a side column beside the content (§ rail); `none` keeps stream order for a source rail, with a coverage `placement` declaration |
+| `rail` | string | `start` \| `end` \| `top` \| `none` | `start` / `end`: the slot renders in a side column beside the content; `top`: a band above the content, after the leading bands (§ rail); `none` keeps stream order. `top` and `none` need a coverage `placement` declaration |
 | `railWidth` | string | a length; default the captured width (`rect.w`), else `320px` | the rail column's width |
 | `railMobile` | string | `hidden` \| `top` \| `bottom`; default `hidden` when the source hides it on a phone (`placement.hiddenMobile`), else `top` | the rail at ≤ 900px |
 | `band` | boolean | default `true` for a slot captured `placement.region: band` | on a rail page, the slot spans the content and the rail (a breadcrumb) |
@@ -99,8 +99,15 @@ gate's text order is unchanged. At ≤ 900px the page is one column in normal fl
 (a flex column only when it moves, `top` / `bottom`: flex items stop the sections' margins collapsing).
 
 `--check` with the page's content model is a problem for every slot the source places as a rail whose mapping
-has no `rail`: decide it like a dark band — `start`/`end`, or `none` with a `placement` entry in
-`coverage/<slug>.json` (`gates.md` § (a′) S4). On EDS the rail is the section's style (a `section-nav` /
+has no `rail`: decide it like a dark band — `start`/`end`, `top`, or `none`, the last two with a `placement` entry in
+`coverage/<slug>.json` (`to: "top"` for `top`; `--check` reads the file; `gates.md` § (a′) S4).
+
+`"rail": "top"` is the choice when the donor has no side column (its section nav is a tab row or a band): the
+rail renders full width directly above the content — after the leading bands such as the breadcrumb, before the
+first content slot — at every width (`railMobile` still hides or moves it on a phone). `main` is a flex column and
+each slot gets its `order`; the DOM keeps the source's stream order, as on the source, where the sidebar follows
+the content in the DOM. A source rail's reading position is the start of the content, so carried as a band it goes
+above the content, never after it. On EDS the rail is the section's style (a `section-nav` /
 `rail` section-metadata value) and the template CSS lays it out the same way (`deployed-leg.md` § Rails).
 
 ## Readers

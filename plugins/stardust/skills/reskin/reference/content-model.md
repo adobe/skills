@@ -247,8 +247,9 @@ The stream therefore carries:
 - **`glyph: true`** on a text run that is an icon-font ligature: a lower-case `[a-z0-9_]` word under
   `aria-hidden="true"` set in an `icon`/`symbol` font family. The renderer keeps the word (font-size 0, for the byte
   gate) and draws a CSS glyph (chevron, search, close, menu).
-- **`srOnly: true`** on a text run or cta that is visually hidden (≤ 1×1 px, clipped, `clip-path: inset(50%)`, or above
-  or left of the page). It renders `.sr-only`, still in innerText.
+- **`srOnly: true`** on any stream node that is visually hidden (≤ 1×1 px, clipped, `clip-path: inset(50%)`, or above
+  or left of the page) — a cta, a text run, a heading (a sidebar's screen-reader-only "Section navigation"), a
+  paragraph. It renders `.sr-only`, still in innerText: never a visible title the source does not show.
 - **`rw`** on an image: its rendered width. A paragraph holding only images, one of them ≥ 200 px wide, renders as a
   full-width figure; an inline image ≥ 200 px is `.inline-media`. A model without `rw` keeps the inline-icon rendering.
 ### The consistency guarantee
