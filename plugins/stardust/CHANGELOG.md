@@ -4,8 +4,14 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.39.0 — reskin-to-migrate handoff and renderer fidelity
+## 0.40.0 — Figma-only content and fidelity
 
+The following sections consolidate M4's development history. Version numbers
+in those notes identify development snapshots, not separate releases.
+
+- **Figma-only rollout paths.** Inventory and migration summary now use the
+  same site-path rule as migration, keeping design-frame URLs as provenance.
+  A Figma roster requires the current migrate script in the project copy.
 - **Capped rollout scope stays accurate.** Roster URLs with trailing slashes
   match their migrated archetypes rather than counting them twice, so a subset
   is not mistaken for the whole discovered site.
@@ -13,6 +19,124 @@ git history only (plus the branch-scoped notes in
   their registered archetype, and a sibling advances from `content-pending` to
   `pending` when its migrated HTML appears.
 
+### Fidelity fixes on the development renderer
+
+### The target keeps the source's structure
+
+A 52-page migration's design fidelity (stardust target against the delivered EDS page) sat at 66 % while a run whose
+agent hand-wrote renderers reached 81 %. The EDS blocks were right; the targets were not, and the cause was one
+pattern: the capture recorded each run's kind but not the structure around it, so the generic renderer flattened it —
+tables became a column of paragraphs, accordions rendered open with their icon-font word ("keyboard_arrow_down")
+printed, skip links showed in the header, and a 768 px figure inside a `<p>` shrank to a 24 px icon. Measured on the
+benchmark's 7 pages × 2 viewports: 66.3 % → 76.1 % (1440: 82.4 %, 390: 69.8 %), dom-equality still PASS.
+
+- **capture-content: structure in the stream.** `table` nodes with rows and cells; disclosure `toggle` / `panels` /
+  `toggleOpen` (rest state read before the ledger runs); `glyph` for icon-font ligatures; `srOnly` for visually hidden
+  text and links; `rw` (rendered width) on images. content-model § Structure the stream keeps.
+- **stream-render: renders it.** Tables (donor light-band rules and header cells); disclosures at the source's rest
+  state, closed as `hidden="until-found"`, with a small toggle script; CSS glyphs with the word kept for the byte gate;
+  `.sr-only`; full-width figures and `.inline-media` for content-sized images; header glyph actions as icon buttons;
+  header nav links no longer repeat their image (the logo) inline.
+- **Cards.** A card that opens with an image shows it full-bleed at 16:9; mapping slot option `cardTone`
+  (`dark | light | accent`), opt-in from the frame (mapping-brief § Frame fit).
+- **Tests.** capture-content: tables, rest state through an expanding ledger, glyph, sr-only, `rw`. stream-render:
+  tables, open and closed disclosures, panel-less toggles, figures, pre-0.41 models without `rw`, `cardTone`, header
+  icon buttons and nav links.
+
+### Source coverage: what the content reference did not take in
+
+A 52-page migration passed every content gate while its deployed pages had no breadcrumb and no section sidebar, no
+Facebook posts on the home page, and light bands where the source's callouts were dark. One pattern behind all three:
+every gate compares the target with the captured model, so whatever the capture did not observe — beside the scope
+(space), after it read the page (time) or as a property it never measured (attribute) — is lost without a failure.
+
+- **`capture-content` settles** after the lazy-load scroll: it polls the body text every 500 ms until it is unchanged
+  three times, re-scrolling on growth, capped by `CAPTURE_SETTLE_CAP_MS` (15000). `_provenance.settle` records it.
+- **`residue[]`**: every sibling of each scope's ancestor chain that holds no scope and has text, with `kind`
+  (`chrome | breadcrumb | aside | nav | other`), selector, text lines and rect, printed as `residue (…)` lines.
+- **Slot `tone`** (`dark | tinted | page`), `bg` and `toneEl`, measured from the painted background.
+- **`source-coverage.mjs`, gate (a′)**: S1 every non-chrome residue region ≥ 20 chars is carried (one target element,
+  ≤ 3× its text, ≥ 60% of its lines) or declared; S2 a model without a stable settle warns; S3 a dark source band whose
+  heading is not on a dark target band fails. Declared drops in `stardust/reskin/coverage/<slug>.json`, each with a
+  why. Run in Phase 5 against the local page and again on the aem.page preview; per sibling in `migrate`.
+- Docs: the "a sidebar may become a band" principle now says "never may vanish"; Scope discovery step 5 is
+  machine-checked; Phase 2 adds a third mandatory declaration. Tests: `test/source-coverage.test.mjs`.
+
+### Disclosures keep the source's rest state
+
+A migration shipped every accordion open at rest (one 3,327 px tall where the source's was 128 px): the page ledger's
+"expand every accordion" entry, there so the capture reads the hidden panel text, was carried into the delivered block,
+and EW7 was read as "no text hidden at rest". The content gate could not tell: it read `innerText`, so a correctly
+collapsed panel would have failed as missing text, and an all-open one passed.
+
+- **`dom-equality` disclosure rest state (gating).** Collapsed and open disclosures (`aria-expanded`, `<details>`,
+  `hidden="until-found"`) are counted on both sides before the ledger runs; a source with any collapsed against a render
+  with none collapsed fails, named in the report and on stderr. Waived per page by the deltas file's
+  `"disclosures": { "restState": "open", "why": "…" }` (a waiver without a why is exit 2).
+- **Rendered-side reveal.** `source-normalize.mjs` exports `DISCLOSURE_STATE` and `REVEAL_DISCLOSURES`; `dom-equality`,
+  `slot-coverage` and `figma-text-gate` open `<details>` and `hidden="until-found"` regions before reading the render's
+  text, so a block that starts closed is still measured. A panel hidden by `display:none` stays unread and fails.
+- **Docs.** content-model § Normalization ledger: a normalization is capture-only. deploy EW7: collapsed at rest is
+  allowed and expected when the source is; close panels with `hidden="until-found"` (open on `beforematch`) or `<details>`.
+- **Test.** `test/dom-equality-disclosures.test.mjs`: until-found and `<details>` pass, all-open fails, the waiver
+  passes, a waiver without a why is exit 2, `display:none` fails the text check.
+
+## 0.38.0 — reskin holds the chrome to a bar (deployed A6)
+
+A migration whose every page gate passed still shipped a header that stacked its nav inline and covered the page,
+a footer that lost its social links, and card lists rendered as bullets. The gates before this read `main` only and
+compared against the prototype, so chrome and card-list regressions passed them, and an agent could waive what was left.
+
+- **`deployed-gate.mjs chrome` (A6), in `all` before figma.** At 1440 and 360 the `<header>` and `<footer>` against
+  `mapping.json` `chrome` and its content model: present and decorated, a logo when mapped, header ≤ 240px with the
+  menu closed, covering `main` by ≤ 4px with a band ≤ 48px, every mapped link rendered and visible (at 360 a toggle that
+  shows the hidden ones, `aria-expanded` "true" after), no icon-font ligature word as text, every mapped footer text.
+  Hard like `sanity`: the fragment is `chrome: { verdict, hard: true }`; with no chrome in the mapping its contract rows
+  are `n/a`. A mapped chrome slot that is absent or empty in the model (captured before it rendered) is exit 2, not a
+  vacuous pass.
+- **`reskin-ledger.mjs`.** `deployed.chrome` joins `deployed.sanity` as never accepted; a header, footer or nav residual
+  is accepted only with `--by <owner>` naming a person, never an agent; `eyeball --verdict pass` is refused while
+  `deployed.chrome` fails. `reskin-preflight` applies the same rule, and a deployed fragment without `chrome` is NOT-RUN.
+- **`capture-content.mjs` `iconLinks`.** Visible links with no text (social icons, logo links), named by aria-label,
+  title, `img` alt, svg title or host. `ctas` dropped them, so a footer's social links never reached the model.
+- **`stream-render.mjs` card lists.** A run of 2+ structured list items (an image or link beside other content) is a
+  repeat of period 1, so a list of cards renders as the cards layout. It needed a repeat of 2+ nodes before: three cards
+  fell back to a bulleted list and six became three two-card panels. The footer emits `iconLinks` as `ul.icon-links`.
+
+## 0.37.0 — reskin takes content from Figma (Figma-only sites)
+
+A site with no live origin, whose pages exist only as Figma frames, can now be reskinned: content comes
+from the page frames, the design system from the same file, and content fidelity is gated against the
+Figma tree. Every rule is generic; per-file choices live in `reskin/content-rules.json` and flags.
+
+- **`figma-donor.mjs init | content | blocklist | ack`.** `init` writes a Figma-only `state.json`
+  (`flowSource: "figma-only"`, no origin) and refuses a live-site state. `content` builds
+  `content-model/<slug>/content-model.json` (`source.kind: "figma"`, the live model's shape) from one
+  page frame (`figma/content.mjs`, pure): effective visibility, auto-layout or geometric reading order,
+  segmentation with chrome to a shared `_chrome` model, rendered-case text with `characters`/`textCase`
+  kept for CSS, truncation kept whole, headings from the donor type roles, allowlisted links (NODE links
+  resolve via `--pages`), drawn fields as form controls, image bytes sniffed (unsafe SVG refused).
+  Nothing is invented: missing alt, link targets and SEO are flags. `text-ops.json` declares what the
+  Figma text gate must not expect; the page's `reskin/deltas/<slug>.json` (the deployed leg's delta file,
+  version 1) is seeded with `metadata.absent` unless one exists; `flags.json` is the deploy blocklist
+  (`blocklist` lists it, `ack --why` records
+  an acknowledgement). Placeholder-only pages exit 1. `--confidential` redacts the file key (the
+  overwrite guard compares its hash).
+- **`figma-text-gate.mjs`**, the content gate where `dom-equality` has no source DOM: every visible TEXT
+  node of the frame body, re-read from the cached tree, appears once and in order in `<main>`; findings
+  missing / order / case / duplicate / extra, and drawn placeholders as attributes.
+- **On M2's delta file and deployed leg.** M4 no longer has a delta schema of its own: `slot-coverage --deltas`
+  is M2's (`deployed/deltas.mjs`, version 1) unchanged, except that a Figma-sourced model's CTA also matches the
+  raw href (`#` or page-relative). `stream-render` leaves out a meta tag the model declares absent (no empty
+  description). `deployed-gate content` runs `figma-text-gate` in place of `dom-equality` for a Figma-sourced
+  model (`content.json` records `figmaText`); the text gate reads an aem.page preview with `--wait-eds`.
+- **`stream-render`** renders Figma models: CSS casing on the raw characters, a line-clamp span for
+  truncated text, and model-relative assets copied beside the page.
+- Docs: `reference/content-model.md` § Figma-sourced models, `reference/gates.md` § figma-text-gate.mjs,
+  SKILL.md Phase 2′; a routing note in figma-to-content; evals `reskin-figma-only` and
+  `figma-to-content-vs-reskin-routing`.
+- Prose delta (`prose-delta.mjs` vs 0.36.0): +91 lines, +835 words across skill docs, almost all the new
+  § Figma-sourced models and Phase 2′; the rules live once in content-model.md and SKILL.md points there.
 ### Renderer fidelity fixes measured on a 52-page school site
 
 Measured by target ↔ EDS design fidelity (7 pages × 1440/390, pixel + SSIM) on a Figma-donor reskin of a

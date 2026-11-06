@@ -31,7 +31,10 @@
  * Pages present only in state.json (not yet individually migrated) are merged in as
  * `content-pending` siblings — keyed to the archetype recorded in reskin's handoff
  * ledger for their type (falling back to `representative` or the type slug), inheriting
- * that archetype's blocks, pushing no document. Block code ships from the archetypes;
+ * that archetype's blocks, pushing no document. Figma-sourced rows keep their frame
+ * URL as provenance and use migrate's site-path contract; their project copy needs
+ * the current migrate script. An unmapped Figma sibling is refused rather than
+ * emitted without its archetype's blocks. Block code ships from the archetypes;
  * sibling content is populated later by a separate content track.
  *
  * Rows added by `update-coverage.mjs --new` (a page built outside the migrated tree —
@@ -49,7 +52,7 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, dirname, relative, basename } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { pageWidgets, scopeOf, scopeLine } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -209,20 +212,49 @@ for (const relHtml of htmlFiles) {
 if (STATE) {
   for (const p of pages) p.templateId = p.slug;
   const archetypeBySlug = new Map(pages.map((p) => [p.slug, p]));
-  const handoff = readJSON('stardust/reskin/ledger.json', { handoff: {} }).handoff || {};
+  const ledgerPath = stateFile ? join(dirname(stateFile), 'reskin', 'ledger.json') : null;
+  const handoff = (ledgerPath && readJSON(ledgerPath, {}))?.handoff || {};
+  const figmaPages = (stateDoc.pages || []).filter((p) => p && p.source === 'figma');
+  for (const p of figmaPages) {
+    if (typeof p.slug !== 'string' || !p.slug.trim() || typeof p.url !== 'string' || !p.url.trim()) {
+      console.error('rollout inventory: a Figma-sourced roster row requires a slug and frame URL (or figma:redacted).');
+      process.exit(1);
+    }
+  }
+  let siteUrlOf;
+  if (figmaPages.length) {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const migrate = [
+      join(here, '..', '..', 'migrate', 'scripts', 'migrate.mjs'),
+      join(here, '..', 'migrate', 'migrate.mjs'),
+    ].find((p) => existsSync(p));
+    if (!migrate) {
+      console.error('rollout inventory: a Figma-sourced roster needs migrate.mjs; copy the migrate script into stardust/scripts/migrate/.');
+      process.exit(1);
+    }
+    ({ siteUrlOf } = await import(pathToFileURL(migrate).href));
+    if (typeof siteUrlOf !== 'function') {
+      console.error('rollout inventory: the migrate script lacks the Figma site-path contract; refresh the migrate script copy.');
+      process.exit(1);
+    }
+  }
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
-  const state = readJSON(STATE, { pages: [] });
+  const state = stateDoc;
   for (const sp of (state.pages || [])) {
     if (!sp || !sp.url) continue;
-    const path = urlToDeliveredPath(sp.url);
+    const path = urlToDeliveredPath(sp.source === 'figma' ? siteUrlOf(sp) : sp.url);
     if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
     // Reskin's registered handoff archetype is authoritative; other flows can name
     // the archetype directly in `representative` or use the type as its slug.
-    const rep = archetypeBySlug.get(handoff[sp.type]?.archetype)
+    const rep = archetypeBySlug.get(handoff?.[sp.type]?.archetype)
       || archetypeBySlug.get(sp.representative)
       || archetypeBySlug.get(sp.type)
       || null;
+    if (sp.source === 'figma' && !rep) {
+      console.error(`rollout inventory: Figma page ${sp.slug || path} has no archetype mapping; register it with --type <type> or set representative before inventory.`);
+      process.exit(1);
+    }
     let slug = sp.slug && !usedSlugs.has(sp.slug) ? sp.slug : pathToSlug(path);
     while (usedSlugs.has(slug)) slug = `${slug}-x`;
     usedSlugs.add(slug);

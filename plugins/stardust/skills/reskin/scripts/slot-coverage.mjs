@@ -16,6 +16,8 @@
  *                     href) pair: an <a> whose href equals absHref and
  *                     whose text contains the captured label. A link
  *                     migrate rewrote is matched by its data-source-href.
+ *                     A Figma-sourced model's CTA also matches the raw href
+ *                     attribute (a page-relative or "#" placeholder link).
  *   (3) IMAGES      — each captured image src is present, URL-normalized
  *                     to host+path. A localized image (stream-render
  *                     --localize-images) is matched by its data-source-src.
@@ -180,6 +182,8 @@ if (args.deltas) {
   }
 }
 const model = JSON.parse(readFileSync(resolve(args.model), 'utf8'));
+// A Figma-sourced model (content-model.md § Figma-sourced models) has page-relative or "#" link targets: match the raw attribute too.
+const figmaSourced = model.source?.kind === 'figma' || model._provenance?.source?.kind === 'figma';
 
 const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
 // UA + standard headers + webdriver spoof (live-session) — harmless on
@@ -231,6 +235,11 @@ await page.evaluate(() => Promise.race([
   new Promise((r) => setTimeout(r, 10000)),
 ]));
 await page.waitForTimeout(300);
+// Collapsed panels (hidden="until-found", closed <details>) are content: read them open (source-normalize.mjs).
+try {
+  const { REVEAL_DISCLOSURES } = await import('./source-normalize.mjs');
+  await page.evaluate(REVEAL_DISCLOSURES);
+} catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
 
 const results = []; // { gate, check, pass, detail }
 const R = (gate, check, pass, detail = '') => results.push({ gate, check, pass, detail });
@@ -245,7 +254,7 @@ const rendered = await page.evaluate(({ scopeSel, imgVisibleSrc: visibleSrc }) =
   const imgVisible = visibleSrc ? (0, eval)(visibleSrc) : () => true;
   return {
     text: norm(scope.innerText),
-    hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.dataset.sourceHref || a.href, text: norm(a.innerText) })),
+    hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.dataset.sourceHref || a.href, raw: a.getAttribute('href'), text: norm(a.innerText) })),
     imgs: Array.from(scope.querySelectorAll('img')).filter(imgVisible).map((i) => ({
       src: i.dataset.sourceSrc || i.currentSrc || i.src,
       alt: i.getAttribute('alt') ?? '',
@@ -273,15 +282,16 @@ const paintCheck = (label, painted) => {
 // them), the CTA hrefs' localization onto the rendered origin, and the images taken slot by slot in document order.
 const textsOf = (s) => [s.visibleText, ...s.ctas.map((c) => c.text)];
 const textDeltas = deltas ? deltasLib.applyTexts(model.sections.flatMap(textsOf), deltas) : null;
-const localize = deltas?.links.localize && /^https?:/.test(renderedUrl) ? { sourceHost: deltas.links.localize.sourceHost, renderedOrigin: new URL(renderedUrl).origin } : null;
+const localize = deltas?.links.localize && /^https?:/.test(renderedUrl) ? { sourceHost: deltas.links.localize.sourceHost, renderedOrigin: new URL(renderedUrl).origin, prefix: deltas.links.localize.prefix ?? '' } : null;
 let nextImg = 0; let nextText = 0;
 for (const s of model.sections) {
   const [text, ...ctaTexts] = textDeltas ? textDeltas.texts.slice(nextText, nextText + 1 + s.ctas.length).map(squash) : textsOf(s);
   nextText += 1 + s.ctas.length;
   R('slot-coverage', `${s.slot} text present`, rendered.text.includes(text), text.slice(0, 50));
   for (const [ci, c] of s.ctas.entries()) {
-    const hrefs = localize ? [c.absHref, deltasLib.normalizeHref(c.absHref, localize)] : [c.absHref];
-    const hit = rendered.hrefs.find((h) => hrefs.includes(h.href) && h.text.includes(ctaTexts[ci]));
+    // localized onto the rendered origin, under the namespace prefix or at the source path (both stay on the new site)
+    const hrefs = localize ? [c.absHref, deltasLib.normalizeHref(c.absHref, localize), deltasLib.normalizeHref(c.absHref, { ...localize, prefix: '' })] : [c.absHref];
+    const hit = rendered.hrefs.find((h) => (hrefs.includes(h.href) || (figmaSourced && h.raw === c.absHref)) && h.text.includes(ctaTexts[ci]));
     R('slot-coverage', `${s.slot} CTA "${c.text.slice(0, 30)}" -> ${c.absHref.slice(0, 60)}`, !!hit);
   }
   if (deltas?.images) {
@@ -370,7 +380,7 @@ const unused = deltas ? [...textDeltas.unused, ...[...plan.ignore].filter((k) =>
 if (deltas) {
   const notes = [];
   if (deltas.images) notes.push(`Images: ${deltas.images} over the visible images in scope (as the model capture counts them): per slot, positional by cumulative count (slot s takes the next k), plus one total over every image. An image moved across a slot boundary with the document order kept, or replaced by one with the same alt, is not detected`);
-  if (deltas.links.localize) notes.push(localize ? `Links: CTA hrefs on \`${deltas.links.localize.sourceHost}\` also match as localized onto \`${localize.renderedOrigin}\`` : 'Links: localize not applied (the rendered target is not an http(s) origin)');
+  if (deltas.links.localize) notes.push(localize ? `Links: CTA hrefs on \`${deltas.links.localize.sourceHost}\` also match as localized onto \`${localize.renderedOrigin}${localize.prefix}\`` : 'Links: localize not applied (the rendered target is not an http(s) origin)');
   if (deltas.metadata.jsonLd === 'count-only') notes.push('JSON-LD: count-only (the block count is compared, not the content)');
   if (advisory) md += `\n${deltasLib.ADVISORY}: the failed checks above are reported, the exit code is 0\n`;
   md += `\n${deltasLib.reportSection(deltas, { file: args.deltas, applied, unused, ignored: ignoredKeys, notes })}`;

@@ -36,6 +36,8 @@
  *
  *   --source-host  the live site's host(s); `www.` is matched either way
  *   --content      root of the authored content tree (default: content)
+ *   --prefix       a namespaced deploy (`/<ns>`, reskin's --namespace): the source page /x is served at
+ *                  /<ns>/x, so /x resolves to it, ahead of a page the repo also has at /x
  *   --redirects    TSV `source<TAB>destination` (rollout's stardust/redirects.tsv), JSON
  *                  ([{source,destination}], {source: destination}, the DA sheet {data:[…]}),
  *                  or JSON Lines ({src,target}: spec's knowledge/redirects.jsonl)
@@ -57,12 +59,13 @@ import { deliveredUrl, pathKey as canonicalPath } from './eds-path.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
-  const opts = { content: 'content', hosts: [], redirects: null, dryRun: false, check: false, json: false };
+  const opts = { content: 'content', hosts: [], redirects: null, prefix: null, dryRun: false, check: false, json: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--content') opts.content = rest[i += 1];
     else if (a === '--source-host') opts.hosts.push(...(rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean));
     else if (a === '--redirects') opts.redirects = rest[i += 1];
+    else if (a === '--prefix') opts.prefix = rest[i += 1];
     else if (a === '--dry-run') opts.dryRun = true;
     else if (a === '--check') { opts.check = true; opts.dryRun = true; }
     else if (a === '--json') opts.json = true;
@@ -70,12 +73,13 @@ function parseArgs(argv) {
     else { console.error(`unknown argument ${a}`); usage(); process.exit(1); }
   }
   if (!opts.hosts.length) { console.error('--source-host is required'); usage(); process.exit(1); }
+  if (opts.prefix !== null && !/^\/[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*$/i.test(opts.prefix || '')) { console.error(`--prefix ${opts.prefix} must be a path such as /reskin (leading slash, no trailing slash)`); process.exit(1); }
   if (!existsSync(opts.content) || !statSync(opts.content).isDirectory()) { console.error(`--content ${opts.content} is not a directory`); process.exit(1); }
   return opts;
 }
 
 function usage() {
-  console.error('usage: localize-links.mjs --source-host <host[,host]> [--content content] [--redirects file] [--dry-run] [--check] [--json]');
+  console.error('usage: localize-links.mjs --source-host <host[,host]> [--content content] [--redirects file] [--prefix /<ns>] [--dry-run] [--check] [--json]');
 }
 
 // ----------------------------------------------------------------- URL map
@@ -121,11 +125,22 @@ export function redirectPairs(raw, file = '') {
   return pairs;
 }
 
-function buildMap(files, root, redirectsFile) {
+export function buildMap(files, root, redirectsFile, prefix = null) {
   const map = new Map(); // lookup key → the URL EDS serves (a folder index at /a/, a leaf at /a/b: eds-path.mjs)
   for (const f of files) {
     const rel = `/${path.relative(root, f).split(path.sep).join('/')}`;
     map.set(canonicalPath(rel), deliveredUrl(rel));
+  }
+  // --prefix /<ns>: a namespaced deploy serves the source page /x at /<ns>/x, so /x resolves there — ahead of a page the
+  // repo also has at /x (the namespace is the migrated site). Without it a namespaced tree localizes nothing and every
+  // link stays on the old site.
+  let prefixed = 0;
+  if (prefix) {
+    for (const [key, served] of [...map]) {
+      if (key !== prefix && !key.startsWith(`${prefix}/`)) continue;
+      const alias = canonicalPath(key.slice(prefix.length) || '/');
+      map.set(alias, served); prefixed += 1;
+    }
   }
   let redirects = 0; let pending = 0;
   if (redirectsFile) {
@@ -140,7 +155,7 @@ function buildMap(files, root, redirectsFile) {
       if (!map.has(src)) { map.set(src, dst); redirects += 1; }
     }
   }
-  return { map, redirects, pending };
+  return { map, redirects, pending, prefixed };
 }
 
 // ------------------------------------------------------------------ rewrite
@@ -194,7 +209,7 @@ function main() {
   const opts = parseArgs(process.argv);
   const hosts = opts.hosts.map(bareHost);
   const files = collectHtml(opts.content);
-  const { map, redirects, pending } = buildMap(files, opts.content, opts.redirects);
+  const { map, redirects, pending, prefixed } = buildMap(files, opts.content, opts.redirects, opts.prefix);
   const ctx = { map, hosts };
 
   const perFile = {};
@@ -216,7 +231,7 @@ function main() {
     console.log(JSON.stringify({ ...summary, perFile, kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));
   } else {
     const verb = opts.dryRun ? 'would localize' : 'localized';
-    console.log(`localize-links: ${files.length} pages, ${map.size} map entries (${redirects} from redirects${pending ? `; ${pending} redirect(s) to pages not in this tree kept for a later wave` : ""}), hosts ${hosts.join(', ')}`);
+    console.log(`localize-links: ${files.length} pages, ${map.size} map entries (${opts.prefix ? `${prefixed} under --prefix ${opts.prefix}, ` : ''}${redirects} from redirects${pending ? `; ${pending} redirect(s) to pages not in this tree kept for a later wave` : ""}), hosts ${hosts.join(', ')}`);
     console.log(`${verb} ${localized} source-host link(s) + normalized ${normalized} internal href(s) across ${filesChanged} file(s)${opts.dryRun ? ' [no writes]' : ''}`);
     for (const [p, c] of Object.entries(perFile)) console.log(`  ${p}: ${c.localized} localized, ${c.normalized} normalized`);
     if (keptSorted.length) {

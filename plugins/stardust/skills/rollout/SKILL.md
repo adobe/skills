@@ -89,6 +89,12 @@ the archetype mapped by `stardust/reskin/ledger.json#handoff.<type>.archetype`
 (then `representative`, then the type slug), inherit that archetype's blocks and
 widgets, and start with `delivery.status: content-pending`. Trailing slashes in
 roster URLs do not create duplicate page rows for migrated archetypes.
+Figma-sourced rows keep their frame URL as provenance and resolve the delivered
+path through migrate's `path`/slug rule; this mode requires the current migrate
+script beside the rollout project copy. Each sibling must resolve to a migrated
+archetype through its type or `representative`; an unmapped Figma row is refused
+instead of being inventoried without inherited blocks. Register it with
+`stream-render --register --type <type>` (or give it a valid `representative`) first.
 
 Inventory is **idempotent and incremental**: delivery status is preserved; a page
 whose migrated HTML changed after delivery is re-flagged `stale` (never a

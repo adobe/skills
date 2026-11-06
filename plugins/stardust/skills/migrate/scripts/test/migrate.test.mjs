@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { fixWidgetMounts, foldPath, tagSections, widgetHref, widgetsIn } from '../migrate.mjs';
+import { buildPageMap, fixWidgetMounts, foldPath, siteUrlOf, tagSections, widgetHref, widgetsIn } from '../migrate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -45,6 +45,16 @@ write(STATE, `${JSON.stringify(state0, null, 2)}\n`);
 
 // ---- importing the module never prints help or exits -------------------------------------------
 console.log('import');
+check('a Figma-sourced page maps by path or slug, never by its design-frame URL', () => {
+  const fig = 'https://www.figma.com/design/KEY/File?node-id=1-2';
+  assert.equal(siteUrlOf({ slug: 'index', source: 'figma', url: fig }), '/');
+  assert.equal(siteUrlOf({ slug: 'pricing', source: 'figma', url: fig }), '/pricing/');
+  assert.equal(siteUrlOf({ slug: 'pricing', source: 'figma', url: fig, path: '/plans' }), '/plans');
+  assert.equal(siteUrlOf({ slug: 'about', url: 'https://example.test/about-us' }), 'https://example.test/about-us');
+  const m = buildPageMap([{ slug: 'index', source: 'figma', url: fig }, { slug: 'pricing', source: 'figma', url: fig }]);
+  assert.deepEqual(m.entries.map((e) => e.outputPath), ['index.html', 'pricing/index.html']);
+  assert.equal(m.collisions.size, 0);
+});
 check('importing migrate.mjs with no argv prints nothing and does not exit (the help guard sits under the main check)', () => {
   const r = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(pathToFileURL(SCRIPT).href)}); console.log('imported');`], { cwd: tmp, encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, 'imported\n'); assert.equal(r.stderr, '');
@@ -263,6 +273,26 @@ check('modules --clear empties the list; summary lists every page with — for p
   assert.match(s.out, /^contact\s+extracted\s+—\s+—/m);
   const j = run(['summary', '--json']); assert.equal(JSON.parse(j.out).length, 7);
   const pm = run(['pagemap']); assert.equal(pm.status, 0); assert.match(pm.out, /^7 entries, 0 collision\(s\)$/m);
+});
+
+check('summary finds Figma-sourced sidecars using the same site paths as render', () => {
+  const project = join(tmp, 'figma-summary');
+  const frame = 'https://www.figma.com/design/SYNTHETICKEY/File?node-id=1-1';
+  write('figma-summary/stardust/state.json', JSON.stringify({ pages: [
+    { slug: 'index', source: 'figma', url: frame, status: 'migrated' },
+    { slug: 'plans', source: 'figma', url: frame, path: '/commercial/plans/', status: 'migrated' },
+    { slug: 'pricing', source: 'figma', url: frame, status: 'extracted' },
+    { slug: 'about', url: 'https://example.test/about.html', status: 'migrated' },
+  ] }));
+  write('figma-summary/stardust/migrated/_meta.json', JSON.stringify({ renderBranch: 'A', fidelityTier: 'archetype', gatesPassed: ['content'] }));
+  write('figma-summary/stardust/migrated/commercial/plans/_meta.json', JSON.stringify({ renderBranch: 'A', fidelityTier: 'archetype', gatesPassed: ['content', 'visual'] }));
+  write('figma-summary/stardust/migrated/about._meta.json', JSON.stringify({ renderBranch: 'B', fidelityTier: 'sibling' }));
+  const result = run(['summary', '--json'], project); assert.equal(result.status, 0, result.err);
+  const rows = Object.fromEntries(JSON.parse(result.out).map((row) => [row.slug, row]));
+  assert.equal(rows.index.outputPath, 'index.html'); assert.equal(rows.index.sidecar, true); assert.equal(rows.index.gates, 1);
+  assert.equal(rows.plans.outputPath, 'commercial/plans/index.html'); assert.equal(rows.plans.sidecar, true); assert.equal(rows.plans.gates, 2);
+  assert.equal(rows.pricing.outputPath, 'pricing/index.html'); assert.equal(rows.pricing.sidecar, false);
+  assert.equal(rows.about.outputPath, 'about.html'); assert.equal(rows.about.sidecar, true);
 });
 
 // ---- refusals: placeholder gate, empty <title>, output-path collision --------------------------

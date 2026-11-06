@@ -21,7 +21,8 @@
  * (its `assets/` prefix → <proto-dir>/assets/img/…), since the page and the proto dir sit at different
  * depths. It keeps data-source-src="<original>" — dom-equality and slot-coverage match on it, so the gates
  * hold on a localized page. A failed download (or two URLs landing on one local file) keeps the remote
- * src and is listed.
+ * src and is listed. On a Figma-sourced model the Figma asset mapping (assets/img/figma/<slug>/…) is kept:
+ * the localizer only resolves the remote URLs and falls back to it.
  *
  * mapping.json (the only per-site input; schema and defaults: reference/mapping-json.md):
  *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent",
@@ -31,14 +32,28 @@
  *     "pages": { "<slug>": { "template": "<archetype slug>",
  *       "slots": { "s01": { "module": "M2", "layout": "stack|grid-2|media-band|split|cards (space-separated)",
  *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3,
- *         "heading": "display|h2|h3|h4", "inset": "80px", "split": "531px 1fr" } } } } }
+ *         "heading": "display|h2|h3|h4", "inset": "80px", "split": "531px 1fr", "bleed": true,
+ *         "align": "center", "block": "<kit block>", "variant": ["<class>"], "instance": "<node id>" } } } } }
+ *   block / variant / instance (Figma-only sites, seeded by figma-donor.mjs content --all from the Figma kit):
+ *   the EDS block the slot becomes, emitted as data-block / data-block-variant / data-kit-instance.
  *   chrome.navAlign: where a branded header row (logo + menu list) puts its menu between the logo and the
  *   actions; an override of the donor's layout.navAlign (a Figma donor's curate measures it), default end.
+ *   A branded row's plain texts ahead of its primary links (site name, motto) sit in .brand beside the logo;
+ *   a branded row with no primary links takes a logo-less link row's links when the header is one row
+ *   (navAlign set), else that row stays below and the toggle (aria-controls) opens its nav.
+ *   chrome.footer: several slots with one zoned (headings + list items) among them are one zoned footer
+ *   (brand: logos ≥ 48px, a leading single-text slot as the name, the prose; link columns; social row); a
+ *   link named for a social network is an inline-SVG icon with its text as .sr-only; no empty <ul>.
  *   layout stack: the stream in order; grid-2: form fields two-up; media-band: the slot's first image as a
  *   cover backdrop behind a panel; split: the first image beside the text; cards: the stream's repeating
- *   run (findRepeat — same node-kind sequence back to back, e.g. image+h3+p per team member) as a grid of
+ *   run (findRepeat — same node-kind sequence back to back, heading levels ignored when that covers more,
+ *   e.g. image+h3+p per team member; or 2+ list items each holding an image or link and text, one card
+ *   per item) as a grid of
  *   cards, `columns` wide (default 3 when the count divides by 3, else 2), intro above and tail below.
- *   tone paints the panel from palette.darkBandBg/Fg, lightBandBg or accent. Content-driven, never per
+ *   tone paints the panel from palette.darkBandBg/Fg, lightBandBg or accent ("bleed": true paints the
+ *   whole full-width band instead, for frames whose tone band spans the viewport); align: center centres
+ *   the stream (cards keep start alignment); a split whose image precedes its heading puts it first.
+ *   Sub-headings take their donor type role (role-h4/h5) when the donor has it. Content-driven, never per
  *   site: 3+ consecutive images render as one logo row; h2–h4 take type.h2–h4 sizes when the donor has
  *   them; a slot's leading heading in the h2 role (an h2 with no heading option, or heading: h2) sits on an
  *   accent label when the donor has radii.label; a label's required marker takes type.required's weight when the
@@ -91,6 +106,7 @@ import { dirname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { rootTokens } from './render/root-tokens.mjs';
 import { donorModulesEds } from './figma/eds-map.mjs';
+import { railSide } from './placement.mjs';
 
 const HELP = `usage: node stream-render.mjs <slug> [--dir stardust] [--mapping <file>] [--model-dir <d>] [--out <file>]
          [--localize-images] [--register [--type <t>]]
@@ -127,6 +143,15 @@ class SetupError extends Error {}
 
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const unesc = (s) => s.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+// A Figma-kit slot (mapping slot `block`, from figma-donor.mjs pages + content --all): the EDS block it becomes,
+// its variant classes and the kit instance it belongs to (slots sharing one instance are one block).
+// Names are design input: only block-name-valid tokens are emitted.
+const BLOCK_TOKEN = /^[a-z][a-z0-9-]{0,63}$/;
+export function kitAttrs(m) {
+  if (!m?.block || !BLOCK_TOKEN.test(m.block)) return '';
+  const variant = (Array.isArray(m.variant) ? m.variant : []).filter((t) => BLOCK_TOKEN.test(t));
+  return ` data-block="${m.block}"${variant.length ? ` data-block-variant="${variant.join(' ')}"` : ''}${m.instance && /^I?\d+:\d+(?:;\d+:\d+)*$/.test(m.instance) ? ` data-kit-instance="${m.instance}"` : ''}`;
+}
 const url = (n) => esc(n.absHref || n.href);
 const SKIP = new Set(['donor', 'curatedFrom', 'note', 'nodeRefs', 'coverage', 'motifs', '_provenance', 'familyNote']);
 
@@ -163,32 +188,24 @@ export const modelHasButton = (model) => (model?.sections || []).some((s) => (s.
 // signature is its kind (+ heading level, + parent class for bare text); the run is the start/period whose
 // signature sequence repeats back to back, covering the most nodes (ties: the later start, then the smaller period).
 // Nodes before it are the intro, nodes after it the tail. Null when nothing repeats twice. Pure; exported.
-export function findRepeat(ordered, { maxStart = 6, maxPeriod = 12 } = {}) {
-  const sig = ordered.map((n) => [n.kind, n.level || '', n.kind === 'text' ? n.parentClass || n.parentTag || '' : ''].join(':'));
-  let best = null;
-  for (let start = 0; start <= Math.min(maxStart, sig.length - 4); start++) {
-    for (let period = 2; period <= maxPeriod && start + 2 * period <= sig.length; period++) {
-      let count = 1;
-      while (start + (count + 1) * period <= sig.length
-        && sig.slice(start, start + period).every((s, j) => s === sig[start + count * period + j])) count++;
-      if (count < 2) continue;
-      const covered = count * period;
-      // Tie on coverage: the run that ends nearer the stream's end (a shifted run drags an intro node into
-      // item 1 and leaves the last item's tail outside), then the smaller period.
-      const better = !best || covered > best.covered
-        || (covered === best.covered && (start > best.start || (start === best.start && period < best.period)));
-      if (better) best = { start, period, count, covered };
-    }
-  }
-  const anchored = anchorRun(ordered, { maxStart });
+// Card titles often carry drifting heading levels in a design file (h3/h4/h5 for visually equal titles), so a
+// level-blind run wins when it covers more of the stream than the level-exact one.
+// A source card list (ul > li, each li an image/link + text) is one listItem node per card: a run of 2+ such
+// structured listItems is the run, period 1, when it covers at least as much as any node-level run.
+export function findRepeat(ordered, opts = {}) {
+  const exact = repeatRun(ordered, opts, true);
+  const loose = repeatRun(ordered, opts, false);
+  const best = !loose || (exact && exact.covered >= loose.covered) ? exact : loose;
+  const items = itemRun(ordered, opts);
+  if (items && (!best || items.count >= best.covered)) return withBounds(items);
+  const anchored = anchorRun(ordered, opts);
   if (anchored && (!best || anchored.covered > best.covered)) return anchored;
   return best && withBounds({ start: best.start, period: best.period, count: best.count });
 }
-// bounds: each item's start index in the stream, then the run's end (item k is bounds[k]..bounds[k + 1]).
 const withBounds = (r) => ({ ...r, bounds: Array.from({ length: r.count + 1 }, (_, k) => r.start + k * r.period) });
 // A listing whose items share an opening (image + heading, or a heading of one level) but differ in how many
 // paragraphs follow: each item runs from one opening to the next. The last item keeps only the body kinds the
-// others carry, up to the longest item's length, so a trailing stray node stays in the tail. Three or more items.
+// others carry, so a trailing stray node stays in the tail. Three or more items; bounds are item start indices.
 function anchorRun(ordered, { maxStart = 6 } = {}) {
   const sig = ordered.map((n) => `${n.kind}:${n.level || ''}`);
   let best = null;
@@ -211,8 +228,62 @@ function anchorRun(ordered, { maxStart = 6 } = {}) {
       if (!best || covered > best.covered) best = { start: starts[0], count: starts.length, covered, bounds: [...starts, end] };
     }
   }
-  return best && { start: best.start, count: best.count, covered: best.covered, bounds: best.bounds };
+  return best;
 }
+export const isCardItem = (n) => n?.kind === 'listItem' && (n.children || []).length >= 2
+  && n.children.some((c) => c.kind === 'image' || c.kind === 'cta');
+function itemRun(ordered, { maxStart = 6 } = {}) {
+  let best = null;
+  for (let start = 0; start <= Math.min(maxStart, ordered.length - 2); start++) {
+    let count = 0;
+    while (isCardItem(ordered[start + count])) count++;
+    if (count >= 2 && (!best || count > best.count)) best = { start, period: 1, count };
+  }
+  return best;
+}
+function repeatRun(ordered, { maxStart = 6, maxPeriod = 12 } = {}, levels = true) {
+  const sig = ordered.map((n) => [n.kind, levels ? n.level || '' : '', n.kind === 'text' ? n.parentClass || n.parentTag || '' : ''].join(':'));
+  let best = null;
+  for (let start = 0; start <= Math.min(maxStart, sig.length - 4); start++) {
+    for (let period = 2; period <= maxPeriod && start + 2 * period <= sig.length; period++) {
+      let count = 1;
+      while (start + (count + 1) * period <= sig.length
+        && sig.slice(start, start + period).every((s, j) => s === sig[start + count * period + j])) count++;
+      if (count < 2) continue;
+      const covered = count * period;
+      // Tie on coverage: the run that ends nearer the stream's end (a shifted run drags an intro node into
+      // item 1 and leaves the last item's tail outside), then the smaller period.
+      const better = !best || covered > best.covered
+        || (covered === best.covered && (start > best.start || (start === best.start && period < best.period)));
+      if (better) best = { start, period, count, covered };
+    }
+  }
+  return best;
+}
+
+// A link that names a social network by its text ("Facebook", "Follow us on Instagram", "X (formerly Twitter)"), or
+// with byHost by its URL's host: the network key, else null. Pure; exported for tests.
+export function socialNetwork(s, byHost = false) {
+  const t = String(s ?? '').trim();
+  if (byHost) {
+    let h = ''; try { h = new URL(t).hostname.replace(/^(www|m)\./, ''); } catch { return null; }
+    const hit = Object.entries({ facebook: /^(facebook\.com|fb\.com)$/, instagram: /^instagram\.com$/, x: /^(x\.com|twitter\.com)$/, linkedin: /^linkedin\.com$/, youtube: /^(youtube\.com|youtu\.be)$/, tiktok: /^tiktok\.com$/ }).find(([, re]) => re.test(h));
+    return hit ? hit[0] : null;
+  }
+  const m = t.match(/^(?:(?:follow|find|like|join|visit|watch) us on )?(facebook|instagram|x|twitter|linked ?in|you ?tube|tik ?tok)(?: \([^)]*\))?$/i);
+  if (!m) return null;
+  const k = m[1].toLowerCase().replace(/\s/g, '');
+  return k === 'twitter' ? 'x' : k;
+}
+// Simple 24×24 marks for the networks socialNetwork knows (fill currentColor, even-odd).
+const SOCIAL_PATHS = {
+  facebook: 'M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2h-5v-7h2.5l.5-3h-3V9.5c0-.9.4-1.5 1.6-1.5H18V5.3A20 20 0 0 0 15.6 5C13.2 5 12 6.4 12 8.8V12H9.5v3H12v7H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z',
+  instagram: 'M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5zm0 2a3 3 0 0 0-3 3v10a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3V7a3 3 0 0 0-3-3H7zm5 3.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zm5.3-4a1.2 1.2 0 1 1 0 2.4 1.2 1.2 0 0 1 0-2.4z',
+  x: 'M3 3h5l4.5 6.2L18 3h3l-7.1 8.1L21.5 21h-5l-4.9-6.7L5.5 21h-3l7.6-8.6z',
+  linkedin: 'M4 2h16a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm1.5 7.5V19h3V9.5zM7 4.8a1.7 1.7 0 1 0 0 3.4 1.7 1.7 0 0 0 0-3.4zm3.5 4.7V19h3v-5c0-1.4.6-2.3 1.8-2.3s1.7.9 1.7 2.3v5h3v-5.6c0-2.8-1.5-4.1-3.6-4.1-1.4 0-2.4.6-2.9 1.4V9.5z',
+  youtube: 'M2.5 7.2C2.8 5.6 4 4.6 5.6 4.5 8 4.3 10 4.2 12 4.2s4 .1 6.4.3c1.6.1 2.8 1.1 3.1 2.7.3 1.6.5 3.2.5 4.8s-.2 3.2-.5 4.8c-.3 1.6-1.5 2.6-3.1 2.7-2.4.2-4.4.3-6.4.3s-4-.1-6.4-.3C4 19.4 2.8 18.4 2.5 16.8 2.2 15.2 2 13.6 2 12s.2-3.2.5-4.8zM10 8.5v7l6-3.5z',
+  tiktok: 'M14 2h3c.2 2.2 1.6 3.7 4 4v3c-1.5 0-2.9-.4-4-1.2V15a6 6 0 1 1-6-6h.5v3.1H11a3 3 0 1 0 3 2.9z',
+};
 
 // WCAG contrast of two CSS colours (#rgb, #rrggbb, rgb()/rgba()); null when either is unparseable.
 export function contrast(a, b) {
@@ -294,20 +365,49 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const val = n.value && /checkbox|radio|submit|button/.test(type) ? ` value="${esc(n.value)}"` : '';
     return `<input id="${id}" type="${esc(type)}"${name}${n.placeholder ? ` placeholder="${esc(n.placeholder)}"` : ''}${val}>`;
   }
-  // An icon-font ligature ("east", "search") is drawn as its glyph; its word stays in the DOM at font-size 0.
+  // An icon-font ligature is drawn as its glyph (its word stays in the DOM for the byte gate, at font-size 0);
+  // visually hidden source text (sr-only, skip links) stays visually hidden.
   const GLYPHS = [[/search/, 'search'], [/close|clear/, 'close'], [/menu/, 'menu'], [/left|back/, 'left'], [/up|less/, 'up'], [/down|expand_more|more/, 'down'], [/./, 'right']];
   const glyphHtml = (t) => `<span class="glyph glyph-${GLYPHS.find(([re]) => re.test(t))[1]}" aria-hidden="true">${esc(t)}</span>`;
+  // A model captured before glyph flagging: a single lowercase word in an icon-font span is still a glyph.
   const isGlyphLeaf = (n) => n.glyph || (n.kind === 'text' && /material-(icons|symbols)|\bicons?\b/i.test(n.parentClass || '') && /^[a-z_]+$/.test((n.text || '').trim()));
-  const isSrOnlyLeaf = (n) => n.srOnly || (n.kind === 'text' && /\b(sr-only|visually-hidden|screen-reader-text)\b/.test(n.parentClass || ''));
+  function leafHtml(n) {
+    if (isGlyphLeaf(n)) return glyphHtml(n.text);
+    if (n.srOnly) return `<span class="sr-only">${txt(n)}</span>`;
+    return txt(n);
+  }
+  const toggleId = (n) => n.toggle || (n.kind === 'heading' ? n.children?.find((c) => c.toggle)?.toggle : null) || null;
+  // A translucent Figma image fill (model opacity < 1) keeps its opacity, over its backdrop colour on the wrapper.
+  const fade = (n) => n?.opacity != null && n.opacity < 1;
+  const imgOpacity = (n) => (fade(n) ? ` style="opacity: ${Number(n.opacity)}"` : '');
+  const backdropCss = (n) => (fade(n) && n.backdrop ? `background-color: ${esc(n.backdrop)}` : '');
   function inlineHtml(nodes) {
     return nodes.map((n) => {
-      const sep = n.sep ?? '';
-      if (n.kind === 'cta') return `${sep}<a class="link" href="${url(n)}">${n.children ? inlineHtml(n.children) : esc(n.text)}</a>`;
-      // An image inside a link or paragraph (arrow, social badge) is content: it stays, inline.
-      if (n.kind === 'image') return `${sep}<img class="icon" ${img(n.currentSrc || n.src)} alt="${esc(n.alt)}">`;
+      const sep = n.br ? '<br>' : n.sep ?? '';
+      if (n.kind === 'cta') return `${sep}<a class="link${n.srOnly ? ' sr-only' : ''}" href="${url(n)}">${n.children ? inlineHtml(n.children) : txt(n)}</a>`;
+      // An image inside a link or paragraph (arrow, social badge) is content: it stays, inline; a content-sized
+      // one (rendered ≥ 200px wide) keeps its size.
+      if (n.kind === 'image') return `${sep}<img class="${n.rw >= 200 ? 'inline-media' : 'icon'}" ${img(n.currentSrc || n.src)} alt="${esc(n.alt)}">`;
       if (n.children) return `${sep}${inlineHtml(n.children)}`;
-      return `${sep}${isGlyphLeaf(n) ? glyphHtml(n.text) : esc(n.text)}`;
+      return `${sep}${leafHtml(n)}`;
     }).join('');
+  }
+  function tableHtml(n, ctx) {
+    const rows = (n.rows || []).map((r) => `<tr>${r.map((c) => {
+      const tag = c.header ? 'th' : 'td';
+      return `<${tag}${c.colspan > 1 ? ` colspan="${c.colspan}"` : ''}>${c.children ? streamHtml(c.children, ctx) : esc(c.text)}</${tag}>`;
+    }).join('')}</tr>`).join('');
+    return `<div class="table-wrap"><table class="table"><tbody>${rows}</tbody></table></div>`;
+  }
+  // Figma-sourced text (content-model.md § Figma-sourced models): the model's text is the rendered case;
+  // the page carries the design's characters with the case as CSS, so innerText equals text and the
+  // markup keeps what the designer typed. A truncated string is kept whole and clamped in CSS.
+  const CASE_CSS = { UPPER: 'text-transform: uppercase', LOWER: 'text-transform: lowercase', TITLE: 'text-transform: capitalize', SMALL_CAPS: 'font-variant-caps: small-caps', SMALL_CAPS_FORCED: 'font-variant-caps: all-small-caps' };
+  function txt(n, text = n.text) {
+    const cased = n.characters != null && CASE_CSS[n.textCase] ? `<span class="tc" style="${CASE_CSS[n.textCase]}">${esc(n.characters)}</span>` : esc(text);
+    const lines = Number.isInteger(n.truncation?.maxLines) && n.truncation.maxLines > 0 ? n.truncation.maxLines : null;
+    if (lines) clamped = true;
+    return lines ? `<span class="clamp" style="-webkit-line-clamp: ${lines}">${cased}</span>` : cased;
   }
   // The first button of a slot is primary; later ones take the donor's secondary spec (when it exists).
   const btnClass = (ctx) => (ctx.buttons++ === 0 ? 'btn' : 'btn btn-secondary');
@@ -333,41 +433,70 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       tag();
       const n = ordered[i]; const next = ordered[i + 1];
       cur = Number.isInteger(n.lineClamp) && n.lineClamp > 0 ? { lines: n.lineClamp, group: n.clampGroup ?? `n${i}` } : null;
+      // A disclosure (toggle + the panel it controls) keeps the source's rest state: closed, the panel is
+      // hidden="until-found" (findable, and revealed by dom-equality before it reads the text). The toggle is
+      // the stream node itself or the button inside a heading (h3 > button).
+      const tid = toggleId(n);
+      if (tid) {
+        const title = []; let j = i;
+        while (ordered[j] && toggleId(ordered[j]) === tid) title.push(ordered[j++]);
+        const panel = [];
+        while (ordered[j] && (ordered[j].panels || []).includes(tid)) panel.push(ordered[j++]);
+        if (panel.length) {
+          i = j - 1;
+          const pid = `disclosure-${++uid}`; const open = title.some((t) => t.toggleOpen || t.children?.some((c) => c.toggleOpen));
+          out.push(`<div class="disclosure"><button class="disclosure-toggle" type="button" aria-expanded="${open}" aria-controls="${pid}">${title.map((t, k) => `${k ? t.sep ?? ' ' : ''}${t.children ? inlineHtml(t.children) : leafHtml(t)}`).join('')}</button><div class="disclosure-panel" id="${pid}"${open ? '' : ' hidden="until-found"'}>${streamHtml(panel, ctx)}</div></div>`);
+          continue;
+        }
+      }
       switch (n.kind) {
-        case 'heading': out.push(`<${n.level || 'h2'} class="heading">${esc(n.text)}</${n.level || 'h2'}>`); break;
-        case 'paragraph': out.push(`<p class="${n.children?.some((c) => c.kind === 'cta') ? 'aux' : 'lead'}">${n.children ? inlineHtml(n.children) : esc(n.text)}</p>`); break;
+        case 'table': out.push(tableHtml(n, ctx)); break;
+        case 'heading': {
+          // A sub-heading whose donor type role differs from display is sized by that role, so drifting DOM
+          // levels (h3/h4/h5 on visually equal card titles) render alike.
+          const r = /^h[2-6]$/.test(n.role || '') && has(`--type-${n.role}-font-size`) ? ` role-${n.role}` : '';
+          // A heading holding a link (a Figma hyperlink run, a live h2 > a) keeps the link.
+          out.push(`<${n.level || 'h2'} class="heading${r}${n.srOnly ? ' sr-only' : ''}">${n.children?.some((c) => c.kind === 'cta') ? inlineHtml(n.children) : txt(n)}</${n.level || 'h2'}>`); break;
+        }
+        case 'paragraph':
+          // A paragraph holding only images, one of them content-sized, is a figure (a model captured
+          // before 0.41 has no rw and keeps the inline-icon rendering).
+          if (n.children?.length && n.children.every((c) => c.kind === 'image') && n.children.some((c) => c.rw >= 200)) {
+            out.push(...n.children.map((c) => `<figure class="media media-wide"><img ${img(c.currentSrc || c.src)} alt="${esc(c.alt)}"></figure>`)); break;
+          }
+          out.push(`<p class="${n.children?.some((c) => c.kind === 'cta') ? 'aux' : 'lead'}${n.srOnly ? ' sr-only' : ''}">${n.children ? inlineHtml(n.children) : txt(n)}</p>`); break;
         case 'listItem': {
           const items = [n]; while (ordered[i + 1]?.kind === 'listItem') items.push(ordered[++i]);
-          out.push(`<ul class="list">${items.map((li) => `<li>${li.children ? inlineHtml(li.children) : esc(li.text)}</li>`).join('')}</ul>`); break;
+          out.push(`<ul class="list">${items.map((li) => `<li>${li.children ? inlineHtml(li.children) : txt(li)}</li>`).join('')}</ul>`); break;
         }
         case 'cta':
-          out.push(isButtonish(n) ? `<div class="actions"><a class="${btnClass(ctx)}" href="${url(n)}">${n.children?.some((c) => c.kind === 'image') ? inlineHtml(n.children) : esc(n.text)}</a></div>`
-            : `<p class="aux"><a class="link" href="${url(n)}">${n.children ? inlineHtml(n.children) : esc(n.text)}</a></p>`); break;
+          out.push(isButtonish(n) ? `<div class="actions"><a class="${btnClass(ctx)}" href="${url(n)}">${n.children?.some((c) => c.kind === 'image') ? inlineHtml(n.children) : txt(n)}</a></div>`
+            : `<p class="aux"><a class="link" href="${url(n)}">${n.children ? inlineHtml(n.children) : txt(n)}</a></p>`); break;
         case 'image': {
           if ((ctx.band || ctx.split) && !ctx.bandImage) { ctx.bandImage = n; break; }
           // A run of 3+ bare images (partner logos, badges) is one row, not a column of figures.
           const run = [n]; while (ordered[i + run.length]?.kind === 'image') run.push(ordered[i + run.length]);
           if (run.length >= 3) {
-            out.push(`<div class="logos">${run.map((im) => `<img ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}</div>`);
+            out.push(`<div class="logos">${run.map((im) => `<img ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}"${imgOpacity(im)}>`).join('')}</div>`);
             i += run.length - 1;
-          } else out.push(`<figure class="media"><img ${img(n.currentSrc || n.src)} alt="${esc(n.alt)}"></figure>`);
+          } else out.push(`<figure class="media"${backdropCss(n) ? ` style="${backdropCss(n)}"` : ''}><img ${img(n.currentSrc || n.src)} alt="${esc(n.alt)}"${imgOpacity(n)}></figure>`);
           break;
         }
         case 'formControl': {
           const id = `f${++uid}`;
           if (/checkbox|radio/.test(n.inputType || '') && next && (next.kind === 'text' || next.kind === 'cta')) {
-            const txt = next.kind === 'cta' ? `<a class="link" href="${url(next)}">${esc(next.text)}</a>` : esc(next.text);
-            out.push(`<div class="check">${controlHtml(n, id)}<label for="${id}">${txt}</label></div>`); i++;
+            const lab = next.kind === 'cta' ? `<a class="link" href="${url(next)}">${txt(next)}</a>` : txt(next);
+            out.push(`<div class="check">${controlHtml(n, id)}<label for="${id}">${lab}</label></div>`); i++;
           } else if (/submit|button/.test(n.inputType || '')) out.push(`<div class="actions"><button class="${btnClass(ctx)}" type="submit">${esc(n.value || n.text)}</button></div>`);
           else out.push(`<div class="field">${controlHtml(n, id)}</div>`);
           break;
         }
         case 'text':
           if (n.parentTag === 'label' && next?.kind === 'formControl' && !/checkbox|radio/.test(next.inputType || '')) {
-            const id = `f${++uid}`; out.push(`<div class="field"><label for="${id}">${labelHtml(n.text)}</label>${controlHtml(next, id)}</div>`); i++;
-          } else if (n.parentTag === 'button' || n.inButton) out.push(`<div class="actions"><button class="${btnClass(ctx)}" type="submit">${esc(n.text)}</button></div>`);
-          else if (isGlyphLeaf(n)) out.push(glyphHtml(n.text));
-          else out.push(`<p class="text">${esc(n.text)}</p>`);
+            const id = `f${++uid}`; out.push(`<div class="field"><label for="${id}">${n.textCase ? txt(n) : labelHtml(n.text)}</label>${controlHtml(next, id)}</div>`); i++;
+          } else if (n.parentTag === 'button' || n.inButton) out.push(`<div class="actions"><button class="${btnClass(ctx)}" type="submit">${txt(n)}</button></div>`);
+          else if (isGlyphLeaf(n) || n.srOnly) out.push(leafHtml(n));
+          else out.push(`<p class="text">${txt(n)}</p>`);
           break;
         default: throw new Error(`unhandled stream node kind "${n.kind}" in ${slug} — extend stream-render, never drop content`);
       }
@@ -387,47 +516,112 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   function navItem(s, n) {
     const ctasIn = (x) => (x.kind === 'cta' ? [x] : (x.children || []).flatMap(ctasIn));
     const links = ctasIn(n).filter((c) => (c.text || '').trim());
-    if (links.length) return links.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
+    if (links.length) return links.map((c) => `<a${c.srOnly ? ' class="sr-only"' : ''} href="${url(c)}">${c.children ? inlineHtml(c.children.filter((k) => k.kind !== 'image').map((k) => ({ ...k, kind: k.kind === 'cta' ? 'text' : k.kind }))) : esc(c.text)}</a>`);
     const text = (n.text || '').trim();
     if (!text || n.kind === 'image') return [];
     // a Figma-only capture lists its links as ctas and their text as plain stream nodes
     const cta = s.ctas.find((c) => (c.text || '').trim() === text);
     if (cta) return [`<a href="${url(cta)}">${esc(text)}</a>`];
     if (n.kind === 'listItem') return [`<button class="nav-menu" type="button" aria-expanded="false">${esc(text)}</button>`];
+    if (n.glyph || n.srOnly) return [leafHtml(n)];
     return [`<span class="nav-text">${esc(text)}</span>`];
   }
 
   // A branded row (logo + a menu list) is three zones in source order: brand, the menu (its list items)
   // and the actions (the links outside it, e.g. a Login button). Other rows stay one link run.
-  function headerRow(s) {
+  const isActionNode = (n) => n.inButton || n.parentTag === 'button';
+  const isBrandedRow = (s) => {
+    const ordered = Array.isArray(s.ordered) ? s.ordered : [];
+    return s.images.length > 0 && (ordered.some((n) => n.kind === 'listItem') || ordered.some(isActionNode));
+  };
+  // A link whose label is only screen-reader text (a government/parent-org link whose mark was not captured)
+  // is the Figma header's utility bar: shown as a small text link above the row on desktop.
+  const isUtil = (h) => /^<a [^>]*>(<span class="sr-only">[^<]*<\/span>)+<\/a>$/.test(h);
+  const isNavText = (h) => h.startsWith('<span class="nav-text">');
+  // A primary-navigation entry: a visible link or a menu trigger (never sr-only, never the utility link).
+  const isNavEntry = (h) => (h.startsWith('<a ') && !h.startsWith('<a class="sr-only"') && !isUtil(h)) || h.startsWith('<button class="nav-menu"');
+  const plainRow = (s, navId = null) => `<div class="chrome-row"><div class="container">
+      ${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}
+      <nav${navId ? ` id="${navId}"` : ''}>${navItems(s).join('')}</nav>
+    </div></div>`;
+  // The zones of a branded row. primaryElsewhere: another header row holds primary links.
+  function brandedParts(s, primaryElsewhere = false) {
     const logos = s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
     const ordered = Array.isArray(s.ordered) ? s.ordered : [];
-    if (!logos || !ordered.some((n) => n.kind === 'listItem')) {
-      return `<div class="chrome-row"><div class="container">
-      ${logos}
-      <nav>${navItems(s).join('')}</nav>
-    </div></div>`;
-    }
-    // A link whose label is only screen-reader text (a parent-org link whose mark was not captured) is the
-    // Figma header's utility bar: a small text link above the row on desktop.
-    const isUtil = (n) => n.kind === 'cta' && n.children?.length > 0 && n.children.every((c) => c.kind === 'text' && isSrOnlyLeaf(c));
-    const util = ordered.filter(isUtil).map((n) => `<a href="${url(n)}">${esc((n.text || '').trim())}</a>`);
-    const menu = ordered.filter((n) => n.kind === 'listItem').flatMap((n) => navItem(s, n));
-    const actions = ordered.filter((n) => n.kind !== 'listItem' && !isUtil(n)).flatMap((n) => navItem(s, n));
+    const hasList = ordered.some((n) => n.kind === 'listItem');
+    // Without a menu list the menu is the row's plain entries and the actions its buttons (a Figma frame).
+    const inMenu = (n) => (hasList ? n.kind === 'listItem' : !isActionNode(n));
+    let menu = ordered.filter(inMenu).flatMap((n) => navItem(s, n));
+    let btn = 0;
+    // A source button stays a button: its link (or, without one, a <button>) takes the donor's button paint.
+    const actions = ordered.filter((n) => !inMenu(n)).flatMap((n) => {
+      const items = navItem(s, n);
+      if (!isActionNode(n)) return items;
+      const cls = () => (btn++ === 0 ? 'btn btn-secondary' : 'btn');
+      if (!items.length) return [];
+      return items.map((h) => (h.startsWith('<a ') ? h.replace('<a ', `<a class="${cls()}" `)
+        : n.glyph || n.srOnly ? `<button class="${n.glyph ? 'icon-btn' : 'sr-only'}" type="button">${leafHtml(n)}</button>` : `<button class="${cls()}" type="button">${esc((n.text || '').trim())}</button>`));
+    });
+    // The menu's utility links join the utility bar; its leading plain texts (before any primary entry, a
+    // utility link aside) are the brand's name and tagline whenever primary links exist — in this menu after
+    // them or in another header row — so a site name beside a hidden parent-org link never lands in the nav.
+    const menuUtil = menu.filter(isUtil);
+    menu = menu.filter((h) => !isUtil(h));
+    let lead = 0;
+    while (lead < menu.length && isNavText(menu[lead])) lead += 1;
+    const menuBrand = lead && (primaryElsewhere || menu.slice(lead).some(isNavEntry)) ? menu.slice(0, lead) : [];
+    menu = menu.slice(menuBrand.length);
+    // The row's plain (non-link) texts are the brand's name and tagline: they sit with the logo, as a
+    // Figma header's brand zone does, not among the actions.
+    const brandTexts = [...menuBrand, ...actions.filter(isNavText)];
+    const util = [...menuUtil, ...actions.filter(isUtil)].map((h) => h.replace(/<span class="sr-only">([^<]*)<\/span>/g, '$1'));
+    const rest = actions.filter((h) => !isNavText(h) && !isUtil(h));
+    return { logos, menu, brandTexts, util, rest, moved: menuUtil.length + menuBrand.length > 0 };
+  }
+  // extraNav: the primary links of another header row drawn in this row's menu (a one-row donor header);
+  // navElsewhere: the id of the nav another row keeps, which this row's toggle opens.
+  function brandedRow(p, { extraNav = null, navElsewhere = null } = {}) {
+    const menu = p.menu.length ? p.menu : extraNav || [];
     const navAlign = mapping.chrome?.navAlign ?? tokens.layout?.navAlign;
     const align = ['start', 'center', 'end'].includes(navAlign) ? navAlign : 'end';
-    // The row's plain (non-link) texts are the brand's name and tagline: they sit with the logo, as a
-    // Figma header's brand zone does, not among the actions. Below 900px the menu folds behind a toggle.
-    const brandTexts = actions.filter((h) => h.startsWith('<span class="nav-text">'));
-    const rest = actions.filter((h) => !brandTexts.includes(h));
-    const brand = `<div class="brand">${logos}${brandTexts.length ? `<div class="brand-text">${brandTexts.join('')}</div>` : ''}</div>`;
+    const brand = `<div class="brand">${p.logos}${p.brandTexts.length ? `<div class="brand-text">${p.brandTexts.join('')}</div>` : ''}</div>`;
     // The toggle opens the folded menu below 900px: the page script flips aria-expanded and .nav-open on the header.
-    const toggle = menu.length ? '<button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="site-nav"><span class="glyph glyph-menu" aria-hidden="true"></span></button>' : '';
-    return `${util.length ? `<div class="utility-bar"><div class="container">${util.join('')}</div></div>` : ''}<div class="chrome-row nav-align-${align}"><div class="container">
-      ${brand}
-      <nav${toggle ? ' id="site-nav"' : ''}>${menu.join('')}</nav>
-      <div class="nav-actions">${rest.join('')}${toggle}</div>
+    const controls = menu.length ? 'site-nav' : navElsewhere;
+    const toggle = controls ? `<button class="icon-btn nav-toggle" type="button" aria-label="Menu" aria-expanded="false" aria-controls="${controls}"><span class="glyph glyph-menu" aria-hidden="true"></span></button>` : '';
+    // A menu emptied by the brand/utility moves (or whose links another row holds) is no nav at all.
+    const nav = !menu.length && (p.moved || navElsewhere) ? '' : `
+      <nav${menu.length && toggle ? ' id="site-nav"' : ''}>${menu.join('')}</nav>`;
+    return `${p.util.length ? `<div class="utility-bar"><div class="container">${p.util.join('')}</div></div>` : ''}<div class="chrome-row nav-align-${align}"><div class="container">
+      ${brand}${nav}
+      <div class="nav-actions">${p.rest.join('')}${toggle}</div>
     </div></div>`;
+  }
+  // The header's rows. A branded row whose menu holds no primary entry takes the primary links of a logo-less
+  // link row: drawn in its own menu when the donor's header is one row (layout.navAlign, measured from the
+  // Figma Header; or chrome.navAlign), else that row stays its own row and the branded row's toggle opens it.
+  // A branded row that keeps primary links of its own leaves other link rows (a utility row) as they are.
+  function headerRows(slots) {
+    const links = (s) => (isBrandedRow(s) || s.images.length ? 0 : navItems(s).filter(isNavEntry).length);
+    const linkRows = slots.filter((s) => links(s) > 0);
+    const out = new Map(slots.map((s) => [s, { html: null, texts: [s] }]));
+    const brandedSlots = slots.filter(isBrandedRow);
+    const b = brandedSlots[0];
+    let primary = null; let merged = false;
+    if (b && linkRows.length) {
+      const parts = brandedParts(b, true);
+      if (!parts.menu.some(isNavEntry)) {
+        primary = linkRows.reduce((m, s) => (links(s) > links(m) ? s : m));
+        merged = !parts.menu.length && ['start', 'center', 'end'].includes(mapping.chrome?.navAlign ?? tokens.layout?.navAlign);
+        out.get(b).html = merged ? brandedRow(parts, { extraNav: navItems(primary) }) : brandedRow(parts, { navElsewhere: 'site-nav' });
+        if (merged) { out.get(b).texts.push(primary); out.delete(primary); }
+      } else out.get(b).html = brandedRow(parts);
+    }
+    for (const s of slots) {
+      const r = out.get(s);
+      if (!r || r.html) continue;
+      r.html = isBrandedRow(s) ? brandedRow(brandedParts(s)) : s === primary ? plainRow(s, 'site-nav') : plainRow(s);
+    }
+    return [...out.values()];
   }
 
   // Footer prose in source order: every non-link text leaf (headings, text runs, list items), so a
@@ -451,42 +645,100 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
 
   // A footer whose stream has headings is laid out in zones, as a Figma footer is: the brand (logos, the
   // top-level heading and the prose), one column per titled run of list items (an untitled run is its own
-  // column), and a social row (a heading with no list of its own, beside the icon links).
-  function footerZones(s) {
+  // column), and a social row (a heading with no list of its own, beside the icon links). A link whose text
+  // names a social network (socialNetwork) is an icon in the social row, its text kept as .sr-only.
+  // named: a footer-name is already set (an earlier band of a merged footer).
+  function footerParts(s, { named = false } = {}) {
     const ordered = Array.isArray(s.ordered) ? s.ordered : [];
     const heads = ordered.filter((n) => n.kind === 'heading');
-    if (!heads.length || !ordered.some((n) => n.kind === 'listItem')) return null;
     const lvl = (n) => Number(String(n.level || 'h6').slice(1)) || 6;
     const top = Math.min(...heads.map(lvl));
-    const brand = []; const cols = []; let social = null; let col = null;
+    const brand = []; const cols = []; let social = null; let col = null; const icons = [];
     const leaf = (n) => (n.children?.length ? inlineHtml(n.children) : esc((n.text || '').trim()));
+    const hasName = () => named || brand.some((b) => b.startsWith('<p class="footer-name"'));
     for (let i = 0; i < ordered.length; i += 1) {
       const n = ordered[i];
       if (n.kind === 'heading') {
         col = null;
-        if (lvl(n) === top && !brand.some((b) => b.startsWith('<p class="footer-name"'))) { brand.push(`<p class="footer-name">${leaf(n)}</p>`); continue; }
+        if (lvl(n) === top && !hasName()) { brand.push(`<p class="footer-name">${leaf(n)}</p>`); continue; }
         const next = ordered.slice(i + 1).find((m) => m.kind !== 'image');
         if (next?.kind === 'listItem') { col = { title: leaf(n), items: [] }; cols.push(col); continue; }
         social = leaf(n); continue;
       }
       if (n.kind === 'listItem') {
         if (!col) { col = { title: null, items: [] }; cols.push(col); }
-        col.items.push(`<li>${leaf(n)}</li>`); continue;
+        const only = n.children?.length === 1 && n.children[0].kind === 'cta' ? n.children[0] : null;
+        if (only && socialNetwork(only.text)) icons.push(socialIcon(only, only.text)); else col.items.push(`<li>${leaf(n)}</li>`);
+        continue;
       }
       col = null;
       if (n.kind === 'image' || (n.kind === 'cta' && !(n.text || '').trim())) continue;
+      if (n.kind === 'cta' && socialNetwork(n.text)) { icons.push(socialIcon(n, n.text)); continue; }
       if (n.kind === 'cta') { cols.push({ title: null, items: [`<li><a href="${url(n)}">${leaf(n)}</a></li>`] }); continue; }
       if ((n.text || '').trim()) brand.push(`<p class="footer-prose">${leaf(n)}</p>`);
     }
-    const logos = s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
-    const icons = (s.iconLinks?.length ? s.iconLinks.map((c) => `<li><a href="${url(c)}" aria-label="${esc(c.label)}">${esc(c.label)}</a></li>`)
-      : ordered.filter((n) => n.kind === 'cta' && !(n.text || '').trim() && n.children?.length).map((n) => `<li><a href="${url(n)}">${inlineHtml(n.children)}</a></li>`)).join('');
+    // A titled column whose links were all social icons titles the social row instead.
+    for (const c of cols.filter((x) => !x.items.length)) if (c.title && !social) { social = c.title; c.title = null; }
+    return { logos: s.images, brand, cols: cols.filter((c) => c.title || c.items.length), social, icons: [...icons, ...(s.iconLinks || []).map(iconLink)] };
+  }
+  function zonedHtml({ logos, brand, cols, social, icons }) {
+    const logoHtml = logos.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
+    const iconHtml = icons.join('');
     return `<div class="container chrome-footer footer-zoned">
-      <div class="footer-main"><div class="footer-brand">${logos}${brand.join('')}</div>
-      ${cols.map((c) => `<div class="footer-col">${c.title ? `<p class="footer-col-title">${c.title}</p>` : ''}<ul>${c.items.join('')}</ul></div>`).join('\n      ')}</div>
-      ${social || icons ? `<div class="footer-social">${social ? `<p class="footer-social-label">${social}</p>` : ''}${icons ? `<ul class="icon-links">${icons}</ul>` : ''}</div>` : ''}
+      <div class="footer-main"><div class="footer-brand">${logoHtml}${brand.join('')}</div>
+      ${cols.map((c) => `<div class="footer-col">${c.title ? `<p class="footer-col-title">${c.title}</p>` : ''}${c.items.length ? `<ul>${c.items.join('')}</ul>` : ''}</div>`).join('\n      ')}</div>
+      ${social || iconHtml ? `<div class="footer-social">${social ? `<p class="footer-social-label">${social}</p>` : ''}${iconHtml ? `<ul class="icon-links">${iconHtml}</ul>` : ''}</div>` : ''}
     </div>`;
   }
+  const zones = (s) => Array.isArray(s.ordered) && s.ordered.some((n) => n.kind === 'heading') && s.ordered.some((n) => n.kind === 'listItem');
+  function footerZones(s) {
+    return zones(s) ? zonedHtml(footerParts(s)) : null;
+  }
+  // A social link: the network's mark (inline SVG, aria-hidden) with its text as the accessible name, kept in
+  // the DOM (.sr-only) so the chrome text checks still read it. Any other icon link keeps its label as text.
+  function socialIcon(c, label) {
+    const net = socialNetwork(label) || socialNetwork(c.absHref || c.href || '', true);
+    return `<li><a class="social-icon" href="${url(c)}"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false"><path fill-rule="evenodd" d="${SOCIAL_PATHS[net]}"/></svg><span class="sr-only">${esc(label)}</span></a></li>`;
+  }
+  const iconLink = (c) => (socialNetwork(c.label) || socialNetwork(c.absHref || c.href || '', true)
+    ? socialIcon(c, c.label) : `<li><a href="${url(c)}" aria-label="${esc(c.label)}">${esc(c.label)}</a></li>`);
+  // Several footer bands with one zoned among them (a name band, a contact band, an acknowledgement band, a
+  // logo and links band) are one zoned footer: a leading single-text band is the footer name, every band's
+  // logos and prose join the brand column, its links one column (social links the social row).
+  function mergedFooter(slots) {
+    const all = { logos: [], brand: [], cols: [], social: null, icons: [] };
+    const firstZoned = slots.findIndex(zones);
+    slots.forEach((s, k) => {
+      const named = all.brand.some((b) => b.startsWith('<p class="footer-name"'));
+      if (zones(s)) {
+        const p = footerParts(s, { named });
+        all.logos.push(...p.logos); all.brand.push(...p.brand); all.cols.push(...p.cols); all.icons.push(...p.icons);
+        all.social ||= p.social;
+        return;
+      }
+      all.logos.push(...s.images);
+      const texts = footerTexts(s);
+      const links = (s.ctas || []).filter((c) => (c.text || '').trim());
+      texts.forEach((t) => all.brand.push(!named && k < firstZoned && texts.length === 1 && !links.length ? `<p class="footer-name">${esc(t)}</p>` : `<p class="footer-prose">${esc(t)}</p>`));
+      const items = [];
+      for (const c of links) (socialNetwork(c.text) ? all.icons : items).push(socialNetwork(c.text) ? socialIcon(c, c.text) : `<li><a href="${url(c)}">${esc(c.text)}</a></li>`);
+      if (items.length) all.cols.push({ title: null, items });
+      all.icons.push(...(s.iconLinks || []).map(iconLink));
+    });
+    return zonedHtml(all);
+  }
+  function plainFooter(s) {
+    const texts = footerTexts(s);
+    const social = s.ctas.filter((c) => socialNetwork(c.text));
+    const links = s.ctas.filter((c) => !social.includes(c));
+    const icons = [...social.map((c) => socialIcon(c, c.text)), ...(s.iconLinks || []).map(iconLink)];
+    return `<div class="container chrome-footer">
+      <div>${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}${texts.map((t) => `<p>${esc(t)}</p>`).join('')}</div>${links.length ? `
+      <ul>${links.map((c) => `<li><a href="${url(c)}">${esc(c.text)}</a></li>`).join('')}</ul>` : ''}${icons.length ? `
+      <ul class="icon-links">${icons.join('')}</ul>` : ''}
+    </div>`;
+  }
+
   // Every visible text leaf of a chrome section must survive the render: the content gates measure
   // <main> only, so a silent drop here would ship unnoticed.
   function assertChromeText(s, html) {
@@ -501,17 +753,14 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const slots = ids.map((id) => chromeModel.sections.find((s) => s.slot === id)).filter(Boolean);
     const checked = (s, html) => { assertChromeText(s, html); return html; };
     if (role === 'header') {
-      return slots.map((s) => checked(s, headerRow(s))).join('\n  ');
+      return headerRows(slots).map((r) => { r.texts.forEach((s) => assertChromeText(s, r.html)); return r.html; }).join('\n  ');
     }
-    return slots.map((s) => checked(s, (() => {
-      const zoned = footerZones(s);
-      if (zoned) return zoned;
-      const texts = footerTexts(s);
-      return `<div class="container chrome-footer">
-      <div>${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}${texts.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
-      <ul>${s.ctas.map((c) => `<li><a href="${url(c)}">${esc(c.text)}</a></li>`).join('')}</ul>
-    </div>`;
-    })())).join('\n  ');
+    if (slots.length > 1 && slots.some(zones)) {
+      const html = mergedFooter(slots);
+      slots.forEach((s) => assertChromeText(s, html));
+      return html;
+    }
+    return slots.map((s) => checked(s, footerZones(s) || plainFooter(s))).join('\n  ');
   }
 
   // ---- page -------------------------------------------------------------------------------------------
@@ -520,6 +769,44 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   const embedAfter = new Set((model._provenance?.normalize?.ledger || [])
     .filter((e) => /disposition:\s*embed/i.test(e.why || '') && /embed/i.test(e.what || ''))
     .map((e) => (e.what.match(/under\s+["“]([^"”]+)["”]/) || [])[1]?.trim().toLowerCase()).filter(Boolean));
+  function bandOfPlacement(s) { const m = pageMap.slots?.[s.slot] || {}; return m.band === true || (m.band === undefined && s.placement?.region === 'band'); }
+  // Rails (mapping-json.md § rail): a slot the source sets BESIDE the content column (a section sidebar)
+  // renders in a grid column next to it at desktop, never stacked after it. Every other slot keeps its
+  // stream order on an explicit grid row; band slots (a breadcrumb over column and rail) span both columns.
+  const railOf = (s) => { const r = pageMap.slots?.[s.slot]?.rail; return r === 'start' || r === 'end' ? r : null; };
+  const railSlots = model.sections.filter(railOf);
+  const railSideOfPage = railSlots.length ? railOf(railSlots[0]) : null;
+  // "rail": "top" carries the rail as a band ABOVE the content (a donor with no side column): visually after
+  // the leading bands (the breadcrumb) and before the first content slot, by flex order — the DOM keeps the
+  // source's stream order, so the reading order and the content gate are the source's.
+  const topOf = (s) => !railSideOfPage && pageMap.slots?.[s.slot]?.rail === 'top';
+  const topSlots = model.sections.filter(topOf);
+  const orderOf = new Map();
+  if (topSlots.length) {
+    const rest = model.sections.filter((s) => !topOf(s));
+    const lead = rest.findIndex((s) => !bandOfPlacement(s));
+    const cut = lead < 0 ? rest.length : lead;
+    [...rest.slice(0, cut), ...topSlots, ...rest.slice(cut)].forEach((s, k) => orderOf.set(s.slot, k + 1));
+  }
+  if (railSideOfPage && model.sections.some((s) => pageMap.slots?.[s.slot]?.rail === 'top')) warnings.push(`rail: a page with a ${railSideOfPage} rail renders its "top" slots in stream order`);
+  const rows = new Map(); let row = 0;
+  if (railSideOfPage) {
+    for (const s of model.sections) if (!railOf(s)) rows.set(s.slot, (row += 1));
+    if (railSlots.some((s) => railOf(s) !== railSideOfPage)) warnings.push(`rail: slots ask for both sides — every rail renders on the ${railSideOfPage} side`);
+  }
+  const bandOf = (s) => bandOfPlacement(s);
+  const firstContentRow = railSideOfPage ? Math.min(...model.sections.filter((s) => !railOf(s) && !bandOf(s)).map((s) => rows.get(s.slot)), row) : 0;
+  const railWidthOf = (s) => {
+    const w = pageMap.slots?.[s.slot]?.railWidth;
+    if (typeof w === 'string' && /^\d+(\.\d+)?(px|rem|%)$/.test(w)) return w;
+    if (w !== undefined) warnings.push(`${s.slot}: railWidth "${w}" is not a length (px | rem | %) — the captured width is used`);
+    return s.rect?.w ? `${s.rect.w}px` : '320px';
+  };
+  const railMobileOf = (s) => {
+    const v = pageMap.slots?.[s.slot]?.railMobile;
+    if (['hidden', 'top', 'bottom'].includes(v)) return v;
+    return s.placement?.hiddenMobile ? 'hidden' : 'top';
+  };
   const sections = model.sections.map((s, i) => {
     const m = pageMap.slots?.[s.slot] || {};
     const layout = (m.layout || 'stack').split(/\s+/);
@@ -532,7 +819,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       const cols = Number.isInteger(m.columns) && m.columns > 0 ? m.columns : (rep.count % 3 === 0 ? 3 : 2);
       inner = [
         streamHtml(s.ordered.slice(0, rep.start), ctx),
-        `<div class="cards" style="--cards-columns: ${cols}">${items.map((it) => `<div class="card">${streamHtml(it, { ...ctx, band: false, split: false })}</div>`).join('')}</div>`,
+        `<div class="cards" style="--cards-columns: ${cols}">${items.map((it) => `<div class="card">${streamHtml(it.length === 1 && isCardItem(it[0]) ? it[0].children : it, { ...ctx, band: false, split: false })}</div>`).join('')}</div>`,
         streamHtml(s.ordered.slice(end), ctx),
       ].filter(Boolean).join('\n        ');
     } else {
@@ -541,6 +828,11 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     }
     const head = s.ordered.find((n) => n.kind === 'heading');
     if (head && embedAfter.has(String(head.text || '').trim().toLowerCase())) inner += '\n        <div class="embed-placeholder" aria-hidden="true"></div>';
+    if (m.align && m.align !== 'center') warnings.push(`${s.slot}: unknown align "${m.align}" (center) — ignored`);
+    // A split whose stream opens with its image (before any heading) keeps the image on the leading side.
+    const firstImg = s.ordered.findIndex((n) => n.kind === 'image');
+    const firstHead = s.ordered.findIndex((n) => n.kind === 'heading');
+    const mediaFirst = ctx.split && ctx.bandImage && firstImg > -1 && (firstHead === -1 || firstImg < firstHead);
     const tone = ['dark', 'light', 'accent'].includes(m.tone) ? m.tone : null;
     if (m.tone && !tone) warnings.push(`${s.slot}: unknown tone "${m.tone}" (dark | light | accent) — ignored`);
     const role = ['display', 'h2', 'h3', 'h4'].includes(m.heading) ? m.heading : null;
@@ -550,10 +842,18 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     if (m.inset && !inset) warnings.push(`${s.slot}: inset "${m.inset}" is not a length (px | rem | %) — ignored`);
     const split = typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()) ? m.split.trim() : null;
     if (m.split && !split) warnings.push(`${s.slot}: split "${m.split}" is not two column tracks (px | fr | %) — ignored`);
-    const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : [])];
-    const cls = ['band', ...layout.map((l) => `layout-${l}`), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : [])].join(' ');
-    const media = ctx.bandImage ? `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(ctx.bandImage.currentSrc || ctx.bandImage.src)} alt="${esc(ctx.bandImage.alt)}">` : '';
-    return `<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}>
+    const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : []), ...(ctx.band && backdropCss(ctx.bandImage) ? [backdropCss(ctx.bandImage)] : [])];
+    const cardTone = ['dark', 'light', 'accent'].includes(m.cardTone) ? m.cardTone : null;
+    if (m.cardTone && !cardTone) warnings.push(`${s.slot}: unknown cardTone "${m.cardTone}" (dark | light | accent) — ignored`);
+    const rail = railSideOfPage ? railOf(s) : null;
+    const railCls = !railSideOfPage ? [] : rail ? ['in-rail', `rail-mobile-${railMobileOf(s)}`] : bandOf(s) ? ['in-band'] : [];
+    if (railSideOfPage) vars.push(rail ? `grid-row: ${firstContentRow} / ${row + 1}` : `grid-row: ${rows.get(s.slot)}`);
+    if (topSlots.length) { vars.push(`order: ${orderOf.get(s.slot)}`); if (topOf(s)) railCls.push('in-top', `rail-mobile-${railMobileOf(s)}`); }
+    const cls = ['band', ...layout.map((l) => `layout-${l}`), ...(cardTone ? [`cards-${cardTone}`] : []), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []), ...(tone && m.bleed === true ? ['bleed'] : []), ...(m.align === 'center' ? ['align-center'] : []), ...(mediaFirst ? ['media-first'] : []), ...railCls].join(' ');
+    const bi = ctx.bandImage;
+    const media = !bi ? '' : ctx.split && backdropCss(bi) ? `<span class="split-img img-backdrop" style="${backdropCss(bi)}"><img ${img(bi.currentSrc || bi.src)} alt="${esc(bi.alt)}"${imgOpacity(bi)}></span>`
+      : `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(bi.currentSrc || bi.src)} alt="${esc(bi.alt)}"${imgOpacity(bi)}>`;
+    return `<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}${kitAttrs(m)}>
       ${ctx.split ? '' : media}
       <div class="container"><div class="panel"><div class="flow" data-slot-body>
           ${inner}
@@ -561,8 +861,10 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     </section>`;
   });
   const md = model.metadata || {};
+  // A key the model declares absent (a Figma-sourced page has no description) is not emitted, not even empty.
+  const declaredAbsent = new Set(md.declaredAbsent || []);
   const metaTags = [
-    md.description != null ? `<meta name="description" content="${esc(md.description)}">` : '',
+    md.description != null && !declaredAbsent.has('description') ? `<meta name="description" content="${esc(md.description)}">` : '',
     md.canonical ? `<link rel="canonical" href="${esc(md.canonical)}">` : '',
     ...Object.entries(md.ogTags || {}).map(([k, val]) => `<meta property="${esc(k)}" content="${esc(val)}">`),
     ...Object.entries(md.twitterTags || {}).map(([k, val]) => `<meta name="${esc(k)}" content="${esc(val)}">`),
@@ -570,12 +872,17 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     md.favicon ? `<link rel="icon" href="${esc(md.favicon)}">` : '',
   ].filter(Boolean).join('\n');
 
+  const headerHtml = chromeHtml(mapping.chrome?.header || [], 'header');
+  const footerHtml = chromeHtml(mapping.chrome?.footer || [], 'footer');
   const css = `${rootTokens(tokens).css.trimEnd()}
   :root {
   ${vars.map(([n, val]) => `  ${n}: ${val};`).join('\n')}
   }
   :where(.site-header, .site-main, .site-footer), :where(.site-header, .site-main, .site-footer) *, :where(.site-header, .site-main, .site-footer) *::before, :where(.site-header, .site-main, .site-footer) *::after { box-sizing: border-box; }
-  body:has(> .site-header, > .site-main, > .site-footer) { margin: 0; background: ${v('--palette-page-bg', '#fff')}; color: ${v('--palette-body-fg', 'inherit')}; font-family: ${v('--type-family', 'sans-serif')}; font-size: ${v('--type-body-font-size', '16px')}; line-height: ${v('--type-body-line-height', '1.5')}; }${clamped ? `
+  body:has(> .site-header, > .site-main, > .site-footer) { margin: 0; background: ${v('--palette-page-bg', '#fff')}; color: ${v('--palette-body-fg', 'inherit')}; font-family: ${v('--type-family', 'sans-serif')}; font-size: ${v('--type-body-font-size', '16px')}; line-height: ${v('--type-body-line-height', '1.5')}; }
+  .site-main .embed-placeholder { position: relative; height: 440px; margin-top: 48px; background: ${v('--palette-light-band-bg', '#eee')}; }
+  .site-main .embed-placeholder::after { content: ""; position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: ${v('--palette-accent', '#888')}; }
+  @media (max-width: 640px) { .site-main .embed-placeholder { height: 280px; margin-top: 32px; } }${clamped ? `
   .site-main .clamp { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }` : ''}
   .container { box-sizing: content-box; max-width: ${v('--layout-container-max-width', '1200px')}; margin: 0 auto; padding: ${v('--layout-container-padding', '0 24px')}; }
   :where(.site-header, .site-main, .site-footer) a { color: inherit; }
@@ -598,28 +905,6 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-header .nav-align-center .nav-actions { grid-column: 3; justify-self: end; }
   }
   .logo { height: 32px; width: auto; }
-  .site-header .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
-  .site-header .brand .logo { height: ${v('--header-logo-height', '56px')}; width: auto; }
-  .site-header .brand-text { display: flex; flex-direction: column; white-space: nowrap; }
-  .site-header .brand-text .nav-text:first-child { font-family: ${v('--type-display-font-family', 'inherit')}; color: ${v('--palette-heading-fg', 'inherit')}; font-size: 1.25em; line-height: 1.2; }
-  .site-header .brand-text .nav-text + .nav-text { font-size: 0.875em; font-style: italic; line-height: 1.3; }
-  .site-header .nav-actions { flex-wrap: nowrap; }
-  .site-header .nav-toggle { display: none; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
-  .glyph { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; font-size: 0; vertical-align: middle; }
-  .glyph::before { content: ""; width: 7px; height: 7px; border: solid currentcolor; border-width: 0 2px 2px 0; }
-  .glyph-right::before { transform: rotate(-45deg); } .glyph-left::before { transform: rotate(135deg); }
-  .glyph-down::before { transform: translateY(-2px) rotate(45deg); } .glyph-up::before { transform: translateY(2px) rotate(-135deg); }
-  .glyph-search::before { width: 9px; height: 9px; border: 2px solid currentcolor; border-radius: 50%; }
-  .glyph-close::before { content: "×"; width: auto; height: auto; border: 0; font-size: 20px; line-height: 1; }
-  .glyph-menu::before { width: 16px; height: 2px; border: 0; background: currentcolor; box-shadow: 0 -5px 0 currentcolor, 0 5px 0 currentcolor; }
-  .site-header .icon-btn .glyph { width: 20px; height: 20px; }
-  .site-header .utility-bar { border-bottom: 1px solid ${v('--palette-light-band-bg', '#eee')}; font-size: 12px; line-height: 1; }
-  .site-header .utility-bar .container { display: flex; justify-content: flex-end; gap: 16px; padding-top: 10px; padding-bottom: 10px; }
-  .site-header .utility-bar a { text-decoration: underline; }
-  @media (min-width: 901px) {
-    .site-header .chrome-row .container { min-height: ${v('--header-row-height', '80px')}; }
-    .site-header nav { gap: 24px; font-family: ${v('--type-nav-font-family', 'inherit')}; font-size: ${v('--type-nav-font-size', 'inherit')}; }
-  }
   .site-main section { position: relative; padding-top: ${v('--layout-section-padding-y', '64px')}; padding-bottom: ${v('--layout-section-padding-y', '64px')}; }
   .site-main .layout-media-band { background: ${v('--palette-light-band-bg', 'transparent')}; overflow: hidden; }
   .site-main .band-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -631,8 +916,31 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main h1, .site-main h2, .site-main h3, .site-main h4 { font-family: ${v('--type-display-font-family', 'inherit')}; font-weight: ${v('--type-display-font-weight', '700')}; color: ${v('--palette-heading-fg', 'inherit')}; margin: 0 0 24px; }
   .site-main .heading { font-size: ${v('--type-display-font-size', '2em')}; line-height: ${v('--type-display-line-height', '1.2')}; text-align: ${v('--type-display-text-align', 'left')}; }
   ${['h2', 'h3', 'h4'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main .heading-${h} .heading { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.2')}; }`).join('\n  ')}
+  ${['h2', 'h3', 'h4', 'h5', 'h6'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main .band .flow .heading.role-${h} { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.3')}; }`).join('\n  ')}
   .site-main .heading-display .heading { font-size: ${v('--type-display-font-size', '2em')}; line-height: ${v('--type-display-line-height', '1.2')}; }
   .site-main .inset > .container { max-width: none; padding: 0 var(--band-inset); }
+  /* rails (mapping-json.md § rail): the source's side column sits beside the content, never after it */
+  @media (min-width: 901px) {
+    .site-main.has-rail { display: grid; grid-template-columns: var(--rail-width) minmax(0, 1fr); align-items: start; }
+    .site-main.has-rail.rail-end { grid-template-columns: minmax(0, 1fr) var(--rail-width); }
+    .site-main.has-rail > section { grid-column: 2; min-width: 0; }
+    .site-main.has-rail.rail-end > section { grid-column: 1; }
+    .site-main.has-rail > section.in-band { grid-column: 1 / -1; }
+    .site-main.has-rail > section.in-rail { grid-column: 1; }
+    .site-main.has-rail.rail-end > section.in-rail { grid-column: 2; }
+  }
+  /* one column at 900px and under: normal flow (the page's own margins), a flex column only to move a rail */
+  @media (max-width: 900px) {
+    .site-main.has-rail.rail-reorder { display: flex; flex-direction: column; }
+    .site-main.has-rail.rail-reorder > section.in-band { order: -2; }
+    .site-main.has-rail.rail-reorder > section.rail-mobile-top { order: -1; }
+    .site-main.has-rail.rail-reorder > section.rail-mobile-bottom { order: 1; }
+    .site-main.has-rail > section.rail-mobile-hidden { display: none; }
+    .site-main.rail-top > section.rail-mobile-hidden { display: none; }
+    .site-main.rail-top > section.rail-mobile-bottom { order: 9999; }
+  }
+  .site-main.rail-top { display: flex; flex-direction: column; }
+  .site-main.rail-top > section { min-width: 0; }
   ${['h2', 'h3', 'h4'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main ${h}.heading { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.2')}; font-weight: ${v(`--type-${h}-font-weight`, 'inherit')}; }`).join('\n  ')}
   ${has('--type-h3-font-size') ? `.site-main .card .heading { font-size: var(--type-h3-font-size); line-height: ${v('--type-h3-line-height', '1.2')}; font-weight: ${v('--type-h3-font-weight', 'inherit')}; }` : ''}
   ${has('--radii-label') ? `.site-main .band:not([class*="heading-"]) .flow > h2.heading:first-child, .site-main .heading-h2 .flow > .heading:first-child { display: inline-block; justify-self: start; background: ${v('--palette-accent', 'transparent')}; border-radius: var(--radii-label); padding: 0 7px; }` : ''}
@@ -644,10 +952,61 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .check { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .site-main .check input { flex: none; width: 20px; height: 20px; accent-color: ${v('--palette-accent', 'auto')}; }
   .site-main .actions { margin: 24px 0 0; }
-  .site-main .btn { display: inline-flex; align-items: center; justify-content: center; min-height: ${r('--button-height', '40px')}; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; line-height: ${v('--buttons-primary-line-height', v('--type-body-line-height', 'inherit'))}; text-decoration: none; cursor: pointer; }
-  .site-main .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
+  :is(.site-main, .site-header) .btn { display: inline-flex; align-items: center; justify-content: center; min-height: ${r('--button-height', '40px')}; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; line-height: ${v('--buttons-primary-line-height', v('--type-body-line-height', 'inherit'))}; text-decoration: none; cursor: pointer; }
+  :is(.site-main, .site-header) .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
   .site-main .width-narrow .btn { width: 100%; }
 
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .glyph { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; font-size: 0; vertical-align: middle; }
+  .glyph::before { content: ""; width: 7px; height: 7px; border: solid currentcolor; border-width: 0 2px 2px 0; }
+  .glyph-right::before { transform: rotate(-45deg); } .glyph-left::before { transform: rotate(135deg); }
+  .glyph-down::before { transform: translateY(-2px) rotate(45deg); } .glyph-up::before { transform: translateY(2px) rotate(-135deg); }
+  .glyph-search::before { width: 9px; height: 9px; border: 2px solid currentcolor; border-radius: 50%; }
+  .glyph-close::before { content: "×"; width: auto; height: auto; border: 0; font-size: 20px; line-height: 1; }
+  .glyph-menu::before { width: 16px; height: 2px; border: 0; background: currentcolor; box-shadow: 0 -5px 0 currentcolor, 0 5px 0 currentcolor; }
+  .site-header .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
+  .site-header .icon-btn .glyph { width: 20px; height: 20px; }
+  .site-header .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .site-header .brand .logo { height: ${v('--header-logo-height', '56px')}; width: auto; }
+  .site-header .brand-text { display: flex; flex-direction: column; white-space: nowrap; }
+  .site-header .nav-actions { flex-wrap: nowrap; }
+  .site-header .icon-btn .glyph-search::before { width: 13px; height: 13px; }
+  .site-header .brand-text .nav-text:first-child { font-family: ${v('--type-display-font-family', 'inherit')}; color: ${v('--palette-heading-fg', 'inherit')}; font-size: 1.25em; line-height: 1.2; }
+  .site-header .brand-text .nav-text + .nav-text { font-size: 0.875em; font-style: italic; line-height: 1.3; }
+  .site-header nav .glyph { display: none; }
+  .site-header .utility-bar { border-bottom: 1px solid ${v('--palette-light-band-bg', '#eee')}; font-size: 12px; line-height: 1; }
+  .site-header .utility-bar .container { display: flex; justify-content: flex-end; gap: 16px; padding-top: 10px; padding-bottom: 10px; }
+  .site-header .utility-bar a { text-decoration: underline; }
+  @media (min-width: 901px) {
+    .site-header .chrome-row .container { min-height: ${v('--header-row-height', '80px')}; }
+    .site-header nav { gap: 24px; font-family: ${v('--type-nav-font-family', 'inherit')}; font-size: ${v('--type-nav-font-size', 'inherit')}; }
+  }
+  .site-header .nav-toggle { display: none; }
+  .site-header .glyph-search::before { box-shadow: none; }
+  .site-header .glyph-search { position: relative; }
+  .site-header .glyph-search::after { content: ""; position: absolute; width: 2px; height: 6px; background: currentcolor; transform: translate(7px, 7px) rotate(-45deg); }
+  @media (max-width: 900px) {
+    .site-header nav, .site-header .utility-bar { display: none; }
+    .site-header .nav-toggle { display: inline-flex; }
+    .site-header.nav-open .chrome-row .container { flex-wrap: wrap; }
+    .site-header.nav-open nav { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; flex-basis: 100%; order: 3; margin: 0; padding: 8px 0 16px; }
+    .site-header .chrome-row .container { flex-wrap: nowrap; min-height: 64px; }
+    .site-header .brand .logo { height: ${v('--header-logo-height-mobile', '40px')}; }
+    .site-header .brand-text { font-size: 14px; }
+  }
+  .site-main .disclosure { border-bottom: 1px solid ${v('--palette-light-band-bg', '#ddd')}; }
+  .site-main .disclosure:first-of-type, .site-main :not(.disclosure) + .disclosure { border-top: 1px solid ${v('--palette-light-band-bg', '#ddd')}; }
+  .site-main .disclosure-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 24px; padding: 20px 0; border: 0; background: none; color: ${v('--palette-heading-fg', 'inherit')}; font-family: ${v('--type-display-font-family', 'inherit')}; font-size: ${v('--type-h3-font-size', '1.25em')}; line-height: ${v('--type-h3-line-height', '1.3')}; font-weight: ${v('--type-h3-font-weight', '600')}; text-align: left; cursor: pointer; }
+  .site-main .disclosure-toggle .glyph { color: ${v('--palette-accent', 'currentColor')}; width: 24px; height: 24px; }
+  .site-main .disclosure-toggle[aria-expanded="true"] .glyph::before { transform: translateY(2px) rotate(-135deg); }
+  .site-main .disclosure-panel { padding: 0 0 24px; }
+  .site-main .table-wrap { overflow-x: auto; margin: 0 0 24px; }
+  .site-main .table { width: 100%; border-collapse: collapse; }
+  .site-main .table :is(th, td) { padding: 16px; border-bottom: 1px solid ${v('--palette-light-band-bg', '#ddd')}; text-align: left; vertical-align: top; }
+  .site-main .table th { background: ${v('--palette-light-band-bg', '#f3f3f3')}; color: ${v('--palette-heading-fg', 'inherit')}; }
+  .site-main .table :is(th, td) p { margin: 0; }
+  .site-main .media-wide img { width: 100%; max-height: none; }
+  .site-main .inline-media { display: block; width: 100%; height: auto; margin: 0 0 16px; }
   .site-main .list { padding-left: 1.2em; }
   .site-main .media img { max-height: 360px; width: auto; }
   .site-main .icon { display: inline-block; height: 1.6em; width: auto; vertical-align: middle; margin-right: 0.5em; }
@@ -655,20 +1014,38 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .logos img { height: 48px; width: auto; }
   .site-main .layout-split .panel { display: grid; grid-template-columns: var(--split-columns, 1fr 1fr); gap: ${v('--layout-column-gap', '40px')}; align-items: center; }
   .site-main .split-img { max-width: 100%; max-height: 520px; justify-self: end; }
+  .site-main .media-first .split-img { order: -1; justify-self: start; }
+  .site-main .align-center .flow { text-align: center; justify-items: center; }
+  .site-main .align-center .flow > :is(.actions, .logos) { justify-content: center; }
+  .site-main .align-center .card { text-align: start; }
+  .site-main .band.align-center .flow > .heading:first-child { justify-self: center; }
+  .site-main .align-center .flow > .heading { text-align: center; }
+  .site-main .align-center.width-narrow .panel { margin-inline: auto; }
   .site-main .cards { display: grid; grid-template-columns: repeat(var(--cards-columns, 3), minmax(0, 1fr)); gap: ${v('--layout-column-gap', '40px')}; margin: 16px 0; }
   .site-main .card { background: ${r('--card-bg', v('--palette-light-band-bg', 'transparent'))}; border-radius: ${r('--card-radius', v('--radii-card', '0'))}; box-shadow: ${v('--shadows-card', 'none')}; padding: ${r('--card-padding', '40px')}; }${rootNames.has('--card-title-color') ? '\n  .site-main .card :is(h2, h3, h4, .heading) { color: var(--card-title-color); }' : ''}
-  .site-main .card > :last-child { margin-bottom: 0; }
   .site-main .card > p.aux:first-child:has(> .link:only-child) .link { font-family: ${v('--type-heading-family', 'inherit')}; font-size: ${v('--type-h4-font-size', '1.5em')}; line-height: 1.25; color: ${v('--palette-accent', 'inherit')}; text-decoration: none; }
   .site-main .card > .glyph:last-child { display: flex; width: 28px; height: 28px; margin-top: 12px; color: ${v('--palette-accent', 'currentColor')}; position: relative; }
   .site-main .card > .glyph-right:last-child::before { position: absolute; right: 6px; width: 9px; height: 9px; transform: rotate(-45deg); }
   .site-main .card > .glyph-right:last-child::after { content: ""; position: absolute; left: 4px; right: 5px; top: 13px; height: 2px; background: currentcolor; }
-  .site-main .embed-placeholder { position: relative; height: 440px; margin-top: 48px; background: ${v('--palette-light-band-bg', '#eee')}; }
-  .site-main .embed-placeholder::after { content: ""; position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: ${v('--palette-accent', '#888')}; }
-  @media (max-width: 640px) { .site-main .embed-placeholder { height: 280px; margin-top: 32px; } }
+  .site-main .card > :last-child { margin-bottom: 0; }
+  .site-main .card:has(> .media:first-child) { padding: 0 0 32px; overflow: hidden; }
+  .site-main .card:has(> .media:first-child) > :not(.media:first-child) { margin-inline: 24px; }
+  .site-main .card > .media:first-child { margin: 0 0 24px; }
+  .site-main .card > .media:first-child img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; max-height: none; }
+  .site-main :is(.cards-dark, .cards-accent, .cards-light) .card { border-color: transparent; }
+  .site-main .cards-dark .card { background: ${v('--palette-dark-band-bg', '#111')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
+  .site-main .cards-accent .card { background: ${v('--palette-accent', 'transparent')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
+  .site-main .cards-light .card { background: ${v('--palette-light-band-bg', '#f3f3f3')}; }
+  .site-main :is(.cards-dark, .cards-accent) .card :is(h1, h2, h3, h4, .heading, .link) { color: inherit; }
   .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { border-radius: ${v('--radii-card', '0')}; padding: 50px 60px; }
+  .site-main .bleed.tone-dark, .site-main .bleed.tone-light, .site-main .bleed.tone-accent { padding-top: ${v('--layout-section-padding-y', '64px')}; padding-bottom: ${v('--layout-section-padding-y', '64px')}; }
+  .site-main .bleed.tone-dark { background: ${v('--palette-dark-band-bg', '#111')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
+  .site-main .bleed.tone-light { background: ${v('--palette-light-band-bg', '#f3f3f3')}; }
+  .site-main .bleed.tone-accent { background: ${v('--palette-accent', 'transparent')}; }
+  .site-main .bleed .panel { background: none !important; border-radius: 0; padding: 0; }
   .site-main .tone-dark .panel { background: ${v('--palette-dark-band-bg', '#111')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
   .site-main .tone-dark :is(h1, h2, h3, h4) { color: inherit; }
-  .site-main .tone-dark .card { background: transparent; box-shadow: none; }
+  .site-main .tone-dark .card { background: transparent; box-shadow: none; border-color: transparent; }
   .site-main .tone-light .panel { background: ${v('--palette-light-band-bg', '#f3f3f3')}; }
   .site-main .tone-light .card { background: ${v('--palette-page-bg', '#fff')}; }
   .site-main .tone-accent .panel { background: ${v('--palette-accent', 'transparent')}; }
@@ -697,9 +1074,10 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-footer .footer-social li { margin: 0; }
   @media (max-width: 900px) {
     .site-main .layout-grid-2 .flow { grid-template-columns: 1fr; }
-    .site-main .layout-split .panel { grid-template-columns: 1fr; }
+    .site-main .layout-split .panel { grid-template-columns: minmax(0, 1fr); }
+    .site-main .layout-split .panel > * { min-width: 0; }
     .site-main .split-img { justify-self: stretch; width: 100%; }
-    .site-main .cards { grid-template-columns: 1fr; }
+    .site-main .cards { grid-template-columns: minmax(0, 1fr); }
     .site-footer .chrome-footer { grid-template-columns: 1fr; }
     .site-footer .footer-main { flex-direction: column; gap: 24px; }
     .site-footer .footer-zoned { text-align: center; line-height: 1.4; }
@@ -707,14 +1085,6 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-footer .footer-brand .logo { margin: 0 auto 24px; }
     .site-footer .footer-social { justify-content: center; margin-top: 24px; white-space: nowrap; }
     .site-footer .footer-zoned li { margin-bottom: 12px; }
-    .site-header nav { display: none; }
-    .site-header .utility-bar { display: none; }
-    .site-header .nav-toggle { display: inline-flex; }
-    .site-header.nav-open .chrome-row .container { flex-wrap: wrap; }
-    .site-header.nav-open nav { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; flex-basis: 100%; order: 3; margin: 0; padding: 8px 0 16px; }
-    .site-header .chrome-row .container { flex-wrap: nowrap; min-height: 64px; }
-    .site-header .brand .logo { height: ${v('--header-logo-height-mobile', '40px')}; }
-    .site-header .brand-text { font-size: 14px; }
   }
   @media (max-width: 640px) {
     .site-main section { padding-top: ${r('--section-padding-mobile', '24px')}; padding-bottom: ${r('--section-padding-mobile', '24px')}; }
@@ -722,9 +1092,15 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-main .inset > .container { padding: 0 ${r('--gutter-mobile', '20px')}; }${rootNames.has('--gutter-mobile') ? '\n    .container { padding-left: var(--gutter-mobile); padding-right: var(--gutter-mobile); }' : ''}
     .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { padding: 32px ${r('--gutter-mobile', '20px')}; }
     .site-footer ul { columns: 1; }
-  }`;
+    .site-main .table :is(th, td) { padding: 8px; }
+    .site-main :is(.heading, .heading-display .heading) { font-size: min(${v('--type-display-font-size', '2em')}, 11vw); }
+    .site-main .heading { overflow-wrap: break-word; }
+  }${sections.some((h) => h.includes('img-backdrop')) ? `
+  .site-main .img-backdrop { display: block; } .site-main .img-backdrop > img { display: block; width: 100%; height: auto; }` : ''}${footerHtml.includes('footer-zoned') ? `
+  .site-footer .footer-brand .logo { height: ${v('--footer-logo-height', v('--header-logo-height', '48px'))}; min-height: 48px; }` : ''}${footerHtml.includes('class="social-icon"') ? `
+  .site-footer .social-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; }
+  .site-footer .social-icon svg { width: 24px; height: 24px; fill: currentcolor; }` : ''}`;
 
-  const headerHtml = chromeHtml(mapping.chrome?.header || [], 'header');
   const html = `<!doctype html>
 <html lang="${esc(md.lang || 'en')}">
 <head>
@@ -752,13 +1128,14 @@ ${css}
 <header class="site-header" data-canon="header">
   ${headerHtml}
 </header>
-<main class="site-main" data-template="${esc(pageMap.template || slug)}">
+<main class="site-main${railSideOfPage ? ` has-rail rail-${railSideOfPage}${railSlots.some((r) => railMobileOf(r) !== 'hidden') ? ' rail-reorder' : ''}` : topSlots.length ? ' rail-top' : ''}"${railSideOfPage ? ` style="--rail-width: ${railWidthOf(railSlots[0])}"` : ''} data-template="${esc(pageMap.template || slug)}">
   ${sections.join('\n  ')}
 </main>
 <footer class="site-footer${['dark', 'light', 'accent'].includes(mapping.chrome?.footerTone) ? ` tone-${mapping.chrome.footerTone}` : ''}" data-canon="footer">
-  ${chromeHtml(mapping.chrome?.footer || [], 'footer')}
+  ${footerHtml}
 </footer>${headerHtml.includes('class="icon-btn nav-toggle"') ? `
-<script>document.addEventListener('click', (e) => { const b = e.target.closest('.nav-toggle'); if (!b) return; const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); b.closest('.site-header').classList.toggle('nav-open', open); });</script>` : ''}
+<script>document.addEventListener('click', (e) => { const b = e.target.closest('.nav-toggle'); if (!b) return; const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); b.closest('.site-header').classList.toggle('nav-open', open); });</script>` : ''}${sections.some((h) => h.includes('class="disclosure"')) ? `
+<script>document.addEventListener('click', (e) => { const b = e.target.closest('.disclosure-toggle'); if (!b) return; const p = document.getElementById(b.getAttribute('aria-controls')); const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); if (open) p.removeAttribute('hidden'); else p.setAttribute('hidden', 'until-found'); });</script>` : ''}
 </body>
 </html>
 `;
@@ -769,10 +1146,15 @@ ${css}
 // Every key render() reads, with its allowed values. Keys starting with `_` or `$` are annotations
 // ($schema, _note, _provenance) and are never read. Pure; exported for tests.
 export const MAPPING_SCHEMA = {
-  top: ['chrome', 'pages', 'blocks'],
-  chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign'],
-  page: ['template', 'slots'],
-  slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split'],
+  // library, chrome.kit and pages[].defaultContent come from figma-donor's mapping.seed.json: a copied seed is
+  // read as the documented starting point, not rendered.
+  top: ['chrome', 'pages', 'blocks', 'library'],
+  chrome: ['model', 'header', 'footer', 'footerTone', 'navAlign', 'kit'],
+  page: ['template', 'slots', 'defaultContent'],
+  slot: ['module', 'layout', 'width', 'tone', 'columns', 'heading', 'inset', 'split', 'bleed', 'align', 'cardTone', 'block', 'variant', 'instance', 'rail', 'railWidth', 'railMobile', 'band'],
+  rail: ['start', 'end', 'top', 'none'],
+  railMobile: ['hidden', 'top', 'bottom'],
+  align: ['center'],
   layout: ['stack', 'grid-2', 'media-band', 'split', 'cards'],
   width: ['narrow', 'wide'],
   tone: ['dark', 'light', 'accent'],
@@ -785,7 +1167,7 @@ const annotation = (k) => k.startsWith('_') || k.startsWith('$');
 // Validates a parsed mapping.json. models: { <slug>: content model | null } (null/absent: slot ids not
 // checked); chromeModel: the chrome content model or null; slugs: pages that must be present.
 // Returns ["<path>: <problem>", …]; empty when valid.
-export function checkMapping(mapping, { models = {}, chromeModel = null, slugs = [] } = {}) {
+export function checkMapping(mapping, { models = {}, chromeModel = null, slugs = [], coverage = null } = {}) {
   const S = MAPPING_SCHEMA; const out = [];
   const one = (v, allowed) => allowed.includes(v);
   const unknown = (o, allowed, at) => { for (const k of Object.keys(o)) if (!annotation(k) && !allowed.includes(k)) out.push(`${at}${k}: unknown key (allowed: ${allowed.join(', ')})`); };
@@ -841,6 +1223,29 @@ export function checkMapping(mapping, { models = {}, chromeModel = null, slugs =
       if (m.columns !== undefined && !(Number.isInteger(m.columns) && m.columns > 0)) out.push(`${sat}.columns: ${JSON.stringify(m.columns)} is not a positive integer`);
       if (m.inset !== undefined && !(typeof m.inset === 'string' && /^\d+(\.\d+)?(px|rem|%)$/.test(m.inset))) out.push(`${sat}.inset: ${JSON.stringify(m.inset)} is not a length (px | rem | %)`);
       if (m.split !== undefined && !(typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()))) out.push(`${sat}.split: ${JSON.stringify(m.split)} is not two column tracks (px | fr | %)`);
+      if (m.bleed !== undefined && typeof m.bleed !== 'boolean') out.push(`${sat}.bleed: ${JSON.stringify(m.bleed)} is not true | false`);
+      if (m.align !== undefined && !one(m.align, S.align)) out.push(`${sat}.align: "${m.align}" is not ${S.align.join(' | ')}`);
+      if (m.cardTone !== undefined && !one(m.cardTone, S.tone)) out.push(`${sat}.cardTone: "${m.cardTone}" is not ${S.tone.join(' | ')}`);
+      if (m.block !== undefined && !(typeof m.block === 'string' && BLOCK_TOKEN.test(m.block))) out.push(`${sat}.block: ${JSON.stringify(m.block)} is not an EDS block name (lower-case letters, digits, hyphens)`);
+      if (m.variant !== undefined && !(Array.isArray(m.variant) && m.variant.every((t) => typeof t === 'string' && BLOCK_TOKEN.test(t)))) out.push(`${sat}.variant: ${JSON.stringify(m.variant)} is not an array of class tokens`);
+      if (m.instance !== undefined && !(typeof m.instance === 'string' && /^I?\d+:\d+(?:;\d+:\d+)*$/.test(m.instance))) out.push(`${sat}.instance: ${JSON.stringify(m.instance)} is not a Figma node id`);
+      for (const k of ['rail', 'railMobile']) if (m[k] !== undefined && !one(m[k], S[k])) out.push(`${sat}.${k}: "${m[k]}" is not ${S[k].join(' | ')}`);
+      if (m.railWidth !== undefined && !(typeof m.railWidth === 'string' && /^\d+(\.\d+)?(px|rem|%)$/.test(m.railWidth))) out.push(`${sat}.railWidth: ${JSON.stringify(m.railWidth)} is not a length (px | rem | %)`);
+      if (m.band !== undefined && typeof m.band !== 'boolean') out.push(`${sat}.band: ${JSON.stringify(m.band)} is not true | false`);
+    }
+    // A slot the source places beside the content column must be placed by the mapping: stacking it in
+    // stream order puts a section sidebar above the footer (the recorded failure, two migrations).
+    if (model) {
+      for (const sec of model.sections || []) {
+        const side = railSide(sec.placement?.region);
+        const m = pm.slots[sec.slot];
+        if (side && !(isObj(m) && one(m.rail, S.rail))) out.push(`${at}.slots.${sec.slot}: the source sets this slot as a ${side} rail beside the content (placement ${sec.placement.region}${sec.rect?.w ? `, ${sec.rect.w}px` : ''}${sec.placement.hiddenMobile ? ', hidden on mobile' : ''}) — set "rail": "${side}", "top" (a band above the content) or "none", the last two with a coverage/<slug>.json placement declaration: reference/mapping-json.md § rail`);
+        // A rail carried elsewhere is a declared move gate (a′) S4 verifies: "top" must be declared to: "top".
+        else if (side && coverage && (m.rail === 'top' || m.rail === 'none')) {
+          const decl = (coverage[slug] || []).find((d) => d.slot === sec.slot && (m.rail !== 'top' || d.to === 'top'));
+          if (!decl) out.push(`${at}.slots.${sec.slot}: "rail": "${m.rail}" moves the source's ${side} rail — declare it in coverage/${slug}.json: "placement": [{ "slot": "${sec.slot}", "to": "${m.rail === 'top' ? 'top' : 'band'}", "why": "…" }]`);
+        }
+      }
     }
   }
   return out;
@@ -1000,7 +1405,9 @@ function checkCli(o, mappingFile, modelDir) {
   }
   const chromeDir = isObj(mapping?.chrome) && typeof mapping.chrome.model === 'string' ? mapping.chrome.model : null;
   const chromeModel = chromeDir ? optionalJson(join(chromeDir, 'content-model.json')) : null;
-  const problems = checkMapping(mapping, { models, chromeModel, slugs });
+  const coverage = {};
+  for (const slug of Object.keys(models)) coverage[slug] = optionalJson(join(dirname(mappingFile), 'coverage', `${slug}.json`))?.placement || [];
+  const problems = checkMapping(mapping, { models, chromeModel, slugs, coverage });
   if (chromeDir && !chromeModel) problems.push(`chrome.model: no content-model.json under ${chromeDir}`);
   if (unmodelled.length) console.error(`note: no content model under ${modelDir} for ${unmodelled.join(', ')} — their slot ids are not checked`);
   for (const p of problems) console.log(p);
@@ -1099,6 +1506,33 @@ async function main(argv) {
   const input = { slug, model, tokens, mapping, chromeModel };
 
   let result = render(input);
+  // The image resolvers compose: the Figma asset mapping first, then --localize-images for remote URLs.
+  let resolveImg = (u) => ({ src: u });
+  // Figma-sourced models reference their own cached bytes (assets/<node>.<ext> beside the model): copy them
+  // under prototypes/assets/img/figma/<slug>/ (the migrate/deploy bundler root) and keep data-source-src.
+  const relSrc = (u) => u && !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(u) && !u.startsWith('/');
+  if (model._provenance?.source?.kind === 'figma' || result.images.some(relSrc)) {
+    const roots = [join(dir, 'reskin', 'content-model', slug), mapping.chrome?.model].filter(Boolean);
+    const target = resolve(dir, 'prototypes', 'assets', 'img', 'figma', slug);
+    const copied = new Map(); const missing = [];
+    for (const u of result.images.filter(relSrc)) {
+      const from = u.split(/[\\/]/).includes('..') ? null : roots.map((r) => join(r, u)).find((f) => existsSync(f) && resolve(f).startsWith(resolve(dirname(f), '..') + sep));
+      if (!from) { missing.push(u); continue; }
+      const to = join(target, ...u.split('/'));
+      mkdirSync(dirname(to), { recursive: true });
+      copyFileSync(from, to);
+      // The page's own assets/ mirror, as --localize-images keeps: src="assets/img/…" resolves from the page and,
+      // through migrate's `assets/` prefix, against its default --proto-dir (<dir>/prototypes).
+      const mirror = join(dirname(out), 'assets', relative(resolve(dir, 'prototypes', 'assets'), to));
+      if (resolve(mirror) !== resolve(to)) { mkdirSync(dirname(mirror), { recursive: true }); copyFileSync(to, mirror); }
+      copied.set(u, mirror);
+    }
+    const rel = (file) => relative(dirname(out), file).split(sep).join('/');
+    resolveImg = (u) => (copied.has(u) ? { src: rel(copied.get(u)), source: u } : { src: u });
+    result = render({ ...input, resolveImg });
+    console.log(`figma assets: ${copied.size} copied → ${relative(process.cwd(), target)}/`);
+    for (const u of missing) console.error(`WARN figma asset missing: ${u} (supply it under the model's assets/ and re-run figma-donor.mjs content)`);
+  }
   if (o['localize-images']) {
     const assetsDir = resolve(dir, 'prototypes', 'assets');
     const loc = await localize(result.images, assetsDir, model.metadata?.canonical || model.url || undefined);
@@ -1111,7 +1545,9 @@ async function main(argv) {
       return [u, mirror];
     }));
     const rel = (file) => relative(dirname(out), file).split(sep).join('/');
-    result = render({ ...input, resolveImg: (u) => (local.has(u) ? { src: rel(local.get(u)), source: u } : { src: u }) });
+    const figmaResolve = resolveImg;
+    resolveImg = (u) => (local.has(u) ? { src: rel(local.get(u)), source: u } : figmaResolve(u));
+    result = render({ ...input, resolveImg });
     console.log(`localized ${loc.map.size}/${result.images.length} image(s) → ${relative(process.cwd(), assetsDir)}/img/`);
     for (const f of loc.failed) console.error(`WARN image kept remote: ${f.url} (${f.why})`);
   }

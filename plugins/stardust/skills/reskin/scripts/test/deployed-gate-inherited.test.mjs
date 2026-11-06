@@ -16,7 +16,7 @@ import { UsageError } from '../figma/errors.mjs';
 import { readJson } from '../figma/io.mjs';
 import { main } from '../deployed-gate.mjs';
 import { deployedDir } from '../deployed/io.mjs';
-import { deployTools, inheritedLines, plainAsserts, runInherited } from '../deployed/inherited.mjs';
+import { deployTools, inheritedLines, pathKey, plainAsserts, runInherited, strandedLinks } from '../deployed/inherited.mjs';
 import { fixturePath, startPreviewServer } from './fixtures/deployed/servers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -40,9 +40,15 @@ const run = (args, { cwd = scratch, env = {}, script = GATE } = {}) => new Promi
 });
 
 // A project root with the record of the preview step (unless `preview` is false), pointed at `origin`.
-const project = (name, { origin = 'http://127.0.0.1:9', preview = true, record = {} } = {}) => {
+// The migration set the internal-links row reads: the live source's pages, one captured content model each.
+const MODELS = { home: 'https://src.test/', about: 'https://src.test/about' };
+const project = (name, { origin = 'http://127.0.0.1:9', preview = true, record = {}, models = MODELS } = {}) => {
   const root = join(scratch, name);
   mkdirSync(join(root, 'stardust'), { recursive: true });
+  for (const [slug, url] of Object.entries(models)) {
+    mkdirSync(join(root, 'stardust', 'reskin', 'content-model', slug), { recursive: true });
+    writeFileSync(join(root, 'stardust', 'reskin', 'content-model', slug, 'content-model.json'), `${JSON.stringify({ _provenance: { url }, sections: [] })}\n`);
+  }
   if (preview) {
     const out = deployedDir(join(root, 'stardust'), 'home');
     mkdirSync(out, { recursive: true });
@@ -288,6 +294,7 @@ await check('a clean preview: .plain.html, ai-readability and qa-gate pass, depl
   assert.equal(result.exit, 0);
   assert.deepEqual(brief(result.rows), [
     { check: '.plain.html', value: '200, 1 <h1>', bar: '200, one <h1>, no about:error, no /img/ src', status: 'PASS' },
+    { check: 'internal links', value: 'none in 1 document(s)', bar: 'no link to the source site for a migrated page (page, nav, footer)', status: 'PASS' },
     { check: 'ai-readability', value: '99', bar: '≥ 98', status: 'PASS' },
     { check: 'qa-gate', value: '12 ok, 1 warn, 0 fail', bar: '0 fail', status: 'PASS' },
     ...BY_DEPLOY.map((c) => ({ check: c, value: 'by deploy', bar: BY_DEPLOY_BAR, status: 'by deploy' })),
@@ -300,11 +307,42 @@ await check('a clean preview: .plain.html, ai-readability and qa-gate pass, depl
   assert.deepEqual(ai.argv, ['--origin', origin, '/ns/home', '--min', '98', '--json', join(outOf(root), 'inherited', 'ai-readability.json')]);
   assert.equal(qa.tool, 'qa');
   assert.deepEqual(qa.argv, [`${origin}/ns/home`, '--schema', join(root, 'stardust', 'eds-schema', 'home.json'), '--design', join(outOf(root), 'design.json')]);
-  assert.deepEqual(requests.map((q) => `${q.method} ${q.path}`), ['GET /ns/home.plain.html']);
+  assert.deepEqual(requests.map((q) => `${q.method} ${q.path}`), ['GET /ns/home.plain.html', 'GET /ns/nav.plain.html', 'GET /ns/footer.plain.html']);
   assert.deepEqual(readJson(join(outOf(root), 'inherited.json')), { verdict: 'PASS', rows: result.rows });
   assert.equal(readFileSync(join(outOf(root), 'inherited', 'qa-gate.txt'), 'utf8'), QA_PASS.stdout, 'qa-gate\'s report is kept');
   assert.equal(readJson(join(outOf(root), 'inherited', 'ai-readability.json')).pages[0].code.score, 99);
   assert.deepEqual(inheritedLines(result), ['PASS inherited', 'by deploy (localize-links --check, davids-model-lint, block-roundtrip --ew)']);
+});
+
+await check('internal links: strandedLinks keeps a source-host link only for a migrated path (any scheme, www., trailing slash, .html, query)', () => {
+  const set = { host: 'src.test', paths: new Set(['/', '/about', '/about/team']) };
+  const html = '<a href="https://src.test/about">a</a><a href="http://www.src.test/about/team/?x=1#y">b</a><a href="https://src.test/about.html">c</a>'
+    + '<a href="https://src.test/old-page">d</a><a href="/about">e</a><a href="https://example.test/about">f</a><a class="x" href="https://src.test/">g</a>';
+  assert.deepEqual(strandedLinks(html, set), ['https://src.test/about', 'http://www.src.test/about/team/?x=1#y', 'https://src.test/about.html', 'https://src.test/']);
+  assert.deepEqual(['/x/', '/x.html', '/x/index', '/', ''].map(pathKey), ['/x', '/x', '/x', '/', '/']);
+});
+
+await check('internal links: a delivered link to the old site for a migrated page FAILs, the header nav document included; an unmigrated page is kept', async () => {
+  const page = variant('stranded', ['href="/about/"', 'href="https://src.test/about"'], ['href="https://example.test/try"', 'href="https://src.test/not-migrated"']);
+  const nav = join(scratch, 'stranded-nav.html');
+  writeFileSync(nav, '<body><header></header><main><div><ul><li><a href="https://www.src.test/">Home</a></li><li><a href="/ns/about">About</a></li></ul></div></main></body>');
+  writeFileSync(join(scratch, 'stranded-nav.plain.html'), '<div><ul><li><a href="https://www.src.test/">Home</a></li><li><a href="/ns/about">About</a></li></ul></div>');
+  const { result, error, requests } = await scenario('stranded', { pages: { '/ns/home': page, '/ns/nav': nav } });
+  assert.ifError(error);
+  const row = pick(result.rows, 'internal links');
+  assert.equal(row.status, 'FAIL');
+  assert.match(row.value, /^2 link\(s\) to src\.test for pages the migration serves — run deploy's localize-links/);
+  assert.equal(row.detail, 'page: https://src.test/about\nnav: https://www.src.test/');
+  assert.equal(result.verdict, 'FAIL');
+  assert.ok(requests.some((q) => q.path === '/ns/nav.plain.html'), 'the namespaced nav document is read');
+  const server = await startPreviewServer({ pages: { '/ns/home': page } });
+  try {
+    const root = project('stranded-figma', { origin: server.origin, models: {} });
+    writeSchema(root); writeDesign(root);
+    const figma = await runInherited({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), tools: stubTools('stranded-figma').tools });
+    assert.deepEqual([pick(figma.rows, 'internal links').status, pick(figma.rows, 'internal links').value], ['n/a', 'n/a: no live source (the content model has no source url)'], 'a Figma-only page has no old site to leave for');
+    assert.ok(inheritedLines(figma).includes('n/a: no live source (the content model has no source url) (internal links)'), 'never a silent pass');
+  } finally { await server.close(); }
 });
 
 await check('ai-readability below 98 is a FAIL naming the score and the blocks the served HTML lacks; the other rows are unchanged', async () => {
@@ -312,7 +350,7 @@ await check('ai-readability below 98 is a FAIL naming the score and the blocks t
   assert.ifError(error);
   assert.equal(result.verdict, 'FAIL');
   assert.equal(result.exit, 1);
-  assert.deepEqual(brief(result.rows).filter((r) => r.status !== 'by deploy').map((r) => `${r.check} ${r.value} ${r.status}`), ['.plain.html 200, 1 <h1> PASS', 'ai-readability 97 FAIL', 'qa-gate 12 ok, 1 warn, 0 fail PASS']);
+  assert.deepEqual(brief(result.rows).filter((r) => r.status !== 'by deploy').map((r) => `${r.check} ${r.value} ${r.status}`), ['.plain.html 200, 1 <h1> PASS', 'internal links none in 1 document(s) PASS', 'ai-readability 97 FAIL', 'qa-gate 12 ok, 1 warn, 0 fail PASS']);
   assert.equal(pick(result.rows, 'ai-readability').detail, 'strict 93%\ncards: 45 of 120 words not in the served HTML\nhero: 15 of 80 words not in the served HTML');
   assert.deepEqual(inheritedLines(result), [
     'FAIL inherited',
@@ -395,7 +433,7 @@ await check('qa-gate failing: FAIL with its ✗ lines; no verdict (exit 2, or a 
 await check('ai-readability with no verdict: exit 2, exit 1 on a page error, an unreadable or missing report, no score — each "ERROR (exit N)" (exit 124), never a PASS', async () => {
   const gave = async (name, cfg) => (await scenario(name, { cfg: { readability: cfg } }));
   const exit2 = await gave('ai-exit-2', { exit: 2, stderr: 'usage: ai-readability.mjs --origin <published origin>\n', json: undefined });
-  assert.deepEqual(brief(exit2.result.rows).slice(1, 2), [{ check: 'ai-readability', value: 'ERROR (exit 2)', bar: '≥ 98', status: 'ERROR' }]);
+  assert.deepEqual(brief(exit2.result.rows).filter((r) => r.check === 'ai-readability'), [{ check: 'ai-readability', value: 'ERROR (exit 2)', bar: '≥ 98', status: 'ERROR' }]);
   assert.equal(pick(exit2.result.rows, 'ai-readability').detail, 'usage: ai-readability.mjs --origin <published origin>');
   assert.deepEqual([exit2.result.verdict, exit2.result.exit], ['ERROR', 124]);
   assert.equal(inheritedLines(exit2.result)[0], 'ERROR (exit 124) inherited: 1 check gave no verdict');
@@ -468,7 +506,8 @@ await check('.plain.html answering 5xx or 429 is no verdict: ERROR (exit 124), r
       const row = pick(result.rows, '.plain.html');
       assert.deepEqual([row.status, row.value, row.detail], ['ERROR', 'ERROR (exit 124)', `HTTP ${status}`], String(status));
       assert.deepEqual([result.verdict, result.exit], ['ERROR', 124], String(status));
-      assert.deepEqual(inheritedLines(result).slice(0, 3), ['ERROR (exit 124) inherited: 1 check gave no verdict', '  .plain.html: ERROR (exit 124)', `    HTTP ${status}`]);
+      // the chrome documents answer the same status: the internal-links row cannot read them either
+      assert.deepEqual(inheritedLines(result).slice(0, 3), ['ERROR (exit 124) inherited: 2 checks gave no verdict', '  .plain.html: ERROR (exit 124)', `    HTTP ${status}`]);
       assert.deepEqual(stub.calls().map((c) => c.tool), ['readability', 'qa'], 'the other gates ran');
       assert.equal(readJson(join(outOf(root), 'inherited.json')).verdict, 'ERROR');
     } finally { await server.close(); }

@@ -119,6 +119,16 @@ await check('compareImages count+alt+width: same count, same alt in order, every
   assert.throws(() => compareImages([], [], 'src+path'), /count\+alt\+width/);
 });
 
+await check('links.localize.prefix: a namespaced preview serves the source page /x at /<ns>/x; a malformed prefix is a problem', () => {
+  const ok = loadDeltas(write('prefix.json', { version: 1, links: { localize: { sourceHost: 'src.test', prefix: '/ns' } } }));
+  assert.deepEqual(ok.links.localize, { sourceHost: 'src.test', prefix: '/ns' });
+  const o = { sourceHost: 'src.test', renderedOrigin: 'https://b--r--o.aem.page', prefix: '/ns' };
+  assert.equal(normalizeHref('https://src.test/about/', o), 'https://b--r--o.aem.page/ns/about/');
+  assert.equal(normalizeHref('https://src.test/', o), 'https://b--r--o.aem.page/ns/');
+  assert.equal(normalizeHref('https://src.test/a/b?x=1#top', o), 'https://b--r--o.aem.page/ns/a/b?x=1#top');
+  for (const bad of ['ns', '/ns/', 'https://x/ns', '']) assert.match(usageError(() => loadDeltas(write('prefix-bad.json', { version: 1, links: { localize: { sourceHost: 'src.test', prefix: bad } } }))).message, /links\.localize\.prefix must be a path/, bad);
+});
+
 await check('normalizeHref: a source-host href becomes the rendered origin plus its delivered URL; anything else is returned as it came', () => {
   const o = { sourceHost: 'src.test', renderedOrigin: 'https://b--r--o.aem.page' };
   assert.equal(normalizeHref('https://src.test/about/', o), 'https://b--r--o.aem.page/about/');

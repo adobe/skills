@@ -91,10 +91,15 @@ await check('runContent starts dom-equality, then slot-coverage, beside the CLI 
   const r = await go(root, { run: stub });
   assert.equal(calls.length, 2);
   const out = outOf(root);
+  // a namespaced preview: both gates read the delta file with links.localize.prefix "/<ns>" (deploy localizes there)
+  const effective = join(out, 'deltas-effective.json');
   assert.deepEqual(calls[0].args, [join(SCRIPTS, 'dom-equality.mjs'), '--source', `${SOURCE}/`, '--source-scope', 'main', '--normalize', join(dirOf(root), 'reskin', 'normalize', 'home.mjs'),
-    '--rendered', preview.url, '--rendered-scope', 'main', '--deltas', deltasPath(root), '--wait-eds', '--report', join(out, 'content-dom-equality.md')]);
+    '--rendered', preview.url, '--rendered-scope', 'main', '--deltas', effective, '--wait-eds', '--report', join(out, 'content-dom-equality.md')]);
   assert.deepEqual(calls[1].args, [join(SCRIPTS, 'slot-coverage.mjs'), '--model', modelPath(root),
-    '--rendered', preview.url, '--deltas', deltasPath(root), '--wait-eds', '--report', join(out, 'content-slot-coverage.md')]);
+    '--rendered', preview.url, '--deltas', effective, '--wait-eds', '--report', join(out, 'content-slot-coverage.md')]);
+  const eff = JSON.parse(readFileSync(effective, 'utf8'));
+  assert.equal(eff.links.localize.prefix, `/${preview.namespace}`);
+  assert.deepEqual({ ...eff, links: { localize: { sourceHost: eff.links.localize.sourceHost } } }, JSON.parse(readFileSync(deltasPath(root), 'utf8')), 'the declared file otherwise as written');
   for (const c of calls) assert.equal(c.command, process.execPath);
   assert.deepEqual(Object.keys(r).filter((k) => !['gates'].includes(k)), ['verdict', 'domEquality', 'slotCoverage', 'unusedDeltas']);
   assert.deepEqual(r.domEquality, { exit: 0, report: join(out, 'content-dom-equality.md') });
@@ -109,6 +114,25 @@ await check('runContent without a ledger or a delta file passes neither: no --no
     for (const flag of ['--normalize', '--deltas']) assert.ok(!c.args.includes(flag), `${flag} in ${c.args.join(' ')}`);
     assert.ok(c.args.includes('--wait-eds'));
   }
+});
+
+await check('a Figma-sourced model (no live source) runs figma-text-gate in place of dom-equality, then slot-coverage with the delta file; content.json records figmaText', async () => {
+  const model = loadSourceModel(SOURCE);
+  delete model._provenance.url;
+  model._provenance.source = { kind: 'figma', figma: { node: '1:1' } };
+  const root = project('stub-figma', { model, deltas: { version: 1, metadata: { absent: ['description', 'canonical'] } } });
+  const { run: stub, calls } = stubRun();
+  const r = await go(root, { run: stub });
+  const out = outOf(root);
+  const preview = previewOf(root);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[0].args, [join(SCRIPTS, 'figma-text-gate.mjs'), '--model', modelPath(root), '--rendered', preview.url, '--dir', dirOf(root), '--wait-eds',
+    '--report', join(out, 'content-figma-text.json')]);
+  assert.equal(calls[1].args[0], join(SCRIPTS, 'slot-coverage.mjs'));
+  assert.ok(calls[1].args.includes('--deltas'));
+  assert.equal(r.verdict, 'PASS');
+  assert.deepEqual(recordOf(root).figmaText, { exit: 0, report: join(out, 'content-figma-text.json') });
+  assert.equal(recordOf(root).domEquality, undefined);
 });
 
 await check('the source scope is the model\'s _provenance.scope verbatim, and the source URL its _provenance.url', async () => {

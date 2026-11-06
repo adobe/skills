@@ -77,7 +77,7 @@ When `emptySectionCollapse` is true (the page-metadata block leaves an empty pad
 | Stage | How |
 |---|---|
 | Code | `git push` the branch → AEM Code Sync builds it |
-| Localize links | `skills/deploy/scripts/localize-links.mjs --source-host <live-host> [--redirects stardust/redirects.tsv]` — after EVERY generator, before EVERY write, over the WHOLE tree (below) |
+| Localize links | `skills/deploy/scripts/localize-links.mjs --source-host <live-host> [--redirects stardust/redirects.tsv] [--prefix /<ns>]` — after EVERY generator, before EVERY write, over the WHOLE tree (below); `--prefix` for a namespaced preview (the source's `/x` served at `/<ns>/x`) |
 | Sanitise | `skills/deploy/scripts/sanitise.js` — run it before the write (DA corrupts raw UTF-8) |
 | Content write | DA Source API: `PUT admin.da.live/source/<org>/<repo>/<path>.html` (multipart, field name **`data`**, `type=text/html`) |
 | Make live | `POST admin.hlx.page/preview/<org>/<repo>/<branch>/<path>` (then optionally `/live/...`) |
@@ -771,7 +771,7 @@ The hard property of stardust output: **any text an author wrote in a DA documen
 
 **EW6 — Card-as-link: unwrap the authored inner anchor in the live DOM** (`link.replaceWith(...link.childNodes)`) after reading its `href`; the indexed paragraph survives inside the card `<a>`, no nested anchors on the published page (`labelWrap(link, 'affordance-wrap', { unwrap: true })`). The editor re-renders the inner link while editing, so the foundation ships `a .prosemirror-editor a:any-link { color: inherit; text-decoration: none }` (Step 3 (b)).
 
-**EW7 — Interactive containers cannot host the editor.** A `<button>` (or `<summary>`) swallows focus and clicks: an accordion title moves into a sibling `div.accordion-title`, the whole headline row takes the click handler, and the button becomes a chevron-only toggle with an `aria-label`. Content hidden at rest (collapsed panels, inactive tabs, non-active slides) is editable but only reachable after the author opens it — keep those controls working inside the workspace (link navigation is blocked there, buttons are not).
+**EW7 — Interactive containers cannot host the editor.** A `<button>` (or `<summary>`) swallows focus and clicks: an accordion title moves into a sibling `div.accordion-title`, the whole headline row takes the click handler, and the button becomes a chevron-only toggle with an `aria-label`. Content hidden at rest (collapsed panels, inactive tabs, non-active slides) is editable but only reachable after the author opens it — keep those controls working inside the workspace (link navigation is blocked there, buttons are not). EW7 does **not** require panels open at rest: a disclosure starts in the source's rest state (collapsed when the source's is), whatever the capture ledger expanded to read it, and hides a closed panel with `hidden="until-found"` (find-in-page and text fragments still open it; open it on `beforematch`) or a closed `<details>` — the content gate reveals both and fails a render that starts everything open against a collapsed source (`../reskin/reference/gates.md` § dom-equality).
 
 **EW8 — Section heads reabsorbed from default content MOVE the wrapper's children** (they are already editable as default content) and remove the empty wrapper (§ Section heads).
 
