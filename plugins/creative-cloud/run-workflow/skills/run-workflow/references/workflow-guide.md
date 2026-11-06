@@ -21,8 +21,8 @@ question (e.g. "what actions are available"). A **tools** question (e.g. "show m
 "what MCP tools do you have") is a different vocabulary — answer directly from your own visible
 tool definitions (name + one-line description each); do not call `list_actions` for it.
 
-This file is the always-loaded core. Deeper procedures live in `references/` and should be read
-**only when the current turn needs them**:
+This is an on-demand reference linked from the always-loaded `SKILL.md`. Read the sections and
+other references below **only when the current turn needs them**:
 
 | Read this reference when… | File |
 | --- | --- |
@@ -514,4 +514,6 @@ These traps are non-obvious and not clearly covered by the sections above:
 ## References
 
 - [Workflow Builder API docs](https://developer.adobe.com/firefly-services/docs/workflow-builder/) — use the `firefly-api-specs` skill for direct Firefly REST calls
-- On-demand: [`references/`](./) — featured-and-templates, compose, diagnostics, asset-input, alert-rca
+- On-demand references: [`featured-and-templates.md`](./featured-and-templates.md),
+  [`compose.md`](./compose.md), [`diagnostics.md`](./diagnostics.md),
+  [`asset-input.md`](./asset-input.md), and [`alert-rca.md`](./alert-rca.md).
