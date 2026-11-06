@@ -1,0 +1,194 @@
+---
+name: create-custom-component
+description: "Create a custom form component for an AEM Forms Edge Delivery Services (Form block) project — scaffold blocks/form/components/<name>, extend an OOTB field type (text-input, drop-down, panel, etc.), define authoring properties in _<name>.json, wire the decorate function to the form model with subscribe(), register it in mappings.js, build, and validate the output. Use when a user asks to create, scaffold, build, or fix a custom form component, form field widget, or viewType in an aem-boilerplate-forms project."
+license: Apache-2.0
+metadata:
+  version: "1.0.0"
+---
+
+# Create Custom Form Component
+
+Build a custom component for the AEM Forms **Form block** on Edge Delivery Services end to end — scaffold, authoring schema, `decorate` logic, model subscriptions, registration, documentation — and **prove** it works before reporting done.
+
+## When to use
+
+- The project is a forms project derived from `aem-boilerplate-forms` (it has `blocks/form/`, `blocks/form/mappings.js`, `blocks/form/rules/index.js`).
+- The user wants a new field widget/variant (slider, rating, OTP input, searchable dropdown, card choice, consent panel…) or wants to fix one under `blocks/form/components/`.
+
+Not for: generic EDS blocks (use the EDS `building-blocks` skill), AEM Sites HTL components (`create-component` in `aem-cloud-service`), or rule-editor logic.
+
+## References (read as needed)
+
+| File | Read when |
+|------|-----------|
+| `references/custom-form-components.md` | Always — architecture, folder layout, JSON schema, registration |
+| `references/form-field-types.md` | Step 4 — the base HTML the `element` parameter already contains |
+| `references/authoring-field-types.md` | Step 3 — widgets for the properties dialog (`text`, `select`, `container`, …) |
+| `references/subscribe-api.md` | Step 4 — `subscribe()` patterns: own value, child fields, custom events |
+| `scripts/validate-component.mjs` | Step 8 — static validator (Node 18+, no dependencies) |
+| `scripts/validate-registration.js` | Step 8 — in-page runtime check |
+
+Paths under `scripts/` and `references/` are relative to this skill's directory; resolve them to absolute paths before running commands from the project root.
+
+---
+
+## Workflow
+
+### Step 1: Gather requirements
+
+Locate the project root (the directory containing `blocks/form/`; some repos nest it under `code/`). Then confirm — ask only for what the request does not already answer:
+
+| Question | Why |
+|----------|-----|
+| Component name | Folder, file names, and `fd:viewType` (lowercase kebab-case, e.g. `star-rating`) |
+| Which OOTB field type does it extend? | Base HTML and AEM resource type |
+| Which authorable properties does it need? | Fields in `_<name>.json` |
+| What model state does it read/write, and when should `model.value` be committed? | Drives `subscribe` wiring and the README contract |
+| Is it a panel that watches child fields, or does it react to custom events? | Selects the subscribe pattern |
+| A form URL (local `aem up` or preview) that uses the component? | Runtime validation in Step 8 |
+
+Supported base types: `text-input`, `number-input`, `drop-down`, `button`, `checkbox`, `radio-group`, `checkbox-group`, `panel`, `date-input`, `multiline-input`, `file-input`, `email`, `telephone-input`.
+
+Check the name is not already used: `blocks/form/components/<name>/` must not exist and `<name>` must not be in `mappings.js`.
+
+### Step 2: Scaffold
+
+If `package.json` has a `create:custom-component` script, run it from the project root (install dependencies first if `node_modules` is missing):
+
+```bash
+npm run create:custom-component -- --name <name> --base <base-type>
+```
+
+It creates `blocks/form/components/<name>/{<name>.js,<name>.css,_<name>.json}` and usually also registers the component (mappings, `_form.json` filter, `models/_component-definition.json`). **Do not assume it did — Step 8 verifies.**
+
+If the script does not exist, create the three files by hand: copy the base type's `blocks/form/models/form-components/_<base>.json`, set `definitions[0].id` and `models[0].id` to `<name>`, set `template["fd:viewType"]` to `<name>`, and fix `"..."` include paths so they resolve from the component folder (`../../models/form-common/...`).
+
+### Step 3: Define authoring properties (`_<name>.json`)
+
+Read `references/authoring-field-types.md` to choose the widget for each property. Add custom fields to `models[0].fields`; reuse shared field groups instead of redefining them:
+
+```json
+{ "...": "../../models/form-common/_basic-validation-fields.json#/fields" }
+```
+
+Rules: every field has `component` and a unique `name`; `select`/`multiselect`/`radio-group`/`checkbox-group` have `options`; keep `fieldType`, `resourceType`, and `fd:viewType` from the scaffold.
+
+### Step 4: Implement `decorate`
+
+Read `references/form-field-types.md` (base HTML) and `references/subscribe-api.md`, then pick the pattern:
+
+| The component… | Use |
+|----------------|-----|
+| Reacts to its own value / enum / visible changes | `subscribe(fieldDiv, formId, cb, { listenChanges: true })` — handle `'register'` and `'change'` |
+| Watches child fields (panel) | Same on the parent; inside `'register'`, `subscribe()` each child wrapper found with `[data-id="${child.id}"]` |
+| Reacts to custom events (`custom:<event>`) | `fieldModel.subscribe(cb, '<event>')` inside `'register'` — never `fieldDiv.addEventListener` |
+
+Implementation rules:
+
+- `export default function decorate(fieldDiv, fieldJson, container, formId)` and `return fieldDiv`.
+- Import `subscribe` from `'../../rules/index.js'`; relative imports always include `.js`.
+- Read authored properties from `fieldJson.properties.<prop>`.
+- Enhance the existing OOTB markup in `fieldDiv`; scope DOM queries to it.
+- When writing the value from custom UI, either set `model.value` or dispatch `new Event('change', { bubbles: true })` on the underlying input.
+- Guard against loops: never set `model.value` in a value-change handler without comparing first.
+- There is no `fd:blur` rule event. If downstream rules must run once when entry is complete (tab-out), commit `model.value` only then, not per keystroke.
+- Prefix CSS classes with the component name in `<name>.css`.
+
+### Step 5: Register
+
+1. `blocks/form/mappings.js` — add `<name>` to `customComponents` (or to `OOTBComponentDecorators` for OOTB-style decorators). Must exactly equal `fd:viewType`.
+2. If the component has no stylesheet, add it to `NO_CSS_COMPONENTS` when the project defines that set; otherwise keep `<name>.css`.
+3. `blocks/form/_form.json` — make sure `<name>` is in the `"form"` filter `components` so authors can insert it.
+4. `models/_component-definition.json` — make sure the custom-components group includes `../blocks/form/components/<name>/_<name>.json#/definitions` (unless the project includes components by glob).
+
+### Step 6: Document
+
+Create `blocks/form/components/<name>/README.md` (use an existing component README as a model):
+
+| Section | Required | Content |
+|---------|----------|---------|
+| `# <Component Name>` | Yes | One-line summary |
+| `## How to Use` / `## Authoring Properties` | Yes | How to configure it; table of custom properties |
+| `## Model Subscriptions` | If applicable | Model changes / custom events it listens to |
+| `## Events Dispatched` | If applicable | Custom events it fires |
+| `## Model Properties Set` | If applicable | What it writes and **when `model.value` is committed** (per keystroke, on completion, external only) and how often `fd:change` fires |
+| `## Usage Notes` | Yes | Base type, `fd:viewType`, key behaviour |
+
+If the project keeps a component catalog (for example a `component-registry.md`), add a one-line row for the component too.
+
+### Step 7: Build
+
+```bash
+npm run build:json
+```
+
+Merges component JSON into `component-models.json`, `component-definition.json`, and `component-filters.json`. Without it, new properties never reach the Universal Editor.
+
+### Step 8: Validate (mandatory)
+
+Do not report the component as done until gates A–C pass. Fix and re-run on failure.
+
+**A. Static validation** — from the project root:
+
+```bash
+node <skill-dir>/scripts/validate-component.mjs <name>
+```
+
+Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = name, `fieldType`/`resourceType`, resolvable `"..."` includes, unique field names, ES-module syntax, default export, `subscribe` import path and `{ listenChanges: true }`, `.js` import extensions, legacy/anti-patterns (`fieldModel.subscribe(…, 'change')`, non-bubbling `change`, `#id` child selectors), README sections, registration in `mappings.js` / `_form.json` / `_component-definition.json`, and whether the build output contains the component. Exit `0` = no errors; `1` = errors (must fix); warnings must be fixed or explicitly justified in the report. Use `--json` for machine-readable output.
+
+**B. Lint** — if `package.json` has a `lint` script, run `npm run lint` and fix every issue in the new/changed files.
+
+**C. Build** — `npm run build:json` succeeds, and re-running gate A shows `build.json` passing.
+
+**D. Runtime check** (whenever a form URL is available or a local dev server can be started with `aem up` → `http://localhost:3000/<form-path>`). Use any available browser tool (Playwright, Chrome DevTools MCP, IDE browser):
+
+1. Open the form and wait for it to render.
+2. Evaluate the contents of `scripts/validate-registration.js` in the page and call it with the component name: `(<file contents>)('<name>')`. It returns `{ status, checks[], message }` covering: form model found, a field whose `:type`/`variant` is `<name>`, and the field element reaching `data-component-status="loaded"`.
+3. Check the console for errors from `components/<name>/`.
+4. Exercise the behaviour: interact with the widget, then confirm the model value in the page (e.g. `myForm.getElement('<field-id>').value`) matches what the UI shows; take a screenshot if the change is visual.
+
+If no URL or browser is available, say so explicitly in the report and give the user the exact steps above — do not claim runtime validation passed.
+
+### Step 9: Report
+
+Finish with: files created/changed, the validator summary (errors/warnings), lint and build results, runtime-check result (or why it was skipped), and any justified warnings.
+
+---
+
+## Quick reference: file locations
+
+| File | Purpose |
+|------|---------|
+| `blocks/form/components/<name>/<name>.js` | Component logic (`decorate`) |
+| `blocks/form/components/<name>/<name>.css` | Component styles |
+| `blocks/form/components/<name>/_<name>.json` | Definition + authoring model |
+| `blocks/form/components/<name>/README.md` | Component documentation |
+| `blocks/form/mappings.js` | Registration (`customComponents`, `OOTBComponentDecorators`) |
+| `blocks/form/_form.json` | `"form"` filter — which components authors can insert |
+| `models/_component-definition.json` | Component palette (custom-components group) |
+| `blocks/form/rules/index.js` | `subscribe` source |
+
+## Common mistakes
+
+| Mistake | Fix |
+|---------|-----|
+| Folder name ≠ JS file name ≠ `fd:viewType` | All three must be identical |
+| Not in `customComponents` | JS/CSS never load — validator `register.mappings` |
+| `subscribe` without `{ listenChanges: true }` or legacy `fieldModel.subscribe(cb, 'change')` | Use the standard pattern in `references/subscribe-api.md` |
+| Child field selected with `#id` | Use `[data-id="${child.id}"]` (the wrapper) |
+| Custom event handled via `addEventListener` | `fieldModel.subscribe(cb, '<event>')` in `'register'` |
+| `new Event('change')` without `{ bubbles: true }` | Change never reaches the form model |
+| Setting `model.value` inside its own change handler | Compare before assigning |
+| Committing per keystroke when rules expect "on complete" | Commit once when valid; document in `## Model Properties Set` |
+| Forgot `npm run build:json` | Properties missing in the Universal Editor — validator `build.json` |
+| Reporting done without running Step 8 | Always run gates A–C; state whether D ran |
+
+## Example
+
+**User:** "Create a star rating component based on number-input with a configurable maximum number of stars."
+
+1. Scaffold `npm run create:custom-component -- --name star-rating --base number-input`.
+2. `_star-rating.json`: add `{ "component": "number", "name": "maxStars", "label": "Maximum stars", "valueType": "number" }`.
+3. `star-rating.js`: hide the number input, render `maxStars` buttons, set `model.value` on click, sync the selected stars on `'change'` of `value`, using `subscribe(..., { listenChanges: true })`.
+4. Register in `mappings.js` / `_form.json`, write `README.md`, run `npm run build:json`.
+5. `node <skill-dir>/scripts/validate-component.mjs star-rating` → `PASS: 0 error(s)`; `npm run lint` clean; runtime check on `http://localhost:3000/<form>` returns `status: "pass"`.

@@ -100,6 +100,28 @@
       "license": "Apache-2.0"
     },
     {
+      "name": "aem-forms",
+      "source": "./plugins/aem/forms",
+      "description": "Skills for AEM Forms on Edge Delivery Services: create and validate custom form components for the Form block (scaffolding, authoring schema, subscribe() model wiring, registration).",
+      "version": "1.0.0",
+      "category": "aem",
+      "keywords": [
+        "adobe",
+        "aem",
+        "aem-forms",
+        "adaptive-forms",
+        "edge-delivery-services",
+        "form-block",
+        "custom-component"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
       "name": "aem-project-management",
       "source": "./plugins/aem/project-management",
       "description": "Project lifecycle management for AEM Edge Delivery Services"

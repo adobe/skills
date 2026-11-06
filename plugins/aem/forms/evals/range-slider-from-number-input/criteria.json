@@ -1,0 +1,66 @@
+{
+  "context": "Tests whether the agent creates a complete, correctly wired AEM Forms custom component: folder/file naming, the _<name>.json definition and authoring model, decorate() wired to the form model via subscribe with listenChanges, registration in mappings.js and authoring filters, README contract, and an honest validation report.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Component folder layout",
+      "max_score": 10,
+      "description": "Files exist at `blocks/form/components/loan-slider/loan-slider.js`, `blocks/form/components/loan-slider/loan-slider.css` and `blocks/form/components/loan-slider/_loan-slider.json` (folder name, JS and CSS file names all identical to `loan-slider`)"
+    },
+    {
+      "name": "fd:viewType matches name",
+      "max_score": 10,
+      "description": "`_loan-slider.json` has a definition whose `plugins.xwalk.page.template` contains `\"fd:viewType\": \"loan-slider\"` and `\"fieldType\": \"number-input\"`, with a `resourceType` under `core/fd/components/form/`"
+    },
+    {
+      "name": "Authoring model with min/max/step",
+      "max_score": 10,
+      "description": "`_loan-slider.json` has a `models` entry with `id` `loan-slider` whose fields include number-type properties for minimum, maximum and step (e.g. `component: \"number\"`), each with `component` and `name`"
+    },
+    {
+      "name": "Reuses shared fields",
+      "max_score": 6,
+      "description": "The model reuses shared field definitions through `\"...\"` references (e.g. `../../models/form-common/_basic-input-fields.json` or `_help-container.json`) whose relative paths resolve from the component folder, rather than redefining basic fields by hand"
+    },
+    {
+      "name": "Registered in mappings.js",
+      "max_score": 12,
+      "description": "`blocks/form/mappings.js` includes `'loan-slider'` in the `customComponents` array (existing entries preserved)"
+    },
+    {
+      "name": "Authoring filter / palette",
+      "max_score": 6,
+      "description": "`loan-slider` is added to the `\"form\"` filter `components` list in `blocks/form/_form.json` and/or the custom-components group of `models/_component-definition.json` references `../blocks/form/components/loan-slider/_loan-slider.json#/definitions`"
+    },
+    {
+      "name": "Default export decorate",
+      "max_score": 6,
+      "description": "`loan-slider.js` has `export default function decorate(...)` (or async) taking the field element, field JSON, container and formId, and returns the field element"
+    },
+    {
+      "name": "subscribe with listenChanges",
+      "max_score": 12,
+      "description": "`loan-slider.js` imports `subscribe` from `'../../rules/index.js'` and calls it with `{ listenChanges: true }`, handling the `'register'` event and the `'change'` event (reacting to `propertyName === 'value'` to update the slider)"
+    },
+    {
+      "name": "User changes reach the model",
+      "max_score": 8,
+      "description": "Slider input updates the form model either by setting `fieldModel.value` or by dispatching `new Event('change', { bubbles: true })` on the underlying number input; it does not set the model value unconditionally inside its own value-change handler"
+    },
+    {
+      "name": "Authored properties read",
+      "max_score": 5,
+      "description": "min/max/step are read from the field JSON `properties` object (e.g. `fieldJson.properties.min`) and applied to the range input"
+    },
+    {
+      "name": "Component README",
+      "max_score": 5,
+      "description": "`blocks/form/components/loan-slider/README.md` exists with a title, an authoring-properties / how-to-use section, and a usage-notes section naming the base type and viewType"
+    },
+    {
+      "name": "Honest validation report",
+      "max_score": 10,
+      "description": "`VALIDATION.md` lists concrete checks performed on the generated files (e.g. a structural validator, lint, build:json) with their results, explicitly states which checks could not be run in this environment instead of claiming they passed, and gives browser verification steps (open a form using the component and confirm it loads/syncs with the model)"
+    }
+  ]
+}

@@ -18,6 +18,7 @@ Repository of Adobe skills for AI coding agents.
 /plugin install app-builder@adobe-skills
 /plugin install aem-cloud-service@adobe-skills
 /plugin install aem-6-5-lts@adobe-skills
+/plugin install aem-forms@adobe-skills
 /plugin install workfront@adobe-skills
 /plugin install commerce-app-management@adobe-skills
 /plugin install commerce-app-migration@adobe-skills
@@ -223,6 +224,18 @@ All AEM as a Cloud Service skills — component development, Dispatcher, workflo
 | `aem-rde` *(beta)* | Expert assistance for `aio aem rde` — deploy, inspect, log-tail, snapshot, and troubleshoot Rapid Development Environments |
 
 See the [`aem-cloud-service` plugin README](plugins/aem/cloud-service/README.md) for sub-skill details and MCP requirements.
+
+##### AEM Forms
+
+Custom form component development for AEM Forms on Edge Delivery Services (the Form block). Available via the [`aem-forms`](plugins/aem/forms/README.md) plugin.
+
+```bash
+/plugin install aem-forms@adobe-skills
+```
+
+| Skill | Description |
+|-------|-------------|
+| `create-custom-component` | Create a custom form component extending an OOTB field type — scaffold, authoring schema, `subscribe()` model wiring, `mappings.js` registration, README, `build:json` — and validate it with a static validator, lint/build, and an in-browser runtime check |
 
 ##### AEM 6.5 LTS
 
