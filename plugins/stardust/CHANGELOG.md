@@ -14,7 +14,7 @@ symptom, nothing named the cause.
 - **Rule** (`deploy/SKILL.md` #157 + checklist row): same `src`, later mount — an `aspect-ratio` box at decorate time
   that keeps the authored link (a player-only section still paints), replaced by the iframe after the first contentful
   paint (without paint timing: at `load`, or at once when already loaded), from an allow-listed `https:` URL with
-  `createElement`.
+  `createElement`; the iframe is `display: block` with no border, so the box keeps its height when it mounts.
   Pointers from replica's live-data embeds bullet (deferral noted in the progress ledger) and dynamics' `media-as-url`.
 - **`qa/scripts/checks/perf.mjs`:** `player-before-paint` (warn, never downgraded) lists player document, script and API
   requests from any frame that started before first contentful paint, dated by the browser: `timing().startTime`, or the

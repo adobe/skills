@@ -31,7 +31,7 @@ const PLAYER = 'https://www.youtube.com/embed/abc';
 
 // a first section hidden until its blocks load, as the boilerplate's loadSection does
 const page = ({ head = '', body, script }) => `<!doctype html><html><head>${head}
-<style>.player{aspect-ratio:16/9}.player iframe{width:100%;height:100%;border:0}</style></head>
+<style>.player{aspect-ratio:16/9}.player iframe{display:block;width:100%;height:100%;border:0}</style></head>
 <body><main><div class="section" style="display:none">${body}</div></main>
 <script>${SNIPPET || ''}\n${script}</script></body></html>`;
 const showAfter = (ms) => `setTimeout(() => { document.querySelector('.section').style.display = ''; }, ${ms});`;
@@ -98,7 +98,7 @@ test('collector: a pre-paint player request still pending at measurement is caug
 
 test('snippet: a player-only first section still paints, then mounts the player after FCP', snippetTest, async () => {
   const html = page({
-    body: `<p><a href="${PLAYER}">Promo video</a></p>`,
+    body: `<p><a href="${PLAYER}">Promo video</a></p><p>Below</p>`,
     script: `setTimeout(() => { mountPlayer(document.querySelector('main a')); ${showAfter(300)} }, 50);`,
   });
   await withPage(html, async ({ p, requests, errors, fcp }) => {
@@ -106,6 +106,11 @@ test('snippet: a player-only first section still paints, then mounts the player 
     assert.equal(await frame.getAttribute('src'), PLAYER);
     assert.equal(await frame.evaluate((f) => [f.title, f.loading].join('|')), 'Promo video|lazy');
     assert.equal(await p.locator('.player a').count(), 0, 'the link is replaced by the iframe');
+    const box = await p.evaluate(() => { // in flow: a box that keeps its height moves nothing below it
+      const r = document.querySelector('.player').getBoundingClientRect();
+      return { h: r.height, reserved: (r.width * 9) / 16 };
+    });
+    assert.ok(Math.abs(box.h - box.reserved) < 0.5, `the box keeps its reserved height after mount: ${JSON.stringify(box)}`);
     await p.waitForTimeout(300);
     assert.deepEqual(judgePlayerRequests(requests(), await fcp()), { early: [], unmeasured: [] });
     assert.deepEqual(errors, []);

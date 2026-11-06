@@ -344,7 +344,8 @@ Rebrand `styles/styles.css` — replace the boilerplate's DEMO layer (roboto tok
     let url; try { url = new URL(a.href); } catch { return; }
     if (url.protocol !== 'https:' || !PLAYER_HOSTS.includes(url.hostname)) return; // stays a link
     const box = document.createElement('div');
-    box.className = 'player'; // CSS: aspect-ratio of the live iframe; iframe width/height 100%
+    box.className = 'player'; // CSS: aspect-ratio of the live iframe, and on the iframe
+    // display: block; width: 100%; height: 100%; border: 0 (or the box grows when it mounts)
     a.replaceWith(box);
     box.append(a); // stays paintable until mount: a player-only section still reaches FCP
     afterFirstPaint(() => {
