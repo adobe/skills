@@ -27,7 +27,8 @@ Not for: generic EDS blocks (use the EDS `building-blocks` skill), AEM Sites HTL
 | `references/subscribe-api.md` | Step 4 — `subscribe()` patterns: own value, child fields, custom events |
 | `scripts/validate-component.mjs` | Step 8 — static validator (Node 18+, no dependencies) |
 | `scripts/create-e2e-test.mjs` | Step 8 — generates the component's Playwright e2e test + form JSON |
-| `assets/e2e/` | Harness and Playwright config copied into the project by `create-e2e-test.mjs` |
+| `scripts/run-e2e-test.mjs` | Step 8 — runs those tests with the project's `@playwright/test` and the skill's config |
+| `assets/e2e/` | `form-harness.js` (copied into the project) and `playwright.config.mjs` (used in place) |
 | `scripts/validate-registration.js` | Optional — in-page check on an already deployed form |
 
 Paths under `scripts/`, `assets/` and `references/` are relative to this skill's directory; resolve them to absolute paths before running commands from the repository root.
@@ -150,7 +151,7 @@ Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = nam
    node <skill-dir>/scripts/create-e2e-test.mjs <name> --props '{"maxStars":5}'
    ```
 
-   It writes `test/e2e/custom-components/{form-harness.js,playwright.config.js}` and `test/e2e/custom-components/<name>/{<name>.form.json,<name>.spec.js}`. The form JSON contains a field with `":type": "<name>"` plus a following text field. For panels, add the children the component expects; for rules, add `events`/`rules` to the JSON. Keep `action` ending in `/<form id>`: `createForm()` derives the `formId` passed to components from it, and on a mismatch `subscribe()` callbacks never fire.
+   It writes `test/e2e/custom-components/form-harness.js` and `test/e2e/custom-components/<name>/{<name>.form.json,<name>.spec.js}`; no Playwright config is added to the project. The form JSON contains a field with `":type": "<name>"` plus a following text field. For panels, add the children the component expects; for rules, add `events`/`rules` to the JSON. Keep `action` ending in `/<form id>`: `createForm()` derives the `formId` passed to components from it, and on a mismatch `subscribe()` callbacks never fire.
 2. Replace every `TODO` in the spec (they fail on purpose). Cover, with the harness helpers `renderForm`, `field`, `getModel`, `setModel`, `dispatchModelEvent`, `trackChanges`:
    - the component-specific markup after `data-component-status="loaded"`;
    - each authored property (re-render with a modified copy of the form JSON);
@@ -160,10 +161,10 @@ Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = nam
 3. Run it from the repository root; all tests must pass with none skipped:
 
    ```bash
-   npx playwright test --config test/e2e/custom-components/playwright.config.js <name>
+   node <skill-dir>/scripts/run-e2e-test.mjs <name>
    ```
 
-   The harness also fails a test on console errors from `/blocks/form/`, including exceptions thrown by `decorate()`: `mappings.js` swallows those and still marks the field `loaded`. If `@playwright/test` is missing, install it (`npm i -D @playwright/test && npx playwright install chromium`). If that is not possible, keep the spec, report the test as not run, and give the command.
+   It runs the project's `@playwright/test` with the skill's `assets/e2e/playwright.config.mjs` (Chromium, no retries), so it works whether or not the project has a Playwright config, and never picks up a config that targets deployed sites. The harness also fails a test on console errors from `/blocks/form/`, including exceptions thrown by `decorate()`: `mappings.js` swallows those and still marks the field `loaded`. If `@playwright/test` is missing (exit 2), install it as a dev dependency (`npm i -D @playwright/test && npx playwright install chromium`). If that is not possible, keep the spec, report the test as not run, and give the command.
 
 `scripts/validate-registration.js` can additionally be evaluated on an already deployed form (`(<file contents>)('<name>')`) to confirm registration there.
 
@@ -211,4 +212,4 @@ Finish with: files created/changed, the validator summary (errors/warnings), lin
 3. `star-rating.js`: hide the number input, render `maxStars` buttons, set `model.value` on click, sync the selected stars on `'change'` of `value`, using `subscribe(..., { listenChanges: true })`.
 4. Register in `mappings.js` / `_form.json`, write `README.md`, run `npm run build:json`.
 5. `node <skill-dir>/scripts/validate-component.mjs star-rating` → `PASS: 0 error(s)`; `npm run lint` clean.
-6. `node <skill-dir>/scripts/create-e2e-test.mjs star-rating --props '{"maxStars":5}'`, then write the spec: the stars render, `maxStars: 3` renders 3 stars, `setModel(… 'value', 4)` selects 4 stars, clicking star 3 sets the model to `3` with exactly one `value` change, keyboard Enter on a star works. Then `npx playwright test --config test/e2e/custom-components/playwright.config.js star-rating` → all passed.
+6. `node <skill-dir>/scripts/create-e2e-test.mjs star-rating --props '{"maxStars":5}'`, then write the spec: the stars render, `maxStars: 3` renders 3 stars, `setModel(… 'value', 4)` selects 4 stars, clicking star 3 sets the model to `3` with exactly one `value` change, keyboard Enter on a star works. Then `node <skill-dir>/scripts/run-e2e-test.mjs star-rating` → all passed.

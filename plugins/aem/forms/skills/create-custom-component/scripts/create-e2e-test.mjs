@@ -4,10 +4,10 @@
  *
  * Writes (relative to the repository root):
  *   test/e2e/custom-components/form-harness.js        shared harness (copied from assets/e2e)
- *   test/e2e/custom-components/playwright.config.js   standalone Playwright config
  *   test/e2e/custom-components/<name>/<name>.form.json form definition using the component
  *   test/e2e/custom-components/<name>/<name>.spec.js   spec: loads + model sync tests and TODOs
  *
+ * No Playwright config is written: run-e2e-test.mjs uses the one shipped with the skill.
  * Existing files are kept unless --force is given. Exit codes: 0 = ok, 2 = usage/project error.
  */
 import {
@@ -25,11 +25,11 @@ Options:
   --root <dir>    Repository root containing package.json and blocks/form (default: cwd)
   --props <json>  Authored properties for the field in the generated form JSON,
                   e.g. '{"min":0,"max":100,"step":5}'
-  --force         Overwrite existing harness/config/spec/form files
+  --force         Overwrite existing harness/spec/form files
   -h, --help      Show this help
 
 Then run, from the repository root:
-  npx playwright test --config test/e2e/custom-components/playwright.config.js <name>
+  node <skill-dir>/scripts/run-e2e-test.mjs <name>
 
 Exit codes: 0 = ok, 2 = usage or project error.`;
 
@@ -223,7 +223,7 @@ export function createE2eTest(name, rootDir, { props = {}, force = false } = {})
   if (!existsSync(join(root, 'blocks/form'))) throw new Error(`No blocks/form under ${root}; run from the repository root or pass --root`);
   const dir = join(root, 'test/e2e/custom-components');
   const written = [];
-  ['form-harness.js', 'playwright.config.js'].forEach((f) => {
+  ['form-harness.js'].forEach((f) => {
     if (!existsSync(join(dir, f)) || force) {
       mkdirSync(dir, { recursive: true });
       copyFileSync(join(ASSETS, f), join(dir, f));
@@ -253,7 +253,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const props = opts.props ? JSON.parse(opts.props) : {};
     const { written } = createE2eTest(opts.name, opts.root, { props, force: opts.force });
     console.log(written.length ? `Wrote:\n  ${written.join('\n  ')}` : 'All files already exist (use --force to overwrite).');
-    console.log(`\nNext: replace the TODOs in test/e2e/custom-components/${opts.name}/${opts.name}.spec.js, then run\n  npx playwright test --config test/e2e/custom-components/playwright.config.js ${opts.name}`);
+    console.log(`\nNext: replace the TODOs in test/e2e/custom-components/${opts.name}/${opts.name}.spec.js, then run\n  node ${join(dirname(fileURLToPath(import.meta.url)), 'run-e2e-test.mjs')} ${opts.name}`);
   } catch (e) {
     console.error(`Error: ${e.message}`);
     process.exit(2);

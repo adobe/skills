@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFormDefinition, createE2eTest, FIELD_ID } from '../skills/create-custom-component/scripts/create-e2e-test.mjs';
+import { buildCommand } from '../skills/create-custom-component/scripts/run-e2e-test.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '../skills/create-custom-component/scripts/create-e2e-test.mjs');
 
@@ -75,13 +76,13 @@ test('form definition: option and panel base types get enums / children', () => 
   }
 });
 
-test('createE2eTest writes harness, config, form JSON and a spec with failing TODOs; keeps edits without --force', () => {
+test('createE2eTest writes harness, form JSON and a spec with failing TODOs; keeps edits without --force', () => {
   const root = project('star-rating', 'number-input');
   try {
     const { written } = createE2eTest('star-rating', root);
     const base = 'test/e2e/custom-components';
     assert.deepEqual(written.sort(), [
-      `${base}/form-harness.js`, `${base}/playwright.config.js`,
+      `${base}/form-harness.js`,
       `${base}/star-rating/star-rating.form.json`, `${base}/star-rating/star-rating.spec.js`,
     ].sort());
     const spec = readFileSync(join(root, base, 'star-rating/star-rating.spec.js'), 'utf8');
@@ -113,5 +114,28 @@ test('CLI: --help writes nothing, missing project exits 2', () => {
     assert.ok(!existsSync(join(empty, 'test')));
   } finally {
     rmSync(empty, { recursive: true, force: true });
+  }
+});
+
+test('run-e2e-test uses the skill config, never a project config, and reports missing Playwright', () => {
+  const root = project('star-rating', 'number-input');
+  try {
+    createE2eTest('star-rating', root);
+    writeFileSync(join(root, 'package.json'), '{}');
+    assert.throws(() => buildCommand({ name: 'star-rating', root, extra: [] }), /@playwright\/test is not installed/);
+
+    const pw = join(root, 'node_modules/@playwright/test');
+    mkdirSync(pw, { recursive: true });
+    writeFileSync(join(pw, 'package.json'), '{"name":"@playwright/test","exports":{"./package.json":"./package.json"}}');
+    writeFileSync(join(pw, 'cli.js'), '');
+    const { args } = buildCommand({ name: 'star-rating', root, extra: [] });
+    const config = args[args.indexOf('--config') + 1];
+    assert.match(config, /assets[\\/]e2e[\\/]playwright\.config\.mjs$/);
+    assert.ok(existsSync(config));
+    assert.ok(!config.startsWith(root));
+    assert.ok(args.includes('custom-components/star-rating/'));
+    assert.throws(() => buildCommand({ name: 'nope', root, extra: [] }), /No tests at/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
