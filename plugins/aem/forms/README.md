@@ -14,16 +14,16 @@ Skills for building with **AEM Forms on Edge Delivery Services** — the Form bl
 
 ## Validating generated components
 
-`create-custom-component` treats validation as a required step, layered the same way other code-generating skills in this repo do (structural checks → lint/build → runtime in a browser):
+`create-custom-component` treats validation as a required step, layered the same way other code-generating skills in this repo do (structural checks → lint/build → browser end-to-end test):
 
 | Gate | How | Required |
 |------|-----|----------|
 | A. Static validation | `node skills/create-custom-component/scripts/validate-component.mjs <name> [--root <project>] [--json]` — deterministic checks of naming, JSON schema, `fd:viewType`, `"..."` includes, JS conventions, registration, and build output. Exit `1` on errors | Yes |
 | B. Lint | `npm run lint` in the forms project | Yes, if the project defines it |
 | C. Build | `npm run build:json`, then re-run gate A | Yes |
-| D. Runtime | Open a form using the component (e.g. `aem up` → `http://localhost:3000/...`) and evaluate `scripts/validate-registration.js` with any browser tool; check console and model/DOM sync | When a form URL or browser is available; otherwise reported as not run |
+| D. End-to-end | `node skills/create-custom-component/scripts/create-e2e-test.mjs <name>` generates a Playwright spec and form JSON under `test/e2e/custom-components/`. The harness renders the form JSON in a local form block (`<pre><code>`) with the project's `aem.js`/`scripts.js` — no deployed form or URL. The agent fills in model ↔ UI, authored-property and keyboard assertions and runs `npx playwright test --config test/e2e/custom-components/playwright.config.js <name>` | Yes; reported as not run only if Playwright cannot be installed |
 
-The validator has unit tests:
+The validator and the e2e generator have unit tests:
 
 ```bash
 node --test plugins/aem/forms/tests/*.test.mjs

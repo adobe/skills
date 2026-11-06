@@ -1,5 +1,5 @@
 {
-  "context": "Tests whether the agent creates a complete, correctly wired AEM Forms custom component: folder/file naming, the _<name>.json definition and authoring model, decorate() wired to the form model via subscribe with listenChanges, registration in mappings.js and authoring filters, README contract, and an honest validation report.",
+  "context": "Tests whether the agent creates a complete, correctly wired AEM Forms custom component: folder/file naming, the _<name>.json definition and authoring model, decorate() wired to the form model via subscribe with listenChanges, registration in mappings.js and authoring filters, README contract, and an honest validation report, and a browser end-to-end test that renders the form from local form JSON.",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -19,7 +19,7 @@
     },
     {
       "name": "Reuses shared fields",
-      "max_score": 6,
+      "max_score": 4,
       "description": "The model reuses shared field definitions through `\"...\"` references (e.g. `../../models/form-common/_basic-input-fields.json` or `_help-container.json`) whose relative paths resolve from the component folder, rather than redefining basic fields by hand"
     },
     {
@@ -29,7 +29,7 @@
     },
     {
       "name": "Authoring filter / palette",
-      "max_score": 6,
+      "max_score": 4,
       "description": "`loan-slider` is added to the `\"form\"` filter `components` list in `blocks/form/_form.json` and/or the custom-components group of `models/_component-definition.json` references `../blocks/form/components/loan-slider/_loan-slider.json#/definitions`"
     },
     {
@@ -49,17 +49,22 @@
     },
     {
       "name": "Authored properties read",
-      "max_score": 5,
+      "max_score": 4,
       "description": "min/max/step are read from the field JSON `properties` object (e.g. `fieldJson.properties.min`) and applied to the range input"
     },
     {
       "name": "Component README",
-      "max_score": 5,
+      "max_score": 4,
       "description": "`blocks/form/components/loan-slider/README.md` exists with a title, an authoring-properties / how-to-use section, and a usage-notes section naming the base type and viewType"
     },
     {
+      "name": "E2E test written",
+      "max_score": 8,
+      "description": "A Playwright end-to-end test exists for the component (e.g. `test/e2e/custom-components/loan-slider/loan-slider.spec.js` with a form JSON whose field has `\":type\": \"loan-slider\"`) that renders the form locally (form JSON in the form block's `<pre><code>`, no deployed URL) and asserts: the component loads, a model value set programmatically updates the slider/label, and moving the slider updates the model value"
+    },
+    {
       "name": "Honest validation report",
-      "max_score": 10,
+      "max_score": 8,
       "description": "`VALIDATION.md` lists concrete checks performed on the generated files (e.g. a structural validator, lint, build:json) with their results, explicitly states which checks could not be run in this environment instead of claiming they passed, and gives browser verification steps (open a form using the component and confirm it loads/syncs with the model)"
     }
   ]

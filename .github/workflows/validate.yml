@@ -82,7 +82,7 @@ jobs:
         with:
           node-version: '24'
 
-      - name: AEM Forms create-custom-component validator tests
+      - name: AEM Forms create-custom-component script tests
         run: node --test plugins/aem/forms/tests/*.test.mjs
 
   codeowners-coverage:
