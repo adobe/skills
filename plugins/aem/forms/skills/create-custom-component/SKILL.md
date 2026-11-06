@@ -28,7 +28,7 @@ Not for: generic EDS blocks (use the EDS `building-blocks` skill), AEM Sites HTL
 | `scripts/validate-component.mjs` | Step 8 — static validator (Node 18+, no dependencies) |
 | `scripts/validate-registration.js` | Step 8 — in-page runtime check |
 
-Paths under `scripts/` and `references/` are relative to this skill's directory; resolve them to absolute paths before running commands from the project root.
+Paths under `scripts/` and `references/` are relative to this skill's directory; resolve them to absolute paths before running commands from the repository root.
 
 ---
 
@@ -36,7 +36,7 @@ Paths under `scripts/` and `references/` are relative to this skill's directory;
 
 ### Step 1: Gather requirements
 
-Locate the project root (the directory containing `blocks/form/`; some repos nest it under `code/`). Then confirm — ask only for what the request does not already answer:
+Run every command in this skill from the **repository root** — the directory containing `package.json` and `blocks/form/`. Do not `cd` into a subfolder (such as `code/`) first. Then confirm — ask only for what the request does not already answer:
 
 | Question | Why |
 |----------|-----|
@@ -53,7 +53,7 @@ Check the name is not already used: `blocks/form/components/<name>/` must not ex
 
 ### Step 2: Scaffold
 
-If `package.json` has a `create:custom-component` script, run it from the project root (install dependencies first if `node_modules` is missing):
+If `package.json` has a `create:custom-component` script, run it from the repository root (install dependencies first if `node_modules` is missing):
 
 ```bash
 npm run create:custom-component -- --name <name> --base <base-type>
@@ -128,7 +128,7 @@ Merges component JSON into `component-models.json`, `component-definition.json`,
 
 Do not report the component as done until gates A–C pass. Fix and re-run on failure.
 
-**A. Static validation** — from the project root:
+**A. Static validation** — from the repository root:
 
 ```bash
 node <skill-dir>/scripts/validate-component.mjs <name>

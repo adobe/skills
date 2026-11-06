@@ -19,8 +19,8 @@ Usage:
   node validate-component.mjs <component-name> [--root <project-root>] [--json]
 
 Options:
-  --root <dir>  Project root containing blocks/form (default: current directory;
-                falls back to ./code if blocks/form is not found).
+  --root <dir>  Repository root containing package.json and blocks/form
+                (default: current directory).
   --json        Print machine-readable JSON instead of text.
   -h, --help    Show this help.
 
@@ -55,10 +55,7 @@ function parseArgs(argv) {
 }
 
 function resolveRoot(root) {
-  const base = resolve(root || process.cwd());
-  if (existsSync(join(base, 'blocks/form'))) return base;
-  if (!root && existsSync(join(base, 'code/blocks/form'))) return join(base, 'code');
-  return base;
+  return resolve(root || process.cwd());
 }
 
 function readText(file) {
@@ -117,7 +114,7 @@ export function validateComponent(name, rootDir) {
   }
 
   if (!existsSync(formDir)) {
-    error('project.form-block', `No blocks/form directory under ${root}. Run from the project root or pass --root.`);
+    error('project.form-block', `No blocks/form directory under ${root}. Run from the repository root or pass --root.`);
     return finish();
   }
   if (!existsSync(compDir) || !statSync(compDir).isDirectory()) {
