@@ -1,5 +1,5 @@
 {
-  "description": "Fix a hand-written DA page draft that previews with missing content, icons, section style, metadata and a mangled table",
+  "description": "Fix a hand-written DA page draft that previews with missing content, section style, metadata and a mangled table",
   "fixtures": {
     "draft": {
       "type": "directory",

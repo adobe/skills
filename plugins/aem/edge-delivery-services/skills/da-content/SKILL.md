@@ -107,7 +107,9 @@ position. Style with classes on the block, not on inline tags.
 ## Uploading
 
 - `PUT https://admin.da.live/source/{org}/{repo}/{path}.html` with
-  `Authorization: Bearer <IMS token>` (see **da-auth**) and a **multipart
+  `Authorization: Bearer <IMS token>` (see **da-auth**; `aem content` keeps its
+  own login in `.hlx/.da-token.json`, so get a token from da-auth for these
+  direct calls) and a **multipart
   form with the file in field `data`**. Any other field name returns 200 and
   writes nothing (the next GET is 404). A missing or bad token returns 401
   with an empty body.

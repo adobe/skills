@@ -92,7 +92,7 @@ The DA-write contract in Phase 5 is the same one **da-content** documents
   existing blocks under `blocks/`, and required for the content+code path to
   add block code). Its GitHub `{owner}`/`{repo}` and the deploy `{branch}`.
 - **DA location** — `daOrg`, `daRepo` (the DA namespace), page `PATH` (no
-  extension, lowercase/dash only — see da-content rules). In the
+  extension, lowercase/dash only). In the
   standard EDS+DA setup `daOrg`/`daRepo` **equal** the GitHub `{owner}`/`{repo}`;
   confirm, because Phase 5 writes to `daOrg`/`daRepo` but previews/renders on
   the GitHub `{owner}`/`{repo}`/`{branch}`.
@@ -439,8 +439,9 @@ block's look diverges) — the **3B** case. **Guardrails (strict):**
   and base typography — is a separate, allowed project-theming step, not part
   of building this block; see Guardrails.)*
 - New block **names and variant tokens** must obey EDS block-name rules
-  (da-content SKILL.md): lowercase alphanumeric + single hyphens,
-  **no underscores, no double dashes, must not start with a digit**
+  (da-content, Blocks): lowercase alphanumeric + single hyphens,
+  **no underscores, no double dashes, must not start with a digit** (stricter
+  than the pipeline, which normalizes underscores; this is the house rule)
   (`pricing-table` ✓, `pricing_table` / `2col` / `promo--wide` ✗). Names must
   be unique and not collide with existing blocks.
 
@@ -555,17 +556,18 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
   direct child `<div>` a row, each grandchild `<div>` a cell. The first class
   token is the block name (resolves to `blocks/<name>/<name>.{js,css}`).
   Multi-word variants hyphenate; multiple variants are separate class tokens.
-  Max 4 cells per row; blocks cannot nest. *(da-content SKILL.md)*
+  Max 4 cells per row (block-authoring convention); blocks cannot nest. *(da-content)*
 - **Default content:** headings/paragraphs/lists/images/buttons live directly
   in the section `<div>`, outside any block. *(da-content SKILL.md)*
 - **Icons — two non-interchangeable paths; never a stand-in glyph.** The
-  `<span class="icon icon-<name>"></span>` convention resolves **only** to the
+  `:<name>:` text convention (the pipeline turns it into
+  `<span class="icon icon-<name>"></span>`, see da-content, Icons) resolves **only** to the
   project's Code Bus `/icons/<name>.svg`, so that SVG must be **committed to the
   repo `/icons/` folder and pushed on the deploy branch** (content+code path,
   same as block code) and return `200` on the branch host — uploading it to DA
-  `/media` does **not** satisfy the span (it 404s and the icon silently vanishes).
+  `/media` does **not** satisfy the icon (it 404s and the icon silently vanishes).
   A DA-`/media` SVG must instead be referenced by **full URL on an `<img>`**, not
-  an icon span. Get the real **SVG** in Phase 1; **never emit an emoji or Unicode
+  an icon. Get the real **SVG** in Phase 1; **never emit an emoji or Unicode
   glyph in place of a designed icon.** *(da-content SKILL.md)*
 - **Images — MUST be full, fetchable URLs.** Figma render URLs expire, and
   **repo-relative paths (`/img/…`) render as `about:error`.** So: download the
@@ -847,7 +849,7 @@ preview-only and never call it "done."**
       for `lorem`, CTA labels like "Button"/"Lorem Ipsum", and repeated-identical
       items; every item that should be distinct has distinct copy **and** a
       distinct image.
-- [ ] **Every referenced icon resolves** — each `<span class="icon icon-x">`
+- [ ] **Every referenced icon resolves** — each `:x:` icon
       returns `200` at `/icons/x.svg` on the branch host (or is a full DA-`/media`
       URL on an `<img>`); **no emoji or Unicode glyph standing in for a designed
       icon.**
