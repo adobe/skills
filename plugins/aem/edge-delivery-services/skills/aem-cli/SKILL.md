@@ -64,8 +64,9 @@ aem content push
 - Pages you add or edit must be in DA's HTML format; see da-content.
 - Sign-in token: `.hlx/.da-token.json` (git-ignored). Don't ask for a token by hand.
 - `push` writes the DA source only. Preview the page (Sidekick, or
-  `POST https://admin.hlx.page/preview/<org>/<site>/main/<path>`) before
-  `https://main--<site>--<org>.aem.page/<path>` shows it.
+  `POST https://admin.hlx.page/preview/<org>/<site>/main/<path>` with an IMS
+  Bearer token, see da-auth) before `https://main--<site>--<org>.aem.page/<path>`
+  shows it.
 - `aem content push` can report success without storing media files (PNG/SVG
   verified on 16.22.16). Upload them with a DA Source API `PUT` using multipart
   field `data`; see da-content.

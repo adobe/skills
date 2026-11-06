@@ -1,6 +1,6 @@
 ---
 name: da-auth
-description: "Use this to obtain, reuse, refresh or troubleshoot Adobe IMS authentication for admin.da.live or api.aem.live (Source Bus / Experience Workspace). Use before pushing HTML content, listing documents or triggering a preview when no credential is known to work for that API, or for 401/403 (Unauthorized/Forbidden) and authentication checks where status 200 is insufficient. Not for choosing a content store or planning content changes when authentication already works."
+description: "Use this to obtain, reuse, refresh or troubleshoot Adobe IMS authentication for Experience Workspace (formerly DA) content APIs: admin.da.live (DA) or api.aem.live (Source Bus). Use before pushing HTML content, listing documents or triggering a preview when no credential is known to work for that API, or for 401/403 (Unauthorized/Forbidden) and authentication checks where status 200 is insufficient. Not for choosing a content store or planning content changes when authentication already works."
 license: Apache-2.0
 metadata:
   version: "1.1.0"
@@ -8,7 +8,8 @@ metadata:
 
 # DA Authentication
 
-Get an Adobe IMS token for DA or Source Bus; callers can keep the name `DA_TOKEN`.
+Get an Adobe IMS token for the Experience Workspace (formerly DA) content APIs: the DA
+API or the Source Bus API. Callers can keep the name `DA_TOKEN`.
 Reuse credentials already accepted by the target API. If **create-site** owns the
 login, or an authenticated MCP/backend already handles it, use that flow instead.
 Inspect the configured backend's tools; do not assume it exposes a login tool.
@@ -21,8 +22,8 @@ the authored content lives in Source Bus. See **da-content** for content operati
 
 | Content source | Protected read example |
 |---|---|
-| DA | `https://admin.da.live/list/{{ORG}}/{{REPO}}/{{FOLDER}}` |
-| Source Bus / Experience Workspace | `https://api.aem.live/{{ORG}}/sites/{{SITE}}/source/{{PATH}}` |
+| DA (`admin.da.live`) | `https://admin.da.live/list/{{ORG}}/{{REPO}}/{{FOLDER}}` |
+| Source Bus (`api.aem.live`) | `https://api.aem.live/{{ORG}}/sites/{{SITE}}/source/{{PATH}}` |
 
 Choose a known, existing protected folder or document. A successful read does not
 prove write/publish permission. `api.aem.live` accepts eligible IMS Bearer tokens
@@ -43,6 +44,9 @@ DA_TOKEN=$(npx github:adobe-rnd/da-auth-helper token) &&
   curl -sS -o /dev/null -w '%{http_code}\n' \
     -H "Authorization: Bearer $DA_TOKEN" "{{READ_URL}}"
 ```
+
+`aem content` (aem-cli) keeps its own login and cache in `.hlx/.da-token.json`; use this
+helper for direct API calls.
 
 The user completes browser sign-in and selects the IMS org that provides access.
 If browser login cannot run here, have the user complete the flow locally or use

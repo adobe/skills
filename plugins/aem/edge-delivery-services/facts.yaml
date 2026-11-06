@@ -633,5 +633,5 @@
     You generate DA page HTML as bare <div> sections with no <main>, or with
     content in <header> and <footer>. What reaches the preview? Which
     wrappers are required?
-  source: "Live check 2026-11-06, /drafts/dc-hf1..hf5 (preview .md)"
+  source: "Live check 2026-11-06, /drafts/dc-hf1..hf5 (preview .md); @adobe/helix-html2md as run by aem-cli 16.22.16: <main> alone, <body><main> and a full body all convert, no <main> returns empty ('contains no <main>'). aem up serves ./content/ through the same html2md, so local pages behave the same."
   used_by: []

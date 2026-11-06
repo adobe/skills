@@ -10,7 +10,7 @@ metadata:
 
 The rules for the HTML that Experience Workspace (formerly DA) stores and the
 Edge Delivery pipeline turns into a page. They apply whatever the API backend
-or hostname, and also to hand-written pages in `./content/` served by
+(DA or Source Bus) or hostname, and also to hand-written pages in `./content/` served by
 `aem up` (see **aem-cli**). Everything below was checked against a live
 preview; wrong markup fails silently, with no error.
 
@@ -107,9 +107,8 @@ position. Style with classes on the block, not on inline tags.
 ## Uploading
 
 - `PUT https://admin.da.live/source/{org}/{repo}/{path}.html` with
-  `Authorization: Bearer <IMS token>` (see **da-auth**; `aem content` keeps its
-  own login in `.hlx/.da-token.json`, so get a token from da-auth for these
-  direct calls) and a **multipart
+  `Authorization: Bearer <IMS token>` (see **da-auth**; `aem content` manages its
+  own login in `.hlx/.da-token.json`, direct API calls follow da-auth) and a **multipart
   form with the file in field `data`**. Any other field name returns 200 and
   writes nothing (the next GET is 404). A missing or bad token returns 401
   with an empty body.
