@@ -97,7 +97,7 @@ They need rewriting to one of three target forms, depending on
 1. **`absolute`** (default for publicly hosted sources):
    `https://<source-host>/path/to/assets/...`. Source host serves the
    binaries directly; EDS preview sideloads any `<img src>` URL into
-   Media Bus on first preview (see da-content `media.md` §2).
+   Media Bus on first preview (see da-content `media.md`).
 2. **`vendor`** (local-only source, accepted repo size impact):
    Copy the asset tree into `./assets/` in the repo. Template /
    fragment / page-CSS refs become root-relative `/assets/...`. DA
@@ -185,8 +185,8 @@ Two transformations the template needs that aren't slot-related:
 ### Critical rules for the DA doc
 
 DA HTML format, cell content normalization, page metadata, and image
-URL rules live in the `da-content` skill (§3, §3.9, §5, §9 of
-`html-content.md`). Load it before writing the DA doc.
+URL rules live in the `da-content` skill (`SKILL.md` and
+`references/`). Load it before writing the DA doc.
 
 The points below are Snowflake-specific — overlay-pattern decisions
 or consequences that aren't in `da-content`:
@@ -198,13 +198,13 @@ or consequences that aren't in `da-content`:
    trying to load `/blocks/<name>/<name>.js`.
 
 2. **Never write `<span class="…">` into DA cells.** Per
-   `da-content` §3.9 the span is stripped and the class is lost —
+   `da-content` the span is stripped and the class is lost —
    any page CSS targeting that class stops matching. Rewrite source-
    page styling hooks to CSS-on-structure (`:has()`, sibling
    selectors) or swap to a preserved semantic element before emitting.
 
 3. **`<img>` URLs in DA cells are stricter than template/fragment
-   HTML.** DA cells require absolute URLs (`da-content` §9).
+   HTML.** DA cells require absolute URLs (`da-content`).
    Template and fragment HTML can use root-relative `/assets/...`
    because the browser resolves those against the rendered page host
    (= code-bus host). The DA pipeline is what's stricter, not the

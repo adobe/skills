@@ -76,7 +76,7 @@ or two new blocks).
 | Rendering a block + **visual comparison to the design** (the reuse gate) | **testing-blocks** (browser/Playwright screenshot + "compare implementation to design") |
 
 The DA-write contract in Phase 5 is the same one **da-content** documents
-(see its `references/html-content.md` and `references/platform.md`).
+(see its `SKILL.md`).
 
 ---
 
@@ -92,7 +92,7 @@ The DA-write contract in Phase 5 is the same one **da-content** documents
   existing blocks under `blocks/`, and required for the content+code path to
   add block code). Its GitHub `{owner}`/`{repo}` and the deploy `{branch}`.
 - **DA location** — `daOrg`, `daRepo` (the DA namespace), page `PATH` (no
-  extension, lowercase/dash only — see da-content platform rules). In the
+  extension, lowercase/dash only — see da-content rules). In the
   standard EDS+DA setup `daOrg`/`daRepo` **equal** the GitHub `{owner}`/`{repo}`;
   confirm, because Phase 5 writes to `daOrg`/`daRepo` but previews/renders on
   the GitHub `{owner}`/`{repo}`/`{branch}`.
@@ -353,7 +353,7 @@ Derive the manifest from the plan:
 
 | The plan contains… | You MUST invoke |
 |---|---|
-| **Any** section (always) | **da-auth** (token) and **da-content** — load its real `references/html-content.md`, `platform.md`, and `media.md`, *not* the condensed rules in this file — before authoring (Phase 4) and deploying (Phase 5). |
+| **Any** section (always) | **da-auth** (token) and **da-content** — load its real `SKILL.md` and `references/`, *not* the condensed rules in this file — before authoring (Phase 4) and deploying (Phase 5). |
 | An **existing-block reuse** (3A) | **block-collection-and-party** (authoring model + a rendered example) **and testing-blocks** for the visual reuse gate (rendered block vs. the Figma section screenshot). |
 | A **new block** (3B) | **content-modeling** (design the authoring model), then **content-driven-development** (which runs **building-blocks** and **testing-blocks**). Do **not** hand-write block JS/CSS from this file. |
 | **Default content** (3C) | **da-content** only (no block skills). |
@@ -362,7 +362,7 @@ Record the manifest as an evidence-bearing checklist and tick each item **only
 after you actually invoked the skill** — "I know what it does" is not invocation,
 and an un-invoked required skill means this phase is **not complete**:
 
-- [ ] **da-content** reference docs loaded (`html-content.md` / `platform.md` / `media.md`)
+- [ ] **da-content** reference docs loaded (`SKILL.md` and `references/`)
 - [ ] **block-collection-and-party** invoked for every reused block *(if any 3A)*
 - [ ] **content-modeling** + **content-driven-development** invoked for every new block *(if any 3B)*
 - [ ] **Default-content** sections authored via **da-content** alone — **no** block-building skills invoked for them *(if any 3C)*
@@ -421,7 +421,7 @@ the Figma content into that structure:
   button, `<em>` for secondary. Do not add `target="_blank"` (decoration
   handles external links). Validate the href's URL scheme and escape the
   link text/attributes before emitting — see Phase 4, *Sanitize everything
-  derived from the design*. *(da-content html-content.md §8)*
+  derived from the design*. *(da-content SKILL.md)*
 - **Images** → Phase 4 (they need real URLs).
 
 ---
@@ -439,7 +439,7 @@ block's look diverges) — the **3B** case. **Guardrails (strict):**
   and base typography — is a separate, allowed project-theming step, not part
   of building this block; see Guardrails.)*
 - New block **names and variant tokens** must obey EDS block-name rules
-  (da-content html-content.md §3.3): lowercase alphanumeric + single hyphens,
+  (da-content SKILL.md): lowercase alphanumeric + single hyphens,
   **no underscores, no double dashes, must not start with a digit**
   (`pricing-table` ✓, `pricing_table` / `2col` / `promo--wide` ✗). Names must
   be unique and not collide with existing blocks.
@@ -466,7 +466,7 @@ nothing about how it is generated.
 Use the Figma design context/tokens from Phase 1 as the source of truth for
 layout and styling. New-block **CSS must target structure, not authored
 classes** — inline wrappers like `<span class="…">` are stripped inside block
-cells at delivery (da-content html-content.md §3.9), so a class you emit in a
+cells at delivery (da-content SKILL.md), so a class you emit in a
 cell will not survive.
 
 **Make the block responsive.** A Figma page frame is almost always a single
@@ -495,21 +495,20 @@ block wrapper:
   for primary/secondary) — same rule as 3A.
 - Do **not** add `class`, `id`, or `style` — decoration adds them at delivery.
 
-*(da-content html-content.md §6)*
+*(da-content SKILL.md)*
 
 ---
 
 ## Phase 4 — Generate DA body-fragment HTML (da-content)
 
 Emit a **body fragment** (not a full HTML document) per **da-content**. **Invoke
-da-content and load its `references/html-content.md`, `platform.md`, and
-`media.md` now** — the rules quoted throughout this phase are reminders to jog the
+da-content and load its `SKILL.md` and `references/` now** — the rules quoted throughout this phase are reminders to jog the
 right skill, not the source of truth. Subtle authoring rules (block-cell inline-
 tag normalization, media MIME/extension derivation, metadata keys) live in those
 docs; authoring from this summary alone is how they get missed. Write one file per
 page to `content/<PATH>.html`.
 
-**Mandatory skeleton** (da-content html-content.md §1–§2): wrap everything in
+**Mandatory skeleton** (da-content SKILL.md): wrap everything in
 `<body>` with an (empty) `<header>`/`<footer>` and a `<main>`; **each section
 is exactly one `<div>` directly inside `<main>`** — the `<div>` *is* the
 section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
@@ -556,9 +555,9 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
   direct child `<div>` a row, each grandchild `<div>` a cell. The first class
   token is the block name (resolves to `blocks/<name>/<name>.{js,css}`).
   Multi-word variants hyphenate; multiple variants are separate class tokens.
-  Max 4 cells per row; blocks cannot nest. *(html-content.md §3)*
+  Max 4 cells per row; blocks cannot nest. *(da-content SKILL.md)*
 - **Default content:** headings/paragraphs/lists/images/buttons live directly
-  in the section `<div>`, outside any block. *(html-content.md §6)*
+  in the section `<div>`, outside any block. *(da-content SKILL.md)*
 - **Icons — two non-interchangeable paths; never a stand-in glyph.** The
   `<span class="icon icon-<name>"></span>` convention resolves **only** to the
   project's Code Bus `/icons/<name>.svg`, so that SVG must be **committed to the
@@ -567,7 +566,7 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
   `/media` does **not** satisfy the span (it 404s and the icon silently vanishes).
   A DA-`/media` SVG must instead be referenced by **full URL on an `<img>`**, not
   an icon span. Get the real **SVG** in Phase 1; **never emit an emoji or Unicode
-  glyph in place of a designed icon.** *(html-content.md §7)*
+  glyph in place of a designed icon.** *(da-content SKILL.md)*
 - **Images — MUST be full, fetchable URLs.** Figma render URLs expire, and
   **repo-relative paths (`/img/…`) render as `about:error`.** So: download the
   image bytes from Figma (Phase 1 asset URLs), **upload each binary to DA**
@@ -590,9 +589,9 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
     mapping: JPEG→`.jpg`/`image/jpeg`, PNG→`.png`/`image/png`, WebP→`.webp`/
     `image/webp`, GIF→`.gif`/`image/gif`, SVG→`.svg`/`image/svg+xml`. If bytes
     and asset-reported format disagree, trust the bytes.
-  *(html-content.md §9 + media.md)*
+  *(da-content SKILL.md + media.md)*
 - **Section styling** → a `section-metadata` block **inside** the section
-  (`Style` → CSS classes; other rows → `data-*`). *(html-content.md §4)*
+  (`Style` → CSS classes; other rows → `data-*`). *(da-content SKILL.md)*
 - **Page metadata** → a single `metadata` block (exact class), placed as the
   **last element of the last section inside `<main>`** (never after `</main>`
   or in `<footer>`); keys like `title`, `description`, `image`, `template`,
@@ -603,11 +602,11 @@ section boundary (no `<hr>`). Do NOT emit `<!DOCTYPE>`, `<html>`, `<head>`,
   block is **required** — the Phase 5 pre-publish gate blocks on its absence — so
   populate it rather than deferring it. If the design offers no usable
   title/description text, ask the user rather than inventing marketing copy.
-  *(html-content.md §5)*
+  *(da-content SKILL.md)*
 
 Inside block cells the pipeline runs a stricter inline-tag normalization than
 for default content — `<span class>` is unwrapped (class lost), `<b>`→`<strong>`,
-`<mark>`→`<em>`, etc. Restrict cell content to the html-content.md §3.9 preserve
+`<mark>`→`<em>`, etc. Restrict cell content to the da-content SKILL.md preserve
 list. A wrong metadata **key** or block **field** silently corrupts output;
 when unsure, read da-content.
 
