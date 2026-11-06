@@ -1,6 +1,6 @@
 ---
 name: da-content
-description: "Use when writing or fixing the HTML of pages that authors edit in Experience Workspace / DA (da.live), including hand-written sample pages for local testing; when a generated page previews empty, without its metadata, icons, section styles or block, with about:error images, or with a table turned into a block; when uploading pages or media to the DA source API (200 but nothing written, SVG too big); or when you need to see how the pipeline read a page. Not for block JS/CSS (building-blocks), tokens (da-auth) or the aem CLI (aem-cli)."
+description: "Use before writing, fixing or answering questions about the HTML of pages that authors edit in Experience Workspace / DA (da.live), including hand-written sample pages for local testing. The pipeline silently drops or rewrites markup in ways that are not guessable, so check here first when a generated page previews empty, loses its metadata, icons, Section Metadata style or block, shows about:error images, turns a table into a block, loses span classes or bold in block cells, or has its links rewritten; when uploading pages or media to the DA source API (200 but nothing written, SVG over 40 KB returns 409); or when you need to see how the pipeline read a page. Not for block JS/CSS (building-blocks), tokens (da-auth) or the aem CLI (aem-cli)."
 license: Apache-2.0
 metadata:
   version: "1.0.1"
