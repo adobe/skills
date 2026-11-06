@@ -11,9 +11,12 @@ metadata:
 Local tooling for AEM Edge Delivery Services: `aem up` (dev server), `aem content` (da.live
 content sync), `aem import` (importer UI). Needs Node 18+.
 
-Check the version before relying on `./content/` or `aem content`: compare `aem --version`
-with `npm view @adobe/aem-cli version`; upgrade with `npm install -g @adobe/aem-cli@latest`.
-`aem content` and `./content/` serving need 16.18+, worktree port handling 16.22.12+.
+Check the version before relying on `./content/` or `aem content`, or when a content
+operation returns **403**: compare `aem --version` with `npm view @adobe/aem-cli version`;
+upgrade with `npm install -g @adobe/aem-cli@latest`. `aem content` and `./content/`
+serving need 16.18+, explicit IMS login 16.22.3+, worktree port handling 16.22.12+.
+For persistent 403s, invalidate the active project/environment’s cached token and
+retry with the intended IMS org before assuming DA permissions need changing.
 
 ## `aem up`
 
