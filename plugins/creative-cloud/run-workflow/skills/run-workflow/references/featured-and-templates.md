@@ -491,9 +491,17 @@ template default and logs a warning. Details:
 
 - Media cells are a URL or a filename matched (case-insensitively, by basename) to an uploaded asset's
   `name`.
-- Reframe/Translate outputs are matched by aspect ratio, by the row's `Language`/`Locale` cell (exact,
-  e.g. `fr-FR`), and — when several sources go through one Reframe/Translate — by the CSV column naming
-  the control, which holds each row's **original** source filename.
+- Reframe/Translate outputs are ranked by aspect **only when `useSmartMatching` is true and a CSV
+  input feeds `data`**. The target is the individual control's aspect, falling back to the template
+  aspect. Known aspects (decimal, `W:H`, or `WxH`) take precedence over missing/unparseable aspects;
+  the nearest wins, with input order breaking same-source ties.
+  Regardless of the toggle, variants are filtered by the row's `Language`/`Locale` cell (exact,
+  e.g. `fr-FR`) and any CSV column naming the control, which holds each row's **original** source
+  filename. With matching off (the default), there is no aspect ranking: the first remaining
+  variant is used only when a source is explicitly named or the remaining pool is provably a
+  single source; ambiguous pools warn and use the template default. Source identity is checked
+  before aspect ranking even with matching on, so a closer rendition cannot select a different
+  source or hide a source whose rendition has no aspect label.
 - Reserved columns (not controls): `Language`/`Locale`, `preset_id`, `output_filename` (unique per row).
 
 **Languages.** `video-translate`/`audio-translate` take only target languages (`targetLocaleCodes`); the

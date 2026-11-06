@@ -54,7 +54,7 @@ response.
 `typeSummary`.** The response's `renderedTable` field already contains THREE sections, in this
 exact order, inside one combined string, each separated by a blank line:
 
-1. A **"Golden demos:"** label, then FFCPE's 8 homepage golden-demo rows (Use Case/Name/Workflow
+1. A **"Quickstart Workflows:"** label by default, then FFCPE's 14 homepage interface-linkable rows (Use Case/Name/Workflow
    ID, byte-identical to `list_golden_workflows`' own table).
 2. The `typeSummary` type-count block (`statusDisplay` counts — Published/Draft/Draft
    Version/Shared in normal use — across the caller's FULL matching set, not just the current
@@ -65,8 +65,12 @@ exact order, inside one combined string, each separated by a blank line:
 3. A **"Your workflows:"** label, then this tool's own 5-column workflows table for the current
    page — never split into separate "your workflows" / "others' workflows" sections.
 
+The section heading is configurable via `RW_MCP_QUICKSTART_WORKFLOWS_HEADING`; preserve the
+returned heading verbatim, even when it differs from the default. These are the workflows
+formerly called "golden workflows/demos"; the tool name and `goldenUnavailable` field are unchanged.
+
 On a paginated call (`offset > 0`), section 1 is skipped entirely (not re-fetched, not
-re-rendered) — golden demos are the same static 8 rows regardless of page.
+re-rendered) — golden demos are the same static 14 rows regardless of page.
 
 Render the whole string top to bottom, in one piece, exactly as returned — do not peel any
 section off into a separate call, do not reorder them, and do not trim/summarize any section just
@@ -144,10 +148,10 @@ their rows into one table:
   are visible in one flat list (the backend has no such scope concept for this endpoint).
   `descriptionDisplay`/`authorDisplay` are "—" only when that field is genuinely unavailable (no
   description was published; author resolution failed), not an error. This `workflowId` is a
-  fresh ID minted when the interface was published — it does NOT match the ID of the source
-  workflow it was promoted from; never treat an interface's workflowId as interchangeable with
-  one from `list_all_workflows`/`list_workflow_history`, even for what looks like the same
-  underlying workflow.
+  separate ID for a legacy preset, but unified interfaces share their source workflow's ID.
+  Preserve the selected surface: `inspect_run({ id: workflowId, interface: true })` and
+  `run_workflow_submit({ workflowId, inputs: [], interfaceRerun: true })` select an interface;
+  ordinary workflow inspection/reruns omit those flags.
 - **`list_interface_runs`** (executions/"jobs"): columns **Job name / Start date / Status /
   Duration / Batch ID** — the first four match bulk-creation's Job log column labels exactly
   (`historylist-job-name`/`historylist-start-date`/`historylist-status`/`historylist-duration`);
@@ -179,44 +183,71 @@ pages internally, accumulating non-preset rows up to a bounded safety cap — `r
 means that cap was hit while still short of enough rows; there may be more further back than
 shown. Always mention this to the user when true rather than presenting the list as complete.
 
-## Presenting golden workflows (`list_golden_workflows`)
+## Presenting Quickstart Workflows (`list_golden_workflows`)
+
+Recognize both "Quickstart workflows" and the legacy "golden workflows/demos" as this catalog.
+The standalone tool still returns only the table, without a section heading.
 
 Distinct from BOTH `list_featured_workflows`/`get_featured_workflow` (per-scenario templates —
 retargeting, localization, packaging) AND the `golden-demos` example fixtures used by
 `get_workflow_examples`/`reload_examples` (internal compose_workflow debugging references) —
 don't conflate any of these despite the shared "golden"/"featured" wording. This one lists
-FFCPE's homepage showcase groups (Banners at Scale, Product Assets, Social Video Adaptation; 8
+FFCPE's redesigned homepage showcase groups (Banners at scale, Product assets, Video adaptation; 14
 named demos total). Unlike `list_workflow_runs`, this genuinely does live-query the same backend
 `list_interfaces` uses (`ApiClient.getPresets()`) — it isn't a static/no-UI-precedent list.
+
+The interface-linkable slots, in homepage order, are InDesign; Photoshop; Illustrator; HTML5;
+2D product packshots; 3D product packshots; 3D lifestyle imagery; Material variations; Label swap;
+3D product animations; Variations; Cutdowns; Reframing; Dubbing. This mirrors
+[bulk-creation PR #4939](https://github.com/Adobe-Firefly-Enterprise/bulk-creation/pull/4939),
+which promotes six former placeholders to interface-linkable actions. Of the 16 visible homepage
+actions, only 3D digital twin (Intake) and Product placement (external experience) are excluded:
+neither resolves through the global-interface registry.
+
+Resolution mirrors the homepage with interface convergence enabled: fetch published presets with
+`useUnifiedInterface=true`, merge shared interfaces (owned summaries win duplicate workflow IDs),
+then match the exact `homepage:*` tag. Eligible globals are legacy presets with `orgId: "adobe"`
+or unified interfaces with `isGlobal: true` and no truthy `isLegacy`. A name match alone never
+qualifies. The newest publication instant wins; equal timestamps preserve owned-then-shared
+candidate order. MCP opts into the converged backend path directly; it does not read the UI's
+Floodgate flag. Definition reads opt in only for explicit interface intent:
+`inspect_run` uses `interface: true`; `run_workflow_submit` uses `interfaceRerun: true`.
+Ordinary workflow reads retain their prior resolution and same-assets confirmation behavior.
+A failed owned-preset read fails the lookup (`list_all_workflows` marks the section
+`goldenUnavailable` and omits it). A failed shared read retains all 14 rows and owned matches,
+sets `sharedUnavailable: true` (`goldenSharedUnavailable` in `list_all_workflows`), and embeds a
+partial-results warning. In that state, "—" can mean unresolved, not unpublished; do not claim
+missing IDs are definitively unbacked.
 
 Columns: **Use Case / Name / Workflow ID** — deliberately minimal, matching the UI as closely as
 this data allows. `useCase`/`name` are the UI's own fixed labels (bulk-creation's own code calls
 the grouping `useCaseCards`, hence "Use Case" rather than an invented term), byte-identical to
 what's shown on the homepage — render them verbatim. `workflowId` is the one deliberate addition
-beyond the UI itself: the homepage never shows this ID (it silently falls back to a static
-template with no visible indication when no live preset backs a slot), but it's kept so a caller
+beyond the UI itself: the homepage never shows this ID (it falls back to a bundled template,
+or an empty builder for the six newly linked slots, when no live interface backs a slot), but it's kept so a caller
 can chain into `inspect_run`/`run_workflow_submit` for a specific demo — same exception already
-made for `list_interfaces`. Every one of the 8 rows must always be shown, `workflowId` is `"—"`
+made for `list_interfaces`. Every one of the 14 rows must always be shown, `workflowId` is `"—"`
 when no live preset currently backs that slot — a normal, expected state, not an error.
 
 **A plain "list my workflows" intent does NOT call this tool separately.** `list_all_workflows`'s
-own `renderedTable` already leads with this same 8-row golden table (byte-identical rendering),
+own `renderedTable` already leads with this same 14-row golden table (byte-identical rendering),
 followed by a blank line, then the caller's own workflows — one combined string. Only call
-`list_golden_workflows` directly when the user specifically asks about golden demos/showcase
+`list_golden_workflows` directly when the user specifically asks about Quickstart workflows/golden demos/showcase
 workflows on their own, or as the first step of "run `<use case>`" (see below). `goldenUnavailable:
 true` on `list_all_workflows`'s response means that section failed and was OMITTED from
 `renderedTable` entirely (not left as an empty placeholder) — mention this to the user.
 
-### Running a golden demo by name
+### Running a Quickstart workflow by name
 
-"Run banners at scale" / "run the social video adaptation demo" is an EXECUTE intent, not a listing
+"Run banners at scale" / "run video adaptation" / "run the social video adaptation demo" is an EXECUTE intent, not a listing
 one — `list_golden_workflows` still resolves it, but as the first step of a run, not the end of the
 request. Flow: call `list_golden_workflows`, match the named use case/row, then
-`run_workflow_submit({ workflowId, inputs: [] })` directly — baked defaults, no confirmation needed
+`run_workflow_submit({ workflowId, inputs: [], interfaceRerun: true })` directly — baked defaults, no confirmation needed
 (see below) — or with the user's own `inputs` if their prompt already asked for that. A use-case name
-alone (e.g. "Banners at Scale") can match more than one row — list the matches and ask which before
+alone (e.g. "Product assets") can match more than one row — list the matches and ask which before
 proceeding; never guess. `workflowId: "—"` means that slot has no live preset — tell the user it isn't
 currently available rather than attempting to run it.
+The legacy "Social Video Adaptation" / "SVA" name refers to the "Video adaptation" group.
 
 Golden demos are interfaces — passing empty `inputs: []` runs them on their baked default assets,
 and `run_workflow_submit` resolves those automatically (it never falls back to whatever a PRIOR run
@@ -227,14 +258,13 @@ supplied, the rest left blank) leaves every other slot on its baked default.
 **Do NOT ask first here (this is the opposite default from ASK-FIRST — see `SKILL.md`).** A golden
 demo's/interface's baked assets are curated and durable, not a stale leftover from a prior run — there
 is nothing to confirm and nothing to pre-verify, so submit `inputs: []` directly without asking or
-checking asset hydratability first (`inspect_run` inspects a prior EXECUTION, not a preset's
-definition — it has nothing to find for a never-run interface, and calling it first only adds a
-round-trip that can 404 for no reason). Only ask when the user's own prompt is itself ambiguous about
+checking asset hydratability first (inspection adds an unnecessary round-trip).
+Only ask when the user's own prompt is itself ambiguous about
 wanting to supply their own assets instead of running as-is.
 
 ### "What assets does this golden/interface need — and are they still available?"
 
-Route this to **`inspect_run(workflowId)`** — never `get_featured_workflow` (a different catalog:
+Route this to **`inspect_run({ id: workflowId, interface: true })`** — never `get_featured_workflow` (a different catalog:
 agent-facing scenario templates, not this interface's baked defaults). Given a preset/interface
 workflowId, `inspect_run` resolves the interface's authoritative current definition directly (via
 the preset endpoint, not batch history) and returns its required inputs in `rerunAssets.inputs[]`.
@@ -1015,7 +1045,13 @@ matched control …` or `Invalid media cell … control skipped`) in the `inspec
 4. **Locale mismatch** — the row's `Language` cell isn't exactly a translated locale (`fr-FR`, not `fr`),
    or that locale (including the source language) isn't in `targetLocaleCodes`. **Fix:** correct the cells
    or the targets.
-5. **Aspect mismatch** — Reframe didn't produce the `.mogrt`'s aspect ratio. **Fix:** add it to Reframe.
+5. **Wrong media aspect** — first check that `useSmartMatching` is true and a CSV input feeds DGR's
+   `data` port. Without both, upstream variants are not ranked by aspect; locale/source routing
+   can select the first remaining rendition even when a better aspect exists. **Fix:** enable
+   Smart Matching and provide the CSV input. If both are already present, check that Reframe
+   produced the individual control's aspect (template aspect is only a fallback); add that
+   rendition if missing. Known aspects outrank missing/unparseable ones; decimal ratios such as
+   `1.7778` are recognized alongside `16:9`/`16x9`.
 
 **DGR run produced an unexpected number or shape of videos** — count = `.mogrt` files × CSV rows ×
 presets per row (see [`featured-and-templates.md`](featured-and-templates.md)); a failed `.mogrt` drops

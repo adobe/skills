@@ -9,11 +9,11 @@ Without a brief, skip to Step 4.
 > **Composition by default:** a brief is input for a new `compose_workflow` graph, not authorization
 > to select a featured template. Do not call `list_featured_workflows` / `get_featured_workflow` or
 > pass `featuredWorkflowName` unless the user explicitly requests a featured/predefined template.
-> A bare user "run banners at scale" with no brief is a **golden** run
+> A bare user "run banners at scale" with no brief is a **Quickstart** (formerly golden) run
 > request — route it to `list_golden_workflows`, not here. See [`diagnostics.md`](diagnostics.md) →
-> "Running a golden demo by name."
+> "Running a Quickstart workflow by name."
 >
-> Golden demos are not a brief-classification source. If the user explicitly requests a featured
+> Quickstart workflows are not a brief-classification source. If the user explicitly requests a featured
 > template for the brief, follow [`featured-and-templates.md`](featured-and-templates.md), Flow A;
 > otherwise use Flow B for supplied INDD/PSD templates.
 
