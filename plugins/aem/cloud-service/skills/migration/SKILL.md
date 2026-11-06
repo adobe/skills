@@ -10,8 +10,8 @@ description: |
   Guava cache → Caffeine swaps (guavaCache), java.io.InputStream usage triage (inputStream),
   Oak index conversion (oakIndex, beta), and static→editable template modernization. Also
   externalizes OSGi config secrets to Cloud Manager (scans ui.config/.cfg.json for $[secret:]/$[env:]
-  placeholders), converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E), and validates
-  migrated code on a local Cloud SDK (Branch G, beta).
+  placeholders), converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E), validates migrated code on a
+  local Cloud SDK (Branch G, beta), and migrates asset workflows (Branch H).
 license: Apache-2.0
 ---
 
@@ -44,6 +44,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 | **InputStream advisories** | *"Fix **inputStream** findings."* / *"Triage the `java.io.InputStream` warnings in my BPA report."* | Agent reads [references/input-stream.md](references/input-stream.md) and runs the deterministic scanner `scripts/input-stream-runner.js` (pure Node). Adobe documents the risk as binary data streamed through the JVM, fixed by direct binary upload and CDN delivery. The scanner produces one finding per file, ordered by risk, with every stream site pre-classified (F deserialization / E binary streamed or processed in the JVM / D local filesystem / C unbounded read / B unclosed stream or undisposed `Binary` / A benign) and tagged with a fix kind (`decision` / `review` / `auto`). Same precedence as the other BPA patterns: BPA findings first (CAM, then a BPA CSV, subtype `java.io.inputstream`), whose classes the scanner resolves to workspace files for line-level sites, with classes outside the workspace collapsed to one informational row per bundle (customer code kept elsewhere, platform-provided AEM Forms add-on, or third-party); the whole workspace is scanned only when BPA has no `inputStream` findings. The agent proposes tier-aware fixes for D/E/F, fixes unclosed streams, and verifies each edit with a `--files` re-scan. BPA pattern id: `inputStream`. Not a `code-assessment` pattern, since BPA only raises it for code carried over from legacy AEM. |
 | **Dispatcher conversion** | *"Convert my AMS / on-prem Dispatcher config to AEM as a Cloud Service."* | Agent reads [references/dispatcher/context.md](references/dispatcher/context.md) — detects the config **mode**, generates the tool config, runs Adobe's `dispatcher-converter`, **verifies** output (filter/ACL hard-gate), and validates. **Branch E.** Runbook pattern id: `dispatcherConversion` (heuristic). |
 | **Validate a migration** [BETA] | *"Validate my migration on the local Cloud SDK."* / *"Verify the scheduler fix before I raise a PR."* | Agent reads [references/validation/validate-migration.md](references/validation/validate-migration.md) — builds, deploys to the running local SDK, checks bundle/component state via the AEM Quickstart MCP, and reports the outcome to CAM when a project is linked. **Branch G.** |
+| **Asset workflow migration** | *"Migrate my DAM asset workflows / DAM Update Asset customizations to AEM as a Cloud Service."* | Agent reads [references/asset-workflow/context.md](references/asset-workflow/context.md), runs Adobe's `wf-migrator` (`aem-cloud-migration`) — which makes every change — then reviews its report and diff with the user and hands over post-deploy checks. **Branch H.** Runbook pattern id: `assetWorkflowMigration` (heuristic). |
 
 **Starter prompts (copy-paste)** — the Quick start table above covers each pattern individually; these add the whole-project entry point, source-specific invocations (CSV / CAM / manual), and multi-step combinations:
 
@@ -145,6 +146,15 @@ If the user asks to **fix Oak index findings / convert `_oak_index` definitions*
 
 If the user asks to **validate / verify / smoke-test** migrated code on the local Cloud SDK, read [references/validation/validate-migration.md](references/validation/validate-migration.md) and follow it. It never edits customer source; failures go back to the branch that owns the pattern. **Skip** Branch B.
 
+**Branch H — Asset Workflow Migration** (on-prem / AMS DAM asset-processing workflows → asset microservices + post-processing workflows; no Java BPA pattern this session):
+
+If the user asks to **migrate DAM asset workflows** — `DAM Update Asset` customizations, asset workflow launchers, custom asset process steps, ImageMagick `CommandLineProcess` renditions — or mentions Adobe's **Asset Workflow Migration Tool** / `wf-migrator` / `aem-cloud-migration`, follow the **4-step flow**. Adobe's `wf-migrator` JAR makes every change; the skill runs it, gathers the user's decisions and guides the review, and never edits project files itself. The tool version is **[wf-migrator 0.7.0](https://github.com/adobe/aem-cloud-migration/releases/tag/v0.7.0)**, pinned by checksum and downloaded on first run; v0.6.0 lacks its fixes (split handling, Completed step, ImageMagick, runner config, XML formatting), so do not use it. Start by reading [references/asset-workflow/context.md](references/asset-workflow/context.md). **Skip** Branch B.
+
+1. **Decide if it applies** — open the model behind each enabled asset launcher with the user ([context.md](references/asset-workflow/context.md#does-this-project-need-it)). If it only uses OOTB steps with standard settings, STOP — the microservices already do the work.
+2. **Run** — `node scripts/asset-workflow-run.js <project>`. The first run downloads the pinned JAR and checks its SHA-256; `--jar <path>` uses a local copy instead ([context.md](references/asset-workflow/context.md#tool-version-070)). It needs Java 11+ and a clean git tree. Exit `0` = the tool finished; `1` = the tool failed; `2` = stopped before changing anything. Never present a failed run as done.
+3. **Review** — go through `target/asset-workflow-migration/migration-report.md`, the script's warnings and `git diff` with the user, including the models and custom Java steps the report does not cover ([context.md](references/asset-workflow/context.md#review-with-the-user)). Keep the result or undo it with the undo line the script printed (`git checkout . && git clean -fd` only when the tree was clean before the run).
+4. **Post-deploy** — hand over the checks in [context.md](references/asset-workflow/context.md#post-deploy-checks-rde-or-dev-environment): sync models, attach processing profiles, custom workers, launcher conditions, overlapping runner entries; verify on an RDE. Hand-offs for custom Java steps run as separate Branch B sessions. Branch H never edits Java.
+
 ## When to Use This Skill
 
 - Migrate legacy AEM Java toward **Cloud Service–compatible** patterns (scheduler, ResourceChangeListener, replication, EventListener/EventHandler, AssetManager)
@@ -157,6 +167,7 @@ If the user asks to **validate / verify / smoke-test** migrated code on the loca
 - **Dispatcher Conversion:** **Branch E** — convert AMS / on-premise Apache+Dispatcher configs to AEMaaCS via Adobe's `dispatcher-converter`, with mode detection, config generation, output verification (filter/ACL hard-gate), cross-boundary handoff, and SDK validation. References: [references/dispatcher/](references/dispatcher/).
 - **Oak Index Migration:** **Branch F** (beta) — convert legacy `_oak_index/*.xml` definitions via Adobe's `index-converter`, with a dynamic `-custom-N` naming override, a type/datatype compatibility check, and validation. BPA pattern id: `oakIndex`. Reference: [references/oak-index.md](references/oak-index.md).
 - **Validate migrated code:** **Branch G** (beta) — build, deploy to the local Cloud SDK, and check the migration contract and bundle/component state. Reference: [references/validation/validate-migration.md](references/validation/validate-migration.md).
+- **Asset Workflow Migration:** **Branch H** — migrate DAM asset workflows (launchers, `DAM Update Asset` overlays, custom steps) to processing profiles + post-processing workflows by running Adobe's `wf-migrator`, then reviewing its report and diff with the user and handing over post-deploy checks. References: [references/asset-workflow/](references/asset-workflow/).
 
 Branch routing and the read-first delegation for each entry above are defined once in **Required delegation** — this list is only the "when."
 
@@ -280,6 +291,7 @@ The runbook covers **every pattern the migration skill can address**. Each patte
 | `inputStream` | `java-scan` (BPA first, local scan as fallback) | Same precedence as the cascade: BPA/CAM → CSV (subtype `java.io.inputstream`) → local scan. With BPA rows, only the reported classes are in scope: `input-stream-runner.js` resolves them to workspace files and emits **one finding per file** with line-level sites, ordered by risk; classes outside the workspace collapse to **one informational row per bundle** (per package for CAM rows, which carry no bundle name): `missing-source` (plus a warning) for customer code kept in another repository or module, `platform-provided` for AEM Forms add-on code that Adobe provides on AEM as a Cloud Service, and `not-in-workspace` for third-party code to upgrade or replace. Without BPA rows, every `src/main/java` file is scanned. Every stream site is pre-classified (A–F) with a fix kind (`decision` / `review` / `auto`); files with only benign sites are informational. The local scan is always available, so this pattern never needs the LLM tier. |
 | `dispatcherConversion` | `content-scan` | Heuristic scan for an AMS / on-prem Dispatcher config layout (a monolithic `dispatcher.any` + `conf.vhost.d/`, or `conf.dispatcher.d/` AMS trees). Detected by `dispatcher-inventory.js`; the sample prompt routes to **Branch E**. |
 | `oakIndex` | `bpa-only` (no analyzer, no content-scan) | BPA is the **sole** source of truth (subtypes `index.rule.violation` / `standard.index.modification`), one finding per Oak index path. With no BPA source, `oakIndex` has no deterministic fallback and surfaces under **Tier 4 — LLM scan**: the agent locates `_oak_index/*.xml` directly per [references/oak-index.md](references/oak-index.md). Sample prompt routes to **Branch F** (beta). |
+| `assetWorkflowMigration` | `content-scan` | Heuristic scan for **enabled** DAM asset launchers (glob under `/content/dam`), one finding per launcher; the models are not read. Detected by `asset-workflow-run.js` (`runAssetWorkflowScan`); the sample prompt routes to **Branch H**. |
 
 `htlLint`, `osgiConfig`, `vault-package-dependencies`, `inputStream`, and the content-scan **fallback** for `lui`/`cdw`/`templateModernization` are **heuristic** (tagged `confidence: heuristic` in the cache) — candidate matches, not compiler-validated. BPA-sourced `lui`/`cdw`/`templateModernization`/`replication`/`guavaCache`/`oakIndex` findings are authoritative. Out of scope: `inject-in-sling-model` and `outdated-dependencies` (those belong to code-assessment's own runbook, not migration).
 
@@ -343,6 +355,8 @@ If the request is **oak index migration** — fix `oakIndex` findings, or conver
 
 If the request is to **validate / verify** already-migrated code on the local Cloud SDK, follow **Branch G** (beta). **Skip** Branch B.
 
+If the request is **asset workflow migration** — DAM asset workflows, `DAM Update Asset` customizations, asset launchers, or Adobe's Asset Workflow Migration Tool — follow **Branch H**. No Java pattern module is needed. **Skip** Branch B.
+
 Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`, `inputStream`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 
 ### Step 2: Availability
@@ -389,6 +403,8 @@ is non-empty, reuse it instead of re-deriving findings:
 For `lui` findings, the `identifier` in each target is the **JCR component path** (e.g. `/apps/myapp/components/content/mycomp`) — not a Java class name. Resolve it to the filesystem path using the [JCR → filesystem mapping](references/legacy-ui/dialog/context.md#jcr-path--filesystem-path) before opening files. **Note:** `luiCoral2` is not a standalone BPA pattern id — Coral 2 dialogs appear as the `legacy.dialog.coral2` sub-type within `lui` results. Do not call `getBpaFindings('luiCoral2', …)` independently; call `getBpaFindings('lui', …)` and filter by sub-type inside Branch D.
 
 For **`dispatcherConversion`**, targets are the Dispatcher config root(s) and detected mode from the `dispatcher-inventory.js` scan (surfaced in the Step 0 runbook), not from BPA — go straight to **Branch E**.
+
+For **`assetWorkflowMigration`**, targets are the whole Maven project — the tool migrates every affected model in one run, so there is no batching. Go straight to **Branch H**.
 
 For **`inputStream`**, the precedence is the same as for the other BPA patterns: the runbook cache (above), then BPA findings — CAM via `list-bpa-findings-by-pattern` (or the deprecated `fetch-cam-bpa-findings-by-pattern`) with `pattern: "inputStream"`, then a BPA CSV — and the local scan only when BPA has no `inputStream` findings. BPA names classes, not lines, so always run the scanner once to resolve them: write the CAM targets to a JSON file and run `node scripts/input-stream-runner.js <workspaceRoot> --bpa-json <cam-targets.json> [--csv <bpa.csv>] --json` (CAM targets win over the CSV; with neither, it scans the whole workspace). Do **not** hand BPA rows to `analyze.sh`. With BPA rows, only the reported classes are in scope: the scanner resolves them to workspace files with line-level sites and collapses classes outside the workspace per bundle (per package for CAM rows, which carry no bundle name). A batch is **five non-informational file findings** in the scanner's (risk) order. After editing a batch, verify with `--files <touched files>` (a missing or unreadable path fails the re-scan). Full loop: [references/input-stream.md](references/input-stream.md).
 
@@ -486,7 +502,7 @@ that cache.
 
 ## Quick reference
 
-**Source priority (BPA patterns):** unified collection → BPA CSV → MCP → manual paths — **not** an automatic cascade after MCP errors (if MCP fails, stop; see **MCP errors and fallback**). Batch size 5 on every BPA source. `htlLint`, OSGi→Cloud Manager, Template Modernization (C), and Legacy UI (D) do not use BPA/MCP — see their branches in **Required delegation**.
+**Source priority (BPA patterns):** unified collection → BPA CSV → MCP → manual paths — **not** an automatic cascade after MCP errors (if MCP fails, stop; see **MCP errors and fallback**). Batch size 5 on every BPA source. `htlLint`, OSGi→Cloud Manager, Template Modernization (C), Legacy UI (D), Dispatcher Conversion (E), and Asset Workflow Migration (H) do not use BPA/MCP — see their branches in **Required delegation**.
 
 **User-facing snippets:** *"Using existing BPA collection (N findings)…"* / *"Processing your BPA report…"* / *"Fetched findings from CAM."* / *"Scanning HTL templates for data-sly-test lint issues…"* / optional prompt after MCP stop above.
 
