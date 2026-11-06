@@ -14,6 +14,12 @@ or hostname, and also to hand-written pages in `./content/` served by
 `aem up` (see **aem-cli**). Everything below was checked against a live
 preview; wrong markup fails silently, with no error.
 
+The upload rules below are for the DA source API (`admin.da.live`). Some sites
+keep their authored content in Source Bus (`api.aem.live`) instead. If you do not
+know which one a site uses, ask the user. If `admin.da.live` calls fail or find
+nothing in a site the user says has content, it may be on Source Bus; see
+**da-auth** for credentials and choosing the API.
+
 ## Page structure
 
 ```html
