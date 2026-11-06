@@ -322,10 +322,41 @@ Rebrand `styles/styles.css` — replace the boilerplate's DEMO layer (roboto tok
   @media (width <= 767px) { :root { --nav-height: 102px; } }
   @media (width <= 480px) { :root { --nav-height: 120px; } }          /* banner wraps to 2 lines */
   ```
-  Make the header's height **deterministic** so the reserved value actually matches: keep the reservation breakpoints in sync with the header block's (both on the `DESIGN.json` `extensions.breakpoints.target` steps when that list is set — one `--nav-height` per step), and avoid nav-link *wrap zones* (e.g. extend the burger/hamburger breakpoint so the inline links can't wrap to a second row at awkward widths). A multi-row chrome (utility bar + nav) is taller than the stock 64px — measure it, don't keep the default. Reserve slightly OVER the natural height (a few px) so you never under-reserve and shift. **The footer needs NO reservation** — it's below the fold, so its late load shifts nothing above it. Verify with a CLS probe (Playwright `PerformanceObserver({type:'layout-shift'})`) that **delays the woff2/nav fetches** to reproduce the slow-network swap PSI measures — run it **against the DEPLOYED preview URL only (#101)**: local assets load instantly, so a harness run hides the shift and false-passes.
+  Make the header's height **deterministic** so the reserved value actually matches: keep the reservation breakpoints in sync with the header block's (both on the `DESIGN.json` `extensions.breakpoints.target` steps when that list is set — one `--nav-height` per step), and avoid nav-link *wrap zones* (e.g. extend the burger/hamburger breakpoint so the inline links can't wrap to a second row at awkward widths). A multi-row chrome (utility bar + nav) is taller than the stock 64px — measure it, don't keep the default. Reserve slightly OVER the natural height (a few px) so you never under-reserve and shift. **The footer needs NO reservation** — it's below the fold, so its late load shifts nothing above it. Verify with the Step 10 CLS probe on the DEPLOYED preview (#101).
 - **The reservation collapses block-internal `<header>` elements (#107).** The stock `header { height: var(--nav-height) }` + visibility rules match EVERY `<header>` on the page, not just the chrome host — a block whose `decorate()` emits a semantic `<header>` (natural when porting prototype DOM verbatim) gets it clamped to nav height and hidden, and every such block breaks at once while all text gates stay green. Do not emit `<header>` in block DOM — use a `<div class="…-head">`. (Scoping the stock selector to `body > header` would fix it at the root but edits the boilerplate's structural layer — if you are already adding the `border-box` reset above, scope the reservation in the same pass; otherwise the warning is the fix.)
 - **Overlay chrome — the #81 case with NO reservation (#108).** When the prototype's header is transparent and floats OVER the hero (hero content starts at `y=0` behind it), reserving `--nav-height` would push the hero DOWN below where the source renders it. Set `--nav-height: 0` and position the header absolutely (`header { position: absolute; top: 0; left: 0; right: 0; }` with the block styling its own ground) — nothing is in flow, so the late chrome load shifts nothing (measured CLS 0.0004 with this pattern on a real page).
-- **The hero must eager-load its LCP image AND reserve its media slot (#100).** The metadata block leaves the page's FIRST section empty, so the runtime's `loadSection(main.querySelector('.section'), waitForFirstImage)` eager-izes NOTHING — the hero's pipeline-emitted `<img loading="lazy">` stays lazy. And a hero image styled `width: auto` (contain-in-a-max-height layouts) has a **zero-height box until it loads**, so the hero grows by the image's full height when it lands, shifting every section below (a real page measured CLS 0.134 attributed to the section under the hero). Both halves in the hero block: `decorate()` sets `loading="eager"` + `fetchpriority="high"` on its first `<img>`, and the CSS reserves the media slot (`min-height` on the figure per breakpoint, or an explicit `aspect-ratio`). CLS probe on the DEPLOYED preview only (#101, above — this exact harness false-pass shipped once).
+- **The hero must eager-load its LCP image AND reserve its media slot (#100).** The metadata block leaves the page's FIRST section empty, so the runtime's `loadSection(main.querySelector('.section'), waitForFirstImage)` eager-izes NOTHING — the hero's pipeline-emitted `<img loading="lazy">` stays lazy. And a hero image styled `width: auto` (contain-in-a-max-height layouts) has a **zero-height box until it loads**, so the hero grows by the image's full height when it lands, shifting every section below (a real page measured CLS 0.134 attributed to the section under the hero). Both halves in the hero block: `decorate()` sets `loading="eager"` + `fetchpriority="high"` on its first `<img>`, and the CSS reserves the media slot (`min-height` on the figure per breakpoint, or an explicit `aspect-ratio`). Same Step 10 CLS probe (#101).
+- **Third-party players mount after the first contentful paint (#157).** A player iframe built in `decorate()` of a first-section block starts the vendor's ~0.5 MB player JS before first paint, and lab tests count it toward FCP/LCP (a ~1 s page measured lab LCP 8.5 s). Same `src`, later mount: `decorate()` reserves the box (the live iframe's `aspect-ratio`); the authored link stays in it until the iframe replaces it after the paint entry (`load` where paint timing is unsupported — an `IntersectionObserver` alone fires at once above the fold), with `createElement` from a parsed `https:` URL on the block's host list, never `innerHTML` or the raw authored string (a `javascript:` `src` runs in the page's origin). Gate: qa `player-before-paint`.
+  ```js
+  const PLAYER_HOSTS = ['www.youtube.com', 'www.youtube-nocookie.com', 'player.vimeo.com'];
+  function afterFirstPaint(fn) {
+    const painted = (l) => l.getEntriesByName('first-contentful-paint').length > 0;
+    if (painted(performance)) { fn(); return; }
+    if (!window.PerformanceObserver?.supportedEntryTypes?.includes('paint')) { // no paint timing
+      if (document.readyState === 'complete') fn();
+      else window.addEventListener('load', fn, { once: true });
+      return;
+    }
+    const po = new PerformanceObserver((l) => { if (painted(l)) { po.disconnect(); fn(); } });
+    po.observe({ type: 'paint', buffered: true });
+  }
+  function mountPlayer(a) { // the authored link; a watch URL → build the embed URL from its id
+    let url; try { url = new URL(a.href); } catch { return; }
+    if (url.protocol !== 'https:' || !PLAYER_HOSTS.includes(url.hostname)) return; // stays a link
+    const box = document.createElement('div');
+    box.className = 'player'; // CSS: aspect-ratio of the live iframe, and on the iframe
+    // display: block; width: 100%; height: 100%; border: 0 (or the box grows when it mounts)
+    a.replaceWith(box);
+    box.append(a); // stays paintable until mount: a player-only section still reaches FCP
+    afterFirstPaint(() => {
+      const f = document.createElement('iframe');
+      const title = a.textContent.trim() || 'Video';
+      const allow = 'encrypted-media; picture-in-picture; fullscreen';
+      Object.assign(f, { src: url.href, title, loading: 'lazy', allow });
+      a.replaceWith(f);
+    });
+  }
+  ```
 
 That's it. No motion primitives. No utility classes beyond the button system. Section `style` values stay the small closed set above — never a parallel styling system for block-owned sections (see anti-pattern 2).
 
@@ -1115,8 +1146,9 @@ A `padding: 200px 10px 10px 50px` cell per carousel slide, tagged `@ew-exempt co
 - [ ] Each block reproduces the prototype's max-width container — **including plain-background sections** (#37) — and the **content-cap row passed (#124)**: `cap-probe.mjs <live> --against <deployed> --design DESIGN.json` prints PASS.
 - [ ] **Chrome crop gate passed (#115)** — header and footer bands each ≤2% diff (`crop-compare.mjs`) against live on the deployed URL, at least once per template.
 - [ ] Global `img` reset is `display: block; max-width: 100%; height: auto;` (#36) — EDS adds width/height attrs; without `height: auto` images stretch vertically.
-- [ ] When the header sits in flow above the first section, `--nav-height` is set responsively to the real chrome height (#81) — the header block's late load must NOT push the hero down (verify CLS with a fetch-delayed probe on the DEPLOYED preview; target < 0.1).
-- [ ] Hero LCP image is `loading="eager"` + `fetchpriority="high"` (set in `decorate()` — the empty metadata-first section defeats the runtime's `waitForFirstImage`, #100) and its media slot is CSS-reserved (`min-height`/`aspect-ratio`); CLS probe on the DEPLOYED preview only (#101).
+- [ ] Header in flow above the first section → `--nav-height` matches the real chrome height per breakpoint (#81); deployed-preview CLS < 0.1.
+- [ ] Hero LCP image eager + `fetchpriority="high"`, media slot CSS-reserved (#100); CLS probe on the DEPLOYED preview only (#101).
+- [ ] Player iframes mount after first paint into an `aspect-ratio` box, from an allow-listed `https:` URL (#157); qa `player-before-paint` empty.
 - [ ] **`qa-gate.mjs` run against the harness (advisory smoke test)** — stock script + the page's eds-schema, no hand-rolled probe (#101). Its unique pre-deploy value is the schema unit-counts + one-`<h1>`; decoration/broken-img/grid checks are superseded by the DEPLOYED computed-style guard (chrome-empty / auth-gated DA image failures are harness limitations — see its `--help`). The advisory `content-diff` was run against the DEPLOYED URL only.
 - [ ] Any styling that depends on a `<span>`/class INSIDE a block cell is re-created in `decorate()` (#39) — EDS strips `<span>` in block cells (e.g. wrap a `.stars` run in JS, don't author it).
 - [ ] Every block CLASSIFIES plain-text fields by CELL (`cell.textContent` for the decision, #79) but DISPLAYS them by MOVING the cell's element (EW1) — `wrapTextNodes` (#104) and the workspace both deliver a `<p>`, so the element to move exists in both worlds; a `p`-only *read* still drops content on older runtimes. Verify against the decorated live/preview render, and assert each text field is present AND editable (counts alone don't catch it).

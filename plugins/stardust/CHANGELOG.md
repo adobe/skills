@@ -4,6 +4,28 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.37.1 — a player iframe mounts after first paint, and qa names the request that came before it (#157)
+
+Field learning (recorded replica runs of one source page): a block in the first section created the source's YouTube
+iframe in `decorate()`, so the player's JS started while the section was still loading. Lab tests count that toward
+FCP/LCP: a page painting in about 1 s measured lab LCP up to 8.5 s, scores 52–100 run to run. `lcp-poor` saw the
+symptom, nothing named the cause.
+
+- **Rule** (`deploy/SKILL.md` #157 + checklist row): same `src`, later mount — an `aspect-ratio` box at decorate time
+  that keeps the authored link (a player-only section still paints), replaced by the iframe after the first contentful
+  paint (without paint timing: at `load`, or at once when already loaded), from an allow-listed `https:` URL with
+  `createElement`; the iframe is `display: block` with no border, so the box keeps its height when it mounts.
+  Pointers from replica's live-data embeds bullet (deferral noted in the progress ledger) and dynamics' `media-as-url`.
+- **`qa/scripts/checks/perf.mjs`:** `player-before-paint` (warn, never downgraded) lists player document, script and API
+  requests from any frame that started before first contentful paint, dated by the browser: `timing().startTime`, or the
+  CDP `wallTime` while a response is still pending. Without either, two bounds decide (heard before the paint; frame
+  created after it); otherwise `player-timing-unknown` (warn), never a silent pass. Posters on player hosts are not
+  flagged. Tests: `qa/player-before-paint` (pure `judgePlayerRequests`), `qa/player-before-paint-browser` (collector
+  under a stalled event loop, a held-open player request, snippet lifecycle, untrusted links; Playwright from the
+  project, routed, no network).
+- **dynamics `modal-loader` example:** the player iframe is built with `createElement` from a parsed `https:` URL on a
+  dot-bounded host match, no longer interpolated into `innerHTML`.
+
 ## 0.37.0 — a resumed run keeps its gate verdicts, not its pictures (#156)
 
 Field learning (a recorded 550-page site-scope replica run in a 20 GB container): the disk filled after every page

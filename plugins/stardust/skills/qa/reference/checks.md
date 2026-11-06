@@ -137,7 +137,9 @@ ids and severities, owner-decided ones info; `header-contract-missing` info, `he
 | `transfer-over-budget` | warn | encoded bytes > budget (default 800KB) |
 | `js-over-budget` | warn | JS transfer > budget (default 250KB) |
 | `lcp-poor` | warn | lab LCP > 2.5s · `cls-poor` warn | CLS > 0.1 |
-| `network-degraded` | info | neutral-host TTFB control tripped — all perf findings this run downgraded to info (a slow network must not read as a site regression) |
+| `player-before-paint` | warn | a player document, script or API request (any frame) started before first contentful paint (deploy #157) |
+| `player-timing-unknown` | warn | a player request had no browser start time and neither bound placed it — `player-before-paint` could not judge it |
+| `network-degraded` | info | neutral-host TTFB control tripped — all perf findings this run except `player-before-paint` downgraded to info (a slow network must not read as a site regression) |
 | `measurement` | info | per-page numbers, always recorded |
 | `load-timeout` | warn | no load event in 60s |
 
