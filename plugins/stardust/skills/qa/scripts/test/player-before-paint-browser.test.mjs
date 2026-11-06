@@ -36,24 +36,27 @@ const page = ({ head = '', body, script }) => `<!doctype html><html><head>${head
 <script>${SNIPPET || ''}\n${script}</script></body></html>`;
 const showAfter = (ms) => `setTimeout(() => { document.querySelector('.section').style.display = ''; }, ${ms});`;
 
-async function withPage(html, fn, { noPaintTiming = false, busyOnPlayer = 0 } = {}) {
+async function withPage(html, fn, { noPaintTiming = false, busyOn = '', busyMs = 1200 } = {}) {
   const browser = await chromium.launch();
   try {
     const p = await browser.newPage();
     if (noPaintTiming) await p.addInitScript(() => { delete window.PerformanceObserver; });
-    if (busyOnPlayer) { // a busy QA process: hearing of the player request stalls it while the page paints
+    if (busyOn) { // a busy QA process: hearing of the player request stalls it while the page paints
       let once = true;
       p.on('request', (r) => {
-        if (!once || !r.url().startsWith(PLAYER)) return;
-        once = false; const end = Date.now() + busyOnPlayer; while (Date.now() < end);
+        if (!once || !r.url().startsWith(busyOn)) return;
+        once = false; const end = Date.now() + busyMs; while (Date.now() < end);
       });
     }
-    const requests = collectRequests(p);
+    const cdp = await p.context().newCDPSession(p); // as perf.mjs: Network enabled before navigation
+    await cdp.send('Network.enable');
+    const requests = collectRequests(p, cdp);
     const errors = []; const dialogs = [];
     p.on('pageerror', (e) => errors.push(e.message));
     p.on('dialog', (d) => { dialogs.push(d.message()); d.dismiss(); });
     await p.route(`${ORIGIN}/**`, (r) => r.fulfill({ contentType: 'text/html', body: html }));
     await p.route('https://www.youtube.com/**', (r) => r.fulfill({ contentType: 'text/html', body: '<p>player</p>' }));
+    await p.route('https://www.youtube.com/api/**', () => {}); // a slow vendor API: no response in the window
     await p.goto(`${ORIGIN}/`, { waitUntil: 'load' });
     const fcp = () => p.evaluate(() => {
       const e = performance.getEntriesByName('first-contentful-paint')[0];
@@ -73,10 +76,24 @@ test('collector: a pre-paint player request is caught even when this process hea
     await p.waitForTimeout(1500);
     const f = await fcp();
     assert.ok(f > 0, 'page painted');
-    const early = judgePlayerRequests(requests(), f);
+    const { early } = judgePlayerRequests(requests(), f);
     assert.equal(early.length, 1, `eager iframe flagged: ${JSON.stringify(requests().filter((r) => r.url.includes('youtube')))}`);
     assert.equal(early[0].type, 'document');
-  }, { busyOnPlayer: 1200 });
+  }, { busyOn: PLAYER });
+});
+
+test('collector: a pre-paint player request still pending at measurement is caught by its browser start', browserTest, async () => {
+  const html = page({
+    body: '<h1>Title</h1>',
+    script: `setTimeout(() => { fetch('https://www.youtube.com/api/held').catch(() => {}); ${showAfter(300)} }, 50);`,
+  });
+  await withPage(html, async ({ p, requests, fcp }) => {
+    await p.waitForTimeout(1500);
+    const held = requests().find((r) => r.url.endsWith('/api/held'));
+    assert.ok(held && held.heard > await fcp(), 'this process heard of it after the paint');
+    const { early, unmeasured } = judgePlayerRequests(requests(), await fcp());
+    assert.deepEqual([early.map((x) => x.type), unmeasured], [['fetch'], []]);
+  }, { busyOn: 'https://www.youtube.com/api/' });
 });
 
 test('snippet: a player-only first section still paints, then mounts the player after FCP', snippetTest, async () => {
@@ -90,7 +107,7 @@ test('snippet: a player-only first section still paints, then mounts the player 
     assert.equal(await frame.evaluate((f) => [f.title, f.loading].join('|')), 'Promo video|lazy');
     assert.equal(await p.locator('.player a').count(), 0, 'the link is replaced by the iframe');
     await p.waitForTimeout(300);
-    assert.deepEqual(judgePlayerRequests(requests(), await fcp()), []);
+    assert.deepEqual(judgePlayerRequests(requests(), await fcp()), { early: [], unmeasured: [] });
     assert.deepEqual(errors, []);
   });
 });

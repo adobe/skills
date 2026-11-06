@@ -17,10 +17,12 @@ symptom, nothing named the cause.
   `createElement`.
   Pointers from replica's live-data embeds bullet (deferral noted in the progress ledger) and dynamics' `media-as-url`.
 - **`qa/scripts/checks/perf.mjs`:** `player-before-paint` (warn, never downgraded) lists player document, script and API
-  requests from any frame that started before first contentful paint, dated by the browser's request start time, not
-  by when the QA process heard of them; posters on player hosts are not flagged. Tests: `qa/player-before-paint` (pure
-  `judgePlayerRequests`), `qa/player-before-paint-browser` (collector under a stalled event loop, snippet lifecycle,
-  untrusted links; Playwright from the project, routed, no network).
+  requests from any frame that started before first contentful paint, dated by the browser: `timing().startTime`, or the
+  CDP `wallTime` while a response is still pending. Without either, two bounds decide (heard before the paint; frame
+  created after it); otherwise `player-timing-unknown` (warn), never a silent pass. Posters on player hosts are not
+  flagged. Tests: `qa/player-before-paint` (pure `judgePlayerRequests`), `qa/player-before-paint-browser` (collector
+  under a stalled event loop, a held-open player request, snippet lifecycle, untrusted links; Playwright from the
+  project, routed, no network).
 - **dynamics `modal-loader` example:** the player iframe is built with `createElement` from a parsed `https:` URL on a
   dot-bounded host match, no longer interpolated into `innerHTML`.
 

@@ -29,29 +29,51 @@ const PLAYER_HOSTS = ['youtube.com', 'youtube-nocookie.com', 'vimeo.com', 'brigh
 // the player itself: its document, scripts and API calls — a click-to-load poster (image) is not one
 const PLAYER_TYPES = ['document', 'script', 'xhr', 'fetch'];
 
-/** Pure: player requests that started before the first contentful paint. `requests` is
- *  `[{ url, type, t }]` (Playwright resource type; `t` and `fcp` in epoch ms); a missing FCP judges
- *  nothing. Hosts match on the hostname or a dot-bounded suffix, never a substring of the URL. */
+/** Pure: player requests judged against the first contentful paint. `requests` is
+ *  `[{ url, type, t, heard, after }]` (Playwright resource type; epoch ms): `t` the browser's start
+ *  time or null, `heard` when this process received the event (always after the start), `after`
+ *  the start of the request's frame document (no request precedes its frame) or null. Returns
+ *  `{ early, unmeasured }`: `early` started before FCP (`t`, else `heard`, before it); `unmeasured`
+ *  has no start time and neither bound decides — never assumed after the paint. A missing FCP
+ *  judges nothing. Hosts match on the hostname or a dot-bounded suffix, never a URL substring. */
 export function judgePlayerRequests(requests, fcp, hosts = PLAYER_HOSTS) {
-  if (!Number.isFinite(fcp) || fcp <= 0) return [];
+  const out = { early: [], unmeasured: [] };
+  if (!Number.isFinite(fcp) || fcp <= 0) return out;
   const isPlayer = (u) => {
     let h; try { h = new URL(u).hostname; } catch { return false; }
     return hosts.some((d) => h === d || h.endsWith(`.${d}`));
   };
-  return requests.filter((r) => r.t < fcp && PLAYER_TYPES.includes(r.type) && isPlayer(r.url))
-    .map((r) => ({ url: r.url, type: r.type, msBeforeFcp: Math.round(fcp - r.t) }));
+  for (const r of requests) {
+    if (!PLAYER_TYPES.includes(r.type) || !isPlayer(r.url)) continue;
+    const known = Number.isFinite(r.t) && r.t > 0;
+    if (known ? r.t < fcp : r.heard < fcp) {
+      out.early.push({ url: r.url, type: r.type, msBeforeFcp: Math.round(fcp - (known ? r.t : r.heard)) });
+    } else if (!known && !(r.after >= fcp)) out.unmeasured.push({ url: r.url, type: r.type });
+  }
+  return out;
 }
 
-/** Every request of `page`, any frame (out-of-process iframes included). The returned snapshot
- *  dates each from the browser's own start time (`timing().startTime`), never from when this
- *  process handled the event — a busy process hears of a pre-paint request after the paint. */
-export function collectRequests(page) {
-  const seen = [];
-  page.on('request', (r) => seen.push({ r, heard: Date.now() }));
-  return () => seen.map(({ r, heard }) => {
-    const start = r.timing().startTime;
-    return { url: r.url(), type: r.resourceType(), t: start > 0 ? start : heard };
+/** Every request of `page`, any frame (out-of-process iframes included), dated by the browser:
+ *  `timing().startTime` once a response arrived, else the `wallTime` the page's CDP session (`cdp`,
+ *  Network enabled; main and in-process frames) saw for the URL. Never the time this process
+ *  handled the event — a busy process hears of a pre-paint request after the paint; that time only
+ *  rides along as `heard`, an upper bound. */
+export function collectRequests(page, cdp) {
+  const seen = []; const wall = new Map(); // url → earliest browser start, ms
+  cdp?.on('Network.requestWillBeSent', (e) => {
+    const t = e.wallTime * 1000;
+    if (!(wall.get(e.request.url) <= t)) wall.set(e.request.url, t);
   });
+  page.on('request', (r) => seen.push({ r, heard: Date.now() }));
+  return () => {
+    const start = (r) => { const t = r.timing().startTime; return t > 0 ? t : (wall.get(r.url()) ?? null); };
+    const frameOf = (r) => { try { return r.frame(); } catch { return null; } }; // service workers have none
+    const docStart = new Map();
+    for (const { r } of seen) if (r.isNavigationRequest() && !docStart.has(frameOf(r))) docStart.set(frameOf(r), start(r));
+    return seen.map(({ r, heard }) => ({
+      url: r.url(), type: r.resourceType(), t: start(r), heard, after: docStart.get(frameOf(r)) ?? null,
+    }));
+  };
 }
 
 function representatives(inventory, cap) {
@@ -105,7 +127,7 @@ export async function run(ctx) {
       transfer += e.encodedDataLength;
       if (types.get(e.requestId) === 'Script') jsTransfer += e.encodedDataLength;
     });
-    const requests = collectRequests(page);
+    const requests = collectRequests(page, client);
 
     try {
       await page.goto(pageUrl(base, p.url || p.path), { waitUntil: 'load', timeout: 60000 });
@@ -150,11 +172,15 @@ export async function run(ctx) {
       findings.push(finding('perf', 'cls-poor', sev('warn'), p.path,
         `lab CLS ${vitals.cls} > ${CLS_GOOD}`, vitals));
     }
-    const early = judgePlayerRequests(requests(), vitals.fcp);
+    const { early, unmeasured } = judgePlayerRequests(requests(), vitals.fcp);
     if (early.length) {
       findings.push(finding('perf', 'player-before-paint', 'warn', p.path,
         `${early.length} player request(s) started before first contentful paint, first ${early[0].url} — mount the player after first paint (deploy #157)`,
         { requests: early.slice(0, 5) }));
+    } else if (unmeasured.length) {
+      findings.push(finding('perf', 'player-timing-unknown', 'warn', p.path,
+        `${unmeasured.length} player request(s) had no browser start time, first ${unmeasured[0].url} — player-before-paint could not judge them`,
+        { requests: unmeasured.slice(0, 5) }));
     }
     delete vitals.fcp;
     findings.push(finding('perf', 'measurement', 'info', p.path,
