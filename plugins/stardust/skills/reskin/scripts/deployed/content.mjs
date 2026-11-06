@@ -19,7 +19,7 @@
 // unusedDeltas is the union of the ids the gates warned of, read from their stdout "WARNING unused delta <id>: …" lines
 // (one line per entry, the format both print through deltas.mjs warningLines; the reports hold the same entries but in
 // Markdown for people): an allow id, or `metadata.ignore "<key>"` from slot-coverage.
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
@@ -65,7 +65,17 @@ export async function runContent({ dir, slug, preview, env = process.env, run = 
   if (!figma && (typeof provenance?.url !== 'string' || !provenance.url.trim())) throw new UsageError(`${modelPath} has no _provenance.url: the live source this page is compared with`);
   const normalizePath = join(dir, 'reskin', 'normalize', `${slug}.mjs`);
   const deltasPath = join(dir, 'reskin', 'deltas', `${slug}.json`);
-  const deltas = existsSync(deltasPath) ? loadDeltas(deltasPath) : null;
+  let deltas = existsSync(deltasPath) ? loadDeltas(deltasPath) : null;
+  // A namespaced preview serves the source page /x at /<ns>/x: deploy's localize-links (--prefix /<ns>) writes links
+  // there, so the gates read the delta file with that prefix (an explicit links.localize.prefix wins).
+  let deltasFile = deltasPath;
+  if (deltas?.links.localize && !deltas.links.localize.prefix && preview.namespace) {
+    const raw = JSON.parse(readFileSync(deltasPath, 'utf8'));
+    raw.links.localize.prefix = `/${preview.namespace}`;
+    deltasFile = join(out, 'deltas-effective.json');
+    writeFileSync(deltasFile, `${JSON.stringify(raw, null, 2)}\n`);
+    deltas = loadDeltas(deltasFile);
+  }
   const optional = (flag, path, present) => (present ? [flag, path] : []);
   const scope = typeof provenance.scope === 'string' && provenance.scope.trim() ? provenance.scope : null;
 
@@ -78,12 +88,12 @@ export async function runContent({ dir, slug, preview, env = process.env, run = 
       name: 'dom-equality',
       report: files.domEquality,
       args: [DOM_EQUALITY, '--source', provenance.url, ...(scope ? ['--source-scope', scope] : []), ...optional('--normalize', normalizePath, existsSync(normalizePath)),
-        '--rendered', preview.url, '--rendered-scope', 'main', ...optional('--deltas', deltasPath, deltas), '--wait-eds', '--report', files.domEquality],
+        '--rendered', preview.url, '--rendered-scope', 'main', ...optional('--deltas', deltasFile, deltas), '--wait-eds', '--report', files.domEquality],
     },
     {
       name: 'slot-coverage',
       report: files.slotCoverage,
-      args: [SLOT_COVERAGE, '--model', modelPath, '--rendered', preview.url, ...optional('--deltas', deltasPath, deltas), '--wait-eds', '--report', files.slotCoverage],
+      args: [SLOT_COVERAGE, '--model', modelPath, '--rendered', preview.url, ...optional('--deltas', deltasFile, deltas), '--wait-eds', '--report', files.slotCoverage],
     },
   ];
 

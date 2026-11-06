@@ -77,7 +77,7 @@ When `emptySectionCollapse` is true (the page-metadata block leaves an empty pad
 | Stage | How |
 |---|---|
 | Code | `git push` the branch → AEM Code Sync builds it |
-| Localize links | `skills/deploy/scripts/localize-links.mjs --source-host <live-host> [--redirects stardust/redirects.tsv]` — after EVERY generator, before EVERY write, over the WHOLE tree (below) |
+| Localize links | `skills/deploy/scripts/localize-links.mjs --source-host <live-host> [--redirects stardust/redirects.tsv] [--prefix /<ns>]` — after EVERY generator, before EVERY write, over the WHOLE tree (below); `--prefix` for a namespaced preview (the source's `/x` served at `/<ns>/x`) |
 | Sanitise | `skills/deploy/scripts/sanitise.js` — run it before the write (DA corrupts raw UTF-8) |
 | Content write | DA Source API: `PUT admin.da.live/source/<org>/<repo>/<path>.html` (multipart, field name **`data`**, `type=text/html`) |
 | Make live | `POST admin.hlx.page/preview/<org>/<repo>/<branch>/<path>` (then optionally `/live/...`) |

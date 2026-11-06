@@ -6,7 +6,7 @@
 //     "blocking": false,                                  absent = true: a failed check fails the run
 //     "text":   { "allow": [ { "id", "from", "to", "why" } ] },   literal source text → rendered text; `to` may be ""
 //     "images": "count+alt+width",                        replaces the host+path image comparison
-//     "links":  { "localize": { "sourceHost": "<host>" } },       slot-coverage: CTA hrefs also match as localized
+//     "links":  { "localize": { "sourceHost": "<host>", "prefix"?: "/<ns>" } },  slot-coverage: CTA hrefs also match as localized
 //     "metadata": { "ignore": ["canonical", "og:url", …], "jsonLd": "count-only" | "ignore", "absent": [ … ] },
 //     "disclosures": { "restState": "open", "why": "…" } }        dom-equality: waives the rest-state check
 //
@@ -87,10 +87,12 @@ export function loadDeltas(path) {
 
   let localize = null;
   if (raw.links !== undefined && nested(raw.links, 'links', ['localize']) && raw.links.localize !== undefined
-    && nested(raw.links.localize, 'links.localize', ['sourceHost'])) {
+    && nested(raw.links.localize, 'links.localize', ['sourceHost', 'prefix'])) {
     const host = raw.links.localize.sourceHost;
+    const { prefix } = raw.links.localize;
     if (typeof host !== 'string' || !host.trim() || /[/\s]/.test(host)) problems.push('links.localize.sourceHost must be a bare host such as "src.test" (no scheme, no path)');
-    else localize = { sourceHost: host };
+    else if (prefix !== undefined && !(typeof prefix === 'string' && /^\/[a-z0-9][a-z0-9_-]*(\/[a-z0-9][a-z0-9_-]*)*$/i.test(prefix))) problems.push('links.localize.prefix must be a path such as "/ns" (leading slash, no trailing slash)');
+    else localize = { sourceHost: host, ...(prefix ? { prefix } : {}) };
   }
 
   let ignore = []; let absent = []; let jsonLd = null;
@@ -154,14 +156,15 @@ export function compareImages(sourceImgs, renderedImgs, mode) {
 
 // deploy's localize-links keeps ?query and #fragment and matches the host with or without www., any scheme.
 const bareHost = (h) => h.toLowerCase().replace(/^www\./, '');
-export function normalizeHref(href, { sourceHost, renderedOrigin }) {
+// prefix: a namespaced deploy (preview.json namespace) serves the source page /x at /<ns>/x.
+export function normalizeHref(href, { sourceHost, renderedOrigin, prefix = '' }) {
   let u;
   try { u = new URL(href, 'https://relative.invalid'); } catch { return href; }
   if (!/^https?:$/.test(u.protocol) || u.hostname === 'relative.invalid' || bareHost(u.host) !== bareHost(sourceHost)) return href;
   // URL percent-encodes the path ("/About Us/" → "%20"); deliveredUrl sanitises the source path as authored
   let path = u.pathname;
   try { path = decodeURIComponent(path); } catch { /* a malformed escape stays as it is */ }
-  return `${renderedOrigin.replace(/\/+$/, '')}${requireEdsPath().deliveredUrl(path)}${u.search}${u.hash}`;
+  return `${renderedOrigin.replace(/\/+$/, '')}${prefix}${requireEdsPath().deliveredUrl(path)}${u.search}${u.hash}`;
 }
 
 export function metadataPlan(deltas) {

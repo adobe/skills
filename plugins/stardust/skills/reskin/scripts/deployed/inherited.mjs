@@ -4,6 +4,11 @@
 //                       no src, srcset candidate or poster that starts with /img/ (a repo-relative image the ingester could
 //                       not take) and a top-level <div> (the sections EDS delivers). Tags and attribute values are read,
 //                       never text that looks like them; a 5xx or 429 answer is no verdict, a 404 or other answer a FAIL
+//   internal links      no <a href> to the live source for a page the migration serves (the paths of every captured
+//                       content model), read on what EDS delivers: the page's .plain.html and the chrome documents its
+//                       header and footer load (/<ns>/nav, /<ns>/footer; /nav, /footer without a namespace). Such a link
+//                       sends the visitor back to the old site: deploy's localize-links was skipped or a later generator
+//                       undid it (a recorded migration shipped 998, header nav included). n/a without a live source
 //   ai-readability      deploy's ai-readability.mjs on the preview's origin and path, --min 98: the page's code score, read
 //                       from the --json report
 //   qa-gate             deploy's qa-gate.mjs on the preview with the page's section schema (<dir>/eds-schema/<slug>.json,
@@ -23,7 +28,7 @@
 //   deployTools(from)   the two instruments in either layout of the scripts, or a UsageError naming what is missing
 //   inheritedLines(result)  the lines the CLI prints
 // Evidence: <deployed>/inherited/ (ai-readability.json, qa-gate.txt) and <deployed>/inherited.json.
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
@@ -46,6 +51,7 @@ const MAX_SRCS = 3;
 const BY_DEPLOY = ['localize-links --check', 'davids-model-lint', 'block-roundtrip --ew'];
 const BAR_OF = {
   '.plain.html': '200, one <h1>, no about:error, no /img/ src',
+  'internal links': 'no link to the source site for a migrated page (page, nav, footer)',
   'ai-readability': `≥ ${MIN_READABILITY}`,
   'qa-gate': '0 fail',
   ...Object.fromEntries(BY_DEPLOY.map((check) => [check, 'run by deploy before the DA push'])),
@@ -154,8 +160,10 @@ const errorRow = (check, code, detail) => row(check, 'ERROR', `ERROR (exit ${cod
 const counted = (r) => r.status === 0 || r.status === 1;
 const readJsonFile = (file) => { try { return parseJson(readFileSync(file, 'utf8')); } catch { return null; } };
 
-async function plainRow({ preview }) {
+async function plainRow(run) {
+  const { preview } = run;
   const got = await fetchOnce(preview.plain, REQUEST_MS);
+  if (got.status === 200) run.plainBody = got.body;
   if (got.status === 0 || got.status === 429 || got.status >= 500) return errorRow('.plain.html', EXIT.ERROR, got.last);
   if (got.status === 401 || got.status === 403) {
     throw new UsageError(`${preview.plain} answered HTTP ${got.status}: the preview is protected, and a protected preview is out of scope: make it reachable without auth`);
@@ -163,6 +171,59 @@ async function plainRow({ preview }) {
   if (got.status !== 200) return row('.plain.html', 'FAIL', `HTTP ${got.status}`);
   const problems = plainAsserts(got.body);
   return problems.length ? row('.plain.html', 'FAIL', problems.join('; ')) : row('.plain.html', 'PASS', '200, 1 <h1>');
+}
+
+// The migration set: the live source's host (this page's model) and the path of every captured page on it. null without
+// a live source (a Figma-only model has no _provenance.url).
+const bareHost = (h) => h.toLowerCase().replace(/^www\./, '');
+export const pathKey = (p) => {
+  const s = p.replace(/\.html$/, '').replace(/\/index$/, '/');
+  return s.length > 1 ? s.replace(/\/+$/, '') || '/' : '/';
+};
+export function migratedSet(dir, slug) {
+  const root = join(dir, 'reskin', 'content-model');
+  const urlOf = (name) => readJsonFile(join(root, name, 'content-model.json'))?._provenance?.url;
+  let host;
+  try { host = new URL(urlOf(slug)).host; } catch { return null; }
+  const paths = new Set();
+  for (const name of existsSync(root) ? readdirSync(root) : []) {
+    try { const u = new URL(urlOf(name)); if (bareHost(u.host) === bareHost(host)) paths.add(pathKey(decodeURIComponent(u.pathname))); } catch { /* no model or no url */ }
+  }
+  return { host, paths };
+}
+
+// The hrefs of one delivered document that point at the source host for a path in the migration set. Pure.
+export function strandedLinks(html, { host, paths }) {
+  const out = [];
+  for (const m of html.matchAll(/<a\b[^>]*?\bhref\s*=\s*"([^"]*)"/gi)) {
+    let u;
+    try { u = new URL(m[1].replace(/&amp;/g, '&')); } catch { continue; }
+    if (!/^https?:$/.test(u.protocol) || bareHost(u.host) !== bareHost(host)) continue;
+    let path = u.pathname;
+    try { path = decodeURIComponent(path); } catch { /* a malformed escape stays as it is */ }
+    if (paths.has(pathKey(path))) out.push(m[1]);
+  }
+  return out;
+}
+
+async function linksRow({ dir, slug, preview, plainBody }) {
+  const set = migratedSet(dir, slug);
+  if (!set) return row('internal links', 'n/a', 'n/a: no live source (the content model has no source url)');
+  const ns = preview.namespace ? `/${preview.namespace}` : '';
+  const docs = [['page', preview.plain], ['nav', `${preview.origin}${ns}/nav.plain.html`], ['footer', `${preview.origin}${ns}/footer.plain.html`]];
+  const found = [];
+  let read = 0;
+  for (const [name, url] of docs) {
+    // the page's authored form was fetched by the .plain.html row; its HTTP status is that row's
+    if (name === 'page' && plainBody === undefined) continue;
+    const got = name === 'page' ? { status: 200, body: plainBody } : await fetchOnce(url, REQUEST_MS);
+    if (got.status === 0 || got.status === 429 || got.status >= 500) return errorRow('internal links', EXIT.ERROR, `${url}: ${got.last}`);
+    if (got.status !== 200) continue; // the page's own HTTP status is .plain.html's row; no chrome document, nothing to read
+    read += 1;
+    for (const href of strandedLinks(got.body, set)) found.push(`${name}: ${href}`);
+  }
+  if (found.length) return row('internal links', 'FAIL', `${found.length} link(s) to ${set.host} for pages the migration serves — run deploy's localize-links over the content tree, then deploy-batch`, listed(found));
+  return row('internal links', 'PASS', `none in ${read} document(s)`);
 }
 
 // The blocks a crawler that does not run scripts reads least of, by the words the served HTML lacks.
@@ -221,6 +282,8 @@ export async function runInherited({ dir, slug, preview, tools = null, env = pro
   mkdirSync(out, { recursive: true });
 
   const run = {
+    dir,
+    slug,
     preview,
     out,
     tools: instruments,
@@ -228,7 +291,7 @@ export async function runInherited({ dir, slug, preview, tools = null, env = pro
     schema: join(dir, 'eds-schema', `${slug}.json`),
     design: join(deployed, 'design.json'),
   };
-  const rows = [await plainRow(run), await readabilityRow(run), await qaRow(run), ...BY_DEPLOY.map((check) => row(check, 'by deploy', 'by deploy'))];
+  const rows = [await plainRow(run), await linksRow(run), await readabilityRow(run), await qaRow(run), ...BY_DEPLOY.map((check) => row(check, 'by deploy', 'by deploy'))];
   const verdict = verdictOf(rows);
   writeJson(record, { verdict, rows });
   return { verdict, exit: EXIT[verdict], rows };
@@ -239,4 +302,4 @@ const failure = (r) => (r.check === 'ai-readability' ? `ai-readability ${r.value
 
 // The lines the CLI prints: a line for the checks that gave no verdict, the verdict line, one indented line per failing
 // row (its findings below), and one line for deploy's own gates.
-export const inheritedLines = (result) => stepLines('inherited', result, { failure, unrun: ['by deploy'] });
+export const inheritedLines = (result) => stepLines('inherited', result, { failure, unrun: ['by deploy', 'n/a'] });

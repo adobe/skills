@@ -282,14 +282,15 @@ const paintCheck = (label, painted) => {
 // them), the CTA hrefs' localization onto the rendered origin, and the images taken slot by slot in document order.
 const textsOf = (s) => [s.visibleText, ...s.ctas.map((c) => c.text)];
 const textDeltas = deltas ? deltasLib.applyTexts(model.sections.flatMap(textsOf), deltas) : null;
-const localize = deltas?.links.localize && /^https?:/.test(renderedUrl) ? { sourceHost: deltas.links.localize.sourceHost, renderedOrigin: new URL(renderedUrl).origin } : null;
+const localize = deltas?.links.localize && /^https?:/.test(renderedUrl) ? { sourceHost: deltas.links.localize.sourceHost, renderedOrigin: new URL(renderedUrl).origin, prefix: deltas.links.localize.prefix ?? '' } : null;
 let nextImg = 0; let nextText = 0;
 for (const s of model.sections) {
   const [text, ...ctaTexts] = textDeltas ? textDeltas.texts.slice(nextText, nextText + 1 + s.ctas.length).map(squash) : textsOf(s);
   nextText += 1 + s.ctas.length;
   R('slot-coverage', `${s.slot} text present`, rendered.text.includes(text), text.slice(0, 50));
   for (const [ci, c] of s.ctas.entries()) {
-    const hrefs = localize ? [c.absHref, deltasLib.normalizeHref(c.absHref, localize)] : [c.absHref];
+    // localized onto the rendered origin, under the namespace prefix or at the source path (both stay on the new site)
+    const hrefs = localize ? [c.absHref, deltasLib.normalizeHref(c.absHref, localize), deltasLib.normalizeHref(c.absHref, { ...localize, prefix: '' })] : [c.absHref];
     const hit = rendered.hrefs.find((h) => (hrefs.includes(h.href) || (figmaSourced && h.raw === c.absHref)) && h.text.includes(ctaTexts[ci]));
     R('slot-coverage', `${s.slot} CTA "${c.text.slice(0, 30)}" -> ${c.absHref.slice(0, 60)}`, !!hit);
   }
@@ -379,7 +380,7 @@ const unused = deltas ? [...textDeltas.unused, ...[...plan.ignore].filter((k) =>
 if (deltas) {
   const notes = [];
   if (deltas.images) notes.push(`Images: ${deltas.images} over the visible images in scope (as the model capture counts them): per slot, positional by cumulative count (slot s takes the next k), plus one total over every image. An image moved across a slot boundary with the document order kept, or replaced by one with the same alt, is not detected`);
-  if (deltas.links.localize) notes.push(localize ? `Links: CTA hrefs on \`${deltas.links.localize.sourceHost}\` also match as localized onto \`${localize.renderedOrigin}\`` : 'Links: localize not applied (the rendered target is not an http(s) origin)');
+  if (deltas.links.localize) notes.push(localize ? `Links: CTA hrefs on \`${deltas.links.localize.sourceHost}\` also match as localized onto \`${localize.renderedOrigin}${localize.prefix}\`` : 'Links: localize not applied (the rendered target is not an http(s) origin)');
   if (deltas.metadata.jsonLd === 'count-only') notes.push('JSON-LD: count-only (the block count is compared, not the content)');
   if (advisory) md += `\n${deltasLib.ADVISORY}: the failed checks above are reported, the exit code is 0\n`;
   md += `\n${deltasLib.reportSection(deltas, { file: args.deltas, applied, unused, ignored: ignoredKeys, notes })}`;

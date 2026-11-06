@@ -45,7 +45,11 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
    block or CSS fix that makes EDS match the unchanged reskin page is a fix round (§ The fix budget).
 2. **Push the branch, force Code Sync** and poll until an edited block file is served
    (`../../deploy/da-deploy-protocol.md` § Deploy, step 0).
-3. **Write the documents to DA and preview them, never publish:**
+3. **Localize the links, then write the documents to DA and preview them, never publish.** A generator carries every
+   captured href as the source URL; before every `deploy-batch` (and after any regeneration of a page), run
+   `node stardust/scripts/deploy/localize-links.mjs --source-host <source host> --content content --prefix /<ns>`
+   (`--prefix` only with `--namespace`: the source page `/x` is served at `/<ns>/x`), then `--check` must exit 0.
+   `inherited`'s `internal links` row FAILs a delivered page, nav or footer that still links to the old site. Then:
    `DA_TOKEN=… node skills/deploy/scripts/deploy-batch.mjs --org <o> --repo <r> --branch <b> --content content --paths <paths.txt> --no-publish --force --ledger stardust/.work/reskin/deploy-ledger.json`.
    `<paths.txt>` is a file, one web path per line (the page and both namespaced chrome documents; in a sandbox the
    page), each without extension, like `/<ns>/<slug>`; `--force` because a page already live is skipped; the
@@ -116,6 +120,7 @@ declares source → local render changes: `mapping-brief.md` § Deltas block), r
   `dom-equality`'s image-crop check still runs under it (images pair by order, not src): an EDS block that crops an
   image to another area than the source shows fails on the preview (`gates.md` § Image crop).
 - `links.localize.sourceHost`: a bare host; a CTA's href also matches as `deploy` localizes it onto the preview origin.
+  `links.localize.prefix` (`/<ns>`): under it too; `content` fills it from `preview.json`'s namespace when absent.
 - `metadata`: `ignore` keys (`title`, `description`, `canonical`, `og:…`, `twitter:…`) skip their check, `absent` keys
   must not be carried, `jsonLd` is `"count-only"` (the default: the block count) or `"ignore"`.
 

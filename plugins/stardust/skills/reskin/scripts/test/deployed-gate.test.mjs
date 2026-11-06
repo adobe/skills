@@ -1133,7 +1133,7 @@ if (playwrightOk) {
     } finally { await server.close(); await source.close(); }
   });
 
-  await check('real run on a clean preview without eds-schema/home.json (deploy Step 2b omitted): all exits 1, "FAIL inherited 1/3", qa-gate still ran its own checks, the fragment says FAIL — never "PASS (n/a: qa-gate)"', async () => {
+  await check('real run on a clean preview without eds-schema/home.json (deploy Step 2b omitted): all exits 1, "FAIL inherited 1/4", qa-gate still ran its own checks, the fragment says FAIL — never "PASS (n/a: qa-gate)"', async () => {
     const source = await startSourceServer();
     const server = await startPreviewServer({ pages: { '/ns/home': HOME } });
     try {
@@ -1143,12 +1143,12 @@ if (playwrightOk) {
       assert.equal(r.status, 1, r.all);
       const verdicts = verdictLines(r.stdout.split('\n'));
       assert.deepEqual(verdicts.slice(0, 5).map((l) => l.split(' ')[0]), ['PASS', 'PASS', 'PASS', 'PASS', 'FAIL'], r.stdout);
-      assert.equal(verdicts[4], 'FAIL inherited 1/3', r.stdout);
+      assert.equal(verdicts[4], 'FAIL inherited 1/4', r.stdout);
       assert.ok(r.stdout.includes('  qa-gate: incomplete: no eds-schema/home.json (run deploy Step 2b)'), r.stdout);
       assert.equal(/PASS \(n\/a: qa-gate\)/.test(r.stdout), false);
       const out = deployedDir(dirOf(root), 'home');
       assert.match(readFileSync(join(out, 'inherited', 'qa-gate.txt'), 'utf8'), /^QA GATE: PASS — /m, 'qa-gate ran without the schema');
-      assert.equal(summaryAt(root).ledgerFragment.inherited, 'FAIL 1/3');
+      assert.equal(summaryAt(root).ledgerFragment.inherited, 'FAIL 1/4');
     } finally { await server.close(); await source.close(); }
   });
 

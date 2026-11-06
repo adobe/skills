@@ -91,10 +91,15 @@ await check('runContent starts dom-equality, then slot-coverage, beside the CLI 
   const r = await go(root, { run: stub });
   assert.equal(calls.length, 2);
   const out = outOf(root);
+  // a namespaced preview: both gates read the delta file with links.localize.prefix "/<ns>" (deploy localizes there)
+  const effective = join(out, 'deltas-effective.json');
   assert.deepEqual(calls[0].args, [join(SCRIPTS, 'dom-equality.mjs'), '--source', `${SOURCE}/`, '--source-scope', 'main', '--normalize', join(dirOf(root), 'reskin', 'normalize', 'home.mjs'),
-    '--rendered', preview.url, '--rendered-scope', 'main', '--deltas', deltasPath(root), '--wait-eds', '--report', join(out, 'content-dom-equality.md')]);
+    '--rendered', preview.url, '--rendered-scope', 'main', '--deltas', effective, '--wait-eds', '--report', join(out, 'content-dom-equality.md')]);
   assert.deepEqual(calls[1].args, [join(SCRIPTS, 'slot-coverage.mjs'), '--model', modelPath(root),
-    '--rendered', preview.url, '--deltas', deltasPath(root), '--wait-eds', '--report', join(out, 'content-slot-coverage.md')]);
+    '--rendered', preview.url, '--deltas', effective, '--wait-eds', '--report', join(out, 'content-slot-coverage.md')]);
+  const eff = JSON.parse(readFileSync(effective, 'utf8'));
+  assert.equal(eff.links.localize.prefix, `/${preview.namespace}`);
+  assert.deepEqual({ ...eff, links: { localize: { sourceHost: eff.links.localize.sourceHost } } }, JSON.parse(readFileSync(deltasPath(root), 'utf8')), 'the declared file otherwise as written');
   for (const c of calls) assert.equal(c.command, process.execPath);
   assert.deepEqual(Object.keys(r).filter((k) => !['gates'].includes(k)), ['verdict', 'domEquality', 'slotCoverage', 'unusedDeltas']);
   assert.deepEqual(r.domEquality, { exit: 0, report: join(out, 'content-dom-equality.md') });
