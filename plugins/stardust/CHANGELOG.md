@@ -34,6 +34,20 @@ ignore file instead, because that dropped whole folders a resumed run reads. Des
   interrupted re-capture captures again on resume; at most one batch of captures on disk at a time); `gate.test.mjs`
   — a round keeps only its own diff image and vdiff dir.
 
+## 0.36.7 — the site secret: exact-origin match, never context-wide
+
+The site secret (`--auth-header` / `--token-env`, default `SITE_TOKEN`) is matched against the exact site origin
+(parsed origin, not a string prefix) and never set context-wide: the AI-readability gate
+(`deploy/scripts/ai-readability.mjs` and the `qa` check) attaches it through the origin-scoped route filter instead of
+`extraHTTPHeaders`, and its raw page and fragment requests drop it once a redirect leaves the origin. The `qa`
+AI-readability check and `scorePage` skip paths that resolve off the origin, and `dynamics-plan.mjs --target-origin`
+probes only API paths on the target origin.
+
+Anyone who ran `qa` or `ai-readability.mjs` with a site secret on 0.20.0–0.36.6, or an earlier source snapshot
+containing site auth, should rotate it. Tests: `deploy/scripts/test/ai-readability.test.mjs`,
+`ai-readability-redirect.test.mjs`, `qa/scripts/test/origin-auth.test.mjs`, `ai-readability-auth.test.mjs`,
+`dynamics/scripts/test/dynamics-plan.test.mjs`.
+
 ## 0.36.6 — one patient visitor: shared live pacing adapts and the browser keeps its cookies between instruments (#155)
 
 Field learning (recorded hands-off replica runs): strict origins rejected clustered live navigations while friendly

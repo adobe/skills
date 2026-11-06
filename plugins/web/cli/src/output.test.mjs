@@ -37,3 +37,30 @@ test('fail wraps unknown errors as INTERNAL exit 1', () => {
   assert.equal(JSON.parse(stdout.buf).error.message, 'boom');
   assert.equal(code, 1);
 });
+
+test('fail redacts quoted userinfo and short header tokens on stdout and stderr', () => {
+  const stdout = sink();
+  const stderr = sink();
+  const message = "ws error wss://alice:pa'ssword@127.0.0.1:1/ (Authorization: Basic dTpw)";
+  fail(new CliError('PLAYWRIGHT_CLI', message), { stdout, stderr });
+  for (const out of [stdout.buf, stderr.buf]) {
+    assert.doesNotMatch(out, /alice|pa'ssword|dTpw/);
+  }
+});
+
+test('fail redacts endpoint credentials from message and hint, stdout and stderr', () => {
+  const stdout = sink();
+  const stderr = sink();
+  const message =
+    'connect ECONNREFUSED\n  - <ws preparing> retrieving websocket url from wss://brd-customer-x-zone-y:s3cr3t@brd.superproxy.io:9222';
+  fail(new CliError('PLAYWRIGHT_CLI', message, { hint: 'check wss://u:p@host' }), {
+    stdout,
+    stderr,
+  });
+  const { error } = JSON.parse(stdout.buf);
+  assert.match(error.message, /wss:\/\/\[redacted\]@brd\.superproxy\.io:9222/);
+  assert.equal(error.hint, 'check wss://[redacted]@host');
+  for (const out of [stdout.buf, stderr.buf]) {
+    assert.doesNotMatch(out, /s3cr3t|brd-customer/);
+  }
+});
