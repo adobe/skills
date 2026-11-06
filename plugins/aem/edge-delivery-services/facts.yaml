@@ -1,0 +1,268 @@
+- id: da-auth-helper-cache
+  claim: >-
+    adobe-rnd/da-auth-helper stores access_token and expires_at in
+    ~/.aem/da-token.json. This is a user-level helper cache, distinct from
+    the AEM CLI's project-level .hlx/.da-token.json cache. The helper's
+    token command returns a valid cached token or starts browser login.
+  question: >-
+    Where does adobe-rnd/da-auth-helper cache its DA token, what fields does
+    it store, and what happens when you run its token command again?
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js (TOKEN_FILE, storeToken, getValidToken); src/cli.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-cache-expiry
+  claim: >-
+    The helper and AEM CLI caches use expires_at as an epoch timestamp in
+    milliseconds, computed from the IMS response's expires_in in seconds.
+    Treat the cache as expired 60 seconds early; missing expires_at is
+    treated as expired. Do not assume a fixed one-hour or 24-hour lifetime.
+    A fresh timestamp is a local reuse check, not proof of server acceptance.
+  question: >-
+    How should a script decide whether a cached DA IMS token from the helper
+    or AEM CLI is reusable? Include timestamp units, buffer, missing expiry,
+    and whether you can assume all tokens last one hour.
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js (isTokenExpired, login); @adobe/aem-cli@16.22.16 src/content/da-auth.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-login-reuses-cache
+  claim: >-
+    da-auth-helper login and da-auth-helper token both call getValidToken;
+    neither forces refresh of a locally unexpired token. After a server
+    rejects such a token, repeating login can return the same rejected
+    credential. The helper's logout clears its own cache; it does not clear
+    the AEM CLI cache or the browser's IMS session. Real cache deletion
+    requires operator approval.
+  question: >-
+    DA rejected a token with 401, but ~/.aem/da-token.json has a future
+    expires_at. Does da-auth-helper login force a fresh token? What does
+    logout clear, and what other state is independent?
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/cli.js (login/token/logout cases); src/auth.js (getValidToken, clearStoredToken); operator deletion policy"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-http-status
+  claim: >-
+    DA admin returns 401 for an anonymous identity: absent, invalid or
+    expired token, or failure to resolve the IMS user can cause it. A 403
+    is permission denial for the authenticated request's current identity
+    and context, not proof that the token expired. Diagnose before retrying;
+    do not blindly loop login or assume a new grant is required.
+  question: >-
+    A direct admin.da.live request returns 401 or 403. What distinction
+    should guide recovery, and is an expired token the only cause of 401?
+  source: "https://github.com/adobe/da-admin/blob/72939616bbee62dc8534c35c2ab210310de47755/src/index.js (anonymous/authorized gates); src/utils/auth.js (getUsers, setUser)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-list-not-write
+  claim: >-
+    HTTP 200 from admin.da.live/list proves that listing request succeeded,
+    not that the token can write every path in the repository. DA checks
+    read/write permissions by path/action; a source write can return 403
+    after a successful list. Do not change ACLs without approval.
+  question: >-
+    Listing a DA repository succeeds with 200, but uploading a page under
+    /drafts returns 403 using the same token. Does the successful list
+    establish write permission? What should be checked next?
+  source: "https://github.com/adobe/da-admin/blob/72939616bbee62dc8534c35c2ab210310de47755/src/routes/list.js; src/routes/source.js; operator remote-write policy"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-cli-owned
+  claim: >-
+    @adobe/aem-cli@16.22.16 content commands manage their own DA login:
+    supplied --token override, then valid project cache, then browser login.
+    They cache in .hlx/.da-token.json for the default DA environment and
+    .hlx/.da-token-<label>.json for others. A separate da-auth-helper login
+    or manual token extraction is unnecessary for a normal CLI clone/push
+    workflow. Do not substitute the helper cache for another environment.
+  question: >-
+    You want to clone DA pages and later push local edits with the AEM CLI.
+    Must you obtain a DA token separately first? Where does the CLI store
+    its login, including non-default DA environments?
+  source: "@adobe/aem-cli@16.22.16 src/content/da-auth.js (resolveDaTokenFile, getValidToken); src/content/clone.cmd.js, push.cmd.js"
+  used_by: []
+
+- id: da-auth-mcp-specific
+  claim: >-
+    Do not assume all DA MCP servers expose an authentication tool or
+    require returning a raw token to the assistant. adobe-rnd/da-mcp at
+    bd5a2ed5 registers content tools, accepts caller Bearer auth or
+    DA_ADMIN_API_TOKEN, and documents router-managed IMS for its public
+    AEM API router deployment. Inspect the actual server's tools and auth
+    configuration; an authenticated content tool needs no separate login.
+  question: >-
+    A DA MCP server is available. Can you assume it has a login tool that
+    returns an IMS token? How should you decide whether separate DA auth
+    is needed, and does adobe-rnd/da-mcp always require a manually passed token?
+  source: "https://github.com/adobe-rnd/da-mcp/blob/bd5a2ed5d5dc24fff2ff36bd0a01f1a7c93b5ed9/src/mcp/server.ts; src/index.ts; README.md (Authentication)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-secret-handoff
+  claim: >-
+    Under the operator's policy, never ask for a Bearer token in chat,
+    print it in tool output, commit it, or put it in an answer artifact.
+    Capture helper stdout locally without echoing the credential; prefer
+    an authenticated CLI/MCP or approved local secret input. When browser
+    login is unavailable, report the required user action instead of
+    inventing credentials or bypassing a permission/runtime block.
+  question: >-
+    A headless DA task needs authentication, but no token is configured and
+    interactive login cannot complete here. What safe handoff should you
+    propose instead of asking the user to paste a DevTools token in chat?
+  source: "Maintainer security practice; https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/cli.js (token stdout, logs stderr)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-ims-org-context
+  claim: >-
+    A fresh IMS token can authenticate the same Adobe-email account yet
+    return DA 403 when issued under an IMS org other than the one supplying
+    the user's DA group permissions. In the verified case the intended org
+    and group were absent from the wrong-org token's IMS organizations
+    response; selecting the intended org restored DA access. Check IMS org,
+    account and path/action permissions before assuming a new DA grant is
+    needed. The IMS org is distinct from the DA URL's org/repo path. Not
+    every 403 is an org mismatch, and a missing chooser is not required for
+    this failure.
+  question: >-
+    A fresh IMS token successfully authenticates an Adobe-email account,
+    but DA returns 403 even though that account has a group-based DA grant.
+    What org/context issue should you investigate before requesting new
+    permissions, and is the IMS org the same thing as the DA URL's org?
+  source: "User-assisted live checks summarized in https://github.com/adobe/skills/pull/560: same account/target, authorized org 200 -> other org 403 -> authorized org 200; IMS profile 200 throughout, target org/group absent in denied context"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-org-recovery
+  claim: >-
+    For a da-auth-helper token issued under the wrong IMS org, invalidate
+    ~/.aem/da-token.json (helper logout), obtain a fresh token (helper token),
+    select the intended org and verify the same target API request. A valid
+    cached token is reused by both login and token, even if DA rejects it.
+    Two procedures restored access in live tests: completing the helper's
+    authorize URL in a private browser with the intended org; or switching
+    to that org in da.live, then clearing the helper cache and retrying
+    authentication. Switching da.live alone did not refresh the helper
+    credential and left DA returning 403. For private login, keep the
+    helper callback listener running and leave its automatically opened
+    normal-browser flow unfinished; there is no helper incognito flag.
+    These procedures worked in this setup, not proof either is necessary
+    or always forces a chooser. Helper recovery does not clear CLI caches.
+  question: >-
+    How do you recover from a locally unexpired da-auth-helper token issued
+    under the wrong IMS org? Explain the cache steps, private-browser and
+    da.live org-switch alternatives, whether switching da.live alone
+    refreshes the helper credential, and whether either browser procedure
+    is always necessary to show an org chooser.
+  source: "User-assisted live checks summarized in https://github.com/adobe/skills/pull/560: each procedure restored the same target from 403 to 200; da.live-switch-only control stayed 403. https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js; src/cli.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-token-verification
+  claim: >-
+    A non-empty string or eyJ prefix alone does not prove a usable DA access
+    token. DA admin verifies the JWT signature, access_token type, expiry
+    and resolved user, then checks permissions. A read-only request can
+    establish acceptance for that operation without exposing the credential.
+  question: >-
+    A helper returns a token beginning eyJ. Is that sufficient to declare
+    DA authentication and permissions verified? What does DA actually check?
+  source: "https://github.com/adobe/da-admin/blob/72939616bbee62dc8534c35c2ab210310de47755/src/utils/auth.js (getUsers); src/index.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-generic-bearer
+  claim: >-
+    A direct authenticated DA request carries Authorization: Bearer
+    <IMS access token>. The value is a secret; use a local variable or
+    secret store, not a literal in source or chat. This is the generic
+    Bearer-header comparison fact for the trimming quiz.
+  question: >-
+    How does a direct HTTP request send an IMS access token to the DA
+    admin API? Show the header shape with a placeholder, not a real token.
+  source: "https://github.com/adobe-rnd/da-mcp/blob/bd5a2ed5d5dc24fff2ff36bd0a01f1a7c93b5ed9/src/da-admin/client.ts; operator secret policy"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-generic-interactive
+  claim: >-
+    The helper's interactive IMS OAuth flow opens a browser and waits for
+    the user to complete login, then captures the callback token. The
+    assistant cannot complete the user's sign-in on their behalf or claim
+    success before it completes. A supplied-token override is not an
+    implementation of service-account token issuance.
+  question: >-
+    An IMS browser OAuth login opens while you automate a DA task. Who
+    completes sign-in, when can you claim success, and does accepting an
+    existing token make this a CI service-account token issuer?
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js (login, getValidToken)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-source-bus-ims
+  claim: >-
+    da-auth-helper obtains an IMS access token, not a credential restricted
+    to DA. The api.aem.live implementation accepts IMS Bearer access tokens,
+    verifies signature/type/expiry, and requires aem.frontend.all or
+    aem.backend.all (with a cm-repo-service special case). The helper
+    requests aem.frontend.all. A cached token can therefore be reused for
+    eligible Source Bus / Experience Workspace API requests, subject to
+    server acceptance and org/site/action authorization; DA success does
+    not prove Source Bus access. The local variable can remain DA_TOKEN.
+    PR505/issue504 report that reuse succeeded on one site; not repeated
+    in this loop. Do not create a separate API key by default.
+  question: >-
+    An Experience Workspace site uses api.aem.live's Source Bus. You already
+    have an IMS access token from da-auth-helper. Is that necessarily a
+    DA-only token, or can it authenticate these API calls? What conditions
+    still need checking, and must you obtain a separate API key?
+  source: "https://github.com/adobe/helix-api-service/blob/473dd365ec20bdc5c0de2c4035b2bbae7ad0596b/src/auth/support.js (decodeImsToken, getAuthInfo); helper src/auth.js at 1333f443d925a0240909424224aafd75c260e9d2 (SCOPE); https://github.com/adobe/skills/issues/504 (prior single-site report)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-source-bus-verification
+  claim: >-
+    Authenticate/verify against the API the caller needs: DA admin and
+    api.aem.live are not interchangeable acceptance tests. A 200 from
+    GET https://api.aem.live/<org>/sites/<site>/status/ alone does not prove
+    authentication: the OpenAPI status operation allows unauthenticated
+    access. Check authenticated identity/permissions or an operation known
+    to require the intended access, without exposing the credential or
+    performing writes just to test auth. Source routes are under
+    /<org>/sites/<site>/source/. In this implementation an auth_token
+    cookie takes precedence over Authorization, so ensure a Bearer-token
+    check is not actually succeeding under a different cookie identity.
+  question: >-
+    A request to api.aem.live/<org>/sites/<site>/status/ returns 200 with an
+    IMS Bearer header. Does this prove that token can access Source Bus
+    content? How would you verify the intended credential and access
+    without uploading or publishing anything?
+  source: "https://github.com/adobe/helix-api-service/blob/473dd365ec20bdc5c0de2c4035b2bbae7ad0596b/docs/openapi/status-api.yaml (security); docs/openapi/source-api.yaml; docs/openapi/api-service.yaml (paths); src/auth/support.js (getAuthInfo)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-source-store-selection
+  claim: >-
+    Source Bus content is addressed through
+    api.aem.live/<org>/sites/<site>/source/; DA content through
+    admin.da.live/source/<org>/<repo>/ and admin.da.live/list/<org>/<repo>/.
+    A non-empty DA listing alone does not establish the site's active
+    authoring source: issue504 reports onboarding index/nav/footer in DA
+    while the authored content lived in Source Bus. Use the site's known
+    authoring setup/configuration and user confirmation; inspect both
+    stores read-only where authorized rather than choosing by which has
+    documents. Writing to an unused store need not update the served page.
+    Full content-writing/format guidance belongs to the content workflow,
+    not a requirement to obtain another token.
+  question: >-
+    A site is authored in Experience Workspace, but a DA listing contains
+    index, nav and footer. Does that prove DA is the content store to write
+    to? Which API families should you distinguish and how should you
+    resolve the intended store before writing?
+  source: "https://github.com/adobe/skills/issues/504 (prior mixed-store observation); https://github.com/adobe/helix-api-service/blob/473dd365ec20bdc5c0de2c4035b2bbae7ad0596b/docs/openapi/api-service.yaml (source paths); DA admin route API"
+  used_by:
+    - skills/da-auth/SKILL.md
