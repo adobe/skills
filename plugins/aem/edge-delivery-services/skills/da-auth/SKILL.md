@@ -1,6 +1,6 @@
 ---
 name: da-auth
-description: "Use this when another step needs to call the admin.da.live API, for example before pushing HTML content, listing documents, or triggering a DA preview, and you do not already have a valid DA_TOKEN in scope from an earlier step in the same session. Covers obtaining a valid Adobe IMS access token for the DA (Document Authoring) API."
+description: "Use this when another step needs to call admin.da.live or api.aem.live (Source Bus / Experience Workspace), for example before pushing HTML content, listing documents or triggering a preview, and you do not already have a token known to work for that API. Also use when these requests return 401/403 (Unauthorized/Forbidden) or a status 200 needs authentication verification. Covers obtaining, reusing and refreshing an Adobe IMS access token."
 license: Apache-2.0
 metadata:
   version: "1.1.0"
@@ -8,115 +8,82 @@ metadata:
 
 # DA Authentication
 
-Gets a valid Adobe IMS access token and stores it in `DA_TOKEN` for use in subsequent `admin.da.live` API calls.
+Get an Adobe IMS token for DA or Source Bus; callers can keep the name `DA_TOKEN`.
+Reuse credentials already accepted by the target API. If **create-site** owns the
+login, or an authenticated MCP/backend already handles it, use that flow instead.
+Inspect the configured backend's tools; do not assume it exposes a login tool.
 
-## When to Use This Skill
+## Choose the API
 
-Use this skill whenever you need to call the DA Admin API (`admin.da.live`) and do not already have a valid token in scope. Common cases:
-- Pushing or updating page content in DA
-- Listing documents in a DA repository
-- Triggering a DA content preview
+Use the caller's known content source. If unclear, confirm the site configuration
+or ask the user: a populated DA listing can contain onboarding documents while
+the authored content lives in Source Bus. See **da-content** for content operations.
 
-Do NOT use this skill when:
-- You already obtained a `DA_TOKEN` earlier in the same session and it has not expired (tokens are valid for ~1 hour with a 60-second buffer)
-- The **create-site** skill is already handling authentication as part of its own flow
-- A DA MCP server is active in the session — use its authentication tool directly instead
+| Content source | Protected read example |
+|---|---|
+| DA | `https://admin.da.live/list/{{ORG}}/{{REPO}}/{{FOLDER}}` |
+| Source Bus / Experience Workspace | `https://api.aem.live/{{ORG}}/sites/{{SITE}}/source/{{PATH}}` |
 
-## Prerequisites
+Choose a known, existing protected folder or document. A successful read does not
+prove write/publish permission. `api.aem.live` accepts eligible IMS Bearer tokens
+with `aem.frontend.all` or `aem.backend.all`; the helper requests `aem.frontend.all`.
+DA acceptance does not prove access to a Source Bus site.
 
-- Node.js 18+ installed
-- A browser accessible from the machine (for the OAuth flow)
-- Network access to `ims-na1.adobelogin.com`
+## Get or reuse a token
 
-## Related Skills
+The helper caches `access_token` and `expires_at` (epoch milliseconds) in
+`~/.aem/da-token.json`. It reuses unexpired tokens with a 60-second buffer;
+missing expiry triggers login. Do not assume a fixed token lifetime.
 
-- **create-site** — includes its own DA auth step for new site onboarding; do not invoke da-auth separately within that flow
-- **content-driven-development** — use da-auth before pushing authored content to DA
-- **building-blocks** — use da-auth if test content needs to be pushed to DA for block development
-- **snowflake** — invoke da-auth before Phase 5 (round-trip) so `$DA_TOKEN` is set when snowflake PUTs the converted page to DA
-- **da-content** — the reference for what to do with `$DA_TOKEN` once you have it (Source API, preview/publish)
-
----
-
-## Step 1: Check for a Cached Token
-
-Before triggering a browser login, check whether a valid token is already cached.
+Replace `{{READ_URL}}` with the intended protected read above. Obtain the token
+and use it in the same shell; never print it, paste it into chat or commit it:
 
 ```bash
-DA_TOKEN=$(node -e "
-  const fs = require('fs');
-  const p = process.env.HOME + '/.aem/da-token.json';
-  try {
-    const t = JSON.parse(fs.readFileSync(p, 'utf8'));
-    if (t.expires_at > Date.now() + 60000) process.stdout.write(t.access_token);
-  } catch {}
-")
+DA_TOKEN=$(npx github:adobe-rnd/da-auth-helper token) &&
+  curl -sS -o /dev/null -w '%{http_code}\n' \
+    -H "Authorization: Bearer $DA_TOKEN" "{{READ_URL}}"
 ```
 
-If `DA_TOKEN` is non-empty, skip to **Step 3**.
+The user completes browser sign-in and selects the IMS org that provides access.
+If browser login cannot run here, have the user complete the flow locally or use
+configured backend authentication; do not ask for a DevTools token.
 
-## Step 2: Obtain a Token *(login required)*
+Verify the API the caller will use, not a different store. On `api.aem.live`,
+`/status/` can return 200 anonymously: that alone does not establish authentication.
+An `auth_token` cookie can override the Bearer header; check without auth cookies
+when testing that credential.
 
-Choose the option that fits the environment:
+## Recover from 401 or 403
 
-**Option A (preferred) — `da-auth-helper` CLI:**
+| Symptom | Check |
+|---|---|
+| 401 | Token missing, invalid or expired, or IMS user lookup failed. Check the credential and target API; do not loop `login`. |
+| 403 | Current account/org lacks access for that path/action. Ask which IMS org supplies the user's group access; do not infer it from the URL's org or assume a new grant is needed. |
 
-The `da-auth-helper` tool handles the full IMS OAuth 2.0 implicit flow, caches the token at `~/.aem/da-token.json`, and prints the token to stdout.
+Both helper `login` and `token` reuse an unexpired cache, even when DA rejects it.
+To replace a rejected or wrong-org helper credential:
 
 ```bash
-# Run directly without a global install
-DA_TOKEN=$(npx github:adobe-rnd/da-auth-helper token)
+npx github:adobe-rnd/da-auth-helper logout
 ```
 
-If `npx` is unavailable or slow, install globally first:
+This clears only the helper cache, not the browser session. Rerun the acquire-and-
+verify command, select the intended IMS org, and retry the same protected read.
+If 403 persists in the intended context, check path/action permissions; refreshing
+credentials does not add grants.
 
-```bash
-npm install -g github:adobe-rnd/da-auth-helper
-DA_TOKEN=$(da-auth-helper token)
-```
+If the browser keeps the wrong account/org context, these alternatives restored
+access in live checks; neither is guaranteed to force an org chooser:
 
-This opens a browser window. Instruct the user:
+- **Private window:** while the helper waits for its callback, open its printed
+  public authorize URL in a private window and select the intended org. Leave the
+  automatically opened normal-browser login unfinished. There is no incognito flag.
+- **Switch in da.live:** select the intended org in da.live, clear the helper cache,
+  then rerun authentication. Switching da.live alone does not replace the helper's
+  cached wrong-org token.
 
-> Please complete the Adobe IMS login in the browser window that just opened. The token will be captured automatically once you log in.
+## References
 
-Success: `DA_TOKEN` is a non-empty JWT string starting with `eyJ`.
-
-**Option B — DA MCP server:**
-
-If a DA MCP server is configured in the session, use its authentication tool to start the OAuth flow and retrieve the token from the response.
-
-**Option C — Manual paste *(last resort)*:**
-
-> I need an Adobe IMS access token to push content to DA. You can copy one from your browser:
-> 1. Open [da.live](https://da.live) and log in
-> 2. Open DevTools → Network tab → find any request to `admin.da.live`
-> 3. Copy the `Authorization: Bearer <token>` value (without the `Bearer ` prefix)
-> 4. Paste it here
-
-## Step 3: Verify the Token Works
-
-Confirm the token is accepted by the DA API before proceeding:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer {{DA_TOKEN}}" \
-  "https://admin.da.live/list/{{ORG}}/{{REPO}}"
-```
-
-Success: HTTP `200`. The token is valid — `DA_TOKEN` is ready for use by the calling skill.
-
-## Troubleshooting
-
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `DA_TOKEN` is empty after Step 1 | No cached token or token expired | Proceed to Step 2 |
-| Browser window does not open | `npx` / `da-auth-helper` blocked or headless environment | Use Option B (MCP) or Option C (manual paste) |
-| `npx github:adobe-rnd/da-auth-helper` fails | Network restrictions on GitHub package registry | Use Option B (DA MCP server) or Option C (manual token paste) |
-| Step 3 returns `401` | Token expired between steps | Re-run Step 2 to refresh |
-| Step 3 returns `403` | Authenticated user lacks access to `{{ORG}}/{{REPO}}` | Ask the user to verify their DA permissions for that org/repo |
-
-## Reference
-
-- DA Auth Helper: https://github.com/adobe-rnd/da-auth-helper
-- DA Admin API: https://opensource.adobe.com/da-admin/
-- Token cache location: `~/.aem/da-token.json`
+https://github.com/adobe-rnd/da-auth-helper
+https://opensource.adobe.com/da-admin/
+https://www.aem.live/docs/api.html
