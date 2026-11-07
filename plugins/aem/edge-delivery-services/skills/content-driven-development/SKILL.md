@@ -345,6 +345,7 @@ npm test
    git add blocks/{block-name}/{block-name}.js blocks/{block-name}/{block-name}.css
    # Add only files you worked on - NEVER use `git add .`
    ```
+   Every committed file is publicly served. Don't commit content images or media (they come from authoring); list files that must not be served in `.hlxignore`.
 
 3. **Commit with conventional commit format:**
    ```bash

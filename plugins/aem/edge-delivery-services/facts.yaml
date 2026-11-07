@@ -14,6 +14,8 @@
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: block-css-location
   claim: >-
@@ -36,6 +38,7 @@
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: css-targets-decorated-dom
   claim: >-
@@ -79,6 +82,8 @@
   used_by:
     - evals/css-block-scoping-and-custom-properties
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: mobile-first-breakpoints
   claim: >-
@@ -91,6 +96,8 @@
     in 4a3d34f (2024-05-29)
   used_by:
     - evals/css-block-scoping-and-custom-properties
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: block-variant-classes
   claim: >-
@@ -147,6 +154,8 @@
   used_by:
     - evals/block-file-structure-and-performance-pat
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: reuse-authored-dom
   claim: >-
@@ -162,6 +171,8 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: delivered-pictures
   claim: >-
@@ -177,6 +188,8 @@
     blocks/cards/cards.js
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: authored-cells-vary
   claim: >-
@@ -190,6 +203,8 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: block-dom-scope
   claim: >-
@@ -199,6 +214,8 @@
     Can an EDS block's decorate() look up or change elements outside the block?
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: aem-js-vendored
   claim: >-
@@ -213,6 +230,8 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: no-build-step
   claim: >-
@@ -226,6 +245,8 @@
   source: aem-boilerplate 5cea543, AGENTS.md, .eslintrc.js import/extensions
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: project-lint
   claim: >-
@@ -236,6 +257,7 @@
   source: aem-boilerplate 5cea543, package.json, .eslintrc.js, .stylelintrc.json
   used_by:
     - evals/javascript-block-decoration-patterns
+    - skills/code-review/SKILL.md
 
 - id: no-innerhtml
   claim: >-
@@ -247,6 +269,8 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: programmatic-blocks
   claim: >-
@@ -272,6 +296,8 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: test-when-costly
   claim: >-
@@ -281,6 +307,8 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: unit-vs-e2e-split
   claim: >-
@@ -294,6 +322,8 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: e2e-locate-by-a11y-tree
   claim: >-
@@ -307,6 +337,7 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
 
 - id: block-status-loaded
   claim: >-
@@ -328,6 +359,8 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
 
 - id: analytics-assert-event
   claim: >-
@@ -349,3 +382,74 @@
   used_by:
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+
+- id: martech-after-consent
+  claim: >-
+    Martech and analytics scripts load last: `loadDelayed()` imports
+    `consent-check.js`, which loads `consented.js` once the user consents.
+    Never add them to head.html or the eager/lazy phases.
+  question: >-
+    Where do you add a third-party analytics or marketing tag in an EDS
+    project?
+  source: >-
+    aem-boilerplate 5cea543, scripts/scripts.js loadDelayed(),
+    scripts/consent-check.js
+  used_by:
+    - skills/building-blocks/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: psi-on-preview
+  claim: >-
+    Performance is checked with PageSpeed Insights on the branch preview URL
+    (`{branch}--{repo}--{owner}.aem.page`), mobile and desktop; the target is
+    100 and a PR must not lower the score.
+  question: >-
+    How do you check that an EDS code change doesn't hurt performance, and what
+    score is expected?
+  source: https://www.aem.live/developer/keeping-it-100
+  used_by:
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: committed-files-served
+  claim: >-
+    Every file committed to an EDS repo is publicly served from the code bus.
+    Content images and media come from authoring, not the repo; list files
+    that must not be served in `.hlxignore`.
+  question: >-
+    Can you commit images, docs or other non-code files to an EDS project
+    repo? What happens to them?
+  source: aem-boilerplate 5cea543, AGENTS.md
+  used_by:
+    - skills/content-driven-development/SKILL.md
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: authored-content-compat
+  claim: >-
+    A block change must keep existing authored instances rendering. Content
+    is published separately from code, so a change that needs authors to
+    restructure their tables breaks live pages; support the old shape or make
+    the new one opt-in (e.g. a variant).
+  question: >-
+    You change an EDS block's content model. What about pages already
+    authored with the old structure?
+  source: aem-boilerplate 5cea543, AGENTS.md
+  used_by:
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr
+
+- id: strings-from-content
+  claim: >-
+    User-facing text in blocks (labels, button text) comes from content, e.g.
+    the placeholders sheet or the authored block, not literals in JS, so
+    authors can change and translate it.
+  question: >-
+    An EDS block needs a "Read more" button label. Where should that text come
+    from?
+  source: https://www.aem.live/docs/placeholders
+  used_by:
+    - skills/code-review/SKILL.md
+    - evals/code-review-eds-pr

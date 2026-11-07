@@ -166,7 +166,7 @@ If your changes require modifying core files (scripts.js, styles.css, delayed.js
 - **scripts.js** - Decoration utilities, auto-blocking logic, page loading
 - **styles.css** - Global styles (eager), CSS custom properties
 - **lazy-styles.css** - Global styles (lazy loaded)
-- **delayed.js** - Marketing, analytics, third-party integrations
+- **Martech and analytics** - load last, from `loadDelayed()` in scripts.js: behind consent in `consented.js` (current boilerplate) or in `delayed.js` (older projects). Never in head.html.
 
 **Key principles:**
 
