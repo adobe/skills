@@ -2363,15 +2363,28 @@
   }
   function isHidden(el, win) {
     const s = win.getComputedStyle(el);
-    if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") return true;
+    if (s.display === "none" || s.opacity === "0") return true;
     const rect = el.getBoundingClientRect();
     const clips = ["hidden", "clip"].includes(s.overflow);
     if (s.display !== "contents" && clips && (rect.width === 0 || rect.height === 0)) return true;
     return rect.right <= 0 || rect.left >= el.ownerDocument.documentElement.scrollWidth;
   }
+  function hasVisibleDescendant(el, win) {
+    return [...el.querySelectorAll("*")].some((c) => win.getComputedStyle(c).visibility === "visible");
+  }
+  function dropOwnText(el) {
+    [...el.childNodes].filter((n) => n.nodeType === 3).forEach((n) => n.remove());
+  }
   function removeInvisibleElements(root, win, live = (n) => n) {
     [...root.querySelectorAll("*")].forEach((el) => {
-      if (isHidden(live(el), win)) el.remove();
+      if (!root.contains(el)) return;
+      const liveEl = live(el);
+      if (isHidden(liveEl, win)) {
+        el.remove();
+      } else if (win.getComputedStyle(liveEl).visibility === "hidden") {
+        if (hasVisibleDescendant(liveEl, win)) dropOwnText(el);
+        else el.remove();
+      }
     });
   }
   function stripStylingTags(root) {
@@ -2509,20 +2522,9 @@
     });
   }
   function isCTALink(el, win) {
-    const doc = el.ownerDocument;
     const s = win.getComputedStyle(el);
-    const defaultA = doc.createElement("a");
-    doc.body.appendChild(defaultA);
-    const defaultS = win.getComputedStyle(defaultA);
-    const hasCustomBg = s.backgroundColor !== defaultS.backgroundColor || s.backgroundImage !== defaultS.backgroundImage;
-    let borderCount = 0;
-    ["left", "right", "top", "bottom"].forEach((side) => {
-      const prop = `border-${side}-style`;
-      if (s.getPropertyValue(prop) !== defaultS.getPropertyValue(prop)) {
-        borderCount += 1;
-      }
-    });
-    defaultA.remove();
+    const hasCustomBg = s.backgroundColor !== "rgba(0, 0, 0, 0)" || s.backgroundImage !== "none";
+    const borderCount = ["left", "right", "top", "bottom"].filter((side) => s.getPropertyValue(`border-${side}-style`) !== "none").length;
     return hasCustomBg || borderCount > 1;
   }
   var CARD_CONTENT = "h1, h2, h3, h4, h5, h6, svg";
