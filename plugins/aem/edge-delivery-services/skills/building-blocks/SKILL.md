@@ -119,41 +119,12 @@ Track your progress:
 
 ## Step 3: Implement JavaScript Decoration
 
-**Essential pattern - re-use existing DOM elements:**
+Follow the project's existing blocks and lint rules. Easy to get wrong:
 
-```javascript
-export default async function decorate(block) {
-  // Platform delivers images as <picture> elements with <source> tags
-  const picture = block.querySelector('picture');
-  const heading = block.querySelector('h2');
-
-  // Create new structure, re-using existing elements
-  const figure = document.createElement('figure');
-  figure.append(picture);  // Re-uses picture element
-
-  const wrapper = document.createElement('div');
-  wrapper.className = 'content-wrapper';
-  wrapper.append(heading, figure);
-
-  block.replaceChildren(wrapper);
-
-  // Only check variants when they affect decoration logic
-  // CSS-only variants like 'dark', 'wide' don't need JS
-  if (block.classList.contains('carousel')) {
-    // Carousel variant needs different DOM structure/behavior
-    setupCarousel(block);
-  }
-}
-```
-
-**For complete JavaScript guidelines including:**
-- Advanced DOM manipulation patterns
-- Fetching data and loading modules
-- Performance optimization techniques
-- Helper functions from aem.js
-- Code style and linting rules
-
-**Read [references/js-guidelines.md](references/js-guidelines.md)**
+- **Move, don't copy:** move the delivered pictures, headings, paragraphs and links into the new structure. Copying their text or src into new elements, or rebuilding them with `innerHTML`, loses heading ids, image sizes and Universal Editor `data-aue-*` attributes.
+- **Cells vary:** authors leave cells out and add extra ones. Find content by what it is (e.g. the cell with a `picture`), not by index alone.
+- **Don't hold up the section:** a section stays hidden until all its blocks are decorated, and the first section gates LCP. Don't await slow fetches, large imports or third-party embeds in `decorate()`; load them with dynamic `import()` when the block comes into view (IntersectionObserver) or on interaction. Reserve their space up front (placeholder with the final size, e.g. `aspect-ratio`) so late content doesn't shift the layout (CLS).
+- **aem.js:** vendored, never edit it. Import its helpers (`createOptimizedPicture`, `readBlockConfig`, `loadScript`, ...) from `../../scripts/aem.js`; project helpers go in `scripts/`.
 
 ## Step 4: Add CSS Styling
 
@@ -212,12 +183,3 @@ If your changes require modifying core files (scripts.js, styles.css, delayed.js
 - For global styles: test across multiple blocks and pages
 - Check console for errors
 - Verify responsive behavior
-
-**For detailed patterns:**
-- JavaScript: See [references/js-guidelines.md](references/js-guidelines.md)
-
----
-
-## Reference Materials
-
-- [references/js-guidelines.md](references/js-guidelines.md) - Complete JavaScript patterns and best practices
