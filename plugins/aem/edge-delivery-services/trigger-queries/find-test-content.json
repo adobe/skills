@@ -1,0 +1,115 @@
+{
+  "name": "find-test-content trigger queries",
+  "description": "Should trigger when searching an EDS site (local dev, .aem.page or .aem.live) for existing pages that use a specific block or block variant; near misses are creating local test pages or cloning DA content (aem-cli), authoring HTML for DA (da-content), surveying local block folders or the Block Collection (block-inventory / block-collection-and-party), importing an external page (page-import), or running block tests (testing-blocks).",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  },
+  "queries": [
+    {
+      "id": "y-find-cards-pages",
+      "query": "Which pages on our site currently use the `cards` block, and which variants do they use? The local dev server is running on port 3000.",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "y-locate-hero-test-urls",
+      "query": "I'm about to refactor `blocks/hero/hero.css` and need existing pages on `main--acme--myorg.aem.page` that have the `hero` block so I can test every variant.",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "y-audit-block-usage-live",
+      "query": "Before we remove the `carousel` block, find all published pages on `main--site--org.aem.live` that still contain an instance of `carousel`.",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "y-find-specific-variant",
+      "query": "Do any pages on our preview site (`main--marketing--org.aem.page`) use the `columns (dark)` variant? List the URLs.",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "y-count-block-instances",
+      "query": "Scan our indexed pages on `localhost:3000` and tell me how many pages use the `accordion` block and which ones have multiple instances on the same page.",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "y-rate-limited-crawl",
+      "query": "I want to search `main--bigsite--org.aem.page` for pages containing the `tabs` block without hitting 429 rate limits. Run a gentle search and list the matching URLs.",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "test"
+    },
+    {
+      "id": "y-bugfix-need-existing-page",
+      "query": "Before I touch `blocks/quote/`, find me a couple of existing pages on the local dev server that already have a `quote` block on them so I have test URLs.",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "test"
+    },
+    {
+      "id": "y-variant-inventory-on-site",
+      "query": "What variants of the `Embed` block are actually used across the pages of `main--docs--org.aem.live`?",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "test"
+    },
+    {
+      "id": "n-create-local-test-page",
+      "query": "We're building a brand-new `pricing-calculator` block that doesn't exist on the site yet. Create a local test HTML page so we can preview it with `aem up`.",
+      "should_trigger": false,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "n-block-collection-search",
+      "query": "Check whether Adobe's Block Collection or Block Party has a reference implementation for a `breadcrumb` or `modal` block we can copy into our repo.",
+      "should_trigger": false,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "n-list-repo-blocks",
+      "query": "Survey which blocks exist in this repository's `blocks/` folder and in the Block Collection so we know our block palette before importing a page.",
+      "should_trigger": false,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "n-clone-da-folder",
+      "query": "Clone the `/drafts` folder from our da.live site into `./content/` so I can edit those pages locally.",
+      "should_trigger": false,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "n-write-unit-e2e-tests",
+      "query": "The `cards` block is done and we already have `/docs/library/blocks/cards`. Write the unit and Playwright E2E tests for it.",
+      "should_trigger": false,
+      "skill": "find-test-content",
+      "split": "test"
+    },
+    {
+      "id": "n-import-external-url",
+      "query": "Import https://www.example.com/pricing into our EDS site as a new page.",
+      "should_trigger": false,
+      "skill": "find-test-content",
+      "split": "test"
+    },
+    {
+      "id": "n-da-html-traps",
+      "query": "Write the HTML for a DA page containing a `hero` block and a `section-metadata` block so I can PUT it to `admin.da.live/source`.",
+      "should_trigger": false,
+      "skill": "find-test-content",
+      "split": "test"
+    }
+  ]
+}

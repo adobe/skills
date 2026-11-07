@@ -3,3 +3,6 @@
 
 **/package.json
 !**/scripts/**/package.json
+
+facts.yaml
+trigger-queries/
