@@ -69,7 +69,15 @@ fixtureTest('a plain link is a LINK, a button-styled link a CTA', () => {
 });
 
 fixtureTest('hidden and off-page content is not tokenized', () => {
-  assert.doesNotMatch(html, /Hidden menu item|Drawer item/);
+  assert.doesNotMatch(html, /Hidden menu item|Drawer item|Drawer above/);
+});
+
+fixtureTest('a display: contents wrapper keeps its content', () => {
+  assert.match(html, /\{HEADING:1\}/);
+});
+
+fixtureTest('a link around a large SVG keeps it as a sized image', () => {
+  assert.match(html, /<a[^>]*>\s*\{IMAGE:200x80\}\s*<\/a>/);
 });
 
 fixtureTest('a card link keeps its heading and image', () => {

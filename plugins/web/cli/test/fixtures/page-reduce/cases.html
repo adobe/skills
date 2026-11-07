@@ -27,6 +27,14 @@
         left: -1000px;
         width: 300px;
       }
+      .drawer-up {
+        position: absolute;
+        left: 100px;
+        transform: translateY(-1000px);
+      }
+      .hero-body {
+        display: contents;
+      }
       .hero {
         padding: 80px 40px;
         background: #eef;
@@ -88,16 +96,22 @@
       ><a href="/contact">Contact</a>
       <div class="mega"><a href="/hidden">Hidden menu item</a></div>
       <div class="drawer"><a href="/drawer">Drawer item</a></div>
+      <div class="drawer-up"><a href="/drawer-up">Drawer above</a></div>
+      <a href="/" aria-label="Acme home"
+        ><svg width="200" height="80"><rect width="200" height="80" /></svg
+      ></a>
     </nav>
     <main>
       <section class="hero">
-        <h1>Build faster with Acme</h1>
-        <p>
-          Acme helps small teams ship quality products with less overhead and more focus on
-          customers.
-        </p>
-        <img alt="Product screenshot" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" />
-        <a class="btn" href="/start">Get started</a>
+        <div class="hero-body">
+          <h1>Build faster with Acme</h1>
+          <p>
+            Acme helps small teams ship quality products with less overhead and more focus on
+            customers.
+          </p>
+          <img alt="Product screenshot" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" />
+          <a class="btn" href="/start">Get started</a>
+        </div>
       </section>
       <section class="grid">
         <a class="card" href="/w1"

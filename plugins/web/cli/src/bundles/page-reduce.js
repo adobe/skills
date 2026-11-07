@@ -2361,13 +2361,22 @@
   function removeNoiseElements(root) {
     root.querySelectorAll(NOISE_TAGS.join(",")).forEach((el) => el.remove());
   }
+  function isCollapsed(s, rect) {
+    const clips = (overflow) => overflow === "hidden" || overflow === "clip";
+    return clips(s.overflowX) && rect.width === 0 || clips(s.overflowY) && rect.height === 0;
+  }
+  function isOffPage(rect, el, win) {
+    const { scrollWidth, scrollHeight } = el.ownerDocument.documentElement;
+    const left = rect.left + win.scrollX;
+    const top = rect.top + win.scrollY;
+    return left + rect.width <= 0 || left >= scrollWidth || top + rect.height <= 0 || top >= scrollHeight;
+  }
   function isHidden(el, win) {
     const s = win.getComputedStyle(el);
     if (s.display === "none" || s.opacity === "0") return true;
+    if (s.display === "contents") return false;
     const rect = el.getBoundingClientRect();
-    const clips = ["hidden", "clip"].includes(s.overflow);
-    if (s.display !== "contents" && clips && (rect.width === 0 || rect.height === 0)) return true;
-    return rect.right <= 0 || rect.left >= el.ownerDocument.documentElement.scrollWidth;
+    return isCollapsed(s, rect) || isOffPage(rect, el, win);
   }
   function hasVisibleDescendant(el, win) {
     return [...el.querySelectorAll("*")].some((c) => win.getComputedStyle(c).visibility === "visible");
@@ -2495,18 +2504,12 @@
         picture.replaceWith(doc.createTextNode("{IMAGE:0x0}"));
       }
     });
-    root.querySelectorAll("img").forEach((img) => {
+    root.querySelectorAll("img, svg").forEach((img) => {
       const rect = live(img).getBoundingClientRect();
       const w = Math.round(rect.width);
       const h = Math.round(rect.height);
       const token = w > ICON_THRESHOLD && h > ICON_THRESHOLD ? `{IMAGE:${w}x${h}}` : "{ICON}";
       img.replaceWith(doc.createTextNode(token));
-    });
-    root.querySelectorAll("svg").forEach((svg) => {
-      const rect = live(svg).getBoundingClientRect();
-      if (rect.width <= ICON_THRESHOLD || rect.height <= ICON_THRESHOLD) {
-        svg.replaceWith(doc.createTextNode("{ICON}"));
-      }
     });
   }
   function tokenizeVideos(root) {
@@ -2527,9 +2530,8 @@
     const borderCount = ["left", "right", "top", "bottom"].filter((side) => s.getPropertyValue(`border-${side}-style`) !== "none").length;
     return hasCustomBg || borderCount > 1;
   }
-  var CARD_CONTENT = "h1, h2, h3, h4, h5, h6, svg";
   function isBlockLink(a) {
-    return a.querySelector(CARD_CONTENT) !== null || /\{(IMAGE:|VIDEO\})/.test(a.textContent);
+    return a.querySelector("h1, h2, h3, h4, h5, h6") !== null || /\{(IMAGE:|VIDEO\})/.test(a.textContent);
   }
   function linkLabel(a) {
     const text = getVisibleText(a).replace(/\{[A-Z]+[^}]*\}/g, "").replace(/\s+/g, " ").trim();
