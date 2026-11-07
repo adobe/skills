@@ -102,7 +102,7 @@ Track your progress:
 3. Basic CSS structure:
    ```css
    /* All selectors scoped to block */
-   main .{block-name} {
+   .{block-name} {
      /* block styles */
    }
    ```
@@ -157,61 +157,11 @@ export default async function decorate(block) {
 
 ## Step 4: Add CSS Styling
 
-**Essential patterns - scoped, responsive, using custom properties:**
+Follow the project's existing block CSS and lint rules. Easy to get wrong:
 
-```css
-/* All selectors MUST be scoped to block */
-main .my-block {
-  /* Use CSS custom properties for consistency */
-  background-color: var(--background-color);
-  color: var(--text-color);
-  font-family: var(--body-font-family);
-
-  /* Mobile-first styles (default) */
-  padding: 1rem;
-  flex-direction: column;
-}
-
-main .my-block h2 {
-  font-family: var(--heading-font-family);
-  font-size: var(--heading-font-size-m);
-}
-
-main .my-block .item {
-  display: flex;
-  gap: 1rem;
-}
-
-/* Tablet and up */
-@media (width >= 600px) {
-  main .my-block {
-    padding: 2rem;
-  }
-}
-
-/* Desktop and up */
-@media (width >= 900px) {
-  main .my-block {
-    flex-direction: row;
-    padding: 4rem;
-  }
-}
-
-/* Variants - most are CSS-only */
-main .my-block.dark {
-  background-color: var(--dark-color);
-  color: var(--background-color);
-}
-```
-
-**For complete CSS guidelines including:**
-- All available CSS custom properties
-- Modern CSS features (grid, logical properties, etc.)
-- Performance optimization
-- Naming conventions
-- Common patterns and anti-patterns
-
-**Read [references/css-guidelines.md](references/css-guidelines.md)**
+- **Page grid:** global styles set max-width, centering and inline padding on `main > .section > div`. Don't override them on the block. For outer layout like a full-bleed background, target `.{block-name}-container` (the section) or `.{block-name}-wrapper` (the block's parent), not `100vw` or `calc(50% - 50vw)`.
+- **Platform classes:** aem.js adds `{block-name}-wrapper` and `{block-name}-container`. Don't reuse those names inside the block.
+- **Embeds:** sites embedded with aem-embed load styles.css into a shadow root, so global custom properties go on `:root, :host`.
 
 **Note on iterative validation:** While building, you can test changes in your browser as you go (load test content URL, check console, verify layout and functionality). For comprehensive testing guidance including browser testing techniques, responsive testing, and validation approaches, see the testing-blocks skill invoked in Step 5.
 
@@ -265,11 +215,9 @@ If your changes require modifying core files (scripts.js, styles.css, delayed.js
 
 **For detailed patterns:**
 - JavaScript: See [references/js-guidelines.md](references/js-guidelines.md)
-- CSS: See [references/css-guidelines.md](references/css-guidelines.md)
 
 ---
 
 ## Reference Materials
 
 - [references/js-guidelines.md](references/js-guidelines.md) - Complete JavaScript patterns and best practices
-- [references/css-guidelines.md](references/css-guidelines.md) - Complete CSS patterns and best practices
