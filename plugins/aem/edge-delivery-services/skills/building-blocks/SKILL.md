@@ -143,7 +143,7 @@ Follow the project's existing block CSS and lint rules. Easy to get wrong:
 The testing-blocks skill will guide you through:
 - Browser testing (functionality, responsive behavior across viewports)
 - Linting and fixing issues
-- Writing unit tests for logic-heavy utilities (if needed)
+- Writing unit and browser tests where they pay off, with the project's own test tools
 - Screenshot capture for validation
 - Performance validation
 
