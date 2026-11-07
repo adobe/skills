@@ -2361,12 +2361,17 @@
   function removeNoiseElements(root) {
     root.querySelectorAll(NOISE_TAGS.join(",")).forEach((el) => el.remove());
   }
-  function removeInvisibleElements(root, win) {
+  function isHidden(el, win) {
+    const s = win.getComputedStyle(el);
+    if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") return true;
+    const rect = el.getBoundingClientRect();
+    const clips = ["hidden", "clip"].includes(s.overflow);
+    if (s.display !== "contents" && clips && (rect.width === 0 || rect.height === 0)) return true;
+    return rect.right <= 0 || rect.left >= el.ownerDocument.documentElement.scrollWidth;
+  }
+  function removeInvisibleElements(root, win, live = (n) => n) {
     [...root.querySelectorAll("*")].forEach((el) => {
-      const s = win.getComputedStyle(el);
-      if (s.display === "none" || s.visibility === "hidden" || s.opacity === "0") {
-        el.remove();
-      }
+      if (isHidden(live(el), win)) el.remove();
     });
   }
   function stripStylingTags(root) {
@@ -2401,9 +2406,9 @@
       toRemove.forEach((attrName) => el.removeAttribute(attrName));
     });
   }
-  function cleanupAll(root, win) {
+  function cleanupAll(root, win, live = (n) => n) {
     removeNoiseElements(root);
-    removeInvisibleElements(root, win);
+    removeInvisibleElements(root, win, live);
     stripStylingTags(root);
     removeComments(root);
     stripAttributes(root);
@@ -2467,27 +2472,27 @@
       }
     });
   }
-  function tokenizeImages(root) {
+  function tokenizeImages(root, live = (n) => n) {
     const doc = root.ownerDocument;
-    root.querySelectorAll("img").forEach((img) => {
-      const rect = img.getBoundingClientRect();
-      const w = Math.round(rect.width);
-      const h = Math.round(rect.height);
-      const token = w > ICON_THRESHOLD && h > ICON_THRESHOLD ? `{IMAGE:${w}x${h}}` : "{ICON}";
-      img.replaceWith(doc.createTextNode(token));
-    });
-    root.querySelectorAll("svg").forEach((svg) => {
-      const rect = svg.getBoundingClientRect();
-      if (rect.width <= ICON_THRESHOLD || rect.height <= ICON_THRESHOLD) {
-        svg.replaceWith(doc.createTextNode("{ICON}"));
-      }
-    });
     root.querySelectorAll("picture").forEach((picture) => {
       const img = picture.querySelector("img");
       if (img) {
         picture.replaceWith(img);
       } else {
         picture.replaceWith(doc.createTextNode("{IMAGE:0x0}"));
+      }
+    });
+    root.querySelectorAll("img").forEach((img) => {
+      const rect = live(img).getBoundingClientRect();
+      const w = Math.round(rect.width);
+      const h = Math.round(rect.height);
+      const token = w > ICON_THRESHOLD && h > ICON_THRESHOLD ? `{IMAGE:${w}x${h}}` : "{ICON}";
+      img.replaceWith(doc.createTextNode(token));
+    });
+    root.querySelectorAll("svg").forEach((svg) => {
+      const rect = live(svg).getBoundingClientRect();
+      if (rect.width <= ICON_THRESHOLD || rect.height <= ICON_THRESHOLD) {
+        svg.replaceWith(doc.createTextNode("{ICON}"));
       }
     });
   }
@@ -2520,11 +2525,20 @@
     defaultA.remove();
     return hasCustomBg || borderCount > 1;
   }
-  function tokenizeLinks(root, win) {
+  var BLOCK_CONTENT = "h1, h2, h3, h4, h5, h6, p, div, section, article, figure, ul, ol, picture, video, svg";
+  function isBlockLink(a) {
+    return a.querySelector(BLOCK_CONTENT) !== null || /\{(IMAGE:|VIDEO\})/.test(a.textContent);
+  }
+  function linkLabel(a) {
+    const text = getVisibleText(a).replace(/\{[A-Z]+[^}]*\}/g, "").replace(/\s+/g, " ").trim();
+    return text || a.getAttribute("aria-label")?.trim() || "";
+  }
+  function tokenizeLinks(root, win, live = (n) => n) {
     const doc = root.ownerDocument;
     root.querySelectorAll("a[href]").forEach((a) => {
-      const label = getVisibleText(a);
-      if (isCTALink(a, win)) {
+      if (isBlockLink(a)) return;
+      const label = linkLabel(a);
+      if (isCTALink(live(a), win)) {
         a.replaceWith(doc.createTextNode(`{CTA:${label}}`));
       } else {
         a.replaceWith(doc.createTextNode(`{LINK:${label}}`));
@@ -2573,11 +2587,11 @@
     while (removeEmptyOnce(root)) {
     }
   }
-  function tokenizeAll(root, win) {
+  function tokenizeAll(root, win, live = (n) => n) {
     tokenizeHeadings(root);
     tokenizeVideos(root);
-    tokenizeImages(root);
-    tokenizeLinks(root, win);
+    tokenizeImages(root, live);
+    tokenizeLinks(root, win, live);
     tokenizeFormElements(root);
     tokenizeTextNodes(root);
     collapseWhitespace(root);
@@ -2918,17 +2932,23 @@
   }
 
   // src/reduce-for-skill.js
+  function liveLookup(clone, el) {
+    const live = [el, ...el.querySelectorAll("*")];
+    const pairs = new Map([clone, ...clone.querySelectorAll("*")].map((c, i) => [c, live[i]]));
+    return (node) => pairs.get(node) ?? node;
+  }
   function processSectionBox(box, doc, win) {
     const el = box.div;
     if (!el) return null;
     const clone = el.cloneNode(true);
-    cleanupAll(clone, win);
+    const live = liveLookup(clone, el);
+    cleanupAll(clone, win, live);
     const shadowRoots = findShadowRoots(clone);
     for (const sroot of shadowRoots) {
       cleanupAll(sroot, win);
       tokenizeAll(sroot, win);
     }
-    tokenizeAll(clone, win);
+    tokenizeAll(clone, win, live);
     return {
       sectionType: box.prediction?.sectionType || "unknown",
       xpath: box.xpath || DOM.getXPath(el, doc),
