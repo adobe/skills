@@ -2525,9 +2525,9 @@
     defaultA.remove();
     return hasCustomBg || borderCount > 1;
   }
-  var BLOCK_CONTENT = "h1, h2, h3, h4, h5, h6, p, div, section, article, figure, ul, ol, picture, video, svg";
+  var CARD_CONTENT = "h1, h2, h3, h4, h5, h6, svg";
   function isBlockLink(a) {
-    return a.querySelector(BLOCK_CONTENT) !== null || /\{(IMAGE:|VIDEO\})/.test(a.textContent);
+    return a.querySelector(CARD_CONTENT) !== null || /\{(IMAGE:|VIDEO\})/.test(a.textContent);
   }
   function linkLabel(a) {
     const text = getVisibleText(a).replace(/\{[A-Z]+[^}]*\}/g, "").replace(/\s+/g, " ").trim();
