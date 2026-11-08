@@ -62,7 +62,10 @@ jobs:
 
       - run: npm ci
 
-      # playwright-cli comes from devDependencies and drives the Chrome the runner image ships.
+      # `web header` launches Playwright's own headless Chromium. Other commands use the
+      # runner's Chrome. npm exec installs the build that the pinned playwright-cli expects.
+      - run: npm exec -- playwright-cli install-browser chromium --only-shell --with-deps
+
       - name: Fixture tests on real renders
         run: npm run test:smoke
 
