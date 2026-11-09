@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateComponent } from '../skills/create-custom-component/scripts/validate-component.mjs';
+import { validateComponent, countCells } from '../skills/create-custom-component/scripts/validate-component.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '../skills/create-custom-component/scripts/validate-component.mjs');
 const NAME = 'star-rating';
@@ -175,4 +175,38 @@ test('CLI: exit codes, --json output and --help writes nothing', () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('countCells mirrors xwalk/max-cells: skips tabs, flattens containers, collapses suffixes, groups by prefix', () => {
+  const model = {
+    id: NAME,
+    fields: [
+      { component: 'tab', name: 'basic' },
+      { component: 'container', name: 'grp', fields: [{ component: 'text', name: 'name' }, { component: 'text', name: 'label' }] },
+      { component: 'text', name: 'link' },
+      { component: 'text', name: 'linkText' },
+      { component: 'reference', name: 'image' },
+      { component: 'reference', name: 'image_mobile' },
+    ],
+  };
+  assert.equal(countCells(model), 4);
+});
+
+test('xwalk/max-cells limit in the ESLint config is enforced against the built model', () => {
+  const fields = Array.from({ length: 6 }, (_, i) => ({ component: 'text', name: `f${i}` }));
+  const built = JSON.stringify([{ id: NAME, fields }]);
+  const eslint = (extra) => `module.exports = { rules: {\n  'xwalk/max-cells': ['error', {\n    '*': 4, // default\n    range: 19,${extra}\n  }],\n} };\n`;
+
+  const missing = run({ 'component-models.json': built, '.eslintrc.cjs': eslint('') });
+  const err = missing.checks.find((c) => c.id === 'lint.max-cells');
+  assert.equal(err.level, 'error');
+  assert.match(err.message, /'star-rating': 6/);
+
+  const ok = run({ 'component-models.json': built, '.eslintrc.cjs': eslint(` '${NAME}': 6,`) });
+  assert.equal(ok.checks.find((c) => c.id === 'lint.max-cells').level, 'pass');
+
+  const stale = run({ 'component-models.json': '[]', '.eslintrc.cjs': eslint('') });
+  assert.equal(stale.checks.find((c) => c.id === 'lint.max-cells').level, 'warn');
+
+  assert.equal(run().checks.find((c) => c.id === 'lint.max-cells'), undefined);
 });

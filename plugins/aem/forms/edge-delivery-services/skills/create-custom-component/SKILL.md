@@ -104,6 +104,7 @@ Implementation rules:
 2. If the component has no stylesheet, add it to `NO_CSS_COMPONENTS` when the project defines that set; otherwise keep `<name>.css`.
 3. `blocks/form/_form.json` — make sure `<name>` is in the `"form"` filter `components` so authors can insert it.
 4. `models/_component-definition.json` — make sure the custom-components group includes `../blocks/form/components/<name>/_<name>.json#/definitions` (unless the project includes components by glob).
+5. Repository lint limits: check the project's ESLint config (`.eslintrc.cjs`, `eslint.config.*`, …) for per-model limits. The xwalk config usually sets `'xwalk/max-cells'`: it limits each model in the built `component-models.json` to 4 cells unless the model id has its own entry. A form component inherits its base type's fields, so it needs one. Add `'<name>': <cells>` next to the existing entries. The validator (Step 8, gate A) reports the exact count after `npm run build:json`. Follow any other per-model lint options the repository defines the same way.
 
 ### Step 6: Document
 
@@ -138,7 +139,7 @@ Do not report the component as done until gates A–D pass. Fix and re-run on fa
 node <skill-dir>/scripts/validate-component.mjs <name>
 ```
 
-Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = name, `fieldType`/`resourceType`, resolvable `"..."` includes, unique field names, ES-module syntax, default export, `subscribe` import path and `{ listenChanges: true }`, `.js` import extensions, legacy/anti-patterns (`fieldModel.subscribe(…, 'change')`, non-bubbling `change`, `#id` child selectors), README sections, registration in `mappings.js` / `_form.json` / `_component-definition.json`, and whether the build output contains the component. Exit `0` = no errors; `1` = errors (must fix); warnings must be fixed or explicitly justified in the report. Use `--json` for machine-readable output.
+Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = name, `fieldType`/`resourceType`, resolvable `"..."` includes, unique field names, ES-module syntax, default export, `subscribe` import path and `{ listenChanges: true }`, `.js` import extensions, legacy/anti-patterns (`fieldModel.subscribe(…, 'change')`, non-bubbling `change`, `#id` child selectors), README sections, registration in `mappings.js` / `_form.json` / `_component-definition.json`, whether the build output contains the component, and, when the ESLint config sets `xwalk/max-cells`, whether the built model's cell count fits its limit (it prints the entry to add). Exit `0` = no errors; `1` = errors (must fix); warnings must be fixed or explicitly justified in the report. Use `--json` for machine-readable output.
 
 **B. Lint** — if `package.json` has a `lint` script, run `npm run lint` and fix every issue in the new/changed files.
 
@@ -219,6 +220,7 @@ Finish with: files created/changed, the validator summary (errors/warnings), lin
 | Assuming the model updates while the user types | OOTB commits on blur (`change`); handle `input` in the component if rules need each keystroke, and document it in `## Model Properties Set` |
 | Dispatching `change` on every keystroke while formatting | Turns the blur commit into a per-keystroke one; let the native `change` commit, or commit deliberately |
 | Forgot `npm run build:json` | Properties missing in the Universal Editor — validator `build.json` |
+| No `xwalk/max-cells` entry for the new model | `npm run lint` fails with "Avoid using more than 4 cells"; add `'<name>': <cells>` to the ESLint config. Validator `lint.max-cells` gives the number |
 | Reporting done without running Step 8 | Always run gates A–D; report any gate that could not run |
 | Leaving the preview server running | Stop the background preview process once the user approves or the step is skipped |
 | Trusting `data-component-status="loaded"` alone | It is set even when `decorate()` throws — the e2e harness checks the console |

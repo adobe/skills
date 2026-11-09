@@ -80,6 +80,45 @@ function findDeep(node, key, out = []) {
   return out;
 }
 
+const ESLINT_CONFIGS = ['.eslintrc.cjs', '.eslintrc.js', '.eslintrc.json', '.eslintrc', 'eslint.config.js', 'eslint.config.mjs', 'eslint.config.cjs'];
+
+/** Finds per-model limits of the `xwalk/max-cells` rule in the repository's ESLint config. */
+export function findMaxCellsConfig(root) {
+  for (const file of ESLINT_CONFIGS) {
+    const text = readText(join(root, file));
+    const at = text?.search(/['"]xwalk\/max-cells['"]/) ?? -1;
+    if (at >= 0) {
+      const open = text.indexOf('{', at);
+      let depth = 0;
+      let end = open;
+      for (; end < text.length; end += 1) {
+        if (text[end] === '{') depth += 1;
+        else if (text[end] === '}' && (depth -= 1) === 0) break;
+      }
+      const body = open < 0 ? '' : text.slice(open + 1, end).replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, '');
+      const limits = Object.fromEntries([...body.matchAll(/['"]?([\w*.-]+)['"]?\s*:\s*(\d+)/g)].map((m) => [m[1], Number(m[2])]));
+      return { file, limits };
+    }
+  }
+  return null;
+}
+
+/** Cell count of a built model, as eslint-plugin-xwalk's max-cells rule computes it. */
+export function countCells(model) {
+  const names = [];
+  const collect = (fields = []) => fields.forEach(({ name: n, component, ...rest }) => {
+    if (component === 'tab') return;
+    if (component === 'container') collect(rest.fields);
+    else names.push(n);
+  });
+  collect(model.fields);
+  const collapsed = names.filter((n) => {
+    const suffix = ['MimeType', 'Text', 'Title', 'Type', 'Alt'].find((x) => typeof n === 'string' && n.endsWith(x));
+    return !(suffix && names.includes(n.slice(0, -suffix.length)));
+  });
+  return new Set(collapsed.map((n) => String(n).match(/^([^_]+)(_.+)?$/)?.[1]).filter(Boolean)).size;
+}
+
 export function validateComponent(name, rootDir) {
   const root = resolveRoot(rootDir);
   const checks = [];
@@ -335,15 +374,32 @@ export function validateComponent(name, rootDir) {
   // ---- build:json output -----------------------------------------------------------
   const builtModels = readText(join(root, 'component-models.json'));
   const builtDefs = readText(join(root, 'component-definition.json'));
+  let builtModel = null;
   if (builtModels === null || builtDefs === null) {
     warn('build.json', 'component-models.json / component-definition.json not found — run `npm run build:json`');
   } else {
     let models = [];
     try { models = JSON.parse(builtModels); } catch { /* reported below */ }
-    const hasModel = Array.isArray(models) && models.some((m) => m?.id === name);
+    builtModel = (Array.isArray(models) && models.find((m) => m?.id === name)) || null;
     const hasDef = builtDefs.includes(`"fd:viewType": "${name}"`) || builtDefs.includes(`"fd:viewType":"${name}"`);
-    if (hasModel && hasDef) pass('build.json', 'Built component-models.json and component-definition.json include the component');
-    else warn('build.json', `Built JSON is stale (model: ${hasModel ? 'yes' : 'no'}, definition: ${hasDef ? 'yes' : 'no'}) — run \`npm run build:json\``);
+    if (builtModel && hasDef) pass('build.json', 'Built component-models.json and component-definition.json include the component');
+    else warn('build.json', `Built JSON is stale (model: ${builtModel ? 'yes' : 'no'}, definition: ${hasDef ? 'yes' : 'no'}) — run \`npm run build:json\``);
+  }
+
+  // ---- repository lint limits (eslint-plugin-xwalk max-cells) ------------------------
+  const lintConfig = findMaxCellsConfig(root);
+  if (lintConfig) {
+    const { file, limits } = lintConfig;
+    const limit = limits[name] ?? limits['*'] ?? 4;
+    const where = `'xwalk/max-cells' in ${file}`;
+    if (builtModel) {
+      const cells = countCells(builtModel);
+      if (cells > limit) {
+        error('lint.max-cells', `Model "${name}" renders ${cells} cells but ${where} allows ${limit}${name in limits ? '' : ' (default)'} — add \`'${name}': ${cells}\` to it`);
+      } else pass('lint.max-cells', `Model "${name}" has ${cells} cells, within ${where} (${limit})`);
+    } else if (!(name in limits)) {
+      warn('lint.max-cells', `${where} has no entry for "${name}"; run \`npm run build:json\` and re-validate to get the required cell count`);
+    }
   }
 
   return finish();
