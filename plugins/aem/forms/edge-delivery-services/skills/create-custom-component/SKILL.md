@@ -29,6 +29,7 @@ Not for: generic EDS blocks (use the EDS `building-blocks` skill), AEM Sites HTL
 | `scripts/create-e2e-test.mjs` | Step 8 — generates the component's Playwright e2e test + form JSON |
 | `scripts/run-e2e-test.mjs` | Step 8 — runs those tests with the project's `@playwright/test` and the skill's config |
 | `assets/e2e/` | `form-harness.js` (copied into the project) and `playwright.config.mjs` (used in place) |
+| `scripts/preview-component.mjs` | Step 9: opens the component in a browser, with a live model inspector, for user feedback |
 | `scripts/validate-registration.js` | Optional — in-page check on an already deployed form |
 
 Paths under `scripts/`, `assets/` and `references/` are relative to this skill's directory; resolve them to absolute paths before running commands from the repository root.
@@ -168,9 +169,26 @@ Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = nam
 
 `scripts/validate-registration.js` can additionally be evaluated on an already deployed form (`(<file contents>)('<name>')`) to confirm registration there.
 
-### Step 9: Report
+### Step 9: Preview and collect feedback
 
-Finish with: files created/changed, the validator summary (errors/warnings), lint and build results, the e2e results (passed/failed per test, or why it could not run), and any justified warnings.
+Once gates A–D pass, let the user try the component before you finish.
+
+1. Start the preview from the repository root **as a background process** (it keeps running):
+
+   ```bash
+   node <skill-dir>/scripts/preview-component.mjs <name>
+   ```
+
+   It renders the e2e form JSON (`test/e2e/custom-components/<name>/<name>.form.json`) in a local form block with the project's `aem.js`/`scripts.js`. If the project has `@playwright/test`, it opens a visible Chromium window. An inspector panel shows the field's live model (`value`, `valid`, `visible`, `enabled`, …) and a log of model changes. It prints `PREVIEW_URL=<url>`. Without Playwright or a display (or with `--no-browser`) it only serves the page, so give the user the URL to open. To preview other property values, edit the form JSON or pass `--form <file>`.
+2. Tell the user the URL and what to try: each interaction, the authored properties, and keyboard use. Then ask, using the agent's question tool if it has one: does it look and behave as expected, and what should change?
+3. For each piece of feedback: change the component, add or adjust e2e assertions for the new behaviour, re-run gates A–D, and ask the user to reload the page (files are served fresh on each request). Ask again.
+4. Repeat until the user approves, then stop the preview process.
+
+If the user can't be reached (non-interactive run), skip this step and say so in the report, with the preview command.
+
+### Step 10: Report
+
+Finish with: files created/changed, the validator summary (errors/warnings), lint and build results, the e2e results (passed/failed per test, or why it could not run), the preview feedback rounds and changes made (or why the preview was skipped), and any justified warnings.
 
 ---
 
@@ -202,6 +220,7 @@ Finish with: files created/changed, the validator summary (errors/warnings), lin
 | Dispatching `change` on every keystroke while formatting | Turns the blur commit into a per-keystroke one; let the native `change` commit, or commit deliberately |
 | Forgot `npm run build:json` | Properties missing in the Universal Editor — validator `build.json` |
 | Reporting done without running Step 8 | Always run gates A–D; report any gate that could not run |
+| Leaving the preview server running | Stop the background preview process once the user approves or the step is skipped |
 | Trusting `data-component-status="loaded"` alone | It is set even when `decorate()` throws — the e2e harness checks the console |
 
 ## Example

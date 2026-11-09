@@ -23,7 +23,9 @@ Skills for building forms with **AEM Forms on Edge Delivery Services** — the F
 | C. Build | `npm run build:json`, then re-run gate A | Yes |
 | D. End-to-end | `node skills/create-custom-component/scripts/create-e2e-test.mjs <name>` generates a Playwright spec and form JSON under `test/e2e/custom-components/`. The harness renders the form JSON in a local form block (`<pre><code>`) with the project's `aem.js`/`scripts.js` — no deployed form or URL. The agent fills in model ↔ UI, authored-property and keyboard assertions and runs `node skills/create-custom-component/scripts/run-e2e-test.mjs <name>` (project's `@playwright/test` + the skill's own Playwright config — no config needed in the project) | Yes; reported as not run only if Playwright cannot be installed |
 
-The validator and the e2e generator have unit tests:
+After the gates pass, the skill opens the component for you to try (`skills/create-custom-component/scripts/preview-component.mjs <name>`): a Chromium window, or a local URL, rendering the form JSON with a live model inspector. It then asks for your feedback and iterates until you approve.
+
+The validator, e2e generator and preview have unit tests:
 
 ```bash
 node --test plugins/aem/forms/edge-delivery-services/tests/*.test.mjs
