@@ -1,9 +1,9 @@
-# AEM Forms
+# AEM Forms on Edge Delivery Services
 
-Skills for building with **AEM Forms on Edge Delivery Services** — the Form block from [`aem-boilerplate-forms`](https://github.com/adobe-rnd/aem-boilerplate-forms).
+Skills for building forms with **AEM Forms on Edge Delivery Services** — the Form block from [`aem-boilerplate-forms`](https://github.com/adobe-rnd/aem-boilerplate-forms).
 
 ```bash
-/plugin install aem-forms@adobe-skills
+/plugin install aem-forms-edge-delivery-services@adobe-skills
 ```
 
 ## Skills
@@ -26,18 +26,18 @@ Skills for building with **AEM Forms on Edge Delivery Services** — the Form bl
 The validator and the e2e generator have unit tests:
 
 ```bash
-node --test plugins/aem/forms/tests/*.test.mjs
+node --test plugins/aem/forms/edge-delivery-services/tests/*.test.mjs
 ```
 
 ## Evals
 
-Tessl eval scenarios live in [`evals/`](evals) (`task.md` + `criteria.json` weighted checklists) and run on PRs via a commit starting with `eval:` (see [CONTRIBUTING](../../../CONTRIBUTING.md#requesting-evals)).
+Tessl eval scenarios live in [`evals/`](evals) (`task.md` + `criteria.json` weighted checklists) and run on PRs via a commit starting with `eval:` (see [CONTRIBUTING](../../../../CONTRIBUTING.md#requesting-evals)).
 
 | Scenario | What it measures |
 |----------|------------------|
 | `range-slider-from-number-input` | End-to-end component: files, `fd:viewType`, authoring model, `subscribe` with `listenChanges`, registration, README, honest validation report |
 | `panel-watches-child-checkboxes` | Panel component subscribing to child fields via `[data-id]` wrappers |
 | `custom-event-verification-badge` | Custom events through `fieldModel.subscribe(cb, '<event>')`, not DOM listeners |
-| `commit-value-on-complete` | Commit `model.value` only when entry is complete; README contract for rule authors |
+| `commit-value-per-keystroke` | OOTB commits on blur; the component commits on each keystroke (formatted display, raw value) and documents the contract |
 | `repair-unregistered-star-rating` | Diagnose and fix a broken component (naming, viewType, registration, includes, legacy patterns) and report verification |
 | `searchable-dropdown-authoring-schema` | Universal Editor widget choice, shared-field reuse, runtime `enum` updates |

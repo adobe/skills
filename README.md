@@ -18,7 +18,7 @@ Repository of Adobe skills for AI coding agents.
 /plugin install app-builder@adobe-skills
 /plugin install aem-cloud-service@adobe-skills
 /plugin install aem-6-5-lts@adobe-skills
-/plugin install aem-forms@adobe-skills
+/plugin install aem-forms-edge-delivery-services@adobe-skills
 /plugin install workfront@adobe-skills
 /plugin install commerce-app-management@adobe-skills
 /plugin install commerce-app-migration@adobe-skills
@@ -225,12 +225,12 @@ All AEM as a Cloud Service skills — component development, Dispatcher, workflo
 
 See the [`aem-cloud-service` plugin README](plugins/aem/cloud-service/README.md) for sub-skill details and MCP requirements.
 
-##### AEM Forms
+##### AEM Forms on Edge Delivery Services
 
-Custom form component development for AEM Forms on Edge Delivery Services (the Form block). Available via the [`aem-forms`](plugins/aem/forms/README.md) plugin.
+Skills for building forms with the AEM Forms Form block on Edge Delivery Services. Available via the [`aem-forms-edge-delivery-services`](plugins/aem/forms/edge-delivery-services/README.md) plugin.
 
 ```bash
-/plugin install aem-forms@adobe-skills
+/plugin install aem-forms-edge-delivery-services@adobe-skills
 ```
 
 | Skill | Description |

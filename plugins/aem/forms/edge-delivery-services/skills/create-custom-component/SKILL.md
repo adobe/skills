@@ -94,7 +94,7 @@ Implementation rules:
 - Enhance the existing OOTB markup in `fieldDiv`; scope DOM queries to it.
 - When writing the value from custom UI, either set `model.value` or dispatch `new Event('change', { bubbles: true })` on the underlying input.
 - Guard against loops: never set `model.value` in a value-change handler without comparing first.
-- There is no `fd:blur` rule event. If downstream rules must run once when entry is complete (tab-out), commit `model.value` only then, not per keystroke.
+- Know when the value is committed. Out of the box, the form block writes `model.value` only from the input's native `change` event (`blocks/form/rules/index.js`), which text-like inputs fire on blur/commit, not on each keystroke. So rules on the field's change event run once per edit, when the user leaves the field. If the component must commit on every keystroke (live counters, search-as-you-type, values derived while typing), handle the `input` event in the component and set `model.value` there, comparing with the current value first. When reformatting the display while typing (masks, grouping), don't dispatch `change` on each keystroke, or you turn the blur commit into a per-keystroke one.
 - Prefix CSS classes with the component name in `<name>.css`.
 
 ### Step 5: Register
@@ -114,7 +114,7 @@ Create `blocks/form/components/<name>/README.md` (use an existing component READ
 | `## How to Use` / `## Authoring Properties` | Yes | How to configure it; table of custom properties |
 | `## Model Subscriptions` | If applicable | Model changes / custom events it listens to |
 | `## Events Dispatched` | If applicable | Custom events it fires |
-| `## Model Properties Set` | If applicable | What it writes and **when `model.value` is committed** (per keystroke, on completion, external only) and how often `fd:change` fires |
+| `## Model Properties Set` | If applicable | What it writes and **when `model.value` is committed**: on blur/`change` (the OOTB default), per keystroke (component-handled `input`), or external only. Also how often the field's change rules fire |
 | `## Usage Notes` | Yes | Base type, `fd:viewType`, key behaviour |
 
 If the project keeps a component catalog (for example a `component-registry.md`), add a one-line row for the component too.
@@ -198,7 +198,8 @@ Finish with: files created/changed, the validator summary (errors/warnings), lin
 | Custom event handled via `addEventListener` | `fieldModel.subscribe(cb, '<event>')` in `'register'` |
 | `new Event('change')` without `{ bubbles: true }` | Change never reaches the form model |
 | Setting `model.value` inside its own change handler | Compare before assigning |
-| Committing per keystroke when rules expect "on complete" | Commit once when valid; document in `## Model Properties Set` |
+| Assuming the model updates while the user types | OOTB commits on blur (`change`); handle `input` in the component if rules need each keystroke, and document it in `## Model Properties Set` |
+| Dispatching `change` on every keystroke while formatting | Turns the blur commit into a per-keystroke one; let the native `change` commit, or commit deliberately |
 | Forgot `npm run build:json` | Properties missing in the Universal Editor — validator `build.json` |
 | Reporting done without running Step 8 | Always run gates A–D; report any gate that could not run |
 | Trusting `data-component-status="loaded"` alone | It is set even when `decorate()` throws — the e2e harness checks the console |

@@ -21,8 +21,8 @@
 /plugins/aem/edge-delivery-services/                   @shsteimer
 /plugins/aem/edge-delivery-services-content-ops/       @trieloff
 
-# AEM Forms (Edge Delivery Services Form block)
-/plugins/aem/forms/                                    @rae_adobe
+# AEM Forms on Edge Delivery Services (Form block)
+/plugins/aem/forms/edge-delivery-services/             @rae_adobe
 
 # AEM Project Management (Astha Bhargava is sole author)
 /plugins/aem/project-management/                       @asthabh23

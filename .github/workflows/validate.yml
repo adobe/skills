@@ -83,7 +83,7 @@ jobs:
           node-version: '24'
 
       - name: AEM Forms create-custom-component script tests
-        run: node --test plugins/aem/forms/tests/*.test.mjs
+        run: node --test plugins/aem/forms/edge-delivery-services/tests/*.test.mjs
 
   codeowners-coverage:
     runs-on: ubuntu-latest

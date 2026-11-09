@@ -1,17 +1,16 @@
-# Card Number Input — Commit Value Only When Complete
+# Amount In Words — Commit the Value While Typing
 
 ## Problem/Feature Description
 
-Acme Bank's credit card form has a "card number" field. Two requirements conflict with a plain text input:
+Acme Bank's fund transfer form has a "transfer amount" text field. A form rule is attached to the field's change event: it formats the amount in words ("Twelve thousand five hundred rupees") into a read-only text field below it, so the customer can double-check before submitting.
 
-1. While typing, the digits must be visually grouped as `1234 5678 9012 3456`.
-2. A form rule "when card number changes → call the card-BIN lookup API" is attached to the field. Today it fires on every keystroke and floods the API. The business wants the API called exactly once, when the user has entered a complete, valid 16-digit number. AEM Forms has no blur/tab-out rule event.
+Out of the box the rule only runs when the customer leaves the field, because the form block commits the field value to the form model on the input's native `change` event (blur). The business wants the amount-in-words to update **live while the customer types**, using the existing rule, without changing the rule.
 
-The stored field value must be the 16 digits without spaces.
+Also, while typing, digits must be shown with thousands separators (`12,500`), but the value stored in the form model must be the plain number string without separators (`12500`). Non-digit characters must be ignored.
 
 ## Output Specification
 
-Create a custom form component named `card-number-input` extending the OOTB `text-input` field type, with JS, CSS, authoring JSON schema and README, registered so it loads at runtime. The README must make the value-commit behaviour clear to rule authors.
+Create a custom form component named `live-amount-input` extending the OOTB `text-input` field type, with JS, CSS, authoring JSON schema and README, registered so it loads at runtime. The README must make the value-commit behaviour clear to rule authors.
 
 ## Input Files
 
