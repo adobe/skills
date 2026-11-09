@@ -100,9 +100,9 @@
       "license": "Apache-2.0"
     },
     {
-      "name": "aem-forms-edge-delivery-services",
-      "source": "./plugins/aem/forms/edge-delivery-services",
-      "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block — custom form components today, with form authoring, business rules and related workflows to follow.",
+      "name": "aem-forms",
+      "source": "./plugins/aem/forms",
+      "description": "Skills for AEM Forms: building forms on Edge Delivery Services (Form block) and with Core Components: custom form components today, with form authoring, business rules and related workflows to follow.",
       "version": "1.0.0",
       "category": "aem",
       "keywords": [
@@ -111,6 +111,7 @@
         "aem-forms",
         "adaptive-forms",
         "edge-delivery-services",
+        "core-components",
         "form-block"
       ],
       "author": {

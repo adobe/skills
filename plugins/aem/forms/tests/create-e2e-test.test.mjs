@@ -7,10 +7,10 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildFormDefinition, createE2eTest, FIELD_ID } from '../skills/create-custom-component/scripts/create-e2e-test.mjs';
-import { buildCommand } from '../skills/create-custom-component/scripts/run-e2e-test.mjs';
+import { buildFormDefinition, createE2eTest, FIELD_ID } from '../skills/edge-delivery-services/create-custom-component/scripts/create-e2e-test.mjs';
+import { buildCommand } from '../skills/edge-delivery-services/create-custom-component/scripts/run-e2e-test.mjs';
 
-const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '../skills/create-custom-component/scripts/create-e2e-test.mjs');
+const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '../skills/edge-delivery-services/create-custom-component/scripts/create-e2e-test.mjs');
 
 function project(name, fieldType, modelFields = []) {
   const root = mkdtempSync(join(tmpdir(), 'ccc-e2e-'));
