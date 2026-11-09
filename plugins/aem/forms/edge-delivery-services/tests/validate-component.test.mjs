@@ -7,9 +7,9 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { validateComponent } from '../skills/edge-delivery-services/create-custom-component/scripts/validate-component.mjs';
+import { validateComponent } from '../skills/create-custom-component/scripts/validate-component.mjs';
 
-const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '../skills/edge-delivery-services/create-custom-component/scripts/validate-component.mjs');
+const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '../skills/create-custom-component/scripts/validate-component.mjs');
 const NAME = 'star-rating';
 
 const goodJs = `import { subscribe } from '../../rules/index.js';

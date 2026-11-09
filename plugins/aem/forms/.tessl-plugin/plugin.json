@@ -1,9 +1,0 @@
-{
-  "name": "adobe/aem-forms",
-  "version": "0.1.0",
-  "description": "Skills for AEM Forms on Edge Delivery Services and Core Components: custom form components, and in future form authoring and business rules.",
-  "private": false,
-  "skills": [
-    "skills/edge-delivery-services/create-custom-component"
-  ]
-}
