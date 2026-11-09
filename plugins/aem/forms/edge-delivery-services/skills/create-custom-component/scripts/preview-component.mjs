@@ -2,7 +2,7 @@
 /*
  * Interactive preview of an AEM Forms custom component, for user feedback.
  *
- * Renders the component's form JSON (test/e2e/custom-components/<name>/<name>.form.json, or one
+ * Renders the component's form JSON (<testDir>/custom-components/<name>/<name>.form.json, or one
  * generated from _<name>.json) in a local EDS page: the form block holds the JSON in <pre><code>
  * and the page loads the project's head.html (aem.js + scripts.js), so the real form block, rule
  * engine, mappings.js and component code run. An inspector panel shows the field's live model
@@ -23,6 +23,7 @@ import {
 } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildFormDefinition } from './create-e2e-test.mjs';
+import { e2eLayout } from './e2e-layout.mjs';
 
 const USAGE = `preview-component.mjs — open an AEM Forms custom component in a browser for manual testing
 
@@ -31,7 +32,7 @@ Usage:
 
 Options:
   --root <dir>     Repository root containing package.json and blocks/form (default: cwd)
-  --form <file>    Form JSON to render (default: test/e2e/custom-components/<name>/<name>.form.json,
+  --form <file>    Form JSON to render (default: <testDir>/custom-components/<name>/<name>.form.json,
                    else generated from _<name>.json)
   --props <json>   Authored properties when the form JSON is generated, e.g. '{"maxStars":5}'
   --port <n>       Port to serve on (default: random free port)
@@ -94,7 +95,7 @@ function findFieldUsing(node, name) {
 /** Loads (or generates) the form JSON and makes `action` end with the form id (see SKILL.md). */
 export function loadPreviewForm(name, root, { form, props } = {}) {
   let formDef;
-  const saved = join(root, 'test/e2e/custom-components', name, `${name}.form.json`);
+  const saved = join(root, e2eLayout(root).dir, name, `${name}.form.json`);
   if (form) formDef = JSON.parse(readFileSync(resolve(form), 'utf8'));
   else if (existsSync(saved)) formDef = JSON.parse(readFileSync(saved, 'utf8'));
   else formDef = buildFormDefinition(name, root, props ? JSON.parse(props) : {});

@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /*
- * Generates an end-to-end Playwright test for an AEM Forms custom component.
+ * Generates an end-to-end Playwright test for an AEM Forms custom component, inside the
+ * repository's own Playwright test folder (the config's testDir, default test/e2e):
+ *   <testDir>/custom-components/form-harness.js         shared harness (copied from assets/e2e)
+ *   <testDir>/custom-components/<name>/<name>.form.json  form definition using the component
+ *   <testDir>/custom-components/<name>/<name>.spec.js    spec: loads + model sync tests and TODOs
+ * Folders are created when missing. The tests run with the repository's Playwright config; only
+ * when the repository has none is a minimal root playwright.config.mjs added. Warns when the
+ * test folder is not excluded by .hlxignore / ESLint.
  *
- * Writes (relative to the repository root):
- *   test/e2e/custom-components/form-harness.js        shared harness (copied from assets/e2e)
- *   test/e2e/custom-components/<name>/<name>.form.json form definition using the component
- *   test/e2e/custom-components/<name>/<name>.spec.js   spec: loads + model sync tests and TODOs
- *
- * No Playwright config is written: run-e2e-test.mjs uses the one shipped with the skill.
  * Existing files are kept unless --force is given. Exit codes: 0 = ok, 2 = usage/project error.
  */
 import {
@@ -15,6 +16,9 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  e2eLayout, ignoreWarnings, FALLBACK_CONFIG, FALLBACK_CONFIG_FILE,
+} from './e2e-layout.mjs';
 
 const USAGE = `create-e2e-test.mjs — generate a Playwright e2e test for an AEM Forms custom component
 
@@ -221,8 +225,10 @@ function write(file, content, force, written) {
 export function createE2eTest(name, rootDir, { props = {}, force = false } = {}) {
   const root = resolve(rootDir || process.cwd());
   if (!existsSync(join(root, 'blocks/form'))) throw new Error(`No blocks/form under ${root}; run from the repository root or pass --root`);
-  const dir = join(root, 'test/e2e/custom-components');
+  const layout = e2eLayout(root);
+  const dir = join(root, layout.dir);
   const written = [];
+  if (!layout.configFile) write(join(root, FALLBACK_CONFIG_FILE), FALLBACK_CONFIG, false, written);
   ['form-harness.js'].forEach((f) => {
     if (!existsSync(join(dir, f)) || force) {
       mkdirSync(dir, { recursive: true });
@@ -233,7 +239,13 @@ export function createE2eTest(name, rootDir, { props = {}, force = false } = {})
   const formDef = buildFormDefinition(name, root, props);
   write(join(dir, name, `${name}.form.json`), `${JSON.stringify(formDef, null, 2)}\n`, force, written);
   write(join(dir, name, `${name}.spec.js`), specSource(name, formDef.items[0].fieldType), force, written);
-  return { root, written: written.map((f) => f.slice(root.length + 1)) };
+  return {
+    root,
+    dir: layout.dir,
+    configFile: layout.configFile || FALLBACK_CONFIG_FILE,
+    written: written.map((f) => f.slice(root.length + 1)),
+    warnings: ignoreWarnings(root, layout.dir),
+  };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -251,9 +263,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   }
   try {
     const props = opts.props ? JSON.parse(opts.props) : {};
-    const { written } = createE2eTest(opts.name, opts.root, { props, force: opts.force });
+    const {
+      written, dir, configFile, warnings,
+    } = createE2eTest(opts.name, opts.root, { props, force: opts.force });
     console.log(written.length ? `Wrote:\n  ${written.join('\n  ')}` : 'All files already exist (use --force to overwrite).');
-    console.log(`\nNext: replace the TODOs in test/e2e/custom-components/${opts.name}/${opts.name}.spec.js, then run\n  node ${join(dirname(fileURLToPath(import.meta.url)), 'run-e2e-test.mjs')} ${opts.name}`);
+    console.log(`Playwright config: ${configFile}`);
+    warnings.forEach((w) => console.log(`Warning: ${w}`));
+    console.log(`\nNext: replace the TODOs in ${dir}/${opts.name}/${opts.name}.spec.js, then run\n  node ${join(dirname(fileURLToPath(import.meta.url)), 'run-e2e-test.mjs')} ${opts.name}`);
   } catch (e) {
     console.error(`Error: ${e.message}`);
     process.exit(2);

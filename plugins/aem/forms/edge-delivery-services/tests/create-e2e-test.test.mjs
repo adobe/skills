@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFormDefinition, createE2eTest, FIELD_ID } from '../skills/create-custom-component/scripts/create-e2e-test.mjs';
-import { buildCommand } from '../skills/create-custom-component/scripts/run-e2e-test.mjs';
+import { buildCommand, resolveRun, standaloneConfig } from '../skills/create-custom-component/scripts/run-e2e-test.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '../skills/create-custom-component/scripts/create-e2e-test.mjs');
 
@@ -76,15 +76,21 @@ test('form definition: option and panel base types get enums / children', () => 
   }
 });
 
-test('createE2eTest writes harness, form JSON and a spec with failing TODOs; keeps edits without --force', () => {
+test('createE2eTest without a Playwright config: creates test/e2e, adds a minimal root config, warns about ignores', () => {
   const root = project('star-rating', 'number-input');
   try {
-    const { written } = createE2eTest('star-rating', root);
+    writeFileSync(join(root, '.hlxignore'), '.*\n*.md\n');
+    const { written, warnings, configFile } = createE2eTest('star-rating', root);
     const base = 'test/e2e/custom-components';
+    assert.equal(configFile, 'playwright.config.mjs');
     assert.deepEqual(written.sort(), [
-      `${base}/form-harness.js`,
+      'playwright.config.mjs', `${base}/form-harness.js`,
       `${base}/star-rating/star-rating.form.json`, `${base}/star-rating/star-rating.spec.js`,
     ].sort());
+    assert.match(readFileSync(join(root, 'playwright.config.mjs'), 'utf8'), /testDir: '\.\/test\/e2e'/);
+    assert.ok(warnings.some((w) => /\.hlxignore.*test\/\*/.test(w)));
+    assert.ok(warnings.some((w) => /ESLint/.test(w)));
+
     const spec = readFileSync(join(root, base, 'star-rating/star-rating.spec.js'), 'utf8');
     assert.match(spec, /from '\.\.\/form-harness\.js'/);
     assert.match(spec, /loadFormJson\('star-rating'\)/);
@@ -93,10 +99,27 @@ test('createE2eTest writes harness, form JSON and a spec with failing TODOs; kee
     assert.ok((spec.match(/TODO:/g) || []).length >= 4);
     const harness = readFileSync(join(root, base, 'form-harness.js'), 'utf8');
     assert.match(harness, /<pre><code>/);
+    assert.match(harness, /join\(HERE, name, file\)/);
 
     writeFileSync(join(root, base, 'star-rating/star-rating.spec.js'), '// edited');
     assert.deepEqual(createE2eTest('star-rating', root).written, []);
     assert.equal(readFileSync(join(root, base, 'star-rating/star-rating.spec.js'), 'utf8'), '// edited');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('createE2eTest with a repo Playwright config: uses its testDir, writes no config, no warnings when ignored', () => {
+  const root = project('star-rating', 'number-input');
+  try {
+    writeFileSync(join(root, 'playwright.config.js'), "export default { testDir: './tests/browser', projects: [{ name: 'chromium' }] };\n");
+    writeFileSync(join(root, '.hlxignore'), 'tests/*\n');
+    writeFileSync(join(root, '.eslintignore'), '/tests\n');
+    const { written, warnings, dir } = createE2eTest('star-rating', root);
+    assert.equal(dir, 'tests/browser/custom-components');
+    assert.ok(written.every((f) => f.startsWith('tests/browser/custom-components/')));
+    assert.ok(!existsSync(join(root, 'playwright.config.mjs')));
+    assert.deepEqual(warnings, []);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -117,24 +140,58 @@ test('CLI: --help writes nothing, missing project exits 2', () => {
   }
 });
 
-test('run-e2e-test uses the skill config, never a project config, and reports missing Playwright', () => {
+test('run-e2e-test runs the repo config on the component folder: chromium only if declared, no retries', () => {
   const root = project('star-rating', 'number-input');
   try {
-    createE2eTest('star-rating', root);
     writeFileSync(join(root, 'package.json'), '{}');
+    writeFileSync(join(root, 'playwright.config.js'), "export default { testDir: './test/e2e', projects: [{ name: 'chromium' }, { name: 'Mobile Chrome' }] };\n");
+    createE2eTest('star-rating', root);
     assert.throws(() => buildCommand({ name: 'star-rating', root, extra: [] }), /@playwright\/test is not installed/);
 
     const pw = join(root, 'node_modules/@playwright/test');
     mkdirSync(pw, { recursive: true });
     writeFileSync(join(pw, 'package.json'), '{"name":"@playwright/test","exports":{"./package.json":"./package.json"}}');
     writeFileSync(join(pw, 'cli.js'), '');
-    const { args } = buildCommand({ name: 'star-rating', root, extra: [] });
-    const config = args[args.indexOf('--config') + 1];
-    assert.match(config, /assets[\\/]e2e[\\/]playwright\.config\.mjs$/);
-    assert.ok(existsSync(config));
-    assert.ok(!config.startsWith(root));
-    assert.ok(args.includes('custom-components/star-rating/'));
+    const { args, configFile } = buildCommand({ name: 'star-rating', root, extra: [] });
+    assert.equal(configFile, 'playwright.config.js');
+    assert.ok(!args.includes('--config'));
+    assert.deepEqual(args.slice(1), ['test', 'test/e2e/custom-components/star-rating/', '--retries=0', '--project=chromium']);
+
+    writeFileSync(join(root, 'playwright.config.js'), "export default { testDir: './test/e2e', projects: [{ name: 'desktop' }] };\n");
+    assert.ok(!buildCommand({ name: 'star-rating', root, extra: [] }).args.includes('--project=chromium'));
     assert.throws(() => buildCommand({ name: 'nope', root, extra: [] }), /No tests at/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('run-e2e-test falls back to a temporary standalone config when the repo has none or it fails to load', () => {
+  const root = project('star-rating', 'number-input');
+  try {
+    writeFileSync(join(root, 'package.json'), '{}');
+    createE2eTest('star-rating', root);
+    rmSync(join(root, 'playwright.config.mjs'));
+    const pw = join(root, 'node_modules/@playwright/test');
+    mkdirSync(pw, { recursive: true });
+    writeFileSync(join(pw, 'package.json'), '{"name":"@playwright/test","exports":{"./package.json":"./package.json"}}');
+    writeFileSync(join(pw, 'cli.js'), "if (process.argv.includes('--list')) { console.error('Error: playwright.config.js: config.globalSetup must be a string'); process.exit(1); }\n");
+
+    const none = resolveRun(buildCommand({ name: 'star-rating', root, extra: [] }));
+    assert.match(none.note, /no Playwright config/);
+    const config = none.args[none.args.indexOf('--config') + 1];
+    assert.ok(!config.startsWith(root));
+    assert.match(readFileSync(config, 'utf8'), /custom-components\/star-rating/);
+
+    writeFileSync(join(root, 'playwright.config.js'), "export default { testDir: './test/e2e', globalSetup: null };\n");
+    const broken = resolveRun(buildCommand({ name: 'star-rating', root, extra: [] }));
+    assert.match(broken.note, /could not be used \(Error: playwright\.config\.js: config\.globalSetup must be a string\)/);
+    assert.ok(broken.args.includes('--config'));
+
+    writeFileSync(join(pw, 'cli.js'), '');
+    const ok = resolveRun(buildCommand({ name: 'star-rating', root, extra: [] }));
+    assert.equal(ok.note, 'Using playwright.config.js');
+    assert.ok(!ok.args.includes('--config'));
+    assert.ok(standaloneConfig(root, 'x/').endsWith('playwright.config.mjs'));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

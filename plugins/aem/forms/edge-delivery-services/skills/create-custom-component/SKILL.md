@@ -27,8 +27,8 @@ Not for: generic EDS blocks (use the EDS `building-blocks` skill), AEM Sites HTL
 | `references/subscribe-api.md` | Step 4 — `subscribe()` patterns: own value, child fields, custom events |
 | `scripts/validate-component.mjs` | Step 8 — static validator (Node 18+, no dependencies) |
 | `scripts/create-e2e-test.mjs` | Step 8 — generates the component's Playwright e2e test + form JSON |
-| `scripts/run-e2e-test.mjs` | Step 8 — runs those tests with the project's `@playwright/test` and the skill's config |
-| `assets/e2e/` | `form-harness.js` (copied into the project) and `playwright.config.mjs` (used in place) |
+| `scripts/run-e2e-test.mjs` | Step 8 — runs those tests with the project's own Playwright setup (Chromium, no retries) |
+| `assets/e2e/form-harness.js` | Test harness copied into the project's e2e test folder by `create-e2e-test.mjs` |
 | `scripts/preview-component.mjs` | Step 9: opens the component in a browser, with a live model inspector, for user feedback |
 | `scripts/validate-registration.js` | Optional — in-page check on an already deployed form |
 
@@ -153,7 +153,7 @@ Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = nam
    node <skill-dir>/scripts/create-e2e-test.mjs <name> --props '{"maxStars":5}'
    ```
 
-   It writes `test/e2e/custom-components/form-harness.js` and `test/e2e/custom-components/<name>/{<name>.form.json,<name>.spec.js}`; no Playwright config is added to the project. The form JSON contains a field with `":type": "<name>"` plus a following text field. For panels, add the children the component expects; for rules, add `events`/`rules` to the JSON. Keep `action` ending in `/<form id>`: `createForm()` derives the `formId` passed to components from it, and on a mismatch `subscribe()` callbacks never fire.
+   It writes the tests into the repository's own Playwright test folder: `<testDir>/custom-components/form-harness.js` and `<testDir>/custom-components/<name>/{<name>.form.json,<name>.spec.js}`, where `<testDir>` comes from the repo's Playwright config (default `test/e2e`). Missing folders are created. A minimal root `playwright.config.mjs` is added only if the repo has no Playwright config. It warns if the test folder isn't excluded by `.hlxignore` (it would be published to Edge Delivery Services) or by ESLint. Relay those warnings to the user with the suggested lines; don't edit the ignore files unasked. The form JSON contains a field with `":type": "<name>"` plus a following text field. For panels, add the children the component expects; for rules, add `events`/`rules` to the JSON. Keep `action` ending in `/<form id>`: `createForm()` derives the `formId` passed to components from it, and on a mismatch `subscribe()` callbacks never fire.
 2. Replace every `TODO` in the spec (they fail on purpose). Cover, with the harness helpers `renderForm`, `field`, `getModel`, `setModel`, `dispatchModelEvent`, `trackChanges`:
    - the component-specific markup after `data-component-status="loaded"`;
    - each authored property (re-render with a modified copy of the form JSON);
@@ -166,7 +166,7 @@ Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = nam
    node <skill-dir>/scripts/run-e2e-test.mjs <name>
    ```
 
-   It runs the project's `@playwright/test` with the skill's `assets/e2e/playwright.config.mjs` (Chromium, no retries), so it works whether or not the project has a Playwright config, and never picks up a config that targets deployed sites. The harness also fails a test on console errors from `/blocks/form/`, including exceptions thrown by `decorate()`: `mappings.js` swallows those and still marks the field `loaded`. If `@playwright/test` is missing (exit 2), install it as a dev dependency (`npm i -D @playwright/test && npx playwright install chromium`). If that is not possible, keep the spec, report the test as not run, and give the command.
+   It runs the repo's own Playwright and config on that folder only, without retries and limited to the `chromium` project when the config has one. In other words: `npx playwright test <testDir>/custom-components/<name>/ --project=chromium --retries=0`. The tests become part of the repo's e2e suite, so they also run with its usual command (e.g. `npm run test:e2e`). If the repo's config fails to load, or doesn't exist, the runner falls back to a temporary standalone config (Chromium, no retries, written to the OS temp folder). For example, secure-bank's `globalSetup: … : null` is rejected by newer Playwright. The runner prints why; pass that on to the user so they can fix the repo config. The harness also fails a test on console errors from `/blocks/form/`, including exceptions thrown by `decorate()`: `mappings.js` swallows those and still marks the field `loaded`. If `@playwright/test` is missing (exit 2), install it as a dev dependency (`npm i -D @playwright/test && npx playwright install chromium`). If that is not possible, keep the spec, report the test as not run, and give the command.
 
 `scripts/validate-registration.js` can additionally be evaluated on an already deployed form (`(<file contents>)('<name>')`) to confirm registration there.
 
@@ -180,7 +180,7 @@ Once gates A–D pass, let the user try the component before you finish.
    node <skill-dir>/scripts/preview-component.mjs <name>
    ```
 
-   It renders the e2e form JSON (`test/e2e/custom-components/<name>/<name>.form.json`) in a local form block with the project's `aem.js`/`scripts.js`. If the project has `@playwright/test`, it opens a visible Chromium window. An inspector panel shows the field's live model (`value`, `valid`, `visible`, `enabled`, …) and a log of model changes. It prints `PREVIEW_URL=<url>`. Without Playwright or a display (or with `--no-browser`) it only serves the page, so give the user the URL to open. To preview other property values, edit the form JSON or pass `--form <file>`.
+   It renders the e2e form JSON (`<testDir>/custom-components/<name>/<name>.form.json`) in a local form block with the project's `aem.js`/`scripts.js`. If the project has `@playwright/test`, it opens a visible Chromium window. An inspector panel shows the field's live model (`value`, `valid`, `visible`, `enabled`, …) and a log of model changes. It prints `PREVIEW_URL=<url>`. Without Playwright or a display (or with `--no-browser`) it only serves the page, so give the user the URL to open. To preview other property values, edit the form JSON or pass `--form <file>`.
 2. Tell the user the URL and what to try: each interaction, the authored properties, and keyboard use. Then ask, using the agent's question tool if it has one: does it look and behave as expected, and what should change?
 3. For each piece of feedback: change the component, add or adjust e2e assertions for the new behaviour, re-run gates A–D, and ask the user to reload the page (files are served fresh on each request). Ask again.
 4. Repeat until the user approves, then stop the preview process.
