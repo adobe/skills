@@ -102,7 +102,7 @@
     {
       "name": "aem-forms-edge-delivery-services",
       "source": "./plugins/aem/forms/edge-delivery-services",
-      "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block — custom form components today, with form authoring, business rules and related workflows to follow.",
+      "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block.",
       "version": "1.0.0",
       "category": "aem",
       "keywords": [
