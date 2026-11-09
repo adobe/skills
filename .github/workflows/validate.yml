@@ -44,6 +44,31 @@ jobs:
 
       - run: npm run check:dist
 
+  web-cli-browser:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: plugins/web/cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      - run: npm ci
+
+      # `web header` launches Playwright's own headless Chromium. Other commands use the
+      # runner's Chrome. npm exec installs the build that the pinned playwright-cli expects.
+      - run: npm exec -- playwright-cli install-browser chromium --only-shell --with-deps
+
+      - name: Fixture tests on real renders
+        run: npm run test:smoke
+
   stardust-harness-neutral:
     runs-on: ubuntu-latest
     steps:
