@@ -18,7 +18,6 @@ When the user names N, `stardust/scripts/crawl.mjs` picks pages in this order:
 
 - No change when N is not named. The 5-page checklist + scoring stays.
   The crawler's default 25 stays. The hands-off 100/20 roster stays.
-- No new flag such as `--order`.
 - No change to `--pages` (an explicit list is never reordered or dropped).
 
 ## Approaches
@@ -28,11 +27,15 @@ When the user names N, `stardust/scripts/crawl.mjs` picks pages in this order:
 - B. Docs only, agent builds a `--pages` list by hand: drifts run to run.
 - C. A new `--order links` flag: an option nobody needs apart from N.
 
+PR review update: the first trigger (any explicit `--max`) also fired on
+default and roster caps that pass `--max`. The trigger is now a
+`--link-first` flag that only a user-named N sets. The order stays in
+`crawl.mjs` as in A.
+
 ## Design
 
-- "N named" = `--max <n>` passed with a finite value.
-- `--max 0` (`--all`, `--prep`) means no cap. Order does not matter, so
-  nothing changes. The default 25 (flag absent) keeps today's order.
+- "N named" = `--link-first --max <n>`. `--max` alone never turns it on.
+- Without `--link-first`, today's order stays, for any `--max`.
 - Linked pages = `a[href]` on the rendered entry page, same origin.
   They are normalized and deduped with `normalizeUrl` / `dedupeKey`.
   They keep document order: header nav, then body, then footer.
@@ -42,7 +45,7 @@ When the user names N, `stardust/scripts/crawl.mjs` picks pages in this order:
 - Remaining slots come from the sitemap list, as today. With no sitemap,
   the entry links already are the list.
 - Agent side: a user-named N ("only 30 pages", "extract 10 pages") maps to
-  `--cap N` → `crawl.mjs --max N`. In hands-off, a user-named N replaces
+  `--cap N` → `crawl.mjs --link-first --max N`. In hands-off, a user-named N replaces
   the 100/20 roster defaults (my call: the user said what they want).
 
 ## Touches

@@ -768,7 +768,8 @@ supported.
 Core contract (procedure, formats, and detection rules in the
 reference):
 
-- `--prep` implies `--all` — migration coverage requires the full
+- `--prep` implies `--all` unless the user named N (then `--cap N`,
+  `reference/prep-mode.md` § 1) — migration coverage requires the full
   junk-filtered inventory, not the discovery cap.
 - Page types (`landing | article | listing | program | form |
   static | unique`) are LLM-inferred into `state.json.pages[].type`

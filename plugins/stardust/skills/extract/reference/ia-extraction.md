@@ -273,7 +273,9 @@ with `--pages` or by replying with explicit slug lists.
 ## Priority for the cap
 
 **When the user names N** ("only 30 pages", "extract 10 pages"), pass
-`--cap N` (`crawl.mjs --max N`). The crawler then orders the pages:
+`--cap N` as `crawl.mjs --link-first --max N`. Only a user-named N
+sets `--link-first`; default and roster caps never do. The crawler
+then orders the pages:
 the entered page, then the same-origin pages it links to in document
 order (asset links skipped), then the other discovered pages, up to N.
 The checklist and scoring below apply only when no N is named.
