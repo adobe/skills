@@ -30,11 +30,11 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 15 migration patterns with a valid strategy', () => {
+test('registry includes all 16 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
     'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
-    'guavaCache', 'inputStream', 'dispatcherConversion', 'oakIndex',
+    'guavaCache', 'inputStream', 'dispatcherConversion', 'oakIndex', 'assetWorkflowMigration',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
@@ -46,6 +46,8 @@ test('registry includes all 15 migration patterns with a valid strategy', () => 
   }
   assert.strictEqual(PATTERN_META.dispatcherConversion.strategy, 'content-scan');
   assert.deepStrictEqual(PATTERN_META.dispatcherConversion.bpaSlugs, []);
+  assert.strictEqual(PATTERN_META.assetWorkflowMigration.strategy, 'content-scan');
+  assert.deepStrictEqual(PATTERN_META.assetWorkflowMigration.bpaSlugs, []);
 });
 
 test('guavaCache has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
@@ -1390,6 +1392,48 @@ test('bpaIncomplete: when BPA DOES report the pattern, BPA still owns it (no fal
   });
   assert.strictEqual(gathered.sourceByPattern.templateModernization, 'mcp', 'BPA owns it when it reports findings');
   assert.strictEqual(gathered.findingsByPattern.templateModernization.length, 1, 'BPA finding, not the content-scan one');
+});
+
+// ── content-scan: asset workflows (Branch H) ────────────────────────────────
+
+test('gatherFindings content-scans enabled DAM asset launchers', async () => {
+  const root = mkworkspace();
+  const launcher = (enabled, glob) => `<jcr:root jcr:primaryType="cq:WorkflowLauncher" enabled="{Boolean}${enabled}" glob="${glob}" workflow="/var/workflow/models/x"/>`;
+  const base = 'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config';
+  write(root, `${base}/on/.content.xml`, launcher(true, '/content/dam/(a|b)/.*/renditions/original'));
+  write(root, `${base}/off/.content.xml`, launcher(false, '/content/dam(/.*/)renditions/original'));
+  write(root, `${base}/meta.xml`, launcher(true, '/content/dam/collections/.*'));
+  write(root, `${base}/pages/.content.xml`, launcher(true, '/content/we-retail/.*'));
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  assert.strictEqual(gathered.sourceByPattern.assetWorkflowMigration, 'content-scan');
+  const details = gathered.findingsByPattern.assetWorkflowMigration.map(f => f.detail);
+  assert.strictEqual(details.length, 1, details.join('\n'));
+  assert.match(details[0], /launcher on .*Branch H/);
+  assert.ok(!gathered.needsLlmScan.includes('assetWorkflowMigration'));
+});
+
+test('asset workflow content-scan only matches /content/dam as a whole path segment', async () => {
+  const base = 'ui.content/src/main/content/jcr_root/conf/global/settings/workflow/launcher/config';
+  const launcher = glob => `<jcr:root jcr:primaryType="cq:WorkflowLauncher" enabled="{Boolean}true" glob="${glob}" workflow="/var/workflow/models/x"/>`;
+  const scan = async glob => {
+    const root = mkworkspace();
+    write(root, `${base}/l/.content.xml`, launcher(glob));
+    return (await gatherFindings({ workspaceRoot: root })).findingsByPattern.assetWorkflowMigration.length;
+  };
+  for (const glob of ['/content/dam2/.*', '/content/damage/.*', '/content/dam-old/.*', '/content/site/content/dam/.*']) {
+    assert.strictEqual(await scan(glob), 0, glob);
+  }
+  for (const glob of ['/content/dam', '/content/dam/.*', '/content/dam(/.*)?', '/content/dam.*', '(/content/dam)/.*/renditions/original']) {
+    assert.strictEqual(await scan(glob), 1, glob);
+  }
+});
+
+test('asset workflow content-scan reports nothing for a workspace without workflows', async () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', '<project><modules><module>ui.apps</module></modules></project>');
+  write(root, 'ui.apps/pom.xml', '<project><packaging>content-package</packaging></project>');
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  assert.deepStrictEqual(gathered.findingsByPattern.assetWorkflowMigration, []);
 });
 
 // ── CAM project handoff to validate-migration ──────────────────────────────
