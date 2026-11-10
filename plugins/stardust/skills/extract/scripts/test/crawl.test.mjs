@@ -21,7 +21,7 @@ import * as crawl from '../crawl.mjs';
 import * as session from '../../../diff/scripts/live-session.mjs';
 
 const {
-  captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage,
+  captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, selectPages, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage,
 } = crawl;
 
 // the stub pages below navigate one host back-to-back; live-session's per-host pacing has its own tests
@@ -106,6 +106,19 @@ check('--help prints the usage header (naming captureGaps, --page-timeout, the b
 
 check('maxPages: 0 is no cap (--all / --prep); missing or bad values fall back to 25; others are floored and at least 1', () => {
   assert.equal(maxPages('0'), Infinity); assert.equal(maxPages(undefined), 25); assert.equal(maxPages('abc'), 25); assert.equal(maxPages('40'), 40); assert.equal(maxPages('2.7'), 2);
+});
+check('selectPages: an explicit N takes the entry, then its same-origin page links in document order, then discovered pages; without N, entry then discovered', () => {
+  const entry = 'https://ex.test/';
+  const linked = ['https://ex.test/', 'https://ex.test/#top', '/about', '/about/', '/about#team', 'https://other.test/x',
+    '/report.pdf', '/logo.svg?v=2', '/pricing', '/contact'];
+  const discovered = ['https://ex.test/blog/a', 'https://ex.test/pricing', 'https://ex.test/blog/b'];
+  const pick = (max, linkFirst) => selectPages({ entry, origin: 'https://ex.test', linked, discovered, max, linkFirst });
+  assert.deepEqual(pick(10, true), ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing',
+    'https://ex.test/contact', 'https://ex.test/blog/a', 'https://ex.test/blog/b']);
+  assert.deepEqual(pick(3, true), ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing']);
+  assert.deepEqual(pick(10, false), ['https://ex.test/', 'https://ex.test/blog/a', 'https://ex.test/pricing',
+    'https://ex.test/blog/b']);
+  assert.equal(pick(Infinity, true).length, 6);
 });
 check('pageTimeoutMs: seconds → ms; 0 is no deadline; missing, empty, negative or unparsable → the 60 s default; fractions kept to the ms', () => {
   assert.equal(PAGE_TIMEOUT_MS_DEFAULT, 60000);

@@ -63,7 +63,8 @@
  *     --url <url>             required; the entry page — its origin scopes discovery
  *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
  *                             is added) instead of discovering via sitemap / same-origin nav links
- *     --max <n>               discovery cap (default 25; 0 = no cap; listed --pages are never dropped)
+ *     --max <n>               discovery cap (default 25; 0 = no cap; listed --pages are never dropped;
+ *                             an explicit n puts the entry page's own links first)
  *     --out <dir>             output root (default stardust/current)
  *     --wait fast|medium|slow settle after load: 1200 / 2500 / 5000 ms (default medium)
  *     --no-consent-dismiss    do not auto-dismiss consent overlays before capture
@@ -214,13 +215,13 @@ export function pageTimeoutMs(v) {
 }
 
 function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4, dynamics: false, pageTimeoutMs: PAGE_TIMEOUT_MS_DEFAULT };
+  const a = { out: 'stardust/current', max: 25, maxGiven: false, wait: 'medium', consent: true, concurrency: 4, dynamics: false, pageTimeoutMs: PAGE_TIMEOUT_MS_DEFAULT };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     if (k === '--url') a.url = argv[(i += 1)];
     else if (k === '--pages') a.pages = argv[(i += 1)].split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = argv[(i += 1)];
-    else if (k === '--max') a.max = maxPages(argv[(i += 1)]);
+    else if (k === '--max') { a.max = maxPages(argv[(i += 1)]); a.maxGiven = Number.isFinite(a.max); }
     else if (k === '--wait') a.wait = argv[(i += 1)];
     else if (k === '--no-consent-dismiss') a.consent = false;
     else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
@@ -582,6 +583,25 @@ export function captureGaps(records) {
   return { roots, detail };
 }
 
+const ASSET_PATH = /\.(pdf|png|jpe?g|gif|webp|avif|svg|ico|css|js|json|xml|txt|zip)$/i;
+/**
+ * The page list: entry first, normalized dedupe, capped at max. With linkFirst (the user named N), the entry
+ * page's same-origin page links follow in document order, then the discovered list; without it, the discovered
+ * list follows the entry directly. Pure.
+ */
+export function selectPages({ entry, origin, linked, discovered, max, linkFirst }) {
+  const links = linkFirst
+    ? linked.map((h) => normalizeUrl(h, origin))
+      .filter((u) => new URL(u).origin === origin && !ASSET_PATH.test(new URL(u).pathname))
+    : [];
+  const seen = new Set(); const out = [];
+  for (const u of [entry, ...links, ...discovered.map((x) => normalizeUrl(x, origin))]) {
+    const k = dedupeKey(u);
+    if (!seen.has(k)) { seen.add(k); out.push(u); }
+  }
+  return out.slice(0, max);
+}
+
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
 async function discover(args, page) {
   const entry = normalizeUrl(args.url);
@@ -599,15 +619,12 @@ async function discover(args, page) {
     }
     return urls;
   }
-  // discovered lists (sitemap/BFS): entry always included, normalized dedupe, capped at --max.
-  const withEntry = (list) => {
-    const seen = new Set(); const out = [];
-    for (const u of [entry, ...list.map((x) => normalizeUrl(x, args.origin))]) {
-      const k = dedupeKey(u);
-      if (!seen.has(k)) { seen.add(k); out.push(u); }
-    }
-    return out.slice(0, args.max);
-  };
+  // discovered lists (sitemap/BFS) go through selectPages; an explicit --max puts the entry page's links first.
+  const linked = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
+    .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
+  const withEntry = (discovered) => selectPages({
+    entry, origin: args.origin, linked, discovered, max: args.max, linkFirst: args.maxGiven,
+  });
   // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
   // sitemap must fall through to BFS — finding from a media-site run).
   for (const sm of ['/sitemap.xml', '/sitemap_index.xml']) {
@@ -639,9 +656,7 @@ async function discover(args, page) {
     } catch { /* fall through */ }
   }
   // BFS depth-1 from the entry page's same-origin nav links.
-  const links = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
-    .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
-  return withEntry(links);
+  return withEntry(linked);
 }
 
 // The shared live-session hooks (throttle, browser-state jar, bot signals) ride the same loader; a crawler without the
