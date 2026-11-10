@@ -4,6 +4,22 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.37.3 — rollout publishes the site's own DA block library (#159)
+
+Field learning (a migrated site handed to its author): the pages and block code shipped, but the DA library showed an
+unrelated block set inherited from elsewhere, and none of the site's blocks or templates. Nothing in deploy or
+rollout wrote a library, so every migrated site arrived with an inherited or empty one.
+
+- **`rollout/scripts/da-library.mjs`:** from the delivered DA bodies (rollout coverage when present, else the content
+  tree) writes `library/blocks/<block>` (the first authored instance of every class variant, each followed by a
+  `library-metadata` description), `library/templates/<template>` (the template representative, its `metadata` as
+  `template-metadata` with page-specific values emptied), the `blocks` / `templates` sheets, and merges the `library`
+  tab of the site config: only the Blocks / Templates rows are replaced, other rows and tabs are kept. Previews the
+  documents, never publishes them. `--dry-run` writes the files only.
+- Rule home: `rollout/SKILL.md` § Phase D (DA library + D-site checklist row); pointer from deploy § When you finish.
+- Tests: `da-library.test.mjs` (block and variant lifting, the documents in the shape the DA library parses, the
+  config merge, the CLI dry run from coverage).
+
 ## 0.37.2 — a named page count starts from the entered page and its links (#158)
 
 User feedback: asked for N pages of a site, the crawl filled the slots in sitemap order, so the pages the entered

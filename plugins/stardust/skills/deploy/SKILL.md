@@ -1178,7 +1178,7 @@ A `padding: 200px 10px 10px 50px` cell per carousel slide, tagged `@ew-exempt co
 
 ## When you finish
 
-Update `stardust/eds-conversion-log.md` (or create one) with: final block inventory, decisions locked, anti-patterns avoided this run, anything site-specific the next person should know. The log is the running history of "why does this look the way it does."
+First page of a site, or a new block or variant: publish the DA library (`../rollout/SKILL.md` § Phase D, #159). Update `stardust/eds-conversion-log.md` (or create one) with: final block inventory, decisions locked, anti-patterns avoided this run, anything site-specific the next person should know. The log is the running history of "why does this look the way it does."
 
 ## References
 
