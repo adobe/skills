@@ -3,7 +3,7 @@
  * Interactive preview of an AEM Forms custom component, for user feedback.
  *
  * Renders the component's form JSON (<testDir>/custom-components/<name>/<name>.form.json, or one
- * generated from _<name>.json) in a local EDS page: the form block holds the JSON in <pre><code>
+ * generated from _<name>.json) in a local Edge Delivery Services page: the form block holds the JSON in <pre><code>
  * and the page loads the project's head.html (aem.js + scripts.js), so the real form block, rule
  * engine, mappings.js and component code run. An inspector panel shows the field's live model
  * state and a log of model changes. Files are re-read on every request: reload the page after
@@ -162,7 +162,7 @@ const start = () => {
 start();
 </script>`;
 
-/** EDS page whose form block holds the form JSON in <pre><code>, plus the optional inspector. */
+/** Edge Delivery Services page whose form block holds the form JSON in <pre><code>, plus the optional inspector. */
 export function previewPageHtml(formDef, root, { fieldId, inspector = true } = {}) {
   const headFile = join(root, 'head.html');
   const head = existsSync(headFile) ? readFileSync(headFile, 'utf8') : DEFAULT_HEAD;

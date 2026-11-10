@@ -70,7 +70,7 @@ function startStaticServer(root) {
 
 const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** HTML of an EDS page whose form block holds the form definition in <pre><code>. */
+/** HTML of an Edge Delivery Services page whose form block holds the form definition in <pre><code>. */
 export function formPageHtml(formDef) {
   const headFile = join(ROOT, 'head.html');
   const head = existsSync(headFile) ? readFileSync(headFile, 'utf8') : DEFAULT_HEAD;

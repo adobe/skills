@@ -15,7 +15,7 @@ Build a custom component for the AEM Forms **Form block** on Edge Delivery Servi
 - The project is a forms project derived from `aem-boilerplate-forms` (it has `blocks/form/`, `blocks/form/mappings.js`, `blocks/form/rules/index.js`).
 - The user wants a new field widget/variant (slider, rating, OTP input, searchable dropdown, card choice, consent panel…) or wants to fix one under `blocks/form/components/`.
 
-Not for: generic EDS blocks (use the EDS `building-blocks` skill), AEM Sites HTL components (`create-component` in `aem-cloud-service`), or rule-editor logic.
+Not for: generic Edge Delivery Services blocks (use the `building-blocks` skill of the `aem-edge-delivery-services` plugin), AEM Sites HTL components (`create-component` in `aem-cloud-service`), or rule-editor logic.
 
 ## References (read as needed)
 
@@ -145,7 +145,7 @@ Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = nam
 
 **C. Build** — `npm run build:json` succeeds, and re-running gate A shows `build.json` passing.
 
-**D. End-to-end test** — no deployed form or URL is needed. The harness renders a local EDS page whose form block holds a form JSON in `<pre><code>`, loads the project's `head.html` (`aem.js`, `scripts.js`) and serves the repository root, so the real form block, rule engine, `mappings.js` and the component run as in production.
+**D. End-to-end test** — no deployed form or URL is needed. The harness renders a local Edge Delivery Services page whose form block holds a form JSON in `<pre><code>`, loads the project's `head.html` (`aem.js`, `scripts.js`) and serves the repository root, so the real form block, rule engine, `mappings.js` and the component run as in production.
 
 1. Generate the test (add `--props '<json>'` for authored property values):
 
