@@ -13,12 +13,14 @@
 // the per-page deadline and the tab is closed. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as crawl from '../crawl.mjs';
-import * as session from '../../../diff/scripts/live-session.mjs';
+
+// the front door (browser.mjs) in either layout (plugin tree / project copy)
+const session = await import(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u)).href);
 
 const {
   captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, selectPages, parseArgs, discover, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage,
@@ -367,16 +369,7 @@ check('isChallengeResponse: the crawler keeps its own edge rule and a bare 403 s
 
 await (async () => {
   try {
-    const calls = [];
-    const browser = { newContext: async (opts) => { calls.push(['context', opts]); return { kind: 'fallback' }; } };
-    const fallback = crawlerLiveBindings();
-    assert.deepEqual(await fallback.newLiveContext(browser, { reducedMotion: 'reduce' }), { kind: 'fallback' });
-    assert.equal(await fallback.runLiveNavigation({}, 'https://www.example.com/', async () => { calls.push(['navigate']); return 7; }), 7);
-    assert.equal(await fallback.persistLiveStorageState({}, 'https://www.example.com/'), false);
-    assert.equal(await fallback.recordLiveBotSignal('https://www.example.com/'), false);
-    assert.equal(await fallback.recordLiveNavigationSuccess('https://www.example.com/'), false);
-    assert.deepEqual(calls, [['context', { reducedMotion: 'reduce' }], ['navigate']]);
-
+    const browser = {};
     const shared = crawlerLiveBindings({
       newLiveContext: async () => 'shared-context',
       runLiveNavigation: async (_page, _url, navigate) => `shared-${await navigate()}`,
@@ -389,10 +382,10 @@ await (async () => {
     assert.equal(await shared.persistLiveStorageState({}, 'https://www.example.com/'), true);
     assert.equal(await shared.recordLiveBotSignal('https://www.example.com/'), 'signal-https://www.example.com/');
     assert.equal(await shared.recordLiveNavigationSuccess('https://www.example.com/'), 'success-https://www.example.com/');
-    console.log('✓ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent');
+    console.log('✓ crawlerLiveBindings: helpers from the front door are the ones called');
   } catch (e) {
     failed += 1;
-    console.log(`✗ crawlerLiveBindings: shared helpers are used when present; inline context, navigation, and persistence fallbacks are no-ops when absent\n  ${e.message.split('\n').join('\n  ')}`);
+    console.log(`✗ crawlerLiveBindings: helpers from the front door are the ones called\n  ${e.message.split('\n').join('\n  ')}`);
   }
 })();
 
@@ -418,10 +411,16 @@ await (async () => {
       ['reload'],
     ]);
     calls.length = 0;
-    assert.equal(await clearChallenge(page, blocked, {
-      recordBotSignal: async () => { throw new Error('signal unavailable'); },
-      navigate: async (_page, url, operation) => { calls.push(['navigate', url]); return operation(); },
-    }), clean);
+    let reloaded;
+    const warnings = await stderrOf(async () => {
+      reloaded = await clearChallenge(page, blocked, {
+        recordBotSignal: async () => { throw new Error('signal unavailable'); },
+        navigate: async (_page, url, operation) => { calls.push(['navigate', url]); return operation(); },
+      });
+    });
+    assert.equal(reloaded, clean);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /bookkeeping unavailable for www\.example\.com: signal unavailable/);
     assert.deepEqual(calls, [
       ['wait', 4000],
       ['navigate', 'https://www.example.com/path/'],
@@ -463,6 +462,8 @@ await (async () => {
       runLiveNavigation: async (_page, _url, navigate) => navigate(),
       recordLiveNavigationSuccess: async () => { throw new Error('success unavailable'); },
       persistLiveStorageState: async () => { throw new Error('state unavailable'); },
+      recordLiveBotSignal: async () => false,
+      liveResponseSignalRecorded: () => false,
     });
     assert.equal(captured.headings[0], 'Captured');
     console.log('✓ capturePage: rejecting shared success and storage hooks do not fail a completed capture');
@@ -530,6 +531,7 @@ await (async () => {
         recordLiveNavigationSuccess: async () => { throw new Error('success unavailable'); },
         persistLiveStorageState: async () => { throw new Error('state unavailable'); },
         recordLiveBotSignal: async () => { throw new Error('signal unavailable'); },
+        liveResponseSignalRecorded: () => false,
       });
       assert.equal(record.headings[0], 'Captured');
     }
@@ -589,10 +591,13 @@ await (async () => {
   }
 })();
 
-check('entry probe: rejecting shared hooks still finish discovery, challenge clearing and capture once', () => {
+// the crawler copied to <root>/<copyDir>/crawl.mjs, a fake front door at <root>/<doorDir>/browser.mjs
+function entryProbeWithFrontDoor(copyDir, doorDir) {
   const root = mkdtempSync(join(tmpdir(), 'crawl-entry-hooks-'));
   try {
-    const copy = join(root, 'crawl.mjs');
+    mkdirSync(join(root, copyDir), { recursive: true });
+    mkdirSync(join(root, doorDir), { recursive: true });
+    const copy = join(root, copyDir, 'crawl.mjs');
     writeFileSync(copy, readFileSync(SCRIPT, 'utf8'));
     const dependencyDir = join(root, 'node_modules', 'playwright');
     mkdirSync(dependencyDir, { recursive: true });
@@ -625,7 +630,15 @@ check('entry probe: rejecting shared hooks still finish discovery, challenge cle
         }),
       }) };
     `);
-    writeFileSync(join(root, 'live-session.mjs'), `
+    writeFileSync(join(root, doorDir, 'browser.mjs'), `
+      export const openBrowser = async () => { const { chromium } = await import('playwright'); return chromium.launch(); };
+      export const browserTier = () => 'chrome';
+      export const newContext = (browser, options = {}) => browser.newContext(options);
+      export const goto = (page, url, options = {}) => page.goto(url, options);
+      export const newLiveContext = (browser, options = {}) => browser.newContext(options);
+      export const withDeadline = (promise) => promise;
+      export const pageDenial = async () => ({ marker: null, skipped: null });
+      export const liveResponseSignalRecorded = (response) => Boolean(response && response.liveSignalRecorded);
       export const runLiveNavigation = async () => { throw new Error('navigation bookkeeping unavailable'); };
       export const recordLiveBotSignal = async () => { captureCalls.signals += 1; throw new Error('signal unavailable'); };
       export const recordLiveNavigationSuccess = async () => { captureCalls.successes += 1; throw new Error('success unavailable'); };
@@ -649,6 +662,27 @@ check('entry probe: rejecting shared hooks still finish discovery, challenge cle
       assert.equal(calls.saves, 2);
       assert.equal((result.stderr.match(/WARNING: shared live-session bookkeeping unavailable/g) || []).length, 1);
     }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}
+
+check('entry probe: rejecting shared hooks still finish discovery, challenge clearing and capture once', () => {
+  entryProbeWithFrontDoor('extract', 'stardust');
+});
+
+check('entry probe: the crawler copied flat into stardust/scripts/ finds the front door in stardust/scripts/stardust/', () => {
+  entryProbeWithFrontDoor('stardust/scripts', 'stardust/scripts/stardust');
+});
+
+check('a copy without the front door stops with exit 1 and the copy instruction, not a stack trace', () => {
+  const root = mkdtempSync(join(tmpdir(), 'crawl-no-front-door-'));
+  try {
+    mkdirSync(join(root, 'extract'));
+    const copy = join(root, 'extract', 'crawl.mjs');
+    writeFileSync(copy, readFileSync(SCRIPT, 'utf8'));
+    const result = spawnSync(process.execPath, [copy, '--url', 'https://www.example.com/', '--out', join(root, 'out')], { cwd: root, encoding: 'utf8', timeout: 10000 });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /^crawl: browser\.mjs not found \(looked in \.\.\/\.\.\/stardust\/scripts\/, \.\.\/stardust\/ and \.\/stardust\/\)\. Copy the master skill's scripts dir to stardust\/scripts\/stardust\/ /m);
+    assert.doesNotMatch(result.stderr, /\n\s+at /);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

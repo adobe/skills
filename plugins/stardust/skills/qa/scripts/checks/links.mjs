@@ -108,14 +108,13 @@ export async function run(ctx) {
   if (suspects.length) {
     let renderedIds = null; // targetPath -> Set(ids), null = browser unavailable
     try {
-      const { loadPlaywright } = await import('../lib.mjs');
-      const { chromium } = await loadPlaywright();
-      const browser = await chromium.launch();
-      const page = await browser.newPage();
+      const { openBrowser, newPage, goto } = await import('../lib.mjs');
+      const browser = await openBrowser({ mode: 'plain' });
+      const page = await newPage(browser);
       renderedIds = new Map();
       for (const target of [...new Set(suspects.map((a) => a.targetPath))]) {
         try {
-          await page.goto(pageUrl(base, target), { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await goto(page, pageUrl(base, target), { waitUntil: 'domcontentloaded', timeout: 30000 });
           await page.waitForTimeout(3500); // let block decoration assign ids
           renderedIds.set(target, new Set(await page.evaluate(
             () => [...document.querySelectorAll('[id]')].map((e) => e.id),

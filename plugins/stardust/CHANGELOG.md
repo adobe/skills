@@ -4,6 +4,32 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.38.0 — every script takes its browser from one place
+
+Scripts that imported Playwright, launched a browser, opened contexts and navigated on their own each picked their own
+launch mode, wait strategy and failure message, and a fix to one never reached the others.
+
+- **`skills/stardust/scripts/browser.mjs`** is the one entry to the browser: `loadPlaywright`, `openBrowser`
+  (`chrome`, `headed` or `plain`), `newContext`, `newPage` and `goto`, plus everything `live-session.mjs` exports.
+  `live-session.mjs` moved from `skills/diff/scripts/` to sit beside it. Every script that touches a browser calls
+  these by bare name. One error names the install line when Playwright is not importable, and a missing
+  `browser.mjs` stops a script with the copy instruction.
+- **A project copy needs the master scripts.** Setup step 7 copies `skills/stardust/scripts/` to
+  `stardust/scripts/stardust/` before any other skill's script runs. The skills that listed the diff scripts only for
+  `live-session.mjs` (reskin, deploy) now name the master copy instead; replica still copies the diff scripts for
+  the gates that import them.
+- **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
+  crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.
+- **A script run from the plugin tree finds Playwright in the project at the working directory first**, then by
+  `import('playwright')`.
+- **No script changed its browser.** Each keeps its launch mode, launch options, context options and navigation options.
+- **`evals/lint/browser-front-door.mjs`** fails on a script under `skills/` that imports Playwright (`from`,
+  `import`, `import()`, `require()`, `resolve()`, `playwright` or `playwright-core`), launches or connects a
+  browser, opens a context or `browser.newPage`, or calls `.goto(` itself. It runs in `npm run lint:stardust` and in
+  CI. A skill argument that is a file, not a skill folder, exits 2 like an unknown name.
+- **`playwright-cli` is no longer listed** as a requirement (`compatibility:` lines, README Prerequisites): no
+  script uses it.
+
 ## 0.37.2 — a named page count starts from the entered page and its links (#158)
 
 User feedback: asked for N pages of a site, the crawl filled the slots in sitemap order, so the pages the entered

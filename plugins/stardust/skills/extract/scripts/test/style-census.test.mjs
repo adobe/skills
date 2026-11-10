@@ -191,7 +191,7 @@ await check('parseArgs: a value flag followed by nothing or by another --flag is
     assert.throws(() => parseArgs([flag, ...tail]), (e) => e instanceof UsageError && e.code === 2 && e.message.startsWith(`${flag} needs a value`), `${flag} ${tail.join(' ')}`);
   }
   const r = run(['--out', '--headed']); assert.equal(r.code, 2); assert.match(r.err, /style-census: --out needs a value/);
-  assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
+  assert.ok(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].some((p) => existsSync(new URL(p, import.meta.url))), 'browser.mjs resolves in the plugin tree or the project copy');
 });
 await check('listUrls: finalUrl over url, non-records skipped, deduped in file order, --max-pages, missing dir and bad URL are usage errors', () => {
   const dir = join(root, 'pages'); mkdirSync(dir);
@@ -209,16 +209,28 @@ await check('CLI: --help exits 0 with Usage + Writes before any work; usage erro
   const e = run(['--bogus']); assert.equal(e.code, 2); assert.match(e.err, /unknown argument --bogus/);
   const m = run(['--pages', join(root, 'missing')]); assert.equal(m.code, 2); assert.match(m.err, /not a directory/);
 });
-await check('browser launch: shared live launcher is preferred; plain Chromium remains the fallback', async () => {
+await check('flat copy: stardust/scripts/style-census.mjs finds the front door in stardust/scripts/stardust/, and names three places when it is missing', () => {
+  const flat = join(root, 'flat', 'stardust', 'scripts');
+  mkdirSync(flat, { recursive: true });
+  writeFileSync(join(flat, 'style-census.mjs'), readFileSync(SCRIPT, 'utf8'));
+  const args = [join(flat, 'style-census.mjs'), '--urls', 'https://x.test/', '--out', join(root, 'flat', 'out.json')];
+  const missing = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: root });
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /browser\.mjs not found \(looked in \.\.\/\.\.\/stardust\/scripts\/, \.\.\/stardust\/ and \.\/stardust\/\)/);
+  mkdirSync(join(flat, 'stardust'));
+  writeFileSync(join(flat, 'stardust', 'browser.mjs'), "export const loadPlaywright = async () => { throw new Error('fake front door reached'); };\n");
+  const found = spawnSync(process.execPath, args, { encoding: 'utf8', cwd: root });
+  assert.equal(found.status, 2);
+  assert.match(found.stderr, /fake front door reached/);
+  assert.doesNotMatch(found.stderr, /not found/);
+});
+await check('browser launch: the census asks the front door for real Chrome, or the headed tier under --headed', async () => {
   assert.equal(typeof censusModule.launchCensusBrowser, 'function');
-  const calls = [];
-  const chromium = { launch: async (options) => { calls.push(['fallback', options]); return 'fallback-browser'; } };
-  const shared = { gotoLive: async () => {}, launchLiveBrowser: async (value) => { calls.push(['shared', value]); return 'shared-browser'; } };
-  assert.equal(await censusModule.launchCensusBrowser(chromium, { headed: false }, shared), 'shared-browser');
-  assert.deepEqual(calls, [['shared', chromium]]);
-  calls.length = 0;
-  assert.equal(await censusModule.launchCensusBrowser(chromium, { headed: false }, { gotoLive: async () => {} }), 'fallback-browser');
-  assert.deepEqual(calls, [['fallback', { headless: true }]]);
+  const modes = [];
+  const session = { openBrowser: async (options) => { modes.push(options); return 'front-door-browser'; } };
+  assert.equal(await censusModule.launchCensusBrowser({ headed: false }, session), 'front-door-browser');
+  assert.equal(await censusModule.launchCensusBrowser({ headed: true }, session), 'front-door-browser');
+  assert.deepEqual(modes, [{ mode: 'chrome' }, { mode: 'headed' }]);
 });
 
 // ---- part (b): end-to-end against a fixture site (needs playwright) --------------------------------------

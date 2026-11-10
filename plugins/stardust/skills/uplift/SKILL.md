@@ -2,7 +2,7 @@
 name: uplift
 description: One-shot brand-faithful presales redesign of a website page. The user provides only the URL; everything else — extraction, tension identification, three differentiated variants (one fully cinematic), validation — is derived from the captured brand surface. Use when the user asks to "uplift", "refresh", or "redesign a site for presales" without wanting to coordinate the extract / direct / prototype chain themselves.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:uplift

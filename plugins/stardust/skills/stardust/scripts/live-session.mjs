@@ -1,5 +1,5 @@
 /**
- * skills/diff/scripts/live-session.mjs
+ * skills/stardust/scripts/live-session.mjs
  *
  * The single home for "hit a live site to measure it, as robustly as the
  * capture engine". Every live-side navigation in the gate instruments

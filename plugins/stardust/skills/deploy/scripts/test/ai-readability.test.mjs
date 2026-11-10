@@ -6,12 +6,15 @@
 // request carries no secret. Redirect scoping of the raw requests: ai-readability-redirect.test.mjs.
 // Run: node plugins/stardust/skills/deploy/scripts/test/ai-readability.test.mjs
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { attachOriginAuth, scorePage } from '../ai-readability.mjs';
+import { scorePage } from '../ai-readability.mjs';
+
+// the front door (browser.mjs) in either layout (plugin tree / project copy)
+const { attachOriginAuth } = await import(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u)).href);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SECRET = 'token fixture';

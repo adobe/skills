@@ -2,7 +2,7 @@
 name: stardust
 description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign or migration. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust
@@ -73,6 +73,9 @@ sub-commands that delegate the actual design work to **impeccable**.
    stop and name the rule. Offer, never write, LFS above 50 MB of tracked
    binaries under `stardust/`. Details in `reference/artifact-map.md`
    § Versioning.
+7. **Copy this skill's `scripts/` dir to `stardust/scripts/stardust/`** before any
+   other skill's script runs: `ledger.mjs`, `state.mjs` and `browser.mjs`, the
+   one entry to the browser for every script.
 
 ## Routing
 
@@ -441,7 +444,16 @@ test suites verify code correctness; only browser rendering verifies
 For HTML the user will see (prototypes, migrated pages, the brand-review
 HTML):
 
-1. Render in Playwright (file:// for static, or local dev server).
+1. Render in Playwright (file:// for static, or local dev server). A probe you
+   write opens its pages through `stardust/scripts/stardust/browser.mjs`:
+
+   ```js
+   import { pathToFileURL } from 'node:url';
+   const { openBrowser, newPage, goto } = await import(pathToFileURL('stardust/scripts/stardust/browser.mjs').href);
+   const browser = await openBrowser({ mode: 'plain' });
+   const page = await newPage(browser, { viewport: { width: 1440, height: 900 } });
+   await goto(page, url, { waitUntil: 'networkidle' });
+   ```
 2. Capture at three viewports — desktop **1440×900**, tablet **768×1024**,
    mobile **390×844**:
    - Full-page screenshot.

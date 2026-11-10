@@ -87,6 +87,9 @@ jobs:
       - name: Stardust scripts index names every shipped script once
         run: node plugins/stardust/evals/lint/scripts-index.mjs
 
+      - name: Stardust scripts take their browser from the front door
+        run: node plugins/stardust/evals/lint/browser-front-door.mjs
+
       - name: Stardust scripts answer --help without touching a file (playwright/pngjs scripts skip without devDependencies)
         run: node plugins/stardust/evals/lint/script-help.mjs
 

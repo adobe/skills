@@ -18,7 +18,7 @@
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { arg, readJSON, writeJSON, provenance, loadPlaywright, settlePage } from './lib.mjs';
+import { arg, readJSON, writeJSON, provenance, openBrowser, newPage, goto, settlePage } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -32,10 +32,9 @@ const ORIGIN = (arg('origin') || '').replace(/\/$/, '');
 const CALLS = arg('calls') && readJSON(arg('calls'));
 if (!ORIGIN || !CALLS) { console.error('usage: snapshot-api.mjs --origin <source origin> --calls calls.json [--out dir]'); process.exit(2); }
 const OUT = arg('out', 'data/snapshot');
-const { chromium } = await loadPlaywright();
-const browser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-await page.goto(ORIGIN + (arg('entry', '/')), { waitUntil: 'domcontentloaded', timeout: 60000 });
+const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: true, args: ['--disable-blink-features=AutomationControlled'] } });
+const page = await newPage(browser, { viewport: { width: 1440, height: 900 } });
+await goto(page, ORIGIN + (arg('entry', '/')), { waitUntil: 'domcontentloaded', timeout: 60000 });
 await settlePage(page, { settleMs: 2000, maxScroll: 0 });
 const describe = (v, d = 0) => { if (d > 3 || v === null || typeof v !== 'object') return typeof v; if (Array.isArray(v)) return `[${v.length}] of ${v.length ? describe(v[0], d + 1) : '?'}`; return `{${Object.keys(v).slice(0, 14).map((k) => `${k}: ${describe(v[k], d + 1)}`).join(', ')}}`; };
 const shapes = {};

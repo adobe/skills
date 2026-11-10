@@ -24,7 +24,7 @@
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  arg, flag, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
+  arg, flag, list, readJSON, writeJSON, writeText, provenance, openBrowser, newContext, goto, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -170,8 +170,7 @@ function classify(page, path, add) {
 }
 
 /* ---------------------------------------------------------------- main -- */
-const { chromium } = await loadPlaywright();
-const browser = await chromium.launch({ headless: !flag('headed'), args: ['--disable-blink-features=AutomationControlled'] });
+const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: !flag('headed'), args: ['--disable-blink-features=AutomationControlled'] } });
 const report = { _provenance: provenance('detect', { settleMs: SETTLE, width: WIDTH, urls: URLS }), pages: {}, findings: [] };
 const findingsByKey = new Map();
 const add = (f) => {
@@ -185,7 +184,7 @@ const add = (f) => {
 for (const url of URLS) {
   const { host, origin } = new URL(url);
   const path = new URL(url).pathname || '/';
-  const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, locale: 'en-US' });
+  const ctx = await newContext(browser, { viewport: { width: WIDTH, height: 900 }, locale: 'en-US' });
   await ctx.addInitScript(() => { window.__sdDomAfterLoad = 0; let loaded = false; window.addEventListener('load', () => setTimeout(() => { loaded = true; }, 300)); document.addEventListener('DOMContentLoaded', () => new MutationObserver((ms) => { if (loaded) for (const m of ms) window.__sdDomAfterLoad += m.addedNodes.length; }).observe(document.documentElement, { childList: true, subtree: true })); });
   const page = await ctx.newPage();
   const hosts = {}; const scripts = new Set(); const firstPartyApi = new Map(); const thirdPartyXhr = new Set(); const postBodies = [];
@@ -204,7 +203,7 @@ for (const url of URLS) {
   });
   let status = 0; let textAtLoad = 0;
   try {
-    const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const resp = await goto(page, url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     status = resp?.status() || 0;
     textAtLoad = await page.evaluate(() => (document.querySelector('main') || document.body)?.innerText.replace(/\s+/g, ' ').trim().length || 0);
     await settlePage(page, { settleMs: SETTLE });

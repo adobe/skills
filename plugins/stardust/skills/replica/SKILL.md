@@ -2,7 +2,7 @@
 name: replica
 description: Same-design migration — re-platform a site to AEM Edge Delivery (or any clean front end) keeping its current design near pixel-perfect. Recreates key pages (one archetype per page type) as clean re-authored HTML/CSS (never DOM copies), verifies each against the live site with a measured source-fidelity gate (structural + visual + stitched pixel diff per breakpoint), then hands off to migrate/deploy/rollout for site-wide delivery (subsumes prepare-migration's prep cascade — never chain the two). The only permitted design changes are entries in an explicit inconsistency register. Use when the user says "migrate this site keeping its current design", "same-design migration", "pixel-perfect replatform to AEM", or "keep the design, change the platform". NOT for redesigns — those are the stardust core pipeline (direct/prototype) or uplift.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:replica — same-design migration
@@ -68,14 +68,11 @@ eyeballing.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs) to `stardust/scripts/stardust/`, the migrate
-   skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
-   AND the whole
-   `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
-   import diff-profiles.mjs, and ALL live-target hardening — including
-   stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
-   from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
-   keep the two dirs siblings). Never copy into the project-root
+   (ledger.mjs, state.mjs, browser.mjs) to `stardust/scripts/stardust/`, the
+   migrate skill's `../migrate/scripts/` (migrate.mjs) to
+   `stardust/scripts/migrate/`, AND the whole `../diff/scripts/` dir to
+   `stardust/scripts/diff/` (the gates import its diff-profiles.mjs and
+   image-signature.mjs; keep the dirs siblings). Never copy into the project-root
    `scripts/` — that is the EDS boilerplate's directory (master skill
    § Artifacts, the write boundary).
 
@@ -329,7 +326,7 @@ blocked step (reference doc § Iteration discipline).
 **Hardening (each is a recorded false-measurement trap — see the reference
 doc for the full list):** real Chrome headless with **its own identity plus
 the standard request headers** on every capture, live navigations paced per
-host (built into the shared `diff/scripts/live-session.mjs`); a
+host (built into the shared `skills/stardust/scripts/live-session.mjs`); a
 challenge/blocked interstitial or a
 2xx denial page **fails loud (exit 3)**, never measured — escalate with
 `--headed`, and a site that still blocks needs crawl.mjs-class capture;
@@ -348,7 +345,7 @@ scrims invisible to computed styles (recover by per-row luminance fitting).
 
 The live-target hardening ships as flags on the diff scripts (`--ua`,
 `--wait-until`, `--dismiss`, `--headed`, `--locale`, visual-diff `--main`)
-backed by `live-session.mjs` — copy the scripts and pass flags; a project
+backed by the shared `skills/stardust/scripts/live-session.mjs` — pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 
