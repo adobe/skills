@@ -24,7 +24,7 @@
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  arg, flag, list, readJSON, writeJSON, writeText, provenance, openBrowser, newContext, goto, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
+  arg, flag, list, readJSON, writeJSON, writeText, provenance, openBrowser, newContext, goto, stopOnSetupError, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -170,7 +170,7 @@ function classify(page, path, add) {
 }
 
 /* ---------------------------------------------------------------- main -- */
-const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: !flag('headed'), args: ['--disable-blink-features=AutomationControlled'] } });
+const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: !flag('headed'), args: ['--disable-blink-features=AutomationControlled'] } }).catch(stopOnSetupError);
 const report = { _provenance: provenance('detect', { settleMs: SETTLE, width: WIDTH, urls: URLS }), pages: {}, findings: [] };
 const findingsByKey = new Map();
 const add = (f) => {

@@ -17,7 +17,7 @@
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { arg, list, writeJSON, provenance, openBrowser, newPage, goto, settlePage, slug } from './lib.mjs';
+import { arg, list, writeJSON, provenance, openBrowser, newPage, goto, settlePage, slug, stopOnSetupError } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -30,7 +30,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 const URLS = list(arg('urls', ''));
 if (!URLS.length) { console.error('usage: snapshot-forms.mjs --urls <url,…> [--out data/forms]'); process.exit(2); }
 const OUT = arg('out', 'data/forms'); const EXCLUDE = arg('exclude', ''); const SETTLE = Number(arg('settle', 3000));
-const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: true, args: ['--disable-blink-features=AutomationControlled'] } });
+const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: true, args: ['--disable-blink-features=AutomationControlled'] } }).catch(stopOnSetupError);
 for (const url of URLS) {
   const page = await newPage(browser, { viewport: { width: 1440, height: 900 } });
   await goto(page, url, { waitUntil: 'domcontentloaded', timeout: 60000 });

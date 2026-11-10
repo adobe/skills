@@ -105,7 +105,7 @@ await check('newContext, newPage, goto: one call with the same arguments, the re
 
 const childLoad = (cwd, copyDir) => spawnSync(process.execPath, ['--input-type=module', '-e', `
   import { loadPlaywright } from ${JSON.stringify(join(copyDir, 'browser.mjs'))};
-  try { console.log((await loadPlaywright()).chromium.fake); } catch (e) { console.log(JSON.stringify({ code: e.code, message: e.message })); process.exit(1); }
+  try { console.log((await loadPlaywright()).chromium.fake); } catch (e) { console.log(JSON.stringify({ code: e.code, message: e.message, cause: e.cause && e.cause.message })); process.exit(1); }
 `], { cwd, encoding: 'utf8' });
 const copyFront = () => {
   const dir = tempDir();
@@ -144,6 +144,21 @@ await check('loadPlaywright, nowhere: PLAYWRIGHT_MISSING with the one install li
   assert.equal(code, 'PLAYWRIGHT_MISSING');
   assert.ok(message.includes('npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps'), message);
   assert.ok(message.includes(copy) && message.includes(empty), message);
+});
+
+await check('loadPlaywright, installed but failing to load: PLAYWRIGHT_BROKEN names the cause, not the install line', () => {
+  const copy = copyFront(); const project = tempDir();
+  writeFileSync(join(project, 'package.json'), '{"name":"p","type":"module"}');
+  const pkg = join(project, 'node_modules', 'playwright'); mkdirSync(pkg, { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"playwright","type":"module","main":"index.js"}');
+  writeFileSync(join(pkg, 'index.js'), 'throw new Error("boom at init");\n');
+  const r = childLoad(project, copy);
+  assert.equal(r.status, 1);
+  const { code, message, cause } = JSON.parse(r.stdout);
+  assert.equal(code, 'PLAYWRIGHT_BROKEN');
+  assert.ok(message.includes('boom at init'), message);
+  assert.ok(!message.includes('npm i -D'), message);
+  assert.equal(cause, 'boom at init');
 });
 
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nbrowser: all ${checks} checks passed`);

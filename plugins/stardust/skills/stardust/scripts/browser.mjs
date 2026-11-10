@@ -21,16 +21,22 @@ async function importFromWorkingDirectory() {
   return import(pathToFileURL(require.resolve('playwright')).href);
 }
 
+const notInstalled = (error) => error?.code === 'MODULE_NOT_FOUND' || error?.code === 'ERR_MODULE_NOT_FOUND';
+
 async function importPlaywright() {
   let mod;
   try {
     mod = await importFromWorkingDirectory();
-  } catch {
+  } catch (fromWorkingDirectory) {
     try {
       mod = await import('playwright');
-    } catch {
-      const error = new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} or from ${process.cwd()}. From the project root run: ${INSTALL_LINE}`);
-      error.code = 'PLAYWRIGHT_MISSING';
+    } catch (bare) {
+      // an installed copy that throws while loading needs its own error, not the install line
+      const broken = [fromWorkingDirectory, bare].find((e) => !notInstalled(e));
+      const error = broken
+        ? new Error(`playwright is installed but failed to load: ${String(broken?.message ?? broken).split('\n')[0]}`, { cause: broken })
+        : new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} or from ${process.cwd()}. From the project root run: ${INSTALL_LINE}`, { cause: bare });
+      error.code = broken ? 'PLAYWRIGHT_BROKEN' : 'PLAYWRIGHT_MISSING';
       throw error;
     }
   }

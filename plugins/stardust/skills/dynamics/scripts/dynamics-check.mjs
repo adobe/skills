@@ -52,7 +52,7 @@
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { arg, flag, readJSON, writeJSON, writeText, provenance, openBrowser, newContext, goto, resolveAuthHeader, attachOriginAuth, sameSite } from './lib.mjs';
+import { arg, flag, readJSON, writeJSON, writeText, provenance, openBrowser, newContext, goto, resolveAuthHeader, attachOriginAuth, sameSite, stopOnSetupError } from './lib.mjs';
 
 const settle = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
@@ -323,7 +323,7 @@ if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
   const contractFile = arg('contract') || (existsSync(DEFAULT_CONTRACT) ? DEFAULT_CONTRACT : null);
   const contract = contractFile ? readJSON(contractFile) : null;
   const parity = readJSON(parityFile, contract ? { features: [] } : undefined);
-  const results = await replay({ origin, parity, contract, authHeader: resolveAuthHeader(), headed: flag('headed') });
+  const results = await replay({ origin, parity, contract, authHeader: resolveAuthHeader(), headed: flag('headed') }).catch(stopOnSetupError);
   const out = arg('out', 'stardust/qa');
   const pass = results.filter((r) => r.pass).length;
   const features = featuresOf(parity, contract);

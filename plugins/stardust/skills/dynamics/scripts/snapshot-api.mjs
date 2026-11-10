@@ -18,7 +18,7 @@
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { arg, readJSON, writeJSON, provenance, openBrowser, newPage, goto, settlePage } from './lib.mjs';
+import { arg, readJSON, writeJSON, provenance, openBrowser, newPage, goto, settlePage, stopOnSetupError } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -32,7 +32,7 @@ const ORIGIN = (arg('origin') || '').replace(/\/$/, '');
 const CALLS = arg('calls') && readJSON(arg('calls'));
 if (!ORIGIN || !CALLS) { console.error('usage: snapshot-api.mjs --origin <source origin> --calls calls.json [--out dir]'); process.exit(2); }
 const OUT = arg('out', 'data/snapshot');
-const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: true, args: ['--disable-blink-features=AutomationControlled'] } });
+const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: true, args: ['--disable-blink-features=AutomationControlled'] } }).catch(stopOnSetupError);
 const page = await newPage(browser, { viewport: { width: 1440, height: 900 } });
 await goto(page, ORIGIN + (arg('entry', '/')), { waitUntil: 'domcontentloaded', timeout: 60000 });
 await settlePage(page, { settleMs: 2000, maxScroll: 0 });

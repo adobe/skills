@@ -37,8 +37,15 @@ export function provenance(script, extra = {}) {
 const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs', './stardust/browser.mjs']
   .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 function frontDoor() {
-  if (!BROWSER) throw new Error('dynamics/lib.mjs: browser.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  if (!BROWSER) throw Object.assign(new Error('dynamics/lib.mjs: browser.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'), { code: 'FRONT_DOOR_MISSING' });
   return import(BROWSER.href);
+}
+const SETUP_ERRORS = ['FRONT_DOOR_MISSING', 'PLAYWRIGHT_MISSING', 'PLAYWRIGHT_BROKEN'];
+/** CLI boundary: a missing front door or Playwright is a setup error. One line, exit 1; any other error passes on. */
+export function stopOnSetupError(error) {
+  if (!SETUP_ERRORS.includes(error?.code)) throw error;
+  console.error(error.message);
+  process.exit(1);
 }
 const viaFrontDoor = (name) => async (...args) => (await frontDoor())[name](...args);
 export const loadPlaywright = viaFrontDoor('loadPlaywright');
