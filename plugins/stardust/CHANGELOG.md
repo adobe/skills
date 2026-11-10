@@ -12,7 +12,8 @@ URL links to were often cut.
 - **`extract/scripts/crawl.mjs`:** an explicit `--max N` orders the pages entry first, then the entry page's
   same-origin links in document order (asset links skipped), then the other discovered pages, up to N. No `--max`
   (default 25), `--max 0` and `--pages` are unchanged. Rule home: `ia-extraction.md` § Priority for the cap;
-  pointers from extract Phase 1 and the hands-off volume caps (a user-named N replaces 100/20).
+  pointers from extract Phase 1, `--prep` (a user-named N keeps `--cap N` instead of `--all`) and the hands-off
+  volume caps (a user-named N replaces 100/20).
 - Test: `crawl.test.mjs` `selectPages` (pure).
 
 ## 0.37.1 — a player iframe mounts after first paint, and qa names the request that came before it (#157)
