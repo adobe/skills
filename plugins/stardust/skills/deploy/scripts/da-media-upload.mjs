@@ -315,7 +315,10 @@ async function fetchSource(url, opts) {
   if (status === 404 || status === 410) { await drain(res); return { kind: 'missing', status }; }
   if (status < 200 || status >= 300) { await drain(res); return { kind: 'http', status }; }
   const ct = (res.headers.get('content-type') || '').split(';')[0].trim();
-  if (!ct.startsWith('image/') && !(opts.video && ct.startsWith('video/'))) { await drain(res); return { kind: 'not-image-response', status, contentType: ct || 'none' }; }
+  if (!ct.startsWith('image/') && !(opts.video && ct.startsWith('video/'))) { await drain(res); return { kind: 'not-media-response', status, contentType: ct || 'none' }; }
+  // An over-limit video is skipped on its declared length, before its body is buffered.
+  const len = Number(res.headers.get('content-length'));
+  if (opts.video && Number.isFinite(len) && len > VIDEO_MAX_BYTES) { await res.body?.cancel().catch(() => {}); return { kind: 'ok', status, bytes: null, size: len, contentType: ct }; }
   return { kind: 'ok', status, bytes: Buffer.from(await res.arrayBuffer()), contentType: ct };
 }
 
@@ -335,23 +338,24 @@ async function deliverVideo(daPath, opts) {
   const done = [];
   for (const step of steps) {
     const url = `${opts.hlxUrl}/${step}/${encodeURIComponent(opts.org)}/${encodeURIComponent(opts.repo)}/${encodeURIComponent(opts.branch)}/${encodePath(daPath)}`;
-    const { res, status, err } = await withRetries(() => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${opts.token}` } }), { ...opts, retryStatuses: ADMIN_RETRYABLE });
+    const { res, status, err, attempts } = await withRetries(() => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${opts.token}` } }), { ...opts, retryStatuses: ADMIN_RETRYABLE });
     await drain(res);
-    if (status < 200 || status >= 300) return { ok: false, step, status, err, done };
+    if (status < 200 || status >= 300) return { ok: false, step, status, err, attempts, done };
     done.push(step);
   }
   return { ok: true, done };
 }
 
-// The web form of a content path, as the preview API resolves it: each segment lowercased and every run of
-// characters other than a-z/0-9 turned into one `-` (trimmed); the extension is kept. A video stored under any
-// other name uploads fine and then 404s on preview (recorded: `main-mvisual_video01.mp4`).
+// The file name as the preview API resolves it: lowercased, every run of characters other than a-z/0-9 turned
+// into one `-` (trimmed), the extension kept. A video stored under any other name uploads fine and then 404s on
+// preview (recorded: `main-mvisual_video01.mp4`). Folder segments resolve as is (checked: `media/Scope_Test/`
+// previews and delivers verbatim), so only the last segment is rewritten.
 export function webPath(name) {
   const segs = name.split('/');
   const last = segs.pop();
   const dot = last.lastIndexOf('.');
   const clean = (x) => x.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return [...segs.map(clean), `${clean(dot > 0 ? last.slice(0, dot) : last)}${dot > 0 ? last.slice(dot).toLowerCase() : ''}`].join('/');
+  return [...segs, `${clean(dot > 0 ? last.slice(0, dot) : last)}${dot > 0 ? last.slice(dot).toLowerCase() : ''}`].join('/');
 }
 
 // ---- main ------------------------------------------------------------------------------------------
@@ -394,7 +398,7 @@ async function main() {
       mergeLedger(opts.ledger, ledger, { onBad: (e) => console.error(`da-media-upload: ledger ${opts.ledger} on disk is not readable JSON (${e.message}) — this run's entries are written over it`) });
     } catch (e) { console.error(`da-media-upload: ${e.message}`); }
   };
-  const counts = { uploaded: 0, skipped: 0, notImage: 0, failed: 0, dry: 0 };
+  const counts = { uploaded: 0, skipped: 0, notImage: 0, tooLarge: 0, failed: 0, dry: 0 };
   let halted = null;
   // Set by the first 2xx from the admin API. Until then entries run one at a time (the single-flight loop
   // below), so nothing else is in flight while the token is being proved.
@@ -413,6 +417,16 @@ async function main() {
     say(`FAIL ${e.file} ${what}${why ? ` (${why})` : ''}`);
   };
 
+  // A 401 that survived every retry (the PUT, or a video's preview/live POST) is the token, not this file: the
+  // batch halts (exit 3) and the file is left not attempted — never `failed` — so the same command resumes
+  // exactly here. Workers already in flight finish their own upload; nothing new starts.
+  const haltOn = (e, attempts, what) => {
+    say(`HALT ${e.file} ${what} (unauthorized through ${attempts} attempt${attempts === 1 ? '' : 's'} — ${tokenLabel(opts)} rejected; not recorded as failed, the re-run resumes here)`);
+    if (halted) return;
+    halted = `${tokenLabel(opts)} rejected (${what} through ${attempts} attempt${attempts === 1 ? '' : 's'} on ${e.file}${tokenAccepted ? ', after the token had been accepted earlier in this batch' : ', the lone first upload'}): ${refreshHint(opts)} and re-run the same command — the ledger skips what already uploaded: ${rerunCommand(opts)}`;
+    persist();
+  };
+
   const worker = async (e) => {
     if (halted) return;
     const daPath = daPathOf(e);
@@ -424,7 +438,10 @@ async function main() {
 
     let bytes = null;
     if (existsSync(e.file) && statSync(e.file).isFile()) bytes = readFileSync(e.file);
-    if (bytes && pre.video && bytes.length > VIDEO_MAX_BYTES) { const big = classify(e.name, bytes); counts.skipped += 1; counts.notImage += 1; say(`SKIP ${e.file} ${big.skip} (${big.why})`); return; }
+    // One skip path for a local and a fetched file: classify() on the bytes (an over-limit video).
+    const skipOn = (c) => { counts.skipped += 1; counts.tooLarge += 1; say(`SKIP ${e.file} ${c.skip} (${c.why})`); };
+    const local = bytes && classify(e.name, bytes);
+    if (local && local.skip) { skipOn(local); return; }
     // A video counts as done only once delivered (previewed, and published unless --no-publish).
     const delivered = !pre.video || (rec.delivered || []).includes(opts.publish ? 'live' : 'preview');
     if (bytes && rec.status === 'uploaded' && rec.file === e.file && rec.size === bytes.length && delivered) { counts.skipped += 1; say(`SKIP ${e.file} already uploaded (ledger) -> ${rec.authorUrl || rec.contentUrl || authorUrl}`); return; }
@@ -442,14 +459,16 @@ async function main() {
       const got = await fetchSource(e.source, { ...opts, video: pre.video });
       if (got.kind === 'bot-wall') { fail(`source ${got.status}`, 'bot wall: blocked when hot-linked, NOT missing — capture it in-page (extract keeps a local copy) and re-run; never omit'); return; }
       if (got.kind === 'missing') { fail(`source ${got.status}`, 'missing at origin — try the rendition/delimiter repairs first, then omit; never substitute a placeholder'); return; }
-      if (got.kind === 'not-image-response') { fail(`source ${got.status}`, `answered ${got.contentType}, not image bytes`); return; }
+      if (got.kind === 'not-media-response') { fail(`source ${got.status}`, `answered ${got.contentType}, not ${pre.video ? 'video' : 'image'} bytes`); return; }
       if (got.kind !== 'ok') { fail(`source ${got.status || got.kind}`, got.why || 'fetch failed'); return; }
+      if (!got.bytes) { skipOn(classify(e.name, { length: got.size })); return; }
       bytes = got.bytes;
       mkdirSync(dirname(resolve(e.file)), { recursive: true });
       writeFileSync(e.file, bytes);
     }
 
     const c = classify(e.name, bytes);
+    if (c.skip) { skipOn(c); return; }
     if (c.fail) { fail(c.fail, c.why); return; }
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     const { res, status, err, attempts } = await putMedia(bytes, c.type, e.name, daPath, opts);
@@ -459,6 +478,7 @@ async function main() {
       const record = { status: 'uploaded', file: e.file, size: bytes.length, sha256, contentType: c.type, source: e.source, contentUrl, httpStatus: status, attempts, ts: new Date().toISOString() };
       if (c.video) {
         const d = await deliverVideo(daPath, opts);
+        if (!d.ok && d.status === 401) { haltOn(e, d.attempts, `${d.step} 401`); return; }
         if (!d.ok) { fail(`${d.step} ${d.status || 'network'}`, `uploaded to DA but not delivered${d.err ? `: ${d.err}` : ''} — do not author it yet; re-run the same command`, { authorUrl, delivered: d.done }); return; }
         Object.assign(record, { authorUrl, delivered: d.done });
       }
@@ -468,18 +488,7 @@ async function main() {
       say(`OK ${e.file} -> ${c.video ? authorUrl : contentUrl}${c.video ? ` (video: ${record.delivered.join(' + ')}; author this root-relative path${renamed})` : ''}${attempts > 1 ? ` (after ${attempts} attempts)` : ''}`);
       return;
     }
-    if (status === 401) {
-      // A 401 that survived every retry is the token, not this file: the batch halts (exit 3) and the file
-      // is left not attempted — never `failed` — so the same command resumes exactly here. Workers already
-      // in flight finish their own upload; nothing new starts.
-      await drain(res);
-      say(`HALT ${e.file} 401 (unauthorized through ${attempts} attempt${attempts === 1 ? '' : 's'} — ${tokenLabel(opts)} rejected; not recorded as failed, the re-run resumes here)`);
-      if (!halted) {
-        halted = `${tokenLabel(opts)} rejected (401 through ${attempts} attempt${attempts === 1 ? '' : 's'} on ${e.file}${tokenAccepted ? ', after the token had been accepted earlier in this batch' : ', the lone first upload'}): ${refreshHint(opts)} and re-run the same command — the ledger skips what already uploaded: ${rerunCommand(opts)}`;
-        persist();
-      }
-      return;
-    }
+    if (status === 401) { await drain(res); haltOn(e, attempts, '401'); return; }
     const body = res ? (await res.text().catch(() => '')).slice(0, 160).replace(/\s+/g, ' ') : '';
     const why = status === 0 ? `network: ${err}` : status === 403 ? 'forbidden — the token has no write access to this org/repo (a source-CDN 403 is a different thing; see source fetch)' : status === 404 ? 'org/repo path not found on DA — check --org/--repo' : status === 413 ? 'payload too large' : body;
     fail(String(status || 'network'), `${why}${attempts > 1 ? `; ${attempts} attempts` : ''}`, { httpStatus: status, attempts });
@@ -502,7 +511,7 @@ async function main() {
   persist();
 
   const notRun = halted ? entries.length - (counts.uploaded + counts.skipped + counts.failed) : 0;
-  console.log(`da-media-upload: ${entries.length} file(s) — ${counts.uploaded} uploaded, ${counts.skipped} skipped (${counts.notImage} not an image), ${counts.failed} failed${counts.dry ? `, ${counts.dry} dry-run` : ''}${notRun ? `, ${notRun} not attempted` : ''}${opts.dryRun ? '' : ` · ledger ${opts.ledger}`}`);
+  console.log(`da-media-upload: ${entries.length} file(s) — ${counts.uploaded} uploaded, ${counts.skipped} skipped (${counts.notImage} not an image${counts.tooLarge ? `, ${counts.tooLarge} over the video limit` : ''}), ${counts.failed} failed${counts.dry ? `, ${counts.dry} dry-run` : ''}${notRun ? `, ${notRun} not attempted` : ''}${opts.dryRun ? '' : ` · ledger ${opts.ledger}`}`);
   if (halted) console.error(`da-media-upload: ${halted}`);
   process.exitCode = halted ? TOKEN_EXIT : counts.failed ? 1 : 0;
 }
