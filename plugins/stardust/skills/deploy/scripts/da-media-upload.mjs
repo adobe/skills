@@ -13,12 +13,19 @@
  *   author https://content.da.live/{org}/{repo}/media/<scope>/<file>
  *       (that URL answers 401 to an anonymous request and still ingests fine —
  *       verify post-preview, never with a bare GET)
- *   images only: jpg/jpeg/png/webp/gif/avif and small pure-vector svg. Video,
- *       audio and PDF never ride content.da.live (they would deliver 401 to
- *       every visitor) — they are listed as SKIP not-an-image and left to the
- *       code origin. An svg that embeds raster data or exceeds 40 KB fails
- *       every page preview that references it (409 from the content bus, no
- *       per-asset error) and is refused here as FAIL svg-unsafe.
+ *   images: jpg/jpeg/png/webp/gif/avif and small pure-vector svg. An svg that
+ *       embeds raster data or exceeds 40 KB fails every page preview that
+ *       references it (409 from the content bus, no per-asset error) and is
+ *       refused here as FAIL svg-unsafe.
+ *   mp4 video up to 36 MB (deploy SKILL.md #160, amending #103): the content.da.live
+ *       URL of a video is never authored (it reaches the page verbatim and
+ *       answers 401 to every visitor). After the PUT the file ITSELF is
+ *       previewed and, unless --no-publish, published:
+ *         POST https://admin.hlx.page/preview|live/{org}/{repo}/{branch}/media/<scope>/<file>
+ *       and the URL to author is the root-relative content path
+ *       /media/<scope>/<file> (the delivery host redirects it to the media bus).
+ *       Larger mp4s, other video, audio and PDF are listed as SKIP and stay on
+ *       the code origin or an external host.
  *   source fetch (manifest entries whose local file is absent but name a
  *       `source` URL): 2xx image bytes are saved to the local path and then
  *       uploaded; 401/403 is a hot-link bot wall — the asset EXISTS, capture it
@@ -72,6 +79,9 @@
  *     --dry-run            list what would be uploaded; no network, no ledger write
  *     --admin-url <base>   override https://admin.da.live   (local test double)
  *     --content-url <base> override https://content.da.live (local test double)
+ *     --branch <name>      branch a video is previewed/published on    (default main)
+ *     --no-publish         preview videos only, never publish them
+ *     --hlx-url <base>     override https://admin.hlx.page  (local test double)
  *
  * Manifest shapes (any one file):
  *   [ { "file": "stardust/current/assets/media/hero-a3f9.jpg",
@@ -82,7 +92,8 @@
  *
  * Output, one line per file, then a summary:
  *   OK <file> -> https://content.da.live/{org}/{repo}/media/<scope>/<name>
- *   SKIP <file> already uploaded (ledger) | not-an-image
+ *   OK <file> -> /media/<scope>/<name> (video: previewed[ + published] …)
+ *   SKIP <file> already uploaded (ledger) | not-an-image | video-too-large
  *   FAIL <file> <status|reason> …
  *   HALT <file> 401 …                                          (the token halt; not a FAIL)
  *   DRY <file> -> <content url>                               (--dry-run)
@@ -100,7 +111,7 @@ import { mergeLedger } from './file-lock.mjs';
 import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const HELP = `da-media-upload — rehost captured images to the DA media folder
+const HELP = `da-media-upload — rehost captured images (and mp4 video up to 36 MB) to the DA media folder
 
 Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <scope> (--dir <dir> | --manifest <json>) [options]
   --scope <name>        the folder under media/ (relative — never media/<name>: the path would double to media/media/<name>)
@@ -113,12 +124,18 @@ Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <
   --dry-run             list what would be uploaded; no network, no ledger write
   --admin-url <base>    override https://admin.da.live (local test double)
   --content-url <base>  override https://content.da.live (local test double)
+  --branch <name>       branch a video is previewed/published on (default main)
+  --no-publish          preview videos only, never publish them
+  --hlx-url <base>      override https://admin.hlx.page (local test double)
   --token-env <NAME>    environment variable holding the token (default DA_TOKEN)
   --token-file <path>   read the token from this file instead (one of the two, never both)
   --help                this text
 
 Token: from the variable named by --token-env, or from --token-file (read once at start); never printed,
 never in the re-run command, never written to the ledger.
+Video (#160): an mp4 up to 36 MB is uploaded, then previewed and published itself; author the printed
+root-relative /media/<scope>/<file>, never its content.da.live URL. Bigger mp4s and other video/audio/PDF are
+skipped and stay on the code origin or an external host.
 Writes: the ledger at --ledger (not with --dry-run) and, for a manifest entry whose local
 file is absent but names a source, the fetched image bytes saved to that entry's file path.
 Prints one line per file (OK / SKIP / FAIL / HALT / DRY) and a summary. Exit 0 = no failures, 1 = any FAIL,
@@ -132,6 +149,9 @@ const USAGE_EXIT = 2;
 const TOKEN_EXIT = 3;
 const IMAGE_TYPES = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.svg': 'image/svg+xml' };
 const SVG_MAX_BYTES = 40 * 1024;
+const VIDEO_TYPES = { '.mp4': 'video/mp4' };
+// The content-source limit for mp4 (aem.live docs, limits): a bigger file fails its preview.
+export const VIDEO_MAX_BYTES = 36 * 1024 * 1024;
 const RETRYABLE = new Set([0, 408, 425, 429, 500, 502, 503, 504]);
 // The admin PUT also retries a 401: a valid token can be answered 401 under a concurrent burst (recorded —
 // the whole first burst of a batch, on a token with hours of validity left, while a lone sequential PUT
@@ -147,7 +167,7 @@ function usage(msg) { console.error(`da-media-upload error: ${msg}\n\n${HELP}`);
 export function parseArgs(argv, env = process.env) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { concurrency: 4, ledger: join('stardust', 'deploy', 'media-ledger.json'), retries: 4, backoffMs: 500, dryRun: false, adminUrl: 'https://admin.da.live', contentUrl: 'https://content.da.live' };
+  const o = { concurrency: 4, ledger: join('stardust', 'deploy', 'media-ledger.json'), retries: 4, backoffMs: 500, dryRun: false, adminUrl: 'https://admin.da.live', contentUrl: 'https://content.da.live', hlxUrl: 'https://admin.hlx.page', branch: 'main', publish: true };
   const num = (flag, v, min) => { const n = Number(v); if (!Number.isFinite(n) || n < min) usage(`${flag} needs a number ≥ ${min}`); return n; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
@@ -166,6 +186,9 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--dry-run') o.dryRun = true;
     else if (a === '--admin-url') o.adminUrl = next().replace(/\/+$/, '');
     else if (a === '--content-url') o.contentUrl = next().replace(/\/+$/, '');
+    else if (a === '--hlx-url') o.hlxUrl = next().replace(/\/+$/, '');
+    else if (a === '--branch') o.branch = next();
+    else if (a === '--no-publish') o.publish = false;
     else if (a === '--token-env') o.tokenEnv = next();
     else if (a === '--token-file') o.tokenFile = next();
     else usage(`unknown argument ${a}`);
@@ -224,8 +247,13 @@ export function readManifest(path) {
 // ---- classification --------------------------------------------------------------------------------
 
 export function classify(name, bytes) {
-  const type = IMAGE_TYPES[extname(name).toLowerCase()];
-  if (!type) return { ok: false, skip: 'not-an-image', why: 'only jpg/jpeg/png/webp/gif/avif/svg are rehosted; video, audio and PDF ship from the code origin' };
+  const ext = extname(name).toLowerCase();
+  if (VIDEO_TYPES[ext]) {
+    if (bytes && bytes.length > VIDEO_MAX_BYTES) return { ok: false, skip: 'video-too-large', why: `${bytes.length} bytes is over the 36 MB content-source limit — ship it from the code origin or an external video host` };
+    return { ok: true, type: VIDEO_TYPES[ext], video: true };
+  }
+  const type = IMAGE_TYPES[ext];
+  if (!type) return { ok: false, skip: 'not-an-image', why: 'only jpg/jpeg/png/webp/gif/avif/svg and mp4 are rehosted; other video, audio and PDF ship from the code origin' };
   if (type === 'image/svg+xml' && bytes) {
     const text = bytes.toString('utf8');
     if (/<image[\s>]|data:image\//i.test(text)) return { ok: false, fail: 'svg-unsafe', why: 'embeds raster data — extract it to a png and author that (every referencing page would fail preview with 409)' };
@@ -278,13 +306,13 @@ async function withRetries(doFetch, { retries, backoffMs, retryStatuses = RETRYA
 async function fetchSource(url, opts) {
   let referer = '';
   try { referer = new URL(url).origin + '/'; } catch { return { kind: 'bad-url' }; }
-  const { res, status, err } = await withRetries(() => fetch(url, { headers: { 'user-agent': SOURCE_UA, referer, accept: 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' }, redirect: 'follow' }), opts);
+  const { res, status, err } = await withRetries(() => fetch(url, { headers: { 'user-agent': SOURCE_UA, referer, accept: opts.video ? 'video/mp4,video/*,*/*;q=0.8' : 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' }, redirect: 'follow' }), opts);
   if (status === 0) return { kind: 'network', why: err };
   if (status === 401 || status === 403) { await drain(res); return { kind: 'bot-wall', status }; }
   if (status === 404 || status === 410) { await drain(res); return { kind: 'missing', status }; }
   if (status < 200 || status >= 300) { await drain(res); return { kind: 'http', status }; }
   const ct = (res.headers.get('content-type') || '').split(';')[0].trim();
-  if (!ct.startsWith('image/')) { await drain(res); return { kind: 'not-image-response', status, contentType: ct || 'none' }; }
+  if (!ct.startsWith('image/') && !(opts.video && ct.startsWith('video/'))) { await drain(res); return { kind: 'not-image-response', status, contentType: ct || 'none' }; }
   return { kind: 'ok', status, bytes: Buffer.from(await res.arrayBuffer()), contentType: ct };
 }
 
@@ -295,6 +323,21 @@ async function putMedia(bytes, type, name, daPath, opts) {
     fd.append('data', new Blob([bytes], { type }), basename(name));
     return fetch(url, { method: 'PUT', headers: { authorization: `Bearer ${opts.token}` }, body: fd });
   }, { ...opts, retryStatuses: ADMIN_RETRYABLE });
+}
+
+// Preview (and publish) the uploaded video itself: its root-relative content path then redirects to the media
+// bus on the delivery host. A page preview does not ingest a linked video the way it ingests an <img>.
+async function deliverVideo(daPath, opts) {
+  const steps = opts.publish ? ['preview', 'live'] : ['preview'];
+  const done = [];
+  for (const step of steps) {
+    const url = `${opts.hlxUrl}/${step}/${encodeURIComponent(opts.org)}/${encodeURIComponent(opts.repo)}/${encodeURIComponent(opts.branch)}/${encodePath(daPath)}`;
+    const { res, status, err } = await withRetries(() => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${opts.token}` } }), { ...opts, retryStatuses: ADMIN_RETRYABLE });
+    await drain(res);
+    if (status < 200 || status >= 300) return { ok: false, step, status, err, done };
+    done.push(step);
+  }
+  return { ok: true, done };
 }
 
 // ---- main ------------------------------------------------------------------------------------------
@@ -346,6 +389,9 @@ async function main() {
   const say = (s) => { lines.push(s); console.log(s); };
   const daPathOf = (e) => `media/${opts.scope}/${e.name}`;
   const contentUrlOf = (daPath) => `${opts.contentUrl}/${encodeURIComponent(opts.org)}/${encodeURIComponent(opts.repo)}/${encodePath(daPath)}`;
+  // What the author writes: the content.da.live URL for an image (the page preview rehosts it), the
+  // root-relative content path for a video (#160 — its content.da.live URL would reach visitors as a 401).
+  const authorUrlOf = (daPath, video) => (video ? `/${encodePath(daPath)}` : contentUrlOf(daPath));
   const recordFailure = (e, what, why, extra = {}) => {
     const daPath = daPathOf(e);
     counts.failed += 1;
@@ -360,14 +406,18 @@ async function main() {
     const rec = ledger[daPath] || {};
     const pre = classify(e.name, null);
     if (pre.skip) { counts.skipped += 1; counts.notImage += 1; say(`SKIP ${e.file} ${pre.skip} (${pre.why})`); return; }
+    const authorUrl = authorUrlOf(daPath, pre.video);
 
     let bytes = null;
     if (existsSync(e.file) && statSync(e.file).isFile()) bytes = readFileSync(e.file);
-    if (bytes && rec.status === 'uploaded' && rec.file === e.file && rec.size === bytes.length) { counts.skipped += 1; say(`SKIP ${e.file} already uploaded (ledger) -> ${rec.contentUrl || contentUrl}`); return; }
+    if (bytes && pre.video && bytes.length > VIDEO_MAX_BYTES) { const big = classify(e.name, bytes); counts.skipped += 1; counts.notImage += 1; say(`SKIP ${e.file} ${big.skip} (${big.why})`); return; }
+    // A video counts as done only once delivered (previewed, and published unless --no-publish).
+    const delivered = !pre.video || (rec.delivered || []).includes(opts.publish ? 'live' : 'preview');
+    if (bytes && rec.status === 'uploaded' && rec.file === e.file && rec.size === bytes.length && delivered) { counts.skipped += 1; say(`SKIP ${e.file} already uploaded (ledger) -> ${rec.authorUrl || rec.contentUrl || authorUrl}`); return; }
 
     if (opts.dryRun) {
       counts.dry += 1;
-      say(`DRY ${e.file} -> ${contentUrl}${bytes ? ` (${bytes.length} bytes)` : e.source ? ' (fetch from source first)' : ' (LOCAL FILE MISSING and no source)'}`);
+      say(`DRY ${e.file} -> ${authorUrl}${pre.video ? ` (video: ${opts.publish ? 'preview + publish' : 'preview'})` : ''}${bytes ? ` (${bytes.length} bytes)` : e.source ? ' (fetch from source first)' : ' (LOCAL FILE MISSING and no source)'}`);
       return;
     }
 
@@ -375,7 +425,7 @@ async function main() {
 
     if (!bytes) {
       if (!e.source) { fail('missing-local', 'no such file and the manifest names no source'); return; }
-      const got = await fetchSource(e.source, opts);
+      const got = await fetchSource(e.source, { ...opts, video: pre.video });
       if (got.kind === 'bot-wall') { fail(`source ${got.status}`, 'bot wall: blocked when hot-linked, NOT missing — capture it in-page (extract keeps a local copy) and re-run; never omit'); return; }
       if (got.kind === 'missing') { fail(`source ${got.status}`, 'missing at origin — try the rendition/delimiter repairs first, then omit; never substitute a placeholder'); return; }
       if (got.kind === 'not-image-response') { fail(`source ${got.status}`, `answered ${got.contentType}, not image bytes`); return; }
@@ -392,9 +442,15 @@ async function main() {
     if (status >= 200 && status < 300) {
       await drain(res);
       tokenAccepted = true;
+      const record = { status: 'uploaded', file: e.file, size: bytes.length, sha256, contentType: c.type, source: e.source, contentUrl, httpStatus: status, attempts, ts: new Date().toISOString() };
+      if (c.video) {
+        const d = await deliverVideo(daPath, opts);
+        if (!d.ok) { fail(`${d.step} ${d.status || 'network'}`, `uploaded to DA but not delivered${d.err ? `: ${d.err}` : ''} — do not author it yet; re-run the same command`, { authorUrl, delivered: d.done }); return; }
+        Object.assign(record, { authorUrl, delivered: d.done });
+      }
       counts.uploaded += 1;
-      ledger[daPath] = { status: 'uploaded', file: e.file, size: bytes.length, sha256, contentType: c.type, source: e.source, contentUrl, httpStatus: status, attempts, ts: new Date().toISOString() };
-      say(`OK ${e.file} -> ${contentUrl}${attempts > 1 ? ` (after ${attempts} attempts)` : ''}`);
+      ledger[daPath] = record;
+      say(`OK ${e.file} -> ${c.video ? authorUrl : contentUrl}${c.video ? ` (video: ${record.delivered.join(' + ')}; author this root-relative path)` : ''}${attempts > 1 ? ` (after ${attempts} attempts)` : ''}`);
       return;
     }
     if (status === 401) {

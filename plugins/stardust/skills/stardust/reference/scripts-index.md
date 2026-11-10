@@ -7,7 +7,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read before any `--hel
 - `deploy/build-harness.mjs` — structural harness — `content/<p>.html <out.html> [--root <dir>]`
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
 - `deploy/css-as-text.mjs` — library (CSS-as-content test), no CLI
-- `deploy/da-media-upload.mjs` — rehost images — `--org --repo --scope <under media/> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
+- `deploy/da-media-upload.mjs` — rehost images/mp4 — `--org --repo --scope <under media/> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
 - `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failures, 3 = token halt
 - `deploy/diff-profiles.mjs` — library (eds|generic profiles), no CLI

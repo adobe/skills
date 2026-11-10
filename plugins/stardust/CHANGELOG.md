@@ -4,6 +4,26 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.37.4 — an mp4 goes to DA and is delivered on its own, authored root-relative (#160, amends #103)
+
+Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo
+per #103, so authors could not swap them in DA without a code change. A scratch-site test settled the DA route: a `content.da.live/....mp4` link still reaches the page verbatim and
+answers 401 to visitors (#103 holds for that form), but previewing and publishing the uploaded mp4 itself makes its
+root-relative content path redirect to the media bus on both `aem.page` and `aem.live` (200 `video/mp4`, byte
+ranges served).
+
+- **Rule** (`deploy/SKILL.md` #160, replaces the #103 paragraph): an mp4 up to 36 MB (the content-source limit) goes
+  through `da-media-upload.mjs` and is authored as `/media/<scope>/<file>.mp4`, never its `content.da.live` URL, and
+  never also committed at the same path. Bigger mp4s, other formats, audio and PDF stay on the code origin or an
+  external host. Pointer from replica's handoff contract.
+- **`deploy/scripts/da-media-upload.mjs`:** accepts `.mp4` (`video/mp4`); after the PUT it POSTs `preview` and,
+  unless `--no-publish`, `live` for the file on `--branch` (default `main`; `--hlx-url` for a test double), prints
+  the root-relative path to author, and records `authorUrl` + `delivered` in the ledger. A failed preview/publish is
+  FAIL (uploaded, not delivered), and a re-run redelivers it; an mp4 over 36 MB is `SKIP video-too-large` with no
+  request. Manifest source fetches accept `video/*` for an mp4 entry.
+- Tests: `da-media-upload.test.mjs` (classify limits; PUT + preview + live order on a branch; failed preview; ledger
+  skip of a delivered video; `--no-publish`; over-limit skip).
+
 ## 0.37.2 — a named page count starts from the entered page and its links (#158)
 
 User feedback: asked for N pages of a site, the crawl filled the slots in sitemap order, so the pages the entered

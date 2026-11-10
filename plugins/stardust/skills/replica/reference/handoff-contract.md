@@ -41,7 +41,7 @@ Acceptance: `gatesPassed` = `["variance-probe", "pixel-gate-1440", "pixel-gate-3
 - Author `<img src="https://content.da.live/{org}/{repo}/media/<scope>/<file>" alt="…">` in the cell; never `/img/…` in content, never imagery baked into block JS by index. Decorative = CSS only.
 - Never anonymous-curl `content.da.live` / `admin.da.live` URLs — a 401 there is normal and ingests fine. Verify post-preview only: delivered `.plain.html` has 0 `about:error` and the expected `<img>` + alt count (`../../deploy/da-deploy-protocol.md § Deploy .DA Source API`, step 3b).
 - Source-CDN 403/401 = bot wall, NOT missing → rehost from the CAPTURED src (`stardust/current/assets/media/`); omit only on a true 404 after the rendition / `?`-delimiter repairs; verify with an in-page fetch from a browser context of the tier `_crawl-log.json#discovery.fetchTechnique` names (`chrome`, `chrome-escalated`, `chromium-fallback`; older logs `headed-chrome`), never a bare curl.
-- Images only: video / audio / PDF never ride `content.da.live` (anonymous visitors get 401) — serve them root-relative from the code origin.
+- Video: `../../deploy/SKILL.md` #160 — mp4 ≤ 36 MB via `da-media-upload.mjs`, authored root-relative; never its `content.da.live` URL.
 
 **DA deploy protocol** (`../../deploy/SKILL.md § Deploy .DA Source API`; `../../deploy/da-deploy-protocol.md § Deploy .DA Source API`):
 - Preconditions: code branch pushed (Code Sync builds it — force with `POST https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*` → 202 and poll when edited blocks 404); host label `<branch>--<repo>--<org>` ≤ 63 chars; `DA_TOKEN` preflighted (JWT `exp`) and re-checked before each batch — a mid-batch 401 checkpoints the ledger and halts with one instruction, never fails pages red.
