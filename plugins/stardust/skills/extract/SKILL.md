@@ -205,11 +205,10 @@ Discover the page inventory before crawling. Procedure in
    Extracting...
    ```
 
-   Selection heuristic: page-type checklist first, then score-based
-   ranking (home + IA-pillar keywords + sitemap priority − archive /
-   version markers). See `reference/ia-extraction.md` § Page
-   selection and § Priority for the cap. The English-only keyword
-   list is a known limitation for localized sites.
+   Selection heuristic: when the user names N, link-first order (the
+   entered page, then its links). Otherwise page-type checklist first,
+   then score-based ranking. See `reference/ia-extraction.md` § Page
+   selection and § Priority for the cap.
 
 7. Write the discovered list to `stardust/current/_crawl-log.json`
    (created if absent) with `_provenance` and the full discovery
@@ -769,7 +768,8 @@ supported.
 Core contract (procedure, formats, and detection rules in the
 reference):
 
-- `--prep` implies `--all` — migration coverage requires the full
+- `--prep` implies `--all` unless the user named N (then `--cap N`,
+  `reference/prep-mode.md` § 1) — migration coverage requires the full
   junk-filtered inventory, not the discovery cap.
 - Page types (`landing | article | listing | program | form |
   static | unique`) are LLM-inferred into `state.json.pages[].type`

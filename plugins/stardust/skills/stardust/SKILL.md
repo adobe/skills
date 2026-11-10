@@ -241,7 +241,9 @@ otherwise):
   single direction and record the rationale in `direction.md`.
 - **Volume caps as reasoned proposals, said out loud.** Default **100
   pages overall, 20 per template**; "all pages" (or `--all-pages`) in
-  the invocation lifts them. Roster priority: (1) every page linked from
+  the invocation lifts them; a user-named N replaces both and orders
+  link-first (`../extract/reference/ia-extraction.md` § Priority for the
+  cap). Otherwise roster priority: (1) every page linked from
   the header and footer, (2) section landing/overview pages, (3) a
   representative spread of detail pages across all templates. The setup
   status line names the roster against the site (`roster 94 of 2,532

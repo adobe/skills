@@ -21,7 +21,7 @@ import * as crawl from '../crawl.mjs';
 import * as session from '../../../diff/scripts/live-session.mjs';
 
 const {
-  captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage,
+  captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, selectPages, parseArgs, discover, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage,
 } = crawl;
 
 // the stub pages below navigate one host back-to-back; live-session's per-host pacing has its own tests
@@ -106,6 +106,62 @@ check('--help prints the usage header (naming captureGaps, --page-timeout, the b
 
 check('maxPages: 0 is no cap (--all / --prep); missing or bad values fall back to 25; others are floored and at least 1', () => {
   assert.equal(maxPages('0'), Infinity); assert.equal(maxPages(undefined), 25); assert.equal(maxPages('abc'), 25); assert.equal(maxPages('40'), 40); assert.equal(maxPages('2.7'), 2);
+});
+check('parseArgs: only --link-first turns link-first on; --max alone (a default or roster cap) never does', () => {
+  const parse = (...rest) => parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', ...rest]);
+  assert.equal(parse().linkFirst, false);
+  assert.equal(parse('--max', '5').linkFirst, false);
+  assert.equal(parse('--max', '100').linkFirst, false);
+  assert.equal(parse('--link-first', '--max', '30').linkFirst, true);
+  assert.equal(parse('--link-first', '--max', '30').max, 30);
+});
+check('selectPages: link-first takes the entry, then its same-origin page links in document order, then discovered pages; without it, entry then discovered', () => {
+  const entry = 'https://ex.test/';
+  const linked = ['https://ex.test/', 'https://ex.test/#top', '/about', '/about/', '/about#team', 'https://other.test/x',
+    '/report.pdf', '/logo.svg?v=2', '/pricing', '/contact'];
+  const discovered = ['https://ex.test/blog/a', 'https://ex.test/pricing', 'https://ex.test/blog/b'];
+  const pick = (max, linkFirst) => selectPages({ entry, origin: 'https://ex.test', linked, discovered, max, linkFirst }).urls;
+  assert.deepEqual(pick(10, true), ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing',
+    'https://ex.test/contact', 'https://ex.test/blog/a', 'https://ex.test/blog/b']);
+  assert.deepEqual(pick(3, true), ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing']);
+  assert.deepEqual(pick(10, false), ['https://ex.test/', 'https://ex.test/blog/a', 'https://ex.test/pricing',
+    'https://ex.test/blog/b']);
+  assert.equal(pick(Infinity, true).length, 6);
+});
+check('selectPages: link-first applies the same-origin and asset checks to the discovered list too (BFS passes the same links twice)', () => {
+  const links = ['https://ex.test/about', 'https://ex.test/report.pdf', 'https://ex.test.evil.test/partner', '/video.mp4', '/song.mp3'];
+  const { urls } = selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test', linked: links, discovered: links, max: 4, linkFirst: true });
+  assert.deepEqual(urls, ['https://ex.test/', 'https://ex.test/about']);
+});
+check('selectPages: an unparsable href is skipped and reported, never thrown, in both modes', () => {
+  for (const linkFirst of [true, false]) {
+    const { urls, skipped } = selectPages({ entry: 'https://ex.test/', origin: 'https://ex.test',
+      linked: ['https://ex.test:bad/contact', '/about'], discovered: ['https://ex.test:bad/x', 'https://ex.test/a'], max: 3, linkFirst });
+    assert.deepEqual(urls, linkFirst ? ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/a'] : ['https://ex.test/', 'https://ex.test/a']);
+    assert.ok(skipped.includes('https://ex.test:bad/x'), String(linkFirst));
+    if (linkFirst) assert.ok(skipped.includes('https://ex.test:bad/contact'));
+  }
+});
+await checkAsync('discover: a stub page with a sitemap and a malformed anchor — link-first orders and skips, the default keeps sitemap order', async () => {
+  const origin = 'https://ex.test';
+  const links = ['https://ex.test/about', 'https://ex.test:bad/contact', 'https://ex.test/pricing'];
+  const sitemap = '<urlset><url><loc>https://ex.test/blog/a</loc></url><url><loc>https://ex.test/about</loc></url></urlset>';
+  const stub = (map) => ({ evaluate: async (_fn, arg) => (arg === origin ? links : (map[arg] ?? '')) });
+  const run = async (flags, map) => {
+    let value;
+    const lines = await stderrOf(async () => { value = await discover(parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', ...flags]), stub(map)); });
+    return { value, lines };
+  };
+  const withMap = { 'https://ex.test/sitemap.xml': sitemap };
+  let r = await run(['--link-first', '--max', '1'], withMap);
+  assert.deepEqual(r.value, ['https://ex.test/']);
+  r = await run(['--link-first', '--max', '3'], withMap);
+  assert.deepEqual(r.value, ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing']);
+  assert.ok(r.lines.some((l) => /skipped 1 unparsable/.test(l) && l.includes('https://ex.test:bad/contact')), r.lines.join('\n'));
+  r = await run(['--max', '3'], withMap);
+  assert.deepEqual(r.value, ['https://ex.test/', 'https://ex.test/blog/a', 'https://ex.test/about']);
+  r = await run(['--link-first', '--max', '5'], {});
+  assert.deepEqual(r.value, ['https://ex.test/', 'https://ex.test/about', 'https://ex.test/pricing']);
 });
 check('pageTimeoutMs: seconds → ms; 0 is no deadline; missing, empty, negative or unparsable → the 60 s default; fractions kept to the ms', () => {
   assert.equal(PAGE_TIMEOUT_MS_DEFAULT, 60000);
