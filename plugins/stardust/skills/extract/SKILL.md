@@ -205,11 +205,10 @@ Discover the page inventory before crawling. Procedure in
    Extracting...
    ```
 
-   Selection heuristic: page-type checklist first, then score-based
-   ranking (home + IA-pillar keywords + sitemap priority − archive /
-   version markers). See `reference/ia-extraction.md` § Page
-   selection and § Priority for the cap. The English-only keyword
-   list is a known limitation for localized sites.
+   Selection heuristic: when the user names N, link-first order (the
+   entered page, then its links). Otherwise page-type checklist first,
+   then score-based ranking. See `reference/ia-extraction.md` § Page
+   selection and § Priority for the cap.
 
 7. Write the discovered list to `stardust/current/_crawl-log.json`
    (created if absent) with `_provenance` and the full discovery

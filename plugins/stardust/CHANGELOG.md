@@ -4,6 +4,17 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.37.2 — a named page count starts from the entered page and its links (#158)
+
+User feedback: asked for N pages of a site, the crawl filled the slots in sitemap order, so the pages the entered
+URL links to were often cut.
+
+- **`extract/scripts/crawl.mjs`:** an explicit `--max N` orders the pages entry first, then the entry page's
+  same-origin links in document order (asset links skipped), then the other discovered pages, up to N. No `--max`
+  (default 25), `--max 0` and `--pages` are unchanged. Rule home: `ia-extraction.md` § Priority for the cap;
+  pointers from extract Phase 1 and the hands-off volume caps (a user-named N replaces 100/20).
+- Test: `crawl.test.mjs` `selectPages` (pure).
+
 ## 0.37.1 — a player iframe mounts after first paint, and qa names the request that came before it (#157)
 
 Field learning (recorded replica runs of one source page): a block in the first section created the source's YouTube

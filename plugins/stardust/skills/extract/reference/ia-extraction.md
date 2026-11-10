@@ -272,6 +272,12 @@ with `--pages` or by replying with explicit slug lists.
 
 ## Priority for the cap
 
+**When the user names N** ("only 30 pages", "extract 10 pages"), pass
+`--cap N` (`crawl.mjs --max N`). The crawler then orders the pages:
+the entered page, then the same-origin pages it links to in document
+order (asset links skipped), then the other discovered pages, up to N.
+The checklist and scoring below apply only when no N is named.
+
 When discovered count exceeds the cap, the agent must show the user
 the full list and the cut. The selection runs in two passes:
 
@@ -341,13 +347,6 @@ intent in their prompt to the agent ("extract all pages", "look
 at just home and pricing"). When the user's intent is spontaneous
 in the prompt, the agent maps it to the equivalent flag and
 applies it without re-confirming.
-
-The default cap is intentionally small (5 pages). Cross-page brand
-aggregation, system-component detection, and the brand-review
-artifact all work usefully at that size as long as the 5 pages
-cover distinct templates (per § Page selection). When the site
-warrants more, the user lifts via `--cap N` or `--all` — but the
-common case proceeds silently.
 
 Capture the cap-resolution and per-URL scores in
 `_crawl-log.json` under `discovery.cap`, `discovery.capSource`
