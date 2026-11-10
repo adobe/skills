@@ -24,6 +24,9 @@
  *         POST https://admin.hlx.page/preview|live/{org}/{repo}/{branch}/media/<scope>/<file>
  *       and the URL to author is the root-relative content path
  *       /media/<scope>/<file> (the delivery host redirects it to the media bus).
+ *       The preview API maps a path to its web form (lowercase, `_` and other
+ *       non-alphanumerics → `-`), so a video is stored under that form
+ *       (main_Video01.mp4 → main-video01.mp4): stored as is, its preview 404s.
  *       Larger mp4s, other video, audio and PDF are listed as SKIP and stay on
  *       the code origin or an external host.
  *   source fetch (manifest entries whose local file is absent but name a
@@ -340,6 +343,17 @@ async function deliverVideo(daPath, opts) {
   return { ok: true, done };
 }
 
+// The web form of a content path, as the preview API resolves it: each segment lowercased and every run of
+// characters other than a-z/0-9 turned into one `-` (trimmed); the extension is kept. A video stored under any
+// other name uploads fine and then 404s on preview (recorded: `main-mvisual_video01.mp4`).
+export function webPath(name) {
+  const segs = name.split('/');
+  const last = segs.pop();
+  const dot = last.lastIndexOf('.');
+  const clean = (x) => x.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return [...segs.map(clean), `${clean(dot > 0 ? last.slice(0, dot) : last)}${dot > 0 ? last.slice(dot).toLowerCase() : ''}`].join('/');
+}
+
 // ---- main ------------------------------------------------------------------------------------------
 
 async function pool(items, n, worker) {
@@ -387,7 +401,7 @@ async function main() {
   let tokenAccepted = false;
   const lines = [];
   const say = (s) => { lines.push(s); console.log(s); };
-  const daPathOf = (e) => `media/${opts.scope}/${e.name}`;
+  const daPathOf = (e) => `media/${opts.scope}/${classify(e.name, null).video ? webPath(e.name) : e.name}`;
   const contentUrlOf = (daPath) => `${opts.contentUrl}/${encodeURIComponent(opts.org)}/${encodeURIComponent(opts.repo)}/${encodePath(daPath)}`;
   // What the author writes: the content.da.live URL for an image (the page preview rehosts it), the
   // root-relative content path for a video (#160 — its content.da.live URL would reach visitors as a 401).
@@ -450,7 +464,8 @@ async function main() {
       }
       counts.uploaded += 1;
       ledger[daPath] = record;
-      say(`OK ${e.file} -> ${c.video ? authorUrl : contentUrl}${c.video ? ` (video: ${record.delivered.join(' + ')}; author this root-relative path)` : ''}${attempts > 1 ? ` (after ${attempts} attempts)` : ''}`);
+      const renamed = c.video && webPath(e.name) !== e.name ? `; stored as ${webPath(e.name)}, the name the preview resolves — update links that use ${e.name}` : '';
+      say(`OK ${e.file} -> ${c.video ? authorUrl : contentUrl}${c.video ? ` (video: ${record.delivered.join(' + ')}; author this root-relative path${renamed})` : ''}${attempts > 1 ? ` (after ${attempts} attempts)` : ''}`);
       return;
     }
     if (status === 401) {

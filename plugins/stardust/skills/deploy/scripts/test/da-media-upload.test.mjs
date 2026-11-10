@@ -20,7 +20,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { VIDEO_MAX_BYTES, classify, jwtExpiry, readManifest } from '../da-media-upload.mjs';
+import { VIDEO_MAX_BYTES, classify, jwtExpiry, readManifest, webPath } from '../da-media-upload.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'da-media-upload.mjs');
@@ -462,6 +462,20 @@ await check('video: re-run skips a delivered video; --no-publish previews only a
   assert.match(r3.out, /^SKIP videos3\/big\.mp4 video-too-large \(\d+ bytes is over the 36 MB/m);
   assert.equal(requests.length, before, 'no request for an over-limit video');
   rmSync(v3, { recursive: true, force: true });
+});
+await check('video: webPath gives the name the preview resolves; an underscore/uppercase mp4 is stored, previewed and printed under it', async () => {
+  assert.equal(webPath('main-mvisual_video01.mp4'), 'main-mvisual-video01.mp4');
+  assert.equal(webPath('Hero Clip__02.MP4'), 'hero-clip-02.mp4');
+  assert.equal(webPath('sub_dir/A_b.mp4'), 'sub-dir/a-b.mp4');
+  assert.equal(webPath('clip.mp4'), 'clip.mp4');
+  const v4 = join(proj, 'videos4'); mkdirSync(v4, { recursive: true });
+  writeFileSync(join(v4, 'Main_Video01.mp4'), randomBytes(600));
+  const before = requests.length;
+  const r = await run(['--scope', 'home', '--dir', 'videos4', '--ledger', 'video-ledger.json']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^OK videos4\/Main_Video01\.mp4 -> \/media\/home\/main-video01\.mp4 \(video: preview \+ live; author this root-relative path; stored as main-video01\.mp4, the name the preview resolves — update links that use Main_Video01\.mp4\)$/m);
+  const urls = requests.slice(before).map((q) => `${q.method} ${q.url}`);
+  assert.deepEqual(urls, [`PUT /source/${ORG}/${REPO}/media/home/main-video01.mp4`, `POST /hlx/preview/${ORG}/${REPO}/main/media/home/main-video01.mp4`, `POST /hlx/live/${ORG}/${REPO}/main/media/home/main-video01.mp4`]);
 });
 await check('--dry-run needs no token, sends nothing, writes nothing', async () => {
   const before = requests.length; const ledgerBefore = readFileSync(LEDGER, 'utf8'); const mtime = statSync(LEDGER).mtimeMs;

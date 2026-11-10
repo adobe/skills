@@ -7,7 +7,9 @@ git history only (plus the branch-scoped notes in
 ## 0.37.4 — an mp4 goes to DA and is delivered on its own, authored root-relative (#160, amends #103)
 
 Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo
-per #103, so authors could not swap them in DA without a code change. A scratch-site test settled the DA route: a `content.da.live/....mp4` link still reaches the page verbatim and
+per #103. DA's Layout view (new authoring) renders the page from `main--<site>--<org>.preview.da.live`, which
+serves block code but 404s a code-bus mp4, so the hero showed blank there; authors also could not swap a video
+without a code change. A scratch-site test settled the DA route: a `content.da.live/....mp4` link still reaches the page verbatim and
 answers 401 to visitors (#103 holds for that form), but previewing and publishing the uploaded mp4 itself makes its
 root-relative content path redirect to the media bus on both `aem.page` and `aem.live` (200 `video/mp4`, byte
 ranges served).
@@ -20,7 +22,10 @@ ranges served).
   unless `--no-publish`, `live` for the file on `--branch` (default `main`; `--hlx-url` for a test double), prints
   the root-relative path to author, and records `authorUrl` + `delivered` in the ledger. A failed preview/publish is
   FAIL (uploaded, not delivered), and a re-run redelivers it; an mp4 over 36 MB is `SKIP video-too-large` with no
-  request. Manifest source fetches accept `video/*` for an mp4 entry.
+  request. Manifest source fetches accept `video/*` for an mp4 entry. A video is stored under its web path
+  (`webPath`: lowercase, runs of other characters → `-`), the only name its preview resolves (recorded:
+  `…_video01.mp4` uploaded fine and 404'd on preview); the OK line names the rename. Verified on a copy of the
+  field site: after the move the hero plays in the Layout view and on `aem.page`.
 - Tests: `da-media-upload.test.mjs` (classify limits; PUT + preview + live order on a branch; failed preview; ledger
   skip of a delivered video; `--no-publish`; over-limit skip).
 
