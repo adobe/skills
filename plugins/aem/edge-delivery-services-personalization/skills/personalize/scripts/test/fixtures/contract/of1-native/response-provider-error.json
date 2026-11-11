@@ -1,0 +1,12 @@
+{
+  "decisions": {
+    "home-hero": {
+      "choice": "c0",
+      "confidence": null,
+      "fallback": true,
+      "reason": "provider_error"
+    }
+  },
+  "model": "unknown-model",
+  "requestId": "sample-error-1"
+}

@@ -1,0 +1,21 @@
+{
+  "version": "1",
+  "page": {
+    "path": "/home"
+  },
+  "placeholders": [
+    {
+      "id": "promo",
+      "candidates": [
+        "default"
+      ]
+    }
+  ],
+  "context": {
+    "email": "jane@example.com",
+    "consent": {
+      "personalization": true
+    }
+  },
+  "mode": "client"
+}

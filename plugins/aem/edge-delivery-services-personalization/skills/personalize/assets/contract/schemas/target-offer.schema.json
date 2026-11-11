@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adobe.com/aem/eds-personalization/0.1/target-offer.schema.json",
+  "title": "Adobe Target JSON offer for a personalized section",
+  "description": "Content of the JSON offer the Target user creates for a section's location (mbox). Delivered as a JSON offer (Delivery API) or a json-content-item proposition (Web SDK). A variant offer names a fragment; the control experience of an A/B test uses { \"control\": true } so it is reported as control, not as no-match. HTML offers are not supported. Extra fields are ignored.",
+  "type": "object",
+  "properties": {
+    "fragment": {
+      "description": "Site-relative path of one of the section's listed variants.",
+      "type": "string",
+      "pattern": "^/fragments/[A-Za-z0-9/_-]+$"
+    },
+    "control": {
+      "description": "Show the section's authored content on purpose (A/B control). Display and click are still sent to Target.",
+      "const": true
+    }
+  },
+  "oneOf": [
+    {
+      "required": [
+        "fragment"
+      ],
+      "not": {
+        "required": [
+          "control"
+        ]
+      }
+    },
+    {
+      "required": [
+        "control"
+      ],
+      "not": {
+        "required": [
+          "fragment"
+        ]
+      }
+    }
+  ]
+}

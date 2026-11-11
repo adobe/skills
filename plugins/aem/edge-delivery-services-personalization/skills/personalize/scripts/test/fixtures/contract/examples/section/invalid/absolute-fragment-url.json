@@ -1,0 +1,10 @@
+{
+  "id": "hero",
+  "source": "api",
+  "variants": [
+    {
+      "name": "a",
+      "fragment": "https://evil.example/fragments/a"
+    }
+  ]
+}

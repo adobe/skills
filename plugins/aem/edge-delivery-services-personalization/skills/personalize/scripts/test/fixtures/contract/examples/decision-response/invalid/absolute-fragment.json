@@ -1,0 +1,7 @@
+{
+  "decisions": {
+    "promo": {
+      "fragment": "https://cdn.example.com/x"
+    }
+  }
+}

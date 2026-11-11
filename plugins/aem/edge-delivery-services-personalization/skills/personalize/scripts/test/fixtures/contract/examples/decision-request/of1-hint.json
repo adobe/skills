@@ -1,0 +1,42 @@
+{
+  "version": "1",
+  "page": {
+    "path": "/",
+    "locale": "en-US",
+    "title": "Espresso machines"
+  },
+  "placeholders": [
+    {
+      "id": "home-hero",
+      "candidates": [
+        "pro",
+        "deals",
+        "default"
+      ],
+      "fragments": {
+        "pro": "/fragments/personalization/home-hero/pro",
+        "deals": "/fragments/personalization/home-hero/deals"
+      },
+      "hint": "Show the hero that best matches why the visitor came: a professional buyer looking for espresso performance, or a price-conscious buyer looking for a deal.",
+      "descriptions": {
+        "pro": "Pro espresso machines: dual boilers, PID control, barista-grade results.",
+        "default": "Our flagship espresso machine range for every kitchen."
+      }
+    }
+  ],
+  "context": {
+    "geo": {
+      "country": "US",
+      "region": "CA"
+    },
+    "device": "desktop",
+    "referrer": "espresso-forum.example",
+    "params": {
+      "utm_source": "espresso-forum"
+    },
+    "consent": {
+      "personalization": true
+    }
+  },
+  "mode": "client"
+}

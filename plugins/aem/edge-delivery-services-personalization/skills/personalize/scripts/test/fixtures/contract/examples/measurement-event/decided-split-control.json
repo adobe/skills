@@ -1,0 +1,17 @@
+{
+  "event": "pzn:decided",
+  "personalization": {
+    "id": "hero-message",
+    "decisionId": "hero-message#1",
+    "variant": "default",
+    "assigned": "default",
+    "source": "split",
+    "where": "edge",
+    "outcome": "control",
+    "trigger": "initial",
+    "test": {
+      "type": "split",
+      "weights": "even"
+    }
+  }
+}

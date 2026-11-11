@@ -1,0 +1,21 @@
+{
+  "version": "1",
+  "page": {
+    "path": "/"
+  },
+  "placeholders": [
+    {
+      "id": "promo",
+      "candidates": [
+        "default"
+      ]
+    }
+  ],
+  "context": {
+    "referrer": "https://forum.example/thread/123",
+    "consent": {
+      "personalization": true
+    }
+  },
+  "mode": "client"
+}

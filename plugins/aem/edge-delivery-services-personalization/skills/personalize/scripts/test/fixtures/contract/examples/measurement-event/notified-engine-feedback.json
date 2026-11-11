@@ -1,0 +1,17 @@
+{
+  "event": "pzn:notified",
+  "personalization": {
+    "id": "home-hero",
+    "decisionId": "home-hero#1",
+    "variant": "pro",
+    "assigned": "pro",
+    "source": "api",
+    "where": "edge",
+    "outcome": "variant",
+    "notification": {
+      "product": "api",
+      "type": "seen",
+      "ok": true
+    }
+  }
+}

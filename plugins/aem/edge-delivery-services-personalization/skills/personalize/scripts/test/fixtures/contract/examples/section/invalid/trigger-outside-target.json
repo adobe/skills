@@ -1,0 +1,11 @@
+{
+  "id": "hero",
+  "source": "api",
+  "variants": [
+    {
+      "name": "a",
+      "fragment": "/fragments/personalization/hero/a"
+    }
+  ],
+  "trigger": "view"
+}

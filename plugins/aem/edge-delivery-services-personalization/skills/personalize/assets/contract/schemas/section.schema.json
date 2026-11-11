@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adobe.com/aem/eds-personalization/0.1/section.schema.json",
+  "title": "Personalized section",
+  "description": "A section's Personalization rows, as read from its DA Section Metadata. The section's own authored content is the default and is not part of this object. Cross-row checks that JSON Schema cannot express (split total <= 100, rule variants must be listed, unique variant names, unique ids per page) are listed in contract.md section 1.",
+  "type": "object",
+  "required": [
+    "id",
+    "source",
+    "variants"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "description": "Personalization row. Unique per page. Used by ?pzn=, the engine, analytics and (by default) as the Target location.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "maxLength": 64
+    },
+    "source": {
+      "description": "Personalization Source row: rules (default), split, api or target.",
+      "enum": [
+        "rules",
+        "split",
+        "api",
+        "target"
+      ]
+    },
+    "variants": {
+      "description": "Personalization Variants row: fragment paths (by convention /fragments/personalization/<id>/<variant>). The variant name is the last path segment. Required for every source: it is the allowlist.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "$ref": "#/$defs/variant"
+      },
+      "minItems": 1
+    },
+    "rules": {
+      "description": "Personalization Rule <Variant> rows, in row order. First match wins.",
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": [
+          "variant",
+          "condition"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "variant": {
+            "$ref": "#/$defs/variantName"
+          },
+          "condition": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        }
+      }
+    },
+    "split": {
+      "description": "Personalization Split row: percent per variant, in Variants order. The authored content gets the rest.",
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      }
+    },
+    "location": {
+      "description": "Personalization Location row (target only): the Target mbox when it differs from the section id.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$",
+      "maxLength": 250
+    },
+    "trigger": {
+      "description": "Personalization Trigger row (target only): makes the offer a popup.",
+      "type": "string",
+      "pattern": "^(scroll:? ?(100|[1-9]?[0-9])%?|view|load)$"
+    },
+    "display": {
+      "description": "Personalization Display row (target only).",
+      "enum": [
+        "inline",
+        "popup"
+      ]
+    },
+    "hint": {
+      "description": "Personalization Hint row (api only): what the section should achieve, in plain language, for engines that choose with a model (OF1). Public text: it is in the page HTML.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "descriptions": {
+      "description": "Personalization Description <Variant> rows (api only): what each variant offers, and Personalization Description Default for the authored content. Optional. Public text.",
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "rules"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "rules": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "split"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "rules"
+          ]
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "split"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "target"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "rules"
+          ]
+        }
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "location"
+              ]
+            },
+            {
+              "required": [
+                "trigger"
+              ]
+            },
+            {
+              "required": [
+                "display"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "source": {
+            "const": "api"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "hint"
+              ]
+            },
+            {
+              "required": [
+                "descriptions"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "variantName": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "not": {
+        "const": "default"
+      }
+    },
+    "variant": {
+      "type": "object",
+      "required": [
+        "name",
+        "fragment"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/variantName"
+        },
+        "fragment": {
+          "type": "string",
+          "pattern": "^/fragments/[A-Za-z0-9/_-]+$"
+        }
+      }
+    }
+  }
+}

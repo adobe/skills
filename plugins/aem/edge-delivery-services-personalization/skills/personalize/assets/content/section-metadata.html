@@ -1,0 +1,45 @@
+<!--
+  Personalization rows of a section, as they appear in content/<page>.html.
+  Add the rows to the section's existing section-metadata block (keep its
+  Style and other rows), or append this block as the section's last child.
+  The section's authored content stays where it is: it is the default.
+  Rows (reference/authoring-model.md):
+    Personalization                id, required, unique per page
+    Personalization Source         rules (default) | split | api | target
+    Personalization Variants       required: one fragment link per paragraph;
+                                   the variant name is the last path segment
+    Personalization Rule <Variant> rules and api (the fallback): a condition
+                                   (reference/criteria.md); first match wins;
+                                   "Rule <Variant> 2" adds another
+    Personalization Split          split only: % per variant, e.g. 40, 30
+    Personalization Hint           api only: what the section should achieve
+    Personalization Description <Variant | Default>
+                                   api only: what the variant offers (public)
+    Personalization Location       target only: an existing mbox
+    Personalization Trigger        target popup: scroll: 70% | view | load
+    Personalization Display        target: popup | inline
+  Escape & as &amp; in conditions.
+-->
+<div class="section-metadata">
+  <div>
+    <div><p>Personalization</p></div>
+    <div><p>{{ID}}</p></div>
+  </div>
+  <!-- {{SOURCE_ROW}}: omit for rules, e.g.
+  <div>
+    <div><p>Personalization Source</p></div>
+    <div><p>split</p></div>
+  </div>
+  -->
+  <div>
+    <div><p>Personalization Variants</p></div>
+    <div>
+      <p><a href="/fragments/personalization/{{ID}}/{{VARIANT}}">/fragments/personalization/{{ID}}/{{VARIANT}}</a></p>
+    </div>
+  </div>
+  <!-- {{RULE_ROWS}}: rules and api sections, one per condition, e.g. -->
+  <div>
+    <div><p>Personalization Rule {{VARIANT}}</p></div>
+    <div><p>{{CONDITION}}</p></div>
+  </div>
+</div>
