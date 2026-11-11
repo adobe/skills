@@ -1,66 +1,66 @@
 {
-  "context": "Tests whether the agent follows AEM EDS CSS guidelines when implementing block styles. Covers selector scoping, CSS custom property usage, mobile-first responsive design with modern syntax, modern color and layout approaches, and anti-patterns to avoid.",
+  "context": "The working directory is aem-boilerplate with an unstyled testimonial-carousel block (JS only). Tests whether the agent finds where block CSS goes and writes CSS that fits the project: scoped to the block, targeting the DOM decorate() produces, reusing the :root custom properties in styles/styles.css instead of duplicating their values, leaving page layout to section styles, and responsive mobile-first. Backing facts: facts.yaml (block-css-scoping, block-css-location, platform-wrapper-classes, css-targets-decorated-dom, root-custom-properties, block-layout-scope, mobile-first-breakpoints, block-variant-classes, flex-grid-gap).",
   "type": "weighted_checklist",
   "checklist": [
     {
+      "name": "Block CSS location",
+      "max_score": 6,
+      "description": "Styles are in `blocks/testimonial-carousel/testimonial-carousel.css`, the file aem.js loads for the block. Fail if they are put in styles/styles.css, another file, or inline in the JS. styles/styles.css has no `testimonial-carousel` rules, and testimonial-carousel.js sets no inline styles and injects no `<style>` or stylesheet."
+    },
+    {
       "name": "Block selector scoping",
-      "max_score": 12,
-      "description": "All CSS selectors begin with `main .{block-name}` (e.g., `main .testimonial-carousel { ... }`), not bare element names or unscoped class names"
-    },
-    {
-      "name": "No unscoped selectors",
-      "max_score": 8,
-      "description": "No CSS rules use bare element selectors (e.g., `h2 { }`, `.item { }`) that are not prefixed with `main .{block-name}`"
-    },
-    {
-      "name": "CSS custom properties for color",
       "max_score": 10,
-      "description": "Uses CSS custom property variables for at least one color value (e.g., `var(--background-color)`, `var(--text-color)`, `var(--link-color)`) rather than hardcoded color values"
+      "description": "Every selector starts with `.testimonial-carousel` or `main .testimonial-carousel` (variant compounds like `.testimonial-carousel.dark` included), or targets the platform `.testimonial-carousel-container` / `.testimonial-carousel-wrapper` for outer layout. No bare element or unscoped class selectors such as `h2 { }` or `.item { }`."
     },
     {
-      "name": "CSS custom properties for typography",
+      "name": "No platform class names inside the block",
+      "max_score": 8,
+      "description": "Elements inside the block are not named with `-wrapper` or `-container` suffixes (e.g. no `.testimonial-carousel .testimonial-carousel-wrapper`). Those classes belong to the block's parent and section; targeting them from outside to adjust outer layout is fine."
+    },
+    {
+      "name": "Targets the decorated DOM",
+      "max_score": 11,
+      "description": "Selectors match the markup decorate() produces: `ul.items`, `li.item`, `blockquote.quote`, `.byline`, and the `p` elements inside them. Fail if the CSS styles classes or structure the JS does not create (e.g. invented `.author`, `.company`, `.testimonial-card`, or the authored `:scope > div > div` rows)."
+    },
+    {
+      "name": "Uses root custom properties",
+      "max_score": 11,
+      "description": "Colors, font families and font sizes reference the custom properties defined in `:root` in the project's styles/styles.css (e.g. `var(--text-color)`, `var(--dark-color)`, `var(--body-font-family)`, `var(--heading-font-size-s)`), including in the dark variant."
+    },
+    {
+      "name": "No duplicated root values",
       "max_score": 10,
-      "description": "Uses CSS custom property variables for at least one font value (e.g., `var(--body-font-family)`, `var(--heading-font-family)`, `var(--heading-font-size-m)`) rather than hardcoded font names or sizes"
+      "description": "The CSS does not hardcode a value that already exists as a `:root` property: no `#131313`, `#505050`, `#f8f8f8`, `white` (as background), `roboto`/`roboto-condensed` font names, or the root font-size pixel values. Values with no `:root` equivalent are fine."
     },
     {
-      "name": "Mobile-first default styles",
+      "name": "No undefined custom properties",
       "max_score": 8,
-      "description": "Default (non-media-query) CSS styles represent mobile layout; larger screen styles are added inside media queries"
+      "description": "Every `var(--x)` used is either defined in styles/styles.css or declared in the block CSS itself. No guessed names such as `var(--primary-color)` or `var(--font-body)` that exist in neither."
     },
     {
-      "name": "Modern media query syntax",
-      "max_score": 8,
-      "description": "Media queries use range syntax `(width >= 600px)` or `(width >= 900px)` rather than legacy `(min-width: Xpx)` syntax"
-    },
-    {
-      "name": "Standard breakpoints",
-      "max_score": 6,
-      "description": "Media queries use 600px for tablet and/or 900px for desktop breakpoints (not arbitrary values)"
-    },
-    {
-      "name": "No !important usage",
-      "max_score": 8,
-      "description": "The CSS file does NOT contain any `!important` declarations"
-    },
-    {
-      "name": "Variant CSS pattern",
-      "max_score": 6,
-      "description": "If variants (dark, wide, etc.) are styled, the selector combines block and variant classes: `main .{block-name}.{variant}` pattern"
-    },
-    {
-      "name": "No -wrapper/-container suffix inside block",
-      "max_score": 6,
-      "description": "Class names used inside the block do NOT end in `-wrapper` or `-container` (to avoid conflict with platform-generated wrapper divs)"
-    },
-    {
-      "name": "Gap over margin hacks",
-      "max_score": 8,
-      "description": "Flex or grid layouts use the `gap` property for spacing between items, NOT margin-based spacing tricks (e.g., `margin-left: -1rem` on container)"
-    },
-    {
-      "name": "No hardcoded font families",
+      "name": "Section grid not overridden",
       "max_score": 10,
-      "description": "Font-family values use CSS custom properties (e.g., `var(--body-font-family)`) and NOT hardcoded font names like `'Arial'`, `'Lato'`, or `sans-serif`"
+      "description": "The block does not fight the page grid set by global section styles (`main > .section > div`). The full-width dark background is done through the platform classes, e.g. `.testimonial-carousel-container:has(.testimonial-carousel.dark)` or `.testimonial-carousel-wrapper`, and the testimonials keep the section's content width. Fail on viewport hacks on the block root or its children (`width: 100vw`, `margin-inline: calc(50% - 50vw)`, negative margins) or on overriding `max-width`/centering of the block root. Padding inside the block, including on the block root, is fine."
+    },
+    {
+      "name": "Gap for item spacing",
+      "max_score": 6,
+      "description": "Spacing between the grid/flex items uses `gap`. Fail on margins on the items or negative margins on the list to create gutters."
+    },
+    {
+      "name": "Mobile-first",
+      "max_score": 8,
+      "description": "Default (unqueried) styles give the single-column mobile layout; wider layouts are added in `min-width` or `width >=` media queries. No max-width-only queries for the core layout."
+    },
+    {
+      "name": "Project breakpoints",
+      "max_score": 7,
+      "description": "Media query widths come from the project (900px, as used in styles/styles.css) or the 600px/900px/1200px convention. Fail on arbitrary values such as 768px or 1024px."
+    },
+    {
+      "name": "Variant as block class",
+      "max_score": 5,
+      "description": "The dark variant is styled with a compound selector on the block, `.testimonial-carousel.dark` (optionally prefixed with `main `), not an attribute, a descendant `.dark`, or a separate block name."
     }
   ]
 }
