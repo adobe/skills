@@ -283,7 +283,8 @@ replica and dynamics skills point to it. A first version sat in the validate-and
 pages. A recorded run showed that it steered nothing: four scripts the agent wrote opened the source with
 `chromium.launch()`.
 
-The rule is prose. Nothing checks the scripts in a project.
+One check backs the rule. `ledger.mjs … end` names the scripts written in the phase that import Playwright
+themselves. It is a warning, after the script ran. It does not stop the script.
 
 ### 7. Docs and cleanup
 

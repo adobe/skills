@@ -40,8 +40,12 @@
 // phase (case-insensitive; dashes, underscores and spaces are one separator), one warning on stderr —
 // never an exit-code change, even under --strict (a recorded run's journal began at its second session;
 // another's had one section for the whole run). An absent journal is not checked.
+// The own-browser check: on `end`, the scripts under <dir> written since the phase's `start` that import
+// playwright themselves are named in one warning — never an exit-code change (a recorded run wrote four
+// scripts that opened the source site with chromium.launch(), past the pacing and the block detection of
+// stardust/scripts/stardust/browser.mjs). The script copies in <dir>/scripts/ are not read.
 // Exit codes: 0 ok · 2 usage or strict violation.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -183,7 +187,8 @@ own form (aliases and case are normalised). Unknown skill/phase → warning on s
 written; with --strict → exit 2, nothing written. Exit codes: 0 ok, 2 usage/strict.
 An end needs an open start (same skill + phase + track, no later end): missing → warning, or exit 2 under
 --strict. Write the start line FIRST, before any script of the phase runs. On end, a <dir>/${JOURNAL_NAME}
-without a "## " heading naming the phase gets a warning (never an exit-code change).
+without a "## " heading naming the phase gets a warning (never an exit-code change). So does a script
+under <dir>, written in the phase, that imports playwright itself: it gets its browser from browser.mjs.
 Known skills: ${Object.keys(PHASES).join(', ')}
 Known phases per skill (ledger form; accepted aliases in parentheses):
 ${phaseTableText()}`;
@@ -245,17 +250,23 @@ export function buildLine({ skill, phase, event, track, detail, artifact, next, 
 // a hand-written alias or a differently-cased phase still pairs with its end. An untagged end pairs only
 // with untagged lines; a tagged one only with lines of its own track.
 const trackOf = (l) => (l && l.track ? String(l.track).toLowerCase() : null);
-export function checkOpenStart(lines, skill, phase, track = null) {
+/** The open `start` line for (skill, phase, track), or null. */
+export function openStart(lines, skill, phase, track = null) {
   const want = String(phase).toLowerCase();
   const wantTrack = track ? String(track).toLowerCase() : null;
-  let open = false;
+  let open = null;
   for (const l of lines) {
     if (!l || String(l.skill || '').toLowerCase() !== skill) continue;
     if (String(canonicalPhase(skill, String(l.phase || ''))).toLowerCase() !== want) continue;
     if (trackOf(l) !== wantTrack) continue;
-    if (l.event === 'start') open = true;
-    else if (l.event === 'end') open = false;
+    if (l.event === 'start') open = l;
+    else if (l.event === 'end') open = null;
   }
+  return open;
+}
+export function checkOpenStart(lines, skill, phase, track = null) {
+  const wantTrack = track ? String(track).toLowerCase() : null;
+  const open = openStart(lines, skill, phase, track);
   const t = wantTrack ? ` --track ${wantTrack}` : '';
   return open ? null : `end for ${skill} ${phase}${wantTrack ? ` (track ${wantTrack})` : ''} has no matching start (no earlier start line for this skill and phase${wantTrack ? ' on this track' : ''} without a later end) — the start line is the FIRST command of a phase, before any script runs: node ledger.mjs ${bareSkill(skill)} ${phase} start${t}`;
 }
@@ -275,6 +286,50 @@ export function checkJournalSection(dir, phase) {
   const headings = readFileSync(file, 'utf8').split('\n').filter((l) => /^## /.test(l)).map((l) => foldName(l.slice(3)));
   if (headings.some((h) => h.includes(want))) return null;
   return `${file} has no "## " section naming ${phase} — a journal section is part of every phase end: "## ${phase} — <what happened> (<date>)"`;
+}
+
+// The own-browser check for `end`. A script that uses browser.mjs never imports playwright, so the import is
+// the whole test (the forms evals/lint/browser-front-door.mjs knows). Not read: <dir>/scripts (the script
+// copies, whose tests may start browsers), node_modules, assets (captured site code), files above 256 KB.
+const IMPORTS_PLAYWRIGHT = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\(\s*|\bresolve\(\s*)['"`]playwright(?:-core)?['"`]/;
+const COMMENT_LINE = /^\s*(?:\/\/|\*|#)/;
+const OWN_BROWSER_SKIP = new Set(['node_modules', 'assets']);
+const OWN_BROWSER_MAX_BYTES = 256 * 1024;
+const OWN_BROWSER_LISTED = 5;
+
+/** Scripts under `dir`, changed at or after `sinceMs`, that import playwright themselves. Sorted paths. */
+export function findOwnBrowserScripts(dir, sinceMs = 0) {
+  const found = [];
+  const walk = (d, top) => {
+    let entries;
+    try { entries = readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) {
+        if (!OWN_BROWSER_SKIP.has(e.name) && !(top && e.name === 'scripts')) walk(p, false);
+      } else if (e.isFile() && /\.(?:mjs|cjs|js)$/.test(e.name)) {
+        let st;
+        try { st = statSync(p); } catch { continue; }
+        if (st.mtimeMs < sinceMs || st.size > OWN_BROWSER_MAX_BYTES) continue;
+        let text;
+        try { text = readFileSync(p, 'utf8'); } catch { continue; }
+        if (text.split('\n').some((l) => !COMMENT_LINE.test(l) && IMPORTS_PLAYWRIGHT.test(l))) found.push(p);
+      }
+    }
+  };
+  walk(dir, true);
+  return found.sort();
+}
+
+// Null without a finding; otherwise the warning text, one line. `since` is the phase's start `ts`: with it,
+// each script is named once, at the end of the phase that wrote it. A warning only.
+export function checkOwnBrowserScripts(dir, since = null) {
+  const sinceMs = Date.parse(since);
+  const found = findOwnBrowserScripts(dir, Number.isNaN(sinceMs) ? 0 : sinceMs);
+  if (!found.length) return null;
+  const more = found.length - OWN_BROWSER_LISTED;
+  const listed = found.slice(0, OWN_BROWSER_LISTED).join(', ') + (more > 0 ? `, +${more} more` : '');
+  return `${found.length} script(s) import playwright themselves (${listed}) — a script you write gets its browser from stardust/scripts/stardust/browser.mjs (skills/stardust/SKILL.md § Setup, step 7)`;
 }
 
 export const ledgerPath = (dir) => join(dir, FILE_NAME);
@@ -372,15 +427,22 @@ export function main(argv) {
     console.error(`ledger: phase "${line.phase}" written as "${canon}" (the table's form for ${line.skill})`);
     line.phase = canon;
   }
+  const prior = event === 'end' ? readLines(opts.dir).lines : [];
   const warnings = [
     checkPhase(line.skill, line.phase),
     event === 'blocked' && !line.detail ? 'blocked without --detail (the contract wants the blocker reason there)' : null,
-    event === 'end' ? checkOpenStart(readLines(opts.dir).lines, line.skill, line.phase, line.track) : null,
+    event === 'end' ? checkOpenStart(prior, line.skill, line.phase, line.track) : null,
   ].filter(Boolean);
   if (warnings.length && opts.strict) throw new UsageError(`strict: ${warnings.join('; ')} — nothing written`);
   for (const w of warnings) console.error(`ledger: warning: ${w}`);
-  // The journal check is advisory: printed after the strict gate, so a refused end stays one stderr line.
-  if (event === 'end') { const j = checkJournalSection(opts.dir, line.phase); if (j) console.error(`ledger: warning: ${j}`); }
+  // The journal and own-browser checks are advisory: printed after the strict gate, so a refused end stays one stderr line.
+  if (event === 'end') {
+    const advisory = [
+      checkJournalSection(opts.dir, line.phase),
+      checkOwnBrowserScripts(opts.dir, openStart(prior, line.skill, line.phase, line.track)?.ts),
+    ].filter(Boolean);
+    for (const a of advisory) console.error(`ledger: warning: ${a}`);
+  }
   appendLine(opts.dir, line);
   console.log(JSON.stringify(line));
   return 0;

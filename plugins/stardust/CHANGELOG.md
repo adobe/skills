@@ -21,6 +21,7 @@ launch mode, wait strategy and failure message, and a fix to one never reached t
 - **A script the agent writes uses it too.** Field check (a recorded hands-off replica run on this version): four
   scripts the agent wrote opened the source with `chromium.launch()`. The rule, with a recipe that works for a live
   page and a local one, moved to Setup step 7, which every run reads; replica and dynamics point to it.
+  `ledger.mjs … end` names, in one warning, the scripts written in that phase that import Playwright themselves.
 - **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
   crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.
 - **A script run from the plugin tree finds Playwright in the project at the working directory first**, then by
