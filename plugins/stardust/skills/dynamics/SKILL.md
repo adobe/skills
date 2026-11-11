@@ -77,7 +77,8 @@ From `reference/patterns.md` (catalogue + contracts + embedded example mechanism
 authoring contract before code · no owner input, no waiting (ship the interim tier, name the
 decision) · existing library first (feed it, do not fork it) · decided-out is explicit. Each phase
 ends with the flow verified on the published origin at 1440 and 360, a parity row, a journal entry
-and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. **The query index
+and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. A flow script you write
+gets its browser from `browser.mjs` (`../stardust/SKILL.md` § Setup, step 7). **The query index
 comes from `helix-query.yaml` in the code branch** — commit, push, publish live, poll — never from a
 configuration-service write; the sheet-backed interim index only when the branch is not writable
 (`reference/listings.md` § Getting an index at all). **Search** follows `reference/patterns.md`

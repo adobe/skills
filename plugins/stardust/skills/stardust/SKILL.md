@@ -75,7 +75,17 @@ sub-commands that delegate the actual design work to **impeccable**.
    § Versioning.
 7. **Copy this skill's `scripts/` dir to `stardust/scripts/stardust/`** before any
    other skill's script runs: `ledger.mjs`, `state.mjs` and `browser.mjs`, the
-   one entry to the browser for every script.
+   one entry to the browser for every script. A script you write gets its
+   browser there too, never from `chromium.launch()`:
+
+   ```js
+   import { pathToFileURL } from 'node:url';
+   const { openBrowser, newLiveContext, gotoLive } = await import(pathToFileURL('stardust/scripts/stardust/browser.mjs').href);
+   const browser = await openBrowser({ mode: 'chrome' });
+   const context = await newLiveContext(browser, { viewport: { width: 1440, height: 900 }, stateUrl: url });
+   const page = await context.newPage();
+   await gotoLive(page, url); // paced on a live site. A bot wall throws.
+   ```
 
 ## Routing
 
@@ -444,16 +454,8 @@ test suites verify code correctness; only browser rendering verifies
 For HTML the user will see (prototypes, migrated pages, the brand-review
 HTML):
 
-1. Render in Playwright (file:// for static, or local dev server). A probe you
-   write opens its pages through `stardust/scripts/stardust/browser.mjs`:
-
-   ```js
-   import { pathToFileURL } from 'node:url';
-   const { openBrowser, newPage, goto } = await import(pathToFileURL('stardust/scripts/stardust/browser.mjs').href);
-   const browser = await openBrowser({ mode: 'plain' });
-   const page = await newPage(browser, { viewport: { width: 1440, height: 900 } });
-   await goto(page, url, { waitUntil: 'networkidle' });
-   ```
+1. Render in Playwright (file:// for static, or local dev server), through
+   `browser.mjs` (§ Setup, step 7).
 2. Capture at three viewports — desktop **1440×900**, tablet **768×1024**,
    mobile **390×844**:
    - Full-page screenshot.

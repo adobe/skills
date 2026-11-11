@@ -274,9 +274,16 @@ Each stage is one pull request.
 
 ### 6. Probes the agent writes
 
-The lint covers plugin scripts only. The master skill gets one rule, in one place: a probe the agent writes opens its
-pages through `browser.mjs`. A short example goes with the rule. The existing "never hand-roll an instrument" rules
+The lint covers plugin scripts only. The master skill gets one rule, in one place: a script the agent writes gets its
+browser from `browser.mjs`. A short example goes with the rule. The existing "never hand-roll an instrument" rules
 stay where they are.
+
+The rule lives in the master Setup, in the step that copies the master scripts. Every run reads that step. The
+replica and dynamics skills point to it. A first version sat in the validate-and-fix loop, with an example for local
+pages. A recorded run showed that it steered nothing: four scripts the agent wrote opened the source with
+`chromium.launch()`.
+
+The rule is prose. Nothing checks the scripts in a project.
 
 ### 7. Docs and cleanup
 

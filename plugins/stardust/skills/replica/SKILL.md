@@ -85,7 +85,9 @@ section per call); captured CSS through `css-rules.mjs`, capture JSON through
 `json-query.mjs` (values that feed a command from `--tsv`/`--path`, never the
 table), captured HTML through `html-slice.mjs`; instrument output through
 `run-bg.mjs wait` and `log --grep`, never `cat`; live-vs-prototype boxes
-through `measure.mjs`, never an authored probe; images one crop per fact,
+through `measure.mjs`, never an authored probe; any other script that opens
+a page gets its browser from `browser.mjs` (`../stardust/SKILL.md` § Setup,
+step 7); images one crop per fact,
 never a stitched page or the live/build/diff triplet (the extract thumbnail,
 `thumb.mjs`, is the one exception); script flags from
 `../stardust/reference/scripts-index.md` first, then `--help`, never the

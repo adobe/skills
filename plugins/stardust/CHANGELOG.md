@@ -18,6 +18,9 @@ launch mode, wait strategy and failure message, and a fix to one never reached t
   `stardust/scripts/stardust/` before any other skill's script runs. The skills that listed the diff scripts only for
   `live-session.mjs` (reskin, deploy) now name the master copy instead; replica still copies the diff scripts for
   the gates that import them.
+- **A script the agent writes uses it too.** Field check (a recorded hands-off replica run on this version): four
+  scripts the agent wrote opened the source with `chromium.launch()`. The rule, with a recipe that works for a live
+  page and a local one, moved to Setup step 7, which every run reads; replica and dynamics point to it.
 - **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
   crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.
 - **A script run from the plugin tree finds Playwright in the project at the working directory first**, then by
