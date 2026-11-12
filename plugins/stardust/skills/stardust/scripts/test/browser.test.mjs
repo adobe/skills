@@ -161,5 +161,44 @@ await check('loadPlaywright, installed but failing to load: PLAYWRIGHT_BROKEN na
   assert.equal(cause, 'boom at init');
 });
 
+// a fake playwright package under <root>/node_modules whose entry file is `indexJs`
+const fakePlaywright = (root, indexJs) => {
+  writeFileSync(join(root, 'package.json'), '{"name":"p","type":"module"}');
+  const pkg = join(root, 'node_modules', 'playwright'); mkdirSync(pkg, { recursive: true });
+  writeFileSync(join(pkg, 'package.json'), '{"name":"playwright","type":"module","main":"index.js"}');
+  writeFileSync(join(pkg, 'index.js'), `${indexJs}\n`);
+};
+const failure = (r) => { assert.equal(r.status, 1, r.stdout + r.stderr); return JSON.parse(r.stdout); };
+
+await check('loadPlaywright, only beside the scripts: found from the script\'s own location', () => {
+  const copy = copyFront(); const empty = tempDir();
+  fakePlaywright(copy, "export const chromium = { fake: 'bare' };");
+  const r = childLoad(empty, copy);
+  assert.equal(r.stdout.trim(), 'bare', r.stderr);
+});
+
+await check('loadPlaywright, installed with a missing dependency: PLAYWRIGHT_BROKEN names the dependency, in the project and beside the scripts', () => {
+  const needsCore = "import 'playwright-core';\nexport const chromium = { fake: 1 };";
+  const inProject = copyFront(); const project = tempDir(); fakePlaywright(project, needsCore);
+  const besideScripts = copyFront(); const empty = tempDir(); fakePlaywright(besideScripts, needsCore);
+  for (const r of [childLoad(project, inProject), childLoad(empty, besideScripts)]) {
+    const { code, message, cause } = failure(r);
+    assert.equal(code, 'PLAYWRIGHT_BROKEN', message);
+    assert.ok(message.includes('playwright-core'), message);
+    assert.ok(!message.includes('npm i -D'), message);
+    assert.ok(String(cause).includes('playwright-core'), String(cause));
+  }
+});
+
+await check('loadPlaywright, a project copy that fails to load is not replaced by the copy beside the scripts', () => {
+  const copy = copyFront(); const project = tempDir();
+  fakePlaywright(project, 'throw new Error("project copy broke at init");');
+  fakePlaywright(copy, "export const chromium = { fake: 'bare' };");
+  const { code, message } = failure(childLoad(project, copy));
+  assert.equal(code, 'PLAYWRIGHT_BROKEN');
+  assert.ok(message.includes('project copy broke at init'), message);
+  assert.ok(message.includes(project), 'the message names the copy that failed');
+});
+
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nbrowser: all ${checks} checks passed`);
 process.exit(failed ? 1 : 0);

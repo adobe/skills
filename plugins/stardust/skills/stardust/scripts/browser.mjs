@@ -16,30 +16,33 @@ const INSTALL_LINE = 'npm i -D playwright pixelmatch pngjs cheerio --legacy-peer
 
 let playwrightModule;
 
-async function importFromWorkingDirectory() {
-  const require = createRequire(join(process.cwd(), 'package.json'));
-  return import(pathToFileURL(require.resolve('playwright')).href);
+const notFound = (error) => error?.code === 'MODULE_NOT_FOUND' || error?.code === 'ERR_MODULE_NOT_FOUND';
+const firstLine = (error) => String(error?.message ?? error).split('\n')[0];
+function broken(where, cause) {
+  return Object.assign(new Error(`playwright is installed (${where}) but failed to load: ${firstLine(cause)}`, { cause }), { code: 'PLAYWRIGHT_BROKEN' });
 }
 
-const notInstalled = (error) => error?.code === 'MODULE_NOT_FOUND' || error?.code === 'ERR_MODULE_NOT_FOUND';
-
-async function importPlaywright() {
-  let mod;
-  try {
-    mod = await importFromWorkingDirectory();
-  } catch (fromWorkingDirectory) {
-    try {
-      mod = await import('playwright');
-    } catch (bare) {
-      // an installed copy that throws while loading needs its own error, not the install line
-      const broken = [fromWorkingDirectory, bare].find((e) => !notInstalled(e));
-      const error = broken
-        ? new Error(`playwright is installed but failed to load: ${String(broken?.message ?? broken).split('\n')[0]}`, { cause: broken })
-        : new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} or from ${process.cwd()}. From the project root run: ${INSTALL_LINE}`, { cause: bare });
-      error.code = broken ? 'PLAYWRIGHT_BROKEN' : 'PLAYWRIGHT_MISSING';
-      throw error;
-    }
+// Where playwright resolves from, or null when it is not installed there. Resolving loads nothing, so "not
+// found" here is about playwright itself, never about one of its dependencies.
+function resolveFrom(where, resolve) {
+  try { return resolve(); } catch (error) {
+    if (notFound(error)) return null;
+    throw broken(where, error);
   }
+}
+
+// The project at the working directory first, then this file's own location. The first copy that resolves
+// is the one that loads: a copy that fails to load is an error, never replaced by the other one (another
+// playwright brings another bundled browser).
+async function importPlaywright() {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const entry = resolveFrom(process.cwd(), () => ({ where: process.cwd(), url: pathToFileURL(createRequire(join(process.cwd(), 'package.json')).resolve('playwright')).href }))
+    ?? resolveFrom(here, () => ({ where: here, url: import.meta.resolve('playwright') }));
+  if (!entry) {
+    throw Object.assign(new Error(`playwright is not importable from ${here} or from ${process.cwd()}. From the project root run: ${INSTALL_LINE}`), { code: 'PLAYWRIGHT_MISSING' });
+  }
+  let mod;
+  try { mod = await import(entry.url); } catch (error) { throw broken(entry.where, error); }
   return mod.chromium ? mod : mod.default;
 }
 

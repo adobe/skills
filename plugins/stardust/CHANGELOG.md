@@ -27,7 +27,8 @@ launch mode, wait strategy and failure message, and a fix to one never reached t
 - **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
   crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.
 - **A script run from the plugin tree finds Playwright in the project at the working directory first**, then by
-  `import('playwright')`.
+  `import('playwright')`. The first copy that resolves is the one that loads. A copy that fails to load stops the
+  script with its cause (a missing dependency included); it is never replaced by the other copy.
 - **No script changed its browser.** Each keeps its launch mode, launch options, context options and navigation options.
 - **`evals/lint/browser-front-door.mjs`** fails on a script under `skills/` that imports Playwright (`from`,
   `import`, `import()`, `require()`, `resolve()`, `playwright` or `playwright-core`), launches or connects a

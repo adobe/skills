@@ -133,8 +133,9 @@ Dropped:
 ### 2. What the front door owns
 
 - **Loading Playwright.** One loader: the project at the working directory first (its `package.json` via
-  `createRequire`), then `import('playwright')`. On failure it prints the install line from extract § Setup. The
-  four helper loaders go away.
+  `createRequire`), then `import('playwright')`. The first copy that resolves is the one that loads. If none
+  resolves, the error carries the install line from extract § Setup. If the copy fails to load, the error carries
+  the cause, and no other copy replaces it. The four helper loaders go away.
 - **Opening browsers.** `openBrowser({ mode, launchOptions })` returns the browser. The modes are today's:
   - `chrome`: real Chrome, bundled Chromium as fallback
   - `headed`: today's `--headed`
