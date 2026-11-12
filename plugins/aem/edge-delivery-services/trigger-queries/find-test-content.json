@@ -110,6 +110,27 @@
       "should_trigger": false,
       "skill": "find-test-content",
       "split": "test"
+    },
+    {
+      "id": "y-change-needs-regression-pages",
+      "query": "I'm changing how the `columns` block handles its `contained` variant in blocks/columns. Which existing pages on main--helix-website--adobe.aem.page should I load to check I haven't broken anything?",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "train"
+    },
+    {
+      "id": "y-restyle-existing-block",
+      "query": "Restyle the `cards` block's `alternate` variant. First work out which real pages on our site already use that variant so I can test against them.",
+      "should_trigger": true,
+      "skill": "find-test-content",
+      "split": "test"
+    },
+    {
+      "id": "n-no-content-local-sandbox",
+      "query": "There is no site content yet for the new `timeline` block. Make me a draft page under ./content/drafts so I can preview the block on `aem up`.",
+      "should_trigger": false,
+      "skill": "find-test-content",
+      "split": "test"
     }
   ]
 }
