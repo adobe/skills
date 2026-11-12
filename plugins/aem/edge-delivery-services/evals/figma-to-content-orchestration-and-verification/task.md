@@ -13,6 +13,8 @@ A Figma MCP is connected, a DA token is available, and a browser (`aem up` local
 
 ## Output Specification
 
+Write your response to `ANSWER.md` in the project root.
+
 Respond as the agent would when turning the confirmed plan into an execution + verification plan. Your response must:
 
 1. List every sub-skill this plan requires the agent to **invoke** (not merely summarize from memory), and map each to the section(s) that require it.
@@ -20,4 +22,4 @@ Respond as the agent would when turning the confirmed plan into an execution + v
 3. Describe the pre-publish verification: what can be checked **server-side** (curl of the fragment + assets) vs. what requires a **browser**, and name the specific checks a curl can NOT establish.
 4. State the rule for reporting the page when the browser stage cannot run.
 
-Do NOT execute anything. Do NOT write code or HTML. Do NOT make tool calls beyond planning. Produce the execution/verification plan only.
+Do NOT execute anything. Do NOT write code or HTML. Do NOT modify any file other than `ANSWER.md`. Produce the execution/verification plan only.

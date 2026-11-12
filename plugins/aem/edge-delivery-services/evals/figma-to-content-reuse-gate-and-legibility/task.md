@@ -8,6 +8,8 @@ But in the design, this section sits on a **dark full-bleed background**, and th
 
 ## Output Specification
 
+Write your response to `ANSWER.md` in the project root.
+
 Respond as the agent would when deciding how to handle this section. Your response must:
 
 1. State whether this section can reuse the existing `cards` block **as-is**, and why or why not.
@@ -15,4 +17,4 @@ Respond as the agent would when deciding how to handle this section. Your respon
 3. State the correct resolution.
 4. Describe the **legibility** check that must pass before this section's page can be published — specifically which text elements it must cover.
 
-Do NOT execute anything. Do NOT write code or HTML. Do NOT modify files. Produce the decision and its rationale only.
+Do NOT execute anything. Do NOT write code or HTML. Do NOT modify any file other than `ANSWER.md`. Produce the decision and its rationale only.
