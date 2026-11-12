@@ -1,8 +1,10 @@
 ---
 name: search-adobe-developer-docs
 description: Use when the user asks any question about Adobe developer products, APIs, SDKs, platform concepts, or best practices — phrases like "what is App Builder", "how do I set up webhooks", "what authentication options does Adobe X support", "how do I deploy a runtime action", "what is a product profile", "how do I create an OAuth credential", "explain Express Add-ons", "search Adobe docs", "look up Adobe documentation", "find me Adobe developer docs".
-license: Apache-2.0
 ---
+
+**Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).
+
 
 # Search Adobe Developer Docs
 

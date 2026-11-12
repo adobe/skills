@@ -1,8 +1,10 @@
 ---
 name: io-events-filtering
 description: Use when the user wants to filter events, test event registrations with sample events, or manage subscriber defined filters — phrases like "add filter", "create filter", "subscriber filter", "filter events", "define filter", "filter registration", "validate filter", "update filter", "edit filter", "delete filter", "remove filter", "show my filters", "list filters", "show sample event", "test my registration", "send test event", "what does the event look like", "sample payload", "send a test event", "view sample payload", "custom event payload", "send custom event".
-license: Apache-2.0
 ---
+
+**Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).
+
 
 # I/O Events — Filtering & Sample Events
 **Before starting:** invoke the `io-events-registration` skill.
@@ -270,12 +272,9 @@ Return to Step F4 if the user wants to fix it.
 
 ---
 
-### Step F6 — Confirm and collect metadata
+### Step F6 — Resolve filter metadata
 
-Once the user confirms, ask:
-
-1. *"What would you like to name this filter?"* (3–80 characters)
-2. *"Add a short description? (optional, up to 250 characters)"*
+Once the user confirms creation in Step F5, apply the [shared naming rules](references/common-rules.md#names-titles-and-descriptions) using the validated filter's conditions as context.
 
 ---
 
@@ -357,9 +356,9 @@ Display the current filter, then call `get_subscriber_filter_patterns` and show 
 
 **Step U6 — Validate** — same as Step F5. Loop back to Step U5 if invalid.
 
-**Step U7 — Update name and description**
+**Step U7 — Preserve or explicitly update metadata**
 
-Pre-fill with the current name and description. Ask if the user wants to keep or change them.
+Apply the [shared naming rules](references/common-rules.md#names-titles-and-descriptions) for metadata updates. If a requested metadata change is ambiguous, ask only for the missing information.
 
 **Step U8 — Call update**
 
@@ -390,10 +389,6 @@ Always prefer fetching from official docs over guessing.
 
 ## Rules
 
-- **Do not assume anything not explicitly described in this skill** — if a behavior, field, or API detail is unclear or not covered here, call `search_adobe_docs` to look it up in official Adobe documentation before proceeding.
-- Always show name and ID together — never show a raw ID alone
-- Never show `client_secret` values
 - Only one Subscriber Defined Filter is allowed per registration — always call `get_subscriber_filters` before creating and redirect to update if one already exists
 - Subscriber Defined Filters only work on registrations with `event_delivery_format: "cloud_events_v1"` — providers with `"adobe_io"` format or AWS EventBridge registrations are not eligible
-- Never guess `event_code` or `provider_id` — always fetch from the API
 - For CloudEvents sample events: `type` and `source` are read-only (enforced by Adobe) — all other fields including `data` are editable

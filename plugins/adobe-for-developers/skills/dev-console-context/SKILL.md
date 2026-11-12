@@ -1,8 +1,10 @@
 ---
 name: dev-console-context
 description: Use when the user mentions Developer Console, projects, workspaces, credentials, or orgs — or uses phrases like "show my projects", "list workspaces", "get credentials", "switch project", "which org", "my org", "console", "navigate", "explore", "what projects do I have", "show credentials", "what workspace". Also use as the first step of the I/O Events registration and filtering flows — phrases like "subscribe to events", "register for events", "set up webhook", "event registration", "I/O Events", "add filter", "subscriber filter", "test my registration", "sample event" — to establish the org/project/workspace/credential context those flows are scoped to. Maintains a live breadcrumb showing exactly where the user is at all times.
-license: Apache-2.0
 ---
+
+**Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).
+
 
 # Console Context Navigator
 
@@ -31,6 +33,8 @@ Rules:
 Call `get_organisations`. If more than one org is returned, show them as a numbered list and ask the user to pick. If only one, select it automatically and note: *"Using org: {orgName}"*.
 
 ### Step 2 — Project
+If the user wants to create a new project, do not list existing projects; hand off to `dev-console-create-project`, preserving the selected org context.
+
 Ask: *"Do you want to see all projects or only yours?"*
 - All → `get_projects` with `filterBy: "all"`
 - Mine → `get_projects` with `filterBy: "me"`
@@ -80,11 +84,5 @@ Always prefer fetching from official docs over guessing.
 
 ## Rules
 
-- Always show name and ID together — never show an ID without its name
-- Never ask for information you can fetch automatically
-- Whenever any tool response includes a `console_url` field, always display it as a clickable link:
-  ```
-  🔗 View in Adobe Developer Console: {console_url}
-  ```
 - If the user says something like *"switch project"* or *"go back"*, reset from that level and re-navigate
 - This skill sets context — it does not subscribe APIs. For subscribing, hand off to `/dev-console-subscribe-api` with the established context
