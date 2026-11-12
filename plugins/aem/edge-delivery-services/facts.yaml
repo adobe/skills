@@ -1032,3 +1032,90 @@
     - skills/building-blocks/SKILL.md
     - skills/code-review/SKILL.md
     - evals/code-review-eds-pr
+
+- id: block-css-location
+  claim: >-
+    aem.js loads a block's styles from `blocks/{block}/{block}.css` when the
+    block is on the page.
+  question: Where does the CSS for an EDS block named `cards` live, and what loads it?
+  source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+
+- id: css-targets-decorated-dom
+  claim: >-
+    Block CSS styles the DOM after decorate() runs, not the authored row/cell divs.
+  question: Does an EDS block's CSS target the authored markup or something else?
+  source: >-
+    aem-boilerplate 5cea543, scripts/aem.js loadBlock() runs CSS load and
+    decorate() together and marks the block loaded after both
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+
+- id: root-custom-properties
+  claim: >-
+    Colors, font families and font sizes are custom properties declared on
+    `:root` in styles/styles.css (`:root, :host` in projects embedded with
+    aem-embed, which loads styles.css into a shadow root where `:root` matches
+    nothing). Blocks reference them instead of repeating their values, which
+    drift.
+  question: >-
+    Our EDS site is embedded on a partner page with aem-embed, and the block
+    colors and fonts fall back to browser defaults there. Why, and what's the
+    fix?
+  source: >-
+    aem-boilerplate 5cea543, styles/styles.css :root; adobe/aem-embed
+    scripts/aem-embed.js
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - skills/building-blocks/SKILL.md
+
+- id: block-variant-classes
+  claim: >-
+    Block options are extra classes on the block element (`Columns (dark, wide)`
+    → `class="columns dark wide"`), styled as `.{block}.{option}`. An option
+    that only changes looks needs no JS.
+  question: How do authors create a variant of an EDS block, and how is it styled?
+  source: https://www.aem.live/developer/markup-sections-blocks (block options)
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+    - evals/javascript-block-decoration-patterns
+
+- id: css-logical-properties
+  claim: >-
+    Use logical properties: `padding-inline`, `margin-block`,
+    `inset-inline-start` instead of left/right/top/bottom physical ones.
+  question: >-
+    In block CSS, how do you set horizontal padding and position an absolutely
+    positioned element's start edge?
+  used_by: []
+
+- id: flex-grid-gap
+  claim: >-
+    Space flex and grid items with `gap`, not margins on the items or negative
+    margins on the container.
+  question: How do you space items in a flex or grid layout?
+  used_by:
+    - evals/css-block-scoping-and-custom-properties
+
+- id: block-js-contract
+  claim: >-
+    aem.js imports `blocks/{block}/{block}.js` and awaits its default export,
+    called with the block element. It may be async.
+  question: >-
+    What does the JavaScript file of an EDS block named `cards` look like, and
+    how does the platform call it?
+  source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
+  used_by:
+    - evals/javascript-block-decoration-patterns
+
+- id: programmatic-blocks
+  claim: >-
+    To add a block from code, `buildBlock(name, cells)` creates it; it only
+    renders after `decorateBlock()` and `loadBlock()`, unless it is built in
+    `buildAutoBlocks()` before the page's blocks are decorated.
+  question: >-
+    How do you create and render an EDS block from JavaScript instead of
+    authoring it?
+  source: aem-boilerplate 5cea543, scripts/aem.js, scripts/scripts.js decorateMain()
+  used_by: []

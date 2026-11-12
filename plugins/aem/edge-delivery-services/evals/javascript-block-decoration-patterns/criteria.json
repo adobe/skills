@@ -1,66 +1,56 @@
 {
-  "context": "Tests whether the agent follows AEM EDS JavaScript guidelines when implementing block decoration. Covers the required function signature and export pattern, DOM manipulation best practices (re-use elements, scoped queries, no innerHTML, no orphan elements), import syntax, code style, and JSDoc documentation.",
+  "context": "The working directory is aem-boilerplate with no feature-highlights block. Tests whether the agent builds the block's decorate() to fit the platform: in the file aem.js loads, moving the delivered elements instead of copying them, keeping images optimized, handling rows with a missing cell, leaving CSS-only options to CSS, staying inside the block, and running as plain browser modules without touching aem.js. Backing facts: facts.yaml (block-js-contract, reuse-authored-dom, delivered-pictures, authored-cells-vary, block-variant-classes, block-dom-scope, aem-js-vendored, no-build-step, project-lint, no-innerhtml).",
   "type": "weighted_checklist",
   "checklist": [
     {
-      "name": "Default export decorate",
-      "max_score": 10,
-      "description": "The block JS file uses `export default function decorate(block)` or `export default async function decorate(block)` as the function declaration"
-    },
-    {
-      "name": "JSDoc comment on decorate",
-      "max_score": 8,
-      "description": "The decorate function has a JSDoc comment with at minimum `@param {Element} block` documented"
-    },
-    {
-      "name": "Scoped DOM queries",
-      "max_score": 10,
-      "description": "All DOM queries inside decorate use `block.querySelector()` or `block.querySelectorAll()`, NOT `document.querySelector()` or `document.querySelectorAll()`"
-    },
-    {
-      "name": "No innerHTML for structures",
-      "max_score": 10,
-      "description": "The JS file does NOT use `innerHTML` assignment to build multi-element DOM structures (simple text-only innerHTML may be acceptable, but complex structures must use DOM APIs)"
-    },
-    {
-      "name": "Element reuse not recreation",
-      "max_score": 10,
-      "description": "Existing DOM elements from authored content (images, headings, paragraphs) are moved/reused rather than having their content extracted and placed into freshly created duplicate elements"
-    },
-    {
-      "name": "No orphaned elements",
-      "max_score": 8,
-      "description": "When elements are transformed (e.g., a `<p>` converted to a `<div>`), the original element is removed from the DOM (via replaceWith, remove, or replaceChildren) rather than left as an empty orphan alongside the new element"
-    },
-    {
-      "name": "Import .js extensions",
-      "max_score": 8,
-      "description": "Any import statements include the `.js` file extension (e.g., `import { foo } from '../../scripts/aem.js'`)"
-    },
-    {
-      "name": "Single quotes for strings",
+      "name": "Block files",
       "max_score": 6,
-      "description": "String literals in the JS file use single quotes (not double quotes or template literals for simple strings)"
+      "description": "The block is `blocks/feature-highlights/feature-highlights.js`, whose default export is a function that receives the block element, with styles in `blocks/feature-highlights/feature-highlights.css`. Fail if the decoration lives elsewhere (e.g. scripts.js) or is not the default export."
     },
     {
-      "name": "camelCase identifiers",
-      "max_score": 6,
-      "description": "Variable and function names use camelCase (e.g., `blockItems`, `handleClick`), not snake_case or PascalCase for non-class identifiers"
+      "name": "Moves authored elements",
+      "max_score": 16,
+      "description": "The delivered `picture`, `h3` and `p` elements are moved into the new structure (append, replaceWith, replaceChildren), so the heading ids and the 'Learn more' link survive. Fail if text, src or alt is copied into newly created elements (e.g. `createElement('h3')` with `textContent = heading.textContent`), or if markup is rebuilt with `innerHTML` or template strings from authored content."
     },
     {
-      "name": "No global DOM mutation",
+      "name": "Images stay optimized",
       "max_score": 10,
-      "description": "The block JS does NOT select or modify DOM elements outside of its block scope (e.g., does NOT call `document.querySelector('header')` to modify the page header)"
+      "description": "Each icon stays a `<picture>`: the delivered one is kept, or it is replaced with `createOptimizedPicture()` from aem.js, keeping the alt text. Fail on a bare `<img>` built from the delivered src, or a background-image built from it."
     },
     {
-      "name": "variant check via classList",
-      "max_score": 7,
-      "description": "If variant handling is present, it uses `block.classList.contains('variant-name')` to check for variants"
+      "name": "Missing icon handled",
+      "max_score": 14,
+      "description": "The third row, which has only one cell with the headline and description, renders its headline and description with no error and no empty icon element. Fail if the code assumes the first cell is always the icon and the second the text (e.g. `row.children[1]` read without a check), so the third feature loses its text, throws, or gets an empty or broken image wrapper."
     },
     {
-      "name": "ES6+ syntax",
-      "max_score": 7,
-      "description": "Code uses ES6+ syntax: uses `const`/`let` (not `var`), uses arrow functions where appropriate, and uses template literals for string interpolation instead of concatenation"
+      "name": "No leftover authored wrappers",
+      "max_score": 8,
+      "description": "The authored row and cell divs do not remain as empty elements beside the new structure: they are replaced or reused as the new elements."
+    },
+    {
+      "name": "Compact option in CSS",
+      "max_score": 14,
+      "description": "The compact option is styled in the block CSS with a `.feature-highlights.compact` compound selector (hiding the description, one row). The JS does not check `compact` to add a class, remove descriptions, or build different DOM; the class is already on the block."
+    },
+    {
+      "name": "Scoped to the block",
+      "max_score": 10,
+      "description": "All queries and changes in decorate() go through the block element. No `document.querySelector`/`querySelectorAll` and no changes to elements outside the block (header, section, body, other blocks)."
+    },
+    {
+      "name": "aem.js untouched",
+      "max_score": 8,
+      "description": "`scripts/aem.js` is unchanged. Any helper is imported from it as `../../scripts/aem.js` (relative path with `.js`). New shared helpers, if any, go in `scripts/scripts.js` or a new file under `scripts/`, not in aem.js."
+    },
+    {
+      "name": "No build step",
+      "max_score": 8,
+      "description": "The block runs as a plain browser ES module: no bare-specifier imports (e.g. `from 'lodash'`), no new `dependencies` in package.json, no bundler or transpile config, no TypeScript or JSX."
+    },
+    {
+      "name": "Project lint",
+      "max_score": 6,
+      "description": "The JS fits the project's ESLint config (airbnb-base, `.js` extensions on imports): no `var`, no unused variables, no reassigned parameters other than properties, single quotes, semicolons."
     }
   ]
 }

@@ -37,7 +37,7 @@ Use this skill when:
 
 ## Related Skills
 
-- **building-blocks**: This skill is called from building-blocks during development
+- **building-blocks**: points here for a reference implementation when starting a new block
 - **content-driven-development**: Use when creating content models for blocks
 
 ## Key Concepts

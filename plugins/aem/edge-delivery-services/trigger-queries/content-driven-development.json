@@ -1,0 +1,156 @@
+{
+  "name": "content-driven-development trigger queries",
+  "description": "Should trigger for any EDS code change (blocks, CSS, core scripts); near misses are authoring, import, review, docs, setup and config.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4",
+    "remote": "https://github.com/adobe/aem-boilerplate.git"
+  },
+  "queries": [
+    {
+      "id": "y-new-block",
+      "query": "We're launching a pricing page next week and design handed me a Figma comp with a three-tier comparison module. We don't have anything like it in blocks/. Can you build it as a new block, including the JS and CSS? Boilerplate project, nothing fancy.",
+      "should_trigger": true,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "y-carousel",
+      "query": "Build a testimonial carousel block for the homepage: quote, author, headshot, auto-advance every 6s, prev/next buttons, swipe on mobile. Authors will edit it in Word/Docs so keep the table simple.",
+      "should_trigger": true,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "y-css-bug",
+      "query": "The cards block looks broken on tablet: the third card wraps under the first two and the images stretch. Fix the CSS, it's only reproducible between 600 and 900px.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "train",
+      "note": "code-only: building-blocks expected (CDD narrowed in round 2)"
+    },
+    {
+      "id": "y-variant",
+      "query": "Marketing wants a `hero (dark)` variant: same hero block but with a dark background and white text. I think we just need a class, but I'm not sure how authors would pick it.",
+      "should_trigger": true,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "y-scripts",
+      "query": "Our pages lose about 40 ms of LCP because scripts.js loads a third-party consent script eagerly. Move it so it doesn't block rendering. Check how this project defers scripts today before you change anything.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "train",
+      "note": "code-only: building-blocks expected (CDD narrowed in round 2)"
+    },
+    {
+      "id": "y-modify-block",
+      "query": "The cards block renders every card the same size. Product wants the first card to span two columns on desktop, and authors should be able to turn that on or off. Update the block.",
+      "should_trigger": true,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "y-bug-js",
+      "query": "Tapping the hamburger in the header block does nothing on iOS Safari but works in desktop Chrome. Find out why and fix it.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "test",
+      "note": "code-only: building-blocks expected (CDD narrowed in round 2)"
+    },
+    {
+      "id": "y-small-css",
+      "query": "Can you bump the padding on the hero block so there's more space above and below? Designers say 64px on desktop. It's one CSS value, quick one.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "test",
+      "note": "code-only: building-blocks expected (CDD narrowed in round 2)"
+    },
+    {
+      "id": "y-new-block-vague",
+      "query": "Add a block for showing our team members: photo, name, role, short bio, LinkedIn link. I'm not sure what to call it or how authors should structure it.",
+      "should_trigger": true,
+      "skill": "content-driven-development",
+      "split": "test"
+    },
+    {
+      "id": "y-core-styles",
+      "query": "We're switching the heading font to Inter across the site. Update the global styles and make sure no block hardcodes the old font.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "test",
+      "note": "code-only: building-blocks expected (CDD narrowed in round 2)"
+    },
+    {
+      "id": "n-author-content",
+      "query": "Our marketing team keeps asking how to add a second column of text next to an image on the product pages. They write everything in da.live. What do they actually type into the doc to get that layout with the blocks we already have?",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "n-import-page",
+      "query": "Can you take https://www.example-bakery.com/about and bring that page into our EDS project? I want the HTML ready to preview locally under /drafts. Don't touch any of our blocks.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "n-review-pr",
+      "query": "Please review PR #214 on our EDS repo. Someone added a tabs block and I want to make sure it follows our conventions before I merge. Just leave comments, don't push changes.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "n-js-question",
+      "query": "In vanilla JS, what's the cleanest way to debounce a resize handler? I've got three different snippets on my screen and can't decide. No need to look at any repo.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "n-aem-up-fails",
+      "query": "`aem up` dies immediately with EADDRINUSE and I have no idea what is on the port. Fresh laptop, just installed the CLI. How do I get the dev server running?",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "n-da-token",
+      "query": "I need to PUT an updated nav fragment into DA via the admin API from a script but my token expired. How do I get a fresh IMS token for admin.da.live?",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "train"
+    },
+    {
+      "id": "n-docs-question",
+      "query": "What does the aem.live documentation say about how the `delayed.js` phase is scheduled relative to LCP? I only need a short explanation with a link, not a code change.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "test"
+    },
+    {
+      "id": "n-new-site",
+      "query": "We have a brand-new client and no repo yet. Set up an EDS site from the boilerplate with a nav, footer and a homepage in DA, and send me the preview link.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "test"
+    },
+    {
+      "id": "n-ue-model",
+      "query": "Add the cards block to our Universal Editor setup: I need the component definition, a model with image and text fields, and to allow it in the section filter. The block JS already exists.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "test"
+    },
+    {
+      "id": "n-docs-only",
+      "query": "Our README still says to run `npm start` but the project uses `aem up`. Fix the docs only — wording in README.md and CONTRIBUTING.md, no code.",
+      "should_trigger": false,
+      "skill": "content-driven-development",
+      "split": "test"
+    }
+  ]
+}
