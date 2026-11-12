@@ -4,6 +4,9 @@ description: Use when the user mentions Developer Console, projects, workspaces,
 license: Apache-2.0
 ---
 
+**Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).
+
+
 # Console Context Navigator
 
 Track and display the user's current location in Adobe Developer Console. Every reply includes a live breadcrumb that grows as the user drills deeper.
@@ -31,6 +34,8 @@ Rules:
 Call `get_organisations`. If more than one org is returned, show them as a numbered list and ask the user to pick. If only one, select it automatically and note: *"Using org: {orgName}"*.
 
 ### Step 2 — Project
+If the user wants to create a new project, do not list existing projects; hand off to `dev-console-create-project`, preserving the selected org context.
+
 Ask: *"Do you want to see all projects or only yours?"*
 - All → `get_projects` with `filterBy: "all"`
 - Mine → `get_projects` with `filterBy: "me"`
@@ -80,11 +85,5 @@ Always prefer fetching from official docs over guessing.
 
 ## Rules
 
-- Always show name and ID together — never show an ID without its name
-- Never ask for information you can fetch automatically
-- Whenever any tool response includes a `console_url` field, always display it as a clickable link:
-  ```
-  🔗 View in Adobe Developer Console: {console_url}
-  ```
 - If the user says something like *"switch project"* or *"go back"*, reset from that level and re-navigate
 - This skill sets context — it does not subscribe APIs. For subscribing, hand off to `/dev-console-subscribe-api` with the established context
