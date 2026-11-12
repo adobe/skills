@@ -1,6 +1,7 @@
 ---
 name: io-events-registration
 description: Use when the user wants to subscribe to Adobe I/O Events, create an event registration, set up a webhook, configure event delivery, or manage existing registrations — phrases like "subscribe to events", "register for events", "set up webhook", "listen to events", "event registration", "I/O Events", "configure journal", "set up event delivery", "delete registration", "remove event registration", "unsubscribe from events", "list registrations", "update registration", "disable registration", "enable registration", "trace events", "debug delivery", "check event delivery", "why didn't I receive events", "event trace", "webhook verification failed", "re-verify webhook", "retry webhook", "webhook not verified", "webhook challenge", "add event to registration", "subscribe to more events", "add event type", "read journal", "fetch events", "poll journal", "get journal events".
+license: Apache-2.0
 ---
 
 **Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).

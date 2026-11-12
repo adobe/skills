@@ -1,6 +1,7 @@
 ---
 name: dev-console-context
 description: Use when the user mentions Developer Console, projects, workspaces, credentials, or orgs — or uses phrases like "show my projects", "list workspaces", "get credentials", "switch project", "which org", "my org", "console", "navigate", "explore", "what projects do I have", "show credentials", "what workspace". Also use as the first step of the I/O Events registration and filtering flows — phrases like "subscribe to events", "register for events", "set up webhook", "event registration", "I/O Events", "add filter", "subscriber filter", "test my registration", "sample event" — to establish the org/project/workspace/credential context those flows are scoped to. Maintains a live breadcrumb showing exactly where the user is at all times.
+license: Apache-2.0
 ---
 
 **Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).

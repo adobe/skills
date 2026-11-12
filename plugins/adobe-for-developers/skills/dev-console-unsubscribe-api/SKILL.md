@@ -1,6 +1,7 @@
 ---
 name: dev-console-unsubscribe-api
 description: Use when the user wants to remove an Adobe API from a credential — phrases like "unsubscribe from Analytics", "remove Firefly from this credential", "stop using this API", or "disconnect an API".
+license: Apache-2.0
 ---
 
 **Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).

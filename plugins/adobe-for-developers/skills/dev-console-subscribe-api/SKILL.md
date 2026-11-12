@@ -1,6 +1,7 @@
 ---
 name: dev-console-subscribe-api
 description: Use when the user wants to add, subscribe, enable, or integrate an Adobe API in an existing project — phrases like "add Analytics", "subscribe Firefly", "enable API", "add API to project", "create credential", "set up OAuth S2S", "subscribe to service", "add service", "connect API", "integrate Adobe API", "I need access to", "set up credentials for", "provision API", "provision access", "get API access", "generate credentials", "new credential", "create OAuth", "create S2S". Handles finding the API, picking a credential type, selecting product profiles, creating a credential if needed, and subscribing to the API. For a new project, use dev-console-create-project first.
+license: Apache-2.0
 ---
 
 **Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).

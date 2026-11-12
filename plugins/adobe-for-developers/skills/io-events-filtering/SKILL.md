@@ -1,6 +1,7 @@
 ---
 name: io-events-filtering
 description: Use when the user wants to filter events, test event registrations with sample events, or manage subscriber defined filters — phrases like "add filter", "create filter", "subscriber filter", "filter events", "define filter", "filter registration", "validate filter", "update filter", "edit filter", "delete filter", "remove filter", "show my filters", "list filters", "show sample event", "test my registration", "send test event", "what does the event look like", "sample payload", "send a test event", "view sample payload", "custom event payload", "send custom event".
+license: Apache-2.0
 ---
 
 **Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).

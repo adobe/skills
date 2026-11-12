@@ -1,6 +1,7 @@
 ---
 name: dev-console-create-project
 description: Use when the user wants to create a new Adobe Developer Console project — phrases like "create a project", "new project", "set up a project", "create an App Builder project", or "start a new API project". First asks whether to create a default project or an App Builder template project, then creates and initializes it with a single create_project call; for API subscription afterward, continue with dev-console-subscribe-api.
+license: Apache-2.0
 ---
 
 **Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).
