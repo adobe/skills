@@ -1,0 +1,10 @@
+{
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "census placeholder",
+      "max_score": 1,
+      "description": "Not scored; run with --skip-scoring."
+    }
+  ]
+}

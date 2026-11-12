@@ -1,0 +1,1 @@
+We need a testimonials block for the homepage: quote, author name and role, optional headshot. Three to five per block, a swipeable row on mobile and three across on desktop. Authors write it in Experience Workspace. Build it.
