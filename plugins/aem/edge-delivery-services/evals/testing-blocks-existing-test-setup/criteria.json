@@ -1,0 +1,66 @@
+{
+  "context": "The working directory is aem-boilerplate with a finished tabs block (blocks/tabs/tabs.js: exported toTabId, initialIndex, nextIndex; decorate builds role=tablist/tab/tabpanel with roving tabindex, arrow/Home/End keys, hash deep link, and calls fireAnalyticsEvent from scripts/analytics.js, which pushes to window.adobeDataLayer). The project already tests with node:test + node:assert + jsdom (`npm test`, test/**/*.test.js, test/support/setup-dom.js) and Playwright (`npm run test:e2e`, test/e2e/**/*.spec.js against the block library page /docs/library/blocks/{block}, served from content/). Tests whether the agent reuses that tooling and writes few, well-aimed tests. Backing facts: facts.yaml (use-project-test-tooling, test-when-costly, unit-vs-e2e-split, e2e-locate-by-a11y-tree, block-status-loaded, e2e-no-visual-asserts, analytics-assert-event, e2e-library-content).",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "No new test framework",
+      "max_score": 12,
+      "description": "package.json gains no test runner, assertion, DOM or coverage library (e.g. vitest, jest, mocha, chai, @web/test-runner, @testing-library/*, happy-dom, c8, nyc) and no runner config (vitest.config.*, jest.config.*, .mocharc*). The existing node:test, jsdom and @playwright/test are reused. Fail if any such dependency or config is added, even alongside the existing setup."
+    },
+    {
+      "name": "Unit tests use the project's runner and location",
+      "max_score": 8,
+      "description": "Unit tests import from `node:test` and `node:assert`, live under `test/` with a `.test.js` name so the existing `npm test` glob picks them up (e.g. `test/blocks/tabs/tabs.test.js`), and get a DOM from jsdom (the existing `test/support/setup-dom.js` or jsdom directly)."
+    },
+    {
+      "name": "Unit tests cover the pure logic",
+      "max_score": 8,
+      "description": "Unit tests exercise the exported helpers with inputs where a wrong answer is plausible: `toTabId` (punctuation/accents, duplicate labels get `-2`, empty label falls back), `initialIndex` (matching hash, missing or unknown hash falls back to 0), `nextIndex` (wraps at both ends, Home/End, other keys)."
+    },
+    {
+      "name": "Unit tests cover malformed or missing input",
+      "max_score": 10,
+      "description": "Unit tests run decorate() on authored markup that is incomplete: a row with no panel cell, a row with an empty label (skipped), and/or a block with no usable rows (ends empty), asserting it doesn't throw and produces the expected result. Edge cases are handled here, not by adding rows to the library page."
+    },
+    {
+      "name": "E2E spec in the project's location",
+      "max_score": 6,
+      "description": "A Playwright spec is added under `test/e2e/` with a `.spec.js` name (e.g. `test/e2e/blocks/tabs/tabs.spec.js`), using `@playwright/test` and the configured baseURL, and loads the block library page `/docs/library/blocks/tabs`."
+    },
+    {
+      "name": "E2E covers keyboard, focus and ARIA state",
+      "max_score": 12,
+      "description": "The spec asserts accessibility behavior a click-through would miss: arrow keys move focus and selection (including wrap-around), Home/End, `aria-selected` and roving tabindex follow the active tab, and exactly one tabpanel is visible and linked to the selected tab. Clicking a tab alone is not enough for full credit."
+    },
+    {
+      "name": "Locates by the accessibility tree",
+      "max_score": 12,
+      "description": "Elements inside the block are found by role and accessible name (`getByRole('tab')`, `getByRole('tablist')`, `getByRole('tabpanel')`), not by classes or ids decorate() adds (`.tabs-list`, `.tabs-tab`, `.tabs-panel`, `#tab-…`, `#tabpanel-…`, `[data-analytics]`). The block root `.tabs` and `.tabs[data-block-status=\"loaded\"]` for waiting are fine."
+    },
+    {
+      "name": "No hardcoded authored text",
+      "max_score": 6,
+      "description": "The spec doesn't depend on the library page's copy (`Overview`, `Specifications`, `Pricing & Plans`, panel text). Tabs are picked by position or role, and when a name or id is needed it is read from the page at runtime."
+    },
+    {
+      "name": "Analytics event asserted, not just the attribute",
+      "max_score": 10,
+      "description": "A test selects a tab (click or keyboard) and asserts the `tab-select` event actually fired with its data, by reading `window.adobeDataLayer` or wrapping `fireAnalyticsEvent`. Fail if analytics is only checked through the `data-analytics` attribute or not at all."
+    },
+    {
+      "name": "No visual assertions",
+      "max_score": 6,
+      "description": "Tests don't assert computed CSS or geometry: no `toHaveCSS`, `getComputedStyle`, `boundingBox`, `toHaveScreenshot`/snapshot comparisons, or pixel/position checks. `toBeVisible`/`toBeHidden` and the `hidden` attribute are fine."
+    },
+    {
+      "name": "Library page left as reference content",
+      "max_score": 5,
+      "description": "`content/docs/library/blocks/tabs.html` is not modified. Any extra content for edge cases goes in a separate page (e.g. under `content/drafts/`), or the case is covered by a unit test."
+    },
+    {
+      "name": "Proportionate and robust",
+      "max_score": 5,
+      "description": "No coverage thresholds or coverage scripts added, no tests that only restate static markup (e.g. whole-HTML snapshots), and no fixed sleeps (`waitForTimeout`, `setTimeout` waits) in place of web-first assertions or the `data-block-status` wait."
+    }
+  ]
+}
