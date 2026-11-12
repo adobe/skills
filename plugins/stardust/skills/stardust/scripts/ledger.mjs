@@ -188,7 +188,7 @@ written; with --strict → exit 2, nothing written. Exit codes: 0 ok, 2 usage/st
 An end needs an open start (same skill + phase + track, no later end): missing → warning, or exit 2 under
 --strict. Write the start line FIRST, before any script of the phase runs. On end, a <dir>/${JOURNAL_NAME}
 without a "## " heading naming the phase gets a warning (never an exit-code change). So does a script
-under <dir>, written in the phase, that imports playwright itself: it gets its browser from browser.mjs.
+under <dir>, written in the phase, that imports playwright itself: it opens its pages through browser.mjs.
 Known skills: ${Object.keys(PHASES).join(', ')}
 Known phases per skill (ledger form; accepted aliases in parentheses):
 ${phaseTableText()}`;
@@ -329,7 +329,7 @@ export function checkOwnBrowserScripts(dir, since = null) {
   if (!found.length) return null;
   const more = found.length - OWN_BROWSER_LISTED;
   const listed = found.slice(0, OWN_BROWSER_LISTED).join(', ') + (more > 0 ? `, +${more} more` : '');
-  return `${found.length} script(s) import playwright themselves (${listed}) — a script you write gets its browser from stardust/scripts/stardust/browser.mjs (skills/stardust/SKILL.md § Setup, step 7)`;
+  return `${found.length} script(s) import playwright themselves (${listed}) — a script you write opens its pages with the recipe in skills/stardust/SKILL.md § Setup, step 7 (newLiveContext and gotoLive from stardust/scripts/stardust/browser.mjs)`;
 }
 
 export const ledgerPath = (dir) => join(dir, FILE_NAME);

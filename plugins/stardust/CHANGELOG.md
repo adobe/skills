@@ -20,7 +20,9 @@ launch mode, wait strategy and failure message, and a fix to one never reached t
   the gates that import them.
 - **A script the agent writes uses it too.** Field check (a recorded hands-off replica run on this version): four
   scripts the agent wrote opened the source with `chromium.launch()`. The rule, with a recipe that works for a live
-  page and a local one, moved to Setup step 7, which every run reads; replica and dynamics point to it.
+  page and a local one, moved to Setup step 7, which every run reads; replica and dynamics point to it. It names
+  `newLiveContext` and `gotoLive`: in a second run two scripts took the browser from `browser.mjs` and then called
+  `page.goto` themselves, which sends `HeadlessChrome` in the user agent.
   `ledger.mjs … end` names, in one warning, the scripts written in that phase that import Playwright themselves.
 - **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
   crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.

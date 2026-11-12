@@ -283,8 +283,17 @@ replica and dynamics skills point to it. A first version sat in the validate-and
 pages. A recorded run showed that it steered nothing: four scripts the agent wrote opened the source with
 `chromium.launch()`.
 
+A second run, with the rule in the Setup, had seven scripts that opened the source:
+
+- Four followed the recipe.
+- Two took the browser from `browser.mjs` and then called `page.goto` themselves. Such a script sends
+  `HeadlessChrome` in the user agent and leaves `navigator.webdriver` true. The first wording said that a script
+  "gets its browser" from the front door. The rule now names `newLiveContext` and `gotoLive`.
+- One launched its own browser.
+
 One check backs the rule. `ledger.mjs … end` names the scripts written in the phase that import Playwright
-themselves. It is a warning, after the script ran. It does not stop the script.
+themselves. It is a warning, after the script ran. It does not stop the script. It reads the `stardust/` folder
+only. In the second run, six of the seven scripts were in `/tmp`.
 
 ### 7. Docs and cleanup
 

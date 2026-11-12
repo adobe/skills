@@ -75,8 +75,9 @@ sub-commands that delegate the actual design work to **impeccable**.
    § Versioning.
 7. **Copy this skill's `scripts/` dir to `stardust/scripts/stardust/`** before any
    other skill's script runs: `ledger.mjs`, `state.mjs` and `browser.mjs`, the
-   one entry to the browser for every script. A script you write gets its
-   browser there too, never from `chromium.launch()`:
+   one entry to the browser for every script. A script you write opens every
+   page this way: `newLiveContext` and `gotoLive`, never `chromium.launch()` or
+   `page.goto`:
 
    ```js
    import { pathToFileURL } from 'node:url';

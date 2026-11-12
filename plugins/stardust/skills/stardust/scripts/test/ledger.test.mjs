@@ -352,7 +352,7 @@ check('checkOwnBrowserScripts: null without a finding; one line with the count, 
   assert.equal(checkOwnBrowserScripts(d), null);
   put(d, '.work/p1.mjs', "import { chromium } from 'playwright';\n");
   const one = checkOwnBrowserScripts(d);
-  assert.equal(one, `1 script(s) import playwright themselves (${join(d, '.work/p1.mjs')}) — a script you write gets its browser from stardust/scripts/stardust/browser.mjs (skills/stardust/SKILL.md § Setup, step 7)`);
+  assert.equal(one, `1 script(s) import playwright themselves (${join(d, '.work/p1.mjs')}) — a script you write opens its pages with the recipe in skills/stardust/SKILL.md § Setup, step 7 (newLiveContext and gotoLive from stardust/scripts/stardust/browser.mjs)`);
   for (let i = 2; i <= 7; i += 1) put(d, `.work/p${i}.mjs`, "import { chromium } from 'playwright';\n");
   const many = checkOwnBrowserScripts(d);
   assert.match(many, /^7 script\(s\) import playwright themselves \(/);
@@ -375,7 +375,7 @@ check('own-browser check on end: a script written in the phase is named in one w
   const w = runIn(d, 'replica', 'recreate', 'end', '--strict', '--detail', 'y');
   assert.equal(w.code, 0, 'advisory: exit 0 under --strict');
   assert.equal(w.err.trimEnd().split('\n').length, 1, w.err);
-  assert.match(w.err, /^ledger: warning: 1 script\(s\) import playwright themselves \(.*\.work\/eyebrow\.mjs\) — a script you write gets its browser from stardust\/scripts\/stardust\/browser\.mjs/);
+  assert.match(w.err, /^ledger: warning: 1 script\(s\) import playwright themselves \(.*\.work\/eyebrow\.mjs\) — a script you write opens its pages with the recipe in skills\/stardust\/SKILL\.md § Setup, step 7 \(newLiveContext and gotoLive from stardust\/scripts\/stardust\/browser\.mjs\)$/m);
   assert.ok(!w.err.includes('before.mjs') && !w.err.includes('fine.mjs'), w.err);
   assert.equal(linesIn(d).length, n + 1, 'the end line is still written');
   assert.match(runIn(d, '--help').out, /imports playwright itself/);
