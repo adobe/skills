@@ -27,3 +27,6 @@ dist/
 .playwright-cli/
 .web/
 .idea
+
+# Local skill eval runs
+.skill-eval/

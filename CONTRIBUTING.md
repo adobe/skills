@@ -60,6 +60,14 @@ Things to know:
 - Results appear in the GitHub Actions step summary
 - Evals measure the "impact score" — the gap between agent performance with vs. without the skill
 
+## Running Evals Locally
+
+Iterate on scenarios without Tessl credits using pi and nono; see [tools/skill-eval](tools/skill-eval/README.md):
+
+```bash
+npm run eval:local -- plugins/<plugin> -n 1 --scenario <name>
+```
+
 # How to Contribute
 
 1. Fork the repository
