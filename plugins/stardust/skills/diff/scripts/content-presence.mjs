@@ -33,7 +33,7 @@ import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clipInventoryInPage, inPage, morePrelude, summarize } from './clip-probe.mjs';
-import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
+import { OVERLAY_HELP, browserTier, openBrowser, openPage, overlayFlag, overlayOf, visit } from './measure-live.mjs';
 
 const HELP = `content-presence — origin vs served page: visible headings / links / buttons / images / text per band + control state (#125 D2)
 
@@ -51,6 +51,7 @@ Usage: node content-presence.mjs <originUrl> <edsUrl> [options]
   --more-words <re>        "read more" toggle labels for the clip model (default English)
   --plain                  bundled Chromium instead of the window-free real-Chrome tier
   --warmup <url>           visit this URL first on the ORIGIN side (bot-managed sites)
+${OVERLAY_HELP}
   --locale <tag>           default en-US
   --help                   this text
 Exit: 0 clean, 2 any MISSING/HIDDEN link or heading, 1 error, 3 bot challenge, 4 origin HTTP >= 400.`;
@@ -317,6 +318,7 @@ export function parseArgs(argv) {
     else if (a === '--more-words') opts.moreWords = rest[++i];
     else if (a === '--max-findings') opts.maxFindings = Number(rest[++i]);
     else if (a === '--plain') opts.plain = true;
+    else if (overlayFlag(a, rest[i + 1], opts)) i += overlayFlag(a, rest[i + 1], opts) - 1;
     else if (a === '--warmup') opts.warmup = rest[++i];
     else if (a === '--locale') opts.locale = rest[++i];
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
@@ -327,10 +329,10 @@ export function parseArgs(argv) {
 }
 
 /** Inventory one side: visit + settle, presence inventory, clip inventory. */
-export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null }) {
+export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null, overlay = {} }) {
   const { ctx, page } = await openPage(browser, { width, locale, stateUrl: url });
   try {
-    const v = await visit(page, url, { warmup, settle: { passes: settlePasses }, httpError });
+    const v = await visit(page, url, { warmup, settle: { passes: settlePasses }, httpError, ...overlay });
     const inv = await page.evaluate(inPage(presenceInventoryInPage, countWords ? { rootSel, variableSels, countWords } : { rootSel, variableSels }, morePrelude(moreWords)));
     const clip = await page.evaluate(inPage(clipInventoryInPage, { minCut, rootSel: null, maxFindings: 400 }, morePrelude(moreWords)));
     return { url, at: new Date().toISOString(), status: v.status, settlePasses: v.passes, ...inv, clip: { counts: clip.counts, groups: summarize(clip.findings), findings: clip.findings }, textBoxes: clip.textBoxes };
@@ -346,8 +348,8 @@ async function main() {
     // ORIGIN side fails loud on any HTTP ≥ 400 (a 403 page measured as the origin reads "100 EXTRA on the
     // build"); the SERVED side is measured with a warning (a 404 build before preview propagation is the
     // advisory contract).
-    o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
-    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
+    o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, overlay: overlayOf(opts), rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
+    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, overlay: overlayOf(opts), rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
   } finally { await browser.close(); }
   const res = diffPresence(o, e, { chrome: opts.chrome });
   const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups } });
