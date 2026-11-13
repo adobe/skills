@@ -52,7 +52,7 @@ CI runs these on every pull request:
 | Adobe CLA | You have signed the CLA. |
 | Tessl Skill Eval | Only on request, see below. |
 
-Pull requests from forks: checks that need a secret wait for a maintainer to approve the run.
+Pull requests from forks: the Tessl review of a pull request whose author is not a member of the Adobe organization or a collaborator of this repository waits for a maintainer to approve the run.
 
 ## Requesting Evals
 
@@ -65,7 +65,7 @@ git commit --allow-empty -m "eval: describe what you're testing"
 git push
 ```
 
-- A maintainer approves the run, because it uses the `TESSL_TOKEN` secret.
+- The run starts as soon as the commit is pushed. Nobody has to approve it.
 - Secrets are not available to pull requests from forks. Ask a maintainer to run the evals from a branch in this repository.
 - A run takes several minutes per plugin. The results are linked in a comment on the pull request.
 
