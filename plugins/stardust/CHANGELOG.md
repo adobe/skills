@@ -4,6 +4,40 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.38.0 — every script takes its browser from one place (#159)
+
+Scripts that imported Playwright, launched a browser, opened contexts and navigated on their own each picked their own
+launch mode, wait strategy and failure message, and a fix to one never reached the others.
+
+- **`skills/stardust/scripts/browser.mjs`** is the one entry to the browser: `loadPlaywright`, `openBrowser`
+  (`chrome`, `headed` or `plain`), `newContext`, `newPage` and `goto`, plus everything `live-session.mjs` exports.
+  `live-session.mjs` moved from `skills/diff/scripts/` to sit beside it. Every script that touches a browser calls
+  these by bare name. One error names the install line when Playwright is not importable, and a missing
+  `browser.mjs` stops a script with the copy instruction. Where exit 1 means a failed check (`render-harness`,
+  `ai-readability`, `qa-gate`, `dynamics-check`), both are exit 2.
+- **A project copy needs the master scripts.** Setup step 7 copies `skills/stardust/scripts/` to
+  `stardust/scripts/stardust/` before any other skill's script runs. The skills that listed the diff scripts only for
+  `live-session.mjs` (reskin, deploy) now name the master copy instead; replica still copies the diff scripts for
+  the gates that import them.
+- **A script the agent writes uses it too.** Field check (a recorded hands-off replica run on this version): four
+  scripts the agent wrote opened the source with `chromium.launch()`. The rule, with a recipe that works for a live
+  page and a local one, moved to Setup step 7, which every run reads; replica and dynamics point to it. It names
+  `newLiveContext` and `gotoLive`: in a second run two scripts took the browser from `browser.mjs` and then called
+  `page.goto` themselves, which sends `HeadlessChrome` in the user agent.
+  `ledger.mjs … end` names, in one warning, the scripts written in that phase that import Playwright themselves.
+- **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
+  crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.
+- **A script run from the plugin tree finds Playwright in the project at the working directory first**, then by
+  `import('playwright')`. The first copy that resolves is the one that loads. A copy that fails to load stops the
+  script with its cause (a missing dependency included); it is never replaced by the other copy.
+- **No script changed its browser.** Each keeps its launch mode, launch options, context options and navigation options.
+- **`evals/lint/browser-front-door.mjs`** fails on a script under `skills/` that imports Playwright (`from`,
+  `import`, `import()`, `require()`, `resolve()`, `playwright` or `playwright-core`), launches or connects a
+  browser, opens a context or `browser.newPage`, or calls `.goto(` itself. It runs in `npm run lint:stardust` and in
+  CI. A skill argument that is a file, not a skill folder, exits 2 like an unknown name.
+- **`playwright-cli` is no longer listed** as a requirement (`compatibility:` lines, README Prerequisites): no
+  script uses it.
+
 ## 0.37.2 — a named page count starts from the entered page and its links (#158)
 
 User feedback: asked for N pages of a site, the crawl filled the slots in sitemap order, so the pages the entered

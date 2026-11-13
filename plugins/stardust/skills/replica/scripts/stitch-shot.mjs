@@ -14,7 +14,7 @@
  * stitch on the other) manufactures pixel diffs that aren't there.
  *
  * Hardening baked in (each one is a recorded false-measurement trap; the
- * live-navigation pieces live in the shared ../../diff/scripts/live-session.mjs):
+ * live-navigation pieces live in the shared ../../stardust/scripts/browser.mjs):
  *   - real Chrome headless with ITS OWN identity by default (live-session
  *     launchLiveBrowser; bundled Chromium only when Chrome is missing) plus the
  *     STANDARD REQUEST HEADERS on document requests: a bare context still 403s
@@ -119,8 +119,8 @@
  * capture writes baseline.json instead (HELP § Origin baseline), fixedLayers included.
  *
  * Requires: playwright, pngjs (project devDependencies; imported lazily, so
- * --help and the two subcommands need neither), and the diff skill's scripts
- * dir alongside (live-session.mjs — the replica Setup copies both).
+ * --help and the two subcommands need neither), and the master skill's scripts
+ * dir alongside (browser.mjs — the replica Setup copies both).
  * Exit codes: 0 written, 1 error, 2 a baseline refusal (exists without --force,
  * fonts failed, a check aimed at baseline.png), 3 bot challenge (live side
  * blocked — an edge interstitial or a 2xx denial page; fail loud, never
@@ -130,24 +130,22 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
 import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync, renameSync, rmSync } from 'fs';
-import { basename, dirname, join, resolve as resolvePath } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { basename, dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/replica/scripts ↔ skills/diff/scripts) and the
-// documented project copy (scripts/replica ↔ scripts/diff) — resolve either,
+// browser.mjs lives in the master skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/replica/scripts ↔ skills/stardust/scripts) and the
+// documented project copy (scripts/replica ↔ scripts/stardust) — resolve either,
 // so a project re-copy can't silently sever the shared hardening.
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('stitch-shot: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(1);
 }
-const liveSession = await import(pathToFileURL(LIVE_SESSION).href);
-const { isLiveHttpUrl, launchStealthHeaded, launchLiveBrowser, newLiveContext, gotoLive, dismissOverlays } = liveSession;
-// the default tier: real Chrome headless with its own identity (a live-session copy that predates it: bundled Chromium)
-const launchDefault = typeof launchLiveBrowser === 'function' ? launchLiveBrowser : (chromium) => chromium.launch();
+const liveSession = await import(BROWSER.href);
+const { isLiveHttpUrl, openBrowser, newLiveContext, gotoLive, dismissOverlays } = liveSession;
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -557,14 +555,9 @@ export const sidecarOf = (out) => `${out.replace(/\.png$/i, '')}.capture.json`;
 
 // gotoLive reads the entry for a 2xx denial page; this reads the page once more after the dismissal sweep(s) — a
 // denial page a script renders after domcontentloaded. A marker → BotChallengeError (exit 3), with the entry's
-// status. Returns capture.json's denialCheck: 'ok' (read, no marker) | 'skipped: <reason>' (the probe failed twice,
-// or a live-session.mjs copy that predates pageDenial) — a skip is one stderr line AND on the record, never a
-// silent pass.
+// status. Returns capture.json's denialCheck: 'ok' (read, no marker) | 'skipped: <reason>' (the probe failed twice)
+// — a skip is one stderr line AND on the record, never a silent pass.
 export async function recheckDenial(session, page, url, status) {
-  if (typeof session.pageDenial !== 'function' || typeof session.botChallengeError !== 'function') {
-    console.error('stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)');
-    return 'skipped: live-session.mjs predates pageDenial';
-  }
   const { marker, skipped } = await session.pageDenial(page);
   if (skipped) console.error(`stitch-shot: denial-page check skipped (${skipped})`);
   if (marker) throw session.botChallengeError(url, `HTTP ${status} ${marker}`, { denial: true });
@@ -596,9 +589,9 @@ async function main() {
   const sidecar = opts.freezeBaseline ? null : sidecarOf(out);
   if (sidecar) rmSync(sidecar, { force: true }); // a refused or failed capture leaves no record of an earlier one
   // Lazy: --help, the subcommands, the refusals above and the pure tests need neither playwright nor pngjs.
-  let chromium; let PNG;
-  try { ({ chromium } = await import('playwright')); ({ PNG } = await import('pngjs')); } catch (e) { throw new Error(`playwright / pngjs not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await launchDefault(chromium);
+  let PNG;
+  try { ({ PNG } = await import('pngjs')); } catch (e) { throw new Error(`pngjs is not importable from ${HERE} (${e.code || e.message}) — from the project root run: npm i -D pngjs --legacy-peer-deps`); }
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'chrome' });
   try {
     // the standard headers on the context, the browser's own identity otherwise (live-session).
     const ctx = await newLiveContext(browser, {
