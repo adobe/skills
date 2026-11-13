@@ -3,7 +3,7 @@
 // Run: node plugins/stardust/skills/spec/scripts/test/spec-fetch.test.mjs
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,7 +22,7 @@ check("bodyAttr", () => assert.equal(readTemplate(html, { bodyAttr: "data-templa
 check("bodyClass with capture group", () => assert.equal(readTemplate(html, { bodyClass: "^editable-(.+)$" }).template, "landing"));
 check("meta", () => assert.equal(readTemplate(html, { meta: "pagetype" }).template, "article"));
 check("title trimmed, bodyClass kept", () => { const r = readTemplate(html, {}); assert.equal(r.title, "Page One"); assert.match(r.bodyClass, /editable-landing/); });
-const { isChallengeResponse } = await import("../../../diff/scripts/live-session.mjs");
+const { isChallengeResponse } = await import(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u)).href);
 check("blockedBy: live-session edge signatures, interstitial text, refusals; normal pages pass", () => { assert.equal(blockedBy(403, { "cf-mitigated": "challenge" }, "", "", isChallengeResponse), "challenge"); assert.equal(blockedBy(403, { server: "AkamaiGHost" }, "", "", isChallengeResponse), "challenge"); assert.equal(blockedBy(503, { "cf-ray": "x" }, "", "", isChallengeResponse), "challenge"); assert.equal(blockedBy(503, {}, "<title>Just a moment...</title>"), "challenge"); assert.equal(blockedBy(403, {}, "<h1>Forbidden</h1>", "", isChallengeResponse), "refused"); assert.equal(blockedBy(429, {}), "refused"); assert.equal(blockedBy(404, {}, "Not found", "", isChallengeResponse), null); assert.equal(blockedBy(200, { "cf-ray": "x" }, "", "", isChallengeResponse), null); });
 helpCheck("spec-fetch.mjs");
 process.exit(failed ? 1 : 0);

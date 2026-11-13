@@ -17,7 +17,7 @@
  *       embeds raster data or exceeds 40 KB fails every page preview that
  *       references it (409 from the content bus, no per-asset error) and is
  *       refused here as FAIL svg-unsafe.
- *   mp4 video up to 36 MB (deploy SKILL.md #160, amending #103): the content.da.live
+ *   mp4 video up to 36 MB (deploy SKILL.md #161, amending #103): the content.da.live
  *       URL of a video is never authored (it reaches the page verbatim and
  *       answers 401 to every visitor). After the PUT the file ITSELF is
  *       previewed and, unless --no-publish, published:
@@ -136,7 +136,7 @@ Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <
 
 Token: from the variable named by --token-env, or from --token-file (read once at start); never printed,
 never in the re-run command, never written to the ledger.
-Video (#160): an mp4 up to 36 MB is uploaded, then previewed and published itself; author the printed
+Video (#161): an mp4 up to 36 MB is uploaded, then previewed and published itself; author the printed
 root-relative /media/<scope>/<file>, never its content.da.live URL. Bigger mp4s and other video/audio/PDF are
 skipped and stay on the code origin or an external host.
 Writes: the ledger at --ledger (not with --dry-run) and, for a manifest entry whose local
@@ -408,7 +408,7 @@ async function main() {
   const daPathOf = (e) => `media/${opts.scope}/${classify(e.name, null).video ? webPath(e.name) : e.name}`;
   const contentUrlOf = (daPath) => `${opts.contentUrl}/${encodeURIComponent(opts.org)}/${encodeURIComponent(opts.repo)}/${encodePath(daPath)}`;
   // What the author writes: the content.da.live URL for an image (the page preview rehosts it), the
-  // root-relative content path for a video (#160 — its content.da.live URL would reach visitors as a 401).
+  // root-relative content path for a video (#161 — its content.da.live URL would reach visitors as a 401).
   const authorUrlOf = (daPath, video) => (video ? `/${encodePath(daPath)}` : contentUrlOf(daPath));
   const recordFailure = (e, what, why, extra = {}) => {
     const daPath = daPathOf(e);

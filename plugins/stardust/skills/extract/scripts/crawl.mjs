@@ -81,18 +81,18 @@
  * (cf-mitigated, or a 403/429/503 with a Cloudflare / Akamai / F5 / Imperva signature, a 403 from
  * CloudFront / AWS WAF), or a 2xx VERIFICATION INTERSTITIAL served as a normal page ("One moment,
  * please…" reloading itself, "Just a moment…", CloudFront's "Request blocked" body — read from the
- * page, not the headers: this script's title rule, then live-session's vendor list when the module
- * is beside it). On the ENTRY page → one relaunch (technique chrome-escalated;
+ * page, not the headers: this script's title rule, then the vendor list in
+ * stardust/scripts/browser.mjs). On the ENTRY page → one relaunch (technique chrome-escalated;
  * the existing launch flags and webdriver spoof stay on, STARDUST_STEALTH=0 turns them off;
  * STARDUST_HEADED_WINDOW=1 is not read here) with the
  * challenge-solve window, then a fatal `bot-management … not cleared` error naming the wall; on an
  * inner page → the page is recorded as failed with errorClass BotChallenge and the marker. Live
  * navigations to one host are paced across processes — STARDUST_LIVE_PACE_MS apart (default 1000; 0 disables),
- * at most STARDUST_LIVE_MAX_PARALLEL in flight (default 2), backing off on bot signals — when a live-session.mjs
- * with the shared throttle (runLiveNavigation) is beside this script.
+ * at most STARDUST_LIVE_MAX_PARALLEL in flight (default 2), backing off on bot signals — by the shared throttle
+ * (runLiveNavigation) in stardust/scripts/browser.mjs.
  *
- * Writes capture artifacts under --out. When the shared live-session helper is
- * present, its repository-scoped throttle and browser state stay under OS temp:
+ * Writes capture artifacts under --out. The shared helper (stardust/scripts/browser.mjs)
+ * keeps its repository-scoped throttle and browser state under OS temp:
  *   pages/<slug>.json              one record per captured page — slug, url, finalUrl, title,
  *                                  description, og, headings, body, codeBlocks, ctas, links,
  *                                  media {imgs, allImgCount, cssBackgrounds, modals, videos,
@@ -123,7 +123,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op — and
 // a test that imports the pure helpers below (captureGaps, localeRootPath) must not start a crawl.
@@ -139,25 +139,12 @@ if (IS_MAIN && (process.argv.includes('--help') || process.argv.includes('-h')))
   process.exit(0);
 }
 
-// playwright is imported inside main(), past the --help guard and never on import, so --help answers on
-// a checkout without it and the pure helpers are testable without a browser.
-let chromium;
-
 const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 
 // One context config for probe, headed fallback, and workers — a tweak (locale,
 // UA, colorScheme) must land everywhere or discovery renders under different
 // conditions than capture. Viewport here also saves a per-page CDP round-trip.
 const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
-
-const LIVE_SESSION_FALLBACKS = Object.freeze({
-  newLiveContext: (browser, options) => browser.newContext(options),
-  runLiveNavigation: (_page, _url, navigate) => navigate(),
-  persistLiveStorageState: async () => false,
-  recordLiveBotSignal: async () => false,
-  recordLiveNavigationSuccess: async () => false,
-  liveResponseSignalRecorded: (response) => Boolean(response && response.liveSignalRecorded),
-});
 
 const sharedHookWarningHosts = new Set();
 function warnSharedHook(url, error) {
@@ -172,10 +159,10 @@ async function callSharedHook(hook, args, url) {
   catch (error) { warnSharedHook(url, error); return false; }
 }
 
-/** Shared live-session helpers when present, with browser-neutral no-op fallbacks for standalone copies. */
-export function crawlerLiveBindings(shared = {}) {
+/** The front door's live-session helpers; a hook that throws is reported once per host and the crawl goes on. */
+export function crawlerLiveBindings(shared) {
   return {
-    newLiveContext: shared.newLiveContext || LIVE_SESSION_FALLBACKS.newLiveContext,
+    newLiveContext: shared.newLiveContext,
     runLiveNavigation: async (page, url, navigate) => {
       let operation;
       const run = () => {
@@ -186,7 +173,7 @@ export function crawlerLiveBindings(shared = {}) {
         return operation;
       };
       try {
-        return await (shared.runLiveNavigation || LIVE_SESSION_FALLBACKS.runLiveNavigation)(page, url, run);
+        return await shared.runLiveNavigation(page, url, run);
       } catch (error) {
         if (!operation) { warnSharedHook(url, error); return run(); }
         const response = await operation; // the navigation's own rejection still escapes unchanged
@@ -194,14 +181,10 @@ export function crawlerLiveBindings(shared = {}) {
         return response;
       }
     },
-    persistLiveStorageState: (page, url) => callSharedHook(
-      shared.persistLiveStorageState || LIVE_SESSION_FALLBACKS.persistLiveStorageState, [page, url], url,
-    ),
-    recordLiveBotSignal: (url) => callSharedHook(shared.recordLiveBotSignal || LIVE_SESSION_FALLBACKS.recordLiveBotSignal, [url], url),
-    recordLiveNavigationSuccess: (url) => callSharedHook(
-      shared.recordLiveNavigationSuccess || LIVE_SESSION_FALLBACKS.recordLiveNavigationSuccess, [url], url,
-    ),
-    liveResponseSignalRecorded: shared.liveResponseSignalRecorded || LIVE_SESSION_FALLBACKS.liveResponseSignalRecorded,
+    persistLiveStorageState: (page, url) => callSharedHook(shared.persistLiveStorageState, [page, url], url),
+    recordLiveBotSignal: (url) => callSharedHook(shared.recordLiveBotSignal, [url], url),
+    recordLiveNavigationSuccess: (url) => callSharedHook(shared.recordLiveNavigationSuccess, [url], url),
+    liveResponseSignalRecorded: shared.liveResponseSignalRecorded,
   };
 }
 
@@ -264,17 +247,20 @@ function assignSlugs(urls) {
   });
 }
 
-// ---- the shared live-session module (diff/scripts/live-session.mjs), when it is beside this script ----
-// Three layouts: the plugin tree, the documented project copy (stardust/scripts/<skill>/) and a flat copy. It lends
-// the crawler the honest launcher, the consent vendor list, the denial-page reader, the per-host pacing and the
-// deadline helper; every use below has an inline fallback, so a crawl without it still runs (with less).
+// ---- the shared browser module (stardust/scripts/browser.mjs, the front door), beside this script ----
+// Three layouts: plugin tree, project copy (stardust/scripts/<skill>/), flat (stardust/scripts/). It lends
+// the crawler the browser, the consent vendor list, the denial-page reader, the per-host pacing and the
+// deadline helper. Without it the crawler stops (exit 2, its fatal-error code); a hook that fails at run time is tolerated below.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs', './stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 let liveSessionModule;
 async function liveSession() {
   if (liveSessionModule === undefined) {
-    const here = path.dirname(SELF);
-    const found = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs']
-      .map((p) => path.resolve(here, p)).find((p) => existsSync(p));
-    liveSessionModule = found ? await import(pathToFileURL(found).href).catch(() => ({})) : {};
+    if (!BROWSER) {
+      console.error('crawl: browser.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+      process.exit(2);
+    }
+    liveSessionModule = await import(BROWSER.href);
   }
   return liveSessionModule;
 }
@@ -287,17 +273,9 @@ async function liveSession() {
 const stealthEnabled = () => process.env.STARDUST_STEALTH !== '0';
 const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
 async function launchWithFallback() {
-  const ls = await liveSession();
-  if (typeof ls.launchLiveBrowser === 'function') {
-    const browser = await ls.launchLiveBrowser(chromium);
-    return { browser, technique: browser.stardustTier || 'chrome' };
-  }
-  try {
-    return { browser: await chromium.launch({ headless: true, channel: 'chrome' }), technique: 'chrome' };
-  } catch (e) {
-    console.error(`[crawl] WARN real Chrome (channel: chrome) failed to launch (${String(e.message).split('\n')[0]}) — falling back to bundled Chromium (technique chromium-fallback); bot-managed origins may block this tier`);
-    return { browser: await chromium.launch({ headless: true }), technique: 'chromium-fallback' };
-  }
+  const { openBrowser, browserTier } = await liveSession();
+  const browser = await openBrowser({ mode: 'chrome' });
+  return { browser, technique: browserTier(browser) };
 }
 // The one escalation after an entry-page block: a fresh real Chrome, window-free (the container has no display),
 // with the existing launch flags unless STARDUST_STEALTH=0. A launch failure is one stderr line and null — the
@@ -305,10 +283,9 @@ async function launchWithFallback() {
 async function launchEscalated() {
   const stealth = stealthEnabled();
   const opts = { headless: true, channel: 'chrome', ...(stealth ? { args: [...STEALTH_ARGS], ignoreDefaultArgs: ['--enable-automation'] } : {}) };
+  const { openBrowser } = await liveSession();
   try {
-    const b = await chromium.launch(opts);
-    b.stardustTier = 'chrome-escalated';
-    return b;
+    return await openBrowser({ mode: 'plain', launchOptions: opts, tier: 'chrome-escalated' });
   } catch (e) {
     console.error(`[crawl] WARN real Chrome relaunch failed (${String(e.message).split('\n')[0]}) — continuing with the browser already running`);
     return null;
@@ -372,10 +349,10 @@ export const isChallengeResponse = (resp) => challengeMarker(resp) !== null;
 
 // ---- the 2xx verification interstitial: a wall served as a normal page ----
 // A site served "One moment, please…" (HTTP 200, reloading itself every few seconds) to every client and the crawler
-// waited out the run's whole cap without naming it. The headers say nothing; the PAGE is read. The shared reader
-// (live-session pageDenial: vendor signatures, the tiny one-error-heading page) runs when the module is beside this
-// script; the inline rule below is the fallback: a <title> or <h1> that names a wall on a page under 2 KB of visible
-// text, or one that reloads itself (<meta http-equiv=refresh> / location.reload) under such a title.
+// waited out the run's whole cap without naming it. The headers say nothing; the PAGE is read. The inline rule below
+// reads first: a <title> or <h1> that names a wall on a page under 2 KB of visible text, or one that reloads itself
+// (<meta http-equiv=refresh> / location.reload) under such a title. The shared reader (live-session pageDenial: vendor
+// signatures, the tiny one-error-heading page) reads after it.
 // "verify" alone is no wall word: an age or e-mail verification page is a page, and a small single-page-app entry page
 // under such a title would abort the crawl; the verification interstitials name the visitor ("verify you are human",
 // "verifying your request / browser", "human verification", "checking your browser").
@@ -406,22 +383,19 @@ export function inlineWallMarker(probe) {
 // One wall read's deadline: page.evaluate has no timeout of its own, and a renderer stuck in a busy loop never answers it.
 const WALL_PROBE_MS = 10000;
 // → { marker, skipped }: this script's own rule first (wallProbeInPage + inlineWallMarker — a wall named by its title or
-// h1 on a small or self-reloading page), then the shared reader when the module is beside this script (live-session
-// pageDenial: the vendor signature list and the one-error-heading rule). The crawler names the walls it knows whatever
-// live-session copy sits beside it. A page no reader could read is `skipped` with the error's first line (the caller
+// h1 on a small or self-reloading page), then the shared reader (live-session pageDenial: the vendor signature list
+// and the one-error-heading rule). A page no reader could read is `skipped` with the error's first line (the caller
 // logs it — never a silent pass, never a false wall).
 async function pageWall(page) {
-  const ls = await liveSession();
-  const race = typeof ls.withDeadline === 'function' ? ls.withDeadline : inlineWithDeadline;
+  const { withDeadline, pageDenial } = await liveSession();
   let skipped = null;
   try {
-    const marker = inlineWallMarker(await race(page.evaluate(wallProbeInPage), WALL_PROBE_MS, 'wall probe'));
+    const marker = inlineWallMarker(await withDeadline(page.evaluate(wallProbeInPage), WALL_PROBE_MS, 'wall probe'));
     if (marker) return { marker, skipped: null };
   } catch (e) {
     skipped = String(e && e.message ? e.message : e).split('\n')[0];
   }
-  if (typeof ls.pageDenial !== 'function') return { marker: null, skipped };
-  const shared = await ls.pageDenial(page);
+  const shared = await pageDenial(page);
   if (shared.marker) return shared;
   return { marker: null, skipped: skipped && shared.skipped ? skipped : null };
 }
@@ -434,8 +408,9 @@ const ENTRY_SETTLE_MS = 1200;
  */
 export async function probeEntry(page, url, { timeout = 30000, solve = false } = {}) {
   let resp;
+  const { goto } = await liveSession();
   try {
-    resp = await sharedNavigate(page, url, () => page.goto(url, { waitUntil: 'domcontentloaded', timeout }));
+    resp = await sharedNavigate(page, url, () => goto(page, url, { waitUntil: 'domcontentloaded', timeout }));
   } catch (err) {
     // a network-level reject is not a pacing matter (the relaunch answers it) — no shared signal for it
     if (isFingerprintBlock(err)) return { kind: 'fingerprint', marker: String(err.message || err).split('\n')[0] };
@@ -467,21 +442,11 @@ export async function probeEntry(page, url, { timeout = 30000, solve = false } =
 }
 
 // ---- the per-page deadline (--page-timeout): a page that never settles is a TimeoutError, not the run's cap ----
-function inlineWithDeadline(promise, ms, label) {
-  const work = Promise.resolve(promise);
-  work.catch(() => {});
-  let timer;
-  const expiry = new Promise((_, reject) => {
-    timer = setTimeout(() => { const err = new Error(`${label}: deadline ${ms} ms exceeded`); err.name = 'DeadlineError'; reject(err); }, ms);
-  });
-  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
-}
 async function withPageDeadline(promise, ms) {
   if (!(ms > 0)) return promise;
-  const ls = await liveSession();
-  const race = typeof ls.withDeadline === 'function' ? ls.withDeadline : inlineWithDeadline;
+  const { withDeadline } = await liveSession();
   try {
-    return await race(promise, ms, 'page capture');
+    return await withDeadline(promise, ms, 'page capture');
   } catch (e) {
     if (e && e.name === 'DeadlineError') throw Object.assign(new Error(`page deadline ${ms / 1000} s exceeded (--page-timeout)`), { errorClass: 'TimeoutError' });
     throw e;
@@ -499,8 +464,7 @@ async function withPageDeadline(promise, ms) {
 export async function clearChallenge(page, resp, {
   recordBotSignal = recordSharedBotSignal, navigate = sharedNavigate, signalRecorded,
 } = {}) {
-  const alreadyRecorded = signalRecorded || (await sharedLiveSession()).liveResponseSignalRecorded
-    || LIVE_SESSION_FALLBACKS.liveResponseSignalRecorded;
+  const alreadyRecorded = signalRecorded || (await sharedLiveSession()).liveResponseSignalRecorded;
   let signalled = false;
   const recordSignal = async () => {
     if (signalled || !isChallengeResponse(resp)) return;
@@ -669,8 +633,7 @@ export async function discover(args, page) {
   return withEntry(linked);
 }
 
-// The shared live-session hooks (throttle, browser-state jar, bot signals) ride the same loader; a crawler without the
-// module keeps the inline context / navigation / state no-ops of crawlerLiveBindings.
+// The shared live-session hooks (throttle, browser-state jar, bot signals) ride the same loader.
 const sharedLiveSession = liveSession;
 async function sharedNavigate(page, url, navigate) {
   const { runLiveNavigation } = crawlerLiveBindings(await sharedLiveSession());
@@ -690,17 +653,11 @@ async function recordSharedSuccess(url) {
   return recordLiveNavigationSuccess(url);
 }
 
-// The shared consent pass (diff/scripts/live-session.mjs acceptConsent — the vendor list every
-// gate instrument uses) runs first when live-session.mjs is beside this script (liveSession above);
-// the passes below stay the fallback when it is absent or misses.
-async function sharedAcceptConsent() {
-  const ls = await liveSession();
-  return typeof ls.acceptConsent === 'function' ? ls.acceptConsent : null;
-}
-
+// The shared consent pass (stardust/scripts/browser.mjs acceptConsent — the vendor list every
+// gate instrument uses) runs first (liveSession above); the passes below stay the fallback when it misses.
 async function dismissConsent(page) {
-  const accept = await sharedAcceptConsent();
-  const shared = accept && await accept(page).catch(() => null);
+  const { acceptConsent } = await liveSession();
+  const shared = await acceptConsent(page).catch(() => null);
   if (shared) console.error(`[crawl] consent dismissed via ${shared}`);
   const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '[aria-label*="Accept" i]',
     'button[id*="accept" i]', 'button[class*="accept" i]'];
@@ -1150,7 +1107,7 @@ function capture() {
  * Capture one page on a fresh tab of `context` under the per-page deadline (args.pageTimeoutMs; 0 = none): a page
  * that never settles is recorded as TimeoutError instead of eating the run's cap. The deadline closes the tab, so
  * the abandoned navigation or probe dies with it. Every exit path releases the page. `sharedBindings` (tests) stands in
- * for the live-session module beside this script: its hooks pace, record and persist for this capture.
+ * for the front door's live-session hooks: they pace, record and persist for this capture.
  */
 export async function capturePage(context, url, slug, args, sharedBindings = null) {
   const page = await context.newPage();
@@ -1169,7 +1126,8 @@ async function captureOnPage(page, url, slug, args, sharedBindings = null) {
   const persistState = live ? live.persistLiveStorageState : persistSharedState;
   const recordBotSignal = live ? live.recordLiveBotSignal : recordSharedBotSignal;
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
-  let resp = await navigateLive(page, url, () => page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }));
+  const { goto } = await liveSession();
+  let resp = await navigateLive(page, url, () => goto(page, url, { waitUntil: 'domcontentloaded', timeout: 45000 }));
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
   // bot-management challenge (Cloudflare cf-mitigated: challenge, etc.): the
@@ -1193,7 +1151,7 @@ async function captureOnPage(page, url, slug, args, sharedBindings = null) {
       u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
       // guarded + short timeout: a hanging flipped-variant probe must not
       // replace the crisp HTTPError 404 with a raw TimeoutError.
-      const retry = await navigateLive(page, u.href, () => page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 }))
+      const retry = await navigateLive(page, u.href, () => goto(page, u.href, { waitUntil: 'domcontentloaded', timeout: 15000 }))
         .catch(() => null);
       if (retry && retry.status() < 400) {
         console.error(`[crawl] slash-retry OK ${url} -> ${u.href}`);
@@ -1292,7 +1250,6 @@ async function captureOnPage(page, url, slug, args, sharedBindings = null) {
 
 async function main() {
   const args = parseArgs(process.argv);
-  ({ chromium } = await import('playwright'));
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 

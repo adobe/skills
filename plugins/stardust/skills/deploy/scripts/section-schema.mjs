@@ -54,8 +54,14 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.exit(0);
 }
 
-// playwright is imported only past the --help guard, so --help answers on a checkout without it.
-const { chromium } = await import('playwright');
+// the browser front door is loaded only past the --help guard, so --help answers on a checkout without it.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
+if (!BROWSER) {
+  console.error('section-schema: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { openBrowser, newPage, goto } = await import(BROWSER.href);
 
 function parseArgs(argv) {
   const [, , url, ...rest] = argv;
@@ -130,13 +136,13 @@ async function main() {
     process.exit(1);
   }
   const prof = resolveProfile(opts.profile);
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: 'plain' });
   let sections;
   try {
     // reducedMotion matches content-diff's grab(): all three gates must inventory
     // the same settled DOM, or an entrance animation flips a role across gates.
-    const page = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+    const page = await newPage(browser, { viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
+    await goto(page, url, { waitUntil: 'networkidle', timeout: 60000 });
     await page.waitForTimeout(1200);
     await page.evaluate(async () => {
       for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 40); }); }

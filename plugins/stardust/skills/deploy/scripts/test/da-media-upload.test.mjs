@@ -424,7 +424,7 @@ await check('--scope is relative to media/: a scope that starts with media/ is a
   assert.equal(requests.length, before, 'no request left the process');
   allOutput.push(r.out, r.err);
 });
-// ---- video (#160): mp4 up to 36 MB is uploaded, then previewed + published itself; author the root-relative path
+// ---- video (#161): mp4 up to 36 MB is uploaded, then previewed + published itself; author the root-relative path
 const videos = join(proj, 'videos');
 mkdirSync(videos, { recursive: true });
 const CLIP = randomBytes(4096);
