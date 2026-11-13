@@ -17,7 +17,7 @@ owner's accounts, so the scaffold writes everything disabled and the owner turns
    each route, and copies the CMP id if it was not found.
 4. **Runtime.** `node skills/deploy/scripts/martech-scaffold.mjs` writes `scripts/martech.js` from the
    enabled parts: the CMP loads first in `loadEager()`, tag managers in the boilerplate's consent phase
-   (`consented.js`). Re-run it after every contract edit.
+   (`consented.js`), or `delayed.js` on a project without one. Re-run it after every contract edit.
 5. **Verify.** `dynamics-check.mjs` adds a `martech` feature whenever the contract exists (below).
 
 ## Consent model — keep the source's
@@ -34,9 +34,9 @@ re-implemented on the site. When a tag-manager rule injects the CMP, leave `cons
 
 ## Runtime switches
 
-Tags load only on the contract's `productionHosts`. On preview, `?martech=on` loads the enabled parts,
-`&consent=accept` grants every category and `&consent=decline` loads no tags; no override works on a
-production host.
+Tags load only on the contract's `productionHosts`. On preview, `?martech=on` loads the enabled parts and
+`&consent=accept` grants every category; `?consent=decline` keeps `consented.js` and its tags unloaded. No
+override works on a production host.
 
 ## Before go-live
 

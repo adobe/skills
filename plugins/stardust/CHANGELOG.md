@@ -12,14 +12,18 @@ whose placeholder `hasConsent()` declines by default and loads `consented.js` on
 project the scaffold hooked `loadTags()` straight into `loadDelayed()`, outside that phase.
 
 - **`deploy/scripts/martech-scaffold.mjs`:** when `scripts/consented.js` and `scripts/consent-check.js`
-  exist, `loadTags()` hooks into `consented.js`, and the placeholder `hasConsent()` (with its JSDoc) is
-  replaced by one that returns `martech.js` `hasConsent()`: true where martech is on (production hosts,
-  or `?martech=on`), false with `&consent=decline` off production. Each route keeps its own CMP category
-  gate, so the source's consent model (`per-tag`, `google-consent-mode`) is unchanged. A `hasConsent()`
-  the scaffold did not write is a conflict unless `--force`. Older projects keep the `delayed.js` /
-  `loadDelayed()` hooks.
-- Docs: `dynamics/reference/martech.md` (runtime step, `&consent=decline`).
-- Tests: `martech-scaffold.test.mjs` 21/21 — the consented.js hooks and re-run, the conflict, the
+  exist, `loadTags()` hooks into `consented.js`, and the boilerplate's placeholder `hasConsent()` (with its
+  JSDoc) is replaced by one that returns `martech.js` `hasConsent()`: true on the production hosts; off
+  them `?consent=accept|decline` decides as in the boilerplate, else `?martech=on`. Each route keeps its
+  own CMP category gate, so the source's consent model (`per-tag`, `google-consent-mode`) is unchanged.
+  Only the placeholder, matched token for token, is replaced. Any other `hasConsent()` (an owner's CMP
+  wiring, an `async` or arrow one, a placeholder reworded upstream) is a conflict that `--force` does not
+  override, until it calls `martechConsent()`; then it is kept as is. A `loadTags()` hook an older run left
+  in `loadDelayed()` or `delayed.js` is removed, so an upgraded site loads its tags once. Older projects
+  keep the `delayed.js` / `loadDelayed()` hooks.
+- Docs: `dynamics/reference/martech.md` (runtime step, `?consent=` switches).
+- Tests: `martech-scaffold.test.mjs` 24/24 — the consented.js hooks and re-run, the upgrade from an older
+  run's hook, every non-placeholder `hasConsent()` as a conflict, an owner-wired one kept, the JSDoc, the
   `hasConsent()` matrix, and consent-check.js → consented.js → tags end to end.
 
 ## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
