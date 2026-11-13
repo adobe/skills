@@ -42,3 +42,54 @@ Eval spend cap: $500. PRs: open against adobe/skills main, stacked refactor/0-pr
 - eval baseline `pre-refactor`, N=3, plugin = baseline worktree @ 0.38.2, sessions on the SDK default model — `claude-opus-5-5` this time (October's ran on the fast variant; post-refactor runs must use `claude-opus-5-5`, standard speed): deploy-triage-widget 98.3 (no_site_names 2/3: one log named the DA content host), dynamics-target 100.0, spec-kinds 100.0. Every other criterion 3/3. Session spend $5.83 (cap $40). The October hero_is_block 1/3 did not recur.
 - field replay baseline re-taken from 0.38.2 into `../replay-baseline-2026-11/` (the October one predates 0.35–0.38): the same five offline projects, every step exit 0; a second run diffs zero over 402 files modulo ISO stamps (`replay-diff.sh`). Live airport run works with `--headed` (headless still loops): spec S1–S3 5/5, dynamics-detect 17 findings (14 in October — the site changed), plan written; informative only, the site moves between runs.
 - tests: lint exit 0; 81 of 82 script test files pass (`dropdown-unreachable` needs Playwright); characterization and golden green.
+
+### Phase 1 — started on `refactor/1-lib` (from 0-prep @ characterization commit)
+- policy: centralise first, converge later. The library exposes the current variants by name/option so golden stays byte-identical and KNOWN_DIVERGENCE stays equal, EXCEPT a short whitelist of unambiguous bugs converged in this PR, each removed from KNOWN_DIVERGENCE deliberately and listed in the PR body: widget-stem `.html` case/`.htm` handling, the two class-label copies, qa/rollout trusting any href as a widget.
+### Phase 1a — done (committed on refactor/1-lib)
+- `skills/stardust/scripts/lib/{paths,names,kinds,taxonomy,resolve}.mjs` + README; `#lib/*` subpath imports via `plugins/stardust/package.json` (plugin tree) and the `stardust/scripts/package.json` that `stage.mjs` writes (project copy). `stage.mjs <skill…>|--all` replaces the prose copy steps; `layout.test.mjs` stages every skill and runs each CLI's `--help` from the copy (82 CLIs, 33 libraries, 9 skipped for playwright/pngjs).
+- rollout swapped (lib re-exports; inventory/assemble/delivery-lint/publicUrl on named path variants); `deploy/eds-path.mjs` is a re-export; the two CLASS_NAMES copies are one.
+- KNOWN_DIVERGENCE 102 → 96, all six removals in the whitelist. Golden byte-identical. 67/67 tests, lint exit 0.
+- deviation: layout.test found `qa/scripts/checks/{ai-readability,editability}.mjs` importing `../../../deploy/scripts/…`, which resolves only in the plugin tree — fixed via `loadSibling`. Field bug, pre-existing.
+### Phase 1b — started: three parallel swaps {deploy, diff, extract} / {qa, spec} / {migrate, replica, reskin} + prose copy steps and the CLAUDE.md bullet
+
+### PAUSE — 2026-10-20, owner's request (other developers' changes land first)
+State at pause:
+- PR 0 open: https://github.com/adobe/skills/pull/461 (`refactor/0-prep`, complete; may need a rebase once the other changes merge).
+- `refactor/1-lib` pushed to `fork` (no PR). Commits: 66afaea9 Phase 1a complete (lib, stage.mjs, layout test, rollout swap) and 1c72f6da **WIP** Phase 1b partial. The WIP commit is not reviewable as-is; squash or reword before opening PR 1.
+- Phase 1b status per workstream when stopped: {qa, spec} in its final sweep — swaps done, verify the report-level checklist (content.mjs widgetLinks via `#lib/names`, META_BLOCKS, listingKey/listingUrl, QA_CHROME_PATHS, AI_EXCLUDE_DEFAULT, from-knowledge static paths import; spec lib re-exports CODED/CHROME_IDS/loadSibling, redirectKey, SPEC_MAP_KINDS; spec SKILL.md copy step → stage.mjs) and the qa `.htm` whitelist rows; {migrate, replica, reskin + CLAUDE.md/AGENTS.md} mid-way — CLAUDE.md/AGENTS.md bullet already rewritten, replica (11 files) and reskin (5) candidate lists partly swapped, migrate (1 file) started; the whitelist rows for migrate `/a/b.html`, `/nav` not yet removed; {deploy, diff, extract} NOT started (no edits).
+- Green at pause: golden byte-identical (316 ms), characterization all checks passed, lint exit 0, 67/67 runnable tests.
+- Worktrees: `skills` (refactor/1-lib), `skills-prep` (refactor/0-prep), `skills-baseline` (detached pre-refactor main, with the runner SDK bump and eval copies, uncommitted). `../replay-baseline/` holds the local field-replay baselines. caffeinate stopped.
+- Eval spend so far: $11.46 of $500.
+Resume: `git fetch origin && git rebase origin/main` on 0-prep then 1-lib (expect conflicts only if the other developers touched the same scripts); re-run golden + characterization + layout tests; finish the three Phase 1b workstreams from the checklist above; then Phase 2 (drift lints) and Phase 3 (eds-model.md) per the plan.
+
+### Resume — 2026-11-13, PR 1 (`refactor/1-lib`)
+- started: `refactor/1-lib` rebased onto the resumed `refactor/0-prep`. Three conflicts (qa `checks/ai-readability.mjs`, rollout
+  `inventory.mjs`, `scripts-index.md`) resolved as main's behaviour plus the lib swap. The WIP's replica/reskin edits
+  (loading the diff skill's `live-session.mjs` through `#lib/resolve.mjs`) were superseded by 0.38.0's `browser.mjs` front
+  door and dropped, main's versions kept; the replica, reskin and spec copy-step prose rewrites dropped likewise.
+- decision 1 applied (owner, 2026-11-13): no `stage.mjs`, no `#lib/*` imports, no `package.json`. `lib/` stays in the
+  master's `scripts/`, which Setup step 7 copies; `skills/stardust/scripts/contracts.mjs` (beside `browser.mjs`) re-exports
+  it, and consumers find it with the `browser.mjs` candidate list — once per skill in dynamics/qa/rollout/spec `lib.mjs`,
+  per file in deploy/diff/migrate/replica. `resolve.mjs` learned the new project layout (`stardust/scripts/stardust/lib/`).
+  CLAUDE.md/AGENTS.md bullet back to main's wording. No change to `browser.mjs` or step 7 was needed.
+- re-census (0.35–0.38): rollout `da-library.mjs` (page path, root chrome set, `chromeRefs`, `contentFile`, `docName`,
+  `SKIP`), deploy `da-media-upload.mjs` `webPath`, `update-coverage.mjs --pin`'s deployedUrl path, and davids-model-lint's
+  `library-metadata`. All pinned first (+13 KNOWN_DIVERGENCE rows, 103 → 116, own commit); da-library's page path then
+  swapped (it is rollout publicUrl's rule, equal on every input); the rest stay pinned for a later convergence.
+- deviation: deploy `block-roundtrip.mjs` widgetStem/widgetLinks NOT swapped — the library's stem is anchored at the path
+  root and decodes `&amp;`; block-roundtrip's matches `/widgets/` anywhere (`/a/widgets/x.html` → `x`) and keeps `&amp;`.
+  Not in the whitelist and not visible in the characterization inputs, so swapping it would be an unpinned behaviour change.
+- extract and reskin: nothing to swap (extract's `normalizeUrl`/`dedupeKey` are source-side crawl keys, not an EDS contract;
+  reskin carries browser plumbing only).
+- history rebuilt as one commit per step: census pins; library + `contracts.mjs` + `lib.test`; rollout; deploy; qa (with the
+  pre-existing static `../../../deploy/scripts/` import fix); layout test; spec; migrate; dynamics; replica; diff; 0.39.0.
+  Gate after every commit: 7 lints exit 0, every script test but `dropdown-unreachable` (Playwright), characterization
+  equal except the whitelisted removals, golden byte-identical.
+- KNOWN_DIVERGENCE: 103 (PR 0) → 116 (census) → 106. Removed, all whitelisted: rollout pageWidgets ×4 (`.htm`, `.HTML`,
+  `/a/b.html`, `/nav`), qa widgetLinks `.htm` ×2, spec-knowledge class labels A/D ×2, migrate widgetsIn `/a/b.html`, `/nav`.
+- layout test from the project copy: 89 CLIs answered `--help`, 34 libraries imported clean, 3 skipped (pngjs); a copy
+  without the master's scripts stops with the copy instruction.
+- field replay vs `../replay-baseline-2026-11/`: offline diff zero over 402 files (ISO stamps and `stardustVersion`
+  normalised). Live airport run: spec S1–S3 outputs and the dynamics plan identical; `_dynamics.json` differs only in
+  live noise (script load order, a reCAPTCHA cache-buster).
+- version 0.39.0 (minor: the project copy now needs the master's scripts for `contracts.mjs` too).
