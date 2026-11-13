@@ -1,20 +1,21 @@
-// Rules for skills that `skills-ref validate` doesn't know, with a baseline for the
-// violations that existed when the rules arrived (scripts/known-skill-issues.json):
+// Rules for skills that `skills-ref validate` doesn't know:
 //
+//   too-long                   a SKILL.md has more than 500 lines
 //   duplicate-in-plugin        two skills of one plugin share a name
 //   duplicate-across-plugins   skills of different plugins share a name (GitHub Copilot CLI
 //                              exposes skills under their bare name)
-//   too-long                   a SKILL.md has more than 500 lines
 //
-// A violation that isn't in the baseline fails, and so does a baseline entry that is no
-// longer a violation, so the baseline only shrinks. Run from the repository root:
-//   node scripts/check-skills.mjs            check
-//   node scripts/check-skills.mjs --update   rewrite the baseline (to remove fixed entries)
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+// main has skills that break them, so the rules are enforced the boy-scout way
+// (.boy-scout.json): a pull request that changes a SKILL.md which breaks a rule has to fix
+// it, and nobody has to fix a file they didn't touch. Run from the repository root:
+//   node scripts/check-skills.mjs                 what breaks which rule today
+//   node scripts/check-skills.mjs --list <rule>   the SKILL.md files that break one rule
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const MAX_LINES = 500;
+export const RULES = ['too-long', 'duplicate-in-plugin', 'duplicate-across-plugins'];
 const SKIP = new Set(['node_modules', '.git']);
 
 function walk(dir, found = []) {
@@ -44,14 +45,15 @@ function pluginOf(root, file) {
 
 const posix = (path) => path.split(sep).join('/');
 
-// Every violation under root/plugins, as { rule, skill, detail }, sorted.
+// Every violation under root/plugins, as { rule, file, detail }, sorted. file is the SKILL.md.
 export function findViolations(root) {
-  const skills = walk(join(root, 'plugins')).map((file) => {
-    const text = readFileSync(file, 'utf8');
+  const skills = walk(join(root, 'plugins')).map((path) => {
+    const text = readFileSync(path, 'utf8');
+    const file = posix(relative(root, path));
     return {
-      skill: posix(relative(root, dirname(file))),
-      name: frontmatterName(text) ?? posix(relative(root, dirname(file))).split('/').pop(),
-      plugin: pluginOf(root, file),
+      file,
+      name: frontmatterName(text) ?? dirname(file).split('/').pop(),
+      plugin: pluginOf(root, path),
       lines: text.split('\n').length - (text.endsWith('\n') ? 1 : 0),
     };
   });
@@ -65,56 +67,40 @@ export function findViolations(root) {
       const inPlugin = others.filter((other) => other.plugin === skill.plugin);
       const across = others.filter((other) => other.plugin !== skill.plugin);
       if (inPlugin.length > 0) {
-        violations.push({ rule: 'duplicate-in-plugin', skill: skill.skill, detail: `"${name}" is also the name of ${inPlugin.map((o) => o.skill).join(', ')}` });
+        violations.push({ rule: 'duplicate-in-plugin', file: skill.file, detail: `"${name}" is also the name of ${inPlugin.map((o) => o.file).join(', ')}` });
       }
       if (across.length > 0) {
-        violations.push({ rule: 'duplicate-across-plugins', skill: skill.skill, detail: `"${name}" is also the name of ${across.map((o) => o.skill).join(', ')}` });
+        violations.push({ rule: 'duplicate-across-plugins', file: skill.file, detail: `"${name}" is also the name of ${across.map((o) => o.file).join(', ')}` });
       }
     }
   }
   for (const skill of skills) {
     if (skill.lines > MAX_LINES) {
-      violations.push({ rule: 'too-long', skill: skill.skill, detail: `SKILL.md has ${skill.lines} lines; move detail to references/ (limit ${MAX_LINES})` });
+      violations.push({ rule: 'too-long', file: skill.file, detail: `${skill.lines} lines (limit ${MAX_LINES})` });
     }
   }
-  return violations.sort((a, b) => `${a.rule} ${a.skill}`.localeCompare(`${b.rule} ${b.skill}`));
-}
-
-const key = ({ rule, skill }) => `${rule} ${skill}`;
-
-// What a baseline says about the violations: the new ones, and the baseline entries that are fixed.
-export function compare(violations, baseline) {
-  const known = new Set(baseline.map(key));
-  const current = new Set(violations.map(key));
-  return {
-    added: violations.filter((violation) => !known.has(key(violation))),
-    fixed: baseline.filter((entry) => !current.has(key(entry))),
-  };
-}
-
-export function toBaseline(violations) {
-  return violations.map(({ rule, skill }) => ({ rule, skill }));
+  return violations.sort((a, b) => `${a.rule} ${a.file}`.localeCompare(`${b.rule} ${b.file}`));
 }
 
 function main() {
-  const root = process.cwd();
-  const baselineFile = join(root, 'scripts', 'known-skill-issues.json');
-  const violations = findViolations(root);
-  if (process.argv.includes('--update')) {
-    writeFileSync(baselineFile, `${JSON.stringify(toBaseline(violations), null, 2)}\n`);
-    console.log(`${violations.length} known issue(s) written to scripts/known-skill-issues.json`);
+  const violations = findViolations(process.cwd());
+  const at = process.argv.indexOf('--list');
+  if (at !== -1) {
+    const rule = process.argv[at + 1];
+    if (!RULES.includes(rule)) {
+      console.error(`check-skills: --list needs one of ${RULES.join(', ')}`);
+      process.exit(2);
+    }
+    for (const violation of violations) {
+      if (violation.rule === rule) console.log(violation.file);
+    }
     return;
   }
-  const baseline = existsSync(baselineFile) ? JSON.parse(readFileSync(baselineFile, 'utf8')) : [];
-  const { added, fixed } = compare(violations, baseline);
-  for (const { rule, skill, detail } of added) {
-    console.log(`::error file=${skill}/SKILL.md,title=${rule}::${detail}`);
+  for (const rule of RULES) {
+    const found = violations.filter((violation) => violation.rule === rule);
+    console.log(`${rule}: ${found.length}`);
+    for (const { file, detail } of found) console.log(`  ${file}: ${detail}`);
   }
-  for (const { rule, skill } of fixed) {
-    console.log(`::error file=scripts/known-skill-issues.json,title=fixed::${rule} no longer applies to ${skill}: run node scripts/check-skills.mjs --update and commit the result`);
-  }
-  console.log(`${violations.length} violation(s): ${violations.length - added.length} known, ${added.length} new, ${fixed.length} fixed but still in the baseline`);
-  process.exit(added.length + fixed.length > 0 ? 1 : 0);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) main();

@@ -1,9 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { compare, findViolations, toBaseline } from './check-skills.mjs';
+import { fileURLToPath } from 'node:url';
+import { findViolations } from './check-skills.mjs';
+
+const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), 'check-skills.mjs');
 
 function repo(t, files) {
   const root = mkdtempSync(join(tmpdir(), 'check-skills-'));
@@ -17,6 +21,7 @@ function repo(t, files) {
 
 const skill = (name, lines = 3) => `---\nname: ${name}\ndescription: d\n---\n${'line\n'.repeat(lines)}`;
 const manifest = '{"name":"p"}';
+const found = (root) => findViolations(root).map(({ rule, file }) => `${rule} ${file}`);
 
 test('a tree without violations has none', (t) => {
   const root = repo(t, {
@@ -34,9 +39,9 @@ test('the same name twice in one plugin is duplicate-in-plugin, for both skills'
     'plugins/a/skills/one/SKILL.md': skill('same'),
     'plugins/a/skills/group/two/SKILL.md': skill('same'),
   });
-  assert.deepEqual(toBaseline(findViolations(root)), [
-    { rule: 'duplicate-in-plugin', skill: 'plugins/a/skills/group/two' },
-    { rule: 'duplicate-in-plugin', skill: 'plugins/a/skills/one' },
+  assert.deepEqual(found(root), [
+    'duplicate-in-plugin plugins/a/skills/group/two/SKILL.md',
+    'duplicate-in-plugin plugins/a/skills/one/SKILL.md',
   ]);
 });
 
@@ -48,11 +53,11 @@ test('the same name in two plugins is duplicate-across-plugins, not duplicate-in
     'plugins/product/b/skills/x/SKILL.md': skill('"same"'),
   });
   const violations = findViolations(root);
-  assert.deepEqual(toBaseline(violations), [
-    { rule: 'duplicate-across-plugins', skill: 'plugins/a/skills/x' },
-    { rule: 'duplicate-across-plugins', skill: 'plugins/product/b/skills/x' },
+  assert.deepEqual(found(root), [
+    'duplicate-across-plugins plugins/a/skills/x/SKILL.md',
+    'duplicate-across-plugins plugins/product/b/skills/x/SKILL.md',
   ]);
-  assert.match(violations[0].detail, /plugins\/product\/b\/skills\/x/);
+  assert.match(violations[0].detail, /plugins\/product\/b\/skills\/x\/SKILL\.md/);
 });
 
 test('501 lines is too long, 500 is not', (t) => {
@@ -61,7 +66,7 @@ test('501 lines is too long, 500 is not', (t) => {
     'plugins/a/skills/fits/SKILL.md': skill('fits', 496),
     'plugins/a/skills/long/SKILL.md': skill('long', 497),
   });
-  assert.deepEqual(toBaseline(findViolations(root)), [{ rule: 'too-long', skill: 'plugins/a/skills/long' }]);
+  assert.deepEqual(found(root), ['too-long plugins/a/skills/long/SKILL.md']);
 });
 
 test('node_modules is not searched', (t) => {
@@ -73,20 +78,19 @@ test('node_modules is not searched', (t) => {
   assert.deepEqual(findViolations(root), []);
 });
 
-test('compare names what is new and what is fixed', () => {
-  const known = { rule: 'too-long', skill: 'plugins/a/skills/known' };
-  const gone = { rule: 'too-long', skill: 'plugins/a/skills/gone' };
-  const fresh = { rule: 'duplicate-in-plugin', skill: 'plugins/a/skills/fresh', detail: 'x' };
-  const { added, fixed } = compare([{ ...known, detail: 'x' }, fresh], [known, gone]);
-  assert.deepEqual(added, [fresh]);
-  assert.deepEqual(fixed, [gone]);
+test('--list prints the files of one rule, one per line, and nothing for a clean rule', (t) => {
+  const root = repo(t, {
+    'plugins/a/.claude-plugin/plugin.json': manifest,
+    'plugins/a/skills/long/SKILL.md': skill('long', 600),
+    'plugins/a/skills/short/SKILL.md': skill('short'),
+  });
+  assert.equal(execFileSync('node', [SCRIPT, '--list', 'too-long'], { cwd: root, encoding: 'utf8' }), 'plugins/a/skills/long/SKILL.md\n');
+  assert.equal(execFileSync('node', [SCRIPT, '--list', 'duplicate-in-plugin'], { cwd: root, encoding: 'utf8' }), '');
 });
 
-test('the same skill may break one rule knowingly and another newly', () => {
-  const baseline = [{ rule: 'too-long', skill: 'plugins/a/skills/s' }];
-  const { added } = compare([
-    { rule: 'too-long', skill: 'plugins/a/skills/s', detail: 'x' },
-    { rule: 'duplicate-in-plugin', skill: 'plugins/a/skills/s', detail: 'x' },
-  ], baseline);
-  assert.deepEqual(toBaseline(added), [{ rule: 'duplicate-in-plugin', skill: 'plugins/a/skills/s' }]);
+test('--list with an unknown rule exits 2 and prints no list', (t) => {
+  const root = repo(t, { 'plugins/a/skills/one/SKILL.md': skill('one') });
+  const result = spawnSync('node', [SCRIPT, '--list', 'no-such-rule'], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 2);
+  assert.equal(result.stdout, '');
 });
