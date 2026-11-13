@@ -1,0 +1,278 @@
+[
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/aem-workflow"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/aem-workflow/workflow-debugging"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/aem-workflow/workflow-development"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/aem-workflow/workflow-launchers"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/aem-workflow/workflow-model-design"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/aem-workflow/workflow-orchestrator"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/aem-workflow/workflow-triaging"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/aem-workflow/workflow-triggering"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/dispatcher"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/dispatcher/config-authoring"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/dispatcher/incident-response"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/dispatcher/performance-tuning"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/dispatcher/security-hardening"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/dispatcher/technical-advisory"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/dispatcher/workflow-orchestrator"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/ensure-agents-md"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/6.5-lts/skills/tuning-oak-query-indexes"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/aem-workflow"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/aem-workflow/workflow-debugging"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/aem-workflow/workflow-development"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/aem-workflow/workflow-launchers"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/aem-workflow/workflow-model-design"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/aem-workflow/workflow-orchestrator"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/aem-workflow/workflow-triaging"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/aem-workflow/workflow-triggering"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/code-assessment/tuning-oak-query-indexes"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/dispatcher"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/dispatcher/config-authoring"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/dispatcher/incident-response"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/dispatcher/performance-tuning"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/dispatcher/security-hardening"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/dispatcher/technical-advisory"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/dispatcher/workflow-orchestrator"
+  },
+  {
+    "rule": "duplicate-across-plugins",
+    "skill": "plugins/aem/cloud-service/skills/ensure-agents-md"
+  },
+  {
+    "rule": "duplicate-in-plugin",
+    "skill": "plugins/aem/6.5-lts/skills/aem-workflow/workflow-orchestrator"
+  },
+  {
+    "rule": "duplicate-in-plugin",
+    "skill": "plugins/aem/6.5-lts/skills/dispatcher/workflow-orchestrator"
+  },
+  {
+    "rule": "duplicate-in-plugin",
+    "skill": "plugins/aem/cloud-service/skills/aem-workflow/workflow-orchestrator"
+  },
+  {
+    "rule": "duplicate-in-plugin",
+    "skill": "plugins/aem/cloud-service/skills/code-assessment/replication"
+  },
+  {
+    "rule": "duplicate-in-plugin",
+    "skill": "plugins/aem/cloud-service/skills/content-distribution/replication"
+  },
+  {
+    "rule": "duplicate-in-plugin",
+    "skill": "plugins/aem/cloud-service/skills/dispatcher/workflow-orchestrator"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/adobe-analytics/skills/aa-conversion-funnel-analysis"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/adobe-analytics/skills/aa-top-movers-watchlist"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/adobe-cja/skills/cja-executive-briefing"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/adobe-cja/skills/cja-funnel-health-check"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/adobe-cja/skills/cja-top-movers-watchlist"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/6.5-lts/skills/aem-replication/configure-replication-agent"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/6.5-lts/skills/aem-replication/replication-api"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/6.5-lts/skills/aem-replication/troubleshoot-replication"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/cloud-service/skills/code-assessment/asset-manager"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/cloud-service/skills/code-assessment/event-migration"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/cloud-service/skills/code-assessment/replication"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/cloud-service/skills/code-assessment/resource-change-listener"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/cloud-service/skills/content-distribution/replication"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/cloud-service/skills/content-distribution/sling-distribution"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/cloud-service/skills/migration"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/edge-delivery-services/skills/code-review"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/aem/edge-delivery-services/skills/figma-to-content"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/creative-cloud/adobe-for-creativity/skills/adobe-batch-edit-photos"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/creative-cloud/adobe-for-creativity/skills/adobe-resize-photos-and-videos"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/creative-cloud/adobe-for-creativity/skills/adobe-retouch-portraits"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/stardust/skills/deploy"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/stardust/skills/direct"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/stardust/skills/extract"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/stardust/skills/migrate"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/stardust/skills/prototype"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/stardust/skills/replica"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/stardust/skills/rollout"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/stardust/skills/stardust"
+  },
+  {
+    "rule": "too-long",
+    "skill": "plugins/stardust/skills/uplift"
+  }
+]

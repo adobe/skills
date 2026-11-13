@@ -24,6 +24,19 @@ jobs:
       - name: Skill release configs extend a file that exists
         run: node scripts/check-release-configs.mjs
 
+      - name: Repository scripts pass their tests
+        run: npm test
+
+      - name: Skill names are unique and SKILL.md files stay short (known issues are in scripts/known-skill-issues.json)
+        run: node scripts/check-skills.mjs
+
+      - name: Claude Code accepts the marketplace and every plugin manifest
+        run: |
+          npx claude plugin validate .
+          find plugins -path '*/.claude-plugin/plugin.json' | sort | while read -r manifest; do
+            npx claude plugin validate "${manifest%/.claude-plugin/plugin.json}"
+          done
+
   web-cli:
     runs-on: ubuntu-latest
     defaults:
