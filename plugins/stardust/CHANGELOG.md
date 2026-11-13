@@ -33,6 +33,9 @@ ranges served).
   persists on the video's preview/live POST halts the batch like the PUT 401 (exit 3, never `failed`); folder
   segments are kept verbatim (checked on a scratch site: only the file name takes its web form). Tests cover the
   three; the summary counts over-limit video apart from non-images.
+- Second review follow-up: two files that take one web name (`Clip_A.mp4`, `clip-a.mp4`) no longer overwrite each
+  other on DA. The first in the batch keeps the path; a later one is `FAIL name-collision` before any request, with
+  no ledger write (the row is the first file's), and a dry run shows it. Test included.
 
 ## 0.38.0 — every script takes its browser from one place (#159)
 

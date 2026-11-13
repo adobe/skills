@@ -137,7 +137,8 @@ Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <
 Token: from the variable named by --token-env, or from --token-file (read once at start); never printed,
 never in the re-run command, never written to the ledger.
 Video (#161): an mp4 up to 36 MB is uploaded, then previewed and published itself; author the printed
-root-relative /media/<scope>/<file>, never its content.da.live URL. Bigger mp4s and other video/audio/PDF are
+root-relative /media/<scope>/<file>, never its content.da.live URL. Two files with one stored name: the
+later one FAILs name-collision, nothing sent for it. Bigger mp4s and other video/audio/PDF are
 skipped and stay on the code origin or an external host.
 Writes: the ledger at --ledger (not with --dry-run) and, for a manifest entry whose local
 file is absent but names a source, the fetched image bytes saved to that entry's file path.
@@ -416,6 +417,19 @@ async function main() {
     ledger[daPath] = { ...(ledger[daPath] || {}), status: 'failed', file: e.file, source: e.source, contentUrl: contentUrlOf(daPath), error: `${what} ${why}`.trim(), ts: new Date().toISOString(), ...extra };
     say(`FAIL ${e.file} ${what}${why ? ` (${why})` : ''}`);
   };
+  // A video is stored under its web name, so two different files (`Clip_A.mp4`, `clip-a.mp4`) can map to one DA
+  // path; the second PUT would overwrite the first and both OK lines would name the same path. The first file in
+  // the batch keeps the path; a later one FAILs before any request and writes no ledger entry (the key is the
+  // first file's).
+  const takenBy = new Map();
+  const collision = new Map();
+  for (const e of entries) {
+    if (classify(e.name, null).skip) continue;
+    const p = daPathOf(e);
+    const first = takenBy.get(p);
+    if (!first) takenBy.set(p, e.file);
+    else if (first !== e.file) collision.set(e, { path: p, first });
+  }
 
   // A 401 that survived every retry (the PUT, or a video's preview/live POST) is the token, not this file: the
   // batch halts (exit 3) and the file is left not attempted — never `failed` — so the same command resumes
@@ -429,6 +443,8 @@ async function main() {
 
   const worker = async (e) => {
     if (halted) return;
+    const clash = collision.get(e);
+    if (clash) { counts.failed += 1; say(`FAIL ${e.file} name-collision (stored as ${clash.path}, which ${clash.first} already takes in this batch — rename one of them and re-run)`); return; }
     const daPath = daPathOf(e);
     const contentUrl = contentUrlOf(daPath);
     const rec = ledger[daPath] || {};

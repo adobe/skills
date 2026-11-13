@@ -518,6 +518,23 @@ await check('video: --scope is kept verbatim (the preview resolves folder names 
   const urls = requests.slice(before).map((q) => `${q.method} ${q.url}`);
   assert.deepEqual(urls, [`PUT /source/${ORG}/${REPO}/media/My_Scope.v2/clip-a.mp4`, `POST /hlx/preview/${ORG}/${REPO}/main/media/My_Scope.v2/clip-a.mp4`, `POST /hlx/live/${ORG}/${REPO}/main/media/My_Scope.v2/clip-a.mp4`]);
 });
+await check('video: two files with one web name (Clip_A.mp4, clip-a.mp4) — the first keeps the path, the second FAILs name-collision with no request and no ledger write; a dry run shows it too', async () => {
+  const v7 = join(proj, 'videos7'); mkdirSync(v7, { recursive: true });
+  writeFileSync(join(v7, 'Clip_A.mp4'), randomBytes(300)); writeFileSync(join(v7, 'clip-a.mp4'), randomBytes(301));
+  const dry = await run(['--scope', 'dup', '--dir', 'videos7', '--dry-run'], { token: null });
+  assert.equal(dry.code, 1, dry.out + dry.err);
+  assert.match(dry.out, /^FAIL videos7\/clip-a\.mp4 name-collision \(stored as media\/dup\/clip-a\.mp4, which videos7\/Clip_A\.mp4 already takes/m);
+  const before = requests.length;
+  const r = await run(['--scope', 'dup', '--dir', 'videos7', '--ledger', 'video-ledger.json']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^OK videos7\/Clip_A\.mp4 -> \/media\/dup\/clip-a\.mp4 /m);
+  assert.match(r.out, /^FAIL videos7\/clip-a\.mp4 name-collision \(stored as media\/dup\/clip-a\.mp4, which videos7\/Clip_A\.mp4 already takes in this batch — rename one of them and re-run\)$/m);
+  assert.match(r.out, /2 file\(s\) — 1 uploaded, 0 skipped \(0 not an image\), 1 failed/);
+  const puts = requests.slice(before).filter((q) => q.method === 'PUT').map((q) => q.url);
+  assert.deepEqual(puts, [`/source/${ORG}/${REPO}/media/dup/clip-a.mp4`]);
+  const rec = JSON.parse(readFileSync(VLEDGER, 'utf8'))['media/dup/clip-a.mp4'];
+  assert.equal(rec.status, 'uploaded'); assert.equal(rec.file, 'videos7/Clip_A.mp4'); assert.equal(rec.size, 300, 'the ledger row is the first file\'s');
+});
 await check('--dry-run needs no token, sends nothing, writes nothing', async () => {
   const before = requests.length; const ledgerBefore = readFileSync(LEDGER, 'utf8'); const mtime = statSync(LEDGER).mtimeMs;
   const r = await run(['--scope', 'other', '--dir', 'assets', '--dry-run'], { token: null });
