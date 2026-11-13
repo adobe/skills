@@ -14,11 +14,12 @@ nothing enforced it.
 
 - **`replica/scripts/breakpoint-lint.mjs`:** a direction check that runs with or without a target — any
   `@media` / `@custom-media` / `@import` upper bound (`max-width`, `width <`/`<=`, the top of a range) fails
-  with the mobile-first rewrite point (`max-width: 767px` → `(width >= 768px)`). `media="…"` attributes and
+  with the mobile-first rewrite point (`max-width: 599px` → `(width >= 600px)`). `media="…"` attributes and
   JS thresholds are not direction-checked. No target set no longer skips the run.
 - Rule home: deploy Step 3 (`#162`) — convert desktop-first prototype CSS while lifting it; deploy wires
   `lint:breakpoints` into `npm run lint` on every project (replica C0 already did with a target). Pointers:
-  deploy Lint bullet and checklist row; the `--nav-height` example and the `#109` note are now mobile-first.
+  deploy Lint bullet and checklist row; the `--nav-height` example (on the boilerplate's 600/900 steps) and
+  the `#109` note are now mobile-first.
 - Prototype: the Mobile-adapt audit refuses a desktop-first query (`audit/responsive: desktop-first-query`)
   instead of requiring a `max-width` rule ≤ 640px; the stock hamburger pattern and its fixture are
   mobile-first (`@media (width >= 641px)` restores the inline nav; same switch as before). Migrate and
@@ -27,6 +28,7 @@ nothing enforced it.
 - Tests: `breakpoint-lint.test.mjs` (direction on CSS only, rewrite point, no-target runs, prototype
   `<style>` vs `<source media>`). Nav fixture checked with `mobile-nav-audit.mjs` (clean at 360px) and at
   641 / 1280px (inline nav, no burger).
+
 ## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
 
 Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo
