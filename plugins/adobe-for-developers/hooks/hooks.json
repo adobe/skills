@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/requireApproval.sh\" || exit 0",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/requireApproval.sh\" || printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"The approval check could not run. Confirm this Adobe Developer Console deletion before approving.\"}}'",
             "windows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/requireApproval.ps1\"",
             "timeout": 3
           }
