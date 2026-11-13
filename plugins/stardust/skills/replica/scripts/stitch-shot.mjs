@@ -52,7 +52,12 @@
  *     nor slick-style autoplay timers — the same page never pixel-matched
  *     itself), then clicks the first slick-convention carousel dot so both
  *     sides capture slide 1 deterministically. All symmetric — applied
- *     identically to live and prototype, so it cannot bias the diff.
+ *     identically to live and prototype, so it cannot bias the diff. The
+ *     freeze CSS is a CONSTRUCTED stylesheet (document.adoptedStyleSheets,
+ *     applyFreeze): a strict Content-Security-Policy (style-src with a nonce,
+ *     no 'unsafe-inline') rejects an injected <style>, and the capture used to
+ *     exit 1 there. A freeze that cannot be applied is a WARNING and the
+ *     record's freeze 'failed: <msg>', never an exit.
  *   - FONT-LOAD assertion before capture (F-B2 companion): a face that
  *     failed to load renders the capture in fallback type — the same
  *     silent-false-measurement class as capturing a challenge page. After
@@ -65,7 +70,13 @@
  *     or real on the live site (capture-state — log it).
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
- *     pre-settle height is fake.
+ *     pre-settle height is fake. It is RE-MEASURED after every chunk's scroll
+ *     (heightNow): a document that shrinks or grows during the capture (a
+ *     sticky header a scroll class makes 8 px shorter) is captured to its
+ *     settled height — targets clamp to the current height, the next chunk
+ *     starts where the last one ended (nextChunkStart), and the record says
+ *     heightChange { initial, final }. Growth is followed up to heightCap (an
+ *     endless feed: a WARNING, capped: true).
  *   - FIXED / STICKY layers are captured ONCE: chunk 1 shows the page's top
  *     as a visitor sees it; from chunk 2 on, a fixed layer is made
  *     transparent (opacity, so layout never moves) and a sticky one too while
@@ -112,9 +123,10 @@
  * Writes <out.png> and <stem>.capture.json beside it (live.png →
  * live.capture.json): { writtenBy, url, width, vh, height (the PNG's),
  * chunks, denialCheck ('ok' | 'skipped: <reason>' — the denial-page read
- * after the dismissal sweeps), fontsFailed ([] | the dead faces' families |
+ * after the dismissal sweeps), freeze ('applied' | 'failed: <msg>'), fontsFailed ([] | the dead faces' families |
  * null + fontCheck "failed: <msg>"), fixedLayers ('once', the count, late = those
- * that appeared after scroll 0), at }. Removed when a capture starts, written
+ * that appeared after scroll 0), heightChange ({ initial, final[, capped] } — only
+ * when the document's height changed during the capture), at }. Removed when a capture starts, written
  * with the PNG — a failed or refused capture leaves none. A --freeze-baseline
  * capture writes baseline.json instead (HELP § Origin baseline), fixedLayers included.
  *
@@ -187,8 +199,11 @@ bookkeeping — no browser, no network:
                     A round without the flag retakes a live.png whose record says "baseline". Exit 0; 1 usage.
 
 Writes <out.png> and <stem>.capture.json beside it (live.png → live.capture.json; removed when a capture starts, so a
-failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, fontsFailed, fixedLayers, at } — denialCheck = 'ok' |
-'skipped: <reason>' (the denial-page read after the dismissal sweeps); fontsFailed = [] (every declared face loaded), or the
+failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, freeze, fontsFailed, fixedLayers,
+[heightChange,] at } — denialCheck = 'ok' | 'skipped: <reason>' (the denial-page read after the dismissal sweeps); freeze =
+'applied' | 'failed: <msg>' (the animation / transition freeze, a constructed stylesheet so a strict style-src CSP cannot
+reject it; a failure is a WARNING, never an exit); heightChange = { initial, final[, capped] }, present only when the
+document's height changed during the capture (the PNG is the settled height; growth past the cap is a WARNING); fontsFailed = [] (every declared face loaded), or the
 dead faces' families (status error with no loaded face of the same family, weight and style: a file that failed to fetch,
 or a local() source this browser cannot resolve), or null + fontCheck "failed: <msg>" when the check could not run (one
 stderr line — never a pass). gate.sh prints it per side, gate-all fails the row. A --freeze-baseline capture writes
@@ -236,8 +251,63 @@ export function parseArgs(argv) {
 export const overlayExtras = (opts) => [...(opts.consent ? [opts.consent] : []), ...opts.dismiss];
 // Scroll target of the chunk starting at y, clamped so the last chunk ends at the document's bottom.
 export const chunkTarget = (y, totalH, vh) => Math.max(0, Math.min(y, totalH - vh));
-// Scroll-stall guard (chunk loop below): the window did not advance although the target is > 4 px away.
+// Scroll-stall guard (chunk loop below): the window did not advance although the target is > 4 px away. The target
+// passed in is the one clamped to the document's CURRENT height (heightNow), so a document that shrank under the
+// scroll is not a stall, and a scroll-jacked page (still tall, scrollY stuck) is.
 export const scrollStalled = (prevActualY, actualY, target) => prevActualY !== null && actualY <= prevActualY && target - actualY > 4;
+// How far a document may grow during the capture and still be followed: twice its height at the start, or four more
+// viewports for a short one. An endless feed stops there.
+export const heightCap = (initialH, vh) => Math.max(2 * initialH, initialH + 4 * vh);
+// The document height the chunk loop works with after a re-measure: the measured one, capped (heightCap); a measure
+// that failed or reads as blank (< 10 px) keeps the height known so far.
+export const heightNow = (currentH, measuredH, initialH, vh) => (Number.isFinite(measuredH) && measuredH >= 10 ? Math.min(Math.round(measuredH), heightCap(initialH, vh)) : currentH);
+// Where the next chunk starts: one viewport on — from where the window actually landed when that is short of the
+// chunk's start (the document shrank, or scroll anchoring pulled the window back), so no row is left uncaptured.
+export const nextChunkStart = (y, actualY, vh) => Math.min(y, Math.floor(actualY)) + vh;
+// The chunk loop without a browser — the tests' model of it, and the rule main() follows step by step. `scrollTo(target,
+// chunkIndex)` → { actualY, height } (where the window landed, the document height measured after the scroll).
+// → { chunks: [{ target, actualY }], height (settled), stalled: null | { target, actualY, height } }.
+export function planCapture(initialH, vh, scrollTo) {
+  const chunks = []; let h = initialH; let y = 0; let prev = null;
+  const maxChunks = Math.ceil(heightCap(initialH, vh) / vh) * 2 + 2;
+  while (y < h) {
+    const r = scrollTo(chunkTarget(y, h, vh), chunks.length);
+    h = heightNow(h, r.height, initialH, vh);
+    const target = chunkTarget(y, h, vh);
+    if (scrollStalled(prev, r.actualY, target) || chunks.length >= maxChunks) return { chunks, height: h, stalled: { target, actualY: r.actualY, height: h } };
+    prev = r.actualY;
+    chunks.push({ target, actualY: r.actualY });
+    y = nextChunkStart(y, r.actualY, vh);
+  }
+  return { chunks, height: h, stalled: null };
+}
+// capture.json's heightChange: null when the height the capture started with is the one it ended with.
+export const heightChangeOf = (initialH, finalH, capped = false) => (initialH === finalH && !capped ? null : { initial: initialH, final: finalH, ...(capped ? { capped: true } : {}) });
+
+// ── The animation / transition freeze ─────────────────────────────────────────────────────────
+export const FREEZE_CSS = '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}';
+// Runs IN THE PAGE: the freeze as a constructed stylesheet adopted by the document. No element is inserted, so a
+// Content-Security-Policy style-src without 'unsafe-inline' has nothing to reject (and reports no violation), and
+// the page's mutation observers see nothing. → the number of rules adopted (0 = not applied).
+function adoptFreezeSheet(css) {
+  const sheet = new CSSStyleSheet();
+  sheet.replaceSync(css);
+  document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+  return document.adoptedStyleSheets.includes(sheet) ? sheet.cssRules.length : 0;
+}
+const firstLine = (e) => String((e && e.message) || e).split('\n')[0];
+// Apply the freeze: the constructed stylesheet first; a page where that cannot work (CSSStyleSheet replaced, an old
+// engine) gets the injected <style> the script used before. → capture.json's freeze: 'applied' | 'failed: <msg>' —
+// never throws: a capture without the freeze is a WARNING the operator reads, not a page that cannot be captured.
+export async function applyFreeze(page, css = FREEZE_CSS) {
+  let why;
+  try {
+    if (await page.evaluate(adoptFreezeSheet, css)) return 'applied';
+    why = 'constructed stylesheet not adopted';
+  } catch (e) { why = `constructed stylesheet: ${firstLine(e)}`; }
+  try { await page.addStyleTag({ content: css }); return 'applied'; } catch (e) { return `failed: ${why}; <style>: ${firstLine(e)}`; }
+}
+export const freezeLines = (freeze) => (freeze === 'applied' ? [] : [`stitch-shot WARNING: the animation / transition freeze was not applied (${String(freeze).replace(/^failed: /, '')}) — CSS animations and transitions run during this capture: two captures of the same page may differ. The record says freeze: failed.`]);
 // Copy each decoded chunk ({ y, img: { width, height, data } }) into one RGBA buffer of width × totalH;
 // rows past totalH and columns past width are dropped.
 export function stitchRows(chunks, width, totalH) {
@@ -633,7 +703,9 @@ async function main() {
     const denialCheck = await recheckDenial(liveSession, page, url, entry.status());
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
-    await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
+    // A constructed stylesheet (applyFreeze): a strict style-src CSP rejects an injected <style>. Never throws.
+    const freeze = await applyFreeze(page);
+    for (const line of freezeLines(freeze)) console.error(line);
     // The CSS freeze above stabilizes CSS animations only (an energy-company replica run,
     // 2026-08-26 — field-validated instrument fix). It does NOT stop
     // (a) <video> playback — autoplaying teaser videos capture an arbitrary
@@ -709,16 +781,21 @@ async function main() {
     // translate3d entrance transforms extend the document; recorded: 3183px
     // pre-settle vs 3093px settled). Pre-settle height is fake — mirror this
     // ordering in any ad-hoc probe that reads document height.
-    const totalH = await page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
-    if (!totalH || totalH < 10) throw new Error(`page height ${totalH}px — blank render? (bot challenge / hidden body)`);
+    const measureH = () => page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
+    const initialH = await measureH();
+    if (!initialH || initialH < 10) throw new Error(`page height ${initialH}px — blank render? (bot challenge / hidden body)`);
+    // The height is re-measured after every chunk's scroll (planCapture is this loop without the browser): a scroll
+    // class that makes a sticky header shorter shortens the document under the capture, and targets clamped to the
+    // height read here were then out of reach — reported as a scroll stall, or stitched as empty rows at the bottom.
+    let totalH = initialH; let capped = false;
+    const maxChunks = Math.ceil(heightCap(initialH, opts.vh) / opts.vh) * 2 + 2;
 
     const chunks = [];
     const layers = []; let lateLayers = 0;
     let y = 0;
     let prevActualY = null;
     while (y < totalH) {
-      const target = chunkTarget(y, totalH, opts.vh);
-      await page.evaluate((ty) => window.scrollTo(0, ty), target);
+      await page.evaluate((ty) => window.scrollTo(0, ty), chunkTarget(y, totalH, opts.vh));
       await page.waitForTimeout(450);
       // wait for in-viewport images to complete (max 3s per chunk)
       await page.evaluate(async () => {
@@ -730,6 +807,11 @@ async function main() {
         while (pend() && Date.now() - t0 < 3000) await new Promise((r) => { setTimeout(r, 150); });
       });
       const actualY = await page.evaluate(() => window.scrollY);
+      // the document's height now, and this chunk's target clamped to it (heightNow; growth capped at heightCap)
+      const measuredH = await measureH().catch(() => null);
+      if (Number.isFinite(measuredH) && measuredH > heightCap(initialH, opts.vh)) capped = true;
+      totalH = heightNow(totalH, measuredH, initialH, opts.vh);
+      const target = chunkTarget(y, totalH, opts.vh);
       // layers captured once (layerPassScript — layerAction in the page): chunk 1 tags them at scroll 0, and a fixed
       // or sticky layer that appears later (a scroll class, an injected widget) is tagged when it does — one WARNING
       const tagged = await page.evaluate(layerPassScript(chunks.length));
@@ -753,15 +835,20 @@ async function main() {
       // never catch — those pages emitted silent black bands. On a legit page
       // actualY reaches the clamped target (the last chunk's totalH - vh is
       // reachable by construction), so the no-advance condition stays false;
-      // the 4px slack absorbs fractional-pixel scroll rounding.
+      // the 4px slack absorbs fractional-pixel scroll rounding. The target is
+      // the one clamped to the CURRENT height: a document that shrank under
+      // the scroll is at its (new) bottom, not stalled.
       if (scrollStalled(prevActualY, actualY, target)) {
         throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
       }
       prevActualY = actualY;
       const buf = await page.screenshot();
       chunks.push({ y: actualY, buf });
-      y += opts.vh;
+      if (chunks.length >= maxChunks) throw new Error(`capture did not converge: ${chunks.length} chunks for a document of ${totalH}px (${initialH}px at the start) — the window advances less than a viewport per scroll. Record the page as gate-blocked for the pixel probe.`);
+      y = nextChunkStart(y, actualY, opts.vh);
     }
+    const heightChange = heightChangeOf(initialH, totalH, capped);
+    if (heightChange) console.error(`stitch-shot WARNING: the document's height changed during the capture (${initialH}px → ${totalH}px${capped ? `, still growing: followed up to the cap of ${heightCap(initialH, opts.vh)}px — an endless feed?` : ''}) — captured to ${capped ? 'the cap' : 'the settled height'}; the record says heightChange.`);
 
     const outPng = new PNG({ width: opts.width, height: totalH });
     outPng.data = stitchRows(chunks.map(({ y: cy, buf }) => ({ y: cy, img: PNG.sync.read(buf) })), opts.width, totalH);
@@ -775,7 +862,7 @@ async function main() {
       writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: fonts.fontsFailed, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers } }));
       console.log(`froze origin baseline in ${baselineDir}: ${BASELINE_PNG} + ${BASELINE_JSON} (${opts.width}x${totalH}px)`);
     }
-    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, ...fonts, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, at: new Date().toISOString() }, null, 2)}\n`);
+    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, freeze, ...fonts, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, ...(heightChange ? { heightChange } : {}), at: new Date().toISOString() }, null, 2)}\n`);
     if (opts.checkBaseline) {
       const base = readBaselineProvenance(baselineDir);
       if (!base) console.log(`check-baseline: no frozen baseline in ${baselineDir} — freeze one first (nothing to compare)`);
