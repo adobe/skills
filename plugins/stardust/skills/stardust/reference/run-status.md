@@ -22,6 +22,7 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 | `skill` | yes | the skill writing the line (`stardust:extract`, `stardust:deploy`, …) |
 | `phase` | yes | the skill's own phase name, as its SKILL.md names it |
 | `event` | yes | `start` \| `end` \| `blocked` |
+| `track` | no | the writing track, when two run at once (replica's first page first: `first-page`, `site-scope`); `start`/`end` pair per track |
 | `detail` | no | one human-readable line (counts, blocker reason) |
 | `artifact` | no | path to the phase's primary output, when one exists |
 
@@ -61,6 +62,9 @@ so a skill's final phase must appear exactly as listed.
   when `stardust/journal.md` (beside the ledger) has no `## ` heading
   naming the phase (case-insensitive) — a warning only, never an
   exit-code change; an absent journal is not checked.
+- **A script you write uses `browser.mjs`** (`../SKILL.md` § Setup,
+  step 7). `ledger.mjs … end` names those written in the phase that
+  import `playwright` themselves — a warning only.
 - **Harness-agnostic.** Plugin skills must never reference
   harness-specific progress mechanisms (no `emit_milestone`, no
   session APIs). `stardust/status.jsonl` is the only progress

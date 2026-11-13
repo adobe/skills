@@ -74,10 +74,10 @@ put(W("parse", "links.jsonl"), jl([{ url: `${O}/en/a.html`, links: { [`${O}/en/o
 put(W("map", "page-blocks.jsonl"), jl([
   { url: `${O}/en/a.html`, blocks: [{ kind: "block", block: "hero", variant: null, aem: ["banner"], path: "0", pos: 0 }, { kind: "block", block: "cards", variant: "3-up", aem: ["tiles"], path: "1", pos: 1 }] },
   { url: `${O}/en/b.html`, blocks: [] },
-  { url: `${O}/en/c.html`, blocks: [{ kind: "block", block: "hero", variant: null, aem: ["banner"], path: "0", pos: 0 }] },
+  { url: `${O}/en/c.html`, blocks: [{ kind: "block", block: "hero", variant: null, aem: ["banner"], path: "0", pos: 0 }, { kind: "widget", block: "site-search", variant: null, aem: ["search"], path: "1", pos: 1 }] },
 ]));
 put(W("map", "variants.json"), [{ template: "page", code: "page#1", pages: 2, core: ["hero"], optional: [], urls: [`${O}/en/a.html`, `${O}/en/b.html`], distinct_sets: 2, representative: `${O}/en/a.html` }]);
-put(D("judgement", "catalog.json"), { blocks: { hero: { kind: "block", family: "hero", description: "Hero", aem: ["banner"], reference: "hero", verdict: "reuse" }, cards: { kind: "block", family: "grid", description: "Cards", aem: ["tiles"], reference: "cards", verdict: "new" }, header: { kind: "global", family: "other", description: "Header", verdict: "variant" }, footer: { kind: "global", family: "other", description: "Footer", verdict: "variant" } } });
+put(D("judgement", "catalog.json"), { blocks: { hero: { kind: "block", family: "hero", description: "Hero", aem: ["banner"], reference: "hero", verdict: "reuse" }, cards: { kind: "block", family: "grid", description: "Cards", aem: ["tiles"], reference: "cards", verdict: "new" }, header: { kind: "global", family: "other", description: "Header", verdict: "variant" }, footer: { kind: "global", family: "other", description: "Footer", verdict: "variant" }, "site-search": { kind: "widget", family: "search", description: "Search", aem: ["search"], reference: null, verdict: "new" } } });
 put(D("judgement", "implementation.json"), {
   features: [{ id: "player", class: "V", name: "Player", disposition: "embed-passthrough", reproducibility: "self", reach: "live sitemap signal:script:*player*", decisions: ["Q-1"] }],
   open_questions: [{ id: "Q-1", area: "Media", owner: "stakeholder", question: "Keep the player?", options: ["yes", "no"], default: "yes", default_option: 0, impact: "features[player].reach_pages" },
@@ -100,6 +100,12 @@ check("urls: sitemap rows, the discovered in-scope page, outcomes and flags", ()
 });
 check("page blocks carry chrome globals around the page's blocks", () => assert.deepEqual(KL("page-blocks.jsonl")[0].blocks.map((b) => b.block), ["header", "hero", "cards", "footer"]));
 check("blocks: counts on sitemap pages only, variants with verdicts", () => { const b = Object.fromEntries(KJ("blocks.json").map((x) => [x.name, x])); assert.equal(b.hero.url_count, 1); assert.equal(b.cards.variants[0].verdict, "new"); });
+check("a widget is a coded block: counted in block_count, kept in blocks.json with its kind and verdict new, not reported missing", () => {
+  const c = KL("urls.jsonl").find((u) => u.path === "/en/c.html"); assert.equal(c.block_count, 2);
+  const w = KJ("blocks.json").find((b) => b.name === "site-search"); assert.equal(w.kind, "widget"); assert.equal(w.verdict, "new"); assert.equal(w.url_count, 0, "off-sitemap page: counted on sitemap pages only");
+  assert.deepEqual(KL("page-blocks.jsonl").find((p) => p.url === `${O}/en/c.html`).blocks.map((b) => [b.block, b.kind]), [["hero", "block"], ["site-search", "widget"]]);
+  assert.doesNotMatch(r1.stderr, /missing from judgement\/catalog\.json/);
+});
 check("feature reach and question impact are computed", () => { assert.equal(KJ("features.json")[0].reach_pages, 1); assert.deepEqual(KJ("open-questions.json").map((q) => q.impact), [1, 1]); });
 check("answers replace the default; the default stays recorded", () => { const q = KJ("open-questions.json")[1]; assert.equal(q.effective, "retire them"); assert.equal(q.default_assumption, "migrate"); assert.equal(KJ("open-questions.json")[0].effective, "yes"); });
 check("findings: plain text with computed numbers, in their chapter and rank", () => assert.deepEqual(KJ("findings.json"), [{ title: "Reuse.", text: "1 of 2 live pages need no new block.", numbers: [1, 2], chapter: "build", rank: 1 }]));

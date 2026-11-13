@@ -3,7 +3,7 @@ name: scrape-webpage
 description: "Use this when the page-import pipeline needs to fetch a source webpage and prepare it for import/migration to AEM Edge Delivery Services. Covers scraping content, extracting metadata, downloading images, and returning analysis JSON with paths, metadata, cleaned HTML, and local images. Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
-  version: "2.0.1"
+  version: "2.0.3"
 ---
 
 # Scrape Webpage
@@ -25,11 +25,12 @@ Use this skill when:
 
 ## Prerequisites
 
+`<SKILL_DIR>` is the absolute path to the directory containing this SKILL.md.
+
 Before using this skill, ensure:
 - ✅ Node.js is available
-- ✅ npm playwright is installed (`npm install playwright`)
-- ✅ Chromium browser is installed (`npx playwright install chromium`)
-- ✅ Sharp image library is installed (`cd .claude/skills/scrape-webpage/scripts && npm install`)
+- ✅ Script dependencies (playwright, sharp) are installed (`npm install --prefix <SKILL_DIR>/scripts`)
+- ✅ Chromium browser is installed (`npx --prefix <SKILL_DIR>/scripts playwright install chromium`)
 
 ## Related Skills
 
@@ -43,7 +44,7 @@ Before using this skill, ensure:
 
 **Command:**
 ```bash
-node .claude/skills/scrape-webpage/scripts/analyze-webpage.js "https://example.com/page" --output ./import-work
+node <SKILL_DIR>/scripts/analyze-webpage.js "https://example.com/page" --output ./import-work
 ```
 
 **What the script does:**
@@ -144,12 +145,12 @@ This skill provides:
 
 **Browser not installed:**
 ```bash
-npx playwright install chromium
+npx --prefix <SKILL_DIR>/scripts playwright install chromium
 ```
 
-**Sharp not installed:**
+**Playwright or Sharp not installed:**
 ```bash
-cd .claude/skills/scrape-webpage/scripts && npm install
+npm install --prefix <SKILL_DIR>/scripts
 ```
 
 **Image download failures:**

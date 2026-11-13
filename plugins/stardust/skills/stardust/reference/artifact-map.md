@@ -31,8 +31,7 @@ under `stardust/current/` written by `$stardust extract`.
 
 ### `DESIGN.json.extensions`
 
-The `extensions` object grows with the migrate-template-canon
-refactor:
+The `extensions` object:
 
 - **`extensions.canon`** — pinned token values, compositional moves
   (free-text), and references to `stardust/canon/*` chrome and CSS
@@ -43,9 +42,11 @@ refactor:
   `canonicalRendering` reference. Auto-detected during `$stardust
   extract --prep`; promoted/refined during `$stardust direct
   --prep`.
+- **`extensions.widgets[]`** — EDS widgets (`{ id, path, params }`):
+  candidates marked as widgets in `direct --prep`. Per page, the
+  rendered references live in `_meta.json.widgets[]`.
 - **`extensions.colorReservations[]`** — colors reserved to specific
-  modules or contexts (e.g., centennial-red reserved to a
-  `trh-100-lockup` module). Validated at migrate time; violation
+  modules or contexts. Validated at migrate time; violation
   refuses the page.
 - **`extensions.metadata`** — site-level metadata defaults: site
   name, default OG image, theme color, organization JSON-LD,
@@ -367,8 +368,8 @@ what `skills/stardust/reference/stardust.gitignore` lists. The rule of
 thumb is cost to reproduce, not regenerability: an LLM-written artifact
 comes back different on a re-run, and a capture of the source site cannot
 come back at all once the site is replaced. Size alone never drops a
-file; screenshots and four rewritten-on-every-run folders are the
-exceptions. The master skill installs the ignore file as
+file; screenshots, gate images and two rewritten-on-every-run folders are
+the exceptions. The master skill installs the ignore file as
 `stardust/.gitignore` (Setup step 6); a project that wants one of the
 excluded folders tracked deletes that line or adds a negation below it.
 
@@ -381,12 +382,14 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `canon/**` | yes | prototype | the design canon |
 | `canon-source/**` except `assets/screenshots/` | yes | extract | donor capture |
 | `current/` text: `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `_brand-extraction.json`, `_crawl-log.json`, `_dynamics.json`, `brand-review.html`, `pages/*.json`, `pages/*.html` | yes | extract | `pages/*.json` feeds nine skills; the substrate of the pipeline |
-| `current/assets/**` | **no** | extract | 50 MB screenshots rewritten on every extract + source media; `migrate`/`deploy` need it → re-run extract on a clone |
+| `current/assets/**` except `screenshots/` | yes | extract | fonts, logo, source media (#156) |
+| `current/assets/screenshots/` | **no** | extract | rewritten on every extract |
 | `current/brand-sources/*/assets/screenshots/` | **no** | extract | screenshots |
 | `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
 | `validation/**` | **no** | master / prototype | clean-pass screenshots |
 | `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB) |
-| `replica/gates/**` | **no** | replica | per-iteration renders and diffs; verdicts live in `progress.json`; `live.png` re-taken on first run |
+| `replica/gates/**` except `*.png` | yes | replica | tables, verdicts, capture records: a resumed run reads them (#156) |
+| `**/gates/**/*.png` except `baseline.png` | **no** | replica | captures and diffs, re-taken when needed (`gate-all.mjs --help`) |
 | `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger |
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
 | `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |
@@ -422,8 +425,9 @@ installed and tracked binaries under `stardust/` exceed 50 MB, offer
 `.gitattributes` patterns for
 `stardust/**/*.{png,jpg,jpeg,webp,gif,woff,woff2,ttf,otf,mp4}` — never
 write them unasked. Consequences to state in the state report when they
-apply on this checkout: without `current/assets/`, `brand-review.html`
-has no thumbnails and `migrate` / `deploy` need an `extract` re-run.
+apply on this checkout: without `current/assets/`, `migrate` / `deploy`
+need an `extract` re-run; without its screenshots, `brand-review.html`
+has no thumbnails.
 
 Who reads `stardust/current/` (the dependency that decides what a clone
 can do): `pages/*.json` — migrate, prototype, replica, master, direct,

@@ -5,7 +5,9 @@
 // ledger, --dry-run, --check against the width-aware acceptance set (a pixel gate per --widths entry) and against
 // stale gates, --slug, --json, --help, the delivery-lint fallback, the pixel regime (prototype vs published), deadline
 // and no-verdict jobs recorded OPEN, variance-probe only from the page's own ■ line, the name-fallback attribution
-// rule, a malformed progress.json aborting before any sidecar write, the overflow assert line outranking a PASS pixel
+// rule, a malformed progress.json aborting before any sidecar write, a progress.json that is one archetype's residual
+// record at its top level wrapped under types.<archetype> and refused only when it names no archetype (a ledger with
+// a `types` map is never second-guessed), the overflow assert line outranking a PASS pixel
 // line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
 // dropped from the acceptance set until the page's delivered content file exists (`--content`).
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
@@ -88,8 +90,12 @@ check('parsers read the instruments\' verdict lines and nothing else', () => {
   assert.deepEqual(parseVerdict(`${pixelLog(-9, 12, 100, '12.00', 'FAIL')}\n`), { px: 12, total: 100, pct: 12, threshold: 10, verdict: 'FAIL', heightDelta: -9 });
   assert.equal(parseVerdict('differing pixels: 1 / 100 = 1.00%  (threshold 10%) → PASS  [MASKED 40 rows: 0:40 — authored-volatile, excluded]').verdict, 'PASS');
   assert.equal(parseVerdict('run-bg: x launched: gate.sh a b c 1440'), null);
-  assert.deepEqual(parseFindings('x\nFindings: none — content + roles match\n'), { total: 0, structural: 0, text: 'none — content + roles match' });
-  assert.deepEqual(parseFindings('Findings: 3 (1 structural 🔴)\n  🔴 MISSING'), { total: 3, structural: 1, text: '3 (1 structural 🔴)' });
+  assert.deepEqual(parseFindings('x\nFindings: none — content + roles match\n'), { total: 0, structural: 0, lost: 0, text: 'none — content + roles match' });
+  assert.deepEqual(parseFindings('Findings: 3 (1 structural 🔴)\n  🔴 MISSING'), { total: 3, structural: 1, lost: 0, text: '3 (1 structural 🔴)' });
+  assert.deepEqual(parseFindings('Findings: 4 (0 structural 🔴)\nTiers: looks-same 🔴 0 · nothing-lost 🟡 2 · accepted 🟢 5 · advisory 2\n'), { total: 4, structural: 0, lost: 2, text: '4 (0 structural 🔴)' }, 'the probe\'s own Tiers line');
+  assert.equal(parseFindings('content-diff: 4 (0 structural 🔴) — looks-same 🔴 0 · nothing-lost 🟡 1 · accepted 🟢 0 · advisory 3\n').lost, 1, 'gate.sh --full\'s one-line echo');
+  assert.deepEqual(parseFindings('Findings: 5 (0 structural 🔴)\nTiers: looks-same 🔴 0 · nothing-lost 🟡 3 · accepted 🟢 0 (owner 0, auto 0) · advisory 2\n…\nFindings: 2 (0 structural 🔴)\n'), { total: 2, structural: 0, lost: 0, text: '2 (0 structural 🔴)' }, 'a multi-round log: the last round printed no tiers — an earlier round\'s nothing-lost count is not borrowed');
+  assert.equal(parseFindings('content-diff: 4 (1 structural 🔴) — looks-same 🔴 1 · nothing-lost 🟡 2 · accepted 🟢 1 (owner 1, auto 0) · advisory 1\nFindings: none — content + roles match\nTiers: looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 0 (owner 0, auto 0) · advisory 0\n').lost, 0, 'counts from the same (last) round');
   assert.equal(parseFindings('content-diff: 2 (0 structural 🔴)').structural, 0);
   assert.equal(parseFindings('content-diff: DEADLINE (exit 124) — re-run, not a verdict'), null);
   assert.deepEqual(parseCounts('  ✓ keep [200] x\n\n4 keep · 1 optimize · 0 omit\n').counts, { keep: 4, optimize: 1, omit: 0 });
@@ -425,6 +431,47 @@ check('a malformed progress.json aborts (exit 1, named) before any sidecar is wr
   writeFileSync(PROGRESS, good);
   const ok = run('--slug', 'home'); assert.equal(ok.code, 0, ok.err); assert.equal(json(side.home).gateEvidence['media-reconcile'], '3 keep (media-home.log)');
   assert.equal(readdirSync(dirname(side.home)).some((f) => f.endsWith('.tmp')), false); assert.equal(readdirSync(dirname(PROGRESS)).some((f) => f.endsWith('.tmp')), false);
+});
+
+check('a progress.json that is one archetype\'s residual record (the old documented example written as the whole file) is wrapped under types.<archetype> and the run proceeds', () => {
+  const good = read(PROGRESS);
+  const record = { pageType: 'landing', archetype: 'home', breakpoints: { 1440: { iterations: 3 } } };
+  const bare = `${JSON.stringify(record, null, 2)}\n`;
+  const wrapNote = /^gate-evidence: .*progress\.json: one archetype's record at the top level was wrapped under types\.home \(source-fidelity-gate\.md § Residual logging format\)$/m;
+  // --dry-run: the wrap happens in memory only — the note is printed, the file is untouched
+  writeFileSync(PROGRESS, bare);
+  let r = run('--dry-run', '--slug', 'home'); assert.equal(r.code, 0, r.out + r.err); assert.match(r.err, wrapNote); assert.equal(read(PROGRESS), bare, 'dry-run writes nothing');
+  // (a) a real unfiltered run: the record survives verbatim under types.home, this script's blocks are appended, the sidecar is written
+  const h = json(side.home); delete h.gateEvidence['media-reconcile']; h.gatesPassed = h.gatesPassed.filter((g) => g !== 'media-reconcile'); writeFileSync(side.home, `${JSON.stringify(h, null, 2)}\n`);
+  r = run(); assert.equal(r.code, 0, r.out + r.err); assert.match(r.err, wrapNote); assert.doesNotMatch(r.err, /\n\s+at /);
+  let after = json(PROGRESS);
+  assert.deepEqual(after.types, { home: record }, 'the record is wrapped losslessly under its own slug');
+  assert.deepEqual(Object.keys(after), ['types', 'siblings', 'migrate'], 'this script appends siblings and migrate; it never writes _provenance');
+  assert.equal(after.migrate.pages, 3); assert.ok('tours-north' in after.siblings);
+  assert.equal(json(side.home).gateEvidence['media-reconcile'], '3 keep (media-home.log)', 'the sidecar is written as in a normal run');
+  assert.equal(readdirSync(dirname(PROGRESS)).some((f) => f.endsWith('.tmp')), false);
+  // (b) a record that names no archetype is refused (exit 1, named, no stack), nothing written
+  writeFileSync(PROGRESS, '{ "breakpoints": {} }\n');
+  const before = read(side.home);
+  r = run('--slug', 'home'); assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.err, /^gate-evidence: .*progress\.json is one archetype's residual record at the top level \(breakpoints\) and names no archetype — move it under types\.<archetype> \(source-fidelity-gate\.md § Residual logging format\)$/m);
+  assert.match(r.err, /names no archetype/); assert.match(r.err, /types\.<archetype>/); assert.doesNotMatch(r.err, /\n\s+at /);
+  assert.equal(read(PROGRESS), '{ "breakpoints": {} }\n', 'the record is left for the human'); assert.equal(read(side.home), before, 'no sidecar written');
+  // (c) `pageType` + `archetype` without `breakpoints` is a record too, and a --slug run wraps it as well
+  writeFileSync(PROGRESS, '{ "pageType": "landing", "archetype": "home" }\n');
+  r = run('--slug', 'home'); assert.equal(r.code, 0, r.out + r.err); assert.match(r.err, wrapNote);
+  after = json(PROGRESS); assert.deepEqual(after.types, { home: { pageType: 'landing', archetype: 'home' } }); assert.deepEqual(Object.keys(after), ['types', 'siblings']);
+  // (d) `pageType` alone is not a record: unchanged behaviour, the key stays at the top level
+  writeFileSync(PROGRESS, '{ "pageType": "landing" }\n');
+  r = run('--slug', 'home'); assert.equal(r.code, 0, r.out + r.err); assert.doesNotMatch(r.err, /wrapped under/);
+  after = json(PROGRESS); assert.equal(after.pageType, 'landing'); assert.equal('types' in after, false);
+  // (e) a ledger with a `types` map is never second-guessed: a top-level `breakpoints` key beside it is preserved
+  const map = { _provenance: { writtenBy: 'x' }, types: { home: { pageType: 'landing', archetype: 'home', breakpoints: { 1440: { iterations: 3 } } } }, breakpoints: { 1440: {} } };
+  writeFileSync(PROGRESS, `${JSON.stringify(map, null, 2)}\n`);
+  r = run('--slug', 'home'); assert.equal(r.code, 0, r.out + r.err); assert.doesNotMatch(r.err, /wrapped under|names no archetype/);
+  after = json(PROGRESS); assert.deepEqual(after.types, map.types); assert.deepEqual(after._provenance, map._provenance); assert.deepEqual(after.breakpoints, map.breakpoints); assert.deepEqual(after.siblings, {});
+  assert.deepEqual(Object.keys(after), ['_provenance', 'types', 'breakpoints', 'siblings'], 'the map keys stay first; this script appends its own');
+  writeFileSync(PROGRESS, good);
 });
 
 rmSync(root, { recursive: true, force: true });

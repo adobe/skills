@@ -20,10 +20,9 @@ interface AssembledMetadata {
 }
 ```
 
-`"auto"` is the migration default. It lets the generated post-deploy hook call
-the desired-state `POST /installation` endpoint, execute a planned upgrade, and
-wait for its lifecycle result. Use `"manual"` only when the developer explicitly
-wants plans returned without starting execution.
+`"auto"` is the migration default: the generated post-deploy hook plans an
+upgrade and starts it immediately. Use `"manual"` only when the developer
+explicitly wants the plan left pending without starting it.
 
 ---
 
@@ -218,6 +217,16 @@ interface DomainResult {
   //   adminUi domain    → { adminUi: { menu?: {...}, order?: {...}, product?: {...}, customer?: {...} } }
   //   businessConfig    → { businessConfig: { schema: [...] } }
   configFragment: Record<string, unknown>;
+
+  // businessConfig domain only: env vars still read by runtime actions that were
+  // added to configFragment.businessConfig.schema as candidates (fields tagged "_source": "env").
+  envMigrations?: Array<{
+    key: string;
+    field: string;
+    type: string;
+    reads: Array<{ file: string; line: number; expression: string }>;
+    inputDeclarations: string[];
+  }>;
 
   unresolvedQuestions: Array<{
     id: string; // dot-notation identifier, e.g. "events.provider.label"

@@ -3,7 +3,7 @@
  * rollout/delivery-lint.mjs — PRE-deploy static linter for the EDS/DA delivery
  * contract. Encodes the deterministic rendering rules the pipeline otherwise
  * re-learns by failing (one-CTA-per-<p>, wrapper, trailing-slash, path-safety,
- * cross-origin image optimization, metadata). Run BEFORE PUT; a P0 blocks deploy.
+ * cross-origin image optimization, metadata, widget links). Run BEFORE PUT; a P0 blocks deploy.
  *
  * This is the static half of the delivery gates (the dynamic half — does it
  * actually render — is verify.mjs § renderer-truth). Reference:
@@ -13,7 +13,8 @@
  *   node skills/rollout/scripts/delivery-lint.mjs --file <html> [--path </da/path>]
  *        [--type page|fragment|index] [--content content] [--json] [--optimizing-blocks a,b,c]
  * --content: the content tree (default ./content when present) — tells a folder index, served at /x/,
- * from a leaf served at /x, so a trailing slash is judged by its target.
+ * from a leaf served at /x, so a trailing slash is judged by its target. Its parent is the code tree:
+ * when it holds widgets/, every /widgets/<path>/<name>.html link must resolve to a file there.
  * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation.
  * Writes: nothing — findings (text or --json) go to stdout.
  *
@@ -22,8 +23,9 @@
  * (default cards,columns,hero).
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { reservedStem } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -50,6 +52,8 @@ const targetKind = (key) => {
   if (existsSync(join(CONTENT, key === '/' ? 'index.html' : `${key.slice(1)}/index.html`))) return 'folder';
   return existsSync(join(CONTENT, `${key.slice(1)}.html`)) ? 'leaf' : null;
 };
+// the code tree (blocks/, widgets/) is the content tree's parent; widget links are checked only when widgets/ exists
+const WIDGETS_DIR = CONTENT ? resolve(CONTENT, '..', 'widgets') : (existsSync('widgets') ? resolve('widgets') : null);
 const html = readFileSync(FILE, 'utf8');
 
 function inferType(p) {
@@ -107,10 +111,17 @@ for (const blk of OPTIMIZING) {
   }
 }
 
-/* ---- internal link hygiene: no .html; a trailing slash exactly on a folder index (eds-path.mjs) ---- */
+/* ---- internal link hygiene: no .html — except the one widget mount, /widgets/<path>/<name>.html?<params>, which
+   must name existing widget code with a block-safe stem; a trailing slash exactly on a folder index (eds-path.mjs) ---- */
 for (const m of html.matchAll(/href="(\/[^"]*)"/gi)) {
   const href = m[1]; const bare = href.replace(/[?#].*/, '');
   if (bare === '/') continue;
+  if (/^\/widgets\/.+\.html$/i.test(bare)) {
+    const stem = bare.replace(/^.*\//, '').replace(/\.html$/i, '');
+    if (reservedStem(stem)) add('P1', 'widget-name', `widget name "${stem}" collides with a reserved block class or a derived -wrapper/-container class: ${href}`);
+    else if (WIDGETS_DIR && existsSync(WIDGETS_DIR) && !existsSync(join(WIDGETS_DIR, bare.slice('/widgets/'.length)))) add('P1', 'unknown-widget', `widget link names no file under widgets/ (${bare.slice(1)} missing): ${href}`);
+    continue;
+  }
   const kind = targetKind(pathKey(bare));
   if (bare.endsWith('/')) {
     if (kind === 'leaf') add('P1', 'trailing-slash', `internal link to a page has a trailing slash (404s on EDS): ${href}`);

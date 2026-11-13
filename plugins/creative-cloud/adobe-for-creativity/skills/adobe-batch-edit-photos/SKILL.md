@@ -17,7 +17,7 @@ license: Apache-2.0
 compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Local files reach Creative Cloud via the asset_add_file picker or (no-widget) asset_initialize_file_upload -> PUT -> asset_finalize_file_upload; raw local paths are never passed to image tools."
 allowed-tools: adobe_mandatory_init image_list_presets asset_add_file read_widget_context asset_initialize_file_upload asset_finalize_file_upload image_auto_straighten image_apply_auto_tone image_apply_adjustments image_apply_preset image_select_subject image_apply_effects image_apply_gaussian_blur image_crop_and_resize asset_preview_file create_firefly_board
 metadata:
-  version: 4.0.0
+  version: 4.1.0
   visibility: public
   surface: [claude, codex]
 ---
@@ -64,7 +64,7 @@ consistency of tone and color over squeezing the best out of any single image.
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-batch-edit-photos", "skill_version": "4.0.0" }
+{ "skill_name": "adobe-batch-edit-photos", "skill_version": "4.1.0" }
 ```
 
 ---
@@ -338,7 +338,7 @@ asset_preview_file({
 > Before: <sourceURIs[0]>
 > After:  <processed_preview_url>
 > ```
-> UI clients that render image URLs inline show both automatically. In Codex or other non-UI agents, download both to the workspace (`curl -L -o before.jpg "<sourceURIs[0]>"`, `curl -L -o after.jpg "<processed_preview_url>"`) and reference those local paths instead.
+> UI clients that render image URLs inline show both automatically. In Codex or other non-UI agents, download both assets to the workspace using native file-download tools to save `<sourceURIs[0]>` as `before.jpg` and `<processed_preview_url>` as `after.jpg`, then reference those local paths instead.
 
 3. Post this message (append the large-batch timing note here if N > 5):
 ```
@@ -586,7 +586,7 @@ asset_preview_file({
 
 If `asset_preview_file` fails, present the final output URLs as plain text links in the completion summary.
 
-> **No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface, e.g. Codex)* — list the final output URLs directly in the completion message (one per image; Step 8 templates below). UI clients that render image URLs inline display them automatically; in Codex or other non-UI agents they will not, so download each to the workspace (`curl -L -o photo_1.jpg "<final_url_1>"`, etc.) and reference those local paths instead. The per-photo download links are the deliverable in every client either way.
+> **No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface, e.g. Codex)* — list the final output URLs directly in the completion message (one per image; Step 8 templates below). UI clients that render image URLs inline display them automatically. In Codex or other non-UI agents, download each image to the workspace using native file-download tools (saving `<final_url_1>` as `photo_1.jpg`, etc.) and reference those local paths instead. The per-photo download links are the deliverable in every client either way.
 
 **Before/after preview (Step 2c):** Step 2c first downscales image 1 to 1200px, then runs the pipeline on that downscale. Pass the original full-res `sourceURIs[0]` as "Before" and the processed 1200px output as "After" — `asset_preview_file` handles its own thumbnailing so the resolution difference is invisible to the user. Do not add an extra resize step.
 

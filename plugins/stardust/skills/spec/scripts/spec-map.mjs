@@ -6,7 +6,7 @@
  *   node spec-map.mjs [--config <file>] [--rules <mapping.json>] [--in <components.jsonl>] [--out <jsonl>]
  *
  * Rules (reference/judgement.md): direct { component: { kind, block, variant?, keepEmpty? } } with kind
- * block|dynamic|default|metadata|drop (options: dropIfEmpty — default true for default/metadata only; keepEmpty;
+ * block|dynamic|widget|default|metadata|drop (options: dropIfEmpty — default true for default/metadata only; keepEmpty;
  * whenKids — map only when the wrapper has non-empty children); layout [components flattened into their children]; sections
  * { component: { block, modsMatch } } (a styled wrapper → section-style row + its children); nesting
  * { component: block } (tabs/accordion: children become nested_in rows); carousels { component: { single, multi } };
@@ -83,7 +83,7 @@ export function mapPage(comps, R) {
       return r ? [inst(r.kind || 'block', r.block, r.variant, n, ctx)] : [];
     }
     if (nesting[c]) {
-      const nested = mapNodes(n.kids || [], { ...ctx, nested_in: nesting[c] }).filter((x) => x.kind === 'block' || x.kind === 'dynamic');
+      const nested = mapNodes(n.kids || [], { ...ctx, nested_in: nesting[c] }).filter((x) => ['block', 'dynamic', 'widget'].includes(x.kind));
       return [inst('block', nesting[c], nested.length ? 'with-nested-blocks' : null, n, ctx), ...nested];
     }
     const d = direct[c];

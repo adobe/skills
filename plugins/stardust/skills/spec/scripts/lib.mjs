@@ -9,7 +9,6 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -122,21 +121,10 @@ export async function loadSibling(skill, file) {
 }
 
 /**
- * The diff skill's live-session.mjs: the plugin's one hardened way to reach a live site (challenge detection, the
- * stealth real-Chrome `--headed` tier, document-only standard headers).
+ * The master skill's browser.mjs, the front door: Playwright, the browser, and the plugin's one hardened way to
+ * reach a live site (challenge detection, the stealth real-Chrome `--headed` tier, document-only standard headers).
  */
-export const loadLiveSession = () => loadSibling('diff', 'live-session.mjs');
-
-/** Playwright from the project (the plugin tree ships none). */
-export async function loadPlaywright() {
-  try {
-    const req = createRequire(join(process.cwd(), 'package.json'));
-    const mod = await import(req.resolve('playwright'));
-    return mod.chromium ? mod : mod.default;
-  } catch { /* fall through */ }
-  const mod = await import('playwright');
-  return mod.chromium ? mod : mod.default;
-}
+export const loadBrowser = () => loadSibling('stardust', 'browser.mjs');
 
 /* ----------------------------------------------------- HTML tree reader --- */
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
@@ -309,6 +297,9 @@ export function genericRules(A, opts = {}) {
 
 /* ------------------------------------------------- profiles and layout ---- */
 /** Group aem-core grid members into rows: consecutive members narrower than 12 whose widths fill the grid. Pure. */
+/** Kinds that ship as code — counted, cropped, variant-signed and capture-picked alike. */
+export const CODED = new Set(['block', 'dynamic', 'widget']);
+
 export function groupRows(items, width, newline) {
   const out = []; let row = []; let sum = 0;
   const flush = () => { if (row.length > 1) out.push({ row }); else if (row.length) out.push(row[0]); row = []; sum = 0; };

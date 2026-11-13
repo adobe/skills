@@ -14,10 +14,12 @@ committing to migrate; build the data structure migrate consumes."
 ## 1. Lift the cap
 
 `--prep` implies `--all`. Migration coverage requires the full
-inventory — the small discovery cap (5 pages) is insufficient. The
+inventory — the small discovery cap (5 pages) is insufficient. When
+the user named N, `--prep` keeps `--cap N` instead (link-first order,
+`ia-extraction.md` § Priority for the cap). Otherwise the
 cap-respecting selection logic from `ia-extraction.md`
-§ Page selection still applies for ordering and junk-filtering;
-it just doesn't truncate.
+§ Page selection still applies for ordering and junk-filtering
+without truncating.
 
 ### Sub-agent prompt requirements (when delegating)
 

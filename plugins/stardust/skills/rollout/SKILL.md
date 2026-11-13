@@ -2,7 +2,7 @@
 name: rollout
 description: Deploy a WHOLE redesigned site to AEM Edge Delivery Services — the full-site, bulk sibling of `deploy` (which ships one page). Use to roll out, bulk-deploy, or publish an entire migrated stardust site at once ("deploy all pages", "full site deployment", "deploy the whole/entire website to AEM"), not just a single page. Inventories the migrated tree (stardust/migrated/ + _meta.json) into a delivery ledger, dedups blocks, drives `deploy` per page, verifies, and tracks what's done and what's left. Supports archetypes-only mode — when only the template archetype pages are migrated, it deploys all block code immediately and registers the rest as content-pending.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:rollout — whole site → AEM (Edge Delivery Services)
@@ -83,7 +83,8 @@ full mode; pages present only in `state.json` are seeded with `templateId` from
 content-pending`.
 
 Inventory is **idempotent and incremental**: delivery status is preserved; a page
-whose migrated HTML changed after delivery is re-flagged `stale`. Fill in the DA
+whose migrated HTML changed after delivery is re-flagged `stale` (never a
+pinned row: replica's first page first). Fill in the DA
 coordinates in `rollout.json` (`site.da.org`, `site.site`, `site.da.ref`,
 `site.liveHost`) if not inferred.
 
@@ -94,25 +95,24 @@ node skills/rollout/scripts/blocks.mjs   # → coverage/blocks.json (the dedup u
 node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion plan
 ```
 
-- `blocks.mjs` collapses every block instance (per-page `modules` + chrome) into
-  the **distinct** set, assigns each a canonical `edsBlockName` (kebab,
-  reserved-class-guarded per deploy #15), and records `usedByPages` /
-  `instanceCount`. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
-  authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In
-  archetypes-only mode the archetype sidecars fully determine the
-  block set; `content-pending` pages add none. A module that maps to EDS **default
-  content** (title, text, image, button, separator — deploy's D1) needs no block: record
+- `blocks.mjs` collapses every block instance (per-page `modules`, `widgets` + chrome)
+  into the **distinct** set, assigns each a canonical `edsBlockName` (kebab, reserved-class
+  guarded) and records `usedByPages` / `instanceCount`. Chrome (`header`/`nav`/`footer`)
+  is `kind: chrome` → site-wide authored documents (`/nav`, `/footer`). A widget
+  (`kind: widget`, from the sidecar's `widgets[] {id, href}`) needs no document rows:
+  its code ships at `widgets/<path>/<name>.html` and the page carries one
+  `/widgets/…html` link (#133). In archetypes-only mode the archetype sidecars
+  determine the block set; `content-pending` pages add none. A module that maps to
+  EDS **default content** (title, text, image, button, separator) needs no block: record
   it `update-coverage.mjs --block <id> --status converted --eds-name default-content`;
   such a row is never counted pending, whatever its status.
 - `plan.mjs` orders pages **representative-first per template** and gives each
   distinct block a **single conversion point**: the first page that uses it
   CONVERTS it, every later page REUSES it by name. The per-page `convert`/`reuse`
-  lists are exactly `deploy`'s Step-7 brief input, so each block converts once
-  **without changing deploy**. `content-pending` pages are always `convert: []`.
+  lists are `deploy`'s Step-7 brief input. `content-pending` pages are always `convert: []`.
 
-> Extending an already-delivered site? A "new template" is almost always a new
-> COMPOSITION of the existing block library, not new block code — audit `blocks/`
-> first. See `reference/operational-learnings.md`.
+> Extending a delivered site: audit `blocks/` and `widgets/` first — a "new template" is
+> usually a new composition of them (`reference/operational-learnings.md`).
 
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
@@ -297,20 +297,25 @@ noindex` (Phase C). A recorded hands-off run read the local file, reported
   `helix-query.yaml` (Phase D2) so the index never carries them either.
 
 **Verify the SERVED sitemap, never the local file.** `assemble.mjs --verify-origin
-<live-origin>` fetches `<origin>/sitemap.xml` (a sitemap index is followed),
-compares its `<loc>` paths with the coverage rows, prints served vs assembled
-counts with every extra and missing path, records the result in
-`site/manifest.json` (`servedSitemap`) and exits 1 on any difference. An extra
+<live-origin>` compares the served `<loc>` paths with the coverage rows and
+exits 1 on any difference. An extra
 path is a chrome document without `noindex` or a page built outside the migrated
 tree with no coverage row (`update-coverage.mjs --new`, Phase D2); a missing path
 is a page not published live. Re-run after the fix until it exits 0. The `D-site`
 ledger `end` line names the SERVED count, never the assembled one — e.g.
 `--detail "sitemap served 36 = assembled 36; redirects wired; / 200"`.
 
+**DA library (#160).** Without a `library` tab in its site config, a migrated
+site shows authors an inherited or empty block library, never the blocks it
+shipped. Run `node skills/rollout/scripts/da-library.mjs` (one document per block
+variant and per template, the sheets, and only the Blocks / Templates config rows)
+whenever a block, variant or template ships — in archetypes-only mode once the
+archetypes are delivered.
+
 **D-site checklist** (all before the `D-site end` line): `assemble.mjs
 --verify-origin` exits 0 · every chrome document carries `Robots | noindex` and is
-published · the redirects sheet is published (below) · `curl -sIL <origin>/` ends
-in 200.
+published · the redirects sheet is published (below) · `da-library.mjs` exits 0 ·
+`curl -sIL <origin>/` ends in 200.
 
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
 it into the EDS redirects mechanism here so original inbound URLs don't 404 — the
@@ -581,7 +586,7 @@ exits 0; otherwise it prints one gap per line.
 | Input | Source | Used for |
 |---|---|---|
 | `stardust/migrated/*.html` | `migrate` | the pages to deliver (read-only) |
-| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `title` |
+| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `widgets` (`widgets[] {id, href}`), `title` |
 | `stardust/state.json` | stardust core | *(archetypes-only mode)* full page roster + `type` for pages not yet migrated |
 | `stardust/rollout/rollout.json` | rollout / user | DA target coordinates |
 
@@ -599,7 +604,7 @@ exits 0; otherwise it prints one gap per line.
 | `stardust/rollout/site/{sitemap.xml,robots.txt,manifest.json}` | site-level assembly artifacts |
 | `stardust/rollout/dashboard/{index.html,data.json}` | self-contained progress dashboard + snapshot |
 | edits to the **EDS project** (`content/**`, `styles/`) | applied by `autofix-aem` (the only files rollout writes outside `stardust/rollout/`) |
-| the delivered EDS site | produced by `deploy` per page (blocks/, content/, fragments — owned by `deploy`) |
+| the delivered EDS site | produced by `deploy` per page (blocks/, widgets/, content/, fragments — owned by `deploy`) |
 
 `rollout` writes under `stardust/rollout/` and — only via `autofix-aem` — to the
 **EDS project** it delivers to. It never modifies the agnostic core, `state.json`,

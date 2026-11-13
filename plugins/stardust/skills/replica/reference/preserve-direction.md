@@ -19,7 +19,8 @@ Two branches, keyed on one observable fact: does
 descriptive synthesis; a bounded `--single`/`--pages` run does not —
 crawl.mjs alone writes only `pages/*.json` (+ the `pages/*.html`
 rendered-DOM sidecars), screenshots, and `_crawl-log.json`.) Never mix them: when the `--prep` artifacts exist,
-promotion is verbatim and synthesis is forbidden.
+promotion is verbatim and synthesis is forbidden. **Exception:** first page first's Track A always takes § 1a,
+whatever `current/PRODUCT.md` says (`first-page-first.md`).
 
 ### Full-prep branch — verbatim promotion (unchanged)
 

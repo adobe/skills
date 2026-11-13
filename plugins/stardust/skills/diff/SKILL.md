@@ -2,7 +2,7 @@
 name: diff
 description: Reconcile a converted/built web page against its source prototype with two complementary probes — a PIXEL/layout diff (stretched images, dropped wraps, blank renders, colour flips) and a STRUCTURAL content+typography diff (dropped/mis-slotted headings, eyebrows, CTAs; rendered-face font forks). Stack-agnostic via profiles (eds | generic). Use after converting a prototype to EDS/AEM (the stardust `deploy` skill Step 10), or for any prototype↔build fidelity check; invocable as the stardust `diff` skill and from workflows.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:diff — prototype ↔ build reconcile
@@ -26,7 +26,7 @@ Not for: a single static file with no JS decoration (use the build/harness URL s
 
 | Probe | Script | Sees | Blind to |
 |---|---|---|---|
-| **Pixel / layout** | `skills/diff/scripts/visual-diff.mjs` | stretched images, dropped max-width wraps, blank renders, surface/ground colour flips, image-count gaps | "right text, wrong slot"; a dropped CTA (full pixels, plausible colours → no flag) |
+| **Pixel / layout** | `skills/diff/scripts/visual-diff.mjs` | stretched images (vs the source), dropped max-width wraps, blank renders, surface/ground colour flips, heading size/face deltas, image-count gaps | "right text, wrong slot"; a dropped CTA (full pixels, plausible colours → no flag) |
 | **Structural content + type** | `skills/diff/scripts/content-diff.mjs` | MISSING / ROLE-SWAPPED headings·eyebrows·CTAs, invented/dropped body copy, rendered-FACE font forks (width probe); dropped `placeholder`/`aria-label`/`title` values, missing/wrong/moved icons — on the main root AND the `header`/`footer` chrome roots by default | geometry / layout regressions |
 
 `content-diff` extracts an ordered, role-classified inventory (`heading` / `eyebrow` /
@@ -39,10 +39,12 @@ root carries the `placeholder` / `aria-label` / `title` values and the icons.
 
 ```bash
 # Prereq 0: playwright importable from the project root (node -e "import('playwright')"), else
-# npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps, never --no-save (extract
-# SKILL.md § Setup). Run the copied scripts from the project root: ESM resolves from the script.
+# npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps
+# (never --no-save; extract SKILL.md § Setup). Run the copied scripts from the project
+# root: ESM resolves from the script.
 # Copy the WHOLE skills/diff/scripts/ dir: content-diff imports its local diff-profiles.mjs
-# AND content-inventory.mjs (deploy keeps its own synced copies for #93/#94).
+# AND content-inventory.mjs (deploy keeps its own synced copies for #93/#94), plus the
+# master's scripts/ (browser.mjs, the one entry to the browser) in stardust/scripts/stardust/.
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
 # ONE server, ONE port — probe before starting one (curl is always present, lsof is not):
@@ -68,13 +70,15 @@ carries its root as `[root]`; visual-diff takes one selector, default `main`), c
 `--chrome` / `--no-chrome` (default on — the `header` and `footer` roots, resolved as the first
 `<header>`/`[role=banner]` and `<footer>`/`[role=contentinfo]` outside the main root(s), are
 compared beside it; a side lacking one is measured as empty there and the root line says so),
-plus the live-target set (shared engine: `scripts/live-session.mjs` — every context sends the
-real-Chrome UA **and** the standard Chrome request headers; the UA alone still 403s on
-Akamai-class bot management):
+plus the live-target set (shared engine: `skills/stardust/scripts/live-session.mjs` — real Chrome presents its
+user agent without the headless token and matching client hints; automation-signal handling stays on unless
+`STARDUST_STEALTH=0`; every context sends standard Chrome request headers, and live navigations to one host are paced
+`STARDUST_LIVE_PACE_MS` apart (default 1000), capped by `STARDUST_LIVE_MAX_PARALLEL` (default 2)
+and `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables):
 
-- `--ua <string>` — user agent override (default: real-Chrome desktop UA).
+- `--ua <string>` — user agent override (default: the browser's own with `HeadlessChrome` replaced by `Chrome`).
 - `--wait-until <state>` — goto wait override. Default rule (one shared
-  `defaultWaitUntil` in `scripts/live-session.mjs`), decided **per URL side**, three tiers:
+  `defaultWaitUntil` in `skills/stardust/scripts/live-session.mjs`), decided **per URL side**, three tiers:
   - localhost/127.0.0.1 → `networkidle` (local prototypes / harnesses, unchanged);
   - EDS build/preview origins — hostnames ending in `.aem.page`, `.aem.live`, `.hlx.page`,
     `.hlx.live` → `networkidle` (they decorate asynchronously and reliably reach
@@ -87,7 +91,9 @@ Akamai-class bot management):
 - `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
   removed) AND timed marketing/newsletter modals, plus optional extra site-specific
   selectors; the mouse is parked afterwards.
-- `--headed` — escalation for bot-managed sites: headed stealth real Chrome.
+- `--headed` — escalation for bot-managed sites: the same real Chrome plus the challenge-solve
+  window and existing launch flags, window-free; `STARDUST_STEALTH=0` disables the flags and
+  context spoof, while `STARDUST_HEADED_WINDOW=1` opens a window.
 - `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
   different locale per run otherwise).
 
@@ -95,7 +101,7 @@ Akamai-class bot management):
 
 A bot-management challenge/blocked interstitial on either navigation fails LOUD with
 **exit 3** — it is never measured as the source. Escalate with `--headed`; if that is still
-blocked, the site needs crawl.mjs-class capture and the check cannot run headless.
+blocked, the site needs crawl.mjs-class capture and the check cannot run unattended.
 
 A plain (non-challenge) HTTP error on either side — e.g. a **404 build side, normal on
 aem.page before preview propagation** — is NOT fatal: the probe logs a loud warning,
@@ -135,7 +141,7 @@ drill-down drawer. The header's behaviour is recorded from the source once and t
 
 ```bash
 node stardust/scripts/diff/chrome-explore.mjs "$ORIGIN" stardust/chrome/header-contract.json   # 1440 + 390
-node stardust/scripts/diff/chrome-explore.mjs "$SERVED" stardust/chrome/header-build.json
+node stardust/scripts/diff/chrome-explore.mjs "$SERVED" stardust/chrome/header-build.json --max-requests 0 --pace-ms 0 --reload-pause-ms 0   # our host: source-edge protections do not apply
 node stardust/scripts/diff/chrome-compare.mjs stardust/chrome/header-contract.json stardust/chrome/header-build.json \
   --profile replica --json stardust/chrome/header-parity.json    # functional under redesign and reskin
 ```
@@ -153,15 +159,16 @@ deploy Step 10, on the live host before handover (`done-check` `header_parity`),
 ## Reading content-diff
 
 - 🔴 **MISSING CTA / HEADING / EYEBROW** — real dropped content. FIX. A missing eyebrow is most often a segmentation drop where the eyebrow precedes its heading; a missing CTA means the component never rendered the link. These are exactly what the pixel probe cannot see.
-- 🔴 **ROLE SWAP** — same text under a different role (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation.
-- 🔴 **MISSING PLACEHOLDER / ARIA-LABEL, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its aria-label or icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡.
-- 🟡 **MISSING TITLE** — always 🟡: a title tooltip is not read by most assistive tech and is commonly dropped by design. 🟡 **ICON MOVED** — the same icon (glyph code point / file name / svg signature) at another anchor, paired by identity and document order after the anchor passes (typically a text-less `<button>` host that anchors as `button#n`): the icon is present, CONFIRM its placement. 🟡 **ICON KIND** (glyph vs svg vs image — the pixel probe judges) and every **EXTRA**.
+- 🔴 **ROLE SWAP** — same text under a different role (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation. With the same look, body/eyebrow → heading is an accepted ROLE UPGRADE (root line and `--json` `accepted`, not a finding), heading → body/eyebrow 🟡 ROLE DOWNGRADE. Lost visually hidden (sr-only) text is 🟡 MISSING SR-ONLY TEXT; a lost sr-only link stays 🔴 MISSING CTA.
+- 🔴 **MISSING PLACEHOLDER, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡. A lost aria-label is a nothing-lost 🟡 anywhere (fails the gate).
+- Icons pair by identity or by **the same pixels**: a re-hosted file (SAME IMAGE) or an svg drawn as `<img>` (SAME ICON) is accepted. A laid-out 0×0 icon is not one.
+- 🟡 **MISSING TITLE** — always 🟡: a title tooltip is not read by most assistive tech and is commonly dropped by design. 🟡 **ICON MOVED** — the same icon at another anchor, paired after the anchor passes (typically a text-less `<button>` host that anchors as `button#n`): CONFIRM its placement. 🟡 **ICON KIND** (pixels not compared, e.g. a hidden icon) and every **EXTRA**.
 - Every finding line names its root — `🔴 MISSING PLACEHOLDER [header]: …` — and the report prints one block per root (`root "main"`, `root "header"`, …; a root a side lacks is measured as empty there and the line says which side).
 - 🟡 **MISSING BODY / EXTRA** — body prose dropped, or build copy with no source. Usually a placeholder→real-copy rewrite. CONFIRM intended; don't blindly "fix".
 - 🟠 **FONT FORK** — matched lines whose rendered FACE differs (width probe, never `document.fonts.check`). `source X→sys` means the prototype named font X but never loaded it and fell back to system — the build self-hosting the intended fallback is then CORRECT, not a bug. All forked lines are grouped into one advisory.
 - **Known limitation — node-granularity JOIN/SPLIT reads as 🔴 (#87).** When the source renders one text run as N sibling nodes and the build renders the same text as ONE node (or vice versa — e.g. three fact chips vs one combined chip span), the diff currently reports MISSING + ROLE SWAP + EXTRA for what is a non-defect. Until concat-matching lands (a source node that is a substring of a same-region build node → 🟡 JOIN/SPLIT advisory), verify a 🔴 whose texts concatenate into an EXTRA finding's text before treating it as dropped content — confirmed-justified is a pass.
 
-**Pass bar:** visual red flags none/justified **AND** content-diff **0 structural 🔴** (🟡/🟠 confirmed intended). Re-run BOTH after each fix.
+**Pass bar:** visual red flags none/justified **AND** content-diff **0 🔴 and 0 nothing-lost 🟡** (`../replica/reference/source-fidelity-gate.md` § Pass bar item 1). Re-run BOTH after each fix.
 
 ## Profiles
 
@@ -189,5 +196,6 @@ block's flattened-shape fallback, not the authoring.
 ## Workflow use
 
 Call both scripts in a validation phase and gate on the output, as deploy's Validate phase does on a served,
-decorated build (local harness or branch preview): fix visual-diff's STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP flags
-(unless justified) and every content-diff 🔴, confirm 🟡/🟠, loop until both are clean.
+decorated build (local harness or branch preview): fix visual-diff's STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP/
+HEADING FACE flags (unless justified — a font substitution is one `HEADING FACE ×N` line) and every content-diff 🔴,
+confirm 🟡/🟠, loop until both are clean.
