@@ -11,13 +11,14 @@
  *   node from-knowledge.mjs [--knowledge stardust/spec/knowledge] [--template-map <file>] [--allowlist <file>]
  *        [--coverage stardust/rollout/coverage/pages.json] [--dry-run]
  *
- * Served URLs come from deploy's path contract (eds-path.mjs). Exit 1 when the knowledge folder is missing.
+ * Served URLs come from the shared path contract (lib/paths.mjs deliveredUrl / pathKey, through ./lib.mjs). Exit 1 when the knowledge
+ * folder is missing.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { deliveredUrl, pathKey } from './lib.mjs';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
 const pathOf = (u) => { try { return new URL(u).pathname; } catch { return String(u || ''); } };
@@ -54,9 +55,6 @@ async function main() {
   const dir = arg('knowledge', join('stardust', 'spec', 'knowledge'));
   const mapFile = arg('template-map', join('stardust', 'template-map.json')); const allowFile = arg('allowlist', join('stardust', 'qa', 'allowlist.json'));
   if (!existsSync(join(dir, 'urls.jsonl'))) { console.error(`from-knowledge: ${join(dir, 'urls.jsonl')} missing — no spec knowledge`); process.exit(1); }
-  const p = [join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), join(HERE, '..', 'deploy', 'eds-path.mjs')].find((x) => existsSync(x));
-  if (!p) throw new Error('eds-path.mjs not found (../../deploy/scripts/ or ../deploy/): copy the deploy skill\'s scripts next to these');
-  const { deliveredUrl, pathKey } = await import(pathToFileURL(p).href);
   const jl = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
   const coverage = arg('coverage', join('stardust', 'rollout', 'coverage', 'pages.json'));
   // a delivered page matches by its source URL (rollout records it) or, failing that, by its delivered path

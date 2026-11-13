@@ -93,9 +93,11 @@ const specChrome = fromSource('spec/scripts/lib.mjs', /const CHROME = (new Set\(
 // deploy/scripts/deploy-batch.mjs walkHtml (runs on import) — its webPath is lib/paths.mjs documentPath (pinned use)
 pin('deploy/scripts/deploy-batch.mjs', 'out.push({ file: full, webPath: documentPath(path.relative(base, full)) });');
 const deployBatchWebPath = libPaths.documentPath;
-// qa/scripts/checks/routing.mjs:88 — the trailing-slash sampling filter; re-implemented, pinned
-pin('qa/scripts/checks/routing.mjs', "pages.filter((x) => x.path !== '/' && (x.url || '').endsWith('/'))");
-const routingSamples = (x) => x.path !== '/' && (x.url || '').endsWith('/');
+// qa/scripts/checks/routing.mjs — the trailing-slash sampling filter is the exported isFolderIndex (lib/paths.mjs listingKey/listingUrl)
+pin('qa/scripts/checks/routing.mjs', "import { fetchUrl, pMap, finding, pageUrl, plainUrl, listingKey, listingUrl } from '../lib.mjs';");
+pin('qa/scripts/checks/routing.mjs', 'for (const p of pages.filter(isFolderIndex)) {');
+const qaRouting = await load('qa/scripts/checks/routing.mjs');
+const routingSamples = qaRouting.isFolderIndex;
 // rollout/scripts/seed-redirects.mjs:36 — module-private
 const seedPathOf = fromSource('rollout/scripts/seed-redirects.mjs', /const pathOf = (\(u\) => \{[^\n]*\});/);
 
@@ -491,7 +493,7 @@ const EXPECTED = {
   },
   widgetStem: {
     "/widgets/search/site-search.html?q=docs": {"widgetStem": "site-search", "roundtripLinks": "site-search", "rolloutPageWidgets": "site-search", "migrateWidgetsIn": "site-search", "qaWidgetLinks": "site-search", "qaWidgetLinksSameSite": "site-search", "rolloutCodePath": "widgets/search/site-search.html", "qaWidgetPath": "/widgets/search/site-search.html", "reservedStem": false, "edsName": "site-search", "lintRules": []},
-    "/widgets/search/site-search.htm": {"widgetStem": "site-search", "roundtripLinks": "site-search", "rolloutPageWidgets": "site-search", "migrateWidgetsIn": "site-search", "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "widgets/search/site-search.htm", "qaWidgetPath": null, "reservedStem": false, "edsName": "site-search", "lintRules": ["unknown-widget"]},
+    "/widgets/search/site-search.htm": {"widgetStem": "site-search", "roundtripLinks": "site-search", "rolloutPageWidgets": "site-search", "migrateWidgetsIn": "site-search", "qaWidgetLinks": "site-search", "qaWidgetLinksSameSite": "site-search", "rolloutCodePath": "widgets/search/site-search.htm", "qaWidgetPath": "/widgets/search/site-search.htm", "reservedStem": false, "edsName": "site-search", "lintRules": ["unknown-widget"]},
     "/widgets/a/results-wrapper.html": {"widgetStem": "results-wrapper", "roundtripLinks": "results-wrapper", "rolloutPageWidgets": "results-wrapper", "migrateWidgetsIn": "results-wrapper", "qaWidgetLinks": "results-wrapper", "qaWidgetLinksSameSite": "results-wrapper", "rolloutCodePath": "widgets/a/results-wrapper.html", "qaWidgetPath": "/widgets/a/results-wrapper.html", "reservedStem": true, "edsName": "results-wrapper-block", "lintRules": ["widget-name"]},
     "/widgets/a/widget.html": {"widgetStem": "widget", "roundtripLinks": "widget", "rolloutPageWidgets": "widget", "migrateWidgetsIn": "widget", "qaWidgetLinks": "widget", "qaWidgetLinksSameSite": "widget", "rolloutCodePath": "widgets/a/widget.html", "qaWidgetPath": "/widgets/a/widget.html", "reservedStem": true, "edsName": "blk-widget", "lintRules": ["widget-name"]},
     "/widgets/x.HTML": {"widgetStem": "x", "roundtripLinks": "x", "rolloutPageWidgets": "x", "migrateWidgetsIn": "x", "qaWidgetLinks": "x", "qaWidgetLinksSameSite": "x", "rolloutCodePath": "widgets/x.HTML", "qaWidgetPath": "/widgets/x.HTML", "reservedStem": false, "edsName": "x", "lintRules": []},
@@ -616,8 +618,6 @@ const KNOWN_DIVERGENCE = [
   {"concept": "da-document-path", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/widgets/search/site-search\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/widgets/search/site-search.html?q=docs/index\""},
   {"concept": "da-document-path", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/widgets/search/site-search\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/widgets/search/site-search.htm\""},
   {"concept": "sidecar", "input": "/widgets/search/site-search.htm", "a": "migrate/scripts/migrate.mjs#sidecarFor → \"widgets/search/site-search._meta.json\"", "b": "rollout/scripts/inventory.mjs#sidecarFor → \"widgets/search/site-search.htm._meta.json\""},
-  {"concept": "widget-stem", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"site-search\"", "b": "qa/scripts/checks/content.mjs#widgetLinks.name (no base) → null"},
-  {"concept": "widget-stem", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"site-search\"", "b": "qa/scripts/checks/content.mjs#widgetLinks.name (base https://site.example) → null"},
   {"concept": "widget-stem", "input": "https://partner.example/widgets/map/finder.html", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"finder\"", "b": "qa/scripts/checks/content.mjs#widgetLinks.name (base https://site.example) → null"},
   {"concept": "widget-stem", "input": "/a/b.html", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → null", "b": "migrate/scripts/migrate.mjs#widgetsIn.id → \"b\""},
   {"concept": "widget-stem", "input": "/nav", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → null", "b": "migrate/scripts/migrate.mjs#widgetsIn.id → \"nav\""},
@@ -659,17 +659,22 @@ for (const key of Object.keys(EXPECTED)) {
 }
 check('every implementation pair disagrees exactly where KNOWN_DIVERGENCE says (no new or vanished divergence)', () => assert.deepEqual(divergences, KNOWN_DIVERGENCE));
 check('source pins of the metadata pair, the qa templates rule and build-harness are unchanged', () => {
-  pin('qa/scripts/checks/content.mjs', "if (name !== 'metadata' && name !== 'section-metadata') names.add(name);");
-  pin('qa/scripts/checks/content.mjs', "return n === 'metadata' || n === 'section-metadata'; };");
-  pin('qa/scripts/checks/templates.mjs', "if (m[1] !== 'metadata' && m[1] !== 'section-metadata') names.add(m[1]);");
   pin('deploy/scripts/build-harness.mjs', "main.indexOf('class=\"metadata\"')");
   pin('deploy/scripts/build-harness.mjs', 'section-metadata(?:\\s[^"\']*)?["\']/gi');
-  pin('qa/scripts/checks/content.mjs', "if (!/^\\/widgets\\/.+\\.html$/i.test(path) || seen.has(path)) continue;");
+  pin('qa/scripts/checks/content.mjs', "readJSON, widgetLinks as widgetMounts, isMetaBlock,");
+  pin('qa/scripts/checks/content.mjs', 'if (!isMetaBlock(name)) names.add(name);');
+  pin('qa/scripts/checks/content.mjs', "const isMeta = (c) => isMetaBlock((c.cls || '').split(' ')[0]);");
+  pin('qa/scripts/checks/templates.mjs', "import { pMap, finding, plainUrl, readJSON, isMetaBlock } from '../lib.mjs';");
+  pin('qa/scripts/checks/templates.mjs', 'if (!isMetaBlock(m[1])) names.add(m[1]);');
   pin('rollout/scripts/delivery-lint.mjs', "import { reservedStem, pathKey, safePath, documentKind, widgetStem, widgetCodePath } from './lib.mjs';");
   pin('rollout/scripts/delivery-lint.mjs', 'const stem = widgetStem(bare);');
   pin('rollout/scripts/delivery-lint.mjs', 'const type = TYPE || documentKind(DAPATH);');
   pin('rollout/scripts/lib.mjs', "export const { RESERVED, edsName, reservedStem, widgetCodePath, pageWidgets, widgetStem, CHROME_IDS, kindOf, DEFAULT_CONTENT, documentKind } = C;");
   pin('deploy/scripts/eds-path.mjs', "export const { deliveredUrl, daPath, pathKey } = await import(CONTRACTS.href);");
+  pin('qa/scripts/checks/content.mjs', "export const widgetLinks = (html, base = null) => widgetMounts(html, { mount: 'any', base, dedupeBy: 'path' });");
+  pin('qa/scripts/lib.mjs', 'fragments = QA_CHROME_PATHS');
+  pin('qa/scripts/checks/ai-readability.mjs', "arg('ai-exclude-blocks', AI_EXCLUDE_DEFAULT.join(','))");
+  pin('qa/scripts/from-knowledge.mjs', "import { deliveredUrl, pathKey } from './lib.mjs';");
   pin('deploy/scripts/ai-readability.mjs', "opt('--exclude-blocks', AI_EXCLUDE_DEFAULT.join(','))");
   pin('deploy/scripts/davids-model-lint.mjs', 'const { KEY_VALUE_BLOCKS } = await import(CONTRACTS.href);');
   pin('deploy/scripts/davids-model-lint.mjs', 'const isKeyValue = KEY_VALUE_BLOCKS.has(name);');
