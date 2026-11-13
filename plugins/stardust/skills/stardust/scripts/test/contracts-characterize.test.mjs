@@ -30,7 +30,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -59,6 +59,9 @@ const migrate = await load('migrate/scripts/migrate.mjs');
 const gate = await load('replica/scripts/gate-evidence.mjs');
 const roundtrip = await load('deploy/scripts/block-roundtrip.mjs');
 const dynLib = await load('dynamics/scripts/lib.mjs');
+const libPaths = await load('stardust/scripts/lib/paths.mjs');
+const libTaxonomy = await load('stardust/scripts/lib/taxonomy.mjs');
+const libKinds = await load('stardust/scripts/lib/kinds.mjs');
 
 /** The verbatim source text matched by `re` (group 1), evaluated with `scope` in reach. */
 function fromSource(rel, re, scope = {}) {
@@ -69,13 +72,15 @@ function fromSource(rel, re, scope = {}) {
 }
 const pin = (rel, snippet) => assert.ok(src(rel).includes(snippet), `${rel} no longer contains the pinned source:\n  ${snippet}`);
 
-// rollout/scripts/inventory.mjs:90-95, 98-103, 106-113, 116-119 — runs on import
-const invSidecarFor = fromSource('rollout/scripts/inventory.mjs', /(function sidecarFor\(relHtml\) \{[\s\S]*?\n\})/, { dirname, basename, join });
-const invDeliveredPath = fromSource('rollout/scripts/inventory.mjs', /(function deliveredPath\(relHtml\) \{[\s\S]*?\n\})/);
-const invUrlToDeliveredPath = fromSource('rollout/scripts/inventory.mjs', /(function urlToDeliveredPath\(url\) \{[\s\S]*?\n\})/);
-const invPathToSlug = fromSource('rollout/scripts/inventory.mjs', /(function pathToSlug\(path\) \{[\s\S]*?\n\})/);
-// rollout/scripts/assemble.mjs:60-67 — runs on import
-const assembleNormPath = fromSource('rollout/scripts/assemble.mjs', /(function normPath\(p\) \{[\s\S]*?\n\})/);
+// rollout/scripts/inventory.mjs — its four path rules are lib/paths.mjs variants (pinned import names)
+pin('rollout/scripts/inventory.mjs', "import { pageWidgets, scopeOf, scopeLine, sidecarName as sidecarFor, treePath as deliveredPath, rosterPath as urlToDeliveredPath, pathSlug as pathToSlug } from './lib.mjs';");
+const invSidecarFor = (rel) => libPaths.sidecarName(rel);
+const invDeliveredPath = libPaths.treePath;
+const invUrlToDeliveredPath = libPaths.rosterPath;
+const invPathToSlug = libPaths.pathSlug;
+// rollout/scripts/assemble.mjs — normPath is lib/paths.mjs sitemapKey
+pin('rollout/scripts/assemble.mjs', "import { readJSON, writeJSON, publicUrl, sitemapKey as normPath } from './lib.mjs';");
+const assembleNormPath = libPaths.sitemapKey;
 // diff/scripts/chrome-compare.mjs:38-42 — module-private
 const chromeCompareHrefKey = fromSource('diff/scripts/chrome-compare.mjs', /const hrefKey = (\(h\) => \{[\s\S]*?\n\});/);
 // spec/scripts/spec-knowledge.mjs:114 — the k() inside needsEntry
@@ -94,10 +99,11 @@ const routingSamples = (x) => x.path !== '/' && (x.url || '').endsWith('/');
 // rollout/scripts/seed-redirects.mjs:36 — module-private
 const seedPathOf = fromSource('rollout/scripts/seed-redirects.mjs', /const pathOf = (\(u\) => \{[^\n]*\});/);
 
-// rollout/scripts/da-library.mjs main — a content file's page path and the root chrome documents; inline, re-implemented
-pin('rollout/scripts/da-library.mjs', "pages.push({ path: rel === 'index' ? '/' : `/${rel.replace(/\\/index$/, '/')}`, file: f });");
+// rollout/scripts/da-library.mjs main — a content file's page path is lib/paths.mjs servedPath(treePath) (rollout publicUrl's
+// rule, swapped); its root chrome documents are an inline literal, re-implemented
+pin('rollout/scripts/da-library.mjs', "pages.push({ path: servedPath(treePath(`${rel}.html`), { folderIndex: isFolderIndexFile(`${rel}.html`) }), file: f });");
 pin('rollout/scripts/da-library.mjs', "const chrome = new Set(['nav', 'footer']);");
-const daLibraryPagePath = (rel) => (rel === 'index' ? '/' : `/${rel.replace(/\/index$/, '/')}`);
+const daLibraryPagePath = (rel) => libPaths.servedPath(libPaths.treePath(`${rel}.html`), { folderIndex: libPaths.isFolderIndexFile(`${rel}.html`) });
 const daLibraryRootChrome = ['nav', 'footer'];
 // rollout/scripts/update-coverage.mjs --pin — the served URL of a first-page-first row is the eds host + the gate-all row's
 // path, which is the source page's pathname verbatim (replica gate-all.mjs: deployedPath || new URL(liveUrl).pathname)
@@ -478,20 +484,20 @@ const EXPECTED = {
     "/A/B": {"type": "page", "pathSafety": "/a/b", "linkRules": []},
     "https://HOST.example/a/b.html?q": {"type": "page", "pathSafety": "https:/host.example/a/b.html?q", "linkRules": "not-root-relative"},
     "/widgets/search/site-search.html?q=docs": {"type": "page", "pathSafety": null, "linkRules": []},
-    "/widgets/search/site-search.htm": {"type": "page", "pathSafety": null, "linkRules": []},
+    "/widgets/search/site-search.htm": {"type": "page", "pathSafety": null, "linkRules": ["unknown-widget"]},
     "/nav": {"type": "fragment", "pathSafety": null, "linkRules": []},
     "/footer": {"type": "fragment", "pathSafety": null, "linkRules": []},
     "/fragments/x": {"type": "fragment", "pathSafety": null, "linkRules": []}
   },
   widgetStem: {
     "/widgets/search/site-search.html?q=docs": {"widgetStem": "site-search", "roundtripLinks": "site-search", "rolloutPageWidgets": "site-search", "migrateWidgetsIn": "site-search", "qaWidgetLinks": "site-search", "qaWidgetLinksSameSite": "site-search", "rolloutCodePath": "widgets/search/site-search.html", "qaWidgetPath": "/widgets/search/site-search.html", "reservedStem": false, "edsName": "site-search", "lintRules": []},
-    "/widgets/search/site-search.htm": {"widgetStem": "site-search", "roundtripLinks": "site-search", "rolloutPageWidgets": "site-search.htm", "migrateWidgetsIn": "site-search", "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "widgets/search/site-search.htm", "qaWidgetPath": null, "reservedStem": false, "edsName": "site-search", "lintRules": []},
+    "/widgets/search/site-search.htm": {"widgetStem": "site-search", "roundtripLinks": "site-search", "rolloutPageWidgets": "site-search", "migrateWidgetsIn": "site-search", "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "widgets/search/site-search.htm", "qaWidgetPath": null, "reservedStem": false, "edsName": "site-search", "lintRules": ["unknown-widget"]},
     "/widgets/a/results-wrapper.html": {"widgetStem": "results-wrapper", "roundtripLinks": "results-wrapper", "rolloutPageWidgets": "results-wrapper", "migrateWidgetsIn": "results-wrapper", "qaWidgetLinks": "results-wrapper", "qaWidgetLinksSameSite": "results-wrapper", "rolloutCodePath": "widgets/a/results-wrapper.html", "qaWidgetPath": "/widgets/a/results-wrapper.html", "reservedStem": true, "edsName": "results-wrapper-block", "lintRules": ["widget-name"]},
     "/widgets/a/widget.html": {"widgetStem": "widget", "roundtripLinks": "widget", "rolloutPageWidgets": "widget", "migrateWidgetsIn": "widget", "qaWidgetLinks": "widget", "qaWidgetLinksSameSite": "widget", "rolloutCodePath": "widgets/a/widget.html", "qaWidgetPath": "/widgets/a/widget.html", "reservedStem": true, "edsName": "blk-widget", "lintRules": ["widget-name"]},
-    "/widgets/x.HTML": {"widgetStem": "x", "roundtripLinks": "x", "rolloutPageWidgets": "x.HTML", "migrateWidgetsIn": "x", "qaWidgetLinks": "x", "qaWidgetLinksSameSite": "x", "rolloutCodePath": "widgets/x.HTML", "qaWidgetPath": "/widgets/x.HTML", "reservedStem": false, "edsName": "x", "lintRules": []},
+    "/widgets/x.HTML": {"widgetStem": "x", "roundtripLinks": "x", "rolloutPageWidgets": "x", "migrateWidgetsIn": "x", "qaWidgetLinks": "x", "qaWidgetLinksSameSite": "x", "rolloutCodePath": "widgets/x.HTML", "qaWidgetPath": "/widgets/x.HTML", "reservedStem": false, "edsName": "x", "lintRules": []},
     "https://partner.example/widgets/map/finder.html": {"widgetStem": "finder", "roundtripLinks": "finder", "rolloutPageWidgets": "finder", "migrateWidgetsIn": "finder", "qaWidgetLinks": "finder", "qaWidgetLinksSameSite": null, "rolloutCodePath": "widgets/map/finder.html", "qaWidgetPath": "/widgets/map/finder.html", "reservedStem": false, "edsName": "finder", "lintRules": "not-root-relative"},
-    "/a/b.html": {"widgetStem": null, "roundtripLinks": null, "rolloutPageWidgets": "b", "migrateWidgetsIn": "b", "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "a/b.html", "qaWidgetPath": null, "reservedStem": false, "edsName": "null", "lintRules": ["html-extension"]},
-    "/nav": {"widgetStem": null, "roundtripLinks": null, "rolloutPageWidgets": "nav", "migrateWidgetsIn": "nav", "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "nav", "qaWidgetPath": null, "reservedStem": false, "edsName": "null", "lintRules": []}
+    "/a/b.html": {"widgetStem": null, "roundtripLinks": null, "rolloutPageWidgets": null, "migrateWidgetsIn": "b", "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "a/b.html", "qaWidgetPath": null, "reservedStem": false, "edsName": "null", "lintRules": ["html-extension"]},
+    "/nav": {"widgetStem": null, "roundtripLinks": null, "rolloutPageWidgets": null, "migrateWidgetsIn": "nav", "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "nav", "qaWidgetPath": null, "reservedStem": false, "edsName": "null", "lintRules": []}
   },
   widgetMounts: {
     "twoLinks": {"roundtrip": [], "migrate": [], "qa": [{"name": "site-search", "href": "/widgets/search/site-search.html", "path": "/widgets/search/site-search.html"}]},
@@ -610,14 +616,10 @@ const KNOWN_DIVERGENCE = [
   {"concept": "da-document-path", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/widgets/search/site-search\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/widgets/search/site-search.html?q=docs/index\""},
   {"concept": "da-document-path", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/widgets/search/site-search\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/widgets/search/site-search.htm\""},
   {"concept": "sidecar", "input": "/widgets/search/site-search.htm", "a": "migrate/scripts/migrate.mjs#sidecarFor → \"widgets/search/site-search._meta.json\"", "b": "rollout/scripts/inventory.mjs#sidecarFor → \"widgets/search/site-search.htm._meta.json\""},
-  {"concept": "widget-stem", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"site-search\"", "b": "rollout/scripts/lib.mjs#pageWidgets.id → \"site-search.htm\""},
   {"concept": "widget-stem", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"site-search\"", "b": "qa/scripts/checks/content.mjs#widgetLinks.name (no base) → null"},
   {"concept": "widget-stem", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"site-search\"", "b": "qa/scripts/checks/content.mjs#widgetLinks.name (base https://site.example) → null"},
-  {"concept": "widget-stem", "input": "/widgets/x.HTML", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"x\"", "b": "rollout/scripts/lib.mjs#pageWidgets.id → \"x.HTML\""},
   {"concept": "widget-stem", "input": "https://partner.example/widgets/map/finder.html", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"finder\"", "b": "qa/scripts/checks/content.mjs#widgetLinks.name (base https://site.example) → null"},
-  {"concept": "widget-stem", "input": "/a/b.html", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → null", "b": "rollout/scripts/lib.mjs#pageWidgets.id → \"b\""},
   {"concept": "widget-stem", "input": "/a/b.html", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → null", "b": "migrate/scripts/migrate.mjs#widgetsIn.id → \"b\""},
-  {"concept": "widget-stem", "input": "/nav", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → null", "b": "rollout/scripts/lib.mjs#pageWidgets.id → \"nav\""},
   {"concept": "widget-stem", "input": "/nav", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → null", "b": "migrate/scripts/migrate.mjs#widgetsIn.id → \"nav\""},
   {"concept": "chrome-id", "input": "header", "a": "rollout/scripts/lib.mjs#kindOf → true", "b": "qa/scripts/lib.mjs#buildInventory.fragments default (of /<id>) → false"},
   {"concept": "chrome-id", "input": "header", "a": "rollout/scripts/lib.mjs#kindOf → true", "b": "rollout/scripts/delivery-lint.mjs#inferType (of /<id>) === fragment → false"},
@@ -662,10 +664,12 @@ check('source pins of the metadata pair, the qa templates rule and build-harness
   pin('qa/scripts/checks/templates.mjs', "if (m[1] !== 'metadata' && m[1] !== 'section-metadata') names.add(m[1]);");
   pin('deploy/scripts/build-harness.mjs', "main.indexOf('class=\"metadata\"')");
   pin('deploy/scripts/build-harness.mjs', 'section-metadata(?:\\s[^"\']*)?["\']/gi');
-  pin('rollout/scripts/delivery-lint.mjs', "if (/^\\/widgets\\/.+\\.html$/i.test(bare)) {");
-  pin('rollout/scripts/delivery-lint.mjs', "const stem = bare.replace(/^.*\\//, '').replace(/\\.html$/i, '');");
   pin('qa/scripts/checks/content.mjs', "if (!/^\\/widgets\\/.+\\.html$/i.test(path) || seen.has(path)) continue;");
   pin('deploy/scripts/ai-readability.mjs', "'--exclude-blocks', 'client-app,widget'");
+  pin('rollout/scripts/delivery-lint.mjs', "import { reservedStem, pathKey, safePath, documentKind, widgetStem, widgetCodePath } from './lib.mjs';");
+  pin('rollout/scripts/delivery-lint.mjs', 'const stem = widgetStem(bare);');
+  pin('rollout/scripts/delivery-lint.mjs', 'const type = TYPE || documentKind(DAPATH);');
+  pin('rollout/scripts/lib.mjs', "export const { RESERVED, edsName, reservedStem, widgetCodePath, pageWidgets, widgetStem, CHROME_IDS, kindOf, DEFAULT_CONTENT, documentKind } = C;");
 });
 
 console.log(`\n${failed ? `${failed} check(s) failed` : 'all checks passed'}`);
