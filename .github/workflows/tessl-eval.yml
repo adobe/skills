@@ -9,7 +9,42 @@ permissions:
   pull-requests: write
 
 jobs:
+  # Whether the last commit asks for evals. This job has no environment and no secrets,
+  # so a pull request that doesn't ask leaves no deployment waiting for approval.
+  eval-requested:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.trigger.outputs.run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Check eval trigger
+        id: trigger
+        run: |
+          LAST_MSG=$(git log -1 --format=%s)
+          echo "commit_message=$LAST_MSG"
+          if [[ "$LAST_MSG" =~ ^eval: ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Eval triggered by commit: $LAST_MSG"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Skill Eval"
+              echo ""
+              echo "Eval not requested — last commit message does not start with \`eval:\`."
+              echo "To trigger evals, create a commit with a message like:"
+              echo "\`\`\`"
+              echo 'git commit --allow-empty -m "eval: test building-blocks changes"'
+              echo "\`\`\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   tessl-eval:
+    needs: eval-requested
+    if: needs.eval-requested.outputs.run == 'true'
     runs-on: ubuntu-latest
     # Uses the "eval" environment for protection rules (e.g. reviewer approval)
     # to guard the TESSL_TOKEN secret against exfiltration via same-repo branches.
@@ -20,34 +55,7 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Check eval trigger
-        id: trigger
-        run: |
-          LAST_MSG=$(git log -1 --format=%s)
-          echo "commit_message=$LAST_MSG"
-          if [[ ! "$LAST_MSG" =~ ^eval: ]]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Last commit does not start with 'eval:' — skipping eval."
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "Eval triggered by commit: $LAST_MSG"
-          fi
-
-      - name: Post skip summary (no eval trigger)
-        if: steps.trigger.outputs.skip == 'true'
-        run: |
-          {
-            echo "## Skill Eval"
-            echo ""
-            echo "Eval not requested — last commit message does not start with \`eval:\`."
-            echo "To trigger evals, create a commit with a message like:"
-            echo "\`\`\`"
-            echo 'git commit --allow-empty -m "eval: test building-blocks changes"'
-            echo "\`\`\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Detect changed skills with plugins
-        if: steps.trigger.outputs.skip != 'true'
         id: detect
         run: |
           CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
@@ -113,7 +121,7 @@ jobs:
           fi
 
       - name: Post skip summary (no qualifying plugins)
-        if: steps.trigger.outputs.skip != 'true' && steps.detect.outputs.skip == 'true'
+        if: steps.detect.outputs.skip == 'true'
         run: |
           {
             echo "## Skill Eval"
@@ -122,13 +130,13 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: tesslio/setup-tessl@v2
-        if: steps.trigger.outputs.skip != 'true' && steps.detect.outputs.skip != 'true'
+        if: steps.detect.outputs.skip != 'true'
         with:
           token: ${{ secrets.TESSL_TOKEN }}
 
       - name: Run evals
         id: run-evals
-        if: steps.trigger.outputs.skip != 'true' && steps.detect.outputs.skip != 'true'
+        if: steps.detect.outputs.skip != 'true'
         run: |
           PASS=0
           FAIL=0
