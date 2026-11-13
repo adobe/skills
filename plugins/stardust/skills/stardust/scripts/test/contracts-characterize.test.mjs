@@ -488,7 +488,7 @@ const EXPECTED = {
     "CR": {"dynamics": "client-rendered", "spec": "client-rendered", "inTaxonomy": true},
     "D": {"dynamics": "sheet / data file", "spec": "data file", "inTaxonomy": true}
   },
-  metadataPair: {"davidsModelLint": ["metadata", "section-metadata"], "qaBlockNames": ["hero"]},
+  metadataPair: {"davidsModelLint": ["metadata", "section-metadata", "library-metadata"], "qaBlockNames": ["hero"]},
   kinds: {"specCoded": ["block", "dynamic", "widget"], "specMapHeader": ["block", "dynamic", "widget", "default", "metadata", "drop"], "specMapNestedKinds": ["block", "dynamic", "widget"], "specMapKindLiterals": ["block", "default", "drop", "metadata", "unmapped"], "rolloutSchema": ["chrome", "module", "section", "widget"], "rolloutKindOf": ["chrome", "module"], "rolloutDefaultContent": "default-content", "specMapDefaultBlock": "default-content"},
 };
 const KNOWN_DIVERGENCE = [
@@ -581,6 +581,7 @@ const KNOWN_DIVERGENCE = [
   {"concept": "class-label", "input": "A", "a": "dynamics/scripts/dynamics-detect.mjs#CLASS_NAMES → \"API / personalisation / settings\"", "b": "spec/scripts/spec-knowledge.mjs#CLASS_NAMES → \"API / settings\""},
   {"concept": "class-label", "input": "D", "a": "dynamics/scripts/dynamics-detect.mjs#CLASS_NAMES → \"sheet / data file\"", "b": "spec/scripts/spec-knowledge.mjs#CLASS_NAMES → \"data file\""},
   {"concept": "chrome-set", "input": "header", "a": "rollout/scripts/lib.mjs#CHROME_IDS → \"header\"", "b": "qa/scripts/lib.mjs#buildInventory.fragments → absent"},
+  {"concept": "metadata-pair", "input": "library-metadata", "a": "deploy/scripts/davids-model-lint.mjs#KEY_VALUE_BLOCKS → \"library-metadata\"", "b": "qa/scripts/checks/content.mjs#blockNames excludes → absent"},
   {"concept": "kind-enum", "input": "default", "a": "spec/scripts/lib.mjs#CODED → absent", "b": "spec/scripts/spec-map.mjs#header kinds → \"default\""},
   {"concept": "kind-enum", "input": "metadata", "a": "spec/scripts/lib.mjs#CODED → absent", "b": "spec/scripts/spec-map.mjs#header kinds → \"metadata\""},
   {"concept": "kind-enum", "input": "drop", "a": "spec/scripts/lib.mjs#CODED → absent", "b": "spec/scripts/spec-map.mjs#header kinds → \"drop\""},
