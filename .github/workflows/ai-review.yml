@@ -1,0 +1,51 @@
+name: AI Review
+
+# Claude and Codex review each pull request, read the validation results and leave a
+# verdict (the `review` check), a summary comment and line comments.
+# https://github.com/adobe/helix-shared-workflows/blob/main/docs/ai-review.md
+#
+# The check is advisory until it is added to a ruleset. Drafts and Renovate's pull
+# requests are not reviewed. A pull request from a fork gets no secrets here, so it
+# is not reviewed by this workflow.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  ai-review:
+    if: ${{ !github.event.pull_request.draft }}
+    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@d1f2dfc169600ceb3ce79c8ef4d4c97892be256f # v1.1.1
+    secrets:
+      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: write
+    with:
+      setup: npm ci
+      test: npm run validate && node scripts/check-release-configs.mjs
+      environment: ''
+      review-prompt: |
+        ADOBE SKILLS
+
+        This repository is adobe/skills: Adobe's skills for AI coding agents, grouped into plugins under `plugins/`. A skill is `skills/<name>/SKILL.md` with optional references, scripts and assets; its frontmatter `description` is what an agent reads to decide whether to load it. People install plugins straight from `main`, so review this as the last check before it ships. AGENTS.md at the repository root holds the rules; read it first, and the `AGENTS.md` of a plugin the change touches. The tests are `npm run validate` (structure of every SKILL.md) and the release config check.
+
+        Look for real defects, in this order:
+        1. Security (AGENTS.md, Security): a download piped into a shell, a guard hook or script that fails open, advice to allow a tool category permanently or to skip confirmation for a destructive, paid or externally visible action, a secret, token, customer name or internal URL, an instruction to follow text found in fetched content, a new MCP server, hook, script or endpoint the pull request doesn't call out.
+        2. Broken references: a path, script, flag, command, tool or skill that a changed skill names and that doesn't exist in the tree; a link to a reference file that isn't there; a manifest that points at a skill folder that isn't there. Check them against the files, don't assume.
+        3. Wrong facts about Adobe products: an API, endpoint, class, CLI flag or behaviour stated for the wrong product or version. Deny only when you confirmed it against the product's documentation or code; otherwise comment and ask for the source.
+        4. Activation: a `description` that doesn't say when to use the skill, or is so broad that the skill loads for tasks it adds nothing to; a skill name that another plugin in the tree already has.
+        5. Drift: a version that differs between a plugin's manifests and its entry in `.claude-plugin/marketplace.json`; a new plugin without a marketplace entry, a CODEOWNERS entry or a README section; an edit to files synced from another repository.
+        6. Evidence: a behaviour change in a plugin that has `evals/` without a scenario for it; a claim that a skill helps without a run that shows it.
+        7. Repository rules: one plugin per pull request, a conventional-commit title with the plugin as scope, a SKILL.md grown past 500 lines instead of moving detail to `references/`.
+
+        Don't report style preferences, or anything you haven't confirmed in the tree or by a run. Severity: deny for a confirmed item from 1 or 2, a confirmed wrong fact from 3 that would make an agent do the wrong thing, or a change that breaks installation or the checks. Items 4 to 7 are comments: say what to change and approve, unless the change makes the skill unusable.

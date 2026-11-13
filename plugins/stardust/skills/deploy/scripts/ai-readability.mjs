@@ -28,9 +28,18 @@
  * from the code denominator. Entries name a block and a string, never a page.
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+// The browser front door is resolved lazily: importing this module (the tests) must not need it.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+function frontDoor() {
+  if (!BROWSER) {
+    console.error('ai-readability: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+    process.exit(2);
+  }
+  return import(BROWSER.href);
+}
 
 export const CHATGPT_UA = 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot';
 export const LANDMARKS = 'nav,header,footer,.nav,.navigation,.navbar,.nav-bar,.menu,.main-menu,.header,.site-header,.page-header,.footer,.site-footer,.page-footer,#nav,#navigation,#navbar,#header,#footer,#menu,[role="navigation"],[role="banner"],[role="contentinfo"]';
@@ -114,29 +123,9 @@ export function analyse({ served, fragments, landmarks, excludeBlocks, allow }) 
 }
 
 /* ------------------------------------------------------------------ driver -- */
-async function loadPlaywright() {
-  const normalize = (m) => (m.chromium ? m : (m.default?.chromium ? m.default : null));
-  try {
-    const req = createRequire(join(process.cwd(), 'package.json'));
-    const mod = normalize(await import(pathToFileURL(req.resolve('playwright')).href));
-    if (mod) return mod;
-  } catch { /* fall through */ }
-  try { const mod = normalize(await import('playwright')); if (mod) return mod; } catch { /* fall through */ }
-  throw new Error('playwright not found: install it in the project (npm i -D playwright)');
-}
-
-// The site secret rides a route filter on the one origin (exact origin match, as in qa, dynamics and
-// live-session), never extraHTTPHeaders (that sends it to every third party the page loads).
+// The site secret rides a route filter on the one origin (attachOriginAuth in the front door), never
+// extraHTTPHeaders (that sends it to every third party the page loads).
 const sameOrigin = (url, origin) => { try { return origin !== 'null' && new URL(url).origin === origin; } catch { return false; } };
-export async function attachOriginAuth(context, origin, value) {
-  if (!value) return;
-  const o = new URL(origin).origin;
-  await context.route('**/*', (route) => {
-    const req = route.request();
-    if (sameOrigin(req.url(), o)) route.continue({ headers: { ...req.headers(), authorization: value } });
-    else route.continue();
-  });
-}
 
 // raw page and fragment requests follow redirects hop by hop: the secret rides only while the chain stays on
 // the origin and is dropped for good once it leaves (some Playwright versions forward it across origins)
@@ -185,6 +174,7 @@ async function fetchFragments(request, origin, served, headers) {
 export async function scorePage(context, origin, path, { excludeBlocks = [], allow = [], headers = {} } = {}) {
   const url = `${origin}${path}`;
   if (!sameOrigin(url, new URL(origin).origin)) return { path, error: 'path leaves the origin' };
+  const { goto } = await frontDoor();
   const page = await context.newPage();
   try {
     const servedRes = await getWithScopedAuth(context.request, origin, url, { headers: { ...headers, 'user-agent': CHATGPT_UA, accept: 'text/html' }, timeout: 20000 });
@@ -199,7 +189,7 @@ export async function scorePage(context, origin, path, { excludeBlocks = [], all
       const fp = new URL(u).pathname.replace(/\.plain\.html$/, '');
       if (!frags.paths.includes(fp) && !runtime.has(fp)) { try { runtime.set(fp, await res.text()); } catch { /* skip */ } }
     });
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await goto(page, url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await settle(page);
     // chrome fragments (nav/header/footer/menu) are loaded by blocks the strict score strips — crediting them would inflate code
     const isChrome = (fp) => /(^|\/)(nav|header|footer|menu)[^/]*(\/|$)/i.test(fp);
@@ -238,10 +228,11 @@ if (isMain) {
   if (!origin || !paths.length) { console.error('usage: ai-readability.mjs --origin <published origin> [--paths file | /path …] [--min 98]'); process.exit(2); }
   const allow = allowFile && existsSync(allowFile) ? JSON.parse(readFileSync(allowFile, 'utf8')) : [];
 
-  const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const { openBrowser, newContext, attachOriginAuth } = await frontDoor();
+  // exit 1 is "below --min": a browser that cannot start is an infrastructure failure, exit 2
+  const browser = await openBrowser({ mode: 'plain' }).catch((e) => { console.error(`ai-readability: ${e.message}`); process.exit(2); });
   const headers = authHeader ? { authorization: authHeader } : {};
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await newContext(browser, { viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(context, origin, authHeader);
   const results = [];
   let fail = false;

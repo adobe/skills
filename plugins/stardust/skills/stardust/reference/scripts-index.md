@@ -24,16 +24,15 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f]`; exit 2 = undecided error
 - `diff/chrome-explore.mjs` — header states, motion, scroll — `<url> <out.json> [--width 1440,390] [--max-requests 600]`
 - `diff/clip-probe.mjs` — text/controls clipped by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped > 0
-- `diff/content-diff.mjs` — structural + attribute/icon diff, all roots — `<protoURL> <edsURL> [--main <sel,…>] [--no-chrome] [--profile generic] [--json]`
-- `diff/content-presence.mjs` — content per band + controls — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = MISSING/HIDDEN link/heading
+- `diff/content-diff.mjs` — structural + attribute/icon diff, all roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json]`
+- `diff/content-presence.mjs` — content per band + controls — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = MISSING/HIDDEN
 - `diff/content-inventory.mjs` — library (classifier copy), no CLI
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
 - `diff/image-signature.mjs` — library, no CLI
-- `diff/live-session.mjs` — library (hardened session; `--headed` = window-free real Chrome), no CLI
-- `diff/measure-live.mjs` — library (settle + rect/type measurement for gate probes), no CLI
+- `diff/measure-live.mjs` — library (settle + measurement for probes), no CLI
 - `diff/unit-geometry.mjs` — repeated-unit Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>) [--n 1] [--tol 4]`; exit 2 = unit off
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
-- `dynamics/dynamics-check.mjs` — replay parity checks (search-query count + top titles) — `--origin <h> [--parity <json>] [--out stardust/qa]`
+- `dynamics/dynamics-check.mjs` — replay parity (search-query count, top titles) — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
 - `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>] [--martech [dir]] [--knowledge]`
 - `dynamics/lib.mjs` — library, no CLI
@@ -56,14 +55,14 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/crop-compare.mjs` — pixel diff, one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/diff-report.mjs` — diff % per block, HTML — `<gateDir> <buildURL> [--blocks <css>] [--top 4]`
-- `replica/foundation-freeze.mjs` — frozen delivery foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
+- `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
 - `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes]`; exit 2 = FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow (`--full`: + probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--gate-against-baseline]`
 - `replica/html-slice.mjs` — one captured element — `<page.html> header|footer|main|.cls [--text] [--all]`
-- `replica/json-query.mjs` — bounded view of JSON — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
+- `replica/json-query.mjs` — bounded JSON view — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
 - `replica/measure.mjs` — rects, computed values, scrollWidth, renditions — `<url> --selectors "a,b" [--against <url>] [--width 1440,360] [--all-matches]`
-- `replica/motion-compare.mjs` — live vs build motion, advisory (exit 0) — `<live.json> <build.json> [--tolerance-ms]`
+- `replica/motion-compare.mjs` — live vs build motion, advisory — `<live.json> <build.json> [--tolerance-ms]`
 - `replica/motion-observe.mjs` — observe motion — `<url> <out.json> [--click <sel>]… [--hover <sel>]…`
 - `replica/pixel-compare.mjs` — pixel diff + bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]` (text % auxiliary)
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
@@ -88,7 +87,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>]`
 - `rollout/lib.mjs` — library, no CLI
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
-- `rollout/optimize.mjs` — quality findings + gate; source-parity tagged — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
+- `rollout/optimize.mjs` — quality findings + gate — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
@@ -109,6 +108,8 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `spec/spec-rum.mjs` — S5 Optel — `[--days 90] [--key-env <NAME>]`
 - `spec/spec-sheet.mjs` — contact sheet — `<component|row-shape>`
 - `spec/spec-variants.mjs` — S8 variants — `[--cut 0.5]`
+- `stardust/browser.mjs` — library (the one browser entry: load, open, context, navigate), no CLI
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--track <t>] [--strict]`; `tail`; `last`
+- `stardust/live-session.mjs` — library (live-site rules behind browser.mjs), no CLI
 - `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`

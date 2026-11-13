@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * rollout/da-library.mjs — publish the site's OWN block library to Document Authoring (#159), so authors insert
+ * rollout/da-library.mjs — publish the site's OWN block library to Document Authoring (#160), so authors insert
  * the blocks and templates the migration shipped instead of an inherited or empty library.
  *
  *   node da-library.mjs [--org <org>] [--site <site>] [--ref main] [--content content] [--blocks-dir blocks]

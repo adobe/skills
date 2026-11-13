@@ -339,8 +339,7 @@ export async function inventorySide(browser, url, { width, locale, warmup, rootS
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const { chromium } = await import('playwright');
-  const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
+  const browser = await openBrowser({ mode: opts.plain ? 'plain' : 'headed' });
   let o; let e; let tier;
   try {
     tier = browserTier(browser);

@@ -161,7 +161,7 @@ For each excluded script, add an unresolved question to inform the developer:
 ### Include scripts that perform runtime-meaningful work
 
 A script is eligible if it makes Commerce API calls using runtime credentials
-(reads from `process.env.COMMERCE_BASE_URL`, `params`, etc.) or performs any
+(for example through a Commerce client helper that reads its credentials from `process.env` or `params`) or performs any
 work that is meaningful when executed in the App Management installation runtime.
 
 For each eligible script, create one `customInstallationStep` entry:
