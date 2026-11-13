@@ -36,7 +36,7 @@ const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs'
 function frontDoor() {
   if (!BROWSER) {
     console.error('ai-readability: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
-    process.exit(1);
+    process.exit(2);
   }
   return import(BROWSER.href);
 }
@@ -229,7 +229,8 @@ if (isMain) {
   const allow = allowFile && existsSync(allowFile) ? JSON.parse(readFileSync(allowFile, 'utf8')) : [];
 
   const { openBrowser, newContext, attachOriginAuth } = await frontDoor();
-  const browser = await openBrowser({ mode: 'plain' });
+  // exit 1 is "below --min": a browser that cannot start is an infrastructure failure, exit 2
+  const browser = await openBrowser({ mode: 'plain' }).catch((e) => { console.error(`ai-readability: ${e.message}`); process.exit(2); });
   const headers = authHeader ? { authorization: authHeader } : {};
   const context = await newContext(browser, { viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(context, origin, authHeader);

@@ -673,14 +673,14 @@ check('entry probe: the crawler copied flat into stardust/scripts/ finds the fro
   entryProbeWithFrontDoor('stardust/scripts', 'stardust/scripts/stardust');
 });
 
-check('a copy without the front door stops with exit 1 and the copy instruction, not a stack trace', () => {
+check('a copy without the front door stops with exit 2 (the fatal-error code of the crawler) and the copy instruction, not a stack trace', () => {
   const root = mkdtempSync(join(tmpdir(), 'crawl-no-front-door-'));
   try {
     mkdirSync(join(root, 'extract'));
     const copy = join(root, 'extract', 'crawl.mjs');
     writeFileSync(copy, readFileSync(SCRIPT, 'utf8'));
     const result = spawnSync(process.execPath, [copy, '--url', 'https://www.example.com/', '--out', join(root, 'out')], { cwd: root, encoding: 'utf8', timeout: 10000 });
-    assert.equal(result.status, 1, result.stderr);
+    assert.equal(result.status, 2, result.stderr);
     assert.match(result.stderr, /^crawl: browser\.mjs not found \(looked in \.\.\/\.\.\/stardust\/scripts\/, \.\.\/stardust\/ and \.\/stardust\/\)\. Copy the master skill's scripts dir to stardust\/scripts\/stardust\/ /m);
     assert.doesNotMatch(result.stderr, /\n\s+at /);
   } finally { rmSync(root, { recursive: true, force: true }); }

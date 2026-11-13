@@ -19,6 +19,7 @@
  *
  * Writes: nothing — PASS/WARN/FAIL lines go to stdout.
  *
+ * Exit 2: usage, or a setup error (browser.mjs or playwright missing).
  * Asserts (FAIL → exit 1):
  *   - the runtime booted: body.appear present (a blank render = harness bug, #40)
  *   - exactly one <h1>, no heading nested inside it (#35/#55)
@@ -67,7 +68,7 @@ const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs'
   .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
 if (!BROWSER) {
   console.error('qa-gate: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
-  process.exit(1);
+  process.exit(2);
 }
 const { openBrowser, newPage, goto } = await import(BROWSER.href);
 
@@ -92,7 +93,8 @@ const warns = [];
 const ok = [];
 const check = (cond, label, detail = '') => (cond ? ok : fails).push(`${label}${detail ? ` — ${detail}` : ''}`);
 
-const browser = await openBrowser({ mode: 'plain' });
+// exit 1 is a failed assert: a browser that cannot start is a setup error, exit 2
+const browser = await openBrowser({ mode: 'plain' }).catch((e) => { console.error(`qa-gate: ${e.message}`); process.exit(2); });
 const page = await newPage(browser, { viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));

@@ -12,7 +12,7 @@
  * Writes (under --out, default data/forms): <name>.json per URL that has content-area
  * controls — <name> is the slug of the URL's last path segment ("form" for a root URL);
  * the definition carries _provenance {source, settleMs}. Per-URL lines go to stderr.
- * Exit 0 on completion, 2 on usage.
+ * Exit 0 on completion, 2 on usage or a setup error.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync } from 'node:fs';

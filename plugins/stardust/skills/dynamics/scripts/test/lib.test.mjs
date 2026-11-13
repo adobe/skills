@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // lib.mjs settlePage — the CONSENT_ACCEPT click is the fallback when the shared consent pass clicks nothing.
-// And the four browser CLIs: a copy without the master scripts stops with the copy instruction, no stack trace.
+// And the four browser CLIs: a copy without the master scripts stops with the copy instruction, exit 2 (in
+// dynamics-check exit 1 means a failed check), no stack trace.
 // Run: node plugins/stardust/skills/dynamics/scripts/test/lib.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -70,7 +71,7 @@ await check('lib.mjs copied flat into stardust/scripts/ finds the front door in 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-await check('a copy without the master scripts: each browser CLI stops with the copy instruction, exit 1, no stack trace', () => {
+await check('a copy without the master scripts: each browser CLI stops with the copy instruction, exit 2, no stack trace', () => {
   const root = mkdtempSync(join(tmpdir(), 'dynamics-no-master-'));
   try {
     const dir = join(root, 'a', 'b'); // no stardust/ beside, above or below it
@@ -86,7 +87,7 @@ await check('a copy without the master scripts: each browser CLI stops with the 
     ];
     for (const [script, ...args] of runs) {
       const r = spawnSync(process.execPath, [script, ...args], { cwd: dir, encoding: 'utf8' });
-      assert.equal(r.status, 1, `${script}: exit ${r.status}\n${r.stderr}`);
+      assert.equal(r.status, 2, `${script}: exit ${r.status}\n${r.stderr}`);
       assert.ok(r.stderr.includes('browser.mjs not found') && r.stderr.includes('stardust/scripts/stardust/'), `${script}: ${r.stderr}`);
       assert.ok(!/^\s+at /m.test(r.stderr), `${script} printed a stack trace:\n${r.stderr}`);
     }

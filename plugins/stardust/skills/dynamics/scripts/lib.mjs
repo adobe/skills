@@ -41,11 +41,11 @@ function frontDoor() {
   return import(BROWSER.href);
 }
 const SETUP_ERRORS = ['FRONT_DOOR_MISSING', 'PLAYWRIGHT_MISSING', 'PLAYWRIGHT_BROKEN'];
-/** CLI boundary: a missing front door or Playwright is a setup error. One line, exit 1; any other error passes on. */
+/** CLI boundary: a missing front door or Playwright is a setup error. One line, exit 2 (in dynamics-check exit 1 is a failed check); any other error passes on. */
 export function stopOnSetupError(error) {
   if (!SETUP_ERRORS.includes(error?.code)) throw error;
   console.error(error.message);
-  process.exit(1);
+  process.exit(2);
 }
 const viaFrontDoor = (name) => async (...args) => (await frontDoor())[name](...args);
 export const loadPlaywright = viaFrontDoor('loadPlaywright');

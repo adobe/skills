@@ -54,7 +54,7 @@ const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs'
   .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
 if (!BROWSER) {
   console.error('render-harness: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
-  process.exit(1);
+  process.exit(2);
 }
 const { openBrowser, newPage } = await import(BROWSER.href);
 

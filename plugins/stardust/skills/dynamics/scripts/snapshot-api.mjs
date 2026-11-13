@@ -13,7 +13,7 @@
  * Writes (under --out, default data/snapshot):
  *   <name>.json        the parsed JSON body of each call that answered 200 (one file per call name)
  *   _provenance.json   origin, timestamp and per-call status / byte count / response shape
- * Per-call lines go to stderr. Exit 0 on completion, 2 on usage.
+ * Per-call lines go to stderr. Exit 0 on completion, 2 on usage or a setup error.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync } from 'node:fs';

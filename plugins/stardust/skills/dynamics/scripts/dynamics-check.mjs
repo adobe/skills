@@ -16,7 +16,7 @@
  * Writes (under --out, default stardust/qa):
  *   dynamics-report.md     one row per replayed check (PASS/FAIL, detail, third-party requests)
  *   dynamics-report.json   the same results with _provenance
- * Progress lines go to stderr. Exit 0 when every check passed, 1 otherwise, 2 on usage.
+ * Progress lines go to stderr. Exit 0 when every check passed, 1 otherwise, 2 on usage or a setup error.
  *
  * Check types (* = required):
  *   fetch-json     { url*, minRows?, expectKeys? }                 GET on the origin returns JSON with rows / keys

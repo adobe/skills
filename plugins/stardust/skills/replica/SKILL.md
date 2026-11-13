@@ -67,8 +67,8 @@ eyeballing.
    own location.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
-   `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs, browser.mjs) to `stardust/scripts/stardust/`, the
+   `stardust/scripts/replica/`, the master skill's whole
+   `../stardust/scripts/` dir to `stardust/scripts/stardust/`, the
    migrate skill's `../migrate/scripts/` (migrate.mjs) to
    `stardust/scripts/migrate/`, AND the whole `../diff/scripts/` dir to
    `stardust/scripts/diff/` (the gates import its diff-profiles.mjs and

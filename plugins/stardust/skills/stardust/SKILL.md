@@ -73,10 +73,10 @@ sub-commands that delegate the actual design work to **impeccable**.
    stop and name the rule. Offer, never write, LFS above 50 MB of tracked
    binaries under `stardust/`. Details in `reference/artifact-map.md`
    § Versioning.
-7. **Copy this skill's `scripts/` dir to `stardust/scripts/stardust/`** before any
-   other skill's script runs: `ledger.mjs`, `state.mjs` and `browser.mjs`, the
-   one entry to the browser for every script. A script you write opens every
-   page this way: `newLiveContext` and `gotoLive`, never `chromium.launch()` or
+7. **Copy this skill's whole `scripts/` dir to `stardust/scripts/stardust/`**
+   before any other skill's script runs. Its `browser.mjs` is the one entry to
+   the browser for every script. A script you write opens every page this way
+   (#159): `newLiveContext` and `gotoLive`, never `chromium.launch()` or
    `page.goto`:
 
    ```js

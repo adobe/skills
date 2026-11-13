@@ -250,7 +250,7 @@ function assignSlugs(urls) {
 // ---- the shared browser module (stardust/scripts/browser.mjs, the front door), beside this script ----
 // Three layouts: plugin tree, project copy (stardust/scripts/<skill>/), flat (stardust/scripts/). It lends
 // the crawler the browser, the consent vendor list, the denial-page reader, the per-host pacing and the
-// deadline helper. Without it the crawler stops (exit 1); a hook that fails at run time is tolerated below.
+// deadline helper. Without it the crawler stops (exit 2, its fatal-error code); a hook that fails at run time is tolerated below.
 const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs', './stardust/browser.mjs']
   .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 let liveSessionModule;
@@ -258,7 +258,7 @@ async function liveSession() {
   if (liveSessionModule === undefined) {
     if (!BROWSER) {
       console.error('crawl: browser.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
-      process.exit(1);
+      process.exit(2);
     }
     liveSessionModule = await import(BROWSER.href);
   }

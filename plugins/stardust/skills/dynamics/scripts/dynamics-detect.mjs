@@ -15,7 +15,7 @@
  * Writes (under --out, default stardust/current):
  *   _dynamics.json                  per-page evidence + classified findings (+ `reach` with --reach)
  *   dynamic-features.generated.md   the findings as a table, one row per feature
- * Progress lines go to stderr. Exit 0 on completion, 2 on usage.
+ * Progress lines go to stderr. Exit 0 on completion, 2 on usage or a setup error.
  *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
  * target-host probe lives in dynamics-plan.mjs.
