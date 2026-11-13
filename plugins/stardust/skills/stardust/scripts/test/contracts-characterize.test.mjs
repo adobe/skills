@@ -503,8 +503,8 @@ const EXPECTED = {
     "/widgets/a/widget.html": {"widgetStem": "widget", "roundtripLinks": "widget", "rolloutPageWidgets": "widget", "migrateWidgetsIn": "widget", "qaWidgetLinks": "widget", "qaWidgetLinksSameSite": "widget", "rolloutCodePath": "widgets/a/widget.html", "qaWidgetPath": "/widgets/a/widget.html", "reservedStem": true, "edsName": "blk-widget", "lintRules": ["widget-name"]},
     "/widgets/x.HTML": {"widgetStem": "x", "roundtripLinks": "x", "rolloutPageWidgets": "x", "migrateWidgetsIn": "x", "qaWidgetLinks": "x", "qaWidgetLinksSameSite": "x", "rolloutCodePath": "widgets/x.HTML", "qaWidgetPath": "/widgets/x.HTML", "reservedStem": false, "edsName": "x", "lintRules": []},
     "https://partner.example/widgets/map/finder.html": {"widgetStem": "finder", "roundtripLinks": "finder", "rolloutPageWidgets": "finder", "migrateWidgetsIn": "finder", "qaWidgetLinks": "finder", "qaWidgetLinksSameSite": null, "rolloutCodePath": "widgets/map/finder.html", "qaWidgetPath": "/widgets/map/finder.html", "reservedStem": false, "edsName": "finder", "lintRules": "not-root-relative"},
-    "/a/b.html": {"widgetStem": null, "roundtripLinks": null, "rolloutPageWidgets": null, "migrateWidgetsIn": "b", "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "a/b.html", "qaWidgetPath": null, "reservedStem": false, "edsName": "null", "lintRules": ["html-extension"]},
-    "/nav": {"widgetStem": null, "roundtripLinks": null, "rolloutPageWidgets": null, "migrateWidgetsIn": "nav", "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "nav", "qaWidgetPath": null, "reservedStem": false, "edsName": "null", "lintRules": []}
+    "/a/b.html": {"widgetStem": null, "roundtripLinks": null, "rolloutPageWidgets": null, "migrateWidgetsIn": null, "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "a/b.html", "qaWidgetPath": null, "reservedStem": false, "edsName": "null", "lintRules": ["html-extension"]},
+    "/nav": {"widgetStem": null, "roundtripLinks": null, "rolloutPageWidgets": null, "migrateWidgetsIn": null, "qaWidgetLinks": null, "qaWidgetLinksSameSite": null, "rolloutCodePath": "nav", "qaWidgetPath": null, "reservedStem": false, "edsName": "null", "lintRules": []}
   },
   widgetMounts: {
     "twoLinks": {"roundtrip": [], "migrate": [], "qa": [{"name": "site-search", "href": "/widgets/search/site-search.html", "path": "/widgets/search/site-search.html"}]},
@@ -624,8 +624,6 @@ const KNOWN_DIVERGENCE = [
   {"concept": "da-document-path", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#daPath (of deliveredUrl of /<file>) → \"/widgets/search/site-search\"", "b": "deploy/scripts/deploy-batch.mjs#walkHtml.webPath → \"/widgets/search/site-search.htm\""},
   {"concept": "sidecar", "input": "/widgets/search/site-search.htm", "a": "migrate/scripts/migrate.mjs#sidecarFor → \"widgets/search/site-search._meta.json\"", "b": "rollout/scripts/inventory.mjs#sidecarFor → \"widgets/search/site-search.htm._meta.json\""},
   {"concept": "widget-stem", "input": "https://partner.example/widgets/map/finder.html", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → \"finder\"", "b": "qa/scripts/checks/content.mjs#widgetLinks.name (base https://site.example) → null"},
-  {"concept": "widget-stem", "input": "/a/b.html", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → null", "b": "migrate/scripts/migrate.mjs#widgetsIn.id → \"b\""},
-  {"concept": "widget-stem", "input": "/nav", "a": "deploy/scripts/block-roundtrip.mjs#widgetStem → null", "b": "migrate/scripts/migrate.mjs#widgetsIn.id → \"nav\""},
   {"concept": "chrome-id", "input": "header", "a": "rollout/scripts/lib.mjs#kindOf → true", "b": "qa/scripts/lib.mjs#buildInventory.fragments default (of /<id>) → false"},
   {"concept": "chrome-id", "input": "header", "a": "rollout/scripts/lib.mjs#kindOf → true", "b": "rollout/scripts/delivery-lint.mjs#inferType (of /<id>) === fragment → false"},
   {"concept": "chrome-id", "input": "menu", "a": "rollout/scripts/lib.mjs#kindOf → false", "b": "deploy/scripts/ai-readability.mjs#isChrome (of /<id>) → true"},
@@ -679,6 +677,8 @@ check('source pins of the metadata pair, the qa templates rule and build-harness
   pin('rollout/scripts/delivery-lint.mjs', 'const type = TYPE || documentKind(DAPATH);');
   pin('rollout/scripts/lib.mjs', "export const { RESERVED, edsName, reservedStem, widgetCodePath, pageWidgets, widgetStem, CHROME_IDS, kindOf, DEFAULT_CONTENT, documentKind } = C;");
   pin('deploy/scripts/eds-path.mjs', "export const { deliveredUrl, daPath, pathKey } = await import(CONTRACTS.href);");
+  pin('migrate/scripts/migrate.mjs', "const { sidecarName, urlForm, widgetHref, widgetLinks } = await import(CONTRACTS.href);");
+  pin('migrate/scripts/migrate.mjs', "widgetLinks(main, { mount: 'data-widget' })) if (path && !out.has(name))");
   pin('qa/scripts/checks/content.mjs', "export const widgetLinks = (html, base = null) => widgetMounts(html, { mount: 'any', base, dedupeBy: 'path' });");
   pin('qa/scripts/lib.mjs', 'fragments = QA_CHROME_PATHS');
   pin('qa/scripts/checks/ai-readability.mjs', "arg('ai-exclude-blocks', AI_EXCLUDE_DEFAULT.join(','))");

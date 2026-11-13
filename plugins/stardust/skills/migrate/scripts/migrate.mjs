@@ -69,6 +69,13 @@ import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Shared rules (skills/stardust/scripts/lib/README.md): the sidecar name and URL form of an output path, the widget contract.
+// They live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) { console.error('migrate: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); process.exit(1); }
+const { sidecarName, urlForm, widgetHref, widgetLinks } = await import(CONTRACTS.href);
+
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 // Only the main-module check below calls it: importing this module never prints or exits.
 function help() {
@@ -119,10 +126,10 @@ export function outputPathFor(urlOrPath) {
   if (/\.[a-z0-9]+$/i.test(leaf)) return { outputPath: bare, outputPathDefault: null, passthrough: true };
   return { outputPath: `${bare}/index.html`, outputPathDefault: 'trailing-slash', passthrough: false };
 }
-export const sidecarFor = (outputPath) => { const d = posix.dirname(outputPath); const b = posix.basename(outputPath); const s = b === 'index.html' ? '_meta.json' : `${b.replace(/\.html?$/i, '')}._meta.json`; return d === '.' ? s : `${d}/${s}`; };
+export const sidecarFor = (outputPath) => sidecarName(outputPath, { loose: true });
 export const depthOf = (outputPath) => outputPath.split('/').length - 1;
 export const relPrefix = (depth) => (depth === 0 ? './' : '../'.repeat(depth));
-export const urlFormOf = (outputPath) => outputPath.replace(/(^|\/)index\.html$/, '$1');
+export const urlFormOf = urlForm;
 // The AEM-Edge-safe form of an output path, as delivery-lint's path-safety normalises a DA path: lowercase,
 // per segment `_`, spaces and anything outside [a-z0-9.] → `-`, runs of `-` collapsed, no leading/trailing `-`.
 // Two pages whose folded paths coincide would overwrite each other once delivered, whatever their literal case.
@@ -212,9 +219,9 @@ export function tagSections(main, template) {
   return { html: `<main${attrs}>${out}${inner.slice(last)}</main>`, slots, sections: n };
 }
 export const modulesIn = (main) => [...new Set([...main.matchAll(/(?<![\w-])data-module\s*=\s*(["'])(.*?)\1/gs)].map((x) => x[2].trim()).filter(Boolean))];
-// widgets[]: one {id, href} per a[data-widget] mount; id = file stem of the href path (falls back to the data-widget value), deduped per page
-/** The mount href a `data-widget="<path>/<name>"` value implies: /widgets/<path>/<name>.html. Pure. */
-export const widgetHref = (dataWidget) => `/widgets/${String(dataWidget).trim().replace(/^\/?(?:widgets\/)?/, '').replace(/\.html?$/i, '')}.html`;
+// widgets[]: one {id, href} per a[data-widget] mount whose href is a widget link (`/widgets/<path>/<name>.html`, the stem
+// is the id — lib/names.mjs widgetLinks; a data-widget mount pointing at a page is not a widget), first mount per id kept
+export { widgetHref };
 /** A `data-widget` mount that forgot its href gets it (the live auto-block keys on the href, never on data-widget); `warn` is told. Pure. */
 export function fixWidgetMounts(html, warn = () => {}) {
   return html.replace(/<a\b([^>]*)>/gi, (tag, attrs) => {
@@ -226,12 +233,7 @@ export function fixWidgetMounts(html, warn = () => {}) {
 }
 export function widgetsIn(main) {
   const out = new Map();
-  for (const [, attrs] of main.matchAll(/<a\b([^>]*)>/gi)) {
-    const w = attrs.match(/(?<![\w-])data-widget\s*=\s*(["'])(.*?)\1/s); if (!w) continue;
-    const h = attrs.match(/(?<![\w-])href\s*=\s*(["'])(.*?)\1/s); const href = h ? h[2].replace(/&amp;/g, '&').trim() : widgetHref(w[2]);
-    const stem = posix.basename((href || w[2].trim()).split(/[?#]/)[0]).replace(/\.html?$/i, '');
-    if (stem && !out.has(stem)) out.set(stem, { id: stem, href });
-  }
+  for (const { name, href, path } of widgetLinks(main, { mount: 'data-widget' })) if (path && !out.has(name)) out.set(name, { id: name, href });
   return [...out.values()];
 }
 
