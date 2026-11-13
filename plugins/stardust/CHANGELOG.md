@@ -4,6 +4,39 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
+
+Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo
+per #103. DA's Layout view (new authoring) renders the page from `main--<site>--<org>.preview.da.live`, which
+serves block code but 404s a code-bus mp4, so the hero showed blank there; authors also could not swap a video
+without a code change. A scratch-site test settled the DA route: a `content.da.live/....mp4` link still reaches the page verbatim and
+answers 401 to visitors (#103 holds for that form), but previewing and publishing the uploaded mp4 itself makes its
+root-relative content path redirect to the media bus on both `aem.page` and `aem.live` (200 `video/mp4`, byte
+ranges served).
+
+- **Rule** (`deploy/SKILL.md` #161, replaces the #103 paragraph): an mp4 up to 36 MB (the content-source limit) goes
+  through `da-media-upload.mjs` and is authored as `/media/<scope>/<file>.mp4`, never its `content.da.live` URL, and
+  never also committed at the same path. Bigger mp4s, other formats, audio and PDF stay on the code origin or an
+  external host. Pointer from replica's handoff contract.
+- **`deploy/scripts/da-media-upload.mjs`:** accepts `.mp4` (`video/mp4`); after the PUT it POSTs `preview` and,
+  unless `--no-publish`, `live` for the file on `--branch` (default `main`; `--hlx-url` for a test double), prints
+  the root-relative path to author, and records `authorUrl` + `delivered` in the ledger. A failed preview/publish is
+  FAIL (uploaded, not delivered), and a re-run redelivers it; an mp4 over 36 MB is `SKIP video-too-large` with no
+  request. Manifest source fetches accept `video/*` for an mp4 entry. A video is stored under its web path
+  (`webPath`: lowercase, runs of other characters → `-`), the only name its preview resolves (recorded:
+  `…_video01.mp4` uploaded fine and 404'd on preview); the OK line names the rename. Verified on a copy of the
+  field site: after the move the hero plays in the Layout view and on `aem.page`.
+- Tests: `da-media-upload.test.mjs` (classify limits; PUT + preview + live order on a branch; failed preview; ledger
+  skip of a delivered video; `--no-publish`; over-limit skip).
+- Review follow-ups: one skip path after the bytes are known, so an over-limit mp4 fetched from a manifest `source`
+  is `SKIP video-too-large` too (a declared `content-length` skips it before the body is buffered); a 401 that
+  persists on the video's preview/live POST halts the batch like the PUT 401 (exit 3, never `failed`); folder
+  segments are kept verbatim (checked on a scratch site: only the file name takes its web form). Tests cover the
+  three; the summary counts over-limit video apart from non-images.
+- Second review follow-up: two files that take one web name (`Clip_A.mp4`, `clip-a.mp4`) no longer overwrite each
+  other on DA. The first in the batch keeps the path; a later one is `FAIL name-collision` before any request, with
+  no ledger write (the row is the first file's), and a dry run shows it. Test included.
+
 ## 0.38.1 — rollout publishes the site's own DA block library (#160)
 
 Field learning (a migrated site handed to its author): the pages and block code shipped, but the DA library showed an
