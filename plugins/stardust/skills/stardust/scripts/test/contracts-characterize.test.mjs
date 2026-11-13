@@ -10,13 +10,15 @@
 // How each implementation is reached:
 //   imported          eds-path, localize-links, spec lib (templateOf, CODED), spec-knowledge (needsEntry), qa lib
 //                     (buildInventory, pageUrl, plainUrl), qa content (widgetLinks, blockNames), rollout lib, done-check,
-//                     seed-redirects, migrate, gate-evidence, block-roundtrip, dynamics lib
+//                     seed-redirects, migrate, gate-evidence, block-roundtrip, dynamics lib; added in 0.35–0.38:
+//                     rollout da-library (chromeRefs, contentFile, docName, SKIP), deploy da-media-upload (webPath)
 //   source-extracted  the verbatim function/literal text is read from the file and evaluated (module-private or in a
 //                     script that runs on import): inventory.mjs deliveredPath/urlToDeliveredPath/sidecarFor/pathToSlug,
 //                     assemble.mjs normPath, chrome-compare.mjs hrefKey, ai-readability.mjs isChrome, spec lib CHROME,
 //                     spec-knowledge k(), dynamics-detect / spec-knowledge CLASS_NAMES, davids-model-lint KEY_VALUE_BLOCKS,
 //                     spec-map kind literals
-//   re-implemented    deploy-batch.mjs:161-162 webPath (two lines, source-pinned), qa routing.mjs:88 sampling filter
+//   re-implemented    deploy-batch.mjs:161-162 webPath (two lines, source-pinned), qa routing.mjs:88 sampling filter,
+//                     da-library root chrome set and page path, update-coverage --pin deployedUrl path (source-pinned)
 //   spawned           rollout delivery-lint.mjs (--json) on a one-link page per href and on each --path
 // Source pins (`pin`) assert the extracted/re-implemented text is still in the file: when Phase 1 swaps an inline rule
 // for the shared import, replace that pin with the shared function and keep the expected table unchanged.
@@ -42,6 +44,9 @@ const check = (name, fn) => { try { fn(); if (!PRINT) console.log(`✓ ${name}`)
 
 // --------------------------------------------------------------------------------------------- implementations --
 const edsPath = await load('deploy/scripts/eds-path.mjs');
+// added since the 2026-10-20 census (0.35–0.38, re-census 2026-11-13)
+const daLibrary = await load('rollout/scripts/da-library.mjs');
+const mediaUpload = await load('deploy/scripts/da-media-upload.mjs');
 const localize = await load('deploy/scripts/localize-links.mjs');
 const specLib = await load('spec/scripts/lib.mjs');
 const specKnowledge = await load('spec/scripts/spec-knowledge.mjs');
@@ -88,6 +93,17 @@ pin('qa/scripts/checks/routing.mjs', "pages.filter((x) => x.path !== '/' && (x.u
 const routingSamples = (x) => x.path !== '/' && (x.url || '').endsWith('/');
 // rollout/scripts/seed-redirects.mjs:36 — module-private
 const seedPathOf = fromSource('rollout/scripts/seed-redirects.mjs', /const pathOf = (\(u\) => \{[^\n]*\});/);
+
+// rollout/scripts/da-library.mjs main — a content file's page path and the root chrome documents; inline, re-implemented
+pin('rollout/scripts/da-library.mjs', "pages.push({ path: rel === 'index' ? '/' : `/${rel.replace(/\\/index$/, '/')}`, file: f });");
+pin('rollout/scripts/da-library.mjs', "const chrome = new Set(['nav', 'footer']);");
+const daLibraryPagePath = (rel) => (rel === 'index' ? '/' : `/${rel.replace(/\/index$/, '/')}`);
+const daLibraryRootChrome = ['nav', 'footer'];
+// rollout/scripts/update-coverage.mjs --pin — the served URL of a first-page-first row is the eds host + the gate-all row's
+// path, which is the source page's pathname verbatim (replica gate-all.mjs: deployedPath || new URL(liveUrl).pathname)
+pin('rollout/scripts/update-coverage.mjs', 'p.delivery.deployedUrl = `${eds.replace(/\\/$/, \'\')}${r.path || p.path}`;');
+pin('replica/scripts/gate-all.mjs', 'path: p.deployedPath || new URL(p.liveUrl).pathname');
+const updateCoveragePinPath = (p) => new URL(/^https?:/i.test(p) ? p : `https://site.example${p}`).pathname;
 
 // ------------------------------------------------------------------------------------------- fixtures + spawns --
 const root = mkdtempSync(join(tmpdir(), 'contracts-characterize-'));
@@ -190,6 +206,7 @@ OBSERVED.servedFromListing = family('served-url-listing', PATHS, {
   qaPlainUrl: { label: 'qa/scripts/lib.mjs#plainUrl (of buildInventory.url)', fn: (p) => qaLib.plainUrl('https://site.example', qaRows.get(p).url), compare: false },
   qaPageUrl: { label: 'qa/scripts/lib.mjs#pageUrl (of buildInventory.path)', fn: (p) => qaLib.pageUrl('https://site.example/', qaRows.get(p).path), compare: false },
   qaRoutingSamplesSlash: { label: 'qa/scripts/checks/routing.mjs#trailing-slash sample', fn: (p) => routingSamples(qaRows.get(p)), compare: false },
+  updateCoveragePin: { label: 'rollout/scripts/update-coverage.mjs#--pin deployedUrl path', fn: updateCoveragePinPath },
 }, 'deliveredUrl');
 
 // 1c. the URL EDS serves a page at, read from its file in the migrated/content tree (migrate's outputPath for the input,
@@ -200,6 +217,7 @@ OBSERVED.servedFromTree = family('served-url-tree', PATHS, {
   publicUrl: { label: 'rollout/scripts/lib.mjs#publicUrl (inventory row of the file)', fn: (p) => rollout.publicUrl(inventoryRow(p)) },
   doneCheckDeliveredPaths: { label: 'rollout/scripts/done-check.mjs#deliveredPaths', fn: (p) => doneCheck.deliveredPaths([{ ...inventoryRow(p), delivery: { status: 'verified' } }])[0] },
   migrateUrlForm: { label: "migrate/scripts/migrate.mjs#urlFormOf ('/'-prefixed)", fn: (p) => `/${migrate.urlFormOf(outputPath(p))}` },
+  daLibraryPagePath: { label: 'rollout/scripts/da-library.mjs#page path (of the content file)', fn: (p) => daLibraryPagePath(outputPath(p).replace(/\.html$/, '')) },
 }, 'deliveredUrl');
 
 // 1d. the delivered (key) path of a file in the tree — reference: inventory deliveredPath
@@ -276,6 +294,21 @@ OBSERVED.chromeSets = {
   aiReadabilityOnPaths: Object.fromEntries(PATHS.map((p) => [p, aiReadabilityIsChrome(p)])),
 };
 
+// 3b. the 0.35–0.38 additions that take other inputs: da-library's chrome references and content-file lookup, its
+//     library document names, and da-media-upload's mp4 DA name (`#161`). Pinned outputs; the set comparisons below.
+{
+  const metaPage = (k, v) => `<html><body><main><div><div class="metadata"><div><div>${k}</div><div>${v}</div></div></div></div></main></body></html>`;
+  const lib = join(root, 'da-library'); for (const f of ['a.html', 'a/index.html', 'b/index.html', 'C.html', 'nav.html']) { mkdirSync(join(lib, dirname(f)), { recursive: true }); writeFileSync(join(lib, f), '<main></main>'); }
+  const rel = (f) => (f ? f.slice(lib.length + 1) : null);
+  OBSERVED.census202611 = {
+    daLibraryChromeRefs: Object.fromEntries(['/footer-home', '/de/nav/', 'https://site.example/nav.html', '/Footer.HTML', 'footer?x=1', '/nav/index'].map((v) => [v, daLibrary.chromeRefs(metaPage('Nav', v))])),
+    daLibraryContentFile: Object.fromEntries(['/', '/a', '/a/', '/b/', '/c', '/C', '/a/b.html', '/nav'].map((p) => [p, rel(daLibrary.contentFile(lib, p))])),
+    daLibraryDocName: Object.fromEntries(['Hero', 'Section', 'cards-container', 'Two Words', '***', 'Café'].map((n) => [n, daLibrary.docName(n)])),
+    daLibrarySkip: [...daLibrary.SKIP],
+    mediaWebPath: Object.fromEntries(['media/Scope_Test/Clip A.MP4', 'x/clip.v2.mp4', 'main-mvisual_video01.mp4', 'noext'].map((n) => [n, mediaUpload.webPath(n)])),
+  };
+}
+
 // 4. dynamics class labels
 const dynClassNames = fromSource('dynamics/scripts/dynamics-detect.mjs', /const CLASS_NAMES = (\{[^\n]*\});/);
 const specClassNames = fromSource('spec/scripts/spec-knowledge.mjs', /const CLASS_NAMES = (\{[^\n]*\});/);
@@ -309,6 +342,8 @@ const setDiff = (concept, aLabel, a, bLabel, b) => {
 };
 setDiff('chrome-set', 'rollout/scripts/lib.mjs#CHROME_IDS', OBSERVED.chromeSets.rollout, 'spec/scripts/lib.mjs#genericRules.CHROME', OBSERVED.chromeSets.spec);
 setDiff('chrome-set', 'rollout/scripts/lib.mjs#CHROME_IDS', OBSERVED.chromeSets.rollout, 'qa/scripts/lib.mjs#buildInventory.fragments', OBSERVED.chromeSets.qaDefault.map((p) => p.slice(1)));
+setDiff('chrome-set', 'rollout/scripts/lib.mjs#CHROME_IDS', OBSERVED.chromeSets.rollout, 'rollout/scripts/da-library.mjs#root chrome documents', daLibraryRootChrome);
+setDiff('metadata-pair', 'deploy/scripts/davids-model-lint.mjs#KEY_VALUE_BLOCKS', OBSERVED.metadataPair.davidsModelLint, 'rollout/scripts/da-library.mjs#SKIP', OBSERVED.census202611.daLibrarySkip);
 setDiff('metadata-pair', 'deploy/scripts/davids-model-lint.mjs#KEY_VALUE_BLOCKS', OBSERVED.metadataPair.davidsModelLint, 'qa/scripts/checks/content.mjs#blockNames excludes', ['metadata', 'section-metadata'].filter((n) => !OBSERVED.metadataPair.qaBlockNames.includes(n)));
 setDiff('kind-enum', 'spec/scripts/lib.mjs#CODED', OBSERVED.kinds.specCoded, 'spec/scripts/spec-map.mjs#header kinds', OBSERVED.kinds.specMapHeader);
 setDiff('kind-enum', 'spec/scripts/lib.mjs#CODED', OBSERVED.kinds.specCoded, 'spec/scripts/spec-map.mjs#nested kinds', OBSERVED.kinds.specMapNestedKinds);
@@ -340,40 +375,40 @@ const EXPECTED = {
     "/fragments/x": {"pathKey": "/fragments/x", "canonicalPath": "/fragments/x", "specKnowledgeKey": "/fragments/x", "assembleNormPath": "/fragments/x", "inventoryUrlToDeliveredPath": "/fragments/x", "chromeCompareHrefKey": "/fragments/x", "qaInventoryPath": "/fragments/x", "specTemplateSection": "/fragments/x", "seedPathOf": "/fragments/x", "migratePathnameOf": "/fragments/x", "sheetMatchable": true}
   },
   servedFromListing: {
-    "/": {"deliveredUrl": "/", "qaInventoryUrl": "/", "daPath": "/index", "qaPlainUrl": "https://site.example/index.plain.html", "qaPageUrl": "https://site.example/", "qaRoutingSamplesSlash": false},
-    "/a": {"deliveredUrl": "/a", "qaInventoryUrl": "/a", "daPath": "/a", "qaPlainUrl": "https://site.example/a.plain.html", "qaPageUrl": "https://site.example/a", "qaRoutingSamplesSlash": false},
-    "/a/": {"deliveredUrl": "/a/", "qaInventoryUrl": "/a/", "daPath": "/a/index", "qaPlainUrl": "https://site.example/a/index.plain.html", "qaPageUrl": "https://site.example/a", "qaRoutingSamplesSlash": true},
-    "/a/b": {"deliveredUrl": "/a/b", "qaInventoryUrl": "/a/b", "daPath": "/a/b", "qaPlainUrl": "https://site.example/a/b.plain.html", "qaPageUrl": "https://site.example/a/b", "qaRoutingSamplesSlash": false},
-    "/a/b/": {"deliveredUrl": "/a/b/", "qaInventoryUrl": "/a/b/", "daPath": "/a/b/index", "qaPlainUrl": "https://site.example/a/b/index.plain.html", "qaPageUrl": "https://site.example/a/b", "qaRoutingSamplesSlash": true},
-    "/a/index.html": {"deliveredUrl": "/a/", "qaInventoryUrl": "/a/index.html", "daPath": "/a/index", "qaPlainUrl": "https://site.example/a/index.html.plain.html", "qaPageUrl": "https://site.example/a/index.html", "qaRoutingSamplesSlash": false},
-    "/a/b.html": {"deliveredUrl": "/a/b", "qaInventoryUrl": "/a/b.html", "daPath": "/a/b", "qaPlainUrl": "https://site.example/a/b.html.plain.html", "qaPageUrl": "https://site.example/a/b.html", "qaRoutingSamplesSlash": false},
-    "/a?x=1": {"deliveredUrl": "/a", "qaInventoryUrl": "/a?x=1", "daPath": "/a", "qaPlainUrl": "https://site.example/a?x=1.plain.html", "qaPageUrl": "https://site.example/a?x=1", "qaRoutingSamplesSlash": false},
-    "/a#f": {"deliveredUrl": "/a", "qaInventoryUrl": "/a#f", "daPath": "/a", "qaPlainUrl": "https://site.example/a#f.plain.html", "qaPageUrl": "https://site.example/a#f", "qaRoutingSamplesSlash": false},
-    "/A/B": {"deliveredUrl": "/a/b", "qaInventoryUrl": "/A/B", "daPath": "/a/b", "qaPlainUrl": "https://site.example/A/B.plain.html", "qaPageUrl": "https://site.example/A/B", "qaRoutingSamplesSlash": false},
-    "https://HOST.example/a/b.html?q": {"deliveredUrl": "/https/host-example/a/b", "qaInventoryUrl": "/https://HOST.example/a/b.html?q", "daPath": "/https/host-example/a/b", "qaPlainUrl": "https://site.example/https://HOST.example/a/b.html?q.plain.html", "qaPageUrl": "https://site.example/https://HOST.example/a/b.html?q", "qaRoutingSamplesSlash": false},
-    "/widgets/search/site-search.html?q=docs": {"deliveredUrl": "/widgets/search/site-search", "qaInventoryUrl": "/widgets/search/site-search.html?q=docs", "daPath": "/widgets/search/site-search", "qaPlainUrl": "https://site.example/widgets/search/site-search.html?q=docs.plain.html", "qaPageUrl": "https://site.example/widgets/search/site-search.html?q=docs", "qaRoutingSamplesSlash": false},
-    "/widgets/search/site-search.htm": {"deliveredUrl": "/widgets/search/site-search", "qaInventoryUrl": "/widgets/search/site-search.htm", "daPath": "/widgets/search/site-search", "qaPlainUrl": "https://site.example/widgets/search/site-search.htm.plain.html", "qaPageUrl": "https://site.example/widgets/search/site-search.htm", "qaRoutingSamplesSlash": false},
-    "/nav": {"deliveredUrl": "/nav", "qaInventoryUrl": "/nav", "daPath": "/nav", "qaPlainUrl": "https://site.example/nav.plain.html", "qaPageUrl": "https://site.example/nav", "qaRoutingSamplesSlash": false},
-    "/footer": {"deliveredUrl": "/footer", "qaInventoryUrl": "/footer", "daPath": "/footer", "qaPlainUrl": "https://site.example/footer.plain.html", "qaPageUrl": "https://site.example/footer", "qaRoutingSamplesSlash": false},
-    "/fragments/x": {"deliveredUrl": "/fragments/x", "qaInventoryUrl": "/fragments/x", "daPath": "/fragments/x", "qaPlainUrl": "https://site.example/fragments/x.plain.html", "qaPageUrl": "https://site.example/fragments/x", "qaRoutingSamplesSlash": false}
+    "/": {"deliveredUrl": "/", "qaInventoryUrl": "/", "daPath": "/index", "qaPlainUrl": "https://site.example/index.plain.html", "qaPageUrl": "https://site.example/", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/"},
+    "/a": {"deliveredUrl": "/a", "qaInventoryUrl": "/a", "daPath": "/a", "qaPlainUrl": "https://site.example/a.plain.html", "qaPageUrl": "https://site.example/a", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/a"},
+    "/a/": {"deliveredUrl": "/a/", "qaInventoryUrl": "/a/", "daPath": "/a/index", "qaPlainUrl": "https://site.example/a/index.plain.html", "qaPageUrl": "https://site.example/a", "qaRoutingSamplesSlash": true, "updateCoveragePin": "/a/"},
+    "/a/b": {"deliveredUrl": "/a/b", "qaInventoryUrl": "/a/b", "daPath": "/a/b", "qaPlainUrl": "https://site.example/a/b.plain.html", "qaPageUrl": "https://site.example/a/b", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/a/b"},
+    "/a/b/": {"deliveredUrl": "/a/b/", "qaInventoryUrl": "/a/b/", "daPath": "/a/b/index", "qaPlainUrl": "https://site.example/a/b/index.plain.html", "qaPageUrl": "https://site.example/a/b", "qaRoutingSamplesSlash": true, "updateCoveragePin": "/a/b/"},
+    "/a/index.html": {"deliveredUrl": "/a/", "qaInventoryUrl": "/a/index.html", "daPath": "/a/index", "qaPlainUrl": "https://site.example/a/index.html.plain.html", "qaPageUrl": "https://site.example/a/index.html", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/a/index.html"},
+    "/a/b.html": {"deliveredUrl": "/a/b", "qaInventoryUrl": "/a/b.html", "daPath": "/a/b", "qaPlainUrl": "https://site.example/a/b.html.plain.html", "qaPageUrl": "https://site.example/a/b.html", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/a/b.html"},
+    "/a?x=1": {"deliveredUrl": "/a", "qaInventoryUrl": "/a?x=1", "daPath": "/a", "qaPlainUrl": "https://site.example/a?x=1.plain.html", "qaPageUrl": "https://site.example/a?x=1", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/a"},
+    "/a#f": {"deliveredUrl": "/a", "qaInventoryUrl": "/a#f", "daPath": "/a", "qaPlainUrl": "https://site.example/a#f.plain.html", "qaPageUrl": "https://site.example/a#f", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/a"},
+    "/A/B": {"deliveredUrl": "/a/b", "qaInventoryUrl": "/A/B", "daPath": "/a/b", "qaPlainUrl": "https://site.example/A/B.plain.html", "qaPageUrl": "https://site.example/A/B", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/A/B"},
+    "https://HOST.example/a/b.html?q": {"deliveredUrl": "/https/host-example/a/b", "qaInventoryUrl": "/https://HOST.example/a/b.html?q", "daPath": "/https/host-example/a/b", "qaPlainUrl": "https://site.example/https://HOST.example/a/b.html?q.plain.html", "qaPageUrl": "https://site.example/https://HOST.example/a/b.html?q", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/a/b.html"},
+    "/widgets/search/site-search.html?q=docs": {"deliveredUrl": "/widgets/search/site-search", "qaInventoryUrl": "/widgets/search/site-search.html?q=docs", "daPath": "/widgets/search/site-search", "qaPlainUrl": "https://site.example/widgets/search/site-search.html?q=docs.plain.html", "qaPageUrl": "https://site.example/widgets/search/site-search.html?q=docs", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/widgets/search/site-search.html"},
+    "/widgets/search/site-search.htm": {"deliveredUrl": "/widgets/search/site-search", "qaInventoryUrl": "/widgets/search/site-search.htm", "daPath": "/widgets/search/site-search", "qaPlainUrl": "https://site.example/widgets/search/site-search.htm.plain.html", "qaPageUrl": "https://site.example/widgets/search/site-search.htm", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/widgets/search/site-search.htm"},
+    "/nav": {"deliveredUrl": "/nav", "qaInventoryUrl": "/nav", "daPath": "/nav", "qaPlainUrl": "https://site.example/nav.plain.html", "qaPageUrl": "https://site.example/nav", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/nav"},
+    "/footer": {"deliveredUrl": "/footer", "qaInventoryUrl": "/footer", "daPath": "/footer", "qaPlainUrl": "https://site.example/footer.plain.html", "qaPageUrl": "https://site.example/footer", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/footer"},
+    "/fragments/x": {"deliveredUrl": "/fragments/x", "qaInventoryUrl": "/fragments/x", "daPath": "/fragments/x", "qaPlainUrl": "https://site.example/fragments/x.plain.html", "qaPageUrl": "https://site.example/fragments/x", "qaRoutingSamplesSlash": false, "updateCoveragePin": "/fragments/x"}
   },
   servedFromTree: {
-    "/": {"outputPath": "index.html", "deliveredUrl": "/", "publicUrl": "/", "doneCheckDeliveredPaths": "/", "migrateUrlForm": "/"},
-    "/a": {"outputPath": "a/index.html", "deliveredUrl": "/a/", "publicUrl": "/a/", "doneCheckDeliveredPaths": "/a/", "migrateUrlForm": "/a/"},
-    "/a/": {"outputPath": "a/index.html", "deliveredUrl": "/a/", "publicUrl": "/a/", "doneCheckDeliveredPaths": "/a/", "migrateUrlForm": "/a/"},
-    "/a/b": {"outputPath": "a/b/index.html", "deliveredUrl": "/a/b/", "publicUrl": "/a/b/", "doneCheckDeliveredPaths": "/a/b/", "migrateUrlForm": "/a/b/"},
-    "/a/b/": {"outputPath": "a/b/index.html", "deliveredUrl": "/a/b/", "publicUrl": "/a/b/", "doneCheckDeliveredPaths": "/a/b/", "migrateUrlForm": "/a/b/"},
-    "/a/index.html": {"outputPath": "a/index.html", "deliveredUrl": "/a/", "publicUrl": "/a/", "doneCheckDeliveredPaths": "/a/", "migrateUrlForm": "/a/"},
-    "/a/b.html": {"outputPath": "a/b.html", "deliveredUrl": "/a/b", "publicUrl": "/a/b", "doneCheckDeliveredPaths": "/a/b", "migrateUrlForm": "/a/b.html"},
-    "/a?x=1": {"outputPath": "a?x=1/index.html", "deliveredUrl": "/a", "publicUrl": "/a?x=1/", "doneCheckDeliveredPaths": "/a?x=1/", "migrateUrlForm": "/a?x=1/"},
-    "/a#f": {"outputPath": "a#f/index.html", "deliveredUrl": "/a", "publicUrl": "/a#f/", "doneCheckDeliveredPaths": "/a#f/", "migrateUrlForm": "/a#f/"},
-    "/A/B": {"outputPath": "A/B/index.html", "deliveredUrl": "/a/b/", "publicUrl": "/A/B/", "doneCheckDeliveredPaths": "/A/B/", "migrateUrlForm": "/A/B/"},
-    "https://HOST.example/a/b.html?q": {"outputPath": "a/b.html", "deliveredUrl": "/a/b", "publicUrl": "/a/b", "doneCheckDeliveredPaths": "/a/b", "migrateUrlForm": "/a/b.html"},
-    "/widgets/search/site-search.html?q=docs": {"outputPath": "widgets/search/site-search.html?q=docs/index.html", "deliveredUrl": "/widgets/search/site-search", "publicUrl": "/widgets/search/site-search.html?q=docs/", "doneCheckDeliveredPaths": "/widgets/search/site-search.html?q=docs/", "migrateUrlForm": "/widgets/search/site-search.html?q=docs/"},
-    "/widgets/search/site-search.htm": {"outputPath": "widgets/search/site-search.htm", "deliveredUrl": "/widgets/search/site-search", "publicUrl": "/widgets/search/site-search.htm", "doneCheckDeliveredPaths": "/widgets/search/site-search.htm", "migrateUrlForm": "/widgets/search/site-search.htm"},
-    "/nav": {"outputPath": "nav/index.html", "deliveredUrl": "/nav/", "publicUrl": "/nav/", "doneCheckDeliveredPaths": "/nav/", "migrateUrlForm": "/nav/"},
-    "/footer": {"outputPath": "footer/index.html", "deliveredUrl": "/footer/", "publicUrl": "/footer/", "doneCheckDeliveredPaths": "/footer/", "migrateUrlForm": "/footer/"},
-    "/fragments/x": {"outputPath": "fragments/x/index.html", "deliveredUrl": "/fragments/x/", "publicUrl": "/fragments/x/", "doneCheckDeliveredPaths": "/fragments/x/", "migrateUrlForm": "/fragments/x/"}
+    "/": {"outputPath": "index.html", "deliveredUrl": "/", "publicUrl": "/", "doneCheckDeliveredPaths": "/", "migrateUrlForm": "/", "daLibraryPagePath": "/"},
+    "/a": {"outputPath": "a/index.html", "deliveredUrl": "/a/", "publicUrl": "/a/", "doneCheckDeliveredPaths": "/a/", "migrateUrlForm": "/a/", "daLibraryPagePath": "/a/"},
+    "/a/": {"outputPath": "a/index.html", "deliveredUrl": "/a/", "publicUrl": "/a/", "doneCheckDeliveredPaths": "/a/", "migrateUrlForm": "/a/", "daLibraryPagePath": "/a/"},
+    "/a/b": {"outputPath": "a/b/index.html", "deliveredUrl": "/a/b/", "publicUrl": "/a/b/", "doneCheckDeliveredPaths": "/a/b/", "migrateUrlForm": "/a/b/", "daLibraryPagePath": "/a/b/"},
+    "/a/b/": {"outputPath": "a/b/index.html", "deliveredUrl": "/a/b/", "publicUrl": "/a/b/", "doneCheckDeliveredPaths": "/a/b/", "migrateUrlForm": "/a/b/", "daLibraryPagePath": "/a/b/"},
+    "/a/index.html": {"outputPath": "a/index.html", "deliveredUrl": "/a/", "publicUrl": "/a/", "doneCheckDeliveredPaths": "/a/", "migrateUrlForm": "/a/", "daLibraryPagePath": "/a/"},
+    "/a/b.html": {"outputPath": "a/b.html", "deliveredUrl": "/a/b", "publicUrl": "/a/b", "doneCheckDeliveredPaths": "/a/b", "migrateUrlForm": "/a/b.html", "daLibraryPagePath": "/a/b"},
+    "/a?x=1": {"outputPath": "a?x=1/index.html", "deliveredUrl": "/a", "publicUrl": "/a?x=1/", "doneCheckDeliveredPaths": "/a?x=1/", "migrateUrlForm": "/a?x=1/", "daLibraryPagePath": "/a?x=1/"},
+    "/a#f": {"outputPath": "a#f/index.html", "deliveredUrl": "/a", "publicUrl": "/a#f/", "doneCheckDeliveredPaths": "/a#f/", "migrateUrlForm": "/a#f/", "daLibraryPagePath": "/a#f/"},
+    "/A/B": {"outputPath": "A/B/index.html", "deliveredUrl": "/a/b/", "publicUrl": "/A/B/", "doneCheckDeliveredPaths": "/A/B/", "migrateUrlForm": "/A/B/", "daLibraryPagePath": "/A/B/"},
+    "https://HOST.example/a/b.html?q": {"outputPath": "a/b.html", "deliveredUrl": "/a/b", "publicUrl": "/a/b", "doneCheckDeliveredPaths": "/a/b", "migrateUrlForm": "/a/b.html", "daLibraryPagePath": "/a/b"},
+    "/widgets/search/site-search.html?q=docs": {"outputPath": "widgets/search/site-search.html?q=docs/index.html", "deliveredUrl": "/widgets/search/site-search", "publicUrl": "/widgets/search/site-search.html?q=docs/", "doneCheckDeliveredPaths": "/widgets/search/site-search.html?q=docs/", "migrateUrlForm": "/widgets/search/site-search.html?q=docs/", "daLibraryPagePath": "/widgets/search/site-search.html?q=docs/"},
+    "/widgets/search/site-search.htm": {"outputPath": "widgets/search/site-search.htm", "deliveredUrl": "/widgets/search/site-search", "publicUrl": "/widgets/search/site-search.htm", "doneCheckDeliveredPaths": "/widgets/search/site-search.htm", "migrateUrlForm": "/widgets/search/site-search.htm", "daLibraryPagePath": "/widgets/search/site-search.htm"},
+    "/nav": {"outputPath": "nav/index.html", "deliveredUrl": "/nav/", "publicUrl": "/nav/", "doneCheckDeliveredPaths": "/nav/", "migrateUrlForm": "/nav/", "daLibraryPagePath": "/nav/"},
+    "/footer": {"outputPath": "footer/index.html", "deliveredUrl": "/footer/", "publicUrl": "/footer/", "doneCheckDeliveredPaths": "/footer/", "migrateUrlForm": "/footer/", "daLibraryPagePath": "/footer/"},
+    "/fragments/x": {"outputPath": "fragments/x/index.html", "deliveredUrl": "/fragments/x/", "publicUrl": "/fragments/x/", "doneCheckDeliveredPaths": "/fragments/x/", "migrateUrlForm": "/fragments/x/", "daLibraryPagePath": "/fragments/x/"}
   },
   tree: {
     "/": {"inventoryDeliveredPath": "/", "gateDaPath": "/", "pathKeyOfFile": "/", "migrateFoldPath": "/index.html", "inventorySlug": "home"},
@@ -474,6 +509,7 @@ const EXPECTED = {
     "hero": {"rollout": false, "spec": false, "aiReadability": false, "qaFragments": false, "deliveryLint": false}
   },
   chromeSets: {"rollout": ["header", "nav", "footer"], "spec": ["header", "footer", "nav"], "qaDefault": ["/nav", "/footer"], "aiReadabilityOnPaths": {"/": false, "/a": false, "/a/": false, "/a/b": false, "/a/b/": false, "/a/index.html": false, "/a/b.html": false, "/a?x=1": false, "/a#f": false, "/A/B": false, "https://HOST.example/a/b.html?q": false, "/widgets/search/site-search.html?q=docs": false, "/widgets/search/site-search.htm": false, "/nav": true, "/footer": true, "/fragments/x": false}},
+  census202611: {"daLibraryChromeRefs": {"/footer-home": ["footer-home"], "/de/nav/": ["de/nav"], "https://site.example/nav.html": ["nav"], "/Footer.HTML": ["Footer.HTML"], "footer?x=1": ["footer?x=1"], "/nav/index": ["nav/index"]}, "daLibraryContentFile": {"/": null, "/a": "a.html", "/a/": "a.html", "/b/": "b/index.html", "/c": "c.html", "/C": "C.html", "/a/b.html": null, "/nav": "nav.html"}, "daLibraryDocName": {"Hero": "hero", "Section": "section", "cards-container": "cards-container", "Two Words": "two-words", "***": "untitled", "Café": "caf"}, "daLibrarySkip": ["metadata", "section-metadata", "library-metadata", "template-metadata"], "mediaWebPath": {"media/Scope_Test/Clip A.MP4": "media/Scope_Test/clip-a.mp4", "x/clip.v2.mp4": "x/clip-v2.mp4", "main-mvisual_video01.mp4": "main-mvisual-video01.mp4", "noext": "noext"}},
   classLabels: {
     "L": {"dynamics": "listing", "spec": "listing", "inTaxonomy": true},
     "S": {"dynamics": "search", "spec": "search", "inTaxonomy": true},
@@ -528,30 +564,41 @@ const KNOWN_DIVERGENCE = [
   {"concept": "path-key", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#pathKey → \"/widgets/search/site-search\"", "b": "rollout/scripts/inventory.mjs#urlToDeliveredPath → \"/widgets/search/site-search.htm\""},
   {"concept": "path-key", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#pathKey → \"/widgets/search/site-search\"", "b": "qa/scripts/lib.mjs#buildInventory.path → \"/widgets/search/site-search.htm\""},
   {"concept": "served-url-listing", "input": "/a/index.html", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/a/\"", "b": "qa/scripts/lib.mjs#buildInventory.url → \"/a/index.html\""},
+  {"concept": "served-url-listing", "input": "/a/index.html", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/a/\"", "b": "rollout/scripts/update-coverage.mjs#--pin deployedUrl path → \"/a/index.html\""},
   {"concept": "served-url-listing", "input": "/a/b.html", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/a/b\"", "b": "qa/scripts/lib.mjs#buildInventory.url → \"/a/b.html\""},
+  {"concept": "served-url-listing", "input": "/a/b.html", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/a/b\"", "b": "rollout/scripts/update-coverage.mjs#--pin deployedUrl path → \"/a/b.html\""},
   {"concept": "served-url-listing", "input": "/a?x=1", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/a\"", "b": "qa/scripts/lib.mjs#buildInventory.url → \"/a?x=1\""},
   {"concept": "served-url-listing", "input": "/a#f", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/a\"", "b": "qa/scripts/lib.mjs#buildInventory.url → \"/a#f\""},
   {"concept": "served-url-listing", "input": "/A/B", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/a/b\"", "b": "qa/scripts/lib.mjs#buildInventory.url → \"/A/B\""},
+  {"concept": "served-url-listing", "input": "/A/B", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/a/b\"", "b": "rollout/scripts/update-coverage.mjs#--pin deployedUrl path → \"/A/B\""},
   {"concept": "served-url-listing", "input": "https://HOST.example/a/b.html?q", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/https/host-example/a/b\"", "b": "qa/scripts/lib.mjs#buildInventory.url → \"/https://HOST.example/a/b.html?q\""},
+  {"concept": "served-url-listing", "input": "https://HOST.example/a/b.html?q", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/https/host-example/a/b\"", "b": "rollout/scripts/update-coverage.mjs#--pin deployedUrl path → \"/a/b.html\""},
   {"concept": "served-url-listing", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/widgets/search/site-search\"", "b": "qa/scripts/lib.mjs#buildInventory.url → \"/widgets/search/site-search.html?q=docs\""},
+  {"concept": "served-url-listing", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/widgets/search/site-search\"", "b": "rollout/scripts/update-coverage.mjs#--pin deployedUrl path → \"/widgets/search/site-search.html\""},
   {"concept": "served-url-listing", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/widgets/search/site-search\"", "b": "qa/scripts/lib.mjs#buildInventory.url → \"/widgets/search/site-search.htm\""},
+  {"concept": "served-url-listing", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#deliveredUrl → \"/widgets/search/site-search\"", "b": "rollout/scripts/update-coverage.mjs#--pin deployedUrl path → \"/widgets/search/site-search.htm\""},
   {"concept": "served-url-tree", "input": "/a/b.html", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a/b\"", "b": "migrate/scripts/migrate.mjs#urlFormOf ('/'-prefixed) → \"/a/b.html\""},
   {"concept": "served-url-tree", "input": "/a?x=1", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a\"", "b": "rollout/scripts/lib.mjs#publicUrl (inventory row of the file) → \"/a?x=1/\""},
   {"concept": "served-url-tree", "input": "/a?x=1", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a\"", "b": "rollout/scripts/done-check.mjs#deliveredPaths → \"/a?x=1/\""},
   {"concept": "served-url-tree", "input": "/a?x=1", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a\"", "b": "migrate/scripts/migrate.mjs#urlFormOf ('/'-prefixed) → \"/a?x=1/\""},
+  {"concept": "served-url-tree", "input": "/a?x=1", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a\"", "b": "rollout/scripts/da-library.mjs#page path (of the content file) → \"/a?x=1/\""},
   {"concept": "served-url-tree", "input": "/a#f", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a\"", "b": "rollout/scripts/lib.mjs#publicUrl (inventory row of the file) → \"/a#f/\""},
   {"concept": "served-url-tree", "input": "/a#f", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a\"", "b": "rollout/scripts/done-check.mjs#deliveredPaths → \"/a#f/\""},
   {"concept": "served-url-tree", "input": "/a#f", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a\"", "b": "migrate/scripts/migrate.mjs#urlFormOf ('/'-prefixed) → \"/a#f/\""},
+  {"concept": "served-url-tree", "input": "/a#f", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a\"", "b": "rollout/scripts/da-library.mjs#page path (of the content file) → \"/a#f/\""},
   {"concept": "served-url-tree", "input": "/A/B", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a/b/\"", "b": "rollout/scripts/lib.mjs#publicUrl (inventory row of the file) → \"/A/B/\""},
   {"concept": "served-url-tree", "input": "/A/B", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a/b/\"", "b": "rollout/scripts/done-check.mjs#deliveredPaths → \"/A/B/\""},
   {"concept": "served-url-tree", "input": "/A/B", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a/b/\"", "b": "migrate/scripts/migrate.mjs#urlFormOf ('/'-prefixed) → \"/A/B/\""},
+  {"concept": "served-url-tree", "input": "/A/B", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a/b/\"", "b": "rollout/scripts/da-library.mjs#page path (of the content file) → \"/A/B/\""},
   {"concept": "served-url-tree", "input": "https://HOST.example/a/b.html?q", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/a/b\"", "b": "migrate/scripts/migrate.mjs#urlFormOf ('/'-prefixed) → \"/a/b.html\""},
   {"concept": "served-url-tree", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/widgets/search/site-search\"", "b": "rollout/scripts/lib.mjs#publicUrl (inventory row of the file) → \"/widgets/search/site-search.html?q=docs/\""},
   {"concept": "served-url-tree", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/widgets/search/site-search\"", "b": "rollout/scripts/done-check.mjs#deliveredPaths → \"/widgets/search/site-search.html?q=docs/\""},
   {"concept": "served-url-tree", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/widgets/search/site-search\"", "b": "migrate/scripts/migrate.mjs#urlFormOf ('/'-prefixed) → \"/widgets/search/site-search.html?q=docs/\""},
+  {"concept": "served-url-tree", "input": "/widgets/search/site-search.html?q=docs", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/widgets/search/site-search\"", "b": "rollout/scripts/da-library.mjs#page path (of the content file) → \"/widgets/search/site-search.html?q=docs/\""},
   {"concept": "served-url-tree", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/widgets/search/site-search\"", "b": "rollout/scripts/lib.mjs#publicUrl (inventory row of the file) → \"/widgets/search/site-search.htm\""},
   {"concept": "served-url-tree", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/widgets/search/site-search\"", "b": "rollout/scripts/done-check.mjs#deliveredPaths → \"/widgets/search/site-search.htm\""},
   {"concept": "served-url-tree", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/widgets/search/site-search\"", "b": "migrate/scripts/migrate.mjs#urlFormOf ('/'-prefixed) → \"/widgets/search/site-search.htm\""},
+  {"concept": "served-url-tree", "input": "/widgets/search/site-search.htm", "a": "deploy/scripts/eds-path.mjs#deliveredUrl (of /<file>) → \"/widgets/search/site-search\"", "b": "rollout/scripts/da-library.mjs#page path (of the content file) → \"/widgets/search/site-search.htm\""},
   {"concept": "tree-path", "input": "/a?x=1", "a": "rollout/scripts/inventory.mjs#deliveredPath → \"/a?x=1\"", "b": "deploy/scripts/eds-path.mjs#pathKey (of /<file>) → \"/a\""},
   {"concept": "tree-path", "input": "/a#f", "a": "rollout/scripts/inventory.mjs#deliveredPath → \"/a#f\"", "b": "deploy/scripts/eds-path.mjs#pathKey (of /<file>) → \"/a\""},
   {"concept": "tree-path", "input": "/A/B", "a": "rollout/scripts/inventory.mjs#deliveredPath → \"/A/B\"", "b": "deploy/scripts/eds-path.mjs#pathKey (of /<file>) → \"/a/b\""},
@@ -581,6 +628,8 @@ const KNOWN_DIVERGENCE = [
   {"concept": "class-label", "input": "A", "a": "dynamics/scripts/dynamics-detect.mjs#CLASS_NAMES → \"API / personalisation / settings\"", "b": "spec/scripts/spec-knowledge.mjs#CLASS_NAMES → \"API / settings\""},
   {"concept": "class-label", "input": "D", "a": "dynamics/scripts/dynamics-detect.mjs#CLASS_NAMES → \"sheet / data file\"", "b": "spec/scripts/spec-knowledge.mjs#CLASS_NAMES → \"data file\""},
   {"concept": "chrome-set", "input": "header", "a": "rollout/scripts/lib.mjs#CHROME_IDS → \"header\"", "b": "qa/scripts/lib.mjs#buildInventory.fragments → absent"},
+  {"concept": "chrome-set", "input": "header", "a": "rollout/scripts/lib.mjs#CHROME_IDS → \"header\"", "b": "rollout/scripts/da-library.mjs#root chrome documents → absent"},
+  {"concept": "metadata-pair", "input": "template-metadata", "a": "deploy/scripts/davids-model-lint.mjs#KEY_VALUE_BLOCKS → absent", "b": "rollout/scripts/da-library.mjs#SKIP → \"template-metadata\""},
   {"concept": "metadata-pair", "input": "library-metadata", "a": "deploy/scripts/davids-model-lint.mjs#KEY_VALUE_BLOCKS → \"library-metadata\"", "b": "qa/scripts/checks/content.mjs#blockNames excludes → absent"},
   {"concept": "kind-enum", "input": "default", "a": "spec/scripts/lib.mjs#CODED → absent", "b": "spec/scripts/spec-map.mjs#header kinds → \"default\""},
   {"concept": "kind-enum", "input": "metadata", "a": "spec/scripts/lib.mjs#CODED → absent", "b": "spec/scripts/spec-map.mjs#header kinds → \"metadata\""},
