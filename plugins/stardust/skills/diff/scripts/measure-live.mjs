@@ -80,7 +80,7 @@ export async function settle(page, { passes = 4, step = 400, dwell = 250, emptyS
  * Navigate (fail-loud live-session contract: a challenge throws BotChallengeError, a 404 build is measured
  * with a warning), dismiss overlays, settle. `warmup` visits another URL first in the same context.
  */
-export async function visit(page, url, { warmup = null, settle: settleOpts = {}, dismiss = true, solveWindow = true, timeoutMs = 90000, httpError = 'measure' } = {}) {
+export async function visit(page, url, { warmup = null, settle: settleOpts = {}, dismiss = true, extra = [], solveWindow = true, timeoutMs = 90000, httpError = 'measure' } = {}) {
   const { defaultWaitUntil, dismissOverlays, gotoLive, isLiveHttpUrl } = frontDoor();
   if (warmup) {
     await gotoLive(page, warmup, { waitUntil: 'domcontentloaded', timeoutMs, settleMs: 0, solveWindow, httpError: 'measure' });
@@ -88,11 +88,25 @@ export async function visit(page, url, { warmup = null, settle: settleOpts = {},
   }
   const resp = await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), timeoutMs, settleMs: 0, solveWindow, httpError });
   await page.waitForTimeout(2500);
-  if (dismiss) { try { await dismissOverlays(page, { lateWindowMs: isLiveHttpUrl(url) ? 4000 : 0 }); } catch { /* none */ } }
+  if (dismiss) { try { await dismissOverlays(page, { extra, lateWindowMs: isLiveHttpUrl(url) ? 4000 : 0 }); } catch { /* none */ } }
   const s = await settle(page, settleOpts);
   if (dismiss) { try { await dismissOverlays(page, { lateWindowMs: 0 }); } catch { /* none */ } }
   return { status: resp ? resp.status() : null, ...s };
 }
+
+/**
+ * The overlay flags every probe takes, spelled as gate.sh and stitch-shot spell them: --consent <sel>,
+ * --dismiss <sel,…>, --no-dismiss. `overlayFlag(a, next, opts)` → how many arguments it consumed (0 = not
+ * an overlay flag); `overlayOf(opts)` → visit()'s { dismiss, extra }.
+ */
+export const OVERLAY_HELP = '  --consent <sel> / --dismiss <sel,…> / --no-dismiss   overlay handling, as gate.sh and stitch-shot spell it';
+export function overlayFlag(a, next, opts) {
+  if (a === '--consent') { opts.consent = next; return 2; }
+  if (a === '--dismiss') { opts.dismiss = String(next || '').split(',').map((x) => x.trim()).filter(Boolean); return 2; }
+  if (a === '--no-dismiss') { opts.noDismiss = true; return 1; }
+  return 0;
+}
+export const overlayOf = (opts = {}) => ({ dismiss: !opts.noDismiss, extra: [opts.consent, ...(opts.dismiss || [])].filter(Boolean) });
 
 // ---- in-page functions (Playwright-serialised; ONE argument object) --------------------------------
 

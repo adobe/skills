@@ -28,7 +28,7 @@
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
+import { OVERLAY_HELP, browserTier, openBrowser, openPage, overlayFlag, overlayOf, visit } from './measure-live.mjs';
 
 const HELP = `clip-probe — text and controls cut or hidden by an overflow ancestor on a served page (#125 D1)
 
@@ -42,6 +42,7 @@ Usage: node clip-probe.mjs <url> [options]
   --more-words <re>   "read more" toggle labels (default English: read|show|see|view|load + more|all|full|less)
   --plain             bundled Chromium instead of the window-free real-Chrome tier
   --warmup <url>      visit this URL first (bot-managed sites)
+${OVERLAY_HELP}
   --locale <tag>      default en-US
   --help              this text
 Counted (exit 2): TEXT CLIPPED, TEXT HIDDEN, CONTROL HIDDEN, CONTROL CLIPPED. Exit 3 = bot challenge.`;
@@ -325,6 +326,7 @@ export function parseArgs(argv) {
     else if (a === '--advisory') opts.advisory = true;
     else if (a === '--more-words') opts.moreWords = rest[++i];
     else if (a === '--plain') opts.plain = true;
+    else if (overlayFlag(a, rest[i + 1], opts)) i += overlayFlag(a, rest[i + 1], opts) - 1;
     else if (a === '--warmup') opts.warmup = rest[++i];
     else if (a === '--locale') opts.locale = rest[++i];
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
@@ -336,7 +338,7 @@ export function parseArgs(argv) {
 
 /** Load + settle a page and run the inventory (shared with gate-all's --no-content path). */
 export async function probe(page, url, opts) {
-  const v = await visit(page, url, { warmup: opts.warmup });
+  const v = await visit(page, url, { warmup: opts.warmup, ...overlayOf(opts) });
   const inv = await page.evaluate(inPage(clipInventoryInPage, { minCut: opts.minCut, rootSel: opts.main, maxFindings: opts.maxFindings }, morePrelude(opts.moreWords)));
   return { url, at: new Date().toISOString(), width: opts.width, status: v.status, settlePasses: v.passes, ...inv, groups: summarize(inv.findings) };
 }
