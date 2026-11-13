@@ -44,6 +44,7 @@ const EXEMPT = {
   'spec/scripts/lib.mjs': 'library: shared args, config, HTML tree reader and pool for the spec stages; no CLI',
   'spec/scripts/rules.mjs': 'library: the rule format spec-knowledge evaluates for reach, impact and findings; no CLI',
   'stardust/scripts/browser.mjs': 'library: the one entry to the browser for every script; no CLI',
+  'stardust/scripts/contracts.mjs': 'library: the shared rules (lib/) every skill imports, found like browser.mjs; no CLI',
   'stardust/scripts/live-session.mjs': 'library: the live-site rules behind browser.mjs; no CLI',
 };
 
