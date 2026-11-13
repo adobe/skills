@@ -5,7 +5,8 @@ on:
     branches: [main]
   # pull_request_target (instead of pull_request) so the review job can access
   # TESSL_TOKEN on PRs from forks; secrets are never exposed to plain
-  # `pull_request` fork runs. Fork runs are gated by the `eval` environment below.
+  # `pull_request` fork runs. Fork runs by outsiders are gated by the
+  # `fork-review` environment below.
   pull_request_target:
     branches: [main]
 
@@ -19,11 +20,17 @@ concurrency:
 jobs:
   tessl-review:
     runs-on: ubuntu-latest
-    # Gate only PRs from forks behind the `eval` environment's required reviewers,
-    # so a maintainer approves before TESSL_TOKEN reaches untrusted PR content.
-    # Same-repo PRs (maintainers / anyone with write access push branches here)
-    # and push-to-main get an empty environment => no approval, run unattended.
-    environment: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository) && 'eval' || '' }}
+    # Gate PRs from forks by outsiders behind the `fork-review` environment's required
+    # reviewers, so a maintainer approves before TESSL_TOKEN reaches untrusted PR content.
+    # An outsider is an author who is not an owner, a member of the organization or a
+    # collaborator of this repository. Everything else gets an empty environment and runs
+    # unattended: same-repo PRs, push to main, and forks of people who could just as well
+    # push a branch here.
+    environment: >-
+      ${{ (github.event_name == 'pull_request_target'
+           && github.event.pull_request.head.repo.full_name != github.repository
+           && !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))
+          && 'fork-review' || '' }}
     steps:
       # Fork PRs: review the merged result via the PR merge ref.
       # Push to main: use the pushed commit.
@@ -141,6 +148,9 @@ jobs:
 
       - name: Review skills
         if: steps.prereq.outputs.skip != 'true' && steps.detect.outputs.skip != 'true'
+        env:
+          # directory names come from the pull request: hand them over as data, not as script
+          SKILL_DIRS_INPUT: ${{ steps.detect.outputs.dirs }}
         run: |
           THRESHOLD=80
           # Tessl workspace to attribute review runs to (required when --json is set).
@@ -152,7 +162,6 @@ jobs:
           SUMMARY_FILE=$(mktemp)
           ERRORS_FILE=$(mktemp)
 
-          SKILL_DIRS_INPUT="${{ steps.detect.outputs.dirs }}"
           SKILL_LIST_FILE=$(mktemp)
           trap 'rm -f "$SKILL_LIST_FILE" "$SUMMARY_FILE" "$ERRORS_FILE"' EXIT
 
@@ -161,6 +170,8 @@ jobs:
             find plugins -name SKILL.md -exec dirname {} \; > "$SKILL_LIST_FILE"
           else
             # PR mode: use detected skill dirs
+            # one directory per word, on purpose
+            # shellcheck disable=SC2086
             printf '%s\n' $SKILL_DIRS_INPUT > "$SKILL_LIST_FILE"
           fi
 
