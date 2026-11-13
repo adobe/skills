@@ -330,14 +330,14 @@ test('no secret, token, customer hostname, URL path or source snippet reaches th
     'import okhttp3.OkHttpClient;',
     'import software.amazon.awssdk.services.s3.S3Client;',
     'class Partner {',
-    '  String u = "https://svc-user:Sup3rS3cret@orders.secret-partner.io/v1/orders?apiKey=AKIAABCDEFGHIJKLMNOP";',
+    '  String u = "https://svc-user:Sup3rS3cret@orders.secret-partner.io/v1/orders?apiKey=FAKE-API-KEY-0000";',
     '  String b = "https://acme-private-bucket.s3.eu-west-1.amazonaws.com/reports";',
     '}',
   ].join('\n'));
   write(root, `${CONFIG}/com.acme.Partner.cfg.json`, '{\n  "serviceUrl": "https://orders.secret-partner.io/v1",\n  "password": "hunter2"\n}\n');
   const res = runIntegrationScan(root);
   const out = JSON.stringify(res) + renderIntegrationDiscovery(res).join('\n');
-  for (const leak of ['Sup3rS3cret', 'svc-user', 'AKIAABCDEFGHIJKLMNOP', 'apiKey=', 'secret-partner', '/v1/orders', 'hunter2', 'acme-private-bucket', 'String u =']) {
+  for (const leak of ['Sup3rS3cret', 'svc-user', 'FAKE-API-KEY-0000', 'apiKey=', 'secret-partner', '/v1/orders', 'hunter2', 'acme-private-bucket', 'String u =']) {
     assert.ok(!out.includes(leak), `output leaks ${leak}`);
   }
   const generic = res.integrations.find(r => r.category === 'customer-external');
