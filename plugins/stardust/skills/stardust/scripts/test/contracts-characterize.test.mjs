@@ -83,13 +83,17 @@ pin('rollout/scripts/assemble.mjs', "import { readJSON, writeJSON, publicUrl, si
 const assembleNormPath = libPaths.sitemapKey;
 // diff/scripts/chrome-compare.mjs:38-42 — module-private
 const chromeCompareHrefKey = fromSource('diff/scripts/chrome-compare.mjs', /const hrefKey = (\(h\) => \{[\s\S]*?\n\});/);
-// spec/scripts/spec-knowledge.mjs:114 — the k() inside needsEntry
-const specKnowledgeKey = fromSource('spec/scripts/spec-knowledge.mjs', /const k = (\(p\) => String\(p\)[^;]*);/);
+// spec/scripts/spec-knowledge.mjs — needsEntry's key is lib/paths.mjs redirectKey (pinned import name)
+pin('spec/scripts/spec-knowledge.mjs', "import { CLASS_NAMES, TAXONOMY, deliveredUrl as edsPath, redirectKey } from './lib.mjs';");
+pin('spec/scripts/spec-knowledge.mjs', 'export const needsEntry = (src, target) => (redirectKey(src) !== redirectKey(target) ? 1 : 0);');
+const specKnowledgeKey = libPaths.redirectKey;
 // deploy/scripts/ai-readability.mjs scorePage — its isChrome is lib/kinds.mjs isChromeName with { menu: true } (pinned use)
 pin('deploy/scripts/ai-readability.mjs', 'const isChrome = (fp) => isChromeName(fp, { menu: true });');
 const aiReadabilityIsChrome = (fp) => libKinds.isChromeName(fp, { menu: true });
-// spec/scripts/lib.mjs:259 — inside genericRules
-const specChrome = fromSource('spec/scripts/lib.mjs', /const CHROME = (new Set\(\[[^\]]*\]\));/);
+// spec/scripts/lib.mjs genericRules — its chrome set is lib/kinds.mjs CHROME_IDS (pinned import and use)
+pin('spec/scripts/lib.mjs', "const { CHROME_IDS } = C;");
+pin('spec/scripts/lib.mjs', '!(top && CHROME_IDS.has(A.tag(k)))');
+const specChrome = libKinds.CHROME_IDS;
 // deploy/scripts/deploy-batch.mjs walkHtml (runs on import) — its webPath is lib/paths.mjs documentPath (pinned use)
 pin('deploy/scripts/deploy-batch.mjs', 'out.push({ file: full, webPath: documentPath(path.relative(base, full)) });');
 const deployBatchWebPath = libPaths.documentPath;
@@ -318,8 +322,9 @@ OBSERVED.chromeSets = {
 }
 
 // 4. dynamics class labels
+pin('spec/scripts/lib.mjs', "export const { CODED, loadSibling, CLASS_NAMES, TAXONOMY, deliveredUrl, redirectKey } = C;");
 const dynClassNames = fromSource('dynamics/scripts/dynamics-detect.mjs', /const CLASS_NAMES = (\{[^\n]*\});/);
-const specClassNames = fromSource('spec/scripts/spec-knowledge.mjs', /const CLASS_NAMES = (\{[^\n]*\});/);
+const specClassNames = libTaxonomy.CLASS_NAMES;
 OBSERVED.classLabels = family('class-label', [...new Set([...dynLib.TAXONOMY.class, ...Object.keys(dynClassNames), ...Object.keys(specClassNames)])], {
   dynamics: { label: 'dynamics/scripts/dynamics-detect.mjs#CLASS_NAMES', fn: (k) => dynClassNames[k] ?? null },
   spec: { label: 'spec/scripts/spec-knowledge.mjs#CLASS_NAMES', fn: (k) => specClassNames[k] ?? null },
@@ -337,7 +342,7 @@ const specMapSrc = src('spec/scripts/spec-map.mjs');
 OBSERVED.kinds = {
   specCoded: [...specLib.CODED],
   specMapHeader: specMapSrc.match(/with kind\n \* ([a-z|]+) \(/)[1].split('|'),
-  specMapNestedKinds: fromSource('spec/scripts/spec-map.mjs', /(\[[^\]]*\])\.includes\(x\.kind\)/),
+  specMapNestedKinds: (pin('spec/scripts/spec-map.mjs', 'nested_in: nesting[c] }).filter((x) => CODED.has(x.kind))'), [...specLib.CODED]),
   specMapKindLiterals: [...new Set([...specMapSrc.matchAll(/kind(?:Of\(\w+\))? === '([a-z-]+)'/g)].map((m) => m[1]))].sort(),
   rolloutSchema: JSON.parse(src('rollout/schemas/rollout-blocks.schema.json')).$defs.block.properties.kind.enum,
   rolloutKindOf: [...new Set(CHROME.map(rollout.kindOf))].sort(),
@@ -516,7 +521,7 @@ const EXPECTED = {
     "mega-menu": {"rollout": false, "spec": false, "aiReadability": false, "qaFragments": false, "deliveryLint": false},
     "hero": {"rollout": false, "spec": false, "aiReadability": false, "qaFragments": false, "deliveryLint": false}
   },
-  chromeSets: {"rollout": ["header", "nav", "footer"], "spec": ["header", "footer", "nav"], "qaDefault": ["/nav", "/footer"], "aiReadabilityOnPaths": {"/": false, "/a": false, "/a/": false, "/a/b": false, "/a/b/": false, "/a/index.html": false, "/a/b.html": false, "/a?x=1": false, "/a#f": false, "/A/B": false, "https://HOST.example/a/b.html?q": false, "/widgets/search/site-search.html?q=docs": false, "/widgets/search/site-search.htm": false, "/nav": true, "/footer": true, "/fragments/x": false}},
+  chromeSets: {"rollout": ["header", "nav", "footer"], "spec": ["header", "nav", "footer"], "qaDefault": ["/nav", "/footer"], "aiReadabilityOnPaths": {"/": false, "/a": false, "/a/": false, "/a/b": false, "/a/b/": false, "/a/index.html": false, "/a/b.html": false, "/a?x=1": false, "/a#f": false, "/A/B": false, "https://HOST.example/a/b.html?q": false, "/widgets/search/site-search.html?q=docs": false, "/widgets/search/site-search.htm": false, "/nav": true, "/footer": true, "/fragments/x": false}},
   census202611: {"daLibraryChromeRefs": {"/footer-home": ["footer-home"], "/de/nav/": ["de/nav"], "https://site.example/nav.html": ["nav"], "/Footer.HTML": ["Footer.HTML"], "footer?x=1": ["footer?x=1"], "/nav/index": ["nav/index"]}, "daLibraryContentFile": {"/": null, "/a": "a.html", "/a/": "a.html", "/b/": "b/index.html", "/c": "c.html", "/C": "C.html", "/a/b.html": null, "/nav": "nav.html"}, "daLibraryDocName": {"Hero": "hero", "Section": "section", "cards-container": "cards-container", "Two Words": "two-words", "***": "untitled", "Café": "caf"}, "daLibrarySkip": ["metadata", "section-metadata", "library-metadata", "template-metadata"], "mediaWebPath": {"media/Scope_Test/Clip A.MP4": "media/Scope_Test/clip-a.mp4", "x/clip.v2.mp4": "x/clip-v2.mp4", "main-mvisual_video01.mp4": "main-mvisual-video01.mp4", "noext": "noext"}},
   classLabels: {
     "L": {"dynamics": "listing", "spec": "listing", "inTaxonomy": true},
@@ -525,12 +530,12 @@ const EXPECTED = {
     "M": {"dynamics": "modal / interactive", "spec": "modal / interactive", "inTaxonomy": true},
     "V": {"dynamics": "media", "spec": "media", "inTaxonomy": true},
     "T": {"dynamics": "tag / consent", "spec": "tag / consent", "inTaxonomy": true},
-    "A": {"dynamics": "API / personalisation / settings", "spec": "API / settings", "inTaxonomy": true},
+    "A": {"dynamics": "API / personalisation / settings", "spec": "API / personalisation / settings", "inTaxonomy": true},
     "R": {"dynamics": "relationship", "spec": "relationship", "inTaxonomy": true},
     "X": {"dynamics": "auth / commerce", "spec": "auth / commerce", "inTaxonomy": true},
     "I18N": {"dynamics": "locale", "spec": "locale", "inTaxonomy": true},
     "CR": {"dynamics": "client-rendered", "spec": "client-rendered", "inTaxonomy": true},
-    "D": {"dynamics": "sheet / data file", "spec": "data file", "inTaxonomy": true}
+    "D": {"dynamics": "sheet / data file", "spec": "sheet / data file", "inTaxonomy": true}
   },
   metadataPair: {"davidsModelLint": ["metadata", "section-metadata", "library-metadata"], "qaBlockNames": ["hero"]},
   kinds: {"specCoded": ["block", "dynamic", "widget"], "specMapHeader": ["block", "dynamic", "widget", "default", "metadata", "drop"], "specMapNestedKinds": ["block", "dynamic", "widget"], "specMapKindLiterals": ["block", "default", "drop", "metadata", "unmapped"], "rolloutSchema": ["chrome", "module", "section", "widget"], "rolloutKindOf": ["chrome", "module"], "rolloutDefaultContent": "default-content", "specMapDefaultBlock": "default-content"},
@@ -627,8 +632,6 @@ const KNOWN_DIVERGENCE = [
   {"concept": "chrome-id", "input": "Header", "a": "rollout/scripts/lib.mjs#kindOf → true", "b": "spec/scripts/lib.mjs#genericRules.CHROME → false"},
   {"concept": "chrome-id", "input": "Header", "a": "rollout/scripts/lib.mjs#kindOf → true", "b": "qa/scripts/lib.mjs#buildInventory.fragments default (of /<id>) → false"},
   {"concept": "chrome-id", "input": "Header", "a": "rollout/scripts/lib.mjs#kindOf → true", "b": "rollout/scripts/delivery-lint.mjs#inferType (of /<id>) === fragment → false"},
-  {"concept": "class-label", "input": "A", "a": "dynamics/scripts/dynamics-detect.mjs#CLASS_NAMES → \"API / personalisation / settings\"", "b": "spec/scripts/spec-knowledge.mjs#CLASS_NAMES → \"API / settings\""},
-  {"concept": "class-label", "input": "D", "a": "dynamics/scripts/dynamics-detect.mjs#CLASS_NAMES → \"sheet / data file\"", "b": "spec/scripts/spec-knowledge.mjs#CLASS_NAMES → \"data file\""},
   {"concept": "chrome-set", "input": "header", "a": "rollout/scripts/lib.mjs#CHROME_IDS → \"header\"", "b": "qa/scripts/lib.mjs#buildInventory.fragments → absent"},
   {"concept": "chrome-set", "input": "header", "a": "rollout/scripts/lib.mjs#CHROME_IDS → \"header\"", "b": "rollout/scripts/da-library.mjs#root chrome documents → absent"},
   {"concept": "metadata-pair", "input": "template-metadata", "a": "deploy/scripts/davids-model-lint.mjs#KEY_VALUE_BLOCKS → absent", "b": "rollout/scripts/da-library.mjs#SKIP → \"template-metadata\""},
@@ -650,6 +653,11 @@ const KNOWN_DIVERGENCE = [
 
 // ---------------------------------------------------------------------------------------------------- checks --
 check('localize-links canonicalPath is eds-path pathKey itself', () => assert.equal(localize.canonicalPath, edsPath.pathKey));
+check('spec lib CODED and loadSibling are the shared library\'s; spec-map\'s documented kinds are SPEC_MAP_KINDS', () => {
+  pin('spec/scripts/lib.mjs', "export const { CODED, loadSibling, CLASS_NAMES, TAXONOMY, deliveredUrl, redirectKey } = C;");
+  assert.equal(specLib.CODED, libKinds.CODED);
+  assert.deepEqual(OBSERVED.kinds.specMapHeader, libKinds.SPEC_MAP_KINDS);
+});
 check('spec-knowledge needsEntry agrees with its extracted k() on every input', () => {
   for (const p of PATHS) { assert.equal(specKnowledge.needsEntry(p, specKnowledgeKey(p)), 0, p); assert.equal(specKnowledge.needsEntry(p, `${specKnowledgeKey(p)}-x`), 1, p); }
 });
