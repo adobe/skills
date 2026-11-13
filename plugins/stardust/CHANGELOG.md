@@ -4,6 +4,24 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.38.3 — martech tags load from the boilerplate's consent phase
+
+aem-boilerplate replaced `delayed.js` with a consent phase: `loadDelayed()` imports `consent-check.js`,
+whose placeholder `hasConsent()` declines by default and loads `consented.js` only on consent. The EDS
+`building-blocks` and `code-review` skills now state the rule (martech in `consented.js`). On such a
+project the scaffold hooked `loadTags()` straight into `loadDelayed()`, outside that phase.
+
+- **`deploy/scripts/martech-scaffold.mjs`:** when `scripts/consented.js` and `scripts/consent-check.js`
+  exist, `loadTags()` hooks into `consented.js`, and the placeholder `hasConsent()` (with its JSDoc) is
+  replaced by one that returns `martech.js` `hasConsent()`: true where martech is on (production hosts,
+  or `?martech=on`), false with `&consent=decline` off production. Each route keeps its own CMP category
+  gate, so the source's consent model (`per-tag`, `google-consent-mode`) is unchanged. A `hasConsent()`
+  the scaffold did not write is a conflict unless `--force`. Older projects keep the `delayed.js` /
+  `loadDelayed()` hooks.
+- Docs: `dynamics/reference/martech.md` (runtime step, `&consent=decline`).
+- Tests: `martech-scaffold.test.mjs` 21/21 — the consented.js hooks and re-run, the conflict, the
+  `hasConsent()` matrix, and consent-check.js → consented.js → tags end to end.
+
 ## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
 
 Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo

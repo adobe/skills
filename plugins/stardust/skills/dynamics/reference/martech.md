@@ -16,8 +16,8 @@ owner's accounts, so the scaffold writes everything disabled and the owner turns
 3. **Owner.** Hand over `martech-handoff.md`. The owner sets `enabled: true` on `consent.cmp` and on
    each route, and copies the CMP id if it was not found.
 4. **Runtime.** `node skills/deploy/scripts/martech-scaffold.mjs` writes `scripts/martech.js` from the
-   enabled parts: the CMP loads first in `loadEager()`, tag managers from `scripts/delayed.js`. Re-run it
-   after every contract edit.
+   enabled parts: the CMP loads first in `loadEager()`, tag managers in the boilerplate's consent phase
+   (`consented.js`). Re-run it after every contract edit.
 5. **Verify.** `dynamics-check.mjs` adds a `martech` feature whenever the contract exists (below).
 
 ## Consent model — keep the source's
@@ -34,8 +34,9 @@ re-implemented on the site. When a tag-manager rule injects the CMP, leave `cons
 
 ## Runtime switches
 
-Tags load only on the contract's `productionHosts`. On preview, `?martech=on` loads the enabled parts
-and `&consent=accept` grants every category; neither override works on a production host.
+Tags load only on the contract's `productionHosts`. On preview, `?martech=on` loads the enabled parts,
+`&consent=accept` grants every category and `&consent=decline` loads no tags; no override works on a
+production host.
 
 ## Before go-live
 
@@ -56,8 +57,8 @@ When the source runs the Launch Web SDK extension (or a page loads `alloy.js`), 
 name, edge domain and the source's `defaultConsent` (the plugin defaults to `pending`). The hand-off
 gives the switch steps. Once `aemMartech.enabled`, the scaffold loads Web SDK eagerly after the CMP,
 sends from `loadLazy()` after the footer, and loads the Launch property from `martechDelayed()`. A
-category starts the SDK `pending` and grants `collect` once the CMP grants it. The scaffold refuses an empty orgId, datastream or
-consent, a missing `plugins/martech`, or an enabled `adobe-launch` route for the same property.
+category starts the SDK `pending` and grants `collect` once the CMP grants it; the scaffold's own
+errors name each missing switch.
 
 Target (at.js, or Web SDK rules that render decisions) becomes `target`, off. Once `target.enabled`,
 the scaffold sets `personalization`; it refuses unless `aemMartech` is on and the source renders

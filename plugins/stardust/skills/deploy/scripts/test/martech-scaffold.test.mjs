@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // martech-scaffold: contract → scripts/martech.js + hooks (idempotent, conflict-safe, validated), and the generated
-// runtime against a stubbed window/document (host gate, ?martech=on / &consent=accept, category gating, boot).
+// runtime against a stubbed window/document (host gate, ?martech=on / &consent=accept, category gating, boot);
+// on the current boilerplate, tags hook into consented.js and consent-check.js asks martech.js.
 // Run: node plugins/stardust/skills/deploy/scripts/test/martech-scaffold.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -43,14 +44,54 @@ const contract = (over = {}) => ({
   ...over,
 });
 
+// aem-boilerplate since d966eff9: loadDelayed() imports consent-check.js, which loads consented.js on consent.
+const BP_SCRIPTS = SCRIPTS.replace(/function loadDelayed\(\) \{[\s\S]*?\n\}/, "function loadDelayed() {\n  import('./consent-check.js');\n  // load anything that can be postponed to the latest here\n}");
+const BP_CHECK = `let consentedLoaded = false;
+
+/**
+ * Dummy consent implementation.
+ *
+ * @returns {boolean} true if the user has consented
+ */
+function hasConsent() {
+  const consent = new URLSearchParams(window.location.search).get('consent');
+  if (consent !== null) {
+    return ['accept', 'true', '1', 'yes'].includes(consent.toLowerCase());
+  }
+  // default: decline
+  return false;
+}
+
+function loadConsented() {
+  if (consentedLoaded) return;
+  consentedLoaded = true;
+  import('./consented.js');
+}
+
+function onConsentUpdate() {
+  const consented = hasConsent();
+  window.dispatchEvent(new CustomEvent('consent.update', { detail: { consented } }));
+  if (consented) {
+    loadConsented();
+  }
+}
+
+onConsentUpdate();
+`;
+const BP_CONSENTED = '// add functionality that requires user consent here (analytics, martech, etc.)\n';
+
 let seq = 0;
-function site({ data = contract(), delayed = '// add delayed functionality here\n', scripts = SCRIPTS } = {}) {
+function site({ data = contract(), delayed = '// add delayed functionality here\n', scripts = SCRIPTS, consent = false } = {}) {
   seq += 1;
   const root = join(TMP, `site-${seq}`);
   mkdirSync(join(root, 'scripts'), { recursive: true });
   mkdirSync(join(root, 'stardust'));
   writeFileSync(join(root, 'scripts/scripts.js'), scripts);
   if (delayed !== null) writeFileSync(join(root, 'scripts/delayed.js'), delayed);
+  if (consent) {
+    writeFileSync(join(root, 'scripts/consent-check.js'), consent === true ? BP_CHECK : consent);
+    writeFileSync(join(root, 'scripts/consented.js'), BP_CONSENTED);
+  }
   writeFileSync(join(root, 'stardust/martech-contract.json'), JSON.stringify(data));
   return root;
 }
@@ -81,6 +122,32 @@ await check('no delayed.js: loadTags goes into loadDelayed(); missing loadEager 
   assert.match(file(root, 'scripts/scripts.js'), /function loadDelayed\(\) \{\n {2}import\('\.\/martech\.js'\)\.then\(\(m\) => m\.loadTags\(\)\);/);
   const bare = run(site({ scripts: 'export {};\n' }));
   assert.equal(bare.status, 1); assert.match(bare.stderr, /no loadEager\(\)/);
+});
+
+await check('current boilerplate: loadTags goes into consented.js, consent-check.js asks martech.js; re-run is unchanged', () => {
+  const root = site({ scripts: BP_SCRIPTS, delayed: null, consent: true });
+  const r = run(root);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(file(root, 'scripts/consented.js'), `${BP_CONSENTED}import('./martech.js').then((m) => m.loadTags());\n`);
+  const check = file(root, 'scripts/consent-check.js');
+  assert.ok(check.startsWith("import { hasConsent as martechConsent } from './martech.js';\n\nlet consentedLoaded"));
+  assert.match(check, /function hasConsent\(\) \{\n {2}return martechConsent\(\);\n\}/);
+  assert.ok(!/Dummy consent|default: decline/.test(check), 'placeholder and its JSDoc are gone');
+  assert.ok(check.includes('function onConsentUpdate()'), 'the rest of consent-check.js is kept');
+  const scripts = file(root, 'scripts/scripts.js');
+  assert.ok(!scripts.includes('loadTags') && scripts.includes("import('./consent-check.js');"), 'loadDelayed() is left to the boilerplate');
+  assert.match(scripts, /m\.loadConsent\(\)/);
+  assert.match(run(root).stdout, /unchanged/);
+});
+
+await check("current boilerplate: a project's own hasConsent() is a conflict unless --force", () => {
+  const own = BP_CHECK.replace(/\/\*\*[\s\S]*?\n\}\n/, 'function hasConsent() {\n  return window.myCmp.ok();\n}\n');
+  const root = site({ scripts: BP_SCRIPTS, delayed: null, consent: own });
+  const r = run(root);
+  assert.equal(r.status, 1); assert.match(r.stderr, /has its own hasConsent\(\)/);
+  assert.equal(file(root, 'scripts/consented.js'), BP_CONSENTED, 'nothing written on a conflict');
+  assert.equal(run(root, '--force').status, 0);
+  assert.match(file(root, 'scripts/consent-check.js'), /return martechConsent\(\);/);
 });
 
 await check('--dry-run writes nothing; a foreign martech.js is a conflict unless --force', () => {
@@ -125,7 +192,7 @@ async function boot({ host = 'main--site--org.aem.page', search = '', groups, ro
   m.loadConsent();
   m.loadAnalytics();
   if (delayed) m.loadTags();
-  return { win: globalThis.window, srcs: () => added.map((s) => s.src), added, fire: () => listeners.OneTrustGroupsUpdated?.() };
+  return { m, win: globalThis.window, srcs: () => added.map((s) => s.src), added, fire: () => listeners.OneTrustGroupsUpdated?.() };
 }
 
 await check('runtime: off the production hosts nothing loads without ?martech=on', async () => {
@@ -151,6 +218,25 @@ await check('runtime: production — ungated route loads at once, the C0004 rout
 
 await check('runtime: consent=accept is ignored on a production host', async () => {
   const b = await boot({ host: 'www.example.test', search: '?consent=accept', groups: ',C0001,' });
+  assert.deepEqual(b.srcs(), [CMP, LAUNCH]);
+});
+
+await check('runtime: hasConsent() — on where martech is on; &consent=decline holds it off a production host only', async () => {
+  assert.equal((await boot()).m.hasConsent(), false);
+  assert.equal((await boot({ search: '?martech=on' })).m.hasConsent(), true);
+  assert.equal((await boot({ search: '?martech=on&consent=decline' })).m.hasConsent(), false);
+  assert.equal((await boot({ host: 'www.example.test', groups: ',C0001,' })).m.hasConsent(), true);
+  assert.equal((await boot({ host: 'www.example.test', search: '?consent=decline', groups: ',C0001,' })).m.hasConsent(), true);
+});
+
+await check('runtime: current boilerplate end to end — consent-check.js loads consented.js, which loads the tags', async () => {
+  const root = site({ scripts: BP_SCRIPTS, delayed: null, consent: true });
+  assert.equal(run(root).status, 0);
+  const b = await boot({ root, host: 'www.example.test', groups: ',C0001,', delayed: false });
+  assert.deepEqual(b.srcs(), [CMP]);
+  b.win.dispatchEvent = () => true;
+  await import(`${pathToFileURL(join(root, 'scripts/consent-check.js')).href}?${seq}`);
+  await new Promise((done) => { setTimeout(done, 20); });
   assert.deepEqual(b.srcs(), [CMP, LAUNCH]);
 });
 
