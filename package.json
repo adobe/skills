@@ -1,5 +1,5 @@
 {
-  "name": "@anthropic-ai/skills",
+  "name": "@adobe/skills",
   "version": "0.1.0",
   "private": true,
   "type": "module",
