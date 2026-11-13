@@ -22,7 +22,7 @@ concurrency:
 jobs:
   ai-review:
     if: ${{ !github.event.pull_request.draft }}
-    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@v1
+    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@d1f2dfc169600ceb3ce79c8ef4d4c97892be256f # v1.1.1
     secrets:
       AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
     permissions:
