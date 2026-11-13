@@ -117,7 +117,7 @@ runtimeManifest:
       actions:
         store-record:
           function: actions/store-record/index.js # relative to src/commerce-extensibility-1/
-          runtime: nodejs:24
+          runtime: nodejs:26
           web: "yes" # "yes" for a web action; "no" for an event/webhook action
           annotations:
             include-ims-credentials: true # REQUIRED for aio-lib-db auth
