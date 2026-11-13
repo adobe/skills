@@ -90,13 +90,13 @@ export function pathPattern(pathname) {
 export function slug(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60); }
 
 /* ---------------------------------------------------------- taxonomy ---- */
-/** The triage vocabulary (reference/triage.md, classes-and-signals.md): every writer of feature rows checks against it. */
-export const TAXONOMY = {
-  class: ['L', 'S', 'F', 'M', 'V', 'T', 'A', 'R', 'X', 'I18N', 'CR', 'D'],
-  disposition: ['rebuild-native', 'index-backed', 'data-fed', 'embed-passthrough', 'client-only', 'static-snapshot', 'decided-out'],
-  reproducibility: ['self', 'needs-credential', 'needs-human-capture', 'needs-backend', 'needs-business-decision'],
-  status: ['pending', 'in-progress', 'interim', 'done', 'scaffolded-awaiting-owner', 'delivered-by-capture', 'decided-out', 'skipped-source-broken'],
-};
+// The shared rules (contracts.mjs) live beside browser.mjs and are found the same way, but at import: the triage
+// vocabulary is every instrument's, pure ones included. Missing, it is the same setup error as a missing front door.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs', './stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) stopOnSetupError(Object.assign(new Error('dynamics/lib.mjs: contracts.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'), { code: 'FRONT_DOOR_MISSING' }));
+/** The triage vocabulary (reference/triage.md, classes-and-signals.md) and the class labels: every writer of feature rows checks against them — one copy, lib/taxonomy.mjs. */
+export const { TAXONOMY, CLASS_NAMES } = await import(CONTRACTS.href);
 
 /* ----------------------------------------------------------- vendors ---- */
 let VENDORS = null;

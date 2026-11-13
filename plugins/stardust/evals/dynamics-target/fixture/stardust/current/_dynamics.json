@@ -1,0 +1,28 @@
+{
+  "_provenance": {
+    "skill": "stardust:dynamics",
+    "phase": "detect",
+    "writtenAt": "2026-10-12T17:05:41Z",
+    "settleMs": 2000,
+    "width": 1440,
+    "urls": ["https://www.example.com/", "https://www.example.com/tools/mortgage-calculator", "https://www.example.com/branches", "https://www.example.com/contact", "https://www.example.com/news"]
+  },
+  "pages": {
+    "/": { "url": "https://www.example.com/", "host": "www.example.com", "scripts": [], "inlineScripts": 2, "inlineFetch": false, "mainText": 1840, "textAtLoad": 1840 },
+    "/tools/mortgage-calculator": { "url": "https://www.example.com/tools/mortgage-calculator", "host": "www.example.com", "scripts": [], "inlineScripts": 3, "inlineFetch": false, "mainText": 620, "textAtLoad": 620 },
+    "/branches": { "url": "https://www.example.com/branches", "host": "www.example.com", "scripts": [], "inlineScripts": 1, "inlineFetch": true, "mainText": 310, "textAtLoad": 310 },
+    "/contact": { "url": "https://www.example.com/contact", "host": "www.example.com", "scripts": [], "inlineScripts": 0, "inlineFetch": false, "mainText": 1120, "textAtLoad": 1120 },
+    "/news": { "url": "https://www.example.com/news", "host": "www.example.com", "scripts": [], "inlineScripts": 0, "inlineFetch": false, "mainText": 2210, "textAtLoad": 2210 }
+  },
+  "findings": [
+    { "id": "F1", "class": "F", "feature": "form \"calc\" → (JS-submitted) (3 fields)", "hint": "client-compute?", "signature": ["number:amount", "number:years", "number:rate"], "evidence": ["number:amount,number:years,number:rate"], "pages": ["/tools/mortgage-calculator"] },
+    { "id": "S1", "class": "S", "feature": "site search form → /search", "hint": "search", "evidence": ["search:q"], "pages": ["/", "/tools/mortgage-calculator", "/branches", "/contact", "/news"] },
+    { "id": "F2", "class": "F", "feature": "form-less control group in main (4 controls, submit \"Send\")", "hint": "forms", "evidence": ["topic,amount,term,consent"], "pages": ["/tools/mortgage-calculator"] },
+    { "id": "A1", "class": "A", "feature": "first-party API GET /api/store-locator", "hint": "api", "api": { "method": "GET", "path": "/api/store-locator" }, "evidence": ["GET /api/store-locator?lat,lng → 200"], "pages": ["/branches"] },
+    { "id": "F3", "class": "F", "feature": "form \"contact\" → /thanks (5 fields)", "hint": "forms", "signature": ["text:name", "email:email", "tel:phone", "select:topic", "textarea:message"], "evidence": ["text:name,email:email,tel:phone,select:topic,textarea:message"], "pages": ["/contact"] },
+    { "id": "L1", "class": "L", "feature": "listing candidate .news (8 cards)", "hint": "listings", "evidence": [], "pages": ["/news"] },
+    { "id": "M1", "class": "M", "feature": "modal trigger .js-modal → /contact", "hint": "modal", "evidence": ["a.js-modal[href=\"/contact\"] ×3"], "pages": ["/", "/branches"] },
+    { "id": "X1", "class": "X", "feature": "sign-in / account links", "hint": "decided-out", "evidence": ["/online-banking/login", "/online-banking/register"], "pages": ["/", "/tools/mortgage-calculator", "/branches", "/contact", "/news"] },
+    { "id": "X2", "class": "X", "feature": "session-bound dealer-locator shortlist", "hint": "decided-out", "evidence": ["localStorage shortlist, cookie-bound"], "pages": ["/branches"] }
+  ]
+}

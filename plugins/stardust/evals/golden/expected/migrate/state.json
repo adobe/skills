@@ -1,0 +1,100 @@
+{
+  "_provenance": {
+    "writtenBy": "golden fixture",
+    "at": "2026-01-01"
+  },
+  "site": {
+    "originUrl": "https://www.example.com",
+    "name": "Example"
+  },
+  "direction": {
+    "status": "active"
+  },
+  "flow": "replica",
+  "flowChosenAt": "2026-01-01T00:00:00Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "home",
+      "url": "/",
+      "title": "Home",
+      "status": "approved",
+      "type": "landing"
+    },
+    {
+      "slug": "docs",
+      "url": "/docs/",
+      "title": "Documentation",
+      "status": "approved",
+      "type": "docs"
+    },
+    {
+      "slug": "docs-getting-started",
+      "url": "/docs/getting-started.html",
+      "title": "Getting started",
+      "status": "directed",
+      "type": "docs"
+    }
+  ],
+  "migrate": {
+    "at": "2026-01-01T00:00:00Z",
+    "outputDir": "stardust/migrated/",
+    "selfContained": true,
+    "pageMap": [
+      {
+        "sourceUrl": "/",
+        "outputPath": "index.html",
+        "slug": "home",
+        "outputPathDefault": null
+      },
+      {
+        "sourceUrl": "/docs/",
+        "outputPath": "docs/index.html",
+        "slug": "docs",
+        "outputPathDefault": null
+      },
+      {
+        "sourceUrl": "/docs/getting-started.html",
+        "outputPath": "docs/getting-started.html",
+        "slug": "docs-getting-started",
+        "outputPathDefault": null
+      }
+    ],
+    "totalAssetsBundled": 3,
+    "bundledAssets": [
+      "canon.css",
+      "img/hero.jpg",
+      "site.css"
+    ],
+    "pages": [
+      {
+        "slug": "home",
+        "file": "stardust/migrated/index.html",
+        "assetsBundled": 3
+      },
+      {
+        "slug": "docs",
+        "file": "stardust/migrated/docs/index.html",
+        "assetsBundled": 1
+      },
+      {
+        "slug": "docs-getting-started",
+        "file": "stardust/migrated/docs/getting-started.html",
+        "assetsBundled": 1
+      }
+    ],
+    "missingAssets": [],
+    "cleanedAssets": [],
+    "lastRun": {
+      "at": "2026-01-01T00:00:00Z",
+      "rendered": [
+        "home",
+        "docs",
+        "docs-getting-started"
+      ],
+      "unchanged": [],
+      "refused": [],
+      "passthrough": []
+    }
+  }
+}

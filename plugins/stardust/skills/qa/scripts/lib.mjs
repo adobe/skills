@@ -9,6 +9,15 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir — the plugin tree or the
+// Setup step 7 copy — resolved here once and re-exported, so the checks keep importing them from ../lib.mjs.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) throw new Error('qa/lib.mjs: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+const C = await import(CONTRACTS.href);
+const { QA_CHROME_PATHS } = C;
+export const { listingKey, listingUrl, deliveredUrl, pathKey, isMetaBlock, widgetLinks, AI_EXCLUDE_DEFAULT, loadSibling } = C;
+
 export function arg(name, fallback = null) {
   const i = process.argv.indexOf(`--${name}`);
   return i !== -1 && process.argv[i + 1] !== undefined ? process.argv[i + 1] : fallback;
@@ -269,18 +278,18 @@ export const goto = viaFrontDoor('goto');
  *   --paths-file <txt>          one delivered path per line
  *   --template-map <json>       stardust/template-map.json ({templates:{t:{urls:[]}}})
  *   sitemap.xml at --base       always fetched when base is set (also used for parity findings)
- * Fragments (nav/footer) are tracked separately: they are delivered documents
- * but not pages (no h1/metadata expectations).
+ * Fragments (default lib/kinds.mjs QA_CHROME_PATHS: nav/footer) are tracked separately: they are delivered
+ * documents but not pages (no h1/metadata expectations).
  */
-export async function buildInventory({ base, pathsFile, templateMap, fragments = ['/nav', '/footer'], mergeSitemap = true }) {
+export async function buildInventory({ base, pathsFile, templateMap, fragments = QA_CHROME_PATHS, mergeSitemap = true }) {
   const pages = new Map(); // path -> {path, sources:[], template}
   // path is the key (no trailing slash); url is where EDS serves the page: a folder index at /x/, which a source
-  // listing it with its slash tells (/x 404s on a plain EDS site)
+  // listing it with its slash tells (/x 404s on a plain EDS site) — lib/paths.mjs listingKey / listingUrl
   const add = (path, source, template) => {
-    const p = path.replace(/\/$/, '') || '/';
+    const p = listingKey(path);
     if (!pages.has(p)) pages.set(p, { path: p, url: p, sources: [], template: template || null });
     const row = pages.get(p);
-    if (path !== p && path.endsWith('/')) row.url = path;
+    if (listingUrl(path) !== p) row.url = listingUrl(path);
     if (!row.sources.includes(source)) row.sources.push(source);
     if (template && !row.template) row.template = template;
   };
@@ -302,7 +311,7 @@ export async function buildInventory({ base, pathsFile, templateMap, fragments =
     const res = await fetchUrl(`${base.replace(/\/$/, '')}/sitemap.xml`);
     if (res.ok) {
       sitemapPaths = [...res.body.matchAll(/<loc>\s*([^<\s]+)\s*<\/loc>/g)]
-        .map((m) => { try { return new URL(m[1]).pathname.replace(/\/$/, '') || '/'; } catch { return null; } })
+        .map((m) => { try { return listingKey(new URL(m[1]).pathname); } catch { return null; } })
         .filter(Boolean);
       if (mergeSitemap) for (const p of sitemapPaths) if (!fragments.includes(p)) add(p, 'sitemap');
     }

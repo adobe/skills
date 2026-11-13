@@ -1,0 +1,8 @@
+{
+  "features": [{ "id": "player", "class": "V", "name": "Player", "disposition": "embed-passthrough", "reproducibility": "self", "reach": "live sitemap signal:script:*player*", "decisions": ["Q-1"] }],
+  "open_questions": [
+    { "id": "Q-1", "area": "Media", "owner": "stakeholder", "question": "Keep the player?", "options": ["yes", "no"], "default": "yes", "default_option": 0, "impact": "features[player].reach_pages" },
+    { "id": "Q-2", "area": "Scope", "owner": "stakeholder", "question": "Empty pages?", "default": "migrate", "impact": "urls sitemap flag=empty" }
+  ],
+  "query_indexes": [{ "name": "default", "include": ["/en/**"], "exclude": ["/nav"], "properties": ["title"] }]
+}

@@ -23,11 +23,9 @@
  * (default cards,columns,hero).
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { reservedStem } from './lib.mjs';
+import { join, resolve } from 'node:path';
+import { reservedStem, pathKey, safePath, documentKind, widgetStem, widgetCodePath } from './lib.mjs'; // the shared rules (lib/paths, kinds, names)
 
-const HERE = dirname(fileURLToPath(import.meta.url));
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -46,7 +44,6 @@ const OPTIMIZING = (arg('optimizing-blocks', 'cards,columns,hero')).split(',').m
 if (!FILE) { console.error('delivery-lint: need --file <html>'); process.exit(2); }
 // the content tree tells a folder index (x/index.html, served at /x/) from a leaf (x.html, served at /x)
 const CONTENT = arg('content', existsSync('content') ? 'content' : null);
-const { pathKey } = await import(pathToFileURL([join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), join(HERE, '..', 'deploy', 'eds-path.mjs')].find((x) => existsSync(x)) || join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs')).href);
 const targetKind = (key) => {
   if (!CONTENT) return null;
   if (existsSync(join(CONTENT, key === '/' ? 'index.html' : `${key.slice(1)}/index.html`))) return 'folder';
@@ -56,16 +53,9 @@ const targetKind = (key) => {
 const WIDGETS_DIR = CONTENT ? resolve(CONTENT, '..', 'widgets') : (existsSync('widgets') ? resolve('widgets') : null);
 const html = readFileSync(FILE, 'utf8');
 
-function inferType(p) {
-  if (!p) return 'page';
-  const s = p.toLowerCase();
-  // anchor fragment detection: only top-level /nav,/footer or a /fragments/ path —
-  // a content page like /about/nav must NOT be downgraded out of the P0 gates.
-  if (/^\/(nav|footer)$/.test(s) || /\/fragments?\//.test(s)) return 'fragment';
-  if (/query-index(\.json)?$/.test(s) || /\.json$/.test(s)) return 'index';
-  return 'page';
-}
-const type = TYPE || inferType(DAPATH);
+// page | fragment | index from the path (lib/kinds.mjs documentKind: only top-level /nav, /footer or a /fragments/ path is
+// a fragment — a content page like /about/nav must NOT be downgraded out of the P0 gates)
+const type = TYPE || documentKind(DAPATH);
 const findings = [];
 const add = (sev, rule, msg) => findings.push({ sev, rule, msg });
 
@@ -116,10 +106,11 @@ for (const blk of OPTIMIZING) {
 for (const m of html.matchAll(/href="(\/[^"]*)"/gi)) {
   const href = m[1]; const bare = href.replace(/[?#].*/, '');
   if (bare === '/') continue;
-  if (/^\/widgets\/.+\.html$/i.test(bare)) {
-    const stem = bare.replace(/^.*\//, '').replace(/\.html$/i, '');
+  const stem = widgetStem(bare); // lib/names.mjs: non-null only for /widgets/<path>/<name>.html (any case, .htm too)
+  if (stem !== null) {
+    const code = widgetCodePath(bare); // widgets/<path>/<name>.html
     if (reservedStem(stem)) add('P1', 'widget-name', `widget name "${stem}" collides with a reserved block class or a derived -wrapper/-container class: ${href}`);
-    else if (WIDGETS_DIR && existsSync(WIDGETS_DIR) && !existsSync(join(WIDGETS_DIR, bare.slice('/widgets/'.length)))) add('P1', 'unknown-widget', `widget link names no file under widgets/ (${bare.slice(1)} missing): ${href}`);
+    else if (WIDGETS_DIR && existsSync(WIDGETS_DIR) && !existsSync(join(WIDGETS_DIR, code.slice('widgets/'.length)))) add('P1', 'unknown-widget', `widget link names no file under widgets/ (${code} missing): ${href}`);
     continue;
   }
   const kind = targetKind(pathKey(bare));
@@ -134,9 +125,7 @@ for (const m of html.matchAll(/href="(\/[^"]*)"/gi)) {
 
 /* ---- path-safety of the target DA path ---- */
 if (DAPATH) {
-  const norm = DAPATH.toLowerCase()
-    .split('/').map((s) => s.replace(/_/g, '-').replace(/-+/g, '-').replace(/^-+|-+$/g, '')).join('/')
-    .replace(/\/{2,}/g, '/').replace(/(.)\/$/, '$1');
+  const norm = safePath(DAPATH); // lib/paths.mjs
   if (norm !== DAPATH) add('P0', 'path-safety', `path is not delivery-safe; normalize ${DAPATH} → ${norm} (record in redirects.tsv)`);
   if (/\/\//.test(DAPATH)) add('P0', 'path-safety', 'double slash in path makes the DA PUT 400 while preview/live still 200');
 }

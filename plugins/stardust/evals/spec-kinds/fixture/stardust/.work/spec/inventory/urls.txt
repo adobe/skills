@@ -1,0 +1,3 @@
+https://www.example.com/en/home.html
+https://www.example.com/en/about.html
+https://www.example.com/en/news.html

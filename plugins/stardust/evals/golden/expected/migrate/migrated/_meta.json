@@ -1,0 +1,61 @@
+{
+  "slug": "home",
+  "type": "landing",
+  "renderBranch": "A",
+  "template": null,
+  "modules": [
+    "hero",
+    "cards",
+    "nav"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "hero",
+    "cards",
+    "in-page-nav"
+  ],
+  "canonShas": {
+    "header": "1125b139fad3",
+    "footer": "53a9e1a10d87",
+    "css": "4b44d98880af"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Home",
+    "description": "A developer-tools vendor home page.",
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Home",
+    "description": "A developer-tools vendor home page.",
+    "url": "https://www.example.com/"
+  },
+  "migratedAt": "2026-01-01T00:00:00Z",
+  "designMdSha": "17d4361babe8",
+  "designJsonSha": "237588f19883",
+  "sourceCurrentSha": "46b447548886",
+  "sourceProposedSha": "a395ccdb8689",
+  "fidelityTier": "archetype",
+  "archetypeSource": null,
+  "archetypeSha": null,
+  "variants": [],
+  "gatesPassed": [],
+  "gateEvidence": {},
+  "contentDeviations": [],
+  "assetsBundled": 3,
+  "missingAssets": [],
+  "brokenInternalLinks": [
+    {
+      "href": "/pricing/",
+      "reason": "not-in-inventory"
+    }
+  ],
+  "outputPath": "index.html",
+  "outputPathDefault": null,
+  "sidecar": "_meta.json",
+  "driverVersion": "1"
+}

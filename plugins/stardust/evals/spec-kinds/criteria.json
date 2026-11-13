@@ -1,0 +1,41 @@
+{
+  "context": "spec S7 judgement + S10 knowledge on a saved component tree. Task and setup in task.md; each item is judged pass/fail by inspecting the workspace artifacts (stardust/spec/judgement/*, stardust/.work/spec/map/page-blocks.jsonl, stardust/spec/knowledge/*) and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "activated",
+      "max_score": 10,
+      "description": "The stardust `spec` skill was invoked for the saved run (the session loaded the spec skill / read its SKILL.md or reference/judgement.md and worked from `stardust/.work/spec/parse/components.jsonl`)."
+    },
+    {
+      "name": "hero_block_kind",
+      "max_score": 15,
+      "description": "ARTIFACT: `judgement/mapping.json` maps `banner` with `kind: \"block\"`, and `stardust/spec/knowledge/blocks.json` contains that block (named `hero` or an equivalent hero name) with `kind: \"block\"` and `url_count` 3; in `knowledge/page-blocks.jsonl` every page's first non-global entry is that block with `kind: \"block\"`."
+    },
+    {
+      "name": "search_widget_kind",
+      "max_score": 25,
+      "description": "ARTIFACT: the `quicksearch` component is mapped with `kind: \"widget\"` (mapping.json), the matching `judgement/catalog.json` entry has `kind: \"widget\"`, `family: \"search\"` and `verdict: \"new\"`, and `knowledge/blocks.json` contains that entry with `kind: \"widget\"` and `verdict: \"new\"`; `knowledge/page-blocks.jsonl` shows it with `kind: \"widget\"` on the home and news pages (2 of 3). A search mapped as `block`, `dynamic` or `default` fails."
+    },
+    {
+      "name": "prose_default_kind",
+      "max_score": 15,
+      "description": "ARTIFACT: `richtext`, `title` and `image` are mapped with `kind: \"default\"` in mapping.json, appear in `knowledge/page-blocks.jsonl` only inside `default-content` entries with `kind: \"default\"`, and none of them is listed as a block in `knowledge/blocks.json`."
+    },
+    {
+      "name": "langnav_metadata_kind",
+      "max_score": 15,
+      "description": "ARTIFACT: `langnav` is mapped with `kind: \"metadata\"` in mapping.json and appears in `knowledge/page-blocks.jsonl` with `kind: \"metadata\"` on all three pages; it is not a `block`, `widget` or `default` entry and not listed in `knowledge/blocks.json`."
+    },
+    {
+      "name": "widget_not_a_block_name",
+      "max_score": 10,
+      "description": "ARTIFACT: across mapping.json, catalog.json, `knowledge/blocks.json` and `knowledge/page-blocks.jsonl` the string `widget` occurs only as a `kind` value — no block or mapping entry is NAMED `widget` (nor a reserved EDS class: `section`, `block`, `wrap`, `button`, `*-wrapper`, `*-container`); the search entry has a semantic name (e.g. `site-search`, `search`, `catalogue-search`)."
+    },
+    {
+      "name": "knowledge_valid",
+      "max_score": 10,
+      "description": "ARTIFACT + LOG: `stardust/spec/knowledge/` holds the full set written by one `spec-knowledge.mjs` run — at least `site.json` (with `built_at`), `urls.jsonl`, `page-blocks.jsonl`, `blocks.json`, `redirects.jsonl`, `open-questions.json`, `features.json` and `findings.json` whose every `text` carries computed numbers (no `{{…}}` left, `numbers[]` present) — and the session log shows `spec-knowledge.mjs` completing without an error, a rule-cannot-be-computed stop, or a `missing from judgement/catalog.json` warning. The saved `implementation.json`, `findings.json`, `search-probes.json` were not rewritten."
+    }
+  ]
+}

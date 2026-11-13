@@ -31,7 +31,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, publicUrl } from './lib.mjs';
+import { readJSON, writeJSON, publicUrl, sitemapKey as normPath } from './lib.mjs'; // normPath: the served-vs-expected comparison key
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -56,16 +56,6 @@ const pages = pagesDoc.pages || [];
 const host = (config.site && config.site.liveHost) ? `https://${config.site.liveHost}` : '';
 const siteDir = join(OUT, 'site');
 mkdirSync(siteDir, { recursive: true });
-
-/** Delivered path in canonical form: no trailing slash (root stays `/`), `/index` is `/`. */
-function normPath(p) {
-  let s = String(p || '/').split(/[?#]/)[0];
-  if (!s.startsWith('/')) s = `/${s}`;
-  s = s.replace(/\/+$/, '') || '/';
-  if (s === '/index') s = '/';
-  if (s.endsWith('/index')) s = s.slice(0, -'/index'.length);
-  return s;
-}
 
 // sitemap.xml — delivered (extensionless) paths.
 const urls = pages.map((p) => `  <url><loc>${host}${publicUrl(p)}</loc></url>`).join('\n');

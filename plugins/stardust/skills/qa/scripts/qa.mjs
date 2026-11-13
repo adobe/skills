@@ -37,7 +37,7 @@
  *                           JSDoc tags in <dir>/<name>/<name>.js are honoured
  *   --parity <json>         dynamics: the parity report to replay (default stardust/dynamics/parity.json)
  *   --ai-exclude-blocks <a,b>  ai-readability: app blocks removed from the rendered side
- *                           (default client-app,widget)
+ *                           (default client-app,widget — AI_EXCLUDE_DEFAULT, skills/stardust/scripts/lib/kinds.mjs)
  *   --browser-concurrency <n>  parallel pages for the browser checks (default 3)
  *   --auth-header <value> | --token-env <NAME>
  *                           auth for a protected origin: the header value, or the env var

@@ -1,0 +1,53 @@
+{
+  "slug": "docs-getting-started",
+  "type": "docs",
+  "renderBranch": "A'",
+  "template": "docs",
+  "modules": [
+    "cards"
+  ],
+  "widgets": [],
+  "slotsFilled": [
+    "intro",
+    "cards"
+  ],
+  "canonShas": {
+    "header": "1125b139fad3",
+    "footer": "53a9e1a10d87",
+    "css": "4b44d98880af"
+  },
+  "deviations": [],
+  "migrationDecisions": [],
+  "metadata": {
+    "title": "Getting started",
+    "description": "First steps.",
+    "canonical": null,
+    "lang": "en"
+  },
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "Getting started",
+    "description": "First steps.",
+    "url": "https://www.example.com/docs/getting-started.html"
+  },
+  "migratedAt": "2026-01-01T00:00:00Z",
+  "designMdSha": "17d4361babe8",
+  "designJsonSha": "237588f19883",
+  "sourceCurrentSha": "1b69383cabb8",
+  "sourceProposedSha": "92ab76572d69",
+  "fidelityTier": "sibling",
+  "archetypeSource": "docs",
+  "archetypeSha": "f5205330bfa4",
+  "variants": [],
+  "gatesPassed": [],
+  "gateEvidence": {},
+  "contentDeviations": [],
+  "assetsBundled": 1,
+  "missingAssets": [],
+  "brokenInternalLinks": [],
+  "outputPath": "docs/getting-started.html",
+  "outputPathDefault": null,
+  "sidecar": "docs/getting-started._meta.json",
+  "driverVersion": "1"
+}

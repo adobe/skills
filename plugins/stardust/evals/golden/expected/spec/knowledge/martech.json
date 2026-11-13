@@ -1,0 +1,12 @@
+{
+ "consent_summary": null,
+ "loading_order": null,
+ "vendors": [],
+ "launch_rules": [],
+ "datalayer": [],
+ "evidence": {
+  "launch": null,
+  "onetrust": [],
+  "consentMode": null
+ }
+}

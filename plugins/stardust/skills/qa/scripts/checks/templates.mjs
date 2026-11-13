@@ -11,7 +11,7 @@
  * Needs the template assignment from the inventory (template-map source) and
  * the per-page block sets collected by the content check (or re-fetched).
  */
-import { pMap, finding, plainUrl, readJSON } from '../lib.mjs';
+import { pMap, finding, plainUrl, readJSON, isMetaBlock } from '../lib.mjs';
 import { widgetLinks } from './content.mjs';
 
 const CONSENSUS = 0.7;
@@ -36,7 +36,7 @@ export async function run(ctx) {
       if (res.status !== 200) return;
       const names = new Set();
       for (const m of res.body.matchAll(/<div class="([a-z][a-z0-9-]*)(?: [^"]*)?">/g)) {
-        if (m[1] !== 'metadata' && m[1] !== 'section-metadata') names.add(m[1]);
+        if (!isMetaBlock(m[1])) names.add(m[1]);
       }
       for (const w of widgetLinks(res.body, base)) names.add(w.name); // a widget link is a block named by its file stem
       pageBlocks[p.path] = [...names];
