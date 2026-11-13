@@ -122,7 +122,17 @@
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 124 instrument deadline exceeded (not a measurement — see below),
 # 125 unknown argument (usage) or --gate-against-baseline without a usable
-# frozen baseline (freeze one, or drop the flag).
+# frozen baseline (freeze one, or drop the flag), 6 round refused by the cap.
+#
+# Round cap (source-fidelity-gate.md § Iteration discipline): before any other work
+#   `rounds.mjs check` reads <evidence dir>/rounds.json for this stage (prototype | published
+#   — the regime rule under --full, GATE_REGIME overrides); at the cap, or after a recorded
+#   decision closed the triple, the round ends with rounds.mjs's one line on stderr (it names
+#   the `rounds.mjs decide` command) and exit 6 — no curl, no capture. A round that ends with
+#   a verdict (exit 0 or 2) is recorded by `rounds.mjs record`; 1, 3, 4, 124 and 125 never are.
+#   STARDUST_ROUND_CAP=0 turns the refusal off (rounds are still recorded) — for a project
+#   mid-run when this check arrives. Without rounds.mjs beside this script: one stdout line,
+#   the round runs uncounted (re-copy the replica scripts dir).
 #
 # Instrument deadlines + stale reap: every node step runs under
 # run-capped.mjs (macOS has no `timeout`). Three field migrations (2026-08/09)
@@ -203,6 +213,27 @@ PROBE_TIMEOUT=${GATE_PROBE_TIMEOUT:-300}
 OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
 case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
+# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
+case "${GATE_REGIME:-auto}" in
+  prototype|published) REGIME=$GATE_REGIME ;;
+  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
+esac
+# Round cap (header § Round cap): check before anything is reaped, fetched or captured, so a refused round costs
+# one node start; record on exit, only for a round that reached a verdict (ROUND_VERDICT) and exits 0 or 2.
+ROUND_VERDICT=0
+if [ -f "$HERE/rounds.mjs" ]; then
+  node "$HERE/rounds.mjs" check "$DIR" --stage "$REGIME" --label "$LBL"; rc=$?
+  [ "$rc" -eq 6 ] && exit 6
+  [ "$rc" -ne 0 ] && echo "gate.sh: rounds.mjs check exited $rc — the round runs, the cap was not checked" >&2
+  round_record() {
+    [ "$ROUND_VERDICT" = 1 ] || return 0
+    case "$1" in 0) v=pass ;; 2) v=fail ;; *) return 0 ;; esac
+    node "$HERE/rounds.mjs" record "$DIR" --stage "$REGIME" --label "$LBL" --verdict "$v" || echo "gate.sh: rounds.mjs record failed — this round is not in $DIR/rounds.json" >&2
+  }
+  trap 'round_record $?' EXIT
+else
+  echo "gate.sh: $HERE/rounds.mjs missing — the round runs uncounted; re-copy the replica scripts dir (replica SKILL.md § Setup)"
+fi
 # --gate-against-baseline (header § flags; default OFF): the flag's precondition is settled before any process is
 # reaped or any capture spent. `stitch-shot.mjs baseline <dir> --url --width` answers with the frozen baseline's
 # capturedAt (exit 0) or the one-line reason it is unusable (exit 1) — then the round ends with that line: the flag
@@ -396,6 +427,7 @@ fonts_line() { # $1 side, $2 record, $3 the frozen baseline's record (live side 
     else if (j.fontsFailed.length) console.log(`gate.sh: fonts on the ${side} capture — DEAD FACE(S) ${j.fontsFailed.join(", ")}: the capture renders fallback type for them (a file that failed to fetch, or a local() source this browser cannot resolve — recreation-procedure.md § Fonts policy)${from}`);
     else console.log(`gate.sh: fonts on the ${side} capture — every declared face loaded${from}`);' "$1" "$2" "$3"
 }
+case "$PIXEL_RC" in 0|2) ROUND_VERDICT=1 ;; esac
 fonts_line live "$DIR/live.capture.json" "$([ "$BASELINE" = 1 ] && echo "$DIR/baseline.json")"
 fonts_line build "$DIR/build.capture.json" ""
 [ "$FULL" = 1 ] || exit $PIXEL_RC
@@ -417,11 +449,6 @@ if [ ! -f "$DIFF/content-diff.mjs" ] || [ ! -f "$DIFF/visual-diff.mjs" ]; then
 fi
 CD="$DIR/content-diff-$LBL.txt"; VD="$DIR/visual-diff-$LBL.txt"; CP="$DIR/chrome-parity-$LBL.txt"
 CL="$DIR/clip-$LBL.txt"; PR="$DIR/content-presence-$LBL.txt"; UG="$DIR/units-$LBL.txt"
-# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
-case "${GATE_REGIME:-auto}" in
-  prototype|published) REGIME=$GATE_REGIME ;;
-  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
-esac
 UNITS_FILE="stardust/replica/units.json"
 capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
   --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} > "$CD" 2>&1 &
@@ -434,15 +461,15 @@ capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" 
 P_CP=$!
 # clip-probe on the BUILD side (every regime, no live hit); content-presence live vs build in the published regime;
 # unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0).
-capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUILD_URL" --width "$W" --json "$DIR/clip-$LBL.json" > "$CL" 2>&1 &
+capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUILD_URL" --width "$W" --json "$DIR/clip-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$CL" 2>&1 &
 P_CL=$!
 P_PR=""; P_UG=""
 if [ "$REGIME" = published ]; then
-  capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" > "$PR" 2>&1 &
+  capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$PR" 2>&1 &
   P_PR=$!
 fi
 if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
-  capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" > "$UG" 2>&1 &
+  capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --stage "$REGIME" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$UG" 2>&1 &
   P_UG=$!
 fi
 wait $P_CD; RC_CD=$?
