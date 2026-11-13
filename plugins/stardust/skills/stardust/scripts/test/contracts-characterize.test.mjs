@@ -321,9 +321,11 @@ OBSERVED.chromeSets = {
   };
 }
 
-// 4. dynamics class labels
+// 4. dynamics class labels — one copy (lib/taxonomy.mjs) imported by both writers; the import lines are pinned
+pin('dynamics/scripts/lib.mjs', "export const { TAXONOMY, CLASS_NAMES } = await import(CONTRACTS.href);");
+pin('dynamics/scripts/dynamics-detect.mjs', "  CLASS_NAMES, arg, flag,");
 pin('spec/scripts/lib.mjs', "export const { CODED, loadSibling, CLASS_NAMES, TAXONOMY, deliveredUrl, redirectKey } = C;");
-const dynClassNames = fromSource('dynamics/scripts/dynamics-detect.mjs', /const CLASS_NAMES = (\{[^\n]*\});/);
+const dynClassNames = libTaxonomy.CLASS_NAMES;
 const specClassNames = libTaxonomy.CLASS_NAMES;
 OBSERVED.classLabels = family('class-label', [...new Set([...dynLib.TAXONOMY.class, ...Object.keys(dynClassNames), ...Object.keys(specClassNames)])], {
   dynamics: { label: 'dynamics/scripts/dynamics-detect.mjs#CLASS_NAMES', fn: (k) => dynClassNames[k] ?? null },
