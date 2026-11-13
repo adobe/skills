@@ -85,14 +85,14 @@ const assembleNormPath = libPaths.sitemapKey;
 const chromeCompareHrefKey = fromSource('diff/scripts/chrome-compare.mjs', /const hrefKey = (\(h\) => \{[\s\S]*?\n\});/);
 // spec/scripts/spec-knowledge.mjs:114 — the k() inside needsEntry
 const specKnowledgeKey = fromSource('spec/scripts/spec-knowledge.mjs', /const k = (\(p\) => String\(p\)[^;]*);/);
-// deploy/scripts/ai-readability.mjs:169 — closure-local
-const aiReadabilityIsChrome = fromSource('deploy/scripts/ai-readability.mjs', /const isChrome = (\(fp\) => [^;]*);/);
+// deploy/scripts/ai-readability.mjs scorePage — its isChrome is lib/kinds.mjs isChromeName with { menu: true } (pinned use)
+pin('deploy/scripts/ai-readability.mjs', 'const isChrome = (fp) => isChromeName(fp, { menu: true });');
+const aiReadabilityIsChrome = (fp) => libKinds.isChromeName(fp, { menu: true });
 // spec/scripts/lib.mjs:259 — inside genericRules
 const specChrome = fromSource('spec/scripts/lib.mjs', /const CHROME = (new Set\(\[[^\]]*\]\));/);
-// deploy/scripts/deploy-batch.mjs:161-162 — walkHtml, runs on import; re-implemented, pinned
-pin('deploy/scripts/deploy-batch.mjs', "const rel = path.relative(base, full).replace(/\\.html$/, '');");
-pin('deploy/scripts/deploy-batch.mjs', 'out.push({ file: full, webPath: `/${rel}` });');
-const deployBatchWebPath = (rel) => `/${rel.replace(/\.html$/, '')}`;
+// deploy/scripts/deploy-batch.mjs walkHtml (runs on import) — its webPath is lib/paths.mjs documentPath (pinned use)
+pin('deploy/scripts/deploy-batch.mjs', 'out.push({ file: full, webPath: documentPath(path.relative(base, full)) });');
+const deployBatchWebPath = libPaths.documentPath;
 // qa/scripts/checks/routing.mjs:88 — the trailing-slash sampling filter; re-implemented, pinned
 pin('qa/scripts/checks/routing.mjs', "pages.filter((x) => x.path !== '/' && (x.url || '').endsWith('/'))");
 const routingSamples = (x) => x.path !== '/' && (x.url || '').endsWith('/');
@@ -326,7 +326,7 @@ OBSERVED.classLabels = family('class-label', [...new Set([...dynLib.TAXONOMY.cla
 
 // 5. the metadata | section-metadata exclusion pair
 OBSERVED.metadataPair = {
-  davidsModelLint: [...fromSource('deploy/scripts/davids-model-lint.mjs', /const KEY_VALUE_BLOCKS = (new Set\(\[[^\]]*\]\));/)],
+  davidsModelLint: [...libKinds.KEY_VALUE_BLOCKS], // davids-model-lint takes it from lib/kinds.mjs (pinned below)
   qaBlockNames: [...qaContent.blockNames([{ children: [{ tag: 'div', cls: 'metadata' }, { tag: 'div', cls: 'section-metadata dark' }, { tag: 'div', cls: 'hero dark' }, { tag: 'div', cls: 'default-content-wrapper' }, { tag: 'p', cls: '' }] }])],
 };
 
@@ -665,11 +665,14 @@ check('source pins of the metadata pair, the qa templates rule and build-harness
   pin('deploy/scripts/build-harness.mjs', "main.indexOf('class=\"metadata\"')");
   pin('deploy/scripts/build-harness.mjs', 'section-metadata(?:\\s[^"\']*)?["\']/gi');
   pin('qa/scripts/checks/content.mjs', "if (!/^\\/widgets\\/.+\\.html$/i.test(path) || seen.has(path)) continue;");
-  pin('deploy/scripts/ai-readability.mjs', "'--exclude-blocks', 'client-app,widget'");
   pin('rollout/scripts/delivery-lint.mjs', "import { reservedStem, pathKey, safePath, documentKind, widgetStem, widgetCodePath } from './lib.mjs';");
   pin('rollout/scripts/delivery-lint.mjs', 'const stem = widgetStem(bare);');
   pin('rollout/scripts/delivery-lint.mjs', 'const type = TYPE || documentKind(DAPATH);');
   pin('rollout/scripts/lib.mjs', "export const { RESERVED, edsName, reservedStem, widgetCodePath, pageWidgets, widgetStem, CHROME_IDS, kindOf, DEFAULT_CONTENT, documentKind } = C;");
+  pin('deploy/scripts/eds-path.mjs', "export const { deliveredUrl, daPath, pathKey } = await import(CONTRACTS.href);");
+  pin('deploy/scripts/ai-readability.mjs', "opt('--exclude-blocks', AI_EXCLUDE_DEFAULT.join(','))");
+  pin('deploy/scripts/davids-model-lint.mjs', 'const { KEY_VALUE_BLOCKS } = await import(CONTRACTS.href);');
+  pin('deploy/scripts/davids-model-lint.mjs', 'const isKeyValue = KEY_VALUE_BLOCKS.has(name);');
 });
 
 console.log(`\n${failed ? `${failed} check(s) failed` : 'all checks passed'}`);

@@ -30,6 +30,15 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+// The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) {
+  console.error('ai-readability: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(2);
+}
+const { isChromeName, AI_EXCLUDE_DEFAULT } = await import(CONTRACTS.href);
+
 // The browser front door is resolved lazily: importing this module (the tests) must not need it.
 const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
   .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
@@ -192,7 +201,7 @@ export async function scorePage(context, origin, path, { excludeBlocks = [], all
     await goto(page, url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await settle(page);
     // chrome fragments (nav/header/footer/menu) are loaded by blocks the strict score strips — crediting them would inflate code
-    const isChrome = (fp) => /(^|\/)(nav|header|footer|menu)[^/]*(\/|$)/i.test(fp);
+    const isChrome = (fp) => isChromeName(fp, { menu: true }); // lib/kinds.mjs: a nav/header/footer/menu… segment
     const credited = [...frags.paths.map((fp, i) => [fp, frags.html[i]]), ...runtime.entries()].filter(([fp, html]) => html && !isChrome(fp));
     const r = await page.evaluate(analyse, { served, fragments: credited.map(([, html]) => html), landmarks: LANDMARKS, excludeBlocks, allow });
     return { path, fragments: credited.map(([fp]) => fp), chromeFragments: [...frags.paths, ...runtime.keys()].filter(isChrome), ...r };
@@ -218,7 +227,7 @@ if (isMain) {
   const min = Number(opt('--min', '98'));
   const tokenEnv = opt('--token-env', null);
   const authHeader = opt('--auth-header', null) || (tokenEnv && process.env[tokenEnv] ? `token ${process.env[tokenEnv]}` : null);
-  const excludeBlocks = (opt('--exclude-blocks', 'client-app,widget') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const excludeBlocks = (opt('--exclude-blocks', AI_EXCLUDE_DEFAULT.join(',')) || '').split(',').map((s) => s.trim()).filter(Boolean);
   const allowFile = opt('--allowlist', null);
   const jsonOut = opt('--json', null);
   const pathsFile = opt('--paths', null);
