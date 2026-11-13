@@ -5,8 +5,8 @@ on:
     branches: [main]
   # pull_request_target (instead of pull_request) so the review job can access
   # TESSL_TOKEN on PRs from forks; secrets are never exposed to plain
-  # `pull_request` fork runs. Fork runs by outsiders are gated by the
-  # `fork-review` environment below.
+  # `pull_request` fork runs. Fork runs by authors without write access are gated
+  # by the `fork-review` environment below.
   pull_request_target:
     branches: [main]
 
@@ -18,19 +18,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tessl-review:
+  # Whether this run needs a maintainer's approval first. It does when the pull request
+  # comes from a fork and its author has no write access to this repository: then
+  # TESSL_TOKEN would reach content from someone who could not have pushed it here.
+  # Everything else runs unattended: pull requests from branches of this repository, push
+  # to main, and forks of people with write access. If the permission can't be read, the
+  # run waits for approval.
+  approval:
     runs-on: ubuntu-latest
-    # Gate PRs from forks by outsiders behind the `fork-review` environment's required
-    # reviewers, so a maintainer approves before TESSL_TOKEN reaches untrusted PR content.
-    # An outsider is an author who is not an owner, a member of the organization or a
-    # collaborator of this repository. Everything else gets an empty environment and runs
-    # unattended: same-repo PRs, push to main, and forks of people who could just as well
-    # push a branch here.
-    environment: >-
-      ${{ (github.event_name == 'pull_request_target'
-           && github.event.pull_request.head.repo.full_name != github.repository
-           && !contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association))
-          && 'fork-review' || '' }}
+    outputs:
+      environment: ${{ steps.author.outputs.environment }}
+    steps:
+      - id: author
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          environment=''
+          if [ "$EVENT" = pull_request_target ] && [ "$FORK" = true ]; then
+            permission=$(gh api "repos/$REPO/collaborators/$AUTHOR/permission" --jq .permission 2>/dev/null || echo unknown)
+            echo "$AUTHOR has $permission permission on $REPO"
+            case "$permission" in
+              admin | write) ;;
+              *) environment=fork-review ;;
+            esac
+          fi
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+
+  tessl-review:
+    needs: approval
+    runs-on: ubuntu-latest
+    # `fork-review` has required reviewers; an empty environment has none.
+    environment: ${{ needs.approval.outputs.environment }}
     steps:
       # Fork PRs: review the merged result via the PR merge ref.
       # Push to main: use the pushed commit.

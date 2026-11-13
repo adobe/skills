@@ -52,7 +52,7 @@ CI runs these on every pull request:
 | Adobe CLA | You have signed the CLA. |
 | Tessl Skill Eval | Only on request, see below. |
 
-Pull requests from forks: the Tessl review of a pull request whose author is not a member of the Adobe organization or a collaborator of this repository waits for a maintainer to approve the run.
+Pull requests from forks: the Tessl review of a pull request whose author has no write access to this repository waits for a maintainer to approve the run.
 
 ## Requesting Evals
 
