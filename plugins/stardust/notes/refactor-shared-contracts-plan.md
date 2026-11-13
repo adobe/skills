@@ -1,7 +1,10 @@
 # Shared contracts refactor — plan
 
 Why: adding one concept (the EDS widget, 0.34.0, PR #458) touched 25 prose files and 17 scripts because the
-model of "a unit of UI" is restated per skill and the scripts are forbidden to share. Census (2026-10-20, this
+model of "a unit of UI" is restated per skill and each skill's scripts carry their own copy of every shared
+rule. (Since 0.38.0, `#573`, the master's `scripts/` is copied to `stardust/scripts/stardust/` in Setup step 7
+and every skill reaches the browser through `browser.mjs` there; that shared the browser, not the contracts
+below — none of them moved.) Census (2026-10-20, this
 branch's session): nine independent EDS-path normalisers across seven skills, five widget-stem helpers with
 three different `.html` regexes, four hard-coded copies of the `metadata|section-metadata` pair, three chrome
 id sets with different values, two copies of the dynamics class labels that have drifted, three spec `kind`
@@ -15,7 +18,7 @@ Tier C (one vocabulary) is deliberately out: it changes sidecars, schemas and in
 
 | Tier | What | Risk to mechanics | Risk to output quality |
 |---|---|---|---|
-| A | One shared script library under `skills/stardust/scripts/lib/`; one resolver for both layouts; a `stage.mjs` that copies skill script sets and always includes the library | medium, fully testable | none |
+| A | One shared script library under `skills/stardust/scripts/lib/`, shipped by the existing Setup step 7 copy and resolved the way consumers resolve `browser.mjs` | medium, fully testable | none |
 | B | One canonical model doc `skills/stardust/reference/eds-model.md`; drift lints; per-skill prose consolidation — the one-sentence decision stays at the decision point, rationale and schema move behind a section link | low | medium — a moved rule is in context only when the pointer is followed; gated by evals |
 | C | Rename chrome/global/fragment to one word; reconcile spec `kind`, dynamics `target`, rollout `kind` | high | low | — out of scope |
 
@@ -56,20 +59,21 @@ Tier C (one vocabulary) is deliberately out: it changes sidecars, schemas and in
   (`CODED`, `CHROME_IDS`, `KEY_VALUE_BLOCKS`, `DEFAULT_CONTENT`, the kind enums, `AI_EXCLUDE_DEFAULT`),
   `taxonomy.mjs` (dynamics `TAXONOMY` + `CLASS_NAMES`), `resolve.mjs` (`sibling(skill, file)` — plugin tree
   `../../<skill>/scripts/` or project copy `../<skill>/`; `lib(file)` likewise).
-- `skills/stardust/scripts/stage.mjs <skill…> [--to stardust/scripts]`: copies each skill's `scripts/` and
-  always `stardust/scripts/lib/`; `--help` before I/O; test; `scripts-index.md` row. Replace the prose copy
-  steps (replica SKILL.md setup, handoff-contract § Phase 5, reskin SKILL.md, spec SKILL.md, extract
-  `style-census`/`thumb` self-copy) with one line each.
+- Delivery (revised 2026-11-13 after `#573`): no `stage.mjs` and no `#lib/*` subpath imports. `lib/` lives in
+  the master's `scripts/`, so Setup step 7 (copy the master `scripts/` to `stardust/scripts/stardust/`) already
+  ships it; consumers find it with the same two-layout lookup they use for `browser.mjs` (plugin tree
+  `../../stardust/scripts/`, project copy `../stardust/`). The per-skill prose copy steps stay as on main.
 - Swap consumers one skill per commit: deploy, rollout, qa, spec, migrate, dynamics, replica, reskin, diff,
   extract. Each commit deletes the duplicate it replaces; characterization + golden stay green; the old
   entry points (`deploy/scripts/eds-path.mjs`, spec `loadSibling`) become one-line re-exports for one
   release so in-flight project copies keep working. The twelve dual-layout candidate lists become
   `sibling()` calls.
-- Layout test `skills/stardust/scripts/test/stage.test.mjs`: stage a temp project tree and import every
-  shipped script from the project-copy layout (the layout where sharing has broken before).
-- Prose touched: `scripts-index.md` rows, each skill's copy step, `CLAUDE.md`/`AGENTS.md` bullet "resolve
-  sibling-skill imports in both layouts" → "import shared rules from `stardust/scripts/lib/` via
-  `resolve.mjs`".
+- Layout test `skills/stardust/scripts/test/layout.test.mjs`: build a temp project tree the way Setup step 7
+  and each skill's copy step do, and import every shipped script from that project-copy layout (the layout
+  where sharing has broken before).
+- Prose touched: `scripts-index.md` rows for the library; no copy-step rewrites.
+- Bump minor (the shipped scripts' shared contract moved) per `AGENTS.md` § Releases: `plugin.json`, the root
+  `marketplace.json` entry, CHANGELOG heading — the next minor after main at the time (0.39.0 on 0.38.2).
 
 ## Phase 2 — PR 2, drift lints and a sidecar schema (tier B, mechanics)
 
@@ -91,13 +95,13 @@ Tier C (one vocabulary) is deliberately out: it changes sidecars, schemas and in
   replica, direct, prototype, reskin. Rule per edit: the decision sentence stays in SKILL.md; rationale,
   schema and edge cases move behind `eds-model.md § <section>`; collapse divergent restatements first.
   Prose-delta net negative per skill. Each skill's folded lines listed in the PR body.
-- Bump 0.35.0 (minor: the project-copy contract changed) in `plugin.json`, `marketplace.json`, CHANGELOG.
+- Bump per `AGENTS.md` § Releases (the next version after PR 1's) in `plugin.json`, `marketplace.json`, CHANGELOG.
 
 ## Validation
 
 | Level | Check | Gate |
 |---|---|---|
-| every commit | 6 lints + `contract-drift`; all `scripts/test/*.test.mjs` (63 runnable; `dropdown-unreachable` needs Playwright); characterization table; golden byte identity | all green |
+| every commit | 7 lints (incl. `browser-front-door`) + `contract-drift`; all `scripts/test/*.test.mjs` (82 files on 0.38.2, 81 runnable; `dropdown-unreachable` needs Playwright); characterization table; golden byte identity | all green |
 | PR 1 | layout test from the project copy; golden identity | identical outputs |
 | PR 2 | drift lint passes on main after PR 1; fails on a seeded duplicate (negative test) | both |
 | PR 3, per skill | that skill's evals under `post-refactor`, `compare.mjs` vs `pre-refactor` | stable criteria unchanged; noisy ones not trending down across N; session tokens ≤ baseline |
@@ -137,4 +141,5 @@ growing back.
   stay local (site names); the run log names the project dirs.
 - PR mode: **open PRs** against `adobe/skills` main, stacked 0 → 3
 - vocabulary: **no rename, confirmed**
-- version bump: **0.35.0 in PR 3 only, confirmed**
+- version bump: ~~0.35.0 in PR 3 only~~ — superseded 2026-11-13: main shipped 0.35.0–0.38.2 meanwhile, so each
+  PR that changes shipped scripts or skill prose bumps per `AGENTS.md` § Releases (PR 1 minor; none in PR 0)
