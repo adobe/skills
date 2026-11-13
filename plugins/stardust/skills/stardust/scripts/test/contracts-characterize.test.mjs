@@ -10,15 +10,18 @@
 // How each implementation is reached:
 //   imported          eds-path, localize-links, spec lib (templateOf, CODED), spec-knowledge (needsEntry), qa lib
 //                     (buildInventory, pageUrl, plainUrl), qa content (widgetLinks, blockNames), rollout lib, done-check,
-//                     seed-redirects, migrate, gate-evidence, block-roundtrip, dynamics lib; added in 0.35–0.38:
+//                     seed-redirects, migrate, gate-evidence, block-roundtrip, dynamics lib, qa routing (isFolderIndex); added in 0.35–0.38:
 //                     rollout da-library (chromeRefs, contentFile, docName, SKIP), deploy da-media-upload (webPath)
+//   shared library    skills/stardust/scripts/lib (Phase 1): a rule that moved there is reached through it and its
+//                     consumer's import (or use) is source-pinned — paths.mjs sidecarName/treePath/rosterPath/pathSlug
+//                     (inventory.mjs), sitemapKey (assemble.mjs), redirectKey (spec-knowledge), chromeHrefKey
+//                     (chrome-compare), documentPath (deploy-batch), servedPath∘treePath (da-library); kinds.mjs
+//                     CHROME_IDS (spec lib), isChromeName (ai-readability), KEY_VALUE_BLOCKS (davids-model-lint);
+//                     taxonomy.mjs CLASS_NAMES (dynamics-detect AND spec-knowledge: one copy, so the class-label rows left
+//                     KNOWN_DIVERGENCE deliberately); the column labels keep the consumer's name
 //   source-extracted  the verbatim function/literal text is read from the file and evaluated (module-private or in a
-//                     script that runs on import): inventory.mjs deliveredPath/urlToDeliveredPath/sidecarFor/pathToSlug,
-//                     assemble.mjs normPath, chrome-compare.mjs hrefKey, ai-readability.mjs isChrome, spec lib CHROME,
-//                     spec-knowledge k(), dynamics-detect / spec-knowledge CLASS_NAMES, davids-model-lint KEY_VALUE_BLOCKS,
-//                     spec-map kind literals
-//   re-implemented    deploy-batch.mjs:161-162 webPath (two lines, source-pinned), qa routing.mjs:88 sampling filter,
-//                     da-library root chrome set and page path, update-coverage --pin deployedUrl path (source-pinned)
+//                     script that runs on import): seed-redirects pathOf, spec-map kind literals
+//   re-implemented    da-library's root chrome set, update-coverage --pin's deployedUrl path (each source-pinned)
 //   spawned           rollout delivery-lint.mjs (--json) on a one-link page per href and on each --path
 // Source pins (`pin`) assert the extracted/re-implemented text is still in the file: when Phase 1 swaps an inline rule
 // for the shared import, replace that pin with the shared function and keep the expected table unchanged.
@@ -81,8 +84,9 @@ const invPathToSlug = libPaths.pathSlug;
 // rollout/scripts/assemble.mjs — normPath is lib/paths.mjs sitemapKey
 pin('rollout/scripts/assemble.mjs', "import { readJSON, writeJSON, publicUrl, sitemapKey as normPath } from './lib.mjs';");
 const assembleNormPath = libPaths.sitemapKey;
-// diff/scripts/chrome-compare.mjs:38-42 — module-private
-const chromeCompareHrefKey = fromSource('diff/scripts/chrome-compare.mjs', /const hrefKey = (\(h\) => \{[\s\S]*?\n\});/);
+// diff/scripts/chrome-compare.mjs — hrefKey is lib/paths.mjs chromeHrefKey (pinned import)
+pin('diff/scripts/chrome-compare.mjs', 'const { chromeHrefKey: hrefKey } = CONTRACTS ? await import(CONTRACTS.href) : { chromeHrefKey: missing };');
+const chromeCompareHrefKey = libPaths.chromeHrefKey;
 // spec/scripts/spec-knowledge.mjs — needsEntry's key is lib/paths.mjs redirectKey (pinned import name)
 pin('spec/scripts/spec-knowledge.mjs', "import { CLASS_NAMES, TAXONOMY, deliveredUrl as edsPath, redirectKey } from './lib.mjs';");
 pin('spec/scripts/spec-knowledge.mjs', 'export const needsEntry = (src, target) => (redirectKey(src) !== redirectKey(target) ? 1 : 0);');
