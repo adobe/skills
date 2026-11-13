@@ -10,44 +10,61 @@
  * inner elements (role + text, shadow-DOM aware) relative to the unit's corner, aligned (key, text
  * prefix, relaxed link ↔ button, images by order, leftover text by position) and reported as
  * Δx / Δy / Δw / Δh against --tol, plus the unit's own size / position delta; `hidden` where the
- * served page clips. Both sides settle the same way; the origin inventory caches per slug under
- * stardust/current/measure/<slug>-units.json.
+ * served page clips. Both sides settle the same way; the origin inventory caches under
+ * stardust/current/measure/<slug>-units-w<width>.json and is reused only when its recorded identity
+ * (slug, width, origin URL, n, locale, selector set) equals the run's — rects of another width, URL, n
+ * or selector set are a miss, and the pre-identity <slug>-units.json is never read.
  *
  * Repeated-unit FAMILIES are declared once per project in stardust/replica/units.json —
- *   { "<family>": { "origin": "<sel>", "build": "<sel>", "n": 2, "required": true, "pages": ["<slug>"], "templates": ["<tpl>"] } }
- * — and resolved per page by `--families <file> --slug <s> [--template <t>]` (gate.sh and gate-all both do);
- * a family the page does not belong to is skipped, a non-`required` family is advisory (never exit 2).
+ *   { "<family>": { "origin": "<sel>", "build": "<sel>", "eds": "<sel>", "n": 2, "required": true, "pages": ["<slug>"], "templates": ["<tpl>"] } }
+ * — and resolved per page by `--families <file> --slug <s> [--template <t>] [--stage <stage>]` (gate.sh and
+ * gate-all both do); a family the page does not belong to is skipped, a non-`required` family is advisory
+ * (never exit 2). The served-side selector is stage-aware (`servedSelector`): `build` is the prototype's
+ * unit, `eds` the published block's — published reads eds → build → origin, prototype (and no --stage)
+ * reads build → eds → origin.
  *
- * Usage: node skills/diff/scripts/unit-geometry.mjs <originUrl> <edsUrl> (--unit "<selO>=<selE>" … | --families <f> --slug <s>)
+ * Usage: node skills/diff/scripts/unit-geometry.mjs <originUrl> <edsUrl>
+ *        (--unit-pair <selO> <selE> … | --unit "<selO>=<selE>" … | --families <f> --slug <s> [--stage prototype|published])
  *        [--n 1] [--tol 4] [--width 1440] [--json [<file>]] [--slug <s>] [--force] [--advisory]
  *        [--plain] [--warmup <url>] [--locale en-US]
- * Exit: 0 within tolerance (or nothing declared), 2 a required unit off / hidden / missing, 1 error,
- * 3 bot challenge. `unitInventoryInPage`, `alignUnit`, `keyed`, `compareUnits`, `formatUnits`,
- * `verdictOf`, `unitsFor` are exported.
+ * Exit: 0 within tolerance (or nothing declared), 2 a required unit off / hidden / missing (or a selector
+ * that matched no visible unit), 1 error (usage, unreadable file, browser — one `unit-geometry error:` line
+ * on stderr), 3 bot challenge. `unitInventoryInPage`, `alignUnit`, `keyed`, `compareUnits`, `formatUnits`,
+ * `verdictOf`, `unitsFor`, `servedSelector`, `splitUnitPair`, `cacheIdentity`, `cacheKeyOf`, `cacheHit`,
+ * `exitCodeOf`, `errorExitCode` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inPage } from './clip-probe.mjs';
-import { browserTier, openBrowser, openPage, readCache, visit, writeCache } from './measure-live.mjs';
+import { OVERLAY_HELP, browserTier, openBrowser, openPage, overlayFlag, overlayOf, readCache, visit, writeCache } from './measure-live.mjs';
 
 const HELP = `unit-geometry — per-element Δx/Δy/Δw/Δh of the first N repeated units, origin vs served (#125 D3)
 
-Usage: node unit-geometry.mjs <originUrl> <edsUrl> (--unit "<selOrigin>=<selEds>" … | --families <file> --slug <s>) [options]
-  --unit <selO>[=<selE>]  repeatable
-  --families <file>       stardust/replica/units.json: { family: { origin, build, n, required, pages[], templates[] } }
+Usage: node unit-geometry.mjs <originUrl> <edsUrl> (--unit-pair <selOrigin> <selEds> … | --unit "<selOrigin>=<selEds>" … | --families <file> --slug <s>) [options]
+  --unit-pair <selO> <selE>  repeatable; two arguments, any selector (the form to use from a script)
+  --unit <selO>[=<selE>]  repeatable; splits on the one "=" outside [...], (...) and quotes — none: the same
+                          selector on both sides; more than one, or an unclosed bracket / quote: usage error
+  --families <file>       stardust/replica/units.json: { family: { origin, build, eds, n, required, pages[], templates[] } }
+  --stage <stage>         prototype | published — which family field is the served-side selector:
+                          published: eds, else build, else origin; prototype (and without --stage): build, else eds, else origin
+                          (origin side: always origin; --unit / --unit-pair selectors are taken as given)
   --template <t>          the page's template, for family matching (read from stardust/state.json when absent)
   --n <count>             units per selector (default 1)
   --tol <px>              per-element tolerance (default 4)
   --width <px>            viewport width (default 1440)
   --json [<file>]         JSON on stdout or to <file>
-  --slug <s>              cache the origin inventory at stardust/current/measure/<s>-units.json (--force to redo)
+  --slug <s>              cache the origin inventory at stardust/current/measure/<s>-units-w<width>.json; reused only for
+                          the same slug, width, origin URL, n, locale and selector set (--force: measure again and rewrite)
   --advisory              report only, exit 0
   --plain                 bundled Chromium instead of the window-free real-Chrome tier
   --warmup <url>          visit this URL first on the origin side
+${OVERLAY_HELP}
   --locale <tag>          default en-US
   --help                  this text
-Exit: 0 within tolerance, 2 any element off / missing / hidden, 1 error, 3 bot challenge.`;
+Exit: 0 within tolerance or nothing declared (always with --advisory, short of an error); 2 FAIL — a required unit
+off / missing / hidden, or a selector with no visible unit; 1 ERROR — usage, unreadable file, browser: one
+"unit-geometry error: <reason>" line on stderr; 3 bot challenge.`;
 
 // ---- in-page (needs IN_PAGE_LIB) -------------------------------------------------------------------------
 /** page.evaluate(inPage(unitInventoryInPage, { sel, n })) → { sel, matches, units: [{ index, path, rect, elements[] }] } */
@@ -181,13 +198,47 @@ export function formatUnits(results, tol) {
 }
 
 // ---- CLI ----------------------------------------------------------------------------------------------
+/**
+ * Split a legacy `--unit` value on its one `=` outside [...], (...) and quotes → { origin, eds }.
+ * No such `=` → the same selector on both sides. Throws (never truncates) when more than one is found,
+ * a bracket or quote is left open, or a side is empty.
+ */
+export function splitUnitPair(value) {
+  const str = String(value == null ? '' : value);
+  const hint = 'pass the two selectors as separate arguments: --unit-pair <origin-selector> <eds-selector>';
+  const cuts = []; const open = []; let quote = null;
+  for (let i = 0; i < str.length; i += 1) {
+    const c = str[i];
+    if (c === '\\') { i += 1; continue; }
+    if (quote) { if (c === quote) quote = null; continue; }
+    if (c === '"' || c === "'") quote = c;
+    else if (c === '[' || c === '(') open.push(c);
+    else if (c === ']' || c === ')') { if (open.pop() !== (c === ']' ? '[' : '(')) throw new Error(`--unit ${JSON.stringify(str)}: unbalanced "${c}" — ${hint}`); }
+    else if (c === '=' && !open.length) cuts.push(i);
+  }
+  if (quote || open.length) throw new Error(`--unit ${JSON.stringify(str)}: unclosed ${quote ? 'quote' : `"${open[open.length - 1]}"`} — ${hint}`);
+  if (cuts.length > 1) throw new Error(`--unit ${JSON.stringify(str)}: ambiguous, ${cuts.length} "=" outside brackets and quotes — ${hint}`);
+  const origin = (cuts.length ? str.slice(0, cuts[0]) : str).trim();
+  const eds = (cuts.length ? str.slice(cuts[0] + 1) : str).trim();
+  if (!origin || !eds) throw new Error(`--unit ${JSON.stringify(str)}: empty ${origin ? 'served' : 'origin'} selector — ${hint}`);
+  return { origin, eds };
+}
+
+export const STAGES = ['prototype', 'published'];
+
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (!rest.length || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const opts = { origin: null, eds: null, units: [], n: 1, tol: 4, width: 1440, json: false, jsonFile: null, slug: null, force: false, advisory: false, plain: false, warmup: null, locale: 'en-US', families: null, template: null };
+  const opts = { origin: null, eds: null, units: [], n: 1, tol: 4, width: 1440, json: false, jsonFile: null, slug: null, force: false, advisory: false, plain: false, warmup: null, locale: 'en-US', families: null, template: null, stage: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
-    if (a === '--unit') { const [o, e] = rest[++i].split('='); opts.units.push({ origin: o.trim(), eds: (e || o).trim() }); }
+    if (a === '--unit') { if (rest[i + 1] === undefined) throw new Error('--unit needs a value: "<origin-selector>=<eds-selector>"'); opts.units.push(splitUnitPair(rest[++i])); }
+    else if (a === '--unit-pair') {
+      const o = (rest[i + 1] || '').trim(); const e = (rest[i + 2] || '').trim();
+      if (!o || !e || e.startsWith('--')) throw new Error('--unit-pair needs two arguments: <origin-selector> <eds-selector>');
+      opts.units.push({ origin: o, eds: e }); i += 2;
+    }
+    else if (a === '--stage') { opts.stage = rest[++i]; if (!STAGES.includes(opts.stage)) throw new Error(`--stage must be ${STAGES.join(' or ')}, got ${JSON.stringify(opts.stage)}`); }
     else if (a === '--families') opts.families = rest[++i];
     else if (a === '--template') opts.template = rest[++i];
     else if (a === '--n') opts.n = Number(rest[++i]);
@@ -198,6 +249,7 @@ export function parseArgs(argv) {
     else if (a === '--force') opts.force = true;
     else if (a === '--advisory') opts.advisory = true;
     else if (a === '--plain') opts.plain = true;
+    else if (overlayFlag(a, rest[i + 1], opts)) i += overlayFlag(a, rest[i + 1], opts) - 1;
     else if (a === '--warmup') opts.warmup = rest[++i];
     else if (a === '--locale') opts.locale = rest[++i];
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
@@ -208,17 +260,17 @@ export function parseArgs(argv) {
     const fam = JSON.parse(readFileSync(opts.families, 'utf8'));
     let { template } = opts;
     if (!template && existsSync('stardust/state.json')) { const pg = (JSON.parse(readFileSync('stardust/state.json', 'utf8')).pages || []).find((p) => p.slug === opts.slug); template = pg ? pg.template : null; }
-    opts.units.push(...unitsFor(fam, opts.slug, template));
+    opts.units.push(...unitsFor(fam, opts.slug, template, opts.stage));
     opts.n = Math.max(opts.n, ...opts.units.map((u) => u.n || 1));
   }
   if (!opts.origin || !opts.eds || (!opts.units.length && !opts.families)) { console.error(`need <originUrl> <edsUrl> and --unit <selO>=<selE> or --families <file> --slug <s>\n\n${HELP}`); process.exit(1); }
   return opts;
 }
 
-export async function measureUnits(browser, url, sels, { width, locale, warmup, n }) {
+export async function measureUnits(browser, url, sels, { width, locale, warmup, n, overlay = {} }) {
   const { ctx, page } = await openPage(browser, { width, locale, stateUrl: url });
   try {
-    const v = await visit(page, url, { warmup });
+    const v = await visit(page, url, { warmup, ...overlay });
     const bySel = {};
     for (const sel of sels) bySel[sel] = await page.evaluate(inPage(unitInventoryInPage, { sel, n }));
     return { url, at: new Date().toISOString(), status: v.status, docH: v.docH, bySel };
@@ -238,11 +290,39 @@ export function compareUnits(oInv, eInv, pair, tol) {
 // `required` counters only feed the exit code; advisory families are reported, never blocking.
 export const verdictOf = (results) => results.reduce((a, r) => { if (r.error) a.errors += 1; for (const u of r.units) { a.off += u.summary.off; a.hidden += u.summary.hidden; a.missing += u.summary.missing; a.within += u.summary.within; a.units += 1; if (r.required !== false) a.requiredOff += u.summary.off + u.summary.hidden + u.summary.missing; } return a; }, { units: 0, within: 0, off: 0, hidden: 0, missing: 0, errors: 0, requiredOff: 0 });
 
-/** Families a page belongs to (by slug or template) → [{ family, origin, eds, n, required }]. */
-export function unitsFor(families, slug, template = null) {
-  return Object.entries(families || {}).filter(([, f]) => (f.pages || []).includes(slug) || (template && (f.templates || []).includes(template)))
-    .map(([family, f]) => ({ family, origin: f.origin, eds: f.build || f.eds || f.origin, n: f.n || 1, required: f.required !== false }));
+/** A family's served-side selector for a stage: published → eds, build, origin; prototype / none → build, eds, origin. */
+export function servedSelector(f, stage = null) {
+  if (stage && !STAGES.includes(stage)) throw new Error(`stage must be ${STAGES.join(' or ')}, got ${JSON.stringify(stage)}`);
+  return (stage === 'published' ? f.eds || f.build : f.build || f.eds) || f.origin;
 }
+
+/** Families a page belongs to (by slug or template) → [{ family, origin, eds, n, required }]; `eds` = servedSelector(f, stage). */
+export function unitsFor(families, slug, template = null, stage = null) {
+  return Object.entries(families || {}).filter(([, f]) => (f.pages || []).includes(slug) || (template && (f.templates || []).includes(template)))
+    .map(([family, f]) => ({ family, origin: f.origin, eds: servedSelector(f, stage), n: f.n || 1, required: f.required !== false }));
+}
+
+// ---- pure: origin cache identity -----------------------------------------------------------------------
+const CACHE_V = 2;
+/** What an origin inventory is a measurement OF; null without a slug (no cache). */
+export function cacheIdentity({ slug, width, origin, n, locale = 'en-US', units = [] } = {}) {
+  if (!slug) return null;
+  return { v: CACHE_V, slug: String(slug), width: Number(width), url: String(origin), n: Number(n), locale: String(locale), selectors: [...new Set(units.map((u) => u.origin))].sort() };
+}
+/** readCache / writeCache key: one file per slug and width (the pre-identity key was `<slug>-units`). */
+export const cacheKeyOf = (id) => (id ? `${id.slug}-units-w${id.width}` : null);
+/** A cached inventory is reused only when the identity it recorded equals this run's, field for field. */
+export function cacheHit(cached, id) {
+  if (!id || !cached || !cached._cache || !cached.bySel) return false;
+  const c = cached._cache;
+  return c.v === id.v && c.slug === id.slug && c.width === id.width && c.url === id.url && c.n === id.n && c.locale === id.locale
+    && Array.isArray(c.selectors) && c.selectors.length === id.selectors.length && id.selectors.every((s, i) => c.selectors[i] === s && cached.bySel[s]);
+}
+
+/** 0 PASS / advisory, 2 FAIL (a required unit off / hidden / missing, or a selector error). */
+export const exitCodeOf = (verdict, { advisory = false } = {}) => (!advisory && (verdict.requiredOff + verdict.errors) > 0 ? 2 : 0);
+/** 3 bot challenge, 1 any other error — never 2, which is the geometry FAIL. */
+export const errorExitCode = (e) => (e && e.name === 'BotChallengeError' ? 3 : 1);
 
 async function main() {
   const opts = parseArgs(process.argv);
@@ -251,12 +331,12 @@ async function main() {
   let oInv; let eInv; let tier;
   try {
     tier = browserTier(browser);
-    const cacheKey = opts.slug ? `${opts.slug}-units` : null;
-    const cached = cacheKey && !opts.force ? readCache(cacheKey) : null;
-    const oSels = opts.units.map((u) => u.origin);
-    if (cached && oSels.every((s) => cached.bySel && cached.bySel[s])) { oInv = cached; console.log(`origin: cached ${cacheKey} (${cached.at})`); }
-    else { oInv = await measureUnits(browser, opts.origin, oSels, { width: opts.width, locale: opts.locale, warmup: opts.warmup, n: opts.n }); if (cacheKey) writeCache(cacheKey, oInv); }
-    eInv = await measureUnits(browser, opts.eds, opts.units.map((u) => u.eds), { width: opts.width, locale: opts.locale, warmup: null, n: opts.n });
+    const id = cacheIdentity(opts); const cacheKey = cacheKeyOf(id);
+    let cached = null;
+    if (cacheKey && !opts.force) { try { cached = readCache(cacheKey); } catch { cached = null; } } // an unreadable cache is a miss
+    if (cacheHit(cached, id)) { oInv = cached; console.log(`origin: cached ${cacheKey} (${cached.at})`); }
+    else { oInv = await measureUnits(browser, opts.origin, id ? id.selectors : opts.units.map((u) => u.origin), { width: opts.width, locale: opts.locale, warmup: opts.warmup, n: opts.n, overlay: overlayOf(opts) }); if (cacheKey) { oInv._cache = id; writeCache(cacheKey, oInv); } }
+    eInv = await measureUnits(browser, opts.eds, opts.units.map((u) => u.eds), { width: opts.width, locale: opts.locale, warmup: null, n: opts.n, overlay: overlayOf(opts) });
   } finally { await browser.close(); }
   const results = opts.units.map((pair) => compareUnits(oInv, eInv, pair, opts.tol));
   const v = verdictOf(results);
@@ -268,10 +348,10 @@ async function main() {
     console.log(`Units: ${v.units} compared; elements within ${v.within}, off ${v.off}, hidden ${v.hidden}, missing ${v.missing}${v.errors ? `; ${v.errors} selector error(s)` : ''} → ${v.requiredOff + v.errors ? 'FAIL' : v.off + v.hidden + v.missing ? 'PASS (advisory deltas)' : 'PASS'}`);
     if (opts.jsonFile) { mkdirSync(dirname(opts.jsonFile) || '.', { recursive: true }); writeFileSync(opts.jsonFile, JSON.stringify(out, null, 1)); console.log(`json → ${opts.jsonFile}`); }
   }
-  process.exitCode = !opts.advisory && (v.requiredOff + v.errors) > 0 ? 2 : 0;
+  process.exitCode = exitCodeOf(v, opts);
 }
 
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
-  main().catch((e) => { console.error(`unit-geometry error: ${String(e.message).split('\n')[0]}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+  main().catch((e) => { console.error(`unit-geometry error: ${String((e && e.message) || e).split('\n')[0]}`); process.exit(errorExitCode(e)); });
 }
