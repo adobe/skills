@@ -4,6 +4,19 @@
     "config:recommended",
     "helpers:pinGitHubActionDigests"
   ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**",
+    "plugins/commerce/**",
+    "plugins/**/evals/files/**",
+    "plugins/**/evals/scaffolds/**"
+  ],
   "semanticCommits": "enabled",
   "rebaseWhen": "conflicted",
   "minimumReleaseAge": "7 days",
