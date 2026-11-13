@@ -297,20 +297,25 @@ noindex` (Phase C). A recorded hands-off run read the local file, reported
   `helix-query.yaml` (Phase D2) so the index never carries them either.
 
 **Verify the SERVED sitemap, never the local file.** `assemble.mjs --verify-origin
-<live-origin>` fetches `<origin>/sitemap.xml` (a sitemap index is followed),
-compares its `<loc>` paths with the coverage rows, prints served vs assembled
-counts with every extra and missing path, records the result in
-`site/manifest.json` (`servedSitemap`) and exits 1 on any difference. An extra
+<live-origin>` compares the served `<loc>` paths with the coverage rows and
+exits 1 on any difference. An extra
 path is a chrome document without `noindex` or a page built outside the migrated
 tree with no coverage row (`update-coverage.mjs --new`, Phase D2); a missing path
 is a page not published live. Re-run after the fix until it exits 0. The `D-site`
 ledger `end` line names the SERVED count, never the assembled one — e.g.
 `--detail "sitemap served 36 = assembled 36; redirects wired; / 200"`.
 
+**DA library (#160).** Without a `library` tab in its site config, a migrated
+site shows authors an inherited or empty block library, never the blocks it
+shipped. Run `node skills/rollout/scripts/da-library.mjs` (one document per block
+variant and per template, the sheets, and only the Blocks / Templates config rows)
+whenever a block, variant or template ships — in archetypes-only mode once the
+archetypes are delivered.
+
 **D-site checklist** (all before the `D-site end` line): `assemble.mjs
 --verify-origin` exits 0 · every chrome document carries `Robots | noindex` and is
-published · the redirects sheet is published (below) · `curl -sIL <origin>/` ends
-in 200.
+published · the redirects sheet is published (below) · `da-library.mjs` exits 0 ·
+`curl -sIL <origin>/` ends in 200.
 
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
 it into the EDS redirects mechanism here so original inbound URLs don't 404 — the
