@@ -11,11 +11,11 @@ license: Apache-2.0
 
 Remove one or more API subscriptions from a credential in the selected workspace.
 
-**Before starting:** invoke the `dev-console-context` skill to establish the org, project, workspace, and credential context. If no credential is selected, list credentials in the selected workspace and inspect each with `get_credential_services` before asking which one to use.
+**Before starting:** invoke the `dev-console-context` skill to establish the org, project, and workspace context, reusing any selected credential. Otherwise, resolve the credential here: list credentials in the selected workspace and inspect each with `get_credential_services` before offering a selection. Offer only credentials subscribed to the requested API, or credentials with any subscription if no API was specified.
 
 ## Steps
 
-1. **Confirm the target** — Ask which subscribed API or APIs the user wants to remove from the selected credential. Show API, credential, and project names only; never show raw IDs or SDK codes. Only offer APIs confirmed by `get_credential_services` as currently subscribed.
+1. **Confirm the target** — Resolve the requested API or APIs from `get_credential_services`; ask for a selection only if the target is unresolved. Show API, credential, and project names only; never show raw IDs or SDK codes. Only offer currently subscribed APIs. If none match the request, report that without offering an unsubscription.
 
 2. **Explain the change and request approval** — Before calling a tool, summarize the API name(s), credential name, and project name that will be affected, and say that the change has no automatic undo. Do not ask the user to type a name or provide a typed confirmation. The client's Yes/No approval prompt is the confirmation.
 
