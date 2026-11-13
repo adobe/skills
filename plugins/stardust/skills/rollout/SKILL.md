@@ -230,7 +230,7 @@ against the origin: `favicon-default` means the site's icon never shipped
 (deploy Step 3 § Favicon) — recorded first passes served the boilerplate
 icon while `/favicon.ico` answered 200. **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
-(`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
+(`gate-all.mjs --only`, round-capped) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
 
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents

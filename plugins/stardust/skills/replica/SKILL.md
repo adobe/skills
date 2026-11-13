@@ -316,10 +316,8 @@ prototype --proto-base "$PROTO_BASE" --width 1440` (then 360) through `run-bg.mj
 it reuses each archetype's cached `live.png`. `gate-evidence.mjs` reads it as the
 source of record: a prototype without a row is ungated.
 
-**Iteration discipline: hard cap 3 iterations per breakpoint.** Each
-iteration's fixes come off the instruments, never off eyeballing. After 3,
-log the residuals in the ledger and move on — a documented 2% residual beats
-an undocumented fourth loop. **No single step waits longer than the context
+**Iteration discipline: the round cap — `gate.sh` exits 6 at it.** Each
+iteration's fixes come off the instruments, never off eyeballing. **No single step waits longer than the context
 cache lives:** long instruments go through `run-bg.mjs` (`start`, then `wait`
 in ≤ 100-second slices), main agent and subagents alike — a long instrument
 in the foreground, or two as parallel tool calls in one turn, is the same
@@ -435,7 +433,7 @@ had one section for the whole run).
   header contract included (`chrome-compare` exit 0, `../diff/SKILL.md`
   § The header contract), then `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
-  (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
+  (within the round cap, gate doc § Iteration discipline) BEFORE its siblings
   render; C1…Cn — one subagent per template
   cluster runs the whole chain, PUT → preview → published-origin gates
   included, with its own batch ledger (`deploy-batch.mjs --ledger …`,

@@ -30,7 +30,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
 - `diff/image-signature.mjs` — library, no CLI
 - `diff/measure-live.mjs` — library (settle + measurement for probes), no CLI
-- `diff/unit-geometry.mjs` — repeated-unit Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>) [--n 1] [--tol 4]`; exit 2 = unit off
+- `diff/unit-geometry.mjs` — repeated-unit Δ — `<origin> <served> (--unit-pair <selO> <selE> | --families <units.json> --slug <s> [--stage <s>])`; exit 2 = unit off
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
 - `dynamics/dynamics-check.mjs` — replay parity (search-query count, top titles) — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
@@ -48,28 +48,29 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
-- `replica/breakpoint-lint.mjs` — breakpoints vs target/source steps — `[--target 600,900,1200] [--root .] [--dirs <list>]` | `--inventory <file|dir…>`; exit 1 = off-target
-- `replica/cap-probe.mjs` — content caps, capture or vs build — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>]`; exit 2 = FAIL
+- `replica/breakpoint-lint.mjs` — breakpoint steps — `[--target 600,900,1200] [--root .] [--dirs <list>]` | `--inventory <file|dir…>`; exit 1 = off-target
+- `replica/cap-probe.mjs` — content caps — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>]`; exit 2 = FAIL
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
-- `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`
-- `replica/crop-compare.mjs` — pixel diff, one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
+- `replica/chrome-parity.mjs` — header/footer style parity — `<live> <build> [--width] [--live-cache <json>]`
+- `replica/crop-compare.mjs` — band pixel diff — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png> [--c <c.png>]]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/diff-report.mjs` — diff % per block, HTML — `<gateDir> <buildURL> [--blocks <css>] [--top 4]`
 - `replica/foundation-freeze.mjs` — frozen foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
 - `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes]`; exit 2 = FAIL
-- `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
-- `replica/gate.sh` — one gate round + overflow (`--full`: + probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--gate-against-baseline]`
-- `replica/html-slice.mjs` — one captured element — `<page.html> header|footer|main|.cls [--text] [--all]`
+- `replica/gate-evidence.mjs` — sidecar gates from pixel tables — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
+- `replica/gate.sh` — gate round + overflow (`--full`: probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--gate-against-baseline]`
+- `replica/html-slice.mjs` — captured-HTML element — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded JSON view — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
 - `replica/measure.mjs` — rects, computed values, scrollWidth, renditions — `<url> --selectors "a,b" [--against <url>] [--width 1440,360] [--all-matches]`
 - `replica/motion-compare.mjs` — live vs build motion, advisory — `<live.json> <build.json> [--tolerance-ms]`
 - `replica/motion-observe.mjs` — observe motion — `<url> <out.json> [--click <sel>]… [--hover <sel>]…`
-- `replica/pixel-compare.mjs` — pixel diff + bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]` (text % auxiliary)
-- `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
+- `replica/pixel-compare.mjs` — pixel diff + bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]`
+- `replica/rounds.mjs` — round cap ledger, exit 6 — `check|record|decide|status <dir> --stage <s>`; `count <root>`
+- `replica/row-profile.mjs` — row luminance — `<a.png> [<b.png>] [--color #rrggbb]`
 - `replica/run-bg.mjs` — background jobs, bounded wait — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
-- `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
-- `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
+- `replica/section.mjs` — Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
+- `replica/sibling-variance.mjs` — sibling template deltas — `<archetype> <sibling>… --probe name=<sel>`
 - `replica/stitch-shot.mjs` — stitched capture — `<url> <out.png> [--width] [--vh] [--settle] [--consent] [--[no-]dismiss] [--freeze-baseline] [--check-baseline]`
 - `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
 - `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`

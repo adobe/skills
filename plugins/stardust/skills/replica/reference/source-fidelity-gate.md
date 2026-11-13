@@ -342,10 +342,13 @@ runs over the same stitched PNGs — no live hit):**
 
 ## Iteration discipline
 
-**Hard cap: 3 iterations per breakpoint.** Matching the validated run's
-discipline — convergence happened within 3 with the recreation procedure
-followed; more loops mean the inputs were wrong (values eyeballed instead of
-lifted, capture unhardened), and the fix is upstream, not a fourth loop.
+**Hard cap: 3 rounds per page, breakpoint and stage** (prototype, published):
+the first round and two fix rounds. A round is a `gate.sh` run that ends in a
+verdict; a PASS right after a PASS (the confirmation) is free. `rounds.mjs`
+keeps the count and `gate.sh` exits 6 on the next round until `rounds.mjs
+decide` records `accept-residual`, `re-prototype` or — a round spent on a
+named instrument defect — `extend`. More loops mean the inputs were wrong
+(values eyeballed instead of lifted, capture unhardened); the fix is upstream.
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
 - **Chrome: parity probe first, pixels second.** Before a chrome band's first
@@ -386,9 +389,8 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   top-down, re-run pixels. Build-side anchor/computed-style passes never
   navigate the live origin and are FREE — the cap governs live-gate cycles,
   not measurement.
-- After iteration 3: log residuals (§ Residual logging) and move on. A
-  documented residual is a pass with an asterisk; an undocumented fourth
-  loop is scope creep.
+- At the cap: log residuals (§ Residual logging) — a documented residual is
+  a pass with an asterisk.
 - **HARD assert, not subject to the cap: `document.documentElement.scrollWidth`
   no more than 4 px over the viewport width at every gate breakpoint,
   evaluated on the published origin** (`GATE_OVERFLOW_TOLERANCE`, default 4:
@@ -666,7 +668,8 @@ rather than erroring.
     capture. The capture record carries the dead faces as `fontsFailed`
     (`null` = the check could not run — never a pass; stitch-shot's
     `deadFontFaces` owns the rule, `recreation-procedure.md` § Fonts policy
-    the fix); gate.sh prints it per side, gate-all fails the row. On the
+    the fix); gate.sh prints it per side; gate-all fails the row for a face
+    dead on the build only, and reports one dead on the source. On the
     warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
     capture defect: fix the instrument, and the poisoned runs don't consume
@@ -845,8 +848,7 @@ eval requires both summaries with a row per page. The pixel-only verdict (1 + 2)
 recorded beside the full one per page and in the totals: every run is calibration data. Sidecars in the gate dir, each entry documented: `masks.json` (printed
 on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
 never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
-stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
-asymmetric, flagged). **Browser tier: the best available, registered.** The probes elect real
+stitch → crawl fullPage screenshot (`crawl-fullpage`, asymmetric, flagged). **Browser tier: the best available, registered.** The probes elect real
 Chrome (`channel: 'chrome'`, window-free) and fall back to bundled Chromium when it is not
 installed; every probe writes the tier it actually ran (`chrome` | `chromium-fallback` |
 `chromium`) into its JSON, `summary.md` carries a `browser` column and the calibration line

@@ -351,7 +351,7 @@ check('no unit-geometry line without a families file', !/^unit-geometry:/m.test(
 mkdirSync(join(root, 'stardust/replica'), { recursive: true });
 writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ cards: { origin: '.a', build: '.b', pages: ['home'] } }));
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'u1', '--full']);
-check('with stardust/replica/units.json the round runs unit-geometry --families --slug and prints its line', r.status === 0 && /^unit-geometry: unit-geometry: none declared/m.test(r.stdout) && /--families stardust\/replica\/units.json --slug home/.test(readFileSync(join(root, 'stardust/replica/gates/home-1440/units-u1.txt'), 'utf8')), `status ${r.status} ${r.stdout}`);
+check('with stardust/replica/units.json the round runs unit-geometry --families --stage --slug and prints its line', r.status === 0 && /^unit-geometry: unit-geometry: none declared/m.test(r.stdout) && /--families stardust\/replica\/units.json --stage prototype --slug home/.test(readFileSync(join(root, 'stardust/replica/gates/home-1440/units-u1.txt'), 'utf8')), `status ${r.status} ${r.stdout}`);
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'u2', '--full'], { STUB_UNITS_RC: '2' });
 check('a required unit off (unit-geometry exit 2) fails the round', r.status === 2 && /^unit-geometry: Units: 1 compared/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
 unlinkSync(join(root, 'stardust/replica/units.json'));
