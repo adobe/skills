@@ -5,24 +5,52 @@ name: AI Review
 # https://github.com/adobe/helix-shared-workflows/blob/main/docs/ai-review.md
 #
 # The check is advisory until it is added to a ruleset. Drafts and Renovate's pull
-# requests are not reviewed. A pull request from a fork gets no secrets here, so it
-# is not reviewed by this workflow.
+# requests are not reviewed.
+#
+# A pull request from a branch of this repository is reviewed on pull_request. One from a
+# fork gets no secrets there, so it is reviewed on pull_request_target, strictly: a
+# maintainer approves the run in the `eval` environment first, nothing from the fork is
+# installed or run, and the reviewers can only read. pull_request_target takes this file
+# from main, never from the pull request.
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
 
 concurrency:
-  group: ai-review-${{ github.event.pull_request.number }}
+  group: ai-review-${{ github.event_name }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
+  # A maintainer reads the diff of a pull request from a fork and approves the run
+  # before the Bedrock key is anywhere near it. A new push needs a new approval.
+  approve-fork:
+    if: >-
+      github.event_name == 'pull_request_target'
+      && !github.event.pull_request.draft
+      && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    environment: eval
+    permissions: {}
+    steps:
+      - run: echo "approved"
+
   ai-review:
-    if: ${{ !github.event.pull_request.draft }}
-    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@d1f2dfc169600ceb3ce79c8ef4d4c97892be256f # v1.1.1
+    needs: approve-fork
+    # pull_request: branches of this repository only. pull_request_target: forks only, once approved.
+    if: >-
+      !cancelled() && !github.event.pull_request.draft
+      && (
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        || (github.event_name == 'pull_request_target' && needs.approve-fork.result == 'success')
+      )
+    # TODO before this is merged: the commit of the release of adobe/helix-shared-workflows#6
+    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@edc095ecb2de100c6b6662fa31d3c7961a62a683 # feat/review-forks
     secrets:
       AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
     permissions:
@@ -31,6 +59,7 @@ jobs:
       pull-requests: write
       statuses: write
     with:
+      review-forks: true
       setup: npm ci
       test: npm run validate && node scripts/check-release-configs.mjs
       environment: ''
@@ -47,5 +76,7 @@ jobs:
         5. Drift: a version that differs between a plugin's manifests and its entry in `.claude-plugin/marketplace.json`; a new plugin without a marketplace entry, a CODEOWNERS entry or a README section; an edit to files synced from another repository.
         6. Evidence: a behaviour change in a plugin that has `evals/` without a scenario for it; a claim that a skill helps without a run that shows it.
         7. Repository rules: one plugin per pull request, a conventional-commit title with the plugin as scope, a SKILL.md grown past 500 lines instead of moving detail to `references/`.
+
+        A pull request from a fork (the prompt says so) is also denied when it changes `.github/`, the marketplace files, a hook, an `.mcp.json`, a script that a skill runs, or more than one plugin: a maintainer has to take those over on a branch of this repository. Say so in the summary.
 
         Don't report style preferences, or anything you haven't confirmed in the tree or by a run. Severity: deny for a confirmed item from 1 or 2, a confirmed wrong fact from 3 that would make an agent do the wrong thing, or a change that breaks installation or the checks. Items 4 to 7 are comments: say what to change and approve, unless the change makes the skill unusable.
