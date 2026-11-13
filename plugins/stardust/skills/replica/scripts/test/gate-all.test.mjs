@@ -190,6 +190,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
   const replica = join(root, 'stardust/scripts/replica');
   mkdirSync(replica, { recursive: true });
   cpSync(SCRIPT, join(replica, 'gate-all.mjs')); chmodSync(join(replica, 'gate-all.mjs'), 0o755);
+  cpSync(join(HERE, '../../../stardust/scripts'), join(root, 'stardust/scripts/stardust'), { recursive: true }); // Setup step 7: the shared contracts
   const stub = (name, body) => writeFileSync(join(replica, name), `#!/usr/bin/env node\n${body}\n`);
   stub('stitch-shot.mjs', `
     import { writeFileSync } from 'node:fs';
