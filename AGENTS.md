@@ -120,9 +120,7 @@ rules for that plugin; read it when you work there.
   skills they touch, and the plugin those are in when it has a root `plugin.json`: `feat` is
   a minor version, a breaking change a major one, the others a patch.
 - Don't change a version: `metadata.version` in a `SKILL.md` and `version` in a `plugin.json`
-  are written by the release, and a pull request that changes one fails. A new skill or
-  plugin starts at 1.0.0. Skills and plugins brought in from another repository keep the
-  versions they have there.
+  are written by the release, and a pull request that changes one fails.
 - Say what you verified and how: the commands you ran, the eval run, the product version.
 - Don't edit a file that is synced from another repository; change it there. Commerce plugins
   come from `adobe/aio-commerce-sdk`.
