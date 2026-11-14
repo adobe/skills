@@ -1,6 +1,6 @@
 ---
 name: content-driven-development
-description: Use this when making any AEM Edge Delivery Services (EDS, Franklin, Helix) code change — new blocks, block modifications, CSS styling, bug fixes, core functionality (scripts.js, styles, delayed.js), or any JavaScript/CSS work that needs validation. Covers the Content Driven Development process — identifying or creating real test content before writing code, designing an author-friendly content model, and validating against that content throughout development. Do not use for documentation-only changes or configuration changes that do not affect authoring.
+description: "Use this when building a new AEM Edge Delivery Services (EDS, Franklin, Helix) block, or when changing what authors put into an existing block (new rows or cells, author-selectable variants, a different table structure). Runs the content-first workflow: find or create test content before code, design an author-friendly content model, and validate against that content. For code-only changes that keep the authored structure (CSS fixes, JavaScript bugs, scripts.js, performance, lint) use building-blocks directly."
 license: Apache-2.0
 metadata:
   version: "2.0.2"
@@ -261,18 +261,14 @@ Expected: `200`
 - Analysis/requirements from Step 2
 - Type of changes: new block, existing block modification, CSS-only, etc.
 
-**The building-blocks skill will:**
-- Guide implementation approach based on change type
-- Handle JavaScript decoration (if needed)
-- Handle CSS styling (mobile-first, responsive)
-- Ensure iterative testing in browser throughout development
+**The building-blocks skill lists** the EDS rules that differ from general front-end practice (reusing the delivered DOM, varying cells, section loading, the page grid, custom properties, late-loading code). Check your work in the browser as you go.
 
 **Success criteria:**
 - ✅ Code implementation complete
 - ✅ Functionality works across all viewports (mobile, tablet, desktop)
 - ✅ No console errors
 
-**Mark todo complete when:** building-blocks skill reports implementation complete and working across viewports
+**Mark todo complete when:** the implementation works across viewports
 
 ---
 
@@ -293,7 +289,7 @@ npm run lint
 npm test
 ```
 
-**Note:** Unit tests are optional and only needed for logic-heavy utilities. The testing-blocks skill (invoked by building-blocks in Step 5) handles browser testing. This step catches any remaining lint issues and runs the project's test suite.
+**Note:** Unit tests are optional and only needed for logic-heavy utilities. The testing-blocks skill (after implementation in Step 5) handles browser testing. This step catches any remaining lint issues and runs the project's test suite.
 
 **Success criteria:**
 - ✅ `npm run lint` passes with no errors
