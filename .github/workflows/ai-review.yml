@@ -75,7 +75,7 @@ jobs:
         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         || (github.event_name == 'pull_request_target' && needs.approve-fork.result == 'success')
       )
-    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@3e0cdcf458fd60b2e0e0b3321dd374e48f0b56d2 # v1.3.0
+    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@4173f461b35d06170b137da6765ee9745589ddcf # v1.3.1
     secrets:
       AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
     permissions:
