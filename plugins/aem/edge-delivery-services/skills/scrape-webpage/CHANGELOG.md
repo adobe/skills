@@ -1,3 +1,10 @@
+## [2.0.4](https://github.com/adobe/skills/compare/scrape-webpage-v2.0.3...scrape-webpage-v2.0.4) (2026-11-14)
+
+
+### Bug Fixes
+
+* **aem-edge-delivery-services:** harden scrape-webpage against bot detection and HTTP/2 errors ([#639](https://github.com/adobe/skills/issues/639)) ([ba7abe4](https://github.com/adobe/skills/commit/ba7abe4b412dad204b0ac958805ceebe6be8c9c1))
+
 ## [2.0.3](https://github.com/adobe/skills/compare/scrape-webpage-v2.0.2...scrape-webpage-v2.0.3) (2026-10-29)
 
 
