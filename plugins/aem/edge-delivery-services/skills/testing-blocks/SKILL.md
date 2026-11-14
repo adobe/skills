@@ -3,7 +3,7 @@ name: testing-blocks
 description: "Use this when you have made AEM Edge Delivery Services code changes to blocks, scripts, or styles and need to validate them before opening a pull request. Covers unit testing for utilities and logic, browser testing with Playwright, linting, and guidance on what to test and how."
 license: Apache-2.0
 metadata:
-  version: "2.0.2"
+  version: "2.0.3"
 ---
 
 # Testing Blocks
@@ -15,7 +15,6 @@ This skill guides you through testing code changes in AEM Edge Delivery Services
 ## Related Skills
 
 - **content-driven-development**: Test content created during CDD serves as the basis for testing
-- **building-blocks**: Invokes this skill during Step 5 for comprehensive testing
 - **block-collection-and-party**: May provide reference test patterns from similar blocks
 
 ## When to Use This Skill
@@ -26,8 +25,6 @@ Use this skill:
 - ✅ After style changes (styles.css, lazy-styles.css)
 - ✅ After configuration changes that affect functionality
 - ✅ Before opening any pull request with code changes
-
-This skill is typically invoked by the **building-blocks** skill during Step 5 (Test Implementation).
 
 ## Testing Workflow
 
@@ -274,8 +271,6 @@ For detailed troubleshooting guide, see [references/troubleshooting.md](referenc
 - **Testing Philosophy:** [references/testing-philosophy.md](references/testing-philosophy.md) - Guide on what and how to test
 
 ## Integration with Building Blocks Skill
-
-The **building-blocks** skill invokes this skill during Step 5 (Test Implementation).
 
 **Inputs received from building-blocks:**
 - Block name being tested
