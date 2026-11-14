@@ -40,10 +40,12 @@ function frontmatterName(text) {
   return name?.replace(/^(['"])(.*)\1$/, '$2');
 }
 
-// The plugin a skill belongs to: the nearest directory above it with a Claude manifest.
+// The plugin a skill belongs to: the nearest directory above it with a manifest. That is
+// the Claude Code manifest, or the root plugin.json it is generated from: a new plugin in
+// a pull request has only the second until CI has built the first.
 function pluginOf(root, file) {
   for (let dir = dirname(file); dir.startsWith(root) && dir !== root; dir = dirname(dir)) {
-    if (existsSync(join(dir, '.claude-plugin', 'plugin.json'))) return dir;
+    if (existsSync(join(dir, '.claude-plugin', 'plugin.json')) || existsSync(join(dir, 'plugin.json'))) return dir;
   }
   return null;
 }
@@ -55,9 +57,13 @@ const posix = (path) => path.split(sep).join('/');
 // skill folder, so a skill is found when its folder, or the folder above it, is scanned.
 function scannedDirs(plugin) {
   const dirs = [join(plugin, 'skills')];
+  const read = (...path) => JSON.parse(readFileSync(join(plugin, ...path), 'utf8'));
   try {
-    const listed = JSON.parse(readFileSync(join(plugin, '.claude-plugin', 'plugin.json'), 'utf8')).skills ?? [];
-    for (const entry of [listed].flat()) {
+    // from the root plugin.json where there is one: the Claude Code manifest is built from it
+    const listed = existsSync(join(plugin, 'plugin.json'))
+      ? read('plugin.json').extensions?.['io.github.ai-ecoverse.x927']?.targets?.claude?.skills
+      : read('.claude-plugin', 'plugin.json').skills;
+    for (const entry of [listed ?? []].flat()) {
       if (typeof entry === 'string') dirs.push(join(plugin, entry));
     }
   } catch {

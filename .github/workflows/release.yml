@@ -29,6 +29,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Pull requests change a plugin's root plugin.json and leave the manifests that x927
+      # generates from it alone (Validate Skills checks that). This is where they are built:
+      # one commit on main with what changed, before anything is released or published, so
+      # that the Tessl publish below sees the new version.
+      - name: Rebuild the plugin manifests from each plugin.json, and push them
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: npm run plugins:rebuild
+
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
         with:
           token: ${{ secrets.TESSL_TOKEN }}

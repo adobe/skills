@@ -46,7 +46,7 @@ CI runs these on every pull request:
 |---|---|
 | Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, and runs the tests of the `web` CLI and the lints of `stardust`. |
 | Tessl Plugin Lint | `tessl plugin lint` for plugins that have a `.tessl-plugin/plugin.json`. |
-| Validate Skills | `npm run plugins:check`: the Claude Code, Tessl and Cursor manifests and the marketplace entries are what `x927` builds from each plugin's root `plugin.json`. Change `plugin.json`, run `npm run plugins:build`, commit the result. |
+| Validate Skills | `npm run plugins:check`: the pull request leaves alone the files that `x927` generates from each plugin's root `plugin.json` and `mcp.json` (the Claude Code, Tessl and Cursor manifests, `.mcp.json`, and the description and version of marketplace entries). Change `plugin.json`; after the merge, the Release workflow builds the generated files on `main` and pushes them. |
 | Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |
 | AI Review | Claude and Codex review the pull request against [AGENTS.md](AGENTS.md) and leave a verdict, a summary and line comments. Drafts are not reviewed. |
 | Conventional Commits | At least one commit of the pull request follows [Conventional Commits](https://www.conventionalcommits.org). |
@@ -96,4 +96,4 @@ There is nothing to publish by hand. People install plugins from `main`, so a me
 
 On every push to `main`, [semantic-release](https://semantic-release.gitbook.io) releases each changed skill that has a `package.json`: it computes the version from the commit messages, writes the skill's `CHANGELOG.md`, and creates a GitHub release with the packaged skill. `feat` is a minor release; `fix`, `perf`, `docs`, `refactor` and `style` are patch releases; a breaking change is a major release.
 
-A plugin with a `.tessl-plugin/plugin.json` is published to the Tessl registry when the `version` in that file changes.
+A plugin with a `.tessl-plugin/plugin.json` is published to the Tessl registry when the `version` in that file changes. For a plugin with a root `plugin.json`, that is when you change the `version` there: the Tessl manifest is built from it after the merge.

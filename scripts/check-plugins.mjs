@@ -26,13 +26,20 @@ function walk(dir, found = []) {
 const files = (root) => walk(join(root, 'plugins')).map((file) => posix(relative(root, file))).sort();
 
 // Plugins without a CODEOWNERS line. A line covers a plugin when it starts with the
-// plugin's path, followed by a slash or by white space.
+// plugin's path, followed by a slash or by white space. A plugin is a directory with a
+// Claude Code manifest, or with the root plugin.json that manifest is generated from: a
+// new plugin in a pull request has only the second until CI has built the first.
 export function uncoveredPlugins(root, codeowners) {
-  const suffix = '/.claude-plugin/plugin.json';
   const lines = codeowners.split('\n');
-  return files(root)
-    .filter((file) => file.endsWith(suffix))
-    .map((file) => `/${file.slice(0, -suffix.length)}`)
+  const plugins = new Set();
+  for (const file of files(root)) {
+    const generated = file.match(/^(.+)\/\.claude-plugin\/plugin\.json$/);
+    const source = file.match(/^(.+)\/plugin\.json$/);
+    if (generated) plugins.add(`/${generated[1]}`);
+    else if (source && !source[1].split('/').pop().startsWith('.')) plugins.add(`/${source[1]}`);
+  }
+  return [...plugins]
+    .sort()
     .filter((path) => !lines.some((line) => line.startsWith(`${path}/`) || line.startsWith(`${path} `) || line.startsWith(`${path}\t`)));
 }
 

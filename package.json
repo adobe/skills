@@ -9,7 +9,8 @@
     "test": "node --test scripts/*.test.mjs",
     "check:skills": "node scripts/check-skills.mjs",
     "plugins:build": "x927 build --all",
-    "plugins:check": "x927 diff --all",
+    "plugins:check": "node scripts/check-generated.mjs",
+    "plugins:rebuild": "node scripts/rebuild-plugins.mjs",
     "lint:stardust": "node plugins/stardust/evals/lint/harness-neutral.mjs && node plugins/stardust/evals/lint/script-paths.mjs && node plugins/stardust/evals/lint/scripts-index.mjs && node plugins/stardust/evals/lint/script-help.mjs && node plugins/stardust/evals/lint/site-names.mjs && node plugins/stardust/evals/lint/prose-delta.mjs && node plugins/stardust/evals/lint/browser-front-door.mjs && node scripts/plugin-version.mjs plugins/stardust"
   },
   "devDependencies": {

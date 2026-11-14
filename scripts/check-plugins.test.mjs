@@ -17,6 +17,17 @@ test('a plugin is covered by a line that starts with its path and a slash or whi
   assert.deepEqual(uncoveredPlugins(root, '*  @admin\n# /plugins/a/ @x\n/plugins/product/bb/ @z\n'), ['/plugins/a', '/plugins/product/b']);
 });
 
+test('a plugin that has only its root plugin.json yet needs a CODEOWNERS line too, and is counted once when it has both', (t) => {
+  const root = tree(t, {
+    'plugins/new/plugin.json': '{}',
+    'plugins/both/plugin.json': '{}',
+    'plugins/both/.claude-plugin/plugin.json': '{}',
+    'plugins/both/.tessl-plugin/plugin.json': '{}',
+  });
+  assert.deepEqual(uncoveredPlugins(root, '/plugins/both/ @x\n'), ['/plugins/new']);
+  assert.deepEqual(uncoveredPlugins(root, ''), ['/plugins/both', '/plugins/new']);
+});
+
 test('a license field counts only in the frontmatter', (t) => {
   assert.equal(hasLicense('---\nname: x\nlicense: Apache-2.0\n---\n'), true);
   assert.equal(hasLicense('---\nname: x\n---\nlicense: Apache-2.0\n'), false);

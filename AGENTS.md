@@ -74,11 +74,14 @@ Skills run with the user's credentials, on the user's machine. Treat a skill as 
 - A plugin that has `evals/` gets a scenario for behaviour you add or change. A claim that a
   skill helps is a claim an eval can check.
 - Edit `plugin.json` and `mcp.json`, not the manifests generated from them, and not the
-  description or version of a marketplace entry. Then run `npm run plugins:build` and commit
-  what it writes; CI fails when a generated file differs. What one client needs beyond the
-  portable fields goes under `extensions["io.github.ai-ecoverse.x927"]` in `plugin.json`:
-  `targets.<client>` for that client's manifest, `marketplace` for the catalog entry
-  ([x927](https://github.com/ai-ecoverse/x927)).
+  description or version of a marketplace entry. Leave the generated files out of your pull
+  request: after the merge, CI builds them on `main` and pushes them. A pull request that
+  changes a generated file to anything but what the build writes fails. What one client
+  needs beyond the portable fields goes under `extensions["io.github.ai-ecoverse.x927"]` in
+  `plugin.json`: `targets.<client>` for that client's manifest, `marketplace` for the
+  catalog entry ([x927](https://github.com/ai-ecoverse/x927)).
+- A marketplace file is hand-written apart from those two fields. A new plugin gets its
+  entry there by hand, with `name`, `source` and `category`; the build fills in the rest.
 - Seven plugins have no root `plugin.json` yet and keep their hand-written manifests. The
   Commerce plugins and `adobe-for-creativity` are brought in from elsewhere. `app-builder`,
   `adobe-for-developers` and `aem-project-management` would lose something in GitHub Copilot
@@ -99,6 +102,7 @@ npm run validate                       # every SKILL.md against the agentskills.
 node scripts/check-release-configs.mjs # release configs point at files that exist
 npm test                               # when you touch scripts/: the workflows run these scripts
 npm run plugins:check                  # when you touch a plugin.json, mcp.json or a manifest
+npm run plugins:build                  # to see what CI will build from them; no need to commit it
 npm run lint:stardust                  # when you touch plugins/stardust
 (cd plugins/web/cli && npm ci && npm run lint && npm test)  # when you touch plugins/web/cli
 ```

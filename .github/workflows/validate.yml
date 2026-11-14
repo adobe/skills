@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0 # the check of the generated files needs the merge base
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -29,8 +31,18 @@ jobs:
 
       # Each plugin's root plugin.json (https://agent-plugins.org) is the source. x927 writes
       # the Claude Code, Tessl and Cursor manifests and the marketplace entries from it.
-      - name: Generated plugin manifests and marketplace entries match each plugin.json
-        run: npm run plugins:check
+      # Nobody edits those: after the merge, the Release workflow rebuilds them on main and
+      # pushes them. Here a pull request fails when it changes one of them to anything but
+      # what the build writes.
+      - name: The pull request leaves the generated plugin manifests alone
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npm run plugins:check -- "origin/$BASE_REF...HEAD"
+
+      # The steps below look at the manifests as they will be on main.
+      - name: Build the plugin manifests in this checkout
+        run: npm run plugins:build
 
       - name: Claude Code accepts the marketplace and every plugin manifest
         run: |
@@ -138,6 +150,10 @@ jobs:
         run: |
           git fetch --no-tags --depth=1 origin main
           node plugins/stardust/evals/lint/prose-delta.mjs --ref origin/main
+
+      # the manifests as they will be on main: a pull request may change only plugin.json
+      - name: Build the plugin manifests in this checkout
+        run: npm ci --ignore-scripts && npm run plugins:build
 
       - name: Stardust version agrees across plugin.json, marketplace.json and the Tessl manifest
         run: node scripts/plugin-version.mjs plugins/stardust && node --test 'scripts/test/*.test.mjs'
