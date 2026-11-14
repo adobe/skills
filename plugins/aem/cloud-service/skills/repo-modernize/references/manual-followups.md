@@ -110,9 +110,6 @@ list (§9 of `transform-rules.md`).
 independently of whatever the legacy project's bundles assumed. A merge can silently move a bundle onto a
 materially different version of a shared dependency than the one it was last built and tested against.
 
-**Action:** after POM refactoring, diff every dependency version that changed as a result of the merge
-(not just ones a build error surfaces) and have a human confirm the winning version is actually intended.
-
 ## 6. Java breakage from the `uber-jar` → `aem-sdk-api` swap — hand off to `code-assessment`
 
 Dropping `com.adobe.aem:uber-jar` and relying on the archetype's pre-seeded `aem-sdk-api` (§6 of
@@ -155,11 +152,7 @@ survives the mechanical restructuring unchanged and lands, still uncovered, in t
 `oak-indexes/src/main/content/META-INF/vault/filter.xml` declares filter roots for only the first two.
 `wkndTerminationDate` has no filter root anywhere in the legacy project.
 
-**Why FileVault surfaces this and the legacy plugin never did.** The legacy `content-package-maven-plugin`
-never validated that every piece of packaged content is covered by a filter root. The archetype's
-`org.apache.jackrabbit:filevault-package-maven-plugin` runs FileVault's `jackrabbit-filter` validator by
-default, which DOES enforce this — reproduced against the real wknd fixture once the modernized `ui.apps`
-package actually builds:
+**The build error**, reproduced against the real wknd fixture once the modernized `ui.apps` package builds:
 ```
 [ERROR] ValidationViolation: Node '/oak:index/wkndTerminationDate' is not contained in any of the filter
 rules @ src/main/content/jcr_root/_oak_index/.content.xml, line 235, column 25, validator:
