@@ -25,13 +25,23 @@
  *                       residuals; the assert is the one no iteration cap waives). The line ends
  *                       with the round's REGIME, read from the
  *                       build URL argument: localhost / 127.0.0.1 / file: → `[prototype regime]`,
- *                       anything else → `[published regime]`. The prototype-regime bar screens
- *                       siblings before delivery; it never replaces the published-origin gate
+ *                       anything else → `[published regime]`. The prototype-regime bar is the
+ *                       archetype's; siblings are gated in the published regime only (#126); it never replaces the published-origin gate
  *                       (gate.sh header: "the published-origin gate is the same command with the
  *                       preview URL") — a reader who needs the published verdict looks for that word.
+ *                       A --full round's element lines outrank its pixel PASS the way the overflow
+ *                       assert does (#125): `clip-probe: Clipped: <n>` with n > 0 or `content-
+ *                       presence: Content: MISSING <n> … HIDDEN <n>` with a count > 0 → FAIL. THE
+ *                       PIXEL TABLE IS THE SOURCE OF RECORD (#125 rule: every crafted prototype and
+ *                       every deployed page is a row in `<tables>/prototypes-<w>/summary.json` or
+ *                       `<tables>/all-<w>/summary.json`, written by gate-all.mjs): when a table
+ *                       exists for the width, the page's row decides the gate (published row first)
+ *                       and a page WITHOUT a row is OPEN: no table row — whatever a gate.sh log
+ *                       says. Without any table the log rule above stands and one note names the
+ *                       missing table.
  *   content-count       latest content-diff.mjs job for the page (`Findings: none …` or
- *                       `Findings: N (0 structural 🔴)`); when no such job exists, the newest
- *                       gate.sh --full round's `content-diff:` line; structural 🔴 > 0 → OPEN:
+ *                       `Findings: N (0 structural 🔴)` and nothing-lost 🟡 0); when no such job exists, the
+ *                       newest gate.sh --full round's `content-diff:` line; structural 🔴 or nothing-lost > 0 → OPEN:
  *   media-reconcile     latest media-reconcile.mjs job whose counts line has no `omit` and no
  *                       `unresolved` (the instrument's own exit-1 rule); either → OPEN: — but only once
  *                       the page's DELIVERED content file exists (`<--content>/<da-path>.html`, or
@@ -69,8 +79,11 @@
  *   node stardust/scripts/replica/gate-evidence.mjs [--migrated stardust/migrated]
  *        [--bg stardust/.work/replica/bg] [--progress stardust/replica/progress.json]
  *        [--lint stardust/scripts/rollout/delivery-lint.mjs] [--content content] [--widths 1440,360]
- *        [--height-tolerance 8] [--slug <s>]… [--check] [--dry-run] [--json]
+ *        [--height-tolerance 8] [--tables stardust/replica/gates] [--slug <s>]… [--check] [--dry-run] [--json]
  *
+ *   --tables <dir>  where gate-all.mjs writes the pixel tables (`prototypes-<w>/`, `all-<w>/`); when
+ *                one exists for a width its rows decide pixel-gate-<w> and a page without a row is
+ *                OPEN
  *   --slug <s>   only these pages (repeatable): rows and sidecar writes; the progress
  *                ledger's `migrate` totals are rewritten only by an unfiltered run
  *   --content <dir>  the delivered content tree (default `content`, the deploy driver's) — the
@@ -91,8 +104,9 @@
  * Prints one row per page — `<slug>  <tier>  1440=<pct>%/Δ<px>[/ovf+<px>]  360=…  cd=<…>  lint=<…>
  * media=<…>  gates=<n>` (`/ovf+<px>` only when the round's overflow assert fired) — then
  * `gate-evidence: <n> pages, <n> sidecars updated`.
- * Exit 0; 1 usage error (a malformed sidecar or progress.json included); 2 --check found a
- * sibling short of the acceptance set or a stale gate.
+ * Exit 0; 1 usage error (a malformed sidecar or progress.json included, and a progress.json whose
+ * top level is one archetype's record naming no archetype — below); 2 --check found a sibling short
+ * of the acceptance set or a stale gate.
  *
  * Writes: each page's sidecar (`_meta.json` / `<name>._meta.json`): `gatesPassed[]` =
  * existing ∪ derived (existing first) and `gateEvidence{}` merged (derived lines overwrite
@@ -103,8 +117,11 @@
  * gatesPassed, migrated}}` (`overflowX`: px over the viewport, 0 when the assert ran clean,
  * null when the round predates it), other keys
  * preserved. progress.json is read and parsed BEFORE the first sidecar is touched (a malformed
- * ledger aborts the run with nothing written); every sidecar and the ledger are written through
- * a temp file + rename. Nothing with --dry-run or --help.
+ * ledger aborts the run with nothing written). A ledger with no `types` map whose top level is one
+ * archetype's record (`breakpoints`, or `pageType` + `archetype` — the old documented example) is
+ * wrapped under `types.<archetype>` losslessly and noted on stderr, and only a record naming no
+ * `archetype` is refused (source-fidelity-gate.md § Residual logging format); every sidecar and the
+ * ledger are written through a temp file + rename. Nothing with --dry-run or --help.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-continue */
@@ -114,7 +131,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listJobs, logPath } from './run-bg.mjs';
 
-export const DEFAULTS = { migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', content: 'content', widths: [1440, 360], heightTolerance: 8 };
+export const DEFAULTS = { tables: 'stardust/replica/gates', migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', content: 'content', widths: [1440, 360], heightTolerance: 8 };
 // The sibling acceptance set for one --widths list: a pixel gate per width, in the order given. Every reader of the set
 // (--check, the row's `missing`, progress.json migrate.missing) goes through this; archetypes and thin pages are not held to it.
 export const acceptanceFor = (widths) => ['variance-probe', ...widths.map((w) => `pixel-gate-${w}`), 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count'];
@@ -143,6 +160,7 @@ export function parseArgs(argv) {
     else if (a === '--progress') o.progress = val(a, argv[++i]);
     else if (a === '--lint') { o.lint = val(a, argv[++i]); o.lintGiven = true; }
     else if (a === '--content') o.content = val(a, argv[++i]);
+    else if (a === '--tables') o.tables = val(a, argv[++i]);
     else if (a === '--widths') { o.widths = val(a, argv[++i]).split(',').map((w) => Number(w.trim())); if (!o.widths.length || o.widths.some((w) => !Number.isInteger(w) || w <= 0)) throw new UsageError(`gate-evidence: --widths needs a comma list of pixel widths (got "${argv[i]}")`); }
     else if (a === '--height-tolerance') { o.heightTolerance = Number(val(a, argv[++i])); if (!Number.isFinite(o.heightTolerance) || o.heightTolerance < 0) throw new UsageError('gate-evidence: --height-tolerance needs a number of pixels'); }
     else if (a === '--slug') o.slugs.push(val(a, argv[++i]));
@@ -265,11 +283,15 @@ export function parseVerdict(text) {
   const h = [...text.matchAll(/→ compare \d+x\d+, height delta (-?\d+)px/g)].pop();
   return { px: Number(v[1]), total: Number(v[2]), pct: Number(v[3]), threshold: Number(v[4]), verdict: v[5], heightDelta: h ? Number(h[1]) : null };
 }
-// content-diff: `Findings: none — content + roles match` | `Findings: N (S structural 🔴)`; gate.sh --full echoes the same after `content-diff: `.
+// content-diff: `Findings: none — content + roles match` | `Findings: N (S structural 🔴)`, then `Tiers: looks-same 🔴 S ·
+// nothing-lost 🟡 L · …`; gate.sh --full echoes both on one `content-diff: ` line. lost = the nothing-lost count of the
+// SAME round as the last Findings line — on that line or the Tiers line right after it (0 when an older probe printed
+// no tiers), never a count from another round of a multi-round log.
 export function parseFindings(text) {
-  const m = [...text.matchAll(/^(?:Findings|content-diff): (none[^\n]*|(\d+) \((\d+) structural[^\n]*)$/gm)].pop();
+  const m = [...text.matchAll(/^(?:Findings|content-diff): (none[^\n]*|(\d+) \((\d+) structural[^\n]*)$(?:\r?\nTiers: [^\n]*)?/gm)].pop();
   if (!m) return null;
-  return { total: m[2] === undefined ? 0 : Number(m[2]), structural: m[3] === undefined ? 0 : Number(m[3]), text: m[1].trim() };
+  const tiers = /nothing-lost 🟡 (\d+)/.exec(m[0]);
+  return { total: m[2] === undefined ? 0 : Number(m[2]), structural: m[3] === undefined ? 0 : Number(m[3]), lost: tiers ? Number(tiers[1]) : 0, text: m[1].trim() };
 }
 // media-reconcile: last line `<n> keep · <n> optimize · <n> omit …` — one `<n> <decision>` per decision that occurred.
 export function parseCounts(text) {
@@ -277,6 +299,21 @@ export function parseCounts(text) {
   if (!m) return null;
   const counts = {}; for (const part of m[1].split(' · ')) { const [n, k] = part.split(' '); counts[k] = Number(n); }
   return { counts, line: m[1] };
+}
+// gate.sh --full element lines (#125): `clip-probe: Clipped: <n> …`, `content-presence: Content: MISSING <n> … / HIDDEN <n> …`.
+export function parseElements(text) {
+  const clip = text.match(/^clip-probe: Clipped: (\d+)/m); const cp = text.match(/^content-presence: Content: MISSING (\d+).*?HIDDEN (\d+)/m);
+  return { clipped: clip ? Number(clip[1]) : null, missing: cp ? Number(cp[1]) : null, hidden: cp ? Number(cp[2]) : null };
+}
+// The pixel tables gate-all.mjs writes: { published: { <slug>: row }, prototype: { <slug>: row }, any: boolean } per width.
+export function loadTables(dir, widths) {
+  const out = {};
+  for (const w of widths) {
+    const read = (name) => { const f = join(dir, `${name}-${w}`, 'summary.json'); if (!existsSync(f)) return null; try { return Object.fromEntries((JSON.parse(readFileSync(f, 'utf8')).rows || []).map((r) => [r.slug, { ...r, file: f }])); } catch { return null; } };
+    const published = read('all'); const prototype = read('prototypes');
+    out[w] = { published, prototype, any: !!(published || prototype) };
+  }
+  return out;
 }
 // gate.sh's overflow assert: `gate.sh: OVERFLOW at <w> — build scrollWidth <n> > viewport <n> (+<n>px) → FAIL …` fired;
 // `gate.sh: overflow assert at <w> — … → ok` ran clean. The LAST of either decides; null when the round predates the assert.
@@ -348,6 +385,17 @@ export function derive(page, jobs, o, ctx) {
   const ofKind = (...kinds) => mine.filter((j) => kinds.includes(j.kind));
 
   for (const w of o.widths) {
+    const t = ctx.tables && ctx.tables[w];
+    if (t && t.any) {
+      // the table rule: the row decides; no row = ungated, whatever a log says
+      const row = (t.published && t.published[page.slug]) || (t.prototype && t.prototype[page.slug]) || null;
+      if (!row) { open(`pixel-gate-${w}`, `no row in the pixel table (${[t.published && 'all', t.prototype && 'prototypes'].filter(Boolean).map((n) => `${n}-${w}`).join(', ')}) — run gate-all.mjs${t.published ? '' : ' --stage prototype'} so the page is measured`); continue; }
+      const regime = t.published && t.published[page.slug] ? 'published' : 'prototype';
+      facts.pixel[w] = { pct: row.pct, px: null, heightDelta: row.heightDelta, overflowX: null, clipped: row.clipped ?? null, content: row.content || null, verdict: row.pass ? 'PASS' : 'FAIL', label: 'table', regime };
+      const line = `${fmtPct(row.pct)}, height delta ${row.heightDelta ?? '?'}px, clipped ${row.clipped ?? 'n/a'}, content ${row.contentNA ? 'n/a' : row.content ? `MISSING ${row.content.missing} / HIDDEN ${row.content.hidden}` : 'n/a'} (${relative(process.cwd(), row.file).replace(/\.json$/, '.md')}) [${regime} regime]`;
+      if (row.pass) pass(`pixel-gate-${w}`, line); else open(`pixel-gate-${w}`, `${(row.reasons || []).join('; ') || 'FAIL'} — ${line}`, 'FAIL');
+      continue;
+    }
     const best = pick(ofKind('pixel').filter((j) => Number(j.instArgs[3]) === w), parseVerdict, `pixel-gate-${w}`, [0, 2]);
     if (!best) continue;
     const { j, v } = best;
@@ -357,8 +405,12 @@ export function derive(page, jobs, o, ctx) {
     facts.pixel[w] = { pct: v.pct, px: v.px, heightDelta: v.heightDelta, overflowX: ov ? ov.px : null, verdict: v.verdict, label, regime };
     const line = `${fmtPct(v.pct)} (${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)} [${regime} regime]`;
     const withinHeight = v.heightDelta !== null && Math.abs(v.heightDelta) <= o.heightTolerance;
-    // The overflow assert outranks the pixel line: a build wider than its viewport never earns the gate.
+    // The overflow assert and the --full element lines outrank the pixel line: a build wider than its viewport, a
+    // clipped text / control or a MISSING / HIDDEN link never earns the gate (#125).
+    const el = parseElements(j.log);
     if (ov && ov.px > 0) open(`pixel-gate-${w}`, `horizontal overflow +${ov.px}px at ${w} (scrollWidth ${ov.scrollWidth} > viewport ${ov.viewport}) — ${line}`, 'FAIL');
+    else if (el.clipped > 0) open(`pixel-gate-${w}`, `clipped ${el.clipped} on the build (clip-probe) — ${line}`, 'FAIL');
+    else if (el.missing + el.hidden > 0) open(`pixel-gate-${w}`, `content MISSING ${el.missing} / HIDDEN ${el.hidden} (content-presence) — ${line}`, 'FAIL');
     else if (v.verdict === 'PASS' && withinHeight) pass(`pixel-gate-${w}`, line);
     else open(`pixel-gate-${w}`, v.verdict === 'PASS' ? `|height delta| > ${o.heightTolerance}px tolerance — ${line}` : line, 'FAIL');
   }
@@ -369,7 +421,7 @@ export function derive(page, jobs, o, ctx) {
   if (cd) {
     facts.contentDiff = cd.v.text;
     const line = `content-diff: ${cd.v.text} ${cite(cd.j)}`;
-    if (cd.v.structural === 0) pass('content-count', line); else open('content-count', line);
+    if (cd.v.structural === 0 && cd.v.lost === 0) pass('content-count', line); else open('content-count', line);
   }
 
   const md = pick(ofKind('media-reconcile'), parseCounts, 'media-reconcile');
@@ -473,11 +525,26 @@ export function collect(o) {
   const lint = resolveLint(o);
   if (!lint) notes.push(`delivery-lint: ${o.lint} not found — pass --lint (using run-bg delivery-lint jobs, if any)`);
   const contentDir = resolve(o.content);
-  const ctx = { migrated, pages, slugs: pages.map((p) => p.slug), lint, contentFile: (page) => { const c = contentFileFor(contentDir, page.outputPath); return { ...c, file: relative(process.cwd(), c.file).split(sep).join('/') }; } };
+  const tables = loadTables(o.tables, o.widths);
+  if (o.check) for (const w of o.widths) if (!tables[w].any) notes.push(`no pixel table for ${w} under ${o.tables}/ (prototypes-${w} or all-${w}/summary.json) — the #125 rule wants every prototype and deployed page as a row: run gate-all.mjs [--stage prototype]; the gate.sh logs stand in until then`);
+  const ctx = { tables, migrated, pages, slugs: pages.map((p) => p.slug), lint, contentFile: (page) => { const c = contentFileFor(contentDir, page.outputPath); return { ...c, file: relative(process.cwd(), c.file).split(sep).join('/') }; } };
   const acceptance = acceptanceFor(o.widths);
   // The ledger is parsed before any sidecar is touched: a malformed progress.json aborts with nothing written.
   const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };
   if (!prior.data || typeof prior.data !== 'object' || Array.isArray(prior.data)) throw new UsageError(`gate-evidence: ${o.progress} is not a JSON object`);
+  // The ledger is the map of every archetype: the agent's records under `types.<slug>`, this script's `siblings` /
+  // `migrate`, `_provenance`. A file whose top level is one archetype's record (the old documented example) is wrapped
+  // under its own slug, losslessly; only a record without a slug is refused.
+  if (!('types' in prior.data)) {
+    const single = ['breakpoints', 'pageType', 'archetype'].filter((k) => k in prior.data);
+    const looksLikeRecord = single.includes('breakpoints') || (single.includes('pageType') && single.includes('archetype'));
+    if (looksLikeRecord) {
+      const slug = typeof prior.data.archetype === 'string' ? prior.data.archetype.trim() : '';
+      if (!slug) throw new UsageError(`gate-evidence: ${o.progress} is one archetype's residual record at the top level (${single.join(', ')}) and names no archetype — move it under types.<archetype> (source-fidelity-gate.md § Residual logging format)`);
+      prior.data = { types: { [slug]: prior.data } };
+      notes.push(`${o.progress}: one archetype's record at the top level was wrapped under types.${slug} (source-fidelity-gate.md § Residual logging format)`);
+    }
+  }
   const rows = []; let updated = 0;
   for (const page of selected) {
     const d = derive(page, jobs, o, ctx);

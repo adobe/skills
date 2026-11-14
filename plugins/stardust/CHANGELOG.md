@@ -4,6 +4,1427 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.38.3 — spec: classic AEM components inside responsive grids
+
+Field learning from a medical-device manufacturer's run: the site mixes classic `c-*` components with responsive-grid
+members inside experience fragments. The `aem-classic` profile looked through the grids, so side-by-side members never
+became rows (the columns and cards a row maps to were missed) and components without the `c-` prefix went unnamed; the
+run had to extend the profile in its project copy.
+
+- **`aem-classic` reads responsive grids:** a grid member (`aem-GridColumn`) is the root, named by the classic
+  component it wraps, so one component keeps one name inside and outside grids. Member widths group members into rows,
+  as in `aem-core`, and the wrapped component is not counted as a second root.
+- **`parser.extraRoots`** (aem-classic) lists component classes without the `c-` prefix. The run needed four.
+- Pages without grids parse as before. On pages with grids, path ids change and grid containers appear as `container`:
+  a run already past S7 re-runs parse and capture, and adds `container` to the mapping's `layout` list.
+- Re-parsing that run's 2,883 cached pages with this code and its four `extraRoots` gives output identical to the run's
+  own parse. `spec-parse.test.mjs` covers grid rows, member naming and `extraRoots`.
+
+## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
+
+Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo
+per #103. DA's Layout view (new authoring) renders the page from `main--<site>--<org>.preview.da.live`, which
+serves block code but 404s a code-bus mp4, so the hero showed blank there; authors also could not swap a video
+without a code change. A scratch-site test settled the DA route: a `content.da.live/....mp4` link still reaches the page verbatim and
+answers 401 to visitors (#103 holds for that form), but previewing and publishing the uploaded mp4 itself makes its
+root-relative content path redirect to the media bus on both `aem.page` and `aem.live` (200 `video/mp4`, byte
+ranges served).
+
+- **Rule** (`deploy/SKILL.md` #161, replaces the #103 paragraph): an mp4 up to 36 MB (the content-source limit) goes
+  through `da-media-upload.mjs` and is authored as `/media/<scope>/<file>.mp4`, never its `content.da.live` URL, and
+  never also committed at the same path. Bigger mp4s, other formats, audio and PDF stay on the code origin or an
+  external host. Pointer from replica's handoff contract.
+- **`deploy/scripts/da-media-upload.mjs`:** accepts `.mp4` (`video/mp4`); after the PUT it POSTs `preview` and,
+  unless `--no-publish`, `live` for the file on `--branch` (default `main`; `--hlx-url` for a test double), prints
+  the root-relative path to author, and records `authorUrl` + `delivered` in the ledger. A failed preview/publish is
+  FAIL (uploaded, not delivered), and a re-run redelivers it; an mp4 over 36 MB is `SKIP video-too-large` with no
+  request. Manifest source fetches accept `video/*` for an mp4 entry. A video is stored under its web path
+  (`webPath`: lowercase, runs of other characters → `-`), the only name its preview resolves (recorded:
+  `…_video01.mp4` uploaded fine and 404'd on preview); the OK line names the rename. Verified on a copy of the
+  field site: after the move the hero plays in the Layout view and on `aem.page`.
+- Tests: `da-media-upload.test.mjs` (classify limits; PUT + preview + live order on a branch; failed preview; ledger
+  skip of a delivered video; `--no-publish`; over-limit skip).
+- Review follow-ups: one skip path after the bytes are known, so an over-limit mp4 fetched from a manifest `source`
+  is `SKIP video-too-large` too (a declared `content-length` skips it before the body is buffered); a 401 that
+  persists on the video's preview/live POST halts the batch like the PUT 401 (exit 3, never `failed`); folder
+  segments are kept verbatim (checked on a scratch site: only the file name takes its web form). Tests cover the
+  three; the summary counts over-limit video apart from non-images.
+- Second review follow-up: two files that take one web name (`Clip_A.mp4`, `clip-a.mp4`) no longer overwrite each
+  other on DA. The first in the batch keeps the path; a later one is `FAIL name-collision` before any request, with
+  no ledger write (the row is the first file's), and a dry run shows it. Test included.
+
+## 0.38.1 — rollout publishes the site's own DA block library (#160)
+
+Field learning (a migrated site handed to its author): the pages and block code shipped, but the DA library showed an
+unrelated block set inherited from elsewhere, and none of the site's blocks or templates. Nothing in deploy or
+rollout wrote a library, so every migrated site arrived with an inherited or empty one.
+
+- **`rollout/scripts/da-library.mjs`:** from the delivered DA bodies (rollout coverage when present, else the content
+  tree) writes `library/blocks/<block>` (the first authored instance of every class variant, each followed by a
+  `library-metadata` description), `library/templates/<template>` (the template representative, its `metadata` as
+  `template-metadata` with page-specific values emptied), the `blocks` / `templates` sheets, and merges the `library`
+  tab of the site config: only the Blocks / Templates rows are replaced, other rows and tabs are kept. Previews the
+  documents, never publishes them. `--dry-run` writes the files only.
+- Rule home: `rollout/SKILL.md` § Phase D (DA library + D-site checklist row); pointer from deploy § When you finish.
+- Tests: `da-library.test.mjs` (block and variant lifting, the documents in the shape the DA library parses, the
+  config merge, the CLI dry run from coverage).
+- Review follow-up: a kept template metadata value with a `$` pattern is copied verbatim (function replacement); the
+  CLI runs through a symlinked path (realpath check, as in `da-media-upload.mjs`); a run without templates leaves the
+  Templates row and `templates.json` alone; zero authored blocks exits 1 with no DA write; a 401 is retried before
+  exit 3 and a network error is a FAIL (exit 1); a template whose representative is not delivered and a class with no
+  `blocks/<name>/` folder are named; content-tree chrome is the root nav / footer plus the documents pages name in
+  their nav / footer metadata; template names use the label or unique id, never the shared type; author, dates and
+  image-alt are emptied in templates; only template documents are previewed.
+
+## 0.38.0 — every script takes its browser from one place (#159)
+
+Scripts that imported Playwright, launched a browser, opened contexts and navigated on their own each picked their own
+launch mode, wait strategy and failure message, and a fix to one never reached the others.
+
+- **`skills/stardust/scripts/browser.mjs`** is the one entry to the browser: `loadPlaywright`, `openBrowser`
+  (`chrome`, `headed` or `plain`), `newContext`, `newPage` and `goto`, plus everything `live-session.mjs` exports.
+  `live-session.mjs` moved from `skills/diff/scripts/` to sit beside it. Every script that touches a browser calls
+  these by bare name. One error names the install line when Playwright is not importable, and a missing
+  `browser.mjs` stops a script with the copy instruction. Where exit 1 means a failed check (`render-harness`,
+  `ai-readability`, `qa-gate`, `dynamics-check`), both are exit 2.
+- **A project copy needs the master scripts.** Setup step 7 copies `skills/stardust/scripts/` to
+  `stardust/scripts/stardust/` before any other skill's script runs. The skills that listed the diff scripts only for
+  `live-session.mjs` (reskin, deploy) now name the master copy instead; replica still copies the diff scripts for
+  the gates that import them.
+- **A script the agent writes uses it too.** Field check (a recorded hands-off replica run on this version): four
+  scripts the agent wrote opened the source with `chromium.launch()`. The rule, with a recipe that works for a live
+  page and a local one, moved to Setup step 7, which every run reads; replica and dynamics point to it. It names
+  `newLiveContext` and `gotoLive`: in a second run two scripts took the browser from `browser.mjs` and then called
+  `page.goto` themselves, which sends `HeadlessChrome` in the user agent.
+  `ledger.mjs … end` names, in one warning, the scripts written in that phase that import Playwright themselves.
+- **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
+  crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.
+- **A script run from the plugin tree finds Playwright in the project at the working directory first**, then by
+  `import('playwright')`. The first copy that resolves is the one that loads. A copy that fails to load stops the
+  script with its cause (a missing dependency included); it is never replaced by the other copy.
+- **No script changed its browser.** Each keeps its launch mode, launch options, context options and navigation options.
+- **`evals/lint/browser-front-door.mjs`** fails on a script under `skills/` that imports Playwright (`from`,
+  `import`, `import()`, `require()`, `resolve()`, `playwright` or `playwright-core`), launches or connects a
+  browser, opens a context or `browser.newPage`, or calls `.goto(` itself. It runs in `npm run lint:stardust` and in
+  CI. A skill argument that is a file, not a skill folder, exits 2 like an unknown name.
+- **`playwright-cli` is no longer listed** as a requirement (`compatibility:` lines, README Prerequisites): no
+  script uses it.
+
+## 0.37.2 — a named page count starts from the entered page and its links (#158)
+
+User feedback: asked for N pages of a site, the crawl filled the slots in sitemap order, so the pages the entered
+URL links to were often cut.
+
+- **`extract/scripts/crawl.mjs --link-first`:** orders the pages entry first, then the entry page's same-origin
+  links in document order, then the other discovered pages, up to `--max`. Only a user-named N sets it; `--max`
+  alone (default or roster caps), `--max 0` and `--pages` are unchanged. In link-first mode both lists keep
+  same-origin non-asset pages only (`ASSET_EXT`). An unparsable href is skipped with a WARN instead of aborting
+  discovery, in both modes. Rule home: `ia-extraction.md` § Priority for the cap; pointers from extract Phase 1,
+  `--prep` (a user-named N keeps `--cap N` instead of `--all`) and the hands-off volume caps (a user-named N
+  replaces 100/20).
+- Tests: `crawl.test.mjs` `parseArgs` (`--max` alone never turns link-first on), `selectPages` (order, BFS
+  re-entry, unparsable hrefs), `discover` on a stub page (sitemap + malformed anchor, BFS fallback).
+
+## 0.37.1 — a player iframe mounts after first paint, and qa names the request that came before it (#157)
+
+Field learning (recorded replica runs of one source page): a block in the first section created the source's YouTube
+iframe in `decorate()`, so the player's JS started while the section was still loading. Lab tests count that toward
+FCP/LCP: a page painting in about 1 s measured lab LCP up to 8.5 s, scores 52–100 run to run. `lcp-poor` saw the
+symptom, nothing named the cause.
+
+- **Rule** (`deploy/SKILL.md` #157 + checklist row): same `src`, later mount — an `aspect-ratio` box at decorate time
+  that keeps the authored link (a player-only section still paints), replaced by the iframe after the first contentful
+  paint (without paint timing: at `load`, or at once when already loaded), from an allow-listed `https:` URL with
+  `createElement`; the iframe is `display: block` with no border, so the box keeps its height when it mounts.
+  Pointers from replica's live-data embeds bullet (deferral noted in the progress ledger) and dynamics' `media-as-url`.
+- **`qa/scripts/checks/perf.mjs`:** `player-before-paint` (warn, never downgraded) lists player document, script and API
+  requests from any frame that started before first contentful paint, dated by the browser: `timing().startTime`, or the
+  CDP `wallTime` while a response is still pending. Without either, two bounds decide (heard before the paint; frame
+  created after it); otherwise `player-timing-unknown` (warn), never a silent pass. Posters on player hosts are not
+  flagged. Tests: `qa/player-before-paint` (pure `judgePlayerRequests`), `qa/player-before-paint-browser` (collector
+  under a stalled event loop, a held-open player request, snippet lifecycle, untrusted links; Playwright from the
+  project, routed, no network).
+- **dynamics `modal-loader` example:** the player iframe is built with `createElement` from a parsed `https:` URL on a
+  dot-bounded host match, no longer interpolated into `innerHTML`.
+
+## 0.37.0 — a resumed run keeps its gate verdicts, not its pictures (#156)
+
+Field learning (a recorded 550-page site-scope replica run in a 20 GB container): the disk filled after every page
+was published. The tracked tree was 5.3 GiB, 82 % PNG: gate captures and diffs of every page (3.3 GiB, a fifth of
+them extra captures left beside a page's own) and extract screenshots (0.76 GiB). A harness that commits all of
+`stardust/` so a restart finds the same files pays each byte twice (worktree and `.git`); it could not follow the
+ignore file instead, because that dropped whole folders a resumed run reads. Design note:
+`notes/disk-lifecycle/README.md`.
+
+- **`stardust/reference/stardust.gitignore`:** ignores gate images, not gate folders — `**/gates/**/*.png` (a frozen
+  `baseline.png` stays; `first-page/gates/` is covered too) — and tracks `current/assets/` except its screenshots.
+  On that run: 0.5 GiB tracked instead of 5.3 GiB. Existing projects keep their copy (Setup step 6 never edits it):
+  replace its `current/assets/` and `replica/gates/` lines with the two gate lines to adopt it.
+- **`replica/scripts/gate-all.mjs`:** a page that passes keeps its records, not its PNGs. Every PNG in its dir is
+  deleted (an extra capture too) and `pixel.json` records the drop with the masks and eds URL it was measured with;
+  `--skip-existing` and `--compare-only` reuse that pass without a capture while both hold. A failed or
+  override-delivered page keeps its captures for the fix round. Pages go through in batches of 25, so a passed
+  batch's PNGs are gone before the next batch is captured (peak disk). A page captured again loses its recorded pass
+  first, and a missing capture is written to `pixel.json`: a failed or interrupted re-capture never leaves the old
+  pass to be reused.
+- **`replica/scripts/gate.sh`:** a round deletes earlier rounds' `diff-*.png` and `vdiff-*/` before comparing; their
+  text and JSON evidence stay.
+- **Docs:** `artifact-map.md` § Versioning rows, `stardust/SKILL.md` § Versioning, the state report consequences in
+  `state-machine.md`, `source-fidelity-gate.md` § all-pages gate, the README; `replica/SKILL.md`'s copy of the
+  delivery-gate file list folds to a pointer at `gate-all.mjs --help`.
+- Tests: `gate-all.test.mjs` — `dropPassedCaptures`, `droppedPass`, and runs with stub instruments (a passed page
+  loses its PNGs, a failed one keeps them; reuse without a capture; a changed mask re-captures; a failed or
+  interrupted re-capture captures again on resume; at most one batch of captures on disk at a time); `gate.test.mjs`
+  — a round keeps only its own diff image and vdiff dir.
+
+## 0.36.7 — the site secret: exact-origin match, never context-wide
+
+The site secret (`--auth-header` / `--token-env`, default `SITE_TOKEN`) is matched against the exact site origin
+(parsed origin, not a string prefix) and never set context-wide: the AI-readability gate
+(`deploy/scripts/ai-readability.mjs` and the `qa` check) attaches it through the origin-scoped route filter instead of
+`extraHTTPHeaders`, and its raw page and fragment requests drop it once a redirect leaves the origin. The `qa`
+AI-readability check and `scorePage` skip paths that resolve off the origin, and `dynamics-plan.mjs --target-origin`
+probes only API paths on the target origin.
+
+Anyone who ran `qa` or `ai-readability.mjs` with a site secret on 0.20.0–0.36.6, or an earlier source snapshot
+containing site auth, should rotate it. Tests: `deploy/scripts/test/ai-readability.test.mjs`,
+`ai-readability-redirect.test.mjs`, `qa/scripts/test/origin-auth.test.mjs`, `ai-readability-auth.test.mjs`,
+`dynamics/scripts/test/dynamics-plan.test.mjs`.
+
+## 0.36.6 — one patient visitor: shared live pacing adapts and the browser keeps its cookies between instruments (#155)
+
+Field learning (recorded hands-off replica runs): strict origins rejected clustered live navigations while friendly
+origins did not; every instrument opened a fresh browser context, so each capture looked like a new visitor that had
+never cleared a challenge or accepted consent; and parallel workers each ran their own instruments against the same
+host. Fixed pacing was either too slow or not cautious enough.
+
+- **Adaptive shared throttle (`diff/scripts/live-session.mjs`):** fresh hosts allow
+  `STARDUST_LIVE_MAX_PARALLEL` (default 2) in flight and start at `STARDUST_LIVE_PACE_MS` (default 1000) between starts.
+  A shared bot signal reduces the host to one navigation at a time and doubles the pace through 2000, 4000, 8000 and
+  15000 ms. Signals are an edge challenge, a denial page, any 429 (`Retry-After` honoured up to 120 s), a 503 with
+  `Retry-After`, or a timeout or connection error after that host has answered. Every 50 clean navigations halves the
+  pace down to the configured floor, then one more such window restores
+  the configured parallelism, and a host's backoff is forgotten `STARDUST_LIVE_STATE_TTL_MS` after its last signal.
+  Repository-scoped OS-temp state,
+  fair queueing and stale-lock recovery coordinate every process. Lost waiters re-queue and stale waiters/leases expire;
+  `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) caps slot waits, even during a hold, without clearing it.
+  `0` disables either throttle limit, not holds. Bookkeeping lock waits cap at 10 s; failures warn once per host,
+  then navigation proceeds unthrottled; transport response marks prevent duplicate challenge accounting.
+- **Per-host browser state:** after a successful `gotoLive` the context's storage state is saved (atomic write, at most
+  every few seconds per process) and `newLiveContext` loads it when it is younger than `STARDUST_LIVE_STATE_TTL_MS`
+  (default 12 h) and the caller passed none, so a cleared challenge or an accepted consent carries over to the next
+  instrument; save failures only warn, and `STARDUST_LIVE_STATE=0` disables it. The state never lives inside the repository.
+- **Every live instrument takes part:** the crawler (its entry probe and a challenged page report the signal once each — the reloads that stay challenged are the same wall; a captured page counts as a clean navigation), census, gate probes, measure, parity, motion, anchor,
+  sibling-variance and the reskin captures create their contexts through the shared helper (one-line changes), with
+  inline no-op fallbacks where a project copy lacks the module. Tests: `diff/live-session` (throttle decisions with a
+  fake clock and a temp dir, stale-lock reclaim, fairness, storage-state round trip), `extract/crawl` (fallbacks).
+
+## 0.36.5 — the style census runs one live page at a time unless an operator allows more (#154)
+
+Field learning (a recorded hands-off replica run on a bot-managed site): right after the crawl, the style census — a
+second full live pass at two widths — was started with `--concurrency 2`, although the option's default is 1 and its
+help text warned to raise it only on an origin known to have no bot manager. The origin stopped accepting connections
+and 17 of 20 census page loads timed out, which ended the run. The warning was advice; it is now a guard.
+
+- **`extract/scripts/style-census.mjs`:** `--concurrency <n>` above 1 is honoured only with the new explicit
+  `--parallel-live-ok`, or when every input is local (`file:`, `localhost` and `*.localhost`, `127.0.0.1`, `[::1]`,
+  `0.0.0.0`); otherwise one stderr line
+  (`--concurrency 2 ignored — one live page at a time unless --parallel-live-ok …`) and the census runs at 1.
+- **Browser tier:** when the shared live-session module beside the script exports `launchLiveBrowser`, the census
+  launches through it (the identity-preserving default tier, paced per host); `--headed` keeps the shared escalation
+  tier; a copy without the module keeps the plain headless launch. Tests: `extract/style-census` (+ guard, local
+  exemption, help text, launcher fallback).
+
+## 0.36.4 — chrome-explore paces itself and keeps a per-width request budget (#153)
+
+Field learning (a hands-off replica run on a site behind an edge rate rule): the crawl, the style census and the cap
+probe went through; the header exploration then reloaded the page after every control (routing disables the browser
+cache, so each reload refetched the whole page) and typed the probe term keystroke by keystroke into the site's
+typeahead — the edge blocked the address mid-run.
+
+- **`diff/scripts/chrome-explore.mjs`:** `--pace-ms 400` after each control open / close and `--reload-pause-ms 1500`
+  before each reload (0 disables either). `--max-requests 600` per width counts every request leaving for the site's
+  host — documents and subresources alike, the first load included; 204-answered navigations not — and ends the width
+  with `truncated: 'request-budget'` and `n/max requests` on the summary line (a lower budget was spent by an
+  image-heavy page's first load alone while recording the same contract). `--max-typeahead 2` inputs per width; the
+  term enters as one fill plus one typed letter and a single settle, inputs past the cap are listed with `search: null`.
+- **Closing in place:** between controls the header is closed the way it was opened — Escape and the parked pointer,
+  each opened trigger re-acted innermost first, a click outside — and the page reloads only when atoms are not back as
+  loaded (visibility and aria state, so a left-behind selected tab still reloads). A GET search submit is answered 204
+  like every navigation and its URL is the record; a POST is followed with the results page's assets aborted, then the
+  page restored. The probe word is read from the explored page on first use (no extra load). Fixture headers, same
+  recorded states: rich 26 → 13 loads at 1440, 24 → 1 at 390; stock 6 → 1 at 390.
+- **Exports and docs:** `parseArgs`, `requestBudget`, `sameSite`, `siteHost` are exported; `--help` documents the four
+  flags; `scripts-index.md` names `--max-requests`.
+- **Build exploration:** diff and qa pass `--max-requests 0 --pace-ms 0 --reload-pause-ms 0`; source defaults stay protective.
+- **Parity:** request-budget gaps warn with the unbudgeted-build remedy; observed failures remain errors.
+- Tests: `chrome-explore.test.mjs` — the summary line, `parseArgs` defaults and fallbacks, `sameSite` / `requestBudget`;
+  with a browser: closing in place, the GET and POST submits, a stubborn header (new fixture in `chrome-fixtures.mjs`),
+  the budget stop and the typeahead cap.
+
+## 0.36.3 — the crawler names a bot wall in seconds instead of waiting out its cap (#152)
+
+Field learning (a hands-off replica run on a bot-managed site): the entry page answered 200 with a verification
+interstitial that reloaded itself every few seconds; the crawler captured it as content and waited out its whole cap
+on it. A CloudFront block on inner pages read as a plain HTTP error, and the headed escalation opened a window where no
+display exists.
+
+- **`extract/scripts/crawl.mjs`:** `launchWithFallback` launches real Chrome headless first — its own identity, no
+  stealth flags; bundled Chromium when Chrome is missing (technique `chrome` | `chromium-fallback`) — through
+  live-session's `launchLiveBrowser` when the module beside the script has it, inline otherwise. `probeEntry`
+  classifies the entry page in seconds: a network reject (`fingerprint`), an edge challenge (`challengeMarker`:
+  Cloudflare / Akamai / F5 / Imperva / CloudFront–AWS WAF, Akamai's 400 escalation) or a 2xx interstitial read from
+  the page — the crawler's own title rule first (`wallProbeInPage` / `inlineWallMarker`: a wall title or h1 on a page
+  under 2 KB of text or one reloading itself), then live-session's `pageDenial` vendor list when present. Any of them
+  → one window-free real-Chrome relaunch (technique `chrome-escalated`; the existing launch flags and
+  `navigator.webdriver` spoof stay on, `STARDUST_STEALTH=0` turns them off; a relaunch failure is one stderr line) plus the challenge-solve window, then a fatal
+  `bot-management <kind> not cleared: <marker>`. On inner pages an uncleared challenge or a 2xx interstitial is
+  recorded as errorClass `BotChallenge` with the marker — never as content, never as a bare `HTTPError`;
+  `_crawl-log.json#discovery` carries `botBlock` + `botMarker`.
+- **The wall title names verification interstitials only** — "verify you are human", "verifying your request /
+  browser", "human verification", "checking your browser" and the vendor interstitial titles, never a bare "verify" or
+  "verification": an age or e-mail verification page is a page, and a small single-page-app entry page under such a
+  title would have aborted the crawl. **Readers of `fetchTechnique`** (`deploy/SKILL.md`, `deploy/da-deploy-protocol.md`,
+  `replica/reference/handoff-contract.md`) know the tier names (`chrome`, `chrome-escalated`, `chromium-fallback`; older
+  logs `headed-chrome*`) and verify source images with an in-page fetch from a browser of that tier, never a bare curl.
+- **`--page-timeout <s>`** (default 60; 0 = none) wraps each capture: a page that never settles is a `TimeoutError` and
+  its tab is closed. Live navigations are paced per host when a live-session copy that paces is beside the script.
+- **Docs:** `extract/SKILL.md` § Bot-management block says what the crawler does itself; `scripts-index.md` lists the
+  flag.
+- Tests: `crawl.test.mjs` — the classifiers, the inline wall rule, `pageTimeoutMs`, `probeEntry` and `capturePage` on
+  stub pages (clean / interstitial / challenge / CloudFront / bare 403 / hung navigation / an unreadable wall probe).
+
+## 0.36.2 — real Chrome identity, retained automation-signal handling and paced live navigation (#151)
+
+Field learning (hands-off replica runs on bot-managed sites): the gate instruments presented a hard-coded desktop user
+agent on a Linux headless engine and were denied; the agents patched the identity by hand at run time, and spacing
+live navigations a few seconds apart turned the denials into 200s. The escalation to real Chrome opened a window and
+could not start where no display exists. The policy now has one home: every context presents the browser's user agent
+without the headless token and matching client hints; automation-signal handling stays on unless `STARDUST_STEALTH=0`;
+`STARDUST_HEADED_WINDOW=1` opens a window.
+
+- **`diff/scripts/live-session.mjs`:** `launchLiveBrowser` is the default tier of every live instrument — the installed
+  Chrome headless (`channel: chrome`), no stealth args, no `ignoreDefaultArgs`; bundled Chromium only when Chrome is
+  missing (tier `chromium-fallback`, one stderr line). Every context presents the user agent read from the running
+  browser with the headless token removed (`HeadlessChrome/156.0.0.0` → `Chrome/156.0.0.0`), or the caller's `--ua`.
+  Headless Chrome's header says `HeadlessChrome` while its client hints say `Google Chrome`, and managed challenges
+  key on that token.
+  The `sec-ch-ua*` client hints derive from `browser.version()` and the running OS on Chrome tiers, from the UA string
+  under `--ua`, and stay untouched on the bundled tier. The existing `navigator.webdriver` spoof reaches every context.
+  `launchStealthHeaded` (`--headed`) stays window-free real Chrome plus the challenge-solve window and the
+  two existing launch options. `STARDUST_STEALTH=0` disables the spoof and options with one stderr line; a window stays
+  behind `STARDUST_HEADED_WINDOW=1`. `gotoLive` paces live navigations per host
+  `STARDUST_LIVE_PACE_MS` apart (default 2000; 0 disables; slots reserved synchronously so concurrent callers queue; one
+  stderr line per host on its first wait — an Akamai-fronted origin answered 403 to back-to-back navigations, 200 once
+  spaced). Classifiers: a 403 with `server: CloudFront` or `x-cache: Error from cloudfront`, or any `x-amzn-waf-action`
+  header, is the CloudFront / AWS WAF edge signature; F5's `BigIP` header matches; denial pages "The request could not
+  be satisfied" + "Request blocked", "One moment, please…", "Please wait while your request is being verified".
+- **Wired instruments:** `replica/scripts/stitch-shot.mjs`, `diff/scripts/content-diff.mjs`, `visual-diff.mjs`,
+  `measure-live.mjs` (`openBrowser` default tier `chrome`; `stealth` stays an alias of the `--headed` tier),
+  `replica/scripts/chrome-parity.mjs` and `motion-observe.mjs` launch the default tier and default `--ua` to the
+  browser's own; each `--help` says so. `extract/scripts/style-census.mjs`, `replica/scripts/measure.mjs` and `cap-probe.mjs` drop
+  their hard-coded desktop user agent the same way — a container run showed them still presenting it beside real
+  Chrome's own client hints.
+- **Docs:** `source-fidelity-gate.md` § Hardening rule 1 owns identity, retained automation-signal handling and pacing;
+  rule 12's ladder, `diff/SKILL.md` (`--ua`, `--headed`) and `replica/SKILL.md` point to the explicit opt-out.
+- Tests: `live-session.test.mjs` (50 checks — automation defaults and opt-out, pacing, user-agent and identity derivation,
+  client hints and denial classification) and `stitch-shot.test.mjs` (`--ua` defaults to the browser's own).
+
+## 0.36.1 — replica: a capture names its dead font faces; a font check that could not run is never a pass (#150)
+
+Field learning (a recorded hands-off replica run): the foundation CSS declared its metric fallback faces with a
+`local()` source naming a platform font the gate's Linux browser does not have. The build rendered a different face
+than the live site, the first archetype gate failed on type metrics, and the agent spent the better part of an hour
+finding the cause — the capture's font-load assertion reported only a face whose file failed to fetch, so an
+unresolved `local()` looked like a clean capture, and a check that threw was recorded as "every face loaded". In a
+later run the capture named the failed families and the fix took seconds: locally available metric-compatible faces
+(Liberation Sans / Arimo, Liberation Serif / Tinos) as the local fallbacks.
+
+- **`stitch-shot.mjs`:** after `document.fonts.ready` every declared face with status `error` and no loaded face of the
+  same family, weight and style is a dead face — a file that failed to fetch or a `local()` source this browser cannot
+  resolve; a failed declaration beside a loaded twin is not, an unloaded face was never needed. The WARNING names the
+  families and both causes; the capture record (`<stem>.capture.json`, 0.34.4) carries `fontsFailed` (`[]` = every face
+  loaded; `null` + `fontCheck` when the check could not run, with one stderr line — never silently a pass). A
+  `--freeze-baseline` capture whose check could not run is refused like one with dead faces.
+- **`gate.sh` / `gate-all.mjs`:** both read the capture records (`<side>.capture.json`; the live one lives and dies with
+  `live.png`; under `--gate-against-baseline` the live side reads the frozen baseline's check). gate.sh prints one `gate.sh: fonts on the <side> capture — …` line per side
+  after the overflow line — the dead faces, every face loaded, or NOT CHECKED — as information for the loop (exit codes
+  unchanged). gate-all carries `fontsFailed` on the origin / eds meta (the prototype stage reads `live.capture.json`
+  beside the reused archetype `live.png`, or the baseline's record after a flagged round; none is unchecked) and fails the row: `font-not-loaded:<family>`,
+  `font-check-skipped:<origin|build>` (`fontsNotLoaded`, `fontChecksSkipped`; totals, the calibration line, `FAIL
+  (fonts)`). A meta from before the check (no key, `--skip-existing`) is not flagged — recapture to check.
+- **Fonts policy** (`recreation-procedure.md`): self-host the source's own faces; brand family first, a metric-matched
+  substitute only as the fallback entry after it; a `local()` source only for a face the gate's browser has, the
+  Linux-available metric fallbacks named; proprietary faces raise deploy's licensing alert (#80). Gate rule 14 names
+  `fontsFailed` and `font-check-skipped`. Tests: `replica/stitch-shot` (new), `replica/gate`, `replica/gate-all`.
+- **Merged with 0.34.5.** The branch's `--json <file>` record was folded into the capture record every stitch already
+  writes since 0.34.4, so a capture has one record; one `stitch-shot` test file carries all four contracts.
+- **Merged with 0.36.0.** The capture record carries `fontsFailed` beside 0.34.12's `fixedLayers`; gate-all reads a reused
+  capture's font check from the record it carries — the archetype round's `live.capture.json`, or the frozen baseline's
+  after a flagged round — and a capture `staleCapture` retakes is checked afresh.
+
+## 0.36.0 — first page first: one page is delivered while the site scope is still being defined (#149)
+
+A recorded hands-off replica run ran every phase in sequence and published no content page in five hours, though
+almost none of the site-wide work changed the home page. Design note: `notes/first-page-first/README.md`.
+
+- **`replica/reference/first-page-first.md` (new):** a full-site run opens with two tracks, one writer per path.
+  Track A takes the first page (replica Input `--first-page <url|home>`; hands-off: home) through the bounded entry
+  to the published origin, in its own workspace `stardust/first-page/`, and owns code and DA; its Phase 2 is always
+  the bounded branch (`preserve-direction.md` § 1). Track B runs Phase 1 `--prep`, the catalogs and the dynamics
+  triage and writes knowledge only. At RECONCILE, Track B's design spec replaces the bounded one, then seven checks (page
+  type, blocks, chrome, dynamics, listings, scope, canon) are recorded `confirmed | corrected (<commit>) | deferred
+  (<why>)` in `stardust/reconcile-first-page.md`; a block or chrome correction re-gates the page. Hand-off to
+  rollout: `update-coverage.mjs --gate <table> --pin`, then `verify.mjs --slug`.
+- **Scripts:** `ledger.mjs` adds replica phases `first-page` and `reconcile-first-page` (alias `reconcile`) and
+  `--track <name>` (start/end pair per track; `last <skill> --track`); `update-coverage.mjs --gate --pin` matches
+  rows by path, pins them and marks them `deployed`; `inventory.mjs` never flags a pinned row `stale`. Tests cover
+  each.
+- **`replica/SKILL.md`** and **`stardust/SKILL.md`** § Hands-off defaults point to the new reference.
+
+## 0.35.0 — the gate has two tiers: looks the same, nothing lost; owners accept changes in one file (#148)
+
+Field learning (a recorded home-page replica gate): `gate.sh --full` failed on any structural 🔴, so intentional
+look-neutral changes failed forever, invisible losses were split between 🔴 and buried 🟡, and no instrument read the
+owner's accepted changes. A page without `<main>` was compared at `<body>` against the build's `<main>` (142 🔴
+instead of 53), and gate records cited probe files by hand.
+
+- **Two tiers (`diff/scripts/content-diff.mjs`):** *looks-same* = every 🔴; *nothing-lost* = `MISSING ARIA-LABEL` (now
+  🟡 everywhere), `MISSING SR-ONLY TEXT`, `ROLE DOWNGRADE`; the rest is advisory. A `Tiers: looks-same 🔴 N ·
+  nothing-lost 🟡 L · accepted 🟢 A (owner O, auto P) · advisory M` line follows `Findings:` (unchanged); auto =
+  ROLE UPGRADE / SAME IMAGE / SAME ICON; `--json` findings carry their `tier`.
+- **Accepted list:** `stardust/replica/accepted.json` (or `--accepted <file>`), one owner decision and reason per entry,
+  read by content-diff (`applyAccepted`) and chrome-parity (`markAccepted`): a match prints 🟢 and never counts. `text`
+  matches inside the finding's quoted subject (`subjectOf`), never its wording; an entry without `text` accepts every
+  finding of its kind.
+- **Aligned roots (`alignPrimary`):** when only one side's main root fell back, the other is re-read where that fallback
+  really lands (no `<main>` → both at `<body>`), said once in a `⚠ root "main": …` line. `inventory()` no longer counts
+  its own width probe as copy at a `<body>` root (`diff/` and `deploy/` `content-inventory.mjs`).
+- **`replica/scripts/gate.sh`:** prints the `Tiers:` line on its `content-diff:` verdict line, fails the round on a
+  nothing-lost 🟡 as on a 🔴, and writes `verdict-<label>.json` per `--full` round (every probe's exit code and evidence
+  file, both tiers). **`gate-evidence.mjs`** passes content-count only at 0 🔴 and 0 nothing-lost, both from the
+  last round (`parseFindings`).
+- **Docs:** `source-fidelity-gate.md` § Pass bar item 1 is the one home of the tiers, accepted list and verdict record;
+  `replica/SKILL.md`, `diff/SKILL.md` and `handoff-contract.md` row 4 point to it.
+- Tests: `content-diff`, `chrome-parity`, `gate` and `gate-evidence` `.test.mjs` cover each change, incl. a
+  no-`<main>` page against a `<main>` build.
+
+## 0.34.14 — diff-report names the block a pixel difference belongs to (#147)
+
+Field learning (a recorded replica gate on a home page): the band table says where drift sits, never which block, and
+the diff image is 8–15k px tall; block attribution and crops were built ad hoc.
+
+- **`replica/scripts/diff-report.mjs` (new):** reads a gate dir's `live.png`, `build.png` and diff PNG (the newest
+  `diff-*.png`, or `--diff`), loads the build at the round's width and reads its block boxes (`[data-block-name]` plus
+  each `.default-content-wrapper` as "default content (section N)", else `main > .section`, else `main`'s children, or
+  `--blocks <css>`; nested blocks fold into the outermost). Prints the differing share per block and outside every
+  block. When live and build heights differ it warns; a block below the compared height reads "not compared" (never a
+  false 0 %), one straddling it "partial". Writes `report.html`, a live | build | diff `overview.png` and crops of the
+  `--top` hottest blocks.
+- **Docs:** `source-fidelity-gate.md` § Reading the band breakdown points to it; `scripts-index.md` gains its row.
+- Tests (new): `replica/scripts/test/diff-report.test.mjs` — the pure parts, `--help`, and end-to-end gate dirs (a
+  two-block page; an EDS-shaped page with default content, a nested block and a build taller than live).
+
+## 0.34.13 — chrome-parity prints real deltas only: an auto-detected header, painted backgrounds, icons by pixels, one line for a shifted region (#146)
+
+Field learnings (two recorded replica gates): on a home page without `<header>`, chrome-parity skipped the header and
+printed 24 invisible footer deltas (`display: contents` titles, re-hosted thumbnails, an `<img>` logo, a background
+painted on another element). On an article page, 67 deltas were one fact: the footer sat 3,526 px lower as a block.
+
+- **`replica/scripts/chrome-parity.mjs`:**
+  - the default `header` region on a page without `<header>` is auto-detected (the outermost full-width, top-anchored
+    bar with a link, 30–400 px) and the region line names it; an explicit `--region` is never second-guessed;
+  - text in a `display: contents` element is measured by its text box;
+  - the region background is the painted one (the region's own, else a child covering ≥ 90 % of it, else the
+    nearest ancestor's);
+  - icons also pair by pixels (`diff/scripts/image-signature.mjs`): a re-hosted file or an svg drawn as `<img>` is no
+    delta;
+  - a tag change alone (same style, same box) is context on a real delta, never a delta;
+  - a region whose box and every paired text (≥ 2) moved by one Δy (±2 px) is one advisory `OFFSET` line, outside the
+    exit code; texts that moved inside a box that did not, or only some of them, stay deltas;
+  - a `--live-cache` written by an older probe (`PROBE_VERSION`) is re-probed.
+- **Docs:** `source-fidelity-gate.md` § chrome-parity — the new behaviour in one sentence.
+- Tests (new): `replica/scripts/test/chrome-parity.test.mjs` — `collapseOffset`, `compareRegion` icons by pixels,
+  `--help`, and an end-to-end page pair with every case above: only the advisory OFFSET remains, exit 0.
+
+## 0.34.12 — stitch-shot captures fixed and sticky layers once: no seam repeats, no content hidden under them (#145)
+
+Field learning (a recorded replica gate on a home page): both captures repeated the sticky header in every viewport
+chunk, covering whatever sat under each seam on both sides — an oversized partner logo under it scored 0.0 %, so a
+defect under a seam was invisible to the pixel gate. The same run stitched an undismissed consent bar into every live
+chunk unwarned.
+
+- **`replica/scripts/stitch-shot.mjs`:** fixed and sticky layers are captured once. Chunk 1 shows them; from chunk 2 a
+  fixed layer, and a sticky one while stuck (displaced from its own in-flow place, top or bottom), is set to
+  `opacity: 0` — layout never moves. A sticky element still in its place mid-page stays. Layers are re-scanned after
+  every scroll, so a header a scroll class makes fixed, or a widget injected later, is hidden from where it appears,
+  with a stderr WARNING. A backdrop (negative z-index, or ≥ 90 % of the viewport) is never hidden. A fixed layer still
+  visible after the dismissal sweeps, ≥ 5 % of the viewport, below the top bar and reading like consent / sign-up
+  copy, is a stderr WARNING naming it and `--consent` / `--dismiss`. `capture.json` records
+  `fixedLayers: { capture: 'once', count, late }`. Shadow-root, iframe and pseudo-element layers are not seen.
+- **`replica/scripts/gate.sh`, `replica/scripts/gate-all.mjs`:** a cached `live.png` (or a gate-all `--skip-existing`
+  origin / eds capture) whose capture record has no `fixedLayers` is re-taken with one line, never compared with a
+  build captured the new way (`staleCapture`). `--freeze-baseline` (0.34.5) records `fixedLayers` in `baseline.json`;
+  a baseline frozen before this change reads as stale (`re-freeze with --force`), so `--gate-against-baseline` never
+  compares the two capture methods.
+- **Docs:** `recreation-procedure.md` § Fixed and sticky chrome describes what the instrument does and does not cover;
+  gate doc rule 11 and the replica SKILL pointer shortened.
+- Tests: `stitch-shot.test.mjs` — `layerAction`, `isBackdrop`, `overlaySuspects`, `layerPassScript` on a stub DOM, and
+  end-to-end fixtures (fixed header, in-place sticky label, undismissable cookie bar, scroll-triggered header,
+  backdrop); `gate.test.mjs` — a stale live capture is re-taken; `gate-all.test.mjs` — `staleCapture`.
+
+## 0.34.11 — content-diff pairs icons by their pixels: a re-hosted logo or an svg drawn as an image is the same icon (#144)
+
+Field learning (a recorded replica gate on a home page): 6 🔴 ICON DIFF were logos the build re-hosted under
+`media_<hash>` with ≤ 1.2 / 255 mean pixel difference, because identity was the file name; 5 🔴 MISSING ICON were 0×0
+inline svgs or inline-svg logos the build draws as `<img src="*.svg">`.
+
+- **`diff/scripts/image-signature.mjs` (new library):** an icon's signature is its element screenshot averaged to a
+  12×12 RGB grid, so a recoloured shape is another image. `sameImage` = mean |Δ| ≤ 12 / 255 over the drawn cells with
+  boxes within 2 px; a near-uniform grid (an empty box, an unrendered glyph) is never an identity.
+- **`content-diff.mjs`:** visible icons are signed; laid-out 0×0 icons are skipped (`display:none` ones still compare
+  by name). Same pixels are the same icon when pairing anchors and ICON MOVED (two blank boxes never pair). A pair
+  differing only by file or technique is accepted — `SAME IMAGE` / `SAME ICON` on the root's `accepted` line — never a
+  finding; a different logo stays 🔴 ICON DIFF.
+- Docs: `diff/SKILL.md` § Reading content-diff names pixel identity; the `deploy/SKILL.md` Step-10 copy set names
+  every local import.
+- Tests: new `test/image-signature.test.mjs` (blank, a recoloured shape, thin-line icons); `content-diff.test.mjs` —
+  an empty box missing on the build stays MISSING ICON; end to end, a re-hosted file is SAME IMAGE, svg vs `<img>`
+  pairs, a different logo stays 🔴, a 0×0 svg is skipped.
+
+## 0.34.10 — content-diff severity follows visibility: a same-look heading is an improvement, not a swap (#143)
+
+Field learning (a recorded replica gate on a home page): 23 structural 🔴 were ROLE SWAP for footer and mega-menu
+group titles — source `<div>`s, same-look build headings — while the one real loss, a chart's visually hidden
+summary, was a buried 🟡 MISSING BODY.
+
+- **`content-inventory.mjs` (diff + deploy copies):** each item carries its computed `look` (size, weight, colour,
+  text-transform) and `srOnly` (sr-only clip, ≤1 px clipped box or -9999px offset on the element or its 3 nearest
+  ancestors; display:none and off-screen slides excluded). With the same look and face, body/eyebrow → heading is an
+  accepted `ROLE UPGRADE`, heading → body/eyebrow a 🟡 `ROLE DOWNGRADE`; any other role change, a CTA's included, stays
+  🔴 `ROLE SWAP`. Lost sr-only text is 🟡 `MISSING SR-ONLY TEXT`, except a link (a lost skip link stays 🔴
+  `MISSING CTA`). `diff-profiles.mjs` (both copies) gains the `MISSING_SR_ONLY` hint.
+- **`content-diff.mjs`** lists accepted upgrades on each root's block and in `--json` `accepted`, not as findings;
+  header and usage name the new kinds.
+- **Docs:** `diff/SKILL.md` § Reading content-diff grades the outcomes; `replica/reference/recreation-procedure.md`
+  § Role parity now says "mirror the look; semantics may improve" and points there, as do `deploy/SKILL.md`
+  and `replica/SKILL.md`.
+- **Tests:** `content-diff.test.mjs` — each outcome, plus an end-to-end page: same-look `<div>` → `<h3>`, dropped
+  sr-only text, and display:none / off-track-slide text (plain MISSING BODY).
+
+## 0.34.9 — visual-diff flags what differs from the source, not what the build does alone (#142)
+
+Field learning (a recorded replica gate on a home page): all 8 STRETCHED IMAGE flags at 1440 were stretched the same
+way on the source, burying the one real difference (thumbnails the source crops and the build distorts); heading faces
+could only be compared by hand.
+
+- **`diff/scripts/visual-diff.mjs`:** an image is stretched only under `object-fit: fill`. A build stretch is flagged
+  only when its source twin — same rendered box ±2 px, same natural ratio ±4 %, never by file name — is not stretched
+  the same way, and the flag names the source's fit (`(source: object-fit cover at the same box)`). The reverse — the
+  source distorts an image the build crops — is an informational `IMAGE FIT (info)`.
+- **`HEADING FACE`** (new): a matched heading at another size (> 1 px) or family. Families compare normalised (first
+  in the stack, unquoted, lowercased, without `Variable` / `VF` / weight suffixes); one family pair across every
+  differing heading is one `HEADING FACE ×N` line. Same-text headings pair in document order.
+- `diff-profiles.mjs` (both copies): the STRETCHED hint drops "unless justified"; new `HEADING_FACE` and `IMAGE_FIT`
+  hints. `diff/SKILL.md` and the replica source-fidelity gate's pass bar name the two-sided rule and `HEADING FACE`.
+- Test (new): `diff/scripts/test/visual-diff.test.mjs` — the exported pure helpers (`sourceTwin`, `normFamily`,
+  `pairHeadings`, `headingFaceDiffers`, `redFlags`), the ×N summary, `--help` without a browser, and an end-to-end
+  source-crops / build-distorts fixture.
+
+## 0.34.8 — the roster is reported against the site: a capped run never reads as the full site (#141)
+
+Field learning (a recorded hands-off replica run): the setup status line said "full site" while the hands-off volume
+caps had cut the roster to 94 of 2,532 discovered URLs — 20 of 820 blog posts. The cap was recorded only as a named
+assumption in `direction.md`; the rollout ledger counted 94 as the total, and the owner learned the scope by asking.
+
+- **`stardust/SKILL.md` § Hands-off defaults:** "all pages" / `--all-pages` in the invocation lifts the caps; the
+  setup status line names the roster against the site (`roster N of M discovered — cap 100/20`), and a capped
+  roster is never called the full site. The locale bullet's anecdote folds.
+- **`rollout/scripts/inventory.mjs`** writes `scope: { pages, discovered, capped, pageCap }` into `rollout.json`
+  from `state.json`'s `site.totalDiscovered` / `site.pageCap` and prints a `Scope` line — "N of M discovered pages
+  in scope — a SUBSET: the other K are not delivered by this rollout …" when the roster is smaller than the site.
+  **`done-check.mjs`** repeats it under its verdict (and in `--json` when known): "complete" is about the roster.
+  `lib.mjs` gains `scopeOf` / `scopeLine`.
+- Test: `rollout/scripts/test/inventory.test.mjs` — capped, whole-site and uncounted rosters.
+
+## 0.34.7 — content-diff inventories page copy only: icon links, payloads and consent banners stop reading as missing content (#140)
+
+Field learning (a recorded replica gate on a home page with no `<main>`): 12 of 53 structural 🔴 were MISSING CTA for
+menu links whose icon was `<img>` in the build and `<svg>` on the source; 9 🟡 MISSING BODY were inline payloads.
+
+- **`content-inventory.mjs` (diff + deploy copies):** a link with an icon and text is a text CTA, whatever draws the
+  icon; only a text-less link is skipped. The label leaves out inline-svg `<title>` / `<text>`, and an image link's
+  sr-only text is not a label. A card link — an `<a>` wrapping 2+ text blocks, or a heading beside an image — has its
+  blocks inventoried as heading / body and is a CTA only for its own remaining text, so it pairs with an EDS card.
+- **Not page copy:** `script`, `noscript`, `style`, `template` and the common consent managers' banners (those
+  `CONSENT_CANDIDATES` accepts) are left out of the role inventory, the Experience Workspace editable count and the
+  attribute + icon layer; the root's summary line names a skipped banner (`consent banner skipped (N text nodes)`).
+- **`content-diff.mjs`:** icon anchors use the same label, so an svg-icon vs img-icon link is one 🟡 ICON KIND.
+- Docs: `replica/reference/source-fidelity-gate.md` rule 3 — `--consent` only adds an accept click; verify the banner
+  is actually gone after dismissal.
+- Test: `diff/scripts/test/content-diff.test.mjs` end to end — svg- vs img-icon link, inline payloads, a consent
+  banner with an icon close button, a card link vs an EDS card, an sr-only vs alt-only logo: no 🔴, the banner named in
+  the summary. Every in-page consent list is pinned to `CONSENT_CANDIDATES`.
+
+## 0.34.6 — the common consent managers are dismissed with no flag (#139)
+
+Field learning (a recorded replica run on a site whose consent manager labels its button "Allow all"): no built-in
+candidate matched, so the bar was stitched into every live viewport chunk. The pixel round read 7.2 % at 1440 and
+15.0 % at 360 (a FAIL) where the same page read 1.0 % / 1.6 % with the banner accepted, every hot band and section
+attribution pointed at the bar, and content-diff reported the banner's heading, link and buttons as 🔴 missing content.
+
+- **`diff/scripts/live-session.mjs` `CONSENT_CANDIDATES`** gains the accept-all controls of CookieHub, Cookiebot
+  (dialog v2 and v1), Didomi, Usercentrics, Osano, Termly, TrustArc, Quantcast Choice, iubenda, Complianz and
+  CookieYes, by vendor id or class, ahead of the text fallbacks, plus an "Allow all" fallback that must start the
+  button text (a `:has-text` substring also hits "Disallow all") and sits before the bare "Accept" substring (which
+  also hits "Accept only necessary"). `--consent` stays the override for a manager the list misses.
+- **`acceptConsent`** (new, `live-session.mjs`) is the one consent pass: each candidate resolves to its first
+  *visible* match (CMPs repeat the accept class in a hidden preference panel), a click is credited only once that
+  control is hidden, else the next candidate is tried, and one union probe makes a page with no consent control a
+  single round trip. `dismissOverlays` (stitch-shot, the diff probes, chrome-parity) runs it, and so do
+  `extract/scripts/crawl.mjs` and `dynamics/scripts/lib.mjs` `settlePage` when `live-session.mjs` resolves beside
+  them, their own lists kept as the fallback.
+- Tests: `test/live-session.test.mjs` pins the vendor entries and the order (vendor selectors before the text
+  fallbacks, "Allow all" before "Accept"); `replica/scripts/test/stitch-shot.test.mjs` captures fixture bars with no
+  flag: an "Allow all" bar (`consent dismissed via .ch2-allow-all-btn`), a vendor class repeated in a hidden panel
+  first, and an unlisted manager whose "Disallow all" and "Accept only necessary" precede "Allow all".
+
+## 0.34.5 — replica: the source-fidelity gate can measure against a frozen origin baseline (opt-in, default off) (#138)
+
+Field learning (a multi-day hands-off replica): the live site changed between rounds — a hero rotated, a banner
+appeared — and the gate's target moved under the fix rounds: a pixel FAIL measured the origin's movement, not the
+build, and each move burned a round. The gate captured the live side fresh whenever `live.png` was absent and had no
+way to hold the origin still. Nothing below changes a round unless asked for.
+
+- **`replica/scripts/stitch-shot.mjs --freeze-baseline [--force]`** freezes one origin per page and width: the capture
+  always lands as `baseline.png` beside `baseline.json` { capturedAt, url, width, vh, height, settle, chunks,
+  fontsFailed } in `<out.png>`'s dir, both written atomically; a freeze aimed at `live.png` is redirected there (one
+  line) and never touches it; an existing baseline is refused without `--force`; a capture whose fonts failed is not
+  frozen. `--check-baseline` captures a fresh shot and prints its Δheight vs the baseline — no verdict; `<out.png>`
+  named `baseline.png` is refused before any capture. Two browserless subcommands carry the gate's bookkeeping:
+  `baseline <dir> [--url] [--width]` (the capturedAt, exit 0 — or the one-line reason, exit 1: missing, a lone file,
+  unreadable, frozen for another URL or width) and `record <live.json> --origin live|baseline …` (the round's
+  `live.json`, atomic). `playwright` and `pngjs` load lazily, so `--help` and the subcommands answer without them.
+  Tests: `test/stitch-shot.test.mjs` (new).
+- **`replica/scripts/gate.sh --gate-against-baseline`** makes the frozen baseline the origin side of the same
+  pixel-compare: `baseline.png` is copied over `live.png` (sibling temp + rename), `live.json` records
+  `origin: "baseline"` and `originBaseline { capturedAt, height }`, one stdout line names the capture time, no live
+  shot. It holds the pixel target still only: a `--full` round's diff probes still navigate the live URL. A missing or stale baseline ends the round before any capture with one stderr line and exit 125 —
+  never a fresh live shot in its place. Without the flag the round is the one it was: a `live.png` whose record says
+  it is the frozen copy is retaken with one line (the record goes with it); a `live.png` with no record is a live
+  capture, reused as before. A copy or record that fails removes `live.png` and ends the round (exit 1, one line), so
+  baseline bytes never pass as a live shot. Tests: `test/gate.test.mjs`.
+- **Docs.** `replica/reference/source-fidelity-gate.md` § Iteration discipline states the rule once (its chrome-parity
+  cost anecdote folded); the scripts index names the flags.
+- **One record per artefact.** A flagged round removes the capture record (`live.capture.json`, 0.34.4) beside the copied
+  `live.png`, and the unflagged retake removes it with the copy; a `--freeze-baseline` capture writes `baseline.json` and
+  no capture record. Merged with 0.34.4: one `stitch-shot` test file, both contracts.
+
+## 0.34.4 — a 2xx denial page is a bot challenge: the capture refuses it, the gate round has no verdict (#137)
+
+Field learning (a recorded hands-off replica run on a site behind a bot wall): the live origin answered the headless
+capture with status 200 and its denial text — about 900 px of "can't process your request … Incident Number" under one
+heading — and the gate accepted it as a normal capture: `stitch-shot.mjs` wrote the PNG and exited 0, no bot signal
+anywhere, and the pixel round measured the denial page as the source. The fail-loud rule (gate doc rule 12) read only
+the response headers, and a vendor wall that answers 200 leaves none to classify.
+
+- **A 2xx denial page is a bot challenge (`diff/scripts/live-session.mjs`).** After the settle `gotoLive` reads the
+  page (`pageDenial`): a vendor signature — a phrase pair such as "Access Denied" + "Reference #" or "can't process
+  your request" + "Incident Number" anywhere in the title and text; a single phrase ("Just a moment…", "Press & Hold",
+  "Incapsula", "DataDome", "Request unsuccessful", "System Down") in the title, the text or an iframe src, only on
+  a page under 2 KB of text — or a page under 2 KB of text under exactly one error heading. A match throws the same
+  `BotChallengeError` the header path throws (marker `HTTP <status> denial page — …`; the message says "origin blocked"
+  and names the `--headed` escalation); a full page that merely mentions a phrase is no denial page. Under `--headed`
+  the solve window reloads up to three times before declaring it, and a reload the probe cannot read keeps the denial.
+  Each probe read races a 10 s deadline; a probe that fails twice is one stderr line (`denial-page check skipped`),
+  never a pass. Every instrument on `gotoLive` inherits the rule.
+- **stitch-shot exits 3 on a denial page and records the check.** The page is read once more after the dismissal
+  sweep(s), before the capture (a denial page a script renders after `domcontentloaded`); a denial leaves no PNG and no
+  record. A written capture now carries `<stem>.capture.json` beside it — `{ writtenBy, url, width, vh, height,
+  chunks, denialCheck, at }`, `denialCheck` = `'ok'` or `'skipped: <reason>'` — so a round whose check could not run
+  says so in its evidence. playwright and pngjs load lazily (`--help` and the pure tests need neither).
+- **gate.sh names the blocked round.** A capture exit 3 ends the round with `… capture BLOCKED (exit 3) — a bot
+  challenge or 2xx denial page …: no verdict for this round; escalate --headed`, never a pixel number; the `--full`
+  probe verdict line says the same. Tests: `diff/live-session` (new — every signature, the 2 KB and one-heading rules,
+  an ordinary page, `gotoLive` on stub pages), `replica/stitch-shot` (new — the re-check, the exit code, the record,
+  `--help`; end to end where playwright is installed).
+- **Live URLs only.** The denial probe runs only where a vendor wall can exist (`isLiveHttpUrl`): a localhost or
+  loopback build side serving a tiny page under an error heading is captured as-is; with a test. A single phrase in the
+  title counts under the same 2 KB bound (an article titled "System Down" is no denial page). Merged with 0.34.3, so
+  the two new test files are one per script (`diff/live-session`, `replica/stitch-shot`).
+
+## 0.34.3 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape (#136)
+
+Fixes from a recorded hands-off replica run on a site with a consent manager, verified against its artifacts.
+
+- **`replica/scripts/gate.sh` dismisses overlays on its captures the way its probes do.** The probes ran under
+  `--dismiss` while the stitched live capture had no way to receive a site-specific selector: the run captured
+  the live side with the consent banner and its scrim up, and the first pixel rounds measured them as page
+  difference (18–50 % hot bands) until `live.png` was re-taken by hand. Both captures now run the shared
+  dismissal by default, `--no-dismiss` turns it off everywhere in the round (new on `stitch-shot.mjs` as well),
+  and `--consent <sel>` / `--dismiss <sel,…>` — stitch-shot's own vocabulary — reach both captures, the diff
+  probes and chrome-parity; `--no-dismiss` with either is a usage error. `diff/scripts/live-session.mjs` knows
+  the `cmp`-prefixed consent-manager buttons, so that manager needs no flag; its candidate list has a test.
+  `stitch-shot.mjs` loads playwright and pngjs lazily and exports its pure parts (argument parsing, chunk targets, the
+  scroll-stall guard, row stitching); `test/stitch-shot.test.mjs` covers them, `--help` without a browser, and a
+  fixture capture where playwright is importable.
+- **`stardust/replica/progress.json` is the map of every archetype — never one archetype's record.** The
+  residual-logging example in `replica/reference/source-fidelity-gate.md` showed a bare
+  `{pageType, archetype, breakpoints}` object, and the run wrote exactly that as the whole file, destroying the
+  `types` map, the `siblings` / `migrate` blocks `gate-evidence.mjs` writes and the `_provenance` block the resume
+  and unit-boundary readers depend on. The example now shows the record inside `types.<archetype>` beside those
+  blocks, with the rule that the file is extended per entry; `gate-evidence.mjs` wraps a ledger whose top level
+  is one archetype's record under `types.<archetype>` (lossless, noted in its output) and refuses only a record
+  that names no archetype; a ledger with a `types` map is never second-guessed; with a test; `replica/SKILL.md`
+  names the keys.
+
+## 0.34.2 — dynamics: a form's captcha is recorded and rendered, never silently dropped (#135)
+
+Field learning (a newsletter sign-up on a media site): the live form carried a checkbox reCAPTCHA under the email
+field; the replica rendered the field and the button and nothing else. The form definition had no place for it, so
+the parity report read the form as done and the pixel diff saw a shorter card. A captcha is two halves: a public
+site key in the DOM, migratable, and a secret-backed server verify at the endpoint, which is not.
+
+- **`snapshot-forms.mjs`:** the definition gains `protection` — `{ vendor, siteKey, widget }` from any
+  `[data-sitekey]` element or a reCAPTCHA / hCaptcha / Turnstile script (v3 and Enterprise keys read from `render=`),
+  `null` when absent; the per-URL stderr line flags `PROTECTION: <vendor>` next to `REGULATED-PII`.
+- **forms.md § 4:** a recorded `protection` renders the same widget in the same slot with the vendor's published
+  always-pass test key and posts its response field with the data; the owner's real key, domain allowlist and
+  server-side verify are one `needs-backend` decision row. Folded the "53 states / 260 countries" anecdote.
+
+## 0.34.1 — deploy: CSS never lands in the document — a per-item look is block CSS or a named variant (#134)
+
+Field learning (a Magento marketplace replica): the source home slider is PageBuilder, and each of its three slides
+carries its own overlay rule (`padding: 200px 10px 10px 50px`, `… 750px`, `190px 10px 0 35px; background-size: auto`).
+The block ported that per-slide style as an authored config cell — `padding: …; size: auto`, documented in the JSDoc,
+tagged `@ew-exempt config`, copied into `overlay.style.padding` by `decorate()`. Two gates blessed it: the editability
+probe counted the three cells exempt ("24/27 editable, 3 exempt (config)" in the conversion log) and D15's lint knew
+only a full `prop: value; }` rule. The author saw CSS as body text in DA. Nothing in the skill said how a per-instance
+visual difference is encoded — only that it must not be flattened — and a page-builder source hands the agent a
+ready-made per-instance style field to port.
+
+- **deploy ENCODE contract:** new rule — per-instance visual variation is a NAMED VARIANT: every #90 fingerprint
+  cluster becomes one plain word from a closed set of ≤3–4 (`left | right`, `dark | light`) in a dedicated cell on
+  every row (or a block variant class); `decorate()` maps the word to a class, the block CSS carries each variant's
+  exact source values, an empty/unknown word falls back to the declared default. That keeps fidelity (each slide looks
+  as it did) AND authoring flexibility (an author can pick a side) — normalising clusters into one treatment is the
+  exception, for sub-16 px deltas or when the set would exceed the D6/D9 budget, logged in the inconsistency register.
+  Never a declaration, length, colour, class name or `--token: value` in a cell, and never `el.style.x = text` /
+  `setProperty(…, text)` / `setAttribute('style', text)` from authored content in block JS. D15 names the
+  bare-declaration form; EW5's "variant selectors" are keywords; anti-pattern 20; Step-8 JSDoc scaffold; checklist row.
+- **`@variants <cell>: a | b (default a)` JSDoc tag:** declares a variant cell's vocabulary. `parseExemptTags()` returns
+  it; with a vocabulary declared, `aggregate()` reports an exempt ONE-WORD cell outside the set dead ("not a declared
+  variant word") — a misspelled `rigth` would otherwise fall back silently in the block.
+- **`davids-model-lint.mjs`:** D15 gains a per-cell and per-paragraph check — text that IS a CSS declaration
+  (every value token CSS-shaped: lengths, numbers, colours, functions, keywords) or a custom-property assignment is
+  🔴; a cell that is only CSS lengths or a lone hex colour is 🟡 (a data table may legitimately hold them).
+  Key-value blocks (`metadata`, `section-metadata`, `library-metadata`) are exempt — configuration may hold a
+  colour. Calibrated on 38k generated pages: zero 🔴 false positives ("color: text-only teaser boxes, 6-up grid"
+  and decades like "1970s" were the two that had to be excluded), 204 hex-colour advisories on one site that had
+  authored a brand colour per tile — the pattern this release names. The classifier lives in `css-as-text.mjs`.
+- **`ew-editability-probe.mjs` (and `block-roundtrip --ew`, qa `editability`):** an `@ew-exempt` tag no longer covers a
+  cell whose text is CSS — `aggregate()` reports it dead with a #134 label, so the round-trip gate fails on the
+  recorded case instead of listing it under "exempt (config)". Tests: `deploy/davids-model-lint`,
+  `deploy/ew-editability-probe` (new).
+
+## 0.34.0 — widgets: code-driven UI with no authored content ships as an EDS widget, not a block with empty rows (#133)
+
+Platform change: the boilerplate gained widgets (`adobe/aem-boilerplate` #630, `aem.live/docs/widgets`) — a
+self-contained unit at `widgets/<path>/<name>.html|.css|.js` (+ optional `.json`) that an author mounts with one link
+(`/widgets/<path>/<name>.html?<params>`; params become `data-*` on the root), loaded by the stock `blocks/widget/` and
+`buildWidgetAutoBlocks()`. Every skill modelled reusable UI as block, default content, chrome or module, and told the
+agent to build a search box, calculator or copy-free form as "one self-contained interactive block" with key-value
+config rows — the empty-placeholder block the platform now calls a widget. Four gates would have flagged a correct
+widget: rollout's `.html` link rule, deploy's round-trip harness (heading and CTA MISSING), qa's `unblocked-page`
+on a widget-only page, and the editability probe (dead text). The term "widget" also meant "bespoke content block"
+(a countdown) in deploy — a clash with the platform term.
+
+One rule, stated once per skill: **widget when the section carries no authored content — configuration only, or
+everything arrives from code, index, API or user input; block when authors fill rows.** `widget` joins the reserved
+block names; a widget's file stem obeys the same `-wrapper`/`-container` guard.
+
+- **Vocabulary** (`stardust/reference/data-attributes.md`): `data-widget="<path>/<name>"` beside `data-module`; the
+  mount is a link alone in its paragraph, never `data-placeholder`. `DESIGN.json.extensions.widgets[] {id, path,
+  params}`; `_meta.json.widgets[] {id, href}` derived by `migrate.mjs` from `a[data-widget]`, whose hrefs
+  `rewriteLinks` now leaves verbatim.
+- **deploy:** Step 2 triage is three-way (default content / block / widget); #17 and #28 bound the interactive-block
+  rule to sections that keep authored rows; `scripts.js` hooks name `buildWidgetAutoBlocks()` and `blocks/widget/` as
+  stock (ported verbatim on a pre-2026-06 clone); the fixed-asset grep scans `widgets/`; the bespoke-block sense of
+  "widget" is renamed. `block-roundtrip.mjs` lists a `/widgets/` link as `widget:<name>`, drops it before the role
+  inventory and never inlines `blocks/<name>/`; `ai-readability.md` explains the default `--exclude-blocks
+  client-app,widget` (the words come from code by design; `strict` still counts them).
+- **dynamics:** triage gains a fifth column, **target** (`block · widget · runtime · content · embed`);
+  `dynamics-plan.mjs` emits it — widget for client-compute tools, the site-search box, form-less control groups,
+  locators and kept chrome search/cart/account. A form with authored intro or success copy stays a block.
+- **spec:** `kind` gains `widget` on both sides; one `CODED` set in `lib.mjs` replaces the kind lists in `spec-knowledge`,
+  `spec-variants` and `spec-pick`, so a widget is counted, variant-signed and capture-picked like any coded block;
+  `search` is the starter widget (`verdict: new`); `search`, `map`, `location-selector`, `chart` and copy-free `form`
+  families default to widget.
+- **direct --prep / migrate / replica:** a fourth prep action "mark as widget"; a widget instance renders as the
+  mount link, so the placeholder gate does not fire; replica keeps "widgets are implemented, not justified away" and
+  names the EDS delivery form.
+- **rollout:** ledger `kind` gains `widget` (`blockPath` = the code path, no document rows), pages schema gains
+  `widgets[]`, content-pending siblings inherit them, `plan.mjs` walks them; `delivery-lint.mjs` exempts
+  `/widgets/…html` from `html-extension` and adds P1 `unknown-widget` (code file missing) and `widget-name`
+  (reserved stem).
+- **qa:** a `/widgets/` link counts as a block named by its file stem for `missing-template-blocks` and
+  `unblocked-page`; new `unknown-widget` (HEAD on the code path ≠ 200); the shared editability probe keys the authored mount
+  (`<p>` holding only the `/widgets/` link) as `widget` and exempts it for both the deploy and qa callers. Tests: `deploy/block-roundtrip`, `qa/widgets` (new), `dynamics-plan`, `migrate`,
+  `spec-knowledge`, `rules`, `inventory`, `delivery-lint` extended.
+
+## 0.33.0 — martech: the source's Web SDK is read and offered as an `aem-martech` switch, off
+
+Field learning: a full run on a consumer-brand site on Launch + Web SDK carried the tag stack over, but
+the hand-off only said "aem-martech is an owner project". It gave the owner nothing to act on. The Launch library
+already held everything the plugin needs: orgId, the Web SDK instance, edge CNAME, datastreams (two, chosen
+by a data element per brand domain), and a self-hostable 2.34.2 extension. It also showed 129 data-layer rules
+that only fire if the new pages push the same events. None of it was read.
+
+- **`spec-martech.mjs`** reads the Launch orgId and the Web SDK extension: version, self-hosted support, library
+  type, and each instance's edge domain, `defaultConsent` and datastream ids (resolving a `%data element%` to the
+  ids it holds). Rules now record their event types.
+- **`vendors.json`** gains a Web SDK row (`adoberesources.net`, `alloy.js`) carrying the `aem-martech` plugin
+  facts: repo, path, default edge, the source's default consent, required Launch extensions.
+- **`martech-contract.json`** gains `aemMartech`, always `enabled: false`. Its config comes from that evidence.
+  Ambiguous datastreams stay null, with the candidates listed. A rebuild keeps the owner's choices.
+- **`martech-handoff.md`** adds a data-layer section for any tag manager: the data-layer globals to keep, Launch
+  rules with their push events and a count per event, the tag managers whose rules were not parsed, and a request for
+  the owner's tagging plan. `spec-martech.mjs` saves every other tag-manager library (GTM and gtag by container id,
+  read from inline snippets; Tealium, Ensighten, ... by src) to `martech/tags/`; the model reads them into the
+  contract's `tagNotes` in Launch's shape (rules, data elements, consent groups, each citing `from`), which survive a
+  rebuild and render in the same rewrite, data-layer and consent sections, marked as read by the model. The consent
+  model comes from parsed evidence only; the model's reading is listed as evidence and never changes it. A Google
+  Consent Mode default (inline `gtag('consent', 'default', …)`, or a saved library that sets one) is saved to
+  `martech/consent-mode.json`; inline on the pages, it makes the model `google-consent-mode`. A custom GTM data-layer name
+  (`l=`) is kept. Its header adds `dynamics-check.mjs` after the scaffold re-run. It also adds a Web SDK
+  section: the values found, the consent default to keep (`in` on the source, `pending` in the plugin), missing extensions, and the four switch steps.
+- **`martech-scaffold.mjs`**: with `aemMartech.enabled`, it loads the CMP, then `initMartech`/`martechEager`;
+  `martechLazy` runs from `loadLazy()` after `loadFooter`, as the plugin documents, so page views do not wait for
+  the delayed phase; `martechDelayed` loads the Launch property through `launchUrls`. A category starts the Web SDK
+  `pending` whatever the source value and grants `collect` on consent.
+  The scaffold refuses missing values, a missing `plugins/martech`, or the same property also enabled as a route.
+  Off, the output is unchanged byte for byte.
+- **Target** is read the same way: the at.js extension (or a page-level at.js) and the Web SDK rules that render
+  decisions. The contract gains `target`, off, and the hand-off a Personalization section. With `target.enabled`,
+  the scaffold sets `personalization`, only on top of `aemMartech`. at.js activities stay an owner move.
+- **`dynamics-check`** treats the edge host as a route: forbidden on `/`, gated with a category, and expected on
+  accept once enabled.
+
+## 0.32.1 — spec knowledge, wave 4: what a reviewing client had to guess
+
+Wave 4 of how clients use a spec's `stardust/spec/knowledge/`. A spec viewer that lets people review the spec
+inferred four facts with a model or recomputed them; the judgement now records them. All four fields are additive, so
+older judgement files still build (the fields read null).
+
+- **`open-questions.json` `default_option`:** the index of the option the default is, or null when the default mixes
+  or conditions options. A reviewer sees the default as a selected option without matching prose to labels. On a
+  sports-federation run, 23 of 28 defaults are one of their options. An index outside the options stops S10.
+- **`blocking` is defined:** confirm the default before launch, because a different answer means rework. The work
+  proceeds on the default either way; read as "work waits", it contradicted "every open question ships a default".
+- **`findings.json` `chapter` and `rank`:** where a finding belongs in the spec's story (`start`, `pages`, `build`,
+  `dynamic`, `risks`, `decide`) and its rank there, so a client places the agent's interpretation next to the numbers
+  it explains and leads with the most important one. An unknown chapter stops S10.
+- **`redirects.jsonl` `needs_entry`:** 1 on a `migration` row whose path changes beyond the `.html`, index-name and
+  trailing-slash rule. On the sports-federation run, 5,287 of 12,072 migration rows need their own entry. The
+  template's redirect finding counted all of them; it now counts `needs_entry=1`.
+- `templates/open-questions.json` gives every generic question a `default_option`; `templates/findings.json` shows
+  `chapter` and `rank`. Tests cover the four fields and the two stops.
+
+## 0.32.0 — the header is a contract: its behaviour is recorded from the source and gated before done (#132)
+
+Field learning: several runs shipped headers that passed every pixel and style gate while every menu was wrong. They
+had boilerplate one-level click dropdowns for hover mega menus, search and cart as plain links, and a static list for
+a drill-down drawer. Every visual instrument sees the header at rest, with the pointer parked and motion frozen. Deploy
+told the agent to keep the stock header's interaction code and treat the prototype's menu script as a visual reference.
+Nothing in the final verdict looked at the header.
+
+- **`diff/chrome-explore.mjs`** records the header by using it, at 1440 and 390. It hovers (desktop), clicks and
+  opens from the keyboard every control, and records each opened state: links, headings, crop, `aria-expanded`,
+  focus, scroll lock, motion, and close paths (Escape with focus return, outside click, toggle, pointer leave). It
+  descends into tabs, flyouts and drawer levels within a budget, and a hit is reported. It types into search to record
+  typeahead and the URL the submit lands on, and samples the header scrolled down, up and back. Navigations are
+  answered 204, so the page never leaves.
+- **`diff/chrome-compare.mjs`** is the header-parity gate. It exits 2 on any of these:
+  - a missing control or state (hover rebuilt as click included);
+  - missing panel links or headings;
+  - keyboard behaviour, `aria-expanded`, close paths or scroll lock that differ.
+
+  The `replica` profile adds open-state crops (2 % bar, with the crop gate's texture so a font substitution is
+  visible), motion (every duration within max(80 ms, 25 %)) and scroll states. `functional`, for redesign and reskin,
+  checks behaviour and content.
+- **Only the site owner clears a finding**, in `stardust/chrome/header-decisions.json`; an entry signed by an agent is
+  ignored and reported.
+- **Wiring:**
+  - extract `--prep` records the contract (`stardust/chrome/header-contract.json`) and puts its summary in the prep
+    summary;
+  - deploy Step 6 builds the header from the contract, with the stock code as the accessibility floor and large panels
+    as nav fragments;
+  - deploy Step 10 and replica C0 gate the foundation on it;
+  - `done-check` gains `header_parity` for migration projects (contract, a fresh comparison of the flow's profile at
+    every contract width on the live host, no undecided error);
+  - qa gains a `chrome` check;
+  - `dynamics-plan --chrome` adds a row per control family (cart and account decide their backend, the UI ships);
+  - spec S9 explores the home header and knowledge gains `header.json`, its size per width.
+- **The replica eval** gains `header_contract_recorded`.
+
+Field run (a museum network's home page, a new EDS site):
+- **The contract:** at desktop, 6 click mega menus and a search overlay (14 states, 35 links); at mobile, a drawer with
+  a search form and 6 accordion levels (14 states, 37 links). It took about 5 minutes for both widths.
+- **The stock EDS header** with the same nav content got 37 errors. Every accordion was flattened into one open list,
+  search was a link, nothing had motion, the header was 64 px instead of 201 px, and the crops differed by 62–91 %. It
+  correctly passed the desktop click, keyboard and close behaviour the source shares with the boilerplate.
+- **A header block built from the contract** reached 0 errors under `functional`. Under `replica`, 7 open-state crops
+  remain at 2.1–3.9 %. They come from the licensed brand face replaced by a system font: an owner decision.
+  `done-check` listed them as `header_parity:7` and qa reported the same.
+- **The field run fixed the explorer:**
+  - a `<nav>` carrying `aria-expanded` was taken for a control;
+  - items scrolled out of a scroll container read as hidden;
+  - icon words in `aria-label`s and transparent-font icons broke pairing;
+  - POST search forms were not followed to their results URL;
+  - crops took the links' parent instead of the panel box;
+  - one duration per property lost a second animated element.
+
+## 0.31.6 — spec knowledge, wave 3: what a migration still had to recover from raw files
+
+Wave 3 of how other skills use a spec's `stardust/spec/knowledge/`. These are the facts consumers still could not
+get from the committed knowledge.
+
+- **`urls.jsonl` `blocked`:** why an `error` row was not read (`challenge`, `refused`, `network`, `archive-miss`).
+  Gate 4 probes those instead of treating them as dead. On the museum field run: 61 `challenge`, 2 `network`, and
+  no `error` row without a reason.
+- **Search probes** carry `feature`, `path` and `param` (the source search URL). `dynamics-plan --knowledge` drafts
+  `dynamic-features.generated-parity.json`: one `search-query` check per probe, with the source's expectations and
+  `resultSelector` left to the curator.
+- **`martech.json` `evidence`:** spec-martech's `launch.json` and `onetrust.json`, unchanged. `martech.mjs
+  readEvidence` accepts a knowledge folder. On a sports-federation run (about 12,000 pages), the martech contract
+  from knowledge is identical to the one from the raw folder: OneTrust, 4 routes, 58 rewrite rules.
+- **`archetypes.json`** (decision P3, step 2):
+  - within each template, the layout variants covering 80% of its pages are page types;
+  - the larger tail folds into the template's largest type;
+  - a one-page variant or template is `unique`;
+  - each type has one `rep_url`, so migrate's one-archetype-per-type rule holds;
+  - extract `--prep` takes its types from it, and prototype `--prep`, replica and reskin take their representative.
+
+  Every live page is placed exactly once: 29 types for 12,072 pages; 11 for 89 on the museum run, where the
+  exhibitions listing became `unique` instead of borrowing the exhibition-page archetype.
+- **Rollout pages record `sourceUrl`** (from the sidecar, else `state.json` by slug; schema updated). qa
+  `from-knowledge` and `seed-redirects` join coverage by it, so a renamed page still matches.
+- **qa routing** checks every expected redirect: a `stardust/redirects.tsv` row absent from the live
+  `/redirects.json` is `redirect-missing` (error); a different destination is `redirect-dest-differs` (warn).
+  Live, a planted missing row was reported, and the real 5 rows passed.
+- **Additive fields:** `knowledge.md` now states that a patch only adds fields and clients ignore the ones they do
+  not know; removing or renaming a field is a minor release.
+
+## 0.31.5 — spec knowledge seeds dynamics, qa, rollout and the archetype pickers
+
+Wave 2b of how the other skills use a spec's `stardust/spec/knowledge/`: each consumer reads it when present and
+never requires it. Reading adds no wall time.
+
+- **dynamics** (`dynamics-plan.mjs --knowledge [dir]`): the spec's curated features become draft rows. They keep
+  the axes as judged (S10 checks them against the dynamics vocabulary). Their decision is the linked open
+  questions' answer, or else the default. It also works without a detector run. A `decided-out` row with no
+  recorded owner answer is flagged (`triage.md`). Phase 1's search probes: a spec's `search-probes.json` already
+  holds them.
+- **qa** (`qa/scripts/from-knowledge.mjs`, new): writes two inputs.
+  - `stardust/template-map.json`: the inventory by layout variant at served URLs, delivered pages only when
+    rollout's coverage exists.
+  - Allowlist entries for links the source already had broken, as authored and as served.
+
+  On a sports-federation run (about 12,000 pages): 114 variants and 1,251 source-inherited 404s that would
+  otherwise read as migration defects.
+- **rollout:**
+  - D2 starts `helix-query.yaml` from the spec's draft;
+  - Gate 4 reads dead (`http-*`, `redirect-broken`, `loop`) and bodyless source pages from `knowledge/urls.jsonl`
+    instead of probing them. An `error` row was never read (on the museum field run, 63 pages behind a bot wall),
+    so it is still probed.
+- **Archetypes:** prototype `--prep`, replica Phase 3 and reskin default their representative page to the spec's
+  `rep_url` of the type's largest layout variant.
+- **Prose:** rollout's query-index paragraph restated `dynamics/reference/listings.md` § Getting an index at all
+  step by step; it now points there.
+- **Field run** (10 pages of a museum site on a new EDS site, with these scripts):
+  - spec's draft `helix-query.yaml`, committed unchanged, indexed all 10 pages;
+  - `dynamics-plan --knowledge` added 8 spec rows to 46 detector rows, all within the dynamics vocabulary;
+  - qa's sweep with the derived template map ran on every delivered page.
+
+  It also found three bugs, fixed here:
+  - **qa missed the 0.31.4 folder-index rule.** It fetched `/x` and `/x.plain.html`, but a folder index lives at
+    `/x/` and `/x/index.plain.html`. The inventory now keeps each page's served `url` next to its key, and its
+    slash probe checks that a folder index still answers at `/x` (the redirect spec records) instead of expecting
+    a leaf's `/x/y/`, which 404s by design.
+  - **`seed-redirects` wrote redirects into pages of later waves.** qa reported 5 redirects landing on 404s. With
+    rollout's coverage, only redirects to delivered pages are written; re-run the seed after each wave.
+  - **Gate 4 would have dropped pages a bot wall hid.** It counted outcome `error` as dead, and all 63 such rows on
+    the museum site were pages behind the bot wall.
+
+## 0.31.4 — a folder index lives at `/x/`: sitemap, probes and links follow EDS
+
+EDS serves a folder index (`x/index.html`) at `/x/`, and `/x` 404s on a plain site (one site seen adds a 301); a leaf page lives at `/x/y`, and
+`/x/y/` 404s (checked on a live origin). Stardust's rule was "never a trailing slash", which is right for leaves
+and wrong for folder indexes. Three consequences:
+- the rollout sitemap listed every folder index at a URL that 404s;
+- `done-check`'s live probe (`HEAD`, no redirects, 200 only) counted every delivered folder index as not live;
+- `localize-links` wrote folder-index links that 404, and delivery-lint flagged the correct `/x/` as a P1;
+- spec could not tell a folder index from its source path, so its redirects pointed at `/x`.
+
+- **Rollout** (`lib.mjs publicUrl`): `pages[].path` stays the key; a page whose migrated file is `…/index.html` is
+  published, fetched and probed at `path/` (`assemble.mjs` sitemap, `verify.mjs`, `loadPageHTML`, `done-check`).
+- **`localize-links`** writes the served URL (`eds-path.mjs deliveredUrl`): `/x/` for a folder index, `/x/y` for a
+  leaf; redirect destinations resolve the same way. Matching still uses the lookup key.
+- **delivery-lint** judges a trailing slash by its target, with the content tree (`--content`, default `./content`):
+  - a leaf's slash stays P1;
+  - a folder index's slash passes;
+  - a folder index without it is a new P1, `folder-index-slash` (it 404s);
+  - a target outside the tree is a P2 advisory.
+
+  First test file for the lint.
+- **Docs:** the rule ("no `.html`; a slash only on a folder index") replaces "EDS 404s on `/x/`" in deploy and
+  rollout.
+- **spec** (`servedUrls`): a page with pages below it is a folder index, so its `eds_path` is `/x/` and a migration
+  redirect `/x` → `/x/` is recorded (a plain EDS site 404s on `/x`).
+- **Field rollout** of 10 pages (4 folder indexes) on a new EDS site: every sitemap URL, `done-check` probe and
+  localised link answers 200; `/x` without the slash 404s, as above.
+
+## 0.31.3 — one delivered-path contract; spec redirects seed rollout
+
+Five path rules disagreed on the same input: spec's `edsPath`, rollout's path-safety lint, deploy's `canonicalPath`
+and its copy in `davids-model-lint`, and rollout's own delivered path. `/a/index.html` gave `/a/`, `/a/index.html`
+and `/a`. Checked on live EDS sites: a folder index is served at `/a/` (`/a` 404s on a plain site, `/a/index` too), a leaf
+page at `/a/b` (`/a/b/` 404s), and `.html` 404s.
+
+- **`deploy/scripts/eds-path.mjs`** (new, pure): `deliveredUrl` (spec's rule, now also collapsing `//`), `daPath`
+  (`/a/` ↔ `/a/index`) and `pathKey` (the lookup key). spec's knowledge, `localize-links` and `davids-model-lint`
+  import it, so the two `canonicalPath` copies are gone. spec's Setup copies the deploy scripts too.
+- **`rollout/scripts/seed-redirects.mjs`** (new): when a spec exists, Gate 3 first appends its redirects to
+  `stardust/redirects.tsv`:
+  - every source URL that changes on EDS;
+  - the source's own redirects, pointed at the delivered page.
+
+  Rows already there win; external targets, targets outside the knowledge and loops are counted and skipped. On a
+  sports-federation run (about 12,000 pages) it seeds 12,312 rows, 241 of them existing redirects made one hop; on a
+  museum run, 33.
+- **Prose:** rollout's path-safety rules are written once, in `delivery-gates.md` § Gate 3; two recorded anecdotes
+  in deploy's link-localisation paragraph are folded.
+- **A field rollout** (10 pages of a museum site on a new EDS site) found two more:
+  - `localize-links` rewrote links through any redirect, including the seeded ones to pages of later waves, so 8
+    links would have 404ed. A redirect now rewrites links only to a page of the content tree; the rest stay absolute.
+  - The redirects sheet never matches a source containing `:` or `%` (those requests 404 first; measured with probe
+    rows), and 31 of the museum site's 33 seeded rows had one. `seed-redirects` writes those to
+    `stardust/redirects-cdn.tsv`, as CDN rules.
+- **Open (next release):** rollout publishes a folder index at `/a`, which 404s on a plain EDS site, and the link
+  rules call a trailing slash a 404 although a folder index is served there.
+
+## 0.31.2 — notes cleanup: two retired notes removed, dangling note citations dropped
+
+`notes/` held two documents nothing reads at run time, and six skill docs cited notes that were never in
+this repository.
+
+- **Removed** `notes/deploy-improvements-archive.md` (the frozen deploy ledger, findings #1–#80) and
+  `notes/multi-agent-distribution.md` (the 2026-09 multi-harness assessment). The `(#NN)` citations stay as
+  provenance; `deploy/SKILL.md` § References now says how to read the ledger from git
+  (`git show 940b8795:plugins/stardust/notes/deploy-improvements-archive.md`). The README and
+  `replica/reference/handoff-contract.md` no longer point at either file.
+- **Dropped citations of missing notes:** `notes/variant-convergence.md` (`prototype/SKILL.md`, the
+  `composition-delta-trivial` fixture), `notes/migrate-template-canon-refactor.md`
+  (`prepare-migration/SKILL.md`, `stardust/reference/artifact-map.md`,
+  `stardust/reference/data-attributes.md`) and `notes/prototype-broken-by-default-detector-2026-04-29.md`
+  (`prototype/SKILL.md`). The rules they backed are unchanged.
+
+## 0.31.1 — spec knowledge, wave 1: complete redirects, the dynamics vocabulary, a scoping entry
+
+A review of how the other skills can read `stardust/spec/knowledge/` found gaps in spec's own output, and small
+readers that would fail on it.
+
+- **Redirects** (`spec-knowledge.mjs`): a migration row for every page whose delivered path differs from its
+  source path. A path that changed only by its `.html` had no row, yet EDS answers 404 on `.html` and rollout
+  wants a sheet row for each. On a sports-federation run (about 12,000 pages) the rows grow from 5,287 to 12,072.
+- **Feature vocabulary:** S10 checks class, disposition, reproducibility and status against the dynamics triage
+  vocabulary (`TAXONOMY`, exported by `dynamics/scripts/lib.mjs`) and stops naming each value outside it. The
+  field run's judgement used five values dynamics would have rejected later.
+- **Router:** a flow-neutral scoping entry ("scope / estimate / plan / spec the migration of X" → `spec`, never
+  stamps `flow`). "Build a migration plan" no longer routes to `replica`. A large site (1,000+ sitemap URLs, no
+  spec) gets a one-line offer to scope it first; it is never run unasked. The two copies of the wrong-flow anecdote
+  are folded.
+- **Ledger:** spec's stages are phases (`s1-inventory` … `s10-knowledge`); spec writes its status lines.
+- **`localize-links --redirects`** reads JSON Lines (`{src, target}`, spec's `knowledge/redirects.jsonl`) and the
+  published sheet (`{data:[{Source, Destination}]}`). It reported 0 pairs from the first and threw on the second.
+  First test file for the script.
+- **`crawl.mjs --max 0`** means no cap. It silently became 25, so a `--all` crawl translated to `--max 0` kept 25
+  pages.
+## 0.31.0 — publish always; done is one verdict
+
+Two contracts a hands-off run had to be told from outside the skill, because the skill left them open. Both
+are now the skill's own.
+
+- **Publish always** (contract change). The replica handoff contract said "Publish is a decision… stay
+  preview-only until it is made", while rollout Phase C says publish in the loop. Which rule won depended on
+  which document the agent read last, and nobody owned the decision under hands-off. Now every delivered page,
+  the redirects sheet and the chrome documents go live (`PUT → preview → live`). The decision step and its
+  `eds-conversion-log.md` record are gone, C0 and the cluster deploys no longer hold `--no-publish`, and the DA
+  protocol's publish step is the default rather than optional. `deploy-batch.mjs --no-publish` remains for an
+  explicit preview-only ask. Deploy's font-licensing hold (self-hosted proprietary faces) is unchanged.
+- **`done-check.mjs`** (new, rollout). One completion verdict from the ledgers the run already writes:
+  - `pages_unfinished`: coverage rows not verified.
+  - `pages_failed`: failed rows, or a failed published-origin gate.
+  - `pages_not_live`: delivered rows that do not answer 200 on the live host.
+  - `open_p1`: the optimize gate's own count, source parity excluded.
+  - `rollout_incomplete`: the last `I-dashboard` line is not an `end`.
+
+  Exit 0 complete, 1 gaps, 2 usage. `--offline` skips the live probe, and `--json` prints
+  `{ complete, gaps[], liveChecked }`. Every reader that needs "is the run done" previously re-derived it from
+  the same files.
+- **Replica handoff** writes `replica handoff end` only on `done-check.mjs` exit 0, and closes each gap with its
+  own remedy (handoff contract § 5). A gap only the owner can close is a `blocked` line.
+- **Bounded entry captures dynamics:** `extract --single --dynamics` (and `--pages … --dynamics`), because Phase 2's
+  dynamic-surface gate needs the per-page reach signals that `--single` alone does not record.
+
+## 0.30.3 — spec: knowledge files instead of a database; one rule format instead of SQL
+
+`spec` ended at `spec.sqlite`, but no stardust skill read it. Its one client, a viewer application, loads it into
+its own database, and the file carried that viewer's tables, onboarding text and HTML findings. The skill now ends
+at JSON files clients read, and knows no client. **Contract change** (released as a patch): `knowledge/` replaces
+`spec.sqlite`, and judgement rules replace SQL.
+
+- **Output** (`spec/reference/knowledge.md`): `stardust/spec/judgement/` (the agent's decisions) and
+  `stardust/spec/knowledge/` (computed by S10, `spec-knowledge.mjs`): urls, page blocks, blocks with variants,
+  templates, variants, redirects, broken links, bad links grouped by target, features with their pages, martech,
+  metadata, query indexes with a draft `helix-query.yaml`, locales, open questions, findings. Committed. Raw
+  material, captures and crops stay in `stardust/.work/spec/`. On a sports-federation site (about 13,000 URLs)
+  the folder is 37 MB, about 2.5 MB compressed.
+- **Rule format** (`rules.mjs`, knowledge.md § Rules) for feature `reach`, question `impact` and `{{…}}` in findings:
+  URL terms (`live`, `sitemap`, `block:`, `signal:`, `nested`, `verdict:`), filters with globs, `urls`, `count`,
+  `sum`, keyed and `max:` lookups. A rule that cannot be computed stops S10. `sql:`, `url:` and `bvariant:` are
+  retired; `block:` no longer implies the sitemap (write `sitemap block:x`). No SQL engine is left in the skill.
+- **Answers** in `judgement/answers.json` replace a question's default in `knowledge/open-questions.json`; the
+  default stays recorded.
+- **No viewer concerns:** no viewer tables, no tour or header label, findings as plain `{ title, text, numbers }`.
+- **Config** at `stardust/spec/spec.config.json`; `work` names the raw-material folder.
+- **Shared instruments:** spec-martech classifies hosts with the dynamics skill's `vendorFor` (a missing table now
+  fails instead of returning nothing); the index yaml follows the dynamics skeleton (description meta, image as a
+  path, robots, the chrome and search excludes); Setup copies the diff and dynamics scripts, which S1, S2 and S9 need.
+- **Verified** on two recorded runs. Every rule from their judgement files (150) gives its SQL value on the same
+  data, apart from an empty sum (0, not null). On the 13,000-URL run, `spec-knowledge.mjs` reproduces all 25 sets
+  of its `spec.sqlite`, and a database rebuilt from `knowledge/` matches it table for table (meta aside).
+- **Field run** on a museum site behind bot protection (generic profile, headed tier, 300-URL sample): S1–S10 ran in
+  the new layout from the Setup copies, and a client database built from its knowledge. The CDN turned the headed
+  browser away after about 100 pages; the spec covers the 89 pages read, and a finding says so. It found three
+  0.30.1 bugs, fixed here:
+  - **Drupal names:** the generic namer took the first nameable class, so `paragraph` hid
+    `paragraph--type--<name>` and every paragraph became one component. Block-style classes now win (`lib.mjs`,
+    shared by parse and capture).
+  - **S4 refusals:** a bot wall's 403 on a link counted as a broken link. `spec-links` records it as `blocked`, not
+    a 404 (`blockedBy` moved to `lib.mjs`).
+  - **S1 crawl:** the crawl kept `<link>` icons, fonts and manifests as pages (`NOT_PAGE` widened).
+- **Existing projects:** move `<dir>/{inventory,fetch,parse,links,rum,martech,dynamics,media,sheets}` to
+  `stardust/.work/spec/`, `judgement/page-blocks.jsonl` and `variants.json` to `.work/spec/map/`, the config into
+  `stardust/spec/`, then rewrite `sql:` rules and HTML findings.
+
+## 0.30.2 — opt-in martech: carry the source consent and tag managers over, switched off
+
+A migration dropped the source's CMP and tag managers silently, or left an agent to re-wire them by hand
+against accounts it does not own. Martech now has one contract, built only when the owner asks, from the
+evidence `spec-martech.mjs` already reads (`dynamics/reference/martech.md`).
+
+- **Evidence**: `spec-martech.mjs --urls … --out stardust/martech` runs standalone, without a spec.
+- **Contract** (`dynamics-plan.mjs --martech`): `stardust/martech-contract.json` and
+  `martech-handoff.md`. It holds the CMP with its id, the source consent model (`per-tag` or
+  `owner-decision`), the categories from the CMP configuration, one route per tag-manager loader, and
+  the Launch rules and data elements to rewrite. Every part is written disabled, and a rebuild keeps
+  the owner's choices. CMP scripts and loader patterns live in `vendors.json`; detection is unchanged.
+- **Runtime** (`deploy/scripts/martech-scaffold.mjs`): `scripts/martech.js` from the enabled parts. The
+  CMP loads in `loadEager()`, tag managers from `delayed.js`, and a route with a `category` waits for
+  that consent group. Tags load only on production hosts; on preview `?martech=on` (plus
+  `&consent=accept`) turns them on.
+- **Verification** (`dynamics-check.mjs`, qa `dynamics`): a `martech` check aborts cross-site requests
+  after recording the host. It asserts nothing loads by default, gated routes wait for consent, and
+  enabled hosts are requested after accept.
+
+## 0.30.1 — spec: any website, a page cap, and blocked origins
+
+`spec` parsed AEM sites only. A WordPress news site (2,061 sitemaps, about 412,000 URLs) and a Next.js site with
+utility-class markup showed what a generic parser and a cap need.
+
+- **`generic` parser profile** (`spec/reference/config.md`): below main, single-child wrappers are skipped and the
+  children are components, named from a component attribute, a block-style class (`wp-block-*`,
+  `elementor-widget-*`, `paragraph--type--*`), a BEM or CSS-module block, or a shape label (`section.h2.list`) where
+  classes are only utilities; hash prefixes are dropped (`stripPrefix` for a site's own). One rule set
+  (`lib.mjs genericRules`) runs in the parser and in the capture tagger: on 5 of 6 sampled pages the two found
+  identical path ids. The AEM profiles are unchanged: a re-parse of 12,345 AEM Core pages was byte-identical.
+- **One rule set per profile, one layout walk** (`lib.mjs` `profileRules`, `componentLayout`): the capture tagger
+  ran a hand-written copy of the AEM rules; parse and capture now share them, so path ids cannot drift. Parse output
+  byte-identical on 12,345 AEM Core pages (5,192 grid rows), 200 AEM classic pages (651 column controls) and four
+  generic sites; capture path ids and rows identical on the sampled pages of each profile.
+- **Main region fallback** for sites without `main`: `[role=main]`, `#main`, `#content`, `#main-content`,
+  `article`, then the body without header, footer and nav.
+- **Inventory**: stops when the origin redirects (two of three sampled sites were configured with the wrong host);
+  crawls links from the scope root when no sitemap URL is in scope; `--max` / `maxPages` keeps an even sample per
+  section and the database says so (`meta.sample_note`, `inventory_total`).
+- **Template**: a path-only rule (`{ "pathSegments": 1 }`) names templates by section alone.
+- **Blocked origins** (a museum site behind a bot challenge): S1 and S2 classify challenges with the diff skill's
+  `live-session.mjs` (the edge signatures replica's gate uses) and stop at 10% (exit 3) with the choice for the user —
+  allow-list the crawler, `--headed` (the plugin's stealth real-Chrome tier: 5 of 6 sampled pages on the first pass,
+  where bundled headless Chromium got 2), or `--archive <date>` (Internet Archive raw captures, recorded per page and
+  in `meta.evidence_note`). `fetch/technique.json` records the tier so later stages start in it, as extract's
+  `fetchTechnique` does. Pages not read plainly are captured from the fetched HTML with live assets; a page still
+  showing a challenge is an error, never a screenshot. Parse and capture agreed on every path id of the captured pages.
+
+## 0.30.0 — new skill `spec`: the migration spec before the migration, as one documented database
+
+Scoping a migration was rebuilt by hand per engagement: a crawl, spreadsheets of templates and redirects, a
+block-reuse guess, a list of "things to ask". Two recorded runs made the method a skill. The first, on a
+medical-technology corporate site (about 2,900 sitemap URLs, AEM classic components), produced the method
+and the database contract. The second, on a sports-federation site (about 12,400 sitemap URLs, AEM Core
+Components), ran from the skill alone. It ended with 114 layout variants, 28 blocks (7 reuse, 5 variant, 16 new),
+27 dynamic features and 28 open questions, and no component left unmapped.
+
+- **Stages S1–S10** (`spec/SKILL.md`): inventory, resumable fetch (every redirect hop recorded), parse, link
+  check, optional real-user data, capture, mapping, layout variants, implementation, package.
+  S1–S6 and S8 measure; S7 and S9 are judgement files under `judgement/` with a rationale per decision.
+- **Two parser profiles** (`reference/config.md`): `aem-classic` (`c-*` roots, colctrl rows) and `aem-core`
+  (grid members, column widths → rows; the root is the first non-`aem-` class). Lazy images
+  (`data-cmp-src`, `data-src`, `picture`) count as images.
+- **Template rules** cover body attribute, body class or meta, plus `pathSegments` for sites whose CMS has one
+  template for every page: the second run grouped by section, then by layout variant.
+- **Mapping rules engine** (`spec-map.mjs`): direct, layout, styled sections, nesting containers, carousel
+  slides, row heuristics, `dropIfEmpty` / `whenKids`. Re-run until nothing is unmapped. Measured against
+  the first run's hand-built mapping, 26 of 29 blocks came out identical and the variant clustering was
+  identical.
+- **Martech from public artefacts** (`spec-martech.mjs`): headers and CSP, vendor hosts via the dynamics
+  vendor table, tag-manager rules with path conditions, DOM selectors and the hosts their custom code loads,
+  data elements that read the DOM, consent geo rule sets and categories.
+- **Open questions ship a default** (`templates/open-questions.json`, 24 generic ones); findings carry
+  `{{SELECT …}}` for every number, so no figure is typed.
+- **One output, `spec.sqlite`** (`reference/database.md`): neutral meta keys and tables, plus consumer-owned
+  tables (recorded decisions, saved views) that a reload keeps. Showing it is a separate application's job:
+  the skill ships no viewer, and a consumer reads the database without crawling or judging.
+- **Limits recorded**: bot protection answered 403 to the dynamics detector on 28 of 44 sample pages in the
+  second run (logged as a site-config item, not retried around). Content behind a role or rendered after load
+  can differ from the parsed HTML; the capture tagger maps paths at DOMContentLoaded and falls back to the
+  current DOM. A redirected locale tree is measured by final URL, not by the sitemap path.
+
+## 0.29.1 — replica `--target-breakpoints`: deliver on the platform's steps, map by intent, gate the shift (#131)
+
+A recorded replica migration of a medical-technology site (about 105 pages) moved its breakpoints to
+the EDS steps 600 / 900 / 1200 after delivery. Reused boilerplate blocks already sat on those steps
+while recreated blocks copied the source's (the gate rewards matching them): about 20 distinct
+breakpoint values in one codebase, spotted at once in review. Moving about 250 rules was quick; the
+before/after re-gate (about 105 pages × 6 widths × 2 builds) took a night against a live CDN. At 900
+the pass count fell from 35 to 2, yet every failure checked was one of two intended changes (desktop
+header at 900 instead of 1024, about 40 px lower content; listings in their desktop row layout).
+Optional and off by default: without the flag, output, gate widths and register are unchanged.
+
+- **Input and state** (replica `SKILL.md` § Inputs): `--target-breakpoints <list>` (mobile-first
+  `min-width` steps; `--breakpoints` keeps meaning gate widths), persisted once as `DESIGN.json`
+  `extensions.breakpoints.target` — the one permitted addition to the promoted spec. The content cap
+  is untouched.
+- **Map in Phase 2, before any CSS** (`preserve-direction.md` § 4): source switch points from the
+  live stylesheets, mapped by intent (layout tier, not nearest number) into
+  `stardust/replica/breakpoint-map.md`; 1px pairs collapse, `max-width` becomes `min-width`. Phase 3
+  and C0 apply the map, CSS and JS alike, and never decide it. One register entry, evidenced by a
+  source | before | after strip.
+- **Gate** (`source-fidelity-gate.md` § Target breakpoints): widths add each target step; inside a
+  shifted band a failure is tier-shift (logged against the register entry, not iterated, outside the
+  cap; an `overrides.json` row at the delivery gate) or a defect (still fails). A noise check covers
+  widths outside every band.
+- **Lint** (`breakpoint-lint.mjs`, new): every `@media` width, `matchMedia` string and `innerWidth`
+  comparison under `blocks/ templates/ styles/ scripts/` must switch at a target step, all query
+  forms normalised to their switch width; skipped when no target is set. C0 wires it into
+  `npm run lint` (handoff contract § Boilerplate lint), so deploy and rollout run it before delivery.
+  `--inventory` lists a source's switch points for the map.
+- **`crop-compare.mjs --strip <out.png> [--c <c.png>]`** writes the bands side by side — the
+  register entry's image from the gate's own captures.
+- **Wording:** extract's content-cap line and recreation's cap rule no longer say the target keeps
+  its own two breakpoints (true of a redesign only); deploy's `--nav-height` rule follows the target
+  steps when set.
+
+## 0.29.0 — the capture freeze is capture state, never the spec: media must play (#130)
+
+A recorded replica run shipped "poster + paused video" and static first slides across a site while
+26/26 dynamics parity rows passed. Four causes, all in the skills: the gate defined truth as what the
+frozen instrument sees (stitch-shot pauses every `<video>` at t=0 and clears timers), so autoplay
+loops were masked as "nondeterministic media, permanent residual"; the interaction-parity rule
+"implement only behaviours that fired" read the frozen sampler's silence as dead; the freeze written
+as a deferral became the delivery brief verbatim; and parity's `video-plays` verified presence
+("video elements present and controllable"), as did qa's rendered sweep. Contract change (a mask is
+now a promise, `video-plays` passes on playback), so a minor bump.
+
+- **Capture state is a promise** (replica `recreation-procedure.md` § Carousels, § Interaction
+  parity; `source-fidelity-gate.md` § Residual logging format): every freeze or mask the gate needs
+  is a `captureState[]` entry whose `restoreAtDelivery` names the live behaviour as observed
+  (autoplay muted loop, rotation interval, marquee speed; `null` only when live is static too).
+  Timer-driven media IS a fired behaviour — "dead" means never fired on live, never "stopped by the
+  freeze". "Poster + paused" is a capture artefact, not a deliverable.
+- **The list travels with the brief** (`handoff-contract.md` fan-out discipline + Phase E row;
+  rollout `SKILL.md` Phase C step 1, Phase E render check): C-deliver's brief carries the
+  archetype's `restoreAtDelivery` list verbatim and implements it before `done`; Phase E asserts an
+  `autoplay` video ≥ ¼ visible is playing and a rotating carousel advances unpoked.
+- **The observer no longer blinds itself**: `motion-observe.mjs` samples a `media` block before
+  any scroll or poke — per `<video>` autoplay/loop/muted, paused and `currentTime` twice 1.5 s
+  apart (playing = advancing), plus class mutations that fire with nothing touched (timer
+  rotation). `motion-compare.mjs` gains the `media` class: live playing → build must play (a
+  paused/poster build is MISSING), unpoked live mutations → `auto-advance` MISSING when the build
+  has none; older observations without `media` still load.
+- **Parity means playback**: `dynamics-check.mjs video-plays` scrolls the `<video>` to ≥ ¼ visible
+  and requires `!paused` + advancing `currentTime`; `playbackHost` is now optional (native video)
+  and `reducedMotionPauses` reloads under `prefers-reduced-motion` and requires paused. Pure
+  `judgeVideoPlayback` is unit-tested; `patterns.md § media-as-url` and `parity-report.md` rule 1
+  say presence is not a pass.
+- **qa `video-not-playing`** (rendered, error): an autoplay `<video>` ≥ ¼ visible that is paused,
+  not advancing, or never buffered (`readyState < 2` — the `content.da.live` 401 class) with src,
+  readyState, paused and Δt as evidence; `video-probe-failed` (info) when the probe errors.
+  Fixture-tested (`judgeVideos`).
+
+## 0.28.0 — a migration keeps its design unless the ask says to redesign it (#129)
+
+A recorded hands-off run resolved a bare "migrate" to the redesign flow (brand-faithful mode) because
+the ask carried no keep-design phrase; the owner expected a like-for-like move and got the prototype's
+reinterpretation — a static poster for the hero motion, a rebuilt mega-menu, pages that differed
+wholesale from the source. The master skill's third routing bucket ("anything else → ask; hands-off →
+redesign") was the root cause. Contract change, so a minor bump. Touches 0.23.0 (flow keys),
+0.19.1 (zero-movement hand-off).
+
+- **Routing** (master § Two migration flows): the redesign flow is selected only by an explicit
+  redesign phrase ("redesign", "modernise", "refresh", "new look", …); nothing is inferred. Every
+  other migration ask is `replica` with `flowSource: "default"`, no question, interactive and
+  hands-off alike; the first response carries replica's "Say `switch to redesign` now" line so the
+  one decision stays visible.
+- **Flow keys** (state-machine.md): `flowSource` is `user-phrase | default | question`;
+  `hands-off-default` is gone. `prepare-migration` Setup stamps `redesign` only on an explicit
+  phrase and hands anything else to `replica`; `migrate`'s flow guard reads the same default.
+- **Eval** `routing-migration-flow`: prompt 1 expects `replica` without a question and
+  `flowSource: "default"`.
+
+## 0.27.2 — the favicon miss becomes a failing check: `favicon-default` (#128)
+
+Several recent first passes shipped the aem-boilerplate icon. The rule was already written in three
+places (deploy Step 3 § Favicon, replica's C0 foundation unit, prepare-migration assets prep) and
+extract had captured the icon every time; what was missing was an instrument — the QA check HEADed
+`/favicon.ico` and the boilerplate's own file answered 200, so every sweep passed. Prose repeated a
+fourth time would not have changed that. Touches #110–#112 (deploy favicon WARN), 0.19.1 (favicon
+HEAD at the origin).
+
+- **qa `metadata`**: resolves the icon the home page links (any `rel~=icon`, default `/favicon.ico`),
+  fetches the bytes and reports `favicon-broken` (error, was warn), `favicon-default` (error: sha256
+  equals the boilerplate's `favicon.ico` — the site's icon never shipped) or `favicon-mismatch`
+  (warn: differs from `stardust/current/assets/favicon.<ext>` when that capture exists — a format
+  conversion is legitimate). `lib.mjs fetchUrl` gains `binary: true`; `test/favicon.test.mjs`.
+- **rollout foundation-first gate** runs `qa.mjs --checks metadata` against the origin and names
+  `favicon-default` as the first-pass miss; **deploy Step 3 § Favicon** step 4 points at the same
+  check instead of a bare HEAD.
+
+## 0.27.1 — site search is `self`, never decided-out by a hands-off assumption (#127)
+
+A recorded hands-off run of a 100-page medical-device site had the query index live and the plan
+script drafting the header search as `index-backed` / `self`, then wrote "site search out of scope"
+into its own named assumptions, let the triage table cite that as the owner's decision (`decided-out`)
+and left the header form posting to the source origin's results page — the one query-index feature
+dropped while its three listing siblings shipped. The start prompt had named search as a dynamic
+surface to handle. Touches 0.20.0 (dynamics triage) and 0.25.1 § Index, sitemap, search.
+
+- **A hands-off assumption is the run's, never the owner's.** It may pick an interim tier; it cannot
+  set `decided-out`, which takes an owner's statement or a hard blocker. Dynamics SKILL.md Phase 3 and
+  § Hands-off resolutions, triage.md § Reproducibility, the hands-off table in the stardust skill.
+- **Search over the site's own pages is `self` once the index exists** and ships over the migrated
+  corpus; a corpus smaller than the source's is a parity note, not a reason to exclude. The header
+  form never keeps the source origin's results URL (triage.md rule 4, patterns.md § search-index-backed).
+- `dynamics-plan.mjs` no longer poses "results page scope" as the decision on the search row; it
+  reads `none (corpus = the migrated pages; second corpora stay out)`.
+- Folded: the search ranking summary repeated in dynamics SKILL.md Phase 4 and triage.md rule 9 now
+  points at patterns.md.
+
+## 0.27.0 — archetype-first delivery: deploy and gate the archetype at the origin before its siblings render (#126)
+
+A recorded 96-page run migrated 78 siblings from archetypes whose EDS encoding had never been gated,
+then re-deployed whole families in a five-workstream fix program; its sibling pixel bar ran on local
+renders whose numbers understated on every page. The flow now proves the archetype where it counts
+before anything inherits from it, and gates siblings once, where it counts.
+
+- **Order.** C-deliver gains unit `C-archetype`, one per template, between the foundation and its
+  cluster: convert the gated archetype (the encoder every sibling reuses) → PUT → preview → the full
+  gate row on the preview URL (`gate-all.mjs --only`, both widths) → fix rounds, cap 3 → `done`; only
+  then `migrate.mjs render` for the template's siblings. Handoff contract § 1 intro and § 3 row C,
+  `progress.json` kind `archetype`, replica Phase 5, rollout Phase C, migrate Phase 2, fidelity-tiers.
+- **Siblings gate once, at the published origin.** § 1 row 5 (the local prototype-regime sibling pixel
+  bar) is replaced by the gate row after PUT + preview; `gatesPassed` pixel gates come from the page's
+  row in `gates/all-<w>/summary.json`. Row 2: the structural clone is the encoder's INPUT, never a
+  gated prototype; where it flattens a composition the encoder reads the hydrated capture.
+- **What a failing row means** (gate doc): one block → fix the block, re-gate every sharing page;
+  content in the capture but missing → fix the encoder, re-render; a composition the archetype cannot
+  express → re-prototype (new archetype when two or more pages share it, else a standalone one). Cap
+  3 fix rounds per page at the published origin, then that decision — never a fourth round.
+- Not in this release: a scriptable per-template encoder in the plugin (today the deploy convert step,
+  proven on the archetype, plays that role); when it lands, migrate emits `content/<path>.html` directly.
+
+## 0.26.0 — published-origin gate hardened: element-level criteria beside the pixel number (#125)
+
+A 96-page rollout of a pharmacy retailer gated every deployed page on stitched captures and
+pixel-compare; its coupon-listing page PASSED at 6.7 % / Δh 69 px while all 284 cards were broken —
+a fixed-height card with `overflow: hidden`, the body ~30 px low, the description clipped mid-glyph,
+the details link pushed under the primary button, the sort control on another default. The links
+were in the served DOM: pure CSS geometry, which pixelmatch underweights (16.5 % over the text
+boxes alone). "PASS" meant "right shapes at the right places", not "every element present and
+legible". Element presence and legibility are checkable — so the gate checks them. Cross-references
+#115 (chrome crop gate), #124 (content-cap row) and the run's feedback items A1–A3.
+
+- **New `replica/scripts/gate-all.mjs` (D0)** — the all-pages published-origin gate: per deployed
+  page in `state.json`, stitched captures of both sides, `pixel-compare`, then the two DOM probes
+  below in the same window-free real-Chrome tier; per-page dir + `summary.{json,md}`, `runs/` for
+  `--only`. **Verdict = pixel % ≤ 10 AND |Δh| ≤ 5 % of origin height AND clipped ≤ 0 (+ documented
+  allowance) AND content MISSING + HIDDEN links / headings = 0** (+ required repeated units within
+  4 px); the pixel-only verdict is recorded beside it — every run is calibration data. Sidecars, each
+  entry documented: `masks.json`, `overrides.json` (shown beside the number, never replacing it),
+  `clip-allow.json`, `presence.json`, `units.json`. Origin fallback live → previous → crawl shot
+  (asymmetric, flagged); `--eds-host` gates a code branch; a union (white-padded) pixel metric was
+  tried as the height guard and rejected (white gaps score as matches) — the guard is explicit.
+- **New `diff/scripts/clip-probe.mjs` (D1)** — text lines and controls against every overflow-
+  clipping ancestor: TEXT CLIPPED / HIDDEN, CONTROL HIDDEN / CLIPPED counted (exit 2); line-clamp,
+  "read more" collapsibles (`--more-words`), scrollable containers, horizontal cuts advisory;
+  collapsed menus, sr-only, hidden subtrees, off-page boxes never reported. Emits the visible text
+  line boxes. Recorded page: 379; the live origin and two known-good pages: 0.
+- **New `diff/scripts/content-presence.mjs` (D2)** —
+  visible headings, links (visible text), buttons, images, text blocks per band (h1–h3 aligned by
+  LCS) + control state (`--count-words`); MISSING / HIDDEN LINK ×n and HEADING 🔴, buttons and
+  CONTROL STATE 🟠, MOVED / EXTRA / COUNT / HEADING AS TEXT 🟡; symmetric scope, chrome left to
+  the crop gate unless `--chrome`, `--variable` regions as counts (HIDDEN still counts), origin
+  HTTP ≥ 400 fails loud (exit 4). Recorded page: HIDDEN 284, CONTROL STATE 2.
+- **New `diff/scripts/unit-geometry.mjs` (D3) + `diff/scripts/measure-live.mjs`** (library) — the shared
+  settle / session / shadow-DOM measurement lifted from the project measure scripts; per-element
+  Δx / Δy / Δw / Δh of the first N repeated units relative to the unit, `hidden` where clipped,
+  origin cached per slug. Recorded card: body +28…+47 px, details link +28 and hidden, badge
+  70×70 at (−10,−10) vs 64×64 at (−27,−30), card 260 → 238.
+- **`pixel-compare.mjs --text-boxes` (D4, auxiliary)**; `textBoxPct` exported. (`--pad`, the rejected
+  union metric, is not shipped.)
+- **The pixel-table rule.** Every crafted prototype and every deployed page is a row:
+  `gate-all --stage prototype --proto-base <url>` writes `gates/prototypes-<w>/summary.{json,md}` at the
+  end of Phase 4 (reusing each archetype's cached `live.png`), the default stage writes `gates/all-<w>/`;
+  `gate-evidence.mjs` reads the tables as the source of record (`--tables`; a page without a row is
+  `OPEN: no table row`, `--check` names a missing table), the eval requires the prototype table, rollout
+  Phase H reports both totals. `gate.sh --full` runs clip-probe on the build side in every regime,
+  content-presence in the published regime, unit-geometry when `stardust/replica/units.json` declares a
+  repeated-unit family for the slug (`{ family: { origin, build, n, required, pages[], templates[] } }`
+  — replica recreation-procedure § Repeated-unit families); element lines fail the round and outrank a
+  pixel PASS in gate-evidence the way the overflow assert does.
+- **Coverage carries the verdict; the roster run is a recorded unit** (review notes on the PR).
+  `update-coverage.mjs --gate <summary.json>` writes each row into `delivery.gate` and flips a failing
+  page (no documented override) to `failed`; `verify.mjs` never marks a page `verified` while
+  `delivery.gate.pass` is false — completion derives from one place. Handoff contract § 3: each cluster
+  subagent runs `gate-all --only` over its own pages inside the fan-out; C-final's roster run is unit
+  `gate-all` (recorded `running` → `done`, resumable at its boundary) followed by `--gate`. Setup probes
+  the deps before installing them (a harness that resolves them leaves the code repo untouched).
+- **Upstreamed feedback.** A1 `launchStealthHeaded` is WINDOW-FREE by default
+  (`STARDUST_HEADED_WINDOW=1` opts in). The tier is the BEST AVAILABLE and REGISTERED: Chrome when
+  installed, else bundled Chromium with a warning, and every probe records `tier` (`chrome` |
+  `chromium-fallback` | `chromium`) in its evidence; gate-all's summary has a `browser` column and
+  counts degraded pages. A2 Akamai's HTTP
+  400 escalation is a challenge marker. A3 setup steps install `playwright pixelmatch pngjs cheerio`
+  as devDependencies, never `--no-save`. `deploy-batch.mjs` appends the admin `x-error` header to
+  4xx (the DA 200-images-per-document cap; protocol step 3a').
+- **Docs** — gate doc § The all-pages published-origin gate; replica Phase 5 + Setup; deploy
+  Step 10 item 7; rollout Phase E; diff SKILL § The published-origin probes; scripts index. **Tests**
+  for the four instruments (pure parts browser-free; clip-probe end-to-end on a fixture where
+  playwright resolves). Calibration on the recorded roster: pixel-only 66 PASS → full 28 PASS.
+- **Open** — default tolerances (`--clip-max 0`, `--unit-tol 4`, 25 % counts), how projects declare
+  repeated-unit block families, whether buttons / control state should block.
+
 ## 0.25.2 — content cap: the container sizing model is measured, persisted and gated at a derived wide width (#124)
 
 A hands-off replica run delivered a site whose live pages centre their content in two nested caps —

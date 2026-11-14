@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Layout fixture</title>
+<style>
+  body { margin: 0; font-family: sans-serif; }
+  header { height: 80px; background: #123; color: #fff; padding: 20px; box-sizing: border-box; }
+  .hero { height: 400px; background: linear-gradient(90deg, #e33, #33e); color: #fff; padding: 40px; box-sizing: border-box; }
+  .hero-photo { height: 300px; background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='%23396'/></svg>") repeat; padding: 40px; box-sizing: border-box; }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 40px; }
+  .card { height: 200px; background: #eee; padding: 16px; box-sizing: border-box; }
+  footer { height: 120px; background: #222; color: #ccc; padding: 20px; box-sizing: border-box; }
+  #cookie-banner { position: fixed; left: 0; bottom: 0; width: 100%; height: 90px; background: #fffbe6; border-top: 2px solid #cc0; z-index: 2000; padding: 20px; box-sizing: border-box; }
+</style>
+</head>
+<body>
+<header><strong>Layout Fixture Site</strong></header>
+<section class="hero"><h1>Gradient hero banner</h1><p>A hero section with a gradient background.</p></section>
+<section class="hero-photo"><h2>Patterned photo band</h2></section>
+<section class="cards">
+  <div class="card"><h3>First card</h3><p>Alpha content</p></div>
+  <div class="card"><h3>Second card</h3><p>Beta content</p></div>
+  <div class="card"><h3>Third card</h3><p>Gamma content</p></div>
+</section>
+<footer>Footer text and links</footer>
+<div id="cookie-banner" role="dialog" aria-label="Cookie consent">We use cookies to improve your experience. <button id="accept">Accept</button></div>
+</body>
+</html>

@@ -5,14 +5,16 @@
 // and last output, --next / --owner, the value-flag swallow rule, an explicit --dir that must exist,
 // usage errors, the start guard (an end needs an open start: warning, or exit 2 under --strict with
 // nothing written) and the journal check on end (a journal.md without a "## " heading naming the
-// phase warns, never changes the exit code). Run: node <this file>.
+// phase warns, never changes the exit code); --track (the guard pairs on skill + phase + track, `last
+// --track` filters) and replica's first-page-first phases; the own-browser check on end (a script written in
+// the phase that imports playwright itself is named once, exit code unchanged). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PHASES, buildLine, canonicalPhase, checkJournalSection, checkOpenStart, checkPhase, normaliseSkill, formatTail } from '../ledger.mjs';
+import { PHASES, buildLine, canonicalPhase, checkJournalSection, checkOpenStart, checkOwnBrowserScripts, checkPhase, findOwnBrowserScripts, normaliseSkill, formatTail } from '../ledger.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'ledger.mjs');
@@ -49,6 +51,9 @@ check('checkPhase: canonical and alias forms pass case-insensitively; unknown sk
   assert.equal(checkPhase('stardust:rollout', 'c-deliver'), null);
   assert.equal(checkPhase('stardust:rollout', 'I-dashboard'), null);
   assert.equal(checkPhase('stardust:replica', 'source-fidelity-gate'), null);
+  assert.equal(checkPhase('stardust:replica', 'first-page'), null, 'first page first: Track A');
+  assert.equal(checkPhase('stardust:replica', 'reconcile-first-page'), null, 'first page first: RECONCILE');
+  assert.equal(checkPhase('stardust:replica', 'reconcile'), null, 'first page first: the RECONCILE alias');
   assert.equal(checkPhase('stardust:dynamics', 'triage'), null);
   assert.equal(checkPhase('stardust:deploy', '7-blocks'), null);
   assert.equal(checkPhase('stardust:prototype', 'approval'), null);
@@ -151,7 +156,7 @@ check('usage errors exit 2: wrong arity, bad event, unknown option, missing valu
   assert.equal(run('migrate', 'render', 'start', '--bogus').code, 2);
   assert.equal(run('migrate', 'render', 'start', '--detail').code, 2);
   const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
-  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, dynamics, rollout, deploy/);
+  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, dynamics, spec, rollout, deploy/);
   assert.match(h.out, /\[--next "…"\] \[--owner "…"\]/); assert.match(h.out, /explicit --dir must already exist/);
 });
 check('--help prints the phase table: every ledger-form phase and every alias of every skill, one line per skill', () => {
@@ -273,6 +278,107 @@ check('journal check on end: no journal → silent; "## " headings that do not n
   const ok = runIn(jdir, 'replica', 'preserve-direction', 'end', '--strict', '--detail', 'x'); assert.equal(ok.code, 0, ok.err); assert.equal(ok.err, '');
   assert.equal(runIn(jdir, 'replica', 'extract', 'start').code, 0);
   const ok2 = runIn(jdir, 'replica', 'Extract', 'end', '--detail', 'x'); assert.equal(ok2.code, 0, ok2.err); assert.doesNotMatch(ok2.err, /journal\.md|matching start/);
+});
+
+// ---- tracks (replica first page first: two tracks run the same skill's phases at once) ------------
+check('first page first: the reconcile alias is written as reconcile-first-page and pairs with it under --strict', () => {
+  assert.equal(canonicalPhase('stardust:replica', 'reconcile'), 'reconcile-first-page');
+  assert.equal(canonicalPhase('stardust:replica', 'RECONCILE'), 'reconcile-first-page');
+  const rdir = join(root, 'reconcile'); mkdirSync(rdir);
+  const s = runIn(rdir, 'replica', 'reconcile', 'start', '--strict'); assert.equal(s.code, 0, s.err); assert.equal(JSON.parse(s.out).phase, 'reconcile-first-page');
+  const e = runIn(rdir, 'replica', 'reconcile-first-page', 'end', '--strict', '--detail', '7 checks: 6 confirmed, 1 corrected'); assert.equal(e.code, 0, e.err);
+  const e2 = runIn(rdir, 'replica', 'Reconcile', 'end', '--strict', '--detail', 'x'); assert.equal(e2.code, 2, 'the alias end finds the start already closed');
+});
+check('buildLine: --track lands as `track` right after event, lower-cased; a track that is not one token is a usage error', () => {
+  const l = buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: 'First-Page', detail: 'x' });
+  assert.deepEqual(Object.keys(l), ['ts', 'skill', 'phase', 'event', 'track', 'detail']); assert.equal(l.track, 'first-page');
+  assert.deepEqual(Object.keys(buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: ' ' })), ['ts', 'skill', 'phase', 'event'], 'a blank track is dropped');
+  assert.throws(() => buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: 'first page' }), /track "first page" must be one token/);
+});
+check('checkOpenStart pairs on skill + phase + track: another track\'s start does not count, untagged pairs only with untagged', () => {
+  const L = (phase, event, track) => ({ ts: 't', skill: 'stardust:replica', phase, event, ...(track ? { track } : {}) });
+  const both = [L('extract', 'start', 'site-scope'), L('extract', 'start', 'first-page')];
+  assert.equal(checkOpenStart(both, 'stardust:replica', 'extract', 'first-page'), null);
+  assert.equal(checkOpenStart(both, 'stardust:replica', 'extract', 'site-scope'), null);
+  assert.match(checkOpenStart(both, 'stardust:replica', 'extract'), /no matching start/, 'an untagged end does not close a tagged start');
+  assert.match(checkOpenStart([L('extract', 'start')], 'stardust:replica', 'extract', 'first-page'), /extract \(track first-page\) has no matching start .*node ledger\.mjs replica extract start --track first-page$/, 'a tagged end does not close an untagged start');
+  const closed = [...both, L('extract', 'end', 'first-page')];
+  assert.match(checkOpenStart(closed, 'stardust:replica', 'extract', 'first-page'), /no matching start/, 'first-page closed by its own end');
+  assert.equal(checkOpenStart(closed, 'stardust:replica', 'extract', 'site-scope'), null, 'site-scope still open: the other track\'s end did not close it');
+});
+check('CLI: two tracks interleave the same replica phases; each end closes only its own start under --strict; last --track reads one track; tail names the track', () => {
+  const tdir = join(root, 'tracks'); mkdirSync(tdir);
+  assert.equal(runIn(tdir, 'replica', 'first-page', 'start', '--track', 'first-page', '--strict').code, 0);
+  assert.equal(runIn(tdir, 'replica', 'extract', 'start', '--track', 'site-scope', '--strict').code, 0);
+  assert.equal(runIn(tdir, 'replica', 'extract', 'start', '--track', 'first-page', '--strict').code, 0);
+  const a = runIn(tdir, 'replica', 'extract', 'end', '--track', 'first-page', '--strict', '--detail', '1 page'); assert.equal(a.code, 0, a.err);
+  assert.equal(JSON.parse(a.out).track, 'first-page');
+  const again = runIn(tdir, 'replica', 'extract', 'end', '--track', 'first-page', '--strict', '--detail', 'x');
+  assert.equal(again.code, 2, 'first-page extract already closed — the site-scope start does not reopen it'); assert.match(again.err, /track first-page/);
+  const untagged = runIn(tdir, 'replica', 'extract', 'end', '--strict', '--detail', 'x'); assert.equal(untagged.code, 2, 'an untagged end does not close a tagged start');
+  assert.equal(runIn(tdir, 'replica', 'preserve-direction', 'start', '--track', 'first-page').code, 0);
+  const b = runIn(tdir, 'replica', 'extract', 'end', '--track', 'site-scope', '--strict', '--detail', 'roster 94 of 2,532'); assert.equal(b.code, 0, b.err);
+  const last = JSON.parse(runIn(tdir, 'last', 'replica').out); assert.equal(last.track, 'site-scope', 'last <skill> is the latest line of either track, naming it');
+  const lastA = JSON.parse(runIn(tdir, 'last', 'replica', '--track', 'first-page').out); assert.equal(lastA.phase, 'preserve-direction'); assert.equal(lastA.track, 'first-page');
+  const lastB = JSON.parse(runIn(tdir, 'last', 'replica', '--track', 'site-scope').out); assert.equal(lastB.phase, 'extract'); assert.equal(lastB.event, 'end');
+  const none = runIn(tdir, 'last', 'replica', '--track', 'nope'); assert.equal(none.out, ''); assert.match(none.err, /no lines for stardust:replica on track nope/);
+  assert.match(runIn(tdir, 'tail', '-n', '1').out, /stardust:replica extract end \[site-scope\] roster 94 of 2,532$/m);
+  assert.equal(runIn(tdir, 'replica', 'extract', 'start', '--track').code, 2, '--track needs a value');
+  assert.match(runIn(tdir, '--help').out, /--track <name>/);
+});
+
+// ---- the own-browser check on end (a script the agent writes gets its browser from browser.mjs) ----
+const put = (d, rel, text) => { const f = join(d, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, text); return f; };
+const OLD = new Date('2000-01-01T00:00:00Z');
+check('findOwnBrowserScripts: project scripts that import playwright themselves; not the script copies, node_modules, assets, comments, other files or older files', () => {
+  const d = join(root, 'own'); mkdirSync(d);
+  put(d, '.work/a.mjs', "import { chromium } from 'playwright';\nconst b = await chromium.launch();\n");
+  put(d, 'dynamics/d2/flows.mjs', 'const { chromium } = await import("playwright");\n');
+  put(d, '.work/c.cjs', "const { chromium } = require('playwright-core');\n");
+  put(d, '.work/good.mjs', "const { openBrowser } = await import(pathToFileURL('stardust/scripts/stardust/browser.mjs').href);\n");
+  put(d, '.work/comment.mjs', "// import { chromium } from 'playwright';\nconst loadPlaywright = 1;\n");
+  put(d, '.work/notes.txt', "import { chromium } from 'playwright';\n");
+  put(d, 'scripts/replica/test/x.test.mjs', "import { chromium } from 'playwright';\n");
+  put(d, '.work/node_modules/pkg/index.js', "import { chromium } from 'playwright';\n");
+  put(d, 'current/assets/app.js', "import { chromium } from 'playwright';\n");
+  const old = put(d, '.work/old.mjs', "import { chromium } from 'playwright';\n"); utimesSync(old, OLD, OLD);
+  const all = [join(d, '.work/a.mjs'), join(d, '.work/c.cjs'), join(d, '.work/old.mjs'), join(d, 'dynamics/d2/flows.mjs')];
+  assert.deepEqual(findOwnBrowserScripts(d), all, 'sorted, every project script that imports playwright');
+  assert.deepEqual(findOwnBrowserScripts(d, Date.parse('2020-01-01T00:00:00Z')), all.filter((f) => f !== old), 'a file older than the given time is left out');
+  assert.deepEqual(findOwnBrowserScripts(join(root, 'nowhere')), [], 'a missing dir is not an error');
+});
+check('checkOwnBrowserScripts: null without a finding; one line with the count, the paths and the remedy; more than five paths are counted, not listed', () => {
+  const d = join(root, 'own2'); mkdirSync(d);
+  assert.equal(checkOwnBrowserScripts(d), null);
+  put(d, '.work/p1.mjs', "import { chromium } from 'playwright';\n");
+  const one = checkOwnBrowserScripts(d);
+  assert.equal(one, `1 script(s) import playwright themselves (${join(d, '.work/p1.mjs')}) — a script you write opens its pages with the recipe in skills/stardust/SKILL.md § Setup, step 7 (newLiveContext and gotoLive from stardust/scripts/stardust/browser.mjs)`);
+  for (let i = 2; i <= 7; i += 1) put(d, `.work/p${i}.mjs`, "import { chromium } from 'playwright';\n");
+  const many = checkOwnBrowserScripts(d);
+  assert.match(many, /^7 script\(s\) import playwright themselves \(/);
+  assert.equal((many.match(/p\d\.mjs/g) || []).length, 5, 'five paths listed');
+  assert.match(many, /, \+2 more\)/);
+  assert.ok(!many.includes('\n'), 'one line');
+  assert.equal(checkOwnBrowserScripts(d, 'not a date'), many, 'an unreadable time checks every script');
+  assert.equal(checkOwnBrowserScripts(d, '2999-01-01T00:00:00Z'), null, 'nothing is newer than the given start');
+});
+check('own-browser check on end: a script written in the phase is named in one warning, exit 0 even under --strict, line written; older scripts, start and blocked are silent', () => {
+  const d = join(root, 'own3'); mkdirSync(d);
+  const before = put(d, '.work/before.mjs', "import { chromium } from 'playwright';\n"); utimesSync(before, OLD, OLD);
+  const s = runIn(d, 'replica', 'recreate', 'start', '--strict'); assert.equal(s.code, 0, s.err); assert.equal(s.err, '', 'start does not check');
+  const quiet = runIn(d, 'replica', 'recreate', 'end', '--strict', '--detail', 'x'); assert.equal(quiet.code, 0, quiet.err); assert.equal(quiet.err, '', 'only an older script: silent');
+  assert.equal(runIn(d, 'replica', 'recreate', 'start', '--strict').code, 0);
+  put(d, '.work/eyebrow.mjs', "import { chromium } from 'playwright';\n");
+  put(d, '.work/fine.mjs', "const { openBrowser } = await import('./stardust/scripts/stardust/browser.mjs');\n");
+  const blocked = runIn(d, 'replica', 'recreate', 'blocked', '--detail', 'waiting'); assert.equal(blocked.code, 0); assert.equal(blocked.err, '', 'blocked does not check');
+  const n = linesIn(d).length;
+  const w = runIn(d, 'replica', 'recreate', 'end', '--strict', '--detail', 'y');
+  assert.equal(w.code, 0, 'advisory: exit 0 under --strict');
+  assert.equal(w.err.trimEnd().split('\n').length, 1, w.err);
+  assert.match(w.err, /^ledger: warning: 1 script\(s\) import playwright themselves \(.*\.work\/eyebrow\.mjs\) — a script you write opens its pages with the recipe in skills\/stardust\/SKILL\.md § Setup, step 7 \(newLiveContext and gotoLive from stardust\/scripts\/stardust\/browser\.mjs\)$/m);
+  assert.ok(!w.err.includes('before.mjs') && !w.err.includes('fine.mjs'), w.err);
+  assert.equal(linesIn(d).length, n + 1, 'the end line is still written');
+  assert.match(runIn(d, '--help').out, /imports playwright itself/);
 });
 
 rmSync(root, { recursive: true, force: true });

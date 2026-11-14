@@ -27,7 +27,8 @@ site *do* now?".
 ```
 
 Check types (closed set, all replayable): `fetch-json` · `dom-count` · `click-dialog` ·
-`search-query` · `form-flow` · `video-plays` · `consent-gate` · `no-page-errors` — fields in the
+`search-query` · `form-flow` · `video-plays` · `consent-gate` · `martech` (from the martech contract,
+`martech.md`) · `no-page-errors` — fields in the
 script header. A feature with no checks is listed under "features without checks" with its status
 and owner; `decided-out` rows belong there.
 
@@ -42,9 +43,9 @@ while the typeahead returned 10 entries for a source answer of 3.
 
 ## Rules
 
-1. **Flows, not presence.** A check passes when the user-visible flow completes. "Block rendered" or
-   "iframe present" is not a pass; an empty submission that "succeeded" was the first real defect a
-   replay found.
+1. **Flows, not presence.** A check passes when the user-visible flow completes. "Block rendered",
+   "iframe present" or "video element present" is not a pass (`video-plays` asserts playback); an
+   empty submission that "succeeded" was the first real defect a replay found.
 2. **Numbers, not adjectives.** `verifiedBy` carries counts and samples so a regression is diffed,
    not re-discovered.
 3. **Secrets to the origin only.** The site token rides a `context.route` filter on the origin host,

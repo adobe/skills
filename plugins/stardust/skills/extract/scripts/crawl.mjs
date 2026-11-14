@@ -57,21 +57,42 @@
  *     the rollout link audit (15 × 404, then repointed to the source).
  *
  * Usage:
- *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
+ *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] [--link-first] \
  *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
- *     [--concurrency 4] [--dynamics]
+ *     [--concurrency 4] [--dynamics] [--page-timeout 60]
  *     --url <url>             required; the entry page — its origin scopes discovery
  *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
  *                             is added) instead of discovering via sitemap / same-origin nav links
- *     --max <n>               discovery cap (default 25; listed --pages are never dropped)
+ *     --max <n>               discovery cap (default 25; 0 = no cap; listed --pages are never dropped)
+ *     --link-first            the user named the page count: entry page, then its own same-origin page
+ *                             links in document order, then the other discovered pages, up to --max
  *     --out <dir>             output root (default stardust/current)
  *     --wait fast|medium|slow settle after load: 1200 / 2500 / 5000 ms (default medium)
  *     --no-consent-dismiss    do not auto-dismiss consent overlays before capture
  *     --concurrency <n>       parallel browser contexts (default 4)
  *     --dynamics              also record each page's dynamic surface (network endpoints, forms,
  *                             hydration hints) — set by the calling skill, off by default
+ *     --page-timeout <s>      per-page deadline (default 60; 0 = none): a page that never settles is
+ *                             recorded as TimeoutError instead of eating the run's cap
  *
- * Writes (everything under --out; nothing outside it):
+ * Browser and bot walls: real Chrome headless (channel: chrome — the installed browser's own identity,
+ * no launch flags) first, bundled Chromium only when Chrome is missing (technique chrome |
+ * chromium-fallback). A wall is NAMED within seconds, never captured as content: an edge challenge
+ * (cf-mitigated, or a 403/429/503 with a Cloudflare / Akamai / F5 / Imperva signature, a 403 from
+ * CloudFront / AWS WAF), or a 2xx VERIFICATION INTERSTITIAL served as a normal page ("One moment,
+ * please…" reloading itself, "Just a moment…", CloudFront's "Request blocked" body — read from the
+ * page, not the headers: this script's title rule, then the vendor list in
+ * stardust/scripts/browser.mjs). On the ENTRY page → one relaunch (technique chrome-escalated;
+ * the existing launch flags and webdriver spoof stay on, STARDUST_STEALTH=0 turns them off;
+ * STARDUST_HEADED_WINDOW=1 is not read here) with the
+ * challenge-solve window, then a fatal `bot-management … not cleared` error naming the wall; on an
+ * inner page → the page is recorded as failed with errorClass BotChallenge and the marker. Live
+ * navigations to one host are paced across processes — STARDUST_LIVE_PACE_MS apart (default 1000; 0 disables),
+ * at most STARDUST_LIVE_MAX_PARALLEL in flight (default 2), backing off on bot signals — by the shared throttle
+ * (runLiveNavigation) in stardust/scripts/browser.mjs.
+ *
+ * Writes capture artifacts under --out. The shared helper (stardust/scripts/browser.mjs)
+ * keeps its repository-scoped throttle and browser state under OS temp:
  *   pages/<slug>.json              one record per captured page — slug, url, finalUrl, title,
  *                                  description, og, headings, body, codeBlocks, ctas, links,
  *                                  media {imgs, allImgCount, cssBackgrounds, modals, videos,
@@ -118,10 +139,6 @@ if (IS_MAIN && (process.argv.includes('--help') || process.argv.includes('-h')))
   process.exit(0);
 }
 
-// playwright is imported inside main(), past the --help guard and never on import, so --help answers on
-// a checkout without it and the pure helpers are testable without a browser.
-let chromium;
-
 const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 
 // One context config for probe, headed fallback, and workers — a tweak (locale,
@@ -129,18 +146,72 @@ const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
 // conditions than capture. Viewport here also saves a per-page CDP round-trip.
 const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
 
-function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 25, wait: 'medium', consent: true, concurrency: 4, dynamics: false };
+const sharedHookWarningHosts = new Set();
+function warnSharedHook(url, error) {
+  let host;
+  try { host = new URL(url).host; } catch { host = 'unknown host'; }
+  if (sharedHookWarningHosts.has(host)) return;
+  sharedHookWarningHosts.add(host);
+  console.error(`[crawl] WARNING: shared live-session bookkeeping unavailable for ${host}: ${String(error && error.message ? error.message : error).split('\n')[0]} — continuing without it`);
+}
+async function callSharedHook(hook, args, url) {
+  try { return await hook(...args); }
+  catch (error) { warnSharedHook(url, error); return false; }
+}
+
+/** The front door's live-session helpers; a hook that throws is reported once per host and the crawl goes on. */
+export function crawlerLiveBindings(shared) {
+  return {
+    newLiveContext: shared.newLiveContext,
+    runLiveNavigation: async (page, url, navigate) => {
+      let operation;
+      const run = () => {
+        if (!operation) {
+          operation = Promise.resolve().then(navigate);
+          operation.catch(() => {});
+        }
+        return operation;
+      };
+      try {
+        return await shared.runLiveNavigation(page, url, run);
+      } catch (error) {
+        if (!operation) { warnSharedHook(url, error); return run(); }
+        const response = await operation; // the navigation's own rejection still escapes unchanged
+        warnSharedHook(url, error);
+        return response;
+      }
+    },
+    persistLiveStorageState: (page, url) => callSharedHook(shared.persistLiveStorageState, [page, url], url),
+    recordLiveBotSignal: (url) => callSharedHook(shared.recordLiveBotSignal, [url], url),
+    recordLiveNavigationSuccess: (url) => callSharedHook(shared.recordLiveNavigationSuccess, [url], url),
+    liveResponseSignalRecorded: shared.liveResponseSignalRecorded,
+  };
+}
+
+/** The discovery cap from --max: 0 means no cap (--all, --prep), a missing or bad value the default 25. Pure. */
+export const maxPages = (v) => (String(v).trim() === '0' ? Infinity : Math.max(1, Math.floor(+v) || 25));
+/** The per-page deadline from --page-timeout <s> in ms: 0 means none, a missing or bad value the default 60 s. Pure. */
+export const PAGE_TIMEOUT_MS_DEFAULT = 60000;
+export function pageTimeoutMs(v) {
+  if (v === undefined || v === null || String(v).trim() === '') return PAGE_TIMEOUT_MS_DEFAULT;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n * 1000) : PAGE_TIMEOUT_MS_DEFAULT;
+}
+
+export function parseArgs(argv) {
+  const a = { out: 'stardust/current', max: 25, linkFirst: false, wait: 'medium', consent: true, concurrency: 4, dynamics: false, pageTimeoutMs: PAGE_TIMEOUT_MS_DEFAULT };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     if (k === '--url') a.url = argv[(i += 1)];
     else if (k === '--pages') a.pages = argv[(i += 1)].split(',').map((s) => s.trim()).filter(Boolean);
     else if (k === '--out') a.out = argv[(i += 1)];
-    else if (k === '--max') a.max = Math.max(1, +argv[(i += 1)] || 25);
+    else if (k === '--max') a.max = maxPages(argv[(i += 1)]);
+    else if (k === '--link-first') a.linkFirst = true;
     else if (k === '--wait') a.wait = argv[(i += 1)];
     else if (k === '--no-consent-dismiss') a.consent = false;
     else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
+    else if (k === '--page-timeout') a.pageTimeoutMs = pageTimeoutMs(argv[(i += 1)]);
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.url) throw new Error('--url is required');
@@ -176,32 +247,56 @@ function assignSlugs(urls) {
   });
 }
 
-// ---- bot-management fallback: headless first, headed real Chrome on reject ----
-async function launchWithFallback() {
-  const headless = await chromium.launch({ headless: true });
-  return { browser: headless, technique: 'headless' };
+// ---- the shared browser module (stardust/scripts/browser.mjs, the front door), beside this script ----
+// Three layouts: plugin tree, project copy (stardust/scripts/<skill>/), flat (stardust/scripts/). It lends
+// the crawler the browser, the consent vendor list, the denial-page reader, the per-host pacing and the
+// deadline helper. Without it the crawler stops (exit 2, its fatal-error code); a hook that fails at run time is tolerated below.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs', './stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+let liveSessionModule;
+async function liveSession() {
+  if (liveSessionModule === undefined) {
+    if (!BROWSER) {
+      console.error('crawl: browser.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+      process.exit(2);
+    }
+    liveSessionModule = await import(BROWSER.href);
+  }
+  return liveSessionModule;
 }
-// Stealth-hardened headed real Chrome. Headed alone clears TLS/H2-fingerprint
-// blocks, but Cloudflare's *managed challenge* also probes for automation
-// signals — clearing it needs the automation flags stripped (a Cloudflare-fronted e2e
-// finding). `--disable-blink-features=AutomationControlled` +
-// dropping `--enable-automation` + the navigator.webdriver spoof (applied
-// per-context in newContext) are what let the non-interactive challenge solve.
+
+// ---- the browser: real Chrome headless first, its own identity; bundled Chromium only when Chrome is missing ----
+// The default tier presents itself as what it is — the installed Chrome, headless, under automation: no user agent
+// is set, no launch flag is passed; the real binary is what clears TLS/H2-fingerprint blocks (not a window — the
+// container has no display). The escalation below keeps the launch flags and the navigator.webdriver spoof the
+// crawler always had; STARDUST_STEALTH=0 turns them off.
+const stealthEnabled = () => process.env.STARDUST_STEALTH !== '0';
 const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
-async function launchHeadedStealth() {
-  return chromium.launch({
-    headless: false,
-    channel: 'chrome',
-    args: STEALTH_ARGS,
-    ignoreDefaultArgs: ['--enable-automation'],
-  });
+async function launchWithFallback() {
+  const { openBrowser, browserTier } = await liveSession();
+  const browser = await openBrowser({ mode: 'chrome' });
+  return { browser, technique: browserTier(browser) };
 }
-// A context factory so the stealth init script lands on EVERY context (probe +
-// workers) once the run is in stealth mode — the challenge re-fires per context
-// (no cross-context cookie sharing), so a worker that skipped the spoof would be
-// re-challenged even after the probe cleared it.
-async function newContext(browser, stealth) {
-  const ctx = await browser.newContext(CRAWL_CONTEXT);
+// The one escalation after an entry-page block: a fresh real Chrome, window-free (the container has no display),
+// with the existing launch flags unless STARDUST_STEALTH=0. A launch failure is one stderr line and null — the
+// crawl continues with the browser it has.
+async function launchEscalated() {
+  const stealth = stealthEnabled();
+  const opts = { headless: true, channel: 'chrome', ...(stealth ? { args: [...STEALTH_ARGS], ignoreDefaultArgs: ['--enable-automation'] } : {}) };
+  const { openBrowser } = await liveSession();
+  try {
+    return await openBrowser({ mode: 'plain', launchOptions: opts, tier: 'chrome-escalated' });
+  } catch (e) {
+    console.error(`[crawl] WARN real Chrome relaunch failed (${String(e.message).split('\n')[0]}) — continuing with the browser already running`);
+    return null;
+  }
+}
+// A context factory so the webdriver spoof lands on EVERY context (probe + workers) once the run escalated — the
+// challenge re-fires per context (no cross-context cookie sharing). Before the escalation, and under
+// STARDUST_STEALTH=0, no init script: navigator.webdriver stays true.
+async function newContext(browser, stealth, stateUrl) {
+  const { newLiveContext } = crawlerLiveBindings(await sharedLiveSession());
+  const ctx = await newLiveContext(browser, { ...CRAWL_CONTEXT, stateUrl });
   if (stealth) {
     await ctx.addInitScript(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
@@ -210,7 +305,7 @@ async function newContext(browser, stealth) {
   return ctx;
 }
 // Network-level fingerprint reject: navigation THROWS before any JS runs.
-function isFingerprintBlock(err) {
+export function isFingerprintBlock(err) {
   const m = String(err && err.message || err);
   return /ERR_HTTP2_PROTOCOL_ERROR|ERR_QUIC_PROTOCOL_ERROR|ERR_CONNECTION_RESET|net::ERR/.test(m);
 }
@@ -219,39 +314,169 @@ function isFingerprintBlock(err) {
 // original fallback only caught isFingerprintBlock() throws, so a Cloudflare
 // managed challenge (cf-mitigated: challenge, HTTP 403) sailed past the probe
 // and only blew up at capture-time as a fatal HTTPError. Validate the RESPONSE,
-// not just DOM-ready.
-function isChallengeResponse(resp) {
-  if (!resp) return false;
+// not just DOM-ready. Returns the marker naming the signature, or null — the same
+// rules as live-session.mjs challengeMarker (keep the two in step).
+export function challengeMarker(resp) {
+  if (!resp) return null;
   const status = resp.status();
   const h = resp.headers();
   // Cloudflare stamps this header specifically on managed/JS-challenge responses.
-  if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return true;
+  if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return 'cf-mitigated: challenge';
+  // AWS WAF stamps its action (captcha / challenge) on the response it intercepts, whatever the status.
+  if (h['x-amzn-waf-action']) return `HTTP ${status} + CloudFront/AWS WAF edge signature (x-amzn-waf-action: ${h['x-amzn-waf-action']})`;
   // A hard 403/429/503 that ALSO carries an edge/CDN signature is an edge
-  // interstitial (Cloudflare / Akamai / F5 / Imperva) — headed real Chrome is the
-  // correct response regardless of vendor. Requiring the edge signature (not the
-  // bare status) is deliberate: isChallengeResponse gates clearChallenge() on
-  // EVERY page, so a legitimate app-level 403 (e.g. an auth-gated deep page with
-  // no CDN header) must fail fast, not eat the ~12s challenge-solve retry loop.
+  // interstitial (Cloudflare / Akamai / F5 / Imperva / CloudFront) — the escalation is
+  // the correct response regardless of vendor. Requiring the edge signature (not the
+  // bare status) is deliberate: the marker gates clearChallenge() on EVERY page, so a
+  // legitimate app-level 403 (e.g. an auth-gated deep page with no CDN header) must
+  // fail fast, not eat the ~12s challenge-solve retry loop.
+  const server = (h.server || '').toLowerCase();
   if (status === 403 || status === 429 || status === 503) {
-    const server = (h['server'] || '').toLowerCase();
-    if (h['cf-ray'] || server.includes('cloudflare')) return true;
-    if (h['x-akamai-transformed'] || server.includes('akamai')) return true;
-    if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return true;
+    if (h['cf-ray'] || server.includes('cloudflare')) return `HTTP ${status} + Cloudflare edge signature (cf-ray/server)`;
+    if (h['x-akamai-transformed'] || server.includes('akamai')) return `HTTP ${status} + Akamai edge signature`;
+    if (server.includes('big-ip') || server.includes('bigip') || server.includes('imperva') || h['x-iinfo']) return `HTTP ${status} + F5/Imperva edge signature`;
+    // CloudFront answering 403 itself after a burst of requests ("The request could not be satisfied. Request blocked.")
+    // is the AWS WAF block (recorded on a CloudFront-fronted site); an origin 403 relayed by CloudFront carries the same
+    // headers, so the label names the edge, not a verdict on the origin.
+    if (status === 403 && (server.includes('cloudfront') || (h['x-cache'] || '').toLowerCase().includes('error from cloudfront'))) return 'HTTP 403 + CloudFront/AWS WAF edge signature (server/x-cache)';
     // no edge signature — treat as a genuine app-level status, not a challenge.
   }
-  return false;
+  // Akamai escalates to HTTP 400 {"result":"Bad Request"} after a burst of probes.
+  if (status === 400 && (server.includes('akamai') || h['x-akamai-transformed'])) return 'HTTP 400 + Akamai edge signature (bot-management escalation)';
+  return null;
+}
+export const isChallengeResponse = (resp) => challengeMarker(resp) !== null;
+
+// ---- the 2xx verification interstitial: a wall served as a normal page ----
+// A site served "One moment, please…" (HTTP 200, reloading itself every few seconds) to every client and the crawler
+// waited out the run's whole cap without naming it. The headers say nothing; the PAGE is read. The inline rule below
+// reads first: a <title> or <h1> that names a wall on a page under 2 KB of visible text, or one that reloads itself
+// (<meta http-equiv=refresh> / location.reload) under such a title. The shared reader (live-session pageDenial: vendor
+// signatures, the tiny one-error-heading page) reads after it.
+// "verify" alone is no wall word: an age or e-mail verification page is a page, and a small single-page-app entry page
+// under such a title would abort the crawl; the verification interstitials name the visitor ("verify you are human",
+// "verifying your request / browser", "human verification", "checking your browser").
+export const WALL_TITLE = /one moment|just a moment|verify (?:that )?you(?:'re| are)|verifying (?:(?:that )?you(?:'re| are)|your (?:request|browser|connection))|human verification|are you (?:a )?human|checking your browser|pardon our interruption|access denied|request blocked|attention required/i;
+export const WALL_TEXT_MAX_BYTES = 2048;
+/* eslint-disable no-undef */
+/** page.evaluate(wallProbeInPage) → { title, h1, bytes, selfReload } (self-contained: playwright serialises it). */
+export function wallProbeInPage() {
+  const collapse = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  const text = collapse(document.body ? document.body.innerText : '');
+  const h1 = document.querySelector('h1');
+  const metaRefresh = Boolean(document.querySelector('meta[http-equiv="refresh" i]'));
+  const scriptReload = [...document.scripts].some((s) => /location\.reload\(|location\.href\s*=\s*(?:window\.)?location|window\.location\s*=\s*window\.location/.test(s.textContent || ''));
+  return { title: document.title, h1: h1 ? collapse(h1.innerText) : '', bytes: new TextEncoder().encode(text).length, selfReload: metaRefresh || scriptReload };
+}
+/* eslint-enable no-undef */
+/** The inline wall marker of a wallProbeInPage probe, or null (pure). */
+export function inlineWallMarker(probe) {
+  if (!probe || typeof probe !== 'object') return null;
+  const title = String(probe.title || '').replace(/\s+/g, ' ').trim();
+  const h1 = String(probe.h1 || '').replace(/\s+/g, ' ').trim();
+  const hit = [title, h1].find((t) => t && WALL_TITLE.test(t));
+  if (!hit) return null;
+  const small = Number.isFinite(probe.bytes) && probe.bytes < WALL_TEXT_MAX_BYTES;
+  if (!small && !probe.selfReload) return null;
+  return `interstitial page — "${hit.slice(0, 80)}"${probe.selfReload ? ' (self-reloading)' : ''}`;
+}
+// One wall read's deadline: page.evaluate has no timeout of its own, and a renderer stuck in a busy loop never answers it.
+const WALL_PROBE_MS = 10000;
+// → { marker, skipped }: this script's own rule first (wallProbeInPage + inlineWallMarker — a wall named by its title or
+// h1 on a small or self-reloading page), then the shared reader (live-session pageDenial: the vendor signature list
+// and the one-error-heading rule). A page no reader could read is `skipped` with the error's first line (the caller
+// logs it — never a silent pass, never a false wall).
+async function pageWall(page) {
+  const { withDeadline, pageDenial } = await liveSession();
+  let skipped = null;
+  try {
+    const marker = inlineWallMarker(await withDeadline(page.evaluate(wallProbeInPage), WALL_PROBE_MS, 'wall probe'));
+    if (marker) return { marker, skipped: null };
+  } catch (e) {
+    skipped = String(e && e.message ? e.message : e).split('\n')[0];
+  }
+  const shared = await pageDenial(page);
+  if (shared.marker) return shared;
+  return { marker: null, skipped: skipped && shared.skipped ? skipped : null };
+}
+const ENTRY_SETTLE_MS = 1200;
+/**
+ * The entry-page probe: navigate, then classify — null (the page), or { kind, marker } with kind 'fingerprint' (the
+ * goto threw a network-level reject), 'challenge' (an edge signature on the response) or 'interstitial' (a 2xx wall
+ * read from the page after a short settle). With `solve` (the escalated probe) a challenge gets clearChallenge's
+ * wait+reload window and an interstitial up to three settled reloads before it counts. Any other goto error throws.
+ */
+export async function probeEntry(page, url, { timeout = 30000, solve = false } = {}) {
+  let resp;
+  const { goto } = await liveSession();
+  try {
+    resp = await sharedNavigate(page, url, () => goto(page, url, { waitUntil: 'domcontentloaded', timeout }));
+  } catch (err) {
+    // a network-level reject is not a pacing matter (the relaunch answers it) — no shared signal for it
+    if (isFingerprintBlock(err)) return { kind: 'fingerprint', marker: String(err.message || err).split('\n')[0] };
+    throw err;
+  }
+  if (solve) resp = await clearChallenge(page, resp); // records the challenge signal itself, once per response
+  const edge = challengeMarker(resp);
+  if (edge) {
+    // the first probe's verdict slows every process pacing this host; a 429 the shared navigation already counted is
+    // not counted twice, and the escalated probe's clearChallenge has recorded its own
+    if (!solve) await recordSharedBotSignal(url, resp).catch(() => {});
+    return { kind: 'challenge', marker: edge };
+  }
+  if (!resp || resp.status() >= 400) return null; // an app-level status: not a wall; the capture reports it as HTTPError
+  await page.waitForTimeout(ENTRY_SETTLE_MS);
+  let wall = await pageWall(page);
+  for (let attempt = 0; solve && wall.marker && attempt < 3; attempt += 1) {
+    await page.waitForTimeout(4000);
+    const reloaded = await sharedNavigate(page, url, () => page.reload({ waitUntil: 'domcontentloaded', timeout })).catch(() => null);
+    if (!reloaded || challengeMarker(reloaded) || reloaded.status() >= 400) break; // not cleared
+    await page.waitForTimeout(ENTRY_SETTLE_MS);
+    const next = await pageWall(page);
+    if (!next.skipped) wall = next; // only a verdict replaces the confirmed wall (fail closed)
+  }
+  if (wall.skipped) console.error(`[crawl] wall check skipped on the entry page: ${wall.skipped}`);
+  if (!wall.marker) return null;
+  await recordSharedBotSignal(url, resp).catch(() => {}); // a 2xx wall: no header layer counted it
+  return { kind: 'interstitial', marker: wall.marker };
+}
+
+// ---- the per-page deadline (--page-timeout): a page that never settles is a TimeoutError, not the run's cap ----
+async function withPageDeadline(promise, ms) {
+  if (!(ms > 0)) return promise;
+  const { withDeadline } = await liveSession();
+  try {
+    return await withDeadline(promise, ms, 'page capture');
+  } catch (e) {
+    if (e && e.name === 'DeadlineError') throw Object.assign(new Error(`page deadline ${ms / 1000} s exceeded (--page-timeout)`), { errorClass: 'TimeoutError' });
+    throw e;
+  }
 }
 // Cloudflare's non-interactive managed challenge serves the 403/503 interstitial,
 // runs its JS, sets a clearance cookie, then the real page becomes reachable.
 // Wait for that window and reload to pick up the cookie before treating the
 // status as a hard failure. No-op for a normal 200 (isChallengeResponse false),
-// so zero overhead on the common path.
-async function clearChallenge(page, resp) {
+// so zero overhead on the common path. A challenged page is ONE shared bot signal,
+// however many reloads stay challenged: the reloads ask for the same page 4 s apart
+// and are the same wall, not new evidence (counted per reload, one walled inner
+// page took its host to the top of the backoff ladder within a single crawl). A
+// response the transport layer already counted (a marked 429) is the page's signal.
+export async function clearChallenge(page, resp, {
+  recordBotSignal = recordSharedBotSignal, navigate = sharedNavigate, signalRecorded,
+} = {}) {
+  const alreadyRecorded = signalRecorded || (await sharedLiveSession()).liveResponseSignalRecorded;
+  let signalled = false;
+  const recordSignal = async () => {
+    if (signalled || !isChallengeResponse(resp)) return;
+    signalled = true;
+    if (!alreadyRecorded(resp)) await callSharedHook(recordBotSignal, [page.url()], page.url());
+  };
+  await recordSignal();
   for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
     await page.waitForTimeout(4000);
-    const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 })
+    const reloaded = await navigate(page, page.url(), () => page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }))
       .catch(() => null);
-    if (reloaded) resp = reloaded;
+    if (reloaded) { resp = reloaded; await recordSignal(); }
   }
   return resp;
 }
@@ -324,8 +549,29 @@ export function captureGaps(records) {
   return { roots, detail };
 }
 
+/**
+ * The page list: entry first, normalized dedupe, capped at max. With linkFirst (the user named N), the entry
+ * page's links follow in document order, then the discovered list, both kept to same-origin non-asset pages;
+ * without it, the discovered list follows the entry directly. Unparsable hrefs are skipped and returned in
+ * `skipped`. Pure. Returns { urls, skipped }.
+ */
+export function selectPages({ entry, origin, linked, discovered, max, linkFirst }) {
+  const skipped = [];
+  const parse = (list) => list.flatMap((h) => {
+    try { return [normalizeUrl(h, origin)]; } catch { skipped.push(h); return []; }
+  });
+  const page = (u) => { const url = new URL(u); return url.origin === origin && !ASSET_EXT.test(url.pathname); };
+  const candidates = linkFirst ? [...parse(linked), ...parse(discovered)].filter(page) : parse(discovered);
+  const seen = new Set(); const urls = [];
+  for (const u of [entry, ...candidates]) {
+    const k = dedupeKey(u);
+    if (!seen.has(k)) { seen.add(k); urls.push(u); }
+  }
+  return { urls: urls.slice(0, max), skipped };
+}
+
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
-async function discover(args, page) {
+export async function discover(args, page) {
   const entry = normalizeUrl(args.url);
   // explicit --pages: NEVER drop a listed page. The entry URL is ADDED on top
   // (the effective cap grows by one when needed); if the total still exceeds
@@ -341,14 +587,16 @@ async function discover(args, page) {
     }
     return urls;
   }
-  // discovered lists (sitemap/BFS): entry always included, normalized dedupe, capped at --max.
-  const withEntry = (list) => {
-    const seen = new Set(); const out = [];
-    for (const u of [entry, ...list.map((x) => normalizeUrl(x, args.origin))]) {
-      const k = dedupeKey(u);
-      if (!seen.has(k)) { seen.add(k); out.push(u); }
-    }
-    return out.slice(0, args.max);
+  // discovered lists (sitemap/BFS) go through selectPages; --link-first puts the entry page's links first.
+  const readLinks = () => page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
+    .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
+  let linked = args.linkFirst ? await readLinks() : null;
+  const withEntry = (discovered) => {
+    const { urls, skipped } = selectPages({
+      entry, origin: args.origin, linked: linked || [], discovered, max: args.max, linkFirst: args.linkFirst,
+    });
+    if (skipped.length) console.error(`[crawl] WARN discovery skipped ${skipped.length} unparsable URL(s): ${skipped.join(', ')}`);
+    return urls;
   };
   // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
   // sitemap must fall through to BFS — finding from a media-site run).
@@ -381,22 +629,46 @@ async function discover(args, page) {
     } catch { /* fall through */ }
   }
   // BFS depth-1 from the entry page's same-origin nav links.
-  const links = await page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
-    .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
-  return withEntry(links);
+  linked = linked || await readLinks();
+  return withEntry(linked);
 }
 
+// The shared live-session hooks (throttle, browser-state jar, bot signals) ride the same loader.
+const sharedLiveSession = liveSession;
+async function sharedNavigate(page, url, navigate) {
+  const { runLiveNavigation } = crawlerLiveBindings(await sharedLiveSession());
+  return runLiveNavigation(page, url, navigate);
+}
+async function persistSharedState(page, url = page.url()) {
+  const { persistLiveStorageState } = crawlerLiveBindings(await sharedLiveSession());
+  return persistLiveStorageState(page, url);
+}
+async function recordSharedBotSignal(url, response) {
+  const { recordLiveBotSignal, liveResponseSignalRecorded } = crawlerLiveBindings(await sharedLiveSession());
+  if (liveResponseSignalRecorded(response)) return false;
+  return recordLiveBotSignal(url);
+}
+async function recordSharedSuccess(url) {
+  const { recordLiveNavigationSuccess } = crawlerLiveBindings(await sharedLiveSession());
+  return recordLiveNavigationSuccess(url);
+}
+
+// The shared consent pass (stardust/scripts/browser.mjs acceptConsent — the vendor list every
+// gate instrument uses) runs first (liveSession above); the passes below stay the fallback when it misses.
 async function dismissConsent(page) {
+  const { acceptConsent } = await liveSession();
+  const shared = await acceptConsent(page).catch(() => null);
+  if (shared) console.error(`[crawl] consent dismissed via ${shared}`);
   const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '[aria-label*="Accept" i]',
     'button[id*="accept" i]', 'button[class*="accept" i]'];
-  let matched = false;
-  for (const s of sels) {
+  let matched = Boolean(shared);
+  for (const s of matched ? [] : sels) {
     const el = await page.$(s);
     if (el) { await el.click().catch(() => {}); matched = true; await page.waitForTimeout(300); break; }
   }
   // Usercentrics renders inside shadow DOM (#usercentrics-root) — regular
   // selectors can't reach it (tools-retailer e2e finding).
-  const ucMatched = await page.evaluate(() => {
+  const ucMatched = !matched && await page.evaluate(() => {
     const root = document.querySelector('#usercentrics-root')?.shadowRoot;
     if (root) {
       const btn = root.querySelector('[data-testid="uc-deny-all-button"], [data-testid="uc-accept-all-button"]');
@@ -831,18 +1103,44 @@ function capture() {
   };
 }
 
-async function capturePage(context, url, slug, args) {
+/**
+ * Capture one page on a fresh tab of `context` under the per-page deadline (args.pageTimeoutMs; 0 = none): a page
+ * that never settles is recorded as TimeoutError instead of eating the run's cap. The deadline closes the tab, so
+ * the abandoned navigation or probe dies with it. Every exit path releases the page. `sharedBindings` (tests) stands in
+ * for the front door's live-session hooks: they pace, record and persist for this capture.
+ */
+export async function capturePage(context, url, slug, args, sharedBindings = null) {
   const page = await context.newPage();
-  const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
-  let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    return await withPageDeadline(captureOnPage(page, url, slug, args, sharedBindings), args.pageTimeoutMs);
+  } finally {
+    // every exit path — success, validation throw, goto error, the deadline — releases the
+    // page, or failure-heavy crawls accumulate open tabs in the long-lived worker context.
+    await page.close().catch(() => {});
+  }
+}
+async function captureOnPage(page, url, slug, args, sharedBindings = null) {
+  const live = sharedBindings ? crawlerLiveBindings(sharedBindings) : null;
+  const navigateLive = live ? live.runLiveNavigation : sharedNavigate;
+  const recordSuccess = live ? live.recordLiveNavigationSuccess : recordSharedSuccess;
+  const persistState = live ? live.persistLiveStorageState : persistSharedState;
+  const recordBotSignal = live ? live.recordLiveBotSignal : recordSharedBotSignal;
+  const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
+  const { goto } = await liveSession();
+  let resp = await navigateLive(page, url, () => goto(page, url, { waitUntil: 'domcontentloaded', timeout: 45000 }));
   // response validation
   if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
   // bot-management challenge (Cloudflare cf-mitigated: challenge, etc.): the
   // worker's fresh context is re-challenged even after the probe cleared it, so
   // give the interstitial its JS-solve window and reload before validating —
-  // otherwise a solvable 403 is thrown as a fatal HTTPError.
-  resp = await clearChallenge(page, resp);
+  // a challenge that does not clear is recorded as BotChallenge naming the
+  // signature, never as a bare HTTPError (a 403 under cf-mitigated on every inner
+  // page after a clean entry — recorded on a Cloudflare-managed site).
+  resp = await clearChallenge(page, resp, {
+    recordBotSignal, navigate: navigateLive, signalRecorded: live && live.liveResponseSignalRecorded,
+  });
+  const edge = challengeMarker(resp);
+  if (edge) throw Object.assign(new Error(`bot-management challenge not cleared: ${edge}`), { errorClass: 'BotChallenge' });
   let status = resp.status();
   // 404 on a slash variant: retry ONCE with the trailing slash flipped before
   // recording a failure (stardust-style e2e finding — slash-required hosts).
@@ -853,7 +1151,7 @@ async function capturePage(context, url, slug, args) {
       u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
       // guarded + short timeout: a hanging flipped-variant probe must not
       // replace the crisp HTTPError 404 with a raw TimeoutError.
-      const retry = await page.goto(u.href, { waitUntil: 'domcontentloaded', timeout: 15000 })
+      const retry = await navigateLive(page, u.href, () => goto(page, u.href, { waitUntil: 'domcontentloaded', timeout: 15000 }))
         .catch(() => null);
       if (retry && retry.status() < 400) {
         console.error(`[crawl] slash-retry OK ${url} -> ${u.href}`);
@@ -866,7 +1164,15 @@ async function capturePage(context, url, slug, args) {
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
 
   if (args.consent) await dismissConsent(page);
+  await recordSuccess(resolvedUrl).catch(() => {});
+  await persistState(page, resolvedUrl).catch(() => {});
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
+  // a 2xx verification interstitial served as a normal page ("One moment, please…", "Just a moment…", CloudFront's
+  // "Request blocked" body): the headers say nothing, the page is read (pageWall) — recorded as BotChallenge, never
+  // captured as content.
+  const wall = await pageWall(page);
+  if (wall.skipped) console.error(`[crawl] wall check skipped on ${slug}: ${wall.skipped}`);
+  if (wall.marker) throw Object.assign(new Error(`bot-management interstitial served as HTTP ${status}: ${wall.marker}`), { errorClass: 'BotChallenge' });
   // 4-step scroll to trigger lazy content
   for (let y = 0; y <= 1; y += 0.34) {
     await page.evaluate((f) => window.scrollTo(0, document.body.scrollHeight * f), y);
@@ -940,60 +1246,52 @@ async function capturePage(context, url, slug, args) {
     httpStatus: status,
   };
   return rec;
-  } finally {
-    // every exit path — success, validation throw, goto error — releases the
-    // page, or failure-heavy crawls accumulate open tabs in the long-lived
-    // worker context.
-    await page.close().catch(() => {});
-  }
 }
 
 async function main() {
   const args = parseArgs(process.argv);
-  ({ chromium } = await import('playwright'));
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
 
   let stealth = false;
   let { browser, technique } = await launchWithFallback();
-  let context = await newContext(browser, stealth);
+  let context = await newContext(browser, stealth, args.url);
   let probe = await context.newPage();
 
-  // bot-management probe on the entry URL; switch to headed real Chrome on reject.
-  // Two distinct reject modes must both trigger the fallback:
+  // bot-management probe on the entry URL (probeEntry). Three block modes, all named within seconds:
   //   1. a network fingerprint block — the goto THROWS (isFingerprintBlock);
-  //   2. a challenge / edge block — the goto SUCCEEDS but returns a 403/429/503
-  //      interstitial (isChallengeResponse). This one previously slipped through
-  //      the probe and only failed at capture-time (Cloudflare-fronted site finding).
-  let botBlock = null; // 'fingerprint' | 'challenge'
-  try {
-    const probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    if (isChallengeResponse(probeResp)) botBlock = 'challenge';
-  } catch (err) {
-    if (isFingerprintBlock(err)) botBlock = 'fingerprint';
-    else throw err;
-  }
+  //   2. a challenge / edge block — the goto SUCCEEDS but the response is a 403/429/503 interstitial with an edge
+  //      signature (challengeMarker; CloudFront / AWS WAF included) — this one once slipped through the probe and
+  //      only failed at capture-time (Cloudflare-fronted site finding);
+  //   3. a 2xx VERIFICATION INTERSTITIAL the headers say nothing about ("One moment, please…" reloading itself) —
+  //      read from the page; a crawler that trusted the 200 waited out the run's whole cap on it.
+  // Any of them → ONE relaunch (launchEscalated: fresh real Chrome, window-free, the existing launch flags unless
+  // STARDUST_STEALTH=0) + the challenge-solve window, then fail fast naming the wall — never capture it as content
+  // (stop-condition (a) for the skill).
+  const botBlock = await probeEntry(probe, args.url, { timeout: 30000 }); // { kind, marker } | null — the first verdict, for the log
   if (botBlock) {
-    await browser.close();
-    console.error(`[crawl] bot-management block (${botBlock}) — switching to headed real Chrome (channel:chrome) with stealth hardening`);
-    browser = await launchHeadedStealth();
-    technique = 'headed-chrome-stealth';
-    stealth = true;
-    context = await newContext(browser, stealth);
+    console.error(`[crawl] bot-management block on the entry page (${botBlock.kind}: ${botBlock.marker}) — relaunching real Chrome (channel: chrome, window-free${stealthEnabled() ? '' : ', STARDUST_STEALTH=0: automation-signal handling off'}) and running the challenge-solve window`);
+    const escalated = await launchEscalated();
+    if (escalated) {
+      await browser.close().catch(() => {});
+      browser = escalated;
+      technique = 'chrome-escalated';
+      stealth = stealthEnabled();
+    } else {
+      await context.close().catch(() => {});
+    }
+    context = await newContext(browser, stealth, args.url);
     probe = await context.newPage();
-    let probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-    probeResp = await clearChallenge(probe, probeResp);
-    // If headed + stealth + the challenge-solve window STILL can't clear it, do
-    // not proceed to capture the interstitial as if it were content — surface a
-    // clear, actionable failure (this is stop-condition (a) for the skill).
-    if (isChallengeResponse(probeResp)) {
-      await browser.close();
+    const still = await probeEntry(probe, args.url, { timeout: 45000, solve: true });
+    if (still) {
+      await browser.close().catch(() => {});
       throw Object.assign(
-        new Error(`bot-management challenge not cleared after headed real-Chrome + stealth fallback (entry status ${probeResp ? probeResp.status() : 'n/a'}) — the site requires an interactive challenge solve; run against it in a headed session you can complete by hand`),
+        new Error(`bot-management ${still.kind} not cleared after the real-Chrome relaunch + challenge-solve window: ${still.marker} — the site requires an interactive challenge solve; complete it by hand in a session with a window (STARDUST_HEADED_WINDOW=1 on the gate instruments) or capture it another way`),
         { errorClass: 'BotChallengeError' },
       );
     }
   }
+  await persistSharedState(probe).catch(() => {});
 
   // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
   // sitemap fetch must use where the site actually lives, or discovery silently
@@ -1018,7 +1316,7 @@ async function main() {
   await probe.close();
   console.error(`[crawl] technique=${technique} pages=${urls.length}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock: botBlock.kind, botMarker: botBlock.marker } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [], pageTimeoutMs: args.pageTimeoutMs } };
   let ok = 0;
   await context.close();
 
@@ -1032,7 +1330,7 @@ async function main() {
   const slugs = assignSlugs(urls);
   let nextIdx = 0;
   async function worker() {
-    const ctx = await newContext(browser, stealth);
+    const ctx = await newContext(browser, stealth, args.url);
     while (nextIdx < urls.length) {
       const idx = nextIdx;
       nextIdx += 1;

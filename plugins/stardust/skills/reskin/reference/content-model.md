@@ -336,14 +336,14 @@ high-coverage entry.
 
 **A missing "obvious" root can be a degraded page, not a scope
 problem.** The capture navigates live URLs through the shared
-live-session hardening (real-Chrome UA + the standard request
+live-session hardening (real Chrome's own identity + the standard request
 headers, `domcontentloaded`, challenge detection — one field site served a
-non-hydrated document with no `<main>` to the default headless UA,
-and Akamai-class bot managers 403 on missing standard headers even
-with the real UA). A bot challenge fails loud with **exit 3** and is
-never captured as the source; escalate with `--headed` (stealth real
-Chrome), and a site that still blocks needs crawl.mjs-class capture
-— never gate against whatever the block served.
+non-hydrated document with no `<main>` to a bare headless context,
+and Akamai-class bot managers 403 on missing standard headers
+whatever the UA). A bot challenge fails loud with **exit 3** and is
+never captured as the source; escalate with `--headed` (real Chrome with
+the challenge-solve window), and a site that still blocks needs
+crawl.mjs-class capture — never gate against whatever the block served.
 
 The final scope string is recorded in `_provenance.scope` and must be
 passed **identically** to `dom-equality.mjs --source-scope` at gate

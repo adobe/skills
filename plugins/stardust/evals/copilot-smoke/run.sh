@@ -2,7 +2,7 @@
 # Headless GitHub Copilot CLI smoke for the stardust plugin.
 #
 # Checks three things an authenticated Copilot CLI must do for stardust to be
-# usable there: list all fifteen stardust skills plus impeccable, load a
+# usable there: list all sixteen stardust skills plus impeccable, load a
 # sub-skill by its bare name, and run the master skill's Setup section without
 # a missing-file failure. About 1.5 Copilot credits and two minutes per run.
 #
@@ -52,7 +52,7 @@ cd "$WORK"
 R1="$(cp_run -p "Do not run any tools. List the names of every skill available to you, one per line, and nothing else." --allow-all-tools 2>&1)"
 echo "## 1. listing" >> "$LOG"; echo '```' >> "$LOG"; echo "$R1" | head -40 >> "$LOG"; echo '```' >> "$LOG"
 MISSING=""
-for s in stardust extract direct prototype migrate prepare-migration replica reskin audit uplift diff deploy rollout dynamics qa impeccable; do
+for s in stardust extract direct prototype migrate prepare-migration replica reskin audit uplift diff deploy rollout dynamics qa spec impeccable; do
   echo "$R1" | command grep -qxE "\s*$s\s*" || MISSING="$MISSING $s"
 done
 [ -z "$MISSING" ]; check $? "listing: all 15 stardust skills and impeccable present${MISSING:+ (missing:$MISSING)}"

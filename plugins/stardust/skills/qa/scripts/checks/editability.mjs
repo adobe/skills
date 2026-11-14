@@ -16,11 +16,12 @@
  * editability/duplicated-index (warn, per block), editability/summary (info, per
  * page), editability/probe-failed (warn). Exemptions (EW5): --ew-exempt a,b and,
  * with --blocks-dir <dir>, `@ew-exempt <reason>` tags in each block's leading
- * JSDoc. Shared instrument: skills/deploy/scripts/ew-editability-probe.mjs.
+ * JSDoc; `widget` (data-block-name of every EDS widget) is always exempt — its text
+ * is code, not authored. Shared instrument: skills/deploy/scripts/ew-editability-probe.mjs.
  * Contract: deploy SKILL.md § Experience Workspace editability contract (EW1–EW10).
  */
 import {
-  loadPlaywright, finding, pageUrl, pMap, arg,
+  openBrowser, finding, pageUrl, pMap, arg,
 } from '../lib.mjs';
 import {
   probeUrl, aggregate, readBlockExemptions, parseExemptList,
@@ -35,15 +36,14 @@ const quote = (d) => `<${d.tag}> "${d.text.slice(0, 40)}${d.text.length > 40 ? '
 export async function run(ctx) {
   const { base, inventory, opts } = ctx;
   const findings = [];
-  const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: 'plain' });
   const cliExempt = parseExemptList(arg('ew-exempt', ''));
   const blocksDir = arg('blocks-dir', null);
 
   await pMap(inventory.pages, async (p) => {
     let bctx = null;
     try {
-      const probe = await probeUrl(browser, pageUrl(base, p.path), {
+      const probe = await probeUrl(browser, pageUrl(base, p.url || p.path), {
         width: VIEWPORT_WIDTH,
         waitUntil: 'domcontentloaded', // hanging third-party tags never reach networkidle (browse.mjs)
         settleMs: SETTLE_MS,

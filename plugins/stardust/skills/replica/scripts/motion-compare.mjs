@@ -64,6 +64,13 @@
  *   entrance    one per animation name (events.animations): fired-element
  *               count must match (verification protocol: tagged-element count
  *               == live fired count).
+ *   media       one per live <video> (media.videos[], paired by order) plus
+ *               `auto-advance`: a video playing (or carrying autoplay) on live
+ *               must play on the build — a paused/poster build is MISSING; class
+ *               mutations that fired unpoked on live (timer rotation) must fire
+ *               on the build. The gate's freeze stops both; the freeze is capture
+ *               state, never the spec. Older observations without `media` compare
+ *               as no media.
  *   transition  one per transitioned property (events.transitions): presence
  *               and the longest recorded duration.
  *   class       one per added trigger class (events.classMutations): a class
@@ -167,9 +174,11 @@ function loadObservation(path, label) {
   if (missing.length) inputError(`${label} ${path} lacks motion-observe keys: ${missing.join(', ')}`);
   const arr = (v) => (Array.isArray(v) ? v : []);
   const ev = doc.events && typeof doc.events === 'object' ? doc.events : {};
+  const md = doc.media && typeof doc.media === 'object' ? doc.media : {};
   return {
     url: doc.url, width: doc.width,
     headerTimeline: arr(doc.headerTimeline), widgetSamples: arr(doc.widgetSamples), hoverSamples: arr(doc.hoverSamples),
+    media: { videos: arr(md.videos), idleClassMutationCount: Number(md.idleClassMutationCount) || 0 },
     events: { animations: arr(ev.animations), transitions: arr(ev.transitions), classMutations: arr(ev.classMutations) },
   };
 }
@@ -555,6 +564,40 @@ function compareClasses(live, build) {
   return out;
 }
 
+// Media: videos paired by document order. Live playing → build must play; live autoplay attribute
+// but paused at the sample (off-viewport lazy autoplay) → build must carry autoplay or play. A build
+// video where live had none, or playing where live paused, is advisory (possible invented motion).
+export function compareMedia(live, build) {
+  const out = [];
+  const L = live.media?.videos || [];
+  const B = build.media?.videos || [];
+  const auto = (v) => !!(v && (v.playing || v.autoplay));
+  L.forEach((lv, i) => {
+    const bv = B[i];
+    const file = (lv.src || '').split('/').pop().split('?')[0].slice(0, 40);
+    const name = `video#${i + 1}${file ? ` ${file}` : ''}`;
+    const liveState = lv.playing ? 'playing' : lv.autoplay ? 'autoplay, paused at sample' : 'paused';
+    if (!auto(lv)) {
+      out.push(auto(bv) ? { cls: 'media', name, state: 'advisory', note: 'live paused, build autoplays' } : { cls: 'media', name, state: 'parity', note: 'paused on both' });
+      return;
+    }
+    if (!bv) { out.push({ cls: 'media', name, state: 'missing', note: `live ${liveState}, no <video> on build — poster only?` }); return; }
+    const ok = lv.playing ? bv.playing : auto(bv);
+    out.push(ok
+      ? { cls: 'media', name, state: 'parity', note: `live ${liveState}, build ${bv.playing ? 'playing' : 'autoplay'}` }
+      : { cls: 'media', name, state: 'missing', note: `live ${liveState}, build ${bv.paused ? 'paused' : 'not advancing'} (readyState ${bv.readyState ?? '?'}) — the capture freeze is not the spec` });
+  });
+  B.slice(L.length).forEach((bv, i) => { if (auto(bv)) out.push({ cls: 'media', name: `video#${L.length + i + 1}`, state: 'advisory', note: 'autoplay video on build only' }); });
+  const li = live.media?.idleClassMutationCount || 0;
+  const bi = build.media?.idleClassMutationCount || 0;
+  if (li > 0) {
+    out.push(bi > 0
+      ? { cls: 'media', name: 'auto-advance', state: 'parity', note: `${li} class mutation(s) fired unpoked on live, ${bi} on build` }
+      : { cls: 'media', name: 'auto-advance', state: 'missing', note: `${li} class mutation(s) fired unpoked on live (timer-driven rotation), none on build` });
+  }
+  return out;
+}
+
 // ---- main -------------------------------------------------------------------------------------
 
 export function compare(live, build, opts) {
@@ -565,6 +608,7 @@ export function compare(live, build, opts) {
     ...compareEntrances(live, build),
     ...compareTransitions(live, build, opts),
     ...compareClasses(live, build),
+    ...compareMedia(live, build),
   ];
   const count = (s) => verdicts.filter((v) => v.state === s).length;
   const counts = { behaviors: verdicts.length, parity: count('parity'), missing: count('missing'), extra: count('extra'), tolerance: count('tolerance'), dead: count('dead') + count('unobserved'), advisory: count('advisory') };

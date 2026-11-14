@@ -2,7 +2,7 @@
 name: qa
 description: Read-only automated QA sweep of a deployed stardust site on AEM Edge Delivery Services — validates routing, content fidelity vs the source capture, template conformance, rendered integrity (geometry, JS errors, broken images), visual regression vs baselines, metadata/SEO/JSON-LD, link integrity, accessibility (axe), and performance budgets, then emits a findings report with an allowlist for documented non-defects. Finds issues; never fixes them. Use when the user asks to "QA the site", "validate the migration", "check the live site for issues", "run a QA sweep/regression check", or invokes `$stardust qa` (`/stardust:qa` in Claude Code) <live-url>.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:qa — read-only site QA sweep
@@ -17,7 +17,8 @@ rollout asks "did every page ship?", qa asks "is everything that shipped
 actually correct?" — at all three layers a deploy can silently break:
 
 1. **delivery** — what the pipeline serves (`.plain.html`, full HTML, sheets, sitemap)
-2. **rendered** — what a browser shows after block decoration
+2. **rendered** — what a browser shows after block decoration (and what it
+   does: an autoplay video that only shows its poster is a rendered defect)
 3. **regression** — what changed since the last approved state (visual baselines)
 
 A green upper layer never implies the lower one: a publish 200 ≠ delivered,
@@ -33,7 +34,8 @@ delivered HTML ≠ rendered correctly.
    (`site.liveHost`) or ask.
 3. Resolve the **inventory source** — what pages the sweep covers, merged from
    any of: `stardust/template-map.json` (also supplies template assignments for
-   conformance), a paths file, and the live `sitemap.xml` (always fetched;
+   conformance; `scripts/from-knowledge.mjs` writes it from a spec, plus allowlist
+   entries for 404s the source already had), a paths file, and the live `sitemap.xml` (always fetched;
    parity mismatches become findings, so a wrong sitemap can't silently shrink
    coverage).
 4. Optional inputs that unlock deeper checks:

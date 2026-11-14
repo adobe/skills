@@ -7,8 +7,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 export function arg(name, fallback = null) {
   const i = process.argv.indexOf(`--${name}`);
@@ -56,12 +55,15 @@ const UA = 'stardust-qa/1.0 (+read-only site QA)';
 // whose CORS checks would turn a credentialed request into a false failure.
 let ORIGIN_AUTH = null;
 export function setOriginAuth(base, headerValue) { ORIGIN_AUTH = base && headerValue ? { origin: new URL(base).origin, value: headerValue } : null; }
-export function originAuthFor(url) { return ORIGIN_AUTH && String(url).startsWith(ORIGIN_AUTH.origin) ? ORIGIN_AUTH.value : null; }
+export function originAuthFor(url) {
+  if (!ORIGIN_AUTH || ORIGIN_AUTH.origin === 'null') return null;
+  try { return new URL(url).origin === ORIGIN_AUTH.origin ? ORIGIN_AUTH.value : null; } catch { return null; }
+}
 /** browser side: attach the auth header to base-origin requests of a Playwright context (route filter, never extraHTTPHeaders) */
 export async function attachOriginAuth(context) {
-  if (!ORIGIN_AUTH) return;
-  const { origin, value } = ORIGIN_AUTH;
-  await context.route('**/*', (route) => { const u = route.request().url(); if (u === origin || u.startsWith(`${origin}/`)) route.continue({ headers: { ...route.request().headers(), authorization: value } }); else route.continue(); });
+  if (!ORIGIN_AUTH || ORIGIN_AUTH.origin === 'null') return;
+  const { attachOriginAuth: attach } = await frontDoor();
+  await attach(context, ORIGIN_AUTH.origin, ORIGIN_AUTH.value);
 }
 /** `--auth-header "token …"` or `--token-env NAME` (process.env, then a cwd `.env`); default env name SITE_TOKEN */
 export function resolveAuthHeader() {
@@ -74,17 +76,19 @@ export function resolveAuthHeader() {
   return /^(token|bearer) /i.test(v) ? v : `token ${v}`;
 }
 
-export async function fetchUrl(url, { redirect = 'follow', method = 'GET', timeoutMs = 20000, retries = 1 } = {}) {
+export async function fetchUrl(url, { redirect = 'follow', method = 'GET', timeoutMs = 20000, retries = 1, binary = false } = {}) {
   for (let attempt = 0; ; attempt += 1) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       const auth = originAuthFor(url);
       const res = await fetch(url, { method, redirect, signal: ctl.signal, headers: { 'user-agent': UA, ...(auth ? { authorization: auth } : {}) } });
-      const body = method === 'HEAD' ? '' : await res.text();
+      const bytes = binary && method !== 'HEAD' ? Buffer.from(await res.arrayBuffer()) : undefined;
+      const body = method === 'HEAD' || binary ? '' : await res.text();
       clearTimeout(timer);
       return {
         ok: res.ok,
+        ...(bytes ? { bytes } : {}),
         status: res.status,
         headers: Object.fromEntries(res.headers.entries()),
         location: res.headers.get('location'),
@@ -184,7 +188,7 @@ export function pageUrl(base, path) {
 }
 export function plainUrl(base, path) {
   const b = base.replace(/\/$/, '');
-  return path === '/' ? `${b}/index.plain.html` : `${b}${path}.plain.html`;
+  return path.endsWith('/') ? `${b}${path}index.plain.html` : `${b}${path}.plain.html`;
 }
 export function pathSlug(path) {
   return path === '/' ? 'index' : path.replace(/^\//, '').replace(/\//g, '__');
@@ -243,23 +247,20 @@ export function applyAllowlist(findings, entries) {
 
 /* ------------------------------------------------------------ playwright -- */
 
-/**
- * Resolve playwright from the *project* (cwd), not the plugin cache — plugin
- * scripts live outside any node_modules tree. Falls back to a bare import.
- */
-export async function loadPlaywright() {
-  const normalize = (mod) => (mod.chromium ? mod : (mod.default?.chromium ? mod.default : null));
-  try {
-    const req = createRequire(join(process.cwd(), 'package.json'));
-    const mod = normalize(await import(pathToFileURL(req.resolve('playwright')).href));
-    if (mod) return mod;
-  } catch { /* fall through */ }
-  try {
-    const mod = normalize(await import('playwright'));
-    if (mod) return mod;
-  } catch { /* fall through */ }
-  throw new Error('playwright not found: install it in the project (npm i -D playwright) — browser checks need it.');
+// The browser front door (stardust/scripts/browser.mjs), resolved once. A check that needs a browser and cannot
+// find it throws, like a missing playwright: the orchestrator records the crash, links.mjs reports "unverified".
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+function frontDoor() {
+  if (!BROWSER) throw new Error('qa/lib.mjs: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  return import(BROWSER.href);
 }
+const viaFrontDoor = (name) => async (...args) => (await frontDoor())[name](...args);
+export const loadPlaywright = viaFrontDoor('loadPlaywright');
+export const openBrowser = viaFrontDoor('openBrowser');
+export const newContext = viaFrontDoor('newContext');
+export const newPage = viaFrontDoor('newPage');
+export const goto = viaFrontDoor('goto');
 
 /* ------------------------------------------------------------- inventory -- */
 
@@ -273,10 +274,13 @@ export async function loadPlaywright() {
  */
 export async function buildInventory({ base, pathsFile, templateMap, fragments = ['/nav', '/footer'], mergeSitemap = true }) {
   const pages = new Map(); // path -> {path, sources:[], template}
+  // path is the key (no trailing slash); url is where EDS serves the page: a folder index at /x/, which a source
+  // listing it with its slash tells (/x 404s on a plain EDS site)
   const add = (path, source, template) => {
     const p = path.replace(/\/$/, '') || '/';
-    if (!pages.has(p)) pages.set(p, { path: p, sources: [], template: template || null });
+    if (!pages.has(p)) pages.set(p, { path: p, url: p, sources: [], template: template || null });
     const row = pages.get(p);
+    if (path !== p && path.endsWith('/')) row.url = path;
     if (!row.sources.includes(source)) row.sources.push(source);
     if (template && !row.template) row.template = template;
   };

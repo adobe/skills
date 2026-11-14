@@ -2,7 +2,7 @@
 name: stardust
 description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign or migration. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust
@@ -73,6 +73,20 @@ sub-commands that delegate the actual design work to **impeccable**.
    stop and name the rule. Offer, never write, LFS above 50 MB of tracked
    binaries under `stardust/`. Details in `reference/artifact-map.md`
    § Versioning.
+7. **Copy this skill's whole `scripts/` dir to `stardust/scripts/stardust/`**
+   before any other skill's script runs. Its `browser.mjs` is the one entry to
+   the browser for every script. A script you write opens every page this way
+   (#159): `newLiveContext` and `gotoLive`, never `chromium.launch()` or
+   `page.goto`:
+
+   ```js
+   import { pathToFileURL } from 'node:url';
+   const { openBrowser, newLiveContext, gotoLive } = await import(pathToFileURL('stardust/scripts/stardust/browser.mjs').href);
+   const browser = await openBrowser({ mode: 'chrome' });
+   const context = await newLiveContext(browser, { viewport: { width: 1440, height: 900 }, stateUrl: url });
+   const page = await context.newPage();
+   await gotoLive(page, url); // paced on a live site. A bot wall throws.
+   ```
 
 ## Routing
 
@@ -116,6 +130,7 @@ Once setup is done, route on the user's input:
   | `audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
   | `qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
   | `uplift` | one-shot presales orchestrator (3 variants) |
+  | `spec` | pre-migration spec of a site — pages, blocks with reuse verdicts, dynamic features, martech, open decisions — as committed knowledge files |
 
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
     to layer a brand-faithful motion register on top of the static
@@ -138,9 +153,13 @@ Once setup is done, route on the user's input:
 ## Two migration flows — pick one, never mix
 
 When the user wants to migrate a site to AEM Edge Delivery (or any clean
-front end), the FIRST question is whether the design is kept or changed.
-That answer selects the flow; the downstream chain is shared.
+front end), the ask decides whether the design is kept or changed: a
+migration keeps its design unless the ask says to redesign it. That
+selects the flow; the downstream chain is shared.
 
+- **Scoping, before either flow:** "scope / estimate / plan / spec the
+  migration of X", "which pages use block X", a redirect or 404 inventory →
+  `spec`. Flow-neutral: it never stamps `flow`.
 - **Redesign while migrating:** `extract` → `direct` → `prototype`, or in
   one orchestrated step `prepare-migration` (the prep cascade with
   confirmation gates) → `migrate` → `deploy` (one-page pilot) /
@@ -172,12 +191,13 @@ loads:
   (`ia-fidelity: verbatim` with palette, type and density all pinned).
 - **Redesign phrases select the redesign flow:** "redesign", "modernise",
   "refresh", "new look", "rethink", "reimagine" — any phrase that moves a
-  design axis.
-- **Anything else** ("migrate X to EDS", "build a migration plan for X")
-  asks the one keep-vs-redesign question — the only question this section
-  asks. Under hands-off it is not asked: a keep-design phrase selects
-  `replica`, otherwise `redesign`, recorded as a named assumption in
-  `direction.md`.
+  design axis. Only an explicit phrase does; nothing is inferred.
+- **Anything else** ("migrate X to EDS") is a faithful migration: `replica`, `flowSource: "default"`, no
+  question, interactive and hands-off alike. The first response carries
+  replica's flow line ("Flow: replica — the design is kept. Say `switch to
+  redesign` now if it is to change."), so the one decision stays visible.
+  With 1,000+ sitemap URLs and no spec, it adds "Large site: say `spec
+  first` to scope it." Offered only, never in hands-off mode.
 
 Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
 (`reference/state-machine.md` § Flow keys) before delegating. The
@@ -226,24 +246,29 @@ auto-resolves:
 | prototype approval | granted by the agent's own judgment **only after all quality gates pass** (craft bar, validation loop, motion gates); recorded as `approvedBy: "hands-off"` on the page's `approved` history entry in `state.json` |
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
-| `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked |
+| `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked; a named assumption never sets `decided-out` |
 
 Defaults under hands-off (override only when the invocation says
 otherwise):
 
 - **One canonical direction.** No variant fan-out — commit to a
   single direction and record the rationale in `direction.md`.
-- **Volume caps as reasoned proposals.** Default **100 pages overall,
-  20 per template**. Roster priority: (1) every page linked from the
-  header and footer, (2) section landing/overview pages, (3) a
-  representative spread of detail pages across all templates. State
-  the chosen caps in `direction.md`.
+- **Volume caps as reasoned proposals, said out loud.** Default **100
+  pages overall, 20 per template**; "all pages" (or `--all-pages`) in
+  the invocation lifts them; a user-named N replaces both and orders
+  link-first (`../extract/reference/ia-extraction.md` § Priority for the
+  cap). Otherwise roster priority: (1) every page linked from
+  the header and footer, (2) section landing/overview pages, (3) a
+  representative spread of detail pages across all templates. The setup
+  status line names the roster against the site (`roster 94 of 2,532
+  discovered — cap 100/20`); a capped roster is never called the full
+  site. Record the caps in `direction.md`.
+- **First page first.** A full-site replica run delivers one page (home,
+  or the one named) first: `../replica/reference/first-page-first.md`.
 - **Captured pages stay in the roster.** Locale is never a reason to
   drop a captured page: every `state.json` row is delivered —
   duplicate-content locale shells ride the sibling tier of their twin;
-  `D3-multilingual` is for language trees that were never captured, not
-  for skipping captured ones (a recorded run lost ten locale roots to an
-  extract agent that hard-coded one locale).
+  `D3-multilingual` is for language trees that were never captured.
 - **Delegate by file pointer, read by section.** A brief to a delegated
   agent names the files and sections it needs (`state.json`, the page's
   schema, the phase's SKILL.md sections); it never inlines reference docs.
@@ -371,11 +396,10 @@ script copies, drafts — go under `stardust/.work/<skill>/`; the root
 bug in that skill.
 
 **Versioning.** Everything under `stardust/` is committed except what
-`reference/stardust.gitignore` lists: screenshots, four heavy folders
-(`current/assets/`, `replica/gates/`, `migrated/assets/`, `rollout/qa/`),
-`.work/`, run residue, session state. Per-directory table and what a clone
-without `current/assets/` can and cannot do: `reference/artifact-map.md`
-§ Versioning.
+`reference/stardust.gitignore` lists: screenshots, gate images, two heavy
+folders (`migrated/assets/`, `rollout/qa/`), `.work/`, run residue, session
+state. Per-directory table and what a clone can and cannot do:
+`reference/artifact-map.md` § Versioning.
 
 ## Provenance
 
@@ -431,7 +455,8 @@ test suites verify code correctness; only browser rendering verifies
 For HTML the user will see (prototypes, migrated pages, the brand-review
 HTML):
 
-1. Render in Playwright (file:// for static, or local dev server).
+1. Render in Playwright (file:// for static, or local dev server), through
+   `browser.mjs` (§ Setup, step 7).
 2. Capture at three viewports — desktop **1440×900**, tablet **768×1024**,
    mobile **390×844**:
    - Full-page screenshot.

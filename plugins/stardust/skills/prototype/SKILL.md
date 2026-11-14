@@ -2,7 +2,7 @@
 name: prototype
 description: Render a proposed redesign of a page on the current website as a self-contained static HTML file, then iterate via the impeccable craft loop. Per-page, idempotent, stale-aware. Use when the user asks for a redesign prototype, a before/after comparison, a design preview, a page mockup, a visual diff of the redesign, or invokes `$stardust prototype` (`/stardust:prototype` in Claude Code).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:prototype
@@ -922,9 +922,7 @@ lazy-loaded LCP image is a P1 finding. Detection: the first `<img>`
 whose computed `getBoundingClientRect()` intersects the initial
 viewport must satisfy both attributes.
 
-**JS-dependent-hidden-state detector.** Per
-`notes/prototype-broken-by-default-detector-2026-04-29.md`, the
-audit catches initial-state CSS that hides content via `clip-path:
+**JS-dependent-hidden-state detector.** The audit catches initial-state CSS that hides content via `clip-path:
 inset(0 100% ...)`, `opacity: 0`, or `transform: translateX(-100%)`
 where the reveal depends on a JS class flip (typically an
 `IntersectionObserver` toggling `.in-view` / `.is-visible` /
@@ -1116,8 +1114,7 @@ Save clean-pass screenshots to `stardust/validation/<slug>/motion-<viewport>.png
 
 When N > 1 variants render, each `<slug>-<id>-shape.md` declares:
 
-- A distinct `dominantDimension` value (no two variants share it;
-  per `notes/variant-convergence.md` Tier 1).
+- A distinct `dominantDimension` value (no two variants share it).
 - A `compositionDelta` field listing ≥ 2 ways the variant's section
   sequence or layout strategy diverges from each sibling variant.
   Examples:
@@ -1334,8 +1331,8 @@ open in browser, iterate, approve.
 
 Identify every page type in `state.json.pages[].type` that
 doesn't yet have an approved archetype. For each gap, prototype
-one representative page (the user picks which slug, or the first
-page of that type by default):
+one representative page (the user picks which slug; by default the
+type's `rep_url` in a spec's `archetypes.json`, else its first page):
 
 - `article`-typed pages with no approved article: prototype one
 - `listing`-typed pages with no approved listing: prototype one

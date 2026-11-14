@@ -62,13 +62,14 @@
       "id": 5,
       "name": "Tier-aware limit question",
       "prompt": "What are the object limits for Workfront Planning, and do they differ by tier?",
-      "expected_output": "Explains that most object limits are identical across Select, Prime, and Ultimate, and that only records per workspace and total records per instance vary by tier.",
+      "expected_output": "Explains that most object limits are identical across Select, Prime, and Ultimate, and that only records per workspace and total records per instance vary by tier. Distinguishes numeric caps from package-dependent feature availability.",
       "files": [],
       "assertions": [
         "Names the Select, Prime, and Ultimate tiers",
         "States that only records per workspace and total records per instance vary by tier, and that the per-object limits are the same on all tiers",
         "Answers directly for limits that do not vary by tier, and asks which tier only for records per workspace or total records per instance",
-        "Reads references/limits-and-tiers.md rather than guessing limit values"
+        "Reads references/limits-and-tiers.md rather than guessing limit values",
+        "Does not infer that all features are available on every package from shared numeric limits"
       ]
     },
     {
@@ -161,14 +162,14 @@
       "id": 12,
       "name": "Compound API filter",
       "prompt": "How do I search for active Workfront Planning campaigns in EMEA launched after Jan 1 via the API?",
-      "expected_output": "Builds a filter as a JSON array using $-prefixed operators combined with $and, ISO 8601 dates with Z timezone, and $hasAnyOf for the reference field.",
+      "expected_output": "Builds a v2 filter with operator AND and conditions, ISO 8601 dates with Z timezone, and HAS_ANY_OF for the reference field. Uses IS_ANY_OF if Region is single-select instead.",
       "files": [],
       "assertions": [
-        "Uses $-prefixed operator tokens rather than UI labels",
-        "Expresses the filter as a JSON array rather than an object",
-        "Combines conditions with $and",
+        "Explicitly identifies the API version and defaults to v2 for a new direct integration",
+        "Uses v2 filter.operator and filter.conditions with uppercase condition tokens, not UI labels",
+        "Combines conditions with AND",
         "Uses ISO 8601 dates with a mandatory Z timezone",
-        "Uses $hasAnyOf for the Region reference field rather than a text operator"
+        "Uses HAS_ANY_OF and record IDs for a reference Region, or IS_ANY_OF and option values for a single-select Region"
       ]
     },
     {
@@ -200,15 +201,16 @@
     {
       "id": 15,
       "name": "Automation surface selection, internal trigger",
-      "prompt": "In Workfront Planning, when a Campaign moves to Status=Approved I want to auto-create a Workfront Project. Which automation surface should I use?",
-      "expected_output": "Recommends a native field-value-change automation, notes the sysadmin-only authoring requirement and the no-post-save-edit constraint.",
+      "prompt": "We have Workfront Workflow bundled with Planning. When a Campaign moves to Status=Approved I want to auto-create a Workfront Project. Which automation surface should I use?",
+      "expected_output": "Recommends a native field-value-change automation for the bundled customer, notes the sysadmin-only authoring requirement and the no-post-save-edit constraint. Does not recommend Workflow object creation for standalone Planning.",
       "files": [],
       "assertions": [
         "Recommends the native field-value-change automation surface",
         "Notes that authoring requires a system administrator",
         "Notes the constraint that the action cannot make post-save edits",
         "Loads references/synthesized/automations-deep-dive.md",
-        "Does not recommend Fusion for a case native automation handles"
+        "Does not recommend Fusion for a case native automation handles",
+        "Does not imply Workfront Project creation is available to standalone Planning customers"
       ]
     },
     {
@@ -228,13 +230,17 @@
       "id": 17,
       "name": "AI Assistant scope",
       "prompt": "What's the difference between the Planning AI Assistant and the Workfront AI Assistant?",
-      "expected_output": "Distinguishes the Planning-scoped surface from the Workfront-wide surface, and notes that the beta AI Designer is a third, separate thing.",
+      "expected_output": "Distinguishes the Planning-scoped surface from the Workfront-wide surface, and notes that the beta Planning Designer is a third, separate thing. Explains Coworker's phased replacement of AI Assistant, read-only default, and admin-granted write access.",
       "files": [],
       "assertions": [
         "Distinguishes the Planning-scoped assistant from the Workfront-wide assistant",
-        "Notes that the beta AI Designer for workspace generation is separate from both",
-        "Mentions that plan-tier gating applies",
-        "Does not conflate the three surfaces"
+        "Notes that the beta Planning Designer for workspace generation is separate from both",
+        "Mentions that plan-tier gating applies to retained AI Assistant",
+        "Explains phased Coworker replacement without claiming all tenants are migrated",
+        "Retains AI Assistant guidance for excluded industries and unmigrated tenants",
+        "States Coworker is read-only by default and writing requires administrator-granted access",
+        "Names Planning Designer, not AI Designer, as a separate Beta requiring an accepted agreement",
+        "Does not conflate Assistant, Coworker, and Planning Designer"
       ]
     },
     {
@@ -268,11 +274,12 @@
       "id": 20,
       "name": "Sharing entity cap",
       "prompt": "Can I share a Workfront Planning record type with 200 users individually?",
-      "expected_output": "Notes the 100 sharing entities per WFP object cap and recommends sharing with groups or teams to scale beyond it.",
+      "expected_output": "Notes the 100 sharing entities per WFP object cap and recommends teams, or groups if Workflow is bundled; standalone sharing supports users and teams, not groups, roles, or companies.",
       "files": [],
       "assertions": [
         "States the 100 sharing entities per WFP object cap",
-        "Recommends groups or teams as the way to scale past the cap",
+        "Recommends teams, or groups only after establishing that Workflow is bundled",
+        "Does not recommend groups, roles, or companies for standalone Planning",
         "Does not answer with the cap alone and no workaround"
       ]
     },
@@ -382,6 +389,285 @@
         "Mentions the 500-connection cap only as a consequence of the proposed design, not as the opening answer",
         "Does not answer with a list of object limits",
         "Does not ask which tier the customer is on, since no tier-dependent limit is involved"
+      ]
+    },
+    {
+      "id": 29,
+      "name": "New integration defaults to v2",
+      "prompt": "We are building a new direct Planning API integration. Which version should we use, and what did the v2 release add?",
+      "expected_output": "Recommends v2, notes v1 remains available, and describes the capabilities announced in the release notes.",
+      "files": [],
+      "assertions": [
+        "Recommends v2 for a new direct integration while noting v1 remains available",
+        "States API v2 became available to all customers May 28, 2026",
+        "Mentions workspace, record-type, and field CRUD plus record management",
+        "Mentions PATCH partial updates, bulk operations, and filtering or pagination improvements"
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Migrate a v1 OR filter",
+      "prompt": "Our v1 search uses filters: [{\"$or\":[{\"Fstatus\":{\"$is\":\"Active\"}},{\"Fstatus\":{\"$is\":\"Planned\"}}]}]. Show the v2 filter for the same search.",
+      "expected_output": "Preserves matching Active or Planned using v2 filter.operator OR with two IS conditions, or an equivalent IS_ANY_OF condition for a single-select status field, with resource-scoped search.",
+      "files": [],
+      "assertions": [
+        "Matches Active or Planned using either filter.operator OR with two IS conditions on fieldId Fstatus, or a single IS_ANY_OF condition on Fstatus with value [\"Active\", \"Planned\"] for a single-select field",
+        "Uses /v2/record-types/{id}/records/search",
+        "Does not mix v1 dollar-prefixed operators into the v2 filter",
+        "Does not claim the example was verified against a live tenant"
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Fusion needs a v2-only operation",
+      "prompt": "Can the Planning Fusion connector create an entire workspace and its fields through v2?",
+      "expected_output": "Selects a connector/version whose modules support workspace and field creation; uses authenticated HTTP or a direct v2 integration if the available connector lacks those operations.",
+      "files": [],
+      "assertions": [
+        "Checks the available connector/version for the required operations without asserting all connectors use v1",
+        "Recommends authenticated Fusion HTTP or a direct v2 API call when the available connector lacks the operation",
+        "Does not claim changing a native connector setting enables v2"
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Restricted records preserve viewing",
+      "prompt": "If I set default record permissions to Restricted, will everyone except the creator lose view access to existing and new records?",
+      "expected_output": "Explains that the documented Restricted default restricts editing, not viewing, applies only to newly created records, and preserves manager/admin access.",
+      "files": [],
+      "assertions": [
+        "States other users retain view access under the documented Restricted default",
+        "Limits editing to the creator and explicitly added people while managers and administrators retain Manage",
+        "States changing the default affects newly created records, not existing records",
+        "Does not conflate this editing restriction with a no-view allow list"
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Workflow Light and Planning Standard",
+      "prompt": "We have bundled Workflow and Planning with equal license quantities. Can a Workflow Light user have Planning Standard?",
+      "expected_output": "Answers yes under the documented equal-quantity bundled licensing model; keeps Workflow and Planning license types separate.",
+      "files": [],
+      "assertions": [
+        "Confirms Workflow Light can receive Planning Standard in this case",
+        "Explains that a paid Workflow license is required for Planning Standard in the equal-quantity bundled case",
+        "Does not treat Workflow Light as a Planning license type"
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Unequal bundled license quantities",
+      "prompt": "Our Workflow and Planning license quantities differ. Can we assign Planning Contributor or combine license types freely?",
+      "expected_output": "States the unequal-quantity bundled model allows license combinations but does not offer Planning Contributor.",
+      "files": [],
+      "assertions": [
+        "States Planning Contributor is not available for unequal quantities",
+        "Explains license combinations are otherwise flexible",
+        "Does not apply the equal-quantity licensing rules indiscriminately"
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Standalone Workflow connection and sharing",
+      "prompt": "We bought Planning as a standalone product. Design an automation to create Workfront projects, connect their records, and share the workspace with a company.",
+      "expected_output": "Declines the unsupported Workflow portions, explains standalone exclusions, and offers Planning-only automation and user/team sharing rather than a Fusion workaround that bypasses entitlement.",
+      "files": [],
+      "assertions": [
+        "States standalone customers cannot connect Workflow object types or create them through Planning automations",
+        "States standalone sharing supports users and teams, not groups, roles, or companies",
+        "Does not propose Fusion as an entitlement bypass",
+        "Offers a Planning-only design where useful"
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Business rules on a global record type",
+      "prompt": "Can I block edits and deletes with business rules on a global Campaign record type in either its original or secondary workspace?",
+      "expected_output": "States business rules are unavailable on global record types in both contexts and distinguishes supported local-type business rules.",
+      "files": [],
+      "assertions": [
+        "Rejects business rules on global record types in both original and secondary workspaces",
+        "Explains local-type conditional editing/deletion rules without inventing rule-count limits",
+        "Does not recommend Formula, Lookup, or Reference fields as rule conditions"
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Dependent connections and external objects",
+      "prompt": "Can I make a Planning dependent connection controlled by a Workfront project or an AEM asset? What about another Planning record type?",
+      "expected_output": "Rejects Workfront/AEM dependent connections and explains the existing Planning relationship and third-type prerequisites.",
+      "files": [],
+      "assertions": [
+        "States dependent connections do not support Workfront or AEM objects",
+        "Requires an existing connection between Planning record types and the source and dependent fields on the same third type",
+        "States up to 3 direct controlling fields and 6 dependency connections involving up to 7 record types",
+        "Explains source changes clear dependent values and does not confuse this with picker filtering or hierarchy limits"
+      ]
+    },
+    {
+      "id": 38,
+      "name": "Two parent record types in one workspace",
+      "prompt": "In one workspace, we want Tactics to be children of both Campaigns and Programs in separate hierarchies. Does the 10-parent limit allow that?",
+      "expected_output": "Distinguishes parent records from parent types and redesigns using one hierarchy parent type plus ordinary connections.",
+      "files": [],
+      "assertions": [
+        "States one parent record type per child type in a given workspace",
+        "Explains the 10-parent cap concerns parent records, not record types",
+        "Suggests ordinary connections or an intermediate design for the other relationship",
+        "Does not approve two parent types based on the 10-record limit"
+      ]
+    },
+    {
+      "id": 39,
+      "name": "Calendar display paging",
+      "prompt": "Our Calendar week has 1,500 records but initially shows only 1,000. Did we hit a storage limit or need a higher Planning tier?",
+      "expected_output": "Explains display paging across the visible week and Load more; does not confuse this with storage capacity.",
+      "files": [],
+      "assertions": [
+        "States first 1,000 records across the visible week and Load more",
+        "Distinguishes display paging from storage and records-per-type limits",
+        "Does not recommend a tier upgrade solely for this display threshold",
+        "Checks rollout availability for the tenant rather than claiming it is universal"
+      ]
+    },
+    {
+      "id": 40,
+      "name": "Template bundle package gate",
+      "prompt": "All our numeric object limits match Ultimate. Does that mean our Workflow Select package can use Planning template bundles?",
+      "expected_output": "Explains template bundles require Workflow Prime or Ultimate and numeric cap parity does not imply feature parity.",
+      "files": [],
+      "assertions": [
+        "States template bundles require Workflow Prime or Ultimate",
+        "Distinguishes Workflow package gating from Planning numeric limits and user license types",
+        "Does not infer template bundle availability from shared limits"
+      ]
+    },
+    {
+      "id": 41,
+      "name": "Select option values after rename",
+      "prompt": "Older select choices use alphanumeric values, new ones use friendly values, and I renamed a choice. Should our integration regenerate every value from the label?",
+      "expected_output": "Preserves existing option values, reads actual field options, and distinguishes labels from stable API values.",
+      "files": [],
+      "assertions": [
+        "Explains old choices retain alphanumeric values while new choices have friendly values",
+        "States renaming a choice does not change its value",
+        "Recommends reading field options rather than deriving all values from display labels"
+      ]
+    },
+    {
+      "id": 42,
+      "name": "Sequential approvals versus revise loops",
+      "prompt": "In a tenant where multi-stage approvals are enabled, we need manager approval followed by legal approval, then a revise-and-resubmit loop. Are both native?",
+      "expected_output": "Supports sequential stages and distinguishes them from undocumented revise-and-resubmit loops.",
+      "files": [],
+      "assertions": [
+        "States sequential multi-stage request approvals are supported",
+        "Explains required approvers complete a stage before progressing, subject to only-one-decision and team exceptions",
+        "Does not claim editing a submitted request proves native revise-and-resubmit support"
+      ]
+    },
+    {
+      "id": 43,
+      "name": "Partial update and null clearing",
+      "prompt": "Show how to update one v2 record data field without changing the others, then explicitly clear another writable field.",
+      "expected_output": "Uses PATCH for a partial update and explicit null to clear a writable field according to its schema.",
+      "files": [],
+      "assertions": [
+        "Uses PATCH /v2/records/{id} and only the requested data keys",
+        "Uses an explicit null for clearing a writable data field",
+        "Checks the writable field schema rather than generalizing clearing to read-only or computed fields"
+      ]
+    },
+    {
+      "id": 44,
+      "name": "Bulk operation outcomes",
+      "prompt": "We are adopting v2 bulk record operations. Can we assume every record succeeded when the request returns a successful HTTP status?",
+      "expected_output": "Checks per-record outcomes rather than treating the HTTP status alone as confirmation that every record succeeded.",
+      "files": [],
+      "assertions": [
+        "Mentions API v2 supports bulk record operations",
+        "Checks the response for per-record errors",
+        "Consults the operation's developer reference for request limits and response contracts"
+      ]
+    },
+    {
+      "id": 45,
+      "name": "Migration pagination guidance",
+      "prompt": "We are migrating record searches from v1 to v2. Can we copy our existing pagination code unchanged because the release only changed the URL?",
+      "expected_output": "Explains the release includes pagination improvements and directs the caller to the endpoint's developer reference rather than assuming v1 shapes are unchanged.",
+      "files": [],
+      "assertions": [
+        "States the v2 release includes pagination changes, not only URL changes",
+        "Uses the endpoint's developer reference for the v2 pagination contract",
+        "Does not assume v1 request and response shapes carry over unchanged"
+      ]
+    },
+    {
+      "id": 46,
+      "name": "Coworker rollout and write access",
+      "prompt": "Can we assume CX Enterprise Coworker is enabled in our Planning tenant, can it write by default, and is Planning Designer the same product?",
+      "expected_output": "Checks tenant availability rather than assuming universal provisioning, describes the phased rollout, read-only default and admin write grants, Assistant retention, and separate Designer Beta.",
+      "files": [],
+      "assertions": [
+        "Checks whether Coworker is enabled in the customer's tenant rather than assuming universal availability",
+        "Describes the phased rollout and consults the availability ledger for rollout dates when needed",
+        "States Coworker is read-only by default",
+        "States writing requires administrator-granted access",
+        "Retains AI Assistant for excluded industries or unmigrated tenants",
+        "Names Planning Designer as a separate Beta requiring an accepted agreement"
+      ]
+    },
+    {
+      "id": 47,
+      "name": "Duplicating constrained connections",
+      "prompt": "When duplicating a record with one-to-one or one-to-many connections in a tenant with the new behavior enabled, are the links copied to both records?",
+      "expected_output": "Explains the choice to keep links on the original or move them to the duplicate, with keep-on-original the default.",
+      "files": [],
+      "assertions": [
+        "States keep on original is the default",
+        "Explains the option to move connections to the duplicate",
+        "Does not claim constrained links are blindly copied to both records",
+        "Distinguishes the duplication choice from changing connection cardinality"
+      ]
+    },
+    {
+      "id": 48,
+      "name": "Global request routing exceptions",
+      "prompt": "With the new routing enabled, where do requests for a global record type create records if launched in a secondary workspace, the main Requests area, or with a Workspace field populated?",
+      "expected_output": "Routes secondary-workspace submissions to that workspace, main Requests or original-workspace submissions to the original, and a populated Workspace field overrides launch context.",
+      "files": [],
+      "assertions": [
+        "Routes secondary-workspace submissions to the secondary workspace",
+        "Routes original-workspace and main Requests submissions to the original workspace",
+        "States a populated Workspace field takes precedence over launch context",
+        "Does not claim editing a submitted request is possible after the record has already been created"
+      ]
+    },
+    {
+      "id": 49,
+      "name": "Field sharing across surfaces",
+      "prompt": "With field-level sharing enabled, can someone bypass a field restriction by reading it through a connection, request form, API, or dashboard instead of a view?",
+      "expected_output": "Explains field restrictions apply in views, record details, connections and lookups, dashboards, the API, MCP tools, and exports, but not on request forms or public views; formula fields expose calculated values unless restricted separately.",
+      "files": [],
+      "assertions": [
+        "States enforcement covers views, record details, connections, API, and dashboards",
+        "States request forms and public views are not covered by field sharing",
+        "Does not claim request-form fields are protected by field sharing based on the older Q4 release note",
+        "Notes formula fields must be restricted separately to hide calculated values",
+        "Does not recommend an API or dashboard bypass",
+        "Distinguishes field access from workspace or record-type sharing"
+      ]
+    },
+    {
+      "id": 50,
+      "name": "Record permission override limits",
+      "prompt": "A colleague has View on the record type. Can I give them Manage on one record, or remove their access to view just that record?",
+      "expected_output": "Explains the documented record-sharing model does not grant above record-type permission and does not remove individual view access.",
+      "files": [],
+      "assertions": [
+        "States record permission cannot exceed the colleague's record-type permission",
+        "Does not recommend granting Manage above record-type View",
+        "States individual record View cannot be removed under the documented model"
       ]
     }
   ]

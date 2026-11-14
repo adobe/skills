@@ -1,6 +1,6 @@
 {
   "name": "adobe/stardust",
-  "version": "0.25.2",
+  "version": "0.38.3",
   "description": "Redesign an existing website to make it better. Built on top of impeccable.",
   "skills": [
     "skills/audit",
@@ -16,6 +16,7 @@
     "skills/replica",
     "skills/reskin",
     "skills/rollout",
+    "skills/spec",
     "skills/stardust",
     "skills/uplift"
   ],
