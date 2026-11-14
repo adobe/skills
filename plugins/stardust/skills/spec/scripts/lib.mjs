@@ -9,7 +9,6 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createRequire } from 'node:module';
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -122,21 +121,10 @@ export async function loadSibling(skill, file) {
 }
 
 /**
- * The diff skill's live-session.mjs: the plugin's one hardened way to reach a live site (challenge detection, the
- * stealth real-Chrome `--headed` tier, document-only standard headers).
+ * The master skill's browser.mjs, the front door: Playwright, the browser, and the plugin's one hardened way to
+ * reach a live site (challenge detection, the stealth real-Chrome `--headed` tier, document-only standard headers).
  */
-export const loadLiveSession = () => loadSibling('diff', 'live-session.mjs');
-
-/** Playwright from the project (the plugin tree ships none). */
-export async function loadPlaywright() {
-  try {
-    const req = createRequire(join(process.cwd(), 'package.json'));
-    const mod = await import(req.resolve('playwright'));
-    return mod.chromium ? mod : mod.default;
-  } catch { /* fall through */ }
-  const mod = await import('playwright');
-  return mod.chromium ? mod : mod.default;
-}
+export const loadBrowser = () => loadSibling('stardust', 'browser.mjs');
 
 /* ----------------------------------------------------- HTML tree reader --- */
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
@@ -340,20 +328,42 @@ export function groupRows(items, width, newline) {
 export function profileRules(profile, A, opts = {}) {
   if (profile === 'generic') return genericRules(A, opts);
   if (profile === 'aem-classic') {
+    // Classic components may also sit in responsive grids (experience fragments): a grid member (`aem-GridColumn`) is
+    // the root, named by the classic component it wraps, so one component has one name inside and outside grids; its
+    // width groups members into rows, and the wrapped component is not a second root. opts.extraRoots: component
+    // classes without the `c-` prefix that are components too.
+    const extra = new Set(opts.extraRoots || []);
+    const isGrid = (el) => A.cls(el).includes('aem-GridColumn');
+    const isGridBox = (el) => isGrid(el) && A.cls(el).includes('responsivegrid');
+    const classic = (el) => {
+      for (const c of A.cls(el)) {
+        if (c === 'colctrl') { const w = (A.parent(el) ? A.cls(A.parent(el)) : [])[0] || 'cols'; return `colctrl:${w.startsWith('cols') ? w : 'cols'}`; }
+        if (c.startsWith('c-') && !c.endsWith('-content')) return c;
+        if (extra.has(c)) return c;
+      }
+      return null;
+    };
+    const wrapped = (el) => A.kids(el).map(classic).find(Boolean) || null;
     const R = {
       name(el) {
-        for (const c of A.cls(el)) {
-          if (c === 'colctrl') { const w = (A.parent(el) ? A.cls(A.parent(el)) : [])[0] || 'cols'; return `colctrl:${w.startsWith('cols') ? w : 'cols'}`; }
-          if (c.startsWith('c-') && !c.endsWith('-content')) return c;
+        if (isGrid(el)) {
+          if (isGridBox(el)) return A.cls(el).find((c) => !c.startsWith('aem-') && c !== 'responsivegrid') || 'container';
+          const inner = wrapped(el);
+          if (inner && inner.startsWith('colctrl')) return null; // the column control stays the root
+          return inner || A.cls(el).find((c) => !c.startsWith('aem-')) || 'grid';
         }
-        return null;
+        const par = A.parent(el);
+        if (par && isGrid(par) && !isGridBox(par) && classic(el) && !classic(el).startsWith('colctrl')) return null;
+        return classic(el);
       },
+      width(el) { if (!isGrid(el)) return 12; const m = A.cls(el).map((c) => c.match(/^aem-GridColumn--default--(\d+)$/)).find(Boolean); return m ? Number(m[1]) : 12; },
+      newline: (el) => A.cls(el).includes('aem-GridColumn--default--newline'),
       columns(el) {
         const row = A.kids(el).find((c) => A.cls(c).includes('row')) || el;
         return A.kids(row).filter((c) => A.cls(c).some((x) => x.startsWith('col-')));
       },
     };
-    R.isColumns = (el) => (R.name(el) || '').startsWith('colctrl'); // the name decides: a c-* class listed first wins
+    R.isColumns = (el) => !isGrid(el) && (R.name(el) || '').startsWith('colctrl'); // the name decides: a c-* class listed first wins
     return R;
   }
   if (profile === 'aem-core') {

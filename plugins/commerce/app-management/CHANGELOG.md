@@ -1,5 +1,25 @@
 # @adobe/aio-commerce-plugin-app-management
 
+## 1.6.0
+
+### Minor Changes
+
+- [#732](https://github.com/adobe/aio-commerce-sdk/pull/732) [`f124cf4`](https://github.com/adobe/aio-commerce-sdk/commit/f124cf49208d930ca0f151e948a7597317365697) Thanks [@asalloum5](https://github.com/asalloum5)! - Add Admin UI skill guidance for configuring invoice detail-page view and worker buttons and wiring their runtime actions and iframe pages.
+
+- [#776](https://github.com/adobe/aio-commerce-sdk/pull/776) [`32988bb`](https://github.com/adobe/aio-commerce-sdk/commit/32988bbda397d9a34f788aee721f4dca9abc362a) Thanks [@aminakhyat](https://github.com/aminakhyat)! - Document credit memo view buttons in the `commerce-app-admin-ui` skill.
+
+- [#802](https://github.com/adobe/aio-commerce-sdk/pull/802) [`a03c546`](https://github.com/adobe/aio-commerce-sdk/commit/a03c546f8b6a54c8c1aa1352d89b6a0efef00d9e) Thanks [@aminakhyat](https://github.com/aminakhyat)! - Document return (RMA) view buttons in the `commerce-app-admin-ui` skill.
+
+- [#746](https://github.com/adobe/aio-commerce-sdk/pull/746) [`ca065be`](https://github.com/adobe/aio-commerce-sdk/commit/ca065bec387cf90ce21309420851bef408ca194e) Thanks [@asalloum5](https://github.com/asalloum5)! - Add Admin UI skill guidance for replacing the native order creation form with an app page, including configuration, page scaffolding, and shared-context hook usage.
+
+- [#770](https://github.com/adobe/aio-commerce-sdk/pull/770) [`9b6e61c`](https://github.com/adobe/aio-commerce-sdk/commit/9b6e61ceed9c45ae415c37b401272f09d4c75759) Thanks [@obarcelonap](https://github.com/obarcelonap)! - Use Node.js 26 by default in action examples and migrations.
+
+### Patch Changes
+
+- [#776](https://github.com/adobe/aio-commerce-sdk/pull/776) [`32988bb`](https://github.com/adobe/aio-commerce-sdk/commit/32988bbda397d9a34f788aee721f4dca9abc362a) Thanks [@aminakhyat](https://github.com/aminakhyat)! - Describe the request Commerce sends to order view button workers (`buttonId` and the `X-Request-ID` header) in the `commerce-app-admin-ui` skill.
+
+- [#801](https://github.com/adobe/aio-commerce-sdk/pull/801) [`26287d7`](https://github.com/adobe/aio-commerce-sdk/commit/26287d7a0cc3dbd154e52acb94e2ad123c74ef4b) Thanks [@pablomoreno61](https://github.com/pablomoreno61)! - Document the `return.create` target in the Admin UI skill's native form replacement guidance.
+
 ## 1.5.0
 
 ### Minor Changes

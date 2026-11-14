@@ -1,6 +1,6 @@
 ---
 name: dev-console-create-project
-description: Use when the user wants to create a new Adobe Developer Console project — phrases like "create a project", "new project", "set up a project", "create an App Builder project", or "start a new API project". First asks whether to create a default project or an App Builder template project, then creates and initializes it with a single create_project call; for API subscription afterward, continue with dev-console-subscribe-api.
+description: Use when the user wants to create a new Adobe Developer Console project — phrases like "create a project", "new project", "set up a project", "create an App Builder project", or "start a new API project". Creates an App Builder project only when the user explicitly requests "App Builder" or a "template" project; otherwise creates a default project without asking. Creates and initializes the project with a single create_project call and reports the created type; for API subscription afterward, continue with dev-console-subscribe-api.
 license: Apache-2.0
 ---
 
@@ -13,14 +13,12 @@ Create and initialize an Adobe Developer Console project in the user's selected 
 
 ## Steps
 
-1. **Choose the project type (MANDATORY — do not skip)** — This step is required for every project creation. Before anything else, ask the user which type of project they want to create:
-   ```
-   1. Default project — an empty Developer Console project
-   2. App Builder template project — comes with Production and Stage workspaces, both with runtime enabled
-   ```
-   Wait for the user's choice. The **only** exception: if the user has already explicitly named the type in this conversation (for example, "create an App Builder project" or "create a default/empty project"), use that type without asking again. Never infer the type from context, defaults, the project name, other skills, or prior projects — if the user has not explicitly stated it, ask. Map the choice to `projectType`:
-   - Default project → `projectType: "default"`
-   - App Builder template project → `projectType: "appBuilder"`
+1. **Resolve the project type from explicit user signals** — Use only explicit instructions for the project being created, from the current request or earlier conversation. Follow the most recent explicit instruction:
+   - The user explicitly requests "App Builder" or a "template" project → `projectType: "appBuilder"`.
+   - The user explicitly requests a default/empty project or rejects App Builder/templates → `projectType: "default"`.
+   - No explicit App Builder/template request for this project → `projectType: "default"`.
+
+   Never infer App Builder from requested APIs, credentials, runtime features, project names, other skills, or prior projects. Unrelated or negated mentions of "App Builder" or "template", including documentation discussions, do not count as a request. Do not ask the user to choose or confirm the project type.
 
    Steps 2–5 are identical for both types.
 
@@ -32,7 +30,11 @@ Create and initialize an Adobe Developer Console project in the user's selected 
    - Default project: creates the project with its default workspace.
    - App Builder template project: creates the project from the App Builder template together with **Production** and **Stage** workspaces, both with runtime enabled.
 
-5. **Report the result** — On success, tell the user the project was created, using its title and type. For an App Builder template project, also say it includes Production and Stage workspaces with runtime enabled. Retain the returned `projectId` and any workspace IDs for follow-up, but do not display raw IDs. If the response does not include workspace details, call `list_workspaces` for the created project. If the response includes `console_url`, display it as:
+5. **Report the result** — On success, explicitly state the created project's title and type:
+   - Default: "Created **{title}** as a **default project**."
+   - App Builder: "Created **{title}** as an **App Builder template project**, with **Production** and **Stage** workspaces, both with runtime enabled."
+
+   Retain the returned `projectId` and any workspace IDs for follow-up, but do not display raw IDs. If the response does not include workspace details, call `list_workspaces` for the created project. If the response includes `console_url`, display it as:
    `🔗 View in Adobe Developer Console: {console_url}`
 
 If the user also wants to subscribe an API, continue with `dev-console-subscribe-api` skill using the created org, project, and workspace context. For an App Builder template project with more than one workspace, ask which workspace to use (Production or Stage) unless the user already said. Do not ask the user to select or re-enter IDs already returned by project creation.
@@ -40,7 +42,6 @@ If the user also wants to subscribe an API, continue with `dev-console-subscribe
 ## Rules
 
 - This skill creates a project only; it does not create credentials or subscribe APIs.
-- Step 1 (project type) is mandatory and must never be skipped. Skip the question only when the user has explicitly stated the project type; never assume or infer it.
 - Do not call `create_project` until the project type, organization, and project name are known.
 - Do not ask for custom workspace names, descriptions, or template choices; the connector does not accept them.
 - If project creation reports that Adobe Developer Terms have not been accepted, ask the user to review the terms and explicitly confirm agreement before calling `accept_developer_terms`. Then retry project creation once.

@@ -2,7 +2,7 @@
 name: audit
 description: Full three-perspective audit of an existing website from one URL — design (tensions + concrete improvement opportunities), SEO/technical, and LLM/AI-search visibility — plus Core Web Vitals, synthesized into a scored, evidence-bound report. Use when the user asks to "audit this site", "site audit", "design audit", "SEO audit", "why is my site underperforming", "LLM visibility", "how does my site look to AI", or invokes `$stardust audit` (`/stardust:audit` in Claude Code) <url>.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:audit

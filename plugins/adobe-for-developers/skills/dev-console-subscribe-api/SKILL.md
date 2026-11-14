@@ -17,7 +17,7 @@ Guide the user through subscribing an Adobe API to a credential in an existing p
 
 1. **Find the API** — If the user asks *"what APIs are available"*, *"show me available APIs"*, or similar, call `list_services` with `filterBy: "enabled"` and display only the enabled APIs as a list (name + description, no raw codes). If the user named a specific API, call `list_services` with `filterBy: "enabled"` to find its `code` and full details. Never guess an SDK code.
 
-2. **Pick credential type** — **Always run this step based on the API's supported types — never skip it because an existing credential was found.** An API can have multiple enabled instances with different `type` values. Collect ALL enabled instances for the API code, then:
+2. **Pick credential type** — **Always validate against the API's supported types — never skip this check because an existing credential was found.** An API can have multiple enabled instances with different `type` values. Collect ALL enabled instances for the API code. Reuse a type already specified by the user if it is supported; otherwise:
    - Include `admin_entp` instances as **Admin Enterprise** credentials; do not filter them out or redirect the user to Console for creation or subscription.
    - If only **one** credential type → proceed with it automatically, including when that type is Admin Enterprise.
    - If **multiple** credential types → show them as a numbered list and ask: *"This API supports multiple credential types. Which would you like to use?"*
@@ -25,7 +25,7 @@ Guide the user through subscribing an Adobe API to a credential in an existing p
      2. User Auth (AdobeId) — for user-facing apps *(internal: `adobeid`)*
      3. OAuth Server-to-Server — for server-to-server access *(internal: `oauth_server_to_server`, also used for `entp`)*
      4. Admin Enterprise *(internal: `admin_entp`)* — if an `admin_entp` instance is present
-   - **Wait for the user to pick before proceeding.** Do not auto-select based on what credentials already exist in the workspace.
+   - **Wait for the user to pick when multiple supported types remain unresolved.** Do not auto-select based on what credentials already exist in the workspace.
    - **Show only credential type names in this list — never mention existing credentials here.** Do not append "subscribe to the existing X credential" or any reference to existing workspace credentials. Existing credential lookup happens after the type is chosen.
 
 3. **Check for product profiles** — After the credential type is decided, inspect its `properties.licenseConfigs` array from the matching API instance:
@@ -85,7 +85,7 @@ For generated names, use lowercase letters, digits, and hyphens, and truncate to
 
 ### User Auth — AdobeId (`create_user_auth_credential`)
 - Use the name and description resolved above.
-- Ask only for **platform**. Present only platforms the API supports (from its `platformList`) as a numbered list:
+- Resolve **platform** from the matching API instance's `platformList`, when provided, and documented API support.
   ```
   1. WebApp — web application
   2. SinglePageApp — SPA/React/Angular app
@@ -105,7 +105,7 @@ For generated names, use lowercase letters, digits, and hyphens, and truncate to
 
 ### Analytics (`create_analytics_credential`)
 - Use the name and description resolved above.
-- Ask only for **platform** as a numbered list:
+- Resolve **platform** from the matching API instance's `platformList`, when provided, and documented API support. Filter the following platform labels before offering a choice:
   ```
   1. Web — web app
   2. iOS — iOS mobile app

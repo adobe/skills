@@ -2,7 +2,7 @@
 name: extract
 description: Crawl an existing website (capped, multi-page) and seed stardust/current/ with PRODUCT.md, DESIGN.md, DESIGN.json, a per-page inventory, and the consolidated brand surface — the captured design system, palette, typography, motifs, and voice of the live site. Use when the user wants to analyze an existing site's design, extract or reverse-engineer its design system or brand, capture design tokens from a live site, import a website as the starting point for a redesign, capture the current state before a migration, or invokes `$stardust extract` (`/stardust:extract` in Claude Code). Trigger phrases include "analyze this site", "extract the design tokens", "capture the brand", "crawl the site", "reverse engineer the design". Not for scraping page data or content for its own sake (it captures design evidence, not datasets), and not for the redesign itself — extraction is descriptive; direction and prototyping happen downstream.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:extract
@@ -83,7 +83,7 @@ Additional checks for this sub-command:
    then a project-importable `playwright` module. **The `npx
    playwright` probe is NOT sufficient** — it confirms the CLI
    (which resolves a global install) but the recipe and
-   `scripts/crawl.mjs` do `import { chromium } from 'playwright'`,
+   `scripts/crawl.mjs` load `playwright` through `browser.mjs`,
    and ESM module resolution does **not** honour a global install or
    `NODE_PATH` — the import throws `ERR_MODULE_NOT_FOUND` even where
    `npx playwright --version` succeeds. Verify the module is
@@ -107,7 +107,8 @@ Additional checks for this sub-command:
    **Script location matters.** ESM resolves `import 'playwright'`
    from the *script's* directory and the plugin tree ships no
    `node_modules`: copy every script byte-identical into the project
-   (`stardust/scripts/…`) and run the copy.
+   (`stardust/scripts/…`), the master skill's too (`../stardust/SKILL.md`
+   § Setup, step 7), and run the copy.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is a
    runnable reference implementation of this whole sub-command —
@@ -387,14 +388,14 @@ captured page at 1440 and writes
 `stardust/current/_computed-styles.json`; add `--width 360` when the
 breakpoints include it. One more live pass over every page — run it
 ONCE, after the crawl, in the background; it opens the live side
-through `live-session.mjs` like every other live instrument. Read the
+through the shared `browser.mjs` like every other live instrument. Read the
 palette, type, motif and hover values from the file's `aggregate` and
 cite each from its `sources[]` (`url`, `selector`, `prop`); the
 per-page detail sits under `pages[url][width]`.
 
 **Content-cap model — run the shipped probe; author no lift (#124).**
 `node stardust/scripts/replica/cap-probe.mjs <archetype-url>… --write-design
-stardust/current/DESIGN.json` (replica's script; copy it with `live-session.mjs`)
+stardust/current/DESIGN.json` (replica's script; it needs the master skill's scripts copied too)
 renders each archetype at 1440 and at a DERIVED wide width —
 max(2560, largest cap × 1.25); a probe AT a cap's width cannot see it — and
 records every box that stops growing (kind `shell` / `content` / `module`,

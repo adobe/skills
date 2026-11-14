@@ -2,65 +2,74 @@
 
 This project is an Open Development/Inner Source project and welcomes contributions from everyone who finds it useful or lacking.
 
-## Code Of Conduct
+## Code of Conduct
 
 This project adheres to the Adobe [code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code. Please report unacceptable behavior to cstaub at adobe dot com.
 
 ## Community
 
-Have questions, want feedback on a skill, or need a review? Reach out on [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Slack.
+Have questions, want feedback on a skill, or need a review? Adobe employees can reach out on [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Slack. Everyone else, please [open an issue](https://github.com/adobe/skills/issues/new/choose).
 
-For background on the skills format and specification, see [agentskills.io](https://agentskills.io) and the [agentskills GitHub org](https://github.com/agentskills/agentskills).
+For background on the skills format, see [agentskills.io](https://agentskills.io) and the [agentskills GitHub org](https://github.com/agentskills/agentskills).
 
 ## Contributor License Agreement
 
 All third-party contributions to this project must be accompanied by a signed contributor license. This gives Adobe permission to redistribute your contributions as part of the project. [Sign our CLA](http://opensource.adobe.com/cla.html)! You only need to submit an Adobe CLA one time, so if you have submitted one previously, you are good to go!
 
-## Things to Keep in Mind
+## Security
 
-This project uses a **commit then review** process, which means that for approved maintainers, changes can be merged immediately, but will be reviewed by others.
+Don't open a public issue for a vulnerability. See [SECURITY.md](SECURITY.md).
 
-For other contributors, a maintainer of the project has to approve the pull request.
+## Before You Contribute
 
-# Before You Contribute
-
-* Check that there is an existing issue in GitHub issues
-* Check if there are other pull requests that might overlap or conflict with your intended contribution
+- Check the [open issues](https://github.com/adobe/skills/issues) and [pull requests](https://github.com/adobe/skills/pulls) for work that overlaps with yours.
+- For a new plugin, or a change that spans plugins, open an issue first and describe what you plan. The owners of the area are in [CODEOWNERS](.github/CODEOWNERS).
+- Read [AGENTS.md](AGENTS.md). It holds the rules for skills, plugins and pull requests, for people and for coding agents alike.
 
 ## Writing Skills
 
-To contribute a new skill, follow the format described in the [Agent Skills specification](https://agentskills.io). When your skill is ready, open a pull request and ping [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Slack to get a review.
+A skill follows the [Agent Skills specification](https://agentskills.io): a folder with a `SKILL.md` whose frontmatter has `name`, `description` and `license: Apache-2.0`. It lives in a plugin, at `plugins/<plugin>/skills/<skill>/` (AEM, Commerce and Creative Cloud plugins are one level deeper). [AGENTS.md](AGENTS.md) says what makes a skill good and what a new plugin needs.
 
 ## Quality Checks
 
-PRs go through three tiers of quality checks:
+Run the local checks before you open a pull request:
 
-1. **Validation** (`npm run validate`) — checks skill structure against the [agentskills.io](https://agentskills.io) spec. Runs automatically on every PR.
+```bash
+npm ci
+npm run validate
+node scripts/check-release-configs.mjs
+```
 
-2. **Tessl Skill Review** (`tessl skill review`) — LLM-based scoring of content quality, activation quality, and security. Runs automatically on every PR for changed skills. Must score at least 50%.
+CI runs these on every pull request:
 
-3. **Tessl Evals** (`tessl eval run`) — end-to-end agent evaluation that measures whether the skill actually improves agent behavior. Runs only when explicitly requested and only for plugins that include a `.tessl-plugin/plugin.json`, using the scenarios in the plugin's `evals/` directory.
+| Check | What it does |
+|---|---|
+| Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, and runs the tests of the `web` CLI and the lints of `stardust`. |
+| Tessl Plugin Lint | `tessl plugin lint` for plugins that have a `.tessl-plugin/plugin.json`. |
+| Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |
+| AI Review | Claude and Codex review the pull request against [AGENTS.md](AGENTS.md) and leave a verdict, a summary and line comments. Drafts are not reviewed. |
+| Conventional Commits | At least one commit of the pull request follows [Conventional Commits](https://www.conventionalcommits.org). |
+| Adobe CLA | You have signed the CLA. |
+| Tessl Skill Eval | Only on request, see below. |
+
+Pull requests from forks: checks that need a secret wait for a maintainer to approve the run.
 
 ## Requesting Evals
 
-To trigger evals, push an empty commit with an `eval:` prefix:
+Evals measure whether a skill improves what an agent does: the same task with and without the skill. They run for plugins that have a `.tessl-plugin/plugin.json`, with the scenarios in the plugin's `evals/` directory (`<scenario>/task.md`, `criteria.json`, optional `resources/`).
+
+To request a run, push an empty commit whose message starts with `eval:`:
 
 ```bash
 git commit --allow-empty -m "eval: describe what you're testing"
 git push
 ```
 
-Things to know:
+- A maintainer approves the run, because it uses the `TESSL_TOKEN` secret.
+- Secrets are not available to pull requests from forks. Ask a maintainer to run the evals from a branch in this repository.
+- A run takes several minutes per plugin. The results are linked in a comment on the pull request.
 
-- Evals only run for plugins that have a `.tessl-plugin/plugin.json`; scenarios live in `<plugin>/evals/<scenario>/` (`task.md`, `criteria.json`, optional `resources/`)
-- Evals require the `TESSL_TOKEN` GitHub Actions secret
-- GitHub Actions secrets are not available to PRs from forks, so external contributors cannot run evals directly
-- If you need evals for a fork-based PR, ask a maintainer to run them from a branch in the main repo
-- Evals take several minutes per skill — be patient
-- Results appear in the GitHub Actions step summary
-- Evals measure the "impact score" — the gap between agent performance with vs. without the skill
-
-## Running Evals Locally
+### Running evals locally
 
 Iterate on scenarios without Tessl credits using pi and nono; see [tools/skill-eval](tools/skill-eval/README.md):
 
@@ -68,60 +77,30 @@ Iterate on scenarios without Tessl credits using pi and nono; see [tools/skill-e
 npm run eval:local -- plugins/<plugin> -n 1 --scenario <name>
 ```
 
-# How to Contribute
+## How to Contribute
 
-1. Fork the repository
-2. Make some changes on a branch on your fork
-3. Create a pull request from your branch
+1. Fork the repository. Maintainers can push a branch to this repository instead.
+2. Make your changes on a branch.
+3. Open a pull request and fill in the template.
 
-In your pull request, outline:
+The title of the pull request is a conventional commit with the plugin as its scope, for example `fix(stardust): …` or `feat(aem-cloud-service): …`. Pull requests are squash-merged, so the title becomes the commit message, and the commit message decides what is released.
 
-* What the changes intend
-* How they change the existing code
-* If (and what) they breaks
-* Start the pull request with the GitHub issue ID, e.g. #123
+Keep a pull request to one plugin where you can. It is reviewed by the owners of that plugin.
 
-Lastly, please follow the [pull request template](.github/pull_request_template.md) when submitting a pull request!
+### AI-Generated Contributions
 
-## AI-Generated Contributions
+If your pull request contains code or text that was generated or co-authored by AI tools (such as GitHub Copilot, ChatGPT, Claude, or similar), apply the `ai-generated` label to it. If you can't set labels, say so in the description and a maintainer will add it.
 
-If your pull request contains code that was generated or co-authored by AI tools (such as GitHub Copilot, ChatGPT, Claude, or similar), you must apply the `ai-generated` label to your pull request.
+## How Contributions Get Reviewed
 
-This helps maintainers understand the context of contributions and ensures appropriate review processes.
+This project uses a **commit then review** process: approved maintainers can merge changes to the plugins they own once the checks pass, and others review afterwards. For other contributors, a maintainer of the plugin has to approve the pull request.
 
-Each commit message that is not part of a pull request:
+A maintainer will look at a pull request within one week. Feedback is given in writing, on GitHub.
 
-* Should contain the issue ID like `#123`
-* Can contain the tag `[trivial]` for trivial changes that don't relate to an issue
+## Releases
 
+There is nothing to publish by hand. People install plugins from `main`, so a merged pull request is what they get next.
 
+On every push to `main`, [semantic-release](https://semantic-release.gitbook.io) releases each changed skill that has a `package.json`: it computes the version from the commit messages, writes the skill's `CHANGELOG.md`, and creates a GitHub release with the packaged skill. `feat` is a minor release; `fix`, `perf`, `docs`, `refactor` and `style` are patch releases; a breaking change is a major release.
 
-## Coding Styleguides
-
-We enforce a coding styleguide using `eslint`. As part of your build, run `npm run lint` to check if your code is conforming to the style guide. We do the same for every PR in our CI, so PRs will get rejected if they don't follow the style guide.
-
-You can fix some of the issues automatically by running `npx eslint . --fix`.
-
-## Commit Message Format
-
-This project uses a structured commit changelog format that should be used for every commit. Use `npm run commit` instead of your usual `git commit` to generate commit messages using a wizard.
-
-```bash
-# either add all changed files
-$ git add -A
-# or selectively add files
-$ git add package.json
-# then commit using the wizard
-$ npm run commit
-```
-
-# How Contributions get Reviewed
-
-One of the maintainers will look at the pull request within one week. Feedback on the pull request will be given in writing, in GitHub.
-
-# Release Management
-
-The project's committers will release to the [Adobe organization on npmjs.org](https://www.npmjs.com/org/adobe).
-Please contact the [Adobe Open Source Advisory Board](https://git.corp.adobe.com/OpenSourceAdvisoryBoard/discuss/issues) to get access to the npmjs organization.
-
-The release process is fully automated using `semantic-release`, increasing the version numbers, etc. based on the contents of the commit messages found.
+A plugin with a `.tessl-plugin/plugin.json` is published to the Tessl registry when the `version` in that file changes.
