@@ -232,13 +232,15 @@ Document:
 | `getSiteRoot` / site detection | Multi-site configuration |
 | External script loading | Which phase — flag if in eager (performance risk) |
 
-### 2.5 Analyze scripts/delayed.js
+### 2.5 Analyze the delayed phase
+
+Current boilerplate projects load martech through `loadDelayed()` → `scripts/consent-check.js` → `scripts/consented.js` (after consent). Older projects use `scripts/delayed.js`. Check whichever the project has:
 
 ```bash
-grep -E "^import|function|google|analytics|gtag|alloy|martech|OneTrust|launch|chatbot|widget" scripts/delayed.js
+grep -E "^import|function|google|analytics|gtag|alloy|martech|OneTrust|launch|chatbot|widget" scripts/consented.js scripts/consent-check.js scripts/delayed.js 2>/dev/null
 ```
 
-Document analytics integrations, marketing tools, performance monitoring. Confirm no render-critical code is in this file.
+Document analytics integrations, marketing tools, performance monitoring and the consent mechanism. Confirm no render-critical code is in these files.
 
 ### 2.6 Check for Utility Functions
 
@@ -367,7 +369,7 @@ Inform the user: "Developer guide complete: project-guides/DEVELOPER-GUIDE.pdf"
 | **Content** | Design system fully documented (tokens, fonts, breakpoints) |
 | **Content** | Project-specific blocks documented |
 | **Content** | Custom scripts.js functions documented |
-| **Content** | delayed.js integrations documented |
+| **Content** | Delayed-phase integrations documented (`consented.js` or `delayed.js`) |
 | **Content** | Templates documented (if applicable) |
 | **Content** | Local development setup verified |
 | **Content** | Common tasks have clear instructions |
