@@ -10,17 +10,39 @@
 // input past the typeahead cap is listed, not typed into.
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-explore.test.mjs
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { controlKind, exploreWidth, normName, parseArgs, requestBudget, sameSite, summarize } from '../chrome-explore.mjs';
 import { compareDocs, visualFindings } from '../chrome-compare.mjs';
 import { serve } from './chrome-fixtures.mjs';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+
+const copyWithoutMaster = () => {
+  const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
+  const copy = join(root, 'a', 'b');
+  cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => !src.endsWith('/test') });
+  return { root, copy };
+};
+
+await check('a copy without the master scripts answers --help, no stack trace', () => {
+  const { root, copy } = copyWithoutMaster();
+  try {
+    const r = spawnSync(process.execPath, [join(copy, 'chrome-explore.mjs'), '--help'], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(!r.stderr.includes('    at '), r.stderr);
+    const u = spawnSync(process.execPath, [join(copy, 'chrome-explore.mjs'), 'https://a.test/', join(root, 'out.json')], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(u.status, 1, u.stderr);
+    assert.ok(u.stderr.includes('browser.mjs not found') && u.stderr.includes('stardust/scripts/stardust/'), u.stderr);
+    assert.ok(!u.stderr.includes('    at '), u.stderr);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 await check('normName / controlKind', () => {
   assert.equal(normName('  Shop — Men’s  '), 'shop mens');

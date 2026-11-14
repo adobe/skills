@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// skills/diff/scripts/test/live-session.test.mjs — live-session.mjs's pure surface, no browser: the exported names
+// skills/stardust/scripts/test/live-session.test.mjs — live-session.mjs's pure surface, no browser: the exported names
 // the instruments import; the 2xx denial page — the vendor signatures in order, normalizeDenialText, denialMarker per
 // signature, the pair rule, the 2 KB rule, the one-error-heading rule, an ordinary page (large, or small with a plain
 // heading) never classified; withDeadline; pageDenial on stub pages (one retry, the skipped result, the probe
@@ -15,7 +15,7 @@
 // the headless token, or the caller's override; the sec-ch-ua* trio is derived from the browser's version and the OS
 // (or the caller's UA) on the Chrome tiers and left to the browser on the bundled tier; the webdriver spoof reaches
 // every context by default. The edge header signature.
-// Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
+// Run: node plugins/stardust/skills/stardust/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';

@@ -11,7 +11,8 @@
  *   aem-core    — component roots are grid members (`aem-GridColumn`); the first non-`aem-` class names the component;
  *                 consecutive members narrower than the grid form a `row` node with one column each.
  *   generic     — any other site: structural sections named from component hints (lib.mjs genericRules);
- *                 config.parser.nameAttrs adds attributes that carry a component name; stripPrefix a hash prefix.
+ *                 config.parser.nameAttrs adds attributes that carry a component name; stripPrefix a hash prefix;
+ *                 extraRoots (aem-classic) component classes without the c- prefix.
  * config.parser.main: selector of the main region (comma = first match wins; default: main, [role=main], #main,
  * #content, #main-content, article, else body without header/footer/nav); chrome.{header,footer} selectors.
  * Node: { c, p (path id), mods, chars, imgs, videos, forms, links, h[], slides?, ncols?, cols?[[node]], kids?[node] }.
@@ -40,7 +41,7 @@ function nodeAdapter() {
 const rulesFor = (profile, opts) => { const A = nodeAdapter(); return { ...profileRules(profile, A, opts), A }; };
 export const PROFILES = { 'aem-classic': rulesFor('aem-classic'), 'aem-core': rulesFor('aem-core'), generic: rulesFor('generic') };
 export const genericProfile = (opts = {}) => rulesFor('generic', opts);
-export const profileFor = (cfg) => rulesFor(cfg.parser?.profile, { nameAttrs: cfg.parser?.nameAttrs, stripPrefix: cfg.parser?.stripPrefix });
+export const profileFor = (cfg) => rulesFor(cfg.parser?.profile, { nameAttrs: cfg.parser?.nameAttrs, stripPrefix: cfg.parser?.stripPrefix, extraRoots: cfg.parser?.extraRoots });
 export { groupRows };
 export const MAIN_FALLBACK = ['main', '[role=main]', '#main', '#content', '#main-content', 'article'];
 /** The main region and whether it is the whole body (then header/footer/nav children are chrome, not content). */

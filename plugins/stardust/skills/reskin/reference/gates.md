@@ -66,8 +66,6 @@ source would pass/fail the render against the wrong reference. A bot
 challenge exits **3** (distinct from 1=FAIL, 2=setup), never
 measured; a non-challenge HTTP ≥ 400 exits 2. Escalate bot-managed
 sites with `--headed`; pin geo-redirecting sources with `--locale`.
-The reskin scripts resolve `live-session.mjs` from the diff scripts
-copied alongside (`stardust/scripts/diff/`, SKILL.md § Setup).
 Local/file targets keep the legacy `networkidle` path — file-path
 sources and rendered pages behave as before.
 
