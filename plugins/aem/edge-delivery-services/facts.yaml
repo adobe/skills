@@ -1,0 +1,153 @@
+# Facts the EDS skills and evals rely on.
+# question: asked unaided to quiz whether models know the claim (the answer key).
+# source: external and re-checkable only; omitted for maintainer-endorsed practice.
+# used_by: paths relative to this plugin.
+#
+# content-modeling facts, checked against aem.live docs (2026-11-12).
+
+- id: cm-no-nested-blocks
+  claim: >-
+    Blocks must never be nested: a table inside a block's cell is unsupported
+    and hard for authors. To combine structures, put blocks side by side in
+    sections (a script can merge consecutive sections, e.g. via Section
+    Metadata, into tabs) or link to a fragment.
+  question: >-
+    In an AEM Edge Delivery Services (EDS) site, a tabs block needs a cards grid
+    inside each tab. How do authors create that in Word or Google Docs?
+  source: >-
+    https://www.aem.live/docs/davidsmodel (Rule 2);
+    https://www.aem.live/developer/markup-sections-blocks ("Blocks should never be nested")
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-default-content-first
+  claim: >-
+    Headings, paragraphs, images, lists and links stay default content. A
+    `Text`, `Heading` or `Image` block is an anti-pattern. A block is justified
+    only when content needs structure (repeating items, interaction, layout),
+    and variants or blocks that can be inferred from the content should be.
+  question: >-
+    On an EDS site, a design shows an intro section: a small label, an H2, two paragraphs and
+    one centered image below them. What do authors create on the page?
+  source: >-
+    https://www.aem.live/docs/davidsmodel (Rule 1);
+    https://www.aem.live/developer/markup-sections-blocks (Default Content)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-key-value-config-only
+  claim: >-
+    Name/value rows are for configuration that is not displayed (like section
+    metadata, which becomes `data-` attributes). Displayed content such as a
+    heading, image or text must not be modelled as name/value pairs.
+  question: >-
+    On an EDS site, a pricing block shows, per tier, a name, a price, a feature list and a
+    button. A developer proposes a two-column table with a label in the left
+    cell and the value in the right. Do you accept that model?
+  source: https://www.aem.live/docs/davidsmodel (Rule 14)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-tabular-data-spreadsheet
+  claim: >-
+    Many columns usually mean content is split into small values instead of
+    default-content semantics. For real tabular data, small amounts shown on
+    one page can use the Block Collection `table` block; large or reused data
+    belongs in a spreadsheet (published as JSON) that a block links to, rather
+    than a wide custom block table.
+  question: >-
+    On an EDS site, a comparison block shows 8 features across 5 plans (a 9 by 6 grid of
+    ticks and short values). How do authors provide that data?
+  source: https://www.aem.live/docs/davidsmodel (Rule 10); Block Collection `table` block
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-semantic-cells
+  claim: >-
+    A block cell holds default content (heading, paragraphs, links, picture).
+    One cell per field (title, description, link in separate cells) is a smell;
+    decoration finds parts by element type (h2, picture, a), not by cell
+    index.
+  question: >-
+    In an EDS block, a feature card has an image, a title, a description and a link. Sketch the
+    table an author fills in for one card, and say how your decorate() finds
+    each part.
+  source: https://www.aem.live/docs/davidsmodel (Rule 10); https://www.aem.live/developer/markup-sections-blocks
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-block-options
+  claim: >-
+    Authors choose a variant in the block's header cell in parentheses:
+    `Columns (dark, wide)` adds classes `columns dark wide`; a multi-word
+    option is hyphenated (`super wide` becomes `super-wide`). Prefer this to a
+    `style | dark` config row.
+  question: >-
+    One EDS quote block must come in a dark look and a wide look, chosen per
+    instance by the author. How does the author choose, and what does the
+    block element carry?
+  source: https://www.aem.live/developer/markup-sections-blocks (Block Options)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-simple-link-lists
+  claim: >-
+    Simple lists of links need no list: put the links in one cell (or one per
+    line) and have decorate() collect every link. Use one row per item only
+    when items are complex (image, heading, text, link).
+  question: >-
+    An EDS related-articles block shows 6 links to other pages. How do authors
+    enter them, and what must the block accept?
+  source: https://www.aem.live/docs/davidsmodel (Rule 5)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-fragments-cost
+  claim: >-
+    Fragments suit identical content reused on many pages (header, footer,
+    sign-up form, legal text). Authors then see only a reference, nested
+    fragments are worse, and SEO-relevant content must stay on the page.
+  question: >-
+    An EDS product page repeats a legal disclaimer used on 200 pages and also has a
+    long intro text that matters for search. Where would you use fragments?
+  source: https://www.aem.live/docs/davidsmodel (Rule 12)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-no-alt-text-config
+  claim: >-
+    Do not hide configuration in image alt text: authors cannot see it, and
+    copy/paste can drop it silently.
+  question: >-
+    Each image in an EDS gallery block needs an optional "featured" flag. Where in
+    the content model does the author set it?
+  source: https://www.aem.live/docs/davidsmodel (Rule 13)
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+- id: cm-auto-block-links
+  claim: >-
+    A link alone in its paragraph can be auto-blocked into a block (e.g.
+    YouTube `embed`, fragment, modal) in `buildAutoBlocks()` of `scripts.js`,
+    so authors paste a URL and create no table.
+  question: >-
+    On an EDS site, authors should add a YouTube video to a page without building a table.
+    What makes that work?
+  source: https://www.aem.live/developer/markup-sections-blocks (Auto Blocking)
+  used_by: []
+
+- id: cm-widgets-not-blocks
+  claim: >-
+    Application-like parts (forms, search, filters, calculators, dealer
+    locators) are widgets, not blocks: a `/widgets/<name>/` folder with .html,
+    .css and .js, and authors paste the widget's .html URL alone in a
+    paragraph, which renders a `widget` block. Query-string parameters become
+    `data-` attributes. No table to author.
+  question: >-
+    An EDS site needs a contact form and a mortgage calculator, each on one or two
+    pages. What do authors put in the document, and where does the code live?
+  source: https://www.aem.live/docs/widgets; aem-boilerplate 5cea543 blocks/widget
+  used_by:
+    - skills/content-modeling/SKILL.md
+
+# ue-component-model facts, checked against aem.live docs and aem-boilerplate-xwalk 6210531 (2026-11-12).
