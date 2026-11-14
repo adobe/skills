@@ -3,14 +3,19 @@ name: adobe-create-social-variations
 description: >
   Resize, crop, or export any image or video into platform-ready social media assets using Adobe Creative Cloud tools. Use this skill when a user wants to prepare a photo, image, or video for one or more social platforms — Instagram, TikTok, LinkedIn, Facebook, YouTube, Snapchat, Pinterest, Threads, or X/Twitter. Triggers on: "prepare my image for Instagram", "resize for TikTok", "get this ready to post", "make versions for all platforms", "social media sizes", "crop for stories", "export for LinkedIn", "resize my video for social", "make social media assets", or any request to adapt a photo or video for specific platforms. Handles subject-aware cropping, AI canvas expansion, test previews before full runs, and same-ratio video resizing.
 license: Apache-2.0
+compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Raw local paths are never passed to image or video tools."
+allowed-tools: adobe_mandatory_init asset_initialize_file_upload asset_finalize_file_upload asset_add_file asset_inline_preview asset_preview_file image_crop_and_resize image_generative_expand video_resize resizeVideoPoll
 metadata:
-  version: 1.0.1
+  version: 2.1.0
   visibility: public
+  surface: [claude, codex]
 ---
 
 # Adobe Create Social Variations
 
 Produces platform-ready images and videos from a single source file. Uses AI canvas expansion and subject-aware cropping to keep the subject in focus across all aspect ratios. Shows a lightweight 3-crop preview before a full-set run so framing issues are caught early — those crops are then reused in the final output.
+
+> **Surface note:** The default flow below uses Adobe's MCP App widgets — the `asset_add_file` file picker and the `asset_preview_file` preview. Follow it as written. Only if a widget tool is **not available on this surface** (e.g. Codex) use the *No-widget fallback* attached to that step. Likewise, present `AskUserQuestion` prompts as plain-text labeled options wherever no question widget exists.
 
 ---
 
@@ -31,7 +36,7 @@ Produces platform-ready images and videos from a single source file. Uses AI can
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-create-social-variations", "skill_version": "1.0.1" }
+{ "skill_name": "adobe-create-social-variations", "skill_version": "2.1.0" }
 ```
 
 ---
@@ -48,12 +53,17 @@ All of these must be present for the skill to run at all. If **any** are missing
 
 | Tool | Purpose |
 |------|---------|
-| `asset_add_file` | File picker / CC browse / upload |
-| `asset_initialize_file_upload` | First call in two-step egress upload |
-| `asset_finalize_file_upload` | Second call in two-step egress upload |
+| `asset_initialize_file_upload` | First call in two-step upload — stages a local file to CC |
+| `asset_finalize_file_upload` | Second call in two-step upload |
 | `asset_inline_preview` | Determines focus strategy before cropping |
 | `image_crop_and_resize` | Per-platform, per-format cropping |
-| `asset_preview_file` | Test previews and final delivery |
+
+### Widget Tools (used when available; graceful fallback)
+
+| Tool | Flag | If missing |
+|------|------|------------|
+| `asset_add_file` | `pickerWidget = true/false` | File picker — the default ingest on widget surfaces (e.g. Claude). If unavailable (e.g. Codex), stage local files programmatically via `asset_initialize_file_upload` → `asset_finalize_file_upload` (see the *No-widget fallback* in each Get-the-Source-File step). |
+| `asset_preview_file` | `previewWidget = true/false` | Side-by-side/grid preview. If unavailable (e.g. Codex), present output URLs directly in the message instead — UI clients still render them inline; non-UI agents download each via curl. |
 
 ### Image Workflow — Enhanced Tools (optional, graceful fallback)
 
@@ -80,13 +90,12 @@ If `videoCapable = false` and the user explicitly asks about video resizing, avo
 
 | Step | Tool | Notes |
 |------|------|-------|
-| Upload chat-dropped file | `asset_initialize_file_upload` | First call in two-step egress upload |
-| Complete the upload | `asset_finalize_file_upload` | Second call in two-step egress upload |
-| Get file from CC or as egress fallback | `asset_add_file` | File picker / CC browse / upload |
+| Get file (widget surfaces) | `asset_add_file` | File picker / CC browse |
+| Stage file (no-widget fallback) | `asset_initialize_file_upload` + `asset_finalize_file_upload` | Two-step upload — stage a local file to CC when the picker is unavailable |
 | Inspect source image | `asset_inline_preview` | Determines focus strategy before cropping |
 | Expand canvas | `image_generative_expand` | Creates tall (9:16/4:5) and wide (~2:1/16:9) variants |
 | Crop to platform dimensions | `image_crop_and_resize` | Per-platform, per-format; also 403 fallback for expand |
-| Preview test crops or full set | `asset_preview_file` | Before full run (test) and at delivery |
+| Preview test crops or full set | `asset_preview_file` | Before full run (test) and at delivery *(no-widget fallback: present the URLs directly)* |
 | Resize video | `video_resize` | Same-ratio resize only |
 | Poll video resize job | `resizeVideoPoll` | Deferred tool — load before calling |
 
@@ -100,9 +109,11 @@ How you get the file depends on where it is:
 
 | Source                                             | Action                                                                                                                                                                                                                                                                                    |
 | -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| File uploaded in chat (`/mnt/user-data/uploads/…`) | Check `<network_configuration>`. If egress is enabled (`Enabled: true`), upload programmatically: get file size and MIME type via bash, call `asset_initialize_file_upload`, PUT the chunk(s), then `asset_finalize_file_upload`. If egress is disabled, fall back to `asset_add_file()`. |
+| File uploaded in chat (`/mnt/user-data/uploads/…`) | Check egress status from `adobe_mandatory_init` (Step 0). If egress is enabled, upload programmatically: get file size and MIME type via bash, call `asset_initialize_file_upload`, PUT the chunk(s), then `asset_finalize_file_upload`. If egress is disabled, use `asset_add_file()` (the picker) instead. |
 | No file provided yet                               | Call `asset_add_file()` immediately — no need to ask first.                                                                                                                                                                                                                               |
 | File already in Creative Cloud                     | Call `asset_add_file()` so the user can select it from their CC storage.                                                                                                                                                                                                                  |
+
+> **No-widget fallback** *(only if `asset_add_file` is unavailable on this surface, e.g. Codex)* — don't ask the user to pick. Stage any local file programmatically (`asset_initialize_file_upload` → PUT → `asset_finalize_file_upload`) and use the returned presigned CC URL; for a file already in Creative Cloud, reference it directly by its CC URI. Staging requires egress — check egress status from `adobe_mandatory_init` first; if egress is disabled and no picker is available on this surface, tell the user staging isn't possible here and ask them to run the workflow on a surface with the `asset_add_file` picker.
 
 After the file is available, detect image vs. video from `mediaType`. For images, proceed to Step 1.
 
@@ -190,6 +201,8 @@ Show all 3 via `asset_preview_file` and ask:
 
 > "Here are 3 test crops covering the main aspect ratios. Do the framing and expansion look good? I'll generate the full set once you approve."
 
+> **No-widget fallback** *(only if `asset_preview_file` is unavailable, e.g. Codex)* — present all 3 URLs directly in the message and ask the same question; UI clients render them inline, and in Codex or other non-UI agents, download each to the workspace and reference the local paths.
+
 These crops are reused in the final output — only the 9:16 story/reel crop needs to be generated after approval.
 
 ---
@@ -220,6 +233,8 @@ Generate every variant in the Platform Specs table for each selected platform. R
 ### Step 6 — Preview Full Set
 
 Call `asset_preview_file` with all successfully generated URLs — including partial sets when some variants failed.
+
+> **No-widget fallback** *(only if `asset_preview_file` is unavailable, e.g. Codex)* — list all successfully generated URLs directly in the message (including partial sets when some variants failed). UI clients render them inline; in Codex or other non-UI agents, download each to the workspace and reference the local paths.
 
 ---
 
@@ -280,11 +295,13 @@ Video tools require an `assetId` — not a URL. How you get it depends on where 
 
 | Source                                             | Action                                                                                                                                                                                                                                                                                                                                     |
 | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| File uploaded in chat (`/mnt/user-data/uploads/…`) | Check `<network_configuration>`. If egress is enabled (`Enabled: true`), upload programmatically: get file size and MIME type via bash, call `asset_initialize_file_upload`, PUT the chunk(s), then `asset_finalize_file_upload`. The returned `assetId` is what video tools need. If egress is disabled, fall back to `asset_add_file()`. |
+| File uploaded in chat (`/mnt/user-data/uploads/…`) | Check egress status from `adobe_mandatory_init` (Step 0). If egress is enabled, upload programmatically: get file size and MIME type via bash, call `asset_initialize_file_upload`, PUT the chunk(s), then `asset_finalize_file_upload`. The returned `assetId` is what video tools need. If egress is disabled, use `asset_add_file()` (the picker) instead. |
 | No file provided yet                               | Call `asset_add_file()` immediately.                                                                                                                                                                                                                                                                                                       |
 | File already in Creative Cloud                     | Call `asset_add_file()` so the user can select it.                                                                                                                                                                                                                                                                                         |
 
 > If egress is disabled and the user has already dropped a video into chat, explain why it can't be used directly: "To resize your video I'll need you to select it via the file picker — this gives Adobe the asset ID it needs. I'll open it now."
+
+> **No-widget fallback** *(only if `asset_add_file` is unavailable, e.g. Codex)* — stage the local video programmatically (`asset_initialize_file_upload` → PUT → `asset_finalize_file_upload`) and use the returned `assetId`; for a video already in Creative Cloud, reference it by its `assetId`. Staging requires egress — check egress status from `adobe_mandatory_init` first; if egress is disabled and no picker is available on this surface, tell the user staging isn't possible here and ask them to run the workflow on a surface with the `asset_add_file` picker.
 
 ---
 
@@ -339,6 +356,8 @@ Poll with `resizeVideoPoll` until complete. Poll 3–4 times with brief pauses b
 
 Call `asset_preview_file` with all completed outputs.
 
+> **No-widget fallback** *(only if `asset_preview_file` is unavailable, e.g. Codex)* — list all completed output URLs directly in the message. UI clients render them inline; in Codex or other non-UI agents, download each to the workspace and reference the local paths.
+
 ---
 
 ### Step 5 — Delivery Summary
@@ -360,7 +379,7 @@ Note: Video resizing does not apply intelligent reframing — cross-ratio reform
 
 | Situation                                           | Action                                                                                                                                                                                                                                                                                  |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Egress upload fails (chunk PUT 5xx after retry)     | Stop upload. Fall back to `asset_add_file()` and tell the user: "Direct upload didn't work — I'll open the picker so you can select the file."                                                                                                                                          |
+| Egress upload fails (chunk PUT 5xx after retry)     | Stop upload. Fall back to `asset_add_file()` and tell the user: "Direct upload didn't work — I'll open the picker so you can select the file." *(No-widget surface: report the failure and ask the user to re-provide the file.)*                                                         |
 | `image_generative_expand` returns 403 (entitlement) | Fall back to `image_crop_and_resize` with `fit: "reframe"` from `sourceURI`. Note in delivery summary: "AI canvas expansion is not included in your current Adobe plan — smart reframe was used instead." Retrying does not resolve a 403 entitlement — continue per the fallback rule. |
 | `image_crop_and_resize` returns 403 (entitlement)   | Stop workflow. Tell the user: "Image cropping isn't available on your current Adobe plan — I can't complete this request here."                                                                                                                                                         |
 | PSD/AI flattening returns 403                       | Stop workflow. Tell the user: "Flattening this file type isn't available on your current Adobe plan — export as JPG or PNG first, then try again."                                                                                                                                      |
@@ -371,3 +390,9 @@ Note: Video resizing does not apply intelligent reframing — cross-ratio reform
 | PSD / AI file uploaded                              | Flatten first (JPEG, 300 DPI). On 403, see entitlement row above.                                                                                                                                                                                                                       |
 | `video_resize` fails                                | Report clearly; suggest user re-upload as MP4                                                                                                                                                                                                                                           |
 | Unsupported file format (DOCX, PDF, etc.)           | Inform user. Accepted inputs: JPG, PNG, Firefly images, PSD/AI, MP4/MOV.                                                                                                                                                                                                                |
+
+---
+
+## Hard Constraints
+
+- Never pass a raw local filesystem path to any `image_*` or video tool. Local files must reach Creative Cloud first — selected via the `asset_add_file` picker, or (no-widget fallback) staged via `asset_initialize_file_upload` → PUT → `asset_finalize_file_upload`; only the resulting presigned CC URI (for images) or `assetId` (for video tools) is valid.

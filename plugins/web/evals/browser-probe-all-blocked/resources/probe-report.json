@@ -1,0 +1,96 @@
+{
+  "url": "https://www.contoso-airlines.com/en-us/",
+  "timestamp": "2026-10-05T10:02:47.501Z",
+  "steps": [
+    {
+      "name": "default",
+      "config": {
+        "browser": "chromium",
+        "stealth": false,
+        "uaOverride": false
+      },
+      "result": "blocked",
+      "health": {
+        "title": "Access Denied",
+        "url": "https://www.contoso-airlines.com/en-us/",
+        "bodyLength": 287,
+        "status": 403,
+        "hasMainContent": false
+      },
+      "durationMs": 3802
+    },
+    {
+      "name": "stealth",
+      "config": {
+        "browser": "chromium",
+        "stealth": true,
+        "uaOverride": false
+      },
+      "result": "blocked",
+      "health": {
+        "title": "Access Denied",
+        "url": "https://www.contoso-airlines.com/en-us/",
+        "bodyLength": 287,
+        "status": 403,
+        "hasMainContent": false
+      },
+      "durationMs": 3655
+    },
+    {
+      "name": "stealth-ua",
+      "config": {
+        "browser": "chromium",
+        "stealth": true,
+        "uaOverride": true
+      },
+      "result": "blocked",
+      "health": {
+        "title": "Access Denied",
+        "url": "https://www.contoso-airlines.com/en-us/",
+        "bodyLength": 287,
+        "status": 403,
+        "hasMainContent": false
+      },
+      "durationMs": 3910
+    },
+    {
+      "name": "chrome",
+      "config": {
+        "browser": "chrome",
+        "stealth": true,
+        "uaOverride": true
+      },
+      "result": "blocked",
+      "health": {
+        "title": "Access Denied",
+        "url": "https://www.contoso-airlines.com/en-us/",
+        "bodyLength": 287,
+        "status": 403,
+        "hasMainContent": false
+      },
+      "durationMs": 6120
+    },
+    {
+      "name": "persistent",
+      "config": {
+        "browser": "chrome",
+        "stealth": true,
+        "uaOverride": true
+      },
+      "result": "blocked",
+      "health": {
+        "title": "Access Denied",
+        "url": "https://www.contoso-airlines.com/en-us/",
+        "bodyLength": 287,
+        "status": 403,
+        "hasMainContent": false
+      },
+      "durationMs": 9874
+    }
+  ],
+  "firstSuccess": null,
+  "detectedSignals": [
+    "akamai-server",
+    "akamai-bot-manager"
+  ]
+}

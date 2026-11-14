@@ -5,7 +5,7 @@ Curated palette library used by the palette picker
 
 ## Version
 
-**v0.6.0** — 127 palettes, scraped from `coolors.co/palettes/trending`
+**v0.7.0** — 127 palettes, scraped from `coolors.co/palettes/trending`
 on 2026-04-24. Every palette carries a `source` URL back to its
 Coolors page.
 

@@ -1,0 +1,18 @@
+application:
+  actions: actions
+  web: web-src
+  runtimeManifest:
+    packages:
+      my-commerce-app:
+        license: Apache-2.0
+        actions:
+          get-catalog:
+            function: actions/get-catalog/index.js
+            web: 'yes'
+            annotations:
+              final: true
+          update-product:
+            function: actions/update-product/index.js
+            web: 'yes'
+            annotations:
+              final: true

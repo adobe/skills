@@ -18,7 +18,7 @@ modes recurred across brands before this pattern existed:
    fit. The shrunk nav became unreadable (font ~9–10px, gaps 8–10px).
 2. Some sites still horizontally overflowed despite the shrink. A
    real instance: the Wasatch Back Beerworks prototype derived from
-   birrificiolambrate.com — header content totaled ~447px inside a
+   a real brewery site — header content totaled ~447px inside a
    430px viewport even after font and gap reductions, leaving a
    visible empty column.
 
@@ -27,7 +27,7 @@ with a moderately-sized nav. This pattern centralises the fix.
 
 ## When this applies
 
-`$impeccable adapt`, invoked from `stardust:prototype` Phase 2.7,
+`$impeccable adapt`, invoked from the stardust `prototype` skill Phase 2.7,
 runs the Mobile-adapt audit (see `skills/prototype/SKILL.md`
 § Mobile-adapt audit). The audit refuses the file when, at 360px:
 

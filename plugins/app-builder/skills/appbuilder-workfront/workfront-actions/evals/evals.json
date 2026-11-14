@@ -1,0 +1,47 @@
+{
+  "skill_name": "workfront-actions",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "How should my Workfront Runtime action return success versus failure so the SPA can tell them apart?",
+      "expected_output": "Return { data, error } in the action body; the UI checks error before using data.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "data, error", "description": "Uses the {data,error} response contract."},
+        {"type": "output_contains", "pattern": "error", "description": "UI checks error before data."}
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "My deployed Workfront action can't read its API key — process.env is empty even though it works locally under aio app dev. How do I fix it?",
+      "expected_output": "Explains inputs flow .env -> action inputs (config) -> params; read from params, never process.env at runtime.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "inputs", "description": "Wire secrets as action inputs."},
+        {"type": "output_contains", "pattern": "params", "description": "Read them from params."},
+        {"type": "output_contains", "pattern": "process.env", "description": "Warns against reading process.env at runtime."}
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "From a Runtime action, bulk-update 500 Workfront tasks and filter a search on a custom DE field. What API and patterns do I use?",
+      "expected_output": "Workfront Public API v21 at /attask/api/v21.0; bulk PUT with the updates query param (chunk for URL length); custom DE: fields need {field}_Mod=notblank.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "v21", "description": "Uses Workfront Public API v21."},
+        {"type": "output_contains", "pattern": "updates", "description": "Bulk PUT via the updates param."},
+        {"type": "output_contains", "pattern": "_Mod=notblank", "description": "Filters custom DE fields correctly."}
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Should I set require-adobe-auth: true on my Workfront action?",
+      "expected_output": "Explains it is off by default and a per-action choice; on when the action is the security boundary, off when the downstream API (Workfront) authorizes the forwarded token.",
+      "files": [],
+      "assertions": [
+        {"type": "output_contains", "pattern": "require-adobe-auth", "description": "Addresses the auth annotation."},
+        {"type": "output_contains", "pattern": "default", "description": "Notes it is off by default / a deliberate per-action choice."}
+      ]
+    }
+  ]
+}

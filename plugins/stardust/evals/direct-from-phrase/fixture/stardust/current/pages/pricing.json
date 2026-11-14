@@ -1,0 +1,135 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-07-21T09:45:03Z",
+    "readArtifacts": ["https://www.ledgerline.com/pricing"],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.10.0",
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-07-21T09:42:31Z",
+    "waitMode": "medium",
+    "waitMs": 1980,
+    "httpStatus": 200,
+    "contentType": "text/html",
+    "heroSource": "dom"
+  },
+  "slug": "pricing",
+  "url": "https://www.ledgerline.com/pricing",
+  "finalUrl": "https://www.ledgerline.com/pricing",
+  "title": "Pricing — Ledgerline",
+  "metaDescription": "Simple per-entity pricing. Starter $29/mo, Growth $79/mo, Firm custom. Every plan includes reconciliation, reporting, and accountant access.",
+  "heroHeadline": "Simple per-entity pricing.",
+  "heroLede": "Every plan includes reconciliation, audit-ready reporting, and accountant access. Pay only for the entities you close.",
+  "og": {
+    "title": "Pricing — Ledgerline",
+    "description": "Starter $29/mo, Growth $79/mo, Firm custom.",
+    "image": "https://www.ledgerline.com/img/og-pricing.png",
+    "type": "website",
+    "siteName": "Ledgerline"
+  },
+  "themeColor": { "light": "#1f3a5f", "dark": null },
+  "language": "en",
+  "headings": [
+    { "level": 1, "text": "Simple per-entity pricing.", "id": null, "domPath": "main > section.page-head > h1", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2.5rem", "lineHeight": 1.2, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 3, "text": "Starter", "id": null, "domPath": "main > section.tiers > div.pricing-tier:nth-child(1) > h3", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "1.5rem", "lineHeight": 1.3, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 3, "text": "Growth", "id": null, "domPath": "main > section.tiers > div.pricing-tier:nth-child(2) > h3", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "1.5rem", "lineHeight": 1.3, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 3, "text": "Firm", "id": null, "domPath": "main > section.tiers > div.pricing-tier:nth-child(3) > h3", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "1.5rem", "lineHeight": 1.3, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Frequently asked questions", "id": "faq", "domPath": "main > section.faq > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" } },
+    { "level": 2, "text": "Ready to close the books faster?", "id": null, "domPath": "main > section.cta-band > h2", "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(255, 255, 255)" } }
+  ],
+  "landmarks": [
+    {
+      "tag": "header",
+      "role": "banner",
+      "id": null,
+      "classes": ["site-header"],
+      "innerText": "Ledgerline Features Pricing About Contact Request a demo",
+      "children": [
+        { "tag": "nav", "role": "navigation", "id": null, "classes": ["nav-wrap"], "purpose": "unknown", "headlineRef": null, "innerTextSummary": "Ledgerline Features Pricing About Contact Request a demo", "wordCount": 8, "body": [], "lists": [], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "main",
+      "role": "main",
+      "id": null,
+      "classes": [],
+      "innerText": "Simple per-entity pricing. Every plan includes reconciliation, audit-ready reporting, and accountant access. Pay only for the entities you close. Starter $29 /mo per entity For a single company. Bank feeds, reconciliation, standard reports. Start 30-day trial Growth Most popular $79 /mo per entity Up to 40 entities. Consolidation, close checklists, role-based access. Start 30-day trial Firm Custom For accounting firms managing client books at scale. Contact sales Frequently asked questions Can I switch plans? Yes — plan changes apply at the next billing cycle. Do you offer annual billing? Yes, annual billing saves 15%. Is my data exportable? Full ledger export to CSV and XLSX at any time. Ready to close the books faster? Request a demo",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["page-head"], "purpose": "hero", "headlineRef": 0, "innerTextSummary": "Simple per-entity pricing. Every plan includes reconciliation, audit-ready reporting, and accountant access.", "wordCount": 21, "body": ["Every plan includes reconciliation, audit-ready reporting, and accountant access. Pay only for the entities you close."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": null, "classes": ["tiers"], "purpose": "unknown", "headlineRef": null, "innerTextSummary": "Starter $29/mo. Growth (Most popular) $79/mo. Firm custom.", "wordCount": 52, "body": ["For a single company. Bank feeds, reconciliation, standard reports.", "Up to 40 entities. Consolidation, close checklists, role-based access.", "For accounting firms managing client books at scale."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": "faq", "classes": ["faq"], "purpose": "rich-text", "headlineRef": 4, "innerTextSummary": "Can I switch plans? Do you offer annual billing? Is my data exportable?", "wordCount": 46, "body": [], "lists": [], "qa": [ { "q": "Can I switch plans?", "a": "Yes — plan changes apply at the next billing cycle." }, { "q": "Do you offer annual billing?", "a": "Yes, annual billing saves 15%." }, { "q": "Is my data exportable?", "a": "Full ledger export to CSV and XLSX at any time." } ], "quotes": [] },
+        { "tag": "section", "role": null, "id": null, "classes": ["cta-band"], "purpose": "cta-band", "headlineRef": 5, "innerTextSummary": "Ready to close the books faster? Request a demo", "wordCount": 9, "body": [], "lists": [], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "footer",
+      "role": "contentinfo",
+      "id": null,
+      "classes": ["site-footer"],
+      "innerText": "Product Features Pricing Security Company About Careers Contact Resources Help center Blog API docs Legal Privacy Terms © 2026 Ledgerline Inc.",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["footer-cols"], "purpose": "footer-nav", "headlineRef": null, "innerTextSummary": "Product Company Resources Legal", "wordCount": 22, "body": [], "lists": [ { "ordered": false, "items": ["Features", "Pricing", "Security", "About", "Careers", "Contact", "Help center", "Blog", "API docs", "Privacy", "Terms"] } ], "qa": [], "quotes": [] }
+      ]
+    }
+  ],
+  "ctas": [
+    { "label": "Start 30-day trial", "href": "/signup", "tag": "a", "domPath": "main > section.tiers > div.pricing-tier:nth-child(1) > a.btn-secondary", "style": { "backgroundColor": "rgb(255, 255, 255)", "color": "rgb(31, 58, 95)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" }, "appearsAbove": "fold" },
+    { "label": "Start 30-day trial", "href": "/signup", "tag": "a", "domPath": "main > section.tiers > div.pricing-tier:nth-child(2) > a.btn-primary", "style": { "backgroundColor": "rgb(31, 58, 95)", "color": "rgb(255, 255, 255)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" }, "appearsAbove": "fold" },
+    { "label": "Contact sales", "href": "/contact", "tag": "a", "domPath": "main > section.tiers > div.pricing-tier:nth-child(3) > a.btn-secondary", "style": { "backgroundColor": "rgb(255, 255, 255)", "color": "rgb(31, 58, 95)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" }, "appearsAbove": "fold" },
+    { "label": "Request a demo", "href": "/contact", "tag": "a", "domPath": "main > section.cta-band > a.btn-primary", "style": { "backgroundColor": "rgb(255, 255, 255)", "color": "rgb(31, 58, 95)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" }, "appearsAbove": "below-fold" }
+  ],
+  "links": {
+    "internal": [
+      { "href": "/features", "text": "Features", "domPath": "header > nav > a:nth-child(2)" },
+      { "href": "/pricing", "text": "Pricing", "domPath": "header > nav > a:nth-child(3)" },
+      { "href": "/about", "text": "About", "domPath": "header > nav > a:nth-child(4)" },
+      { "href": "/contact", "text": "Contact", "domPath": "header > nav > a:nth-child(5)" },
+      { "href": "/signup", "text": "Start 30-day trial", "domPath": "main > section.tiers > div.pricing-tier:nth-child(1) > a" }
+    ],
+    "external": []
+  },
+  "media": {
+    "images": [
+      { "src": "https://www.ledgerline.com/img/dashboard-overview.png", "currentSrc": "https://www.ledgerline.com/img/dashboard-overview.png", "srcset": null, "alt": "Ledgerline dashboard", "naturalWidth": 1920, "naturalHeight": 1200, "resolves": true, "localPath": "stardust/current/assets/media/dashboard-9f3e.png" }
+    ],
+    "inlineSvgs": [
+      { "viewBox": "0 0 180 32", "domPath": "header > div.nav-wrap > a.brand > svg", "markupHash": "sha256:6f2d9b1e4a7c0f8b3e5d2a9c1f7b4e0d8a6c3f1b9e5d7a2c0f4b8e6d1a3c9f5b" }
+    ],
+    "cssBackgrounds": [],
+    "videos": [],
+    "iframes": []
+  },
+  "forms": [],
+  "widgets": { "modals": [], "accordions": [ { "domPath": "main > section.faq > div.faq-list", "itemCount": 3 } ], "tabs": [] },
+  "components": {
+    "cards": { "count": 3, "examples": ["section.tiers .pricing-tier"] },
+    "grids": { "count": 1, "examples": ["section.tiers .row"] },
+    "accordions": { "count": 1, "examples": ["section.faq details"] },
+    "tabs": { "count": 0, "examples": [] },
+    "tables": { "count": 0, "examples": [] },
+    "modals": { "count": 0, "examples": [] },
+    "carousels": { "count": 0, "examples": [] },
+    "videos": { "count": 0, "examples": [] },
+    "iframes": { "count": 0, "examples": [] },
+    "dataVizEmbeds": { "count": 0, "examples": [] },
+    "teamTiles": { "count": 0, "examples": [] },
+    "pricingTiles": { "count": 3, "examples": ["section.tiers .pricing-tier"] },
+    "testimonialCards": { "count": 0, "examples": [] },
+    "logoStrip": { "count": 0, "examples": [] },
+    "timeline": { "count": 0, "examples": [] },
+    "breadcrumbs": { "count": 0, "examples": [] },
+    "statRow": { "count": 0, "examples": [] },
+    "ctaBand": { "count": 1, "examples": ["section.cta-band"] },
+    "formFields": { "count": 0, "examples": [] },
+    "other": []
+  },
+  "perSectionStyle": [
+    { "sectionRef": "main > section.page-head", "purpose": "hero", "background": { "color": "rgb(255, 255, 255)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "16px" }, "borderRadius": "0px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": [] },
+    { "sectionRef": "main > section.tiers", "purpose": "unknown", "background": { "color": "rgb(244, 246, 248)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "24px" }, "borderRadius": "4px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": ["0 1px 3px rgba(20,30,45,0.08)"] },
+    { "sectionRef": "main > section.cta-band", "purpose": "cta-band", "background": { "color": "rgb(31, 58, 95)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(255, 255, 255)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "16px" }, "borderRadius": "0px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": [] }
+  ],
+  "embedDominance": { "dominated": false, "iframeSrc": null, "viewportCoveragePct": null, "mainHeightCoveragePct": null, "screenshot": null },
+  "cssCustomProperties": [],
+  "screenshot": "stardust/current/assets/screenshots/pricing.png",
+  "stats": { "wordCount": 132, "ctaCount": 4, "internalLinkCount": 15, "externalLinkCount": 0, "imageCount": 1 }
+}

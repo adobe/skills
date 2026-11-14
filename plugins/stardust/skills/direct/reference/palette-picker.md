@@ -1,12 +1,21 @@
 # Palette Picker
 
-Pick a target palette from the bundled library — **no external API, no
-LLM-invented colors**. The library was scraped from
-`coolors.co/palettes/trending` and classified by deterministic HSL
-heuristics. Every palette carries a `source` URL back to its Coolors
-page.
+Pick a target palette **anchor** from the bundled library. The library
+was scraped from `coolors.co/palettes/trending` and classified by
+deterministic HSL heuristics. Every palette carries a `source` URL
+back to its Coolors page.
 
-Version: **v0.6.0 · 127 palettes · scraped 2026-04-24** (carried from
+**Anchor bank, not closed menu (0.14+).** A library palette is a
+5-hex *anchor*, not the finished token set: `direct` derives the full
+role-ramped palette (text, grounds, borders, accents, states) from the
+chosen anchor — or from a researched reference per
+`skills/stardust/reference/reference-research.md` — and validates
+every text-on-ground pair for WCAG AA before it lands in tokens. The
+determinism lives in the validation math, not in restricting the
+palette to the 5 scraped hexes. Record the derivation basis in
+`DESIGN.json.extensions.divergence.palette_source`.
+
+Version: **v0.7.0 · 127 palettes · scraped 2026-04-24** (carried from
 stardust v1 unchanged).
 
 Distribution by ground family:

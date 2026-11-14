@@ -1,0 +1,90 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout",
+    "writtenAt": "2026-06-21T16:10:00Z",
+    "readArtifacts": [
+      "stardust/migrated/",
+      "stardust/canon/"
+    ],
+    "stardustVersion": "0.13.0"
+  },
+  "generatedAt": "2026-06-21T16:10:00Z",
+  "pages": [
+    {
+      "slug": "home",
+      "path": "/",
+      "title": "Example — Home",
+      "templateId": "landing-home",
+      "source": {
+        "migratedHtml": "stardust/migrated/index.html",
+        "metaJson": "stardust/migrated/index._meta.json",
+        "sourceHash": "sha256:7b1e0a…c92"
+      },
+      "blocks": ["hero", "feature-cards", "cta-band", "footer"],
+      "delivery": {
+        "status": "verified",
+        "deployedUrl": "https://main--example--org.aem.live/",
+        "deployedAt": "2026-06-20T16:00:00Z",
+        "verifiedAt": "2026-06-20T16:03:00Z",
+        "error": null
+      }
+    },
+    {
+      "slug": "blog/scaling-teams",
+      "path": "/blog/scaling-teams",
+      "title": "Scaling teams without losing velocity",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/blog/scaling-teams.html",
+        "metaJson": "stardust/migrated/blog/scaling-teams._meta.json",
+        "sourceHash": "sha256:1f4c9d…0aa"
+      },
+      "blocks": ["article-header", "prose", "related-cards", "footer"],
+      "delivery": {
+        "status": "deployed",
+        "deployedUrl": "https://main--example--org.aem.live/blog/scaling-teams",
+        "deployedAt": "2026-06-21T16:08:00Z",
+        "verifiedAt": null,
+        "error": null
+      }
+    },
+    {
+      "slug": "pricing",
+      "path": "/pricing",
+      "title": "Pricing",
+      "templateId": "program",
+      "source": {
+        "migratedHtml": "stardust/migrated/pricing.html",
+        "metaJson": "stardust/migrated/pricing._meta.json",
+        "sourceHash": "sha256:a90b22…f31"
+      },
+      "blocks": ["pricing-table", "faq", "cta-band", "footer"],
+      "delivery": {
+        "status": "stale",
+        "deployedUrl": "https://main--example--org.aem.live/pricing",
+        "deployedAt": "2026-06-19T09:00:00Z",
+        "verifiedAt": "2026-06-19T09:04:00Z",
+        "error": null
+      }
+    },
+    {
+      "slug": "resources/whitepaper",
+      "path": "/resources/whitepaper",
+      "title": "Whitepaper",
+      "templateId": "article",
+      "source": {
+        "migratedHtml": "stardust/migrated/resources/whitepaper.html",
+        "metaJson": "stardust/migrated/resources/whitepaper._meta.json",
+        "sourceHash": "sha256:cc77e1…b40"
+      },
+      "blocks": ["article-header", "prose", "footer"],
+      "delivery": {
+        "status": "pending",
+        "deployedUrl": null,
+        "deployedAt": null,
+        "verifiedAt": null,
+        "error": null
+      }
+    }
+  ]
+}

@@ -13,14 +13,42 @@
  * the skill keeps re-learning:
  *   - stretched images        (#36 — EDS <img> width/height attrs + no height:auto)
  *   - full-bleed content      (#37 — dropped max-width .wrap, worst on plain bg)
- * The prototype side is for the agent to compare headings/eyebrow colors etc.
+ * Image and heading flags are TWO-SIDED: a build image is "stretched" only when
+ * `object-fit: fill` distorts it AND its source counterpart (same rendered box,
+ * same natural ratio) is not distorted the same way; a matched heading is
+ * flagged when its size or family (normalised name) differs from the source.
  *
  * Usage:
  *   node skills/diff/scripts/visual-diff.mjs <prototypeURL> <edsURL> [options]
- *     --out <dir>        screenshot output dir            (default qa/vdiff)
- *     --width <px>       viewport width                   (default 1280)
- *     --sections <list>  comma-separated CSS selectors to also shoot per-section
- *                        (applied to whichever page has them)
+ *     --out <dir>           screenshot output dir            (default qa/vdiff)
+ *     --width <px>          viewport width                   (default 1280)
+ *     --sections <list>     comma-separated CSS selectors to also shoot per-section
+ *                           (applied to whichever page has them)
+ *     --main <selector>     content root for the main-scoped probes (default "main";
+ *                           on live sites without a <main>, both sides false-flag
+ *                           BLANK RENDER while the main-scoped checks no-op)
+ *     --ua <string>         user agent                       (default: the browser's own)
+ *     --wait-until <state>  goto wait state override. Default rule (three tiers,
+ *                           decided per URL side by live-session's defaultWaitUntil):
+ *                           localhost/127.0.0.1 → 'networkidle'; EDS build/preview
+ *                           origins (*.aem.page, *.aem.live, *.hlx.page, *.hlx.live)
+ *                           → 'networkidle' (they decorate async — measuring at
+ *                           domcontentloaded reads the pre-decoration DOM); all
+ *                           other live http(s) → 'domcontentloaded' (analytics
+ *                           beacons never reach networkidle).
+ *     --dismiss [sel,...]   dismiss overlays on both sides via live-session
+ *                           (consent + timed marketing modals + optional extras)
+ *     --headed              escalation: real Chrome + the challenge-solve window (bot-managed sites)
+ *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
+ *
+ * The browser is real Chrome headless with its own identity (live-session
+ * launchLiveBrowser; bundled Chromium only when Chrome is missing) and every
+ * context gets the standard request headers via live-session.mjs (a bare
+ * context still 403s on Akamai — F-R1). A bot-management
+ * challenge on either navigation FAILS LOUD (exit 3) — a challenge page must
+ * never be measured as the source. A plain HTTP error (e.g. a 404 build side
+ * before preview propagation) is NOT fatal: it is measured with a loud
+ * warning and the flags reflect it — the advisory contract Step 10 relies on.
  *
  * Example:
  *   node skills/diff/scripts/visual-diff.mjs \
@@ -33,40 +61,90 @@
  * pre-rendered first (skill #24/#27). Requires playwright (project devDependency).
  *
  * Exit codes: 0 ran (report on stdout; red flags do NOT fail the run — they are
- * advisory for the agent), 1 error.
+ * advisory for the agent, and an HTTP-error side is measured + flagged, not
+ * fatal), 1 error, 3 bot challenge/blocked live side
+ * (BotChallengeError — escalate with --headed).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: playwright is a devDependency; sequential page ops use awaited loops by design */
-import { chromium } from 'playwright';
-import { mkdirSync } from 'fs';
+import { existsSync, mkdirSync, realpathSync } from 'fs';
 import { resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
+// browser.mjs (live-session.mjs beside it) lives in the master skill's scripts dir: the plugin tree
+// (skills/diff/scripts ↔ skills/stardust/scripts) or the project copy (scripts/diff ↔ scripts/stardust).
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('visual-diff: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { isLiveHttpUrl, defaultWaitUntil, newLiveContext, openBrowser, gotoLive, dismissOverlays } = await import(BROWSER.href);
+
+const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [options]
+  --profile eds|generic  stack profile (default eds)
+  --out <dir>            screenshot output dir (default qa/vdiff)
+  --width <px>           viewport width (default 1280)
+  --sections <a,b>       extra per-section screenshots
+  --main <sel>           content root for main-scoped probes (default "main")
+  --ua <string>          user agent (default: the browser's own)
+  --wait-until <state>   goto wait state. Default (per URL side, three tiers):
+                         networkidle for localhost/127.0.0.1; networkidle for EDS
+                         build/preview origins (*.aem.page, *.aem.live, *.hlx.page,
+                         *.hlx.live — they decorate async); domcontentloaded for all
+                         other live http(s) (never reach networkidle).
+  --dismiss [sel,...]    dismiss overlays (consent + timed marketing modals) on both
+                         sides; optional comma-separated extra selectors
+  --headed               real Chrome with the challenge-solve window (escalation for bot-managed sites)
+  --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
+writes (under --out; created if absent): proto-full.png and eds-full.png (the two full-page
+            captures, source side = proto, build side = eds) plus proto-<section>.png /
+            eds-<section>.png per --sections entry. The report goes to stdout.
+exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
+            is measured + flagged with a warning, not fatal), 1 error,
+            3 bot challenge (live side blocked — fail loud)
+`;
 
 function parseArgs(argv) {
   const [, , proto, eds, ...rest] = argv;
-  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds' };
+  if (rest.includes('--help') || proto === '--help' || proto === '-h') { process.stdout.write(USAGE); process.exit(0); }
+  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null, ua: null, waitUntil: null, dismiss: null, headed: false, locale: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
     else if (a === '--width') { opts.width = Number(rest[i += 1]); }
     else if (a === '--sections') { opts.sections = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--profile') { opts.profile = rest[i += 1]; }
+    else if (a === '--main') { opts.main = rest[i += 1]; }
+    else if (a === '--ua') { opts.ua = rest[i += 1]; }
+    else if (a === '--wait-until') { opts.waitUntil = rest[i += 1]; }
+    else if (a === '--dismiss') {
+      // optional value: bare --dismiss enables overlay dismissal with no extras
+      const next = rest[i + 1];
+      opts.dismiss = (next && !next.startsWith('--')) ? rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+    }
+    else if (a === '--headed') { opts.headed = true; }
+    else if (a === '--locale') { opts.locale = rest[i += 1]; }
   }
   return { proto, eds, opts };
 }
 
 // Runs IN the page. Returns the structured metric set + intra-page red flags.
+// mainSel = --main content-root override (live sites often have no <main>;
+// without the override both sides false-flag BLANK RENDER while every
+// main-scoped check silently no-ops — the F-B partial-adaptation trap).
 /* eslint-disable no-undef */
-function analyse() {
+function analyse(mainSel) {
   const vw = window.innerWidth;
   const round = (n) => Math.round(n);
 
-  // Blank-render guard: an off-pipeline render can stay hidden (e.g. a foundation
-  // body{display:none}/body.appear gate the runtime never satisfies) — the page
-  // is empty but every other metric is trivially "fine", so the probe would
-  // false-pass. Detect a hidden/zero-height/textless <main> explicitly.
-  const mainEl = document.querySelector('main');
+  // Blank-render guard: an off-pipeline render can stay hidden (the stock
+  // body{display:none}/body.appear gate is only satisfied when the runtime's
+  // scripts.js actually boots) — the page is empty but every other metric is
+  // trivially "fine", so the probe would false-pass. Detect a
+  // hidden/zero-height/textless <main> explicitly.
+  const mainEl = document.querySelector(mainSel || 'main');
   const bodyHidden = getComputedStyle(document.body).display === 'none';
   const mainH = mainEl ? mainEl.getBoundingClientRect().height : 0;
   const textLen = mainEl ? mainEl.innerText.trim().length : 0;
@@ -82,11 +160,14 @@ function analyse() {
     // aem.page URL that 404s in the local harness) — the #36 stretch check then
     // silently short-circuits to false. Flag it instead of false-passing.
     const failedToLoad = r.width > 1 && r.height > 1 && (nW === 0 || nH === 0);
-    const stretched = !isSvg && natAR && renAR && Math.abs(natAR - renAR) / natAR > 0.04;
+    // cover / contain / scale-down / none never distort — only fill (the default) does
+    const fit = getComputedStyle(img).objectFit;
+    const stretched = !isSvg && fit === 'fill' && natAR && renAR && Math.abs(natAR - renAR) / natAR > 0.04;
     return {
       src: (img.currentSrc || img.src || '').split('/').pop(),
       natural: `${nW}x${nH}`,
       rendered: `${round(r.width)}x${round(r.height)}`,
+      fit,
       stretched,
       failedToLoad,
     };
@@ -140,7 +221,7 @@ function analyse() {
   // whose own left edge sits at ~0 with no padding. Skip centered text (a
   // centered element is legitimately full-width with left 0) and skip elements
   // that span nearly the whole width (centered/justified blocks, not left-anchored).
-  const flushText = [...document.querySelectorAll('main h1, main h2, main h3, main p')].filter((el) => {
+  const flushText = [...(mainEl || document).querySelectorAll('h1, h2, h3, p')].filter((el) => {
     const r = el.getBoundingClientRect();
     if (r.width < 1 || r.height < 1) return false; // skip hidden (display:none → 0 rect)
     const cs = getComputedStyle(el);
@@ -154,7 +235,7 @@ function analyse() {
   // Advisory: the widest text-bearing block content boxes + left offset, so the
   // agent can eyeball proto vs eds (a wrapped block sits at left≈(vw-maxw)/2+pad).
   const STRUCT = /(^|[\s-])(section|block-content|default-content|wrapper)([\s-]|$)/i;
-  let boxes = [...document.querySelectorAll('main [class]')].filter((el) => {
+  let boxes = [...(mainEl ? mainEl.querySelectorAll('[class]') : document.querySelectorAll('main [class]'))].filter((el) => {
     const r = el.getBoundingClientRect();
     return r.width >= vw * 0.6 && el.querySelector('h1, h2, h3, p') && !STRUCT.test((el.className || '').toString());
   });
@@ -168,10 +249,26 @@ function analyse() {
 /* eslint-enable no-undef */
 
 async function capture(browser, url, tag, opts) {
-  const ctx = await browser.newContext({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
+  // UA + standard headers on EVERY context (live-session; F-R1 — UA alone
+  // still 403s on Akamai), webdriver spoof included for the --headed tier.
+  const ctx = await newLiveContext(browser, {
+    ua: opts.ua, locale: opts.locale,
+    viewport: { width: opts.width, height: 1000 },
+    reducedMotion: 'reduce',
+    stateUrl: url,
+  });
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: 'networkidle' });
+  // challenge detection on every navigation — a blocked live side throws
+  // BotChallengeError (exit 3), it is never measured as the source. A plain
+  // HTTP error side is MEASURED (advisory contract): a 404 build is normal on
+  // aem.page before preview propagation — the flags carry the signal, exit 0.
+  // solveWindow only under --headed: headless clearance never lands, and the
+  // solve loop would spend the Akamai block budget (1 hit vs up to 4).
+  await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', solveWindow: opts.headed });
   await page.waitForTimeout(2000);
+  // late-modal poll window only on live targets — local prototypes' overlays
+  // are not timed third-party scripts, they render immediately.
+  if (opts.dismiss) await dismissOverlays(page, { extra: opts.dismiss, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   // scroll through to trigger reveal-on-scroll / lazy images, then return to top
   await page.evaluate(async () => {
     for (let y = 0; y < document.body.scrollHeight; y += 600) {
@@ -190,12 +287,53 @@ async function capture(browser, url, tag, opts) {
       await loc.screenshot({ path: `${opts.out}/${tag}-${safe}.png` }).catch(() => {});
     }
   }
-  const metrics = await page.evaluate(analyse);
+  const metrics = await page.evaluate(analyse, opts.main);
   await ctx.close();
   return metrics;
 }
 
-function redFlags(eds, proto, prof) {
+// Pure: the source image a build image stands for — same rendered box (±2 px) and same natural ratio (±4 %), first
+// unused. DA re-hosts every image under a media hash, so the file name never pairs.
+export function sourceTwin(img, sourceImages, used = new Set()) {
+  const dims = (s) => (s || '').split('x').map(Number);
+  const [rw, rh] = dims(img.rendered); const [nw, nh] = dims(img.natural);
+  const ar = nw && nh ? nw / nh : 0;
+  const i = sourceImages.findIndex((c, k) => {
+    if (used.has(k)) return false;
+    const [cw, ch] = dims(c.rendered); const [cnw, cnh] = dims(c.natural);
+    const car = cnw && cnh ? cnw / cnh : 0;
+    return Math.abs(cw - rw) <= 2 && Math.abs(ch - rh) <= 2 && ar && car && Math.abs(ar - car) / car <= 0.04;
+  });
+  if (i < 0) return null;
+  used.add(i);
+  return sourceImages[i];
+}
+
+// Pure: a family name as one face — the first family of a stack, unquoted, lowercased, without the packaging
+// suffixes a self-hosted copy adds ("Manrope Variable", "InterVF", "Inter Var", "Lato-Bold"). Never empty when given a name.
+const FACE_SUFFIX = /(?:[\s_-]+(?:variable|var|vf|thin|hairline|extra[\s-]?light|ultra[\s-]?light|light|regular|book|medium|semi[\s-]?bold|demi[\s-]?bold|bold|extra[\s-]?bold|ultra[\s-]?bold|black|heavy)|vf)$/;
+export function normFamily(f) {
+  let s = String(f || '').split(',')[0].trim().replace(/^["']|["']$/g, '').trim().toLowerCase();
+  for (let next = s.replace(FACE_SUFFIX, '').trim(); next && next !== s; next = s.replace(FACE_SUFFIX, '').trim()) s = next;
+  return s;
+}
+
+// Pure: a matched heading's size (> 1 px) or family (normFamily) differs.
+export function headingFaceDiffers(src, build) {
+  const px = (v) => parseFloat(v) || 0;
+  if (Math.abs(px(src.fontSize) - px(build.fontSize)) > 1) return true;
+  return Boolean(src.family && build.family && normFamily(src.family) !== normFamily(build.family));
+}
+
+// Pure: [source, build] heading pairs by text (lowercased) in document order — the nth build "Learn more" pairs with
+// the nth source one, never all with the last.
+export function pairHeadings(sourceHeadings, buildHeadings) {
+  const queues = new Map();
+  sourceHeadings.forEach((h) => { const k = h.text.toLowerCase(); if (!queues.has(k)) queues.set(k, []); queues.get(k).push(h); });
+  return buildHeadings.map((h) => [(queues.get(h.text.toLowerCase()) || []).shift(), h]).filter(([p]) => p);
+}
+
+export function redFlags(eds, proto, prof) {
   const flags = [];
   const S = prof.source; const T = prof.target; const H = prof.hints;
   if (eds.blankRender) {
@@ -244,20 +382,46 @@ function redFlags(eds, proto, prof) {
     });
     // Font mismatch: a named display/body face that loaded in the source but not
     // the target = a missing @font-face silently falling back to serif/sans.
-    const pFont = new Map(proto.headings.map((h) => [h.text.toLowerCase(), h]));
-    eds.headings.forEach((h) => {
-      const p = pFont.get(h.text.toLowerCase());
-      if (p && p.fontLoaded && !h.fontLoaded && h.family) {
+    // Heading face: a matched heading at another size or in another family (normFamily —
+    // "Manrope Variable" and "manrope" are one face). When every face difference is the same
+    // family pair, that substitution is ONE ×N line (one thing to justify), plus any size differences.
+    const faceDiffs = [];
+    pairHeadings(proto.headings, eds.headings).forEach(([p, h]) => {
+      if (p.fontLoaded && !h.fontLoaded && h.family) {
         flags.push(`FONT MISMATCH: heading "${h.text}" wants "${h.family}" but it did NOT load in ${T} (silent fallback). ${H.FONT_MISMATCH}`);
-      }
+      } else if (headingFaceDiffers(p, h)) faceDiffs.push([p, h]);
+    });
+    const famKey = ([p, h]) => (p.family && h.family && normFamily(p.family) !== normFamily(h.family) ? `${normFamily(p.family)}→${normFamily(h.family)}` : '');
+    const one = faceDiffs.length > 1 && famKey(faceDiffs[0]) && faceDiffs.every((d) => famKey(d) === famKey(faceDiffs[0]));
+    if (one) {
+      const [p0, h0] = faceDiffs[0];
+      flags.push(`HEADING FACE ×${faceDiffs.length}: "${p0.family}" → "${h0.family}" on every differing heading (${S} → ${T}). ${H.HEADING_FACE}`);
+    }
+    faceDiffs.filter(([p, h]) => !one || Math.abs((parseFloat(p.fontSize) || 0) - (parseFloat(h.fontSize) || 0)) > 1).forEach(([p, h]) => {
+      flags.push(`HEADING FACE: <${h.tag}> "${h.text}" is ${h.fontSize} ${h.family} in ${T} vs ${p.fontSize} ${p.family} in ${S}. ${H.HEADING_FACE}`);
     });
   }
   eds.images.filter((i) => i.failedToLoad).forEach((i) => {
     flags.push(`IMAGE DID NOT LOAD: ${i.src} rendered ${i.rendered} but natural 0x0. ${H.IMAGE_NO_LOAD}`);
   });
+  // Two-sided: a stretch the source shares (same rendered box, same natural ratio, distorted on both) is the
+  // source's own look, not a build defect; the source cropping the same image (cover) while the build distorts it is.
+  // A fill twin that is not stretched sits inside the ±4 % pairing tolerance, under the stretch threshold.
+  const used = new Set();
   eds.images.filter((i) => i.stretched).forEach((i) => {
-    flags.push(`STRETCHED IMAGE: ${i.src} natural ${i.natural} → rendered ${i.rendered}. ${H.STRETCHED}`);
+    const twin = proto ? sourceTwin(i, proto.images, used) : null;
+    if (twin && twin.stretched) return;
+    let how = twin ? ` (${S}: object-fit ${twin.fit} at the same box)` : '';
+    if (twin && twin.fit === 'fill') how = ` (${S}: undistorted fill at the same box, its ratio under the 4 % threshold)`;
+    flags.push(`STRETCHED IMAGE: ${i.src} natural ${i.natural} → rendered ${i.rendered}${how}. ${H.STRETCHED}`);
   });
+  // The other way round, informational: the source distorts an image the build crops — a fidelity difference.
+  if (proto) {
+    eds.images.filter((i) => !i.stretched && i.fit !== 'fill').forEach((i) => {
+      const twin = sourceTwin(i, proto.images, used);
+      if (twin && twin.stretched) flags.push(`IMAGE FIT (info): ${i.src} natural ${i.natural} → rendered ${i.rendered} is object-fit ${i.fit} in ${T}; ${S} stretches it (fill) at the same box. ${H.IMAGE_FIT}`);
+    });
+  }
   eds.flushText.forEach((f) => {
     flags.push(`FLUSH-LEFT TEXT: <${f.tag}> "${f.text}" sits at left ${f.left}px (no padding). ${H.FLUSH_LEFT}`);
   });
@@ -267,12 +431,12 @@ function redFlags(eds, proto, prof) {
 async function main() {
   const { proto, eds, opts } = parseArgs(process.argv);
   if (!proto || !eds) {
-    process.stderr.write('usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [--profile eds|generic] [--out dir] [--width px] [--sections a,b]\n');
+    process.stderr.write(USAGE);
     process.exit(1);
   }
   const prof = resolveProfile(opts.profile);
   mkdirSync(resolve(opts.out), { recursive: true });
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'chrome' });
   let report;
   try {
     const [protoM, edsM] = [await capture(browser, proto, 'proto', opts), await capture(browser, eds, 'eds', opts)];
@@ -289,4 +453,9 @@ async function main() {
   process.stdout.write(`${JSON.stringify({ [prof.source]: report.proto, [prof.target]: report.eds }, null, 1)}\n`);
 }
 
-main().catch((e) => { process.stderr.write(`visual-diff error: ${e.message}\n`); process.exit(1); });
+// exit 3 = bot challenge on a live side (distinct from generic errors, so a
+// gate runner can tell "blocked — escalate with --headed" from "probe broke").
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  main().catch((e) => { process.stderr.write(`visual-diff error: ${e.message}\n`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+}
