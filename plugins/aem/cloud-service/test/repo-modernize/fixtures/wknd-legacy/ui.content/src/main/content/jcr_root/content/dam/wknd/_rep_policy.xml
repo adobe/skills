@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:rep="internal"
+    jcr:primaryType="rep:ACL">
+    <allow
+        jcr:primaryType="rep:GrantACE"
+        rep:principalName="content-authors"
+        rep:privileges="{Name}[jcr:versionManagement,jcr:modifyProperties,jcr:lockManagement]"/>
+    <allow0
+        jcr:primaryType="rep:GrantACE"
+        rep:principalName="content-authors"
+        rep:privileges="{Name}[jcr:removeChildNodes,jcr:removeNode,jcr:addChildNodes,jcr:nodeTypeManagement]">
+        <rep:restrictions
+            jcr:primaryType="rep:Restrictions"
+            rep:glob="*/jcr:content*"/>
+    </allow0>
+</jcr:root>
