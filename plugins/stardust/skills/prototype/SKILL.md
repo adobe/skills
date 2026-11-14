@@ -1045,9 +1045,7 @@ inline `<script>` for a11y). The header gains
 `data-nav-collapse="hamburger"` so downstream consumers can detect
 the pattern is applied.
 
-**Source order is load-bearing:** the base rules go at the top
-of the `<style>` block, before the `@media (width >= 641px)` rule
-that restores the inline nav; run the post-injection check in
+After injecting, run the source-order check in
 `reference/mobile-nav-collapse.md` § Source order.
 
 The stock pattern is the default; `reference/mobile-nav-collapse.md`

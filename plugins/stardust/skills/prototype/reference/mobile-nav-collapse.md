@@ -240,13 +240,6 @@ layout properties — per impeccable's motion rules.
 
 ## Source order (load-bearing)
 
-The base (phone) rules **must precede** the `@media (width >= 641px)
-{ ... }` block that hides the burger and restores the inline nav.
-Same selector, same specificity → the later declaration wins. If
-the base is appended *after* the media query, the burger and the
-hidden panel win at every viewport — desktop loses its nav, no
-warning, no error.
-
 Place the stock pattern's CSS at the **top of the stylesheet**,
 right after the `:root` token block and before any existing
 `@media` rules. Concretely:
