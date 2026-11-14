@@ -51,6 +51,22 @@
  *     --verdict <which>    unaligned (default) | aligned — which number the exit
  *                          code and `pass` compare against --threshold. `aligned`
  *                          implies --align.
+ *     --offset-max <b>     THE PIXEL CRITERION of the gates (gate.sh, gate-all.mjs —
+ *                          its one definition, `pixelVerdict`): implies --verdict
+ *                          aligned, and `pass` / the exit code also need the offsets
+ *                          to be small — aligned % ≤ --threshold AND
+ *                          aligned.totalShift (the sum of |shift| over the steps) ≤
+ *                          the bound. <b> = a number of px, or a stage: `prototype`
+ *                          = 8 px, `published` = the larger of 8 px and 1 % of A's
+ *                          height. A low aligned % with large offsets is a page
+ *                          whose sections sit in the wrong place: it fails with
+ *                          `offsets: <n> step(s), <px>px total — …` (the fix list:
+ *                          every step in one round), never a percentage. Alignment
+ *                          not used (`aligned.used` false) → the unaligned rule.
+ *                          Adds `offsets { bound, totalShift, pass }` and `reason`
+ *                          to the JSON and one `pixel:` line to the text.
+ *     --json-out <file>    also write the --json summary to <file> (the text output
+ *                          stays on stdout) — gate.sh's pixel-<label>.json
  *     --timeout <s>        hard wall-clock deadline (default 120; 0 disables).
  *                          Enforced from a supervising process (the compare
  *                          itself is synchronous, so an in-process timer could
@@ -108,7 +124,8 @@
  *
  * Requires: pixelmatch, pngjs (project devDependencies).
  * Exit codes: 0 under threshold, 1 error, 2 over threshold (gate FAIL; on the
- * overlap number unless --verdict aligned), 124 deadline exceeded (see
+ * overlap number unless --verdict aligned; under --offset-max also offsets over
+ * the bound), 124 deadline exceeded (see
  * --timeout; not a measurement).
  * Note: the height delta does NOT affect the exit code — the SKILL gate
  * requires height Δ ≈ 0 separately; a large delta is printed as a warning
@@ -146,6 +163,12 @@ Usage: node pixel-compare.mjs <a.png> <b.png> [options]
   --align-max <px>    largest |offset| the map may reach (default 400)
   --verdict <which>   unaligned (default) | aligned: the number the exit code and \`pass\` use
                       against --threshold; aligned implies --align
+  --offset-max <b>    the gates' pixel criterion (implies --verdict aligned): pass = aligned % <= threshold
+                      AND aligned.totalShift <= the bound — <b> px, or a stage: prototype = 8,
+                      published = the larger of 8 and 1 % of A's height. Over the bound the reason is
+                      "offsets: <n> step(s), <px>px total — …" (the fix list), not a percentage; alignment
+                      not used → the unaligned rule. JSON: offsets { bound, totalShift, pass }, reason
+  --json-out <file>   also write the --json summary to <file> (text stays on stdout)
   --timeout <s>       hard deadline, exit 124 when hit (default 120; 0 disables)
   --help              this text
 
@@ -155,7 +178,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, masks: [], timeout: 120, worker: false, textBoxes: null, align: false, alignMax: 400, verdict: 'unaligned' };
+  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, masks: [], timeout: 120, worker: false, textBoxes: null, align: false, alignMax: 400, verdict: 'unaligned', offsetMax: null, jsonOut: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -175,6 +198,13 @@ function parseArgs(argv) {
       opts.verdict = rest[i += 1];
       if (opts.verdict !== 'aligned' && opts.verdict !== 'unaligned') { console.error(`bad --verdict "${opts.verdict}" — expected unaligned or aligned\n\n${HELP}`); process.exit(1); }
     }
+    else if (a === '--offset-max') {
+      const v = rest[i += 1];
+      opts.offsetMax = v === 'prototype' || v === 'published' ? v : Number(v);
+      if (typeof opts.offsetMax === 'number' && !(Number.isFinite(opts.offsetMax) && opts.offsetMax >= 0 && v !== '' && v !== undefined)) { console.error(`bad --offset-max "${v}" — expected a number of px, prototype or published\n\n${HELP}`); process.exit(1); }
+      opts.verdict = 'aligned';
+    }
+    else if (a === '--json-out') { opts.jsonOut = rest[i += 1]; }
     else if (a === '--mask') {
       for (const spec of rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean)) {
         const m = spec.match(/^(\d+):(\d+)(?:@(\d+))?$/);
@@ -501,6 +531,44 @@ export function alignedLine(al, pct) {
   return `aligned: ${al.pct.toFixed(2)}% (unaligned ${pct.toFixed(2)}%) — ${al.steps.length} offset step${al.steps.length === 1 ? '' : 's'}: ${shown}${al.steps.length > 8 ? ', …' : ''}${al.insertedRows || al.deletedRows ? `  [${al.insertedRows} rows only in B, ${al.deletedRows} only in A — counted as differing]` : ''}`;
 }
 
+// ── The gates' pixel criterion (--offset-max; header) — its one definition, read by gate.sh through this CLI and by
+// gate-all.mjs through the import. Pure: `px` is this script's --json summary (an older one without `aligned` reads
+// as alignment not used).
+export const OFFSETS = { px: 8, share: 0.01, shown: 6, kept: 12 };
+/** The bound in px: a number as given; 'prototype' → 8; 'published' → the larger of 8 and 1 % of the origin height; null → no bound. */
+export function offsetBound(spec, originHeight = 0) {
+  if (spec === null || spec === undefined || spec === '') return null;
+  if (spec === 'prototype') return OFFSETS.px;
+  if (spec === 'published') return Math.max(OFFSETS.px, Math.round(OFFSETS.share * (Number(originHeight) || 0)));
+  return Number(spec);
+}
+/** `−5px at y=103, −20px at y=2125, … 2 more` — at most `max` steps. */
+export function offsetsText(steps, max = OFFSETS.shown) {
+  const list = steps || [];
+  return `${list.slice(0, max).map((s) => `${signed(s.shift)}px at y=${s.y}`).join(', ')}${list.length > max ? `, … ${list.length - max} more` : ''}`;
+}
+/**
+ * pixelVerdict(px, { threshold, offsetMax }) → { pass, used, pct, alignedPct, totalShift, steps (≤ 12), stepCount,
+ * bound, offsetsPass, offsets, reason, line }. Used: aligned % ≤ threshold AND totalShift ≤ bound (offsetMax: px |
+ * 'prototype' | 'published' | null = no bound). Not used: unaligned % ≤ threshold. `reason` (null on a pass) names the
+ * offsets when they alone fail, else the percentage; `offsets` is the step list as text ('' when none).
+ */
+export function pixelVerdict(px, { threshold = 10, offsetMax = null } = {}) {
+  const al = px && px.aligned && px.aligned.used ? px.aligned : null;
+  const pct = px.pct; const alignedPct = al ? al.pct : pct;
+  const all = al ? al.steps || [] : []; const totalShift = al ? al.totalShift || 0 : 0;
+  const originH = px.compared && Number.isFinite(px.heightDelta) ? px.compared.height + Math.max(0, px.heightDelta) : 0;
+  const bound = al ? offsetBound(offsetMax, originH) : null;
+  const pctPass = alignedPct <= threshold; const offsetsPass = bound === null || totalShift <= bound;
+  const offsets = all.length ? `offsets: ${all.length} step(s), ${totalShift}px total — ${offsetsText(all)}${bound === null ? '' : ` (bound ${bound}px)`}` : '';
+  const shown = al ? `aligned ${alignedPct}% (unaligned ${pct}%)` : `${pct}%`;
+  const reason = !pctPass ? `pixel ${shown} > ${threshold}%` : !offsetsPass ? offsets : null;
+  const pass = pctPass && offsetsPass;
+  const head = al ? `pixel: aligned ${alignedPct.toFixed(2)}% (unaligned ${pct.toFixed(2)}%)` : `pixel: ${pct.toFixed(2)}% (alignment not used — the unaligned number rules)`;
+  const line = `${head}${pctPass ? '' : ` > ${threshold}%`} → ${pass ? 'PASS' : 'FAIL'}${offsets ? ` — ${offsets}` : ''}`;
+  return { pass, used: !!al, pct, alignedPct, totalShift, steps: all.slice(0, OFFSETS.kept), stepCount: all.length, bound, offsetsPass, offsets, reason, line };
+}
+
 // --text-boxes: the share of differing pixels inside the origin's text boxes
 // (A's page coordinates), read off the diff image already computed over the
 // overlap crop. Masked rows are skipped like everywhere else. Exported for the test.
@@ -615,16 +683,22 @@ async function main() {
     }
   }
 
-  const pass = (opts.verdict === 'aligned' ? aligned.pct : pct) <= opts.threshold;
+  // --offset-max: the gates' criterion (pixelVerdict) decides; else the chosen number against the threshold.
+  const round2 = (x) => Number(x.toFixed(2));
+  const crit = opts.offsetMax === null ? null : pixelVerdict({ pct: round2(pct), heightDelta, compared: { width: w, height: h }, aligned }, { threshold: opts.threshold, offsetMax: opts.offsetMax });
+  const pass = crit ? crit.pass : (opts.verdict === 'aligned' ? aligned.pct : pct) <= opts.threshold;
   // Auxiliary number (never the verdict — header): --text-boxes text-only %.
   const text = opts.textBoxes ? textBoxPct(diff, readTextBoxes(opts.textBoxes), w, h, masked) : null;
+  const summary = () => JSON.stringify({ a: aPath, b: bPath, compared: { width: w, height: h, mode: 'overlap' }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks: opts.masks, maskedRows, textPct: text ? Number(text.pct.toFixed(2)) : null, textBoxes: text ? text.boxes : null, textPixels: text ? text.pixels : null, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })), ...(aligned ? { verdict: opts.verdict, aligned } : {}), ...(crit ? { offsets: { bound: crit.bound, totalShift: crit.totalShift, pass: crit.offsetsPass }, reason: crit.reason } : {}) }, null, 2);
+  if (opts.jsonOut) writeFileSync(opts.jsonOut, `${summary()}\n`);
   if (opts.json) {
-    console.log(JSON.stringify({ a: aPath, b: bPath, compared: { width: w, height: h, mode: 'overlap' }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks: opts.masks, maskedRows, textPct: text ? Number(text.pct.toFixed(2)) : null, textBoxes: text ? text.boxes : null, textPixels: text ? text.pixels : null, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })), ...(aligned ? { verdict: opts.verdict, aligned } : {}) }, null, 2));
+    console.log(summary());
   } else {
     console.log(`A ${a.width}x${a.height}  B ${b.width}x${b.height}  → compare ${w}x${h}, height delta ${heightDelta}px`);
     if (Math.abs(heightDelta) > 8) console.log(`  ⚠ height delta ${heightDelta}px — overlap-crop hides the tail; fix heights before trusting the %`);
     console.log(`differing pixels: ${n} / ${denom} = ${pct.toFixed(2)}%  (threshold ${opts.threshold}%) → ${pass ? 'PASS' : 'FAIL'}${maskedRows ? `  [MASKED ${maskedRows} rows: ${opts.masks.map((m) => `${m.yA}:${m.h}${m.yB !== m.yA ? `@${m.yB}` : ''}`).join(', ')} — authored-volatile, excluded]` : ''}`);
     if (aligned) console.log(`${alignedLine(aligned, pct)}${opts.verdict === 'aligned' ? '  [verdict on the aligned number]' : ''}`);
+    if (crit) console.log(crit.line);
     if (text) console.log(`  text-boxes only: ${text.pct.toFixed(2)}% over ${text.boxes} boxes / ${text.pixels} px — auxiliary (#125 D4)`);
     console.log(`diff image: ${opts.out}${aligned && aligned.used ? `  aligned: ${aligned.diff}` : ''}`);
     const ab = aligned && aligned.used ? aligned.bands : null;

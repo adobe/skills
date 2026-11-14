@@ -182,13 +182,15 @@ await check('freeze: floor above the bar outside the regions → unstable; --flo
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-await check('freeze: a bot challenge passes through as 3, another capture failure is 1 — nothing frozen, no compare', () => {
+await check('freeze: a bot challenge passes through as 3, a capture deadline as 124, another capture failure is 1 — nothing frozen, no compare', () => {
   const dir = tmp();
   try {
     const d = stubs({ heights: [900], compares: {}, capture: (s) => (s === 'ref-1' ? 3 : 0) });
     const r = freeze(opts(dir), d);
     assert.equal(r.code, 3); assert.match(r.line, /bot challenge/);
-    assert.equal(freeze(opts(dir), stubs({ heights: [], compares: {}, capture: () => 124 })).code, 1);
+    assert.equal(freeze(opts(dir), stubs({ heights: [], compares: {}, capture: () => 1 })).code, 1);
+    const late = freeze(opts(dir), stubs({ heights: [], compares: {}, capture: () => 124 }));
+    assert.equal(late.code, 124, 'a capture over its deadline is the deadline exit, not an error'); assert.match(late.line, /priming capture exceeded its \d+s deadline \(exit 124/);
     assert.equal(existsSync(join(dir, 'baseline.png')), false);
     assert.equal(d.log.some((l) => l.startsWith('compare')), false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
