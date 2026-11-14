@@ -27,7 +27,9 @@ subtypes, so BPA is not consulted. Standalone: `node scripts/integration-scanner
 | Front end | `*.js`, `*.ts`, `*.jsx`, `*.tsx`, `*.mjs`, `*.cjs` (not `*.min.js`), `*.html`, `*.htm`, `*.jsp` (HTL/JSP) | JS / HTML / JSP comments removed |
 | Dispatcher / CDN | `*.any`, `*.vhost`, `*.farm`, `*.rules`, `*.conf`, `*.vcl` | `#` comments removed |
 
-Skipped: hidden directories (`.git`, `.idea`, …), `node_modules`, `bower_components`, `target`,
+Skipped: hidden directories (`.git`, `.idea`, …), `node_modules`, `bower_components`, `target`
+next to a `pom.xml` (a source folder named `target` is scanned), the generator's own
+`migration-runbook.md` and `migration-runbook.json` and any `--out` / `--cache` path,
 `dist`, `build`, `out`, `coverage`, `src/test`, `src/it`, `tests`, `__tests__`, `ui.tests`,
 `it.tests`, `docs`, `doc`, `samples`, `examples`, lockfiles, and files larger than 1 MB (counted
 in a warning). Symlinks are not followed. Markdown and other documentation are never scanned.
@@ -74,8 +76,8 @@ appears:
 - as the value of an endpoint-like key (`*url*`, `*endpoint*`, `*host*`, …) in an OSGi configuration (`osgi-endpoint-config`).
 
 Findings are grouped by host and scored with the same rules (all generic signals are `supporting`,
-so unknown APIs are at most `medium`). The vendor is never guessed. URLs are ignored when they are
-on a line already attributed to a reported catalog integration, use a placeholder
+so unknown APIs are at most `medium`). The vendor is never guessed. URLs are ignored when they
+match a signal of a reported catalog integration (another URL on the same line still counts), use a placeholder
 (`${…}`, `{{…}}`, `$[env:…]`, string concatenation), point to loopback/dotless hosts, documentation or
 XML-namespace hosts, or come from AEM-owned PIDs such as the Externalizer, Referrer filter and CORS
 policies (see `genericExternalApi` in the catalog). SOAP is reported when a SOAP client is imported or
@@ -139,8 +141,7 @@ ports without advanced networking (flexible port egress plus port forwarding rul
 - Evidence holds only the workspace-relative path, line, signal type/id and the catalog's static
   `indicator`. Matched source text, URLs, query strings, credentials and config values are never stored.
 - Unknown hosts are shown as `sha256:<8 hex>` plus their top-level domain. The fingerprint is stable,
-  for correlating evidence across files. It is a redaction, not encryption: a known hostname can be
-  checked against it.
+  for correlating evidence across files.
 
 ## Extending the catalog
 

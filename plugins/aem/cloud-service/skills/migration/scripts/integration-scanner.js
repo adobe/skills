@@ -31,8 +31,11 @@ const MAX_EVIDENCE_PER_INTEGRATION = 100;
 const MINIFIED_LINE_LENGTH = 2000;
 
 const SKIP_DIRS = new Set([
-  'node_modules', 'bower_components', 'jspm_packages', 'target', 'dist', 'build', 'out', 'coverage',
+  'node_modules', 'bower_components', 'jspm_packages', 'dist', 'build', 'out', 'coverage',
 ]);
+// The runbook generator's own output. It quotes the catalog's indicators, so scanning it
+// would report the previous run's integrations again after their source is gone.
+const OWN_OUTPUT_FILES = new Set(['migration-runbook.json', 'migration-runbook.md']);
 // Test, sample and documentation trees are not deployed application code.
 const NON_RUNTIME_DIRS = new Set(['__tests__', '__mocks__', 'tests', 'ui.tests', 'it.tests', 'docs', 'doc', 'samples', 'examples']);
 
@@ -156,15 +159,22 @@ function fileKind(name) {
   return null;
 }
 
-function isSkippedDir(name, parentName) {
+function isSkippedDir(name, parentName, siblings = []) {
   if (name.startsWith('.')) return true;
   if (SKIP_DIRS.has(name) || NON_RUNTIME_DIRS.has(name)) return true;
+  // `target` is Maven build output only next to a pom.xml; elsewhere it is a source folder
+  // (a component named "target", for example).
+  if (name === 'target') return siblings.includes('pom.xml');
   // src/test, src/it — Maven test sources.
   return parentName === 'src' && (name === 'test' || name === 'it');
 }
 
-/** Collect `{abs, rel, kind}` for every scannable file. Symlinks are not followed. */
-function collectFiles(root, warnings) {
+/**
+ * Collect `{abs, rel, kind}` for every scannable file. Symlinks are not followed.
+ * `exclude` lists files to leave out (the generator's output and cache paths).
+ */
+function collectFiles(root, warnings, exclude = []) {
+  const excluded = new Set(exclude.filter(Boolean).map(p => path.resolve(p)));
   const files = [];
   const walk = (dir) => {
     let entries;
@@ -175,11 +185,13 @@ function collectFiles(root, warnings) {
       return;
     }
     entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    const siblings = entries.filter(e => e.isFile()).map(e => e.name);
     for (const e of entries) {
       const abs = path.join(dir, e.name);
       if (e.isDirectory()) {
-        if (!isSkippedDir(e.name, path.basename(dir))) walk(abs);
+        if (!isSkippedDir(e.name, path.basename(dir), siblings)) walk(abs);
       } else if (e.isFile()) {
+        if (OWN_OUTPUT_FILES.has(e.name) || excluded.has(path.resolve(abs))) continue;
         const kind = fileKind(e.name);
         if (kind) files.push({ abs, rel: toRel(root, abs), kind });
       }
@@ -427,10 +439,16 @@ function scanFile(file, raw, text, catalog, sink) {
     const lineKey = LINE_KEY_RE.exec(line);
     if (lineKey) lastKey = lineKey[1];
     for (const url of externalUrls(line, generic)) {
+      // Integrations whose signals match this URL itself, not just something else on the line.
+      const urlText = line.slice(url.offset).split(/[\s"'<>]/)[0];
+      const attributedTo = [];
+      for (const integ of catalog.integrations) {
+        if (integ.signals.some(sig => sig.re && sig.kindSet.has(kind) && sig.re.test(urlText))) attributedTo.push(integ.id);
+      }
       if (genericType) {
         sink.generic.push({
           host: url.host, type: genericType, soap: soapClient || url.soapHint, nonStandardPort: url.nonStandardPort,
-          file: rel, line: i + 1, indicator: EVIDENCE_TYPE_LABELS[genericType],
+          file: rel, line: i + 1, indicator: EVIDENCE_TYPE_LABELS[genericType], attributedTo,
         });
         continue;
       }
@@ -439,7 +457,7 @@ function scanFile(file, raw, text, catalog, sink) {
       if (!key || !generic.endpointKeyRe.test(key)) continue;
       sink.generic.push({
         host: url.host, type: 'osgi-endpoint-config', soap: url.soapHint, nonStandardPort: url.nonStandardPort,
-        file: rel, line: i + 1, indicator: `OSGi property \`${safeKey(key)}\``,
+        file: rel, line: i + 1, indicator: `OSGi property \`${safeKey(key)}\``, attributedTo,
       });
     }
   }
@@ -544,20 +562,21 @@ function aggregate(catalog, sink) {
   })));
 
   const records = [];
-  const attributedLines = new Set();
+  const reported = new Set();
   for (const integ of catalog.integrations) {
     const mine = rows.filter(r => r.integrationId === integ.id);
     if (mine.length === 0) continue;
     const rec = buildRecord(integ, mine);
     if (!rec) continue;
     records.push(rec);
-    for (const r of mine) attributedLines.add(`${r.file}\u0000${r.line}`);
+    reported.add(integ.id);
   }
 
-  // Generic endpoints on a line already attributed to a reported integration are not double-counted.
+  // A generic endpoint whose URL a reported integration's signal matches is that integration,
+  // not a second record. Another URL on the same line is still an unknown endpoint.
   const byHost = new Map();
   for (const g of sink.generic) {
-    if (attributedLines.has(`${g.file}\u0000${g.line}`)) continue;
+    if ((g.attributedTo || []).some(id => reported.has(id))) continue;
     if (!byHost.has(g.host)) byHost.set(g.host, []);
     byHost.get(g.host).push(g);
   }
@@ -612,7 +631,8 @@ function emptyResult(status, warnings, extra = {}) {
  * Scan `workspaceRoot` for integrations.
  *
  * @param {string} workspaceRoot
- * @param {{ catalogPath?: string, catalog?: object }} [options]
+ * @param {{ catalogPath?: string, catalog?: object, exclude?: string[] }} [options]
+ *   `exclude`: files to leave out of the scan, such as the runbook and its cache.
  * @returns {{ ok, strategy, status: 'complete'|'partial'|'not-run', catalogVersion?,
  *   summary, integrations: object[], warnings: string[], error? }}
  */
@@ -629,7 +649,7 @@ function runIntegrationScan(workspaceRoot, options = {}) {
 
   const warnings = [];
   const sink = { matches: [], generic: [], warnings };
-  const files = collectFiles(workspaceRoot, warnings);
+  const files = collectFiles(workspaceRoot, warnings, options.exclude);
   let oversized = 0;
   let minified = 0;
   let scanned = 0;

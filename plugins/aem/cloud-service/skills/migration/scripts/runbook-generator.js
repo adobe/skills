@@ -378,6 +378,8 @@ async function gatherFindings(options = {}) {
     analyzeScript = DEFAULT_ANALYZE_SCRIPT,
     getEffectivePom,
     integrationCatalogPath,
+    outputPath = './migration-runbook.md',
+    cachePath = DEFAULT_CACHE_PATH,
   } = options;
 
   const sources = checkAvailableSources({ bpaFilePath, collectionsDir, projectId, mcpFetcher });
@@ -645,7 +647,7 @@ async function gatherFindings(options = {}) {
   //    fault must never break the pattern runbook, so it degrades to not-run. ──
   let integrationDiscovery;
   try {
-    integrationDiscovery = runIntegrationScan(workspaceRoot, { catalogPath: integrationCatalogPath });
+    integrationDiscovery = runIntegrationScan(workspaceRoot, { catalogPath: integrationCatalogPath, exclude: [outputPath, cachePath] });
   } catch (err) {
     integrationDiscovery = {
       ok: false, strategy: 'integration-scan', status: 'not-run', integrations: [],

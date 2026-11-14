@@ -353,10 +353,49 @@ test('build output, dependencies, VCS, test and docs trees are not scanned', () 
   for (const dir of ['node_modules/pkg', 'core/target/classes', '.git/x', 'ui.frontend/dist', 'core/src/test/java', 'ui.tests/src', 'docs', 'build']) {
     write(root, `${dir}/X.java`, s3);
   }
+  write(root, 'core/pom.xml', pom([]));
   write(root, 'ui.frontend/src/vendor.min.js', 'grecaptcha.execute()');
   const res = runIntegrationScan(root);
   assert.deepStrictEqual(res.integrations, []);
-  assert.strictEqual(res.summary.filesScanned, 0);
+  assert.strictEqual(res.summary.filesScanned, 1, 'only core/pom.xml');
+});
+
+test('a known integration does not hide an unknown endpoint on the same line', () => {
+  const root = mkworkspace();
+  write(root, `${CONFIG}/com.acme.Offers.cfg.json`, '{"targetUrl":"https://acme.tt.omtrdc.net/rest/v1","serviceUrl":"https://api.partner-corp.com/v2"}\n');
+  const res = runIntegrationScan(root);
+  assert.ok(byId(res, 'adobe-target'), 'the Target host is reported as Adobe Target');
+  const unknown = res.integrations.filter(r => r.category === 'customer-external');
+  assert.strictEqual(unknown.length, 1, 'the partner API on the same line is its own record');
+  assert.strictEqual(unknown[0].host.hint, '*.com');
+  assert.ok(!unknown.some(r => r.host.hint === '*.net'), 'the Target host is not reported a second time');
+});
+
+test('a source folder named target is scanned; only target next to a pom.xml is build output', () => {
+  const root = mkworkspace();
+  write(root, `${APPS}/target/target.html`, '<div class="g-recaptcha"></div>\n<script src="https://www.google.com/recaptcha/api.js"></script>\n');
+  const res = runIntegrationScan(root);
+  assert.ok(byId(res, 'google-recaptcha'), 'markup in components/target is reported');
+  assert.strictEqual(res.status, 'complete');
+});
+
+test('a second run does not report the first run\'s output as evidence', async () => {
+  const root = mkworkspace();
+  const src = write(root, `${JAVA}/X.java`, 'package com.acme;\nimport software.amazon.awssdk.services.s3.S3Client;\nclass X { String u = "https://bucket.s3.amazonaws.com/x"; }\n');
+  const outputPath = path.join(root, 'runbook.md');
+  const cachePath = path.join(root, 'state', 'runbook-cache.json');
+  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+  const opts = { workspaceRoot: root, collectionsDir: path.join(root, 'none'), outputPath, cachePath };
+  const first = await generateRunbook(opts);
+  assert.ok(first.integrationSummary.total >= 1, 'the integration is found while its source exists');
+  fs.rmSync(src);
+  const second = await generateRunbook(opts);
+  assert.strictEqual(second.integrationSummary.total, 0, 'gone once the source is gone');
+  const third = await generateRunbook(opts);
+  assert.strictEqual(third.integrationSummary.total, 0);
+  // The default cache name is left out wherever it lies, without being passed in.
+  fs.copyFileSync(first.cachePath, path.join(root, 'migration-runbook.json'));
+  assert.strictEqual(runIntegrationScan(root).summary.total, 0);
 });
 
 test('fileKind maps supported sources and skips lockfiles / minified bundles', () => {
