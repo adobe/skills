@@ -1,0 +1,73 @@
+# Facts the EDS skills and evals rely on.
+# question: asked unaided to quiz whether models know the claim (the answer key).
+# source: external and re-checkable only; omitted for maintainer-endorsed practice.
+# used_by: paths relative to this plugin.
+
+- id: block-collection
+  claim: >-
+    The Block Collection (github.com/adobe/aem-block-collection, `blocks/`) is
+    Adobe's vetted reference set of common blocks. Each has a live example at
+    `main--aem-block-collection--adobe.aem.live/block-collection/{block}`.
+    Prefer it as the starting point for a standard block.
+  question: >-
+    Where are Adobe's reference implementations of common EDS blocks, and
+    where can you see each one rendered?
+  source: >-
+    https://www.aem.live/developer/block-collection;
+    github.com/adobe/aem-block-collection blocks/
+  used_by:
+    - skills/block-collection-and-party/SKILL.md
+    - skills/block-inventory/SKILL.md
+
+- id: block-party
+  claim: >-
+    Block Party is the community catalog (blocks, sidekick and DA plugins,
+    build tooling, framework integrations, code snippets), indexed at
+    `www.aem.live/developer/block-party/block-party.json?sheet=curated-list-new`;
+    use only entries with `approved: TRUE` and review their code. It is the
+    only catalog for plugins, build tooling and integrations.
+  question: >-
+    Where do you look for existing community implementations for EDS (a
+    non-standard block, a sidekick or DA plugin, a Sass build setup), and what
+    should you check before using one?
+  source: https://www.aem.live/developer/block-party/
+  used_by:
+    - skills/block-collection-and-party/SKILL.md
+
+- id: plain-html-content-model
+  claim: >-
+    Appending `.plain.html` to an EDS page URL returns its authored markup
+    before decoration (blocks as `<div class="{block}">` rows and cells). On a
+    Block Collection example page it shows the content model a block expects.
+  question: >-
+    How do you see the authored, pre-decoration markup that an existing EDS
+    block expects, e.g. from a live example page?
+  source: >-
+    https://www.aem.live/developer/markup-sections-blocks;
+    main--aem-block-collection--adobe.aem.live/block-collection/cards.plain.html
+  used_by: []
+
+- id: blocks-copied-not-installed
+  claim: >-
+    A project's blocks are the folders under `blocks/`. A reference block is
+    added by copying its folder into `blocks/` and adapting it; there is no
+    package to install.
+  question: >-
+    How do you find which blocks an EDS project has, and how do you add a
+    block from Adobe's reference set?
+  source: aem-boilerplate 5cea543, blocks/
+  used_by: []
+
+- id: block-collection-default-content
+  claim: >-
+    The Block Collection site also documents default content that has no block
+    (breadcrumbs, buttons, metadata, section metadata). Its "breadcrumbs" entry
+    is default-content documentation, not a standalone block to copy.
+  question: >-
+    We want breadcrumbs on an EDS site. Does Adobe's Block Collection have a
+    breadcrumb block, and what would you start from?
+  source: >-
+    main--aem-block-collection--adobe.aem.live nav; search-block-collection.js
+    breadcrumb output (2026-11-11)
+  used_by:
+    - skills/block-collection-and-party/SKILL.md
