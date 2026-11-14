@@ -1,3 +1,10 @@
+## [2.4.1](https://github.com/adobe/skills/compare/web-cli-v2.4.0...web-cli-v2.4.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **web-cli:** page reduce measures the live page ([#565](https://github.com/adobe/skills/issues/565)) ([d9ae052](https://github.com/adobe/skills/commit/d9ae0528e55eb897651983c373133272f91411f7)), closes [#563](https://github.com/adobe/skills/issues/563)
+
 # [2.4.0](https://github.com/adobe/skills/compare/web-cli-v2.3.0...web-cli-v2.4.0) (2026-11-05)
 
 

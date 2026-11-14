@@ -60,29 +60,32 @@
  * 2 = deltas printed (fix them, re-run), 1 = error, 3 = bot challenge on the
  * live side (fail loud — never measured).
  *
- * Requires: playwright, and the diff skill's scripts dir alongside
- * (live-session.mjs — the replica Setup copies both). Each run is one live
+ * Requires: playwright, and the master skill's scripts dir alongside
+ * (browser.mjs — the replica Setup copies both). Each run is one live
  * navigation — budget it like any live probe; --json records both sides as
  * the round's evidence.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'fs';
-import { dirname, resolve as resolvePath } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('chrome-parity error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('chrome-parity: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchStealthHeaded, launchLiveBrowser, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
-// the default tier: real Chrome headless with its own identity (a live-session copy that predates it: bundled Chromium)
-const launchDefault = typeof launchLiveBrowser === 'function' ? launchLiveBrowser : (chromium) => chromium.launch();
-// image-signature.mjs sits beside live-session.mjs in either layout
-const { sameImage, signElements } = await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'image-signature.mjs')).href);
+const { isLiveHttpUrl, openBrowser, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(BROWSER.href);
+// image-signature.mjs lives in the diff skill's scripts dir, in either layout
+const SIGNATURE = ['../../diff/scripts/image-signature.mjs', '../diff/image-signature.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!SIGNATURE) {
+  console.error('chrome-parity: image-signature.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+  process.exit(1);
+}
+const { sameImage, signElements } = await import(SIGNATURE.href);
 
 const HELP = `chrome-parity — computed-style + rect diff of matched chrome elements (live vs build)
 
@@ -386,9 +389,7 @@ export function readLiveCache(file, live, opts) {
 
 async function main() {
   const { live, build, opts } = parseArgs(process.argv);
-  let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await launchDefault(chromium);
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'chrome' });
   let total = 0;
   try {
     const cached = readLiveCache(opts.liveCache, live, opts);
