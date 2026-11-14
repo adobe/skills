@@ -144,7 +144,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
 
       - name: AEM Forms create-custom-component script tests
         run: node --test plugins/aem/forms/edge-delivery-services/tests/*.test.mjs
