@@ -29,8 +29,10 @@ repository; the pull request review reads them too.
   detail in `references/` and link it by a path that exists. Don't grow a `SKILL.md` past 500
   lines.
 - The review tests that. It asks a small model without tools, files or web access, which has
-  not read the skill, the questions the skill answers. What that model gets right by itself
-  doesn't belong in a skill; what it gets wrong or doesn't know does.
+  not read the skill, the questions the skill answers. What that model gets right by itself,
+  twice, doesn't belong in a skill: the review names each such line and denies the pull
+  request until the line is gone or cut down to what the model missed. What the model gets
+  wrong or doesn't know is what a skill is for.
 - Every path, command, flag, tool name and other skill that a skill names must exist. A skill
   that routes to something that isn't there fails at the worst moment.
 - Write for any agent harness unless the plugin says it needs one. Don't name a harness's tools
