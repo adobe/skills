@@ -150,29 +150,19 @@ This skill provides:
 npx --prefix <SKILL_DIR>/scripts playwright install chromium
 ```
 
-Installing Chromium is enough. The script prefers a locally installed Google Chrome
-because it carries a real TLS fingerprint and gets past bot detection that rejects
-headless Chromium, but it falls back to the bundled Chromium on its own, so no Chrome
-install is required.
+**Site blocks the scrape:**
 
-**Site blocks the scrape or the navigation fails:**
-
-The first progress lines on stderr say which browser ran: `Browser: Google Chrome <version>`,
-or a warning with the reason Chrome could not be launched followed by
-`Browser: bundled Chromium <version>`. If a bot-protected site blocks a run that used the
-bundled Chromium, install Google Chrome on the machine running the scrape and run it again.
-The script picks Chrome up automatically, with no configuration needed. It already sends a
-User-Agent and client hints that match the browser that launched, so do not add stealth
-plugins or randomized User-Agents, which make that identity inconsistent.
+Check the `Browser:` line on stderr. `Browser: bundled Chromium`, after a warning that says why
+Chrome could not be launched, means the run used the browser that bot detection rejects: install
+Google Chrome on that machine and run again. The script picks it up with no configuration. Don't
+add stealth plugins or random User-Agents. The script already sends a User-Agent and client hints
+that match the launched browser, and a mismatch is itself a detection signal.
 
 **Certificate errors (`net::ERR_CERT_*`):**
 
-The scrape refuses a source whose TLS certificate does not validate. Scraped HTML and images
-become migration source, so content served over an untrusted certificate could have been
-swapped in transit. Do not disable certificate validation in the script. Scrape a host that
-presents a valid certificate, or get the source host a certificate the browser trusts. The
-page and its images are fetched by the browser, not by Node, so `NODE_EXTRA_CA_CERTS` has no
-effect on these errors.
+Don't disable certificate validation: scraped content becomes migration source. Scrape a host
+with a valid certificate, or get the source host one the browser trusts. `NODE_EXTRA_CA_CERTS`
+has no effect, because the browser, not Node, fetches the page and its images.
 
 **Playwright or Sharp not installed:**
 ```bash
