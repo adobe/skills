@@ -126,10 +126,6 @@ class <TargetClass>MigrationTest {
 
 ### B. `scheduler` — work method side effect (invoke the work directly, no scheduler)
 
-Register the class in an `AemContext` and call the work method itself: the body that survives the
-migration, **not** the scheduler registration. Assert one observable outcome (a resource property
-written, or a collaborator called).
-
 ### C. `resourceChangeListener` / `eventListener` / `eventHandler` — delegated-handler outcome
 
 Only when the callback delegates to a stable business method. If it does not, skip
