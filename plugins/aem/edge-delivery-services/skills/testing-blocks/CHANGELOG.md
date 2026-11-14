@@ -1,3 +1,5 @@
+## [2.0.3](https://github.com/adobe/skills/compare/testing-blocks-v2.0.2...testing-blocks-v2.0.3) (2026-11-14)
+
 ## [2.0.2](https://github.com/adobe/skills/compare/testing-blocks-v2.0.1...testing-blocks-v2.0.2) (2026-10-29)
 
 
