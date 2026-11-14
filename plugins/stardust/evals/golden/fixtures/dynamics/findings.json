@@ -1,0 +1,17 @@
+{
+  "pages": {
+    "/": { "host": "www.example.com", "scripts": ["https://cdn.cookielaw.org/scripttemplates/otSDKStub.js", "https://assets.adobedtm.com/abc/launch-0f1e.min.js"] },
+    "/stores/": { "host": "www.example.com", "scripts": [] },
+    "/news/": { "host": "www.example.com", "scripts": [] }
+  },
+  "findings": [
+    { "id": "T1", "class": "T", "feature": "tag manager: Adobe Launch", "role": "tag manager: Adobe Launch", "evidence": ["assets.adobedtm.com"], "pages": ["/"] },
+    { "id": "S1", "class": "S", "feature": "site search form → /search", "evidence": ["form[action=/search]"], "pages": ["/", "/news/"] },
+    { "id": "F2", "class": "F", "feature": "form-less control group in main (4 controls, submit \"Send\")", "hint": "forms", "evidence": ["main select×3", "button Send"], "pages": ["/stores/"] },
+    { "id": "A1", "class": "A", "feature": "first-party API GET /api/store-locator", "api": { "method": "GET", "path": "/api/store-locator" }, "evidence": ["xhr /api/store-locator?lat=..&lng=.."], "pages": ["/stores/"] },
+    { "id": "F3", "class": "F", "feature": "form \"contact\" → /thanks (5 fields)", "hint": "forms", "evidence": ["form#contact"], "pages": ["/"] },
+    { "id": "L1", "class": "L", "feature": "listing candidate .news (8 cards)", "evidence": [".news article×8"], "pages": ["/news/"] },
+    { "id": "M1", "class": "M", "feature": "modal trigger .js-modal → /contact", "evidence": ["a.js-modal"], "pages": ["/"] },
+    { "id": "X1", "class": "X", "feature": "sign-in / account links", "evidence": ["a[href=/account]"], "pages": ["/", "/stores/", "/news/"] }
+  ]
+}
