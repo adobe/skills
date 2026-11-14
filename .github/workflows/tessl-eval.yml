@@ -54,10 +54,17 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-  tessl-eval:
+  # Runs the evals. Its verdict is the `tessl-eval` job below, so this job stays green when
+  # an eval fails: one red check per failure, not two.
+  run-evals:
     needs: eval-requested
     if: needs.eval-requested.outputs.run == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      # failed, no-credits or passed; empty when there was nothing to evaluate
+      outcome: ${{ steps.run-evals.outputs.outcome }}
+      # failure when the script exited with an error, whatever it wrote before
+      step: ${{ steps.run-evals.outcome }}
     # No environment: TESSL_TOKEN is a repository secret, so an approval step here never
     # kept a branch of this repository from using it. It only made every eval wait for a person.
     steps:
@@ -104,6 +111,8 @@ jobs:
       - name: Run evals
         id: run-evals
         if: steps.detect.outputs.skip != 'true'
+        # the tessl-eval job reads the result and decides
+        continue-on-error: true
         run: node scripts/tessl-eval.mjs "$RUNNER_TEMP/plugin-dirs.txt" "$RUNNER_TEMP/eval-comment.md"
 
       - name: Comment eval results on PR
@@ -114,3 +123,24 @@ jobs:
         run: |
           printf '\n_Triggered by commit %s_\n' "$(git log -1 --format=%s)" >> "$RUNNER_TEMP/eval-comment.md"
           gh pr comment "$PR" --body-file "$RUNNER_TEMP/eval-comment.md"
+
+  # The check to look at. It fails when an eval failed, timed out or could not start, and
+  # passes when every eval passed or there was nothing to evaluate. It is skipped when no
+  # eval was requested, and when the Tessl organization has run out of credits: nothing
+  # ran, and that says nothing about the skills.
+  tessl-eval:
+    needs: run-evals
+    if: ${{ !cancelled() && needs.run-evals.result != 'skipped' && needs.run-evals.outputs.outcome != 'no-credits' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - env:
+          JOB: ${{ needs.run-evals.result }}
+          STEP: ${{ needs.run-evals.outputs.step }}
+          OUTCOME: ${{ needs.run-evals.outputs.outcome }}
+        run: |
+          if [ "$JOB" != success ] || [ "$STEP" = failure ] || [ "$OUTCOME" = failed ]; then
+            echo "::error::The Tessl evals failed (job: $JOB, eval step: ${STEP:-not run}, outcome: ${OUTCOME:-none}). The run-evals job has the results."
+            exit 1
+          fi
+          echo "Tessl evals: ${OUTCOME:-nothing to evaluate}"
