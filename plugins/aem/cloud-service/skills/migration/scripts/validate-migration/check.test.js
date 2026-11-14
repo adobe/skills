@@ -7,6 +7,9 @@ const os = require('os');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 
+// CAM reporting is paused by default (see check.js); most tests exercise the reporting path, so enable it here.
+process.env.VALIDATE_MIGRATION_CAM_REPORTING = '1';
+
 const { parseArgs, readContext, prepareStopDecision, isSdkUnreachable, verifyGuidance } = require('./check.js');
 const PATTERNS = require('./check/patterns');
 const { parseBundleDiagnosticReport, parseComponentsFromReport, normalizeState, mcpUnavailableOutcome, clearDiagnosisMap } = require('./check/lib/diagnosis.js');
@@ -58,7 +61,7 @@ function verifyContractFixture(context, pattern, properties, service, manifest =
   fs.writeFileSync(path.join(root, '.validate-migration', 'diagnosis-map.json'), JSON.stringify({
     'com.acme.contract': `Bundle: com.acme.contract\nState: Active\n\nDeclarative Services Components\nComponent: ${fqcn}\n  State: Active\n`,
   }));
-  const execution = spawnSync(process.execPath, [path.join(__dirname, 'check.js'), '--stage', 'verify', '--pattern', pattern, '--project', root, ...(options.args || [])], { encoding: 'utf8' });
+  const execution = spawnSync(process.execPath, [path.join(__dirname, 'check.js'), '--stage', 'verify', '--pattern', pattern, '--project', root, ...(options.args || [])], { encoding: 'utf8', env: { ...process.env, ...options.env } });
   const reportName = fs.readdirSync(path.join(root, '.validate-migration')).find((name) => /^vm-\d+\.json$/.test(name));
   assert.ok(reportName, execution.stderr || execution.stdout);
   const report = JSON.parse(fs.readFileSync(path.join(root, '.validate-migration', reportName), 'utf8'));
@@ -777,9 +780,21 @@ test('finalizeReporting requires an acknowledgement for the same run', () => {
   assert.ok(!record.reporting, 'the validation record is not mutated');
 });
 
+test('finalizeReporting accepts the AEM MCP Server result (success: true) as the receipt', () => {
+  const record = { run_id: 'vm-9', result: 'pass', classes: [] };
+  const finalized = finalizeReporting(record, {
+    success: true, run_id: 'vm-9', project_id: '0123456789abcdef01234567', stored_at: '2026-10-08T00:00:00Z', duplicate: true,
+  });
+  assert.strictEqual(finalized.reporting.status, 'recorded');
+  assert.strictEqual(finalized.reporting.duplicate, true);
+  assert.match(renderLocalReport(finalized), /completion: complete/);
+});
+
 test('finalizeReporting leaves failed or mismatched submissions incomplete', () => {
   const record = { run_id: 'vm-9', result: 'pass', classes: [] };
-  for (const receipt of [null, {}, { ok: true }, { ok: true, run_id: 'other' }]) {
+  for (const receipt of [null, {}, { ok: true }, { ok: true, run_id: 'other' }, { success: true, run_id: 'other' },
+    { success: 'true', run_id: 'vm-9' }, { error: 'denied', run_id: 'vm-9' },
+    { success: false, error: 'Invalid migration validation result payload.', details: ['x'], run_id: 'vm-9' }]) {
     const finalized = finalizeReporting(record, receipt);
     assert.strictEqual(finalized.reporting.status, 'failed');
     assert.match(renderLocalReport(finalized), /completion: incomplete/);
@@ -1393,6 +1408,15 @@ test('a passing run with a CAM project stays pending until the submission is ack
   assert.strictEqual(execution.status, 3, execution.stderr || execution.stdout);
   assert.strictEqual(report.reporting.status, 'pending');
   assert.match(execution.stdout, /submit-migration-validation-result payload/);
+});
+
+test('with CAM reporting paused, a linked project is ignored and no payload is emitted', (context) => {
+  const { execution, report } = verifyContractFixture(context, 'scheduler', SCHEDULER_PROPS, 'java.lang.Runnable', undefined,
+    { args: ['--project-id', '000000000000000000000001'], env: { VALIDATE_MIGRATION_CAM_REPORTING: '' } });
+  assert.strictEqual(execution.status, 0, execution.stderr || execution.stdout);
+  assert.strictEqual(report.reporting.status, 'not_reported');
+  assert.match(execution.stdout, /reporting is paused/);
+  assert.doesNotMatch(execution.stdout, /submit-migration-validation-result payload/);
 });
 
 test('dialogRuleViolations skips rule 2.2 for a partial overlay dialog with no root resource type', () => {

@@ -3,6 +3,9 @@
 // focus return), a search overlay with typeahead, a cart drawer, and at mobile a hamburger drawer with
 // scroll lock and drill-down levels, all animated. STOCK = what a run ships when it keeps the boilerplate
 // header: one-level click dropdowns, search and cart as plain links, a hamburger list without motion.
+// STUBBORN = the header that cannot be closed in place: dropdowns that neither Escape, a click outside nor
+// their trigger close (one has a Close button), and a POST search form — every reset between controls
+// costs a reload, the submit is followed to where it lands.
 import { createServer } from 'node:http';
 
 const css = `body{margin:0;font:16px/1.4 sans-serif} main{height:2600px;padding:40px} footer{height:200px}
@@ -110,15 +113,37 @@ burger.addEventListener('click', () => { const o = list.hidden; list.hidden = !o
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelectorAll('.dd > button[aria-expanded=true]').forEach((b) => { b.setAttribute('aria-expanded', 'false'); b.nextElementSibling.hidden = true; b.focus(); }); });
 `;
 
+const STUBBORN_BODY = `<header><div class="bar">
+<a href="/" class="logo">Brand</a>
+<nav class="desk"><ul>
+ <li class="dd"><button aria-expanded="false" aria-controls="offer-list">Offers</button>
+  <ul id="offer-list" hidden><li><a href="/offers/new">New</a></li><li><a href="/offers/top">Top</a></li><li><button class="dd-close">Close</button></li></ul></li>
+ <li class="dd"><button aria-expanded="false" aria-controls="help-list">Help</button>
+  <ul id="help-list" hidden><li><a href="/help/faq">FAQ</a></li><li><a href="/help/contact">Contact</a></li></ul></li>
+ <li><a href="/contact">Contact</a></li>
+</ul></nav>
+<span class="grow"></span>
+<form method="post" action="/find"><input type="search" name="q" aria-label="Find" autocomplete="off"></form>
+</div></header>`;
+
+const STUBBORN_CSS = `${css} .dd{position:relative} .dd>ul{position:absolute;top:100%;left:0;background:#fff;color:#123;list-style:none;padding:12px;margin:0;width:180px}
+.dd>ul button{color:#123}`;
+
+// open only: a click or Enter on the trigger opens (never toggles); nothing listens for Escape or outside; one list has a Close button
+const STUBBORN_JS = `
+document.querySelectorAll('.dd > button').forEach((b) => b.addEventListener('click', () => { b.setAttribute('aria-expanded', 'true'); b.nextElementSibling.hidden = false; }));
+document.querySelector('.dd-close').addEventListener('click', () => { const b = document.querySelector('[aria-controls=offer-list]'); b.setAttribute('aria-expanded', 'false'); b.nextElementSibling.hidden = true; });
+`;
+
 const doc = (body, style, js) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>fixture</title><style>${style}</style></head><body>${body}<main><h1>Page</h1><p>Body text.</p></main><footer><a href="/privacy">Privacy</a></footer><script>${js}</script></body></html>`;
 
-export const PAGES = { rich: doc(RICH_BODY, RICH_CSS, RICH_JS), stock: doc(STOCK_BODY, STOCK_CSS, STOCK_JS) };
+export const PAGES = { rich: doc(RICH_BODY, RICH_CSS, RICH_JS), stock: doc(STOCK_BODY, STOCK_CSS, STOCK_JS), stubborn: doc(STUBBORN_BODY, STUBBORN_CSS, STUBBORN_JS) };
 
-/** Serve /rich, /rich2 (an identical copy) and /stock; every other path answers 404 text. Resolves { origin, close }. */
+/** Serve /rich, /rich2 (an identical copy), /stock and /stubborn; every other path answers 404 text. Resolves { origin, close }. */
 export function serve() {
   const srv = createServer((req, res) => {
     const p = req.url.split('?')[0];
-    const html = p === '/rich' || p === '/rich2' ? PAGES.rich : p === '/stock' ? PAGES.stock : null;
+    const html = p === '/rich' || p === '/rich2' ? PAGES.rich : p === '/stock' ? PAGES.stock : p === '/stubborn' ? PAGES.stubborn : null;
     res.writeHead(html ? 200 : 404, { 'content-type': 'text/html' }); res.end(html || 'not here');
   });
   return new Promise((resolve) => { srv.listen(0, '127.0.0.1', () => resolve({ origin: `http://127.0.0.1:${srv.address().port}`, close: () => srv.close() })); });

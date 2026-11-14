@@ -1,3 +1,31 @@
+## [2.4.1](https://github.com/adobe/skills/compare/web-cli-v2.4.0...web-cli-v2.4.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **web-cli:** page reduce measures the live page ([#565](https://github.com/adobe/skills/issues/565)) ([d9ae052](https://github.com/adobe/skills/commit/d9ae0528e55eb897651983c373133272f91411f7)), closes [#563](https://github.com/adobe/skills/issues/563)
+
+# [2.4.0](https://github.com/adobe/skills/compare/web-cli-v2.3.0...web-cli-v2.4.0) (2026-11-05)
+
+
+### Features
+
+* **web-cli:** fill the cache through a remote browser past bot protection ([#555](https://github.com/adobe/skills/issues/555)) ([6f654d7](https://github.com/adobe/skills/commit/6f654d73acad548fab05604c3af6bf533c250530))
+
+# [2.3.0](https://github.com/adobe/skills/compare/web-cli-v2.2.0...web-cli-v2.3.0) (2026-11-05)
+
+
+### Features
+
+* web header capture|check commands and the migrate-header skill ([#550](https://github.com/adobe/skills/issues/550)) ([fd07a39](https://github.com/adobe/skills/commit/fd07a393f64cb0fcda604eb59a330d7846a96b5d)), closes [adobe/skills#533](https://github.com/adobe/skills/issues/533) [adobe/skills#533](https://github.com/adobe/skills/issues/533) [adobe/skills#533](https://github.com/adobe/skills/issues/533)
+
+# [2.2.0](https://github.com/adobe/skills/compare/web-cli-v2.1.0...web-cli-v2.2.0) (2026-10-30)
+
+
+### Features
+
+* **web-cli:** record and replay sessions with browser open --cache ([#507](https://github.com/adobe/skills/issues/507)) ([cab980a](https://github.com/adobe/skills/commit/cab980a65a98ccb9314270e282dd9f752cb7b274))
+
 # [2.1.0](https://github.com/adobe/skills/compare/web-cli-v2.0.0...web-cli-v2.1.0) (2026-10-28)
 
 

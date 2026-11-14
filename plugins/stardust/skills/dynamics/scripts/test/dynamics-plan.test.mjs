@@ -4,6 +4,7 @@
 // Run: node plugins/stardust/skills/dynamics/scripts/test/dynamics-plan.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import {
   mkdirSync, mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync,
 } from 'node:fs';
@@ -127,6 +128,22 @@ check('a re-run keeps what the owner enabled', () => {
 check('--help documents --martech', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd: tmpdir(), encoding: 'utf8' });
   assert.match(r.stdout, /--martech/);
+});
+
+// --target-origin: an API path that resolves off the target origin is never probed with the site secret. fetch is
+// replaced in the child (--import) to record each probe, so look-alike hosts need no DNS
+check('--target-origin probes only paths on the target origin, with the secret', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sd-plan-auth-'));
+  try {
+    const log = join(dir, 'fetch.log'); const hook = join(dir, 'fetch-hook.mjs');
+    writeFileSync(hook, `import { appendFileSync } from 'node:fs';\nglobalThis.fetch = async (u, o = {}) => { appendFileSync(${JSON.stringify(log)}, JSON.stringify([String(u), (o.headers || {}).authorization || null]) + '\\n'); return new Response('{}'); };\n`);
+    const api = (id, path) => ({ id, class: 'A', feature: `first-party API GET ${path}`, evidence: [], pages: ['/'], api: { method: 'GET', path } });
+    writeFileSync(join(dir, 'in.json'), JSON.stringify({ pages: {}, findings: [api('A1', '/api/ok'), api('A2', '.evil.test/steal'), api('A3', '@evil.test/steal')] }));
+    const r = spawnSync(process.execPath, ['--import', pathToFileURL(hook).href, SCRIPT, '--in', 'in.json', '--out', 'plan', '--target-origin', 'https://site.test', '--auth-header', 'token fixture'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const probed = readFileSync(log, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(probed, [['https://site.test/api/ok', 'token fixture']]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 if (failures) { console.error(`${failures} failure(s)`); process.exit(1); }

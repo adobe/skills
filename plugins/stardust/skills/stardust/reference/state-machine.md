@@ -303,7 +303,7 @@ be, or say which ignore rule drops it); any tracked file outside
 `stardust/`, the impeccable root files and the EDS project; any tracked
 file matching a secret shape (`.env*`, `_storage-state.json`,
 `*-clearance.json`). Then one line per consequence that applies on this
-checkout (`current/assets/` missing, baselines missing). Above 50 MB of
+checkout (`current/assets/` or its screenshots missing, baselines missing). Above 50 MB of
 tracked binaries under `stardust/`, add "consider Git LFS (optional)".
 
 The `Flow:` line is omitted when no flow key exists; on a migration ask

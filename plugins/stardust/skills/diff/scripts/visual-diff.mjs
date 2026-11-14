@@ -27,7 +27,7 @@
  *     --main <selector>     content root for the main-scoped probes (default "main";
  *                           on live sites without a <main>, both sides false-flag
  *                           BLANK RENDER while the main-scoped checks no-op)
- *     --ua <string>         user agent                       (default: real-Chrome desktop UA)
+ *     --ua <string>         user agent                       (default: the browser's own)
  *     --wait-until <state>  goto wait state override. Default rule (three tiers,
  *                           decided per URL side by live-session's defaultWaitUntil):
  *                           localhost/127.0.0.1 → 'networkidle'; EDS build/preview
@@ -38,11 +38,13 @@
  *                           beacons never reach networkidle).
  *     --dismiss [sel,...]   dismiss overlays on both sides via live-session
  *                           (consent + timed marketing modals + optional extras)
- *     --headed              escalation: headed stealth real Chrome (bot-managed sites)
+ *     --headed              escalation: real Chrome + the challenge-solve window (bot-managed sites)
  *     --locale <tag>        pin Accept-Language + context locale (geo-redirect determinism)
  *
- * Every context gets the real-Chrome UA + the standard request headers via
- * live-session.mjs (UA alone still 403s on Akamai — F-R1). A bot-management
+ * The browser is real Chrome headless with its own identity (live-session
+ * launchLiveBrowser; bundled Chromium only when Chrome is missing) and every
+ * context gets the standard request headers via live-session.mjs (a bare
+ * context still 403s on Akamai — F-R1). A bot-management
  * challenge on either navigation FAILS LOUD (exit 3) — a challenge page must
  * never be measured as the source. A plain HTTP error (e.g. a 404 build side
  * before preview propagation) is NOT fatal: it is measured with a loud
@@ -66,11 +68,19 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: playwright is a devDependency; sequential page ops use awaited loops by design */
-import { mkdirSync, realpathSync } from 'fs';
+import { existsSync, mkdirSync, realpathSync } from 'fs';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
-import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
+// browser.mjs (live-session.mjs beside it) lives in the master skill's scripts dir: the plugin tree
+// (skills/diff/scripts ↔ skills/stardust/scripts) or the project copy (scripts/diff ↔ scripts/stardust).
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('visual-diff: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { isLiveHttpUrl, defaultWaitUntil, newLiveContext, openBrowser, gotoLive, dismissOverlays } = await import(BROWSER.href);
 
 const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -78,7 +88,7 @@ const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buil
   --width <px>           viewport width (default 1280)
   --sections <a,b>       extra per-section screenshots
   --main <sel>           content root for main-scoped probes (default "main")
-  --ua <string>          user agent (default: real-Chrome desktop UA)
+  --ua <string>          user agent (default: the browser's own)
   --wait-until <state>   goto wait state. Default (per URL side, three tiers):
                          networkidle for localhost/127.0.0.1; networkidle for EDS
                          build/preview origins (*.aem.page, *.aem.live, *.hlx.page,
@@ -86,7 +96,7 @@ const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buil
                          other live http(s) (never reach networkidle).
   --dismiss [sel,...]    dismiss overlays (consent + timed marketing modals) on both
                          sides; optional comma-separated extra selectors
-  --headed               headed stealth real Chrome (escalation for bot-managed sites)
+  --headed               real Chrome with the challenge-solve window (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
 writes (under --out; created if absent): proto-full.png and eds-full.png (the two full-page
             captures, source side = proto, build side = eds) plus proto-<section>.png /
@@ -99,7 +109,7 @@ exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-prop
 function parseArgs(argv) {
   const [, , proto, eds, ...rest] = argv;
   if (rest.includes('--help') || proto === '--help' || proto === '-h') { process.stdout.write(USAGE); process.exit(0); }
-  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null, ua: REAL_CHROME_UA, waitUntil: null, dismiss: null, headed: false, locale: null };
+  const opts = { out: 'qa/vdiff', width: 1280, sections: [], profile: 'eds', main: null, ua: null, waitUntil: null, dismiss: null, headed: false, locale: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -245,6 +255,7 @@ async function capture(browser, url, tag, opts) {
     ua: opts.ua, locale: opts.locale,
     viewport: { width: opts.width, height: 1000 },
     reducedMotion: 'reduce',
+    stateUrl: url,
   });
   const page = await ctx.newPage();
   // challenge detection on every navigation — a blocked live side throws
@@ -425,9 +436,7 @@ async function main() {
   }
   const prof = resolveProfile(opts.profile);
   mkdirSync(resolve(opts.out), { recursive: true });
-  let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from this scripts dir (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`); }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'chrome' });
   let report;
   try {
     const [protoM, edsM] = [await capture(browser, proto, 'proto', opts), await capture(browser, eds, 'eds', opts)];

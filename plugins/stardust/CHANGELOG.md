@@ -4,6 +4,365 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.38.3 — spec: classic AEM components inside responsive grids
+
+Field learning from a medical-device manufacturer's run: the site mixes classic `c-*` components with responsive-grid
+members inside experience fragments. The `aem-classic` profile looked through the grids, so side-by-side members never
+became rows (the columns and cards a row maps to were missed) and components without the `c-` prefix went unnamed; the
+run had to extend the profile in its project copy.
+
+- **`aem-classic` reads responsive grids:** a grid member (`aem-GridColumn`) is the root, named by the classic
+  component it wraps, so one component keeps one name inside and outside grids. Member widths group members into rows,
+  as in `aem-core`, and the wrapped component is not counted as a second root.
+- **`parser.extraRoots`** (aem-classic) lists component classes without the `c-` prefix. The run needed four.
+- Pages without grids parse as before. On pages with grids, path ids change and grid containers appear as `container`:
+  a run already past S7 re-runs parse and capture, and adds `container` to the mapping's `layout` list.
+- Re-parsing that run's 2,883 cached pages with this code and its four `extraRoots` gives output identical to the run's
+  own parse. `spec-parse.test.mjs` covers grid rows, member naming and `extraRoots`.
+
+## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
+
+Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo
+per #103. DA's Layout view (new authoring) renders the page from `main--<site>--<org>.preview.da.live`, which
+serves block code but 404s a code-bus mp4, so the hero showed blank there; authors also could not swap a video
+without a code change. A scratch-site test settled the DA route: a `content.da.live/....mp4` link still reaches the page verbatim and
+answers 401 to visitors (#103 holds for that form), but previewing and publishing the uploaded mp4 itself makes its
+root-relative content path redirect to the media bus on both `aem.page` and `aem.live` (200 `video/mp4`, byte
+ranges served).
+
+- **Rule** (`deploy/SKILL.md` #161, replaces the #103 paragraph): an mp4 up to 36 MB (the content-source limit) goes
+  through `da-media-upload.mjs` and is authored as `/media/<scope>/<file>.mp4`, never its `content.da.live` URL, and
+  never also committed at the same path. Bigger mp4s, other formats, audio and PDF stay on the code origin or an
+  external host. Pointer from replica's handoff contract.
+- **`deploy/scripts/da-media-upload.mjs`:** accepts `.mp4` (`video/mp4`); after the PUT it POSTs `preview` and,
+  unless `--no-publish`, `live` for the file on `--branch` (default `main`; `--hlx-url` for a test double), prints
+  the root-relative path to author, and records `authorUrl` + `delivered` in the ledger. A failed preview/publish is
+  FAIL (uploaded, not delivered), and a re-run redelivers it; an mp4 over 36 MB is `SKIP video-too-large` with no
+  request. Manifest source fetches accept `video/*` for an mp4 entry. A video is stored under its web path
+  (`webPath`: lowercase, runs of other characters → `-`), the only name its preview resolves (recorded:
+  `…_video01.mp4` uploaded fine and 404'd on preview); the OK line names the rename. Verified on a copy of the
+  field site: after the move the hero plays in the Layout view and on `aem.page`.
+- Tests: `da-media-upload.test.mjs` (classify limits; PUT + preview + live order on a branch; failed preview; ledger
+  skip of a delivered video; `--no-publish`; over-limit skip).
+- Review follow-ups: one skip path after the bytes are known, so an over-limit mp4 fetched from a manifest `source`
+  is `SKIP video-too-large` too (a declared `content-length` skips it before the body is buffered); a 401 that
+  persists on the video's preview/live POST halts the batch like the PUT 401 (exit 3, never `failed`); folder
+  segments are kept verbatim (checked on a scratch site: only the file name takes its web form). Tests cover the
+  three; the summary counts over-limit video apart from non-images.
+- Second review follow-up: two files that take one web name (`Clip_A.mp4`, `clip-a.mp4`) no longer overwrite each
+  other on DA. The first in the batch keeps the path; a later one is `FAIL name-collision` before any request, with
+  no ledger write (the row is the first file's), and a dry run shows it. Test included.
+
+## 0.38.1 — rollout publishes the site's own DA block library (#160)
+
+Field learning (a migrated site handed to its author): the pages and block code shipped, but the DA library showed an
+unrelated block set inherited from elsewhere, and none of the site's blocks or templates. Nothing in deploy or
+rollout wrote a library, so every migrated site arrived with an inherited or empty one.
+
+- **`rollout/scripts/da-library.mjs`:** from the delivered DA bodies (rollout coverage when present, else the content
+  tree) writes `library/blocks/<block>` (the first authored instance of every class variant, each followed by a
+  `library-metadata` description), `library/templates/<template>` (the template representative, its `metadata` as
+  `template-metadata` with page-specific values emptied), the `blocks` / `templates` sheets, and merges the `library`
+  tab of the site config: only the Blocks / Templates rows are replaced, other rows and tabs are kept. Previews the
+  documents, never publishes them. `--dry-run` writes the files only.
+- Rule home: `rollout/SKILL.md` § Phase D (DA library + D-site checklist row); pointer from deploy § When you finish.
+- Tests: `da-library.test.mjs` (block and variant lifting, the documents in the shape the DA library parses, the
+  config merge, the CLI dry run from coverage).
+- Review follow-up: a kept template metadata value with a `$` pattern is copied verbatim (function replacement); the
+  CLI runs through a symlinked path (realpath check, as in `da-media-upload.mjs`); a run without templates leaves the
+  Templates row and `templates.json` alone; zero authored blocks exits 1 with no DA write; a 401 is retried before
+  exit 3 and a network error is a FAIL (exit 1); a template whose representative is not delivered and a class with no
+  `blocks/<name>/` folder are named; content-tree chrome is the root nav / footer plus the documents pages name in
+  their nav / footer metadata; template names use the label or unique id, never the shared type; author, dates and
+  image-alt are emptied in templates; only template documents are previewed.
+
+## 0.38.0 — every script takes its browser from one place (#159)
+
+Scripts that imported Playwright, launched a browser, opened contexts and navigated on their own each picked their own
+launch mode, wait strategy and failure message, and a fix to one never reached the others.
+
+- **`skills/stardust/scripts/browser.mjs`** is the one entry to the browser: `loadPlaywright`, `openBrowser`
+  (`chrome`, `headed` or `plain`), `newContext`, `newPage` and `goto`, plus everything `live-session.mjs` exports.
+  `live-session.mjs` moved from `skills/diff/scripts/` to sit beside it. Every script that touches a browser calls
+  these by bare name. One error names the install line when Playwright is not importable, and a missing
+  `browser.mjs` stops a script with the copy instruction. Where exit 1 means a failed check (`render-harness`,
+  `ai-readability`, `qa-gate`, `dynamics-check`), both are exit 2.
+- **A project copy needs the master scripts.** Setup step 7 copies `skills/stardust/scripts/` to
+  `stardust/scripts/stardust/` before any other skill's script runs. The skills that listed the diff scripts only for
+  `live-session.mjs` (reskin, deploy) now name the master copy instead; replica still copies the diff scripts for
+  the gates that import them.
+- **A script the agent writes uses it too.** Field check (a recorded hands-off replica run on this version): four
+  scripts the agent wrote opened the source with `chromium.launch()`. The rule, with a recipe that works for a live
+  page and a local one, moved to Setup step 7, which every run reads; replica and dynamics point to it. It names
+  `newLiveContext` and `gotoLive`: in a second run two scripts took the browser from `browser.mjs` and then called
+  `page.goto` themselves, which sends `HeadlessChrome` in the user agent.
+  `ledger.mjs … end` names, in one warning, the scripts written in that phase that import Playwright themselves.
+- **No longer works:** a script copied without the master scripts. A script copied flat into `stardust/scripts/` (the
+  crawler, the style census, the dynamics helpers) still runs when they are in `stardust/scripts/stardust/`.
+- **A script run from the plugin tree finds Playwright in the project at the working directory first**, then by
+  `import('playwright')`. The first copy that resolves is the one that loads. A copy that fails to load stops the
+  script with its cause (a missing dependency included); it is never replaced by the other copy.
+- **No script changed its browser.** Each keeps its launch mode, launch options, context options and navigation options.
+- **`evals/lint/browser-front-door.mjs`** fails on a script under `skills/` that imports Playwright (`from`,
+  `import`, `import()`, `require()`, `resolve()`, `playwright` or `playwright-core`), launches or connects a
+  browser, opens a context or `browser.newPage`, or calls `.goto(` itself. It runs in `npm run lint:stardust` and in
+  CI. A skill argument that is a file, not a skill folder, exits 2 like an unknown name.
+- **`playwright-cli` is no longer listed** as a requirement (`compatibility:` lines, README Prerequisites): no
+  script uses it.
+
+## 0.37.2 — a named page count starts from the entered page and its links (#158)
+
+User feedback: asked for N pages of a site, the crawl filled the slots in sitemap order, so the pages the entered
+URL links to were often cut.
+
+- **`extract/scripts/crawl.mjs --link-first`:** orders the pages entry first, then the entry page's same-origin
+  links in document order, then the other discovered pages, up to `--max`. Only a user-named N sets it; `--max`
+  alone (default or roster caps), `--max 0` and `--pages` are unchanged. In link-first mode both lists keep
+  same-origin non-asset pages only (`ASSET_EXT`). An unparsable href is skipped with a WARN instead of aborting
+  discovery, in both modes. Rule home: `ia-extraction.md` § Priority for the cap; pointers from extract Phase 1,
+  `--prep` (a user-named N keeps `--cap N` instead of `--all`) and the hands-off volume caps (a user-named N
+  replaces 100/20).
+- Tests: `crawl.test.mjs` `parseArgs` (`--max` alone never turns link-first on), `selectPages` (order, BFS
+  re-entry, unparsable hrefs), `discover` on a stub page (sitemap + malformed anchor, BFS fallback).
+
+## 0.37.1 — a player iframe mounts after first paint, and qa names the request that came before it (#157)
+
+Field learning (recorded replica runs of one source page): a block in the first section created the source's YouTube
+iframe in `decorate()`, so the player's JS started while the section was still loading. Lab tests count that toward
+FCP/LCP: a page painting in about 1 s measured lab LCP up to 8.5 s, scores 52–100 run to run. `lcp-poor` saw the
+symptom, nothing named the cause.
+
+- **Rule** (`deploy/SKILL.md` #157 + checklist row): same `src`, later mount — an `aspect-ratio` box at decorate time
+  that keeps the authored link (a player-only section still paints), replaced by the iframe after the first contentful
+  paint (without paint timing: at `load`, or at once when already loaded), from an allow-listed `https:` URL with
+  `createElement`; the iframe is `display: block` with no border, so the box keeps its height when it mounts.
+  Pointers from replica's live-data embeds bullet (deferral noted in the progress ledger) and dynamics' `media-as-url`.
+- **`qa/scripts/checks/perf.mjs`:** `player-before-paint` (warn, never downgraded) lists player document, script and API
+  requests from any frame that started before first contentful paint, dated by the browser: `timing().startTime`, or the
+  CDP `wallTime` while a response is still pending. Without either, two bounds decide (heard before the paint; frame
+  created after it); otherwise `player-timing-unknown` (warn), never a silent pass. Posters on player hosts are not
+  flagged. Tests: `qa/player-before-paint` (pure `judgePlayerRequests`), `qa/player-before-paint-browser` (collector
+  under a stalled event loop, a held-open player request, snippet lifecycle, untrusted links; Playwright from the
+  project, routed, no network).
+- **dynamics `modal-loader` example:** the player iframe is built with `createElement` from a parsed `https:` URL on a
+  dot-bounded host match, no longer interpolated into `innerHTML`.
+
+## 0.37.0 — a resumed run keeps its gate verdicts, not its pictures (#156)
+
+Field learning (a recorded 550-page site-scope replica run in a 20 GB container): the disk filled after every page
+was published. The tracked tree was 5.3 GiB, 82 % PNG: gate captures and diffs of every page (3.3 GiB, a fifth of
+them extra captures left beside a page's own) and extract screenshots (0.76 GiB). A harness that commits all of
+`stardust/` so a restart finds the same files pays each byte twice (worktree and `.git`); it could not follow the
+ignore file instead, because that dropped whole folders a resumed run reads. Design note:
+`notes/disk-lifecycle/README.md`.
+
+- **`stardust/reference/stardust.gitignore`:** ignores gate images, not gate folders — `**/gates/**/*.png` (a frozen
+  `baseline.png` stays; `first-page/gates/` is covered too) — and tracks `current/assets/` except its screenshots.
+  On that run: 0.5 GiB tracked instead of 5.3 GiB. Existing projects keep their copy (Setup step 6 never edits it):
+  replace its `current/assets/` and `replica/gates/` lines with the two gate lines to adopt it.
+- **`replica/scripts/gate-all.mjs`:** a page that passes keeps its records, not its PNGs. Every PNG in its dir is
+  deleted (an extra capture too) and `pixel.json` records the drop with the masks and eds URL it was measured with;
+  `--skip-existing` and `--compare-only` reuse that pass without a capture while both hold. A failed or
+  override-delivered page keeps its captures for the fix round. Pages go through in batches of 25, so a passed
+  batch's PNGs are gone before the next batch is captured (peak disk). A page captured again loses its recorded pass
+  first, and a missing capture is written to `pixel.json`: a failed or interrupted re-capture never leaves the old
+  pass to be reused.
+- **`replica/scripts/gate.sh`:** a round deletes earlier rounds' `diff-*.png` and `vdiff-*/` before comparing; their
+  text and JSON evidence stay.
+- **Docs:** `artifact-map.md` § Versioning rows, `stardust/SKILL.md` § Versioning, the state report consequences in
+  `state-machine.md`, `source-fidelity-gate.md` § all-pages gate, the README; `replica/SKILL.md`'s copy of the
+  delivery-gate file list folds to a pointer at `gate-all.mjs --help`.
+- Tests: `gate-all.test.mjs` — `dropPassedCaptures`, `droppedPass`, and runs with stub instruments (a passed page
+  loses its PNGs, a failed one keeps them; reuse without a capture; a changed mask re-captures; a failed or
+  interrupted re-capture captures again on resume; at most one batch of captures on disk at a time); `gate.test.mjs`
+  — a round keeps only its own diff image and vdiff dir.
+
+## 0.36.7 — the site secret: exact-origin match, never context-wide
+
+The site secret (`--auth-header` / `--token-env`, default `SITE_TOKEN`) is matched against the exact site origin
+(parsed origin, not a string prefix) and never set context-wide: the AI-readability gate
+(`deploy/scripts/ai-readability.mjs` and the `qa` check) attaches it through the origin-scoped route filter instead of
+`extraHTTPHeaders`, and its raw page and fragment requests drop it once a redirect leaves the origin. The `qa`
+AI-readability check and `scorePage` skip paths that resolve off the origin, and `dynamics-plan.mjs --target-origin`
+probes only API paths on the target origin.
+
+Anyone who ran `qa` or `ai-readability.mjs` with a site secret on 0.20.0–0.36.6, or an earlier source snapshot
+containing site auth, should rotate it. Tests: `deploy/scripts/test/ai-readability.test.mjs`,
+`ai-readability-redirect.test.mjs`, `qa/scripts/test/origin-auth.test.mjs`, `ai-readability-auth.test.mjs`,
+`dynamics/scripts/test/dynamics-plan.test.mjs`.
+
+## 0.36.6 — one patient visitor: shared live pacing adapts and the browser keeps its cookies between instruments (#155)
+
+Field learning (recorded hands-off replica runs): strict origins rejected clustered live navigations while friendly
+origins did not; every instrument opened a fresh browser context, so each capture looked like a new visitor that had
+never cleared a challenge or accepted consent; and parallel workers each ran their own instruments against the same
+host. Fixed pacing was either too slow or not cautious enough.
+
+- **Adaptive shared throttle (`diff/scripts/live-session.mjs`):** fresh hosts allow
+  `STARDUST_LIVE_MAX_PARALLEL` (default 2) in flight and start at `STARDUST_LIVE_PACE_MS` (default 1000) between starts.
+  A shared bot signal reduces the host to one navigation at a time and doubles the pace through 2000, 4000, 8000 and
+  15000 ms. Signals are an edge challenge, a denial page, any 429 (`Retry-After` honoured up to 120 s), a 503 with
+  `Retry-After`, or a timeout or connection error after that host has answered. Every 50 clean navigations halves the
+  pace down to the configured floor, then one more such window restores
+  the configured parallelism, and a host's backoff is forgotten `STARDUST_LIVE_STATE_TTL_MS` after its last signal.
+  Repository-scoped OS-temp state,
+  fair queueing and stale-lock recovery coordinate every process. Lost waiters re-queue and stale waiters/leases expire;
+  `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) caps slot waits, even during a hold, without clearing it.
+  `0` disables either throttle limit, not holds. Bookkeeping lock waits cap at 10 s; failures warn once per host,
+  then navigation proceeds unthrottled; transport response marks prevent duplicate challenge accounting.
+- **Per-host browser state:** after a successful `gotoLive` the context's storage state is saved (atomic write, at most
+  every few seconds per process) and `newLiveContext` loads it when it is younger than `STARDUST_LIVE_STATE_TTL_MS`
+  (default 12 h) and the caller passed none, so a cleared challenge or an accepted consent carries over to the next
+  instrument; save failures only warn, and `STARDUST_LIVE_STATE=0` disables it. The state never lives inside the repository.
+- **Every live instrument takes part:** the crawler (its entry probe and a challenged page report the signal once each — the reloads that stay challenged are the same wall; a captured page counts as a clean navigation), census, gate probes, measure, parity, motion, anchor,
+  sibling-variance and the reskin captures create their contexts through the shared helper (one-line changes), with
+  inline no-op fallbacks where a project copy lacks the module. Tests: `diff/live-session` (throttle decisions with a
+  fake clock and a temp dir, stale-lock reclaim, fairness, storage-state round trip), `extract/crawl` (fallbacks).
+
+## 0.36.5 — the style census runs one live page at a time unless an operator allows more (#154)
+
+Field learning (a recorded hands-off replica run on a bot-managed site): right after the crawl, the style census — a
+second full live pass at two widths — was started with `--concurrency 2`, although the option's default is 1 and its
+help text warned to raise it only on an origin known to have no bot manager. The origin stopped accepting connections
+and 17 of 20 census page loads timed out, which ended the run. The warning was advice; it is now a guard.
+
+- **`extract/scripts/style-census.mjs`:** `--concurrency <n>` above 1 is honoured only with the new explicit
+  `--parallel-live-ok`, or when every input is local (`file:`, `localhost` and `*.localhost`, `127.0.0.1`, `[::1]`,
+  `0.0.0.0`); otherwise one stderr line
+  (`--concurrency 2 ignored — one live page at a time unless --parallel-live-ok …`) and the census runs at 1.
+- **Browser tier:** when the shared live-session module beside the script exports `launchLiveBrowser`, the census
+  launches through it (the identity-preserving default tier, paced per host); `--headed` keeps the shared escalation
+  tier; a copy without the module keeps the plain headless launch. Tests: `extract/style-census` (+ guard, local
+  exemption, help text, launcher fallback).
+
+## 0.36.4 — chrome-explore paces itself and keeps a per-width request budget (#153)
+
+Field learning (a hands-off replica run on a site behind an edge rate rule): the crawl, the style census and the cap
+probe went through; the header exploration then reloaded the page after every control (routing disables the browser
+cache, so each reload refetched the whole page) and typed the probe term keystroke by keystroke into the site's
+typeahead — the edge blocked the address mid-run.
+
+- **`diff/scripts/chrome-explore.mjs`:** `--pace-ms 400` after each control open / close and `--reload-pause-ms 1500`
+  before each reload (0 disables either). `--max-requests 600` per width counts every request leaving for the site's
+  host — documents and subresources alike, the first load included; 204-answered navigations not — and ends the width
+  with `truncated: 'request-budget'` and `n/max requests` on the summary line (a lower budget was spent by an
+  image-heavy page's first load alone while recording the same contract). `--max-typeahead 2` inputs per width; the
+  term enters as one fill plus one typed letter and a single settle, inputs past the cap are listed with `search: null`.
+- **Closing in place:** between controls the header is closed the way it was opened — Escape and the parked pointer,
+  each opened trigger re-acted innermost first, a click outside — and the page reloads only when atoms are not back as
+  loaded (visibility and aria state, so a left-behind selected tab still reloads). A GET search submit is answered 204
+  like every navigation and its URL is the record; a POST is followed with the results page's assets aborted, then the
+  page restored. The probe word is read from the explored page on first use (no extra load). Fixture headers, same
+  recorded states: rich 26 → 13 loads at 1440, 24 → 1 at 390; stock 6 → 1 at 390.
+- **Exports and docs:** `parseArgs`, `requestBudget`, `sameSite`, `siteHost` are exported; `--help` documents the four
+  flags; `scripts-index.md` names `--max-requests`.
+- **Build exploration:** diff and qa pass `--max-requests 0 --pace-ms 0 --reload-pause-ms 0`; source defaults stay protective.
+- **Parity:** request-budget gaps warn with the unbudgeted-build remedy; observed failures remain errors.
+- Tests: `chrome-explore.test.mjs` — the summary line, `parseArgs` defaults and fallbacks, `sameSite` / `requestBudget`;
+  with a browser: closing in place, the GET and POST submits, a stubborn header (new fixture in `chrome-fixtures.mjs`),
+  the budget stop and the typeahead cap.
+
+## 0.36.3 — the crawler names a bot wall in seconds instead of waiting out its cap (#152)
+
+Field learning (a hands-off replica run on a bot-managed site): the entry page answered 200 with a verification
+interstitial that reloaded itself every few seconds; the crawler captured it as content and waited out its whole cap
+on it. A CloudFront block on inner pages read as a plain HTTP error, and the headed escalation opened a window where no
+display exists.
+
+- **`extract/scripts/crawl.mjs`:** `launchWithFallback` launches real Chrome headless first — its own identity, no
+  stealth flags; bundled Chromium when Chrome is missing (technique `chrome` | `chromium-fallback`) — through
+  live-session's `launchLiveBrowser` when the module beside the script has it, inline otherwise. `probeEntry`
+  classifies the entry page in seconds: a network reject (`fingerprint`), an edge challenge (`challengeMarker`:
+  Cloudflare / Akamai / F5 / Imperva / CloudFront–AWS WAF, Akamai's 400 escalation) or a 2xx interstitial read from
+  the page — the crawler's own title rule first (`wallProbeInPage` / `inlineWallMarker`: a wall title or h1 on a page
+  under 2 KB of text or one reloading itself), then live-session's `pageDenial` vendor list when present. Any of them
+  → one window-free real-Chrome relaunch (technique `chrome-escalated`; the existing launch flags and
+  `navigator.webdriver` spoof stay on, `STARDUST_STEALTH=0` turns them off; a relaunch failure is one stderr line) plus the challenge-solve window, then a fatal
+  `bot-management <kind> not cleared: <marker>`. On inner pages an uncleared challenge or a 2xx interstitial is
+  recorded as errorClass `BotChallenge` with the marker — never as content, never as a bare `HTTPError`;
+  `_crawl-log.json#discovery` carries `botBlock` + `botMarker`.
+- **The wall title names verification interstitials only** — "verify you are human", "verifying your request /
+  browser", "human verification", "checking your browser" and the vendor interstitial titles, never a bare "verify" or
+  "verification": an age or e-mail verification page is a page, and a small single-page-app entry page under such a
+  title would have aborted the crawl. **Readers of `fetchTechnique`** (`deploy/SKILL.md`, `deploy/da-deploy-protocol.md`,
+  `replica/reference/handoff-contract.md`) know the tier names (`chrome`, `chrome-escalated`, `chromium-fallback`; older
+  logs `headed-chrome*`) and verify source images with an in-page fetch from a browser of that tier, never a bare curl.
+- **`--page-timeout <s>`** (default 60; 0 = none) wraps each capture: a page that never settles is a `TimeoutError` and
+  its tab is closed. Live navigations are paced per host when a live-session copy that paces is beside the script.
+- **Docs:** `extract/SKILL.md` § Bot-management block says what the crawler does itself; `scripts-index.md` lists the
+  flag.
+- Tests: `crawl.test.mjs` — the classifiers, the inline wall rule, `pageTimeoutMs`, `probeEntry` and `capturePage` on
+  stub pages (clean / interstitial / challenge / CloudFront / bare 403 / hung navigation / an unreadable wall probe).
+
+## 0.36.2 — real Chrome identity, retained automation-signal handling and paced live navigation (#151)
+
+Field learning (hands-off replica runs on bot-managed sites): the gate instruments presented a hard-coded desktop user
+agent on a Linux headless engine and were denied; the agents patched the identity by hand at run time, and spacing
+live navigations a few seconds apart turned the denials into 200s. The escalation to real Chrome opened a window and
+could not start where no display exists. The policy now has one home: every context presents the browser's user agent
+without the headless token and matching client hints; automation-signal handling stays on unless `STARDUST_STEALTH=0`;
+`STARDUST_HEADED_WINDOW=1` opens a window.
+
+- **`diff/scripts/live-session.mjs`:** `launchLiveBrowser` is the default tier of every live instrument — the installed
+  Chrome headless (`channel: chrome`), no stealth args, no `ignoreDefaultArgs`; bundled Chromium only when Chrome is
+  missing (tier `chromium-fallback`, one stderr line). Every context presents the user agent read from the running
+  browser with the headless token removed (`HeadlessChrome/156.0.0.0` → `Chrome/156.0.0.0`), or the caller's `--ua`.
+  Headless Chrome's header says `HeadlessChrome` while its client hints say `Google Chrome`, and managed challenges
+  key on that token.
+  The `sec-ch-ua*` client hints derive from `browser.version()` and the running OS on Chrome tiers, from the UA string
+  under `--ua`, and stay untouched on the bundled tier. The existing `navigator.webdriver` spoof reaches every context.
+  `launchStealthHeaded` (`--headed`) stays window-free real Chrome plus the challenge-solve window and the
+  two existing launch options. `STARDUST_STEALTH=0` disables the spoof and options with one stderr line; a window stays
+  behind `STARDUST_HEADED_WINDOW=1`. `gotoLive` paces live navigations per host
+  `STARDUST_LIVE_PACE_MS` apart (default 2000; 0 disables; slots reserved synchronously so concurrent callers queue; one
+  stderr line per host on its first wait — an Akamai-fronted origin answered 403 to back-to-back navigations, 200 once
+  spaced). Classifiers: a 403 with `server: CloudFront` or `x-cache: Error from cloudfront`, or any `x-amzn-waf-action`
+  header, is the CloudFront / AWS WAF edge signature; F5's `BigIP` header matches; denial pages "The request could not
+  be satisfied" + "Request blocked", "One moment, please…", "Please wait while your request is being verified".
+- **Wired instruments:** `replica/scripts/stitch-shot.mjs`, `diff/scripts/content-diff.mjs`, `visual-diff.mjs`,
+  `measure-live.mjs` (`openBrowser` default tier `chrome`; `stealth` stays an alias of the `--headed` tier),
+  `replica/scripts/chrome-parity.mjs` and `motion-observe.mjs` launch the default tier and default `--ua` to the
+  browser's own; each `--help` says so. `extract/scripts/style-census.mjs`, `replica/scripts/measure.mjs` and `cap-probe.mjs` drop
+  their hard-coded desktop user agent the same way — a container run showed them still presenting it beside real
+  Chrome's own client hints.
+- **Docs:** `source-fidelity-gate.md` § Hardening rule 1 owns identity, retained automation-signal handling and pacing;
+  rule 12's ladder, `diff/SKILL.md` (`--ua`, `--headed`) and `replica/SKILL.md` point to the explicit opt-out.
+- Tests: `live-session.test.mjs` (50 checks — automation defaults and opt-out, pacing, user-agent and identity derivation,
+  client hints and denial classification) and `stitch-shot.test.mjs` (`--ua` defaults to the browser's own).
+
+## 0.36.1 — replica: a capture names its dead font faces; a font check that could not run is never a pass (#150)
+
+Field learning (a recorded hands-off replica run): the foundation CSS declared its metric fallback faces with a
+`local()` source naming a platform font the gate's Linux browser does not have. The build rendered a different face
+than the live site, the first archetype gate failed on type metrics, and the agent spent the better part of an hour
+finding the cause — the capture's font-load assertion reported only a face whose file failed to fetch, so an
+unresolved `local()` looked like a clean capture, and a check that threw was recorded as "every face loaded". In a
+later run the capture named the failed families and the fix took seconds: locally available metric-compatible faces
+(Liberation Sans / Arimo, Liberation Serif / Tinos) as the local fallbacks.
+
+- **`stitch-shot.mjs`:** after `document.fonts.ready` every declared face with status `error` and no loaded face of the
+  same family, weight and style is a dead face — a file that failed to fetch or a `local()` source this browser cannot
+  resolve; a failed declaration beside a loaded twin is not, an unloaded face was never needed. The WARNING names the
+  families and both causes; the capture record (`<stem>.capture.json`, 0.34.4) carries `fontsFailed` (`[]` = every face
+  loaded; `null` + `fontCheck` when the check could not run, with one stderr line — never silently a pass). A
+  `--freeze-baseline` capture whose check could not run is refused like one with dead faces.
+- **`gate.sh` / `gate-all.mjs`:** both read the capture records (`<side>.capture.json`; the live one lives and dies with
+  `live.png`; under `--gate-against-baseline` the live side reads the frozen baseline's check). gate.sh prints one `gate.sh: fonts on the <side> capture — …` line per side
+  after the overflow line — the dead faces, every face loaded, or NOT CHECKED — as information for the loop (exit codes
+  unchanged). gate-all carries `fontsFailed` on the origin / eds meta (the prototype stage reads `live.capture.json`
+  beside the reused archetype `live.png`, or the baseline's record after a flagged round; none is unchecked) and fails the row: `font-not-loaded:<family>`,
+  `font-check-skipped:<origin|build>` (`fontsNotLoaded`, `fontChecksSkipped`; totals, the calibration line, `FAIL
+  (fonts)`). A meta from before the check (no key, `--skip-existing`) is not flagged — recapture to check.
+- **Fonts policy** (`recreation-procedure.md`): self-host the source's own faces; brand family first, a metric-matched
+  substitute only as the fallback entry after it; a `local()` source only for a face the gate's browser has, the
+  Linux-available metric fallbacks named; proprietary faces raise deploy's licensing alert (#80). Gate rule 14 names
+  `fontsFailed` and `font-check-skipped`. Tests: `replica/stitch-shot` (new), `replica/gate`, `replica/gate-all`.
+- **Merged with 0.34.5.** The branch's `--json <file>` record was folded into the capture record every stitch already
+  writes since 0.34.4, so a capture has one record; one `stitch-shot` test file carries all four contracts.
+- **Merged with 0.36.0.** The capture record carries `fontsFailed` beside 0.34.12's `fixedLayers`; gate-all reads a reused
+  capture's font check from the record it carries — the archetype round's `live.capture.json`, or the frozen baseline's
+  after a flagged round — and a capture `staleCapture` retakes is checked afresh.
+
 ## 0.36.0 — first page first: one page is delivered while the site scope is still being defined (#149)
 
 A recorded hands-off replica run ran every phase in sequence and published no content page in five hours, though

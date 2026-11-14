@@ -49,8 +49,14 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.exit(0);
 }
 
-// playwright is imported only past the --help guard, so --help answers on a checkout without it.
-const { chromium } = await import('playwright');
+// the browser front door is loaded only past the --help guard, so --help answers on a checkout without it.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
+if (!BROWSER) {
+  console.error('render-harness: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(2);
+}
+const { openBrowser, newPage } = await import(BROWSER.href);
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -80,10 +86,10 @@ async function main() {
   const mainHtml = readMainHtml(contentPath);
   const styles = fs.readFileSync(stylesPath, 'utf8');
 
-  const b = await chromium.launch();
+  const b = await openBrowser({ mode: 'plain' });
   let fail = false;
   try {
-    const p = await b.newPage({ viewport: { width: opts.width, height: 900 }, reducedMotion: 'reduce' });
+    const p = await newPage(b, { viewport: { width: opts.width, height: 900 }, reducedMotion: 'reduce' });
     // body.appear satisfies the stock body{display:none} gate the same way
     // loadEager() does; body > header hidden (sticky headers in tall screenshots).
     await p.setContent(`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0}body > header{display:none}main .section{padding:0}${styles}</style></head><body class="appear"><main>${mainHtml}</main></body></html>`, { waitUntil: 'networkidle' });

@@ -45,7 +45,7 @@ export function dropFailedEntries(harPath) {
 }
 
 /** @param {{ name: string, value: string }[]} list */
-function cleanHeaders(list) {
+export function cleanHeaders(list) {
   /** @type {Record<string, string | string[]>} */
   const headers = {};
   for (const { name, value } of list ?? []) {
@@ -113,6 +113,7 @@ export function loadHarIndex(dir) {
         status: response.status,
         headers: cleanHeaders(response.headers),
         body,
+        file: response.content?._file,
       });
     }
   }

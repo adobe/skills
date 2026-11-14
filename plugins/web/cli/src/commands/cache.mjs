@@ -5,7 +5,9 @@ import { emit } from '#src/output.mjs';
 import { startCacheProxy } from '#src/cache/proxy.mjs';
 import { startHarProxy } from '#src/cache/har-proxy.mjs';
 import { recordPage } from '#src/cache/record.mjs';
-import { createContext } from '#src/context.mjs';
+import { startKeeper } from '#src/cache/keeper.mjs';
+import { createDriver } from '#src/driver/playwright-cli.mjs';
+import { createContext, stepTimeout } from '#src/context.mjs';
 
 const SERVE_HELP = `
 Example:
@@ -26,10 +28,12 @@ Example:
 Output:
   { url, har, entries, dropped, bytes }
 Notes:
-  Loads the page in a browser (recipe and --headed apply), scrolls to trigger lazy content and
+  Loads the page in a browser (recipe and --headed apply; WEB_TIMEOUT bounds the wait for the
+  load event, default 30 s), scrolls to trigger lazy content and
   saves every request to <cache>/<host>_<hash8>.har; failed requests are dropped.
   One URL per call: loop for more. Re-recording a URL replaces its HAR.
-  Once cache proxy has run, the cache directory holds a private key: do not commit it.`;
+  Once cache proxy has run, the cache directory holds a private key: do not commit it.
+  A recipe with a cdpEndpoint records through a remote browser: web doc remote-browser.`;
 
 const PROXY_HELP = `
 Example:
@@ -125,11 +129,14 @@ function registerRecord(group, deps) {
         });
       }
       const ctx = createContext(command, deps);
+      const loadTimeoutMs = stepTimeout(ctx.env);
       const result = recordPage(ctx.driver, {
         url,
         cacheDir: opts.cache,
         headed: Boolean(ctx.opts.headed),
         recipe: ctx.recipe,
+        env: ctx.env,
+        ...(loadTimeoutMs && { loadTimeoutMs }),
       });
       ctx.print(result);
     });
@@ -174,6 +181,35 @@ function registerProxy(group, { stdout, stderr }) {
     });
 }
 
+/** Whether `session` is still open; a failing playwright-cli counts as closed. */
+function sessionChecker(session, outputDir) {
+  return () => {
+    try {
+      const sessions = createDriver({ outputDir }).list();
+      return sessions.some((s) => s.name === session && s.status === 'open');
+    } catch {
+      return false;
+    }
+  };
+}
+
+function registerKeeper(group, { stdout, stderr }) {
+  group
+    .command('keeper', { hidden: true })
+    .description('internal: the session cache keeper started by browser open --cache')
+    .requiredOption('--cache <dir>', 'cache directory')
+    .action(async (opts, command) => {
+      const { session, output } = command.optsWithGlobals();
+      const keeper = await startKeeper({
+        cacheDir: opts.cache,
+        ...(session && { isSessionOpen: sessionChecker(session, output) }),
+        log: (line) => stderr.write(`${line}\n`),
+      });
+      stdout.write(`${JSON.stringify({ port: keeper.port, entries: keeper.entries })}\n`);
+      await waitUntilStopped(keeper);
+    });
+}
+
 /**
  * Register the `cache` group.
  * @param {import('commander').Command} program
@@ -183,8 +219,13 @@ export function registerCache(program, deps = {}) {
   const { stdout = process.stdout, stderr = process.stderr } = deps;
   const group = program
     .command('cache')
-    .description('cache original pages locally for offline replay');
+    .description('cache original pages locally for offline replay')
+    .addHelpText(
+      'after',
+      '\nTo record while browsing, open the session with: web browser open <url> --cache <dir>\n',
+    );
   registerServe(group, { stdout, stderr });
   registerRecord(group, deps);
   registerProxy(group, { stdout, stderr });
+  registerKeeper(group, { stdout, stderr });
 }

@@ -2,7 +2,7 @@
 name: diff
 description: Reconcile a converted/built web page against its source prototype with two complementary probes — a PIXEL/layout diff (stretched images, dropped wraps, blank renders, colour flips) and a STRUCTURAL content+typography diff (dropped/mis-slotted headings, eyebrows, CTAs; rendered-face font forks). Stack-agnostic via profiles (eds | generic). Use after converting a prototype to EDS/AEM (the stardust `deploy` skill Step 10), or for any prototype↔build fidelity check; invocable as the stardust `diff` skill and from workflows.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:diff — prototype ↔ build reconcile
@@ -43,7 +43,8 @@ root carries the `placeholder` / `aria-label` / `title` values and the icons.
 # (never --no-save; extract SKILL.md § Setup). Run the copied scripts from the project
 # root: ESM resolves from the script.
 # Copy the WHOLE skills/diff/scripts/ dir: content-diff imports its local diff-profiles.mjs
-# AND content-inventory.mjs (deploy keeps its own synced copies for #93/#94).
+# AND content-inventory.mjs (deploy keeps its own synced copies for #93/#94), plus the
+# master's scripts/ (browser.mjs, the one entry to the browser) in stardust/scripts/stardust/.
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
 # ONE server, ONE port — probe before starting one (curl is always present, lsof is not):
@@ -69,13 +70,15 @@ carries its root as `[root]`; visual-diff takes one selector, default `main`), c
 `--chrome` / `--no-chrome` (default on — the `header` and `footer` roots, resolved as the first
 `<header>`/`[role=banner]` and `<footer>`/`[role=contentinfo]` outside the main root(s), are
 compared beside it; a side lacking one is measured as empty there and the root line says so),
-plus the live-target set (shared engine: `scripts/live-session.mjs` — every context sends the
-real-Chrome UA **and** the standard Chrome request headers; the UA alone still 403s on
-Akamai-class bot management):
+plus the live-target set (shared engine: `skills/stardust/scripts/live-session.mjs` — real Chrome presents its
+user agent without the headless token and matching client hints; automation-signal handling stays on unless
+`STARDUST_STEALTH=0`; every context sends standard Chrome request headers, and live navigations to one host are paced
+`STARDUST_LIVE_PACE_MS` apart (default 1000), capped by `STARDUST_LIVE_MAX_PARALLEL` (default 2)
+and `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables):
 
-- `--ua <string>` — user agent override (default: real-Chrome desktop UA).
+- `--ua <string>` — user agent override (default: the browser's own with `HeadlessChrome` replaced by `Chrome`).
 - `--wait-until <state>` — goto wait override. Default rule (one shared
-  `defaultWaitUntil` in `scripts/live-session.mjs`), decided **per URL side**, three tiers:
+  `defaultWaitUntil` in `skills/stardust/scripts/live-session.mjs`), decided **per URL side**, three tiers:
   - localhost/127.0.0.1 → `networkidle` (local prototypes / harnesses, unchanged);
   - EDS build/preview origins — hostnames ending in `.aem.page`, `.aem.live`, `.hlx.page`,
     `.hlx.live` → `networkidle` (they decorate asynchronously and reliably reach
@@ -88,7 +91,9 @@ Akamai-class bot management):
 - `--dismiss [sel,...]` — dismiss overlays on both sides: cookie consent (clicked, not
   removed) AND timed marketing/newsletter modals, plus optional extra site-specific
   selectors; the mouse is parked afterwards.
-- `--headed` — escalation for bot-managed sites: headed stealth real Chrome.
+- `--headed` — escalation for bot-managed sites: the same real Chrome plus the challenge-solve
+  window and existing launch flags, window-free; `STARDUST_STEALTH=0` disables the flags and
+  context spoof, while `STARDUST_HEADED_WINDOW=1` opens a window.
 - `--locale <tag>` — pin Accept-Language + context locale (geo-redirecting sites capture a
   different locale per run otherwise).
 
@@ -96,7 +101,7 @@ Akamai-class bot management):
 
 A bot-management challenge/blocked interstitial on either navigation fails LOUD with
 **exit 3** — it is never measured as the source. Escalate with `--headed`; if that is still
-blocked, the site needs crawl.mjs-class capture and the check cannot run headless.
+blocked, the site needs crawl.mjs-class capture and the check cannot run unattended.
 
 A plain (non-challenge) HTTP error on either side — e.g. a **404 build side, normal on
 aem.page before preview propagation** — is NOT fatal: the probe logs a loud warning,
@@ -136,7 +141,7 @@ drill-down drawer. The header's behaviour is recorded from the source once and t
 
 ```bash
 node stardust/scripts/diff/chrome-explore.mjs "$ORIGIN" stardust/chrome/header-contract.json   # 1440 + 390
-node stardust/scripts/diff/chrome-explore.mjs "$SERVED" stardust/chrome/header-build.json
+node stardust/scripts/diff/chrome-explore.mjs "$SERVED" stardust/chrome/header-build.json --max-requests 0 --pace-ms 0 --reload-pause-ms 0   # our host: source-edge protections do not apply
 node stardust/scripts/diff/chrome-compare.mjs stardust/chrome/header-contract.json stardust/chrome/header-build.json \
   --profile replica --json stardust/chrome/header-parity.json    # functional under redesign and reskin
 ```

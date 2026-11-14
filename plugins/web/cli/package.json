@@ -26,14 +26,18 @@
     "commander": "15.0.0"
   },
   "devDependencies": {
+    "@playwright/cli": "0.1.23",
     "esbuild": "0.28.2",
-    "oxfmt": "^0.73.0",
+    "oxfmt": "^0.75.0",
     "oxlint": "^1.88.0"
   },
   "imports": {
     "#src/*": "./src/*"
   },
   "optionalDependencies": {
-    "cld3-asm": "4.0.0"
+    "cld3-asm": "4.0.0",
+    "pixelmatch": "7.2.0",
+    "pngjs": "7.0.0",
+    "sharp": "0.35.5"
   }
 }
