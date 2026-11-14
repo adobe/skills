@@ -13,7 +13,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, rolloutEnded } from '../done-check.mjs';
+import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, readWideTables, rolloutEnded, wideAdvisories } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -169,6 +169,30 @@ check('CLI: a replica project without a header contract is not complete', () => 
   writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'replica' }));
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 1); assert.match(r.stdout, /^header_parity:no contract/m);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('wide_report: an advisory line per wide table that flags a page — printed after the verdict, never a gap; complete and the exit code unchanged', () => {
+  const wide = (w, pages, extra = {}) => ({ _provenance: { wide: true, breakpoint: w }, totals: { overThreshold: pages.length }, wide: { line: 'x', pages: pages.map((slug) => ({ slug })) }, ...extra });
+  assert.deepEqual(wideAdvisories([wide(2560, ['home', 'about']), wide(1920, [])]), ['wide_report:2: 2560px — home, about']);
+  assert.deepEqual(wideAdvisories([{ _provenance: { wide: true, breakpoint: 2560 }, totals: { overThreshold: 3 } }]), ['wide_report:3: 2560px'], 'a table from before the flagged list: its count');
+  assert.deepEqual(wideAdvisories([{ _provenance: { breakpoint: 1440 }, totals: { overThreshold: 3 } }, null]), [], 'not a wide table');
+  assert.deepEqual(wideAdvisories(), []);
+  const proj = project();
+  let r = run(proj, ['--offline']);
+  assert.equal(r.status, 0); assert.doesNotMatch(r.stdout, /wide_report/, 'no wide report: no line');
+  assert.deepEqual(readWideTables(join(proj, 'stardust/replica/gates')), []);
+  mkdirSync(join(proj, 'stardust/replica/gates/wide-2560'), { recursive: true });
+  writeFileSync(join(proj, 'stardust/replica/gates/wide-2560/summary.json'), JSON.stringify(wide(2560, ['home', 'about'])));
+  r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, 'the advisory does not change the verdict');
+  assert.match(r.stdout, /^✓ complete \(live probe skipped: --offline\)\nwide_report:2: 2560px — home, about$/m);
+  const j = JSON.parse(run(proj, ['--offline', '--json']).stdout);
+  assert.deepEqual([j.complete, j.gaps, j.advisories], [true, [], ['wide_report:2: 2560px — home, about']]);
+  writeFileSync(join(proj, 'stardust/replica/gates/wide-2560/summary.json'), JSON.stringify(wide(2560, [])));
+  r = run(proj, ['--offline', '--json']);
+  assert.equal('advisories' in JSON.parse(r.stdout), false, 'nothing flagged: the JSON is as it was');
+  assert.match(run(proj, ['--help']).stdout, /wide_report:N/);
   rmSync(proj, { recursive: true, force: true });
 });
 

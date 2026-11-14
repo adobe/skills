@@ -4,7 +4,8 @@
  * wrote, so "done" is computed once instead of re-derived by every reader.
  *
  * Usage: node stardust/scripts/rollout/done-check.mjs [--out stardust/rollout] [--ledger stardust/status.jsonl]
- *          [--live-host <host> | --offline] [--chrome stardust/chrome] [--state stardust/state.json] [--json]
+ *          [--live-host <host> | --offline] [--chrome stardust/chrome] [--state stardust/state.json]
+ *          [--gates stardust/replica/gates] [--json]
  *   --out        rollout dir (default stardust/rollout): coverage/pages.json, optimize/findings.json, rollout.json
  *   --ledger     run-status ledger (default stardust/status.jsonl)
  *   --live-host  aem.live host or origin the delivered pages must answer 200 on (default rollout.json site.liveHost)
@@ -24,9 +25,13 @@
  *                                  short of a contract width, not run on the live host, or has undecided errors
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  *
+ * Advisory, after the verdict line — never a gap, the verdict and the exit code do not read it:
+ *   wide_report:N: <w>px — <slugs>   N pages the wide report (replica's gate-all.mjs --wide, <gates>/wide-<w>/summary.json)
+ *                                  flags as over its threshold or off in height; --json: `advisories` [..]
+ *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline).
  */
-import { readFileSync, existsSync, realpathSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJSON, isSourceParity, publicUrl, scopeLine } from './lib.mjs';
@@ -89,6 +94,27 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null };
 }
 
+/**
+ * The wide report's advisory lines, one per wide table that flags a page: `wide_report:N: <w>px — <slugs>`.
+ * `tables` = the parsed <gates>/wide-<w>/summary.json files. Information for the operator: never a gap.
+ */
+export function wideAdvisories(tables = []) {
+  const lines = [];
+  for (const t of tables) {
+    if (!t || !t._provenance || !t._provenance.wide) continue;
+    const pages = t.wide && Array.isArray(t.wide.pages) ? t.wide.pages.map((p) => p.slug) : null;
+    const n = pages ? pages.length : Number((t.totals || {}).overThreshold) || 0; // a table from before the flagged list: its count
+    if (n) lines.push(`wide_report:${n}: ${t._provenance.breakpoint}px${pages ? ` — ${listed(pages)}` : ''}`);
+  }
+  return lines;
+}
+/** The wide tables under a gates dir (none when the dir or the report is absent). */
+export function readWideTables(gates) {
+  let names = [];
+  try { names = readdirSync(gates).filter((n) => /^wide-\d+$/.test(n)).sort((a, b) => Number(a.slice(5)) - Number(b.slice(5))); } catch { return []; }
+  return names.map((n) => readJSON(join(gates, n, 'summary.json'))).filter(Boolean);
+}
+
 /** HEAD each path on the live host; returns the paths that do not answer 200. */
 export async function probeLive(host, paths, { fetchImpl = fetch, concurrency = 8 } = {}) {
   const origin = /^https?:\/\//.test(host) ? host.replace(/\/$/, '') : `https://${host}`;
@@ -138,13 +164,16 @@ async function main() {
   const chrome = arg('chrome', 'stardust/chrome');
   const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
   const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header });
+  const advisories = wideAdvisories(readWideTables(arg('gates', 'stardust/replica/gates')));
 
-  if (JSON_OUT) console.log(JSON.stringify(config.scope ? { ...verdict, scope: config.scope } : verdict));
+  if (JSON_OUT) console.log(JSON.stringify({ ...verdict, ...(config.scope ? { scope: config.scope } : {}), ...(advisories.length ? { advisories } : {}) }));
   else {
     for (const g of verdict.gaps) console.log(g);
     console.log(`${verdict.complete ? '✓ complete' : `✗ ${verdict.gaps.length} gap(s)`}${verdict.liveChecked ? '' : ' (live probe skipped: --offline)'}`);
     // "complete" is about the roster; a subset roster says so on the verdict
     if (config.scope) console.log(`scope: ${scopeLine(config.scope)}`);
+    // advisory: the wide report's flagged pages — printed for the operator, not a gap
+    for (const a of advisories) console.log(a);
   }
   process.exit(verdict.complete ? 0 : 1);
 }

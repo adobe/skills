@@ -11,7 +11,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CAP, decide, emptyLedger, kindOf, mayRun, reconstruct, record, stageOfVerdict, tally, verdictOf } from '../rounds.mjs';
+import { CAP, STAGES, countAll, decide, emptyLedger, kindOf, mayRun, reconstruct, record, stageOfVerdict, tally, verdictOf } from '../rounds.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const scripts = join(here, '..');
@@ -108,6 +108,27 @@ check('reconstruction: prototype rounds in `at` order, the no-verdict and unread
 check('reconstruction: pub* labels form the published stage', kinds('published') === 'pub1:first pub2:fix', kinds('published'));
 check('reconstruction: counts — 5 counted (4 fix), 1 confirmation, over the cap by 2', (() => { const t = tally(R, 'prototype'); return t.counted === 5 && t.fix === 4 && t.confirm === 1 && t.over === 2; })());
 check('reconstruction marks the ledger', typeof R.reconstructed === 'string');
+// local-build: the third stage (a local build that is not the prototype) — its own budget, read from the verdict file
+check('STAGES: prototype, local-build, published', STAGES.join() === 'prototype,local-build,published');
+check('stageOfVerdict: a verdict file that says local-build is that stage whatever its label or probes; without a stage the old rule stands (never local-build)',
+  stageOfVerdict('eds1', { ...V(), stage: 'local-build' }) === 'local-build' && stageOfVerdict('pub1', { ...V(), stage: 'local-build', probes: { 'content-presence': { rc: 0 } } }) === 'local-build'
+  && stageOfVerdict('eds1', V()) === 'prototype');
+{
+  const X = emptyLedger();
+  for (const l of ['iter1', 'iter2', 'iter3']) record(X, 'prototype', l, 'fail');
+  check('local-build rounds are counted apart from the prototype rounds of the same gate dir', !mayRun(X, 'prototype').ok && mayRun(X, 'local-build').ok && tally(X, 'local-build').counted === 0);
+  for (const l of ['eds1', 'eds2', 'eds3']) record(X, 'local-build', l, 'fail');
+  check('local-build is capped on its own: three counted rounds, then refused; prototype and published unchanged', !mayRun(X, 'local-build').ok && mayRun(X, 'local-build').why === 'cap' && tally(X, 'local-build').counted === CAP && tally(X, 'prototype').counted === CAP && mayRun(X, 'published').ok);
+  check('decisions apply to local-build: accept-residual closes it alone', !decide(X, 'local-build', 'accept-residual', 'logged', []).error && mayRun(X, 'local-build').why === 'closed' && mayRun(X, 'prototype').why === 'cap');
+  decide(X, 'published', 're-prototype', 'rebuilt', []);
+  check('re-prototype starts every stage again, local-build included', mayRun(X, 'local-build').ok && tally(X, 'local-build').rounds === 0 && X.history[0].stages['local-build'].rounds.length === 3);
+}
+const ldir = gateDir('lb-1440');
+for (const [l, n, o] of [['iter1', 1, { stage: 'prototype', pixel: { rc: 2 } }], ['eds1', 2, { stage: 'local-build', pixel: { rc: 2 } }], ['eds2', 3, { stage: 'local-build', pixel: { rc: 2 } }], ['iter2', 4, { stage: 'prototype' }], ['eds3', 5, { stage: 'local-build' }], ['eds4', 6, { stage: 'local-build' }], ['pub1', 7, { stage: 'published' }]]) writeFileSync(join(ldir, `verdict-${l}.json`), JSON.stringify(V({ round: l, at: at(n), ...o })));
+const LR = reconstruct(ldir);
+check('reconstruction reads local-build from the verdict files: its rounds apart from the prototype\'s, kinds from its own order',
+  LR.stages['local-build'].rounds.map((x) => `${x.label}:${x.kind}`).join(' ') === 'eds1:first eds2:fix eds3:fix eds4:confirm' && LR.stages.prototype.rounds.map((x) => x.label).join() === 'iter1,iter2' && LR.stages.published.rounds.length === 1, JSON.stringify(LR.stages));
+check('countAll: a row per stage with rounds, local-build among them', countAll(join(root, 'stardust/replica/gates')).filter((x) => x.dir === 'lb-1440').map((x) => `${x.stage}:${x.counted}`).join() === 'prototype:2,local-build:3,published:1');
 check('reconstruction of a dir without verdict files is an empty ledger', Object.keys(reconstruct(gateDir('empty-360')).stages).length === 0);
 
 // ── CLI ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -143,6 +164,13 @@ check('first + two fix rounds run', step(d1440, 'iter1', 'fail') === 0 && step(d
 check('the next fix round is refused with exit 6', step(d1440, 'iter4', 'fail') === 6 && read(d1440).stages.prototype.rounds.length === 3);
 check('a no-verdict round (check, no record) is not counted', (() => { cli(['check', d360, '--stage', 'prototype', '--label', 'iter1']); return read(d360).stages.prototype === undefined; })());
 check('the other width has its own budget', step(d360, 'iter1', 'fail') === 0 && read(d360).stages.prototype.rounds.length === 1);
+check('the local-build stage has its own budget (check / record), capped at three counted rounds, and status / decide take it', (() => {
+  const ran = [step(d1440, 'eds1', 'fail', 'local-build'), step(d1440, 'eds2', 'fail', 'local-build'), step(d1440, 'eds3', 'fail', 'local-build'), step(d1440, 'eds4', 'fail', 'local-build')].join();
+  const st = cli(['status', d1440]); const js = JSON.parse(cli(['status', d1440, '--json']).stdout);
+  const dec = cli(['decide', d1440, '--stage', 'local-build', '--decision', 'accept-residual', '--reason', 'the harness serves no fonts']);
+  return ran === '0,0,0,6' && read(d1440).stages['local-build'].rounds.length === 3 && read(d1440).stages.prototype.rounds.length === 3
+    && /news-1440 local-build — 3 of 3 counted rounds.*cap reached/.test(st.stdout) && js.tally['local-build'].counted === 3 && dec.status === 0 && read(d1440).stages['local-build'].decisions.length === 1;
+})());
 check('the published stage has its own budget', step(d1440, 'pub1', 'fail', 'published') === 0 && step(d1440, 'pub2', 'pass', 'published') === 0 && step(d1440, 'pub3', 'pass', 'published') === 0 && read(d1440).stages.published.rounds.map((x) => x.kind).join() === 'first,fix,confirm');
 r = cli(['decide', d1440, '--stage', 'prototype', '--decision', 'extend', '--reason', 'felt wrong']);
 check('decide extend without evidence: exit 1, nothing recorded', r.status === 1 && read(d1440).stages.prototype.decisions.length === 0, r.stderr);
@@ -219,6 +247,8 @@ check('gate.sh: the round after the cap exits 6 with the decide command on stder
 check('… before any work: no instrument started, the build URL not fetched, no evidence written', callCount() === before.calls && hits === before.hits && readdirSync(wdir).sort().join() === before.files);
 r = await gate('pub1', { STUB_PIXEL_RC: '0', GATE_REGIME: 'published' });
 check('gate.sh: the published stage runs and records apart (PASS)', r.status === 0 && stageRounds('published').map((x) => `${x.verdict}:${x.kind}`).join() === 'pass:first' && stageRounds().length === 3, `status ${r.status} ${r.stderr}`);
+r = await gate('eds1', { STUB_PIXEL_RC: '2', GATE_REGIME: 'local-build' });
+check('gate.sh: a local-build round runs and records apart although the prototype stage is at its cap', r.status === 2 && stageRounds('local-build').map((x) => `${x.label}:${x.verdict}:${x.kind}`).join() === 'eds1:fail:first' && stageRounds().length === 3 && JSON.parse(readFileSync(join(wdir, 'verdict-eds1.json'), 'utf8')).stage === 'local-build', `status ${r.status} ${r.stderr}`);
 r = await gate('iter4', { STUB_PIXEL_RC: '0', STARDUST_ROUND_CAP: '0' });
 check('gate.sh: STARDUST_ROUND_CAP=0 runs the round and still records it', r.status === 0 && stageRounds().length === 4 && /cap check off/.test(r.stdout), `status ${r.status} ${r.stderr}`);
 r = await gate('confirm', { STUB_PIXEL_RC: '0' });

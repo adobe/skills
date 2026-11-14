@@ -47,12 +47,28 @@
 #   --gate-against-baseline   accepted, a no-op: the frozen reference is the default (it overrides
 #            GATE_REFERENCE=live for the round).
 #
+#   Settings: a usable reference whose recorded capture settings (baseline.json `flags`: --consent, --dismiss,
+#   --no-dismiss, --locale; no --locale = en-US) differ from this round's is deleted and frozen again under this
+#   round's flags, one line: `gate.sh: reference: re-frozen — capture settings changed (consent, locale)` — the
+#   freeze is never a round (the round that follows counts as any other; an UNSTABLE re-freeze is exit 5, nothing
+#   frozen). One frozen without recorded flags (an older reference.mjs or stitch-shot --freeze-baseline) is reused:
+#   `gate.sh: reference: reused — settings not recorded`.
+#
+# Stage (the round's budget, its pixel bound and its probes; written to verdict-<label>.json `stage`):
+#   prototype    the build URL is local (http://localhost*, http://127.0.0.1*, file:*) AND its path ends in
+#                -proposed.html (stardust/prototypes/<slug>-proposed.html), or GATE_REGIME=prototype
+#   local-build  the build URL is local and anything else — a local preview of the delivered build (a dev server,
+#                a harness) — or GATE_REGIME=local-build. Its own round budget (rounds.mjs, same cap), the
+#                prototype stage's offset bound (8 px) and --full probes (no content-presence); unit-geometry
+#                reads the delivered block's selector (its --stage published)
+#   published    any other build URL, or GATE_REGIME=published
+#
 # Pixel criterion (pixel-compare.mjs --offset-max owns the rule; its --help):
 #   pixel-compare runs with --align: beside the overlap number (B laid on A from the top-left, so a
 #   5 px shift near the top read 13.7 %) it finds the vertical offset steps between the two captures
 #   and counts again. The criterion passes when
 #       aligned % ≤ threshold (10)   AND   total offset (the sum of |step|) ≤ GATE_OFFSET_MAX_PX
-#   GATE_OFFSET_MAX_PX defaults to 8 in the prototype regime and, in the published regime, to the larger
+#   GATE_OFFSET_MAX_PX defaults to 8 in the prototype and local-build stages and, in the published one, to the larger
 #   of 8 and 1 % of the origin height. Aligned % within the threshold but offsets over the bound → FAIL
 #   with `offsets: 3 step(s), 37px total — −5px at y=103, −20px at y=2125, …`, never a percentage: the
 #   steps are the fix list, every one in ONE round (at most 6 printed, then `… N more`; all of them in
@@ -98,9 +114,7 @@
 #            (header/footer deltas, live side cached), clip-probe on the BUILD side
 #            (text / controls cut or hidden by an overflow ancestor — no live hit;
 #            #125, a fixed-height card clipped every link on a pixel-PASS page),
-#            content-presence live vs build in the PUBLISHED regime only (a build URL
-#            that is not localhost / 127.0.0.1 / file:; GATE_REGIME=published|prototype
-#            overrides), and unit-geometry when stardust/replica/units.json declares a
+#            content-presence live vs build in the PUBLISHED stage only (§ Stage), and unit-geometry when stardust/replica/units.json declares a
 #            repeated-unit family for the slug — and only their verdict lines are
 #            printed. Evidence per probe lands next to the pixel evidence:
 #            content-diff-<label>.txt, visual-diff-<label>.txt + vdiff-<label>/,
@@ -166,8 +180,7 @@
 # see below), 125 unknown argument (usage), 6 round refused by the cap.
 #
 # Round cap (source-fidelity-gate.md § Iteration discipline): before any other work
-#   `rounds.mjs check` reads <evidence dir>/rounds.json for this stage (prototype | published
-#   — the regime rule under --full, GATE_REGIME overrides); at the cap, or after a recorded
+#   `rounds.mjs check` reads <evidence dir>/rounds.json for this stage (§ Stage); at the cap, or after a recorded
 #   decision closed the triple, the round ends with rounds.mjs's one line on stderr (it names
 #   the `rounds.mjs decide` command) and exit 6 — no curl, no capture. A round that ends with
 #   a verdict (exit 0 or 2) is recorded by `rounds.mjs record`; 1, 3, 4, 5, 124 and 125 never are.
@@ -193,8 +206,11 @@
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
 #   GATE_PROBE_TIMEOUT   seconds per --full probe          (default 300)
 #   GATE_REFERENCE_TIMEOUT  seconds for one reference freeze (default 3 × GATE_STITCH_TIMEOUT + 3 × GATE_COMPARE_TIMEOUT)
-#   GATE_OFFSET_MAX_PX   px of total offset the pixel criterion allows (default: 8 prototype; published the
-#                        larger of 8 and 1 % of the origin height)
+#   GATE_OFFSET_MAX_PX   px of total offset the pixel criterion allows (default: 8 prototype and local-build;
+#                        published the larger of 8 and 1 % of the origin height)
+#   GATE_FONT_SUBST      "<brand>=<substitute>[,…]" for chrome-parity (default: the lines of stardust/replica/font-subst.txt)
+#   GATE_CHROME_REGION   "header=<liveSel>|<buildSel>[;footer=…]" when chrome-parity cannot resolve a region (its exit 4)
+#   GATE_REGIME          prototype | local-build | published — the stage, whatever the build URL (§ Stage)
 #   GATE_REFERENCE       live = every round gates against a live capture (--live-origin); default frozen
 set -u
 
@@ -258,6 +274,11 @@ else
 fi
 # --locale reaches the reference, both captures and every probe (they all take the flag).
 if [ -n "$LOCALE" ]; then STITCH_OPTS+=(--locale "$LOCALE"); PROBE_OPTS+=(--locale "$LOCALE"); CHROME_OPTS+=(--locale "$LOCALE"); fi
+# chrome-parity only: the declared font substitutions (one <brand>=<substitute> per line) and region overrides.
+PARITY_OPTS=()
+FONT_SUBST=${GATE_FONT_SUBST:-$( [ -f stardust/replica/font-subst.txt ] && grep -vE '^[[:space:]]*(#|$)' stardust/replica/font-subst.txt | paste -sd, - )}
+[ -n "$FONT_SUBST" ] && PARITY_OPTS+=(--font-subst "$FONT_SUBST")
+if [ -n "${GATE_CHROME_REGION:-}" ]; then IFS=';' read -r -a _regions <<< "$GATE_CHROME_REGION"; for _r in "${_regions[@]}"; do PARITY_OPTS+=(--region "$_r"); done; fi
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
@@ -271,11 +292,18 @@ OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
 case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
 case "${GATE_OFFSET_MAX_PX:-}" in *[!0-9]*) echo "gate.sh: GATE_OFFSET_MAX_PX must be a whole number of px (got '$GATE_OFFSET_MAX_PX')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
-# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
+# Stage (header § Stage): a local build URL whose path ends in -proposed.html = prototype, any other local build URL =
+# local-build, else published; GATE_REGIME overrides. The path is the URL without its query and fragment.
 case "${GATE_REGIME:-auto}" in
-  prototype|published) REGIME=$GATE_REGIME ;;
-  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
+  prototype|local-build|published) REGIME=$GATE_REGIME ;;
+  *) case "$BUILD_URL" in
+       http://localhost*|http://127.0.0.1*|file:*) case "${BUILD_URL%%[?#]*}" in *-proposed.html) REGIME=prototype ;; *) REGIME=local-build ;; esac ;;
+       *) REGIME=published ;;
+     esac ;;
 esac
+# What the two-stage instruments take: pixel-compare's --offset-max bound (local-build = the prototype's 8 px) and
+# unit-geometry's served-side selector (local-build serves the delivered blocks = published).
+case "$REGIME" in local-build) OFFSET_STAGE=prototype; UNIT_STAGE=published ;; *) OFFSET_STAGE=$REGIME; UNIT_STAGE=$REGIME ;; esac
 # Round cap (header § Round cap): check before anything is reaped, fetched or captured, so a refused round costs
 # one node start; record on exit, only for a round that reached a verdict (ROUND_VERDICT) and exits 0 or 2.
 ROUND_VERDICT=0
@@ -303,6 +331,17 @@ fi
 if [ "$BASELINE" = 1 ]; then
   ORIGIN=frozen
   if BASE_AT=$(node "$HERE/stitch-shot.mjs" baseline "$DIR" --url "$LIVE_URL" --width "$W"); then HAVE_BASE=1; fi
+fi
+# Capture settings (header § Origin reference, Settings): `reference.mjs settings <dir> <this round's flags>` answers
+# `same`, `changed: <names>` or `not recorded`. Changed → the reference is frozen again below (REFREEZE names what
+# changed); an older reference.mjs without the subcommand answers nothing and the reference is reused as before.
+REFREEZE=""
+if [ "$HAVE_BASE" = 1 ]; then
+  SETTINGS=$(node "$HERE/reference.mjs" settings "$DIR" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} 2>/dev/null | tail -1)
+  case "$SETTINGS" in
+    "changed: "*) REFREEZE=${SETTINGS#changed: }; HAVE_BASE=0 ;;
+    "not recorded") echo "gate.sh: reference: reused — settings not recorded (frozen by an older version: delete $DIR/baseline.json to freeze it under this round's flags)" ;;
+  esac
 fi
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 # One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
@@ -400,14 +439,21 @@ fi
 # retaken with one line, its records removed with it; a live.png with no live.json is a live capture — reused only
 # when live.capture.json records fixedLayers, else retaken (below).
 if [ "$BASELINE" = 1 ] && [ "$HAVE_BASE" = 0 ]; then
-  echo "gate.sh: no usable frozen reference for $SLUG@$W (${BASE_AT:-none}) — freezing one: a priming capture, then two kept (reference.mjs freeze)"
+  if [ -n "$REFREEZE" ]; then
+    # the reference of other settings goes first, with what was derived from it: an unstable or failed re-freeze
+    # leaves none, never the old one to gate against
+    rm -f "$DIR/baseline.png" "$DIR/baseline.json" "$DIR/chrome-live.json"
+  else
+    echo "gate.sh: no usable frozen reference for $SLUG@$W (${BASE_AT:-none}) — freezing one: a priming capture, then two kept (reference.mjs freeze)"
+  fi
   REF_LINE="$DIR/reference-freeze.txt"
   freeze_ref() { capped "$REF_TIMEOUT" "reference freeze $SLUG@$W" node "$HERE/reference.mjs" freeze "$LIVE_URL" "$DIR" --width "$W" --timeout "$STITCH_TIMEOUT" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} > "$REF_LINE"; }
   retry_once "reference freeze" freeze_ref
   rc=$?
   WHY=$(grep -E '^reference:' "$REF_LINE" 2>/dev/null | tail -1)
   case "$rc" in
-    0) echo "gate.sh: ${WHY:-reference: frozen}" ;;
+    0) [ -n "$REFREEZE" ] && echo "gate.sh: reference: re-frozen — capture settings changed ($REFREEZE)"
+       echo "gate.sh: ${WHY:-reference: frozen}" ;;
     2) echo "gate.sh: ${WHY:-reference: UNSTABLE; not frozen}" >&2
        echo "gate.sh: REFERENCE UNSTABLE (exit 5) — the live page is not one page from capture to capture, so no build could meet it: NO VERDICT, the round is not counted. Pin the page's state and re-run — overlay flags (--consent <sel> / --dismiss <sel,…>), --locale <tag> — or read $DIR/reference-unstable.json (+ ref-*.png) and, when the variation is the page's own, freeze it anyway: node $HERE/reference.mjs freeze \"$LIVE_URL\" $DIR --width $W --force" >&2
        exit 5 ;;
@@ -488,7 +534,7 @@ ALL_MASK="${MASK}${MASK:+${REF_MASK:+,}}${REF_MASK}"
 MASK_OPTS=(); [ -n "$ALL_MASK" ] && MASK_OPTS=(--mask "$ALL_MASK")
 PXJ="$DIR/pixel-$LBL.json"; rm -f "$PXJ" "$DIR/verdict-$LBL.json"
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT" \
-  --offset-max "${GATE_OFFSET_MAX_PX:-$REGIME}" --json-out "$PXJ" ${MASK_OPTS[@]+"${MASK_OPTS[@]}"}
+  --offset-max "${GATE_OFFSET_MAX_PX:-$OFFSET_STAGE}" --json-out "$PXJ" ${MASK_OPTS[@]+"${MASK_OPTS[@]}"}
 PIXEL_RC=$?
 # What the round was gated against, in one line: the frozen reference with its noise floor and the rows it excludes,
 # or the live capture of an opted-out round.
@@ -573,7 +619,7 @@ capped "$PROBE_TIMEOUT" "visual-diff $SLUG@$W" node "$DIFF/visual-diff.mjs" "$LI
   --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} --out "$DIR/vdiff-$LBL" > "$VD" 2>&1 &
 P_VD=$!
 capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --width "$W" --live-cache "$DIR/chrome-live.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$CP" 2>&1 &
+  --width "$W" --live-cache "$DIR/chrome-live.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} ${PARITY_OPTS[@]+"${PARITY_OPTS[@]}"} > "$CP" 2>&1 &
 P_CP=$!
 # clip-probe on the BUILD side (every regime, no live hit); content-presence live vs build in the published regime;
 # unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0).
@@ -585,7 +631,7 @@ if [ "$REGIME" = published ]; then
   P_PR=$!
 fi
 if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
-  capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --stage "$REGIME" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$UG" 2>&1 &
+  capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --stage "$UNIT_STAGE" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$UG" 2>&1 &
   P_UG=$!
 fi
 wait $P_CD; RC_CD=$?
@@ -599,6 +645,7 @@ verdict() { # $1 rc, $2 label, $3 line
   case "$1" in
     0|2) echo "$2: $3" ;;
     124) echo "$2: DEADLINE (exit 124) — re-run, not a verdict" ;;
+    4) echo "$2: NO VERDICT (exit 4) — $3 (GATE_CHROME_REGION names it)" ;;
     3) echo "$2: BLOCKED (exit 3) — bot challenge or 2xx denial page on the live side, escalate --headed" ;;
     *) echo "$2: ERROR (exit $1) — $(grep -iE 'error' "$4" | head -1 | cut -c1-160)" ;;
   esac
@@ -611,7 +658,7 @@ LOST=$(printf '%s' "$TIERS" | grep -oE 'nothing-lost 🟡 [0-9]+' | grep -oE '[0
 verdict "$RC_CD" "content-diff" "${FINDINGS:-no findings line}${TIERS:+ — ${TIERS#Tiers: }}" "$CD"
 FLAGS=$(awk '/red flags \(advisory\)/{f=1;next} f&&/^[[:space:]]*•/{n++} f&&/^Full metrics/{exit} END{print n+0}' "$VD")
 verdict "$RC_VD" "visual-diff" "$FLAGS advisory flag(s) — $(awk '/red flags \(advisory\)/{f=1;next} f&&/^[[:space:]]*•/{sub(/^[[:space:]]*• /,""); printf "%s; ", substr($0,1,60)} f&&/^Full metrics/{exit}' "$VD")" "$VD"
-CHROME=$(grep -E '^(✗|✓)' "$CP" | tail -1 | cut -c1-120)
+CHROME=$(grep -E '^(✗|✓|⚠)' "$CP" | tail -1 | cut -c1-200)
 verdict "$RC_CP" "chrome-parity" "${CHROME:-no summary line}" "$CP"
 CLIPPED=$(grep -E '^Clipped:' "$CL" | head -1 | cut -c1-160)
 verdict "$RC_CL" "clip-probe" "${CLIPPED:-no Clipped line}" "$CL"

@@ -9,8 +9,9 @@
  *
  * Definition
  *   round   one gate invocation that ended with a verdict (gate.sh exit 0 or 2) for a
- *           (slug, width, stage) triple; stage = prototype (a local / served prototype build URL)
- *           or published (a deployed origin). A round without a verdict — deadline 124, capture
+ *           (slug, width, stage) triple; stage = prototype (the served prototype), local-build (any
+ *           other local build URL: a local preview of the delivered build) or published (a deployed
+ *           origin) — gate.sh decides it (its --help § Stage); each stage has its own budget. A round without a verdict — deadline 124, capture
  *           error 1 after the retry, bot challenge 3, identity 4 — is never recorded.
  *   kind    first    the triple's first verdict round (the map)
  *           confirm  a PASS directly after a PASS — not counted
@@ -19,7 +20,7 @@
  *           free. At the cap the next round is refused (exit 6) unless the last round passed (the
  *           round would be its confirmation) or a decision is recorded:
  *           accept-residual                  closes the triple — every later round exits 6
- *           re-prototype                     once per gate dir: both stages start again (spent rounds kept in `history`)
+ *           re-prototype                     once per gate dir: every stage starts again (spent rounds kept in `history`)
  *           extend                           ONE more counted round; only at the cap, and the
  *                                            reason must name an evidence file in the gate dir
  *                                            (the instrument defect that spent a round)
@@ -33,7 +34,7 @@
  *   node stardust/scripts/replica/rounds.mjs count  <gates-root> [--json]
  *
  *   <gate-dir>    stardust/replica/gates/<slug>-<width>   <gates-root>  stardust/replica/gates
- *   --stage       prototype | published
+ *   --stage       prototype | local-build | published
  *   check   exit 0 and one line when the round may run; exit 6 and one line on stderr naming the
  *           count and the two ways forward when it may not. Writes the ledger when there is none.
  *   record  appends { label, at, verdict, kind } for the stage; prints the new count.
@@ -47,7 +48,7 @@
  * Reconstruction (a gate dir with no readable rounds.json): the verdict-<label>.json files are
  * the rounds, ordered by their `at` (file mtime when absent). Before gate.sh wrote one for every
  * round only `--full` rounds left one, so pixel-only rounds of that past are not counted. Stage =
- * the file's `stage` when it has one; else published when the label starts with `pub` or the file
+ * the file's `stage` when it has one (prototype, local-build or published); else published when the label starts with `pub` or the file
  * carries a content-presence probe (gate.sh runs it in the published regime only), else prototype. Verdict as gate.sh exits: none (not counted) on any exit 124, a pixel
  * exit other than 0 / 2 or a probe exit other than 0 / 2; fail on pixel 2, structural or
  * nothing-lost > 0, or exit 2 from chrome-parity, clip-probe, content-presence or unit-geometry;
@@ -67,7 +68,7 @@ import { fileURLToPath } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
 export const CAP = 3;
-export const STAGES = ['prototype', 'published'];
+export const STAGES = ['prototype', 'local-build', 'published'];
 /** gate-all's published measurements: recorded beside the gate.sh stages, counted, never capped by `check` — its verdict is not gate.sh's. */
 export const ROSTER_STAGE = 'all-pages';
 export const DECISIONS = ['accept-residual', 're-prototype', 'extend'];
@@ -121,7 +122,7 @@ export function verdictOf(v) {
   return fail ? 'fail' : 'pass';
 }
 
-export const stageOfVerdict = (label, v) => (['published', 'prototype'].includes(v?.stage) ? v.stage : /^pub/i.test(label) || Boolean(v?.probes?.['content-presence']) ? 'published' : 'prototype');
+export const stageOfVerdict = (label, v) => (STAGES.includes(v?.stage) ? v.stage : /^pub/i.test(label) || Boolean(v?.probes?.['content-presence']) ? 'published' : 'prototype');
 
 /** Rebuild a ledger from the verdict-*.json files of a gate dir (header § Reconstruction). `skipLabel`: this round's own file. */
 export function reconstruct(dir, { skipLabel = null } = {}) {
@@ -192,7 +193,7 @@ export function decide(ledger, stage, decision, reason, files = [], at = new Dat
   const check = mayRun(ledger, stage);
   if (check.t.closed) return { error: `${stage} is already closed (${check.t.closed.decision})` };
   if (decision === 're-prototype') {
-    // The rebuilt prototype is a new page to gate: both stages start again, once per gate dir; the spent rounds stay in `history`.
+    // The rebuilt prototype is a new page to gate: every stage starts again, once per gate dir; the spent rounds stay in `history`.
     if ((ledger.history || []).length) return { error: 'this page was already re-prototyped once — accept-residual is the remaining decision' };
     const entry = { decision, reason: reason.trim(), at, counted: check.t.counted, stage };
     (ledger.history ||= []).push({ stages: ledger.stages, decision: entry });
@@ -272,8 +273,8 @@ export function main(argv, env = process.env) {
     if (flags.json) { console.log(JSON.stringify(rows, null, 2)); return 0; }
     if (!rows.length) { console.log(`rounds: no gate dir with rounds under ${target}`); return 0; }
     const w = Math.max(8, ...rows.map((r) => r.dir.length));
-    console.log(`${'gate dir'.padEnd(w)}  stage      rounds counted fix confirm cap over  decision  source`);
-    for (const r of rows) console.log(`${r.dir.padEnd(w)}  ${r.stage.padEnd(9)}  ${String(r.rounds).padStart(6)} ${String(r.counted).padStart(7)} ${String(r.fix).padStart(3)} ${String(r.confirm).padStart(7)} ${String(r.allowance).padStart(3)} ${String(r.over).padStart(4)}  ${(r.decision || '-').padEnd(8)}  ${r.source}`);
+    console.log(`${'gate dir'.padEnd(w)}  ${'stage'.padEnd(11)}  rounds counted fix confirm cap over  decision  source`);
+    for (const r of rows) console.log(`${r.dir.padEnd(w)}  ${r.stage.padEnd(11)}  ${String(r.rounds).padStart(6)} ${String(r.counted).padStart(7)} ${String(r.fix).padStart(3)} ${String(r.confirm).padStart(7)} ${String(r.allowance).padStart(3)} ${String(r.over).padStart(4)}  ${(r.decision || '-').padEnd(8)}  ${r.source}`);
     const over = rows.filter((r) => r.over > 0);
     console.log(`rounds: ${rows.length} (gate dir, stage) row(s); ${over.length} over the cap`);
     return 0;
@@ -328,7 +329,7 @@ export function main(argv, env = process.env) {
   const { error, entry } = decide(ledger, stage, decision, reason, files);
   if (error) { console.error(`rounds: ${name} ${stage} — ${error}`); return 1; }
   save(target, ledger);
-  console.log(`rounds: ${name} ${stage} — decision ${entry.decision} recorded after ${entry.counted} counted round(s): ${decision === 'extend' ? 'one more counted round may run' : decision === 're-prototype' ? 'both stages start again for the rebuilt prototype' : 'closed — no further round'}`);
+  console.log(`rounds: ${name} ${stage} — decision ${entry.decision} recorded after ${entry.counted} counted round(s): ${decision === 'extend' ? 'one more counted round may run' : decision === 're-prototype' ? 'every stage starts again for the rebuilt prototype' : 'closed — no further round'}`);
   return 0;
 }
 

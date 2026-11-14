@@ -147,9 +147,8 @@ The prototype capture is re-taken every iteration.
    transform / colour / background (the painted one) / padding / radius,
    the element rect, the clickable box of links and buttons, and the icon
    inventory (count + size, paired by order; the same pixels are the same
-   icon). A page with no `<header>` gets its top bar auto-detected (the line
-   names it); a region moved as one block by the page above is one advisory
-   OFFSET line. Fix every delta, re-run until it is quiet (exit 0), THEN
+   icon). Header and footer resolve by landmark (printed per side; unresolved
+   = exit 4, no verdict); `advisory` lines never fail. Fix every delta, re-run until it is quiet (exit 0), THEN
    crop-compare — a pixel loop on chrome with parity deltas outstanding is
    wasted iterations. Each run is one live navigation (budget it like any
    live probe); `--json` records both sides as the round's evidence.
@@ -338,8 +337,8 @@ runs over the same stitched PNGs — no live hit):**
 
 ## Iteration discipline
 
-**Hard cap: 3 rounds per page, breakpoint and stage** (prototype, published):
-the first round and two fix rounds. A round is a `gate.sh` run that ends in a
+**Hard cap: 3 rounds per page, breakpoint and stage** (prototype, local-build,
+published): the first and two fix rounds. A round is a `gate.sh` run that ends in a
 verdict; a PASS right after a PASS (the confirmation) is free. `rounds.mjs`
 keeps the count and `gate.sh` exits 6 on the next round until `rounds.mjs
 decide` records `accept-residual`, `re-prototype` or — a round spent on a

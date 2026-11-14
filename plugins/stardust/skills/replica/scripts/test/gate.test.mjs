@@ -117,7 +117,8 @@ stub(replica, 'pixel-compare.mjs', `
 // STUB_REF_RC with reference.mjs's line for that code (2 = unstable: reference-unstable.json, nothing frozen; 3 = bot
 // challenge), fails ONCE with 1 under STUB_REF_FAIL_ONCE (a marker file), sleeps STUB_REF_SLEEP ms first, or freezes:
 // baseline.png + baseline.json in reference.mjs's shape — noiseFloor STUB_REF_FLOOR, the variable regions and maskArg
-// of STUB_REF_MASK ("y:h,…"). \`mask\` / \`status\` are the real script's (no browser).
+// of STUB_REF_MASK ("y:h,…"), \`flags\` = the overlay flags and locale it was called with. \`mask\` / \`status\` /
+// \`settings\` are the real script's (no browser).
 const REAL_REFERENCE = join(scripts, 'reference.mjs');
 stub(replica, 'reference.mjs', `
   import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -129,6 +130,7 @@ stub(replica, 'reference.mjs', `
     process.exit(r.status ?? 1);
   }
   const [url, dir] = rest; const width = Number(rest[rest.indexOf('--width') + 1]);
+  const flag = (f) => (rest.includes(f) ? rest[rest.indexOf(f) + 1] : null);
   if (process.env.STUB_STITCH_COUNT) appendFileSync(process.env.STUB_STITCH_COUNT, 'REF\\n');
   if (process.env.STUB_REF_ARGS) appendFileSync(process.env.STUB_REF_ARGS, rest.join(' ') + '\\n');
   if (process.env.STUB_REF_SLEEP) await new Promise((r) => setTimeout(r, Number(process.env.STUB_REF_SLEEP)));
@@ -144,7 +146,8 @@ stub(replica, 'reference.mjs', `
   writeFileSync(join(dir, 'baseline.png'), 'frozen-reference-bytes');
   writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width, vh: 900, height: 2000, settle: true, chunks: 3,
     fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, prime: { height: 2100, pct: 31.4, heightDelta: 100 }, captures: 2, heights: [2000, 2000], noiseFloor, heightSpread: 0, outside: 0,
-    variable, variableShare: 0, maskArg, stable: true, reason: null, frozenAt: '2026-11-01T09:00:05.000Z' }, null, 2) + '\\n');
+    variable, variableShare: 0, maskArg, stable: true, reason: null, frozenAt: '2026-11-01T09:00:05.000Z',
+    flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: false } }, null, 2) + '\\n');
   console.log('reference: frozen ' + width + '×2000, primed, noise floor ' + noiseFloor.toFixed(2) + '%' + (maskArg ? ' in ' + variable.length + ' variable region(s) → mask ' + maskArg : ', no variable region'));`);
 stub(replica, 'chrome-parity.mjs', `
   console.log('argv ' + process.argv.slice(2).join(' '));
@@ -525,6 +528,8 @@ const aligned = (pct, alignedPct, st, extra = {}) => JSON.stringify({ pct, align
 
 // First round: no reference → frozen (one freeze, the round's flags), then gated against; second round: reused.
 resetCount(); resetRefArgs();
+// The later rounds of this page keep the round's capture settings (R1): other settings freeze the reference again (§ Capture settings, below).
+const R1 = ['--consent', '#accept-all', '--dismiss', '.promo .close', '--locale', 'en-GB'];
 r = await refRound('ref1', 'r1', ['--consent', '#accept-all', '--dismiss', '.promo .close', '--locale', 'en-GB'], { STUB_REF_FLOOR: '2.31', STUB_REF_MASK: '392:56,4000:652' });
 check('default origin, first round: a reference is frozen (one freeze, no stitched live capture), then the build is captured and the round passes', r.status === 0 && attempts().join(',') === 'REF,BUILD', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
 check('the freeze gets the live URL, the evidence dir, the width, the capture deadline and the round\'s overlay flags and locale', lines(refArgsFile).length === 1
@@ -544,11 +549,11 @@ check('verdict-<label>.json is written for a pixel-only round too: stage, the pi
     && JSON.stringify(v.probes) === '{}' && v.structural === 0 && v.nothingLost === 0 && typeof v.at === 'string';
 })(), JSON.stringify(verdictJson('ref1', 'r1')));
 resetCount(); resetRefArgs();
-r = await refRound('ref1', 'r2', ['--mask', '10:20', '--mask', '300:40@310']);
+r = await refRound('ref1', 'r2', [...R1, '--mask', '10:20', '--mask', '300:40@310']);
 check('second round: the frozen reference is reused — no freeze, no live capture, only the build', r.status === 0 && attempts().join(',') === 'BUILD' && lines(refArgsFile).length === 0 && !/freezing one/.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')}`);
 check('a caller --mask (repeatable) is merged with the reference\'s: the caller\'s first, then the self-varying rows', / --mask 10:20,300:40@310,392:56,4000:652$/.test(lines(pixelArgsFile)[0] || '') && verdictJson('ref1', 'r2').pixel.maskedRows === 768, lines(pixelArgsFile).join('|'));
 resetCount();
-r = await refRound('ref1', 'r3', ['--full']);
+r = await refRound('ref1', 'r3', [...R1, '--full']);
 check('a --full round on the default origin: the probes run against the live URL, the verdict file keeps the pixel numbers beside the probes', r.status === 0 && attempts().join(',') === 'BUILD' && /^content-diff: none/m.test(r.stdout)
   && readFileSync(join(root, gdir('ref1'), 'content-diff-r3.txt'), 'utf8').length > 0 && verdictJson('ref1', 'r3').pixel.noiseFloor === 2.31 && verdictJson('ref1', 'r3').probes['content-diff'].rc === 0 && verdictJson('ref1', 'r3').pixel.rc === 0, `status ${r.status} ${r.stdout}`);
 
@@ -577,9 +582,9 @@ check('a freeze that exits 1 once is retried once and the round passes', r.statu
 resetCount();
 r = await refRound('referr', 'e1', [], { STUB_REF_RC: '1' });
 check('two exit-1 freezes: exit 1, re-queue named, no verdict', r.status === 1 && attempts().join(',') === 'REF,REF' && /reference capture failed \(exit 1\) — not comparing \(twice: no verdict — re-queue the round\)/.test(r.stderr) && roundsOf('referr').length === 0, `status ${r.status} ${r.stderr}`);
-r = await refRound('ref1', 'd1', [], { STUB_PIXEL_RC: '124' });
+r = await refRound('ref1', 'd1', R1, { STUB_PIXEL_RC: '124' });
 check('a pixel deadline on the default origin is still exit 124 with no verdict file and no round recorded', r.status === 124 && verdictJson('ref1', 'd1') === null && !roundsOf('ref1').some((x) => x.label === 'd1'), `status ${r.status}`);
-r = await refRound('ref1', 'd2', [], { STUB_STITCH_RC_BUILD: '3' });
+r = await refRound('ref1', 'd2', R1, { STUB_STITCH_RC_BUILD: '3' });
 check('a blocked build capture on the default origin is still exit 3', r.status === 3 && verdictJson('ref1', 'd2') === null, `status ${r.status}`);
 
 // --live-origin: the round as it was, for one round; GATE_REFERENCE=live the same for every round (the helper default).
@@ -645,6 +650,101 @@ for (const f of ['diff-iter1.png', 'diff-final.png', 'vdiff-iter1/eds-full.png',
 r = await gate(['keep', 'https://live.example/', buildUrl, '1440', 'iter2', '--marker', 'home-proposed']);
 check('a round deletes earlier rounds\' diff-*.png and vdiff-*/ before comparing', r.status === 0 && !existsSync(join(kdir, 'diff-iter1.png')) && !existsSync(join(kdir, 'diff-final.png')) && !existsSync(join(kdir, 'vdiff-iter1')), `status ${r.status} ${readdirSync(kdir).join(',')}`);
 check('… and keeps everything else: this round\'s diff and vdiff dir, captures, the frozen baseline, crop diffs, earlier rounds\' text and JSON', ['diff-iter2.png', 'vdiff-iter2/eds-full.png', 'live.png', 'build.png', 'baseline.png', 'chrome-header-diff.png', 'verdict-iter1.json', 'content-diff-iter1.txt'].every((f) => existsSync(join(kdir, f))), readdirSync(kdir).join(','));
+
+// ── Stage (header § Stage): prototype / local-build / published from the build URL, GATE_REGIME overrides ──────────
+// rounds.mjs is the real one: the stage is read from its `check` line (printed before any fetch), the ledger and
+// verdict-<label>.json. The build server answers every path with the marker.
+cpSync(join(scripts, 'rounds.mjs'), join(replica, 'rounds.mjs'));
+const base = buildUrl.replace(/\/home-proposed\.html$/, '');
+writeFileSync(join(root, 'file-proposed.html'), 'home-proposed'); writeFileSync(join(root, 'index.html'), 'home-proposed');
+const stageOfRun = (out) => (/^rounds: \S+ (\S+) — round /m.exec(out) || [])[1];
+const STAGE_TABLE = [
+  [`${base}/home-proposed.html`, {}, 'prototype'],
+  [`${base}/home-proposed.html?v=2#top`, {}, 'prototype'],
+  [`file://${root}/file-proposed.html`, {}, 'prototype'],
+  [`${base.replace('127.0.0.1', 'localhost')}/home-proposed.html`, {}, 'prototype'],
+  [`${base}/products/home`, {}, 'local-build'],
+  [`${base}/`, {}, 'local-build'],
+  [`${base}/home-proposed.html.plain.html`, {}, 'local-build'],
+  [`${base}/page?from=home-proposed.html`, {}, 'local-build'],
+  [`file://${root}/index.html`, {}, 'local-build'],
+  [`${base}/home-proposed.html`, { GATE_REGIME: 'local-build' }, 'local-build'],
+  [`${base}/products/home`, { GATE_REGIME: 'prototype' }, 'prototype'],
+  [`${base}/products/home`, { GATE_REGIME: 'published' }, 'published'],
+  [`${base}/home-proposed.html`, { GATE_REGIME: 'published' }, 'published'],
+  [`${base}/products/home`, { GATE_REGIME: 'staging' }, 'local-build'], // an unknown value is ignored: the URL decides
+  ['https://127.0.0.1:1/home-proposed.html', {}, 'published'], // not a local http URL; nothing listens: exit 4 after the stage line
+  ['https://127.0.0.1:1/home-proposed.html', { GATE_REGIME: 'local-build' }, 'local-build'],
+];
+let si = 0;
+for (const [url, env, want] of STAGE_TABLE) {
+  si += 1;
+  r = await gate([`st${si}`, 'https://live.example/', url, '1440', 'x1', '--marker', 'home-proposed'], { GATE_REGIME: '', ...env });
+  const v = verdictJson(`st${si}`, 'x1');
+  check(`stage: ${url.replace(base, '<local>').replace(root, '<root>')}${env.GATE_REGIME ? ` GATE_REGIME=${env.GATE_REGIME}` : ''} → ${want}`, stageOfRun(r.stdout) === want && (r.status === 4 || (r.status === 0 && v && v.stage === want)), `status ${r.status} stage ${stageOfRun(r.stdout)} verdict ${v && v.stage} ${r.stderr.slice(0, 200)}`);
+}
+r = await gate(['--help']);
+check('--help documents the three stages, the -proposed.html rule and GATE_REGIME', /^Stage \(/m.test(r.stdout) && /prototype +the build URL is local .* AND its path ends in\n? *-proposed\.html/.test(r.stdout) && /local-build +the build URL is local and anything else/.test(r.stdout) && /GATE_REGIME +prototype \| local-build \| published/.test(r.stdout), r.stdout.slice(0, 300));
+
+// local-build rounds: their own budget in the same gate dir, the prototype stage's offset bound, stage in the verdict file.
+const stageRounds = (slug, stage) => { try { return JSON.parse(readFileSync(join(root, gdir(slug), 'rounds.json'), 'utf8')).stages[stage]?.rounds || []; } catch { return []; } };
+const lbRound = (label, url, env = {}, extra = []) => gate(['lb', 'https://live.example/lb', url, '1440', label, '--marker', 'home-proposed', ...extra], { GATE_REGIME: '', STUB_PIXEL_ARGS: pixelArgsFile, ...env });
+const FAIL = { STUB_PIXEL_RC: '2' };
+for (const l of ['iter1', 'iter2', 'iter3']) await lbRound(l, buildUrl, FAIL);
+r = await lbRound('iter4', buildUrl, FAIL);
+check('the prototype stage is at its cap after three failed rounds (exit 6)', r.status === 6 && stageRounds('lb', 'prototype').length === 3, `status ${r.status}`);
+resetRefArgs();
+r = await lbRound('eds1', `${base}/lb`, FAIL);
+check('a local build that is not the prototype runs in the same gate dir although the prototype stage is spent: its own budget', r.status === 2 && /^rounds: lb-1440 local-build — round "eds1" may run: the first round/m.test(r.stdout) && /^rounds: lb-1440 local-build — recorded "eds1" fail as first/m.test(r.stdout), `status ${r.status} ${r.stdout.slice(0, 300)} ${r.stderr.slice(0, 200)}`);
+check('… recorded under local-build, the prototype rounds untouched', stageRounds('lb', 'local-build').map((x) => x.label).join() === 'eds1' && stageRounds('lb', 'prototype').map((x) => x.label).join() === 'iter1,iter2,iter3');
+check('verdict-<label>.json says stage "local-build"', (verdictJson('lb', 'eds1') || {}).stage === 'local-build' && (verdictJson('lb', 'iter1') || {}).stage === 'prototype');
+check('the local-build pixel verdict uses the prototype stage\'s offset bound (pixel-compare --offset-max prototype = 8 px)', / --offset-max prototype /.test(lines(pixelArgsFile)[0] || ''), lines(pixelArgsFile).join('|'));
+r = await lbRound('eds2', `${base}/lb`, { ...FAIL, GATE_OFFSET_MAX_PX: '20' });
+check('GATE_OFFSET_MAX_PX still overrides the bound', / --offset-max 20 /.test(lines(pixelArgsFile)[1] || ''), lines(pixelArgsFile).join('|'));
+await lbRound('eds3', `${base}/lb`, FAIL);
+const lbBefore = readdirSync(join(root, gdir('lb'))).sort().join();
+r = await lbRound('eds4', `${base}/lb`, FAIL);
+check('local-build is capped on its own: the fourth counted round exits 6 naming --stage local-build, before any work', r.status === 6 && /rounds\.mjs decide stardust\/replica\/gates\/lb-1440 --stage local-build/.test(r.stderr) && readdirSync(join(root, gdir('lb'))).sort().join() === lbBefore, `status ${r.status} ${r.stderr}`);
+resetRefArgs();
+r = await lbRound('pub1', `${base}/lb`, { GATE_REGIME: 'published' });
+check('the published stage of the same dir still runs, with its own bound', r.status === 0 && stageRounds('lb', 'published').length === 1 && / --offset-max published /.test(lines(pixelArgsFile)[0] || ''), `status ${r.status}`);
+// --full at the local-build stage: the prototype stage's probe set (no content-presence); unit-geometry reads the delivered block's selector.
+writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ cards: { origin: '.a', build: '.b', eds: '.c', pages: ['lbf'] } }));
+r = await gate(['lbf', 'https://live.example/lbf', `${base}/lbf`, '1440', 'eds1', '--marker', 'home-proposed', '--full'], { GATE_REGIME: '' });
+unlinkSync(join(root, 'stardust/replica/units.json'));
+check('--full local-build: content-diff, visual-diff, chrome-parity, clip-probe and unit-geometry run; content-presence does not', (() => {
+  const v = verdictJson('lbf', 'eds1') || { probes: {} };
+  return r.status === 0 && v.stage === 'local-build' && Object.keys(v.probes).sort().join() === 'chrome-parity,clip-probe,content-diff,unit-geometry,visual-diff' && !existsSync(join(root, gdir('lbf'), 'content-presence-eds1.txt')) && !/^content-presence:/m.test(r.stdout);
+})(), `status ${r.status} ${r.stdout} ${JSON.stringify(verdictJson('lbf', 'eds1'))}`);
+check('… unit-geometry gets --stage published (the delivered blocks are served), never the unknown stage name', / --stage published /.test(evidence('lbf', 'units-eds1.txt')), evidence('lbf', 'units-eds1.txt'));
+
+// ── Capture settings: a reference frozen under other overlay flags / locale is frozen again, never silently reused ──
+const freezes = () => lines(refArgsFile).length;
+resetRefArgs(); r = await refRound('set', 's1');
+check('settings: the first round freezes the reference under its flags (none)', r.status === 0 && freezes() === 1 && !/re-frozen/.test(r.stdout), `status ${r.status} ${r.stderr}`);
+resetRefArgs(); r = await refRound('set', 's2');
+check('settings: nothing changed → the reference is reused, no freeze, no settings line', r.status === 0 && freezes() === 0 && !/re-frozen|settings not recorded/.test(r.stdout), r.stdout);
+resetRefArgs(); r = await refRound('set', 's2b', ['--locale', 'en-US']);
+check('settings: --locale en-US is the default locale — not a change', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout), r.stdout);
+writeFileSync(join(root, gdir('set'), 'chrome-live.json'), '{}');
+resetRefArgs(); r = await refRound('set', 's3', ['--consent', '#ok', '--locale', 'de-DE']);
+check('settings: consent and locale changed → re-frozen under the round\'s flags, said in one line', r.status === 0 && freezes() === 1 && (r.stdout.match(/^gate\.sh: reference: re-frozen — capture settings changed \(consent, locale\)$/gm) || []).length === 1 && !/no usable frozen reference/.test(r.stdout), `status ${r.status} ${r.stdout}`);
+check('… the freeze gets the new flags and never --force (an unstable page stays unstable)', / --consent #ok --locale de-DE$/.test(lines(refArgsFile)[0] || '') && !/--force/.test(lines(refArgsFile)[0] || ''), lines(refArgsFile).join('|'));
+check('… the new baseline records them, the round gates against it, and the chrome live cache of the old settings is gone', (() => { const b = JSON.parse(readFileSync(join(root, gdir('set'), 'baseline.json'), 'utf8')); return b.flags.consent === '#ok' && b.flags.locale === 'de-DE' && livePng('set') === 'frozen-reference-bytes' && !existsSync(join(root, gdir('set'), 'chrome-live.json')); })());
+resetRefArgs(); r = await refRound('set', 's4', ['--consent', '#ok', '--locale', 'de-DE']);
+check('settings: the same flags again → reused', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout));
+check('a re-freeze is not a round: four invocations with a verdict, four recorded rounds (first + confirmations), 1 counted', roundsOf('set').map((x) => `${x.label}:${x.kind}`).join() === 's1:first,s2:confirm,s2b:confirm,s3:confirm,s4:confirm', JSON.stringify(roundsOf('set')));
+resetRefArgs(); r = await refRound('set', 's5', ['--no-dismiss'], { STUB_REF_RC: '2' });
+check('settings: a re-freeze that finds the page unstable ends the round with exit 5 — no verdict, no round, and no reference of the old settings left to gate against', r.status === 5 && freezes() === 1 && !existsSync(join(root, gdir('set'), 'baseline.json')) && !existsSync(join(root, gdir('set'), 'baseline.png')) && verdictJson('set', 's5') === null && roundsOf('set').length === 5 && !/re-frozen/.test(r.stdout), `status ${r.status} ${r.stdout}`);
+resetRefArgs(); r = await refRound('set', 's6', ['--dismiss', '.promo-close']);
+check('settings: with no reference left the next round freezes one as a first freeze (no re-frozen line)', r.status === 0 && freezes() === 1 && !/capture settings changed/.test(r.stdout) && /no usable frozen reference/.test(r.stdout), r.stdout);
+resetRefArgs(); r = await refRound('set', 's7', ['--dismiss', '.other-close']);
+check('… a changed --dismiss list alone', r.status === 0 && freezes() === 1 && /^gate\.sh: reference: re-frozen — capture settings changed \(dismiss\)$/m.test(r.stdout), r.stdout);
+// a baseline from before flags were recorded (stitch-shot --freeze-baseline, an older reference.mjs): reused, and said so
+freezeBaseline('old', { ...PROV, url: 'https://live.example/old' });
+resetRefArgs(); r = await refRound('old', 'o1', ['--consent', '#ok', '--locale', 'de-DE']);
+check('settings not recorded: the reference is reused as before, with one line saying so', r.status === 0 && freezes() === 0 && (r.stdout.match(/^gate\.sh: reference: reused — settings not recorded \(/gm) || []).length === 1 && livePng('old') === 'baseline-png-bytes', `status ${r.status} ${r.stdout}`);
+unlinkSync(join(replica, 'rounds.mjs'));
 
 server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);

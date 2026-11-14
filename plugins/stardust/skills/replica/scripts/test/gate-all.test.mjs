@@ -27,7 +27,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, formatSummary, isErrorRow, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, formatSummary, isErrorRow, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -42,6 +42,7 @@ const SCRIPT = join(HERE, '..', 'gate-all.mjs');
 // through GATE_REFERENCE=live (the helpers' default); the reference sections pass REF.
 const REAL_PIXEL = join(HERE, '..', 'pixel-compare.mjs');
 const REAL_STITCH = join(HERE, '..', 'stitch-shot.mjs');
+const REAL_REFERENCE = join(HERE, '..', 'reference.mjs');
 const MAIN_ONLY = `import { realpathSync as __rp } from 'node:fs'; import { fileURLToPath as __fu } from 'node:url'; if (process.argv[1] && __rp(process.argv[1]) === __fu(import.meta.url))`;
 const REF = { GATE_REFERENCE: '' };
 let failed = 0;
@@ -397,7 +398,7 @@ if (url === process.env.STUB_KILL) { process.kill(process.ppid, 'SIGKILL'); proc
 if (url === process.env.STUB_FAIL) { console.error('capture failed'); process.exit(1); }
 writeFileSync(out, 'png'); writeFileSync(out.replace(/\\.png$/, '.capture.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 }, fontsFailed: [] }));\n`);
   // pixel-compare: `/bad/` pages read 30 %, the rest 1 %; STUB_PX = { "<slug>": { pct, aligned: { used, pct, steps } } } gives
-  // a page an aligned summary (totalShift = the sum of |shift|); STUB_PX_ARGV logs each call's argv (apart from STUB_ARGV: the captures and probes).
+  // a page an aligned summary (and heightDelta) (totalShift = the sum of |shift|); STUB_PX_ARGV logs each call's argv (apart from STUB_ARGV: the captures and probes).
   writeFileSync(join(rep, 'pixel-compare.mjs'), `export * from ${JSON.stringify(REAL_PIXEL)};
 import { appendFileSync, writeFileSync } from 'node:fs';
 ${MAIN_ONLY} {
@@ -407,13 +408,16 @@ const slug = a[0].split('/').slice(-2)[0]; const given = (JSON.parse(process.env
 const pct = given.pct ?? (a[0].includes('/bad/') ? 30 : 1);
 const al = given.aligned ? { ...given.aligned, totalShift: (given.aligned.steps || []).reduce((n, x) => n + Math.abs(x.shift), 0) } : null;
 const maskedRows = a.includes('--mask') ? a[a.indexOf('--mask') + 1].split(',').reduce((n, m) => n + Number(m.split(':')[1].split('@')[0]), 0) : 0;
-console.log(JSON.stringify({ pct, heightDelta: 0, compared: { width: 1440, height: 5000 }, pass: pct <= 10, maskedRows, ...(al ? { aligned: al } : {}) }));
+console.log(JSON.stringify({ pct, heightDelta: given.heightDelta ?? 0, compared: { width: 1440, height: 5000 }, pass: pct <= 10, maskedRows, ...(al ? { aligned: al } : {}) }));
 }\n`);
   // reference.mjs: `freeze <url> <dir>` logs "freeze <url>" (STUB_LOG) and its argv (STUB_ARGV); the URL in STUB_REF_UNSTABLE is
   // unstable (exit 2, reference-unstable.json, nothing frozen); else baseline.png + baseline.json in reference.mjs's shape
-  // (noiseFloor 2.31, the regions of STUB_REF_MASK) beside the kept captures ref-1.png / ref-2.png.
+  // (noiseFloor 2.31, the regions of STUB_REF_MASK, `flags` = the overlay flags and locale of the call) beside the kept
+  // captures ref-1.png / ref-2.png. `settings <dir> …` is the real script's (no browser), and is not logged.
   writeFileSync(join(rep, 'reference.mjs'), `import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'; import { join } from 'node:path';
 const [cmd, url, dir, ...rest] = process.argv.slice(2);
+if (cmd === 'settings') { const { spawnSync } = await import('node:child_process'); process.exit(spawnSync(process.execPath, [${JSON.stringify(REAL_REFERENCE)}, ...process.argv.slice(2)], { stdio: 'inherit' }).status ?? 1); }
+const flag = (f) => (rest.includes(f) ? rest[rest.indexOf(f) + 1] : null);
 appendFileSync(process.env.STUB_LOG, cmd + ' ' + url + '\\n');
 if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['reference', ...process.argv.slice(2)]) + '\\n');
 mkdirSync(dir, { recursive: true });
@@ -421,7 +425,7 @@ for (const f of ['ref-1.png', 'ref-2.png', 'ref-diff-1-2.png', 'ref-1.capture.js
 if (url === process.env.STUB_REF_UNSTABLE) { writeFileSync(join(dir, 'reference-unstable.json'), '{}'); console.log('reference: UNSTABLE — heights 5000 vs 5640 after priming; not frozen'); process.exit(2); }
 const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(',').filter(Boolean).map((m) => ({ y: Number(m.split(':')[0]), h: Number(m.split(':')[1]), pct: 9 }));
 writeFileSync(join(dir, 'baseline.png'), 'frozen');
-writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width: Number(rest[rest.indexOf('--width') + 1]), vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, noiseFloor: 2.31, variable, maskArg, stable: true, reason: null }));
+writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width: Number(rest[rest.indexOf('--width') + 1]), vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, noiseFloor: 2.31, variable, maskArg, stable: true, reason: null, flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: rest.includes('--headed') } }));
 console.log('reference: frozen, primed');\n`);
   // Stub probes (probes: true): each logs its argv (STUB_ARGV), then exits STUB_<CONTENT|CLIP>_RC without a result
   // ("kill" = killed mid-run, what a timeout leaves) or writes a clean one.
@@ -981,6 +985,114 @@ check('--wide: a report table at the wide width — gates/wide-<w>/summary.{json
     writeFileSync(join(root, 'DESIGN.json'), JSON.stringify({ extensions: { breakpoints: { probeWidth: 1920 } } }));
     r = gateAll(['--wide'], { ...REF });
     assert.equal(r.status, 0, r.stderr); assert.equal(tableOf('wide-1920').totals.overThreshold, 1, 'DESIGN.json\'s probeWidth is the wide width');
+  } finally { done(); }
+});
+check('wideFlagged / wideLine: the pages over the threshold (aligned %) or off in height, worst height first; no flagged page → no line; a long list is cut', () => {
+  const row = (slug, alignedPct, heightDelta, heightPass, pct = alignedPct) => ({ slug, pct, alignedPct, heightDelta, heightPass });
+  const rows = [row('fine', 1.2, 4, true), row('shifted', 3.1, 12, true, 16.6), row('over', 31.25, 0, true), row('tall', 2, -765, false), row('both', 44, 500, false), { slug: 'error', pct: null, alignedPct: null, heightDelta: null, heightPass: false }];
+  const f = wideFlagged(rows, { threshold: 10 });
+  assert.deepEqual(f, [{ slug: 'tall', pct: 2, heightDelta: -765, overThreshold: false, heightOff: true }, { slug: 'both', pct: 44, heightDelta: 500, overThreshold: true, heightOff: true }, { slug: 'over', pct: 31.25, heightDelta: 0, overThreshold: true, heightOff: false }], 'an error row (no measurement) and a page passing only thanks to alignment are not flagged');
+  assert.equal(wideLine(f, { width: 2560, threshold: 10 }), 'wide 2560px: 3 page(s) over 10% or off in height — tall 2% Δh -765px, both 44% Δh 500px, over 31.25% Δh 0px');
+  assert.equal(wideLine([], { width: 2560 }), null);
+  assert.match(wideLine(f, { width: 1920, threshold: 5, max: 1 }), /^wide 1920px: 3 page\(s\) over 5% or off in height — tall 2% Δh -765px, … 2 more$/);
+});
+check('--wide composes with --skip-existing, --only, --eds-host and the overlay flags: the flagged line after the table and in summary.json, exit 0, captures reused by the next run', () => {
+  const { root, gateAll, shots, spawned, tableOf, files, done } = sandbox(['good', 'bad', 'tall']);
+  try {
+    copyFileSync(join(HERE, '..', 'rounds.mjs'), join(root, 'stardust/scripts/replica/rounds.mjs')); // the real ledger: "no round" is measured
+    const FLAGS = ['--wide', '--skip-existing', '--eds-host', 'preview.example', '--consent', '#ok', '--dismiss', '.promo-close', '--locale', 'en-GB'];
+    const env = { ...REF, STUB_PX: JSON.stringify({ tall: { pct: 2, heightDelta: -765 } }) };
+    const LINE = 'wide 2560px: 2 page(s) over 10% or off in height — tall 2% Δh -765px, bad 30% Δh 0px';
+    let r = gateAll(FLAGS, env);
+    assert.equal(r.status, 0, r.stderr);
+    const t = tableOf('wide-2560');
+    assert.deepEqual([t.totals.pages, t.totals.pass, t.totals.overThreshold, t.totals.heightOff], [3, 1, 1, 1]);
+    assert.deepEqual(t.wide, { line: LINE, pages: [{ slug: 'tall', pct: 2, heightDelta: -765, overThreshold: false, heightOff: true }, { slug: 'bad', pct: 30, heightDelta: 0, overThreshold: true, heightOff: false }] });
+    const outLines = r.stdout.trim().split('\n');
+    assert.equal(outLines.at(-1), LINE, 'the line is the last one printed, after the table and the totals'); assert.equal(outLines.filter((l) => l === LINE).length, 1);
+    assert.deepEqual(JSON.parse(outLines.at(-2)).heightOff, 1);
+    const stitches = spawned().filter((a) => a[0] === 'stitch-shot'); const freezes = spawned().filter((a) => a[0] === 'reference');
+    assert.deepEqual(stitches.map((a) => a[1]).sort(), ['https://preview.example/bad', 'https://preview.example/good', 'https://preview.example/tall'], '--eds-host is the build side');
+    for (const a of [...stitches, ...freezes]) { assert.equal(a[a.indexOf('--width') + 1], '2560'); assert.equal(a[a.indexOf('--consent') + 1], '#ok'); assert.equal(a[a.indexOf('--dismiss') + 1], '.promo-close'); assert.equal(a[a.indexOf('--locale') + 1], 'en-GB'); }
+    assert.equal(freezes.length, 3); assert.equal(t._provenance.edsHostOverride, 'https://preview.example');
+    assert.equal(tableOf('all-1440'), null); assert.equal(existsSync(join(root, 'stardust/replica/gates/tall-2560/rounds.json')), false, 'a report records no round');
+    assert.deepEqual(files('stardust/replica/gates').filter((d) => /-2560$/.test(d)), ['wide-2560'], 'no gate dir is created at the wide width');
+
+    r = gateAll(FLAGS, env);
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(shots(), [], '--skip-existing: the second wide run captures and freezes nothing');
+    assert.deepEqual(tableOf('wide-2560').wide.line, LINE); assert.equal(r.stdout.trim().split('\n').at(-1), LINE);
+
+    r = gateAll([...FLAGS, '--only', 'tall'], env);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.stdout.trim().split('\n').at(-1), 'wide 2560px: 1 page(s) over 10% or off in height — tall 2% Δh -765px');
+    assert.equal(tableOf('wide-2560').totals.pages, 3, '--only writes runs/, the report table is untouched');
+    const run = files('stardust/replica/gates/wide-2560/runs'); assert.equal(run.length, 1);
+    assert.equal(JSON.parse(readFileSync(join(root, 'stardust/replica/gates/wide-2560/runs', run[0]), 'utf8')).wide.pages.length, 1);
+
+    r = gateAll([...FLAGS, '--only', 'good'], env);
+    assert.equal(r.status, 0, r.stderr); assert.doesNotMatch(r.stdout, /^wide 2560px:/m, 'nothing flagged: no line');
+    assert.doesNotThrow(() => JSON.parse(r.stdout.trim().split('\n').at(-1)));
+  } finally { done(); }
+});
+check('a delivery table (no --wide) carries no wide block and prints no wide line', () => {
+  const { gateAll, tableOf, done } = sandbox(['bad']);
+  try {
+    const r = gateAll([], { ...REF });
+    assert.equal(r.status, 2); assert.doesNotMatch(r.stdout, /^wide /m);
+    const t = tableOf('all-1440'); assert.equal('wide' in t, false); assert.equal('heightOff' in t.totals, false);
+  } finally { done(); }
+});
+check('reference settings: a reference frozen under other overlay flags or locale is frozen again where it lives (one line), reused when nothing changed, never under --skip-existing either; no round is recorded for a freeze', () => {
+  const { root, out, gateAll, shots, rows, tableOf, done } = sandbox(['arch', 'page']);
+  try {
+    const gdir = join(root, 'stardust/replica/gates/arch-1440'); mkdirSync(gdir, { recursive: true });
+    copyFileSync(join(HERE, '..', 'rounds.mjs'), join(root, 'stardust/scripts/replica/rounds.mjs')); // the real ledger
+    const NONE = { consent: null, dismiss: null, noDismiss: false, locale: null, vh: null, headed: false };
+    writeFileSync(join(gdir, 'baseline.png'), 'archetype-reference'); writeFileSync(join(gdir, 'baseline.json'), JSON.stringify(BASELINE('https://origin.example/arch', { flags: NONE })));
+    const frozen = () => shots().filter((x) => x.startsWith('freeze'));
+    const rounds = () => JSON.parse(readFileSync(join(gdir, 'rounds.json'), 'utf8')).stages['all-pages'].rounds.length;
+    let r = gateAll([], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(frozen(), ['freeze https://origin.example/page'], 'gate.sh froze the archetype with no --locale; gate-all\'s default en-US is the same setting');
+    assert.doesNotMatch(r.stdout, /re-frozen|settings not recorded/);
+    r = gateAll([], { ...REF });
+    assert.deepEqual(frozen(), [], 'nothing changed: nothing frozen'); assert.doesNotMatch(r.stdout, /re-frozen/);
+
+    r = gateAll(['--consent', '#ok', '--locale', 'de-DE'], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(frozen(), ['freeze https://origin.example/arch', 'freeze https://origin.example/page']);
+    assert.match(r.stdout, /origin arch: reference: re-frozen — capture settings changed \(consent, locale\)$/m); assert.match(r.stdout, /origin page: reference: re-frozen — capture settings changed \(consent, locale\)$/m);
+    assert.equal((r.stdout.match(/re-frozen/g) || []).length, 2, 'one line per reference');
+    assert.equal(readFileSync(join(gdir, 'baseline.png'), 'utf8'), 'frozen', 'the archetype\'s is frozen again in its gate dir');
+    assert.deepEqual([JSON.parse(readFileSync(join(gdir, 'baseline.json'), 'utf8')).flags.consent, rows().arch.reference, existsSync(join(out, 'arch/baseline.png'))], ['#ok', 'stardust/replica/gates/arch-1440', false]);
+
+    r = gateAll(['--skip-existing', '--consent', '#ok', '--locale', 'de-DE'], { ...REF });
+    assert.equal(r.status, 0, r.stderr); assert.deepEqual(shots(), [], 'same settings + --skip-existing: the recorded passes stand');
+    const before = rounds();
+    r = gateAll(['--skip-existing'], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(frozen(), ['freeze https://origin.example/arch', 'freeze https://origin.example/page'], '--skip-existing does not reuse a pass measured against a reference of other settings');
+    assert.match(r.stdout, /origin arch: reference: re-frozen — capture settings changed \(consent, locale\)$/m);
+    assert.equal(rounds(), before + 1, 'the measurement is the round; the freeze adds none');
+    assert.equal(tableOf('all-1440').totals.pass, 2);
+
+    r = gateAll(['--no-dismiss'], { ...REF, STUB_REF_UNSTABLE: 'https://origin.example/arch' });
+    assert.equal(r.status, 2);
+    assert.deepEqual([rows().arch.pct, existsSync(join(gdir, 'baseline.png'))], [null, false], 'an unstable re-freeze is an error row and leaves no reference of the old settings');
+    assert.match(rows().arch.reasons[0], /^reference-unstable: /); assert.doesNotMatch(r.stdout, /origin arch: reference: re-frozen/); assert.equal(rounds(), before + 1, 'an error row records no round');
+  } finally { done(); }
+});
+check('reference settings not recorded (a baseline from before flags were recorded): reused as before, and said so', () => {
+  const { root, gateAll, shots, rows, done } = sandbox(['arch']);
+  try {
+    const gdir = join(root, 'stardust/replica/gates/arch-1440'); mkdirSync(gdir, { recursive: true });
+    writeFileSync(join(gdir, 'baseline.png'), 'archetype-reference'); writeFileSync(join(gdir, 'baseline.json'), JSON.stringify(BASELINE('https://origin.example/arch')));
+    const r = gateAll(['--consent', '#ok', '--locale', 'de-DE'], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(shots(), ['https://eds.example/arch'], 'no freeze');
+    assert.equal((r.stdout.match(/origin arch: reference: reused — settings not recorded \(/g) || []).length, 1);
+    assert.equal(rows().arch.reference, 'stardust/replica/gates/arch-1440');
   } finally { done(); }
 });
 check('--help exits 0 in an empty cwd and writes nothing', () => {
