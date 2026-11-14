@@ -36,11 +36,32 @@ function asList(value, fallback) {
   return Array.isArray(value) ? value : [value];
 }
 
+const TEXT_FILE = /\.(md|txt|html?|js|mjs|cjs|json|ya?ml|css)$/i;
+const MAX_TEXT_BYTES = 512 * 1024;
+
+async function otherFileLines(skillDir, dir = skillDir, out = new Set()) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) await otherFileLines(skillDir, p, out);
+    else if (entry.isFile() && TEXT_FILE.test(entry.name) && p !== join(skillDir, 'SKILL.md') && (await stat(p)).size <= MAX_TEXT_BYTES) {
+      for (const l of skillSignature(await readFile(p, 'utf8'))) out.add(l);
+    }
+  }
+  return out;
+}
+
 export async function readSkill(skillDir) {
   const text = await readFile(join(skillDir, 'SKILL.md'), 'utf8');
   const fm = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   const name = fm?.[1].match(/^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m)?.[1];
-  return { name: name ?? basename(skillDir), dir: skillDir, signature: skillSignature(text), header: skillHeader(text) };
+  return {
+    name: name ?? basename(skillDir),
+    dir: skillDir,
+    signature: skillSignature(text),
+    header: skillHeader(text),
+    otherLines: [...(await otherFileLines(skillDir))],
+  };
 }
 
 export async function loadPlugin(root) {

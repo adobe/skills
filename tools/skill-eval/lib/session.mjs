@@ -38,8 +38,16 @@ export function skillSignature(skillMd) {
 
 export function distinctSignatures(skills) {
   const seen = new Map();
-  for (const s of skills) for (const l of new Set(s.signature ?? [])) seen.set(l, (seen.get(l) ?? 0) + 1);
-  return skills.map((s) => ({ ...s, signature: (s.signature ?? []).filter((l) => seen.get(l) === 1) }));
+  const copiedBy = new Map();
+  for (const s of skills) {
+    for (const l of new Set(s.signature ?? [])) seen.set(l, (seen.get(l) ?? 0) + 1);
+    for (const l of new Set(s.otherLines ?? [])) copiedBy.set(l, [...(copiedBy.get(l) ?? []), s.name]);
+  }
+  const copiedElsewhere = (l, name) => (copiedBy.get(l) ?? []).some((n) => n !== name);
+  return skills.map(({ otherLines, ...s }) => ({
+    ...s,
+    signature: (s.signature ?? []).filter((l) => seen.get(l) === 1 && !copiedElsewhere(l, s.name)),
+  }));
 }
 
 export const LINE_NUMBER_PREFIX = /^\s*\d+(?:\t|:\s?|\s+\|\s?)/;

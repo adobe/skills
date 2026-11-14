@@ -67,3 +67,16 @@ test('matchesFilter supports exact names and * wildcards', () => {
   assert.equal(matchesFilter('analyze-hero', ['analyze']), false);
   assert.equal(matchesFilter('a.b', ['a*b']), true);
 });
+
+test('loadPlugin drops signature lines that another skill copies into its own files', async () => {
+  const root = await makePlugin();
+  const copied = ['Blocks are tables with a header row naming the block.', 'Section metadata goes in the last table of a section.', 'Default content needs no block at all here.'];
+  const own = ['Alpha keeps this first distinctive instruction line.', 'Alpha keeps this second distinctive instruction line.', 'Alpha keeps this third distinctive instruction line.'];
+  await file(join(root, 'skills', 'alpha', 'SKILL.md'), `---\nname: alpha-skill\ndescription: a\n---\n${[...copied, ...own].join('\n')}\n`);
+  await file(join(root, 'skills', 'beta', 'references', 'structure.md'), `${copied.join('\n')}\n`);
+  await file(join(root, 'skills', 'alpha', 'references', 'notes.md'), `${own[0]}\n`);
+  const p = await loadPlugin(root);
+  const alpha = p.skills.find((s) => s.name === 'alpha-skill');
+  for (const l of copied) assert.ok(!alpha.signature.includes(l), l);
+  for (const l of own) assert.ok(alpha.signature.includes(l), l);
+});
