@@ -1,7 +1,8 @@
 ---
 name: extract
-description: Crawl an existing website (capped, multi-page) and seed stardust/current/ with PRODUCT.md, DESIGN.md, DESIGN.json, a per-page inventory, and the consolidated brand surface — the captured design system, palette, typography, motifs, and voice of the live site. Use when the user wants to analyze an existing site's design, extract or reverse-engineer its design system or brand, capture design tokens from a live site, import a website as the starting point for a redesign, capture the current state before a migration, or invokes /stardust:extract. Trigger phrases include "analyze this site", "extract the design tokens", "capture the brand", "crawl the site", "reverse engineer the design". Not for scraping page data or content for its own sake (it captures design evidence, not datasets), and not for the redesign itself — extraction is descriptive; direction and prototyping happen downstream.
+description: Crawl an existing website (capped, multi-page) and seed stardust/current/ with PRODUCT.md, DESIGN.md, DESIGN.json, a per-page inventory, and the consolidated brand surface — the captured design system, palette, typography, motifs, and voice of the live site. Use when the user wants to analyze an existing site's design, extract or reverse-engineer its design system or brand, capture design tokens from a live site, import a website as the starting point for a redesign, capture the current state before a migration, or invokes `$stardust extract` (`/stardust:extract` in Claude Code). Trigger phrases include "analyze this site", "extract the design tokens", "capture the brand", "crawl the site", "reverse engineer the design". Not for scraping page data or content for its own sake (it captures design evidence, not datasets), and not for the redesign itself — extraction is descriptive; direction and prototyping happen downstream.
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:extract
@@ -45,6 +46,13 @@ critique, and it does not modify the live site. It writes only under
   (script activation that wouldn't otherwise run) must be
   avoided. Default is to dismiss, keeping screenshots, voice
   aggregation, and per-section style unpolluted by the banner.
+- `--dynamics` — optional, **migration-bound**. Record per-page reach
+  signals of the dynamic surface (data endpoints, forms, modal
+  triggers, player ids) in each page JSON `dynamic` section and roll
+  them up in `_crawl-log.json#dynamicSurface`. Set by
+  `prepare-migration`, `replica` and `migrate`'s safety net; never by a
+  bare extract, `uplift` or `audit` — dynamics is a migration concern.
+  Depth and classification belong to the stardust `dynamics` skill.
 - `--concurrency <n>` — optional. Parallel browser contexts for the
   per-page capture loop. Default 4; sane range 4–8. See
   § Concurrency.
@@ -75,14 +83,15 @@ Additional checks for this sub-command:
    then a project-importable `playwright` module. **The `npx
    playwright` probe is NOT sufficient** — it confirms the CLI
    (which resolves a global install) but the recipe and
-   `scripts/crawl.mjs` do `import { chromium } from 'playwright'`,
+   `scripts/crawl.mjs` load `playwright` through `browser.mjs`,
    and ESM module resolution does **not** honour a global install or
    `NODE_PATH` — the import throws `ERR_MODULE_NOT_FOUND` even where
    `npx playwright --version` succeeds. Verify the module is
    import-resolvable from the project root (probe:
    `node -e "import('playwright').then(()=>process.exit(0))"`); if it
-   isn't, run `npm i -D playwright --no-save --legacy-peer-deps` (or
-   use the Playwright MCP server) before crawling. The
+   isn't, run `npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps`
+   (devDependencies, never `--no-save` — #125) or use the Playwright MCP
+   server, before crawling. The
    `--legacy-peer-deps` flag is required on `aem-boilerplate` targets
    (their pinned `eslint@8` makes a plain `npm i` exit `ERESOLVE`
    before playwright is even considered). Don't trust the CLI
@@ -96,12 +105,10 @@ Additional checks for this sub-command:
    start of its own run, not assume extract's install survived.
 
    **Script location matters.** ESM resolves `import 'playwright'`
-   from the *script's* directory, and the plugin tree ships no
-   `node_modules` — so running `crawl.mjs` from the plugin path
-   throws `ERR_MODULE_NOT_FOUND` even when the project has playwright
-   installed. Copy the script byte-identical into the project
-   (`stardust/scripts/crawl.mjs`) and run the copy; it resolves
-   against the project's `node_modules`.
+   from the *script's* directory and the plugin tree ships no
+   `node_modules`: copy every script byte-identical into the project
+   (`stardust/scripts/…`), the master skill's too (`../stardust/SKILL.md`
+   § Setup, step 7), and run the copy.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is a
    runnable reference implementation of this whole sub-command —
@@ -111,16 +118,23 @@ Additional checks for this sub-command:
    vision gate), response validation, and the §
    Capture-hygiene hardening (visibility filter, interstitial drop,
    SPA-shell flag, modal `textContent` capture, tracking-pixel
-   discounting, cross-page duplicate detection). Prefer invoking it
-   (`node skills/extract/scripts/crawl.mjs --url <origin> [--pages …]
-   [--max N] [--concurrency N]`) over hand-rolling a Playwright
-   script per run; extend
-   its in-page `capture()` to cover any recipe field it doesn't yet
-   emit.
+   discounting, cross-page duplicate detection). Prefer invoking it over
+   hand-rolling a Playwright script per run; extend its in-page
+   `capture()` to cover any recipe field it doesn't yet emit.
 2. **Origin collision.** If `stardust/state.json` already records
    `site.originUrl` and the new `<url>` is a different origin, stop and
    ask before clobbering. Stardust does not silently mix two sites in
    one project.
+   **Flow guard (migration asks only).** If the ask carries migration
+   intent ("migrate", "to EDS", "re-platform", "1:1", "replica") and
+   `stardust/state.json` exists — or is about to be created — without
+   `flow`, hand back to the master skill § Two migration flows before
+   crawling: the flow is chosen and stamped there, and a keep-design
+   ask enters through `replica` (which invokes this skill with `--prep`
+   itself). A bare `extract <url>` for a redesign, audit or uplift is
+   unaffected. (Recorded: `extract` on a raw URL as the entry of a
+   same-design migration; the agent then built its own importer beside
+   `replica`.)
 3. **Browser contexts.** Open a fresh `BrowserContext` per capture
    worker (§ Concurrency; default 4). Run the **consent dismissal
    pre-flight** per `reference/playwright-recipe.md` § Pre-flight:
@@ -192,11 +206,10 @@ Discover the page inventory before crawling. Procedure in
    Extracting...
    ```
 
-   Selection heuristic: page-type checklist first, then score-based
-   ranking (home + IA-pillar keywords + sitemap priority − archive /
-   version markers). See `reference/ia-extraction.md` § Page
-   selection and § Priority for the cap. The English-only keyword
-   list is a known limitation for localized sites.
+   Selection heuristic: when the user names N, link-first order (the
+   entered page, then its links). Otherwise page-type checklist first,
+   then score-based ranking. See `reference/ia-extraction.md` § Page
+   selection and § Priority for the cap.
 
 7. Write the discovered list to `stardust/current/_crawl-log.json`
    (created if absent) with `_provenance` and the full discovery
@@ -264,8 +277,23 @@ Capture per page (full schema in `reference/current-state-schema.md`):
   `_signals.screenshotMode`, relative path in the page JSON
   `screenshot` field)
 
+- **Dynamic surface (only with `--dynamics`)** — per-page reach
+  signals: endpoints, third-party script hosts, forms, modal triggers,
+  player ids, hydration hints, in the page JSON `dynamic` section and
+  `_crawl-log.json#dynamicSurface` (schema in
+  `reference/current-state-schema.md § Dynamic`). Evidence only; the
+  stardust `dynamics` sub-skill probes archetypes in depth and decides.
+
 Save to `stardust/current/pages/<slug>.json` with `_provenance` as the
-first key. Save referenced media to `stardust/current/assets/media/`
+first key. **The bundled crawler also saves the settled rendered DOM
+verbatim as `stardust/current/pages/<slug>.html`** (`page.content()`
+after the wait/scroll settle; path in the record's `renderedHtml`
+field). Capture once, parse offline: every downstream importer or
+sibling generator iterates its extraction against this artifact —
+free, reproducible, and provenance — instead of re-running live
+probes per selector guess (recorded: 4+ live round-trips per page
+family before the switch). Live probes stay for what the static DOM
+cannot answer: geometry and computed styles. Save referenced media to `stardust/current/assets/media/`
 preserving basename plus a short content hash.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
@@ -279,7 +307,7 @@ via `validateProvenance()` per
 `skills/stardust/reference/state-machine.md` § Provenance
 validation. Synthesizing a page record from
 `_brand-extraction.json` plus URL patterns plus captured photos
-— the 2026-04-30 lovesac shortcut — is the failure mode this
+— the 2026-04-30 e-commerce shortcut — is the failure mode this
 guard exists to prevent. When the agent (or a delegated sub-
 agent) cannot satisfy the contract for a page, treat the page
 as a Phase 2 failure: record under `_crawl-log.json#crawl.failures[]`
@@ -302,6 +330,27 @@ model reads the image — and verify it against the extracted record:
 - Is the logo captured?
 - Is the page actually rendered — not a consent wall, bot-block
   page, or blank SPA shell?
+
+Read the whole page through its thumbnail —
+`node stardust/scripts/thumb.mjs stardust/current/assets/screenshots/<slug>.png --width 480`
+(`skills/extract/scripts/thumb.mjs`, copied beside `crawl.mjs`; a
+box-filter downscale, so 1-px rules and hairline borders survive; its
+`--max-bytes` cap, 150 KB by default, re-encodes a heavy page narrower
+first and crops only as a last resort, never below 60 % of the page) —
+never the full-resolution screenshot, and read any detail as a crop of
+the full capture. The check is of the WHOLE page: read the script's
+stdout line before the image, and when it prints a share below 100
+(`cropped at <n>px of <H> = <share>%`) run the same command with
+`--offset <n>` and read `<slug>-thumb-<n>.png` too, repeating while its
+`rows <n>-<end>px` line ends short of `<H>`. A recorded hands-off run's
+thumbnails kept a median 28 % of each page and the check read them as
+the page. **A thumbnail enters the context only after `thumb.mjs` has
+written it (≤ 150 KB, or the floor thumbnail it named on stderr, exit 1)
+— or the vision check runs in a subagent that reads the thumbnails and
+returns one line per page**
+(`<slug>: ok | recaptured | suspect — <note>`); a recorded hands-off run
+read eight `*-thumb.png` files of 268–608 KB each into one context —
+3.2 MB of pixels for eight verdicts.
 
 On mismatch, re-run that page's capture with the escalation ladder
 before proceeding: bump the wait mode one step
@@ -330,7 +379,35 @@ per `reference/brand-surface.md`. Some fields are home-only (logo,
 voice samples, register heuristic); the visual tokens that drive
 DESIGN.md (palette, radius, shadow, type) are aggregated across **all
 extracted pages** to avoid the home-page bias documented in
-`brand-surface.md` § Aggregation scope. Captures:
+`brand-surface.md` § Aggregation scope.
+
+**Computed-style census — run the shipped instrument; author no
+probe.** `node <plugin>/skills/extract/scripts/style-census.mjs`
+(copied into the project like `crawl.mjs`, § Setup) measures every
+captured page at 1440 and writes
+`stardust/current/_computed-styles.json`; add `--width 360` when the
+breakpoints include it. One more live pass over every page — run it
+ONCE, after the crawl, in the background; it opens the live side
+through the shared `browser.mjs` like every other live instrument. Read the
+palette, type, motif and hover values from the file's `aggregate` and
+cite each from its `sources[]` (`url`, `selector`, `prop`); the
+per-page detail sits under `pages[url][width]`.
+
+**Content-cap model — run the shipped probe; author no lift (#124).**
+`node stardust/scripts/replica/cap-probe.mjs <archetype-url>… --write-design
+stardust/current/DESIGN.json` (replica's script; it needs the master skill's scripts copied too)
+renders each archetype at 1440 and at a DERIVED wide width —
+max(2560, largest cap × 1.25); a probe AT a cap's width cannot see it — and
+records every box that stops growing (kind `shell` / `content` / `module`,
+px, authored via, tier) into `extensions.breakpoints`: `containerMaxWidth`
+(the `--max-width` source; null when fluid), `probeWidth`, `caps[]`,
+`modules[]`. One navigation per archetype after the census (never beside
+it), once DESIGN.json is authored (it merges). A cap on the shell or
+on every archetype is design intent whatever its value; `capRegister` lists
+single-module or archetype-divergent caps for the inconsistency register.
+The cap model never records layout breakpoints: a redesign target keeps its own two;
+replica keeps the source's, or maps them to `--target-breakpoints`.
+Captures:
 
 - **Logo** by the v1 priority chain: inline SVG → `<img>` with
   logo-ish class/id → `apple-touch-icon` → `og:image` → favicon →
@@ -392,25 +469,37 @@ URL in `_brand-extraction.json` for traceability.
 The current-state PRODUCT.md and DESIGN.md are **descriptive, not
 authored** — there is no interview to run because the user is not
 defining intent here, the agent is describing the existing site. Write
-them directly using impeccable's format specs:
+them directly using impeccable's format specs (impeccable's skill
+directory is what `node <plugin>/skills/stardust/scripts/impeccable-version-check.mjs --where`
+prints; read each spec by section, not whole):
 
 - For PRODUCT.md, follow the section structure in impeccable's
-  `reference/teach.md`. Populate `Register` from the brand surface
-  (sites that read as marketing/landing → `brand`; tools/dashboards →
-  `product`; ambiguous → `brand` with a note). Populate `Users`,
-  `Product Purpose`, `Brand Personality`, `Anti-references`, and
-  `Design Principles` from the captured copy and the brand surface.
-  Where the agent must infer, mark the section with `_provenance:
-  inferred` and a one-line basis sentence.
+  `reference/init.md` § Write PRODUCT.md. File order: stardust's
+  `<!-- stardust:provenance … -->` block first (per
+  `../stardust/reference/artifact-map.md` § Provenance, as for every
+  file this skill writes), then `# Product`, then the
+  `<!-- impeccable:product-schema 1 -->` comment verbatim, then
+  `Platform` (`web`), `Users`, `Product Purpose`, `Positioning`,
+  `Capabilities and Constraints`, `Brand Commitments`, `Evidence on
+  Hand`, `Product Principles`, `Accessibility & Inclusion`; omit a
+  section rather than pad it. Under `Brand Commitments` record the
+  register guess from the brand surface (sites that read as
+  marketing/landing → `brand`; tools/dashboards → `product`; ambiguous
+  → `brand` with a note), the observed brand personality and the
+  observed anti-references. `Evidence on Hand` lists what was captured
+  under `stardust/current/` with paths. Populate `Users`, `Product
+  Purpose`, `Positioning` and `Product Principles` from the captured
+  copy and the brand surface. Where the agent must infer, mark the
+  section with `_provenance: inferred` and a one-line basis sentence.
 - For DESIGN.md and DESIGN.json, follow the format spec in
   impeccable's `reference/document.md`. Populate frontmatter
   (`colors`, `typography`, `rounded`, `spacing`, `components`) from
   the captured tokens. The `extensions` block of DESIGN.json carries
   v1's `componentStyle`, `motifs`, and `voice` arrays so nothing is
-  lost.
+  lost, and `breakpoints` — the cap-probe sizing model — verbatim.
 
-Stardust does **not** invoke `$impeccable teach` or `$impeccable
-document` for the current-state files: those commands write to project
+Stardust does **not** invoke `$impeccable init` (formerly `teach`) or
+`$impeccable document` for the current-state files: those commands write to project
 root (the *target*) and run an interview. Stardust authors the
 descriptive snapshot directly. The format spec from impeccable is the
 contract; the runtime command is not.
@@ -496,7 +585,7 @@ After all Phase 2-5 writes succeed:
    `waitMs > 0`, else `no`. A `no` row means the page record was
    not produced by a live Playwright render — the visible column
    is the defense-in-depth signal for the failure mode the
-   write-time guard exists to prevent (2026-04-30 lovesac). A
+   write-time guard exists to prevent (2026-04-30 e-commerce run). A
    maintainer scanning the summary should see `yes` on every row.
 
    Compute the wait summary by grouping each page's `_provenance.waitMode`
@@ -514,7 +603,7 @@ After all Phase 2-5 writes succeed:
    lazy-media walk — a capture pass that specs the full background
    walk (`playwright-recipe.md` § Capture list 11) yet silently
    produces nothing still ships an image-less capture (2026-06-26
-   knack.com: `cssBackgrounds: []` on every page, all product
+   a SaaS site: `cssBackgrounds: []` on every page, all product
    imagery lost). A flagged row is the cue to re-run that page with
    `--refresh` (and, if it persists, to fall back to headed Chrome per
    § Bot-management fallback). A maintainer scanning the summary should
@@ -583,12 +672,13 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/DESIGN.json`              | Sidecar with extensions for motifs, voice, components |
 | `stardust/current/brand-review.html`        | Self-contained visual review of the extraction (first eyeball-able artifact) |
 | `stardust/current/pages/<slug>.json`        | Per-page parsed structure + content                 |
+| `stardust/current/pages/<slug>.html`        | Settled rendered DOM (crawler sidecar; parse offline, never re-scrape) |
 | `stardust/current/assets/logo.<ext>`        | Extracted logo                                      |
 | `stardust/current/assets/favicon.<ext>`     | Site favicon (first-class asset; prototype head + deploy consume it) |
 | `stardust/current/assets/media/`            | Extracted media referenced by pages                 |
 | `stardust/current/assets/screenshots/`      | Per-page full-page screenshots, script-captured by `crawl.mjs` (Phase 2.5 vision gate + brand-review) |
 | `stardust/current/_brand-extraction.json`   | Consolidated brand surface (palette, type, motifs, voice, system components) |
-| `stardust/current/_crawl-log.json`          | Discovery + crawl audit trail (incl. `visionCheck[]`, `siblingCandidates[]`) |
+| `stardust/current/_crawl-log.json`          | Discovery + crawl audit trail (incl. `visionCheck[]`, `siblingCandidates[]`; `dynamicSurface` reach roll-up only with `--dynamics`) |
 | `stardust/current/brand-sources/<host>/`    | Shallow same-brand captures (only with `--brand-source`) |
 | `stardust/canon-source/`                    | Design-donor capture + descriptive DESIGN.md/json (only with `--design-source`) |
 | `stardust/state.json`                       | Updated with site + per-page status (+ `designSource` stamp) |
@@ -626,20 +716,26 @@ this in the user report; do not engineer around it.
   redirects to a login screen, capture that one page, mark the rest as
   unreachable, and ask the user how to proceed (provide cookies via
   Playwright config, change the entry URL, or scope to public pages).
-- **Bot-management block (Akamai / Cloudflare / F5 / Imperva).**
+- **Bot-management block (Akamai / Cloudflare / F5 / Imperva / CloudFront).**
   When the first navigation returns `ERR_HTTP2_PROTOCOL_ERROR`,
   `ERR_QUIC_PROTOCOL_ERROR`, or hangs through the hard-cap on a
   TLS/H2 fingerprint check, the issue is JA3/H2 fingerprinting on
   bundled-chromium-default headless mode — not auth, not network.
-  Switch to `headless: false, channel: 'chrome'` per
-  `reference/playwright-recipe.md` § Bot-management fallback. Do
-  **not** retry headless: it will fail identically. The headed
-  fallback works against most enterprise / commerce origins;
-  `playwright-extra` + stealth plugin is a non-standard escape
-  hatch for the residual cases. The headed window pops visibly,
-  which is acceptable for interactive runs and unacceptable for
-  unattended pipelines — surface this to the user when first
-  triggered.
+  `crawl.mjs` runs the fallback itself, window-free: real Chrome
+  headless (`channel: 'chrome'`, its own identity, no launch
+  flags) first, bundled Chromium only when Chrome is missing, one
+  real-Chrome relaunch with the challenge-solve window on an
+  entry-page block, and a wall — an edge 403 or a 200 verification
+  interstitial — is named within seconds in `_crawl-log.json`
+  (`discovery.botBlock`, per-page `BotChallenge` failures), never
+  captured as content (`node crawl.mjs --help`; a hand-rolled recipe
+  follows `reference/playwright-recipe.md` § Bot-management
+  fallback). Note for asset harvest: a page-level bot wall usually
+  does NOT gate assets — media/CSS/font URLs commonly return 200 to
+  a plain browser-UA curl even while every page navigation is
+  challenged (Cloudflare challenge, field-confirmed). Probe one
+  asset with curl BEFORE reaching for in-page-fetch machinery; the
+  in-page harvest is the fallback, not the default.
 - **JavaScript-only content.** Playwright already handles this. If
   the configured wait condition never fires within the mode's hard
   cap (`reference/playwright-recipe.md` § Wait modes), fall back to
@@ -657,7 +753,7 @@ this in the user report; do not engineer around it.
   positions is forbidden.** The shortcut produces output
   indistinguishable from a successful run and propagates
   fabricated content through every downstream phase
-  (2026-04-30 lovesac.com: 20 of 25 pages synthesized, caught
+  (2026-04-30 e-commerce run: 20 of 25 pages synthesized, caught
   four phases later).
 
 ## Prep mode (--prep)
@@ -673,7 +769,8 @@ supported.
 Core contract (procedure, formats, and detection rules in the
 reference):
 
-- `--prep` implies `--all` — migration coverage requires the full
+- `--prep` implies `--all` unless the user named N (then `--cap N`,
+  `reference/prep-mode.md` § 1) — migration coverage requires the full
   junk-filtered inventory, not the discovery cap.
 - Page types (`landing | article | listing | program | form |
   static | unique`) are LLM-inferred into `state.json.pages[].type`
@@ -683,6 +780,26 @@ reference):
   signal-source priority in the reference) are drafted under
   `DESIGN.json.extensions.modules[]` with `status: "candidate"`;
   per-page JSON gains a typed `slots` section per page-type.
+- **Locale-root capture gaps are settled before Phase 2 of any flow.**
+  After the crawl, `crawl.mjs` takes every captured locale root (a one-
+  or two-segment path of locale codes — `/en`, `/fr-ca`, `/ca/en`),
+  lists the same-origin targets linked from that page under its own
+  path, and marks the ones missing from the capture:
+  `_crawl-log.json#captureGaps` (`roots[]` with `root`, `slug`,
+  `linked`, `uncaptured[]`, plus `detail`, a ready ledger string) and
+  one `[crawl] capture gaps:` stderr line. Copy `roots[]` to
+  `state.json.site.captureGaps` (the `site` block is extract's; an
+  uncaptured target never becomes a `pages[]` row) and carry `detail`
+  verbatim in the ledger `end` line that closes the extraction —
+  `ledger.mjs extract prep end --detail "… uncaptured first-level
+  targets: ca/en 15, fr/fr 0"` (replica's `extract end` repeats it) — so
+  the owner decides on the gap now (widen with `--pages`, or record it
+  as scope debt), not in the rollout link audit: two recorded hands-off
+  runs captured `/ca/en` as a locale root while 15 `/ca/en/*` pages
+  existed on the source, and found out six hours later, when 15 links
+  answered 404 and the gap exceeded the 12-page deliver threshold.
+- **The header contract is recorded here** (`../diff/SKILL.md` § The header
+  contract); its summary line in the prep summary sizes the header.
 - The prep summary replaces the Phase 6 report; its
   `Provenance: <live>/<total> live` line is mandatory, and any
   ratio short of `<total>/<total>` means the run failed the

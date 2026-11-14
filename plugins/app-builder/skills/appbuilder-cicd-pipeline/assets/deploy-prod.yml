@@ -39,13 +39,13 @@ jobs:
           os: ubuntu
 
       - name: Build
-        uses: adobe/aio-apps-action@3.3.0
+        uses: adobe/aio-apps-action@3.4.0
         with:
           os: ubuntu
           command: build
 
       - name: Deploy
-        uses: adobe/aio-apps-action@3.3.0
+        uses: adobe/aio-apps-action@3.4.0
         with:
           os: ubuntu
           command: deploy

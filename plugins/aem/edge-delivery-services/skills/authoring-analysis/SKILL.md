@@ -3,7 +3,7 @@ name: authoring-analysis
 description: "Use this when the page-import pipeline needs to determine the authoring approach (default content vs blocks) for scraped content before generating import HTML for AEM Edge Delivery Services. Covers validating block selection and section styling for import/migration. Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # Authoring Analysis
@@ -155,12 +155,14 @@ Invoke **block-collection-and-party** skill to:
 
 **CRITICAL:** Before generating any HTML in next skill, fetch the pre-decoration HTML structure for ALL blocks you'll use.
 
+`<SKILL_DIR>` is the absolute path to the directory containing this SKILL.md.
+
 ```bash
 # Get structure examples for each block
-node .claude/skills/block-collection-and-party/scripts/get-block-structure.js cards
-node .claude/skills/block-collection-and-party/scripts/get-block-structure.js tabs
-node .claude/skills/block-collection-and-party/scripts/get-block-structure.js accordion
-node .claude/skills/block-collection-and-party/scripts/get-block-structure.js columns
+node <SKILL_DIR>/../block-collection-and-party/scripts/get-block-structure.js cards
+node <SKILL_DIR>/../block-collection-and-party/scripts/get-block-structure.js tabs
+node <SKILL_DIR>/../block-collection-and-party/scripts/get-block-structure.js accordion
+node <SKILL_DIR>/../block-collection-and-party/scripts/get-block-structure.js columns
 ```
 
 **Why this prevents mistakes:**

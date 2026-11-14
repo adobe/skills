@@ -5,6 +5,7 @@ export default defineConfig({
     description: "A Commerce app built with aio-commerce-sdk.", // max 255 chars
     displayName: "My Commerce App", // shown in App Management UI, max 50 chars
     id: "my-commerce-app", // alphanumeric + hyphens only, max 100 chars
+    upgradeMode: "manual", // optional; currently defaults to "manual" while upgrade execution stabilizes (will default to "auto" once ready); "auto" (experimental) runs upgrades after deploy, "manual" returns the plan without executing it
     version: "1.0.0", // Major.Minor.Patch only, no pre-release identifiers
   },
 });

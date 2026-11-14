@@ -14,9 +14,9 @@ https://<donor-site>"
 
 ## Expected behavior
 
-The `stardust:reskin` skill is invoked. It:
+The stardust `reskin` skill is invoked. It:
 
-1. **Ingests the donor** via `stardust:extract` with `--design-source`
+1. **Ingests the donor** via the stardust `extract` skill with `--design-source`
    (unchanged skill), landing the donor capture in `stardust/canon-source/`;
    when the donor runs multiple design systems, one donor reference page is
    pinned per module family and the pin is recorded.

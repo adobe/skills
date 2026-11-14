@@ -11,9 +11,9 @@ Empty project; no `stardust/` folder. Impeccable installed in
 
 ## Expected behavior
 
-The `stardust:extract` skill is invoked. It:
+The stardust `extract` skill is invoked. It:
 
-1. Runs the master skill setup (impeccable dep check, context loader).
+1. Runs the master skill setup (impeccable dep check, target-state file check).
 2. **Discovers** the page inventory before crawling: tries
    `sitemap.xml`, then `sitemap_index.xml`, then `robots.txt`
    `Sitemap:` directives, then BFS crawl.
@@ -38,8 +38,8 @@ The `stardust:extract` skill is invoked. It:
    synthesized placeholder) and saves it under
    `stardust/current/assets/logo.<ext>` (not `icons/`).
 8. **Authors `stardust/current/PRODUCT.md` directly** using
-   impeccable's `teach.md` as the format spec — does NOT invoke
-   `$impeccable teach` (the current-state file is descriptive, no
+   impeccable's `init.md` (product-schema 1) as the format spec — does NOT
+   invoke `$impeccable init` (the current-state file is descriptive, no
    interview).
 9. **Authors `stardust/current/DESIGN.md` and `DESIGN.json`
    directly** using impeccable's `document.md` as the format spec —
