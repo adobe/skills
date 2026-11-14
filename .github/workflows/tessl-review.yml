@@ -70,10 +70,18 @@ jobs:
 
       # Fork PRs: review the merged result via the PR merge ref.
       # Push to main: use the pushed commit.
+      #
+      # actions/checkout refuses a fork's code on pull_request_target unless told
+      # otherwise, which failed every Tessl review of a fork. Here the tree is data: the
+      # scripts that run come from the base (above), tessl reads the skills, and no token
+      # is left in the checkout. An author without write access has been approved in the
+      # fork-review environment by the time this runs.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event_name == 'pull_request_target' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.sha }}
           fetch-depth: 0
+          persist-credentials: false
+          allow-unsafe-pr-checkout: true
 
       - name: Check prerequisites
         id: prereq
