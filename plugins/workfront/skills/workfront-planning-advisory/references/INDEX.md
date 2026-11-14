@@ -1,6 +1,6 @@
 # References index
 
-Map of reference files used by the wf-planning-solution-architect skill. Load only what the question requires; do not preload everything.
+Map of reference files used by the workfront-planning-advisory skill. Load only what the question requires; do not preload everything.
 
 ## Top-level synthesis references (read these first)
 

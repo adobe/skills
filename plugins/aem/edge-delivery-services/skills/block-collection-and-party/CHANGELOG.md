@@ -1,3 +1,5 @@
+## [1.2.5](https://github.com/adobe/skills/compare/block-collection-and-party-v1.2.4...block-collection-and-party-v1.2.5) (2026-11-14)
+
 ## [1.2.4](https://github.com/adobe/skills/compare/block-collection-and-party-v1.2.3...block-collection-and-party-v1.2.4) (2026-11-14)
 
 
