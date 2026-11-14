@@ -1,0 +1,13 @@
+{
+  "description": "Find pages for a columns change on a live site (helix-website); boilerplate 5cea543 cloned by setup.sh",
+  "judge": {
+    "commands": true
+  },
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixtures/project",
+      "installPath": "."
+    }
+  }
+}
