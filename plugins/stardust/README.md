@@ -93,8 +93,8 @@ Delivery Services.
 - `spec` measures a site before a migration (inventory, redirects, 404s,
   templates and layout variants, blocks per page with reuse verdicts against a
   block library, dynamic features, martech, locales) and records the
-  judgement calls and open questions with defaults, all in one SQLite database
-  with a documented contract that a separate viewer application serves.
+  judgement calls and open questions with defaults, as committed knowledge
+  files with a documented contract that any client can read.
 - `qa` sweeps the live EDS site read-only: routing, content fidelity against
   the capture, template conformance, rendered integrity, visual regression,
   metadata and JSON-LD, links, axe accessibility, performance budgets,
@@ -110,14 +110,12 @@ file there (`stardust/.gitignore`, installed at setup). Everything under
 `stardust/` is meant to be committed: it cost tokens to produce or
 captured a site that will not exist after launch, and a clone in another
 environment resumes from it. Not tracked by default: screenshots wherever
-a skill writes them, four heavy folders rewritten on every run
-(`current/assets/`, `replica/gates/`, `migrated/assets/`, `rollout/qa/`),
+a skill writes them, gate images (their JSON verdicts stay), two heavy
+folders rewritten on every run (`migrated/assets/`, `rollout/qa/`),
 run residue under `stardust/.work/`, and captured session state. The
 project's own `.gitignore` is left alone apart from a managed block for
 `.env`; on an EDS project `stardust/` is added to `.hlxignore` so nothing
-in it is served. A clone without `current/assets/` can review and
-prototype but must re-run `extract` before `migrate` or `deploy`. The
-per-directory table is in
+in it is served. The per-directory table is in
 `skills/stardust/reference/artifact-map.md` § Versioning.
 
 ## Two migration flows
@@ -255,15 +253,11 @@ or `gh skill update`.
 | Grok Build, Amp | | | expected to work (Claude plugin compatible), not run |
 | Codex, Cursor, Gemini CLI, OpenCode, Kiro and other `.agents/skills` adopters | | | installable through `npx skills add`; not run |
 
-`notes/multi-agent-distribution.md` has the reasoning behind the tiers and
-the work breakdown.
-
 ### Prerequisites
 
 Stardust's bundled scripts run under Node 22 or later and need Playwright with
 Chromium resolvable from the project (`npm i -D playwright && npx playwright
-install chromium`). Several skills call `playwright-cli` from the adobe/skills
-`web` plugin. No harness installs these for you; the skills probe for them
+install chromium`). No harness installs these for you; the skills probe for them
 and print the install command when they are missing.
 
 ## Dependencies

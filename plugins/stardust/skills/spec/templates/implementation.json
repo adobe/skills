@@ -5,7 +5,7 @@
  "signals": {},
  "features": [],
  "metadata_contract": [],
- "query_indexes": [ { "name": "default", "include": ["<scopePath>**"], "exclude": ["**/fragments/**", "**/nav", "**/footer"], "properties": ["title", "description", "image", "lastModified"], "consumers": ["sitemap"], "source": "og/meta" } ],
+ "query_indexes": [ { "name": "default", "include": ["<scopePath>**"], "exclude": ["/nav", "/footer", "/**/nav*", "/**/footer*", "/fragments/**", "/drafts/**", "/search"], "properties": ["title", "description", "image", "lastModified", "robots"], "consumers": ["sitemap"], "source": "og/meta" } ],
  "site_config": [],
  "consent_summary": null,
  "loading_order": null,

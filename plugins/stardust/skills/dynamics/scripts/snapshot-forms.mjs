@@ -12,12 +12,12 @@
  * Writes (under --out, default data/forms): <name>.json per URL that has content-area
  * controls — <name> is the slug of the URL's last path segment ("form" for a root URL);
  * the definition carries _provenance {source, settleMs}. Per-URL lines go to stderr.
- * Exit 0 on completion, 2 on usage.
+ * Exit 0 on completion, 2 on usage or a setup error.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { arg, list, writeJSON, provenance, loadPlaywright, settlePage, slug } from './lib.mjs';
+import { arg, list, writeJSON, provenance, openBrowser, newPage, goto, settlePage, slug, stopOnSetupError } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -30,11 +30,10 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 const URLS = list(arg('urls', ''));
 if (!URLS.length) { console.error('usage: snapshot-forms.mjs --urls <url,…> [--out data/forms]'); process.exit(2); }
 const OUT = arg('out', 'data/forms'); const EXCLUDE = arg('exclude', ''); const SETTLE = Number(arg('settle', 3000));
-const { chromium } = await loadPlaywright();
-const browser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
+const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: true, args: ['--disable-blink-features=AutomationControlled'] } }).catch(stopOnSetupError);
 for (const url of URLS) {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  const page = await newPage(browser, { viewport: { width: 1440, height: 900 } });
+  await goto(page, url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await settlePage(page, { settleMs: SETTLE, maxScroll: 2400 });
   const def = await page.evaluate((extra) => {
     const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();
@@ -59,13 +58,14 @@ for (const url of URLS) {
       title: norm(root.querySelector('h1')?.textContent), intro: norm(container.querySelector('p')?.textContent).slice(0, 300), action: form?.getAttribute('action') || '', method: (form?.getAttribute('method') || 'post').toLowerCase(), hasFormTag: !!form,
       hidden: [...container.querySelectorAll('input[type=hidden]')].map((i) => i.name).filter(Boolean).slice(0, 20), submitLabel: norm(submit?.textContent) || norm(submit?.value) || 'Submit', fields: merged,
       piiSignals: merged.filter((f) => /ssn|social.?security|dob|birth|passport|account.?number|iban|card|cvv|minor|guardian|upload/i.test(`${f.name} ${f.label}`)).map((f) => f.name || f.label),
+      protection: (() => { const w = container.querySelector('[data-sitekey]'); const s = [...document.scripts].map((x) => x.src).find((x) => /recaptcha|hcaptcha|turnstile/i.test(x)) || ''; return (w || s) ? { vendor: `${w?.className || ''} ${s}`.match(/hcaptcha|turnstile/i)?.[0].toLowerCase() || 'recaptcha', siteKey: w?.dataset.sitekey || s.match(/render=([\w-]{20,})/)?.[1] || null, widget: !!w } : null; })(),
     };
   }, EXCLUDE);
   await page.close();
   if (!def) { console.error(`[forms] ${url}: no content-area controls`); continue; }
   const name = slug(new URL(url).pathname.replace(/\/$/, '').split('/').pop() || 'form');
   writeJSON(join(OUT, `${name}.json`), { _provenance: provenance('snapshot-forms', { source: url, settleMs: SETTLE }), ...def });
-  console.error(`[forms] ${name}: ${def.fields.length} fields (${def.fields.filter((f) => f.hiddenNow).length} conditional, ${def.fields.filter((f) => f.options?.length).length} with options) · submit "${def.submitLabel}" · form tag ${def.hasFormTag}${def.piiSignals.length ? ` · REGULATED-PII: ${def.piiSignals.join(',')}` : ''}`);
+  console.error(`[forms] ${name}: ${def.fields.length} fields (${def.fields.filter((f) => f.hiddenNow).length} conditional, ${def.fields.filter((f) => f.options?.length).length} with options) · submit "${def.submitLabel}" · form tag ${def.hasFormTag}${def.piiSignals.length ? ` · REGULATED-PII: ${def.piiSignals.join(',')}` : ''}${def.protection ? ` · PROTECTION: ${def.protection.vendor}` : ''}`);
 }
 await browser.close().catch(() => {});
 setTimeout(() => process.exit(0), 200).unref();

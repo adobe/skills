@@ -4,30 +4,34 @@ Pick by class and by whether the target already has an implementation (greenfiel
 library). Each pattern: intent · authoring contract · what the mechanism must do · verification
 (flows, not presence). Where the mechanism is non-obvious a minimal reference implementation is
 embedded as an **example the run adapts** — the plugin ships contracts and tooling, not blocks:
-across three migrations no block was reused as-is, every site's CSS is lifted from the source, and
-an existing library must be fed rather than forked.
+every site's CSS is lifted from the source, and an existing library is fed, never forked.
 
-| pattern | classes | disposition | greenfield | existing library |
-|---|---|---|---|---|
-| `search-index-backed` | S | index-backed | query index + results page + block | feed the library's search (off-origin-data.md) |
-| `listing-index-backed` | L, R | index-backed | listings.md | same |
-| `modal-loader` | M | rebuild-native | link marker + one runtime module | library's own dialog |
-| `chrome-interaction` | M | rebuild-native | motion-observe evidence → header/footer JS | keep |
-| `media-as-url` | V | embed-passthrough | player URL as content | same |
-| `forms` | F | rebuild-native | forms.md | forms.md § existing library |
-| `client-compute` | F | client-only | one block: controls + inline logic | same |
-| `consent-gated-tags` | T, A | embed-passthrough | owner config, disabled | library martech behind a host guard |
-| `off-origin-data` | A, S, D | data-fed | snapshot + `Source` row | endpoint indirection + shim (off-origin-data.md) |
-| `sheet-sync` | D | data-fed | — | `scripts/sync-sheets.mjs` |
-| `client-rendered-page` | CR | static-snapshot | settled DOM; blank = human capture | same |
-| `locale-tree` | I18N | rebuild-native | locale-trees.md | same |
-| `decided-out` | X, A | decided-out | register row | library guards |
+| pattern | classes | disposition | target | greenfield | existing library |
+|---|---|---|---|---|---|
+| `search-index-backed` | S | index-backed | widget | query index + results page + search widget | feed the library's search (off-origin-data.md) |
+| `listing-index-backed` | L, R | index-backed | block | listings.md | same |
+| `modal-loader` | M | rebuild-native | runtime | link marker + one runtime module | library's own dialog |
+| `chrome-interaction` | M | rebuild-native | runtime | the header contract → header/footer JS | keep |
+| `media-as-url` | V | embed-passthrough | content | player URL as content | same |
+| `forms` | F | rebuild-native | block / widget | forms.md | forms.md § existing library |
+| `client-compute` | F | client-only | widget | one widget per tool: controls + logic in code | same |
+| `consent-gated-tags` | T, A | embed-passthrough | embed | owner config, disabled | library martech behind a host guard |
+| `off-origin-data` | A, S, D | data-fed | block / widget | snapshot + `Source` row | endpoint indirection + shim (off-origin-data.md) |
+| `sheet-sync` | D | data-fed | content | — | `scripts/sync-sheets.mjs` |
+| `client-rendered-page` | CR | static-snapshot | content | settled DOM; blank = human capture | same |
+| `locale-tree` | I18N | rebuild-native | runtime | locale-trees.md | same |
+| `decided-out` | X, A | decided-out | — | register row | library guards |
+
+`target` = delivery form (triage.md § Target); locators and other API-fed tools with no authored
+copy are `off-origin-data` shipped as a widget.
 
 ## search-index-backed
 
 **Intent.** Search is a service, not a page. The header form's action never becomes a
-root-relative link to nowhere, nor stays on the source origin's results page. **Contract.** A `/search` page with the results block; the header
-form posts `?q=` (accept the source's parameter name too). **Mechanism.** The query index comes
+root-relative link to nowhere, nor stays on the source origin's results page. **Contract.** A `/search` page mounting the
+search widget (`<p><a href="/widgets/search/<name>.html?q=">…</a></p>` — the `?q=` and any other
+query param land as `data-*` on the widget root; accept the source's parameter name too); the
+header form posts `?q=`. **Mechanism.** The query index comes
 from `helix-query.yaml` in the CODE branch (skeleton in listings.md § Getting an index at all):
 commit, push, publish the pages live, poll `/query-index.json` (no more often than every 5 s,
 bounded) — never a configuration-service write (a 403 there with the migration token is
@@ -46,9 +50,7 @@ hit, onto the feature's `search-query` check in `parity.json` (`expectCount`, `e
 visible count; (3) results are deduped by title + description (two locale home pages under one
 title are one entry, or none — the source showed neither); (4) the typeahead dropdown is capped
 at N; the results page pages beyond it. Chrome and search documents are excluded from the index
-(their `Robots | noindex` row plus the `exclude` globs), so they never surface as results. A
-recorded hands-off run's typeahead returned 10 unbounded entries — section pages and two home
-pages sharing one title — for a term the source answered with 3 title matches.
+(their `Robots | noindex` row plus the `exclude` globs), so they never surface as results.
 
 **Verify.** `search-query` with `expectCount` + `expectTitles` (+ `expectIncludes`): the count
 must equal the source's, the top titles must be the source's, no duplicates — a count mismatch
@@ -89,7 +91,8 @@ fields; Escape closes; the target still serves standalone.
 import { loadCSS, loadSections } from './aem.js';
 export default async function openModal(href, { decorateMain, playerHosts = [] } = {}) {
   await loadCSS(`${window.hlx.codeBasePath}/styles/modal.css`);
-  const isMedia = playerHosts.some((h) => href.includes(h));
+  const url = new URL(href, window.location.href); url.hash = '';
+  const isMedia = url.protocol === 'https:' && playerHosts.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`));
   const dialog = document.createElement('dialog'); dialog.className = `modal modal--${isMedia ? 'large' : 'medium'}`;
   dialog.innerHTML = '<div class="modal__content"><div class="modal__header"><h2 class="modal__heading"></h2><button type="button" class="modal__close" aria-label="Close dialog">×</button></div><div class="modal__body"></div></div>';
   dialog.querySelector('.modal__close').onclick = () => dialog.close();
@@ -97,9 +100,9 @@ export default async function openModal(href, { decorateMain, playerHosts = [] }
   dialog.addEventListener('close', () => { document.body.classList.remove('modal-open'); dialog.remove(); });
   document.body.append(dialog); document.body.classList.add('modal-open'); dialog.showModal();
   const body = dialog.querySelector('.modal__body');
-  if (isMedia) { body.innerHTML = `<iframe src="${href.replace(/#modal$/, '')}&autoplay=true" allow="autoplay; encrypted-media; fullscreen" allowfullscreen title="Video"></iframe>`; return; }
+  if (isMedia) { url.searchParams.set('autoplay', 'true'); const f = document.createElement('iframe'); // never innerHTML (#157)
+    Object.assign(f, { src: url.href, title: 'Video', allowFullscreen: true, allow: 'autoplay; encrypted-media; fullscreen' }); body.append(f); return; }
   try {
-    const url = new URL(href, window.location.href); url.hash = '';
     const doc = new DOMParser().parseFromString(await (await fetch(`${url.pathname}.plain.html`)).text(), 'text/html');
     dialog.querySelector('.modal__heading').textContent = doc.querySelector('meta[name="modal-title"]')?.content || doc.querySelector('h1')?.textContent || '';
     doc.querySelectorAll('h1').forEach((h) => h.remove());
@@ -112,7 +115,8 @@ export default async function openModal(href, { decorateMain, playerHosts = [] }
 ## media-as-url
 
 **Intent.** The player URL is the content. **Contract.** A link to the vendor player URL carrying
-account, player and video id, plus `#modal` for overlays; inline via the site's video/embed block.
+account, player and video id, plus `#modal` for overlays; inline via the site's video/embed block,
+mounted after first paint (`../../deploy/SKILL.md` #157).
 Ids come from the detector's V rows **per page and per locale** (six of fourteen locale twins
 carried a different id), never from copy, never reused by path. Drive the probe from every
 target-less CTA, not a hand-made list. **Verify.** Playback, not presence: a vendor iframe needs a
@@ -125,8 +129,9 @@ the check sets `reducedMotionPauses` (`dynamics-check.mjs video-plays`); auth sc
 
 **Intent.** Calculators, filters, score lookups, comparisons: controls + inline logic, no network.
 **Signature.** A form (or control group) without action, inline scripts with no `fetch`/XHR.
-**Contract.** One block per tool; inputs as rows where they are content (labels, ranges, options),
-logic in block JS. **Rule.** Never flatten a client-compute section into a prose block — the
+**Contract.** One widget per tool (`widgets/<path>/<name>`): controls and logic in the widget's
+code, labels/ranges/options in its `.json` or as query params (`?rate=…` → `data-rate`); no
+authored rows. **Rule.** Never flatten a client-compute section into a prose block — the
 deploy/rollout block triage must refuse to convert a section the inventory marks `client-only` or
 modal-bearing into a generic block. **Verify.** Known input → known output.
 
@@ -161,10 +166,9 @@ export async function submit(form, endpoint) {
 
 ## chrome-interaction
 
-Header/footer behaviour (hover dropdowns, search overlay, sticky banner, back-to-top,
-time-of-day greeting) is M `chrome only`. Evidence is motion observation (replica's
-`motion-observe`), not the detector. Dropdown panels are captured as structure (columns → items
-{label, link, description, action}), via a hover probe, not as flat link lists. Clock-dependent
+Header behaviour (mega menus, dropdowns, search overlay, drawers, sticky states) is M `chrome
+only`, recorded and gated by the header contract (`../../diff/SKILL.md` § The header contract),
+not the detector; `dynamics-plan --chrome` adds a row per contract control family. Clock-dependent
 strings are behaviour: reproduce the function with thresholds read from the live JS, never the
 captured string.
 
@@ -177,6 +181,5 @@ surface into one request; check first that the source renders for a real user
 
 ## decided-out
 
-Session-bound (sign-in, shortlists, recent searches), regulated capture, features whose consumer is
-not on the migrated pages. Register row: feature · reason · production statement. Links kept;
-library guards left in place.
+triage.md § Dispositions. Links kept; library guards left in place; the sign-in/account entry UI the
+chrome keeps is a widget.

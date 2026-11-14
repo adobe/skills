@@ -20,7 +20,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { classify, jwtExpiry, readManifest } from '../da-media-upload.mjs';
+import { VIDEO_MAX_BYTES, classify, jwtExpiry, readManifest, webPath } from '../da-media-upload.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'da-media-upload.mjs');
@@ -77,7 +77,18 @@ const server = createServer((req, res) => {
       if (url.endsWith('/missing.png')) { res.writeHead(404); res.end('not found'); return; }
       if (url.endsWith('/walled.png')) { res.writeHead(403); res.end('access denied'); return; }
       if (url.endsWith('/html.png')) { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end('<html>challenge</html>'); return; }
+      // over-limit videos: one declares its length (skipped before the body is read), one is chunked (skipped after)
+      if (url.endsWith('/big.mp4')) { res.writeHead(200, { 'content-type': 'video/mp4', 'content-length': String(VIDEO_MAX_BYTES + 1) }); res.end(Buffer.alloc(VIDEO_MAX_BYTES + 1)); return; }
+      if (url.endsWith('/bigchunked.mp4')) { res.writeHead(200, { 'content-type': 'video/mp4' }); res.write(Buffer.alloc(VIDEO_MAX_BYTES)); res.end(Buffer.alloc(1)); return; }
+      if (url.endsWith('.mp4')) { res.writeHead(200, { 'content-type': 'video/mp4' }); res.end(randomBytes(700)); return; }
       res.writeHead(200, { 'content-type': 'image/png' }); res.end(FILES.ok); return;
+    }
+    // fake admin.hlx.page: preview/live of an uploaded video; a path containing `undelivered` answers 404
+    if (req.method === 'POST' && url.startsWith('/hlx/')) {
+      if (req.headers.authorization !== `Bearer ${TOKEN}`) { res.writeHead(401); res.end(); return; }
+      if (url.includes('undelivered')) { res.writeHead(404); res.end('not found'); return; }
+      if (url.includes('unauth')) { res.writeHead(401); res.end(''); return; }
+      res.writeHead(200, { 'content-type': 'application/json' }); res.end('{}'); return;
     }
     if (req.method !== 'PUT' || !url.startsWith(`/source/${ORG}/${REPO}/media/`)) { res.writeHead(405); res.end(); return; }
     putCount[url] = (putCount[url] || 0) + 1;
@@ -102,13 +113,13 @@ const FILES = { a: randomBytes(2048), b: randomBytes(1500), c: randomBytes(900),
 const assets = join(proj, 'assets');
 mkdirSync(join(assets, 'nested'), { recursive: true });
 writeFileSync(join(assets, 'a.png'), FILES.a); writeFileSync(join(assets, 'b.jpg'), FILES.b); writeFileSync(join(assets, 'nested', 'c.webp'), FILES.c);
-writeFileSync(join(assets, 'd.mp4'), randomBytes(300)); writeFileSync(join(assets, 'e.svg'), FILES.svg);
+writeFileSync(join(assets, 'd.mp3'), randomBytes(300)); writeFileSync(join(assets, 'e.svg'), FILES.svg);
 const LEDGER = join(proj, 'stardust', 'deploy', 'media-ledger.json');
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const run = (args, { token = TOKEN, extraEnv = {} } = {}) => new Promise((resolve) => {
   const env = { ...process.env, ...extraEnv }; delete env.DA_TOKEN; if (token) env.DA_TOKEN = token;
-  const p = spawn(process.execPath, [SCRIPT, '--org', ORG, '--repo', REPO, '--admin-url', BASE, '--content-url', `${BASE}/content`, '--backoff-ms', '5', ...args], { cwd: proj, env });
+  const p = spawn(process.execPath, [SCRIPT, '--org', ORG, '--repo', REPO, '--admin-url', BASE, '--content-url', `${BASE}/content`, '--hlx-url', `${BASE}/hlx`, '--backoff-ms', '5', ...args], { cwd: proj, env });
   let out = ''; let err = '';
   p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
   p.on('close', (code) => { allOutput.push(out, err); resolve({ code, out, err }); });
@@ -119,8 +130,11 @@ const contentUrl = (name) => `${BASE}/content/${ORG}/${REPO}/media/brand/${name}
 // ---- unit ---------------------------------------------------------------------------------------------
 await check('classify: image types by extension, non-images skipped, unsafe svg refused', () => {
   assert.equal(classify('x.JPG').type, 'image/jpeg'); assert.equal(classify('x.webp').type, 'image/webp'); assert.equal(classify('x.avif').type, 'image/avif');
-  assert.equal(classify('x.mp4').skip, 'not-an-image'); assert.equal(classify('x.pdf').skip, 'not-an-image'); assert.equal(classify('x.mp3').skip, 'not-an-image'); assert.equal(classify('x').skip, 'not-an-image');
+  assert.equal(classify('x.webm').skip, 'not-an-image'); assert.equal(classify('x.pdf').skip, 'not-an-image'); assert.equal(classify('x.mp3').skip, 'not-an-image'); assert.equal(classify('x').skip, 'not-an-image');
   assert.equal(classify('x.svg', FILES.svg).type, 'image/svg+xml');
+  assert.deepEqual(classify('x.MP4'), { ok: true, type: 'video/mp4', video: true });
+  assert.equal(classify('x.mp4', Buffer.alloc(VIDEO_MAX_BYTES)).ok, true);
+  assert.equal(classify('x.mp4', Buffer.alloc(VIDEO_MAX_BYTES + 1)).skip, 'video-too-large');
   assert.equal(classify('x.svg', Buffer.from('<svg><image href="data:image/png;base64,AAAA"/></svg>')).fail, 'svg-unsafe');
   assert.equal(classify('x.svg', Buffer.alloc(41 * 1024, 0x20)).fail, 'svg-unsafe');
 });
@@ -141,14 +155,14 @@ await check('readManifest: array, map and extract § Media shapes all reduce to 
 });
 
 // ---- --dir upload: PUT contract, retry, skip non-images ---------------------------------------------
-await check('--dir uploads every image: PUT path, field `data`, content type, Authorization; 429 then 201 retried; mp4 skipped', async () => {
+await check('--dir uploads every image: PUT path, field `data`, content type, Authorization; 429 then 201 retried; mp3 skipped', async () => {
   const r = await run(['--scope', 'brand', '--dir', 'assets']);
   assert.equal(r.code, 0, r.out + r.err);
   assert.match(r.out, /^OK assets\/a\.png -> \S+\/media\/brand\/a\.png \(after 2 attempts\)$/m);
   assert.match(r.out, new RegExp(`^OK assets/b\\.jpg -> ${contentUrl('b.jpg').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
   assert.match(r.out, /^OK assets\/nested\/c\.webp -> \S+\/media\/brand\/nested\/c\.webp$/m);
   assert.match(r.out, /^OK assets\/e\.svg -> \S+\/media\/brand\/e\.svg$/m);
-  assert.match(r.out, /^SKIP assets\/d\.mp4 not-an-image \(only jpg\/jpeg\/png\/webp\/gif\/avif\/svg are rehosted; video, audio and PDF ship from the code origin\)$/m);
+  assert.match(r.out, /^SKIP assets\/d\.mp3 not-an-image \(only jpg\/jpeg\/png\/webp\/gif\/avif\/svg and mp4 are rehosted; other video, audio and PDF ship from the code origin\)$/m);
   assert.match(r.out, /^da-media-upload: 5 file\(s\) — 4 uploaded, 1 skipped \(1 not an image\), 0 failed · ledger stardust\/deploy\/media-ledger\.json$/m);
   const puts = requests.filter((q) => q.method === 'PUT');
   assert.equal(puts.length, 5, 'a.png twice (429 then 201) + b + c + e');
@@ -164,7 +178,7 @@ await check('--dir uploads every image: PUT path, field `data`, content type, Au
   }
   const c = puts.find((q) => q.url.endsWith('/nested/c.webp')); assert.match(c.parts[0].headers, /Content-Type: image\/webp/i); assert.ok(c.parts[0].data.equals(FILES.c));
   assert.match(puts.find((q) => q.url.endsWith('/e.svg')).parts[0].headers, /Content-Type: image\/svg\+xml/i);
-  assert.ok(!puts.some((q) => q.url.includes('d.mp4')), 'no PUT for the video');
+  assert.ok(!puts.some((q) => q.url.includes('d.mp3')), 'no PUT for the audio file');
 });
 await check('ledger records each upload (path, size, sha256, content url) and never the token', () => {
   const l = ledger();
@@ -410,11 +424,122 @@ await check('--scope is relative to media/: a scope that starts with media/ is a
   assert.equal(requests.length, before, 'no request left the process');
   allOutput.push(r.out, r.err);
 });
+// ---- video (#161): mp4 up to 36 MB is uploaded, then previewed + published itself; author the root-relative path
+const videos = join(proj, 'videos');
+mkdirSync(videos, { recursive: true });
+const CLIP = randomBytes(4096);
+writeFileSync(join(videos, 'clip.mp4'), CLIP); writeFileSync(join(videos, 'undelivered.mp4'), randomBytes(500));
+const VLEDGER = join(proj, 'video-ledger.json');
+await check('video: PUT as video/mp4, then preview + live of the file itself on --branch; OK prints the root-relative path; a failed preview is FAIL, not OK', async () => {
+  const before = requests.length;
+  const r = await run(['--scope', 'home', '--dir', 'videos', '--ledger', 'video-ledger.json', '--branch', 'feat']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^OK videos\/clip\.mp4 -> \/media\/home\/clip\.mp4 \(video: preview \+ live; author this root-relative path\)$/m);
+  assert.match(r.out, /^FAIL videos\/undelivered\.mp4 preview 404 \(uploaded to DA but not delivered/m);
+  assert.doesNotMatch(r.out, /content\/test-org\/test-repo\/media\/home\/clip\.mp4/, 'the content.da.live URL of a video is never printed to author');
+  const mine = requests.slice(before);
+  const put = mine.find((q) => q.method === 'PUT' && q.url.endsWith('/media/home/clip.mp4'));
+  assert.match(put.parts[0].headers, /Content-Type: video\/mp4/i); assert.ok(put.parts[0].data.equals(CLIP));
+  const posts = mine.filter((q) => q.method === 'POST' && q.url.includes('/clip.mp4')).map((q) => q.url);
+  assert.deepEqual(posts, [`/hlx/preview/${ORG}/${REPO}/feat/media/home/clip.mp4`, `/hlx/live/${ORG}/${REPO}/feat/media/home/clip.mp4`]);
+  const l = JSON.parse(readFileSync(VLEDGER, 'utf8'));
+  assert.equal(l['media/home/clip.mp4'].status, 'uploaded'); assert.equal(l['media/home/clip.mp4'].authorUrl, '/media/home/clip.mp4');
+  assert.deepEqual(l['media/home/clip.mp4'].delivered, ['preview', 'live']);
+  assert.equal(l['media/home/undelivered.mp4'].status, 'failed');
+});
+await check('video: re-run skips a delivered video; --no-publish previews only and never calls live; an over-limit mp4 is SKIP video-too-large with no request', async () => {
+  let before = requests.length;
+  const r = await run(['--scope', 'home', '--dir', 'videos', '--ledger', 'video-ledger.json', '--branch', 'feat']);
+  assert.match(r.out, /^SKIP videos\/clip\.mp4 already uploaded \(ledger\) -> \/media\/home\/clip\.mp4$/m);
+  assert.ok(!requests.slice(before).some((q) => q.url.includes('/clip.mp4')), 'nothing re-sent for a delivered video');
+  const v2 = join(proj, 'videos2'); mkdirSync(v2, { recursive: true });
+  writeFileSync(join(v2, 'p.mp4'), randomBytes(800));
+  before = requests.length;
+  const r2 = await run(['--scope', 'home', '--dir', 'videos2', '--ledger', 'video-ledger.json', '--no-publish']);
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  assert.match(r2.out, /^OK videos2\/p\.mp4 -> \/media\/home\/p\.mp4 \(video: preview; author/m);
+  assert.deepEqual(requests.slice(before).filter((q) => q.method === 'POST').map((q) => q.url), [`/hlx/preview/${ORG}/${REPO}/main/media/home/p.mp4`]);
+  const v3 = join(proj, 'videos3'); mkdirSync(v3, { recursive: true });
+  writeFileSync(join(v3, 'big.mp4'), Buffer.alloc(VIDEO_MAX_BYTES + 1));
+  before = requests.length;
+  const r3 = await run(['--scope', 'home', '--dir', 'videos3', '--ledger', 'video-ledger.json']);
+  assert.equal(r3.code, 0, r3.out + r3.err);
+  assert.match(r3.out, /^SKIP videos3\/big\.mp4 video-too-large \(\d+ bytes is over the 36 MB/m);
+  assert.equal(requests.length, before, 'no request for an over-limit video');
+  rmSync(v3, { recursive: true, force: true });
+});
+await check('video: webPath gives the name the preview resolves; an underscore/uppercase mp4 is stored, previewed and printed under it', async () => {
+  assert.equal(webPath('main-mvisual_video01.mp4'), 'main-mvisual-video01.mp4');
+  assert.equal(webPath('Hero Clip__02.MP4'), 'hero-clip-02.mp4');
+  assert.equal(webPath('sub_Dir/A_b.mp4'), 'sub_Dir/a-b.mp4', 'folders resolve as is');
+  assert.equal(webPath('clip.mp4'), 'clip.mp4');
+  const v4 = join(proj, 'videos4'); mkdirSync(v4, { recursive: true });
+  writeFileSync(join(v4, 'Main_Video01.mp4'), randomBytes(600));
+  const before = requests.length;
+  const r = await run(['--scope', 'home', '--dir', 'videos4', '--ledger', 'video-ledger.json']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^OK videos4\/Main_Video01\.mp4 -> \/media\/home\/main-video01\.mp4 \(video: preview \+ live; author this root-relative path; stored as main-video01\.mp4, the name the preview resolves — update links that use Main_Video01\.mp4\)$/m);
+  const urls = requests.slice(before).map((q) => `${q.method} ${q.url}`);
+  assert.deepEqual(urls, [`PUT /source/${ORG}/${REPO}/media/home/main-video01.mp4`, `POST /hlx/preview/${ORG}/${REPO}/main/media/home/main-video01.mp4`, `POST /hlx/live/${ORG}/${REPO}/main/media/home/main-video01.mp4`]);
+});
+await check('video: an over-limit mp4 fetched from a manifest source is SKIP video-too-large (declared length: body never buffered; chunked: after download) — never PUT, never an image-style OK', async () => {
+  const m = join(proj, 'vmanifest.json');
+  writeFileSync(m, JSON.stringify([{ file: 'fetched/big.mp4', source: `${BASE}/src/big.mp4` }, { file: 'fetched/bigchunked.mp4', source: `${BASE}/src/bigchunked.mp4` }, { file: 'fetched/small_One.mp4', source: `${BASE}/src/small.mp4` }]));
+  const before = requests.length;
+  const r = await run(['--scope', 'home', '--manifest', 'vmanifest.json', '--ledger', 'video-ledger.json']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^SKIP fetched\/big\.mp4 video-too-large \(\d+ bytes is over the 36 MB/m);
+  assert.match(r.out, /^SKIP fetched\/bigchunked\.mp4 video-too-large/m);
+  assert.match(r.out, /^OK fetched\/small_One\.mp4 -> \/media\/home\/small-one\.mp4 \(video: preview \+ live/m);
+  assert.match(r.out, /3 file\(s\) — 1 uploaded, 2 skipped \(0 not an image, 2 over the video limit\), 0 failed/);
+  const puts = requests.slice(before).filter((q) => q.method === 'PUT').map((q) => q.url);
+  assert.deepEqual(puts, [`/source/${ORG}/${REPO}/media/home/small-one.mp4`]);
+  assert.ok(!existsSync(join(proj, 'fetched', 'big.mp4')), 'the declared-length clip was never buffered to disk');
+});
+await check('video: a 401 that persists on the preview POST halts the batch (exit 3, HALT, not failed, the rest not attempted)', async () => {
+  const v5 = join(proj, 'videos5'); mkdirSync(v5, { recursive: true });
+  writeFileSync(join(v5, 'a-unauth.mp4'), randomBytes(400)); writeFileSync(join(v5, 'b-unauth.mp4'), randomBytes(400)); writeFileSync(join(v5, 'c.png'), randomBytes(300));
+  const r = await run(['--scope', 'home', '--dir', 'videos5', '--ledger', 'video-ledger.json', '--retries', '1']);
+  assert.equal(r.code, 3, r.out + r.err);
+  assert.match(r.out, /^HALT videos5\/a-unauth\.mp4 preview 401 \(unauthorized through 2 attempts/m);
+  assert.doesNotMatch(r.out, /^FAIL/m); assert.doesNotMatch(r.out, /b-unauth|c\.png/);
+  assert.match(r.out, /3 file\(s\) — 0 uploaded, 0 skipped \(0 not an image\), 0 failed, 3 not attempted/);
+  assert.match(r.err, /rejected \(preview 401 through 2 attempts/);
+  const l = JSON.parse(readFileSync(VLEDGER, 'utf8'));
+  assert.equal(l['media/home/a-unauth.mp4'], undefined, 'never recorded as failed');
+});
+await check('video: --scope is kept verbatim (the preview resolves folder names as is; only the file name takes its web form)', async () => {
+  const v6 = join(proj, 'videos6'); mkdirSync(v6, { recursive: true });
+  writeFileSync(join(v6, 'Clip_A.mp4'), randomBytes(300));
+  const before = requests.length;
+  const r = await run(['--scope', 'My_Scope.v2', '--dir', 'videos6', '--ledger', 'video-ledger.json']);
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.out, /^OK videos6\/Clip_A\.mp4 -> \/media\/My_Scope\.v2\/clip-a\.mp4 /m);
+  const urls = requests.slice(before).map((q) => `${q.method} ${q.url}`);
+  assert.deepEqual(urls, [`PUT /source/${ORG}/${REPO}/media/My_Scope.v2/clip-a.mp4`, `POST /hlx/preview/${ORG}/${REPO}/main/media/My_Scope.v2/clip-a.mp4`, `POST /hlx/live/${ORG}/${REPO}/main/media/My_Scope.v2/clip-a.mp4`]);
+});
+await check('video: two files with one web name (Clip_A.mp4, clip-a.mp4) — the first keeps the path, the second FAILs name-collision with no request and no ledger write; a dry run shows it too', async () => {
+  const v7 = join(proj, 'videos7'); mkdirSync(v7, { recursive: true });
+  writeFileSync(join(v7, 'Clip_A.mp4'), randomBytes(300)); writeFileSync(join(v7, 'clip-a.mp4'), randomBytes(301));
+  const dry = await run(['--scope', 'dup', '--dir', 'videos7', '--dry-run'], { token: null });
+  assert.equal(dry.code, 1, dry.out + dry.err);
+  assert.match(dry.out, /^FAIL videos7\/clip-a\.mp4 name-collision \(stored as media\/dup\/clip-a\.mp4, which videos7\/Clip_A\.mp4 already takes/m);
+  const before = requests.length;
+  const r = await run(['--scope', 'dup', '--dir', 'videos7', '--ledger', 'video-ledger.json']);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /^OK videos7\/Clip_A\.mp4 -> \/media\/dup\/clip-a\.mp4 /m);
+  assert.match(r.out, /^FAIL videos7\/clip-a\.mp4 name-collision \(stored as media\/dup\/clip-a\.mp4, which videos7\/Clip_A\.mp4 already takes in this batch — rename one of them and re-run\)$/m);
+  assert.match(r.out, /2 file\(s\) — 1 uploaded, 0 skipped \(0 not an image\), 1 failed/);
+  const puts = requests.slice(before).filter((q) => q.method === 'PUT').map((q) => q.url);
+  assert.deepEqual(puts, [`/source/${ORG}/${REPO}/media/dup/clip-a.mp4`]);
+  const rec = JSON.parse(readFileSync(VLEDGER, 'utf8'))['media/dup/clip-a.mp4'];
+  assert.equal(rec.status, 'uploaded'); assert.equal(rec.file, 'videos7/Clip_A.mp4'); assert.equal(rec.size, 300, 'the ledger row is the first file\'s');
+});
 await check('--dry-run needs no token, sends nothing, writes nothing', async () => {
   const before = requests.length; const ledgerBefore = readFileSync(LEDGER, 'utf8'); const mtime = statSync(LEDGER).mtimeMs;
   const r = await run(['--scope', 'other', '--dir', 'assets', '--dry-run'], { token: null });
   assert.equal(r.code, 0, r.out + r.err);
-  assert.match(r.out, /^DRY assets\/a\.png -> \S+\/media\/other\/a\.png \(2048 bytes\)$/m); assert.match(r.out, /^SKIP assets\/d\.mp4 not-an-image/m);
+  assert.match(r.out, /^DRY assets\/a\.png -> \S+\/media\/other\/a\.png \(2048 bytes\)$/m); assert.match(r.out, /^SKIP assets\/d\.mp3 not-an-image/m);
   assert.match(r.out, /dry-run$/m); assert.doesNotMatch(r.out, /ledger/);
   assert.equal(requests.length, before); assert.equal(readFileSync(LEDGER, 'utf8'), ledgerBefore); assert.equal(statSync(LEDGER).mtimeMs, mtime);
 });

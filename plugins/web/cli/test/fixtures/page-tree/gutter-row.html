@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8" /><title>
+  A grid row overhanging its container by a gutter
+</title>
+<link rel="stylesheet" href="_base.css" />
+<style>
+  .container {
+    width: 1000px;
+    margin: 0 auto;
+  }
+  .container h2 {
+    margin: 0;
+    height: 50px;
+  }
+  .row {
+    display: flex;
+    margin: 0 -15px;
+  }
+  .col {
+    flex: 1;
+    padding: 0 15px;
+    height: 300px;
+    background: #cde;
+  }
+</style>
+<div id="utility">English</div>
+<div class="container">
+  <h2>Title</h2>
+  <div class="row">
+    <div class="col">Left</div>
+    <div class="col">Right</div>
+  </div>
+</div>
+<div class="footer">Footer</div>

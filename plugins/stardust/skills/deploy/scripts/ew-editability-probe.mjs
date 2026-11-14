@@ -46,6 +46,10 @@
  *                           comment). Any tag exempts the block's dead texts (they
  *                           are reported as `exempt`, with the declared reasons);
  *                           `@ew-exempt all` = the whole block is index/API-driven.
+ *                           No tag covers a cell whose text is CSS (`padding: 200px …`,
+ *                           `--x: …`): it is reported DEAD with a #134 label (css-as-text.mjs).
+ *   @variants <cell>: a | b (default a)   the closed vocabulary of a variant-word cell (#134);
+ *                           declared, an exempt one-word cell outside it is DEAD (typo).
  *                           Read whenever a blocks dir is known (harness mode
  *                           always; URL mode with --blocks-dir). Union with --exempt.
  *   metadata / section-metadata cells are pipeline config (never displayed) and
@@ -67,8 +71,18 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue, no-param-reassign */
 import fs from 'fs';
 import path from 'path';
-import { createRequire } from 'module';
-import { pathToFileURL } from 'url';
+import { cssAsText } from './css-as-text.mjs';
+
+// The browser front door is resolved lazily: importing this module (the tests, block-roundtrip) must not need it.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
+function frontDoor() {
+  if (!BROWSER) {
+    console.error('ew-editability-probe: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+    process.exit(2);
+  }
+  return import(BROWSER.href);
+}
 
 export const EDITABLE = 'h1, h2, h3, h4, h5, h6, p, ol, ul, pre, blockquote';
 export const QE_CSS = 'https://raw.githubusercontent.com/adobe/da-nx/main/nx/public/plugins/quick-edit/quick-edit.css';
@@ -184,9 +198,15 @@ export function instrument(EDITABLE_SEL) {
     if (isConfig(block) || block.classList.contains('default-content-wrapper') || /-wrapper$/.test(block.classList[0] || '')) return;
     block.querySelectorAll(':scope > div > div').forEach(wrapCell);
   });
+  // The EDS widget mount — a <p> holding only a /widgets/ link — is replaced by the loader at runtime, so its
+  // text can never be found again: key it 'widget' (readBlockExemptions exempts that key for every caller).
+  const isWidgetMount = (p) => !!p && p.childElementCount === 1 && p.firstElementChild.tagName === 'A'
+    && (/\/widgets\//.test(p.firstElementChild.getAttribute('href') || '') || p.firstElementChild.hasAttribute('data-widget'))
+    && p.textContent.trim() === p.firstElementChild.textContent.trim();
   const blockOf = (el) => {
-    const decorated = el.closest('main .block[data-block-name]');
+    const decorated = el.closest('main [data-block-name]'); // the widget loader drops `.block` but keeps data-block-name="widget"
     if (decorated) return decorated.dataset.blockName;
+    if (isWidgetMount(el.closest('p'))) return 'widget';
     const section = el.closest('main > div');
     const top = [...(section?.children ?? [])].find((c) => c.contains(el));
     if (!top || top.tagName !== 'DIV' || !top.classList.length || top.classList.contains('default-content-wrapper')) return 'default';
@@ -317,7 +337,20 @@ export function parseExemptTags(js) {
   if (!reasons.length) return null;
   const all = reasons.some((r) => /^all\b/i.test(r));
   const categories = EW_EXEMPT_CATEGORIES.filter((c) => reasons.some((r) => new RegExp(`\\b${c}\\b`, 'i').test(r)));
-  return { all, reasons, categories };
+  return { all, reasons, categories, variants: parseVariantTags(lead) };
+}
+
+// `@variants <cell>: left | right (default left)` lines in the leading JSDoc (#134) — the closed
+// vocabulary of the block's variant-word cells. Returns a Set of lower-case words (empty = none
+// declared). With a vocabulary declared, an exempt ONE-WORD cell outside it is dead (a typo falls
+// back silently in the block; the probe is where it is caught).
+export function parseVariantTags(lead) {
+  const words = new Set();
+  for (const m of (lead || '').matchAll(/@variants\s+(?:[^:\n]*:\s*)?([^\n]*)/g)) {
+    const list = m[1].replace(/\(default\s+[^)]*\)/i, '').split(/\s+—.*$/)[0];
+    list.split('|').map((w) => w.trim().toLowerCase()).filter((w) => /^[a-z0-9-]+$/.test(w)).forEach((w) => words.add(w));
+  }
+  return words;
 }
 
 // Exemptions for a set of blocks: JSDoc tags from <blocksDir>/<name>/<name>.js
@@ -335,6 +368,8 @@ export function readBlockExemptions(blocksDir, names, cliExempt = new Set()) {
     if (out[name]) out[name].reasons = [...out[name].reasons, '--exempt (CLI)'];
     else out[name] = { all: false, reasons: ['--exempt (CLI)'], categories: [], source: '--exempt' };
   });
+  // every EDS widget: the loader replaces the authored mount with code-rendered markup — nothing authored survives by design
+  out.widget ??= { all: true, reasons: ['widget: rendered by code, nothing authored'], categories: ['all'], source: 'widget' };
   return out;
 }
 
@@ -352,6 +387,16 @@ export function aggregate(rows, { sim = null, exemptions = {}, keyOf = (r) => r.
     const label = `<${r.tag}> ${r.text}`;
     if (r.hits === 1) { b.editable += 1; if (!r.sameText) b.textDrift += 1; }
     else if (r.hits > 1) { b.duplicated += 1; b.editable += 1; b.dupItems.push({ tag: r.tag, text: r.text, hits: r.hits, label: `${label} (×${r.hits})` }); }
+    else if (ex && ex.variants?.size && /^[a-z0-9-]+$/i.test(r.text.trim()) && !ex.variants.has(r.text.trim().toLowerCase())) {
+      // #134 — the block declares a variant vocabulary (@variants); a one-word exempt cell outside
+      // it is a misspelled or undeclared variant word — the block would fall back silently.
+      b.dead += 1; b.deadItems.push({ tag: r.tag, text: r.text, label: `${label} — not a declared variant word (@variants: ${[...ex.variants].join(' | ')}) (#134)` });
+    }
+    else if (ex && cssAsText(r.text)?.sev === '🔴') {
+      // #134 — an @ew-exempt tag (config, metadata, …) never covers a style value: CSS authored as a
+      // cell is a modeling defect (D15), not exempt text. The look is block CSS or a named variant word.
+      b.dead += 1; b.deadItems.push({ tag: r.tag, text: r.text, label: `${label} — CSS as content, not covered by @ew-exempt (#134)` });
+    }
     else if (ex) { b.exempt += 1; b.exemptItems.push({ tag: r.tag, text: r.text, label }); }
     else { b.dead += 1; b.deadItems.push({ tag: r.tag, text: r.text, label }); }
   });
@@ -384,7 +429,8 @@ export function formatTable(label, { blocks, totals }, { sim = null, verbose = f
   return out.join('\n');
 }
 
-// Gate verdict over aggregated blocks: dead non-exempt text or duplicated index → fail.
+// Gate verdict over aggregated blocks: dead non-exempt text (including an exempt-tagged cell whose
+// text is CSS, #134) or duplicated index → fail.
 export function verdict({ blocks }) {
   return { dead: blocks.some((b) => b.dead > 0), duplicated: blocks.some((b) => b.duplicated > 0) };
 }
@@ -428,7 +474,8 @@ export async function runDecorate(page, names) {
 export async function probeContent(browser, { content, blocksDir, stylesPath, width = 1440, simulate = false, extraCss = '', instrumentFirst = true }) {
   const mainHtml = readMainHtml(content);
   const styles = fs.readFileSync(stylesPath, 'utf8');
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+  const { newPage } = await frontDoor();
+  const page = await newPage(browser, { viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
   // body.appear satisfies the vanilla foundation's body{display:none} gate the
   // way loadEager() does; body > header is hidden so sticky headers do not land
   // in tall element screenshots.
@@ -457,7 +504,8 @@ export async function probeContent(browser, { content, blocksDir, stylesPath, wi
 // URL mode: intercept the document response, instrument it in a scratch page,
 // let the served page's own scripts decorate, survey. Returns { texts, rows, sim, page, ctx }.
 export async function probeUrl(browser, url, { width = 1440, simulate = false, settleMs = 500, timeoutMs = 30000, waitUntil = 'networkidle', gotoTimeoutMs = 45000 } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 900 } });
+  const { newContext, goto } = await frontDoor();
+  const ctx = await newContext(browser, { viewport: { width, height: 900 } });
   const scratch = await ctx.newPage();
   const page = await ctx.newPage();
   let texts = [];
@@ -474,7 +522,7 @@ export async function probeUrl(browser, url, { width = 1440, simulate = false, s
     texts = out.texts;
     return route.fulfill({ response: resp, body: out.html, headers: { ...resp.headers(), 'content-type': 'text/html; charset=utf-8' } });
   });
-  await page.goto(url, { waitUntil, timeout: gotoTimeoutMs });
+  await goto(page, url, { waitUntil, timeout: gotoTimeoutMs });
   await page.waitForFunction(() => [...document.querySelectorAll('main .section')].every((s) => s.dataset.sectionStatus === 'loaded'), null, { timeout: timeoutMs }).catch(() => {});
   await page.waitForTimeout(settleMs);
   const rows = await page.evaluate(survey, texts);
@@ -485,20 +533,6 @@ export async function probeUrl(browser, url, { width = 1440, simulate = false, s
     sim = await page.evaluate(simulateEditor, texts);
   }
   return { texts, rows, sim, page, ctx };
-}
-
-// Resolve playwright from the cwd project first (plugin scripts live outside any
-// node_modules tree), then bare.
-export async function loadChromium() {
-  const normalize = (mod) => (mod.chromium ? mod : (mod.default?.chromium ? mod.default : null));
-  try {
-    const req = createRequire(path.join(process.cwd(), 'package.json'));
-    const mod = normalize(await import(pathToFileURL(req.resolve('playwright')).href));
-    if (mod) return mod.chromium;
-  } catch { /* fall through */ }
-  const mod = normalize(await import('playwright'));
-  if (!mod) throw new Error('playwright not found: run from a project that has it installed (npm i -D playwright)');
-  return mod.chromium;
 }
 
 // ──────────────────────────────────────────────────────────────── CLI ──
@@ -535,8 +569,8 @@ async function main() {
   }
   const opts = parseArgs(process.argv);
   if (!opts.urls.length && !opts.content) { process.stderr.write(USAGE); process.exit(2); }
-  const chromium = await loadChromium();
-  const browser = await chromium.launch();
+  const { openBrowser } = await frontDoor();
+  const browser = await openBrowser({ mode: 'plain' });
   const results = [];
   let fail = false;
   let probeError = false;

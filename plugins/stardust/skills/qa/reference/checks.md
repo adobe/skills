@@ -19,7 +19,8 @@ for a judgment pass without re-crawling.
 | `redirect-not-firing` | error | a /redirects.json rule doesn't redirect |
 | `redirect-dest-broken` | error | redirect lands on a non-200 |
 | `no-redirects-sheet` | info | no /redirects.json — verification skipped |
-| `trailing-slash-broken` | warn | `/path/` variant of a sample path fails |
+| `redirect-missing` / `redirect-dest-differs` | error / warn | a `stardust/redirects.tsv` row is absent from `/redirects.json` / points elsewhere |
+| `trailing-slash-broken` | warn | a folder index fails at `/path` (no redirect to `/path/`) |
 | `404-not-404` | error | unknown paths don't 404 (soft-404s poison crawlers) |
 | `404-page-empty` | warn | 404 body is near-empty (unstyled error page) |
 | `sitemap-missing` | error | no sitemap.xml |
@@ -38,9 +39,10 @@ for a judgment pass without re-crawling.
 | `bare-ordinals` | warn | `<p>1</p>` rows — numbered component flattened |
 | `duplicate-text` | warn | 12-word shingle repeats within 400 words — pasted twice |
 | `flattened-collection` | warn / error (≥6 repeats + >40% of page words unblocked) | a periodic tag cycle (e.g. `h4+p+p` ×24) or ≥5 same-level headings at a steady stride in DEFAULT content — a structured directory/card set rendered as plain prose instead of a block ("masthead + prose dump + CTA" pages). Fixture-tested: `scripts/test/flattened.test.mjs` |
-| `single-block-hoard` | warn / error (source-confirmed or ≥5 latent headings) | a page that DOES use blocks but one PROSE-CONTAINER block (`*-body`/`prose`/`text`/`content`) holds ≥60% of the page across ≤2 block types — the source's multi-section structure collapsed into one long body (the "fat single block" flatten variant `unblocked-page`/`flattened-collection` miss). Distinguishes defect from an INTENTIONAL single block: skips prose-by-design template families (article/blog/wellness/legal…); with a source capture, fires only when the source had ≥3 heading-led regions (≤1 region = faithfully flat, skipped); without source, fires only when the hoarding block's own inner headings/lists reveal recoverable structure. Fixture-tested: `scripts/test/single-block-hoard.test.mjs` |
+| `single-block-hoard` | warn / error (source-confirmed or ≥5 latent headings) | one PROSE-CONTAINER block (`*-body`/`prose`/`text`/`content`) holds ≥60% of a blocked page across ≤2 block types — the source's sections collapsed into one body (the flatten variant `unblocked-page`/`flattened-collection` miss). Skips prose-by-design template families (article/blog/wellness/legal…); with a source capture fires only when the source had ≥3 heading-led regions, without one only when the block's inner headings/lists reveal structure. Fixture-tested: `scripts/test/single-block-hoard.test.mjs` |
 | `source-images-lost` | error | capture has ≥4 images, delivered page renders <25% of them — pipeline strips imagery authored inside flat content |
 | `unknown-block` | error | authored block class serves no code under /blocks/ |
+| `unknown-widget` | error | a `/widgets/<path>/<name>.html` link (the one sanctioned `.html` link) whose code does not HEAD 200 |
 | `verbatim-below-threshold` | warn *(triage)* | <95% of captured source text found verbatim; evidence lists missing nodes |
 | `verbatim-missing-nodes` | info | coverage ok but some nodes absent |
 | `scrape-dir-empty` | info | fidelity skipped |
@@ -49,8 +51,8 @@ for a judgment pass without re-crawling.
 
 | id | sev | what |
 |---|---|---|
-| `missing-template-blocks` | error | page lacks blocks its template prescribes (explicit config, else >70% sibling consensus) |
-| `unblocked-page` | error | zero blocks while template siblings have them — fell back to plain prose |
+| `missing-template-blocks` | error | page lacks blocks its template prescribes (explicit config, else >70% sibling consensus); a widget link counts as a block named by its file stem |
+| `unblocked-page` | error | zero blocks (widget links included) while template siblings have them — fell back to plain prose |
 | `no-template-map` | info | no template assignments; check skipped |
 
 ## rendered (D, browser; desktop 1440 + mobile 390)
@@ -81,6 +83,11 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 | `parity-failed` | error | a replayed flow did not complete (empty form accepted, dialog did not open, query returned nothing, player never requested playback, video present but not playing) |
 | `parity-env-limit` | warn | a failed flow whose feature records an environment limit (geo-fenced hand-off target) |
 | `parity-unchecked` | info | a feature with a non-final status and no replayable check — an owner item |
+
+## chrome (L, browser; the header contract)
+
+The live header against `stardust/chrome/header-contract.json` (`../../diff/SKILL.md` § The header contract): comparer
+ids and severities, owner-decided ones info; `header-contract-missing` info, `header-explore-failed` error.
 
 ## visual (E, browser)
 
@@ -130,7 +137,9 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 | `transfer-over-budget` | warn | encoded bytes > budget (default 800KB) |
 | `js-over-budget` | warn | JS transfer > budget (default 250KB) |
 | `lcp-poor` | warn | lab LCP > 2.5s · `cls-poor` warn | CLS > 0.1 |
-| `network-degraded` | info | neutral-host TTFB control tripped — all perf findings this run downgraded to info (a slow network must not read as a site regression) |
+| `player-before-paint` | warn | a player document, script or API request (any frame) started before first contentful paint (deploy #157) |
+| `player-timing-unknown` | warn | a player request had no browser start time and neither bound placed it — `player-before-paint` could not judge it |
+| `network-degraded` | info | neutral-host TTFB control tripped — all perf findings this run except `player-before-paint` downgraded to info (a slow network must not read as a site regression) |
 | `measurement` | info | per-page numbers, always recorded |
 | `load-timeout` | warn | no load event in 60s |
 

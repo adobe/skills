@@ -1,11 +1,10 @@
 # Learnings ledger — `stardust/learnings.md`
 
 A per-run ledger of hard-won failures and the skill changes they
-imply. It lives at `stardust/learnings.md` in the project a run
-operates on, and formalizes the fold-back loop that previously lived
-in an external master prompt's NOTES section: a run surfaces a
-failure → the ledger records it with the exact skill + section that
-should change → the pending entry is harvested into a skill diff.
+imply, at `stardust/learnings.md` in the project a run operates on:
+a run surfaces a failure → the ledger records it with the exact
+skill + section that should change → the pending entry is harvested
+into a skill diff.
 
 ## Who writes, who reads
 
@@ -13,6 +12,8 @@ should change → the pending entry is harvested into a skill diff.
   at the end of every delivery run.
 - **Any stardust skill may append** when it hits a failure class its
   SKILL.md didn't anticipate.
+- **A retrospective** (`notes/retrospectives/replica.md`) appends
+  `pending` entries, citing existing ones instead of duplicating.
 - **Plugin maintainers harvest**
   `pending` entries into skill diffs; landing the diff flips the
   entry's status to `folded`.

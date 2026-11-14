@@ -101,8 +101,8 @@ skill when § Two migration flows resolves; `replica` Setup (`replica`),
 `prepare-migration` Setup (`redesign`) and `reskin` Setup (`reskin`) when
 invoked directly; `direct` when a zero-movement phrase hands off
 (`replica`). Absent on redesign-only projects that never migrate (a bare
-`extract` for audit or uplift): the keys mean "a migration flow was
-chosen", not "this is a migration".
+`extract` for audit or uplift, or `spec`, which never stamps): the keys mean
+"a migration flow was chosen", not "this is a migration".
 
 **Guards that read it.** `migrate`, `deploy`, `rollout` and (for migration
 asks only) `extract` refuse to run a migration on a project that has
@@ -303,7 +303,7 @@ be, or say which ignore rule drops it); any tracked file outside
 `stardust/`, the impeccable root files and the EDS project; any tracked
 file matching a secret shape (`.env*`, `_storage-state.json`,
 `*-clearance.json`). Then one line per consequence that applies on this
-checkout (`current/assets/` missing, baselines missing). Above 50 MB of
+checkout (`current/assets/` or its screenshots missing, baselines missing). Above 50 MB of
 tracked binaries under `stardust/`, add "consider Git LFS (optional)".
 
 The `Flow:` line is omitted when no flow key exists; on a migration ask

@@ -31,7 +31,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON } from './lib.mjs';
+import { readJSON, writeJSON, publicUrl } from './lib.mjs';
 import { writeFileSync, mkdirSync } from 'node:fs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -68,7 +68,7 @@ function normPath(p) {
 }
 
 // sitemap.xml — delivered (extensionless) paths.
-const urls = pages.map((p) => `  <url><loc>${host}${p.path}</loc></url>`).join('\n');
+const urls = pages.map((p) => `  <url><loc>${host}${publicUrl(p)}</loc></url>`).join('\n');
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
 writeFileSync(join(siteDir, 'sitemap.xml'), sitemap);
 

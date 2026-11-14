@@ -2,7 +2,7 @@
 name: reskin
 description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, or local static HTML prototypes (Figma donors are contract-defined, not yet implemented). Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:reskin — same content, donor design
@@ -53,7 +53,7 @@ regression check instead of a debugging tool.
     later release."* Do not improvise a partial Figma capture.
 - `--pages <slug,slug,...>` — optional. Restrict the content capture
   to specific pages. Default: the archetype set (one page per page
-  family; scale to siblings happens in Phase 6 via `migrate`).
+  family; a spec's `archetypes.json` names them; scale to siblings happens in Phase 6 via `migrate`).
 - `--scope <selectors>` — optional. Pre-declare the content-root
   scope for a single-page run (comma-separated, `!` suffix keeps a
   scope whole; see `reference/content-model.md` § Scope declaration).
@@ -79,15 +79,9 @@ regression check instead of a debugging tool.
    tree ships no `node_modules`. Copy `skills/reskin/scripts/*` (all
    five files — `capture-content.mjs` and `dom-equality.mjs` import
    `source-normalize.mjs` as a sibling) byte-identical to
-   `stardust/scripts/reskin/`, **and** `skills/diff/scripts/
-   live-session.mjs` to `stardust/scripts/diff/` — every reskin gate
-   script (capture-content, dom-equality, donor-probe, **and**
-   slot-coverage) imports it unconditionally at startup, regardless
-   of target type: without the copy each one exits 2 immediately,
-   even for `--help` or a local-file `--rendered` target. It supplies
-   ALL live-target hardening (real-Chrome UA + standard headers,
-   challenge detection, headed-stealth escalation), resolved from
-   `../diff/` next to `../reskin/`, so keep the two dirs siblings.
+   `stardust/scripts/reskin/`, **and** the master skill's scripts (`../stardust/SKILL.md`
+   § Setup, step 7): every reskin gate script resolves `browser.mjs` there at
+   startup and exits 2 without it, even for `--help`.
    Run the copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per

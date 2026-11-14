@@ -1,0 +1,4 @@
+{
+  "plugins": ["import", "unicorn"],
+  "ignorePatterns": ["src/bundles/**", "dist/**"]
+}
