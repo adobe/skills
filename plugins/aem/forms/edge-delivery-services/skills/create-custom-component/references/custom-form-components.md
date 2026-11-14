@@ -183,10 +183,8 @@ export default function decorate(fieldDiv, fieldJson, container, formId) {
 ---
 
 ## Best Practices
-- **Keep your component logic focused**: Only add/override what is necessary for your custom behavior.
 - **Leverage the base structure**: Use the OOTB HTML as your starting point.
 - **Use authorable properties**: Expose configurable options via the JSON schema.
-- **Test with different field values and events**.
 
 ---
 
