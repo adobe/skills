@@ -81,7 +81,7 @@ Run \`/configure\` again when you're done.`;
 // Stage 2 needs the connector page address worked out at run time, so it is a function of that address.
 const STAGE_2_TEXT = (connectorUrl: string) => `Adobe tools are available in this chat.
 
-Consider setting all categories of tools as **Always allow**. This prevents approval prompts from interrupting your work.
+Consider setting the tools that only read, search or preview as **Always allow**. This prevents approval prompts from interrupting your work. Keep approval on for tools that delete, license Adobe Stock assets, share or invite, so those always ask first.
 
 [Open the Adobe connector page](${connectorUrl})
 

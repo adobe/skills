@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.38.3 — martech tags load from the boilerplate's consent phase
+## 0.38.5 — martech tags load from the boilerplate's consent phase
 
 aem-boilerplate replaced `delayed.js` with a consent phase: `loadDelayed()` imports `consent-check.js`,
 whose placeholder `hasConsent()` declines by default and loads `consented.js` only on consent. The EDS
@@ -25,6 +25,22 @@ project the scaffold hooked `loadTags()` straight into `loadDelayed()`, outside 
 - Tests: `martech-scaffold.test.mjs` 24/24 — the consented.js hooks and re-run, the upgrade from an older
   run's hook, every non-placeholder `hasConsent()` as a conflict, an owner-wired one kept, the JSDoc, the
   `hasConsent()` matrix, and consent-check.js → consented.js → tags end to end.
+
+## 0.38.3 — spec: classic AEM components inside responsive grids
+
+Field learning from a medical-device manufacturer's run: the site mixes classic `c-*` components with responsive-grid
+members inside experience fragments. The `aem-classic` profile looked through the grids, so side-by-side members never
+became rows (the columns and cards a row maps to were missed) and components without the `c-` prefix went unnamed; the
+run had to extend the profile in its project copy.
+
+- **`aem-classic` reads responsive grids:** a grid member (`aem-GridColumn`) is the root, named by the classic
+  component it wraps, so one component keeps one name inside and outside grids. Member widths group members into rows,
+  as in `aem-core`, and the wrapped component is not counted as a second root.
+- **`parser.extraRoots`** (aem-classic) lists component classes without the `c-` prefix. The run needed four.
+- Pages without grids parse as before. On pages with grids, path ids change and grid containers appear as `container`:
+  a run already past S7 re-runs parse and capture, and adds `container` to the mapping's `layout` list.
+- Re-parsing that run's 2,883 cached pages with this code and its four `extraRoots` gives output identical to the run's
+  own parse. `spec-parse.test.mjs` covers grid rows, member naming and `extraRoots`.
 
 ## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
 
