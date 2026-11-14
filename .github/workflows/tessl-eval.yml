@@ -17,7 +17,7 @@ jobs:
     outputs:
       run: ${{ steps.trigger.outputs.run }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
@@ -61,12 +61,12 @@ jobs:
     # No environment: TESSL_TOKEN is a repository secret, so an approval step here never
     # kept a branch of this repository from using it. It only made every eval wait for a person.
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '24'
 
@@ -96,7 +96,7 @@ jobs:
             echo "No qualifying skills to evaluate — either no skill files were changed or changed skills have no \`.tessl-plugin/plugin.json\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: tesslio/setup-tessl@v2
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
         if: steps.detect.outputs.skip != 'true'
         with:
           token: ${{ secrets.TESSL_TOKEN }}
