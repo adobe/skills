@@ -67,16 +67,11 @@ Typical causes on Edge Delivery Services. Confirm each one on the page before yo
 
 ### CLS
 
-- Images without `width` and `height`. `createOptimizedPicture()` in `aem.js` does not set them.
-- A block that changes its size when its JavaScript decorates it, or content that arrives from a fragment or JSON.
-- A web font without a size-adjusted fallback font.
-- A consent banner or other late-loading element that pushes content down.
+- `createOptimizedPicture()` in `aem.js` does not set `width` and `height` on the images it creates.
 
 ### INP
 
 - Observation and mutation listeners (`MutationObserver`, `IntersectionObserver`, `ResizeObserver`) that do work on every change during decoration. This is common and easy to overlook.
-- Block JavaScript that reads layout and then writes to the DOM in a loop.
-- Third-party scripts with global event listeners, mostly from a tag manager.
 
 ## Report template
 
@@ -110,4 +105,3 @@ Numbers with too few samples, slots that failed, and metrics a browser doesn't r
 | Zero bundles | No sampled page view in that slot. | Try a month slot. |
 | Every Core Web Vitals value is missing | `addCalculatedProps` did not run. | Run it on each bundle before `load()`. |
 | `cls.samples` is far below `lcp.samples` | WebKit sends no CLS. | Report CLS as Chromium data. |
-| p75 jumps from day to day | Few samples per day. | Use a longer range. |

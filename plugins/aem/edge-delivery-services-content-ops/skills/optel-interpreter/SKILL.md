@@ -61,9 +61,9 @@ These are the mistakes an analysis makes without this skill:
 
 For "did the deploy make it worse", run the script once for each period:
 
-- Use day slots, the same number of days, and the same weekdays before and after.
+- Use day slots (`2026/10/15`), one per day of each period.
 - Compare a metric only where both periods have at least 10 samples.
-- Compare `devices` and `lcpElements` too. A change in device mix or a new LCP element explains a changed p75 without any regression in the code.
+- Compare `devices` and `lcpElements` too.
 
 ## Step 5: Find causes and report
 
