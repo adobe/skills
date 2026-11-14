@@ -65,7 +65,7 @@ test('a generated file edited by hand fails, and is named', (t) => {
   const result = check(t, branch(t, { [CLAUDE]: 'edited by hand' }));
   assert.equal(result.status, 1);
   assert.match(result.stdout, new RegExp(`::error file=${CLAUDE.replaceAll('.', '\\.')}::.* is generated`));
-  assert.match(result.stdout, /::error::1 generated file\(s\) were changed by hand/);
+  assert.match(result.stdout, /::error::1 generated file\(s\) are changed here, and not to what the build writes/);
   assert.match(result.summary, /git checkout origin\/main -- plugins\/a\/\.claude-plugin\/plugin\.json/);
   assert.doesNotMatch(result.stdout, new RegExp(`file=${TESSL.replaceAll('.', '\\.')}`));
 });
@@ -73,7 +73,7 @@ test('a generated file edited by hand fails, and is named', (t) => {
 test('a hand edit fails also when plugin.json changed with it, and only the edited file is blamed', (t) => {
   const result = check(t, branch(t, { [SOURCE]: 'v2', [CLAUDE]: 'something else' }));
   assert.equal(result.status, 1);
-  assert.match(result.stdout, /::error::1 generated file\(s\) were changed by hand: plugins\/a\/\.claude-plugin\/plugin\.json/);
+  assert.match(result.stdout, /::error::1 generated file\(s\) are changed here, and not to what the build writes: plugins\/a\/\.claude-plugin\/plugin\.json/);
   assert.match(result.stdout, /CI rebuilds them on main after the merge:\n  plugins\/a\/\.tessl-plugin\/plugin\.json/);
 });
 

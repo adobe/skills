@@ -47,12 +47,12 @@ function main() {
   }
   if (edited.length === 0) return;
   for (const file of edited) {
-    console.log(`::error file=${file}::${file} is generated, and this pull request changes it to something the build does not write. Change plugin.json (or mcp.json) instead.`);
+    console.log(`::error file=${file}::${file} is generated, and this pull request changes it to something the build does not write: an edit by hand, or a build from before plugin.json changed again. Change plugin.json (or mcp.json) only, and take this file out of the pull request.`);
   }
   summary([
     '## Generated plugin files',
     '',
-    'This pull request changes files that x927 generates, to something the build does not write:',
+    'This pull request changes files that x927 generates, to something the build does not write. That is an edit by hand, or a build from before `plugin.json` changed again:',
     '',
     ...edited.map((file) => `- \`${file}\``),
     '',
@@ -64,7 +64,7 @@ function main() {
     '',
     'CI rebuilds the generated files on `main` after the merge. A marketplace file is yours to edit, except for the `description` and `version` of an entry whose plugin has a root `plugin.json`: those come from there. If you want the built files in the pull request, run `npm run plugins:build` and commit what it writes.',
   ]);
-  error(`${edited.length} generated file(s) were changed by hand: ${edited.join(', ')}`);
+  error(`${edited.length} generated file(s) are changed here, and not to what the build writes: ${edited.join(', ')}`);
   process.exit(1);
 }
 
