@@ -1,18 +1,13 @@
-# Scripts index — `<skill>/<script>` — what — key flags
+# Scripts index — `<skill>/<script>` — what — key flags (CLIs only; import-only libraries are not listed)
 
 Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it only for an unnamed flag. Full deploy/rollout/migrate calls: `../../replica/reference/handoff-contract.md` § 4.
 
 - `deploy/ai-readability.mjs` — AI-readability — `--origin <o> [--paths <f>] [--min 98]`
 - `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
 - `deploy/build-harness.mjs` — structural harness — `content/<p>.html <out.html> [--root <dir>]`
-- `deploy/content-inventory.mjs` — library (role classifier), no CLI
-- `deploy/css-as-text.mjs` — library (CSS-as-content test), no CLI
 - `deploy/da-media-upload.mjs` — rehost images/mp4 — `--org --repo --scope <under media/> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
 - `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failures, 3 = token halt
-- `deploy/diff-profiles.mjs` — library (eds|generic profiles), no CLI
-- `deploy/file-lock.mjs` — library (lock + atomic ledger merge), no CLI
-- `deploy/eds-path.mjs` — library (path contract), no CLI
 - `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
 - `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host <h> [--content content] [--check]`
 - `deploy/martech-scaffold.mjs` — contract → martech.js + hooks — `[--contract <json>] [--dry-run] [--force]`; exit 1 = invalid/conflict/no hook
@@ -26,17 +21,11 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `diff/clip-probe.mjs` — text/controls clipped by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped > 0
 - `diff/content-diff.mjs` — structural + attribute/icon diff, all roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json]`
 - `diff/content-presence.mjs` — content per band + controls — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = MISSING/HIDDEN
-- `diff/content-inventory.mjs` — library (classifier copy), no CLI
-- `diff/diff-profiles.mjs` — library (profiles copy), no CLI
-- `diff/image-signature.mjs` — library, no CLI
-- `diff/measure-live.mjs` — library (settle + measurement for probes), no CLI
 - `diff/unit-geometry.mjs` — repeated-unit Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>) [--n 1] [--tol 4]`; exit 2 = unit off
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
 - `dynamics/dynamics-check.mjs` — replay parity (search-query count, top titles) — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
 - `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>] [--martech [dir]] [--knowledge]`
-- `dynamics/lib.mjs` — library, no CLI
-- `dynamics/martech.mjs` — library (contract, hand-off), no CLI
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
@@ -45,7 +34,6 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `extract/thumb.mjs` — thumbnails — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
 - `qa/from-knowledge.mjs` — knowledge → template map + 404 allowlist — `[--dry-run]`
-- `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
 - `replica/breakpoint-lint.mjs` — breakpoints vs target/source steps — `[--target 600,900,1200] [--root .] [--dirs <list>]` | `--inventory <file|dir…>`; exit 1 = off-target
@@ -85,7 +73,6 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `rollout/done-check.mjs` — run complete? exit 0 = yes — `[--live-host <h>|--offline] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>]`
-- `rollout/lib.mjs` — library, no CLI
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
 - `rollout/optimize.mjs` — quality findings + gate — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
@@ -93,8 +80,6 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
 - `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`; `--gate <table> [--pin]`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
-- `spec/lib.mjs` — library, no CLI
-- `spec/rules.mjs` — library (rules), no CLI
 - `spec/spec-capture.mjs` — S6/S8 page + block crops — `[--urls <f>] [--from-cache]`
 - `spec/spec-fetch.mjs` — S2 resumable fetch — `[--urls <f>] [--headed|--archive <date>]`; exit 3 = blocked
 - `spec/spec-inventory.mjs` — S1 robots + sitemaps, else crawl — `[--max <n>] [--headed|--archive <date>]`; exit 3 = blocked
@@ -108,8 +93,6 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `spec/spec-rum.mjs` — S5 Optel — `[--days 90] [--key-env <NAME>]`
 - `spec/spec-sheet.mjs` — contact sheet — `<component|row-shape>`
 - `spec/spec-variants.mjs` — S8 variants — `[--cut 0.5]`
-- `stardust/browser.mjs` — library (one browser entry: load, open, context, navigate), no CLI
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--track <t>] [--strict]`; `tail`; `last`
-- `stardust/live-session.mjs` — library (live-site rules behind browser.mjs), no CLI
 - `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`
