@@ -1,10 +1,5 @@
 # Characterization tests (behavior pinning for migration)
 
-A characterization test **pins the current observable behavior** of a class before it is migrated,
-then proves the transformed class still behaves the same. It is a regression net, not a design
-exercise — the pattern guide's own `mvn clean compile` / `mvn clean install` step proves the code
-*builds*; this proves it still *does the same thing* across the migration.
-
 This is a **migration-only policy** — it applies to the per-finding apply loop (**Step 5**) of a
 migration session. A standalone `code-assessment` run on the same pattern does **not** pin behavior;
 migrations are the riskier, cross-version change where a behavioral regression is worth catching.
@@ -45,9 +40,9 @@ plus a dev-deploy check before merge.
      as a `@Rule` field) or **JUnit 5** (`@ExtendWith(...)`, `AemContextExtension`). Add nothing.
    - **No test harness in the module:** add the minimal `<scope>test</scope>` deps **once per
      module** — `org.junit.jupiter:junit-jupiter` + `org.mockito:mockito-core` (+
-     `io.wcm.testing.aem-mock-junit5` for B/C). **Version-match the project's Java level: Java 8 →
-     Mockito 4.x** (Mockito 5 requires Java 11), Java 11+ → Mockito 5.x. This is a once-per-module
-     cost amortized across that module's findings, not per-finding.
+     `io.wcm:io.wcm.testing.aem-mock.junit5` for B/C). This is a once-per-module cost amortized
+     across that module's findings, not per-finding. If a dependency you added does not resolve,
+     remove it from the POM again before you record `no-test-harness`.
    - **Guardrail — a run reporting `Tests run: 0` is a false pass, not a pin.** (Happens when a
      JUnit 5 test is added to a module whose Surefire can't see the jupiter engine.) If the pre-edit
      run does not actually execute the test, record `no-test-harness` and move on — never report
@@ -92,12 +87,7 @@ Run only the generated test, from the reactor root:
 mvn -pl <module> -am -Dtest=<TargetClass>MigrationTest -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Do **not** add `-q`: on a *passing* build Maven prints neither `BUILD SUCCESS` nor the Surefire
-`Tests run:` line (both are INFO-level, which `-q` suppresses), so a green run would look like a
-failure and you would wrongly skip it. `-DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false`
-is required because `-am` also builds the target module's upstream **reactor** modules through the
-`test` phase, where the `-Dtest` filter matches nothing — without those flags Surefire fails them
-with *"No tests matching pattern"* before the target test ever runs.
+Run it without `-q`: the checks below read `BUILD SUCCESS` and the `Tests run:` line.
 
 - **Before the edit:** the run must end in `BUILD SUCCESS` (exit 0) with the target test green —
   `Tests run: 1, Failures: 0, Errors: 0`. **`Tests run: 0` is a false pass, not a pin:**
