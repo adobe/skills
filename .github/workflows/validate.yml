@@ -24,6 +24,39 @@ jobs:
       - name: Skill release configs extend a file that exists
         run: node scripts/check-release-configs.mjs
 
+      - name: Repository scripts pass their tests
+        run: npm test
+
+      - name: Claude Code accepts the marketplace and every plugin manifest
+        run: |
+          npx claude plugin validate .
+          find plugins -path '*/.claude-plugin/plugin.json' | sort | while read -r manifest; do
+            npx claude plugin validate "${manifest%/.claude-plugin/plugin.json}"
+          done
+
+  # The boy-scout rule (.boy-scout.json): a pull request that changes a SKILL.md which is too
+  # long, shares its name with another skill or has a Tessl lint warning has to fix that in
+  # the same pull request.
+  boy-scout:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # the gate needs the merge base
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      # scripts/tessl-lint-debt.mjs runs tessl plugin lint, which needs no token
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e  # v2
+
+      - uses: ai-ecoverse/boy-scout@beb07aa7b5a822f1e36f0eb593af6df3931f3256  # v1.1.0
+
   web-cli:
     runs-on: ubuntu-latest
     defaults:
