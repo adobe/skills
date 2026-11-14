@@ -1,0 +1,55 @@
+{
+  "skill_name": "commerce-app-review",
+  "_note": "APP_PATH values are relative to the skill root (skills/commerce-app-review/). Resolve them to an absolute path before passing to the skill.",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I'm about to submit my Commerce extension to the Adobe Exchange marketplace. Can you review it first? The app is at evals/files/security-issues-app (resolve this path relative to the skill root before passing it to the skill)",
+      "expected_output": "Review identifies hardcoded credentials and missing require-adobe-auth as MUST-have blockers. Findings follow MUST-n / NICE-n naming. Interactive walkthrough is initiated.",
+      "files": [],
+      "expectations": [
+        "At least two MUST-have findings are reported",
+        "A finding flags hardcoded credentials or API keys in actions/get-catalog/index.js",
+        "A finding flags missing require-adobe-auth annotation on one or more actions",
+        "All findings are labelled MUST-n or NICE-n (e.g. MUST-1, MUST-2, NICE-1)",
+        "The review announces the total MUST and NICE counts",
+        "Findings are presented as a concise raw list \u2014 no enriched content (no 'Proposed fix' sections, no docs references) in the initial response",
+        "The initial response ends with an actions prompt offering 'walkthrough', a specific finding code, or open input",
+        "No style, naming, or code formatting issues are flagged",
+        "A NICE finding recommends using @adobe/aio-commerce-sdk or a lib from the aio-commerce-lib-* family (absent from package.json)",
+        "A NICE finding flags the missing app.commerce.config file"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Can you do a compliance check on my App Builder extension before I submit it to Commerce Exchange? It lives at evals/files/deployment-issues-app (resolve this path relative to the skill root before passing it to the skill)",
+      "expected_output": "Review identifies missing deployment and documentation files (install.yaml, README.md, env.dist, version field). Findings are categorised correctly. No false positives on the secure action code.",
+      "files": [],
+      "expectations": [
+        "At least one finding flags missing documentation or deployment files (install.yaml, README.md, env.dist, or deploy.yaml)",
+        "All findings are labelled MUST-n or NICE-n",
+        "The review announces the total MUST and NICE counts",
+        "Findings are presented as a concise raw list \u2014 no enriched content (no 'Proposed fix' sections, no docs references) in the initial response",
+        "The initial response ends with an actions prompt offering 'walkthrough', a specific finding code, or open input",
+        "No finding flags the action code for security issues (require-adobe-auth is correctly set)"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Hey, I want to make sure my order status app is ready before I list it on Adobe Exchange. Can you review it? Path is evals/files/well-formed-app (resolve this path relative to the skill root before passing it to the skill)",
+      "expected_output": "Review finds at most one MUST-have issue (missing test suite - the classifier has flipped this between MUST and NICE across runs with no change to the app, so tolerate either). No MUST findings related to security, authentication, credentials, or App Management/deployment structure. Any NICE recommendations are minor. The skill correctly handles the near-zero-MUST path and transitions cleanly to NICE or closing.",
+      "files": [],
+      "expectations": [
+        "At most one MUST-have finding is reported, and if present it only concerns the absence of a test suite/test script",
+        "No MUST-have finding concerns security, authentication, require-adobe-auth, credentials, or secrets",
+        "No MUST-have finding concerns App Management structure (app.commerce.config, extensions, deploy.yaml, install.yaml)",
+        "The summary states the total MUST and NICE counts accurately",
+        "The review either reports NICE-to-have recommendations or confirms the app is ready",
+        "All non-test findings (if any) are labelled NICE-n",
+        "Findings are presented as a concise raw list \u2014 no enriched content (no 'Proposed fix' sections, no docs references) in the initial response",
+        "The initial response ends with an actions prompt offering 'walkthrough', a specific finding code, or open input",
+        "No security issues are raised for the require-adobe-auth annotations (they are correctly set)"
+      ]
+    }
+  ]
+}

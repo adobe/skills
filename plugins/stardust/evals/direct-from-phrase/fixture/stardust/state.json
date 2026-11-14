@@ -1,0 +1,93 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-07-21T09:47:30Z",
+    "stardustVersion": "0.10.0"
+  },
+  "site": {
+    "originUrl": "https://www.ledgerline.com",
+    "deployUrl": null,
+    "extractedAt": "2026-07-21T09:47:30Z",
+    "pageCap": 5,
+    "totalDiscovered": 23,
+    "crawled": 5
+  },
+  "direction": null,
+  "pages": [
+    {
+      "slug": "home",
+      "url": "https://www.ledgerline.com/",
+      "title": "Ledgerline — Bookkeeping software your accountant will trust",
+      "type": null,
+      "status": "extracted",
+      "history": [
+        { "status": "extracted", "at": "2026-07-21T09:44:12Z" }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/home.json",
+      "prototypePath": null,
+      "migratedPath": null
+    },
+    {
+      "slug": "features",
+      "url": "https://www.ledgerline.com/features",
+      "title": "Features — Ledgerline",
+      "type": null,
+      "status": "extracted",
+      "history": [
+        { "status": "extracted", "at": "2026-07-21T09:44:41Z" }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/features.json",
+      "prototypePath": null,
+      "migratedPath": null
+    },
+    {
+      "slug": "pricing",
+      "url": "https://www.ledgerline.com/pricing",
+      "title": "Pricing — Ledgerline",
+      "type": null,
+      "status": "extracted",
+      "history": [
+        { "status": "extracted", "at": "2026-07-21T09:45:03Z" }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/pricing.json",
+      "prototypePath": null,
+      "migratedPath": null
+    },
+    {
+      "slug": "about",
+      "url": "https://www.ledgerline.com/about",
+      "title": "About us — Ledgerline",
+      "type": null,
+      "status": "extracted",
+      "history": [
+        { "status": "extracted", "at": "2026-07-21T09:45:27Z" }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/about.json",
+      "prototypePath": null,
+      "migratedPath": null
+    },
+    {
+      "slug": "contact",
+      "url": "https://www.ledgerline.com/contact",
+      "title": "Contact sales — Ledgerline",
+      "type": null,
+      "status": "extracted",
+      "history": [
+        { "status": "extracted", "at": "2026-07-21T09:45:49Z" }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/contact.json",
+      "prototypePath": null,
+      "migratedPath": null
+    }
+  ]
+}

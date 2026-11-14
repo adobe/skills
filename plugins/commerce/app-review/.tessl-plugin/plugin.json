@@ -1,0 +1,9 @@
+{
+  "name": "adobe/commerce-app-review",
+  "version": "1.0.0",
+  "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange.",
+  "private": false,
+  "skills": [
+    "skills/commerce-app-review"
+  ]
+}

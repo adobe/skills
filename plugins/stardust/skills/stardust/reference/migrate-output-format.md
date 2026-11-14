@@ -1,6 +1,6 @@
 # Migrate output format
 
-The contract `stardust:migrate` produces and **every downstream
+The contract the stardust `migrate` skill produces and **every downstream
 consumer can rely on**. Authoring it as a separate reference (vs.
 folding it into `artifact-map.md`) is deliberate: this is the
 external interface — what changes here is a breaking change for
@@ -112,26 +112,31 @@ alternative mode.
 ## `_meta.json` sidecar contract
 
 Schema in `skills/migrate/reference/migration-procedure.md` §
-`_meta.json` sidecar. The asset-bundling phase extends the
-sidecar with one field:
+`_meta.json` sidecar. Two fields beyond that schema:
 
 ```json
 {
-  "assetsBundled": 11
+  "assetsBundled": 11,
+  "widgets": [ { "id": "<name>", "href": "/widgets/<path>/<name>.html?<params>" } ]
 }
 ```
 
 `assetsBundled` is the count of **unique asset references on
 this page** — not the count of unique bundled files on disk
-(which is a project-wide number, recorded under
-`state.json.migrate.totalAssetsBundled`). A page that references
-the same logo 5 times reports `assetsBundled: 1` plus the rest
-of the page's references.
+(a project-wide number under `state.json.migrate.totalAssetsBundled`).
+`widgets[]` is derived from the page's `a[data-widget]` mounts
+(`id` = file stem of the href path, one entry per id); `modules[]`
+stays the block-id list.
 
 Missing-asset references are recorded as
 `migrationDecisions[]` entries with
 `kind: "asset-missing"` so downstream tools can surface the gap
-without parsing the run report.
+without parsing the run report. Likewise every runtime dependency a
+page carries is a `contentDeviations[]` entry with
+`kind: "dynamic-dependency"` (disposition, inventory row, endpoint —
+see `skills/migrate/reference/content-preservation.md § Dynamic
+dependencies`); `disposition: "unclassified"` entries go in the report's
+first section because they mean the dynamic-surface gate was skipped.
 
 ## State.json contract
 

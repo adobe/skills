@@ -1,0 +1,315 @@
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { execPlaywrightCli, execPlaywrightCliAsync } from './exec.mjs';
+import { CliError, redactCredentials } from '#src/errors.mjs';
+
+const MIN_VERSION = '0.1.20';
+const INSTALL_HINT = 'npm install -g @playwright/cli@latest';
+
+function versionAtLeast(found, min) {
+  const a = found.split('.').map(Number);
+  const b = min.split('.').map(Number);
+  for (let i = 0; i < b.length; i += 1) {
+    if ((a[i] ?? 0) !== b[i]) return (a[i] ?? 0) > b[i];
+  }
+  return true;
+}
+
+function tryParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+}
+
+function unwrapResult(doc) {
+  const raw = doc?.result;
+  if (typeof raw !== 'string') return raw;
+  const parsed = tryParse(raw);
+  return parsed === undefined ? raw : parsed;
+}
+
+function wrapExpression(expr) {
+  try {
+    new Function(`return (${expr}\n)`);
+    return expr;
+  } catch {
+    return `(() => { ${expr} })()`;
+  }
+}
+
+// Bright Data's Browser API refuses a navigation with this while it throttles a target.
+const RATE_LIMITED = /bucket_rate_limit|rate limit has been applied/i;
+const RATE_LIMIT_DELAYS_MS = [5_000, 15_000, 30_000];
+
+/** Block the (synchronous) driver for `ms`. */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+function toCliError(message) {
+  if (/not open, please run open first/.test(message)) {
+    return new CliError('NO_SESSION', message, {
+      hint: 'run: web browser open <url> --session <name>',
+    });
+  }
+  return new CliError('PLAYWRIGHT_CLI', message);
+}
+
+function spawnError(error, args) {
+  if (error.code === 'ETIMEDOUT') {
+    return new CliError('TIMEOUT', `playwright-cli ${args[1] ?? args[0]} timed out`);
+  }
+  if (error.code === 'ENOENT') {
+    return new CliError('PLAYWRIGHT_CLI', 'playwright-cli not found', { hint: INSTALL_HINT });
+  }
+  return new CliError('PLAYWRIGHT_CLI', `playwright-cli failed: ${error.code}: ${error.message}`);
+}
+
+/**
+ * `timeoutMs` bounds one playwright-cli call; `navigationTimeoutMs`, when set, becomes the
+ * navigation timeout of the browsers this driver launches (playwright-cli's default is 60 s).
+ * @param {{ exec?: typeof execPlaywrightCli, execAsync?: typeof execPlaywrightCliAsync,
+ *   outputDir: string, debug?: boolean, timeoutMs?: number, navigationTimeoutMs?: number,
+ *   sleep?: (ms: number) => void, stderr?: { write(c: string): unknown } }} opts
+ */
+export function createDriver({
+  exec = execPlaywrightCli,
+  execAsync = execPlaywrightCliAsync,
+  outputDir,
+  debug = Boolean(process.env.WEB_DEBUG),
+  timeoutMs = 60_000,
+  navigationTimeoutMs,
+  sleep = sleepSync,
+  stderr = process.stderr,
+}) {
+  let runCounter = 0;
+
+  function call(args, opts) {
+    if (debug) process.stderr.write(`playwright-cli ${redactCredentials(args.join(' '))}\n`);
+    return settle(args, exec(args, { timeoutMs, ...opts }));
+  }
+
+  async function callAsync(args, opts) {
+    if (debug) process.stderr.write(`playwright-cli ${redactCredentials(args.join(' '))}\n`);
+    return settle(args, await execAsync(args, { timeoutMs, ...opts }));
+  }
+
+  /** A finished playwright-cli call: its JSON document, or the CliError it reports. */
+  function settle(args, res) {
+    if (res.error) throw spawnError(res.error, args);
+    if (res.status === null) {
+      throw new CliError('PLAYWRIGHT_CLI', 'playwright-cli terminated by signal');
+    }
+    const doc = tryParse(res.stdout);
+    const failure = doc?.isError ? doc.error : doc?.result?.isError ? doc.result.error : undefined;
+    if (failure !== undefined) throw toCliError(String(failure));
+    if (res.status !== 0) {
+      const detail = (res.stderr || res.stdout).trim();
+      throw new CliError('PLAYWRIGHT_CLI', detail || `exit ${res.status}`);
+    }
+    return doc ?? {};
+  }
+
+  function withTempFile(name, content, fn) {
+    mkdirSync(outputDir, { recursive: true });
+    const path = join(outputDir, name);
+    writeFileSync(path, content);
+    try {
+      return fn(path);
+    } finally {
+      rmSync(path, { force: true });
+    }
+  }
+
+  function list() {
+    const doc = call(['list']);
+    return (doc.browsers ?? []).map((b) => ({
+      name: b.name,
+      status: b.status,
+      headed: b.headed,
+      browserType: b.browserType,
+      attached: b.attached,
+    }));
+  }
+
+  function buildConfig({ config = {}, initScripts, cdpPort }) {
+    const launchOptions = { ...config.launchOptions };
+    if (cdpPort) {
+      launchOptions.args = [...(launchOptions.args ?? []), `--remote-debugging-port=${cdpPort}`];
+    }
+    const initScript = [...(config.initScript ?? []), ...initScripts].map((p) => resolve(p));
+    const browser = { ...config, launchOptions, initScript };
+    // A remote browser (cdpEndpoint) gets its own context, so contextOptions apply (recordHar,
+    // serviceWorkers, proxy); without it playwright-cli reuses the remote default context.
+    if (browser.cdpEndpoint && browser.isolated === undefined) browser.isolated = true;
+    const timeouts = navigationTimeoutMs ? { timeouts: { navigation: navigationTimeoutMs } } : {};
+    return { browser, ...timeouts };
+  }
+
+  /**
+   * `initScripts` are paths; `initSources` are script texts, written to files only while the
+   * browser launches (playwright-cli reads them at launch) and removed after.
+   */
+  function open({ initScripts = [], initSources = [], ...launchOpts }) {
+    mkdirSync(outputDir, { recursive: true });
+    const sourcePaths = initSources.map((source, i) => {
+      const path = join(outputDir, `${launchOpts.session}-init-${i}.js`);
+      writeFileSync(path, source);
+      return path;
+    });
+    try {
+      return launch({ ...launchOpts, initScripts: [...initScripts, ...sourcePaths] });
+    } finally {
+      for (const path of sourcePaths) rmSync(path, { force: true });
+    }
+  }
+
+  function launch({ session, url, headed, config, cdpPort, persistent, initScripts }) {
+    if (list().some((b) => b.name === session && b.status === 'open')) {
+      throw new CliError('SESSION_EXISTS', `session '${session}' is already open`, {
+        hint: 'choose another --session or run: web browser close --session <name>',
+      });
+    }
+    const body = JSON.stringify(buildConfig({ config, initScripts, cdpPort }));
+    withTempFile(`${session}-cli-config.json`, body, (path) => {
+      const args = [`-s=${session}`, 'open'];
+      if (url) args.push(url);
+      args.push(`--config=${path}`);
+      if (headed) args.push('--headed');
+      if (persistent) args.push('--persistent');
+      call(args);
+    });
+    return { session, url, headed, cdpPort };
+  }
+
+  /**
+   * Evaluate JS in the page. `expr` is passed through unchanged when it compiles as a single
+   * expression (playwright-cli parenthesizes it); otherwise it is wrapped as `(() => { EXPR })()`
+   * so callers may write statements with an explicit `return`.
+   * @param {string} session
+   * @param {string} expr
+   */
+  function evaluate(session, expr) {
+    return unwrapResult(call([`-s=${session}`, 'eval', wrapExpression(expr)]));
+  }
+
+  /**
+   * Run a Playwright code snippet (`code`, written to a temp file) or an existing script (`file`).
+   * `timeoutMs` overrides the driver's default exec timeout for this call only.
+   * @param {string} session
+   * @param {{ code?: string, file?: string, timeoutMs?: number }} opts
+   */
+  function run(session, { code, file, timeoutMs: callTimeoutMs }) {
+    const callOpts = callTimeoutMs === undefined ? undefined : { timeoutMs: callTimeoutMs };
+    const exec1 = (path) =>
+      unwrapResult(call([`-s=${session}`, 'run-code', `--filename=${path}`], callOpts));
+    if (code === undefined) return exec1(file);
+    runCounter += 1;
+    return withTempFile(`${session}-run-${runCounter}.mjs`, code, exec1);
+  }
+
+  /**
+   * `run` without blocking the event loop, so several sessions run at once; same arguments and
+   * result. Its temp file has a name of its own, as each `run`'s has.
+   * @param {string} session
+   * @param {{ code?: string, file?: string, timeoutMs?: number }} opts
+   */
+  async function runAsync(session, { code, file, timeoutMs: callTimeoutMs }) {
+    const callOpts = callTimeoutMs === undefined ? undefined : { timeoutMs: callTimeoutMs };
+    const exec1 = async (path) =>
+      unwrapResult(await callAsync([`-s=${session}`, 'run-code', `--filename=${path}`], callOpts));
+    if (code === undefined) return exec1(file);
+    runCounter += 1;
+    mkdirSync(outputDir, { recursive: true });
+    const path = join(outputDir, `${session}-run-${runCounter}.mjs`);
+    writeFileSync(path, code);
+    try {
+      return await exec1(path);
+    } finally {
+      rmSync(path, { force: true });
+    }
+  }
+
+  return {
+    ensureAvailable() {
+      const res = exec(['--version'], { timeoutMs: 10_000 });
+      const found = res.status === 0 ? res.stdout.trim().match(/\d+\.\d+\.\d+/)?.[0] : undefined;
+      if (!found) {
+        throw new CliError('PLAYWRIGHT_CLI', 'playwright-cli not found', { hint: INSTALL_HINT });
+      }
+      if (!versionAtLeast(found, MIN_VERSION)) {
+        throw new CliError(
+          'PLAYWRIGHT_CLI',
+          `playwright-cli ${found} is older than ${MIN_VERSION}`,
+          { hint: INSTALL_HINT },
+        );
+      }
+    },
+    open,
+    /** Navigate; a navigation a remote browser refuses for rate limiting is retried. */
+    goto(session, url) {
+      for (let attempt = 0; ; attempt += 1) {
+        try {
+          call([`-s=${session}`, 'goto', url]);
+          return;
+        } catch (err) {
+          const delay = RATE_LIMIT_DELAYS_MS[attempt];
+          if (delay === undefined || !RATE_LIMITED.test(err.message)) throw err;
+          stderr.write(
+            `warning: rate limited, retrying ${redactCredentials(url)} in ${delay / 1000} s\n`,
+          );
+          sleep(delay);
+        }
+      }
+    },
+    attach({ session, cdpUrl }) {
+      call(['attach', `--cdp=${cdpUrl}`, `--session=${session}`]);
+      return { session, attached: true };
+    },
+    list,
+    close(session) {
+      call([`-s=${session}`, 'close']);
+    },
+    closeAll() {
+      call(['close-all']);
+    },
+    evaluate,
+    run,
+    runAsync,
+    inject(session, source) {
+      run(session, { code: `async page => { await page.evaluate(${JSON.stringify(source)}) }` });
+    },
+    cdp(session, method, params = {}) {
+      return run(session, {
+        code:
+          `async page => { const s = await page.context().newCDPSession(page); ` +
+          `return s.send(${JSON.stringify(method)}, ${JSON.stringify(params)}) }`,
+      });
+    },
+    screenshot(session, { path, fullPage, selector }) {
+      const args = [`-s=${session}`, 'screenshot'];
+      if (selector) args.push(selector);
+      args.push(`--filename=${path}`);
+      if (fullPage) args.push('--full-page');
+      call(args);
+      return { path };
+    },
+    pageHealth(session) {
+      return evaluate(
+        session,
+        '({ title: document.title, url: location.href, ' +
+          'bodyLength: document.body ? document.body.innerText.length : 0, ' +
+          "status: performance.getEntriesByType('navigation')[0]?.responseStatus ?? 0, " +
+          "hasMainContent: !!document.querySelector('main, article, [role=main]') })",
+      );
+    },
+    requests(session) {
+      return call([`-s=${session}`, 'requests', '--static']).result;
+    },
+    responseHeaders(session, index) {
+      return call([`-s=${session}`, 'response-headers', String(index)]).result;
+    },
+  };
+}

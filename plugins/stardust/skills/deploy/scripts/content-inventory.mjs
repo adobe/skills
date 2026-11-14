@@ -1,0 +1,288 @@
+/**
+ * skills/deploy/scripts/content-inventory.mjs
+ *
+ * The SHARED content-inventory engine: one role classifier + one inventory
+ * differ, consumed by every gate that measures content fidelity —
+ *   - skills/diff/scripts/content-diff.mjs          (post-deploy page probe, Step 10)
+ *   - skills/deploy/scripts/section-schema.mjs      (pre-code ENCODE/DECODE contract, #93)
+ *   - skills/deploy/scripts/block-roundtrip.mjs     (in-loop per-block gate, #94)
+ *
+ * Factoring it here is the point, not a convenience: the schema a block is
+ * written FROM, the in-loop assertion it is checked WITH, and the post-deploy
+ * diff it is finally proved BY must all classify roles identically, or a pass
+ * at one layer means nothing at the next. Change the classifier here and every
+ * gate moves together.
+ *
+ * `inventory` runs IN the page (Playwright-serialized, ONE arg):
+ *   page.evaluate(inventory, [rootSelector, eyebrow{maxFontPx,maxLen}])
+ * It returns { items: [{role, order, text, key, href?, w, family, loaded, look, srOnly}], imgCount, consentText }
+ * with role ∈ heading | eyebrow | cta | body, classified by COMPUTED STYLE +
+ * tag so a prototype's .ds-* DOM and an EDS block DOM compare symmetrically.
+ * Not inventoried: script / noscript / style / template payloads, and a consent
+ * manager's banner (counted as consentText — the overlay dismissal's business).
+ *
+ * `diffInventories(srcItems, tgtItems, prof)` consumes each source item
+ * against the first unused same-key target item (duplicates count correctly)
+ * and returns { flags, matchedCount, accepted }. Severity follows visibility:
+ * a role change that keeps the computed look (size, weight, colour, case, face)
+ * is not visible — body/eyebrow → heading is an accepted ROLE UPGRADE, heading →
+ * body/eyebrow a 🟡 ROLE DOWNGRADE; any other role change is 🔴 ROLE SWAP. Lost
+ * screen-reader-only text is 🟡 MISSING SR-ONLY TEXT whatever its role, except a CTA
+ * (a lost skip link stays 🔴 MISSING CTA). All stack-specific labels + hints come
+ * from a diff-profiles.mjs profile. Pass fontDelta: Infinity to suppress the
+ * FONT FORK pass (the in-loop harness renders with local fonts, so face
+ * fidelity is Step 4/10's business there, not the round-trip's).
+ *
+ * `editableInventory` runs IN the page (ONE arg): page.evaluate(editableInventory, [rootSel])
+ * returns { count, items: [{tag, text}] } — the OUTERMOST h1-h6/p/ul/ol/pre/
+ * blockquote elements under the root that carry visible text (outermost = no
+ * ancestor matching the same list inside the root; empty and image-only elements
+ * skipped). That is exactly the set Experience Workspace stamps `data-prose-index`
+ * on (deploy SKILL.md § Experience Workspace editability contract): the ENCODE side
+ * counts it on the prototype (section-schema `editableTexts`), the DECODE side on
+ * the decorated page (content-diff's "editable texts" advisory, the --ew gate) —
+ * fewer surviving outermost editables after decoration means authored elements
+ * were rebuilt or merged.
+ */
+
+/* eslint-disable no-plusplus, no-continue, max-len */
+
+// Runs IN the page (serialized by Playwright, so it takes ONE arg). args =
+// [rootSel, eyebrow{maxFontPx,maxLen}] — the content root + label classifier
+// thresholds from the active profile. Returns the role-classified inventory.
+/* eslint-disable no-undef */
+export function inventory(args) {
+  const [rootSel, eyebrow] = args;
+  const root = document.querySelector(rootSel) || document.querySelector('main') || document.body;
+  const ARROWS = /[→➔➜›⇒➤>]+/g;
+  const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
+  // match key: lowercase, arrows + trailing punctuation stripped, whitespace collapsed.
+  // Typographic punctuation is folded to ASCII first — curly vs straight apostrophes/
+  // quotes, ellipsis, en/em dashes were the single largest false-positive source
+  // across the e2e benchmark (a verbatim-captured prototype uses curly, authored copy
+  // uses ASCII → spurious MISSING/ROLE-SWAP on identical text).
+  const norm = (s) => clean(s).replace(ARROWS, ' ')
+    .replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"')
+    .replace(/…/g, '...').replace(/[–—]/g, '-')
+    .replace(/\s+/g, ' ').trim()
+    .toLowerCase().replace(/[.,;:!?·•]+$/g, '').trim();
+
+  // Off-screen probe for rendered-face width (#77 method): a FIXED-size string
+  // under an element's computed family+weight. Comparing this width across pages
+  // for the SAME normalised string reveals a different actual face (e.g. the
+  // prototype's system-ui fallback vs the EDS self-hosted Bebas Neue).
+  const probe = document.createElement('span');
+  probe.style.cssText = 'position:absolute;left:-9999px;top:-9999px;visibility:hidden;white-space:nowrap;font-size:48px';
+  document.body.appendChild(probe);
+  const widthOf = (text, family, weight) => {
+    probe.style.fontFamily = family; probe.style.fontWeight = weight;
+    probe.textContent = text || 'Agw1996';
+    return Math.round(probe.getBoundingClientRect().width);
+  };
+  const namedFamily = (ff) => {
+    const m = ff.match(/"([^"]+)"|'([^']+)'/);
+    return (m && (m[1] || m[2])) || ff.split(',')[0].trim();
+  };
+  // Per element: the rendered-face width (its full computed stack), and — using
+  // the SAME width probe, never document.fonts.check (#77) — whether the first
+  // NAMED family actually loaded (probe it alone vs a guaranteed-absent name; equal
+  // width ⇒ it fell back). The label then reads e.g. "Bebas Neue" vs "Bellfort→sys".
+  const face = (text, cs) => {
+    const s = (text || 'Agw1996').slice(0, 40);
+    const named = namedFamily(cs.fontFamily);
+    const w = widthOf(s, cs.fontFamily, cs.fontWeight);
+    const loaded = widthOf(s, `"${named}",monospace`, cs.fontWeight)
+      !== widthOf(s, '__no_such_face__,monospace', cs.fontWeight);
+    return { w, family: loaded ? named : `${named}→sys`, loaded, look: `${cs.fontSize} ${cs.fontWeight} ${cs.color} ${cs.textTransform}` };
+  };
+  // visually hidden but read by assistive tech — the element or one of its 3 nearest ancestors
+  // (<div class="sr-only"><p>…</p></div>) carries the sr-only pattern: the clip / clip-path, or,
+  // while RENDERED and absolutely positioned, a ≤1 px overflow-clipped box or its own left/top
+  // pushed off-screen (-9999px). display:none (no client rects: a closed flyout, a tooltip) is
+  // hidden from everyone, and a slide translated off-screen by its track is visible content.
+  const hidesText = (n) => {
+    const c = getComputedStyle(n);
+    if (c.clip === 'rect(0px, 0px, 0px, 0px)' || c.clipPath === 'inset(50%)') return true;
+    if ((c.position !== 'absolute' && c.position !== 'fixed') || !n.getClientRects().length) return false;
+    const r = n.getBoundingClientRect();
+    return (r.width <= 1 && r.height <= 1 && c.overflow !== 'visible') || parseFloat(c.left) <= -999 || parseFloat(c.top) <= -999;
+  };
+  const srOnly = (el) => { for (let n = el, k = 0; n && k < 4; n = n.parentElement, k++) if (hidesText(n)) return true; return false; };
+
+  // Not page copy: inline JSON / tag-manager <noscript> frames / helper CSS, and the
+  // common consent managers' banners (their accept controls: live-session CONSENT_CANDIDATES).
+  const PAYLOAD = 'script, noscript, style, template';
+  // In-page, so not importable: test/content-diff.test.mjs pins every copy to CONSENT_CANDIDATES.
+  const CONSENT_UI = '#onetrust-consent-sdk, #cmpbox, .ch2-container, #CybotCookiebotDialog, #didomi-host, #usercentrics-root, .osano-cm-window, #termly-code-snippet-support, #truste-consent-track, .qc-cmp2-container, #iubenda-cs-banner, .cmplz-cookiebanner, .cky-consent-container';
+  // text under `node` minus inline-svg <title>/<text> and payloads, and minus any node `skip(parent)` rejects
+  const textOf = (node, skip) => {
+    let s = '';
+    const walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement.closest(`svg, ${PAYLOAD}`) && !(skip && skip(n.parentElement))) s += ` ${n.textContent}`;
+    return clean(s);
+  };
+  const upTo = (el, a, test) => { for (let e = el; e && e !== a; e = e.parentElement) if (test(e)) return true; return false; };
+  // A CARD LINK wraps blocks — 2+ text-bearing blocks, or a heading beside an image
+  // (<a><img><h3>T</h3><p>D</p></a>): its blocks are inventoried as what they are
+  // (heading / body), never collapsed into one CTA, and the link is a CTA only for
+  // its own text outside them ("Read more").
+  const BLOCKS = 'h1, h2, h3, h4, h5, h6, p, li, dt, dd, blockquote, pre, figcaption, td, th, div, section, article, header, footer';
+  const cards = new Map();
+  const isCard = (a) => {
+    if (!cards.has(a)) {
+      const texty = [...a.querySelectorAll(BLOCKS)].filter((b) => textOf(b));
+      const leaves = texty.filter((b) => !texty.some((o) => o !== b && b.contains(o)));
+      cards.set(a, leaves.length >= 2 || Boolean(a.querySelector('img, picture') && texty.some((b) => /^H[1-6]$/.test(b.tagName))));
+    }
+    return cards.get(a);
+  };
+  const inBlock = (el, a) => upTo(el, a, (e) => e.matches(BLOCKS));
+  // A link's label: its text minus inline-svg <title>/<text> (an <img> icon contributes
+  // nothing either), so an svg-icon link and an img-icon link read the same. A card
+  // link's blocks are left out; so is an image/svg link's sr-only text — a logo's
+  // hidden "Home" is no more a CTA than an alt-only logo is.
+  const labelOf = (a) => {
+    const card = isCard(a); const media = Boolean(a.querySelector('img, picture, svg'));
+    return textOf(a, (p) => (card && inBlock(p, a)) || (media && upTo(p, a, hidesText)));
+  };
+
+  const out = [];
+  let imgCount = 0;
+  let consentText = 0;
+  let order = 0;
+  root.querySelectorAll('*').forEach((el) => {
+    const tag = el.tagName.toLowerCase();
+    if (el === probe) return; // the width probe itself sits in <body> — a body root would read its text as copy
+    if (el.closest(PAYLOAD)) return;
+    if (el.closest(CONSENT_UI)) {
+      if ([...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) consentText += 1;
+      return;
+    }
+
+    // Images are visual-diff's domain (load/stretch/imagery-gap) and their alt
+    // text rarely matches verbatim across proto↔EDS — count them, don't diff them.
+    if (tag === 'img') { imgCount += 1; return; }
+
+    // A text CTA: an <a> whose label is text. Use the FULL label so
+    // <strong><a>…</a></strong> and <a><strong>…</strong></a> both resolve, then
+    // skip the link's inner nodes below via closest('a'). A link with an icon AND
+    // text is a text CTA whatever draws the icon; a text-less image/logo link is not;
+    // a card link is a CTA only for its own text outside its blocks.
+    if (tag === 'a') {
+      const t = labelOf(el);
+      if (!t) return;
+      const cs = getComputedStyle(el);
+      out.push({ role: 'cta', order: order++, text: t, key: norm(t), href: el.getAttribute('href') || '', ...face(norm(t), cs), srOnly: srOnly(el) });
+      return;
+    }
+
+    // Own text = DIRECT child text nodes only, so a wrapper <div><p>…</p></div>
+    // isn't double-counted (the <p> carries the text, the <div> is empty).
+    const own = clean([...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' '));
+    if (!own) return;
+    const link = el.closest('a');
+    if (link && !(isCard(link) && inBlock(el, link))) return; // text inside a link — captured by the <a>; a card link's blocks are not
+
+    const cs = getComputedStyle(el);
+    const item = { order: order++, text: own, key: norm(own), ...face(norm(own), cs), srOnly: srOnly(el) };
+    if (/^h[1-6]$/.test(tag)) item.role = 'heading';
+    else if (cs.textTransform === 'uppercase' && parseFloat(cs.fontSize) <= eyebrow.maxFontPx && own.length <= eyebrow.maxLen) item.role = 'eyebrow';
+    else item.role = 'body';
+    out.push(item);
+  });
+  probe.remove();
+  return { items: out, imgCount, consentText };
+}
+
+// Runs IN the page (ONE arg). args = [rootSel]. Outermost editable elements with
+// visible text — the Experience Workspace instrumentation set (see header).
+export function editableInventory(args) {
+  const [rootSel] = args;
+  const root = document.querySelector(rootSel) || document.querySelector('main') || document.body;
+  const SEL = 'h1, h2, h3, h4, h5, h6, p, ul, ol, pre, blockquote';
+  const SKIP = 'script, noscript, style, template, #onetrust-consent-sdk, #cmpbox, .ch2-container, #CybotCookiebotDialog, #didomi-host, #usercentrics-root, .osano-cm-window, #termly-code-snippet-support, #truste-consent-track, .qc-cmp2-container, #iubenda-cs-banner, .cmplz-cookiebanner, .cky-consent-container';
+  const items = [];
+  root.querySelectorAll(SEL).forEach((el) => {
+    if (el.closest(SKIP)) return; // payloads and consent banners, as in inventory()
+    const anc = el.parentElement && el.parentElement.closest(SEL);
+    if (anc && anc !== root && root.contains(anc)) return; // nested inside another editable
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!text) return; // empty or image-only (edited via data-image-index, not a text editor)
+    items.push({ tag: el.tagName.toLowerCase(), text: text.slice(0, 70) });
+  });
+  return { count: items.length, items };
+}
+/* eslint-enable no-undef */
+
+// Diff: consume each source item against the first unused target item with the
+// same key (duplicates count correctly), classifying the outcome by role. All
+// stack-specific labels (S/T) + remediation hints (H) come from the profile.
+export function diffInventories(srcItems, tgtItems, prof) {
+  const flags = [];
+  const accepted = []; // invisible, nothing lost: listed, never a finding
+  const matched = []; // {proto, eds} pairs for the font pass
+  const S = prof.source; const T = prof.target; const H = prof.hints;
+  const used = new Array(tgtItems.length).fill(false);
+  const findTgt = (key, role) => {
+    let fallback = -1;
+    for (let i = 0; i < tgtItems.length; i++) {
+      if (used[i] || tgtItems[i].key !== key || !key) continue;
+      if (tgtItems[i].role === role) return i; // exact role match preferred
+      if (fallback < 0) fallback = i; // same text, other role
+    }
+    return fallback;
+  };
+
+  srcItems.forEach((p) => {
+    if (!p.key) return;
+    const i = findTgt(p.key, p.role);
+    if (i < 0) {
+      const where = `${S} ${p.role} "${p.text.slice(0, 48)}"`;
+      if (p.srOnly && p.role !== 'cta') flags.push({ sev: '🟡', kind: 'MISSING SR-ONLY TEXT', msg: `${where} (visually hidden, read by assistive tech) not found in ${T}. ${H.MISSING_SR_ONLY}` });
+      else if (p.role === 'cta') flags.push({ sev: '🔴', kind: 'MISSING CTA', msg: `${where}${p.href ? ` → ${p.href}` : ''} has no ${T} link. ${H.MISSING_CTA}` });
+      else if (p.role === 'heading') flags.push({ sev: '🔴', kind: 'MISSING HEADING', msg: `${where} has no ${T} heading of the same text. ${H.MISSING_HEADING}` });
+      else if (p.role === 'eyebrow') flags.push({ sev: '🔴', kind: 'MISSING EYEBROW', msg: `${where} has no ${T} match. ${H.MISSING_EYEBROW}` });
+      else flags.push({ sev: '🟡', kind: 'MISSING BODY', msg: `${where.slice(0, 70)}… not found in ${T}. ${H.MISSING_BODY}` });
+      return;
+    }
+    used[i] = true;
+    const e = tgtItems[i];
+    if (e.role !== p.role) {
+      // a heading ↔ body/eyebrow change that keeps the computed look is not visible: semantics may improve, a lost heading
+      // is 🟡 (a small uppercase <div> group title is an eyebrow, the same-look <h3> a heading). A CTA change is never this.
+      const sameLook = p.look && p.look === e.look && p.family === e.family;
+      const plain = (r) => r === 'body' || r === 'eyebrow';
+      if (sameLook && plain(p.role) && e.role === 'heading') accepted.push({ kind: 'ROLE UPGRADE', from: p.role, text: p.text.slice(0, 40) });
+      else if (sameLook && p.role === 'heading' && plain(e.role)) flags.push({ sev: '🟡', kind: 'ROLE DOWNGRADE', msg: `"${p.text.slice(0, 40)}" is a heading in the ${S} but ${e.role} in ${T}, same look — the outline lost it; restore the heading element.` });
+      else flags.push({ sev: '🔴', kind: 'ROLE SWAP', msg: `"${p.text.slice(0, 40)}" is a ${p.role} in the ${S} but a ${e.role} in ${T} — ${H.ROLE_SWAP}` });
+    }
+    matched.push({ p, e });
+  });
+
+  // EXTRA: target content with no source — invented copy to verify (advisory).
+  tgtItems.forEach((e, i) => {
+    if (used[i] || !e.key) return;
+    if (e.role === 'body') flags.push({ sev: '🟡', kind: 'EXTRA', msg: `${T} body "${e.text.slice(0, 48)}" has no ${S} source — ${H.EXTRA_BODY}` });
+    else flags.push({ sev: '🟠', kind: 'EXTRA', msg: `${T} ${e.role} "${e.text.slice(0, 48)}" has no ${S} source — ${H.EXTRA}` });
+  });
+
+  // FONT FORK: matched lines whose rendered FACE differs (width probe, #77). A
+  // proprietary→self-hosted-fallback substitution fires on EVERY display line, so
+  // GROUP them into one advisory rather than N near-identical paragraphs — the
+  // agent/user decides whether the fork is intended.
+  const forks = matched
+    .filter(({ p, e }) => p.w && e.w && Math.abs(1 - e.w / p.w) > prof.fontDelta)
+    .map(({ p, e }) => ({ role: p.role, text: p.text.slice(0, 28), from: p.family, to: e.family, pct: Math.round((e.w / p.w - 1) * 100) }));
+  if (forks.length) {
+    const shown = forks.slice(0, 8).map((f) => `${f.role} "${f.text}": ${S} ${f.from} vs ${T} ${f.to} (${f.pct}%)`).join('; ');
+    const more = forks.length > 8 ? ` (+${forks.length - 8} more)` : '';
+    flags.push({ sev: '🟠', kind: 'FONT FORK', msg: `${forks.length} matched line(s) render a DIFFERENT face: ${shown}${more}. ${H.FONT_FORK}` });
+  }
+
+  return { flags, matchedCount: matched.length, accepted };
+}
+
+export function summarise(inv) {
+  const by = (r) => inv.items.filter((x) => x.role === r).length;
+  return `${inv.items.length} text nodes — ${by('heading')} headings, ${by('eyebrow')} eyebrows, ${by('cta')} CTAs, ${by('body')} body; ${inv.imgCount} img${inv.consentText ? `; consent banner skipped (${inv.consentText} text nodes)` : ''}`;
+}

@@ -1,14 +1,16 @@
 # "What if…" candidates
 
-A closed catalog of eight directional bets that `uplift` Phase 2b
+A catalog of eight directional bets that `uplift` Phase 2b
 selects from when authoring `stardust/uplift-questions.md`. Each
 candidate is a **captured-but-underused brand trait** that variant B
 or C can amplify.
 
-The catalog is closed because the failure mode of "what if…"
-questions is improvisation toward editorial vocabulary regardless
-of the captured brand register. A closed list anchors the agent
-to brand-evidence-driven amplifications.
+The eight candidates are the worked-example **floor, not a
+ceiling** (see § Extension rule). What anchors the agent is not a
+closed list but the **evidence shape** every candidate must carry:
+the failure mode of "what if…" questions is improvisation toward
+editorial vocabulary regardless of the captured brand register,
+and the evidence shape is what keeps improvisation out.
 
 ## The eight candidates
 
@@ -188,10 +190,33 @@ becomes a labeled rail; the chip pill becomes a panel-and-rail.
 **Disqualified when.** The captured page has only one composition
 primitive — nothing to swap to.
 
+## Extension rule
+
+An out-of-catalog candidate — recorded as **derived** — is
+admissible when it carries the same evidence shape as the eight
+worked examples above:
+
+1. **≥ 2 captured citations** — concrete pointers into the capture
+   (`_brand-extraction.json`, `pages/<slug>.json`,
+   `brand-review.html` tension IDs) that make the trait real, not
+   imagined.
+2. **An explicit disqualification test** — the condition under
+   which the candidate must NOT be picked, stated up front the way
+   every catalog entry states its "Disqualified when."
+3. **The variant role it serves** — B's composition bet or C's
+   cinematic bet, with a **Natural register for C** declared when
+   it serves C.
+
+Record each candidate's source in `uplift-questions.md` as
+`Source: catalog` or `Source: derived`. A derived candidate missing
+any of the three parts is improvisation and is refused.
+
 ## Selection procedure (used in Phase 2b)
 
-1. **Walk all eight candidates.** For each, read the triggering
-   signal and check the captured brand surface for the trigger.
+1. **Walk all eight catalog candidates**, plus any derived
+   candidates admitted per § Extension rule. For each, read the
+   triggering signal and check the captured brand surface for the
+   trigger.
 2. **Mark disqualifications.** A candidate is disqualified when
    its disqualification clause fires. Record the reason in
    `uplift-questions.md` so the audit trail is preserved.
@@ -200,7 +225,9 @@ primitive — nothing to swap to.
    support amplification?
 4. **C picks first.** The cinematic register was selected in
    Phase 3a; C takes the candidate that register naturally
-   amplifies (see uplift SKILL.md Phase 3b matrix).
+   amplifies (per each candidate's **Natural register for C**
+   field above — the single source of truth for the
+   register→candidate mapping).
 5. **B picks from remaining.** Prefer candidates whose move is
    composition / IA / voice (not motion) so B and C differentiate
    by axis, not intensity.
@@ -232,6 +259,7 @@ _provenance:
 ## Picked
 
 ### Variant C · <candidate name>
+Source: catalog | derived
 What if: "<verbatim "what if…" phrasing>"
 Cinematic register: <register>
 Evidence: <captured citation, e.g. "_brand-extraction.json#type.families.display
@@ -239,6 +267,7 @@ shows 'Sharp Grotesk Semibold' used in 5 elements only">
 Motion bet: <one-line>
 
 ### Variant B · <candidate name>
+Source: catalog | derived
 What if: "<verbatim "what if…" phrasing>"
 Captured trait amplified: <name>
 Evidence: <citation>

@@ -1,0 +1,46 @@
+<!doctype html><meta charset="utf-8" /><title>
+  Overflow clipping: a marquee and a closed accordion
+</title>
+<link rel="stylesheet" href="_base.css" />
+<style>
+  .strip {
+    height: 140px;
+    overflow: hidden;
+    background: #fafafa;
+  }
+  .strip h2 {
+    margin: 0;
+    height: 60px;
+  }
+  .track {
+    display: flex;
+    width: 6000px;
+    margin: 0 0 0 -500px;
+    padding: 0;
+    height: 72px;
+  }
+  .track li {
+    flex: 1;
+    list-style: none;
+  }
+  .acc {
+    height: 0;
+    overflow: hidden;
+  }
+  .acc-body {
+    height: 400px;
+    background: #ccc;
+  }
+</style>
+<div id="utility">English</div>
+<div class="strip">
+  <h2>Trusted by</h2>
+  <ul class="track">
+    <li>A</li>
+    <li>B</li>
+    <li>C</li>
+  </ul>
+</div>
+<div class="acc"><div class="acc-body">Hidden answer</div></div>
+<div class="content">Body</div>
+<div class="footer">Footer</div>

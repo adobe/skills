@@ -1,0 +1,30 @@
+# Fixture ground truth: Phase 1 on reduce.html detects 5 sections (nav, hero, 4-card grid, band, footer);
+# Phase 2 rule 1 keeps 2 cards and adds {REPEAT:2}.
+- description: fixture, full reduction
+  vars:
+    check: reduce-full
+    url: http://localhost:8765/reduce.html
+    task: Reduce the page below to a structural skeleton I can use as a blueprint for building blocks. Write the skeleton and the manifest to ./out/.
+- description: fixture, phase 1 only
+  metadata: { noskill: skip } # "phase 1" is the skill's own notion
+  vars:
+    check: reduce-phase1
+    url: http://localhost:8765/reduce.html
+    task: Run only the first, browser-side phase of the page reduction on the page below, with no skeleton and no structural reasoning. Write the raw tokenized JSON to ./out/phase1-output.json.
+- description: aem.live, full reduction
+  vars:
+    check: reduce-valid
+    url: https://www.aem.live/
+    task: Reduce the page below to a structural skeleton I can use as a blueprint for building blocks. Write the skeleton and the manifest to ./out/.
+- description: live, wknd-adventures.com, phase 1 only
+  metadata: { noskill: skip } # "phase 1" is the skill's own notion
+  vars:
+    check: phase1-wknd
+    url: https://wknd-adventures.com/
+    task: Run only the first, browser-side phase of the page reduction on the page below, with no skeleton and no structural reasoning. Write the raw tokenized JSON to ./out/phase1-output.json.
+- description: live, stripe.com/fr-ch, phase 1 only
+  metadata: { noskill: skip } # "phase 1" is the skill's own notion
+  vars:
+    check: phase1-stripe
+    url: https://stripe.com/fr-ch
+    task: Run only the first, browser-side phase of the page reduction on the page below, with no skeleton and no structural reasoning. Write the raw tokenized JSON to ./out/phase1-output.json.

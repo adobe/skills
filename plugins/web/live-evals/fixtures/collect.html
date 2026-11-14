@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Mountain Lodge | Rooms and trails</title>
+<meta name="description" content="A quiet lodge with guided trails, home-made breakfast and mountain views.">
+<meta property="og:title" content="Mountain Lodge">
+<meta property="og:description" content="Guided trails and home-made breakfast.">
+<meta property="og:image" content="http://localhost:8765/lodge.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="http://localhost:8765/collect.html">
+</head>
+<body>
+<header>
+  <a class="logo" href="/" aria-label="Mountain Lodge logo">
+    <svg width="120" height="32" viewBox="0 0 120 32" xmlns="http://www.w3.org/2000/svg"><path d="M0 28 L20 4 L40 28 Z" fill="#2a6"/><text x="48" y="22" font-size="16">Lodge</text></svg>
+  </a>
+  <nav>
+    <a href="/rooms">Rooms</a>
+    <a href="/trails">Trails</a>
+    <button aria-label="Search" class="search-btn">
+      <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="10" cy="10" r="6" fill="none" stroke="#000" stroke-width="2"/><path d="M15 15 L21 21" stroke="#000" stroke-width="2"/></svg>
+    </button>
+    <button aria-label="Menu" class="menu-btn">
+      <svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18M3 12h18M3 18h18" stroke="#000" stroke-width="2"/></svg>
+    </button>
+  </nav>
+</header>
+<main>
+  <h1>Welcome to Mountain Lodge</h1>
+  <p>Our lodge sits above the valley, with ten rooms, a shared kitchen and direct access to the marked trails.</p>
+  <h2>Book a stay</h2>
+  <form action="/book" method="post" id="booking">
+    <label>Name <input type="text" name="fullname" required></label>
+    <label>Email <input type="email" name="email" required></label>
+    <label>Guests <select name="guests"><option>1</option><option>2</option></select></label>
+    <button type="submit">Reserve</button>
+  </form>
+  <h2>Subscribe</h2>
+  <form action="/newsletter" method="get" id="newsletter">
+    <input type="email" name="newsletter_email" placeholder="you@example.com">
+    <button type="submit">Sign up</button>
+  </form>
+  <h2>Video tour</h2>
+  <video controls src="http://localhost:8765/tour.mp4" poster="http://localhost:8765/lodge.png"></video>
+  <iframe width="560" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" title="Lodge on YouTube"></iframe>
+</main>
+<footer>
+  <a href="https://twitter.com/mountainlodge">Twitter</a>
+  <a href="https://www.linkedin.com/company/mountainlodge">LinkedIn</a>
+  <a href="https://github.com/mountainlodge">GitHub</a>
+  <a href="https://www.instagram.com/mountainlodge">Instagram</a>
+</footer>
+</body>
+</html>

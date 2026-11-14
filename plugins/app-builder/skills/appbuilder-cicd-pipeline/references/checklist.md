@@ -9,10 +9,10 @@ Run through this checklist before merging CI/CD workflow changes.
 - [ ] `deploy_stage.yml` triggers on push to `main` branch
 - [ ] `deploy_prod.yml` triggers on GitHub release creation
 - [ ] `pr_test.yml` triggers on pull request opened/synchronize
-- [ ] All workflows use `actions/checkout@v4`
+- [ ] All workflows use `actions/checkout@v7`
 - [ ] All workflows use `actions/setup-node@v4` with `node-version: '20'`
 - [ ] All workflows use `adobe/aio-cli-setup-action@3`
-- [ ] All workflows use `adobe/aio-apps-action@3.3.0`
+- [ ] All workflows use `adobe/aio-apps-action@3.4.0`
 - [ ] No references to deprecated `auth` command
 
 ## Secrets Configuration

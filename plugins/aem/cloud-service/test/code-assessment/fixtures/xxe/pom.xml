@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE project [ <!ENTITY x "boom"> ]>
+<project>
+  <dependencies>
+    <dependency>
+      <groupId>com.example</groupId>
+      <artifactId>safe-dep</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+</project>

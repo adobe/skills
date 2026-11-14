@@ -1,0 +1,201 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-07-21T09:44:12Z",
+    "readArtifacts": ["https://www.ledgerline.com/"],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.10.0",
+    "renderedBy": "playwright",
+    "fetchedAt": "2026-07-21T09:41:22Z",
+    "waitMode": "medium",
+    "waitMs": 2340,
+    "httpStatus": 200,
+    "contentType": "text/html",
+    "heroSource": "dom"
+  },
+  "slug": "home",
+  "url": "https://www.ledgerline.com/",
+  "finalUrl": "https://www.ledgerline.com/",
+  "title": "Ledgerline — Bookkeeping software your accountant will trust",
+  "metaDescription": "Ledgerline is double-entry bookkeeping software for growing businesses. Automatic bank reconciliation, audit-ready reporting, and accountant collaboration in one place.",
+  "heroHeadline": "Bookkeeping your accountant will trust.",
+  "heroLede": "Ledgerline keeps your books reconciled, your reports audit-ready, and your month-end close on schedule.",
+  "og": {
+    "title": "Ledgerline — Bookkeeping software your accountant will trust",
+    "description": "Automatic bank reconciliation, audit-ready reporting, and accountant collaboration in one place.",
+    "image": "https://www.ledgerline.com/img/og-home.png",
+    "type": "website",
+    "siteName": "Ledgerline"
+  },
+  "themeColor": { "light": "#1f3a5f", "dark": null },
+  "language": "en",
+  "headings": [
+    {
+      "level": 1,
+      "text": "Bookkeeping your accountant will trust.",
+      "id": null,
+      "domPath": "main > section.hero > div.hero-copy > h1",
+      "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2.5rem", "lineHeight": 1.2, "letterSpacing": "normal", "color": "rgb(255, 255, 255)" }
+    },
+    {
+      "level": 2,
+      "text": "Everything your close process needs",
+      "id": "features",
+      "domPath": "main > section:nth-child(3) > h2",
+      "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" }
+    },
+    {
+      "level": 2,
+      "text": "Trusted by 4,200 finance teams",
+      "id": null,
+      "domPath": "main > section.social-proof > h2",
+      "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 400, "fontSize": "1.5rem", "lineHeight": 1.3, "letterSpacing": "normal", "color": "rgb(43, 47, 54)" }
+    },
+    {
+      "level": 2,
+      "text": "Ready to close the books faster?",
+      "id": null,
+      "domPath": "main > section.cta-band > h2",
+      "style": { "fontFamily": "Georgia, 'Times New Roman', serif", "fontWeight": 700, "fontSize": "2rem", "lineHeight": 1.25, "letterSpacing": "normal", "color": "rgb(255, 255, 255)" }
+    }
+  ],
+  "landmarks": [
+    {
+      "tag": "header",
+      "role": "banner",
+      "id": null,
+      "classes": ["site-header"],
+      "innerText": "Ledgerline Features Pricing About Contact Request a demo",
+      "children": [
+        { "tag": "nav", "role": "navigation", "id": null, "classes": ["nav-wrap"], "purpose": "unknown", "headlineRef": null, "innerTextSummary": "Ledgerline Features Pricing About Contact Request a demo", "wordCount": 8, "body": [], "lists": [], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "main",
+      "role": "main",
+      "id": null,
+      "classes": [],
+      "innerText": "Bookkeeping your accountant will trust. Ledgerline keeps your books reconciled, your reports audit-ready, and your month-end close on schedule. Request a demo See pricing Trusted by 4,200 finance teams Everything your close process needs Automatic reconciliation Match bank feeds to ledger entries every night. Exceptions are queued for review, not buried. Audit-ready reports GAAP-aligned statements exported to PDF and XLSX, with a change log on every line item. Accountant access Give your CPA read or write access without sharing passwords. Every action is attributed. \"We cut our month-end close from nine days to four.\" — Priya Raman, Controller, Northwind Supply Ready to close the books faster? Request a demo",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["hero"], "purpose": "hero", "headlineRef": 0, "innerTextSummary": "Bookkeeping your accountant will trust. Ledgerline keeps your books reconciled, your reports audit-ready, and your month-end close on schedule.", "wordCount": 28, "body": ["Ledgerline keeps your books reconciled, your reports audit-ready, and your month-end close on schedule."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": null, "classes": ["social-proof"], "purpose": "social-proof", "headlineRef": 2, "innerTextSummary": "Trusted by 4,200 finance teams", "wordCount": 6, "body": [], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": "features", "classes": ["feature-3up"], "purpose": "feature-list", "headlineRef": 1, "innerTextSummary": "Automatic reconciliation. Audit-ready reports. Accountant access.", "wordCount": 64, "body": ["Match bank feeds to ledger entries every night. Exceptions are queued for review, not buried.", "GAAP-aligned statements exported to PDF and XLSX, with a change log on every line item.", "Give your CPA read or write access without sharing passwords. Every action is attributed."], "lists": [], "qa": [], "quotes": [] },
+        { "tag": "section", "role": null, "id": null, "classes": ["testimonial"], "purpose": "rich-text", "headlineRef": null, "innerTextSummary": "\"We cut our month-end close from nine days to four.\" — Priya Raman, Controller, Northwind Supply", "wordCount": 17, "body": [], "lists": [], "qa": [], "quotes": [ { "text": "We cut our month-end close from nine days to four.", "attribution": "Priya Raman, Controller, Northwind Supply", "rating": null } ] },
+        { "tag": "section", "role": null, "id": null, "classes": ["cta-band"], "purpose": "cta-band", "headlineRef": 3, "innerTextSummary": "Ready to close the books faster? Request a demo", "wordCount": 9, "body": [], "lists": [], "qa": [], "quotes": [] }
+      ]
+    },
+    {
+      "tag": "footer",
+      "role": "contentinfo",
+      "id": null,
+      "classes": ["site-footer"],
+      "innerText": "Product Features Pricing Security Company About Careers Contact Resources Help center Blog API docs Legal Privacy Terms © 2026 Ledgerline Inc.",
+      "children": [
+        { "tag": "section", "role": null, "id": null, "classes": ["footer-cols"], "purpose": "footer-nav", "headlineRef": null, "innerTextSummary": "Product Company Resources Legal", "wordCount": 22, "body": [], "lists": [ { "ordered": false, "items": ["Features", "Pricing", "Security", "About", "Careers", "Contact", "Help center", "Blog", "API docs", "Privacy", "Terms"] } ], "qa": [], "quotes": [] }
+      ]
+    }
+  ],
+  "ctas": [
+    {
+      "label": "Request a demo",
+      "href": "/contact",
+      "tag": "a",
+      "domPath": "main > section.hero > div.hero-copy > a.btn-primary",
+      "style": { "backgroundColor": "rgb(255, 255, 255)", "color": "rgb(31, 58, 95)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" },
+      "appearsAbove": "fold"
+    },
+    {
+      "label": "See pricing",
+      "href": "/pricing",
+      "tag": "a",
+      "domPath": "main > section.hero > div.hero-copy > a.btn-secondary",
+      "style": { "backgroundColor": "rgba(0, 0, 0, 0)", "color": "rgb(255, 255, 255)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" },
+      "appearsAbove": "fold"
+    },
+    {
+      "label": "Request a demo",
+      "href": "/contact",
+      "tag": "a",
+      "domPath": "main > section.cta-band > a.btn-primary",
+      "style": { "backgroundColor": "rgb(255, 255, 255)", "color": "rgb(31, 58, 95)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "12px 28px", "boxShadow": "none" },
+      "appearsAbove": "below-fold"
+    },
+    {
+      "label": "Request a demo",
+      "href": "/contact",
+      "tag": "a",
+      "domPath": "header > div.nav-wrap > a.btn-primary",
+      "style": { "backgroundColor": "rgb(31, 58, 95)", "color": "rgb(255, 255, 255)", "fontFamily": "Arial, Helvetica, sans-serif", "fontWeight": 700, "borderRadius": "4px", "padding": "10px 20px", "boxShadow": "none" },
+      "appearsAbove": "fold"
+    }
+  ],
+  "links": {
+    "internal": [
+      { "href": "/features", "text": "Features", "domPath": "header > nav > a:nth-child(2)" },
+      { "href": "/pricing", "text": "Pricing", "domPath": "header > nav > a:nth-child(3)" },
+      { "href": "/about", "text": "About", "domPath": "header > nav > a:nth-child(4)" },
+      { "href": "/contact", "text": "Contact", "domPath": "header > nav > a:nth-child(5)" },
+      { "href": "/features", "text": "Learn more", "domPath": "main > section#features > div.card:nth-child(1) > a" }
+    ],
+    "external": [
+      { "href": "https://www.linkedin.com/company/ledgerline", "text": "LinkedIn", "domPath": "footer > div.social > a:nth-child(1)" }
+    ]
+  },
+  "media": {
+    "images": [
+      { "src": "https://www.ledgerline.com/img/dashboard-overview.png", "currentSrc": "https://www.ledgerline.com/img/dashboard-overview.png", "srcset": null, "alt": "Ledgerline reconciliation dashboard", "naturalWidth": 1920, "naturalHeight": 1200, "resolves": true, "localPath": "stardust/current/assets/media/dashboard-9f3e.png" },
+      { "src": "https://www.ledgerline.com/img/logos/acme.png", "currentSrc": "https://www.ledgerline.com/img/logos/acme.png", "srcset": null, "alt": "Acme Freight", "naturalWidth": 320, "naturalHeight": 96, "resolves": true, "localPath": "stardust/current/assets/media/logos-acme-1d2e.png" },
+      { "src": "https://www.ledgerline.com/img/logos/northwind.png", "currentSrc": "https://www.ledgerline.com/img/logos/northwind.png", "srcset": null, "alt": "Northwind Supply", "naturalWidth": 320, "naturalHeight": 96, "resolves": true, "localPath": "stardust/current/assets/media/logos-northwind-7e8f.png" }
+    ],
+    "inlineSvgs": [
+      { "viewBox": "0 0 180 32", "domPath": "header > div.nav-wrap > a.brand > svg", "markupHash": "sha256:6f2d9b1e4a7c0f8b3e5d2a9c1f7b4e0d8a6c3f1b9e5d7a2c0f4b8e6d1a3c9f5b" }
+    ],
+    "cssBackgrounds": [
+      {
+        "url": "https://www.ledgerline.com/img/hero-ledger.png",
+        "domPath": "main > section.hero > div.hero-media",
+        "boundingClientRect": { "x": 720, "y": 96, "width": 640, "height": 460 },
+        "backgroundSize": "cover",
+        "backgroundPosition": "center center",
+        "backgroundRepeat": "no-repeat",
+        "localPath": "stardust/current/assets/media/hero-ledger-2c1a.png"
+      }
+    ],
+    "videos": [],
+    "iframes": []
+  },
+  "forms": [],
+  "widgets": { "modals": [], "accordions": [], "tabs": [] },
+  "components": {
+    "cards": { "count": 3, "examples": ["section#features .card"] },
+    "grids": { "count": 1, "examples": ["section#features .row"] },
+    "accordions": { "count": 0, "examples": [] },
+    "tabs": { "count": 0, "examples": [] },
+    "tables": { "count": 0, "examples": [] },
+    "modals": { "count": 0, "examples": [] },
+    "carousels": { "count": 0, "examples": [] },
+    "videos": { "count": 0, "examples": [] },
+    "iframes": { "count": 0, "examples": [] },
+    "dataVizEmbeds": { "count": 0, "examples": [] },
+    "teamTiles": { "count": 0, "examples": [] },
+    "pricingTiles": { "count": 0, "examples": [] },
+    "testimonialCards": { "count": 1, "examples": ["section.testimonial blockquote"] },
+    "logoStrip": { "count": 1, "examples": ["section.social-proof .logo-row"] },
+    "timeline": { "count": 0, "examples": [] },
+    "breadcrumbs": { "count": 0, "examples": [] },
+    "statRow": { "count": 0, "examples": [] },
+    "ctaBand": { "count": 1, "examples": ["section.cta-band"] },
+    "formFields": { "count": 0, "examples": [] },
+    "other": []
+  },
+  "perSectionStyle": [
+    { "sectionRef": "main > section.hero", "purpose": "hero", "background": { "color": "rgb(31, 58, 95)", "hasImage": true, "hasGradient": false }, "text": { "dominantColor": "rgb(255, 255, 255)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "24px" }, "borderRadius": "0px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": [] },
+    { "sectionRef": "main > section.social-proof", "purpose": "social-proof", "background": { "color": "rgb(255, 255, 255)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "48px", "paddingInline": "24px", "gap": "32px" }, "borderRadius": "0px", "fontFamilies": ["Georgia"], "shadowsUsed": [] },
+    { "sectionRef": "main > section#features", "purpose": "feature-list", "background": { "color": "rgb(244, 246, 248)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(43, 47, 54)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "24px" }, "borderRadius": "4px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": ["0 1px 3px rgba(20,30,45,0.08)"] },
+    { "sectionRef": "main > section.cta-band", "purpose": "cta-band", "background": { "color": "rgb(31, 58, 95)", "hasImage": false, "hasGradient": false }, "text": { "dominantColor": "rgb(255, 255, 255)" }, "spacing": { "paddingBlock": "64px", "paddingInline": "24px", "gap": "16px" }, "borderRadius": "0px", "fontFamilies": ["Georgia", "Arial"], "shadowsUsed": [] }
+  ],
+  "embedDominance": { "dominated": false, "iframeSrc": null, "viewportCoveragePct": null, "mainHeightCoveragePct": null, "screenshot": null },
+  "cssCustomProperties": [],
+  "screenshot": "stardust/current/assets/screenshots/home.png",
+  "stats": { "wordCount": 148, "ctaCount": 4, "internalLinkCount": 16, "externalLinkCount": 1, "imageCount": 3 }
+}

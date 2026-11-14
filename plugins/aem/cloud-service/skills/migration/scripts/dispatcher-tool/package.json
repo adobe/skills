@@ -1,0 +1,8 @@
+{
+  "name": "migration-dispatcher-tool",
+  "private": true,
+  "description": "Isolated install of Adobe's dispatcher converter (auto-installed on first use).",
+  "dependencies": {
+    "@adobe/aem-cs-source-migration-dispatcher-converter": "^1.5.2"
+  }
+}

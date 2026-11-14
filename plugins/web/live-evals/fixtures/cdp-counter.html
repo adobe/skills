@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Inventory counter</title></head>
+<body>
+<h1>Inventory</h1>
+<p>Items: <span id="count">0</span></p>
+<button id="add">Add</button>
+<script>
+  console.log('counter-ready');
+  setTimeout(() => console.warn('deprecated-api-used'), 1500);
+  document.getElementById('add').addEventListener('click', () => {
+    const c = document.getElementById('count');
+    c.textContent = String(Number(c.textContent) + 1);
+  });
+</script>
+</body>
+</html>

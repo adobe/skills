@@ -1,0 +1,46 @@
+{
+  "context": "Tests whether the agent selects figma-to-content for a live-Figma-frame page migration and correctly rules out the adjacent migration skills (snowflake, page-import) whose input is an already-rendered page/DOM. Validates that a new-block section is routed to content-driven-development rather than hand-written or pushed through snowflake, and that the reuse-vs-build distinction is stated. Guards against the most likely misroute for this skill: treating a Figma design like exported static HTML.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Selects figma-to-content",
+      "max_score": 25,
+      "description": "Correctly identifies figma-to-content as the right skill for a Figma-frame-to-EDS-page migration, not snowflake or page-import."
+    },
+    {
+      "name": "Rules out snowflake with correct rationale",
+      "max_score": 20,
+      "description": "Explains that snowflake consumes an already-rendered Source URL / DOM (to preserve it byte-for-byte) and installs an overlay substrate, which does not fit a live Figma frame as input — so snowflake is the wrong tool here."
+    },
+    {
+      "name": "Rules out page-import",
+      "max_score": 10,
+      "description": "Acknowledges page-import as the other migration path and explains it is wrong here because its input is a live page/URL to scrape and rewrite, not a design frame."
+    },
+    {
+      "name": "New block routed through content-driven-development",
+      "max_score": 15,
+      "description": "States that the custom module is built as a new isolated block via content-driven-development (not hand-written from scratch, not via snowflake), keeping it self-contained (no page chrome / global styles / source URL)."
+    },
+    {
+      "name": "Names the figma-to-content phases",
+      "max_score": 10,
+      "description": "Names the phases: preflight, read the Figma design, resolve each section + confirm the plan, author into existing blocks / build new blocks / default content, deploy with the pre-publish gate, report (or a close paraphrase covering these)."
+    },
+    {
+      "name": "States reuse vs. build distinction",
+      "max_score": 10,
+      "description": "Explains existing-block sections are content-only reuse (requiring structural AND visual fit), while a section that needs an absent block or whose look diverges becomes a new isolated block."
+    },
+    {
+      "name": "Surfaces prerequisites",
+      "max_score": 5,
+      "description": "Lists what the user must provide: the Figma file + specific frame, a local project checkout, the DA org/repo + page path, and a DA token (or how to obtain one via da-auth)."
+    },
+    {
+      "name": "No premature implementation",
+      "max_score": 5,
+      "description": "Does not execute any phase, write code/HTML, modify the repo, or make tool calls beyond planning."
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Icon sources fixture</title>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Sprite Co","url":"http://localhost:8765/"}</script>
+<style>.bg-icon { display: inline-block; width: 24px; height: 24px; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><circle cx='12' cy='12' r='9' fill='red'/></svg>"); }</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M12 21 L3 12 A5 5 0 0 1 12 6 A5 5 0 0 1 21 12 Z" fill="#000"/></symbol>
+  <symbol id="icon-star" viewBox="0 0 24 24"><path d="M12 2 L15 9 L22 9 L16 14 L18 21 L12 17 L6 21 L8 14 L2 9 L9 9 Z" fill="#000"/></symbol>
+</svg>
+<header>
+  <nav>
+    <button aria-label="Favorites"><svg width="24" height="24"><use href="#icon-heart"></use></svg></button>
+    <button aria-label="Rate"><svg width="24" height="24"><use href="#icon-star"></use></svg></button>
+    <a href="/download" aria-label="Download"><img width="24" height="24" alt="Download" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M12 3 V15 M6 10 L12 16 L18 10' stroke='black' fill='none'/></svg>"></a>
+    <button aria-label="Alert"><span class="bg-icon"></span></button>
+  </nav>
+</header>
+<main><h1>Icons from four different sources</h1><p>Sprite symbols, a data URI image and a CSS background.</p></main>
+</body>
+</html>

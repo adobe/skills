@@ -28,10 +28,12 @@ const {
   fetchUnifiedBpaFindings,
   getAvailablePatterns,
   getUnifiedCollectionSummary,
+  readUnifiedCollection,
   paginate,
-  DEFAULT_BATCH_SIZE
+  DEFAULT_BATCH_SIZE,
+  PATTERN_TO_SUBTYPES
 } = require('./unified-collection-reader.js');
-const { validateBpaFile, parseBpaFile, createUnifiedCollection } = require('./bpa-local-parser.js');
+const { validateBpaFile, parseBpaFile, createUnifiedCollection, LEGACY_PARSED_SUBTYPES } = require('./bpa-local-parser.js');
 
 const DEFAULT_COLLECTIONS_DIR = './unified-collections';
 
@@ -52,7 +54,7 @@ function readMcpCache(collectionsDir, projectId, pattern) {
 }
 
 /** Persist an MCP fetch to disk as the read model for subsequent paging. */
-function writeMcpCache(collectionsDir, projectId, pattern, environment, targets, mcpMessage) {
+function writeMcpCache(collectionsDir, projectId, pattern, environment, targets, mcpMessage, reportedTotal) {
   const file = mcpCachePath(collectionsDir, projectId, pattern);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify({
@@ -62,8 +64,30 @@ function writeMcpCache(collectionsDir, projectId, pattern, environment, targets,
     environment,
     fetchedAt: new Date().toISOString(),
     targets,
-    ...(mcpMessage ? { mcpMessage } : {})
+    ...(mcpMessage ? { mcpMessage } : {}),
+    ...(reportedTotal > targets.length ? { reportedTotal } : {})
   }, null, 2));
+}
+
+/**
+ * Why an MCP response must not be cached, or null when it is usable. Anything but
+ * `success: true` fails (an AEM MCP Server denial has `error` and no `success`), and so
+ * does a partial read (`fetchErrors`), so a failure is never cached as "no findings".
+ */
+function mcpFailureReason(mcp) {
+  if (!mcp || typeof mcp !== 'object') return 'empty MCP response';
+  if (mcp.success !== true) return typeof mcp.error === 'string' && mcp.error ? mcp.error : 'MCP response without success: true';
+  if (mcp.fetchErrors && Object.keys(mcp.fetchErrors).length) {
+    return `some patterns could not be read: ${Object.keys(mcp.fetchErrors).join(', ')}`;
+  }
+  return null;
+}
+
+/** Full finding count the server reported when it capped `targets` (AEM MCP Server `truncated`). */
+function reportedTotalOf(mcp, pattern, returned) {
+  if (mcp.truncated !== true) return returned;
+  const counted = Number(mcp.summary?.[`${pattern}Count`] ?? mcp.total);
+  return Number.isFinite(counted) && counted > returned ? counted : returned;
 }
 
 /**
@@ -121,16 +145,19 @@ async function getFromMcp({ pattern, projectId, environment, mcpFetcher, collect
   if (!cache) {
     try {
       const mcp = await mcpFetcher({ projectId, pattern, environment });
-      if (!mcp || mcp.success === false) {
+      const reason = mcpFailureReason(mcp);
+      if (reason) {
         return {
-          ...(mcp || {}),
+          ...(mcp && typeof mcp === 'object' ? mcp : {}),
           success: false,
           source: 'mcp-server',
+          error: mcp?.error || reason,
           message: `MCP fetch did not succeed (project: ${projectId}).`
         };
       }
       const targets = Array.isArray(mcp.targets) ? mcp.targets : [];
-      writeMcpCache(collectionsDir, projectId, pattern, environment, targets, mcp.message);
+      writeMcpCache(collectionsDir, projectId, pattern, environment, targets, mcp.message,
+        reportedTotalOf(mcp, pattern, targets.length));
       cache = readMcpCache(collectionsDir, projectId, pattern);
     } catch (error) {
       return {
@@ -148,7 +175,11 @@ async function getFromMcp({ pattern, projectId, environment, mcpFetcher, collect
   }
 
   const { targets, paging } = paginate(cache.targets, { offset, limit });
-  const defaultMessage = `Using MCP cache for project ${projectId} (fetched ${formatTimestamp(cache.fetchedAt)}).`;
+  const truncated = cache.reportedTotal > cache.targets.length
+    ? { returned: cache.targets.length, reportedTotal: cache.reportedTotal }
+    : null;
+  const defaultMessage = `Using MCP cache for project ${projectId} (fetched ${formatTimestamp(cache.fetchedAt)}).`
+    + (truncated ? ` The server returned ${truncated.returned} of ${truncated.reportedTotal} findings; the rest are not in this list.` : '');
   return {
     success: true,
     source: 'mcp-server',
@@ -156,17 +187,48 @@ async function getFromMcp({ pattern, projectId, environment, mcpFetcher, collect
     environment,
     message: (cache.targets.length === 0 && cache.mcpMessage) ? cache.mcpMessage : defaultMessage,
     targets,
-    paging
+    paging,
+    ...(truncated ? { truncated } : {})
   };
+}
+
+/**
+ * Patterns `pattern` asks for that the cached collection can't answer because it
+ * was written by a parser that didn't yet extract their subtypes
+ * (`meta.parsedSubtypes`; collections written before that field existed cover the
+ * subtypes parsers handled then). Such a collection lacks the pattern even when
+ * its CSV has rows for it. Empty when the cache is complete for `pattern`.
+ */
+function patternsMissingFromCache(collectionsDir, pattern) {
+  const recorded = readUnifiedCollection(collectionsDir)?.meta?.parsedSubtypes;
+  const parsed = Array.isArray(recorded) ? recorded : LEGACY_PARSED_SUBTYPES;
+  const covers = name => (PATTERN_TO_SUBTYPES[name] || []).every(subtype => parsed.includes(subtype));
+  return (pattern === 'all' ? Object.keys(PATTERN_TO_SUBTYPES) : [pattern]).filter(name => !covers(name));
 }
 
 /**
  * CSV / cached-collection path: first call parses CSV and writes the unified
  * collection; subsequent calls read it. Every call returns exactly one batch.
+ * A cached collection that predates a requested pattern is rebuilt from the CSV
+ * when one is given. Without a CSV, a request for that one pattern is an error
+ * (not "pattern absent"), while `all` still returns the patterns the cache
+ * covers and names the ones it can't answer.
  */
 function getFromCsvOrCache({ pattern, bpaFilePath, collectionsDir, offset, limit }) {
-  // Create the cache on first invocation if it doesn't exist yet.
-  if (!hasUnifiedCollection(collectionsDir)) {
+  const cached = hasUnifiedCollection(collectionsDir);
+  const missing = cached ? patternsMissingFromCache(collectionsDir, pattern) : [];
+  const stale = missing.length > 0;
+  if (stale && !bpaFilePath && pattern !== 'all') {
+    return {
+      success: false,
+      source: 'bpa-file',
+      error: `The cached collection at ${collectionsDir} was created before '${pattern}' was supported`,
+      message: `The cached collection at ${collectionsDir} can't answer '${pattern}'; provide the BPA CSV (bpaFilePath) to rebuild it.`
+    };
+  }
+  const servedFromStaleCache = stale && !bpaFilePath;
+  // Create the cache on first invocation, or rebuild a stale one from the CSV.
+  if (!cached || (stale && !servedFromStaleCache)) {
     if (!bpaFilePath) {
       return {
         success: false,
@@ -208,6 +270,11 @@ function getFromCsvOrCache({ pattern, bpaFilePath, collectionsDir, offset, limit
   const result = fetchUnifiedBpaFindings(pattern, collectionsDir, { offset, limit });
   result.source = 'bpa-file';
   result.message = `Using CSV collection (${summary?.totalFindings ?? result.paging.total} findings, ${formatTimestamp(summary?.timestamp)}).`;
+  if (servedFromStaleCache) {
+    // Not "absent": the cache predates these patterns, so their findings are unknown.
+    result.staleCache = { missingPatterns: missing };
+    result.message += ` The cached collection predates ${missing.map(m => `'${m}'`).join(', ')}; provide the BPA CSV (bpaFilePath) to include ${missing.length === 1 ? 'it' : 'them'}.`;
+  }
   return result;
 }
 

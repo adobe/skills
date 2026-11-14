@@ -1,0 +1,46 @@
+# `check` selects the assertion in assert.mjs; ground truth for fixtures is the page's own markup.
+- description: fixture, full inventory
+  vars:
+    check: all-fixture
+    url: http://localhost:8765/collect.html
+    task: Inventory the resources on the page below, meaning its metadata, forms, videos, social links and icons.
+- description: fixture, icons for Edge Delivery Services
+  vars:
+    check: icons-fixture
+    url: http://localhost:8765/collect.html
+    task: I am migrating the page below to AEM Edge Delivery Services. Extract the page's icons and logo so they can go into the project's /icons/ folder.
+- description: fixture, forms only
+  vars:
+    check: forms-fixture
+    url: http://localhost:8765/collect.html
+    task: What forms does the page below contain, and what fields and actions do they have?
+- description: aem.live, full inventory
+  vars:
+    check: collection-valid
+    url: https://www.aem.live/
+    task: Inventory the resources on the page below, meaning its metadata, forms, videos, social links and icons.
+- description: fixture, icons from sprites, data URIs and inline SVG
+  vars:
+    check: sprites-fixture
+    url: http://localhost:8765/collect-sprites.html
+    task: I am migrating the page below to AEM Edge Delivery Services. Extract its icons so they can go into the project's /icons/ folder.
+- description: fixture, JSON-LD structured data
+  vars:
+    check: jsonld-fixture
+    url: http://localhost:8765/collect-sprites.html
+    task: What structured data (JSON-LD) does the page below declare? Collect it from the page itself.
+- description: live, backlinko.com metadata
+  vars:
+    check: meta-backlinko
+    url: https://backlinko.com/
+    task: What are the page's title, canonical URL and Open Graph metadata? Collect them from the page itself.
+- description: live, wpbeginner.com social links
+  vars:
+    check: socials-wpbeginner
+    url: https://www.wpbeginner.com/
+    task: Which social networks does the page below link to? Collect them from the page itself.
+- description: live, stripe.com/fr-ch social links
+  vars:
+    check: socials-stripe
+    url: https://stripe.com/fr-ch
+    task: Which social networks does the page below link to? Collect them from the page itself.

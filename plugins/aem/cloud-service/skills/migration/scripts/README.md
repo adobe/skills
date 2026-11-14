@@ -28,6 +28,106 @@ Collection already exists?              No CSV path given
 
 ## Scripts
 
+### `runbook-generator.js` (review / scan entry point)
+
+Generates a read-only `migration-runbook.md` covering **every pattern the migration skill can address**. Triggered by broad prompts like "review my code for AEMaaCS migration".
+
+Each pattern declares a **detection strategy** in `PATTERN_META`:
+
+| Pattern(s) | `strategy` | Engine |
+|---|---|---|
+| `scheduler`, `resourceChangeListener`, `event-migration`, `assetApi` | `cascade` | BPA/CAM → CSV → analyzer → LLM scan |
+| `replication` | `cascade` | BPA/CAM → CSV (`replication.agent`) → analyzer → LLM scan |
+| `htlLint` | `html-scan` | `htl-lint-runner.js` (pure-Node regex over `.html`) |
+| `osgiConfig` | `config-scan` | `osgi-config-runner.js` (config-file scan) |
+| `lui`, `cdw`, `templateModernization` | BPA + `content-scan` | BPA/CAM → CSV first (`legacy-ui-runner.js` / `template-scan-runner.js` as fallback) |
+| `dispatcherConversion` | `content-scan` | `dispatcher-inventory.js` (`runDispatcherScan` — heuristic, no BPA subtype) |
+| `guavaCache` | `bpa-only` | BPA/CAM → CSV only (no analyzer, no content-scan) → LLM scan |
+| `inputStream` | `java-scan` | BPA/CAM → CSV first; `input-stream-runner.js` resolves the reported classes to files (rows outside the workspace collapsed per bundle) and scans every `src/main/java` file only when BPA has no `inputStream` findings. Never needs the LLM tier. |
+
+`html-scan` / `config-scan` findings, and the `content-scan` fallback for `lui`/`cdw`/`templateModernization`, are **heuristic** and tagged `confidence: "heuristic"` in the cache. BPA-sourced findings are authoritative. `osgiConfig` reports key names + locations only — **never secret values**.
+
+```javascript
+const { generateRunbook, renderRunbook } = require('./scripts/runbook-generator.js');
+
+const result = await generateRunbook({
+  workspaceRoot: '/path/to/project',         // analyzer tier
+  bpaFilePath: './reports/bpa.csv',          // optional (CSV tier)
+  collectionsDir: './unified-collections',   // default
+  projectId, mcpFetcher,                     // optional (MCP tier)
+  outputPath: './migration-runbook.md',      // default
+});
+
+// result.totalFindings → total across patterns
+// result.patternCounts → { scheduler: 12, replication: 1, … }
+// result.needsLlmScan  → patterns no deterministic source could scan (tier 4)
+// result.gathered      → { findingsByPattern, sourceByPattern, … } for re-render after an LLM scan
+```
+
+**CLI (the canonical Step-0 path — one command, no in-process bridge):**
+```bash
+node scripts/runbook-generator.js <workspaceRoot> \
+  [--csv <bpaFilePath>] \
+  [--bpa-json <file>] \      # pre-fetched CAM/MCP findings, { "<slug>": [ <target>, … ] } — no mcpFetcher bridge needed
+  [--llm-findings <file>] \  # Tier-4 results, { "<pattern>": [ { file, line, snippet }, … ] } — merged + re-rendered in one pass
+  [--out <outputPath>] [--cache <cachePath>]
+```
+
+- `--bpa-json` lets the agent dump its CAM/MCP fetch to a file instead of passing an in-process `mcpFetcher`; an omitted slug is treated as "not in report" (clean).
+- The analyzer is always **unioned** with BPA (BPA authoritative, analyzer fills source-only findings, deduped by class name), so a "BPA clean" cascade pattern still surfaces real source code — no manual reconciliation.
+- If the run prints `⚠️ Needs LLM scan`, grep for those patterns, write the hits to a JSON file, and re-run with `--llm-findings` to fold them in.
+
+### `analyzer-runner.js`
+
+Wraps the code-assessment deterministic analyzer (`../../code-assessment/scripts/analyze.sh`). Runs it once over a workspace, parses the `{ findings, warnings }` JSON, and normalizes analyzer slugs (`resource-change-listener`, `event-migration`, `asset-manager`, …) into the migration canonical pattern ids. Used internally by `runbook-generator.js` for `cascade` patterns. Returns `{ ok: false }` when the analyzer can't run (missing script, no JDK, compile error) so the cascade falls through to the LLM-scan tier.
+
+### `htl-lint-runner.js`
+
+The `html-scan` strategy for `htlLint`. Pure-Node fs walk + regex over `.html` files detecting `data-sly-test` redundant-constant anti-patterns (`== true`, `/apps/…` string, split `${} || ${}`, numeric literals) — mirrors the `rg` discovery in `{code-assessment}/references/data-sly-test-redundant-constant.md`, but with **no external `rg` dependency** so it runs anywhere Node does. Heuristic (a regex is not the HTL compiler); findings are re-confirmed before editing.
+
+### `input-stream-runner.js`
+
+The `java-scan` strategy for `inputStream` (BPA `DG` / `java.io.inputstream`), with the same precedence as the other BPA patterns: BPA findings first (CAM targets via `--bpa-json`, then a BPA CSV via `--csv`), and a scan of every `src/main/java` file only when BPA has no `inputStream` findings. With BPA rows, only the reported classes' files are scanned, since BPA names classes but not lines. It skips tests and `target/` and ignores comments and string literals. It finds each stream acquisition site and pre-classifies it:
+- **F** deserialization (any `*ObjectInputStream`)
+- **E** binary streamed or processed in the JVM: DAM binary reads, binaries copied to the response, client uploads into the repository, asset processing in workflow steps, streams in a method that starts a native process (other streams in the class get a file-level note instead)
+- **D** local filesystem (hard-coded paths always; per-request scratch files excluded), with local-filesystem writes in the same file listed
+- **C** unbounded in-memory read (only a stream-level limit counts; a Content-Length check doesn't)
+- **B** unclosed stream or undisposed JCR `Binary`
+- **A** benign
+
+Each site also gets a fix kind (`decision` / `review` / `auto`). Ownership is tracked through try-with-resources, wrappers, returns, fields (with or without `this.`), lambdas, setters and builders, and same-file helpers or constructors that close or keep the stream; each method, including methods of nested classes, is its own scope. Output is **one finding per file**, ordered by risk.
+
+BPA rows resolve to their files (nested classes to the outer class's file). Rows that don't resolve collapse to one informational row per bundle (per package for CAM rows, which carry no bundle name): `missing-source` for customer code kept elsewhere (the bundle has workspace classes, or shares the workspace's package namespace), `platform-provided` for AEM Forms add-on code, and `not-in-workspace` for third-party code. A class that resolves but has no visible stream usage becomes `bpa-unmatched`, with a hint naming same-package files that do use streams.
+
+```bash
+node input-stream-runner.js <workspaceRoot> [--bpa-json <cam-targets.json>] [--csv <bpa.csv>] [--collections <dir>] [--json]
+node input-stream-runner.js <workspaceRoot> --files a/Foo.java,b/Bar.java --json   # verify after editing; exits 2 (ok: false) if a requested file can't be read
+```
+
+### `osgi-config-runner.js`
+
+The `config-scan` strategy for `osgiConfig`. Scans OSGi config files (`.cfg.json`, legacy `.cfg`/`.config`) under `config*` folders for secret-looking keys and `$[secret:]`/`$[env:]` placeholders, per `{migration}/references/osgi-cfg-json-cloud-manager.md`. **Reports key names + locations only — never secret values** (the runbook is written to disk / often committed). Heuristic and review-only: classification (real secret? Adobe-owned PID?) is deferred to apply time.
+
+### `legacy-ui-runner.js`
+
+The `content-scan` **fallback** for `lui` (Classic UI `cq:Dialog`/`xtype="dialog"` and Coral 2 `granite/ui/components/foundation` dialogs) and `cdw` (custom `cq:Widget` xtypes not in the known-safe Coral 3 set). Pure-Node scan of `.content.xml` per `{migration}/references/legacy-ui/`. Used only when no BPA source is available; heuristic and can undercount vs BPA when legacy nodes live in packages (e.g. acs-commons) outside the project source.
+
+### `template-scan-runner.js`
+
+The `content-scan` **fallback** for `templateModernization` — static templates (`cq:Template`) under `apps/<appId>/templates/*`. Used only when no BPA source is available.
+
+### `dispatcher-inventory.js`
+
+The `content-scan` strategy for `dispatcherConversion` — detects an AMS or on-premise Dispatcher configuration convertible to AEM as a Cloud Service (Branch E). Walks the workspace for Dispatcher config roots, classifies each via `detectMode` (`standard` / `flexible` / `v1` / `unknown` → convertible; `already-cloud` / `not-dispatcher` → skipped), and builds an inventory (vhost/farm files, filter/rewrite/cache rule counts, AMS markers). Exposes `runDispatcherScan(workspaceRoot)` — the runbook's content-scan entry point — returning `{ ok, findings, rawFindings, warnings }` and silently skipping workspaces that are already Cloud-native or not a Dispatcher at all (no findings, no noise). Heuristic; there is no BPA subtype for dispatcher conversion.
+
+### `dispatcher-verify.js`
+
+Output verification for a generated Cloud Service Dispatcher config (`verifyOutput`). The filter/ACL allow-list is a **hard gate** — if the source had filter rules and the converted output has none (or fewer), it fails, so a conversion that would weaken security is caught before it is applied. Baseline and output are counted the **same** way via `countFilterRules` (in `dispatcher-inventory.js`): inline farm `/filter` rules **plus** the standalone filter files an inline `$include` pulls in (`filters/*.any`, `*_filters.any`) — so the canonical AMS `$include` layout can't score zero and slip an emptied output past the gate. Adobe-managed immutable SDK files (`default_*.any`) are **excluded** from the count, so a populated SDK `default_filters.any` can't mask an emptied custom `filters.any` — the count is custom-to-custom and the acl-loss gate still fires. (Residual blind spot: filter rules reachable only through an `$include` to a path outside a `filters/` directory aren't resolved — sanity-check `baseline.filter` against the source; see [output-verification.md](../references/dispatcher/output-verification.md).) Also reconciles rewrite/redirect counts (warning — rules may legitimately move to the CDN) and flags mega-inlined vhosts and missing current-SDK conventions (`enabled_farms/farms.any`).
+
+### `dispatcher-run.js`
+
+Drives the end-to-end conversion: writes the tool `config.yaml`, resolves the mode-specific executor, and wraps Adobe's [`@adobe/aem-cs-source-migration-dispatcher-converter`](https://github.com/adobe/aem-cs-source-migration). That Adobe tool is **not a bundled dependency** — it is auto-installed on first use into the gitignored `scripts/dispatcher-tool/node_modules/` (`ensureToolInstalled`), keeping the core scripts zero-dependency.
+
 ### `bpa-findings-helper.js` (main entry point)
 
 Orchestrates finding BPA data. Called by the skill internally.
@@ -66,9 +166,13 @@ node unified-collection-reader.js [pattern] [collections-directory]
 
 ## Testing
 
+The unit tests use Node's built-in test runner (`node --test`), which requires **Node ≥18**. This is a test-tooling prerequisite only — the scripts themselves run on the `package.json` `engines` floor (Node ≥14); running the suite does not raise that runtime floor.
+
 ```bash
 # From the scripts directory
 cd scripts
+npm test                                       # runs the *.test.js suites (requires Node ≥18)
+
 npm run parse-bpa -- <bpa-file-path> [output-dir]
 npm run read-unified -- [pattern] [collections-dir]
 ```
@@ -84,7 +188,7 @@ DG,development.guideline,unsupported.asset.api,MAJOR,com.example.MyClass,Uses de
 
 ### Output: Unified Collection (`unified-collection.json`)
 
-Matches the cloud-adoption-service format with MongoDB-safe field names (dots → underscores). Includes metadata (timestamp, totalFindings) for display:
+Matches the cloud-adoption-service format with MongoDB-safe field names (dots → underscores). Includes metadata (timestamp, totalFindings) for display, and `parsedSubtypes`: every subtype the parser extracts. `bpa-findings-helper.js` uses it to rebuild, from the CSV, a collection written before a requested pattern was supported (collections without the field count as covering the subtypes parsers handled before it was added):
 
 ```json
 {
@@ -99,7 +203,8 @@ Matches the cloud-adoption-service format with MongoDB-safe field names (dots �
     "timestamp": "2026-03-18T06:16:37.755Z",
     "source": "local-bpa-parser",
     "totalFindings": 1,
-    "subtypeCount": 1
+    "subtypeCount": 1,
+    "parsedSubtypes": ["sling.commons.scheduler", "unsupported.asset.api", "…", "java.io.inputstream"]
   }
 }
 ```
@@ -113,3 +218,11 @@ Matches the cloud-adoption-service format with MongoDB-safe field names (dots �
 | eventListener | javax.jcr.observation.EventListener |
 | resourceChangeListener | org.apache.sling.api.resource.observation.ResourceChangeListener |
 | eventHandler | org.osgi.service.event.EventHandler |
+| cdw | custom.classic.widget |
+| lui | legacy.dialog.classic, legacy.dialog.coral2, legacy.custom.component, legacy.static.template |
+| templateModernization | legacy.static.template, custom.static.template |
+| replication | forward.replication, reverse.replication |
+| urc | unsupported.runmode |
+| inputStream | java.io.inputstream (keyed by the referenced `java.io` API from the `other` column → class names; bundles kept per API and class in `meta.inputStreamBundles`) |
+
+Summary rows (`code` starting with `_`, e.g. `_COUNT_*`, `_STAT`) are excluded. Content/legacy-UI subtypes (cdw/lui/template/replication) are keyed by JCR node path (stored raw, not MongoDB-safed, so underscores like `design_dialog` survive).

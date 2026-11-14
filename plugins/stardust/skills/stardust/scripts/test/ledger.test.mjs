@@ -1,0 +1,386 @@
+#!/usr/bin/env node
+// skills/stardust/scripts/test/ledger.test.mjs — the ledger.mjs contract: run-status.md line
+// shape and key order, skill normalisation, file/dir creation on first write, append-only with
+// newline repair, unknown skill/phase warning vs --strict refusal, blocked-without-detail, tail
+// and last output, --next / --owner, the value-flag swallow rule, an explicit --dir that must exist,
+// usage errors, the start guard (an end needs an open start: warning, or exit 2 under --strict with
+// nothing written) and the journal check on end (a journal.md without a "## " heading naming the
+// phase warns, never changes the exit code); --track (the guard pairs on skill + phase + track, `last
+// --track` filters) and replica's first-page-first phases; the own-browser check on end (a script written in
+// the phase that imports playwright itself is named once, exit code unchanged). Run: node <this file>.
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync, mkdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PHASES, buildLine, canonicalPhase, checkJournalSection, checkOpenStart, checkOwnBrowserScripts, checkPhase, findOwnBrowserScripts, normaliseSkill, formatTail } from '../ledger.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SCRIPT = join(HERE, '..', 'ledger.mjs');
+const root = mkdtempSync(join(tmpdir(), 'ledger-test-'));
+const dir = join(root, 'stardust');
+const run = (...args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args, '--dir', dir], { encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const lines = () => readFileSync(join(dir, 'status.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+let failed = 0;
+const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+// ---- pure helpers -------------------------------------------------------------------------------
+check('normaliseSkill: with or without prefix, case-folded, rejects junk', () => {
+  assert.equal(normaliseSkill('extract'), 'stardust:extract');
+  assert.equal(normaliseSkill('stardust:extract'), 'stardust:extract');
+  assert.equal(normaliseSkill('Stardust:Rollout'), 'stardust:rollout');
+  assert.throws(() => normaliseSkill('$stardust extract'), /not a skill name/);
+  assert.throws(() => normaliseSkill(''), /not a skill name/);
+});
+check('buildLine: key order ts,skill,phase,event,detail,artifact; detail collapsed to one line; blanks dropped', () => {
+  const l = buildLine({ skill: 'migrate', phase: 'render', event: 'end', detail: '12 pages\n  rendered', artifact: ' stardust/migrated/ ' });
+  assert.deepEqual(Object.keys(l), ['ts', 'skill', 'phase', 'event', 'detail', 'artifact']);
+  assert.match(l.ts, ISO_UTC); assert.equal(l.detail, '12 pages rendered'); assert.equal(l.artifact, 'stardust/migrated/');
+  const bare = buildLine({ skill: 'migrate', phase: 'render', event: 'start', detail: '  ', artifact: '' });
+  assert.deepEqual(Object.keys(bare), ['ts', 'skill', 'phase', 'event']);
+  assert.throws(() => buildLine({ skill: 'migrate', phase: 'render', event: 'done' }), /event must be one of start\|end\|blocked/);
+  assert.throws(() => buildLine({ skill: 'migrate', phase: 'per page', event: 'start' }), /single token/);
+});
+check('checkPhase: canonical and alias forms pass case-insensitively; unknown skill/phase name the known set', () => {
+  assert.equal(checkPhase('stardust:migrate', 'render'), null);
+  assert.equal(checkPhase('stardust:migrate', 'per-page-render'), null);
+  assert.equal(checkPhase('stardust:rollout', 'C-deliver'), null);
+  assert.equal(checkPhase('stardust:rollout', 'c-deliver'), null);
+  assert.equal(checkPhase('stardust:rollout', 'I-dashboard'), null);
+  assert.equal(checkPhase('stardust:replica', 'source-fidelity-gate'), null);
+  assert.equal(checkPhase('stardust:replica', 'first-page'), null, 'first page first: Track A');
+  assert.equal(checkPhase('stardust:replica', 'reconcile-first-page'), null, 'first page first: RECONCILE');
+  assert.equal(checkPhase('stardust:replica', 'reconcile'), null, 'first page first: the RECONCILE alias');
+  assert.equal(checkPhase('stardust:dynamics', 'triage'), null);
+  assert.equal(checkPhase('stardust:deploy', '7-blocks'), null);
+  assert.equal(checkPhase('stardust:prototype', 'approval'), null);
+  assert.equal(checkPhase('stardust:extract', 'discovery'), null);
+  assert.equal(checkPhase('stardust:stardust', 'setup'), null);
+  assert.match(checkPhase('stardust:migrate', 'paint'), /unknown phase "paint" for stardust:migrate \(known: plan, render, assets, state-and-report\)/);
+  assert.match(checkPhase('stardust:nope', 'x'), /unknown skill stardust:nope \(known: stardust, extract/);
+});
+check('PHASES: every requested skill is present, rollout uses the <Letter>-<word> form, no duplicate alias collides with a canonical name', () => {
+  for (const s of ['stardust', 'replica', 'rollout', 'dynamics', 'extract', 'migrate', 'deploy', 'prototype']) assert.ok(PHASES[s], `missing ${s}`);
+  for (const k of Object.keys(PHASES.rollout)) assert.match(k, /^[A-I]\d?-[a-z][a-z-]*$/, k);
+  for (const [skill, table] of Object.entries(PHASES)) {
+    const canon = new Set(Object.keys(table).map((k) => k.toLowerCase()));
+    for (const [k, aliases] of Object.entries(table)) for (const a of aliases) assert.ok(!canon.has(a.toLowerCase()), `${skill}: alias ${a} of ${k} shadows a canonical phase`);
+  }
+});
+
+// ---- CLI: writing ---------------------------------------------------------------------------------
+check('an explicit --dir that does not exist is a usage error (exit 2) and creates nothing', () => {
+  assert.ok(!existsSync(dir));
+  const r = run('migrate', 'render', 'start');
+  assert.equal(r.code, 2); assert.equal(r.out, ''); assert.match(r.err, /--dir .*stardust is not an existing directory/);
+  assert.ok(!existsSync(dir), 'no directory grown for a mistyped --dir');
+  for (const cmd of [['tail'], ['last']]) { const t = run(...cmd); assert.equal(t.code, 2, cmd.join(' ')); assert.match(t.err, /not an existing directory/); }
+});
+check('first write into an existing --dir creates the file, prints the line it wrote', () => {
+  mkdirSync(dir);
+  const r = run('migrate', 'render', 'start');
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
+  const printed = JSON.parse(r.out.trim());
+  assert.deepEqual(lines(), [printed]);
+  assert.deepEqual(Object.keys(printed), ['ts', 'skill', 'phase', 'event']);
+  assert.equal(printed.skill, 'stardust:migrate'); assert.equal(printed.phase, 'render'); assert.equal(printed.event, 'start'); assert.match(printed.ts, ISO_UTC);
+});
+check('prefixed skill, --detail and --artifact land in the line; the file is append-only', () => {
+  const r = run('stardust:migrate', 'render', 'end', '--detail', '12 pages rendered', '--artifact', 'stardust/migrated/');
+  assert.equal(r.code, 0, r.err);
+  const all = lines(); assert.equal(all.length, 2);
+  assert.equal(all[0].event, 'start', 'earlier line untouched');
+  assert.deepEqual(all[1], { ts: all[1].ts, skill: 'stardust:migrate', phase: 'render', event: 'end', detail: '12 pages rendered', artifact: 'stardust/migrated/' });
+});
+check('--next and --owner land in the line after artifact; an end line without --next is accepted', () => {
+  const r = run('migrate', 'assets', 'end', '--detail', 'bundle final', '--next', 'state-and-report:\n  advance pages', '--owner', 'migrate');
+  assert.equal(r.code, 0, r.err);
+  const l = lines().at(-1);
+  assert.deepEqual(Object.keys(l), ['ts', 'skill', 'phase', 'event', 'detail', 'next', 'owner']);
+  assert.equal(l.next, 'state-and-report: advance pages', 'collapsed to one line'); assert.equal(l.owner, 'migrate');
+  const b = buildLine({ skill: 'migrate', phase: 'render', event: 'end', artifact: 'x', next: ' ', owner: 'me' });
+  assert.deepEqual(Object.keys(b), ['ts', 'skill', 'phase', 'event', 'artifact', 'owner'], 'a blank --next is dropped');
+  assert.equal(run('migrate', 'render', 'end').code, 0, 'end without --next is fine');
+});
+check('a value flag followed by another flag is a usage error naming the flag, nothing written', () => {
+  const before = lines().length;
+  for (const args of [['migrate', 'render', 'start', '--detail', '--strict'], ['migrate', 'render', 'start', '--artifact', '--detail', 'x'], ['migrate', 'render', 'start', '--next', '--owner', 'me'], ['migrate', 'render', 'start', '--owner', '-n'], ['tail', '-n', '--dir'], ['migrate', 'render', 'start', '--detail']]) {
+    const r = run(...args);
+    assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.match(r.err, /^ledger: (--detail|--artifact|--next|--owner|-n) needs a value/, args.join(' '));
+  }
+  assert.match(run('migrate', 'render', 'start', '--detail', '--strict').err, /--detail needs a value \(got --strict, which is a flag\)/);
+  assert.equal(lines().length, before);
+});
+check('rollout letter-phase and blocked with a reason', () => {
+  const r = run('rollout', 'C-deliver', 'blocked', '--detail', 'token expired (401) — checkpointed, awaiting re-auth');
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
+  assert.equal(lines().at(-1).phase, 'C-deliver');
+});
+check('unknown phase: warning on stderr, line still written (exit 0); phase written as given', () => {
+  const before = lines().length;
+  const r = run('extract', 'Paint', 'start');
+  assert.equal(r.code, 0); assert.match(r.err, /warning: unknown phase "Paint" for stardust:extract \(known: discovery, /);
+  assert.equal(lines().length, before + 1); assert.equal(lines().at(-1).phase, 'Paint');
+});
+check('unknown skill: warning, still written', () => {
+  const r = run('reskin', 'tokens', 'start');
+  assert.equal(r.code, 0); assert.match(r.err, /warning: unknown skill stardust:reskin/); assert.equal(lines().at(-1).skill, 'stardust:reskin');
+});
+check('--strict refuses an unknown phase with exit 2 and writes nothing', () => {
+  const before = lines().length;
+  const r = run('extract', 'paint', 'start', '--strict');
+  assert.equal(r.code, 2); assert.match(r.err, /strict: unknown phase "paint".*nothing written/); assert.equal(r.out, '');
+  assert.equal(lines().length, before);
+});
+check('blocked without --detail warns; under --strict it is refused', () => {
+  const before = lines().length;
+  const w = run('dynamics', 'detect', 'blocked');
+  assert.equal(w.code, 0); assert.match(w.err, /blocked without --detail/); assert.equal(lines().length, before + 1);
+  const s = run('dynamics', 'detect', 'blocked', '--strict');
+  assert.equal(s.code, 2); assert.equal(lines().length, before + 1);
+});
+check('a last line missing its newline is repaired before appending (no fused records)', () => {
+  const file = join(dir, 'status.jsonl');
+  writeFileSync(file, readFileSync(file, 'utf8').trimEnd() + '\n{"ts":"2026-01-01T00:00:00Z","skill":"stardust:qa","phase":"sweep","event":"start"}');
+  const before = lines().length;
+  const r = run('prototype', 'render', 'start');
+  assert.equal(r.code, 0, r.err);
+  const all = lines(); assert.equal(all.length, before + 1); assert.equal(all.at(-2).skill, 'stardust:qa'); assert.equal(all.at(-1).skill, 'stardust:prototype');
+});
+check('usage errors exit 2: wrong arity, bad event, unknown option, missing value, no args; --help exits 0', () => {
+  assert.equal(run('migrate', 'render').code, 2);
+  assert.equal(run('migrate', 'render', 'finish').code, 2);
+  assert.equal(run('migrate', 'render', 'start', '--bogus').code, 2);
+  assert.equal(run('migrate', 'render', 'start', '--detail').code, 2);
+  const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
+  const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, dynamics, spec, rollout, deploy/);
+  assert.match(h.out, /\[--next "…"\] \[--owner "…"\]/); assert.match(h.out, /explicit --dir must already exist/);
+});
+check('--help prints the phase table: every ledger-form phase and every alias of every skill, one line per skill', () => {
+  const h = run('--help');
+  for (const [skill, table] of Object.entries(PHASES)) {
+    const line = h.out.split('\n').find((l) => l.startsWith(`  ${skill}: `));
+    assert.ok(line, `no "${skill}:" line in --help`);
+    for (const [canon, aliases] of Object.entries(table)) {
+      assert.ok(line.includes(canon), `${skill}: ${canon} missing`);
+      for (const a of aliases) assert.ok(line.includes(`(${aliases.join(', ')})`), `${skill}: alias ${a} missing`);
+    }
+  }
+  assert.match(h.out, /rollout: .*I-dashboard/); // the runner-matched spelling, case intact
+});
+
+// ---- CLI: reading ---------------------------------------------------------------------------------
+check('tail prints the last n lines compactly: <ts> <skill> <phase> <event> <detail head>', () => {
+  const r = run('tail', '-n', '2');
+  assert.equal(r.code, 0, r.err);
+  const out = r.out.trimEnd().split('\n'); assert.equal(out.length, 2);
+  assert.match(out[0], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z stardust:qa sweep start$/);
+  assert.match(out[1], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z stardust:prototype render start$/);
+  const d = run('tail', '-n', '9').out; assert.match(d, /stardust:rollout C-deliver blocked token expired \(401\) — checkpointed, awaiting re-auth$/m);
+  assert.equal(run('tail').out.trimEnd().split('\n').length, 5, 'default n is 5');
+  assert.equal(formatTail({ ts: 't', skill: 's', phase: 'p', event: 'e', detail: 'x'.repeat(100) }).length, 't s p e '.length + 72, 'long detail is cut to a head with an ellipsis');
+});
+check('last prints the last line as JSON; last <skill> filters; no match says so on stderr and exits 0', () => {
+  const r = run('last'); assert.equal(r.code, 0); assert.equal(JSON.parse(r.out).skill, 'stardust:prototype');
+  const m = run('last', 'migrate'); assert.equal(m.code, 0); const l = JSON.parse(m.out); assert.equal(l.skill, 'stardust:migrate'); assert.equal(l.event, 'end');
+  const p = run('last', 'stardust:rollout'); assert.equal(JSON.parse(p.out).phase, 'C-deliver');
+  const none = run('last', 'deploy'); assert.equal(none.code, 0); assert.equal(none.out, ''); assert.match(none.err, /no lines for stardust:deploy/);
+});
+check('malformed lines are skipped with a count on stderr; an absent ledger reads as empty', () => {
+  const file = join(dir, 'status.jsonl');
+  writeFileSync(file, `${readFileSync(file, 'utf8')}not json\n\n`);
+  const r = run('tail', '-n', '1'); assert.equal(r.code, 0); assert.match(r.err, /1 malformed line\(s\) skipped/); assert.match(r.out, /stardust:prototype render start/);
+  const empty = join(root, 'empty'); mkdirSync(empty);
+  const e = spawnSync(process.execPath, [SCRIPT, 'tail', '--dir', empty], { encoding: 'utf8' }); assert.equal(e.status, 0); assert.equal(e.stdout, ''); assert.match(e.stderr, /no lines in/);
+  const e2 = spawnSync(process.execPath, [SCRIPT, 'last', '--dir', empty], { encoding: 'utf8' }); assert.equal(e2.status, 0); assert.equal(e2.stdout, '');
+});
+
+check('a known phase is written in the table\'s own form — aliases and case normalised, unknown names pass through', () => {
+  assert.equal(canonicalPhase('stardust:rollout', 'i-dashboard'), 'I-dashboard');
+  assert.equal(canonicalPhase('stardust:rollout', 'I-DASHBOARD'), 'I-dashboard');
+  assert.equal(canonicalPhase('stardust:replica', 'gate'), 'source-fidelity-gate');
+  assert.equal(canonicalPhase('stardust:migrate', 'per-page-render'), 'render');
+  assert.equal(canonicalPhase('stardust:replica', 'interaction-parity'), 'interaction-parity', 'unknown phase unchanged');
+  assert.equal(canonicalPhase('stardust:nosuch', 'x'), 'x', 'unknown skill unchanged');
+  const r = run('rollout', 'i-dashboard', 'end', '--detail', 'dashboard written');
+  assert.equal(r.code, 0);
+  assert.equal(JSON.parse(r.out).phase, 'I-dashboard', 'the printed line carries the canonical form');
+  assert.match(r.err, /phase "i-dashboard" written as "I-dashboard"/);
+  assert.doesNotMatch(r.err, /unknown phase/);
+  assert.equal(JSON.parse(run('last', 'rollout').out).phase, 'I-dashboard', 'the written line carries the canonical form');
+  const g = run('replica', 'GATE', 'start'); assert.equal(g.code, 0); assert.equal(JSON.parse(g.out).phase, 'source-fidelity-gate');
+  const u = run('replica', 'interaction-parity', 'end', '--detail', 'x'); assert.equal(u.code, 0);
+  assert.equal(JSON.parse(u.out).phase, 'interaction-parity'); assert.match(u.err, /unknown phase/);
+  assert.equal(run('rollout', 'I-dashboard', 'start').code, 0);
+  const s = run('rollout', 'i-dashboard', 'end', '--strict', '--detail', 'x'); assert.equal(s.code, 0, `a normalised known phase with an open start passes --strict: ${s.err}`);
+});
+
+// ---- the start guard (an end needs an open start) and the journal check on end ---------------------
+const gdir = join(root, 'guard'); mkdirSync(gdir);
+const runIn = (d, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args, '--dir', d], { encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const linesIn = (d) => readFileSync(join(d, 'status.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+check('checkOpenStart: no lines, a start consumed by a later end, a new start reopens, blocked keeps it open, another skill or phase does not count, alias and case forms pair, junk lines skipped', () => {
+  const L = (skill, phase, event) => ({ ts: 't', skill, phase, event });
+  assert.match(checkOpenStart([], 'stardust:rollout', 'C-deliver'), /^end for stardust:rollout C-deliver has no matching start .*node ledger\.mjs rollout C-deliver start$/);
+  assert.equal(checkOpenStart([L('stardust:rollout', 'C-deliver', 'start')], 'stardust:rollout', 'C-deliver'), null);
+  assert.match(checkOpenStart([L('stardust:rollout', 'C-deliver', 'start'), L('stardust:rollout', 'C-deliver', 'end')], 'stardust:rollout', 'C-deliver'), /no matching start/);
+  assert.equal(checkOpenStart([L('stardust:rollout', 'C-deliver', 'start'), L('stardust:rollout', 'C-deliver', 'end'), L('stardust:rollout', 'C-deliver', 'start')], 'stardust:rollout', 'C-deliver'), null, 'a new start after the end reopens the phase');
+  assert.equal(checkOpenStart([L('stardust:rollout', 'C-deliver', 'start'), L('stardust:rollout', 'C-deliver', 'blocked')], 'stardust:rollout', 'C-deliver'), null, 'blocked keeps the start open');
+  assert.match(checkOpenStart([L('stardust:migrate', 'plan', 'start')], 'stardust:prototype', 'plan'), /end for stardust:prototype plan has no matching start/, 'another skill\'s start does not count');
+  assert.match(checkOpenStart([L('stardust:rollout', 'D-site', 'start')], 'stardust:rollout', 'C-deliver'), /no matching start/, 'another phase\'s start does not count');
+  assert.equal(checkOpenStart([L('stardust:replica', 'gate', 'start')], 'stardust:replica', 'source-fidelity-gate'), null, 'a hand-written alias pairs with the canonical end');
+  assert.equal(checkOpenStart([L('stardust:rollout', 'i-dashboard', 'start')], 'stardust:rollout', 'I-dashboard'), null, 'case-folded');
+  assert.equal(checkOpenStart([null, { ts: 't' }, L('stardust:migrate', 'render', 'start')], 'stardust:migrate', 'render'), null, 'junk lines are skipped');
+});
+check('an end without a start: --strict exits 2 with ONE stderr line naming the missing start command and writes nothing (no ledger created); plain mode warns and still writes', () => {
+  const s = runIn(gdir, 'rollout', 'C-deliver', 'end', '--strict', '--detail', '27 pages');
+  assert.equal(s.code, 2); assert.equal(s.out, '');
+  assert.equal(s.err.trim().split('\n').length, 1, s.err);
+  assert.match(s.err.trimEnd(), /^ledger: strict: end for stardust:rollout C-deliver has no matching start \(no earlier start line for this skill and phase without a later end\) — the start line is the FIRST command of a phase, before any script runs: node ledger\.mjs rollout C-deliver start — nothing written$/);
+  assert.ok(!existsSync(join(gdir, 'status.jsonl')), 'nothing written, no file created');
+  const p = runIn(gdir, 'rollout', 'C-deliver', 'end', '--detail', '27 pages');
+  assert.equal(p.code, 0, p.err); assert.match(p.err, /^ledger: warning: end for stardust:rollout C-deliver has no matching start/m);
+  assert.equal(linesIn(gdir).length, 1); assert.equal(JSON.parse(p.out).event, 'end');
+});
+check('start then end passes --strict; a second end of the same phase is refused until a new start; blocked between start and end keeps it open; alias and case forms pair; another skill\'s start does not count; --help names the guard', () => {
+  assert.equal(runIn(gdir, 'rollout', 'D-site', 'start', '--strict').code, 0);
+  const e = runIn(gdir, 'rollout', 'd-site', 'end', '--strict', '--detail', 'assembled'); assert.equal(e.code, 0, e.err); assert.doesNotMatch(e.err, /matching start/);
+  const again = runIn(gdir, 'rollout', 'D-site', 'end', '--strict', '--detail', 'x'); assert.equal(again.code, 2); assert.match(again.err, /no matching start/);
+  assert.equal(runIn(gdir, 'rollout', 'D-site', 'start', '--strict').code, 0);
+  assert.equal(runIn(gdir, 'rollout', 'D-site', 'end', '--strict', '--detail', 'x').code, 0, 'a new start reopens the phase');
+  assert.equal(runIn(gdir, 'replica', 'gate', 'start', '--strict').code, 0);
+  assert.equal(runIn(gdir, 'replica', 'source-fidelity-gate', 'blocked', '--detail', 'waiting', '--strict').code, 0);
+  const g = runIn(gdir, 'replica', 'GATE', 'end', '--strict', '--detail', 'ok'); assert.equal(g.code, 0, g.err); assert.doesNotMatch(g.err, /matching start/);
+  assert.equal(runIn(gdir, 'migrate', 'plan', 'start', '--strict').code, 0);
+  const other = runIn(gdir, 'prototype', 'plan', 'end', '--strict', '--detail', 'x'); assert.equal(other.code, 2); assert.match(other.err, /end for stardust:prototype plan has no matching start/);
+  assert.ok(runIn(gdir, '--help').out.includes('An end needs an open start'), '--help names the guard');
+});
+check('journal check on end: no journal → silent; "## " headings that do not name the phase → one warning, exit unchanged even under --strict, line still written; a heading naming it (any case, dash or space, anywhere in the heading) → silent; ### headings and body text do not count; start is never checked', () => {
+  const jdir = join(root, 'journal'); mkdirSync(jdir);
+  assert.equal(runIn(jdir, 'replica', 'extract', 'start', '--strict').code, 0);
+  const none = runIn(jdir, 'replica', 'extract', 'end', '--strict', '--detail', '36 pages'); assert.equal(none.code, 0, none.err); assert.equal(none.err, '', 'no journal, no warning');
+  writeFileSync(join(jdir, 'journal.md'), '# Journal — site\n\n## 2026-09-22T10:00:00Z — Session 2 resumed\n\n### Preserve-direction notes\n\nbody text naming preserve-direction and extract\n\n---\n');
+  assert.equal(runIn(jdir, 'replica', 'preserve-direction', 'start', '--strict').code, 0, 'start is not checked against the journal');
+  const w = runIn(jdir, 'replica', 'preserve-direction', 'end', '--strict', '--detail', 'promoted');
+  assert.equal(w.code, 0, w.err); assert.equal(linesIn(jdir).length, 4, 'the end line is still written');
+  assert.equal(w.err.trim().split('\n').length, 1, w.err);
+  assert.match(w.err.trimEnd(), /^ledger: warning: .*journal\.md has no "## " section naming preserve-direction — a journal section is part of every phase end: "## preserve-direction — <what happened> \(<date>\)"$/);
+  assert.match(checkJournalSection(jdir, 'extract'), /no "## " section naming extract/, 'a ### heading and body text do not count');
+  assert.equal(checkJournalSection(join(root, 'nowhere'), 'extract'), null, 'absent journal → null');
+  appendFileSync(join(jdir, 'journal.md'), '\n## Preserve direction — target spec promoted verbatim (2026-09-22)\n\n---\n\n## 2026-09-22T12:00:00Z — EXTRACT: 36 pages captured\n\n---\n');
+  assert.equal(checkJournalSection(jdir, 'preserve-direction'), null, 'space for dash, capitalised');
+  assert.equal(checkJournalSection(jdir, 'extract'), null, 'the phase named after a timestamp, upper-case');
+  assert.match(checkJournalSection(jdir, 'recreate'), /no "## " section naming recreate/);
+  assert.equal(runIn(jdir, 'replica', 'preserve-direction', 'start').code, 0);
+  const ok = runIn(jdir, 'replica', 'preserve-direction', 'end', '--strict', '--detail', 'x'); assert.equal(ok.code, 0, ok.err); assert.equal(ok.err, '');
+  assert.equal(runIn(jdir, 'replica', 'extract', 'start').code, 0);
+  const ok2 = runIn(jdir, 'replica', 'Extract', 'end', '--detail', 'x'); assert.equal(ok2.code, 0, ok2.err); assert.doesNotMatch(ok2.err, /journal\.md|matching start/);
+});
+
+// ---- tracks (replica first page first: two tracks run the same skill's phases at once) ------------
+check('first page first: the reconcile alias is written as reconcile-first-page and pairs with it under --strict', () => {
+  assert.equal(canonicalPhase('stardust:replica', 'reconcile'), 'reconcile-first-page');
+  assert.equal(canonicalPhase('stardust:replica', 'RECONCILE'), 'reconcile-first-page');
+  const rdir = join(root, 'reconcile'); mkdirSync(rdir);
+  const s = runIn(rdir, 'replica', 'reconcile', 'start', '--strict'); assert.equal(s.code, 0, s.err); assert.equal(JSON.parse(s.out).phase, 'reconcile-first-page');
+  const e = runIn(rdir, 'replica', 'reconcile-first-page', 'end', '--strict', '--detail', '7 checks: 6 confirmed, 1 corrected'); assert.equal(e.code, 0, e.err);
+  const e2 = runIn(rdir, 'replica', 'Reconcile', 'end', '--strict', '--detail', 'x'); assert.equal(e2.code, 2, 'the alias end finds the start already closed');
+});
+check('buildLine: --track lands as `track` right after event, lower-cased; a track that is not one token is a usage error', () => {
+  const l = buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: 'First-Page', detail: 'x' });
+  assert.deepEqual(Object.keys(l), ['ts', 'skill', 'phase', 'event', 'track', 'detail']); assert.equal(l.track, 'first-page');
+  assert.deepEqual(Object.keys(buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: ' ' })), ['ts', 'skill', 'phase', 'event'], 'a blank track is dropped');
+  assert.throws(() => buildLine({ skill: 'replica', phase: 'extract', event: 'start', track: 'first page' }), /track "first page" must be one token/);
+});
+check('checkOpenStart pairs on skill + phase + track: another track\'s start does not count, untagged pairs only with untagged', () => {
+  const L = (phase, event, track) => ({ ts: 't', skill: 'stardust:replica', phase, event, ...(track ? { track } : {}) });
+  const both = [L('extract', 'start', 'site-scope'), L('extract', 'start', 'first-page')];
+  assert.equal(checkOpenStart(both, 'stardust:replica', 'extract', 'first-page'), null);
+  assert.equal(checkOpenStart(both, 'stardust:replica', 'extract', 'site-scope'), null);
+  assert.match(checkOpenStart(both, 'stardust:replica', 'extract'), /no matching start/, 'an untagged end does not close a tagged start');
+  assert.match(checkOpenStart([L('extract', 'start')], 'stardust:replica', 'extract', 'first-page'), /extract \(track first-page\) has no matching start .*node ledger\.mjs replica extract start --track first-page$/, 'a tagged end does not close an untagged start');
+  const closed = [...both, L('extract', 'end', 'first-page')];
+  assert.match(checkOpenStart(closed, 'stardust:replica', 'extract', 'first-page'), /no matching start/, 'first-page closed by its own end');
+  assert.equal(checkOpenStart(closed, 'stardust:replica', 'extract', 'site-scope'), null, 'site-scope still open: the other track\'s end did not close it');
+});
+check('CLI: two tracks interleave the same replica phases; each end closes only its own start under --strict; last --track reads one track; tail names the track', () => {
+  const tdir = join(root, 'tracks'); mkdirSync(tdir);
+  assert.equal(runIn(tdir, 'replica', 'first-page', 'start', '--track', 'first-page', '--strict').code, 0);
+  assert.equal(runIn(tdir, 'replica', 'extract', 'start', '--track', 'site-scope', '--strict').code, 0);
+  assert.equal(runIn(tdir, 'replica', 'extract', 'start', '--track', 'first-page', '--strict').code, 0);
+  const a = runIn(tdir, 'replica', 'extract', 'end', '--track', 'first-page', '--strict', '--detail', '1 page'); assert.equal(a.code, 0, a.err);
+  assert.equal(JSON.parse(a.out).track, 'first-page');
+  const again = runIn(tdir, 'replica', 'extract', 'end', '--track', 'first-page', '--strict', '--detail', 'x');
+  assert.equal(again.code, 2, 'first-page extract already closed — the site-scope start does not reopen it'); assert.match(again.err, /track first-page/);
+  const untagged = runIn(tdir, 'replica', 'extract', 'end', '--strict', '--detail', 'x'); assert.equal(untagged.code, 2, 'an untagged end does not close a tagged start');
+  assert.equal(runIn(tdir, 'replica', 'preserve-direction', 'start', '--track', 'first-page').code, 0);
+  const b = runIn(tdir, 'replica', 'extract', 'end', '--track', 'site-scope', '--strict', '--detail', 'roster 94 of 2,532'); assert.equal(b.code, 0, b.err);
+  const last = JSON.parse(runIn(tdir, 'last', 'replica').out); assert.equal(last.track, 'site-scope', 'last <skill> is the latest line of either track, naming it');
+  const lastA = JSON.parse(runIn(tdir, 'last', 'replica', '--track', 'first-page').out); assert.equal(lastA.phase, 'preserve-direction'); assert.equal(lastA.track, 'first-page');
+  const lastB = JSON.parse(runIn(tdir, 'last', 'replica', '--track', 'site-scope').out); assert.equal(lastB.phase, 'extract'); assert.equal(lastB.event, 'end');
+  const none = runIn(tdir, 'last', 'replica', '--track', 'nope'); assert.equal(none.out, ''); assert.match(none.err, /no lines for stardust:replica on track nope/);
+  assert.match(runIn(tdir, 'tail', '-n', '1').out, /stardust:replica extract end \[site-scope\] roster 94 of 2,532$/m);
+  assert.equal(runIn(tdir, 'replica', 'extract', 'start', '--track').code, 2, '--track needs a value');
+  assert.match(runIn(tdir, '--help').out, /--track <name>/);
+});
+
+// ---- the own-browser check on end (a script the agent writes gets its browser from browser.mjs) ----
+const put = (d, rel, text) => { const f = join(d, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, text); return f; };
+const OLD = new Date('2000-01-01T00:00:00Z');
+check('findOwnBrowserScripts: project scripts that import playwright themselves; not the script copies, node_modules, assets, comments, other files or older files', () => {
+  const d = join(root, 'own'); mkdirSync(d);
+  put(d, '.work/a.mjs', "import { chromium } from 'playwright';\nconst b = await chromium.launch();\n");
+  put(d, 'dynamics/d2/flows.mjs', 'const { chromium } = await import("playwright");\n');
+  put(d, '.work/c.cjs', "const { chromium } = require('playwright-core');\n");
+  put(d, '.work/good.mjs', "const { openBrowser } = await import(pathToFileURL('stardust/scripts/stardust/browser.mjs').href);\n");
+  put(d, '.work/comment.mjs', "// import { chromium } from 'playwright';\nconst loadPlaywright = 1;\n");
+  put(d, '.work/notes.txt', "import { chromium } from 'playwright';\n");
+  put(d, 'scripts/replica/test/x.test.mjs', "import { chromium } from 'playwright';\n");
+  put(d, '.work/node_modules/pkg/index.js', "import { chromium } from 'playwright';\n");
+  put(d, 'current/assets/app.js', "import { chromium } from 'playwright';\n");
+  const old = put(d, '.work/old.mjs', "import { chromium } from 'playwright';\n"); utimesSync(old, OLD, OLD);
+  const all = [join(d, '.work/a.mjs'), join(d, '.work/c.cjs'), join(d, '.work/old.mjs'), join(d, 'dynamics/d2/flows.mjs')];
+  assert.deepEqual(findOwnBrowserScripts(d), all, 'sorted, every project script that imports playwright');
+  assert.deepEqual(findOwnBrowserScripts(d, Date.parse('2020-01-01T00:00:00Z')), all.filter((f) => f !== old), 'a file older than the given time is left out');
+  assert.deepEqual(findOwnBrowserScripts(join(root, 'nowhere')), [], 'a missing dir is not an error');
+});
+check('checkOwnBrowserScripts: null without a finding; one line with the count, the paths and the remedy; more than five paths are counted, not listed', () => {
+  const d = join(root, 'own2'); mkdirSync(d);
+  assert.equal(checkOwnBrowserScripts(d), null);
+  put(d, '.work/p1.mjs', "import { chromium } from 'playwright';\n");
+  const one = checkOwnBrowserScripts(d);
+  assert.equal(one, `1 script(s) import playwright themselves (${join(d, '.work/p1.mjs')}) — a script you write opens its pages with the recipe in skills/stardust/SKILL.md § Setup, step 7 (newLiveContext and gotoLive from stardust/scripts/stardust/browser.mjs)`);
+  for (let i = 2; i <= 7; i += 1) put(d, `.work/p${i}.mjs`, "import { chromium } from 'playwright';\n");
+  const many = checkOwnBrowserScripts(d);
+  assert.match(many, /^7 script\(s\) import playwright themselves \(/);
+  assert.equal((many.match(/p\d\.mjs/g) || []).length, 5, 'five paths listed');
+  assert.match(many, /, \+2 more\)/);
+  assert.ok(!many.includes('\n'), 'one line');
+  assert.equal(checkOwnBrowserScripts(d, 'not a date'), many, 'an unreadable time checks every script');
+  assert.equal(checkOwnBrowserScripts(d, '2999-01-01T00:00:00Z'), null, 'nothing is newer than the given start');
+});
+check('own-browser check on end: a script written in the phase is named in one warning, exit 0 even under --strict, line written; older scripts, start and blocked are silent', () => {
+  const d = join(root, 'own3'); mkdirSync(d);
+  const before = put(d, '.work/before.mjs', "import { chromium } from 'playwright';\n"); utimesSync(before, OLD, OLD);
+  const s = runIn(d, 'replica', 'recreate', 'start', '--strict'); assert.equal(s.code, 0, s.err); assert.equal(s.err, '', 'start does not check');
+  const quiet = runIn(d, 'replica', 'recreate', 'end', '--strict', '--detail', 'x'); assert.equal(quiet.code, 0, quiet.err); assert.equal(quiet.err, '', 'only an older script: silent');
+  assert.equal(runIn(d, 'replica', 'recreate', 'start', '--strict').code, 0);
+  put(d, '.work/eyebrow.mjs', "import { chromium } from 'playwright';\n");
+  put(d, '.work/fine.mjs', "const { openBrowser } = await import('./stardust/scripts/stardust/browser.mjs');\n");
+  const blocked = runIn(d, 'replica', 'recreate', 'blocked', '--detail', 'waiting'); assert.equal(blocked.code, 0); assert.equal(blocked.err, '', 'blocked does not check');
+  const n = linesIn(d).length;
+  const w = runIn(d, 'replica', 'recreate', 'end', '--strict', '--detail', 'y');
+  assert.equal(w.code, 0, 'advisory: exit 0 under --strict');
+  assert.equal(w.err.trimEnd().split('\n').length, 1, w.err);
+  assert.match(w.err, /^ledger: warning: 1 script\(s\) import playwright themselves \(.*\.work\/eyebrow\.mjs\) — a script you write opens its pages with the recipe in skills\/stardust\/SKILL\.md § Setup, step 7 \(newLiveContext and gotoLive from stardust\/scripts\/stardust\/browser\.mjs\)$/m);
+  assert.ok(!w.err.includes('before.mjs') && !w.err.includes('fine.mjs'), w.err);
+  assert.equal(linesIn(d).length, n + 1, 'the end line is still written');
+  assert.match(runIn(d, '--help').out, /imports playwright itself/);
+});
+
+rmSync(root, { recursive: true, force: true });
+console.log(failed ? `\n${failed} failing` : '\nledger: all checks passed');
+process.exit(failed ? 1 : 0);

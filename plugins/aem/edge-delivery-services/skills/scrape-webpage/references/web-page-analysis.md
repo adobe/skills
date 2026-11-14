@@ -22,7 +22,7 @@ The web page analysis workflow prepares a source webpage for content migration b
 ### Command Line
 
 ```bash
-node .claude/skills/scrape-webpage/scripts/analyze-webpage.js "https://example.com/page" --output ./analysis
+node <SKILL_DIR>/scripts/analyze-webpage.js "https://example.com/page" --output ./analysis
 ```
 
 ### Parameters

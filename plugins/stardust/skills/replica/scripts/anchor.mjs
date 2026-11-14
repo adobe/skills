@@ -1,0 +1,186 @@
+#!/usr/bin/env node
+/**
+ * skills/replica/scripts/anchor.mjs
+ *
+ * Section-anchor probe for the stardust:replica source-fidelity loop: prints
+ * `[y, height]` for every top-level section (`main > section` /
+ * `main > .section`), the footer, and the document height — one line per
+ * box, same shape on the live page and on the build/prototype.
+ *
+ * Why it exists: the pixel probe's band table says WHERE drift is; this
+ * probe says WHICH SECTION owns it. The fastest converging loop in the
+ * field (a financial-services site, 2026-08-25/26 — roughly HALVED iterations vs
+ * band-reading alone): run anchor.mjs on both sides, fix the FIRST
+ * mismatched section top-down (everything below it is offset-contaminated,
+ * same top-down rule as the band table), then re-run pixels. Build-side
+ * anchor runs are free — they never navigate the live origin, so they don't
+ * consume the live-hit budget (source-fidelity-gate.md § Hit minimization);
+ * capture the live side once per fix round at most and diff against it.
+ *
+ * Hardening: live navigations go through the shared
+ * ../../stardust/scripts/browser.mjs (real-Chrome UA + document-scoped
+ * standard headers, challenge fail-loud exit 3, overlay dismissal, parked
+ * pointer), and the height is read AFTER a slow-scroll settle pass —
+ * pre-settle height is fake on entrance-animated sites
+ * (recreation-procedure.md § Capture-state).
+ *
+ * Usage:
+ *   node skills/replica/scripts/anchor.mjs <url> [options]
+ *     --width <px>        viewport width                    (default 1440)
+ *     --main <sel>        content root to probe under       (default main)
+ *     --consent <sel>     extra consent-accept selector
+ *     --dismiss <sel,...> extra overlay-dismiss selectors
+ *     --headed            escalation: headed stealth real Chrome
+ *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
+ *     --json              machine-readable output on stdout
+ *     --cache <file>      reuse this URL's measurement from <file> (JSON) when it
+ *                         exists for the same URL, width and --main; probe and write
+ *                         it otherwise. For the LIVE side only — build-side runs are
+ *                         free and must re-measure. Same contract as gate.sh's
+ *                         live.png: delete the file to re-probe. Convention:
+ *                         stardust/replica/gates/<slug>-<w>/anchor-live.json
+ *
+ * Guard: when the `--main` root still contains a <header>/<footer> the section
+ * list includes chrome and every number below is contaminated (recorded: the
+ * AEM root wrapper matched on four archetypes at once — 24 false structural
+ * reds, doc-height as mainHeight). The probe prints a ⚠ and sets
+ * `rootWrapsChrome` in --json; fix the selector before reading the boxes.
+ *
+ * Example (one line per section; diff the two outputs side by side):
+ *   node stardust/scripts/replica/anchor.mjs "https://<site>/<path>" --width 1440
+ *   node stardust/scripts/replica/anchor.mjs "http://localhost:8791/<slug>-proposed.html" --width 1440
+ *
+ * Requires: playwright, and the master skill's scripts dir alongside
+ * (browser.mjs — the replica Setup copies both).
+ * Exit codes: 0 printed, 1 error, 3 bot challenge (live side blocked).
+ */
+
+/* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
+
+// browser.mjs lives in the master skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/replica/scripts ↔ skills/stardust/scripts) and the
+// documented project copy (scripts/replica ↔ scripts/stardust) — resolve either.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('anchor: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { isLiveHttpUrl, openBrowser, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(BROWSER.href);
+
+const HELP = `anchor — per-section [y, height] probe (run on BOTH sides, fix the first mismatch top-down)
+
+Usage: node anchor.mjs <url> [options]
+  --width <px>      viewport width (default 1440)
+  --main <sel>      content root to probe under (default main)
+  --consent <sel>   extra consent-accept selector (clicked, not removed)
+  --dismiss <sel,…> extra overlay-dismiss selectors
+  --headed          headed stealth real Chrome (escalation for bot-managed sites)
+  --locale <tag>    pin Accept-Language + locale (e.g. en-GB)
+  --json            machine-readable output
+  --cache <file>    reuse/write this URL's measurement (JSON) — live side only
+  --help            this text
+
+Exit codes: 0 printed, 1 error, 3 bot challenge (live side blocked — fail loud).`;
+
+function parseArgs(argv) {
+  const rest = argv.slice(2);
+  if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
+  const pos = [];
+  const opts = { width: 1440, main: 'main', consent: null, dismiss: [], headed: false, locale: null, json: false, cache: null };
+  for (let i = 0; i < rest.length; i += 1) {
+    const a = rest[i];
+    if (a === '--width') { opts.width = Number(rest[i += 1]); }
+    else if (a === '--main') { opts.main = rest[i += 1]; }
+    else if (a === '--consent') { opts.consent = rest[i += 1]; }
+    else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--headed') { opts.headed = true; }
+    else if (a === '--locale') { opts.locale = rest[i += 1]; }
+    else if (a === '--json') { opts.json = true; }
+    else if (a === '--cache') { opts.cache = rest[i += 1]; }
+    else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
+    else pos.push(a);
+  }
+  const [url] = pos;
+  if (!url) { console.error(`need <url>\n\n${HELP}`); process.exit(1); }
+  return { url, opts };
+}
+
+function print(url, opts, out, note) {
+  if (opts.json) {
+    console.log(JSON.stringify({ url, width: opts.width, main: opts.main, ...out }, null, 2));
+  } else {
+    console.log(`doc height ${out.doc}px  (${url} @ ${opts.width})${note || ''}`);
+    if (out.rootMissing) console.log(`  ⚠ no element matches --main "${opts.main}" — measured <body>; pass the real content root`);
+    if (out.rootWrapsChrome) console.log(`  ⚠ --main "${opts.main}" matched a wrapper that still contains <header>/<footer> — the list below includes chrome and its numbers are contaminated; pass the content root (source-fidelity-gate.md § Hardening rule 3)`);
+    for (const s of out.sections) console.log(`  y ${String(s.box[0]).padStart(6)}  h ${String(s.box[1]).padStart(5)}  ${s.label}`);
+    if (out.footer) console.log(`  y ${String(out.footer[0]).padStart(6)}  h ${String(out.footer[1]).padStart(5)}  footer`);
+  }
+}
+
+// --cache: keyed on URL + width + --main; a key mismatch re-probes and overwrites.
+function cacheKey(url, opts) { return { url, width: opts.width, main: opts.main }; }
+
+async function main() {
+  const { url, opts } = parseArgs(process.argv);
+  if (opts.cache && existsSync(opts.cache)) {
+    try {
+      const c = JSON.parse(readFileSync(opts.cache, 'utf8'));
+      if (JSON.stringify(c.key) === JSON.stringify(cacheKey(url, opts))) { print(url, opts, c.data, `  [from cache ${opts.cache}, probed ${c.probedAt} — delete to re-probe]`); return; }
+      console.error(`anchor: --cache ${opts.cache} was probed for a different url/width/--main — re-probing`);
+    } catch (e) { console.error(`anchor: --cache ${opts.cache} unreadable (${e.message}) — re-probing`); }
+  }
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'plain' });
+  try {
+    const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 }, stateUrl: url });
+    const page = await ctx.newPage();
+    await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed });
+    await dismissOverlays(page, { extra: [...(opts.consent ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+
+    // Slow-scroll settle before measuring — pre-settle heights are fake on
+    // entrance-animated / lazy-loading pages (recreation-procedure.md
+    // § Capture-state), and the boxes must be read at rest from the top.
+    await page.evaluate(async () => {
+      const h = document.documentElement.scrollHeight;
+      for (let y = 0; y < h; y += 700) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 80); }); }
+      window.scrollTo(0, 0);
+      await new Promise((r) => { setTimeout(r, 400); });
+    });
+    await page.waitForTimeout(600);
+
+    const out = await page.evaluate((rootSel) => {
+      const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.y + window.scrollY), Math.round(r.height)]; };
+      const matched = document.querySelector(rootSel);
+      const root = matched || document.body;
+      // top-level sections: <section> children and .section-classed children
+      // (EDS emits div.section) — plain divs excluded to keep the two sides'
+      // lists comparable at the granularity the replica authors at.
+      const nodes = [...root.querySelectorAll(':scope > section, :scope > .section')];
+      const label = (el, i) => {
+        const cls = String(el.className || '').split(/\s+/).filter((c) => c && c !== 'section').slice(0, 2).join('.');
+        return cls || `${el.tagName.toLowerCase()}[${i}]`;
+      };
+      const footer = document.querySelector('footer');
+      return {
+        doc: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+        rootMissing: !matched,
+        rootWrapsChrome: !!(matched && matched !== document.body && matched.querySelector('header, footer')),
+        sections: nodes.map((el, i) => ({ label: label(el, i), box: box(el) })),
+        footer: footer ? box(footer) : null,
+      };
+    }, opts.main);
+
+    if (opts.cache) {
+      mkdirSync(dirname(opts.cache), { recursive: true });
+      writeFileSync(opts.cache, JSON.stringify({ key: cacheKey(url, opts), probedAt: new Date().toISOString(), data: out }, null, 2));
+    }
+    print(url, opts, out);
+  } finally {
+    await browser.close();
+  }
+}
+
+// exit 3 = bot challenge on the live side (fail loud, never measured).
+main().catch((e) => { console.error(`anchor error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });

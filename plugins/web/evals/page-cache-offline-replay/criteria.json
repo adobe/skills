@@ -1,0 +1,42 @@
+{
+  "context": "The skill is `web cache serve` (a caching reverse proxy). Cross-origin assets are cached only when the CDN origin is named with --also, and the same --also and --cache must be used when replaying with --offline. Judge answer.md.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "uses_web_cache_serve",
+      "max_score": 15,
+      "category": "DESIGN",
+      "description": "Starts the proxy with `web cache serve` and a --cache directory, not by writing a custom proxy, wget/httrack, or a deleted script path."
+    },
+    {
+      "name": "also_cdn",
+      "max_score": 25,
+      "category": "INTENT",
+      "description": "Passes the image CDN with `--also https://images.northwind-cdn.net` so its images are cached and rewritten, explaining that otherwise cross-origin assets are not cached and need the network on replay."
+    },
+    {
+      "name": "warm_through_proxy",
+      "max_score": 20,
+      "category": "INTENT",
+      "description": "Fills the cache by opening pages in a browser through the proxy using the ?_origin=https://www.northwind-outdoor.com URL form (e.g. web browser open \"$PROXY/?_origin=...\"), visiting each page that must be cached, then closes the browser."
+    },
+    {
+      "name": "check_and_stop",
+      "max_score": 10,
+      "category": "INTENT",
+      "description": "Checks the fill with GET /__status (counts of cached files) and stops the proxy with GET /__stop or a signal."
+    },
+    {
+      "name": "offline_same_options",
+      "max_score": 20,
+      "category": "INTENT",
+      "description": "Replays with the same command plus --offline, reusing the same --cache directory and the same --also origin."
+    },
+    {
+      "name": "miss_is_504",
+      "max_score": 10,
+      "category": "INTENT",
+      "description": "States that a page that was not visited while filling returns HTTP 504 (cache miss) in offline mode instead of reaching the site."
+    }
+  ]
+}

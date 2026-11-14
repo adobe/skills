@@ -1,0 +1,4 @@
+floor:
+  min_pass_rate: 0.9
+  max_latency_s: 150
+siblings: [cdp-connect]

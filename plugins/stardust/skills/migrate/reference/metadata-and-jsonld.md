@@ -34,10 +34,10 @@ Captured during `direct --prep`:
 
 ```json
 "metadata": {
-  "siteName":       "The Road Home",
+  "siteName":       "Example Org",
   "defaultOgImage": "/assets/og-default.jpg",
   "themeColor":     "#008192",
-  "organization":   { "@type": "Organization", "name": "The Road Home", "...": "..." },
+  "organization":   { "@type": "Organization", "name": "Example Org", "...": "..." },
   "locale":         "en-US"
 }
 ```
@@ -46,11 +46,11 @@ Migrate emits:
 
 ```html
 <meta name="theme-color" content="#008192">
-<meta property="og:site_name" content="The Road Home">
+<meta property="og:site_name" content="Example Org">
 <meta property="og:locale" content="en-US">
 
 <!-- Organization JSON-LD on every page -->
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"The Road Home","url":"https://theroadhome.org","..." :"..."}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Organization","name":"Example Org","url":"https://example.org","..." :"..."}</script>
 ```
 
 ## Page-specific, preserved

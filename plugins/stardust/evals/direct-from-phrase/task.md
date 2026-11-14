@@ -19,9 +19,9 @@ A project with `stardust/extract` already complete:
 
 ## Expected behavior
 
-The `stardust:direct` skill is invoked. It:
+The stardust `direct` skill is invoked. It:
 
-1. Runs the master setup (impeccable dep, context loader, state read).
+1. Runs the master setup (impeccable dep, target-state file check, state read).
 2. **Restates** the phrase in stardust's dimensional vocabulary
    (per `intent-dimensions.md`): identifies that the phrase moves
    the **expressive axis** toward `committed` or `drenched`,
@@ -42,8 +42,8 @@ The `stardust:direct` skill is invoked. It:
 6. Resolves the divergence-toolkit inputs (4-dim seed, font deck,
    palette via picker if direction implies a swap).
 7. **Authors `PRODUCT.md` directly** at the project root using
-   impeccable's `teach.md` as the format spec — does NOT invoke
-   `$impeccable teach`.
+   impeccable's `init.md` (product-schema 1) as the format spec — does NOT
+   invoke `$impeccable init`.
 8. **Authors `DESIGN.md` and `DESIGN.json` directly** at the project
    root using impeccable's `document.md` as the format spec — does
    NOT invoke `$impeccable document`. The DESIGN.json includes

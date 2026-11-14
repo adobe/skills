@@ -161,7 +161,7 @@ Has JSON-LD?
 <div>
   <div class="metadata">
     <div>
-      <div>schema.org</div>
+      <div>json-ld</div>
       <div>{"@context":"https://schema.org","@type":"Article",...}</div>
     </div>
   </div>

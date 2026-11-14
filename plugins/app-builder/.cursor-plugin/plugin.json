@@ -2,7 +2,7 @@
   "name": "app-builder",
   "displayName": "Adobe App Builder",
   "version": "1.0.0",
-  "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects. Covers project initialization, action scaffolding, React Spectrum UI scaffolding, Jest unit and integration testing, Playwright E2E testing, and GitHub Actions / Azure DevOps / GitLab CI deployment pipelines.",
+  "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects. Covers project initialization, action scaffolding, React Spectrum UI scaffolding, Jest unit and integration testing, Playwright E2E testing, and GitHub Actions / Azure DevOps / GitLab CI deployment pipelines. Also includes the Workfront UI-extension suite (skills/appbuilder-workfront): extension points, Runtime actions, the Workfront Public API v21, aio CLI setup, local testing, and publishing.",
   "author": {
     "name": "Adobe"
   },
@@ -19,7 +19,15 @@
     "jest",
     "github-actions",
     "aem",
-    "experience-cloud"
+    "experience-cloud",
+    "workfront",
+    "ui-extension",
+    "uix"
   ],
-  "skills": "./skills/"
+  "skills": [
+    "./skills/",
+    "./skills/appbuilder-workfront/workfront-ui-extension",
+    "./skills/appbuilder-workfront/workfront-actions",
+    "./skills/appbuilder-workfront/workfront-local-testing"
+  ]
 }

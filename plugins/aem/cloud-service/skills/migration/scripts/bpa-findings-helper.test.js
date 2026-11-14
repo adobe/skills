@@ -391,3 +391,166 @@ test('MCP path: second session reuses the cache across processes (no fetch)', as
   assert.equal(r.source, 'mcp-server');
   assert.equal(r.paging.offset, 5);
 });
+
+// ── Cached collections that predate a pattern ───────────────────────────────
+
+function writeInputStreamAndSchedulerCsv(dir) {
+  const p = path.join(dir, 'bpa.csv');
+  fs.writeFileSync(p, [
+    'code,type,subtype,importance,identifier,other,message,moreInfo,context',
+    'DG,development.guideline,java.io.inputstream,ADVISORY,com.acme.core.Foo,java.io.InputStream,The com.acme.core.Foo class in the com.acme.core bundle uses java.io.InputStream.,x,ctx',
+    'DG,development.guideline,sling.commons.scheduler,MAJOR,com.acme.core.Job,\\N,The com.acme.core.Job class uses the scheduler.,x,ctx',
+  ].join('\n') + '\n', 'utf8');
+  return p;
+}
+
+/** Rewrite the cache the way a parser from before inputStream support left it. */
+function makeCacheLegacy(collectionsDir) {
+  const file = path.join(collectionsDir, 'unified-collection.json');
+  const collection = JSON.parse(fs.readFileSync(file, 'utf8'));
+  delete collection.subtypes.java_io_inputstream;
+  delete collection.meta.parsedSubtypes;
+  delete collection.meta.inputStreamBundles;
+  fs.writeFileSync(file, JSON.stringify(collection), 'utf8');
+}
+
+test('a cached collection from before a pattern was supported is rebuilt from the CSV', async () => {
+  const dir = tempDir();
+  const csv = writeInputStreamAndSchedulerCsv(dir);
+  const collectionsDir = path.join(dir, 'uc');
+  await getBpaFindings('scheduler', { bpaFilePath: csv, collectionsDir, limit: null });
+  makeCacheLegacy(collectionsDir);
+
+  const result = await getBpaFindings('inputStream', { bpaFilePath: csv, collectionsDir, limit: null });
+  assert.equal(result.success, true, result.error);
+  assert.deepEqual(result.targets.map(t => t.className), ['com.acme.core.Foo']);
+  const rebuilt = JSON.parse(fs.readFileSync(path.join(collectionsDir, 'unified-collection.json'), 'utf8'));
+  assert.ok(rebuilt.meta.parsedSubtypes.includes('java.io.inputstream'));
+});
+
+test('without a CSV, a cache that predates the pattern is an error, not "pattern absent"', async () => {
+  const dir = tempDir();
+  const csv = writeInputStreamAndSchedulerCsv(dir);
+  const collectionsDir = path.join(dir, 'uc');
+  await getBpaFindings('scheduler', { bpaFilePath: csv, collectionsDir, limit: null });
+  makeCacheLegacy(collectionsDir);
+
+  const result = await getBpaFindings('inputStream', { collectionsDir, limit: null });
+  assert.equal(result.success, false);
+  assert.match(result.error, /created before 'inputStream' was supported/);
+  assert.equal(result.availablePatterns, undefined, 'callers must not read this as a clean report');
+
+  // Patterns the old parser already handled are still served from that cache.
+  const scheduler = await getBpaFindings('scheduler', { collectionsDir, limit: null });
+  assert.equal(scheduler.success, true);
+  assert.deepEqual(scheduler.targets.map(t => t.className), ['com.acme.core.Job']);
+});
+
+test('an up-to-date cache is reused without re-reading the CSV', async () => {
+  const dir = tempDir();
+  const csv = writeInputStreamAndSchedulerCsv(dir);
+  const collectionsDir = path.join(dir, 'uc');
+  await getBpaFindings('inputStream', { bpaFilePath: csv, collectionsDir, limit: null });
+  fs.unlinkSync(csv); // a re-parse would now fail
+  const again = await getBpaFindings('inputStream', { bpaFilePath: csv, collectionsDir, limit: null });
+  assert.equal(again.success, true, again.error);
+  assert.equal(again.targets.length, 1);
+});
+
+test('default `all` with a legacy cache and no CSV returns the patterns the cache covers and names the missing ones', async () => {
+  const dir = tempDir();
+  const csv = writeInputStreamAndSchedulerCsv(dir);
+  const collectionsDir = path.join(dir, 'uc');
+  await getBpaFindings('scheduler', { bpaFilePath: csv, collectionsDir, limit: null });
+  makeCacheLegacy(collectionsDir);
+
+  const result = await getBpaFindings('all', { collectionsDir, limit: null });
+  assert.equal(result.success, true, result.error);
+  assert.deepEqual(result.targets.map(t => t.className), ['com.acme.core.Job'], 'the scheduler findings the cache holds');
+  assert.deepEqual(result.staleCache.missingPatterns, ['oakIndex', 'inputStream']);
+  assert.match(result.message, /predates 'oakIndex', 'inputStream'/);
+  assert.match(result.message, /provide the BPA CSV/);
+  // The cache itself is left untouched.
+  const cache = JSON.parse(fs.readFileSync(path.join(collectionsDir, 'unified-collection.json'), 'utf8'));
+  assert.equal(cache.meta.parsedSubtypes, undefined);
+});
+
+test('default `all` with a legacy cache and a CSV rebuilds the cache and includes the new pattern', async () => {
+  const dir = tempDir();
+  const csv = writeInputStreamAndSchedulerCsv(dir);
+  const collectionsDir = path.join(dir, 'uc');
+  await getBpaFindings('scheduler', { bpaFilePath: csv, collectionsDir, limit: null });
+  makeCacheLegacy(collectionsDir);
+
+  const result = await getBpaFindings('all', { bpaFilePath: csv, collectionsDir, limit: null });
+  assert.equal(result.success, true, result.error);
+  assert.deepEqual(result.targets.map(t => t.className).sort(), ['com.acme.core.Foo', 'com.acme.core.Job']);
+  assert.equal(result.staleCache, undefined);
+});
+
+test('default `all` with an up-to-date cache reports no stale-cache warning', async () => {
+  const dir = tempDir();
+  const csv = writeInputStreamAndSchedulerCsv(dir);
+  const collectionsDir = path.join(dir, 'uc');
+  await getBpaFindings('all', { bpaFilePath: csv, collectionsDir, limit: null });
+  const again = await getBpaFindings('all', { collectionsDir, limit: null });
+  assert.equal(again.success, true, again.error);
+  assert.equal(again.staleCache, undefined);
+  assert.equal(again.targets.length, 2);
+});
+
+// ── AEM MCP Server recipe results ───────────────────────────────────────────
+
+const RESTRICTED = "The MCP Server is restricted and isn't able to perform this operation. If this seems incorrect, contact support.";
+
+for (const [name, response] of [
+  ['a denial without a success field', { error: RESTRICTED }],
+  ['success: false', { success: false, error: 'Multiple projects match "Acme".', suggestion: ['Acme (id: a)', 'Acme Old (id: b)'] }],
+  ['a partial read (fetchErrors)', { success: true, targets: [], summary: {}, total: 0, truncated: false, fetchErrors: { scheduler: 502 } }],
+  ['an empty response', undefined]
+]) {
+  test(`MCP path: ${name} fails and is never cached`, async () => {
+    const dir = tempDir();
+    const r = await getBpaFindings('scheduler', {
+      collectionsDir: dir, projectId: 'proj-R', mcpFetcher: async () => response
+    });
+    assert.equal(r.success, false);
+    assert.equal(r.source, 'mcp-server');
+    assert.ok(typeof r.error === 'string' && r.error.length > 0, 'failure carries an error');
+    if (response?.error) assert.equal(r.error, response.error, 'server error is kept verbatim');
+    if (response?.suggestion) assert.deepEqual(r.suggestion, response.suggestion);
+    assert.equal(fs.existsSync(path.join(dir, 'mcp', 'proj-R', 'scheduler.json')), false);
+  });
+}
+
+test('MCP path: a truncated AEM MCP Server result reports the full count on every batch', async () => {
+  const dir = tempDir();
+  const targets = Array.from({ length: 7 }, (_, i) => ({
+    pattern: 'scheduler', className: `com.example.Job${i}`,
+    identifier: 'org.apache.sling.commons.scheduler', issue: 'x', severity: 'high'
+  }));
+  const mcpFetcher = async () => ({
+    success: true, projectId: 'proj-T', targets, summary: { schedulerCount: 640 }, total: 640, truncated: true
+  });
+  const first = await getBpaFindings('scheduler', { collectionsDir: dir, projectId: 'proj-T', mcpFetcher });
+  assert.equal(first.success, true);
+  assert.equal(first.paging.total, 7, 'paging covers only what was returned');
+  assert.deepEqual(first.truncated, { returned: 7, reportedTotal: 640 });
+  assert.ok(first.message.includes('7 of 640'));
+
+  const next = await getBpaFindings('scheduler', {
+    collectionsDir: dir, projectId: 'proj-T', offset: first.paging.nextOffset,
+    mcpFetcher: async () => { throw new Error('must read the cache'); }
+  });
+  assert.deepEqual(next.truncated, { returned: 7, reportedTotal: 640 }, 'cached batches keep the flag');
+});
+
+test('MCP path: an untruncated AEM MCP Server result has no truncated field', async () => {
+  const dir = tempDir();
+  const r = await getBpaFindings('scheduler', {
+    collectionsDir: dir, projectId: 'proj-U',
+    mcpFetcher: async () => ({ success: true, targets: [], summary: { schedulerCount: 0 }, total: 0, truncated: false })
+  });
+  assert.equal(r.success, true);
+  assert.equal(r.truncated, undefined);
+});

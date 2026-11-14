@@ -1,0 +1,39 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:extract",
+    "writtenAt": "2026-07-21T09:46:05Z",
+    "readArtifacts": ["https://www.ledgerline.com/sitemap.xml"],
+    "synthesizedInputs": [],
+    "stardustVersion": "0.10.0"
+  },
+  "discovery": {
+    "method": "sitemap.xml",
+    "totalDiscovered": 23,
+    "filteredAsJunk": ["/thank-you", "/webinar-archive-2021"],
+    "selected": ["/", "/features", "/pricing", "/about", "/contact"],
+    "cut": [
+      "/security", "/careers", "/blog", "/blog/close-checklist-template",
+      "/blog/multi-entity-guide", "/blog/reconciliation-basics", "/help",
+      "/help/getting-started", "/help/bank-feeds", "/integrations",
+      "/integrations/stripe", "/integrations/gusto", "/customers",
+      "/customers/northwind-supply", "/legal/privacy", "/legal/terms"
+    ],
+    "userChoice": "default-cap-5",
+    "fetchTechnique": "headless"
+  },
+  "consent": {
+    "method": "none-detected"
+  },
+  "crawl": {
+    "concurrency": 4,
+    "failures": []
+  },
+  "visionCheck": [
+    { "slug": "home", "verdict": "ok", "notes": null },
+    { "slug": "features", "verdict": "ok", "notes": null },
+    { "slug": "pricing", "verdict": "ok", "notes": null },
+    { "slug": "about", "verdict": "ok", "notes": null },
+    { "slug": "contact", "verdict": "ok", "notes": null }
+  ],
+  "siblingCandidates": []
+}

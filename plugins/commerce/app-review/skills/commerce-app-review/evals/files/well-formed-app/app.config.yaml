@@ -1,0 +1,35 @@
+application:
+  actions: actions
+  productDependencies:
+    - code: COMMC
+      minVersion: 2.4.5
+  runtimeManifest:
+    packages:
+      order-status:
+        license: Apache-2.0
+        inputs:
+          LOG_LEVEL: $LOG_LEVEL
+          AIO_COMMERCE_AUTH_IMS_CLIENT_ID: $AIO_COMMERCE_AUTH_IMS_CLIENT_ID
+          AIO_COMMERCE_AUTH_IMS_CLIENT_SECRETS: $AIO_COMMERCE_AUTH_IMS_CLIENT_SECRETS
+          AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_ID: $AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_ID
+          AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_EMAIL: $AIO_COMMERCE_AUTH_IMS_TECHNICAL_ACCOUNT_EMAIL
+          AIO_COMMERCE_AUTH_IMS_ORG_ID: $AIO_COMMERCE_AUTH_IMS_ORG_ID
+          AIO_COMMERCE_AUTH_IMS_SCOPES: $AIO_COMMERCE_AUTH_IMS_SCOPES
+        actions:
+          get-order:
+            function: actions/get-order/index.js
+            web: 'yes'
+            runtime: nodejs:24
+            annotations:
+              require-adobe-auth: true
+              final: true
+          list-orders:
+            function: actions/list-orders/index.js
+            web: 'yes'
+            runtime: nodejs:24
+            annotations:
+              require-adobe-auth: true
+              final: true
+extensions:
+  commerce/extensibility/1:
+    $include: src/commerce-extensibility-1/ext.config.yaml

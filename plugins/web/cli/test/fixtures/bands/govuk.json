@@ -1,0 +1,919 @@
+{
+  "source": "govuk https://www.gov.uk/government/news/war-graves-damaged-in-libya",
+  "range": { "top": 61, "bottom": 1935 },
+  "tree": {
+    "tag": "BODY",
+    "selector": "body",
+    "bounds": { "x": 0, "y": -1, "width": 1280, "height": 2857 },
+    "children": [
+      {
+        "tag": "HEADER",
+        "selector": "body > header",
+        "bounds": { "x": 0, "y": -1, "width": 1280, "height": 62 },
+        "children": [],
+        "collapsed": [
+          { "tag": "HEADER", "selector": "body > header" },
+          {
+            "tag": "DIV",
+            "selector": "body > header > div",
+            "className": "gem-c-layout-super-navigation-header"
+          },
+          {
+            "tag": "DIV",
+            "selector": "body > header > div > div",
+            "className": "gem-c-layout-super-navigation-header__nav-wrapper"
+          },
+          {
+            "tag": "DIV",
+            "selector": "body > header > div > div > div",
+            "className": "gem-c-layout-super-navigation-header__container govuk-width-container"
+          },
+          {
+            "tag": "NAV",
+            "selector": "body > header > div > div > div > nav",
+            "className": "gem-c-layout-super-navigation-header__content js-module-initialised"
+          },
+          {
+            "tag": "DIV",
+            "selector": "body > header > div > div > div > nav > div.gem-c-layout-super-navigation-header__header-logo",
+            "className": "gem-c-layout-super-navigation-header__header-logo"
+          }
+        ],
+        "text": "GOV.UK",
+        "layout": "3x1",
+        "background": {
+          "type": "color",
+          "value": "rgb(29, 112, 184)",
+          "raw": "rgb(29, 112, 184) none repeat scroll 0% 0% / auto padding-box border-box",
+          "source": "css"
+        }
+      },
+      {
+        "tag": "DIV",
+        "selector": "body > div:nth-child(5)",
+        "bounds": { "x": 160, "y": 76, "width": 960, "height": 1799 },
+        "children": [
+          {
+            "tag": "DIV",
+            "selector": "body > div:nth-child(5) > div",
+            "bounds": { "x": 160, "y": 76, "width": 960, "height": 25 },
+            "children": [],
+            "className": "gem-c-contextual-breadcrumbs",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "body > div:nth-child(5) > div",
+                "className": "gem-c-contextual-breadcrumbs"
+              },
+              {
+                "tag": "NAV",
+                "selector": "body > div:nth-child(5) > div > nav",
+                "className": "gem-c-breadcrumbs govuk-breadcrumbs govuk-!-display-none-print govuk-breadcrumbs--collapse-on-mobile"
+              },
+              {
+                "tag": "OL",
+                "selector": "body > div:nth-child(5) > div > nav > ol",
+                "className": "govuk-breadcrumbs__list"
+              }
+            ],
+            "text": "Home International Foreign aff",
+            "layout": "3x1"
+          },
+          {
+            "tag": "MAIN",
+            "selector": "#content",
+            "bounds": { "x": 160, "y": 111, "width": 960, "height": 1764 },
+            "children": [
+              {
+                "tag": "DIV",
+                "selector": "#content > div.page-title",
+                "bounds": { "x": 145, "y": 151, "width": 990, "height": 336 },
+                "children": [
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div.page-title > div.page-title__column.page-title__heading",
+                    "bounds": { "x": 160, "y": 151, "width": 630, "height": 115 },
+                    "children": [
+                      {
+                        "tag": "SPAN",
+                        "selector": "#content > div.page-title > div.page-title__column.page-title__heading > div > span",
+                        "bounds": { "x": 160, "y": 151, "width": 630, "height": 30 },
+                        "children": [],
+                        "className": "govuk-caption-xl gem-c-heading__context",
+                        "text": "News story"
+                      },
+                      {
+                        "tag": "H1",
+                        "selector": "#content > div.page-title > div.page-title__column.page-title__heading > div > h1",
+                        "bounds": { "x": 160, "y": 186, "width": 630, "height": 50 },
+                        "children": [],
+                        "className": "gem-c-heading__text govuk-heading-xl",
+                        "text": "War graves damaged in Libya"
+                      }
+                    ],
+                    "className": "page-title__column page-title__heading",
+                    "collapsed": [
+                      {
+                        "tag": "DIV",
+                        "selector": "#content > div.page-title > div.page-title__column.page-title__heading",
+                        "className": "page-title__column page-title__heading"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#content > div.page-title > div.page-title__column.page-title__heading > div",
+                        "className": "gem-c-heading govuk-!-margin-bottom-6"
+                      }
+                    ]
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div.page-title > div.page-title__column.page-title__content",
+                    "bounds": { "x": 160, "y": 266, "width": 630, "height": 221 },
+                    "children": [
+                      {
+                        "tag": "P",
+                        "selector": "#content > div.page-title > div.page-title__column.page-title__content > p",
+                        "bounds": { "x": 160, "y": 266, "width": 630, "height": 90 },
+                        "children": [],
+                        "className": "gem-c-lead-paragraph govuk-!-margin-bottom-6",
+                        "text": "Over 200 headstones and the Cr"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#content > div.page-title > div.page-title__column.page-title__content > div",
+                        "bounds": { "x": 160, "y": 386, "width": 630, "height": 71 },
+                        "children": [
+                          {
+                            "tag": "DD",
+                            "selector": "#content > div.page-title > div.page-title__column.page-title__content > div > dl > dd:nth-child(2)",
+                            "bounds": { "x": 243, "y": 402, "width": 547, "height": 22 },
+                            "children": [],
+                            "className": "gem-c-metadata__definition",
+                            "text": "Foreign & Commonwealth Office"
+                          },
+                          {
+                            "tag": "DD",
+                            "selector": "#content > div.page-title > div.page-title__column.page-title__content > div > dl > dd:nth-child(4)",
+                            "bounds": { "x": 243, "y": 434, "width": 547, "height": 22 },
+                            "children": [],
+                            "className": "gem-c-metadata__definition",
+                            "text": "4 March 2012"
+                          }
+                        ],
+                        "className": "gem-c-metadata gem-c-metadata--border-top govuk-!-margin-bottom-6",
+                        "collapsed": [
+                          {
+                            "tag": "DIV",
+                            "selector": "#content > div.page-title > div.page-title__column.page-title__content > div",
+                            "className": "gem-c-metadata gem-c-metadata--border-top govuk-!-margin-bottom-6"
+                          },
+                          {
+                            "tag": "DL",
+                            "selector": "#content > div.page-title > div.page-title__column.page-title__content > div > dl",
+                            "className": "gem-c-metadata__list"
+                          }
+                        ],
+                        "layout": "2x2"
+                      }
+                    ],
+                    "className": "page-title__column page-title__content"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div.page-title > div.page-title__column.page-title__sidebar",
+                    "bounds": { "x": 820, "y": 266, "width": 300, "height": 221 },
+                    "children": [],
+                    "className": "page-title__column page-title__sidebar"
+                  }
+                ],
+                "className": "page-title",
+                "layout": "2x2"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#content > div:nth-child(3)",
+                "bounds": { "x": 145, "y": 487, "width": 990, "height": 1120 },
+                "children": [
+                  {
+                    "tag": "SECTION",
+                    "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > section",
+                    "bounds": { "x": 160, "y": 487, "width": 630, "height": 140 },
+                    "children": [],
+                    "className": "govuk-notification-banner gem-c-notice govuk-!-margin-bottom-8",
+                    "role": "region",
+                    "background": {
+                      "type": "color",
+                      "value": "rgb(29, 112, 184)",
+                      "raw": "rgb(29, 112, 184) none repeat scroll 0% 0% / auto padding-box border-box",
+                      "source": "css"
+                    },
+                    "collapsed": [
+                      {
+                        "tag": "SECTION",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > section",
+                        "className": "govuk-notification-banner gem-c-notice govuk-!-margin-bottom-8"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > section > div",
+                        "className": "govuk-notification-banner__content"
+                      },
+                      {
+                        "tag": "SPAN",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > section > div > span",
+                        "className": "gem-c-notice__title govuk-notification-banner__heading"
+                      },
+                      {
+                        "tag": "SPAN",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > section > div > span > span"
+                      }
+                    ],
+                    "text": "This was published under the"
+                  },
+                  {
+                    "tag": "FIGURE",
+                    "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > figure",
+                    "bounds": { "x": 160, "y": 677, "width": 300, "height": 195 },
+                    "children": [],
+                    "className": "gem-c-figure govuk-!-margin-bottom-8",
+                    "background": {
+                      "type": "image",
+                      "value": "/media/5a37dae240f0b649cceb1839/s300_Main-building-gov.uk.jpg?_origin=https%3A%2F%2Fassets.publishing.service.gov.uk",
+                      "raw": "",
+                      "source": "img"
+                    },
+                    "collapsed": [
+                      {
+                        "tag": "FIGURE",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > figure",
+                        "className": "gem-c-figure govuk-!-margin-bottom-8"
+                      },
+                      {
+                        "tag": "IMG",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > figure > img",
+                        "className": "gem-c-figure__image"
+                      }
+                    ]
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-govspeak.gem-c-govspeak--direction-ltr.govuk-\\!-margin-bottom-8",
+                    "bounds": { "x": 160, "y": 922, "width": 630, "height": 460 },
+                    "children": [
+                      {
+                        "tag": "P",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-govspeak.gem-c-govspeak--direction-ltr.govuk-\\!-margin-bottom-8 > div > p:nth-child(1)",
+                        "bounds": { "x": 160, "y": 922, "width": 630, "height": 50 },
+                        "children": [],
+                        "text": "Approximately a quarter of the"
+                      },
+                      {
+                        "tag": "P",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-govspeak.gem-c-govspeak--direction-ltr.govuk-\\!-margin-bottom-8 > div > p:nth-child(2)",
+                        "bounds": { "x": 160, "y": 992, "width": 630, "height": 25 },
+                        "children": [],
+                        "text": "A Foreign Office spokesperson "
+                      },
+                      {
+                        "tag": "P",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-govspeak.gem-c-govspeak--direction-ltr.govuk-\\!-margin-bottom-8 > div > p:nth-child(3)",
+                        "bounds": { "x": 160, "y": 1037, "width": 630, "height": 125 },
+                        "children": [],
+                        "text": "“Officials from our Embassy in"
+                      },
+                      {
+                        "tag": "P",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-govspeak.gem-c-govspeak--direction-ltr.govuk-\\!-margin-bottom-8 > div > p:nth-child(4)",
+                        "bounds": { "x": 160, "y": 1182, "width": 630, "height": 200 },
+                        "children": [],
+                        "text": "“In response to these incident"
+                      }
+                    ],
+                    "className": "gem-c-govspeak gem-c-govspeak--direction-ltr govuk-!-margin-bottom-8",
+                    "collapsed": [
+                      {
+                        "tag": "DIV",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-govspeak.gem-c-govspeak--direction-ltr.govuk-\\!-margin-bottom-8",
+                        "className": "gem-c-govspeak gem-c-govspeak--direction-ltr govuk-!-margin-bottom-8"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-govspeak.gem-c-govspeak--direction-ltr.govuk-\\!-margin-bottom-8 > div",
+                        "className": "govspeak"
+                      }
+                    ]
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-share-links.govuk-\\!-display-none-print.govuk-\\!-margin-bottom-8",
+                    "bounds": { "x": 160, "y": 1432, "width": 630, "height": 125 },
+                    "children": [
+                      {
+                        "tag": "H2",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-share-links.govuk-\\!-display-none-print.govuk-\\!-margin-bottom-8 > h2",
+                        "bounds": { "x": 160, "y": 1432, "width": 630, "height": 25 },
+                        "children": [],
+                        "className": "govuk-heading-s",
+                        "text": "Share this page"
+                      },
+                      {
+                        "tag": "P",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-share-links.govuk-\\!-display-none-print.govuk-\\!-margin-bottom-8 > p",
+                        "bounds": { "x": 160, "y": 1477, "width": 630, "height": 20 },
+                        "children": [],
+                        "className": "govuk-body-s",
+                        "text": "The following links open in a "
+                      },
+                      {
+                        "tag": "UL",
+                        "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds > div.gem-c-share-links.govuk-\\!-display-none-print.govuk-\\!-margin-bottom-8 > ul",
+                        "bounds": { "x": 160, "y": 1517, "width": 630, "height": 40 },
+                        "children": [],
+                        "className": "gem-c-share-links__list",
+                        "layout": "2x1",
+                        "text": "Share on Facebook (opens in ne"
+                      }
+                    ],
+                    "className": "gem-c-share-links govuk-!-display-none-print govuk-!-margin-bottom-8"
+                  }
+                ],
+                "className": "govuk-grid-row gem-print-columns-none",
+                "collapsed": [
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div:nth-child(3)",
+                    "className": "govuk-grid-row gem-print-columns-none"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div:nth-child(3) > div.govuk-grid-column-two-thirds",
+                    "className": "govuk-grid-column-two-thirds"
+                  }
+                ]
+              },
+              {
+                "tag": "DIV",
+                "selector": "#content > div:nth-child(4)",
+                "bounds": { "x": 145, "y": 1607, "width": 990, "height": 228 },
+                "children": [
+                  {
+                    "tag": "NAV",
+                    "selector": "#content > div:nth-child(4) > div > div > div > nav:nth-child(1)",
+                    "bounds": { "x": 160, "y": 1624, "width": 630, "height": 60 },
+                    "children": [
+                      {
+                        "tag": "H2",
+                        "selector": "#related-nav-topics-ab4ebea2",
+                        "bounds": { "x": 160, "y": 1624, "width": 630, "height": 25 },
+                        "children": [],
+                        "id": "related-nav-topics-ab4ebea2",
+                        "className": "gem-c-related-navigation__sub-heading gem-c-related-navigation__sub-heading--footer",
+                        "text": "Explore the topic"
+                      },
+                      {
+                        "tag": "UL",
+                        "selector": "#content > div:nth-child(4) > div > div > div > nav:nth-child(1) > ul",
+                        "bounds": { "x": 160, "y": 1664, "width": 630, "height": 20 },
+                        "children": [],
+                        "className": "gem-c-related-navigation__link-list",
+                        "collapsed": [
+                          {
+                            "tag": "UL",
+                            "selector": "#content > div:nth-child(4) > div > div > div > nav:nth-child(1) > ul",
+                            "className": "gem-c-related-navigation__link-list"
+                          },
+                          {
+                            "tag": "LI",
+                            "selector": "#content > div:nth-child(4) > div > div > div > nav:nth-child(1) > ul > li",
+                            "className": "gem-c-related-navigation__link"
+                          }
+                        ],
+                        "text": "Foreign affairs"
+                      }
+                    ],
+                    "className": "gem-c-related-navigation__nav-section"
+                  },
+                  {
+                    "tag": "NAV",
+                    "selector": "#content > div:nth-child(4) > div > div > div > nav:nth-child(2)",
+                    "bounds": { "x": 160, "y": 1714, "width": 630, "height": 60 },
+                    "children": [
+                      {
+                        "tag": "H2",
+                        "selector": "#related-nav-world_locations-ab4ebea2",
+                        "bounds": { "x": 160, "y": 1714, "width": 630, "height": 25 },
+                        "children": [],
+                        "id": "related-nav-world_locations-ab4ebea2",
+                        "className": "gem-c-related-navigation__sub-heading gem-c-related-navigation__sub-heading--footer",
+                        "text": "World locations"
+                      },
+                      {
+                        "tag": "UL",
+                        "selector": "#content > div:nth-child(4) > div > div > div > nav:nth-child(2) > ul",
+                        "bounds": { "x": 160, "y": 1754, "width": 630, "height": 20 },
+                        "children": [],
+                        "className": "gem-c-related-navigation__link-list",
+                        "collapsed": [
+                          {
+                            "tag": "UL",
+                            "selector": "#content > div:nth-child(4) > div > div > div > nav:nth-child(2) > ul",
+                            "className": "gem-c-related-navigation__link-list"
+                          },
+                          {
+                            "tag": "LI",
+                            "selector": "#content > div:nth-child(4) > div > div > div > nav:nth-child(2) > ul > li",
+                            "className": "gem-c-related-navigation__link"
+                          }
+                        ],
+                        "text": "Libya"
+                      }
+                    ],
+                    "className": "gem-c-related-navigation__nav-section"
+                  }
+                ],
+                "className": "govuk-grid-row gem-print-columns-none",
+                "collapsed": [
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div:nth-child(4)",
+                    "className": "govuk-grid-row gem-print-columns-none"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div:nth-child(4) > div",
+                    "className": "govuk-grid-column-two-thirds"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div:nth-child(4) > div > div",
+                    "className": "gem-c-contextual-footer govuk-!-display-none-print"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#content > div:nth-child(4) > div > div > div",
+                    "className": "gem-c-related-navigation govuk-!-display-none-print"
+                  }
+                ]
+              }
+            ],
+            "id": "content",
+            "className": "govuk-main-wrapper "
+          }
+        ],
+        "className": "govuk-width-container"
+      },
+      {
+        "tag": "DIV",
+        "selector": "body > div:nth-child(6)",
+        "bounds": { "x": 160, "y": 1935, "width": 960, "height": 78 },
+        "children": [],
+        "className": "govuk-width-container",
+        "collapsed": [
+          {
+            "tag": "DIV",
+            "selector": "body > div:nth-child(6)",
+            "className": "govuk-width-container"
+          },
+          {
+            "tag": "DIV",
+            "selector": "body > div:nth-child(6) > div",
+            "className": "gem-c-feedback govuk-!-display-none-print"
+          },
+          {
+            "tag": "DIV",
+            "selector": "body > div:nth-child(6) > div > div.gem-c-feedback__prompt.gem-c-feedback__js-show.js-prompt",
+            "className": "gem-c-feedback__prompt gem-c-feedback__js-show js-prompt"
+          },
+          {
+            "tag": "DIV",
+            "selector": "body > div:nth-child(6) > div > div.gem-c-feedback__prompt.gem-c-feedback__js-show.js-prompt > div",
+            "className": "gem-c-feedback__prompt-content"
+          },
+          {
+            "tag": "DIV",
+            "selector": "body > div:nth-child(6) > div > div.gem-c-feedback__prompt.gem-c-feedback__js-show.js-prompt > div > div:nth-child(1)",
+            "className": "gem-c-feedback__prompt-questions js-prompt-questions"
+          },
+          {
+            "tag": "DIV",
+            "selector": "body > div:nth-child(6) > div > div.gem-c-feedback__prompt.gem-c-feedback__js-show.js-prompt > div > div:nth-child(1) > div",
+            "className": "gem-c-feedback__prompt-question-answer"
+          }
+        ],
+        "text": "Is this page useful? Maybe Yes",
+        "layout": "2x1",
+        "background": {
+          "type": "color",
+          "value": "rgb(244, 248, 251)",
+          "raw": "rgb(244, 248, 251) none repeat scroll 0% 0% / auto padding-box border-box",
+          "source": "css"
+        }
+      },
+      {
+        "tag": "FOOTER",
+        "selector": "body > footer",
+        "bounds": { "x": 0, "y": 2013, "width": 1280, "height": 843 },
+        "children": [
+          {
+            "tag": "DIV",
+            "selector": "body > footer > div > div.govuk-footer__navigation",
+            "bounds": { "x": 145, "y": 2124, "width": 990, "height": 481 },
+            "children": [
+              {
+                "tag": "DIV",
+                "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print",
+                "bounds": { "x": 145, "y": 2124, "width": 660, "height": 481 },
+                "children": [
+                  {
+                    "tag": "H2",
+                    "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > h2",
+                    "bounds": { "x": 160, "y": 2124, "width": 630, "height": 51 },
+                    "children": [],
+                    "className": "govuk-footer__heading govuk-heading-m",
+                    "text": "Services and information"
+                  },
+                  {
+                    "tag": "UL",
+                    "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul",
+                    "bounds": { "x": 160, "y": 2205, "width": 630, "height": 400 },
+                    "children": [
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(1)",
+                        "bounds": { "x": 160, "y": 2205, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Benefits"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(2)",
+                        "bounds": { "x": 160, "y": 2250, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "collapsed": [
+                          {
+                            "tag": "LI",
+                            "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(2)",
+                            "className": "govuk-footer__list-item"
+                          },
+                          {
+                            "tag": "A",
+                            "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(2) > a",
+                            "className": "govuk-footer__link"
+                          }
+                        ],
+                        "text": "Births, death, marriages and c"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(3)",
+                        "bounds": { "x": 160, "y": 2295, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Business and self-employed"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(4)",
+                        "bounds": { "x": 160, "y": 2340, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Childcare and parenting"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(5)",
+                        "bounds": { "x": 160, "y": 2385, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "collapsed": [
+                          {
+                            "tag": "LI",
+                            "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(5)",
+                            "className": "govuk-footer__list-item"
+                          },
+                          {
+                            "tag": "A",
+                            "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(5) > a",
+                            "className": "govuk-footer__link"
+                          }
+                        ],
+                        "text": "Citizenship and living in the "
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(6)",
+                        "bounds": { "x": 160, "y": 2430, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Crime, justice and the law"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(7)",
+                        "bounds": { "x": 160, "y": 2475, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Disabled people"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(8)",
+                        "bounds": { "x": 160, "y": 2520, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Driving and transport"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(9)",
+                        "bounds": { "x": 490, "y": 2205, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Education and learning"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(10)",
+                        "bounds": { "x": 490, "y": 2250, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Employing people"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(11)",
+                        "bounds": { "x": 490, "y": 2295, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Environment and countryside"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(12)",
+                        "bounds": { "x": 490, "y": 2340, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Housing and local services"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(13)",
+                        "bounds": { "x": 490, "y": 2385, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Money and tax"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(14)",
+                        "bounds": { "x": 490, "y": 2430, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "collapsed": [
+                          {
+                            "tag": "LI",
+                            "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(14)",
+                            "className": "govuk-footer__list-item"
+                          },
+                          {
+                            "tag": "A",
+                            "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(14) > a",
+                            "className": "govuk-footer__link"
+                          }
+                        ],
+                        "text": "Passports, travel and living a"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(15)",
+                        "bounds": { "x": 490, "y": 2475, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Visas and immigration"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-two-thirds.govuk-\\!-display-none-print > ul > li:nth-child(16)",
+                        "bounds": { "x": 490, "y": 2520, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Working, jobs and pensions"
+                      }
+                    ],
+                    "className": "govuk-footer__list govuk-footer__list--columns-2",
+                    "layout": "2x8"
+                  }
+                ],
+                "className": "govuk-grid-column-two-thirds govuk-!-display-none-print"
+              },
+              {
+                "tag": "DIV",
+                "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print",
+                "bounds": { "x": 805, "y": 2124, "width": 330, "height": 461 },
+                "children": [
+                  {
+                    "tag": "H2",
+                    "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > h2",
+                    "bounds": { "x": 820, "y": 2124, "width": 300, "height": 51 },
+                    "children": [],
+                    "className": "govuk-footer__heading govuk-heading-m",
+                    "text": "Government activity"
+                  },
+                  {
+                    "tag": "UL",
+                    "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul",
+                    "bounds": { "x": 820, "y": 2205, "width": 300, "height": 380 },
+                    "children": [
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(1)",
+                        "bounds": { "x": 820, "y": 2205, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Departments"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(2)",
+                        "bounds": { "x": 820, "y": 2250, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "News"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(3)",
+                        "bounds": { "x": 820, "y": 2295, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Guidance and regulation"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(4)",
+                        "bounds": { "x": 820, "y": 2340, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Research and statistics"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(5)",
+                        "bounds": { "x": 820, "y": 2385, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "collapsed": [
+                          {
+                            "tag": "LI",
+                            "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(5)",
+                            "className": "govuk-footer__list-item"
+                          },
+                          {
+                            "tag": "A",
+                            "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(5) > a",
+                            "className": "govuk-footer__link"
+                          }
+                        ],
+                        "text": "Policy papers and consultation"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(6)",
+                        "bounds": { "x": 820, "y": 2430, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Transparency"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(7)",
+                        "bounds": { "x": 820, "y": 2475, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "How government works"
+                      },
+                      {
+                        "tag": "LI",
+                        "selector": "body > footer > div > div.govuk-footer__navigation > div.govuk-grid-column-one-third.govuk-\\!-display-none-print > ul > li:nth-child(8)",
+                        "bounds": { "x": 820, "y": 2520, "width": 297, "height": 25 },
+                        "children": [],
+                        "className": "govuk-footer__list-item",
+                        "text": "Get involved"
+                      }
+                    ],
+                    "className": "govuk-footer__list govuk-footer__list--columns-1"
+                  }
+                ],
+                "className": "govuk-grid-column-one-third govuk-!-display-none-print"
+              }
+            ],
+            "className": "govuk-footer__navigation",
+            "layout": "2x1"
+          },
+          {
+            "tag": "HR",
+            "selector": "body > footer > div > hr",
+            "bounds": { "x": 160, "y": 2605, "width": 960, "height": 1 },
+            "children": [],
+            "className": "govuk-footer__section-break govuk-!-display-none-print"
+          },
+          {
+            "tag": "DIV",
+            "selector": "body > footer > div > div.govuk-footer__meta",
+            "bounds": { "x": 145, "y": 2656, "width": 990, "height": 175 },
+            "children": [
+              {
+                "tag": "UL",
+                "selector": "body > footer > div > div.govuk-footer__meta > div.govuk-footer__meta-item.govuk-footer__meta-item--grow > ul",
+                "bounds": { "x": 160, "y": 2656, "width": 775, "height": 60 },
+                "children": [],
+                "className": "govuk-footer__inline-list govuk-!-display-none-print",
+                "layout": "6x2",
+                "collapsed": [
+                  {
+                    "tag": "UL",
+                    "selector": "body > footer > div > div.govuk-footer__meta > div.govuk-footer__meta-item.govuk-footer__meta-item--grow > ul",
+                    "className": "govuk-footer__inline-list govuk-!-display-none-print"
+                  },
+                  {
+                    "tag": "LI",
+                    "selector": "body > footer > div > div.govuk-footer__meta > div.govuk-footer__meta-item.govuk-footer__meta-item--grow > ul > li:nth-child(7)",
+                    "className": "govuk-footer__inline-list-item"
+                  },
+                  {
+                    "tag": "A",
+                    "selector": "body > footer > div > div.govuk-footer__meta > div.govuk-footer__meta-item.govuk-footer__meta-item--grow > ul > li:nth-child(7) > a",
+                    "className": "govuk-footer__link"
+                  }
+                ],
+                "text": "Rhestr o Wasanaethau Cymraeg"
+              },
+              {
+                "tag": "SPAN",
+                "selector": "body > footer > div > div.govuk-footer__meta > div.govuk-footer__meta-item.govuk-footer__meta-item--grow > span",
+                "bounds": { "x": 160, "y": 2756, "width": 775, "height": 50 },
+                "children": [],
+                "className": "govuk-footer__licence-description",
+                "text": "All content is available under",
+                "collapsed": [
+                  {
+                    "tag": "SPAN",
+                    "selector": "body > footer > div > div.govuk-footer__meta > div.govuk-footer__meta-item.govuk-footer__meta-item--grow > span",
+                    "className": "govuk-footer__licence-description"
+                  },
+                  {
+                    "tag": "A",
+                    "selector": "body > footer > div > div.govuk-footer__meta > div.govuk-footer__meta-item.govuk-footer__meta-item--grow > span > a",
+                    "className": "govuk-footer__link"
+                  }
+                ]
+              }
+            ],
+            "className": "govuk-footer__meta",
+            "layout": "2x1",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "body > footer > div > div.govuk-footer__meta",
+                "className": "govuk-footer__meta"
+              },
+              {
+                "tag": "DIV",
+                "selector": "body > footer > div > div.govuk-footer__meta > div.govuk-footer__meta-item.govuk-footer__meta-item--grow",
+                "className": "govuk-footer__meta-item govuk-footer__meta-item--grow"
+              }
+            ]
+          }
+        ],
+        "className": "gem-c-layout-footer govuk-footer",
+        "background": {
+          "type": "color",
+          "value": "rgb(244, 248, 251)",
+          "raw": "rgb(244, 248, 251) none repeat scroll 0% 0% / auto padding-box border-box",
+          "source": "css"
+        },
+        "collapsed": [
+          {
+            "tag": "FOOTER",
+            "selector": "body > footer",
+            "className": "gem-c-layout-footer govuk-footer"
+          },
+          { "tag": "DIV", "selector": "body > footer > div", "className": "govuk-width-container" }
+        ]
+      }
+    ],
+    "className": "gem-c-layout-for-public govuk-template__body js-enabled govuk-frontend-supported",
+    "background": {
+      "type": "color",
+      "value": "rgb(255, 255, 255)",
+      "raw": "rgb(255, 255, 255) none repeat scroll 0% 0% / auto padding-box border-box",
+      "source": "css"
+    }
+  },
+  "expected": [
+    [61, 111],
+    [111, 1935]
+  ]
+}

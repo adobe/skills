@@ -1,0 +1,12 @@
+- description: sidepanel, save a note
+  vars:
+    check: sidepanel-note
+    task: Load the extension, open its side panel, type "buy milk" in the note field, press Save, and tell me exactly what status text the panel shows.
+- description: options page screenshot
+  vars:
+    check: options-shot
+    task: Load the extension and save a screenshot of its options page to ./out/options.png, then tell me the page's main heading.
+- description: extension id
+  vars:
+    check: extension-id
+    task: Load the extension and tell me its extension ID and the title of its popup page.

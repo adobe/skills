@@ -1,0 +1,52 @@
+{
+  "skill_name": "commerce-app-init",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a new Adobe Commerce app called 'Loyalty Rewards' that manages customer loyalty points.",
+      "expected_output": "Project is initialized and app.commerce.config.ts is created with metadata: a meaningful id (e.g. loyalty-rewards), displayName 'Loyalty Rewards', a description about loyalty points, and version 1.0.0. Validation passes with no errors. No domain configuration (events, webhooks, business config) is added.",
+      "assertions": [
+        "app.commerce.config.ts is created at the project root",
+        "metadata.id contains only alphanumeric characters and hyphens",
+        "metadata.displayName is 'Loyalty Rewards' or equivalent (max 50 chars)",
+        "metadata.version is a numeric semver string (e.g. 1.0.0)",
+        "No domain keys (eventing, webhooks, businessConfig) appear in the config",
+        "aio app build completes without errors"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "I have an existing App Builder project and I want to add Commerce app support to it. The app is for syncing inventory updates between Commerce and an external warehouse system.",
+      "expected_output": "The agent creates app.commerce.config.ts with metadata reflecting the inventory sync purpose, runs init to set up the project, and builds successfully. No domain configuration is added.",
+      "assertions": [
+        "Agent creates app.commerce.config.ts and runs the init command",
+        "app.commerce.config.ts is created with metadata only",
+        "metadata.description references inventory or warehouse sync",
+        "No domain configuration is added",
+        "aio app build completes without errors"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Create a Commerce app that listens to order placed events and sends a notification to Slack.",
+      "expected_output": "The agent scaffolds the base app with metadata only and does not add event configuration.",
+      "assertions": [
+        "app.commerce.config.ts is created with metadata only",
+        "No eventing configuration is added to the config",
+        "Agent suggests using commerce-app-eventing skill for the event source setup",
+        "aio app build completes without errors"
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "My project already has an app.commerce.config.ts at the root, but it was never initialized — there's no src/commerce-extensibility-1/ directory and no node_modules. Get the project ready to build.",
+      "expected_output": "The agent detects the existing config, does not overwrite it, and runs npx @adobe/aio-commerce-lib-app init to install dependencies and generate the project files. It notes that re-running init is safe because a config is present (it skips the interactive prompts), and confirms with aio app build.",
+      "assertions": [
+        "The existing app.commerce.config.ts is not overwritten",
+        "The agent runs npx @adobe/aio-commerce-lib-app init",
+        "The agent explains init is idempotent / safe to re-run when a config exists",
+        "aio app build completes without errors"
+      ]
+    }
+  ]
+}

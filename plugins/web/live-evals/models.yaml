@@ -1,0 +1,45 @@
+# Model matrix. `rank` orders models from lowest to highest tier (assumption: edit freely);
+# the report picks the lowest-ranked model that meets a skill's floor.
+# The `baseline` model runs first; scripts/run.sh runs the others only if it meets the floor.
+# `noskill: true` marks the models the comparison arms (ARM=cli, ARM=none) run on.
+- label: gemma-4-26b-cf
+  rank: 1
+  provider: cloudflare-workers-ai
+  model: '@cf/google/gemma-4-26b-a4b-it'
+  thinking: low
+- label: qwen3.8-27b-cf
+  rank: 2
+  noskill: true
+  provider: cloudflare-workers-ai
+  model: '@cf/qwen/qwen3.8-27b'
+  thinking: low
+- label: haiku-5.5-low
+  rank: 3
+  noskill: true
+  provider: azure-anthropic
+  model: claude-haiku-5-5
+  thinking: low
+- label: gpt-5.4-mini
+  rank: 4
+  noskill: true
+  provider: github-copilot
+  model: gpt-5.4-mini
+  thinking: low
+- label: gpt-6-sol-low
+  rank: 5
+  provider: github-copilot
+  model: gpt-6-sol
+  thinking: low
+- label: sonnet-5.5-low
+  rank: 6
+  baseline: true # a suite must pass here before other models are run
+  noskill: true
+  provider: azure-anthropic
+  model: claude-sonnet-5-5
+  thinking: low
+- label: opus-5.5-low
+  rank: 7
+  noskill: true
+  provider: azure-anthropic
+  model: claude-opus-5-5
+  thinking: low

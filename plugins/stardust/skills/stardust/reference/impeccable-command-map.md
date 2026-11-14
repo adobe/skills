@@ -1,6 +1,6 @@
 # When to reach for each impeccable command
 
-Stardust orchestrates the 23 impeccable commands. This file is the
+Stardust orchestrates the 24 impeccable commands. This file is the
 runtime guide for picking which command fits a resolved direction.
 
 **Source of truth.** The canonical command list is impeccable's own
@@ -16,7 +16,7 @@ to `command-metadata.json` and the per-command reference.
 
 ## Build category
 
-### `teach`
+### `init` (formerly `teach`; impeccable keeps `teach` as an alias)
 Reach for it: when stardust is about to write a target `PRODUCT.md` for
 the first time. Use it inside `$stardust direct` to author the target
 strategy file from the resolved direction. Do not invoke during a
@@ -26,7 +26,7 @@ overwrites authored intent.
 ### `document`
 Reach for it: when seeding the target `DESIGN.md` and `DESIGN.json` from
 the extracted current state plus the resolved direction. Stardust calls
-this from `$stardust direct` immediately after `teach` (or after manual
+this from `$stardust direct` immediately after `init` (or after manual
 editing of `PRODUCT.md`). Also reach for it if the user asks for a
 "design system snapshot" of either the current site or the proposed one.
 
@@ -161,6 +161,13 @@ Most iteration goes through chat-driven invocation of the named
 commands above.
 
 ---
+
+### `generate`
+Live-mode variant generation for one named element ("generate 3 bold
+variants of the pricing cards"). Like `live`, an external tool the user
+drives; stardust does not call it. Reach for it only when the user asks
+for variants of a specific element inside an open `prototype` live
+session.
 
 ## Common sequences
 

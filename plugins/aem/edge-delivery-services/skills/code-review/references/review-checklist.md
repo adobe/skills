@@ -143,8 +143,8 @@ element.disabled = true;
 | Check | Severity | Notes |
 |-------|----------|-------|
 | Mobile-first approach | HIGH | Base = mobile, media queries for larger |
-| Standard breakpoints | HIGH | 600px, 900px, 1200px |
-| min-width only | MEDIUM | Don't mix with max-width |
+| Standard breakpoints | HIGH | 600px, 900px, 1200px, range syntax `(width >= 900px)` |
+| `width >=` only | MEDIUM | Don't mix with `width <` / `max-width` |
 | All viewports tested | HIGH | Mobile, tablet, desktop |
 
 ### Frameworks & Preprocessors
@@ -181,10 +181,10 @@ main .hero .button {
 }
 
 /* ANTI-PATTERN: Mixed breakpoint directions */
-@media (max-width: 599px) {
+@media (width < 600px) {
   .block { padding: 1rem; }
 }
-@media (min-width: 900px) {
+@media (width >= 900px) {
   .block { padding: 2rem; }
 }
 
@@ -192,10 +192,10 @@ main .hero .button {
 .block {
   padding: 1rem; /* mobile */
 }
-@media (min-width: 600px) {
+@media (width >= 600px) {
   .block { padding: 1.5rem; }
 }
-@media (min-width: 900px) {
+@media (width >= 900px) {
   .block { padding: 2rem; }
 }
 
@@ -325,15 +325,14 @@ const url = `https://api.example.com?q=${encodeURIComponent(userInput)}`;
 ### Screenshot Commands
 
 ```bash
-# Using the capture-screenshots.js utility
-cd .claude/skills/pr-review/scripts
-npm install
-node capture-screenshots.js <after-url> [before-url] [output-dir] [block-selector]
+# Using this skill's capture-screenshots.js utility (<SKILL_DIR> = directory containing SKILL.md)
+npm install --prefix <SKILL_DIR>/scripts
+node <SKILL_DIR>/scripts/capture-screenshots.js <after-url> [before-url] [output-dir] [block-selector]
 
 # Examples
-node capture-screenshots.js https://branch--repo--owner.aem.page/path
-node capture-screenshots.js https://branch--repo--owner.aem.page/path https://main--repo--owner.aem.page/path
-node capture-screenshots.js https://branch--repo--owner.aem.page/path "" ./screenshots ".hero"
+node <SKILL_DIR>/scripts/capture-screenshots.js https://branch--repo--owner.aem.page/path
+node <SKILL_DIR>/scripts/capture-screenshots.js https://branch--repo--owner.aem.page/path https://main--repo--owner.aem.page/path
+node <SKILL_DIR>/scripts/capture-screenshots.js https://branch--repo--owner.aem.page/path "" ./screenshots ".hero"
 ```
 
 ### Embedding Screenshots in PR Comment

@@ -1,0 +1,3 @@
+extensions:
+  # This extension is required for app management. Do not remove.
+  - extensionPointId: commerce/extensibility/1

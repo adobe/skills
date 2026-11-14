@@ -1,0 +1,30 @@
+{
+  "context": "web site scan exited 1 with EMPTY_RESULT because the site lists no sitemap (robots.txt is missing, which is not reported as an error) and /sitemap.xml answered 404. The right move is the http strategy with a limit. Judge answer.md.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "cause",
+      "max_score": 25,
+      "category": "INTENT",
+      "description": "Explains that the site publishes no sitemap (no Sitemap line in robots.txt and /sitemap.xml is 404), so the sitemaps strategy found no URLs; it is not a crawl bug or a bot block."
+    },
+    {
+      "name": "http_strategy",
+      "max_score": 35,
+      "category": "DESIGN",
+      "description": "Gives the command `web site scan https://www.example-shop.test --strategy http` (the web CLI's own site scan, not curl loops or a hand-written crawler)."
+    },
+    {
+      "name": "limit",
+      "max_score": 25,
+      "category": "DESIGN",
+      "description": "Adds a --limit (the http strategy fetches every page and is unbounded without one) and, optionally, --include/--exclude patterns."
+    },
+    {
+      "name": "blocked_fallback",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "Mentions that if the http crawl is refused (bot protection) the next step is the browser-probe skill, because site scan does not drive a browser."
+    }
+  ]
+}

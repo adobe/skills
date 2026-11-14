@@ -27,7 +27,21 @@
  * Output: JSON with block metadata, variants, and HTML structure examples
  */
 
-import { JSDOM } from 'jsdom';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+async function loadJSDOM() {
+  try {
+    return (await import('jsdom')).JSDOM;
+  } catch (error) {
+    if (error.code !== 'ERR_MODULE_NOT_FOUND') throw error;
+    const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
+    console.error(`Error: jsdom is not installed. Run: npm install --prefix "${scriptsDir}"`);
+    process.exit(1);
+  }
+}
+
+const JSDOM = await loadJSDOM();
 
 const BLOCK_COLLECTION_BASE = 'https://main--aem-block-collection--adobe.aem.live';
 const USER_AGENT = 'AdobeSkills/1.0 (https://github.com/adobe/skills; skill:block-collection-and-party)';
@@ -237,7 +251,4 @@ async function main() {
   }
 }
 
-// Run if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
-}
+main();

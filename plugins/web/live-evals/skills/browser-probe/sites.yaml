@@ -1,0 +1,11 @@
+# Live sites. `expected` is the ground truth observed on 2026-10-07; update it when a site changes.
+- description: wknd.site (no protection)
+  vars: { slug: wknd, url: 'https://wknd.site/', expected_first_success: default }
+- description: astrazeneca.com (CloudFront UA block)
+  vars: { slug: astrazeneca, url: 'https://www.astrazeneca.com/', expected_first_success: stealth }
+- description: adobe.com (Akamai, needs system Chrome)
+  vars: { slug: adobe, url: 'https://www.adobe.com/', expected_first_success: chrome }
+- description: bd.com (Akamai, needs system Chrome)
+  vars: { slug: bd, url: 'https://www.bd.com/', expected_first_success: chrome }
+- description: live, stripe.com/fr-ch (no protection)
+  vars: { slug: stripe, url: 'https://stripe.com/fr-ch', expected_first_success: default }

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Newsletter modal fixture</title>
+<style>
+  body { margin: 0; font-family: sans-serif; overflow: hidden; }
+  #backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 100000; display: flex; align-items: center; justify-content: center; }
+  #newsletter-modal { background: #fff; padding: 32px; width: 420px; position: relative; }
+  #newsletter-modal .close { position: absolute; top: 8px; right: 8px; }
+</style>
+</head>
+<body>
+<h1>Orchard Journal</h1>
+<p>This week: pruning apple trees, and what to plant in September.</p>
+<div id="backdrop">
+  <div id="newsletter-modal" role="dialog" aria-label="Newsletter signup">
+    <button class="close" aria-label="Close" onclick="document.getElementById('backdrop').remove(); document.body.style.overflow='auto'">x</button>
+    <h2>Join our newsletter</h2>
+    <p>Get a weekly digest of gardening tips.</p>
+    <input type="email" placeholder="you@example.com"><button onclick="window.__subscribed=true">Subscribe</button>
+  </div>
+</div>
+</body>
+</html>
