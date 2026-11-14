@@ -27,14 +27,24 @@ class of guesswork before the next begins:
    read a 1559px height deficit as a missing section). A large height delta
    with matching section ORDER is usually a duplicated instance, not a
    missing one.
-2. **Lift exact values from the source site's own CSS** (§ CSS lifting).
-3. **Fonts** (§ Fonts policy).
-4. **Compose against the captured screenshot** — the ground truth for
+2. **Measure the source at EVERY gate width before the first line of CSS:**
+   `source-spec.mjs capture <live-url> --slug <slug> --widths 1440,360`
+   writes one spec per width (bands; every text node and image box with
+   font, colour and line count; text-style clusters; gutters); read values
+   with `view <spec> --section <i>`. Author desktop AND mobile rules from
+   the specs in one pass — the 360 spec is the source of the mobile rules.
+   Header and footer are authored from `chrome-parity.mjs <live-url>
+   --live-only --width <w>` (texts by channel, icons, background, position).
+3. **Lift from the source's CSS what the spec cannot name** (§ CSS lifting).
+4. **Fonts** (§ Fonts policy).
+5. **Compose against the captured screenshot** — the ground truth for
    everything CSS doesn't name: image crops, composition, stacking, paint
    effects.
-5. **Serve locally and enter the gate loop**
-   (`source-fidelity-gate.md`) — do not eyeball-polish first; the first gate
-   run is the map of what's wrong.
+6. **Serve locally, then `source-spec.mjs compare <spec> <prototype-url>`
+   per width; clear its table top-down (the FIRST CAUSE section first) to
+   exit 0 BEFORE the first gate round** — no eyeball-polish: the compare
+   table is the map of what's wrong, the first gate round
+   (`source-fidelity-gate.md`) confirms it.
 
 Keep the markup clean: semantic elements, BEM-ish classes, CSS custom
 properties for the lifted tokens, no JS unless a section's initial state
@@ -109,29 +119,19 @@ Before any screenshot-eyeball tuning:
 3. **Replicate the container model**, not just the tokens: left-offset vs
    centered hero content, %-of-viewport heights, grid gutters. The container
    model is where "looks close but drifts" comes from.
-4. **Capture per-element computed styles** for the elements the gate will
-   measure (headings, CTAs, section wrappers). Computed styles resolve the
-   cascade the stylesheets only imply.
-5. **Repeat 2–4 at EVERY gate breakpoint, not just desktop — the 360
-   layout is NOT derivable from the 1440 recreation.** Mobile is its own
-   authoring pass, not a shrink of desktop: lift the source's mobile
-   `@media` geometry (container model, hidden/restacked blocks, mobile nav,
-   grid collapse rules) up front and build 360 against it. Capture
-   per-element computed styles at 360 (and any other gate width) BEFORE
-   authoring — the 360 gate map is not the moment to discover the mobile
-   container model. Recorded twice: a design-furniture site's 1440-lifted prototype
-   converged desktop in one iteration but opened mobile at 26.8% (an
-   `overflow:hidden` whose only layout effect is margin-collapse containment
-   at mobile, a different mobile footer container model, a block hidden at
-   mobile — all sitting in the source CSS, discoverable up front); and
-   a fashion retailer, where an essentially unbuilt 360 layout measured
-   **−1600px height delta** at 360 vs −169px at 1440 — a desktop-only
-   recreation doesn't degrade gracefully at mobile, it collapses. With
-   per-breakpoint lifting, mobile converges in 1–2 iterations; without it,
-   expect the full iteration cap.
+4. **Per-element computed values are the source spec's** (authoring order
+   step 2); `measure.mjs` reads what it does not list (`boxSizing`, padding
+   per container).
+5. **Repeat 2–3 at EVERY gate breakpoint — the 360 layout is NOT derivable
+   from the 1440 recreation.** The 360 spec gives the values; the source's
+   mobile `@media` geometry (container model, hidden/restacked blocks,
+   mobile nav, grid collapse rules) gives the structure — lift it up front.
+   Recorded twice: a 1440-lifted prototype converged desktop in one
+   iteration and opened mobile at 26.8% (every cause sat in the source CSS);
+   an unbuilt 360 layout measured −1600px at 360 vs −169px at 1440.
 
 This converts 3–4 guess-and-screenshot loops into one. Eyeballing is for
-step 4 of the authoring order only — and even then, the gate's instruments
+step 5 of the authoring order only — and even then, the gate's instruments
 outrank the eye.
 
 **Every `url()` in a lifted rule is rehosted.** A canon rule carries a
@@ -315,7 +315,8 @@ Deploy § 4 principle 2 (#80) applies from the first archetype on:
   `@font-face` in the shared canon CSS (at delivery `styles/fonts.css`, per deploy § 4).
 - **Brand family FIRST in every stack; a metric-matched substitute only as the fallback entry
   after it** — never a calibrated stand-in (no derived font files, no hand-tuned metrics), so a
-  licensed drop-in later wins without a code change.
+  licensed drop-in later wins without a code change. Declare it: `<brand>=<substitute>` per line
+  in `stardust/replica/font-subst.txt` (the gate reads it).
 - **A `local()` source only for a face the gate's browser has.** The gate renders on Linux: a
   fallback face whose `local()` names a macOS or Windows platform font resolves to nothing there,
   the stack falls through to the browser default and every type metric forks. Name the

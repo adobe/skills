@@ -128,9 +128,7 @@ to a full migration — invoke `$stardust extract <URL> --single --dynamics`
 (or `--pages <slug,...> --dynamics` for a short list) instead. This is a first-class entry,
 not an improvisation: the recreation phase needs, per page, the captured
 page JSON (verbatim content), the per-page screenshot (ground truth), and
-the captured fonts — all of which a bounded extract provides; the source-CSS
-harvest and per-breakpoint computed styles come from Phase 3's CSS lifting
-either way. What a bounded run skips is the prep-only inventory (page
+the captured fonts — all of which a bounded extract provides. What a bounded run skips is the prep-only inventory (page
 typing, module detection), which is only needed when Phase 5 fans out to
 siblings, and the descriptive synthesis (Phase 2 takes the bounded
 promotion branch, `reference/preserve-direction.md` § 1a).
@@ -192,18 +190,18 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     alt text, metadata from `current/pages/<slug>.json`. The migrate
     content-preservation rules (`../migrate/reference/content-preservation.md`)
     apply from the first line: no rewording, no fabrication.
-(b) **Exact values lifted from the source site's own CSS.** Fetch the live
-    stylesheets; lift the type ramp, button specs, section paddings, radii,
-    shadows, hero heights. The container model is measured, not lifted —
-    DESIGN.json `extensions.breakpoints` (extract's `cap-probe.mjs` run; a bounded
-    entry runs `cap-probe.mjs <live-url> --write-design stardust/current/DESIGN.json` first).
-    **Fidelity values come from the original site's CSS, not the eye** — this
-    converts 3–4 guess-and-screenshot loops into one. Box-by-box comparison of
-    the live page against the served prototype goes through the shipped
-    `measure.mjs` (`node stardust/scripts/replica/measure.mjs <live-url>
-    --against <prototype-url> --selectors "<css>,…"` — rect + computed values
-    per selector per width, one delta line each), never through an authored
-    probe.
+(b) **Measured values first, the source's CSS second.** `source-spec.mjs
+    capture` measures every band, text node and image box at every gate width
+    before any CSS, and `source-spec.mjs compare` clears the prototype against
+    it before the first gate round (`reference/recreation-procedure.md`
+    § Authoring order). Lift from the live stylesheets what the spec cannot
+    name: hover/focus states, media-query structure, variables, radii, shadows.
+    The container model is measured too — DESIGN.json `extensions.breakpoints`
+    (extract's `cap-probe.mjs` run; a bounded entry runs `cap-probe.mjs
+    <live-url> --write-design stardust/current/DESIGN.json` first).
+    **Fidelity values come from measurement, not the eye.** Any other
+    box-by-box check of the live page against the served prototype goes
+    through `measure.mjs --against`, never an authored probe.
 (c) **The captured screenshot as ground truth** for everything CSS doesn't
     name (composition, image crops, paint effects).
 
