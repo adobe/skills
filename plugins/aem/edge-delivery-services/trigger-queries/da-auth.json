@@ -1,0 +1,206 @@
+{
+  "name": "da-auth trigger queries",
+  "description": "Draft for review: direct DA API and api.aem.live Source Bus / Experience Workspace authentication and rejection diagnosis should pick da-auth; CLI-managed sync, content/store-format work with valid auth, already authenticated tools and onboarding-owned auth are near misses. Measures first skill pickup only, not successful authentication. CI pickup has no service-account correctness claim. Observed aem-cli prompts are training data only.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  },
+  "queries": [
+    {
+      "id": "y-direct-list-login",
+      "query": "I have a Node script that calls admin.da.live/list/acme/docs, but no DA credentials configured yet. How should I authenticate it from my laptop without putting a token in the script?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "y-helper-cache-rejected",
+      "query": "My direct DA API script gets 401 even though the cached token from da-auth-helper still has a future expires_at. Running da-auth-helper login didn't fix it. What should I check next?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "y-org-picker-skipped",
+      "query": "My account has access to the DA repo, but the IMS login didn't show the org picker and my direct API request returns 403. I belong to two Adobe orgs. How should I diagnose this before asking for new permissions?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "y-headless-no-credentials",
+      "query": "A headless script needs to upload HTML to the DA source API. There is no configured token or MCP here, and this runner cannot complete a browser login. What authentication handoff do we need?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "y-direct-upload-auth",
+      "query": "The HTML payload for admin.da.live/source/acme/docs/drafts/demo.html is ready. We have to use the direct API because this script is not an AEM CLI content checkout. How do I get authentication ready without manually copying a browser token?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "y-ci-token-question-observed",
+      "query": "Our CI job needs to call the DA admin API to list pages. How do we get an IMS token for a service account?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "y-batch-expiry",
+      "query": "A batch of direct calls to admin.da.live worked this morning, then started returning 401 halfway through. I don't want to restart every request or dump the credential into logs. How should I make the authentication recover safely?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "y-helper-vs-project-login",
+      "query": "I signed in with aem content yesterday. Today a separate migration script needs an IMS credential for admin.da.live, but da-auth-helper wants another login. Are those sharing a session or token store, and how should I handle the script's authentication?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "y-login-account-context",
+      "query": "I can edit the DA page in the browser, but a fresh login for my custom API client still gives Forbidden. The browser can switch between my personal and company Adobe contexts. What identity and access checks should I make before requesting a permission change?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "y-expiry-metadata-missing",
+      "query": "Our utility has an old DA login cache with access_token but no expires_at. Is it safe to reuse for a direct admin.da.live call, or do we need to renew it? Explain how to handle the cache without displaying its contents.",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "n-cli-sync-observed",
+      "query": "Pull down the /products folder from our da.live site, I want to bulk-edit the pages locally and then send them back up.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "n-content-format-observed",
+      "query": "What HTML does da.live expect for a cards block with an image and a caption in each card? I'm generating the page source from a script.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "n-mcp-already-authenticated",
+      "query": "The DA MCP is already authenticated and its da_list_sources tool successfully listed our repo. Which of its content tools should I use to read a page's HTML and update that page? No separate HTTP client is needed.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "n-existing-token-source-format",
+      "query": "A valid DA_TOKEN is already available locally, and the target source API request succeeds. What multipart fields and HTML document shape should our script send to update the page? Keep credentials out of the example.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "n-cli-push-preview",
+      "query": "aem content push succeeded, but the DA page's .aem.page URL still shows old content. There are no authentication errors. What step did I miss?",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "n-cli-clone-command",
+      "query": "Which aem content commands pull just /drafts from DA into this repo so I can preview those pages locally? I want the CLI to manage its own login, not a separate API script.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "n-local-only-content",
+      "query": "I need a local-only test page under content/drafts for my new quote block. Show me how to render it through the dev server; don't upload anything to DA or sign in.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "n-onboarding-owned-auth",
+      "query": "I'm starting a new EDS site backed by da.live. Walk me through creating the GitHub repo and DA site together, including the onboarding login step. We don't have an existing site or standalone API script yet.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "n-cli-inspect-content-changes",
+      "query": "The DA pages are already cloned into content/ and the AEM CLI is signed in. Which content commands let me inspect local edits against upstream before I commit anything? I don't need a standalone HTTP client.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "n-authenticated-source-not-found",
+      "query": "Our DA content MCP is signed in: listing /drafts and reading an existing page work. Reading /drafts/promo.html returns 404. How should I check the document's source path and extension?",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "y-source-bus-ims-token",
+      "query": "Our site content is in the Source Bus behind api.aem.live, not admin.da.live. How should my local script authenticate its source requests? I previously signed in with da-auth-helper; do I need another kind of credential?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "y-experience-workspace-login",
+      "query": "Authors use Experience Workspace for this EDS site. My migration utility needs to read their source documents directly, but I have no token configured. How do I get the right authentication ready without asking someone to paste a token into chat?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "y-api-status-auth-check",
+      "query": "My request to api.aem.live/acme/sites/docs/status/ gets 200, yet source reads aren't working. I sent an IMS credential and want to check whether that credential actually authenticated. What should I verify without creating or publishing a page?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "y-source-bus-rejected-credential",
+      "query": "The cached IMS login works against admin.da.live, but my custom client gets Forbidden from api.aem.live when it reads a Source Bus document. Should I get a fresh credential or a different credential type, and how do I diagnose its identity and access?",
+      "should_trigger": true,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "n-source-bus-content-format",
+      "query": "Authentication to our api.aem.live Source Bus is already verified and reading the target source document works. What HTML and Content-Type should I generate for a page containing a cards block?",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "n-mixed-store-content-target",
+      "query": "I have verified access to both our DA store and api.aem.live source store. DA contains onboarding index, nav and footer, while the authors use Experience Workspace. How should I establish which store our page updates should target?",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "train"
+    },
+    {
+      "id": "n-public-api-status-interpretation",
+      "query": "I'm inspecting the public status response from api.aem.live for an EDS page, without trying to authenticate or read its source. Explain what differing preview and live lastModified values tell me about the published content.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "test"
+    },
+    {
+      "id": "n-managed-source-bus-content-tools",
+      "query": "Our content connector is already authenticated to api.aem.live and its source-reading tool successfully fetched the page. Help me plan the content changes for a new pricing block using those managed tools.",
+      "should_trigger": false,
+      "skill": "da-auth",
+      "split": "test"
+    }
+  ]
+}
