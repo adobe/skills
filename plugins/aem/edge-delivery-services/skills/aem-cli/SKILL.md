@@ -67,7 +67,6 @@ aem content push
 - `aem content push` can report success without storing media files (PNG/SVG
   verified on 16.22.16). Upload them with a DA Source API `PUT` using multipart
   field `data`; see da-content.
-- `status`, `diff`, `merge` work like their git counterparts.
 
 ## `aem import`
 
