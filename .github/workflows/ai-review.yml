@@ -8,10 +8,11 @@ name: AI Review
 # requests are not reviewed.
 #
 # A pull request from a branch of this repository is reviewed on pull_request. One from a
-# fork gets no secrets there, so it is reviewed on pull_request_target, strictly: a
-# maintainer approves the run in the `eval` environment first, nothing from the fork is
-# installed or run, and the reviewers can only read. pull_request_target takes this file
-# from main, never from the pull request.
+# fork gets no secrets there, so it is reviewed on pull_request_target, strictly: nothing
+# from the fork is installed or run, and the reviewers can only read. If the author has no
+# write access to this repository, a maintainer approves the run in the `fork-review`
+# environment first. pull_request_target takes this file from main, never from the pull
+# request.
 
 on:
   pull_request:
@@ -27,30 +28,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # A maintainer reads the diff of a pull request from a fork and approves the run
-  # before the Bedrock key is anywhere near it. A new push needs a new approval.
-  approve-fork:
+  # Whether a pull request from a fork needs a maintainer's approval before its review. It
+  # does when its author has no write access to this repository; someone with write access
+  # could have pushed the same change to a branch here. If the permission can't be read,
+  # the run waits for approval. This job has no secrets.
+  fork-author:
     if: >-
       github.event_name == 'pull_request_target'
       && !github.event.pull_request.draft
       && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
-    environment: eval
+    outputs:
+      environment: ${{ steps.author.outputs.environment }}
+    steps:
+      - id: author
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          permission=$(gh api "repos/$REPO/collaborators/$AUTHOR/permission" --jq .permission 2>/dev/null || echo unknown)
+          echo "$AUTHOR has $permission permission on $REPO"
+          case "$permission" in
+            admin | write) echo "environment=" >> "$GITHUB_OUTPUT" ;;
+            *) echo "environment=fork-review" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  # `fork-review` has required reviewers: a maintainer reads the diff and approves the run
+  # before the Bedrock key is anywhere near it, and a new push needs a new approval. An
+  # empty environment has none.
+  approve-fork:
+    needs: fork-author
+    runs-on: ubuntu-latest
+    environment: ${{ needs.fork-author.outputs.environment }}
     permissions: {}
     steps:
       - run: echo "approved"
 
   ai-review:
     needs: approve-fork
-    # pull_request: branches of this repository only. pull_request_target: forks only, once approved.
+    # pull_request: branches of this repository only. pull_request_target: forks only, once
+    # approve-fork has passed.
     if: >-
       !cancelled() && !github.event.pull_request.draft
       && (
         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         || (github.event_name == 'pull_request_target' && needs.approve-fork.result == 'success')
       )
-    # TODO before this is merged: the commit of the release of adobe/helix-shared-workflows#6
-    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@edc095ecb2de100c6b6662fa31d3c7961a62a683 # feat/review-forks
+    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@2afbfbfed4ecd484d31cc895793a0b52b4821b11 # v1.2.0
     secrets:
       AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
     permissions:
