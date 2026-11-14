@@ -1,0 +1,11 @@
+{
+  "description": "Content model plus Universal Editor files for a new block; xwalk.json has multi-field disabled (aem-boilerplate-xwalk 6210531)",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe-rnd/aem-boilerplate-xwalk.git",
+    "ref": "6210531801d9a2bf6223355e5d0a8c6d8b7dc545",
+    "remote": "https://github.com/adobe-rnd/aem-boilerplate-xwalk"
+  },
+  "judge": {
+    "commands": true
+  }
+}

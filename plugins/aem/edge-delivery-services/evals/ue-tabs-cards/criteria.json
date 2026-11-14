@@ -1,0 +1,46 @@
+{
+  "context": "Universal Editor setup in aem-boilerplate-xwalk. Criteria come from aem.live (component-model-definitions, universal-editor-blocks) and the repo's AGENTS.md, not from the skills.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Partial file, root files regenerated",
+      "max_score": 12,
+      "description": "Component definition, model and filters are written in `blocks/<name>/_<name>.json` (and `models/_section.json` for the section filter), and the root component-definition.json, component-models.json and component-filters.json are regenerated with `npm run build:json` rather than hand-edited alone. Score 0 if only the root files were edited and no partial exists."
+    },
+    {
+      "name": "Definitions valid",
+      "max_score": 8,
+      "description": "Each definition uses the right resource type: `core/franklin/components/section/v1/section` for a section type such as a tab panel, `core/franklin/components/block/v1/block` for any authored block, with a template name where the type needs one; template `model` or `filter` values match model or filter ids that exist."
+    },
+    {
+      "name": "Registered where authors can add it",
+      "max_score": 8,
+      "description": "The custom tab section type is registered in the `main` filter (models/_component-filters.json partial) so authors can add tab sections at page level; the tab section's filter allows default content and the `cards` block; any newly authored block is in the `section` filter (models/_section.json)."
+    },
+    {
+      "name": "Valid and consistent JSON",
+      "max_score": 6,
+      "description": "All JSON files parse, ids are unique, and no existing entries were removed or broken."
+    },
+    {
+      "name": "Scope kept",
+      "max_score": 4,
+      "description": "decorate JS and CSS of unrelated blocks are untouched; no custom AEM component or resource type is invented."
+    },
+    {
+      "name": "Tabs are sections, not nested blocks",
+      "max_score": 20,
+      "description": "Tabs are modelled as sections: a section-type definition (resourceType `core/franklin/components/section/v1/section`, e.g. id `tab`) that code can auto-block into tabs. A `tabs` block whose cells or container items hold `cards` blocks scores 0."
+    },
+    {
+      "name": "Tab label is authorable",
+      "max_score": 10,
+      "description": "Authors can set each tab's label: either a `tab-label`/`title`-style field on the tab section's model (rendered as section metadata, the maintainers' example pattern) or a heading in default content that the tabs code reads. Either earns full credit; a label hard-coded in code or placed only in the block name scores low."
+    },
+    {
+      "name": "Tab sections can hold intro and cards",
+      "max_score": 8,
+      "description": "The tab section can contain default content and the `cards` block (its filter lists `text`, `cards` or equivalent), and the existing cards block definition is unchanged."
+    }
+  ]
+}

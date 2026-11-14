@@ -1,0 +1,61 @@
+{
+  "context": "Content model checkpoint for 'Pricing tiers'. Criteria come from aem.live (David's Model, Markup/Sections/Blocks, Widgets), not from the skill. Author experience beyond these rules is reviewed by a person.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "No nested blocks",
+      "max_score": 10,
+      "description": "No block table appears inside another block's cell. Combining structures uses sibling sections, a fragment link, or a different design. Score 0 if any table is nested in a cell."
+    },
+    {
+      "name": "Cells hold default content, found by type",
+      "max_score": 12,
+      "description": "Each cell holds natural default content (heading, paragraphs, links, picture). The model does not need one cell per field, and it does not rely on cell position to tell parts apart (e.g. 'third cell is the price'). Parts are identifiable by what they are (heading, link, picture, bold)."
+    },
+    {
+      "name": "Column limit and consistency",
+      "max_score": 8,
+      "description": "Rows have 4 or fewer columns (guideline), and repeating rows have the same shape. Many small unlabeled cells score low."
+    },
+    {
+      "name": "No key/value for displayed content",
+      "max_score": 10,
+      "description": "Name/value rows (`label | value`) are not used for content the page displays (headings, text, images, prices). They appear only for non-displayed settings, if at all."
+    },
+    {
+      "name": "Assumptions recorded",
+      "max_score": 6,
+      "description": "ANSWER.md lists the assumptions that were made without the author."
+    },
+    {
+      "name": "Questions are decision-changing and few",
+      "max_score": 8,
+      "description": "ANSWER.md lists at most 6 questions, each of which would change the model if answered differently. Generic or unnecessary questions score low; asking nothing when real ambiguity exists scores low."
+    },
+    {
+      "name": "Recommended tier marked visibly",
+      "max_score": 10,
+      "description": "The 'Recommended' marking is something the author can see and set per tier (e.g. a visible label or a variant), not an item index, hidden text suffix or alt text."
+    },
+    {
+      "name": "Prices without key/value rows",
+      "max_score": 10,
+      "description": "Monthly and annual price, and the Enterprise 'Contact us' case, are authored in a way an author understands without labels like `price | 29`; the model says how code tells monthly from annual."
+    },
+    {
+      "name": "Feature lists easy to author",
+      "max_score": 8,
+      "description": "Features are one cell of plain text lines or links, or one row per feature, and do not require authors to build bullet lists with nested formatting. Uneven feature counts across tiers are handled."
+    },
+    {
+      "name": "Tabular comparison handled",
+      "max_score": 8,
+      "description": "If a feature-by-tier comparison grid is modelled, it is not a wide custom block table (> 4 columns): the Block Collection `table` block for this small one-page grid, a spreadsheet, or per-tier columns is fine."
+    },
+    {
+      "name": "Block vs default content reasoned",
+      "max_score": 10,
+      "description": "States that a block is needed (repeating tiers with structure) and why; not a block per tier."
+    }
+  ]
+}
