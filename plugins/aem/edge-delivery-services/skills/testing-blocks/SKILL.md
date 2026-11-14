@@ -13,7 +13,6 @@ Validate code changes and write maintainable tests in AEM Edge Delivery Services
 ## Related Skills
 
 - **content-driven-development**: test content created during CDD is what you validate against
-- **building-blocks**: invokes this skill in Step 5
 - **aem-cli**: running `aem up` (ports in git worktrees, serving `./content/`, cleaning up stale `./content/` files that shadow remote `.aem.page` updates)
 
 ## Testing Workflow
