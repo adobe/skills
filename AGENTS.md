@@ -14,8 +14,9 @@ repository; the pull request review reads them too.
   `.mcp.json` are generated from those two. It may also have `hooks/` and `evals/`.
 - `plugins/**/skills/<skill>/SKILL.md` is one skill, with optional `references/`, `scripts/`
   and `assets/` next to it.
-- `.claude-plugin/marketplace.json` lists the plugins people can install. `README.md` lists
-  them for readers. `.github/CODEOWNERS` names who owns each plugin.
+- `.claude-plugin/marketplace.json` lists the plugins people can install. `README.md` has one
+  row per plugin for readers, and does not list skills: a new skill needs no change there.
+  `.github/CODEOWNERS` names who owns each plugin.
 - `scripts/` and `.github/workflows/` are the release and CI tooling.
 
 ## Skills
@@ -67,8 +68,10 @@ Skills run with the user's credentials, on the user's machine. Treat a skill as 
 ## Plugins
 
 - A new plugin needs `.claude-plugin/plugin.json`, an entry in `.claude-plugin/marketplace.json`,
-  an entry in `.github/CODEOWNERS` and a section in `README.md`. CI fails without the
-  CODEOWNERS entry.
+  an entry in `.github/CODEOWNERS` and a row in the plugin table of `README.md`. CI fails
+  without the CODEOWNERS entry.
+- A plugin that needs an MCP server says in its row what the server asks of the client, and
+  gets a row in the README's table of MCP servers: which clients it works with, and which not.
 - The version of a plugin is the same in every manifest that carries it and in its marketplace
   entry.
 - A plugin that has `evals/` gets a scenario for behaviour you add or change. A claim that a
