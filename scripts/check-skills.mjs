@@ -12,7 +12,7 @@
 //   node scripts/check-skills.mjs --list <rule>   the SKILL.md files that break one rule
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMain } from './lib/is-main.mjs';
 
 export const MAX_LINES = 500;
 export const RULES = ['too-long', 'duplicate-in-plugin', 'duplicate-across-plugins'];
@@ -103,4 +103,4 @@ function main() {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+if (isMain(import.meta.url)) main();

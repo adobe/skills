@@ -73,6 +73,7 @@ Run these before you open a pull request:
 npm ci
 npm run validate                       # every SKILL.md against the agentskills.io specification
 node scripts/check-release-configs.mjs # release configs point at files that exist
+npm test                               # when you touch scripts/: the workflows run these scripts
 npm run lint:stardust                  # when you touch plugins/stardust
 (cd plugins/web/cli && npm ci && npm run lint && npm test)  # when you touch plugins/web/cli
 ```
