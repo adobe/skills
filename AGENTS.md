@@ -78,8 +78,7 @@ Skills run with the user's credentials, on the user's machine. Treat a skill as 
   what it writes; CI fails when a generated file differs. What one client needs beyond the
   portable fields goes under `extensions["io.github.ai-ecoverse.x927"]` in `plugin.json`:
   `targets.<client>` for that client's manifest, `marketplace` for the catalog entry
-  ([x927](https://github.com/ai-ecoverse/x927)). A skill or hook that is only in
-  `targets.<client>` reaches that client alone.
+  ([x927](https://github.com/ai-ecoverse/x927)).
 - Seven plugins have no root `plugin.json` yet and keep their hand-written manifests. The
   Commerce plugins and `adobe-for-creativity` are brought in from elsewhere. `app-builder`,
   `adobe-for-developers` and `aem-project-management` would lose something in GitHub Copilot
