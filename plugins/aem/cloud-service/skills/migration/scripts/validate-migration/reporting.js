@@ -82,9 +82,11 @@ function renderLocalReport(record, reportDir) {
   return lines.join('\n') + '\n';
 }
 
+// The receipt is the actual submit result: `ok: true` from the AEM Cloud Service Migration MCP
+// tool, `success: true` from the AEM MCP Server recipe. Either flag must be strictly true.
 function finalizeReporting(record, receipt) {
   const acknowledged = typeof record.run_id === 'string' && record.run_id.length > 0
-    && receipt?.ok === true && receipt.run_id === record.run_id;
+    && (receipt?.ok === true || receipt?.success === true) && receipt.run_id === record.run_id;
   const error = receipt?.error
     ? 'MCP submission failed; inspect the tool response without persisting credentials'
     : 'missing or mismatched MCP acknowledgement';

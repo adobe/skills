@@ -27,6 +27,9 @@ function fixture({ health = HEALTHY, failOn, writeHar = true } = {}) {
       calls.push(['open', opts]);
       this.harPath = opts.config.contextOptions.recordHar.path;
     },
+    goto(session, url) {
+      calls.push(['goto', url]);
+    },
     pageHealth(session) {
       calls.push(['pageHealth', session]);
       return health;
@@ -63,7 +66,11 @@ test('opens with recordHar attach at the absolute har path and keeps recipe opti
     content: 'attach',
   });
   assert.equal(open.config.contextOptions.locale, 'de-DE');
-  assert.equal(open.url, URL_);
+  assert.equal(open.url, undefined);
+  assert.deepEqual(
+    calls.find(([name]) => name === 'goto'),
+    ['goto', URL_],
+  );
   assert.equal(open.headed, true);
   assert.equal(open.persistent, true);
 });
@@ -71,7 +78,7 @@ test('opens with recordHar attach at the absolute har path and keeps recipe opti
 test('loads, scrolls, flushes the HAR and never closes the session on success', () => {
   const { dir, calls, driver } = fixture();
   recordPage(driver, { url: URL_, cacheDir: dir });
-  assert.deepEqual(names(calls), ['open', 'pageHealth', 'run', 'run']);
+  assert.deepEqual(names(calls), ['open', 'goto', 'pageHealth', 'run', 'run']);
   const [scroll, flush] = calls.filter(([name]) => name === 'run').map(([, code]) => code);
   assert.match(scroll, /waitForLoadState\('networkidle', \{ timeout: 8000 \}\)/);
   assert.match(scroll, /i < 150/);
@@ -80,6 +87,7 @@ test('loads, scrolls, flushes the HAR and never closes the session on success', 
   assert.match(flush, /page\.context\(\)\.close\(\)/);
   const [scrollRun] = calls.filter(([name]) => name === 'run');
   assert.equal(scrollRun[2], 180_000);
+  assert.match(scrollRun[1], /waitForLoadState\('load', \{ timeout: 30000 \}\)/);
 });
 
 test('returns cleaned entry counts and the byte size of the HAR plus its body files', () => {
@@ -172,4 +180,14 @@ test('harBytes skips body paths that escape the cache dir', () => {
   };
   const result = recordPage(driver, { url: URL_, cacheDir: dir });
   assert.equal(result.entries, 1);
+});
+
+test('loadTimeoutMs bounds the load wait and extends the scroll call timeout', () => {
+  const { dir, calls, driver } = fixture();
+  recordPage(driver, { url: URL_, cacheDir: dir, loadTimeoutMs: 120_000 });
+  const [, code, timeoutMs] = calls.find(
+    ([name, c]) => name === 'run' && c.includes('scrollHeight'),
+  );
+  assert.match(code, /waitForLoadState\('load', \{ timeout: 120000 \}\)/);
+  assert.equal(timeoutMs, 270_000);
 });

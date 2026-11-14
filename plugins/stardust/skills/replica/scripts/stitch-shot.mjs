@@ -14,11 +14,12 @@
  * stitch on the other) manufactures pixel diffs that aren't there.
  *
  * Hardening baked in (each one is a recorded false-measurement trap; the
- * live-navigation pieces live in the shared ../../diff/scripts/live-session.mjs):
- *   - real-Chrome UA + the STANDARD REQUEST HEADERS by default: the default
- *     HeadlessChrome UA gets a Cloudflare managed challenge on many live
- *     sites, and UA alone still 403s on Akamai (F-R1) — the standard headers
- *     (Accept / Accept-Language / sec-ch-ua*) are the other half of the fix.
+ * live-navigation pieces live in the shared ../../stardust/scripts/browser.mjs):
+ *   - real Chrome headless with ITS OWN identity by default (live-session
+ *     launchLiveBrowser; bundled Chromium only when Chrome is missing) plus the
+ *     STANDARD REQUEST HEADERS on document requests: a bare context still 403s
+ *     on Akamai (F-R1) — the headers are the other half of the fix. No user
+ *     agent is set unless --ua says so; no stealth flag by default.
  *   - a bot-management challenge/blocked interstitial FAILS LOUD (exit 3),
  *     never captured as if it were the source (the Access-Denied trap). So
  *     does a 2xx DENIAL PAGE (live-session's pageDenial owns the rule): gotoLive
@@ -27,7 +28,7 @@
  *     domcontentloaded). The message names the signature and says "origin
  *     blocked"; a re-check that cannot read the page is one stderr line
  *     (`denial-page check skipped`), never a pass. Escalate with --headed
- *     (stealth real Chrome).
+ *     (real Chrome with the challenge-solve window).
  *   - waitUntil 'domcontentloaded' (never 'networkidle'): live sites with
  *     analytics beacons never reach networkidle — hard timeout otherwise.
  *   - TWO overlay classes dismissed: cookie consent (CLICKED accept, not DOM
@@ -52,13 +53,16 @@
  *     itself), then clicks the first slick-convention carousel dot so both
  *     sides capture slide 1 deterministically. All symmetric — applied
  *     identically to live and prototype, so it cannot bias the diff.
- *   - FONT-LOAD assertion before capture (F-B2 companion): a webfont that
- *     failed to fetch renders the whole capture in fallback type — the same
+ *   - FONT-LOAD assertion before capture (F-B2 companion): a face that
+ *     failed to load renders the capture in fallback type — the same
  *     silent-false-measurement class as capturing a challenge page. After
- *     document.fonts.ready, any declared FontFace with status 'error' is
- *     reported LOUDLY with the family names; the operator must decide
- *     whether the failure is instrument-induced (a capture defect — fix the
- *     instrument) or real on the live site (capture-state — log it).
+ *     document.fonts.ready every DEAD FACE (deadFontFaces: status 'error'
+ *     with no loaded face of the same family, weight and style — a fetch
+ *     that failed, or a local() source this browser lacks) is reported
+ *     LOUDLY and recorded as the capture record's fontsFailed; a check that
+ *     could not run is fontsFailed null + fontCheck, never "every face
+ *     loaded". The operator decides: instrument-induced (fix the capture)
+ *     or real on the live site (capture-state — log it).
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
@@ -87,9 +91,9 @@
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
  *     --no-dismiss        dismiss no overlay at all (gate.sh --no-dismiss)
- *     --headed            escalation: headed stealth real Chrome
+ *     --headed            escalation: real Chrome + the challenge-solve window
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
- *     --ua <string>       user agent                        (default real-Chrome)
+ *     --ua <string>       user agent                        (default: the browser's own)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
  *     --timeout <ms>      goto timeout                      (default 60000)
  *     --freeze-baseline   origin baseline (opt-in, default OFF): the capture is
@@ -108,14 +112,15 @@
  * Writes <out.png> and <stem>.capture.json beside it (live.png →
  * live.capture.json): { writtenBy, url, width, vh, height (the PNG's),
  * chunks, denialCheck ('ok' | 'skipped: <reason>' — the denial-page read
- * after the dismissal sweeps), fixedLayers ('once', the count, late = those that
- * appeared after scroll 0), at }. Removed when a capture starts, written
+ * after the dismissal sweeps), fontsFailed ([] | the dead faces' families |
+ * null + fontCheck "failed: <msg>"), fixedLayers ('once', the count, late = those
+ * that appeared after scroll 0), at }. Removed when a capture starts, written
  * with the PNG — a failed or refused capture leaves none. A --freeze-baseline
  * capture writes baseline.json instead (HELP § Origin baseline), fixedLayers included.
  *
  * Requires: playwright, pngjs (project devDependencies; imported lazily, so
- * --help and the two subcommands need neither), and the diff skill's scripts
- * dir alongside (live-session.mjs — the replica Setup copies both).
+ * --help and the two subcommands need neither), and the master skill's scripts
+ * dir alongside (browser.mjs — the replica Setup copies both).
  * Exit codes: 0 written, 1 error, 2 a baseline refusal (exists without --force,
  * fonts failed, a check aimed at baseline.png), 3 bot challenge (live side
  * blocked — an edge interstitial or a 2xx denial page; fail loud, never
@@ -125,22 +130,22 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
 import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync, renameSync, rmSync } from 'fs';
-import { basename, dirname, join, resolve as resolvePath } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { basename, dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/replica/scripts ↔ skills/diff/scripts) and the
-// documented project copy (scripts/replica ↔ scripts/diff) — resolve either,
+// browser.mjs lives in the master skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/replica/scripts ↔ skills/stardust/scripts) and the
+// documented project copy (scripts/replica ↔ scripts/stardust) — resolve either,
 // so a project re-copy can't silently sever the shared hardening.
 const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('stitch-shot: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(1);
 }
-const liveSession = await import(pathToFileURL(LIVE_SESSION).href);
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = liveSession;
+const liveSession = await import(BROWSER.href);
+const { isLiveHttpUrl, openBrowser, newLiveContext, gotoLive, dismissOverlays } = liveSession;
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -151,9 +156,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
   --no-dismiss      dismiss no overlay at all (gate.sh --no-dismiss pass-through)
-  --headed          headed stealth real Chrome (escalation for bot-managed sites)
+  --headed          real Chrome with the challenge-solve window (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
-  --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
+  --ua <string>     user agent (default: the browser's own — real Chrome's; the standard headers ride either way)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
   --timeout <ms>    goto timeout (default 60000)
   --freeze-baseline freeze this capture as the origin baseline (opt-in; default OFF): it is ALWAYS written as
@@ -182,9 +187,12 @@ bookkeeping — no browser, no network:
                     A round without the flag retakes a live.png whose record says "baseline". Exit 0; 1 usage.
 
 Writes <out.png> and <stem>.capture.json beside it (live.png → live.capture.json; removed when a capture starts, so a
-failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, at } — denialCheck = 'ok' |
-'skipped: <reason>' (the denial-page read after the dismissal sweeps). A --freeze-baseline capture writes baseline.json
-instead. Fixed/sticky layers are captured once: chunk 1, or where one turns fixed later (a WARNING); a backdrop
+failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, fontsFailed, fixedLayers, at } — denialCheck = 'ok' |
+'skipped: <reason>' (the denial-page read after the dismissal sweeps); fontsFailed = [] (every declared face loaded), or the
+dead faces' families (status error with no loaded face of the same family, weight and style: a file that failed to fetch,
+or a local() source this browser cannot resolve), or null + fontCheck "failed: <msg>" when the check could not run (one
+stderr line — never a pass). gate.sh prints it per side, gate-all fails the row. A --freeze-baseline capture writes
+baseline.json instead. Fixed/sticky layers are captured once: chunk 1, or where one turns fixed later (a WARNING); a backdrop
 (negative z-index, or ≥ 90 % of the viewport) stays in every chunk. A fixed layer left showing that reads like
 consent / sign-up copy is a WARNING.
 Run the SAME command shape against the live page and the served prototype.
@@ -198,7 +206,7 @@ export class UsageError extends Error { constructor(msg) { super(msg); this.name
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: null, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -400,6 +408,62 @@ export function recordCommand(argv) {
   return 0;
 }
 
+// ── The font check (header § FONT-LOAD assertion) — pure, no browser: the tests read these ──────────────────────────
+
+/** Family names for the record: surrounding quotes stripped, trimmed, empties dropped, unique, sorted. */
+export function fontFamilies(list) {
+  const names = (list || []).map((f) => String(f ?? '').trim().replace(/^(["'])(.*)\1$/, '$2').trim());
+  return [...new Set(names.filter(Boolean))].sort();
+}
+
+/**
+ * A face's identity for the dead-face rule: family (unquoted, case-folded) + weight + style — normal = 400, bold = 700,
+ * an absent descriptor is the default. `f` is { family, weight, style } (a FontFace's descriptors) or a bare family.
+ */
+export function faceKey(f) {
+  const face = typeof f === 'string' ? { family: f } : f || {};
+  const family = fontFamilies([face.family])[0] || '';
+  const w = String(face.weight ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const weight = !w || w === 'normal' ? '400' : w === 'bold' ? '700' : w;
+  const style = String(face.style ?? '').trim().toLowerCase() || 'normal';
+  return `${family.toLowerCase()}|${weight}|${style}`;
+}
+
+/**
+ * The dead faces of a capture. `faces` = every FontFace of document.fonts after document.fonts.ready, as
+ * { family, weight, style, status }. A face is dead when its status is 'error' and no face with the same key (faceKey:
+ * family + weight + style) has status 'loaded' — a file that failed to fetch, or a local() source naming a font this
+ * browser does not have (a FontFace does not say which; the family is what the fix needs). A failed declaration beside
+ * a loaded twin is not dead (the text in that weight and style renders in the family); an 'unloaded' face was never
+ * needed by any text and is not dead either. → the dead faces' families: unquoted, unique, sorted (fontFamilies).
+ */
+export function deadFontFaces(faces) {
+  const list = Array.isArray(faces) ? faces.filter((f) => f && typeof f === 'object') : [];
+  const loaded = new Set(list.filter((f) => f.status === 'loaded').map(faceKey));
+  return fontFamilies(list.filter((f) => f.status === 'error' && !loaded.has(faceKey(f))).map((f) => f.family));
+}
+
+/**
+ * The font check's outcome for the capture record: a face list → { fontsFailed } (checked; [] = every declared face
+ * loaded, else the dead faces); an evaluate error, or no list → { fontsFailed: null, fontCheck: 'failed: <first line>' }
+ * — a check that could not run is recorded as not checked, never as [].
+ */
+export function fontCheckOutcome(faces, error) {
+  if (error == null && Array.isArray(faces)) return { fontsFailed: deadFontFaces(faces) };
+  const why = error != null ? String((error && error.message) || error).split('\n')[0] : 'no face list returned';
+  return { fontsFailed: null, fontCheck: `failed: ${why}` };
+}
+
+/**
+ * The stderr lines for a font check's outcome (fontCheckOutcome): one WARNING naming the dead faces, or one saying the
+ * check could not run (the record says fontsFailed: null); none when every declared face loaded.
+ */
+export function fontCheckLines({ fontsFailed, fontCheck } = {}) {
+  if (!Array.isArray(fontsFailed)) return [`stitch-shot WARNING: font-load check failed (${String(fontCheck || 'failed: unknown').replace(/^failed: /, '')}) — the record says fontsFailed: null (not checked): no face is known to have loaded`];
+  if (!fontsFailed.length) return [];
+  return [`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${fontsFailed.join(', ')} — this capture renders fallback type for them (silent false measurement, F-B2 class): the file failed to fetch, or a local() source names a font this browser does not have (recreation-procedure.md § Fonts policy). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`];
+}
+
 // Dismiss both overlay classes (consent + timed marketing modals) via
 // live-session, log what was closed, and note that the mouse is parked by
 // dismissOverlays itself (bottom-left — rule 10).
@@ -491,14 +555,9 @@ export const sidecarOf = (out) => `${out.replace(/\.png$/i, '')}.capture.json`;
 
 // gotoLive reads the entry for a 2xx denial page; this reads the page once more after the dismissal sweep(s) — a
 // denial page a script renders after domcontentloaded. A marker → BotChallengeError (exit 3), with the entry's
-// status. Returns capture.json's denialCheck: 'ok' (read, no marker) | 'skipped: <reason>' (the probe failed twice,
-// or a live-session.mjs copy that predates pageDenial) — a skip is one stderr line AND on the record, never a
-// silent pass.
+// status. Returns capture.json's denialCheck: 'ok' (read, no marker) | 'skipped: <reason>' (the probe failed twice)
+// — a skip is one stderr line AND on the record, never a silent pass.
 export async function recheckDenial(session, page, url, status) {
-  if (typeof session.pageDenial !== 'function' || typeof session.botChallengeError !== 'function') {
-    console.error('stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)');
-    return 'skipped: live-session.mjs predates pageDenial';
-  }
   const { marker, skipped } = await session.pageDenial(page);
   if (skipped) console.error(`stitch-shot: denial-page check skipped (${skipped})`);
   if (marker) throw session.botChallengeError(url, `HTTP ${status} ${marker}`, { denial: true });
@@ -530,14 +589,15 @@ async function main() {
   const sidecar = opts.freezeBaseline ? null : sidecarOf(out);
   if (sidecar) rmSync(sidecar, { force: true }); // a refused or failed capture leaves no record of an earlier one
   // Lazy: --help, the subcommands, the refusals above and the pure tests need neither playwright nor pngjs.
-  let chromium; let PNG;
-  try { ({ chromium } = await import('playwright')); ({ PNG } = await import('pngjs')); } catch (e) { throw new Error(`playwright / pngjs not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  let PNG;
+  try { ({ PNG } = await import('pngjs')); } catch (e) { throw new Error(`pngjs is not importable from ${HERE} (${e.code || e.message}) — from the project root run: npm i -D pngjs --legacy-peer-deps`); }
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'chrome' });
   try {
-    // UA + standard headers + webdriver spoof on the context (live-session).
+    // the standard headers on the context, the browser's own identity otherwise (live-session).
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
       viewport: { width: opts.width, height: opts.vh },
+      stateUrl: url,
     });
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
@@ -618,7 +678,7 @@ async function main() {
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(800);
 
-    // Font-load assertion (F-B2 companion): a webfont that failed to fetch
+    // Font-load assertion (F-B2 companion — header § FONT-LOAD, deadFontFaces): a face that failed to load
     // renders the ENTIRE capture in fallback type — wrong wraps, wrong
     // heights, wrong doc height — with no error anywhere, the same silent
     // false-measurement class as capturing a challenge page. Report failed
@@ -629,17 +689,17 @@ async function main() {
     // browsers too (capture-state — fallback is then the truthful capture).
     // The gate doc (source-fidelity-gate.md § Hardening rule 14) owns the
     // decision procedure; this warning is what triggers it.
-    const failedFonts = await page.evaluate(async () => {
+    let fontError = null;
+    const faces = await page.evaluate(async () => {
       await document.fonts.ready;
-      return [...new Set([...document.fonts].filter((f) => f.status === 'error').map((f) => f.family))];
-    }).catch(() => []);
-    if (failedFonts.length) {
-      console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
-    }
+      return [...document.fonts].map((f) => ({ family: f.family, weight: f.weight, style: f.style, status: f.status }));
+    }).catch((e) => { fontError = e; return null; });
+    const fonts = fontCheckOutcome(faces, fontError);
+    for (const line of fontCheckLines(fonts)) console.error(line);
     // --freeze-baseline never freezes a capture whose fonts failed: a baseline in fallback type would bake the
     // wrong wraps and heights into every later round. Nothing is written — fix the capture, then re-freeze.
-    if (opts.freezeBaseline && failedFonts.length) {
-      console.error(`stitch-shot: not freezing a baseline — the capture's font load failed (${failedFonts.join(', ')}); fix the capture, then re-freeze`);
+    if (opts.freezeBaseline && (fonts.fontsFailed === null || fonts.fontsFailed.length)) {
+      console.error(`stitch-shot: not freezing a baseline — ${fonts.fontsFailed === null ? `the font check could not run (${fonts.fontCheck})` : `the capture's font load failed (${fonts.fontsFailed.join(', ')})`}; fix the capture, then re-freeze`);
       process.exitCode = 2;
       return;
     }
@@ -712,10 +772,10 @@ async function main() {
     if (opts.freezeBaseline) { const tmp = `${out}.${process.pid}.tmp`; writeFileSync(tmp, pngBuf); renameSync(tmp, out); }
     else writeFileSync(out, pngBuf);
     if (opts.freezeBaseline) {
-      writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: failedFonts, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers } }));
+      writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: fonts.fontsFailed, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers } }));
       console.log(`froze origin baseline in ${baselineDir}: ${BASELINE_PNG} + ${BASELINE_JSON} (${opts.width}x${totalH}px)`);
     }
-    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, at: new Date().toISOString() }, null, 2)}\n`);
+    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, ...fonts, fixedLayers: { capture: 'once', count: layers.length, late: lateLayers }, at: new Date().toISOString() }, null, 2)}\n`);
     if (opts.checkBaseline) {
       const base = readBaselineProvenance(baselineDir);
       if (!base) console.log(`check-baseline: no frozen baseline in ${baselineDir} — freeze one first (nothing to compare)`);

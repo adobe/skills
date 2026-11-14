@@ -12,23 +12,34 @@
  *   ai-readability-served-gap info  ≥ 40 rendered main words never served (fragment / index / generated text)
  * Evidence carries the top blocks by DOM-only words so the fix lands on the right block.
  */
-import { loadPlaywright, finding, originAuthFor, attachOriginAuth, arg } from '../lib.mjs';
+import { openBrowser, newContext, finding, originAuthFor, attachOriginAuth, arg } from '../lib.mjs';
 import { scorePage } from '../../../deploy/scripts/ai-readability.mjs';
+
+export function isPageOnOrigin(base, path) {
+  try {
+    const origin = new URL(base).origin;
+    return origin !== 'null' && new URL(`${base}${path}`).origin === origin;
+  } catch { return false; }
+}
 
 export async function run(ctx) {
   const { base, inventory } = ctx;
+  const origin = base.replace(/\/$/, '');
   const findings = [];
-  const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: 'plain' });
   const auth = originAuthFor(base);
   const headers = auth ? { authorization: auth } : {};
   const excludeBlocks = (arg('ai-exclude-blocks', 'client-app,widget') || '').split(',').map((s) => s.trim()).filter(Boolean);
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: headers });
+  const context = await newContext(browser, { viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(context);
   const summary = [];
   try {
     for (const p of inventory.pages) {
-      const r = await scorePage(context, base.replace(/\/$/, ''), p.path, { excludeBlocks, headers });
+      if (!isPageOnOrigin(origin, p.path)) {
+        findings.push(finding('ai-readability', 'ai-readability-unmeasured', 'info', p.path, 'not measured: path is outside the configured origin'));
+        continue;
+      }
+      const r = await scorePage(context, origin, p.path, { excludeBlocks, headers });
       if (r.error) { findings.push(finding('ai-readability', 'ai-readability-unmeasured', 'info', p.path, `not measured: ${r.error}`)); continue; }
       const top = r.blocks.filter((b) => b.servedGap > 0).slice(0, 5).map((b) => ({ block: b.block, servedGap: b.servedGap, words: b.words, sample: b.sample }));
       const ev = { strict: r.strict, landmarksCounted: r.landmarksCounted, code: r.code, fragments: r.fragments, servedGap: r.servedGap, topBlocks: top };

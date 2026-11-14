@@ -498,3 +498,59 @@ test('default `all` with an up-to-date cache reports no stale-cache warning', as
   assert.equal(again.staleCache, undefined);
   assert.equal(again.targets.length, 2);
 });
+
+// ── AEM MCP Server recipe results ───────────────────────────────────────────
+
+const RESTRICTED = "The MCP Server is restricted and isn't able to perform this operation. If this seems incorrect, contact support.";
+
+for (const [name, response] of [
+  ['a denial without a success field', { error: RESTRICTED }],
+  ['success: false', { success: false, error: 'Multiple projects match "Acme".', suggestion: ['Acme (id: a)', 'Acme Old (id: b)'] }],
+  ['a partial read (fetchErrors)', { success: true, targets: [], summary: {}, total: 0, truncated: false, fetchErrors: { scheduler: 502 } }],
+  ['an empty response', undefined]
+]) {
+  test(`MCP path: ${name} fails and is never cached`, async () => {
+    const dir = tempDir();
+    const r = await getBpaFindings('scheduler', {
+      collectionsDir: dir, projectId: 'proj-R', mcpFetcher: async () => response
+    });
+    assert.equal(r.success, false);
+    assert.equal(r.source, 'mcp-server');
+    assert.ok(typeof r.error === 'string' && r.error.length > 0, 'failure carries an error');
+    if (response?.error) assert.equal(r.error, response.error, 'server error is kept verbatim');
+    if (response?.suggestion) assert.deepEqual(r.suggestion, response.suggestion);
+    assert.equal(fs.existsSync(path.join(dir, 'mcp', 'proj-R', 'scheduler.json')), false);
+  });
+}
+
+test('MCP path: a truncated AEM MCP Server result reports the full count on every batch', async () => {
+  const dir = tempDir();
+  const targets = Array.from({ length: 7 }, (_, i) => ({
+    pattern: 'scheduler', className: `com.example.Job${i}`,
+    identifier: 'org.apache.sling.commons.scheduler', issue: 'x', severity: 'high'
+  }));
+  const mcpFetcher = async () => ({
+    success: true, projectId: 'proj-T', targets, summary: { schedulerCount: 640 }, total: 640, truncated: true
+  });
+  const first = await getBpaFindings('scheduler', { collectionsDir: dir, projectId: 'proj-T', mcpFetcher });
+  assert.equal(first.success, true);
+  assert.equal(first.paging.total, 7, 'paging covers only what was returned');
+  assert.deepEqual(first.truncated, { returned: 7, reportedTotal: 640 });
+  assert.ok(first.message.includes('7 of 640'));
+
+  const next = await getBpaFindings('scheduler', {
+    collectionsDir: dir, projectId: 'proj-T', offset: first.paging.nextOffset,
+    mcpFetcher: async () => { throw new Error('must read the cache'); }
+  });
+  assert.deepEqual(next.truncated, { returned: 7, reportedTotal: 640 }, 'cached batches keep the flag');
+});
+
+test('MCP path: an untruncated AEM MCP Server result has no truncated field', async () => {
+  const dir = tempDir();
+  const r = await getBpaFindings('scheduler', {
+    collectionsDir: dir, projectId: 'proj-U',
+    mcpFetcher: async () => ({ success: true, targets: [], summary: { schedulerCount: 0 }, total: 0, truncated: false })
+  });
+  assert.equal(r.success, true);
+  assert.equal(r.truncated, undefined);
+});

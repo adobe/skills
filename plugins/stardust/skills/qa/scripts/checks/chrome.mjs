@@ -25,7 +25,7 @@ export async function run(ctx) {
   if (!dir) throw new Error('chrome-compare.mjs not found (../../../diff/scripts/ or ../../diff/): copy the diff skill\'s scripts next to these');
   const contract = JSON.parse(readFileSync(file, 'utf8'));
   const out = join(opts.outDir || 'stardust/qa', 'chrome', 'header-live.json');
-  const r = spawnSync(process.execPath, [join(dir, 'chrome-explore.mjs'), `${base.replace(/\/$/, '')}/`, out, '--width', Object.keys(contract.widths || {}).join(',') || '1440,390', '--shots', join(dirname(out), 'shots')], { encoding: 'utf8', timeout: 30 * 60 * 1000 });
+  const r = spawnSync(process.execPath, [join(dir, 'chrome-explore.mjs'), `${base.replace(/\/$/, '')}/`, out, '--width', Object.keys(contract.widths || {}).join(',') || '1440,390', '--shots', join(dirname(out), 'shots'), '--max-requests', '0', '--pace-ms', '0', '--reload-pause-ms', '0'], { encoding: 'utf8', timeout: 30 * 60 * 1000 });
   if (r.status !== 0) return [finding('chrome', 'header-explore-failed', 'error', '/', `chrome-explore exited ${r.status}: ${(r.stderr || '').trim().split('\n').pop()}`)];
   const { applyDecisions, compareDocs, findingKey, visualFindings } = await import(pathToFileURL(join(dir, 'chrome-compare.mjs')).href);
   const flow = (() => { try { return JSON.parse(readFileSync('stardust/state.json', 'utf8')).flow; } catch { return null; } })();

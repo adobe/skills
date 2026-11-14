@@ -26,3 +26,4 @@ dist/
 !plugins/web/cli/dist/
 .playwright-cli/
 .web/
+.idea

@@ -328,7 +328,7 @@ export function parseArgs(argv) {
 
 /** Inventory one side: visit + settle, presence inventory, clip inventory. */
 export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null }) {
-  const { ctx, page } = await openPage(browser, { width, locale });
+  const { ctx, page } = await openPage(browser, { width, locale, stateUrl: url });
   try {
     const v = await visit(page, url, { warmup, settle: { passes: settlePasses }, httpError });
     const inv = await page.evaluate(inPage(presenceInventoryInPage, countWords ? { rootSel, variableSels, countWords } : { rootSel, variableSels }, morePrelude(moreWords)));
@@ -339,8 +339,7 @@ export async function inventorySide(browser, url, { width, locale, warmup, rootS
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const { chromium } = await import('playwright');
-  const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
+  const browser = await openBrowser({ mode: opts.plain ? 'plain' : 'headed' });
   let o; let e; let tier;
   try {
     tier = browserTier(browser);

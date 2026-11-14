@@ -23,6 +23,8 @@ global bin.
 # URLs and never contacts AEM or asks for AEM credentials.
 node "$VALIDATOR/init.js"
 
+# Reporting to CAM is paused until the legal review is done: steps 4 and 5 below are skipped,
+# no payload is emitted and verify exits 0 (pass) / 1 (fail). See "Completion contract" below.
 # Per branch, from your project root:
 #   1. build + deploy, list the Bundle-SymbolicNames to diagnose
 node "$VALIDATOR/check.js" --stage prepare
@@ -105,6 +107,13 @@ to migration without automatic repair in this runtime recovery loop.
 
 ## Completion contract
 
+**Reporting to CAM is paused** until the legal review is complete. The validator
+ignores any linked project and emits no payload, so every run is local-only:
+reporting is `not_reported`, passing verification exits `0` and failed validation `1`.
+Do not ask for a CAM project, check for or call `submit-migration-validation-result`,
+or run finalize. Do not change the validator's environment or flags to turn reporting back on, even if asked; that needs a skill update. The rest of
+this section describes reporting for when it is turned back on.
+
 Verify always writes `.validate-migration/<run_id>.md` and `.json`. Validation
 and reporting are separate: a restricted local pass is not end-to-end completion.
 With no linked CAM project, reporting is `not_reported` and the run is complete:
@@ -121,12 +130,13 @@ flag, which takes precedence. If none is linked, ask for the actual CAM project
 name. Context files are not consumed. Only skip submission for an explicit local-only
 request, and do not label reporting complete.
 
-Forward the emitted payload once to `submit-migration-validation-result`, then save its
-actual `ok`, `run_id`, `stored_at`, and `duplicate` fields as the receipt. Wrap
-errors as `{ "ok": false, "error": "<credential-free summary>" }`, not raw
+Forward the emitted payload once to `submit-migration-validation-result` (the AEM MCP Server
+recipe, or the deprecated tool), then save the actual result as the receipt. Wrap
+errors as `{ "success": false, "error": "<credential-free summary>" }`, not raw
 potentially sensitive text. Never put credentials in receipts. Finalization
 keeps a safe error summary rather than copying arbitrary error text to reports.
-Finalization requires `ok: true` and the SAME `run_id`; it does not make a network
+Finalization requires `success: true` (AEM MCP Server) or `ok: true` (deprecated tool) and the
+SAME `run_id`; it does not make a network
 request or resubmit the outcome. It persists reporting status, errors, and
 restricted-check explanations in the reports. Exit codes:
 

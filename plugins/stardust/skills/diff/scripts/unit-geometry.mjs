@@ -216,7 +216,7 @@ export function parseArgs(argv) {
 }
 
 export async function measureUnits(browser, url, sels, { width, locale, warmup, n }) {
-  const { ctx, page } = await openPage(browser, { width, locale });
+  const { ctx, page } = await openPage(browser, { width, locale, stateUrl: url });
   try {
     const v = await visit(page, url, { warmup });
     const bySel = {};
@@ -247,8 +247,7 @@ export function unitsFor(families, slug, template = null) {
 async function main() {
   const opts = parseArgs(process.argv);
   if (!opts.units.length) { console.log(`unit-geometry: none declared for ${opts.slug} in ${opts.families} → n/a`); return; }
-  const { chromium } = await import('playwright');
-  const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
+  const browser = await openBrowser({ mode: opts.plain ? 'plain' : 'headed' });
   let oInv; let eInv; let tier;
   try {
     tier = browserTier(browser);

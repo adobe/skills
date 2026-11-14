@@ -133,3 +133,35 @@ test('extendConfig shallow-merges launchOptions and contextOptions, keeping othe
     { launchOptions: { proxy: { server: 'http://127.0.0.1:3002' } } },
   );
 });
+
+test('loadRecipe reads env:NAME for cdpEndpoint and cdpHeaders values from the environment', () => {
+  const file = tmp();
+  const config = {
+    cdpEndpoint: 'env:REMOTE_WSS',
+    cdpHeaders: { Authorization: 'env:REMOTE_AUTH', 'X-Plain': 'kept' },
+    isolated: true,
+    launchOptions: { channel: 'env:NOT_RESOLVED_HERE' },
+  };
+  saveRecipe(file, 'probe', [{ config }]);
+  const env = { REMOTE_WSS: 'wss://u:p@remote.test:9222', REMOTE_AUTH: 'Basic abc' };
+  const out = loadRecipe(file, { env });
+  assert.equal(out.config.cdpEndpoint, 'wss://u:p@remote.test:9222');
+  assert.deepEqual(out.config.cdpHeaders, { Authorization: 'Basic abc', 'X-Plain': 'kept' });
+  assert.equal(out.config.launchOptions.channel, 'env:NOT_RESOLVED_HERE');
+  assert.equal(read(file).probe[0].config.cdpEndpoint, 'env:REMOTE_WSS');
+});
+
+test('loadRecipe with an unset env:NAME is a USAGE error naming the variable, not a value', () => {
+  const file = tmp();
+  saveRecipe(file, 'probe', [{ config: { cdpEndpoint: 'env:MISSING_WSS' } }]);
+  assert.throws(
+    () => loadRecipe(file, { env: {} }),
+    (e) => e.code === 'USAGE' && /cdpEndpoint reads MISSING_WSS/.test(e.message),
+  );
+});
+
+test('loadRecipe keeps a literal cdpEndpoint as is', () => {
+  const file = tmp();
+  saveRecipe(file, 'probe', [{ config: { cdpEndpoint: 'http://127.0.0.1:9222' } }]);
+  assert.equal(loadRecipe(file, { env: {} }).config.cdpEndpoint, 'http://127.0.0.1:9222');
+});

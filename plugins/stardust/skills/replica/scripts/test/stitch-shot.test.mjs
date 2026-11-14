@@ -4,8 +4,8 @@
 // path; the exit code per error class (BotChallengeError → 3, anything else → 1); recheckDenial on stub pages
 // through the real pageDenial / botChallengeError — a vendor signature or a tiny one-error-heading page throws the
 // exit-3 error naming "HTTP <status> denial page — …", "origin blocked" and --headed, an ordinary page is 'ok', a
-// page the probe cannot read or a live-session copy that predates pageDenial is 'skipped: <reason>' with ONE stderr
-// line. End to end, where playwright and pngjs are importable from the scripts dir: a local server's denial pages
+// page the probe cannot read is 'skipped: <reason>' with ONE stderr line. End to end, where playwright and pngjs are
+// importable from the scripts dir: a local server's denial pages
 // (the recorded shape — about 900 px of "can't process your request" + "Incident Number" served with 200 — the same
 // rendered by script after load, and a tiny page under one error heading) exit 3 with no PNG and no capture.json;
 // an ordinary page and a long article that mentions "press & hold" exit 0 and capture.json records denialCheck 'ok'.
@@ -13,29 +13,33 @@
 // fixture consent box and --no-dismiss leaving it. And (0.34.5) the origin-baseline contract, no browser: the pure
 // bookkeeping (baselineTargets, baselineProvenance, writeJsonAtomic, baselineExists / readBaselineProvenance,
 // baselineStatus, compareBaseline, liveRecord), the two subcommands gate.sh calls (`baseline <dir>`, `record <live.json>`),
-// the refusals that precede any capture and the default-OFF parse. And (0.34.12) fixed / sticky layers captured once:
-// layerAction, isBackdrop, overlaySuspects, layerPassScript (the in-page pass) on a stub DOM, and end to end a fixed
-// header, a scroll-triggered one and a fixed inset:0 backdrop.
+// the refusals that precede any capture and the default-OFF parse. And (0.36.1) the font check: fontFamilies, faceKey,
+// deadFontFaces (a dead face = status error with no loaded twin of its family, weight and style), fontCheckOutcome,
+// fontCheckLines; end to end a 404 face and an unresolved local() named in the capture record's fontsFailed, a clean
+// page → [], document.fonts throwing → null + fontCheck, a failed capture removing an earlier record. And (0.34.12) fixed /
+// sticky layers captured once: layerAction, isBackdrop, overlaySuspects, layerPassScript (the in-page pass) on a stub DOM,
+// and end to end a fixed header, a scroll-triggered one and a fixed inset:0 backdrop.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { runInNewContext } from 'node:vm';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   BASELINE_JSON, BASELINE_PNG, BASELINE_SCHEMA, BASELINE_WRITER, HELP, LIVE_RECORD_WRITER, UsageError,
-  baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, exitCodeFor, isBackdrop, layerAction, layerPassScript,
-  liveRecord, overlayExtras, overlaySuspects, parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
+  baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, deadFontFaces, exitCodeFor, faceKey,
+  fontCheckLines, fontCheckOutcome, fontFamilies, isBackdrop, layerAction, layerPassScript, liveRecord, overlayExtras, overlaySuspects,
+  parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
 } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
-// live-session.mjs in either layout (plugin tree / project copy) — imports nothing, so the pure part can use it
-const LIB = ['../../../diff/scripts/live-session.mjs', '../../diff/live-session.mjs'].map((p) => resolve(HERE, p)).find((p) => existsSync(p));
-const session = await import(pathToFileURL(LIB).href);
+// the front door (browser.mjs) in either layout (plugin tree / project copy) — the pure part uses its live-session names
+const BROWSER = ['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+const session = await import(BROWSER.href);
 let checks = 0; let failed = 0;
 const check = async (name, fn) => { checks += 1; try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 // stderr lines console.error printed while fn ran
@@ -52,7 +56,7 @@ await check('parseArgs: positional url + out, defaults (1440×900, no settle, wa
   assert.equal(url, 'https://a/'); assert.equal(out, 'o.png');
   assert.equal(opts.width, 1440); assert.equal(opts.vh, 900); assert.equal(opts.settle, false); assert.equal(opts.wait, 1200); assert.equal(opts.timeout, 60000);
   assert.equal(opts.consent, null); assert.deepEqual(opts.dismiss, []); assert.equal(opts.noDismiss, false); assert.equal(opts.headed, false); assert.equal(opts.locale, null);
-  assert.match(opts.ua, /Chrome\//);
+  assert.equal(opts.ua, null, 'no user agent of our own — the browser presents its own');
 });
 await check('parseArgs: --settle raises the default wait to 3000; an explicit --wait wins; --width/--vh/--timeout/--ua/--locale/--headed', () => {
   assert.equal(parseArgs(argv('u', 'o', '--settle')).opts.wait, 3000);
@@ -138,13 +142,14 @@ await check('recheckDenial: an ordinary page → \'ok\', nothing on stderr; a pa
   assert.deepEqual(await stderrOf(async () => { skipped = await recheckDenial(session, unreadable, 'https://x.test/', 200); }), ['stitch-shot: denial-page check skipped (Execution context was destroyed, most likely because of a navigation)']);
   assert.equal(skipped, 'skipped: Execution context was destroyed, most likely because of a navigation');
 });
-await check('recheckDenial: a live-session copy that predates pageDenial / botChallengeError never throws — \'skipped: live-session.mjs predates pageDenial\' and ONE stderr line naming the stale copy', async () => {
-  for (const stale of [{}, { pageDenial: session.pageDenial }, { botChallengeError: session.botChallengeError }]) {
-    let out;
-    const lines = await stderrOf(async () => { out = await recheckDenial(stale, { evaluate: async () => { throw new Error('never read'); } }, 'https://x.test/', 200); });
-    assert.deepEqual(lines, ['stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)'], Object.keys(stale).join() || 'neither');
-    assert.equal(out, 'skipped: live-session.mjs predates pageDenial');
-  }
+await check('a copy without the master scripts stops with the copy instruction', () => {
+  const copy = mkdtempSync(join(tmpdir(), 'stitch-nomaster-'));
+  try {
+    copyFileSync(SCRIPT, join(copy, 'stitch-shot.mjs'));
+    const r = spawnSync(process.execPath, [join(copy, 'stitch-shot.mjs'), '--help'], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(r.stderr.includes('browser.mjs not found') && r.stderr.includes('stardust/scripts/stardust/'), r.stderr);
+  } finally { rmSync(copy, { recursive: true, force: true }); }
 });
 await check('--help in an empty cwd: exit 0, usage, exit 3 named for an edge interstitial or a 2xx denial page with --headed, the capture.json record — nothing written, no playwright needed; importing this module started no capture', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'stitch-help-'));
@@ -153,7 +158,7 @@ await check('--help in an empty cwd: exit 0, usage, exit 3 named for an edge int
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /Usage: node stitch-shot\.mjs <url> <out\.png>/);
     assert.match(r.stdout, /3 bot challenge[^]*2xx denial page[^]*pageDenial[^]*no PNG, no capture\.json; escalate --headed/);
-    for (const f of ['--consent <sel>', '--dismiss <sel,…>', '--no-dismiss', '--freeze-baseline', '--check-baseline', '--force', 'baseline <dir>', 'record <live.json>', '--gate-against-baseline']) assert.ok(r.stdout.includes(f) && HELP.includes(f), f);
+    for (const f of ['--consent <sel>', '--dismiss <sel,…>', '--no-dismiss', '--freeze-baseline', '--check-baseline', '--force', 'baseline <dir>', 'record <live.json>', '--gate-against-baseline', 'fontsFailed = [] (every declared face loaded)', 'null + fontCheck']) assert.ok(r.stdout.includes(f) && HELP.includes(f), f);
     assert.match(r.stdout, /<stem>\.capture\.json/);
     assert.match(r.stdout, /denialCheck = 'ok' \|\n'skipped: <reason>'/);
     assert.equal(r.stderr, '');
@@ -337,6 +342,59 @@ await check('--freeze-baseline over an existing baseline is refused with exit 2 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+// ---- the font check (header § FONT-LOAD): pure --------------------------------------------------------------
+const face = (family, status, weight = 'normal', style = 'normal') => ({ family, weight, style, status });
+await check('fontFamilies: surrounding quotes stripped, trimmed, empties dropped, unique, sorted — the record\'s fontsFailed', () => {
+  assert.deepEqual(fontFamilies([' "Z" ', 'Brand Sans', '"Brand Sans"', "'Brand Sans'", '', null, undefined]), ['Brand Sans', 'Z']);
+  assert.deepEqual(fontFamilies([]), []); assert.deepEqual(fontFamilies(undefined), []);
+});
+await check('faceKey: family (unquoted, case-folded) + weight + style — normal = 400, bold = 700, an absent descriptor is the default; a bare string is a family at the defaults', () => {
+  assert.equal(faceKey({ family: '"Brand Sans"', weight: 'normal', style: 'normal' }), 'brand sans|400|normal');
+  assert.equal(faceKey({ family: 'Brand Sans', weight: 'bold' }), 'brand sans|700|normal');
+  assert.equal(faceKey({ family: 'brand SANS', weight: '700', style: 'Normal' }), 'brand sans|700|normal');
+  assert.equal(faceKey({ family: 'Brand Sans', weight: '100  900', style: 'italic' }), 'brand sans|100 900|italic', 'a variable range is kept as written');
+  assert.equal(faceKey('Brand Sans'), 'brand sans|400|normal');
+  assert.equal(faceKey({ family: 'Brand Sans', weight: '400' }), faceKey({ family: "'Brand Sans'", weight: 'normal' }), 'normal and 400 are one weight');
+  assert.notEqual(faceKey({ family: 'Brand Sans', weight: '400' }), faceKey({ family: 'Brand Sans', weight: '700' }));
+});
+await check('deadFontFaces: keyed by family, weight and style — a 404 bold beside a loaded regular is dead; a failed declaration beside a loaded twin of the same key is not', () => {
+  assert.deepEqual(deadFontFaces([face('Brand Sans', 'loaded'), face('Brand Sans', 'error', '700')]), ['Brand Sans'], 'another weight loaded: the bold renders in fallback type — dead');
+  assert.deepEqual(deadFontFaces([face('Brand Sans', 'loaded', 'bold'), face('Brand Sans', 'error', '700')]), [], 'the same weight loaded (bold = 700): a duplicate declaration, not dead');
+  assert.deepEqual(deadFontFaces([face('"Brand Sans"', 'loaded'), face('Brand Sans', 'error', 'normal')]), [], 'quotes do not split a key');
+  assert.deepEqual(deadFontFaces([face('Brand Sans', 'loaded'), face('Brand Sans', 'error', 'normal', 'italic')]), ['Brand Sans'], 'another style loaded: the italic is dead');
+  assert.deepEqual(deadFontFaces([face('Brand Sans', 'error'), face('Brand Sans', 'error', '700'), face('Other', 'error')]), ['Brand Sans', 'Other'], 'a family is named once, sorted');
+});
+await check('deadFontFaces: an unresolved local() source is dead like a failed fetch — status error, no URL anywhere; an unloaded face (never needed) is not; every face loaded → []; no faces → []', () => {
+  // the recorded shape: metric fallback faces declared with local() platform fonts the gate's browser does not have
+  const fallback = [face('Brand Sans', 'error'), face('Brand Sans Fallback', 'error'), face('Brand Serif Fallback', 'error', '400', 'normal')];
+  assert.deepEqual(deadFontFaces(fallback), ['Brand Sans', 'Brand Sans Fallback', 'Brand Serif Fallback']);
+  assert.deepEqual(deadFontFaces([face('Unused', 'unloaded'), face('Brand Sans', 'loaded')]), [], 'unloaded: never needed by any text');
+  assert.deepEqual(deadFontFaces([face('Brand Sans', 'loaded'), face('Brand Sans', 'loaded', '700'), face('Brand Serif', 'loaded')]), []);
+  assert.deepEqual(deadFontFaces([]), []); assert.deepEqual(deadFontFaces(null), []); assert.deepEqual(deadFontFaces([null, 'x']), []);
+});
+await check('fontCheckOutcome: a face list → { fontsFailed } (checked, no fontCheck key); an error or no list → { fontsFailed: null, fontCheck: "failed: <first line>" } — never []', () => {
+  const ok = fontCheckOutcome([face('Brand Sans', 'error'), face('Other', 'loaded')], null);
+  assert.deepEqual(ok, { fontsFailed: ['Brand Sans'] });
+  assert.ok(!('fontCheck' in ok), 'fontCheck only when the check failed');
+  assert.deepEqual(fontCheckOutcome([face('Other', 'loaded')], null), { fontsFailed: [] });
+  const bad = fontCheckOutcome(null, new Error('page.evaluate: Execution context was destroyed\n    at main'));
+  assert.deepEqual(bad, { fontsFailed: null, fontCheck: 'failed: page.evaluate: Execution context was destroyed' });
+  assert.deepEqual(Object.keys(bad), ['fontsFailed', 'fontCheck'], 'fontCheck right after fontsFailed');
+  assert.deepEqual(fontCheckOutcome(undefined, 'timeout'), { fontsFailed: null, fontCheck: 'failed: timeout' });
+  assert.deepEqual(fontCheckOutcome({ not: 'a list' }, null), { fontsFailed: null, fontCheck: 'failed: no face list returned' });
+});
+await check('fontCheckLines: a check that could not run → ONE stderr line saying the record is fontsFailed: null (not checked); dead faces → one WARNING naming them and both causes; every face loaded → none', () => {
+  const skipped = fontCheckLines({ fontsFailed: null, fontCheck: 'failed: fonts unavailable' });
+  assert.equal(skipped.length, 1);
+  assert.equal(skipped[0], 'stitch-shot WARNING: font-load check failed (fonts unavailable) — the record says fontsFailed: null (not checked): no face is known to have loaded');
+  assert.deepEqual(fontCheckLines({ fontsFailed: [] }), []);
+  const dead = fontCheckLines({ fontsFailed: ['Brand Sans', 'Brand Sans Fallback'] });
+  assert.equal(dead.length, 1);
+  assert.match(dead[0], /^stitch-shot WARNING: FONT LOAD FAILED for declared face\(s\) Brand Sans, Brand Sans Fallback — this capture renders fallback type for them/);
+  assert.match(dead[0], /the file failed to fetch, or a local\(\) source names a font this browser does not have/);
+  assert.match(fontCheckLines({})[0], /font-load check failed \(unknown\)/, 'no outcome at all reads as not checked');
+});
+
 // ---- end-to-end (needs playwright + pngjs importable from the script's location) ---------------------------
 await check('layerAction: chunk 1 shows every layer; later chunks hide a fixed layer always and a sticky one only while stuck (displaced from its own place); a backdrop and a layer back in the flow show', () => {
   assert.equal(layerAction({ kind: 'fixed', top0: 0 }, 0, 0), 'show');
@@ -459,6 +517,11 @@ if (pwProbe.status !== 0) {
     '/denied-late': html('Notice', `<p>Loading the page.</p><script>document.addEventListener('DOMContentLoaded', () => setTimeout(() => { document.body.innerHTML = ${JSON.stringify(RECORDED)}; }, 500));</script>`),
     '/denied-heading': html('Error', '<h1>Something went wrong</h1><p>Please try again in a few minutes.</p>'),
     '/consent': html('Consent', '<style>body{height:2400px}h1,p{margin:0}#cmp{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><h1>Welcome</h1><p>Ordinary copy.</p><div id="cmp"><button id="yes" onclick="document.getElementById(\'cmp\').remove()">Yes</button></div>'),
+    // the recorded shape: a face whose file 404s and a metric fallback face declared with a local() font this machine lacks;
+    // a face no text uses stays unloaded
+    '/fonts': html('Brand type', '<style>@font-face{font-family:"Brand Sans";src:url(/missing.woff2) format("woff2")}@font-face{font-family:"Brand Fallback";src:local("No Such Platform Font Zz");size-adjust:105%}@font-face{font-family:"Unused";src:local("No Such Unused Font Zz")}</style><section style="font-family:\'Brand Sans\',\'Brand Fallback\',sans-serif">Brand type</section>'),
+    // a page whose document.fonts throws: the font-load check cannot run
+    '/fonts-unreadable': html('Text', '<script>Object.defineProperty(document, \'fonts\', { configurable: true, get() { throw new Error(\'fonts unavailable\'); } });</script><section>Text</section>'),
     // a consent manager whose accept control reads "Allow all" (no Accept text): matched by its vendor class, no flag
     '/cmp-allow-all': html('Consent', '<style>body{height:2400px}h1,p{margin:0}.ch2-container{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><h1>Welcome</h1><p>Ordinary copy.</p><div class="ch2-container"><button class="ch2-btn ch2-allow-all-btn" onclick="this.parentNode.remove()">Allow all</button></div>'),
     // a fixed 60 px header, a red marker right under the header's place at the top of chunk 2 (y 600–640), a sticky
@@ -492,12 +555,15 @@ if (pwProbe.status !== 0) {
   });
   try {
     const pngSize = (f) => { const b = readFileSync(f); return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }; };
-    const [ok, article, consent, noDismiss, allowAll, fixed, late, hiddenFirst, unlisted, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/fixed', 'fixed'), stitch('/late', 'late'), stitch('/cmp-hidden-first', 'hidden-first'), stitch('/cmp-unlisted', 'unlisted'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
-    await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', at }', () => {
+    writeFileSync(join(work, 'failed.capture.json'), '{ "stale": true }\n');
+    const [ok, article, consent, noDismiss, allowAll, fixed, late, hiddenFirst, unlisted, fonts, unread, failedCap, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/fixed', 'fixed'), stitch('/late', 'late'), stitch('/cmp-hidden-first', 'hidden-first'), stitch('/cmp-unlisted', 'unlisted'), stitch('/fonts', 'fonts'), stitch('/fonts-unreadable', 'unread'), stitch('/nope', 'failed'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
+    const warnings = (r) => r.stderr.split('\n').filter((l) => /WARNING/.test(l));
+    await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', fontsFailed, fixedLayers, at }', () => {
       assert.equal(ok.status, 0, ok.stderr);
       assert.ok(existsSync(ok.out), 'the PNG');
       assert.ok(ok.cap, 'the sidecar');
-      assert.deepEqual(Object.keys(ok.cap), ['writtenBy', 'url', 'width', 'vh', 'height', 'chunks', 'denialCheck', 'fixedLayers', 'at']);
+      assert.deepEqual(Object.keys(ok.cap), ['writtenBy', 'url', 'width', 'vh', 'height', 'chunks', 'denialCheck', 'fontsFailed', 'fixedLayers', 'at']);
+      assert.deepEqual(ok.cap.fontsFailed, [], 'a page with no @font-face: every declared face loaded');
       assert.deepEqual(ok.cap.fixedLayers, { capture: 'once', count: 0, late: 0 });
       assert.deepEqual([ok.cap.writtenBy, ok.cap.url, ok.cap.width, ok.cap.vh, ok.cap.denialCheck], ['skills/replica/scripts/stitch-shot.mjs', `${base}/ok`, 800, 600, 'ok']);
       assert.ok(ok.cap.height >= 1200 && ok.cap.chunks >= 2 && !Number.isNaN(Date.parse(ok.cap.at)), JSON.stringify(ok.cap));
@@ -552,6 +618,24 @@ if (pwProbe.status !== 0) {
       assert.equal(noDismiss.status, 0, noDismiss.stderr + noDismiss.stdout);
       assert.match(noDismiss.stdout, /overlays left as the page shows them \(--no-dismiss\)/); assert.doesNotMatch(noDismiss.stdout, /dismissed via/);
       assert.deepEqual(pngSize(noDismiss.out), { width: 800, height: 2400 });
+    });
+    await check('e2e: a face whose file 404s and a fallback face whose local() names a font this machine lacks are both dead — the record\'s fontsFailed names them beside the one WARNING; the unused face is not; exit 0', () => {
+      assert.equal(fonts.status, 0, fonts.stderr);
+      assert.equal(warnings(fonts).length, 1, fonts.stderr);
+      assert.match(warnings(fonts)[0], /FONT LOAD FAILED for declared face\(s\) Brand Fallback, Brand Sans — /);
+      assert.deepEqual(fonts.cap && fonts.cap.fontsFailed, ['Brand Fallback', 'Brand Sans']);
+      assert.ok(!('fontCheck' in fonts.cap), 'a check that ran carries no fontCheck');
+    });
+    await check('e2e: a font-load check that cannot run (document.fonts throws) → fontsFailed null + fontCheck right after it, ONE stderr WARNING, exit 0', () => {
+      assert.equal(unread.status, 0, unread.stderr);
+      assert.equal(warnings(unread).length, 1, unread.stderr);
+      assert.match(warnings(unread)[0], /^stitch-shot WARNING: font-load check failed \(.*fonts unavailable.*\) — the record says fontsFailed: null \(not checked\)/);
+      assert.equal(unread.cap.fontsFailed, null); assert.match(unread.cap.fontCheck, /^failed: .*fonts unavailable/);
+      const keys = Object.keys(unread.cap); assert.equal(keys[keys.indexOf('fontsFailed') + 1], 'fontCheck', keys.join(','));
+    });
+    await check('e2e: a failed capture (a 404 page) writes no record and removes an earlier one at the same path', () => {
+      assert.notEqual(failedCap.status, 0, 'the capture failed');
+      assert.deepEqual([existsSync(failedCap.out), existsSync(failedCap.sidecar)], [false, false]);
     });
     const expected = [
       ['/denied', 'HTTP 200 denial page — "can\'t process your request" + "Incident Number"'],

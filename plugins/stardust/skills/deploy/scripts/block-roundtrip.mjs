@@ -230,13 +230,19 @@ async function main() {
   const widgets = widgetLinks(mainHtml);
   const dropWidgets = () => document.querySelectorAll('main p > a[href*="/widgets/"], main p > a[data-widget]').forEach((a) => { const p = a.parentElement; if (p.childElementCount === 1 && p.textContent.trim() === a.textContent.trim()) p.remove(); });
 
-  // playwright is imported only past the --help guard, so --help (and the test import) answers on a checkout without it.
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch();
+  // the browser front door is loaded only past the --help guard, so --help (and the test import) answers on a checkout without it.
+  const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+    .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
+  if (!BROWSER) {
+    console.error('block-roundtrip: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+    process.exit(1);
+  }
+  const { openBrowser, newPage, goto } = await import(BROWSER.href);
+  const browser = await openBrowser({ mode: 'plain' });
   let failed = false;
   try {
     // ── harness: authored content + foundation/block CSS, decorate locally ──
-    const harness = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
+    const harness = await newPage(browser, { viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
     const styles = fs.readFileSync(stylesPath, 'utf8');
     // First pass with no block CSS just to discover block names when --blocks omitted.
     await harness.setContent(`<!doctype html><html><head><meta charset="utf-8"></head><body><main>${mainHtml}</main></body></html>`);
@@ -291,8 +297,8 @@ async function main() {
     const ewTotals = { authored: 0, editable: 0, dead: 0, duplicated: 0, exempt: 0 };
 
     // ── prototype ──
-    const protoPage = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
-    await protoPage.goto(proto, { waitUntil: 'networkidle', timeout: 60000 });
+    const protoPage = await newPage(browser, { viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
+    await goto(protoPage, proto, { waitUntil: 'networkidle', timeout: 60000 });
     await settle(protoPage);
     const protoCounts = await protoPage.evaluate(tagProtoSections, names.map((name) => ({ name, selector: opts.map[name] || null })));
 

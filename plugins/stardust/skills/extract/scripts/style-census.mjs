@@ -23,19 +23,20 @@
  *
  * Usage:
  *   node style-census.mjs [--pages <dir> | --urls a,b,c] [--out <file>] [--width <px>]…
- *                         [--concurrency <n>] [--max-pages <n>] [--timeout-ms <ms>] [--ua <string>]
- *                         [--dismiss <sel,…>] [--headed] [--locale <tag>]
+ *                         [--concurrency <n>] [--parallel-live-ok] [--max-pages <n>]
+ *                         [--timeout-ms <ms>] [--ua <string>] [--dismiss <sel,…>] [--headed] [--locale <tag>]
  *     --pages <dir>        page records (default stardust/current/pages): every *.json there,
  *                          each record's finalUrl (or url) is measured
  *     --urls a,b,c         measure exactly these URLs instead of a pages dir
  *     --out <file>         output (default stardust/current/_computed-styles.json)
  *     --width <px>         viewport width; repeatable or comma-separated (default 1440)
- *     --concurrency <n>    parallel browser contexts (default 1 — one live page at a time; raise
- *                          it only on an origin known to have no bot management)
+ *     --concurrency <n>    parallel browser contexts (default 1; values above 1 require
+ *                          --parallel-live-ok unless every input is local)
+ *     --parallel-live-ok   allow parallel live pages; a source edge rate-limits bursts from one address
  *     --max-pages <n>      cap the page list (default: every page — the census is site-wide)
  *     --timeout-ms <ms>    per-page navigation timeout (default 20000)
- *     --ua <string>        user agent (default: the real-Chrome desktop UA the recipe's browser
- *                          configuration calls for — the same value the live-session helper uses)
+ *     --ua <string>        user agent (default: the browser's own, presented without the headless token by
+ *                          the shared live-session helper; a bundled Chromium keeps its own hints)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; clicked once each)
  *     --headed             headed stealth real Chrome (escalation for bot-managed sites)
  *     --locale <tag>       pin Accept-Language + context locale (e.g. en-GB) for geo determinism
@@ -66,20 +67,18 @@
  * (`style-census: N pages × W widths → <out>`, plus the failure count when any).
  * Exit codes: 0 done (partial evidence is evidence — failures are listed under
  * _provenance.failed[]), 1 every page failed, 2 usage error, playwright not importable or
- * live-session.mjs not found, 3 bot challenge — the live origin served an edge interstitial:
+ * browser.mjs not found, 3 bot challenge — the live origin served an edge interstitial:
  * the pass stops scheduling pages, what was measured is still written, and the run fails loud
  * (escalate with --headed; if still blocked the site needs crawl.mjs-class capture).
  *
- * Needs playwright importable from the script's location and the diff skill's
- * live-session.mjs in one of the known layouts — the plugin tree (../../diff/scripts/
- * live-session.mjs), the project copy (../diff/live-session.mjs) or a sibling copy
- * (./live-session.mjs) — extract/SKILL.md § Setup: copy the script (and live-session.mjs) into
- * the project's stardust/scripts/ and run the copy. `aggregate` is exported and pure — the
+ * Needs playwright importable from the script's location and the master skill's scripts dir
+ * (stardust/scripts/browser.mjs) beside it — extract/SKILL.md § Setup: copy the script (and
+ * that dir) into the project's stardust/scripts/ and run the copy. `aggregate` is exported and pure — the
  * contract test runs it without a browser.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve as resolvePath } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -91,27 +90,39 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 
 // Current stable desktop Chrome on macOS — the platform token and minor version are frozen by
 // Chrome's UA reduction, so only the major matters.
-export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
-export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, maxPages: Infinity, timeoutMs: 20000, ua: DEFAULT_UA, dismiss: [], headed: false, locale: null };
+export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, parallelLiveOk: false, maxPages: Infinity, timeoutMs: 20000, ua: null, dismiss: [], headed: false, locale: null };
 const SETTLE_MS = 2500;
 const VIEWPORT_H = 900;
 const OCCLUDER_COVERAGE = 0.4;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 2; } }
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-// live-session.mjs lives in the diff skill's scripts dir. Layouts: the plugin tree
-// (skills/extract/scripts ↔ skills/diff/scripts), the project copy (scripts/extract ↔ scripts/diff)
-// and a flat project copy (a sibling) — resolve any, so a re-copy can't silently sever the hardening.
+// browser.mjs lives in the master skill's scripts dir. Layouts: the plugin tree
+// (skills/extract/scripts ↔ skills/stardust/scripts), the project copy (scripts/extract ↔ scripts/stardust)
+// and flat (scripts ↔ scripts/stardust) — resolve any, so a re-copy can't silently sever the hardening.
 // Resolved lazily (in main) so the pure exports stay importable without it.
-const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs'];
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs', './stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 async function loadLiveSession() {
-  const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-  if (!found) throw new UsageError('live-session.mjs not found (looked in ../../diff/scripts/, ../diff/ and ./). Copy the diff skill\'s live-session.mjs alongside this script (extract/SKILL.md § Setup).');
-  return import(pathToFileURL(found).href);
+  if (!BROWSER) throw new UsageError('browser.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  return import(BROWSER.href);
 }
 
-export function parseArgs(argv) {
+const isLocalInput = (value) => {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'file:' || ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(u.hostname) || u.hostname.endsWith('.localhost');
+  } catch { return false; }
+};
+
+function guardLiveConcurrency(o, urls) {
+  if (o.concurrency <= 1 || o.parallelLiveOk || (urls && urls.length && urls.every(isLocalInput))) return o;
+  console.error(`style-census: --concurrency ${o.concurrency} ignored — one live page at a time unless --parallel-live-ok (a source edge rate-limits bursts from one address)`);
+  o.concurrency = 1;
+  return o;
+}
+
+export function parseArgs(argv, { deferConcurrencyGuard = false } = {}) {
   const o = { ...DEFAULTS, widths: [], dismiss: [], urls: null, pagesGiven: false };
   // A value flag followed by nothing or by another --flag is a usage error naming the flag.
   const need = (i, k) => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${k} needs a value`); return argv[i + 1]; };
@@ -123,6 +134,7 @@ export function parseArgs(argv) {
     else if (k === '--out') { o.out = need(i, k); i += 1; }
     else if (k === '--width') { for (const w of need(i, k).split(',')) o.widths.push(int(w.trim(), k, 240)); i += 1; }
     else if (k === '--concurrency') { o.concurrency = int(need(i, k), k); i += 1; }
+    else if (k === '--parallel-live-ok') { o.parallelLiveOk = true; }
     else if (k === '--max-pages') { o.maxPages = int(need(i, k), k); i += 1; }
     else if (k === '--timeout-ms') { o.timeoutMs = int(need(i, k), k, 1000); i += 1; }
     else if (k === '--ua') { o.ua = need(i, k); i += 1; }
@@ -135,7 +147,7 @@ export function parseArgs(argv) {
   o.widths = [...new Set(o.widths)];
   if (o.urls && o.pagesGiven) throw new UsageError('pass --pages or --urls, not both');
   if (o.urls && !o.urls.length) throw new UsageError('--urls lists no URL');
-  return o;
+  return deferConcurrencyGuard ? o : guardLiveConcurrency(o, o.urls);
 }
 
 // The page list: --urls verbatim, or every *.json record under --pages (finalUrl, else url),
@@ -417,6 +429,7 @@ async function hoverPass(page, rec) {
 // censused as the site; solveWindow only under --headed) — then dismissOverlays closes consent
 // and timed marketing modals before this script's own multilingual consent pass.
 async function measure(contexts, url, width, o, session) {
+  const { goto } = session;
   const live = session.isLiveHttpUrl(url);
   const page = await (live ? contexts.live : contexts.local).newPage();
   try {
@@ -425,7 +438,7 @@ async function measure(contexts, url, width, o, session) {
     if (live) {
       resp = await session.gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: o.timeoutMs, settleMs: 0, solveWindow: o.headed });
     } else {
-      resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: o.timeoutMs });
+      resp = await goto(page, url, { waitUntil: 'domcontentloaded', timeout: o.timeoutMs });
       if (!resp) throw new Error('no response');
       if (resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
     }
@@ -450,34 +463,60 @@ async function measure(contexts, url, width, o, session) {
   }
 }
 
-async function main(argv) {
-  const o = parseArgs(argv);
-  const urls = listUrls(o);
-  let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) {
-    throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — extract/SKILL.md § Setup: copy this script into the project's stardust/scripts/ and run the copy`);
+/** Select and cache the shared live context for one URL; local URLs keep the caller's local context. */
+export async function liveContextFor(session, browser, liveContexts, url, options) {
+  if (!session.isLiveHttpUrl(url)) return null;
+  const host = new URL(url).host;
+  if (!liveContexts.has(host)) {
+    liveContexts.set(host, session.newLiveContext(browser, { ...options, stateUrl: url }));
   }
+  let context = liveContexts.get(host);
+  if (!context || typeof context.then !== 'function') return context;
+  try {
+    context = await context;
+    liveContexts.set(host, context);
+    return context;
+  } catch (error) {
+    liveContexts.delete(host);
+    throw error;
+  }
+}
+
+export function launchCensusBrowser(o, { openBrowser }) {
+  return openBrowser({ mode: o.headed ? 'headed' : 'chrome' });
+}
+
+async function main(argv) {
+  const o = parseArgs(argv, { deferConcurrencyGuard: true });
+  const urls = listUrls(o);
+  guardLiveConcurrency(o, urls);
   const session = await loadLiveSession();
+  const { newContext } = session;
+  try { await session.loadPlaywright(); } catch (e) { throw new UsageError(e.message); }
   const jobs = [];
   for (const url of urls) for (const width of o.widths) jobs.push({ url, width });
   const pages = {};
   const failed = [];
-  // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.
-  const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
+  const liveContexts = new Map();
+  // --headed is the shared escalation tier; otherwise the identity-preserving live launcher.
+  const browser = await launchCensusBrowser(o, session);
   let next = 0;
   let challenge = null;
   async function worker() {
     const viewport = { width: o.widths[0], height: VIEWPORT_H };
     const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
     const contexts = {
-      live: await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common }),
-      local: await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common }),
+      local: await newContext(browser, { ...(o.ua ? { userAgent: o.ua } : {}), viewport, locale: 'en-US', ...common }),
     };
     while (next < jobs.length) {
       const { url, width } = jobs[next];
       next += 1;
       const t0 = Date.now();
       try {
+        const liveContext = await liveContextFor(session, browser, liveContexts, url, {
+          ua: o.ua, locale: o.locale, viewport, ...common,
+        });
+        if (liveContext) contexts.live = liveContext;
         const rec = await measure(contexts, url, width, o, session);
         pages[url] = pages[url] || {};
         pages[url][width] = rec;
@@ -490,15 +529,15 @@ async function main(argv) {
         if (e.name === 'BotChallengeError' && !challenge) { challenge = e; next = jobs.length; }
       }
     }
-    await contexts.live.close().catch(() => {});
     await contexts.local.close().catch(() => {});
   }
   await Promise.all(Array.from({ length: Math.min(o.concurrency, jobs.length) }, worker));
+  await Promise.all([...liveContexts.values()].map((ctx) => ctx.close().catch(() => {})));
   await browser.close();
 
   const measured = Object.values(pages).reduce((n, byWidth) => n + Object.keys(byWidth).length, 0);
   const out = {
-    _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua, synthesizedInputs: [], failed },
+    _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua || 'browser-default', synthesizedInputs: [], failed },
     pages,
     aggregate: measured ? aggregate(pages) : null,
   };

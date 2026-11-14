@@ -12,12 +12,12 @@
  * Writes (under --out, default data/forms): <name>.json per URL that has content-area
  * controls — <name> is the slug of the URL's last path segment ("form" for a root URL);
  * the definition carries _provenance {source, settleMs}. Per-URL lines go to stderr.
- * Exit 0 on completion, 2 on usage.
+ * Exit 0 on completion, 2 on usage or a setup error.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { arg, list, writeJSON, provenance, loadPlaywright, settlePage, slug } from './lib.mjs';
+import { arg, list, writeJSON, provenance, openBrowser, newPage, goto, settlePage, slug, stopOnSetupError } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -30,11 +30,10 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 const URLS = list(arg('urls', ''));
 if (!URLS.length) { console.error('usage: snapshot-forms.mjs --urls <url,…> [--out data/forms]'); process.exit(2); }
 const OUT = arg('out', 'data/forms'); const EXCLUDE = arg('exclude', ''); const SETTLE = Number(arg('settle', 3000));
-const { chromium } = await loadPlaywright();
-const browser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
+const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: true, args: ['--disable-blink-features=AutomationControlled'] } }).catch(stopOnSetupError);
 for (const url of URLS) {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  const page = await newPage(browser, { viewport: { width: 1440, height: 900 } });
+  await goto(page, url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await settlePage(page, { settleMs: SETTLE, maxScroll: 2400 });
   const def = await page.evaluate((extra) => {
     const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();

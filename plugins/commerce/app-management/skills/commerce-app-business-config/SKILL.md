@@ -141,16 +141,21 @@ import schema from "../../.generated/configuration-schema.json" with { type: "js
 export async function main(params) {
   await initialize({ schema });
 
+  // Required to decrypt `password` fields — see "Password fields" below
+  const options = { encryptionKey: params.AIO_COMMERCE_CONFIG_ENCRYPTION_KEY };
+
   // Read a single field — config is null if the key has never been set
   const { config } = await getConfigurationByKey(
     "api_key", // the `name` from your schema
     byCodeAndLevel("global", "global"), // scope
+    options,
   );
   const apiKey = config?.value ?? "";
 
   // Read all fields for a scope
   const { config: allConfig } = await getConfiguration(
     byCodeAndLevel("global", "global"),
+    options,
   );
   // allConfig is an array of { name, value, origin } entries
 
@@ -173,18 +178,21 @@ Values inherit from parent scopes — a field not set on `store_view` falls back
 
 `aio app build` generates `AIO_COMMERCE_CONFIG_ENCRYPTION_KEY` automatically into `.env` the first time it encounters a password field (and validates it on subsequent builds). No manual setup needed.
 
-To decrypt values at runtime, the key must be available to the action. Wire it as an input in the action's `ext.config.yaml`:
+The library does not read the key from the environment. Pass it as the `encryptionKey` option on every `getConfigurationByKey`, `getConfiguration`, and `setConfiguration` call, as in the example above. A call that reads or writes a non-empty `password` value without it throws `Encryption key has not been given`.
+
+The key reaches `params` only if the action declares it as an input. Add it to the `inputs` of **every** action that makes these calls in `ext.config.yaml` — declaring it on one action does not make it available to the others:
 
 ```yaml
 inputs:
   AIO_COMMERCE_CONFIG_ENCRYPTION_KEY: $AIO_COMMERCE_CONFIG_ENCRYPTION_KEY
 ```
 
-With the key in place, `getConfigurationByKey` returns the plaintext value — no extra decryption code needed.
+With the option and the input in place, password values are returned as plaintext.
 
 ## Common Issues
 
 - **`list/single` default missing**: Single-select list fields require a `default` — it can't be omitted. It must exactly match one of the option `value` strings.
+- **`Encryption key has not been given`**: A config call touched a stored `password` value without the `encryptionKey` option, or the action does not declare the `AIO_COMMERCE_CONFIG_ENCRYPTION_KEY` input, so `params.AIO_COMMERCE_CONFIG_ENCRYPTION_KEY` is `undefined`.
 - **`defineConfig` not found**: Ensure `@adobe/aio-commerce-lib-app` is installed and `defineConfig` is imported from `@adobe/aio-commerce-lib-app/config`.
 
 ## Quality Bar

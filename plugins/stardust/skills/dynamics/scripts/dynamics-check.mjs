@@ -16,7 +16,7 @@
  * Writes (under --out, default stardust/qa):
  *   dynamics-report.md     one row per replayed check (PASS/FAIL, detail, third-party requests)
  *   dynamics-report.json   the same results with _provenance
- * Progress lines go to stderr. Exit 0 when every check passed, 1 otherwise, 2 on usage.
+ * Progress lines go to stderr. Exit 0 when every check passed, 1 otherwise, 2 on usage or a setup error.
  *
  * Check types (* = required):
  *   fetch-json     { url*, minRows?, expectKeys? }                 GET on the origin returns JSON with rows / keys
@@ -52,7 +52,7 @@
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { arg, flag, readJSON, writeJSON, writeText, provenance, loadPlaywright, resolveAuthHeader, attachOriginAuth, sameSite } from './lib.mjs';
+import { arg, flag, readJSON, writeJSON, writeText, provenance, openBrowser, newContext, goto, resolveAuthHeader, attachOriginAuth, sameSite, stopOnSetupError } from './lib.mjs';
 
 const settle = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
@@ -61,7 +61,7 @@ async function openPage(ctx, origin, path) {
   const errors = []; const thirdParty = [];
   page.on('pageerror', (e) => errors.push(String(e.message).slice(0, 160)));
   page.on('response', (r) => { try { const u = new URL(r.url()); if (!sameSite(u.host, new URL(origin).host) && thirdParty.length < 60) thirdParty.push({ host: u.host, status: r.status(), type: r.request().resourceType() }); } catch { /* ignore */ } });
-  await page.goto(origin + path, { waitUntil: 'networkidle', timeout: 60000 }).catch(async () => { await page.goto(origin + path, { waitUntil: 'domcontentloaded', timeout: 60000 }); });
+  await goto(page, origin + path, { waitUntil: 'networkidle', timeout: 60000 }).catch(async () => { await goto(page, origin + path, { waitUntil: 'domcontentloaded', timeout: 60000 }); });
   await settle(1200);
   return { page, errors, thirdParty };
 }
@@ -270,7 +270,7 @@ const RUNNERS = {
         hosts.add(h);
         return route.abort();
       });
-      await page.goto(origin + c.path, { waitUntil: 'domcontentloaded', timeout: 60000 });
+      await goto(page, origin + c.path, { waitUntil: 'domcontentloaded', timeout: 60000 });
       await settle(c.waitMs || 6000);
     } finally {
       await page.close();
@@ -289,9 +289,8 @@ const featuresOf = (parity, contract) => [...(parity?.features || []), ...(contr
 /** replay every check of every feature; returns results with per-check third-party statuses */
 export async function replay({ origin, parity, contract = null, authHeader = null, headed = false }) {
   const features = featuresOf(parity, contract);
-  const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch({ headless: !headed });
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: !headed } });
+  const ctx = await newContext(browser, { viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(ctx, origin, authHeader);
   const results = [];
   for (const f of features) {
@@ -324,7 +323,7 @@ if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
   const contractFile = arg('contract') || (existsSync(DEFAULT_CONTRACT) ? DEFAULT_CONTRACT : null);
   const contract = contractFile ? readJSON(contractFile) : null;
   const parity = readJSON(parityFile, contract ? { features: [] } : undefined);
-  const results = await replay({ origin, parity, contract, authHeader: resolveAuthHeader(), headed: flag('headed') });
+  const results = await replay({ origin, parity, contract, authHeader: resolveAuthHeader(), headed: flag('headed') }).catch(stopOnSetupError);
   const out = arg('out', 'stardust/qa');
   const pass = results.filter((r) => r.pass).length;
   const features = featuresOf(parity, contract);

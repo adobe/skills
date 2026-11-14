@@ -8,7 +8,8 @@
  * reaches the panel, aria-expanded follows) and its close paths. Profile `replica` (keep-design flow)
  * also gates the open-state crops (pixelmatch 0.1, --bar), motion (property set; duration within
  * max(80 ms, 25 %)) and the header's scroll states; `functional` (redesign, reskin) checks behaviour
- * and content only.
+ * and content only. Build evidence not observed because its request budget stopped the record warns
+ * instead of failing parity; observed failures remain errors.
  *
  * A finding clears only by a fix or by a site-owner decision in --decisions
  * ({ decisions: [{ finding: "<key or prefix*>", decision, reason, by, at }] }); entries without
@@ -31,6 +32,8 @@ import { normName } from './chrome-explore.mjs';
 const TOUCH_BELOW = 768;
 const FAMILIES = new Set(['search', 'cart', 'account', 'locale', 'drawer']);
 const AGENT = /^(agent|assistant|stardust|claude|codex|bot|auto)/i;
+const REQUEST_BUDGET_SUFFIX = ' — not observed: the build record stopped at the request budget (run the build side with --max-requests 0)';
+const absentEvidence = (incomplete, detail, severity = 'error') => ({ severity: incomplete ? 'warn' : severity, detail: `${detail}${incomplete ? REQUEST_BUDGET_SUFFIX : ''}` });
 
 /** The decision key of a finding: `<id>@<width> <path>[ [action]]`. Pure. */
 export const findingKey = (f) => `${f.id}@${f.width} ${f.path}${f.action ? ` [${f.action}]` : ''}`;
@@ -54,7 +57,7 @@ export function pairControls(src, bld) {
   return pairs;
 }
 
-const searches = (cs, out = []) => { for (const c of cs || []) { if (c.search) out.push(c.search); searches(c.children, out); } return out; };
+const searchControls = (cs, out = []) => { for (const c of cs || []) { if (c.role === 'input' && c.kind === 'search') out.push(c); searchControls(c.children, out); } return out; };
 
 function compareState(ss, bs, base, { profile, add, visual }, full) {
   // content, motion and crops once per control (the first action both sides open on); keyboard facts per action
@@ -95,32 +98,33 @@ function compareState(ss, bs, base, { profile, add, visual }, full) {
 }
 
 function walk(src, bld, ctx, path) {
-  const { width, add } = ctx;
+  const { width, add, budgetIncomplete = false } = ctx;
   const touch = width < TOUCH_BELOW;
   for (const [s, b] of pairControls(src.filter((c) => c.role !== 'input'), bld.filter((c) => c.role !== 'input'))) {
     const p = path ? `${path} > ${s.name || s.kind}` : (s.name || s.kind);
     const base = { width, path: p };
     const sOpen = openOf(s);
     if (!b) {
-      if (sOpen) add({ ...base, id: 'control-missing', severity: 'error', detail: `the source ${s.kind} control opens on ${sOpen}; the build has no control named "${s.name}"${FAMILIES.has(s.kind) ? ` or of family ${s.kind}` : ''}` });
-      else if (!path && s.role === 'link') add({ ...base, id: 'link-missing', severity: 'warn', detail: `top-level link ${s.href ? hrefKey(s.href) : ''} not in the build header` });
+      if (sOpen) add({ ...base, id: 'control-missing', ...absentEvidence(budgetIncomplete, `the source ${s.kind} control opens on ${sOpen}; the build has no control named "${s.name}"${FAMILIES.has(s.kind) ? ` or of family ${s.kind}` : ''}`) });
+      else if (!path && s.role === 'link') add({ ...base, id: 'link-missing', ...absentEvidence(budgetIncomplete, `top-level link ${s.href ? hrefKey(s.href) : ''} not in the build header`, 'warn') });
       continue;
     }
+    const incomplete = budgetIncomplete || b.partial === 'request-budget';
     let full = true;
     for (const a of touch ? ['click', 'key'] : ['hover', 'click', 'key']) {
-      const ss = s.actions && s.actions[a]; const bs = b.actions && b.actions[a];
+      const ss = s.actions && s.actions[a]; const observed = Object.hasOwn(b.actions || {}, a); const bs = b.actions && b.actions[a];
       const so = !!(ss && ss.opened); const bo = !!(bs && bs.opened);
-      if (so && !bo) add({ ...base, action: a, id: a === 'key' ? 'keyboard' : 'state-missing', severity: 'error', detail: `opens on ${a === 'key' ? 'Enter' : a} on the source (${ss.panel.links.length} links); ${bs && bs.navigates ? `navigates to ${hrefKey(bs.navigates)} on the build` : b.role === 'link' ? `the build control is a plain link${b.href ? ` to ${hrefKey(b.href)}` : ''}` : 'nothing opens on the build'}` });
+      if (so && !bo) add({ ...base, action: a, id: a === 'key' ? 'keyboard' : 'state-missing', ...absentEvidence(incomplete && !observed, `opens on ${a === 'key' ? 'Enter' : a} on the source (${ss.panel.links.length} links); ${bs && bs.navigates ? `navigates to ${hrefKey(bs.navigates)} on the build` : b.role === 'link' ? `the build control is a plain link${b.href ? ` to ${hrefKey(b.href)}` : ''}` : 'nothing opens on the build'}`) });
       else if (!so && bo && !(ss && ss.navigates)) add({ ...base, action: a, id: 'state-extra', severity: 'warn', detail: `opens on ${a} on the build only` });
       else if (so && bo) { compareState(ss, bs, { ...base, action: a }, ctx, full); full = false; }
     }
     if (sOpen && openOf(b) && s.close) {
       for (const k of ['escape', 'outside', 'toggle', 'leave']) {
-        if (s.close[k] === true && !(b.close && b.close[k] === true)) add({ ...base, id: 'close-path', severity: 'error', detail: `${k === 'escape' ? 'Escape' : k === 'outside' ? 'a click outside' : k === 'toggle' ? 'clicking the trigger again' : 'moving the pointer away'} closes it on the source, not on the build` });
+        if (s.close[k] === true && !(b.close && b.close[k] === true)) add({ ...base, id: 'close-path', ...absentEvidence(incomplete && !Object.hasOwn(b.close || {}, k), `${k === 'escape' ? 'Escape' : k === 'outside' ? 'a click outside' : k === 'toggle' ? 'clicking the trigger again' : 'moving the pointer away'} closes it on the source, not on the build`) });
       }
-      if (s.close.focusReturn && !(b.close && b.close.focusReturn)) add({ ...base, id: 'keyboard', severity: 'error', detail: 'Escape returns focus to the trigger on the source, not on the build' });
+      if (s.close.focusReturn && !(b.close && b.close.focusReturn)) add({ ...base, id: 'keyboard', ...absentEvidence(incomplete && !Object.hasOwn(b.close || {}, 'focusReturn'), 'Escape returns focus to the trigger on the source, not on the build') });
     }
-    if (sOpen && openOf(b) && !s.returns) walk(s.children || [], b.children || [], ctx, p);
+    if (sOpen && openOf(b) && !s.returns) walk(s.children || [], b.children || [], { ...ctx, budgetIncomplete: incomplete }, p);
   }
 }
 
@@ -132,26 +136,38 @@ export function compareDocs(src, bld, { profile = 'replica' } = {}) {
     const width = Number(w);
     const bw = (bld.widths || {})[w];
     if (!bw) { add({ width, path: '(page)', id: 'width-missing', severity: 'error', detail: `the build was not explored at ${w}` }); continue; }
-    if (!bw.root && sw.root) { add({ width, path: '(page)', id: 'control-missing', severity: 'error', detail: 'no header root on the build' }); continue; }
-    walk(sw.controls || [], bw.controls || [], { width, add, profile, visual }, '');
-    const ssr = searches(sw.controls); const bsr = searches(bw.controls);
-    if (ssr.length && !bsr.length) add({ width, path: 'search', id: 'control-missing', severity: 'error', detail: 'the source header has a search input; the build none' });
+    const budgetIncomplete = bw.truncated === 'request-budget';
+    const addBuildTruncation = () => { if (bw.truncated) add({ width, path: '(build)', id: 'budget-truncated', severity: 'warn', detail: `the build record stopped at ${bw.truncated}${budgetIncomplete ? ': run the build side with --max-requests 0' : ''}` }); };
+    if (!bw.root && sw.root) { add({ width, path: '(page)', id: 'control-missing', ...absentEvidence(budgetIncomplete, 'no header root on the build') }); addBuildTruncation(); continue; }
+    walk(sw.controls || [], bw.controls || [], { width, add, profile, visual, budgetIncomplete }, '');
+    const ssr = searchControls(sw.controls); const bsr = searchControls(bw.controls);
+    if (ssr.length && !bsr.length) add({ width, path: 'search', id: 'control-missing', ...absentEvidence(budgetIncomplete, 'the source header has a search input; the build none') });
     else if (ssr.length) {
-      const s = ssr[0]; const b = bsr[0];
-      if ((s.typeahead.links || s.typeahead.options) && !(b.typeahead.links || b.typeahead.options)) add({ width, path: 'search', id: 'state-missing', action: 'type', severity: 'error', detail: `typing "${s.probe}" shows ${s.typeahead.links || s.typeahead.options} suggestion(s) on the source, none on the build` });
-      if (s.submit && !b.submit) add({ width, path: 'search', id: 'state-missing', action: 'submit', severity: 'error', detail: `Enter submits to ${hrefKey(s.submit)} on the source; nothing on the build` });
-      else if (s.submit && b.submit && hrefKey(s.submit).split('?')[0] !== hrefKey(b.submit).split('?')[0]) add({ width, path: 'search', id: 'link-href', action: 'submit', severity: 'warn', detail: `submits to ${hrefKey(s.submit)} on the source, ${hrefKey(b.submit)} on the build` });
+      const s = ssr[0].search; const buildInput = bsr[0]; const b = buildInput.search;
+      if (s) {
+        const capped = b === null && buildInput.skipped === 'typeahead-cap';
+        const capSuffix = capped ? ' — not observed: the build input was skipped past --max-typeahead' : '';
+        if ((s.typeahead.links || s.typeahead.options) && !(b && b.typeahead && (b.typeahead.links || b.typeahead.options))) {
+          const unobserved = budgetIncomplete && !b;
+          add({ width, path: 'search', id: 'state-missing', action: 'type', severity: unobserved || capped ? 'warn' : 'error', detail: `typing "${s.probe}" shows ${s.typeahead.links || s.typeahead.options} suggestion(s) on the source, none on the build${unobserved ? REQUEST_BUDGET_SUFFIX : capSuffix}` });
+        }
+        if (s.submit && !(b && b.submit)) {
+          const unobserved = budgetIncomplete && !b;
+          add({ width, path: 'search', id: 'state-missing', action: 'submit', severity: unobserved || capped ? 'warn' : 'error', detail: `Enter submits to ${hrefKey(s.submit)} on the source; nothing on the build${unobserved ? REQUEST_BUDGET_SUFFIX : capSuffix}` });
+        }
+        else if (s.submit && b.submit && hrefKey(s.submit).split('?')[0] !== hrefKey(b.submit).split('?')[0]) add({ width, path: 'search', id: 'link-href', action: 'submit', severity: 'warn', detail: `submits to ${hrefKey(s.submit)} on the source, ${hrefKey(b.submit)} on the build` });
+      }
     }
     const sev = profile === 'replica' ? 'error' : 'warn';
     for (const s of sw.scroll || []) {
       const b = (bw.scroll || []).find((x) => x.at === s.at);
-      if (!b) { if ((bw.scroll || []).length) add({ width, path: '(header)', id: 'scroll-state', severity: sev, detail: `no ${s.at} sample on the build` }); continue; }
+      if (!b) { if ((bw.scroll || []).length) add({ width, path: '(header)', id: 'scroll-state', ...absentEvidence(budgetIncomplete, `no ${s.at} sample on the build`, sev) }); continue; }
       const pin = (x) => (x.position === 'fixed' || x.position === 'sticky' ? 'pinned' : 'static');
       if (s.inView !== b.inView || pin(s) !== pin(b)) add({ width, path: '(header)', action: s.at, id: 'scroll-state', severity: sev, detail: `scrolled ${s.at}: the source header is ${pin(s)} and ${s.inView ? 'in view' : 'out of view'}, the build's ${pin(b)} and ${b.inView ? 'in view' : 'out of view'}` });
       else if (Math.abs(s.height - b.height) > Math.max(8, 0.1 * s.height)) add({ width, path: '(header)', action: s.at, id: 'scroll-state', severity: sev, detail: `scrolled ${s.at}: header ${s.height}px on the source, ${b.height}px on the build` });
     }
     if (sw.truncated) add({ width, path: '(source)', id: 'budget-truncated', severity: 'warn', detail: `the source record stopped at ${sw.truncated}: raise --max-states/--max-depth for full coverage` });
-    if (bw.truncated) add({ width, path: '(build)', id: 'budget-truncated', severity: 'warn', detail: `the build record stopped at ${bw.truncated}` });
+    addBuildTruncation();
   }
   return { findings, visual: profile === 'replica' ? visual : [] };
 }

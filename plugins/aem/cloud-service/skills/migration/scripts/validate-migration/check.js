@@ -44,6 +44,15 @@ const { writeLocalReport, finalizeReporting, resolveSdkUrl, camReportingNote, no
 const PATTERNS = require('./check/patterns');
 const { canonicalPattern } = require('./check/patterns/aliases.js');
 
+// Submitting outcomes to CAM through MCP is paused until the legal review is done. While paused,
+// runs are local-only: any project link is ignored and no payload is emitted. Set
+// VALIDATE_MIGRATION_CAM_REPORTING=1 to turn reporting back on (tests and maintainers only; agent-facing docs must not mention it).
+const CAM_REPORTING_ENABLED = process.env.VALIDATE_MIGRATION_CAM_REPORTING === '1';
+const CAM_REPORTING_PAUSED_NOTE = 'not reported to CAM: outcome reporting is paused for now; this validation is local-only.';
+function reportingNote(args) {
+  return CAM_REPORTING_ENABLED ? camReportingNote(args) : CAM_REPORTING_PAUSED_NOTE;
+}
+
 // Wall-clock start of this run, captured in main(), used for started_at on
 // every outcome so run duration is honest.
 let RUN_STARTED_AT = null;
@@ -74,6 +83,12 @@ async function main() {
   // (either --project-id or auto-loaded from the nearest migration-runbook.json),
   // we emit the submit-migration-validation-result payload; otherwise we skip that reporting
   // step and just print the local outcome.
+  if (!CAM_REPORTING_ENABLED) {
+    delete args['project-id'];
+    delete args['project-name'];
+    context.projectId = undefined;
+    context.projectName = undefined;
+  }
   const explicitProject = args['project-id'] || args['project-name'];
   if (!explicitProject && context.projectId) {
     args['project-id'] = context.projectId;
@@ -336,7 +351,7 @@ function finishAll(records, args) {
         console.log('\n=== submit-migration-validation-result payload ===');
         console.log(JSON.stringify(buildMcpPayload(record, args)));
         console.log('=== end payload ===');
-      } else console.log(camReportingNote(args));
+      } else console.log(reportingNote(args));
     }
     process.exit(records.some((r) => r.result === 'fail') ? 1 : linked ? 3 : 0);
   }
@@ -366,7 +381,7 @@ function finishAll(records, args) {
     console.log(JSON.stringify(payload));
     console.log('=== end payload ===');
   } else {
-    console.log(`\n${camReportingNote(args)}`);
+    console.log(`\n${reportingNote(args)}`);
   }
 
   if (!linked) process.exit(record.result === 'pass' ? 0 : 1);

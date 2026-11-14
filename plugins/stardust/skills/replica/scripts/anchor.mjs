@@ -18,7 +18,7 @@
  * capture the live side once per fix round at most and diff against it.
  *
  * Hardening: live navigations go through the shared
- * ../../diff/scripts/live-session.mjs (real-Chrome UA + document-scoped
+ * ../../stardust/scripts/browser.mjs (real-Chrome UA + document-scoped
  * standard headers, challenge fail-loud exit 3, overlay dismissal, parked
  * pointer), and the height is read AFTER a slow-scroll settle pass —
  * pre-settle height is fake on entrance-animated sites
@@ -50,28 +50,25 @@
  *   node stardust/scripts/replica/anchor.mjs "https://<site>/<path>" --width 1440
  *   node stardust/scripts/replica/anchor.mjs "http://localhost:8791/<slug>-proposed.html" --width 1440
  *
- * Requires: playwright, and the diff skill's scripts dir alongside
- * (live-session.mjs — the replica Setup copies both).
+ * Requires: playwright, and the master skill's scripts dir alongside
+ * (browser.mjs — the replica Setup copies both).
  * Exit codes: 0 printed, 1 error, 3 bot challenge (live side blocked).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
-import { chromium } from 'playwright';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { dirname, resolve as resolvePath } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { dirname } from 'path';
 
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/replica/scripts ↔ skills/diff/scripts) and the
-// documented project copy (scripts/replica ↔ scripts/diff) — resolve either.
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('anchor error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
+// browser.mjs lives in the master skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/replica/scripts ↔ skills/stardust/scripts) and the
+// documented project copy (scripts/replica ↔ scripts/stardust) — resolve either.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('anchor: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(1);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, openBrowser, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(BROWSER.href);
 
 const HELP = `anchor — per-section [y, height] probe (run on BOTH sides, fix the first mismatch top-down)
 
@@ -135,9 +132,9 @@ async function main() {
       console.error(`anchor: --cache ${opts.cache} was probed for a different url/width/--main — re-probing`);
     } catch (e) { console.error(`anchor: --cache ${opts.cache} unreadable (${e.message}) — re-probing`); }
   }
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  const browser = await openBrowser({ mode: opts.headed ? 'headed' : 'plain' });
   try {
-    const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
+    const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 }, stateUrl: url });
     const page = await ctx.newPage();
     await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed });
     await dismissOverlays(page, { extra: [...(opts.consent ? [opts.consent] : []), ...opts.dismiss], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });

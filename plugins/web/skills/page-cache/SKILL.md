@@ -7,9 +7,10 @@ description: >-
   iterative migration work. Navigate pages through it (manually or with a browser) and every
   resource is saved to disk; restart it offline to replay the full site with no network,
   bot detection or rate limits. `web cache record` and `web cache proxy` cache a page as a HAR
-  and replay it at its real URLs to a browser opened with --proxy. Triggers on: page cache,
+  and replay it at its real URLs to a browser opened with --proxy. A remote browser (Bright
+  Data's Browser API) fills it when the site blocks the local one. Triggers on: page cache,
   cache page, cache site, cache website, offline cache, warm cache, cache proxy, page-cache,
-  site mirror, cache for migration, HAR cache, record HAR.
+  site mirror, cache for migration, HAR cache, record HAR, cache a blocked site, Bright Data.
 ---
 
 # page-cache
@@ -147,6 +148,16 @@ with 403; a recorded one is served like any other hit. WebSocket upgrades are re
 proxy writes its certificate and private key into the cache directory: do not commit it.
 Re-recording a URL replaces its HAR only once the new recording is complete; restart the proxy
 to pick it up.
+
+## Sites that block the local browser
+
+When filling stops at a challenge page or Access Denied, fill through a remote browser that
+gets past bot protection (Bright Data's Browser API, any Chrome DevTools endpoint): a recipe
+with `"cdpEndpoint": "env:<VAR>"` makes `browser open --cache` and `cache record` load pages
+there, while the HARs are written locally; `cache proxy --offline` then replays them
+downstream with no network, to a local browser (`WEB_RECIPE= $WEB browser open <url> --proxy …`:
+`--proxy` refuses a remote-browser recipe). Set `WEB_TIMEOUT=120000` for slow first loads and fill one site at
+a time. Recipe, credentials and Bright Data specifics: `$WEB doc remote-browser`.
 
 ## Notes
 

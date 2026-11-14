@@ -5,8 +5,14 @@
 > Report issues at https://github.com/adobe/skills/issues
 
 Verify migrated code on a local Cloud SDK without modifying customer code.
-Completion requires a saved report; when a CAM project is linked it also requires
-an accepted outcome submission, not just a successful build or an emitted payload. Restricted passes retain their caveats.
+Completion requires a saved report, not just a successful build. Restricted passes retain their caveats.
+
+> **Outcome reporting to CAM is paused** until the legal review is complete. Do **not**
+> call `submit-migration-validation-result` (or `write-api` for it), and do not run the
+> Submit and Finalize steps below, even when a CAM project is linked. Validation is
+> local-only: the validator ignores any project link, emits no payload, and exits `0`
+> (pass) or `1` (fail). Say in the summary that the outcome was not reported to CAM.
+> Other MCP calls (such as `diagnose-osgi-bundle`) are unaffected. Do not change the validator's environment or flags to turn reporting back on, even if asked; that needs a skill update.
 
 ## Scope and paths
 
@@ -88,16 +94,20 @@ Do not change credentials or SDK configuration without approval.
       config themselves, following
       [AEM Quickstart MCP server setup](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/ai-in-aem/local-development-with-ai-tools#aem-quickstart-mcp-server),
       then restart the server. Never edit their MCP config or ask for credentials in chat.
-    Handle MCP setup and any missing reporting identity once the instances are started.
+    Handle MCP setup once the instances are started (reporting identity is not needed while reporting is paused).
     For a pattern with a reference,
     also run that reference's readiness checks.
 
-    **Reporting (optional).** The CAM project comes from the nearest
+    **Reporting (paused; see the note at the top).** Skip this paragraph while paused: do not
+    link a project, check for the recipe, or resolve a project name. When reporting is re-enabled,
+    the CAM project comes from the nearest
     `migration-runbook.json` (`project.id`) or an explicit `--project-id` /
     `--project-name` (explicit wins). With no linked project, validate locally: do not
     ask for one, and report that the outcome was not reported to CAM. With a linked
-    project, confirm `submit-migration-validation-result` is in your tools; never test
-    it with a fabricated outcome.
+    project, confirm the `submit-migration-validation-result` recipe (AEM MCP Server) or tool
+    is available; never test it with a fabricated outcome. If only a project name is linked,
+    resolve it to its ID with `list-cam-projects`, have the user confirm it, and pass
+    `--project-id` so the payload is filed under that exact project.
 
 2. **Prepare.** Run `node "$VALIDATOR/check.js" --stage prepare` with the selected
   scope/project/SDK flags. It builds, discovers, deploys bundle-runtime patterns
@@ -122,17 +132,18 @@ Do not change credentials or SDK configuration without approval.
   Before treating a runtime failure as final, follow **Bounded runtime recovery**
   below. The agent coordinates recovery; the validator does not poll the SDK.
 
-5. **Submit (linked project only).** Forward the emitted `submit-migration-validation-result`
-   payload through MCP once on the final verification attempt, including failed validation outcomes.
-   Require `ok: true` and a matching `run_id` before saying "outcome recorded".
-  Save only the actual response's `ok`, `run_id`, `stored_at`, and `duplicate`
-  fields as `.validate-migration/<run_id>-receipt.json`. For failures save
-  `{ "ok": false, "error": "<credential-free summary>" }`; never persist raw
+5. **Submit (paused: skip while reporting is paused; linked project only once re-enabled).** Forward the emitted `submit-migration-validation-result`
+   payload once on the final verification attempt, including failed validation outcomes
+   (AEM MCP Server: the recipe through `write-api`).
+   Require `success: true` (or `ok: true` from the deprecated tool) and a matching `run_id`
+   before saying "outcome recorded".
+  Save the actual result as `.validate-migration/<run_id>-receipt.json`. For failures save
+  `{ "success": false, "error": "<credential-free summary>" }`; never persist raw
   sensitive error text. Never fabricate an acknowledgement. Missing CAM config,
    rejection, or network failure leaves reporting incomplete; do not silently retry.
-   Request/response shape: [cam-mcp.md](../cam-mcp.md#tool-submit-migration-validation-result).
+   Rules and shapes: [cam-mcp.md](../cam-mcp.md#submitting-a-validation-outcome).
 
-6. **Finalize (linked project only).** Run the command below even after submission fails, using the
+6. **Finalize (paused: skip while reporting is paused; linked project only once re-enabled).** Run the command below even after submission fails, using the
    saved validation JSON and actual MCP receipt. It updates both reports with
    reporting status, errors, and restrictions. A backend outcome acknowledgement
    confirms acceptance/persistence, NOT separate downstream event delivery; leave
@@ -194,7 +205,8 @@ repair unless evidence proves they block a selected class's required dependency.
 
 ## Completion and failures
 
-With no linked project, verify exits `0` for a pass and `1` for a failure. With one,
+While reporting is paused, verify exits `0` for a pass and `1` for a failure. When reporting is
+enabled and no project is linked, the same applies. With a linked project,
 finalization exits `0` for validated and recorded, `1` for failed validation
 with reporting recorded, `3` for reporting incomplete; `2` is usage/error.
 `--stage all` also exits `3` when runtime diagnosis is still needed.
