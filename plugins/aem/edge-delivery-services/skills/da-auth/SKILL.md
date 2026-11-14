@@ -3,7 +3,7 @@ name: da-auth
 description: "Use this to obtain, reuse, refresh or troubleshoot Adobe IMS authentication for Experience Workspace (formerly DA) content APIs: admin.da.live (DA) or api.aem.live (Source Bus). Use before pushing HTML content, listing documents or triggering a preview when no credential is known to work for that API, or for 401/403 (Unauthorized/Forbidden) and authentication checks where status 200 is insufficient. Not for choosing a content store or planning content changes when authentication already works."
 license: Apache-2.0
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # DA Authentication
