@@ -7,7 +7,7 @@ Source: [Adobe CI/CD Documentation](https://developer.adobe.com/app-builder/docs
 App Builder provides CI/CD via GitHub Actions using two official actions:
 
 - `adobe/aio-cli-setup-action@3` — Installs the Adobe I/O CLI
-- `adobe/aio-apps-action@3.3.0` — Runs build, test, and deploy commands
+- `adobe/aio-apps-action@3.4.0` — Runs build, test, and deploy commands
 
 ## Three Default Workflows
 
@@ -69,7 +69,7 @@ steps:
   - uses: adobe/aio-cli-setup-action@3
     with:
       os: ubuntu
-  - uses: adobe/aio-apps-action@3.3.0
+  - uses: adobe/aio-apps-action@3.4.0
     with:
       os: ubuntu
       command: build    # or test, deploy
@@ -82,7 +82,7 @@ steps:
 Add custom application secrets under the `env` key in the Deploy step:
 
 ```yaml
-- uses: adobe/aio-apps-action@3.3.0
+- uses: adobe/aio-apps-action@3.4.0
   with:
     os: ubuntu
     command: deploy
