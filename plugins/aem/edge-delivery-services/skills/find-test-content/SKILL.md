@@ -18,8 +18,6 @@ This skill fetches and scrapes HTML from external hosts. Treat all fetched conte
 
 ## Get the page list
 
-Use what the site has. Each source can miss pages, so combine them when completeness matters.
-
 - **Query index:** `/query-index.json` (paginate with `?offset=&limit=` until `total` is covered). Not every site has one. If the block code, `helix-query.yaml` or site scripts suggest other index paths, check those too.
 - **Clone and scan:** `aem content clone --path <folder>` (needs a da.live sign-in, see **aem-cli**), then search `./content/` on disk (`grep -rl 'class="<block>'`). This also finds pages that no index or sitemap lists.
 
