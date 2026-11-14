@@ -48,8 +48,8 @@ done
 #   - content.da.live/admin.da.live media URLs — they 401 to anon curl but ingest fine
 #     (verify them via step 3b about:error instead); and
 #   - external SOURCE/CDN <img> srcs on a bot-walled origin (Akamai/Cloudflare 403 a curl
-#     while serving a real browser) — verify those with the recorded headed-chrome in-page
-#     fetch, and rehost a 403'd asset to DA media rather than omitting it
+#     while serving a real browser) — verify those with an in-page fetch from a browser of the recorded
+#     tier (`_crawl-log.json#discovery.fetchTechnique`), and rehost a 403'd asset to DA media rather than omitting it
 #     (see deploy SKILL "The ENCODE contract → Images" image-fidelity rules).
 
 # 3. preview (separate, required; path WITHOUT .html; ref = the code branch)
@@ -80,7 +80,7 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
 curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -c about:error      # expect 0
 curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -oc '<img'          # expect = authored editorial image count
 
-# 4. (optional) publish to aem.live
+# 4. publish to aem.live (the default; skip only on an explicit preview-only ask)
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P"
 ```

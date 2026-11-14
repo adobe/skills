@@ -69,7 +69,7 @@ export async function run(ctx) {
   const titles = new Map(); const descs = new Map();
 
   await pMap(inventory.pages, async (p) => {
-    const res = await ctx.fetchPage(pageUrl(base, p.path));
+    const res = await ctx.fetchPage(pageUrl(base, p.url || p.path));
     if (res.status !== 200) return;
     const html = res.body;
 

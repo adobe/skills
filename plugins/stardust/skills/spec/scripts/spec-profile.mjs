@@ -4,7 +4,7 @@
  * from evidence — pages, instances, median size (chars, imgs, videos, forms, links), parent context, children,
  * templates, an example URL — plus row shapes (columns × child kinds).
  *
- *   node spec-profile.mjs [--config spec.config.json] [--in <components.jsonl>] [--json <out>] [--top 200]
+ *   node spec-profile.mjs [--config <file>] [--in <components.jsonl>] [--json <out>] [--top 200]
  *
  * Prints one block per component, most pages first; --json also writes the profile for tooling.
  */
@@ -43,7 +43,7 @@ export function profile(rows) {
 
 function main() {
   const cfg = loadConfig();
-  const rows = readJSONL(arg('in', cfg.p('parse', 'components.jsonl')));
+  const rows = readJSONL(arg('in', cfg.w('parse', 'components.jsonl')));
   const prof = profile(rows);
   if (arg('json')) writeJSON(arg('json'), prof);
   for (const p of prof.slice(0, Number(arg('top', 200)))) {

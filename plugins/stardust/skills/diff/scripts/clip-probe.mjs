@@ -343,11 +343,10 @@ export async function probe(page, url, opts) {
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const { chromium } = await import('playwright');
-  const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
+  const browser = await openBrowser({ mode: opts.plain ? 'plain' : 'headed' });
   let res;
   try {
-    const { ctx, page } = await openPage(browser, { width: opts.width, locale: opts.locale });
+    const { ctx, page } = await openPage(browser, { width: opts.width, locale: opts.locale, stateUrl: opts.url });
     res = await probe(page, opts.url, opts);
     res.tier = browserTier(browser);
     await ctx.close();

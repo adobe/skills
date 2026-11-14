@@ -19,10 +19,12 @@
  *
  * Writes: nothing — PASS/WARN/FAIL lines go to stdout.
  *
+ * Exit 2: usage, or a setup error (browser.mjs or playwright missing).
  * Asserts (FAIL → exit 1):
  *   - the runtime booted: body.appear present (a blank render = harness bug, #40)
  *   - exactly one <h1>, no heading nested inside it (#35/#55)
- *   - >0 sections; every [data-block-name] reaches data-block-status="loaded"
+ *   - >0 sections; every [data-block-name] reaches data-block-status="loaded" (an EDS widget
+ *     is a `widget` block loaded from widgets/<path>/<name>.* — the dev server must serve widgets/)
  *   - zero pageerror events; zero broken images (loaded but naturalWidth 0)
  *   - every block instance renders non-empty (height > 5px, has child elements)
  *   - schema unit counts: each schema section with repeats count N≥2 renders
@@ -61,8 +63,14 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.exit(0);
 }
 
-// playwright is imported only past the --help guard, so --help answers on a checkout without it.
-const { chromium } = await import('playwright');
+// the browser front door is loaded only past the --help guard, so --help answers on a checkout without it.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
+if (!BROWSER) {
+  console.error('qa-gate: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(2);
+}
+const { openBrowser, newPage, goto } = await import(BROWSER.href);
 
 const args = process.argv.slice(2);
 const url = args.find((a) => !a.startsWith('--'));
@@ -85,11 +93,12 @@ const warns = [];
 const ok = [];
 const check = (cond, label, detail = '') => (cond ? ok : fails).push(`${label}${detail ? ` — ${detail}` : ''}`);
 
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+// exit 1 is a failed assert: a browser that cannot start is a setup error, exit 2
+const browser = await openBrowser({ mode: 'plain' }).catch((e) => { console.error(`qa-gate: ${e.message}`); process.exit(2); });
+const page = await newPage(browser, { viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
-await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+await goto(page, url, { waitUntil: 'networkidle', timeout: 60000 });
 // let lazy sections load
 await page.evaluate(async () => {
   for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 60); }); }

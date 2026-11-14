@@ -6,13 +6,13 @@
 // line is echoed so the agent's transcript carries the record.
 //
 //   node ledger.mjs <skill> <phase> <start|end|blocked> [--detail "…"] [--artifact <path>]
-//                   [--next "…"] [--owner "…"] [--dir <stardust dir>] [--strict]
+//                   [--next "…"] [--owner "…"] [--track <name>] [--dir <stardust dir>] [--strict]
 //   node ledger.mjs tail [-n 5] [--dir <stardust dir>]
-//   node ledger.mjs last [<skill>] [--dir <stardust dir>]
+//   node ledger.mjs last [<skill>] [--track <name>] [--dir <stardust dir>]
 //
 // `--next` (what the next phase or the human does now) and `--owner` (who does it) are optional
 // and land in the line as `next` / `owner` when given — an `end` line without `--next` is still
-// accepted. A value flag (`--detail`, `--artifact`, `--next`, `--owner`, `--dir`, `-n`) followed
+// accepted. A value flag (`--detail`, `--artifact`, `--next`, `--owner`, `--track`, `--dir`, `-n`) followed
 // by nothing or by another flag is a usage error naming the flag, so a forgotten value never
 // swallows the next flag as its text. The default ledger dir (`stardust/`) is created on first
 // write; an explicit `--dir` that does not exist is a usage error (exit 2) — a mistyped directory
@@ -25,8 +25,13 @@
 // 2 and writes nothing. `blocked` without a --detail is treated the same way (the contract wants the
 // blocker reason in `detail`).
 //
-// The start guard: an `end` needs an open `start` — an earlier line for the same skill + phase with
-// event `start` and no `end` for that pair after it. Without one the `end` warns (plain mode) or is
+// `--track <name>` (one token) tags the line with the run track that wrote it, as `track` after `event`:
+// when two tracks run the same skill's phases at once (replica's first page first: `first-page` and
+// `site-scope`), the start guard pairs on skill + phase + track, so one track's `end` never closes the
+// other's `start`, and `last <skill> --track <name>` reads one track's position. Untagged lines pair
+// only with untagged lines.
+// The start guard: an `end` needs an open `start` — an earlier line for the same skill + phase (+ track)
+// with event `start` and no `end` for that pair after it. Without one the `end` warns (plain mode) or is
 // refused under --strict (exit 2, nothing written, one stderr line naming the missing start). The
 // `start` line is the FIRST command of a phase, before any script runs: a recorded hands-off run wrote
 // a phase's `start` and `end` one second apart after 109 minutes of work, so a supervisor tailing the
@@ -35,8 +40,12 @@
 // phase (case-insensitive; dashes, underscores and spaces are one separator), one warning on stderr —
 // never an exit-code change, even under --strict (a recorded run's journal began at its second session;
 // another's had one section for the whole run). An absent journal is not checked.
+// The own-browser check: on `end`, the scripts under <dir> written since the phase's `start` that import
+// playwright themselves are named in one warning — never an exit-code change (a recorded run wrote four
+// scripts that opened the source site with chromium.launch(), past the pacing and the block detection of
+// stardust/scripts/stardust/browser.mjs). The script copies in <dir>/scripts/ are not read.
 // Exit codes: 0 ok · 2 usage or strict violation.
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, openSync, readSync, closeSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -105,6 +114,8 @@ export const PHASES = {
     recreate: [], // ### Phase 3 — RECREATE
     'source-fidelity-gate': ['gate'], // ### Phase 4 — SOURCE-FIDELITY GATE
     handoff: [], // ### Phase 5 — HANDOFF
+    'first-page': [], // reference/first-page-first.md § Track A
+    'reconcile-first-page': ['reconcile'], // reference/first-page-first.md § RECONCILE
   },
   // skills/dynamics/SKILL.md
   dynamics: {
@@ -113,6 +124,11 @@ export const PHASES = {
     triage: [], // ## Phase 3 — Triage (the gate output)
     implement: [], // ## Phase 4 — Implement (per plan phase)
     verify: [], // ## Phase 5 — Verify: dynamic parity
+  },
+  // skills/spec/SKILL.md — § Stages table, `s<N>-<first word of the stage>`
+  spec: {
+    's1-inventory': [], 's2-fetch': [], 's3-parse': [], 's4-links': [], 's5-real-user': ['s5-rum'], 's6-first': ['s6-capture'],
+    's7-judgement': ['s7-mapping'], 's8-variants': [], 's9-implementation': [], 's10-knowledge': [],
   },
   // skills/rollout/SKILL.md — `<Letter>-<lower-case first word of the heading>`
   rollout: {
@@ -156,21 +172,23 @@ export const phaseTableText = () => Object.entries(PHASES)
   .join('\n');
 const HELP = `Usage:
   node ledger.mjs <skill> <phase> <start|end|blocked> [--detail "…"] [--artifact <path>]
-                  [--next "…"] [--owner "…"] [--dir <d>] [--strict]
+                  [--next "…"] [--owner "…"] [--track <name>] [--dir <d>] [--strict]
   node ledger.mjs tail [-n ${DEFAULT_TAIL}] [--dir <d>]
-  node ledger.mjs last [<skill>] [--dir <d>]
+  node ledger.mjs last [<skill>] [--track <name>] [--dir <d>]
   (--dir defaults to ${DEFAULT_DIR}; the ledger is <dir>/${FILE_NAME}, created on first write;
    an explicit --dir must already exist)
 
-Appends one run-status.md line { ts, skill, phase, event, detail?, artifact?, next?, owner? } and
-prints it. --next / --owner are optional (an end line without --next is fine). A value flag followed
+Appends one run-status.md line { ts, skill, phase, event, track?, detail?, artifact?, next?, owner? }
+and prints it. --track tags the line with the run track that wrote it (two tracks running one
+skill). --next / --owner are optional (an end line without --next is fine). A value flag followed
 by nothing or by another flag is a usage error.
 <skill> may be given as "extract" or "stardust:extract". A known <phase> is written in the table's
 own form (aliases and case are normalised). Unknown skill/phase → warning on stderr, line still
 written; with --strict → exit 2, nothing written. Exit codes: 0 ok, 2 usage/strict.
-An end needs an open start (same skill + phase, no later end): missing → warning, or exit 2 under
+An end needs an open start (same skill + phase + track, no later end): missing → warning, or exit 2 under
 --strict. Write the start line FIRST, before any script of the phase runs. On end, a <dir>/${JOURNAL_NAME}
-without a "## " heading naming the phase gets a warning (never an exit-code change).
+without a "## " heading naming the phase gets a warning (never an exit-code change). So does a script
+under <dir>, written in the phase, that imports playwright itself: it opens its pages through browser.mjs.
 Known skills: ${Object.keys(PHASES).join(', ')}
 Known phases per skill (ledger form; accepted aliases in parentheses):
 ${phaseTableText()}`;
@@ -209,11 +227,16 @@ export function canonicalPhase(skill, phase) {
   return phase;
 }
 
-export function buildLine({ skill, phase, event, detail, artifact, next, owner, ts = nowIso() }) {
+export function buildLine({ skill, phase, event, track, detail, artifact, next, owner, ts = nowIso() }) {
   if (!EVENTS.includes(event)) throw new UsageError(`event must be one of ${EVENTS.join('|')}, got "${event}"`);
   const p = String(phase || '').trim();
   if (!p || /\s/.test(p)) throw new UsageError(`phase "${phase}" must be a single token (the skill's own phase name)`);
   const line = { ts, skill: normaliseSkill(skill), phase: p, event };
+  if (track != null && String(track).trim()) {
+    const t = String(track).trim().toLowerCase();
+    if (!/^[a-z][a-z0-9-]*$/.test(t)) throw new UsageError(`track "${track}" must be one token (letters, digits, dashes)`);
+    line.track = t;
+  }
   if (detail != null && String(detail).trim()) line.detail = oneLine(detail);
   if (artifact != null && String(artifact).trim()) line.artifact = String(artifact).trim();
   if (next != null && String(next).trim()) line.next = oneLine(next);
@@ -221,20 +244,31 @@ export function buildLine({ skill, phase, event, detail, artifact, next, owner, 
   return line;
 }
 
-// The start guard. Null when the ledger holds an open `start` for (skill, phase) — a start line for that
-// pair with no end line for it afterwards (a `blocked` in between keeps it open); otherwise the warning
-// text, naming the start command that is missing. Lines are compared in their canonical forms, so a
-// hand-written alias or a differently-cased phase still pairs with its end.
-export function checkOpenStart(lines, skill, phase) {
+// The start guard. Null when the ledger holds an open `start` for (skill, phase, track) — a start line for
+// that triple with no end line for it afterwards (a `blocked` in between keeps it open); otherwise the
+// warning text, naming the start command that is missing. Lines are compared in their canonical forms, so
+// a hand-written alias or a differently-cased phase still pairs with its end. An untagged end pairs only
+// with untagged lines; a tagged one only with lines of its own track.
+const trackOf = (l) => (l && l.track ? String(l.track).toLowerCase() : null);
+/** The open `start` line for (skill, phase, track), or null. */
+export function openStart(lines, skill, phase, track = null) {
   const want = String(phase).toLowerCase();
-  let open = false;
+  const wantTrack = track ? String(track).toLowerCase() : null;
+  let open = null;
   for (const l of lines) {
     if (!l || String(l.skill || '').toLowerCase() !== skill) continue;
     if (String(canonicalPhase(skill, String(l.phase || ''))).toLowerCase() !== want) continue;
-    if (l.event === 'start') open = true;
-    else if (l.event === 'end') open = false;
+    if (trackOf(l) !== wantTrack) continue;
+    if (l.event === 'start') open = l;
+    else if (l.event === 'end') open = null;
   }
-  return open ? null : `end for ${skill} ${phase} has no matching start (no earlier start line for this skill and phase without a later end) — the start line is the FIRST command of a phase, before any script runs: node ledger.mjs ${bareSkill(skill)} ${phase} start`;
+  return open;
+}
+export function checkOpenStart(lines, skill, phase, track = null) {
+  const wantTrack = track ? String(track).toLowerCase() : null;
+  const open = openStart(lines, skill, phase, track);
+  const t = wantTrack ? ` --track ${wantTrack}` : '';
+  return open ? null : `end for ${skill} ${phase}${wantTrack ? ` (track ${wantTrack})` : ''} has no matching start (no earlier start line for this skill and phase${wantTrack ? ' on this track' : ''} without a later end) — the start line is the FIRST command of a phase, before any script runs: node ledger.mjs ${bareSkill(skill)} ${phase} start${t}`;
 }
 
 export const journalPath = (dir) => join(dir, JOURNAL_NAME);
@@ -252,6 +286,50 @@ export function checkJournalSection(dir, phase) {
   const headings = readFileSync(file, 'utf8').split('\n').filter((l) => /^## /.test(l)).map((l) => foldName(l.slice(3)));
   if (headings.some((h) => h.includes(want))) return null;
   return `${file} has no "## " section naming ${phase} — a journal section is part of every phase end: "## ${phase} — <what happened> (<date>)"`;
+}
+
+// The own-browser check for `end`. A script that uses browser.mjs never imports playwright, so the import is
+// the whole test (the forms evals/lint/browser-front-door.mjs knows). Not read: <dir>/scripts (the script
+// copies, whose tests may start browsers), node_modules, assets (captured site code), files above 256 KB.
+const IMPORTS_PLAYWRIGHT = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\(\s*|\bresolve\(\s*)['"`]playwright(?:-core)?['"`]/;
+const COMMENT_LINE = /^\s*(?:\/\/|\*|#)/;
+const OWN_BROWSER_SKIP = new Set(['node_modules', 'assets']);
+const OWN_BROWSER_MAX_BYTES = 256 * 1024;
+const OWN_BROWSER_LISTED = 5;
+
+/** Scripts under `dir`, changed at or after `sinceMs`, that import playwright themselves. Sorted paths. */
+export function findOwnBrowserScripts(dir, sinceMs = 0) {
+  const found = [];
+  const walk = (d, top) => {
+    let entries;
+    try { entries = readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) {
+        if (!OWN_BROWSER_SKIP.has(e.name) && !(top && e.name === 'scripts')) walk(p, false);
+      } else if (e.isFile() && /\.(?:mjs|cjs|js)$/.test(e.name)) {
+        let st;
+        try { st = statSync(p); } catch { continue; }
+        if (st.mtimeMs < sinceMs || st.size > OWN_BROWSER_MAX_BYTES) continue;
+        let text;
+        try { text = readFileSync(p, 'utf8'); } catch { continue; }
+        if (text.split('\n').some((l) => !COMMENT_LINE.test(l) && IMPORTS_PLAYWRIGHT.test(l))) found.push(p);
+      }
+    }
+  };
+  walk(dir, true);
+  return found.sort();
+}
+
+// Null without a finding; otherwise the warning text, one line. `since` is the phase's start `ts`: with it,
+// each script is named once, at the end of the phase that wrote it. A warning only.
+export function checkOwnBrowserScripts(dir, since = null) {
+  const sinceMs = Date.parse(since);
+  const found = findOwnBrowserScripts(dir, Number.isNaN(sinceMs) ? 0 : sinceMs);
+  if (!found.length) return null;
+  const more = found.length - OWN_BROWSER_LISTED;
+  const listed = found.slice(0, OWN_BROWSER_LISTED).join(', ') + (more > 0 ? `, +${more} more` : '');
+  return `${found.length} script(s) import playwright themselves (${listed}) — a script you write opens its pages with the recipe in skills/stardust/SKILL.md § Setup, step 7 (newLiveContext and gotoLive from stardust/scripts/stardust/browser.mjs)`;
 }
 
 export const ledgerPath = (dir) => join(dir, FILE_NAME);
@@ -285,11 +363,11 @@ export function appendLine(dir, line) {
   return file;
 }
 
-export const formatTail = (l) => [l.ts, l.skill, l.phase, l.event, l.detail ? (l.detail.length > DETAIL_HEAD ? `${l.detail.slice(0, DETAIL_HEAD - 1)}…` : l.detail) : ''].join(' ').trimEnd();
+export const formatTail = (l) => [l.ts, l.skill, l.phase, l.event, ...(l.track ? [`[${l.track}]`] : []), l.detail ? (l.detail.length > DETAIL_HEAD ? `${l.detail.slice(0, DETAIL_HEAD - 1)}…` : l.detail) : ''].join(' ').trimEnd();
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, dirGiven: false, strict: false, n: DEFAULT_TAIL, detail: null, artifact: null, next: null, owner: null };
+  const opts = { dir: DEFAULT_DIR, dirGiven: false, strict: false, n: DEFAULT_TAIL, detail: null, artifact: null, next: null, owner: null, track: null };
   const pos = [];
   const isFlag = (v) => v.startsWith('--') || v === '-n' || v === '-h';
   for (let i = 0; i < argv.length; i += 1) {
@@ -307,6 +385,7 @@ function parseArgs(argv) {
     else if (a === '--artifact') opts.artifact = need();
     else if (a === '--next') opts.next = need();
     else if (a === '--owner') opts.owner = need();
+    else if (a === '--track') opts.track = need();
     else if (a === '-n') { opts.n = Number(need()); if (!Number.isInteger(opts.n) || opts.n < 1) throw new UsageError('-n needs a positive integer'); }
     else if (a.startsWith('-') && a !== '-') throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
@@ -333,29 +412,37 @@ export function main(argv) {
     const want = pos[1] ? normaliseSkill(pos[1]) : null;
     const { lines, malformed, file } = readLines(opts.dir);
     if (malformed) console.error(`ledger: ${malformed} malformed line(s) skipped in ${file}`);
-    const hit = lines.filter((l) => !want || l.skill === want).at(-1);
-    if (!hit) { console.error(`ledger: no lines${want ? ` for ${want}` : ''} in ${file}`); return 0; }
+    const track = opts.track ? String(opts.track).toLowerCase() : null;
+    const hit = lines.filter((l) => (!want || l.skill === want) && (!track || trackOf(l) === track)).at(-1);
+    if (!hit) { console.error(`ledger: no lines${want ? ` for ${want}` : ''}${track ? ` on track ${track}` : ''} in ${file}`); return 0; }
     console.log(JSON.stringify(hit));
     return 0;
   }
 
   if (pos.length !== 3) throw new UsageError(`expected <skill> <phase> <start|end|blocked>, got ${pos.length} argument(s)\n${HELP}`);
   const [skill, phase, event] = pos;
-  const line = buildLine({ skill, phase, event, detail: opts.detail, artifact: opts.artifact, next: opts.next, owner: opts.owner });
+  const line = buildLine({ skill, phase, event, track: opts.track, detail: opts.detail, artifact: opts.artifact, next: opts.next, owner: opts.owner });
   const canon = canonicalPhase(line.skill, line.phase);
   if (canon !== line.phase) {
     console.error(`ledger: phase "${line.phase}" written as "${canon}" (the table's form for ${line.skill})`);
     line.phase = canon;
   }
+  const prior = event === 'end' ? readLines(opts.dir).lines : [];
   const warnings = [
     checkPhase(line.skill, line.phase),
     event === 'blocked' && !line.detail ? 'blocked without --detail (the contract wants the blocker reason there)' : null,
-    event === 'end' ? checkOpenStart(readLines(opts.dir).lines, line.skill, line.phase) : null,
+    event === 'end' ? checkOpenStart(prior, line.skill, line.phase, line.track) : null,
   ].filter(Boolean);
   if (warnings.length && opts.strict) throw new UsageError(`strict: ${warnings.join('; ')} — nothing written`);
   for (const w of warnings) console.error(`ledger: warning: ${w}`);
-  // The journal check is advisory: printed after the strict gate, so a refused end stays one stderr line.
-  if (event === 'end') { const j = checkJournalSection(opts.dir, line.phase); if (j) console.error(`ledger: warning: ${j}`); }
+  // The journal and own-browser checks are advisory: printed after the strict gate, so a refused end stays one stderr line.
+  if (event === 'end') {
+    const advisory = [
+      checkJournalSection(opts.dir, line.phase),
+      checkOwnBrowserScripts(opts.dir, openStart(prior, line.skill, line.phase, line.track)?.ts),
+    ].filter(Boolean);
+    for (const a of advisory) console.error(`ledger: warning: ${a}`);
+  }
   appendLine(opts.dir, line);
   console.log(JSON.stringify(line));
   return 0;

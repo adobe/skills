@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8" /><title>A closed mega menu clipped to nothing</title>
+<link rel="stylesheet" href="_base.css" />
+<style>
+  header {
+    height: 64px;
+    position: relative;
+  }
+  .bar {
+    height: 64px;
+  }
+  .mega {
+    position: absolute;
+    top: 64px;
+    left: 0;
+    width: 1280px;
+    height: 370px;
+    background: #ddd;
+    clip-path: inset(0 0 100%);
+  }
+  article {
+    height: 600px;
+    padding: 40px;
+  }
+</style>
+<header>
+  <div class="bar">Brand</div>
+  <div class="mega">Menu panel</div>
+</header>
+<article>Article body paragraph</article>
+<div class="pill" style="height: 100px; background: #c00; clip-path: inset(0 round 999px)">
+  Rounded
+</div>

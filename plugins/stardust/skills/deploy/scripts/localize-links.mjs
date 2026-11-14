@@ -16,27 +16,29 @@
  * deploy, over the WHOLE tree, because earlier waves' pages gain newly valid
  * internal targets as later waves ship them):
  *   1. Builds the URL map from the content tree: every *.html under --content
- *      is a served path (extensionless; `x/index.html` → `/x`; root `/`), plus
- *      the entries of --redirects (source path → destination) when given.
+ *      is a page served at its URL (eds-path.mjs: extensionless; a folder index
+ *      `x/index.html` at `/x/`, a leaf at `/x/y`; root `/`), plus the entries of
+ *      --redirects (source path → destination) when given.
  *   2. Rewrites every <a href> whose host is a --source-host (with or without
  *      `www.`, http or https or protocol-relative) AND whose path resolves in
- *      the map to the canonical root-relative form — extensionless, no
- *      trailing slash (EDS 404s on `/x/` and `/x.html`) — preserving ?query
+ *      the map to that root-relative URL (EDS 404s on `.html` and on a leaf's
+ *      trailing slash; `/x` 404s for a folder index), preserving ?query
  *      and #fragment.
- *   3. Normalizes root-relative internal hrefs that resolve in the map but
- *      carry `.html` or a trailing slash to the same canonical form.
+ *   3. Normalizes root-relative internal hrefs that resolve in the map to the
+ *      same URL.
  *   4. Leaves everything else untouched: other hosts, mailto:/tel:, anchors,
  *      and source-host links whose path is NOT in the map (reported).
  *
  * Usage:
  *   node skills/deploy/scripts/localize-links.mjs --source-host <host[,host]> \
- *        [--content content] [--redirects stardust/redirects.tsv|redirects.json] \
+ *        [--content content] [--redirects stardust/redirects.tsv|.json|.jsonl] \
  *        [--dry-run] [--check] [--json]
  *
  *   --source-host  the live site's host(s); `www.` is matched either way
  *   --content      root of the authored content tree (default: content)
- *   --redirects    TSV `source<TAB>destination` (rollout's stardust/redirects.tsv)
- *                  or JSON ([{source,destination}] or {source: destination})
+ *   --redirects    TSV `source<TAB>destination` (rollout's stardust/redirects.tsv), JSON
+ *                  ([{source,destination}], {source: destination}, the DA sheet {data:[…]}),
+ *                  or JSON Lines ({src,target}: spec's knowledge/redirects.jsonl)
  *   --dry-run      report what would change, write nothing
  *   --check        gate mode: write nothing, exit 2 if ANY link would change
  *                  (run the plain pass first; --check is the pre-deploy assertion)
@@ -51,6 +53,7 @@
  */
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'fs';
 import path from 'path';
+import { deliveredUrl, pathKey as canonicalPath } from './eds-path.mjs';
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -79,17 +82,8 @@ function usage() {
 
 const bareHost = (h) => h.toLowerCase().replace(/^www\./, '').replace(/:\d+$/, '');
 
-// Canonical lookup key for a path: no query/fragment, no .html/.htm, no
-// trailing slash (root stays "/"), collapsed slashes, lower-cased.
-export function canonicalPath(p) {
-  let s = (p || '').split(/[?#]/)[0].replace(/\/{2,}/g, '/');
-  if (!s.startsWith('/')) s = `/${s}`;
-  s = s.replace(/\.html?$/i, '');
-  if (s.length > 1) s = s.replace(/\/+$/, '');
-  if (s === '' || s === '/index') s = '/';
-  s = s.replace(/\/index$/, '');
-  return s.toLowerCase() || '/';
-}
+// Canonical lookup key for a path: eds-path.mjs pathKey (no query/fragment, .html, /index or trailing slash; lower case).
+export { canonicalPath };
 
 function collectHtml(dir, out = []) {
   for (const entry of readdirSync(dir)) {
@@ -101,36 +95,52 @@ function collectHtml(dir, out = []) {
   return out;
 }
 
+/**
+ * [source, destination] pairs from a redirects file. Pure. Reads rollout's TSV (`source<TAB>destination`, `#`
+ * comments), JSON (`[{source,destination}]`, `{source: destination}`, or the published DA sheet
+ * `{data:[{Source,Destination}]}`), and JSON Lines (`{src,target}` rows as in spec knowledge/redirects.jsonl, or
+ * `{source,destination}`). Rows without both sides are skipped.
+ */
+export function redirectPairs(raw, file = '') {
+  const pairs = [];
+  const add = (r) => { if (!r || typeof r !== 'object') return; const s = r.source ?? r.Source ?? r.src; const d = r.destination ?? r.Destination ?? r.target; if (typeof s === 'string' && typeof d === 'string' && s && d) pairs.push([s, d]); };
+  if (/\.jsonl$/i.test(file)) raw.split(/\r?\n/).forEach((l) => { if (l.trim()) add(JSON.parse(l)); });
+  else if (/\.json$/i.test(file)) {
+    const j = JSON.parse(raw);
+    if (Array.isArray(j)) j.forEach(add);
+    else if (Array.isArray(j?.data)) j.data.forEach(add);
+    else Object.entries(j).forEach(([s, d]) => { if (typeof d === 'string') pairs.push([s, d]); });
+  } else {
+    raw.split(/\r?\n/).forEach((line) => {
+      const t = line.trim();
+      if (!t || t.startsWith('#')) return;
+      const [s, d] = t.split(/\t+|\s{2,}/);
+      if (s && d) pairs.push([s, d]);
+    });
+  }
+  return pairs;
+}
+
 function buildMap(files, root, redirectsFile) {
-  const map = new Map(); // canonical source path → canonical served path
+  const map = new Map(); // lookup key → the URL EDS serves (a folder index at /a/, a leaf at /a/b: eds-path.mjs)
   for (const f of files) {
     const rel = `/${path.relative(root, f).split(path.sep).join('/')}`;
-    const served = canonicalPath(rel);
-    map.set(served, served);
+    map.set(canonicalPath(rel), deliveredUrl(rel));
   }
-  let redirects = 0;
+  let redirects = 0; let pending = 0;
   if (redirectsFile) {
-    const raw = readFileSync(redirectsFile, 'utf8');
-    const pairs = [];
-    if (/\.json$/i.test(redirectsFile)) {
-      const j = JSON.parse(raw);
-      if (Array.isArray(j)) j.forEach((r) => r && r.source && r.destination && pairs.push([r.source, r.destination]));
-      else Object.entries(j).forEach(([s, d]) => pairs.push([s, d]));
-    } else {
-      raw.split(/\r?\n/).forEach((line) => {
-        const t = line.trim();
-        if (!t || t.startsWith('#')) return;
-        const [s, d] = t.split(/\t+|\s{2,}/);
-        if (s && d) pairs.push([s, d]);
-      });
-    }
+    const pairs = redirectPairs(readFileSync(redirectsFile, 'utf8'), redirectsFile);
+    if (!pairs.length) console.error(`localize-links: no redirect pairs read from ${redirectsFile}`);
+    // a redirect rewrites links only to a page of this content tree: one whose page ships in a later wave stays
+    // absolute until then (a seeded spec covers every page of the site, a wave delivers a few)
     for (const [s, d] of pairs) {
       const src = canonicalPath(s.replace(/^https?:\/\/[^/]+/i, ''));
-      const dst = canonicalPath(d.replace(/^https?:\/\/[^/]+/i, ''));
+      const dst = map.get(canonicalPath(d.replace(/^https?:\/\/[^/]+/i, '')));
+      if (dst === undefined) { pending += 1; continue; }
       if (!map.has(src)) { map.set(src, dst); redirects += 1; }
     }
   }
-  return { map, redirects };
+  return { map, redirects, pending };
 }
 
 // ------------------------------------------------------------------ rewrite
@@ -184,7 +194,7 @@ function main() {
   const opts = parseArgs(process.argv);
   const hosts = opts.hosts.map(bareHost);
   const files = collectHtml(opts.content);
-  const { map, redirects } = buildMap(files, opts.content, opts.redirects);
+  const { map, redirects, pending } = buildMap(files, opts.content, opts.redirects);
   const ctx = { map, hosts };
 
   const perFile = {};
@@ -206,7 +216,7 @@ function main() {
     console.log(JSON.stringify({ ...summary, perFile, kept: keptSorted.map(([p, n]) => ({ path: p, links: n })) }, null, 2));
   } else {
     const verb = opts.dryRun ? 'would localize' : 'localized';
-    console.log(`localize-links: ${files.length} pages, ${map.size} map entries (${redirects} from redirects), hosts ${hosts.join(', ')}`);
+    console.log(`localize-links: ${files.length} pages, ${map.size} map entries (${redirects} from redirects${pending ? `; ${pending} redirect(s) to pages not in this tree kept for a later wave` : ""}), hosts ${hosts.join(', ')}`);
     console.log(`${verb} ${localized} source-host link(s) + normalized ${normalized} internal href(s) across ${filesChanged} file(s)${opts.dryRun ? ' [no writes]' : ''}`);
     for (const [p, c] of Object.entries(perFile)) console.log(`  ${p}: ${c.localized} localized, ${c.normalized} normalized`);
     if (keptSorted.length) {

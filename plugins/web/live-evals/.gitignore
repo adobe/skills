@@ -1,0 +1,10 @@
+node_modules/
+workspace/
+output/
+.playwright-cli/
+REPORT-detail.html
+fixtures/**/*.log
+results/
+REPORT.md
+REPORT.html
+METHODOLOGY.html

@@ -24,13 +24,18 @@
     },
     {
       "name": "source_fidelity_gate_runs",
-      "max_score": 20,
+      "max_score": 15,
       "description": "The source-fidelity gate runs all three probes (content-diff and visual-diff with --profile generic against the live URL, plus stitch-shot + pixel-compare) and its evidence (per-iteration metrics, band breakdown, height delta, diff images) is written under stardust/replica/; --full rounds carry the clip-probe line, and every crafted prototype is a row in stardust/replica/gates/prototypes-<width>/summary.json (gate-all --stage prototype) — a prototype without a row is ungated."
     },
     {
       "name": "both_breakpoints_gated",
       "max_score": 10,
       "description": "The gate runs at both 1440 and 360, and the content-cap row runs once per archetype after the 1440 pass (cap-probe.mjs live --against prototype at the derived probeWidth from DESIGN.json, evidence under stardust/replica/gates/<slug>-<probeWidth>/); mobile and wide results are recorded, not assumed from desktop."
+    },
+    {
+      "name": "header_contract_recorded",
+      "max_score": 5,
+      "description": "extract --prep records the header contract (stardust/chrome/header-contract.json from diff's chrome-explore.mjs, at 1440 and 390) and its summary line appears in the prep summary; the header's menus, drawer and search are treated as behaviour to reproduce, not as a picture."
     },
     {
       "name": "iteration_discipline",

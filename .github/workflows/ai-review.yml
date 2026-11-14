@@ -1,0 +1,111 @@
+name: AI Review
+
+# Claude and Codex review each pull request, read the validation results and leave a
+# verdict (the `review` check), a summary comment and line comments.
+# https://github.com/adobe/helix-shared-workflows/blob/main/docs/ai-review.md
+#
+# The check is advisory until it is added to a ruleset. Drafts and Renovate's pull
+# requests are not reviewed.
+#
+# A pull request from a branch of this repository is reviewed on pull_request. One from a
+# fork gets no secrets there, so it is reviewed on pull_request_target, strictly: nothing
+# from the fork is installed or run, and the reviewers can only read. If the author has no
+# write access to this repository, a maintainer approves the run in the `fork-review`
+# environment first. pull_request_target takes this file from main, never from the pull
+# request.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-review-${{ github.event_name }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  # Whether a pull request from a fork needs a maintainer's approval before its review. It
+  # does when its author has no write access to this repository; someone with write access
+  # could have pushed the same change to a branch here. If the permission can't be read,
+  # the run waits for approval. This job has no secrets.
+  fork-author:
+    if: >-
+      github.event_name == 'pull_request_target'
+      && !github.event.pull_request.draft
+      && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.author.outputs.environment }}
+    steps:
+      - id: author
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          permission=$(gh api "repos/$REPO/collaborators/$AUTHOR/permission" --jq .permission 2>/dev/null || echo unknown)
+          echo "$AUTHOR has $permission permission on $REPO"
+          case "$permission" in
+            admin | write) echo "environment=" >> "$GITHUB_OUTPUT" ;;
+            *) echo "environment=fork-review" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  # `fork-review` has required reviewers: a maintainer reads the diff and approves the run
+  # before the Bedrock key is anywhere near it, and a new push needs a new approval. An
+  # empty environment has none.
+  approve-fork:
+    needs: fork-author
+    runs-on: ubuntu-latest
+    environment: ${{ needs.fork-author.outputs.environment }}
+    permissions: {}
+    steps:
+      - run: echo "approved"
+
+  ai-review:
+    needs: approve-fork
+    # pull_request: branches of this repository only. pull_request_target: forks only, once
+    # approve-fork has passed.
+    if: >-
+      !cancelled() && !github.event.pull_request.draft
+      && (
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        || (github.event_name == 'pull_request_target' && needs.approve-fork.result == 'success')
+      )
+    uses: adobe/helix-shared-workflows/.github/workflows/ai-review.yml@3e0cdcf458fd60b2e0e0b3321dd374e48f0b56d2 # v1.3.0
+    secrets:
+      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      statuses: write
+    with:
+      review-forks: true
+      # a small model without tools that the reviewers ask what an agent knows without the
+      # skill; a strict review of a fork has none
+      baseline: true
+      setup: npm ci
+      test: npm run validate && node scripts/check-release-configs.mjs
+      environment: ''
+      review-prompt: |
+        ADOBE SKILLS
+
+        This repository is adobe/skills: Adobe's skills for AI coding agents, grouped into plugins under `plugins/`. A skill is `skills/<name>/SKILL.md` with optional references, scripts and assets; its frontmatter `description` is what an agent reads to decide whether to load it. People install plugins straight from `main`, so review this as the last check before it ships. AGENTS.md at the repository root holds the rules; read it first, and the `AGENTS.md` of a plugin the change touches. The tests are `npm run validate` (structure of every SKILL.md) and the release config check.
+
+        Look for real defects, in this order:
+        1. Security (AGENTS.md, Security): a download piped into a shell, a guard hook or script that fails open, advice to allow a tool category permanently or to skip confirmation for a destructive, paid or externally visible action, a secret, token, customer name or internal URL, an instruction to follow text found in fetched content, a new MCP server, hook, script or endpoint the pull request doesn't call out.
+        2. Broken references: a path, script, flag, command, tool or skill that a changed skill names and that doesn't exist in the tree; a link to a reference file that isn't there; a manifest that points at a skill folder that isn't there. Check them against the files, don't assume.
+        3. Wrong facts about Adobe products: an API, endpoint, class, CLI flag or behaviour stated for the wrong product or version. Deny only when you confirmed it against the product's documentation or code; otherwise comment and ask for the source.
+        4. Activation: a `description` that doesn't say when to use the skill, or is so broad that the skill loads for tasks it adds nothing to; a skill name that another plugin in the tree already has.
+        5. Drift: a version that differs between a plugin's manifests and its entry in `.claude-plugin/marketplace.json`; a new plugin without a marketplace entry, a CODEOWNERS entry or a README section; an edit to files synced from another repository.
+        6. Evidence: a behaviour change in a plugin that has `evals/` without a scenario for it; a claim that a skill helps without a run that shows it.
+        7. Repository rules: one plugin per pull request, a conventional-commit title with the plugin as scope, a SKILL.md grown past 500 lines instead of moving detail to `references/`.
+        8. Redundancy: what a changed skill tells an agent that the agent would do or know anyway. Find out with `ask-baseline`, a small model without tools, files or web access that has not read the skill. For each fact, command or piece of guidance the pull request adds or changes in a skill, ask the baseline the task or the question behind it, in the words of a user who has never seen the skill. Don't put the answer in the question: ask "How do I check which Node version is active?", not "Should I run node -v?". If the baseline gives the same fact or the same guidance by itself, the skill doesn't need the line: comment on it with the question you asked and the gist of the answer, and suggest removing it or cutting it down to what the baseline missed. If the baseline is wrong, vague or doesn't know, the line earns its place: say nothing. When a pull request adds more than the baseline can be asked about, take the longest additions first and say in the summary how many lines you probed and how many were redundant. A strict review of a fork has no baseline: skip this item there.
+
+        A pull request from a fork (the prompt says so) is also denied when it changes `.github/`, the marketplace files, a hook, an `.mcp.json`, a script that a skill runs, or more than one plugin: a maintainer has to take those over on a branch of this repository. Say so in the summary.
+
+        Don't report style preferences, or anything you haven't confirmed in the tree or by a run. Severity: deny for a confirmed item from 1 or 2, a confirmed wrong fact from 3 that would make an agent do the wrong thing, or a change that breaks installation or the checks. Items 4 to 8 are comments: say what to change and approve, unless the change makes the skill unusable.
