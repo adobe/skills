@@ -5,6 +5,6 @@
   "ignorePatterns": [
     "src/bundles/**",
     "dist/**",
-    "test/fixtures/header-*/**"
+    "test/fixtures/**"
   ]
 }

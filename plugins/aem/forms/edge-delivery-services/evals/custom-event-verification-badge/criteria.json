@@ -1,0 +1,46 @@
+{
+  "context": "Tests whether the agent subscribes to AEM Forms custom events through the field model (fieldModel.subscribe(cb, 'eventName') inside the register callback, without the custom: prefix) instead of DOM event listeners, and combines that with listenChanges value handling.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Files, viewType and registration",
+      "max_score": 12,
+      "description": "Files exist under `blocks/form/components/verified-email/` (`verified-email.js`, `verified-email.css`, `_verified-email.json`), the JSON sets `\"fd:viewType\": \"verified-email\"` with `\"fieldType\": \"email\"`, and `'verified-email'` is in `customComponents` in `mappings.js`"
+    },
+    {
+      "name": "Model custom-event subscription",
+      "max_score": 20,
+      "description": "The component handles the events via `fieldModel.subscribe(callback, 'emailVerified')` and `fieldModel.subscribe(callback, 'emailRejected')` (event names WITHOUT the `custom:` prefix) registered inside the `'register'` branch of the `subscribe()` callback"
+    },
+    {
+      "name": "No DOM listener for custom events",
+      "max_score": 15,
+      "description": "The solution does NOT use `addEventListener` on the field wrapper/element/document to receive `emailVerified`, `emailRejected` or `custom:*` events"
+    },
+    {
+      "name": "listenChanges value reset",
+      "max_score": 13,
+      "description": "`subscribe` is imported from `'../../rules/index.js'` and called with `{ listenChanges: true }`; on a `'change'` payload whose `propertyName` is `value` the badge is cleared"
+    },
+    {
+      "name": "Authorable badge text",
+      "max_score": 10,
+      "description": "`_verified-email.json` adds text properties for the verified (and optionally rejected) messages with unique names, and the JS reads them from the field JSON `properties` with sensible defaults"
+    },
+    {
+      "name": "README documents events",
+      "max_score": 15,
+      "description": "`README.md` for the component documents the custom events it listens to (`emailVerified`, `emailRejected`) and how they are dispatched (`custom:` prefix from a custom function)"
+    },
+    {
+      "name": "Accessible status",
+      "max_score": 7,
+      "description": "The badge/message is exposed accessibly (e.g. `role=\"status\"`, `aria-live`, or associated via `aria-describedby`)"
+    },
+    {
+      "name": "Default export decorate",
+      "max_score": 8,
+      "description": "`verified-email.js` exports a default `decorate` function and only uses relative imports that include the `.js` extension"
+    }
+  ]
+}

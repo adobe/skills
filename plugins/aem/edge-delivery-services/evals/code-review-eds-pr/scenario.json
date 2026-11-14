@@ -1,0 +1,10 @@
+{
+  "description": "Review a PR (branch summer-promo vs main) on aem-boilerplate 5cea543 with planted EDS violations (repo built by setup.sh)",
+  "fixtures": {
+    "change": {
+      "type": "directory",
+      "path": "./fixtures/change",
+      "installPath": ".summer-promo"
+    }
+  }
+}
