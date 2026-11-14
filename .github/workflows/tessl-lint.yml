@@ -1,5 +1,9 @@
 name: Tessl Plugin Lint
 
+# Whether every plugin that has a Tessl manifest is valid. Warnings don't fail here and
+# are not posted on the pull request: the boy-scout job of the Validate workflow holds a
+# pull request to the warnings of the files it changes (scripts/tessl-lint-debt.mjs).
+
 on:
   push:
     branches: [main]
@@ -8,250 +12,27 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
 
 jobs:
   tessl-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
 
-      - uses: tesslio/setup-tessl@v2
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e  # v2
 
-      - name: Detect changed plugins
-        id: detect
+      - name: Lint every plugin that has a Tessl manifest
         run: |
-          # Discover all plugin directories (parent of each .tessl-plugin dir)
-          discover_plugin_dirs() {
-            find plugins -path '*/.tessl-plugin/plugin.json' 2>/dev/null \
-              | while read -r manifest; do dirname "$(dirname "$manifest")"; done \
-              | sort
-          }
-
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
-
-            # Build list of all plugin directories (parents of .tessl-plugin/plugin.json)
-            ALL_PLUGIN_DIRS=$(discover_plugin_dirs)
-
-            if [ -z "$ALL_PLUGIN_DIRS" ]; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "No .tessl-plugin/plugin.json files found in repo."
-              exit 0
+          failed=0
+          while IFS= read -r manifest; do
+            dir=${manifest%/.tessl-plugin/plugin.json}
+            echo "::group::$dir"
+            if ! tessl plugin lint "$dir"; then
+              failed=1
+              echo "::error file=$manifest::tessl plugin lint failed for $dir"
             fi
-
-            # For each changed file, find which plugin directory it belongs to
-            DIRS=""
-            for changed_file in $CHANGED_FILES; do
-              for plugin_dir in $ALL_PLUGIN_DIRS; do
-                case "$changed_file" in
-                  "$plugin_dir"/*)
-                    case " $DIRS " in
-                      *" $plugin_dir "*) ;;
-                      *) DIRS="$DIRS $plugin_dir" ;;
-                    esac
-                    break
-                    ;;
-                esac
-              done
-            done
-
-            DIRS=$(echo "$DIRS" | xargs)  # trim whitespace
-
-            # Check for unmatched changes under plugins/
-            UNMATCHED=false
-            for changed_file in $CHANGED_FILES; do
-              case "$changed_file" in
-                plugins/*)
-                  MATCHED=false
-                  for plugin_dir in $ALL_PLUGIN_DIRS; do
-                    case "$changed_file" in
-                      "$plugin_dir"/*) MATCHED=true; break ;;
-                    esac
-                  done
-                  if [ "$MATCHED" = "false" ]; then
-                    UNMATCHED=true
-                    break
-                  fi
-                  ;;
-              esac
-            done
-
-            if [ "$UNMATCHED" = "true" ]; then
-              echo "Unmatched changes under plugins/ detected — linting all plugins"
-              DIRS=$(echo "$ALL_PLUGIN_DIRS" | tr "\n" " " | xargs)
-            fi
-
-            if [ -z "$DIRS" ]; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "Changed files don't belong to any plugin — nothing to lint."
-            else
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-              echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
-              echo "Plugins to lint: $DIRS"
-            fi
-          else
-            # Push to main: lint all plugins
-            ALL_PLUGIN_DIRS=$(discover_plugin_dirs | tr "\n" " " | xargs)
-            if [ -z "$ALL_PLUGIN_DIRS" ]; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "No .tessl-plugin/plugin.json files found in repo."
-            else
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-              echo "dirs=$ALL_PLUGIN_DIRS" >> "$GITHUB_OUTPUT"
-              echo "Push to main — linting all plugins: $ALL_PLUGIN_DIRS"
-            fi
-          fi
-
-      - name: Post skip summary
-        if: steps.detect.outputs.skip == 'true'
-        run: |
-          {
-            echo "## Plugin Lint"
-            echo ""
-            echo "No plugins to lint."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Lint plugins
-        if: steps.detect.outputs.skip != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          PASS=0
-          FAIL=0
-          TOTAL_WARNINGS=0
-          SUMMARY_FILE=$(mktemp)
-          ERRORS_FILE=$(mktemp)
-          COMMENT_FILE=$(mktemp)
-          PAYLOAD_FILE=$(mktemp)
-          trap 'rm -f "$SUMMARY_FILE" "$ERRORS_FILE" "$COMMENT_FILE" "$PAYLOAD_FILE"' EXIT
-
-          # Marker used to find/update the sticky PR comment on subsequent runs
-          MARKER="<!-- tessl-lint-summary -->"
-
-          {
-            echo "$MARKER"
-            echo "## Tessl Plugin Lint"
-            echo ""
-          } > "$COMMENT_FILE"
-
-          for plugin_dir in ${{ steps.detect.outputs.dirs }}; do
-            PLUGIN_NAME=$(basename "$plugin_dir")
-            echo "::group::Linting $PLUGIN_NAME ($plugin_dir)"
-
-            EXIT_CODE=0
-            OUTPUT=$(tessl plugin lint "$plugin_dir" 2>&1) || EXIT_CODE=$?
-            echo "$OUTPUT"
             echo "::endgroup::"
-
-            WARN_COUNT=$(echo "$OUTPUT" | grep -c '^⚠' || true)
-            TOTAL_WARNINGS=$((TOTAL_WARNINGS + WARN_COUNT))
-
-            # ::warning:: annotation per plugin with warnings (visible in run details)
-            if [ "$WARN_COUNT" -gt 0 ]; then
-              echo "::warning::$PLUGIN_NAME has $WARN_COUNT lint warning(s) — see job log or PR comment"
-            fi
-
-            if [ "$EXIT_CODE" -ne 0 ]; then
-              FAIL=$((FAIL + 1))
-              echo "| $PLUGIN_NAME | $WARN_COUNT warnings | ❌ error |" >> "$SUMMARY_FILE"
-              echo "  ❌ $PLUGIN_NAME: lint failed (exit code $EXIT_CODE)" >> "$ERRORS_FILE"
-              {
-                echo "### ❌ \`$PLUGIN_NAME\` — lint failed"
-                echo ""
-                echo '```'
-                echo "$OUTPUT"
-                echo '```'
-                echo ""
-              } >> "$COMMENT_FILE"
-            else
-              PASS=$((PASS + 1))
-              if [ "$WARN_COUNT" -gt 0 ]; then
-                echo "| $PLUGIN_NAME | $WARN_COUNT warnings | ✅ |" >> "$SUMMARY_FILE"
-                {
-                  echo "<details>"
-                  echo "<summary>⚠️ <strong><code>$PLUGIN_NAME</code></strong> — $WARN_COUNT warning(s)</summary>"
-                  echo ""
-                  echo '```'
-                  echo "$OUTPUT"
-                  echo '```'
-                  echo "</details>"
-                  echo ""
-                } >> "$COMMENT_FILE"
-              else
-                echo "| $PLUGIN_NAME | clean | ✅ |" >> "$SUMMARY_FILE"
-                echo "✅ \`$PLUGIN_NAME\` — clean" >> "$COMMENT_FILE"
-                echo "" >> "$COMMENT_FILE"
-              fi
-            fi
-          done
-
-          TOTAL=$((PASS + FAIL))
-
-          # GitHub Actions step summary
-          {
-            echo "## Plugin Lint"
-            echo ""
-            echo "| Plugin | Status | Result |"
-            echo "|--------|--------|--------|"
-            cat "$SUMMARY_FILE"
-            echo "| **Total** | **$PASS/$TOTAL passed** | $([ "$FAIL" -eq 0 ] && echo '✅' || echo '❌') |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          # Footer in sticky comment
-          {
-            echo ""
-            echo "---"
-            if [ "$FAIL" -gt 0 ]; then
-              echo "**$FAIL plugin(s) failed lint**, $TOTAL_WARNINGS warning(s) across $TOTAL plugin(s) checked."
-            elif [ "$TOTAL_WARNINGS" -gt 0 ]; then
-              echo "✅ All $TOTAL plugin(s) lint passed with $TOTAL_WARNINGS warning(s) total."
-            else
-              echo "✅ All $TOTAL plugin(s) clean."
-            fi
-            echo ""
-            echo "_Updated by [\`tessl-lint\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) for commit ${GITHUB_SHA:0:7}._"
-          } >> "$COMMENT_FILE"
-
-          # stdout summary
-          echo ""
-          echo "============================="
-          echo "  Plugin Lint Summary"
-          echo "============================="
-          echo "  Total:    $TOTAL"
-          echo "  Passed:   $PASS"
-          echo "  Failed:   $FAIL"
-          echo "  Warnings: $TOTAL_WARNINGS"
-          if [ -s "$ERRORS_FILE" ]; then
-            echo ""
-            echo "  Failed plugins:"
-            cat "$ERRORS_FILE"
-          fi
-          echo "============================="
-
-          # Sticky PR comment (pull_request events only)
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            PR_NUMBER=${{ github.event.pull_request.number }}
-            REPO="${{ github.repository }}"
-
-            # JSON-encode the comment body via jq so quotes/newlines survive
-            jq -n --rawfile body "$COMMENT_FILE" '{body: $body}' > "$PAYLOAD_FILE"
-
-            EXISTING_ID=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
-              --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1 || true)
-
-            if [ -n "$EXISTING_ID" ]; then
-              echo "Updating existing sticky comment $EXISTING_ID"
-              gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING_ID" --input "$PAYLOAD_FILE" >/dev/null || echo "::warning::Could not update PR comment (token may be read-only for fork PRs)"
-            else
-              echo "Creating new sticky comment"
-              gh api -X POST "repos/$REPO/issues/$PR_NUMBER/comments" --input "$PAYLOAD_FILE" >/dev/null || echo "::warning::Could not post PR comment (token may be read-only for fork PRs)"
-            fi
-          fi
-
-          if [ "$FAIL" -gt 0 ]; then
-            echo "::error::$FAIL plugin(s) failed lint"
-            exit 1
-          fi
+          done < <(find plugins -path '*/.tessl-plugin/plugin.json' | sort)
+          exit "$failed"

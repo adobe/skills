@@ -38,6 +38,92 @@
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["minor", "patch", "pin", "digest", "pinDigest"],
       "automerge": true
+    },
+    {
+      "description": "A version in a skill is what an agent will tell a user to run. Updates are never merged automatically, come as one pull request per dependency for the plugin's owner, and are fix commits so the skill is released.",
+      "matchManagers": ["custom.regex"],
+      "matchFileNames": ["plugins/**"],
+      "automerge": false,
+      "semanticCommitType": "fix",
+      "semanticCommitScope": "deps"
+    },
+    {
+      "description": "appbuilder-project-init pins this plugin to 2.1.0 on purpose: 2.2.0 is ESM and breaks the aio CLI. The owner moves it by hand.",
+      "matchPackageNames": ["@adobe/aio-cli-plugin-certificate"],
+      "matchFileNames": ["plugins/app-builder/**"],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "GitHub Actions that skills name in their text, their eval criteria and the workflow templates they hand out, as owner/repo@version. Renovate's own manager for actions reads only this repository's workflows.",
+      "managerFilePatterns": [
+        "/^plugins/.+\\.(md|ya?ml|json)$/"
+      ],
+      "matchStrings": [
+        "(?:^|[\\s`\"'(])(?<depName>(?:actions|adobe|github|docker)/[\\w.-]+)@(?<currentValue>v?\\d+(?:\\.\\d+){0,2})(?:$|[\\s`\"'),.:;])"
+      ],
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "npm packages loaded from jsDelivr.",
+      "managerFilePatterns": [
+        "/^plugins/.+\\.(md|ya?ml|json|js|mjs|cjs|ts|py|sh|html|xml)$/"
+      ],
+      "matchStrings": [
+        "cdn\\.jsdelivr\\.net/npm/(?<depName>(?:@[\\w.-]+/)?[\\w.-]+)@(?<currentValue>\\d[\\w.-]*)"
+      ],
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "GitHub repositories loaded from jsDelivr.",
+      "managerFilePatterns": [
+        "/^plugins/.+\\.(md|ya?ml|json|js|mjs|cjs|ts|py|sh|html|xml)$/"
+      ],
+      "matchStrings": [
+        "cdn\\.jsdelivr\\.net/gh/(?<depName>[\\w.-]+/[\\w.-]+)@(?<currentValue>v?\\d[\\w.-]*)"
+      ],
+      "datasourceTemplate": "github-tags"
+    },
+    {
+      "customType": "regex",
+      "description": "Libraries loaded from cdnjs.",
+      "managerFilePatterns": [
+        "/^plugins/.+\\.(md|ya?ml|json|js|mjs|cjs|ts|py|sh|html|xml)$/"
+      ],
+      "matchStrings": [
+        "cdnjs\\.cloudflare\\.com/ajax/libs/(?<depName>[\\w.-]+)/(?<currentValue>\\d[\\w.-]*)/(?<asset>[\\w./-]+)"
+      ],
+      "datasourceTemplate": "cdnjs",
+      "packageNameTemplate": "{{{depName}}}/{{{asset}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "npm packages that a skill runs or installs at an exact version: npx pkg@1.2.3, pnpm dlx pkg@1.2.3, npm install pkg@1.2.3.",
+      "managerFilePatterns": [
+        "/^plugins/.+\\.(md|sh|ya?ml)$/"
+      ],
+      "matchStrings": [
+        "\\b(?:npx|bunx|pnpm dlx)(?: -[-\\w]+)* (?<depName>(?:@[\\w.-]+/)?[\\w.-]+)@(?<currentValue>\\d+\\.\\d+\\.\\d+[\\w.-]*)",
+        "\\bnpm (?:i|install|exec)(?: -[-\\w]+)* (?<depName>(?:@[\\w.-]+/)?[\\w.-]+)@(?<currentValue>\\d+\\.\\d+\\.\\d+[\\w.-]*)"
+      ],
+      "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "Any other version in a skill, annotated on the line above with a comment that holds renovate: datasource=<datasource> depName=<name>, optionally followed by packageName=, versioning=, extractVersion= and registryUrl=. The version is the first one on the next line that follows a colon, an equals sign, an @, a > or a slash, so it covers YAML values, pkg@version, XML elements and URLs.",
+      "managerFilePatterns": [
+        "/^plugins/.+\\.(md|ya?ml|json|js|mjs|cjs|ts|py|sh|html|xml)$/"
+      ],
+      "matchStrings": [
+        "renovate: datasource=(?<datasource>[a-z-.]+?) depName=(?<depName>[^\\s]+?)(?: packageName=(?<packageName>[^\\s]+?))?(?: versioning=(?<versioning>[^\\s]+?))?(?: extractVersion=(?<extractVersion>[^\\s]+?))?(?: registryUrl=(?<registryUrl>[^\\s]+?))?(?: -->)?[ \\t]*\\r?\\n[^\\n]*?(?:[:=][ \\t]*[\"']?|[@>/])(?<currentValue>v?\\d[^\\s\"'@,<>/]*)"
+      ],
+      "versioningTemplate": "{{#if versioning}}{{{versioning}}}{{else}}semver-coerced{{/if}}",
+      "extractVersionTemplate": "{{#if extractVersion}}{{{extractVersion}}}{{/if}}"
     }
   ]
 }

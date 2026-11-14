@@ -13,7 +13,7 @@ description: >-
   run_workflow_submit. ALWAYS call list_actions first for action/node
   discovery; a "what tools" question is answered directly from your visible
   tool list, no call. DO NOT TRIGGER for direct Firefly API calls without
-  MCP (use firefly-api-specs).
+  MCP (see the Firefly Services documentation).
 compatibility: Requires an enterprise Adobe account with a Firefly Services or Firefly Creative Production entitlement, assigned via the Adobe Admin Console. Not available to individual/personal Adobe accounts.
 license: Apache-2.0
 metadata:
@@ -165,4 +165,4 @@ ordinary input swaps do not.
 ## Further reading
 
 - [Workflow Builder API docs](https://developer.adobe.com/firefly-services/docs/workflow-builder/)
-- For direct Firefly REST calls without MCP, use the `firefly-api-specs` skill instead.
+- For direct Firefly REST calls without MCP, use the [Firefly Services documentation](https://developer.adobe.com/firefly-services/docs/); no skill in this plugin covers them.
