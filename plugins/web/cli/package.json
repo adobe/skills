@@ -23,7 +23,7 @@
     "format": "oxfmt src bin build.mjs test"
   },
   "dependencies": {
-    "commander": "15.0.0"
+    "commander": "15.1.0"
   },
   "devDependencies": {
     "@playwright/cli": "0.1.23",
