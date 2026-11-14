@@ -12,14 +12,6 @@ Estimated, third-party SEO data for any domain — yours or a competitor's. Reac
 through the Semrush MCP server at `https://mcp.semrush.com/v2/mcp`, which exposes
 14 tools and 86 reports.
 
-**Semrush vs Search Console.** Search Console reports what your own site actually
-earned: real clicks, real impressions, only for properties you can verify.
-Semrush models the whole market from its own crawl and clickstream panels, so it
-covers competitors and keywords you have never ranked for, and every number is an
-estimate. Search Console answers "what did we get". Semrush answers "what is out
-there", "who else is in this SERP" and "what is that competitor doing". When the
-two disagree about your own site, Search Console wins.
-
 ## Setup
 
 Register the server with your agent once. OAuth runs on first contact and needs a
@@ -198,8 +190,9 @@ What follows from those measurements:
   the older API and were not measured here. Prefer `info`, which already carries
   the issue counts.
 
-Before running a per-row report over more than a handful of rows, say what you are
-about to do and let the user decide.
+Every `execute_report` can spend the user's units. Agree a unit budget with the
+user before the first one, add up `metadata.usage.api_units` as you go, and stop
+and ask again when the sum reaches it.
 
 ## Errors arrive in two different places
 
@@ -289,15 +282,11 @@ id and needs the `snapshot_id` from `snapshots`. Never report a bare defect id.
 
 - Row count is not keyword count. `resource_organic` can return the same keyword
   on several positions, and the headline keyword total counts rows.
-- Traffic, volume and cost columns are modelled estimates. Attribute them to
-  Semrush and name the database.
 - `Number of Results` returns values in the tens or hundreds for high-volume
   queries, which cannot be a count of Google results. Do not build an argument on
   that column.
 - `backlinks_overview` returned `score` and `trust_score` of 100 for a very large
   domain. The scale is capped, so 100 means "at the ceiling", not a precise value.
-- Competitor rows are only meaningful alongside their `Common Keywords` value. A
-  competitor sharing one keyword is a name collision, not a rival.
 
 ## References
 
