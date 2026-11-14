@@ -199,42 +199,9 @@ the 500-target cap, and error handling: [references/cam-mcp.md](references/cam-m
 
 ### Calling the helper
 
-Scripts live under **`./scripts/`** (next to this `SKILL.md`).
-
-```javascript
-const { getBpaFindings } = require('./scripts/bpa-findings-helper.js');
-
-// First batch (defaults: limit=5, offset=0)
-const result = await getBpaFindings(pattern, {
-  bpaFilePath: './cleaned_file6.csv',
-  collectionsDir: './unified-collections',
-  projectId: '...',
-  mcpFetcher: mcpFunction
-  // limit: 5,   // implicit default
-  // offset: 0,  // implicit default
-});
-
-// Next batch — only after the user says to continue
-if (result.paging?.hasMore) {
-  const next = await getBpaFindings(pattern, {
-    bpaFilePath: './cleaned_file6.csv',
-    collectionsDir: './unified-collections',
-    projectId: '...',
-    mcpFetcher: mcpFunction,
-    offset: result.paging.nextOffset
-  });
-}
-```
-
-**`result`:**
-- `success`, `source` (`'unified-collection' | 'bpa-file' | 'mcp-server' | …`)
-- `message` (includes a human-readable batch status)
-- `targets` — the **current batch** (length `<= limit`)
-- `paging: { total, returned, offset, limit, nextOffset, hasMore }` — always present on
-  successful calls
-
-To disable batching for a one-off programmatic caller, pass `limit: null`. The
-skill workflow itself **never** does this.
+`getBpaFindings(pattern, options)` from `./scripts/bpa-findings-helper.js` returns the **current
+batch** in `targets` (at most `limit`, default 5) and a `paging` object with `hasMore` and
+`nextOffset`. The call, its options and its result: [references/bpa-helper.md](references/bpa-helper.md).
 
 ### Collection caching
 
@@ -489,22 +456,3 @@ that cache.
 **Source priority (BPA patterns):** unified collection → BPA CSV → MCP → manual paths — **not** an automatic cascade after MCP errors (if MCP fails, stop; see **MCP errors and fallback**). Batch size 5 on every BPA source. `htlLint`, OSGi→Cloud Manager, Template Modernization (C), and Legacy UI (D) do not use BPA/MCP — see their branches in **Required delegation**.
 
 **User-facing snippets:** *"Using existing BPA collection (N findings)…"* / *"Processing your BPA report…"* / *"Fetched findings from CAM."* / *"Scanning HTL templates for data-sly-test lint issues…"* / optional prompt after MCP stop above.
-
-### CLI (development only)
-
-From this skill's directory:
-
-```bash
-# First batch (default offset=0, limit=5)
-node scripts/bpa-findings-helper.js scheduler ./unified-collections
-node scripts/bpa-findings-helper.js scheduler ./unified-collections ./cleaned_file6.csv
-
-# Next batch: offset=5, limit=5
-node scripts/bpa-findings-helper.js scheduler ./unified-collections ./cleaned_file6.csv 5 5
-
-# Full unbounded listing (development / debugging only — skill never does this)
-node scripts/bpa-findings-helper.js scheduler ./unified-collections ./cleaned_file6.csv 0 all
-
-# Same batching on the low-level reader
-node scripts/unified-collection-reader.js all ./unified-collections 0 5
-```
