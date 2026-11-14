@@ -183,7 +183,6 @@ export default function decorate(fieldDiv, fieldJson, container, formId) {
 ---
 
 ## Best Practices
-- **Leverage the base structure**: Use the OOTB HTML as your starting point.
 - **Use authorable properties**: Expose configurable options via the JSON schema.
 
 ---
