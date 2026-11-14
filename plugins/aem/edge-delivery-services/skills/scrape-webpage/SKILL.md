@@ -3,7 +3,7 @@ name: scrape-webpage
 description: "Use this when the page-import pipeline needs to fetch a source webpage and prepare it for import/migration to AEM Edge Delivery Services. Covers scraping content, extracting metadata, downloading images, and returning analysis JSON with paths, metadata, cleaned HTML, and local images. Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
-  version: "2.0.3"
+  version: "2.0.4"
 ---
 
 # Scrape Webpage
@@ -30,7 +30,9 @@ Use this skill when:
 Before using this skill, ensure:
 - ✅ Node.js is available
 - ✅ Script dependencies (playwright, sharp) are installed (`npm install --prefix <SKILL_DIR>/scripts`)
-- ✅ Chromium browser is installed (`npx --prefix <SKILL_DIR>/scripts playwright install chromium`)
+- ✅ A browser is available — the script uses the locally installed Google Chrome when
+  there is one, and otherwise falls back to the Playwright-managed Chromium
+  (`npx --prefix <SKILL_DIR>/scripts playwright install chromium`)
 
 ## Related Skills
 
@@ -147,6 +149,18 @@ This skill provides:
 ```bash
 npx --prefix <SKILL_DIR>/scripts playwright install chromium
 ```
+
+**Site blocks the scrape:**
+
+Check the `Browser:` line on stderr. `Browser: bundled Chromium`, after a warning that says why
+Chrome could not be launched, means the run used the browser that bot detection rejects: install
+Google Chrome on that machine and run again. The script picks it up with no configuration. Don't
+add stealth plugins or random User-Agents. The script already sends a User-Agent and client hints
+that match the launched browser, and a mismatch is itself a detection signal.
+
+**Certificate errors (`net::ERR_CERT_*`):**
+
+Don't disable certificate validation: scraped content becomes migration source.
 
 **Playwright or Sharp not installed:**
 ```bash
