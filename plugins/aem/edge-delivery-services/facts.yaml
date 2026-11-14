@@ -57,7 +57,6 @@
     authored with the old structure?
   source: aem-boilerplate 5cea543, AGENTS.md
   used_by:
-    - skills/code-review/SKILL.md
     - evals/code-review-eds-pr
 
 - id: strings-from-content
@@ -70,7 +69,6 @@
     from?
   source: https://www.aem.live/docs/placeholders
   used_by:
-    - skills/code-review/SKILL.md
     - evals/code-review-eds-pr
 
 - id: block-css-scoping
@@ -129,7 +127,6 @@
     in 4a3d34f (2024-05-29)
   used_by:
     - evals/css-block-scoping-and-custom-properties
-    - skills/code-review/SKILL.md
     - evals/code-review-eds-pr
 
 - id: decorate-gates-section
@@ -165,7 +162,6 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
-    - skills/code-review/SKILL.md
     - evals/code-review-eds-pr
 
 - id: delivered-pictures
@@ -182,7 +178,6 @@
     blocks/cards/cards.js
   used_by:
     - evals/javascript-block-decoration-patterns
-    - skills/code-review/SKILL.md
     - evals/code-review-eds-pr
 
 - id: authored-cells-vary
@@ -197,7 +192,6 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
-    - skills/code-review/SKILL.md
     - evals/code-review-eds-pr
 
 - id: block-dom-scope
@@ -224,7 +218,6 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
-    - skills/code-review/SKILL.md
     - evals/code-review-eds-pr
 
 - id: no-build-step
@@ -251,7 +244,6 @@
   source: aem-boilerplate 5cea543, package.json, .eslintrc.js, .stylelintrc.json
   used_by:
     - evals/javascript-block-decoration-patterns
-    - skills/code-review/SKILL.md
 
 - id: no-innerhtml
   claim: >-
@@ -263,5 +255,4 @@
   used_by:
     - evals/javascript-block-decoration-patterns
     - skills/building-blocks/SKILL.md
-    - skills/code-review/SKILL.md
     - evals/code-review-eds-pr
