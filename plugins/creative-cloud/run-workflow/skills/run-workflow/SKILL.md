@@ -2,12 +2,19 @@
 name: run-workflow
 description: >-
   Use the run-workflow MCP to discover, compose, execute, publish, and save
-  Adobe Firefly workflows. TRIGGER when: user asks what actions are available,
-  what the MCP can do, how to process images/video/3D via workflow, wants to
-  build/run/save/publish a workflow, OR pastes any workflow/batch/execution ID.
-  BARE ID (UUID/workflowId/batchId) = INSPECT ONLY — call inspect_run, NEVER
-  run_workflow_submit. ALWAYS call list_actions first for capability/discovery questions.
-  DO NOT TRIGGER for direct Firefly API calls without MCP (use firefly-api-specs).
+  Firefly workflows. TRIGGER when: user asks what the MCP can do; wants
+  to process images/video/3D models (.usdz/.glb) via workflow; wants to build/run/save/publish a
+  workflow; wants to list/view saved or recent workflows, presets/interfaces,
+  or Quickstart workflows (e.g. 'run banners at scale'); pastes any
+  workflow/batch/execution ID. Create/compose requests default to
+  compose_workflow from scratch. Call get_featured_workflow ONLY when explicitly asked for a
+  featured/predefined template. Bare 'run banners at scale' = QUICKSTART
+  (list_golden_workflows). BARE ID = INSPECT ONLY — call inspect_run, never
+  run_workflow_submit. ALWAYS call list_actions first for action/node
+  discovery; a "what tools" question is answered directly from your visible
+  tool list, no call. DO NOT TRIGGER for direct Firefly API calls without
+  MCP (see the Firefly Services documentation).
+compatibility: Requires an enterprise Adobe account with a Firefly Services or Firefly Creative Production entitlement, assigned via the Adobe Admin Console. Not available to individual/personal Adobe accounts.
 license: Apache-2.0
 metadata:
   version: 1.0.0
@@ -16,167 +23,146 @@ metadata:
 
 # run-workflow MCP
 
-Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP
-server. Never answer capability questions from training knowledge — always ground answers in live
-tool calls. `list_actions` is ALWAYS the first call for any capability/discovery question.
+Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP.
+Requires an enterprise Adobe account with a Firefly Services or Firefly Creative Production
+entitlement assigned via the Adobe Admin Console; individual/personal accounts are not supported.
 
-This file is the always-loaded core. Deeper procedures live in `references/` and should be read
-**only when the current turn needs them**:
+This core routes requests and keeps safety rules always loaded. `packages/mcp-server/` is the
+source of truth for `SKILL.md` and `references/`; bump `skill-version.json` with every change.
+Read the relevant reference **before** acting; do not load unrelated references or re-read them
+just to present completed outputs.
 
-| Read this reference when… | File |
+| Read before... | Reference |
 | --- | --- |
-| User names a featured workflow, or supplies a custom `.indd` template to rewire | [`references/featured-and-templates.md`](references/featured-and-templates.md) |
-| Composing a non-trivial graph, wants multi-variant outputs, or a required input is missing | [`references/compose.md`](references/compose.md) |
-| Inspecting a run, listing history, or a workflow failed (error tables, `inspect_run` routing) | [`references/diagnostics.md`](references/diagnostics.md) |
-| Uploading files, resolving inline pastes, macOS permission error, saving outputs | [`references/asset-input.md`](references/asset-input.md) |
-| User asks for alert triage / RCA (dev-only: `login --dev`, Splunk + Slack) | [`references/alert-rca.md`](references/alert-rca.md) |
+| Listing workflows/runs, executing, polling, presenting outputs, saving, or publishing | [Workflow guide](references/workflow-guide.md) — full routing, taxonomy, lifecycle, key rules, and anti-patterns |
+| Processing a creative/marketing brief or composing template + CSV data merges | [Intake](references/intake.md) — required inputs, inference vs. questions, one compose call, run/save offer |
+| Using an explicitly requested featured template, custom INDD/PSD, or MOGRT motion graphics template | [Featured and templates](references/featured-and-templates.md) — compose/rewire, CSV mappings, DGR controls and video counts |
+| Composing a graph, handling missing inputs, multi-variant outputs, or a 3D scene | [Compose](references/compose.md) |
+| Inspecting IDs, rerunning, handling errors, reattachment, or filtered history | [Diagnostics](references/diagnostics.md) |
+| Uploading files, resolving inline pastes, macOS permission errors, or downloading outputs | [Asset input](references/asset-input.md) |
+| Alert triage/RCA (stdio CLI only, `login --dev`, Splunk + Slack) | [Alert RCA](references/alert-rca.md) |
 
-## BARE ID RULE — read this before anything else
+## Bare ID = inspect only
 
-**When the skill argument is just an ID (UUID, workflowId, batchId, executionId) with no other
-context, the intent is ALWAYS to inspect — NEVER to execute.**
+When the user's entire input is an ID (UUID, workflowId, batchId, executionId) without context:
 
-1. Call `inspect_run(id)` immediately.
-2. Present the results (executions, outputs, diagnostics).
-3. **STOP.** Do not call `run_workflow_submit` as a follow-up.
+1. Call `inspect_run(id)`.
+2. Present executions, outputs, and diagnostics.
+3. **STOP. Never call `run_workflow_submit` as a follow-up.**
 
-**"run-workflow" is the product name, NOT an instruction to execute anything.** Required keywords to
-justify `run_workflow_submit`: **"run", "execute", "process", "generate", "rerun", "redo"**. If NONE
-appear in the user's message, call `inspect_run`.
+"run-workflow" is the product name, not an execution instruction. Submission requires explicit
+intent such as "run", "execute", "process", "generate", "rerun", or "redo". Never try submission
+first and fall back to inspection after a 404. Questions about required assets for a
+Quickstart workflow/interface use `inspect_run({ id: workflowId, interface: true })`,
+not `get_featured_workflow`.
 
-**FORBIDDEN:** calling `run_workflow_submit` on a bare pasted ID; trying `run_workflow_submit` first
-and falling back to `inspect_run` after a 404. For rerun-after-inspect handling by `canRerun`, see
-[`references/diagnostics.md`](references/diagnostics.md).
+## Discovery and routing
 
-## When to use
+Ground capability answers in live tools, not training knowledge. **Tools** and **actions/nodes**
+are different vocabularies: answer "what MCP tools do you have?" directly from visible tool
+definitions without calling a tool; call `list_actions` first for action/node catalog discovery.
+Use `get_action_schema` for uncertain action parameters.
 
-**TRIGGER when the user:** asks what actions/capabilities exist; wants to process images/video/3D
-through a Firefly workflow; wants to build/compose/execute a workflow; asks about past runs or
-history; pastes any run-workflow ID (→ `inspect_run`); asks "why did my workflow fail"; wants to
-publish a workflow as an API; wants to save a workflow to Workflow Builder.
+Homepage showcase workflows are **Quickstart Workflows**, formerly "golden workflows/demos".
+Both names resolve to `list_golden_workflows`, not featured templates or internal golden fixtures.
+Preserve configured headings in `renderedTable` verbatim, including
+`RW_MCP_QUICKSTART_WORKFLOWS_HEADING` (default: `Quickstart Workflows`).
 
-**DO NOT TRIGGER when:** the user wants to call the Firefly REST API directly without MCP (use
-`firefly-api-specs`); the user is building/debugging the run-workflow server itself.
-
-## Tool routing
-
-| User intent | Tool |
+| Intent | Route |
 | --- | --- |
-| "What actions are available?" / "What can this MCP do?" / "Show me the catalog" | `list_actions` |
-| "What parameters does action X accept?" | `get_action_schema` |
-| "Build / compose / create a workflow for…" | `compose_workflow` |
-| Upload a local file to get a URL | `upload_asset` |
-| Execute a workflow — only with explicit run/execute keywords. Returns a `batchId` immediately (async); safe for any size | `run_workflow_submit` |
-| Check whether a running execution is done — **always pass `includeOutputs: true`** on every poll | `run_workflow_get_status` |
-| Abort a running batch by batchId | `cancel_workflow` |
-| "List my workflows" / "Show my recent runs" (multiple) | `list_workflow_history` |
-| "Last workflow I ran" / "Most recent run" (single, by recency) | `list_workflow_history` (limit=1) → `inspect_run` |
-| Per-action outputs/logs/errors for a run; "why did it fail?"; any pasted ID | `inspect_run` |
-| Look up known-good examples to debug a failed compose | `get_workflow_examples` |
-| Reload examples after editing JSON files on disk | `reload_examples` |
-| Publish workflow as a reusable API endpoint with curl | `publish_workflow` |
-| Save workflow to user's ACP cloud / Workflow Builder UI | `save_workflow_to_acp` |
-| Generate a curl command for a published workflowId | `generate_curl` |
-| Display output images inline in chat | `display_asset` |
-| See newly registered actions (catalog stale) | `refresh_catalog` |
-| Run a named/featured workflow (retargeting, banners, localization, packaging…) | `get_featured_workflow` → see [`references/featured-and-templates.md`](references/featured-and-templates.md) |
+| Create/compose, including named use cases, banners at scale, templates, or briefs | `compose_workflow` from scratch; no featured lookup/base unless explicitly requested |
+| Explicitly use a featured/predefined workflow/template | `get_featured_workflow`, then follow the featured/template reference |
+| List Quickstart/golden workflows | `list_golden_workflows`; render `renderedTable` verbatim |
+| Run a Quickstart workflow (e.g. "run banners at scale") | `list_golden_workflows` to resolve its workflowId; ask which if multiple matches, then submit `workflowId`, `inputs: []`, `interfaceRerun: true` unless the user requested their own assets |
+| Any broad "list my workflows"/"what have I built/saved?" request, even with "all" | One `list_all_workflows` call; no separate Quickstart lookup or history call |
+| Filtered/date-ranged own workflows | `list_workflow_history` |
+| Interfaces/presets (definitions) | `list_interfaces` |
+| Jobs/interface/preset runs | `list_interface_runs` |
+| Plain workflow runs/"what have I run?" (not interface-specific) | `list_workflow_runs`, which excludes interface/preset runs |
+| Broader/filtered run queries (any source, specific UI/host) | `list_batches` with appropriate filters |
+| Single most recent run | `list_workflow_history(limit=1)`, then `inspect_run` |
+| One named run, pasted ID, outputs, logs, or failure | `inspect_run` |
+| Known-good examples to debug compose; reload edited examples | `get_workflow_examples`; `reload_examples` |
+| Upload local file; abort running batch | `upload_asset`; `cancel_workflow` |
+| Execute; poll | `run_workflow_submit`; `run_workflow_get_status(includeOutputs: true)` |
+| Save editable draft; publish reusable API; get published curl | `save_workflow`; `publish_workflow`; `generate_curl` |
+| Catalog stale | `refresh_catalog` |
+| Display/download outputs | `display_asset` only outside Claude Desktop; `download_output` only after the user asks |
 
-**Single vs. multiple:** one ID / "the last one" / "that workflow" → `inspect_run` (full details).
-A list/history request with no named target → `list_workflow_history` (summaries only). See
-[`references/diagnostics.md`](references/diagnostics.md).
+Read the workflow guide for complete listing semantics. Render each listing tool's `renderedTable`
+verbatim. For `list_all_workflows`, it already contains Quickstart rows, `typeSummary`, then the
+own-workflows table in that order; never split, summarize, reconstruct, or separately paste
+`typeSummary`. Mention `goldenUnavailable` when true. Each new listing intent requires a fresh
+matching tool call, not filtering an earlier result from a different catalog.
 
-## Workflow pattern
+Use plain type labels: Published, Preset (same as interface), Inline, Draft, Preview, Shared.
+By default hide un-run drafts; include them only when explicitly asked. A draft stays a draft
+after execution. Never offer to edit/republish a Shared workflow or claim another author's work.
 
-```
-1. upload_asset        — upload local files; get back URLs for use as inputs
-1b. get_action_schema  — if you can identify 1–3 target action types, fetch schemas BEFORE
-                         composing and inject them into the compose message (see references/compose.md).
-                         Skip for simple/obvious single-action workflows.
-2. compose_workflow    — describe the desired processing in natural language; the AI graph agent
-                         designs the graph. DO NOT manually specify actions or connections.
-3. run_workflow_submit — execute with inputs; pass session_id from step 2. Pass ALL images in ONE
-                         call. Returns a batchId immediately (async); does NOT block on completion.
-4. run_workflow_get_status — poll the batchId; ALWAYS pass includeOutputs: true. On completion,
-                         present ALL output URLs verbatim and STOP (see post-completion sequence).
-5. download_output     — ONLY after the user asks; saveTo a folder they choose.
-6. publish_workflow    — publish for API reuse   OR   save_workflow_to_acp — save for UI editing.
-```
+## Compose and execute safely
 
-## Async polling
+- Describe intent, not node versions, ports, tags, or wiring. Do not manually design the graph.
+  For template/CSV data merges, gather the required template + CSV first (unless explicitly told
+  to "just compose"); infer from files and ask for optional fonts and output/run/save intent.
+  Pass `customTemplateUrl`, `csvUrl`, and `fonts` in one compose call. Do not pre-call tag
+  extraction/catalog tools unless the user asks to inspect them.
+- For 3D products, only `.usdz`/`.glb` scenes are supported; pass `sceneUrl` to compose.
+  For Composite images (3D), call `describe_scene` once, use an exact user-provided name,
+  a single candidate, or `main_camera`; otherwise ask using returned names. Pass exact
+  `sceneCamera`/`sceneHeroAsset`. For Render 3D/360 spin, only select a camera if the user names one.
+- Never silently substitute a simpler action, generate placeholder inputs, or use scripted
+  workarounds. Surface missing inputs and compose errors. Re-compose at most once after the
+  cause is fixed with the same intent-only message; never drop CSV/templates or request legacy
+  wiring to bypass failure.
+- Retain `session_id` from compose/featured lookup for submit, save, and publish (2-hour lifetime).
+  Offer Run now / Save to Workflow Builder / both after compose. If the graph was edited, validate
+  it with `validate_workflow` and submit explicit edited actions/connections/inputs; the cached
+  session alone still points to the unedited graph.
+- Submit all assets in **one** call, not one per image. Use `prepared.inputNodes` for featured
+  inputs. Copy presigned URLs verbatim; changing any character invalidates the signature.
+- **ASK-FIRST for draft/published assets:** ask existing/prior vs. user-supplied assets unless
+  already established by the prompt; prefer checking prior asset resolvability and collect fresh
+  files for missing assets. This also applies to never-run published workflows; do not rely on
+  submit's automatic confirmation guard. Check `durabilityCoverage`, not just `resolvedVia`.
+- **Quickstart/interfaces/presets are the opposite default:** submit `workflowId` + `inputs: []`
+  directly, with no asset confirmation or pre-verification; baked defaults are curated/durable.
+  Preserve an explicitly selected interface definition with `interfaceRerun: true` (interfaces
+  share their source workflow's ID). Only collect overrides when the user's prompt asks for them.
+  Do not reuse a prior run's custom assets silently.
+- For same-assets reruns, use `workflowId` alone with `inputs: []` when available, not an inline
+  graph. Read diagnostics first for `rerun` object routing, first-run cases, `inline_exact`,
+  `interfaceRerun`, `needs_reattach`, `needs_rewire`, and `no_editable_graph`.
+- Never force past `invalid_workflow`, `needs_rewire`, or `no_editable_graph`. A corrupt published
+  definition needs correct republication; do not compose a replacement for a user who asked to run it.
 
-**CRITICAL — Presigned URLs must NEVER be retyped or reconstructed.** Azure SAS / AWS S3 presigned
-URLs are HMAC-signed over every character. Changing one character invalidates the signature
-(`asset_download_failed`). Always copy `url` fields verbatim from responses.
+## Poll, present, and persist
 
-After `run_workflow_submit`, poll `run_workflow_get_status` **every ~5s** with `includeOutputs: true`
-(the server short-circuits the flag while running — zero extra cost). Report progress using
-`elapsedSeconds` and `percentage` from the response directly — do not estimate elapsed time
-yourself:
+Read the workflow guide before submission for the detailed lifecycle and output protocol.
+Always poll with `includeOutputs: true` to a terminal state; use returned `elapsedSeconds`
+and `percentage` for progress, not estimates. Wait 15s below 60s elapsed, 30s from 60–180s,
+60s above 180s. Only preset/interface runs offer completion email instead of continued polling.
+Show `downloadedPreviewOutputs` immediately as in-progress. On failure, inspect, summarize,
+and stop; never auto-retry/rewire.
 
-> **Running** — 3/10 assets complete (30%) · 45s elapsed
+On completion, present every `VIEW YOUR ASSETS:` folder link first, then all `OUTPUT URLS:`
+lines verbatim (not the trailing JSON). For oversized responses, extract those text blocks
+once from the temp file; do not re-poll or repeatedly parse JSON. No placeholders/truncated URLs.
+Then offer one combined choice: download locally, keep links, or next steps (save/publish/new
+workflow). In stdio, download to the user's chosen `saveTo` folder; hosted download returns
+`downloadUrl`/`downloadToken` for a GET with `x-download-token`, not a local save path.
+Do not call `display_asset` in Claude Desktop (1MB response cap).
 
-- If a poll includes `downloadedPreviewOutputs`, display those immediately (labelled in-progress)
-  while continuing to poll.
-- When `status === "completed"`, outputs are already in the response — no second call. Responses are
-  slim by default; pass `includeProvenance: true` only if you need the full per-node asset tree.
-- If `status === "failed"`, call `inspect_run` on the failed execution, summarize, and **stop** — do
-  not auto-retry or re-wire. See [`references/diagnostics.md`](references/diagnostics.md).
+Save is for editable Workflow Builder drafts; publish is for API reuse. Ask if ambiguous.
+Session saves use the latest accepted submission; pass both `session_id` and `batch_id` for
+the exact run. Expired/missing snapshots are errors, never a reason to re-compose a replacement.
+Draft inspection/reruns re-sign stored files with the user's access; report `draftAssetRefresh`
+failures and `assetPersistence` reattachments. Photoshop action files are stored too but remain
+original links in Builder and are not `inputs[]` slots; follow `needs_reattach` hints. Save a
+corrected submission again after running, since earlier drafts are not updated automatically.
+A rewired run's `postRun` requires offering save/publish/create_preset after completion;
+ordinary input swaps do not.
 
-For output extraction paths and inline-display rules, see
-[`references/asset-input.md`](references/asset-input.md).
-
-## Presenting outputs — strict 3-step sequence
-
-Once `run_workflow_get_status` reports `completed`, run these steps **in order, one message each,
-each gated on the user's reply.** Never merge them or skip ahead.
-
-1. **Present the raw presigned URLs only.** Every output from every output node, verbatim, full URL,
-   never truncated or placeholdered (`[presigned URL]` is forbidden). URLs expire in ~1 hour. Group
-   terminal outputs under **Final outputs**, pipeline artifacts under **Intermediate outputs**. For
-   featured workflows, surface the merge-data banners (1080×1080, 300×600, etc.) as Final outputs.
-   Nothing else in this message — no download/save/publish offer.
-2. **Ask about local download** — whether to download locally and to which folder. Only if yes, call
-   `download_output` with their chosen `saveTo` and report the exact saved paths.
-3. **Ask about next steps** — save to Workflow Builder (`save_workflow_to_acp`), publish as an API
-   (`publish_workflow`), or start a new workflow.
-
-## Key rules
-
-- **session_id** — `compose_workflow` and `get_featured_workflow` both return one. Retain it for the
-  whole conversation; pass it to `run_workflow_submit`, `publish_workflow`, `save_workflow_to_acp`
-  instead of re-serializing actions/connections. The server holds it for 2 hours.
-- **Batch inputs** — pass ALL images/assets into a SINGLE `run_workflow_submit` call (use the
-  `content` array on the input node). Never make separate calls per image.
-- **publish vs save** — `publish_workflow` creates a reusable API endpoint (`workflowId` + curl):
-  use for "publish", "make it callable", "create an API". `save_workflow_to_acp` saves to the user's
-  Adobe cloud for Workflow Builder: use for "save", "keep editing", "open in the UI". If ambiguous,
-  ask before proceeding.
-- **History** — `inspect_run` for a single item; `list_workflow_history` for lists. Never read local
-  `workflow.json`/`inputs.json`. Details in [`references/diagnostics.md`](references/diagnostics.md).
-- **Missing required input** — never silently resolve it (no substituting a simpler action, no
-  auto-generating a placeholder/mask, no scripted workaround). Stop and present options. See
-  [`references/compose.md`](references/compose.md).
-
-## Anti-patterns
-
-- Answering capability questions from training knowledge instead of calling `list_actions`.
-- Composing non-trivial actions without injecting `get_action_schema` context (see compose.md).
-- Using parallel nodes for multi-variant outputs — use one node with an array parameter (compose.md).
-- Manually wiring actions in `compose_workflow` — describe intent in natural language.
-- Separate `run_workflow_submit` calls per image — pass all inputs in one call.
-- Reading local files for history — `list_workflow_history`/`inspect_run` are authoritative.
-- Confusing publish and save — publish = API endpoint; save = Workflow Builder. Ask if ambiguous.
-- Calling `run_workflow_submit` on a bare pasted ID — inspect, present, stop.
-- Auto-rerunning after inspect, or auto-retrying/patching a failed workflow — always stop and ask.
-- Silently resolving a missing input (blank mask, placeholder, simpler action) — stop and ask first.
-- Trying to display outputs inline in Claude Desktop (`display_asset` exceeds the 1MB cap) — present
-  text URLs; use `download_output` with `saveTo` to save locally.
-- Listing only local paths without the full presigned URLs — always include both.
-- Recommending AWS/S3 upload to work around errors — Azure ADLS is the only supported user path.
-
-## References
+## Further reading
 
 - [Workflow Builder API docs](https://developer.adobe.com/firefly-services/docs/workflow-builder/)
-- Paired skill for direct Firefly REST calls without MCP: `firefly-api-specs` (not included in this plugin)
-- On-demand procedures: [`references/`](references/) (featured-and-templates, compose, diagnostics,
-  asset-input, alert-rca).
+- For direct Firefly REST calls without MCP, use the [Firefly Services documentation](https://developer.adobe.com/firefly-services/docs/); no skill in this plugin covers them.

@@ -1,16 +1,16 @@
 {
-  "context": "Routing a migration ask to one of the two migration flows. Four prompts in task.md run as separate sessions against the same empty project; each item is judged pass/fail per session and weighted by max_score.",
+  "context": "Routing a migration ask to one of the two migration flows: redesign only on an explicit redesign phrase, replica otherwise. Four prompts in task.md run as separate sessions against the same empty project; each item is judged pass/fail per session and weighted by max_score.",
   "type": "weighted_checklist",
   "checklist": [
     {
       "name": "flow_named_first",
       "max_score": 15,
-      "description": "The first response to every prompt names the chosen flow (redesign / replica) or, for the plain ask, presents the two flows and asks the one keep-vs-redesign question. For keep-design phrases it also states that replica needs no prepare-migration step."
+      "description": "The first response to every prompt names the chosen flow (redesign / replica). For prompts 1-3 it also carries replica's flow line (the design is kept; say `switch to redesign` now if it is to change) and states that replica needs no prepare-migration step."
     },
     {
-      "name": "plain_ask_asks_once",
+      "name": "plain_ask_defaults_to_replica",
       "max_score": 15,
-      "description": "Prompt 1: exactly one question (keep vs redesign) is asked before any sub-skill loads, crawl runs or file is written. No second question, no default taken silently in an interactive session."
+      "description": "Prompt 1: no keep-vs-redesign question is asked; the plain migration ask selects replica directly, before any sub-skill loads, crawl runs or file is written."
     },
     {
       "name": "keep_design_no_question",
@@ -20,12 +20,12 @@
     {
       "name": "flow_recorded_in_state",
       "max_score": 15,
-      "description": "stardust/state.json carries flow (replica for prompts 1-3 after the answer, redesign for prompt 4), flowChosenAt (ISO timestamp) and flowSource (question for prompt 1, user-phrase for 2-4), placed after direction and before pages."
+      "description": "stardust/state.json carries flow (replica for prompts 1-3, redesign for prompt 4), flowChosenAt (ISO timestamp) and flowSource (default for prompt 1, user-phrase for 2-4), placed after direction and before pages."
     },
     {
       "name": "replica_invoked_for_keep_design",
       "max_score": 15,
-      "description": "Prompts 1 (after 'keep the design'), 2 and 3: the replica skill is the sub-skill invoked. prepare-migration is never loaded or read in these sessions."
+      "description": "Prompts 1, 2 and 3: the replica skill is the sub-skill invoked. prepare-migration is never loaded or read in these sessions."
     },
     {
       "name": "direct_never_proceeds_on_replica_phrase",

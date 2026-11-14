@@ -1,0 +1,13 @@
+# `check` selects the assertion in assert.mjs; the pages are fixtures in fixtures/.
+- description: fixture, fill then replay offline
+  vars:
+    check: replay-fixture
+    task: Cache the page http://localhost:8765/layout.html in ./out/cache so it can be replayed later with no network, then prove the replay works.
+- description: fixture, an image on another origin
+  vars:
+    check: also-fixture
+    task: Cache the page http://localhost:8765/cache-also.html in ./out/cache for offline replay. Its image comes from another origin (http://127.0.0.1:8765), and the offline replay must include that image too. Prove the replay works, and save the image as the offline replay serves it in offline-asset.svg.
+- description: fixture, a page that was never cached
+  vars:
+    check: miss-fixture
+    task: Cache http://localhost:8765/layout.html in ./out/cache and replay it offline. Then, offline, request http://localhost:8765/index.html, which was never cached, and record what the replay answers in miss.txt.

@@ -7,7 +7,7 @@ does that on Claude Code.
 
 Three checks, each a headless `copilot -p` call:
 
-1. The skill list contains all fifteen stardust skills and `impeccable`.
+1. The skill list contains all sixteen stardust skills and `impeccable`.
 2. `skill(extract)` loads by its bare name (Copilot CLI flattens plugin
    skill names; `stardust:extract` does not resolve there).
 3. The `stardust` master skill's Setup section completes with impeccable

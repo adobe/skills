@@ -1,5 +1,69 @@
 [
   {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/set-default-record-permissions",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/set-default-record-permissions",
+    "title": "Set default permissions for records",
+    "section": "access",
+    "description": "Open or Restricted defaults for newly created records. Restricted limits editing, not viewing; creators and explicitly added people edit, administrators and workspace managers retain Manage.",
+    "headings": ["Default record permissions", "Open", "Restricted"]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-records",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-records",
+    "title": "Share records",
+    "section": "access",
+    "description": "View or Manage record permissions, including bulk sharing. Record permissions cannot exceed record-type access; documented individual view access cannot be removed.",
+    "headings": ["Record permissions", "Share records in bulk"]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-fields",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-access/share-fields",
+    "title": "Share Workfront Planning fields",
+    "section": "access",
+    "description": "Field sharing (No Access, View, Manage) is enforced in views, record details, connections, lookups, Canvas dashboards, the API, MCP tools, and exports/imports, but not request forms or public views. This page is newer than the Q4 2026 release note, which lists request forms as enforced. Formula fields need separate restriction. Check rollout availability.",
+    "headings": ["Field permissions", "Share fields"]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/configure-business-rules",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/configure-business-rules",
+    "title": "Configure record type business rules",
+    "section": "architecture",
+    "description": "Workspace managers configure conditional editing and deleting rules. Not available on global record types; Formula, Lookup, and Reference conditions are excluded. Rules don't block creation and apply to existing records at the next edit or delete.",
+    "headings": ["Business rules", "Edit records", "Delete records", "Conditions"]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/manage-dependent-connections",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-architecture/manage-dependent-connections",
+    "title": "Manage dependent connections",
+    "section": "architecture",
+    "description": "Dependencies between connected Planning record types clear dependent values when source values change. Up to 3 direct controlling fields and 6 dependency connections; excludes Workfront and AEM objects.",
+    "headings": ["Dependent connections", "Controlling fields", "Connection dependencies"]
+  },
+  {
+    "path": "/en/docs/workfront/using/basics/coworker-in-workfront/coworker-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/basics/coworker-in-workfront/coworker-overview",
+    "title": "CX Enterprise Coworker overview",
+    "section": "ai-assistant",
+    "description": "Coworker replaces AI Assistant for migrated tenants, with phased availability and industry exclusions. Read-only by default; administrators grant write access. Separate from Planning Designer.",
+    "headings": ["Coworker", "Availability", "Write access"]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/planning-standalone/planning-sta-overview",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/planning-standalone/planning-sta-overview",
+    "title": "Get started with Adobe Workfront Planning as a standalone product",
+    "section": "general",
+    "description": "Standalone Planning has no Workflow features, Workflow object connections or creation automations. Sharing supports users and teams, not groups, roles, or companies.",
+    "headings": ["Standalone Planning", "Packages", "Unavailable capabilities"]
+  },
+  {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/planning-standalone/access-needed-for-planning-sta",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/planning-standalone/access-needed-for-planning-sta",
+    "title": "Access needed for Adobe Workfront Planning as a standalone product",
+    "section": "access",
+    "description": "Planning Administrator is assigned through Admin Console; Planning Standard is available for all standalone Planning packages. No Workflow package is required.",
+    "headings": ["Planning Administrator", "Planning Standard", "Access requirements"]
+  },
+  {
     "path": "/en/docs/workfront-fusion/using/references/apps-and-their-modules/adobe-connectors/workfront-planning-modules",
     "url": "https://experienceleague.adobe.com/en/docs/workfront-fusion/using/references/apps-and-their-modules/adobe-connectors/workfront-planning-modules",
     "title": "Adobe Workfront Planning modules for Workfront Fusion",
@@ -582,7 +646,7 @@
       "Access requirements",
       "Six paths to create fields",
       "CRITICAL constraint",
-      "Field types (17 total)",
+      "Field types (16 total)",
       "Single-line text",
       "Paragraph",
       "Multi-select / Single-select",
@@ -595,8 +659,7 @@
       "People",
       "Created by / Last modified by (read-only)",
       "Created date / Last modified date (read-only)",
-      "Approved date (read-only)",
-      "Approved by (read-only)",
+      "Record ID (read-only)",
       "SA notes / irreversibility gotchas"
     ]
   },
@@ -739,7 +802,7 @@
     "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-general-information/planning-ai-designer",
     "title": "Get started with the Adobe Workfront Planning Designer",
     "section": "general",
-    "description": "Currently Closed Beta. Enrollment by email to sargism@adobe.com.",
+    "description": "Available to all Planning customers in Beta since July 16, 2026. Accepted Beta agreement required since July 20; distinct from the AI agreement and CX Enterprise Coworker.",
     "headings": [
       "What it does",
       "Prerequisites",
@@ -842,6 +905,22 @@
       "Request forms",
       "Locating WFP",
       "Additional features (linked from this page)"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/administration-and-setup/set-up-wf/configure-system-defaults/enable-custom-quarters-projects",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/administration-and-setup/set-up-wf/configure-system-defaults/enable-custom-quarters-projects",
+    "title": "Enable custom quarters and custom weeks",
+    "section": "general",
+    "description": "Admin setup (Setup > Custom Quarters) for fiscal quarters and Planning custom weeks. With Planning (bundled or standalone): up to 100 quarters, no gaps or overlaps, and custom weeks per quarter shown only in Planning timeline views, not in Workfront reports or lists. Custom weeks: Preview Sept 3, 2026; production for everyone Oct 15, 2026.",
+    "headings": [
+      "Access requirements (system administrator; Planning administrator for standalone)",
+      "Custom quarter limits: 8 for Workfront only, 100 with Planning",
+      "No gaps or overlaps when Planning is purchased",
+      "Custom weeks for the Planning timeline view",
+      "Starts a new custom week sequence",
+      "Week label format (Week 1 or custom, such as Fiscal week)",
+      "Set up custom quarters"
     ]
   },
   {
@@ -1067,6 +1146,22 @@
     ]
   },
   {
+    "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/share-requests",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/share-requests",
+    "title": "Share Planning requests",
+    "section": "requests",
+    "description": "Share a submitted Planning request from the Requests area (new request experience) with users, teams, job roles, groups, or companies. Permission levels: View, Contribute (view, edit, comment), Manage (also delete). Requesters get Manage by default unless the form sets another default. Preview Sept 25, 2026; production for everyone Oct 15, 2026.",
+    "headings": [
+      "Request permission levels: View, Contribute, Manage",
+      "Requester default permissions",
+      "Workfront administrators manage all requests",
+      "Record type Manage access inherits Manage on its intake form and requests",
+      "Contribute users cannot grant Manage",
+      "Inherited permissions from workspace and record type cannot be removed or edited",
+      "Share a request"
+    ]
+  },
+  {
     "path": "/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/submit-requests",
     "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-requests/submit-requests",
     "title": "Submit Workfront Planning requests to create records",
@@ -1077,7 +1172,7 @@
       "Access requirements",
       "Prerequisites",
       "Critical behavior",
-      "Cannot edit a submitted request",
+      "Edit a submitted request before its record is created (creator, workspace managers, system administrators)",
       "Request ↔ Record relationship",
       "Visibility/notifications",
       "Approval flow",
@@ -1100,6 +1195,23 @@
       "Change form sharing (narrow access without unpublishing)",
       "Unpublish (revoke all access)",
       "SA notes"
+    ]
+  },
+  {
+    "path": "/en/docs/workfront/using/manage-work/requests/create-requests/autofill-from-prompt-document",
+    "url": "https://experienceleague.adobe.com/en/docs/workfront/using/manage-work/requests/create-requests/autofill-from-prompt-document",
+    "title": "Use Form Fill powered by AI to fill in a request using prompts or documents",
+    "section": "requests",
+    "description": "AI Form Fill (autofill) suggests request form field values for Workfront and Planning requests from a prompt, pasted email, uploaded documents, Workfront project/task/issue links, or Planning record URLs (since Sept 22, 2026). Needs Select/Prime/Ultimate package, a signed Adobe Gen AI agreement, and AI Assistant enabled.",
+    "headings": [
+      "Access requirements and prerequisites (Gen AI agreement, AI Assistant enabled)",
+      "Form fill from a prompt",
+      "Form fill from previous requests (needs one month of request data)",
+      "Upload a document to auto-fill a request (100 MB per file, 50 files or pages)",
+      "Planning record links as context",
+      "Supported field types (including Planning embedded fields)",
+      "Accept or reject suggestions; unreviewed suggestions are auto-accepted on submit",
+      "Limits: does not overwrite filled fields; calculated or dependent fields not supported"
     ]
   },
   {
@@ -1174,7 +1286,7 @@
     "url": "https://experienceleague.adobe.com/en/docs/workfront/using/adobe-workfront-planning/adobe-workfront-planning-views/manage-the-table-view",
     "title": "Manage the table view",
     "section": "views",
-    "description": "ONLY view where record EDITING happens.",
+    "description": "Main view for inline editing of any field. Timeline and Calendar also edit dates by dragging or resizing bars, and record details pages allow edits too.",
     "headings": [
       "Why the table view matters",
       "Row height options",

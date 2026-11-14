@@ -6,12 +6,12 @@
 {
   "url": "https://example.com/page",    // canonical URL as seen by the browser
   "wordCount": 1234,                     // words in visible body text (CLD3 input)
-  "detected": [                          // CLD3 results, sorted by proportion desc
+  "detected": [                          // CLD3 per-block results, top 5 by proportion
     {
       "language": "en",                  // ISO 639-1 code (CLD3 output)
-      "probability": 0.98,               // model confidence [0, 1]
+      "probability": 0.98,               // byte-weighted mean confidence [0, 1]
       "is_reliable": true,               // CLD3 reliability flag
-      "proportion": 0.62                 // fraction of body bytes in this language
+      "proportion": 0.62                 // share of classified text bytes in this language
     }
   ],
   "declared": {
@@ -38,7 +38,7 @@
 - `htmlLang`: `null` if the root element has no `lang` attribute.
 - `metaContentLanguage`: `null` if neither `http-equiv` nor `name="language"` meta exists.
 - `nestedLangs` / `hreflang`: empty arrays `[]` when none found.
-- `detected`: empty array `[]` when CLD3 returns `und` (text too short or undetermined).
+- `detected`: empty array `[]` when no text block of 50+ bytes is reliably classified.
 
 ## Language-code formats
 
@@ -55,19 +55,3 @@ region subtags (`en-US`), script subtags (`zh-Hant`), or the special value `x-de
 - `und` → excluded
 
 Raw values are always preserved in the `declared` object.
-
-## cld3-asm dependency
-
-`cld3-asm` 4.0.0 is the WASM port of Google CLD3:
-- MIT licence
-- ~6.6 MB unpacked; WASM model is inlined into the JS glue — no runtime download
-- No native build required (emscripten WASM, not node-gyp)
-- Ships CJS + ESM; the ESM import path is resolved automatically by Node 22
-- API: `loadModule()` → factory; `factory.create(minBytes, maxBytes)` → identifier;
-  `identifier.findMostFrequentLanguages(text, n)` → results; `identifier.dispose()` — required
-
-page-langs is the first skill in this plugin with a runtime npm dependency. The model is
-loaded from the local `node_modules/` directory. If the plugin distribution pipeline does
-not run `npm install` per skill, the WASM glue (~5 MB) can be vendored into the `scripts/`
-directory and imported via a relative path — remove the npm dep and update the dynamic
-import in `page-langs.mjs` accordingly.

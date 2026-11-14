@@ -20,9 +20,10 @@ trade so a reviewer can see, per page, what was and wasn't checked.
 | **sibling** | Path A′ (canon-fork) | **Variance-probed** (§ Sibling variance probe — run once per template BEFORE cloning) + structural clone of the archetype + **content-fidelity** (verbatim source copy, no fabrication, **measured** — § Content-count acceptance) + **delivery-lint** + **media-reconcile**. NOT full craft. | Every other page of a template the archetype already covers. **The cheap default for breadth.** |
 | **thin** | unique (graceful) | delivery-lint + media-reconcile + a declared `contentGap`. Renders metadata + hero + whatever real content exists (e.g. a PDF link). No fabricated filler. | Pages with little/no body content (PDF-only, redirect stubs, bodyless landing). |
 
-The point of the table: **archetype is craft-gated once per template; siblings
-inherit that validated structure and only re-check the things that vary per page
-(content + media + the delivery contract).** That keeps breadth affordable
+The point of the table: **archetype is craft-gated once per template, deployed and gated at the
+published origin BEFORE its siblings render (#126); siblings inherit that proven structure and
+encoder and only re-check the things that vary per page (content + media + the delivery contract
++ their own gate row after PUT).** That keeps breadth affordable
 without dropping to zero gates. Make sibling-clone the path of least resistance —
 the reflex for "page N of an established template" should be *fork the archetype*,
 never *re-author from scratch*.
@@ -105,7 +106,7 @@ Every page row in `state.json` and `coverage/pages.json` carries:
 ```json
 "fidelityTier": "archetype" | "sibling" | "thin",
 "archetypeSource": "<slug>",        // for sibling/thin: which archetype it forked
-"gatesPassed": ["variance-probe", "delivery-lint", "media-reconcile", "content-fidelity", "content-count"],
+"gatesPassed": ["variance-probe", "pixel-gate-1440", "pixel-gate-360", "delivery-lint", "media-reconcile", "content-fidelity", "content-count"],   // the pixel gates = the page's row in gates/all-<w>/summary.json
 "variants": ["hero compact", "tiers disc"],   // sibling: variant classes the probe called for (empty = template-constant)
 "contentGap": "source is a PDF download; no HTML body"   // thin only
 ```
