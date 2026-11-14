@@ -17,7 +17,8 @@ script you touch — playwright scripts from a project copy, the plugin tree shi
   extend its allowlist only with a reason on the line.
 - **Every CLI script** answers `--help` before any I/O, has one `scripts-index.md` row and a
   `scripts/test/<name>.test.mjs` whose pure part needs no browser; resolve sibling-skill imports
-  in both layouts (plugin tree, `stardust/scripts/<skill>/` copy).
+  in both layouts (plugin tree, `stardust/scripts/<skill>/` copy). A pure library (exports only,
+  no argv) gets no row and no `--help`: list it in `evals/lint/libraries.mjs` instead.
 - **Harness-neutral text**, and docs name only paths that exist (the existing lints).
 - **Field learnings** = one anonymised CHANGELOG entry + the rule in the skill doc, with the next
   deploy-improvement number and the numbers it touches.

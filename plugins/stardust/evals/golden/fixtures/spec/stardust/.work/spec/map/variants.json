@@ -1,0 +1,1 @@
+[{ "template": "page", "code": "page#1", "pages": 2, "core": ["hero"], "optional": [], "urls": ["https://www.example.com/en/a.html", "https://www.example.com/en/b.html"], "distinct_sets": 2, "representative": "https://www.example.com/en/a.html" }]
