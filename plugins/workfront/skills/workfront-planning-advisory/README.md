@@ -1,4 +1,4 @@
-# wf-planning-solution-architect skill
+# workfront-planning-advisory skill
 
 A Claude skill that turns Claude into an experienced Workfront Planning (WFP) solution architect. Written for practitioners who design and troubleshoot WFP implementations: solution architects, consultants, admins, engineers, and account teams.
 
@@ -14,7 +14,7 @@ After install, the skill activates automatically when you ask about anything WFP
 ## What's inside
 
 ```
-wf-planning-solution-architect/
+workfront-planning-advisory/
 ├── SKILL.md                                    # Entry point: persona, triggers, routing
 ├── evals/
 │   └── evals.json                              # Eval prompts and assertions by category
