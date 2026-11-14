@@ -177,12 +177,6 @@ So the skill **detects and reports only** — see `RM-905` (`transform-rules.md`
 the pipeline (`split_content.py`'s `split_filters` keeps copying source filter roots verbatim, exactly
 as it does for every other filter root).
 
-**Two valid resolutions** (both require human/content judgment, not a mechanical rewrite):
-1. Add the missing filter root to the source `filter.xml` (e.g. `<filter root="/oak:index/
-   wkndTerminationDate"/>`) — the usual fix, if the index definition is actually meant to ship.
-2. Remove the stray `oak:QueryIndexDefinition` node from `_oak_index/.content.xml` — if the index was
-   abandoned/superseded and should never have shipped.
-
 **AEMaaCS custom-index naming caveat.** Cloud Service convention names customer-authored index overrides
 `<indexName>-custom-<N>` (e.g. `damAssetLucene-custom-2`) so they survive OOTB index upgrades. When
 resolving this finding, review whether `wkndTerminationDate` (a wholly custom index, not an OOTB override)

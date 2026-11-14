@@ -72,7 +72,6 @@ Uses each reviewed `config.json` and the templates the plan prepared, as they ar
 | 4 | A restructured content module's POM can't be read by Maven | Report it as a bug with the printed lines |
 
 ### 4. Review the result with the user
-- `git status` / `git diff --stat`: new modules, moved files (history kept), changed POMs.
 - Spot-check that `ui.apps`' filter holds only immutable roots, and compare a few `.cfg.json` files with their sources (in the diff).
 - Work through the findings below, then commit when the user agrees. `.modernize/` (the plan and reports) ignores itself, so it never lands in a commit; `git add -f .modernize` keeps a record if the user wants one. Never commit an in-project install of this skill or `skills-lock.json`.
 
