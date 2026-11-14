@@ -1,6 +1,6 @@
 {
   // The boy-scout rule for skills: leave a SKILL.md you touch cleaner than you found it.
-  // Each list is what breaks a rule on the checked-out tree (scripts/check-skills.mjs prints
+  // Each list is what breaks a rule on the checked-out tree (the scripts in scripts/ print
   // it). A pull request fails if it changes a file that is on a list, so the fix comes with
   // the change. Nobody has to fix a file they didn't touch, and there is no baseline to keep.
   // https://github.com/ai-ecoverse/boy-scout
@@ -12,6 +12,19 @@
         "Fix: in this same pull request, bring the SKILL.md to 500 lines or fewer.",
         "Keep what an agent gets wrong without it. Move the rest to references/ and",
         "link it by a path that exists. See AGENTS.md, Skills."
+      ]
+    },
+    {
+      // What `tessl plugin lint` warns about, for plugins with a Tessl manifest. Needs the
+      // tessl CLI. A warning about a skill is on its SKILL.md; any other is on the plugin's
+      // .tessl-plugin/plugin.json.
+      "name": "tessl-lint-warning",
+      "command": "node scripts/tessl-lint-debt.mjs",
+      "fix": [
+        "Fix: in this same pull request, clear what tessl plugin lint warns about for",
+        "this file. Run node scripts/tessl-lint-debt.mjs --verbose to see the warning.",
+        "For a SKILL.md over the token limit: keep what an agent gets wrong without it",
+        "and move the rest to references/."
       ]
     },
     {

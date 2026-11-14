@@ -35,7 +35,8 @@ jobs:
           done
 
   # The boy-scout rule (.boy-scout.json): a pull request that changes a SKILL.md which is too
-  # long or shares its name with another skill has to fix that in the same pull request.
+  # long, shares its name with another skill or has a Tessl lint warning has to fix that in
+  # the same pull request.
   boy-scout:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -50,6 +51,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:
           node-version: '24'
+
+      # scripts/tessl-lint-debt.mjs runs tessl plugin lint, which needs no token
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e  # v2
 
       - uses: ai-ecoverse/boy-scout@1df9be227764c82547a0e5b1b1ac56bf501cfbaf  # v1.1.0
 
