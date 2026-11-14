@@ -3,7 +3,6 @@
 ## 1.0.0 (2026-05-15)
 
 - Initial release
-- 9-step OpTel data interpretation workflow with CWV analysis
-- Device, browser, and geographic traffic breakdown analysis
-- Trend detection and performance regression identification
-- Prioritized actionable report generation with specific fix recommendations
+- Report script on @adobe/rum-distiller: Core Web Vitals at p75 with sample counts, device classes, LCP elements, pages ranked by traffic and severity
+- Rules for reading sampled data, and for comparing two periods
+- Causes by metric for Edge Delivery Services, and a report template

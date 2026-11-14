@@ -1,84 +1,113 @@
-# OpTel Interpreter: Reference Context
+# OpTel Interpreter: reference
 
-## What Is OpTel Explorer?
+Sources: [Operational Telemetry](https://www.aem.live/docs/operational-telemetry), [Developing Operational Telemetry](https://www.aem.live/developer/rum) and `@adobe/rum-distiller` 1.24.0, read in November 2026.
 
-Adobe renamed the RUM (Real User Monitoring) Explorer to the Operational Telemetry (OpTel) Explorer. The tool is available at `www.aem.live/tools/rum/explorer.html` and requires a domain key (passed as the `?domainkey=` query parameter), which is provisioned when a site is onboarded to EDS. OpTel captures data from real user sessions (not synthetic tests) by injecting a lightweight sampling script into every EDS page. The data includes Core Web Vitals (LCP, CLS, INP), page view counts, traffic referrers, device types (mobile, desktop, tablet), browser types, geographic regions, and engagement signals.
+## What a bundle is
 
-## How OpTel Sampling Works
+A bundle is one sampled page view. The bundle API returns `{ "rumBundles": [...] }` for a slot.
 
-OpTel does not capture 100% of traffic. It uses a sampling rate that varies by site tier: typically 1-in-100 for high-traffic sites, with lower sampling ratios for smaller sites. This means the absolute numbers in OpTel are extrapolated: a page showing 5,000 views may have actually had 50 sampled sessions multiplied by the sampling rate. The relative proportions (e.g., "60% mobile, 40% desktop") are statistically valid, but small absolute numbers should be treated with caution. The sampling script adds negligible overhead (under 1KB, loaded in the delayed phase).
+| Field | Meaning |
+|---|---|
+| `url` | The page, without query parameters. |
+| `userAgent` | Device class, operating system and engine, for example `mobile:ios:webkit` or `desktop:windows:blink`. Bots are `bot:…`. |
+| `weight` | How many page views this bundle stands for. 100 at the default sampling rate. |
+| `time`, `timeSlot` | UTC. Minutes are rounded down to the hour. |
+| `events` | Checkpoints of the page view, each with `checkpoint`, `timeDelta`, and often `source` and `target`. |
 
-## CWV Thresholds in OpTel
+What `source` and `target` hold depends on the checkpoint:
 
-OpTel follows Google's Core Web Vitals thresholds. For each metric, values are bucketed into three categories:
-- **Good** (green): LCP < 2.5s, CLS < 0.1, INP < 200ms
-- **Needs Improvement** (amber): LCP 2.5-4.0s, CLS 0.1-0.25, INP 200-500ms
-- **Poor** (red): LCP > 4.0s, CLS > 0.25, INP > 500ms
+| Checkpoint | `source` | `target` |
+|---|---|---|
+| `cwv-lcp` | Selector of the LCP element | URL of the LCP image |
+| `click` | Selector of the clicked element | Link target, if it was a link |
+| `viewblock` | Class name of the block | |
+| `viewmedia` | Selector of the element | URL of the image or video |
+| `enter` | Referrer, empty for a direct visit | `visible` or `hidden`: whether the page opened in the foreground |
+| `navigate` | The page of this site the visitor came from | `visible` or `hidden` |
+| `error` | Where the unhandled JavaScript error came from | The error message |
+| `missingresource` | URL that failed to load | HTTP status |
+| `formsubmit` | The form | Form action |
 
-The 75th percentile (p75) is the standard reporting percentile: 75% of user experiences are at or below the reported value. A p75 LCP of 2.8s means 75% of users see LCP at 2.8s or faster, but 25% see it slower.
+A site can send checkpoints of its own. List what a site sends with `facets.checkpoint` before you interpret one.
+
+## The library
+
+`utils.addCalculatedProps(bundle)` must run on every bundle before it is loaded. It sets `cwvLCP`, `cwvCLS`, `cwvINP`, `cwvTTFB` and `visit`. Without it every Core Web Vitals series is empty.
+
+```javascript
+import { DataChunks, series, facets, utils } from '@adobe/rum-distiller';
+
+const data = new DataChunks();
+data.load([{ date: '2026/10', rumBundles }]); // after addCalculatedProps
+data.addSeries('pageViews', series.pageViews);
+data.addSeries('lcp', series.lcp);
+data.addFacet('url', facets.url);
+data.filter = { url: ['https://www.example.com/'] }; // values of one facet are ORed, facets are ANDed
+console.log(data.totals.lcp.percentile(75), data.totals.lcp.count);
+for (const facet of data.facets.url) console.log(facet.value, facet.metrics.pageViews.sum);
+```
+
+- Series: `pageViews`, `visits`, `bounces`, `engagement`, `organic`, `earned`, `lcp`, `cls`, `inp`, `ttfb`.
+- Facets: `url`, `plainURL`, `userAgent`, `checkpoint`, `vitals`, `lcpSource`, `lcpTarget`, `acquisitionSource`, `enterSource`, `mediaTarget`. A facet can also be a function from a bundle to an array of strings.
+- An aggregate (`data.totals.<series>` or `facet.metrics.<series>`) has `sum` (weighted, for page views and visits), `count` (number of values, the sample size), `percentile(p)`, `min`, `max`, `median` and `mean`.
+- `utils.scoreCWV(value, 'lcp' | 'cls' | 'inp' | 'ttfb')` returns `good`, `ni` or `poor`.
+- `userAgent` facet values are cumulative: a bundle from `mobile:ios:webkit` counts under `mobile`, `mobile:ios` and `mobile:ios:webkit`.
+
+## Causes by metric
+
+Typical causes on Edge Delivery Services. Confirm each one on the page before you report it as the cause.
+
+### LCP
+
+- The LCP element is not what the page loads first. The boilerplate treats the first image of the first section as the LCP candidate. Compare with `lcpElements`.
+- The first section holds many blocks. All of them load before LCP.
+- Third-party scripts or fonts load before LCP instead of in the lazy or delayed phase.
+- A redirect or a slow CDN in front of the site. Compare LCP on the production host with the `.aem.live` host.
+- An LCP that is much worse on `mobile` than on `desktop` points at the bytes before LCP, because mobile has less bandwidth.
+
+### CLS
+
+- Images without `width` and `height`. `createOptimizedPicture()` in `aem.js` does not set them.
+- A block that changes its size when its JavaScript decorates it, or content that arrives from a fragment or JSON.
+- A web font without a size-adjusted fallback font.
+- A consent banner or other late-loading element that pushes content down.
+
+### INP
+
+- Observation and mutation listeners (`MutationObserver`, `IntersectionObserver`, `ResizeObserver`) that do work on every change during decoration. This is common and easy to overlook.
+- Block JavaScript that reads layout and then writes to the DOM in a loop.
+- Third-party scripts with global event listeners, mostly from a tag manager.
+
+## Report template
+
+### Summary
+Domain, slots, device filter, page views, and one sentence on the state of the site. Name the slots that failed to load.
+
+### Core Web Vitals
+
+| Metric | p75 | Samples | Rating | Compared with the other period |
+|---|---|---|---|---|
+| LCP | | | | |
+| LCP, page views with a click | | | | |
+| CLS (Chromium only) | | | | |
+| INP | | | | |
+
+### Pages to fix first
+For each of the top entries of `pagesToFix`: the URL pattern, page views, the failing metric with p75 and samples, the likely cause, and the fix to try with `cwv-optimizer`.
+
+### Devices and LCP elements
+What differs between `mobile` and `desktop`, and which elements are the LCP.
+
+### What the data can't say
+Numbers with too few samples, slots that failed, and metrics a browser doesn't report.
 
 ## Troubleshooting
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| OpTel shows zero data for a domain | Domain key not configured or sampling not active | Verify the domain is onboarded to EDS and the OpTel script is present in the page source |
-| Traffic numbers seem impossibly low | Sampling rate not accounted for | Multiply the raw count by the sampling ratio (typically 100x) to estimate actual traffic |
-| CWV data is missing for Safari users | Safari does not fully support the Performance Observer API | Acknowledge the gap: CWV data is primarily from Chromium browsers, and Safari metrics may be underrepresented |
-| Metrics fluctuate wildly day to day | Low traffic volume produces noisy samples | Use a wider date range (7-30 days) to smooth out sampling variance |
-| LCP shows "good" but pages feel slow | Not TTFB. TTFB is a *component* of LCP (LCP = TTFB + resource load delay + load time + render delay), so a good LCP already implies an acceptable TTFB; the two cannot diverge much. A sluggish *feel* is almost always an INP problem (slow response to clicks, taps, and key presses). | Check the INP breakdown for the affected pages and interactions, not TTFB. |
-
-## Per-Metric Analysis Detail (Steps 3-5)
-
-For each non-green metric, pull the distribution (good/needs-improvement/poor split), the worst pages by p75, and match the pattern to a likely EDS root cause.
-
-### LCP: what to look for
-LCP is typically the most impactful metric to fix first.
-- **Distribution**: Percentage of page loads in good/needs-improvement/poor buckets.
-- **Worst pages**: Top N URLs by p75 LCP (`cwvLCP`).
-- **Mobile vs. desktop**: A gap of more than 1 second between mobile and desktop p75 usually indicates image or resource loading issues on slower connections.
-- **Common EDS causes**: Hero images exceeding the 100KB LCP budget, too many eager-loaded blocks, custom fonts blocking render, or third-party scripts in the eager phase.
-- For each worst page, note the likely cause based on its page type (article, product, landing, home).
-
-### CLS: what to look for
-CLS problems on EDS sites have distinct, recognizable patterns.
-- **Distribution**: Percentage of page loads with CLS > 0.1.
-- **Worst pages**: Top N URLs by p75 CLS (`cwvCLS`).
-- **Common EDS causes**: Images without `width`/`height` attributes (`createOptimizedPicture()` does not set image dimensions on the images it generates), late-loading consent banners, font swaps without `size-adjust`, or blocks that restructure their DOM during JavaScript decoration.
-
-### INP: what to look for
-INP measures responsiveness to user interaction.
-- **Distribution**: Percentage of interactions with INP > 200ms.
-- **Worst pages**: Top N URLs by p75 INP (`cwvINP`).
-- **Common EDS causes**: Heavy block decoration JS (accordions, tabs, carousels), synchronous layout reads followed by DOM writes (forced reflows), long-running `MutationObserver` / observation and mutation listeners that fire on every DOM change during decoration (a frequent and easily overlooked cause), third-party scripts adding event listeners globally, or large DOM size from deeply nested block structures.
-
-## Final Report Template (Step 8)
-
-Produce a structured report with these sections:
-
-### Site Performance Summary
-- Domain, date range, total estimated page views.
-- Overall CWV pass rate.
-- One-sentence health assessment.
-
-### Core Web Vitals Scorecard
-| Metric | p75 Value | Rating | Threshold | Trend |
-|--------|-----------|--------|-----------|-------|
-| LCP | X.Xs | Good / Needs Improvement / Poor | < 2.5s | improving / stable / degrading |
-| CLS | X.XX | Good / Needs Improvement / Poor | < 0.1 | improving / stable / degrading |
-| INP | Xms | Good / Needs Improvement / Poor | < 200ms | improving / stable / degrading |
-
-### Top Issues by Impact
-Ranked list of the 3-5 most impactful findings, each with: the metric affected, specific pages or templates, root cause, recommended fix (reference `cwv-optimizer` for implementation), and estimated improvement.
-
-### Traffic Insights
-Key findings from device, browser, geographic, and trend analysis.
-
-### Recommended Next Steps
-1. **Quick wins**: Fixes for this week.
-2. **Medium-term**: Improvements over 1-2 sprints.
-3. **Monitoring**: What to watch going forward.
-
-### Finding categorization
-- **Critical** (red/poor metrics): Directly affects search ranking and user experience.
-- **Warning** (amber/needs-improvement): At risk of slipping into poor.
-- **Healthy** (green): Note as maintained strengths.
+| Symptom | Cause | What to do |
+|---|---|---|
+| `HTTP 403` for every slot | The key is not valid for this domain. | Ask the user for the domain exactly as the Explorer shows it, and for the key of that domain. |
+| `HTTP 404` | The path is not a month, day or hour. | Use `YYYY/MM`, `YYYY/MM/DD` or `YYYY/MM/DD/HH`. |
+| Zero bundles | No sampled page view in that slot. | Try a month slot. |
+| Every Core Web Vitals value is missing | `addCalculatedProps` did not run. | Run it on each bundle before `load()`. |
+| `cls.samples` is far below `lcp.samples` | WebKit sends no CLS. | Report CLS as Chromium data. |
+| p75 jumps from day to day | Few samples per day. | Use a longer range. |
