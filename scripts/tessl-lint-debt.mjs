@@ -11,7 +11,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMain } from './lib/is-main.mjs';
 
 const SKIP = new Set(['node_modules', '.git']);
 const posix = (path) => path.split(sep).join('/');
@@ -86,4 +86,4 @@ function main() {
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) main();
+if (isMain(import.meta.url)) main();
