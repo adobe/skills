@@ -24,7 +24,8 @@ if [ "$1 $2" = "eval run" ]; then
     */bad) echo "Started eval run ${ID.bad}" ;;
     */slow) echo "Started eval run ${ID.slow}" ;;
     */noid) echo "Started something" ;;
-    */refused) echo "no credits" >&2; exit 1 ;;
+    */refused) echo "not authenticated" >&2; exit 1 ;;
+    */broke) echo "✘ Your organization has run out of credits. Upgrade your plan or buy more credits to continue." >&2; exit 1 ;;
   esac
 elif [ "$4" = "--json" ]; then
   case "$3" in
@@ -67,4 +68,26 @@ test('no run started: no comment file, and has_results is false', (t) => {
   assert.equal(result.status, 1);
   assert.match(result.output, /has_results=false/);
   assert.equal(existsSync(join(root, 'comment.md')), false);
+});
+
+test('an organization out of credits is skipped, not failed, and the plugins after it are not started', (t) => {
+  const root = tree(t, { 'dirs.txt': 'plugins/ok\nplugins/broke\nplugins/bad\n' });
+  const result = run(t, 'tessl-eval.mjs', ['dirs.txt', 'comment.md'], { cwd: root, env: env(t, root) });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.output, /^outcome=no-credits$/m);
+  assert.match(result.summary, /\| ok \| passed \| ✅ \|/);
+  assert.match(result.summary, /\| broke \| not run \| ⏭️ no credits \|/);
+  assert.match(result.summary, /\| bad \| not run \| ⏭️ no credits \|/);
+  assert.match(result.summary, /2 plugin\(s\) were not evaluated: the Tessl organization has run out of credits/);
+  assert.match(result.stdout, /::warning::2 plugin\(s\) were not evaluated/);
+  assert.equal(readFileSync(join(root, 'calls'), 'utf8').split('\n').filter((line) => line.startsWith('eval run')).length, 2, 'the third eval is not started');
+});
+
+test('a failed eval before the credits run out still fails; a clean run has the outcome passed', (t) => {
+  const root = tree(t, { 'dirs.txt': 'plugins/bad\nplugins/broke\n', 'clean.txt': 'plugins/ok\n' });
+  const failed = run(t, 'tessl-eval.mjs', ['dirs.txt', 'comment.md'], { cwd: root, env: env(t, root) });
+  assert.equal(failed.status, 1);
+  assert.match(failed.output, /^outcome=failed$/m);
+  const clean = run(t, 'tessl-eval.mjs', ['clean.txt', 'comment.md'], { cwd: root, env: { ...env(t, root), CALLS: join(root, 'calls-clean') } });
+  assert.match(clean.output, /^outcome=passed$/m);
 });

@@ -2,6 +2,10 @@
 // doesn't finish in time. Writes the links to the runs to a file for the pull request comment.
 //   node scripts/tessl-eval.mjs <file with one directory per line> <file for the comment>
 // POLL_INTERVAL (default 30) and TIMEOUT (default 900), both in seconds, come from the environment.
+//
+// An organization without credits is not a failed eval: nothing ran. Those plugins count as
+// skipped and don't fail the run. The step output `outcome` is `failed`, `no-credits` or
+// `passed`, in that order of precedence.
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { basename } from 'node:path';
@@ -9,6 +13,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { error, group, setOutput, summary, table, warning } from './lib/actions.mjs';
 import { readDirs } from './lib/dirs.mjs';
 import { isMain } from './lib/is-main.mjs';
+import { outOfCredits } from './lib/tessl.mjs';
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
 const tessl = (args) => spawnSync('tessl', args, { encoding: 'utf8' });
@@ -43,7 +48,13 @@ async function main() {
   const timeout = Number(process.env.TIMEOUT || 900);
   const rows = [];
   const links = [];
-  const count = { passed: 0, failed: 0 };
+  const count = { passed: 0, failed: 0, skipped: 0 };
+  let credits = true;
+  const skip = (name) => {
+    count.skipped += 1;
+    rows.push([name, 'not run', '⏭️ no credits']);
+    console.log(`  ⏭️ ${name}: not run, the Tessl organization has run out of credits`);
+  };
   const fail = (name, result, detail) => {
     count.failed += 1;
     rows.push([name, result, '❌']);
@@ -51,11 +62,21 @@ async function main() {
   };
   for (const dir of readDirs(dirsFile)) {
     const name = basename(dir);
+    if (!credits) {
+      // the next eval would get the same answer
+      skip(name);
+      continue;
+    }
     const run = group(`Evaluating ${name} (${dir})`, () => {
       const started = tessl(['eval', 'run', dir]);
       console.log(`${started.stdout ?? ''}${started.stderr ?? ''}`);
       return started;
     });
+    if (run.status !== 0 && outOfCredits(`${run.stdout ?? ''}${run.stderr ?? ''}`)) {
+      credits = false;
+      skip(name);
+      continue;
+    }
     if (run.status !== 0) {
       warning(`tessl eval run failed for ${name} (exit code ${run.status})`);
       fail(name, 'error', `eval run failed (exit code ${run.status})`);
@@ -83,10 +104,16 @@ async function main() {
       fail(name, 'timeout', `eval timed out after ${timeout}s (last status: ${status})`);
     }
   }
-  const total = count.passed + count.failed;
-  rows.push(['**Total**', `**${count.passed}/${total} passed**`, count.failed === 0 ? '✅' : '❌']);
-  summary(['## Skill Eval', '', ...table(['Plugin', 'Result', 'Status'], rows)]);
-  console.log(`Total: ${total}, passed: ${count.passed}, failed: ${count.failed}`);
+  const total = count.passed + count.failed + count.skipped;
+  rows.push(['**Total**', `**${count.passed}/${total} passed**`, count.failed > 0 ? '❌' : count.skipped > 0 ? '⏭️' : '✅']);
+  const lines = ['## Skill Eval', '', ...table(['Plugin', 'Result', 'Status'], rows)];
+  if (count.skipped > 0) {
+    lines.push('', `> ⏭️ ${count.skipped} plugin(s) were not evaluated: the Tessl organization has run out of credits.`, '> This is not an eval result. Ask for the evals again once there are credits.');
+    warning(`${count.skipped} plugin(s) were not evaluated: the Tessl organization has run out of credits`);
+  }
+  summary(lines);
+  console.log(`Total: ${total}, passed: ${count.passed}, failed: ${count.failed}, skipped: ${count.skipped}`);
+  setOutput('outcome', count.failed > 0 ? 'failed' : count.skipped > 0 ? 'no-credits' : 'passed');
   setOutput('has_results', links.length > 0);
   if (links.length > 0 && commentFile) writeFileSync(commentFile, `## Tessl Eval Results\n\n${links.join('\n')}\n`);
   if (count.failed > 0) {
