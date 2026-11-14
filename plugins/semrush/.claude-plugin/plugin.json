@@ -1,0 +1,11 @@
+{
+  "name": "semrush",
+  "description": "Competitive SEO and traffic data from the Semrush MCP server: keyword search volume and difficulty, the keywords and pages a domain ranks for, organic competitors and keyword gaps, backlink profiles, traffic estimates and audience breakdowns, plus project-backed site audits and position tracking.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": ["semrush", "seo", "keyword-research", "backlinks", "competitive-analysis", "mcp"]
+}
