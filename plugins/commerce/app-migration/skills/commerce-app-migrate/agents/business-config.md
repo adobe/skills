@@ -1,7 +1,8 @@
 # Business Config Agent — App Management Migration
 
 You are the Business Config domain agent for the App Management Migration skill.
-This agent is dispatched only when `confidence.businessConfig !== "none"`.
+This agent is dispatched when `confidence.businessConfig !== "none"` OR
+`ProjectSnapshot.envDistKeys` is non-empty.
 
 You receive a `ProjectSnapshot` JSON. Your job is to infer the `businessConfig`
 section of `app.commerce.config.ts` from any existing configuration schema
@@ -74,6 +75,77 @@ Note: The `_source` property is for internal Executor use only. The Executor str
 writing `app.commerce.config.ts` — it must NOT appear in the generated TypeScript output.
 
 ---
+
+## Env Var Candidates
+
+Run this section whenever `ProjectSnapshot.envDistKeys` is non-empty, in addition to any
+schema inference above. It finds environment variables that are **still read by runtime
+actions after migration** and proposes moving them to Business Configurations.
+
+Read every runtime action source file under `actions/`, `actions-src/`, `src/` and `lib/`,
+and the `inputs:` blocks of every `actions.config.yaml`, `ext.config.yaml` and
+`app.config.yaml` that declares actions.
+
+### Selecting candidates
+
+For each key in `envDistKeys` (deduplicated), skip it if:
+
+1. It is managed by App Management — it matches executor Category D Rules 1, 2, 3, 3a, 6 or 7
+   (PaaS/OAuth1 credentials, IMS/SaaS credentials, Adobe I/O workspace credentials, Commerce
+   instance URL such as `COMMERCE_BASE_URL`, event configuration, webhook variables).
+2. It is platform or infrastructure configuration — `LOG_LEVEL`,
+   `ENABLE_TELEMETRY`, `NEW_RELIC_LICENSE_KEY`, `ENABLE_EXTRA_LOGGING`, `ENCRYPTION_KEY`,
+   `ENCRYPTION_IV`, `APPBUILDER_ENCRYPTION_KEY`, `AIO_COMMERCE_CONFIG_ENCRYPTION_KEY`.
+3. No runtime action reads it. Keys used only by onboarding or installation scripts are
+   covered by the documentation recommendations.
+
+A runtime action reads a key when its source contains `params.<KEY>`, `params["<KEY>"]`,
+a destructuring from `params` (`const { <KEY> } = params`), or a helper under `lib/` that
+receives `params` and reads `<KEY>` (follow one level of imports). Locate reads with
+`grep -rnF "<KEY>"`; never treat the key as a regex. Do not modify any file.
+
+### Deriving the field
+
+- `name`: the key lowercased, keeping underscores (`SENDER_API_KEY` → `sender_api_key`).
+  On a collision with another field (schema-derived or existing in an `app.commerce.config.*`),
+  keep the existing field and drop the candidate.
+- `type`: `password` if the key contains `SECRET`, `TOKEN`, `PASSWORD`, `PASSPHRASE`,
+  `API_KEY`, `PRIVATE_KEY` or `CREDENTIAL`; `url` if it ends in `_URL` or `_ENDPOINT`;
+  `email` if it ends in `_EMAIL`; `boolean` if the action compares it to `"true"`/`"false"`
+  or the `env.dist` value is `true`/`false`; otherwise `text`.
+- `label`: the key in title case (`SENDER_API_KEY` → `Sender API Key`).
+- `default`: `""` for `text`, `password`, `url`, `email`; the parsed value for `boolean`.
+  Never copy values from `.env`.
+
+### Output for candidates
+
+For each candidate:
+
+1. Append the field to `configFragment.businessConfig.schema` with `"_source": "env"`
+   (stripped by the Executor like other `_source` markers).
+2. Add this unresolved question:
+
+       {
+         "id": "businessConfig.env.<KEY>.migrate",
+         "prompt": "<KEY> is read by <file>. Move it to Business Configurations as <type> field \"<name>\" and read it from the app configuration? Options: [yes / no]",
+         "default": "yes"
+       }
+
+   The orchestrator removes the field when the answer is `no`.
+
+3. Add an entry to the top-level `envMigrations` array of the result:
+
+       {
+         "key": "SENDER_API_KEY",
+         "field": "sender_api_key",
+         "type": "password",
+         "reads": [
+           { "file": "actions/notify/index.js", "line": 14, "expression": "params.SENDER_API_KEY" }
+         ],
+         "inputDeclarations": ["actions/notify/actions.config.yaml"]
+       }
+
+If there are no candidates, omit `envMigrations` (or return `[]`).
 
 ## Inference Rules
 
@@ -197,7 +269,9 @@ Example when a config schema is found:
       "unresolvedQuestions": []
     }
 
-If no config schema is found (typical for standard starter kits), return:
+When env var candidates exist, the result also carries `envMigrations` (see "Env Var Candidates").
+
+If no config schema and no env var candidates are found (typical for standard starter kits), return:
 
     {
       "domain": "businessConfig",

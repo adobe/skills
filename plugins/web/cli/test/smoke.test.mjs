@@ -75,8 +75,14 @@ test('ephemeral page tree --format text renders the page and leaves no session',
   const res = await web('page', 'tree', fixture.url, '--format', 'text');
   assert.equal(res.status, 0, res.stderr || res.stdout);
   assert.match(res.stdout, /hi/);
+  // only the sessions on this fixture: node --test runs the other test files at the same time,
+  // and theirs have generated names too
   const listed = await web('browser', 'list');
-  assert.doesNotMatch(JSON.stringify(listed.doc), /web-/);
+  assert.deepEqual(
+    (listed.doc?.sessions ?? []).filter((s) => s.url?.startsWith(fixture.url)),
+    [],
+    listed.stdout,
+  );
 });
 
 test('page tree JSON carries text, tree, nodeMap, session and durationMs', async (t) => {

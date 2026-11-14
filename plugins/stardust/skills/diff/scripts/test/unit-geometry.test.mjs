@@ -6,7 +6,7 @@
 // and the unit size; verdictOf totals; parseArgs; --help in an empty cwd. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,6 +65,20 @@ check('--help exits 0 in an empty cwd and writes nothing', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node unit-geometry\.mjs/); assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
+});
+const copyWithoutMaster = () => {
+  const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
+  const copy = join(root, 'a', 'b');
+  cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => !src.endsWith('/test') });
+  return { root, copy };
+};
+await check('a copy without the master scripts answers --help, no stack trace', () => {
+  const { root, copy } = copyWithoutMaster();
+  try {
+    const r = spawnSync(process.execPath, [join(copy, 'unit-geometry.mjs'), '--help'], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(!r.stderr.includes('    at '), r.stderr);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

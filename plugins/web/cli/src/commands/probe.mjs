@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { rmSync, writeFileSync } from 'node:fs';
-import { CliError } from '#src/errors.mjs';
+import { CliError, redactCredentials } from '#src/errors.mjs';
 import { createContext } from '#src/context.mjs';
 import { artifactDir, withSession } from '#src/session.mjs';
 import { loadBundle } from '#src/bundles/index.mjs';
@@ -221,7 +221,7 @@ export function registerProbe(program, deps) {
         );
       }
       const stderr = deps.stderr ?? process.stderr;
-      const log = (msg) => stderr.write(`${msg}\n`);
+      const log = (msg) => stderr.write(`${redactCredentials(String(msg))}\n`);
       const { report, recipePath } = await runProbe(driver, {
         url,
         outputDir: opts.output,

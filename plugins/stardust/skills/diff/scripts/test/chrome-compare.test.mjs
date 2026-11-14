@@ -4,8 +4,14 @@
 // motion and scroll states under `replica` only, search typeahead, and site-owner decisions (agents cannot sign).
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-compare.test.mjs
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { applyDecisions, compareDocs, findingKey, pairControls } from '../chrome-compare.mjs';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
@@ -54,6 +60,53 @@ check('a control the build lacks; a width it was not explored at', () => {
   assert.deepEqual(f.slice(0, 2), ['control-missing', 'control-missing']);
   assert.equal(compareDocs({ widths: { 390: { root: 'header', controls: [] } } }, { widths: {} }).findings[0].id, 'width-missing');
 });
+check('a source control not reached before the build request budget is a warning', () => {
+  const build = doc([]);
+  build.widths[1440].truncated = 'request-budget';
+  const missing = compareDocs(doc([ctl('Shop', 'menu', { click: st(shopLinks) })]), build).findings.find((f) => f.id === 'control-missing');
+  assert.equal(missing.severity, 'warn');
+  assert.match(missing.detail, /not observed: the build record stopped at the request budget \(run the build side with --max-requests 0\)$/);
+  const budget = compareDocs(source, build).findings.find((f) => f.id === 'budget-truncated');
+  assert.match(budget.detail, /--max-requests 0/);
+  build.widths[1440].root = null;
+  assert.match(compareDocs(source, build).findings.find((f) => f.id === 'budget-truncated').detail, /--max-requests 0/);
+});
+check('an action absent from a partial build control is a warning', () => {
+  const src = doc([ctl('Shop', 'menu', { click: st(shopLinks) })]);
+  const build = doc([ctl('Shop', 'menu', {}, { partial: 'request-budget' })]);
+  const missing = compareDocs(src, build).findings.find((f) => f.id === 'state-missing');
+  assert.deepEqual([missing.action, missing.severity], ['click', 'warn']);
+  assert.match(missing.detail, /not observed: the build record stopped at the request budget/);
+});
+check('an observed build action that fails remains an error', () => {
+  const src = doc([ctl('Shop', 'menu', { click: st(shopLinks) })]);
+  const build = doc([ctl('Shop', 'menu', { click: { opened: false } })]);
+  const missing = compareDocs(src, build).findings.find((f) => f.id === 'state-missing');
+  assert.deepEqual([missing.action, missing.severity], ['click', 'error']);
+  assert.doesNotMatch(missing.detail, /not observed/);
+});
+check('a nested child absent below a partial build control is a warning', () => {
+  const parent = (children, more = {}) => ctl('Shop', 'menu', { click: st(shopLinks) }, { close: {}, children, ...more });
+  const src = doc([parent([ctl('Women', 'menu', { click: st(['Dresses']) })])]);
+  const build = doc([parent([], { partial: 'request-budget' })]);
+  const missing = compareDocs(src, build).findings.find((f) => f.path === 'Shop > Women');
+  assert.deepEqual([missing.id, missing.severity], ['control-missing', 'warn']);
+  assert.match(missing.detail, /not observed: the build record stopped at the request budget/);
+});
+check('a build search input skipped past the typeahead cap warns without throwing', () => {
+  const build = structuredClone(source);
+  const input = build.widths[1440].controls[1];
+  input.search = null;
+  input.skipped = 'typeahead-cap';
+  const typeahead = compareDocs(source, build).findings.find((f) => f.id === 'state-missing' && f.action === 'type');
+  assert.equal(typeahead.severity, 'warn');
+});
+check('a source search input skipped past the typeahead cap produces no finding', () => {
+  const skipped = structuredClone(source);
+  skipped.widths[1440].controls[1].search = null;
+  skipped.widths[1440].controls[1].skipped = 'typeahead-cap';
+  assert.deepEqual(compareDocs(skipped, source).findings, []);
+});
 check('decisions: a site-owner entry clears its finding (exact or prefix*); an agent-signed or unsigned one is ignored and reported', () => {
   const f = [{ id: 'state-missing', width: 1440, path: 'Cart', action: 'click', severity: 'error' }, { id: 'motion', width: 390, path: 'Open menu', severity: 'error' }];
   assert.equal(findingKey(f[0]), 'state-missing@1440 Cart [click]');
@@ -65,4 +118,19 @@ check('decisions: a site-owner entry clears its finding (exact or prefix*); an a
   assert.equal(out[0].decided.decision, 'decided-out'); assert.equal(out[1].decided, undefined);
   assert.equal(out.filter((x) => x.id === 'decision-invalid').length, 2);
 });
+const copyWithoutMaster = () => {
+  const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
+  const copy = join(root, 'a', 'b');
+  cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => !src.endsWith('/test') });
+  return { root, copy };
+};
+check('a copy without the master scripts answers --help, no stack trace', () => {
+  const { root, copy } = copyWithoutMaster();
+  try {
+    const r = spawnSync(process.execPath, [join(copy, 'chrome-compare.mjs'), '--help'], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(!r.stderr.includes('    at '), r.stderr);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 process.exit(failed ? 1 : 0);

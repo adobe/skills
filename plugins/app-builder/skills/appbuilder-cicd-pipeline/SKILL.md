@@ -2,7 +2,7 @@
 name: appbuilder-cicd-pipeline
 description: >-
   Set up CI/CD pipelines for Adobe App Builder projects. Generates GitHub Actions workflows using
-  adobe/aio-cli-setup-action@3 and adobe/aio-apps-action@3.3.0, plus patterns for Azure DevOps
+  adobe/aio-cli-setup-action@3 and adobe/aio-apps-action@3.4.0, plus patterns for Azure DevOps
   and GitLab CI. Handles OAuth S2S secrets injection, multi-workspace promotion (stage → prod),
   deploy gating with manifest validation. Use this skill whenever the
   user mentions CI/CD for App Builder, GitHub Actions for aio deploy, automated deployment
@@ -47,7 +47,7 @@ If user specifies Azure DevOps, GitLab CI, or Jenkins → use `references/generi
 
 - **Workflow location:** `.github/workflows/` at repository root
 - **Bootstrap command:** `aio app add ci` generates starter workflow files
-- **Official actions:** `adobe/aio-cli-setup-action@3` (CLI install) + `adobe/aio-apps-action@3.3.0` (build/test/deploy)
+- **Official actions:** `adobe/aio-cli-setup-action@3` (CLI install) + `adobe/aio-apps-action@3.4.0` (build/test/deploy)
 - **Auth model:** OAuth Server-to-Server (S2S) with IMS — the `auth` command in `aio-apps-action` is **DEPRECATED** (JWT). Do not use it.
 - **Secrets scope:** Repository secrets only. App Builder does **NOT** support GitHub environment secrets.
 - **Secrets per workspace:** 14 secrets with workspace suffix (`_STAGE`, `_PROD`)

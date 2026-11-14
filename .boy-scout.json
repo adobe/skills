@@ -1,0 +1,52 @@
+{
+  // The boy-scout rule for skills: leave a SKILL.md you touch cleaner than you found it.
+  // Each list is what breaks a rule on the checked-out tree (the scripts in scripts/ print
+  // it). A pull request fails if it changes a file that is on a list, so the fix comes with
+  // the change. Nobody has to fix a file they didn't touch, and there is no baseline to keep.
+  // https://github.com/ai-ecoverse/boy-scout
+  "lists": [
+    {
+      "name": "skill-md-too-long",
+      "command": "node scripts/check-skills.mjs --list too-long",
+      "fix": [
+        "Fix: in this same pull request, bring the SKILL.md to 500 lines or fewer.",
+        "Keep what an agent gets wrong without it. Move the rest to references/ and",
+        "link it by a path that exists. See AGENTS.md, Skills."
+      ]
+    },
+    {
+      // What `tessl plugin lint` warns about, for plugins with a Tessl manifest. Needs the
+      // tessl CLI. A warning about a skill is on its SKILL.md; any other is on the plugin's
+      // .tessl-plugin/plugin.json.
+      "name": "tessl-lint-warning",
+      "command": "node scripts/tessl-lint-debt.mjs",
+      "fix": [
+        "Fix: in this same pull request, clear what tessl plugin lint warns about for",
+        "this file. Run node scripts/tessl-lint-debt.mjs --verbose to see the warning.",
+        "For a SKILL.md over the token limit: keep what an agent gets wrong without it",
+        "and move the rest to references/."
+      ]
+    },
+    {
+      "name": "skill-name-twice-in-plugin",
+      "command": "node scripts/check-skills.mjs --list duplicate-in-plugin",
+      "fix": [
+        "Fix: in this same pull request, give the skill a name that no other skill of",
+        "its plugin has: the frontmatter name and its folder, and every place that",
+        "names it (manifests, routing skills, links). Run node scripts/check-skills.mjs",
+        "to see which skill it collides with."
+      ]
+    },
+    {
+      "name": "skill-name-in-two-plugins",
+      "command": "node scripts/check-skills.mjs --list duplicate-across-plugins",
+      "fix": [
+        "Fix: in this same pull request, give the skill a name that no other plugin",
+        "has, for example with the product or runtime in it (#497). GitHub Copilot CLI",
+        "exposes skills under their bare name, so two installed plugins with a",
+        "same-named skill are ambiguous. Renaming one of the two clears both. Run",
+        "node scripts/check-skills.mjs to see which skill it collides with."
+      ]
+    }
+  ]
+}

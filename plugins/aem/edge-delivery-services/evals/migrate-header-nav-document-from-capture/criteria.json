@@ -1,0 +1,41 @@
+{
+  "context": "Tests whether the agent writes the nav document for the migrate-header skill's header template from a capture: links only from the capture (absolute, as on the source), a label or text without a link kept without one, the main-nav section metadata decided from the capture's facts (trigger, breakpoint not in metadata, scroll, alignment from geometry, mobile style and tools from the shots), a tabbed panel as a fragment with a `tabs vertical` block, and icons written as the pipeline's icon spans because `aem up --html-folder` serves the drafts verbatim.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Nav document path and shape",
+      "max_score": 10,
+      "description": "Writes `drafts/nav.plain.html` with top-level `<div>` sections, the main bar as one section: a first paragraph with the logo (linked to the home page), then one `<ul>` for the navigation, then the tools (search, Get a demo)"
+    },
+    {
+      "name": "Main-nav section metadata",
+      "max_score": 15,
+      "description": "Ends the main section with a section-metadata table holding Style `main-nav`, Dropdown Trigger `hover` (one menu opens on hover), Mobile Style `accordion`, Mobile Tools `bar`, Scroll Behavior `sticky` (or says it must be checked on the live source); Dropdown Align from geometry (the Resources panel is full width; Products is under its trigger)"
+    },
+    {
+      "name": "Links only from the capture",
+      "max_score": 20,
+      "description": "Every href is one of the capture's (open.json panel.items or regions/header.html), absolute against the source as on the source; Products keeps its own link and its three items; no URL is invented for any item"
+    },
+    {
+      "name": "No link where the source has none",
+      "max_score": 15,
+      "description": "The Resources label is written without a link (the template makes it a button), and \"Contact support\" stays plain text with no href"
+    },
+    {
+      "name": "Tabbed panel as a fragment",
+      "max_score": 20,
+      "description": "Resources is authored as a fragment panel: its list holds one link to `/fragments/<name>`, and `drafts/fragments/<name>.plain.html` holds a `tabs vertical` block with one row per category (Learn, Watch, Support): the category label in the first cell and its links in the second, the first category open by default"
+    },
+    {
+      "name": "Icons as the pipeline renders them",
+      "max_score": 10,
+      "description": "Writes icons in the drafts as `<span class=\"icon icon-<name>\"></span>` (with the matching `icons/<name>.svg` noted), not as `:name:` text, which the local dev server would not convert; or notes that authors write `:name:` in DA"
+    },
+    {
+      "name": "Content only",
+      "max_score": 10,
+      "description": "Writes only content files (no CSS, no JavaScript, no class names or inline styles inside the content beyond block and section-metadata markup) and does not use screenshots of the source as content"
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { artifactPath, generateSessionName, requireOpenSession, withSession } from './session.mjs';
 
 const fake = (sessions = []) => {
@@ -218,4 +220,15 @@ test('withSession warns when an explicit recipe meets an already open session', 
     process.stderr.write = original;
   }
   assert.match(written.join(''), /--recipe ignored, session mine is already open/);
+});
+
+test('withSession resolves env:NAME in the recipe from opts.env and does not pass env on', async () => {
+  const file = join(mkdtempSync(join(tmpdir(), 'rec-')), 'remote.json');
+  writeFileSync(file, JSON.stringify({ probe: [{ config: { cdpEndpoint: 'env:SESSION_WSS' } }] }));
+  const d = fake();
+  const env = { SESSION_WSS: 'wss://u:p@session.test:9222' };
+  await withSession(d, { session: 'mine', url: 'https://x.test', recipePath: file, env }, () => 1);
+  const opened = d.calls[0][1];
+  assert.equal(opened.config.cdpEndpoint, 'wss://u:p@session.test:9222');
+  assert.equal('env' in opened, false);
 });

@@ -5,9 +5,8 @@
  */
 /* eslint-disable import/no-extraneous-dependencies, no-await-in-loop, no-restricted-syntax */
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join, dirname } from 'node:path';
-import { pathToFileURL, fileURLToPath } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 export const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -32,17 +31,28 @@ export function provenance(script, extra = {}) {
   return { writtenBy: `stardust:dynamics ${script}`, writtenAt: new Date().toISOString(), ...extra };
 }
 
-/* ---------------------------------------------------------- playwright --- */
-export async function loadPlaywright() {
-  const normalize = (m) => (m.chromium ? m : (m.default?.chromium ? m.default : null));
-  try {
-    const req = createRequire(join(process.cwd(), 'package.json'));
-    const mod = normalize(await import(pathToFileURL(req.resolve('playwright')).href));
-    if (mod) return mod;
-  } catch { /* fall through */ }
-  try { const mod = normalize(await import('playwright')); if (mod) return mod; } catch { /* fall through */ }
-  throw new Error('playwright not importable from the project (npm i -D playwright --no-save) — the dynamics instruments need a browser.');
+/* ------------------------------------------------------------- browser --- */
+// The browser front door (stardust/scripts/browser.mjs), resolved once. Pure instruments (plan, martech) never
+// need it; a browser step that cannot find it stops with the copy instruction.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs', './stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+function frontDoor() {
+  if (!BROWSER) throw Object.assign(new Error('dynamics/lib.mjs: browser.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'), { code: 'FRONT_DOOR_MISSING' });
+  return import(BROWSER.href);
 }
+const SETUP_ERRORS = ['FRONT_DOOR_MISSING', 'PLAYWRIGHT_MISSING', 'PLAYWRIGHT_BROKEN'];
+/** CLI boundary: a missing front door or Playwright is a setup error. One line, exit 2 (in dynamics-check exit 1 is a failed check); any other error passes on. */
+export function stopOnSetupError(error) {
+  if (!SETUP_ERRORS.includes(error?.code)) throw error;
+  console.error(error.message);
+  process.exit(2);
+}
+const viaFrontDoor = (name) => async (...args) => (await frontDoor())[name](...args);
+export const loadPlaywright = viaFrontDoor('loadPlaywright');
+export const openBrowser = viaFrontDoor('openBrowser');
+export const newContext = viaFrontDoor('newContext');
+export const newPage = viaFrontDoor('newPage');
+export const goto = viaFrontDoor('goto');
 
 /* -------------------------------------------------------------- auth ---- */
 /**
@@ -62,20 +72,11 @@ export function resolveAuthHeader({ authHeader = arg('auth-header'), tokenEnv = 
 
 /**
  * Attach the auth header to requests for ONE origin only, through a route
- * filter. Never use context-wide extraHTTPHeaders for a secret: it leaks to
- * every third party and turns their CORS checks into false failures that real
- * users never see (recorded on a video vendor's playback API).
+ * filter (the front door's). Never use context-wide extraHTTPHeaders for a
+ * secret: it leaks to every third party and turns their CORS checks into false
+ * failures that real users never see (recorded on a video vendor's playback API).
  */
-export async function attachOriginAuth(context, origin, headerValue) {
-  if (!headerValue) return;
-  const o = new URL(origin).origin;
-  await context.route('**/*', (route) => {
-    const u = route.request().url();
-    if (u.startsWith(`${o}/`) || u === o) {
-      route.continue({ headers: { ...route.request().headers(), authorization: headerValue } });
-    } else route.continue();
-  });
-}
+export const attachOriginAuth = viaFrontDoor('attachOriginAuth');
 
 /* ------------------------------------------------------------- hosts ---- */
 export function registrable(host) { return String(host || '').split(':')[0].split('.').slice(-2).join('.'); }
@@ -110,26 +111,16 @@ export function vendors() {
 export function vendorFor(hostOrUrl) { return vendors().find((v) => v.re.test(hostOrUrl)) || null; }
 
 /* --------------------------------------------------------- page steps --- */
+// the click tried when the shared consent pass (the front door's acceptConsent) clicks nothing
 export const CONSENT_ACCEPT = [
   '#onetrust-accept-btn-handler', '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll', '#usercentrics-root button[data-testid="uc-accept-all-button"]',
   '[id*="accept-all" i]', '[id*="acceptAll" i]', 'button[aria-label*="accept" i]', 'button[title*="accept all" i]',
 ].join(', ');
 
-// the shared consent pass (diff/scripts/live-session.mjs acceptConsent) when the diff skill's
-// scripts sit beside these — plugin tree or project copy; CONSENT_ACCEPT stays the fallback
-let sharedConsent;
-async function sharedAcceptConsent() {
-  if (sharedConsent === undefined) {
-    const found = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs'].map((p) => join(HERE, p)).find((p) => existsSync(p));
-    sharedConsent = found ? (await import(pathToFileURL(found).href).catch(() => ({}))).acceptConsent || null : null;
-  }
-  return sharedConsent;
-}
-
 /** accept consent (so tags fire), settle, scroll (lazy bands/tags), settle again */
 export async function settlePage(page, { settleMs = 5000, scrollStep = 800, maxScroll = 8000 } = {}) {
-  const accept = await sharedAcceptConsent();
-  if (!(accept && await accept(page).catch(() => null))) {
+  const accept = (await frontDoor()).acceptConsent;
+  if (!(await accept(page).catch(() => null))) {
     try { await page.click(CONSENT_ACCEPT, { timeout: 3000 }); } catch { /* no dialog */ }
   }
   await page.waitForTimeout(settleMs);

@@ -121,7 +121,7 @@ runtimeManifest:
         handle-order-placed:
           function: actions/handle-order-placed/index.js # relative to src/commerce-extensibility-1/
           web: "no"
-          runtime: nodejs:24
+          runtime: nodejs:26
           annotations:
             require-adobe-auth: false
 ```

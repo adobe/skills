@@ -8,7 +8,7 @@
  *
  *   node spec-capture.mjs [--config <file>] [--urls <file>] [--out <dir>] [--width 1440] [--tabs 2] [--from-cache]
  *
- * When S2 needed the headed tier (fetch/technique.json), the browser is the diff skill's live-session stealth
+ * When S2 needed the headed tier (fetch/technique.json), the browser is the front door's stealth
  * real Chrome too. Pages S2 could not read plainly (source: headed or archive), or every page with --from-cache,
  * render from the HTML S2 kept: the page's own navigation is answered from the cache, its assets load live. A page
  * that still shows a bot challenge is recorded as an error, never captured as the page.
@@ -19,7 +19,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
-import { arg, componentLayout, flag, genericRules, groupRows, helpAndExit, loadConfig, loadLiveSession, loadPlaywright, log, profileRules, readJSON, readJSONL, urlKey } from './lib.mjs';
+import { arg, componentLayout, flag, genericRules, groupRows, helpAndExit, loadBrowser, loadConfig, log, profileRules, readJSON, readJSONL, urlKey } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -30,7 +30,7 @@ const HIDE_CSS = '#onetrust-consent-sdk,#onetrust-banner-sdk,.onetrust-pc-dark-f
  * In-page tagger: spec-parse's profile rules and component layout (lib.mjs profileRules, componentLayout, injected
  * with their helpers), over a DOM adapter, so both find the same components under the same path ids.
  */
-function tagger({ profile, mainSel, nameAttrs, stripPrefix }) {
+function tagger({ profile, mainSel, nameAttrs, stripPrefix, extraRoots }) {
   const RAW = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
   const MEDIA = 'img,picture,video,iframe,form,input,select,textarea,canvas,object,embed';
   const weight = (el) => {
@@ -40,7 +40,7 @@ function tagger({ profile, mainSel, nameAttrs, stripPrefix }) {
     return 0;
   };
   const A = { tag: (el) => el.tagName.toLowerCase(), cls: (el) => [...(el.classList || [])], attr: (el, a) => el.getAttribute(a), kids: (el) => [...el.children], parent: (el) => el.parentElement, weight };
-  const R = profileRules(profile, A, { nameAttrs, stripPrefix }); // eslint-disable-line no-undef -- injected with the tagger
+  const R = profileRules(profile, A, { nameAttrs, stripPrefix, extraRoots }); // eslint-disable-line no-undef -- injected with the tagger
   // assign(main) → { els: Map(path → element), rows: { rowPath: [memberPaths] } } on the DOM as it is now
   const assign = (main) => {
     const els = new Map(); const rows = {};
@@ -86,13 +86,12 @@ async function main() {
   const out = arg('out', cfg.w('media'));
   const width = Number(arg('width', 1440));
   const urls = readFileSync(src, 'utf8').split('\n').map((s) => s.trim()).filter(Boolean);
-  const { chromium } = await loadPlaywright();
   const headed = readJSON(cfg.w('fetch', 'technique.json'), {}).technique === 'headed';
-  const ls = headed ? await loadLiveSession() : null;
-  const browser = headed ? await ls.launchStealthHeaded(chromium) : await chromium.launch({ args: ['--disable-dev-shm-usage'] });
-  const ctx = headed ? await ls.newLiveContext(browser, { viewport: { width, height: 900 }, deviceScaleFactor: 1 }) : await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: 1 });
-  if (headed) log(`headed tier (${ls.browserTier(browser)}), as S2`);
-  const args = { profile: cfg.parser.profile, mainSel: cfg.parser.main || null, nameAttrs: cfg.parser.nameAttrs || [], stripPrefix: cfg.parser.stripPrefix || null };
+  const { openBrowser, newContext, newLiveContext, browserTier, goto } = await loadBrowser();
+  const browser = await openBrowser(headed ? { mode: 'headed' } : { mode: 'plain', launchOptions: { args: ['--disable-dev-shm-usage'] } });
+  const ctx = headed ? await newLiveContext(browser, { viewport: { width, height: 900 }, deviceScaleFactor: 1 }) : await newContext(browser, { viewport: { width, height: 900 }, deviceScaleFactor: 1 });
+  if (headed) log(`headed tier (${browserTier(browser)}), as S2`);
+  const args = { profile: cfg.parser.profile, mainSel: cfg.parser.main || null, nameAttrs: cfg.parser.nameAttrs || [], stripPrefix: cfg.parser.stripPrefix || null, extraRoots: cfg.parser.extraRoots || [] };
   // one closure: the shared rules and the tagger, nothing added to the page's globals but the two __spec hooks
   await ctx.addInitScript({ content: `(() => {\n${[genericRules, groupRows, profileRules, componentLayout].map(String).join('\n')}\n(${tagger})(${JSON.stringify(args)});\n})();` });
   await ctx.route('**/*', (route) => { let h = ''; try { h = new URL(route.request().url()).hostname; } catch { /* keep */ } return BLOCK.test(h) ? route.abort() : route.fallback(); }); // fallback: live-session's document headers still apply
@@ -118,7 +117,7 @@ async function main() {
             return route.fallback();
           });
         }
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await goto(page, url, { waitUntil: 'domcontentloaded', timeout: 60000 });
         await page.waitForLoadState('load', { timeout: 15000 }).catch(() => {});
         if (await page.evaluate(() => /Just a moment|Verify you are human|Attention Required|challenge-platform/i.test(document.title + document.body.innerText.slice(0, 2000) + [...document.scripts].map((x) => x.src).join(' ')))) throw new Error('bot challenge: page not captured');
         await page.addStyleTag({ content: HIDE_CSS });

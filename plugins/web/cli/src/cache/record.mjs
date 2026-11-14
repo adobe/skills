@@ -1,16 +1,19 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { CliError } from '#src/errors.mjs';
+import { CliError, redactCredentials } from '#src/errors.mjs';
 import { assertNotBlocked } from '#src/driver/blocked.mjs';
 import { bodyPath, dropFailedEntries, harFileName } from '#src/cache/har.mjs';
 import { extendConfig, resolveLaunch } from '#src/recipe.mjs';
 import { generateSessionName } from '#src/session.mjs';
 
-// 150 scrolls x 600 ms + two 8 s networkidle waits ~ 106 s; leave headroom.
-const SCROLL_TIMEOUT_MS = 180_000;
+// 150 scrolls x 600 ms + two 8 s networkidle waits ~ 106 s; leave headroom. The wait for
+// the load event comes on top.
+const SCROLL_TIMEOUT_MS = 150_000;
+// Playwright's default; a remote unblocking browser can need more (WEB_TIMEOUT).
+const LOAD_TIMEOUT_MS = 30_000;
 
-const LOAD_AND_SCROLL = `async page => {
-  await page.waitForLoadState('load');
+const loadAndScroll = (loadTimeoutMs) => `async page => {
+  await page.waitForLoadState('load', { timeout: ${loadTimeoutMs} });
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   for (let i = 0; i < 150; i++) {
     const h = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -37,7 +40,9 @@ function closeQuietly(driver, session) {
   try {
     driver.close(session);
   } catch (err) {
-    process.stderr.write(`warning: failed to close session ${session}: ${err.message}\n`);
+    process.stderr.write(
+      `warning: failed to close session ${session}: ${redactCredentials(err.message)}\n`,
+    );
   }
 }
 
@@ -47,15 +52,21 @@ function closeQuietly(driver, session) {
  * ends the playwright-cli session, so the session is closed only when something fails.
  * The HAR is written to `<har>.tmp` (not indexed by the proxy) and replaces `<har>` only once
  * complete, so a failed refresh keeps the previous recording.
+ * `loadTimeoutMs` bounds the wait for the page's load event (default 30 s). `env` resolves
+ * `env:NAME` references in the recipe.
  * @param {object} driver
- * @param {{ url: string, cacheDir: string, headed?: boolean, recipe?: string }} opts
+ * @param {{ url: string, cacheDir: string, headed?: boolean, recipe?: string,
+ *   loadTimeoutMs?: number, env?: NodeJS.ProcessEnv }} opts
  * @returns {{ url: string, har: string, entries: number, dropped: number, bytes: number }}
  */
-export function recordPage(driver, { url, cacheDir, headed, recipe }) {
+export function recordPage(
+  driver,
+  { url, cacheDir, headed, recipe, loadTimeoutMs = LOAD_TIMEOUT_MS, env = process.env },
+) {
   const dir = path.resolve(cacheDir);
   mkdirSync(dir, { recursive: true });
   const har = path.join(dir, harFileName(url));
-  const launch = resolveLaunch(recipe, { headed });
+  const launch = resolveLaunch(recipe, { headed }, { env });
   const tmp = `${har}.tmp`;
   const config = extendConfig(launch.config, {
     contextOptions: { recordHar: { path: tmp, content: 'attach' } },
@@ -64,9 +75,15 @@ export function recordPage(driver, { url, cacheDir, headed, recipe }) {
   rmSync(tmp, { force: true });
   try {
     try {
-      driver.open({ session, url, headed, ...launch, config });
+      // Navigate separately from the launch: goto retries a navigation a remote browser
+      // refuses for rate limiting.
+      driver.open({ session, headed, ...launch, config });
+      driver.goto(session, url);
       assertNotBlocked(driver.pageHealth(session));
-      driver.run(session, { code: LOAD_AND_SCROLL, timeoutMs: SCROLL_TIMEOUT_MS });
+      driver.run(session, {
+        code: loadAndScroll(loadTimeoutMs),
+        timeoutMs: loadTimeoutMs + SCROLL_TIMEOUT_MS,
+      });
       driver.run(session, { code: FLUSH_HAR });
     } catch (err) {
       closeQuietly(driver, session);

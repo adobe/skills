@@ -30,9 +30,14 @@
  * Requires playwright and pngjs (project devDependencies; imported lazily, so --help and the pure test need neither).
  */
 /* eslint-disable no-await-in-loop, max-len */
-import { mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+// browser.mjs lives in the master skill's scripts dir: the plugin tree (skills/replica/scripts ↔ skills/stardust/scripts)
+// or the project copy (scripts/replica ↔ scripts/stardust). Resolved in main, so the pure exports need no browser.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
 
 export const HELP = readFileSync(new URL(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^\s*\* ?/gm, '').trim();
 
@@ -179,18 +184,21 @@ function readBlocks(sel) {
 async function main() {
   if (process.argv.includes('--help') || process.argv.includes('-h')) { console.log(HELP); return; }
   const { dir, build, opts } = parseArgs(process.argv);
-  let chromium; let PNG;
-  try { ({ chromium } = await import('playwright')); ({ PNG } = await import('pngjs')); } catch (e) { throw new Error(`playwright / pngjs not importable (${e.code || e.message}) — copy the replica scripts dir into the project and run the copy`); }
+  if (!BROWSER) throw new Error('diff-report: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  const { goto, loadPlaywright, newPage, openBrowser } = await import(BROWSER.href);
+  await loadPlaywright();
+  let PNG;
+  try { ({ PNG } = await import('pngjs')); } catch (e) { throw new Error(`pngjs is not importable (${e.code || e.message}) — from the project root run: npm i -D pngjs --legacy-peer-deps`); }
   const diffFile = pickDiff(dir, opts.diff);
   const diff = PNG.sync.read(readFileSync(diffFile));
   const live = PNG.sync.read(readFileSync(join(dir, 'live.png')));
   const buildPng = PNG.sync.read(readFileSync(join(dir, 'build.png')));
   const width = opts.width || buildPng.width;
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: 'plain' });
   let blocks;
   try {
-    const page = await browser.newPage({ viewport: { width, height: 900 } });
-    await page.goto(build, { waitUntil: 'networkidle', timeout: 60000 });
+    const page = await newPage(browser, { viewport: { width, height: 900 } });
+    await goto(page, build, { waitUntil: 'networkidle', timeout: 60000 });
     await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 40); }); } window.scrollTo(0, 0); });
     // late (lazy) images loaded by the scroll pass can still shift boxes: settle before reading them
     await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});

@@ -24,6 +24,7 @@ Orchestrates the full migration workflow: project detection → domain analysis 
 2. **Analyze** — detects starter kit type, auth mode, action packages, eventing, webhooks, Admin UI SDK usage, and business config
 3. **Domain agents** — runs specialized agents in parallel for each detected domain (events, webhooks, Admin UI SDK, business config)
 4. **Q&A** — asks targeted questions for anything that cannot be inferred automatically
+   - **Env vars to Business Configurations:** variables still read through `params` by runtime actions (excluding auth, workspace, event, webhook and platform keys) are proposed as `businessConfig.schema` fields, with secrets as `password`. For each accepted variable, the action code is rewritten to read it with `@adobe/aio-commerce-lib-config` and the matching action `inputs` are removed. `--auto` accepts all candidates.
 5. **Config assembly** — generates `app.commerce.config.ts` with `defineConfig(...)` from `@adobe/aio-commerce-lib-app/config`
 6. **Execute** — writes the config file, installs dependencies, generates extension scaffolding, and updates `app.config.yaml` and `install.yaml`
 7. **Documentation recommendations** — scans `README.md` and `env.dist` for content that is no longer needed after migration and explains why each item is obsolete; this analysis runs before `npm install` so recommendations are always produced even if the install step fails or is blocked
@@ -36,6 +37,8 @@ Orchestrates the full migration workflow: project detection → domain analysis 
 - `env.dist` entries for credentials and configuration now managed by the App Management platform: IMS/SaaS auth (`OAUTH_*`), PaaS OAuth1 (`COMMERCE_CONSUMER_*`, `COMMERCE_ACCESS_TOKEN*`), Adobe I/O workspace vars (`AIO_RUNTIME_NAMESPACE`, `AIO_RUNTIME_AUTH`, `IO_MANAGEMENT_API_KEY`, `IO_*`), event config vars (`AIO_EVENTS_*`, `COMMERCE_ADOBE_IO_EVENTS_*`), and webhook vars (`COMMERCE_WEBHOOKS_PUBLIC_KEY`)
 - Duplicate `env.dist` keys flagged explicitly (e.g. a key that appears twice in the file)
 - An annotated README removal guide (inline `<!-- ✂ REMOVE -->` comments) for projects with 5 or more flagged sections
+
+**Commerce base URL:** `COMMERCE_BASE_URL` and similar variables are no longer needed. App Management stores the Commerce base URL and deployment type when the app is associated with a Commerce instance, and runtime actions read them with `getCommerceClient()` or `getCommerceInstance()` from `@adobe/aio-commerce-lib-app`. The migration report flags files that still read the variable and links to the [App Management guide](https://experienceleague.adobe.com/en/docs/commerce/app-management/manage-app/manage-app) for associating and installing the app.
 
 **Supported source projects:** Integration Starter Kit, Checkout Starter Kit, Admin UI SDK extensions.
 

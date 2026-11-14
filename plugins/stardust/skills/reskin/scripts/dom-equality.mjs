@@ -21,7 +21,7 @@
  *     responsive duplicate menus poison raw img lists), using the SHARED
  *     predicate capture-content.mjs uses (source-normalize.mjs IMG_VISIBLE)
  *     so capture and gate can never drift on image counts.
- *   - Live navigation via the shared diff live-session module (F-G/F-R1):
+ *   - Live navigation via the shared browser.mjs module (F-G/F-R1):
  *     real-Chrome UA + the standard request headers (UA alone still 403s on
  *     Akamai), domcontentloaded on live targets, webdriver spoof, challenge
  *     detection. This gate RE-CRAWLS the live source at gate time — a bot
@@ -53,21 +53,20 @@
  */
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathToFileURL } from 'node:url';
 import { loadNormalize, IMG_VISIBLE } from './source-normalize.mjs';
 
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/reskin/scripts ↔ skills/diff/scripts) and the
-// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/diff).
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolve(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('[dom-equality] live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/).');
-  console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
+// browser.mjs lives in the master skill's scripts dir. Two layouts exist:
+// the plugin tree (skills/reskin/scripts ↔ skills/stardust/scripts) and the
+// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/stardust).
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('[dom-equality] browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/).');
+  console.error('Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const { goto, isLiveHttpUrl, loadPlaywright, newLiveContext, openBrowser, gotoLive } = await import(BROWSER.href);
 
 function parseArgs(argv) {
   const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
@@ -97,11 +96,8 @@ if (args.help || !args.source || !args.rendered || !args.report) {
   process.exit(args.help ? 0 : 2);
 }
 
-let chromium;
-try { ({ chromium } = await import('playwright')); } catch {
-  console.error('[dom-equality] playwright not importable from this script\'s directory.');
-  console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright --no-save --legacy-peer-deps  (extract SKILL.md § Setup)');
+try { await loadPlaywright(); } catch (e) {
+  console.error(`[dom-equality] ${e.message}`);
   process.exit(2);
 }
 
@@ -109,13 +105,14 @@ const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).
 const die = (m, c = 2) => { console.error(`[dom-equality] ${m}`); process.exit(c); };
 const { script: NORMALIZE, source: normalizeSource } = await loadNormalize(args.normalize);
 
-const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+const browser = await openBrowser({ mode: args.headed ? 'headed' : 'plain' });
 
 async function capture(url, scopeList, normalize) {
   // UA + standard headers + webdriver spoof (live-session) — harmless on
   // local/file targets, mandatory on live ones (F-G/F-R1).
   const ctx = await newLiveContext(browser, {
     ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+    stateUrl: url,
   });
   const page = await ctx.newPage();
   let navErr = null;
@@ -134,7 +131,7 @@ async function capture(url, scopeList, normalize) {
     }
   } else {
     // local/file target (rendered page, saved source snapshot) — legacy path.
-    navErr = await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).then(() => null, (e) => e);
+    navErr = await goto(page, url, { waitUntil: 'networkidle', timeout: 60000 }).then(() => null, (e) => e);
   }
   await page.waitForTimeout(2000);
   await page.evaluate(async () => {
