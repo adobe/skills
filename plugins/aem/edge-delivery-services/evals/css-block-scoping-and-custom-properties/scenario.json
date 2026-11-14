@@ -1,0 +1,10 @@
+{
+  "description": "Style an existing block in aem-boilerplate 5cea543 (cloned by setup.sh)",
+  "fixtures": {
+    "block-js": {
+      "type": "directory",
+      "path": "./fixtures/testimonial-carousel",
+      "installPath": "blocks/testimonial-carousel"
+    }
+  }
+}

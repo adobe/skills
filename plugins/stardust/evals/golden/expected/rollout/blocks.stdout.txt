@@ -1,0 +1,7 @@
+rollout blocks → stardust/rollout/coverage/blocks.json
+============================================================
+Distinct blocks  4  (2 module · 1 chrome/fragment · 1 widget)
+Reuse leverage   6 instances → 4 conversions
+Most reused      cards×3, hero×1
+Fragments        nav
+Widgets          site-search → widgets/search/site-search.html (code only; no document rows)
