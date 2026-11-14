@@ -57,15 +57,9 @@ Check the name is not already used: `blocks/form/components/<name>/` must not ex
 
 ### Step 2: Scaffold
 
-If `package.json` has a `create:custom-component` script, run it from the repository root (install dependencies first if `node_modules` is missing):
+Create `blocks/form/components/<name>/{<name>.js,<name>.css,_<name>.json}` by hand: copy the base type's `blocks/form/models/form-components/_<base>.json`, set `definitions[0].id` and `models[0].id` to `<name>`, set `template["fd:viewType"]` to `<name>`, and fix `"..."` include paths so they resolve from the component folder (`../../models/form-common/...`).
 
-```bash
-npm run create:custom-component -- --name <name> --base <base-type>
-```
-
-It creates `blocks/form/components/<name>/{<name>.js,<name>.css,_<name>.json}` and usually also registers the component (mappings, `_form.json` filter, `models/_component-definition.json`). **Do not assume it did — Step 8 verifies.**
-
-If the script does not exist, create the three files by hand: copy the base type's `blocks/form/models/form-components/_<base>.json`, set `definitions[0].id` and `models[0].id` to `<name>`, set `template["fd:viewType"]` to `<name>`, and fix `"..."` include paths so they resolve from the component folder (`../../models/form-common/...`).
+Don't run the repo's `create:custom-component` script (`node tools/forms-scaffolder.js`) yourself: it takes no flags and asks its three questions at an interactive prompt, which an agent's shell can't answer. If the user prefers it, they run `npm run create:custom-component` in their own terminal. It creates the same three files and usually also registers the component (mappings, `_form.json` filter, `models/_component-definition.json`). **Do not assume it did — Step 8 verifies.**
 
 ### Step 3: Define authoring properties (`_<name>.json`)
 
@@ -94,9 +88,7 @@ Implementation rules:
 - Read authored properties from `fieldJson.properties.<prop>`.
 - Enhance the existing OOTB markup in `fieldDiv`; scope DOM queries to it.
 - When writing the value from custom UI, either set `model.value` or dispatch `new Event('change', { bubbles: true })` on the underlying input.
-- Guard against loops: never set `model.value` in a value-change handler without comparing first.
 - Know when the value is committed. Out of the box, the form block writes `model.value` only from the input's native `change` event (`blocks/form/rules/index.js`), which text-like inputs fire on blur/commit, not on each keystroke. So rules on the field's change event run once per edit, when the user leaves the field. If the component must commit on every keystroke (live counters, search-as-you-type, values derived while typing), handle the `input` event in the component and set `model.value` there, comparing with the current value first. When reformatting the display while typing (masks, grouping), don't dispatch `change` on each keystroke, or you turn the blur commit into a per-keystroke one.
-- Prefix CSS classes with the component name in `<name>.css`.
 
 ### Step 5: Register
 
@@ -166,7 +158,7 @@ Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = nam
    node <skill-dir>/scripts/run-e2e-test.mjs <name>
    ```
 
-   It runs the repo's own Playwright and config on that folder only, without retries and limited to the `chromium` project when the config has one. In other words: `npx playwright test <testDir>/custom-components/<name>/ --project=chromium --retries=0`. The tests become part of the repo's e2e suite, so they also run with its usual command (e.g. `npm run test:e2e`). If the repo's config fails to load, or doesn't exist, the runner falls back to a temporary standalone config (Chromium, no retries, written to the OS temp folder). For example, secure-bank's `globalSetup: … : null` is rejected by newer Playwright. The runner prints why; pass that on to the user so they can fix the repo config. The harness also fails a test on console errors from `/blocks/form/`, including exceptions thrown by `decorate()`: `mappings.js` swallows those and still marks the field `loaded`. If `@playwright/test` is missing (exit 2), install it as a dev dependency (`npm i -D @playwright/test && npx playwright install chromium`). If that is not possible, keep the spec, report the test as not run, and give the command.
+   It runs the repo's own Playwright and config on that folder only, without retries and limited to the `chromium` project when the config has one. In other words: `npx playwright test <testDir>/custom-components/<name>/ --project=chromium --retries=0`. The tests become part of the repo's e2e suite, so they also run with its usual command (e.g. `npm run test:e2e`). If the repo's config fails to load, or doesn't exist, the runner falls back to a temporary standalone config (Chromium, no retries, written to the OS temp folder). For example, a `globalSetup: … : null` is rejected by newer Playwright. The runner prints why; pass that on to the user so they can fix the repo config. The harness also fails a test on console errors from `/blocks/form/`, including exceptions thrown by `decorate()`: `mappings.js` swallows those and still marks the field `loaded`. If `@playwright/test` is missing (exit 2), install it as a dev dependency (`npm i -D @playwright/test && npx playwright install chromium`). If that is not possible, keep the spec, report the test as not run, and give the command.
 
 `scripts/validate-registration.js` can additionally be evaluated on an already deployed form (`(<file contents>)('<name>')`) to confirm registration there.
 
@@ -215,8 +207,6 @@ Finish with: files created/changed, the validator summary (errors/warnings), lin
 | `subscribe` without `{ listenChanges: true }` or legacy `fieldModel.subscribe(cb, 'change')` | Use the standard pattern in `references/subscribe-api.md` |
 | Child field selected with `#id` | Use `[data-id="${child.id}"]` (the wrapper) |
 | Custom event handled via `addEventListener` | `fieldModel.subscribe(cb, '<event>')` in `'register'` |
-| `new Event('change')` without `{ bubbles: true }` | Change never reaches the form model |
-| Setting `model.value` inside its own change handler | Compare before assigning |
 | Assuming the model updates while the user types | OOTB commits on blur (`change`); handle `input` in the component if rules need each keystroke, and document it in `## Model Properties Set` |
 | Dispatching `change` on every keystroke while formatting | Turns the blur commit into a per-keystroke one; let the native `change` commit, or commit deliberately |
 | Forgot `npm run build:json` | Properties missing in the Universal Editor — validator `build.json` |
@@ -229,7 +219,7 @@ Finish with: files created/changed, the validator summary (errors/warnings), lin
 
 **User:** "Create a star rating component based on number-input with a configurable maximum number of stars."
 
-1. Scaffold `npm run create:custom-component -- --name star-rating --base number-input`.
+1. Create `blocks/form/components/star-rating/` with `star-rating.js`, `star-rating.css` and `_star-rating.json`, the last copied from `_number-input.json` (Step 2).
 2. `_star-rating.json`: add `{ "component": "number", "name": "maxStars", "label": "Maximum stars", "valueType": "number" }`.
 3. `star-rating.js`: hide the number input, render `maxStars` buttons, set `model.value` on click, sync the selected stars on `'change'` of `value`, using `subscribe(..., { listenChanges: true })`.
 4. Register in `mappings.js` / `_form.json`, write `README.md`, run `npm run build:json`.
