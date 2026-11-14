@@ -1,0 +1,41 @@
+{
+  "context": "The working directory is aem-boilerplate 5cea543 (setup.sh clones it) with a Playwright config and a local block library page content/docs/library/blocks/columns.html (default and contained variants). The task asks for the pages to test a `columns contained` CSS change against on https://main--helix-website--adobe.aem.live, recorded in TEST-PAGES.md and a Playwright spec. Ground truth (crawled 2026-11-12 from https://main--helix-website--adobe.aem.live, server HTML): pages with a `columns` block that has the `contained` variant (8): `/` (`columns four contained ...`, `columns three contained ...`), `/blog/content-document-semantics` (`columns contained`), `/developers-live` (`columns two contained`, `columns three contained fade-up`), `/docs/authentication-setup-authoring` (`columns contained fullscreen-images`), `/docs/authoring-guide` (`columns two contained`), `/docs/setup-customer-sharepoint` (`columns contained fullscreen-images`, 7 instances), `/docs/setup-customer-sharepoint-user` (`columns contained fullscreen-images`, 4 instances), `/experiments/short-home/home` (`columns three contained icon-sm ...`). `/business/content-velocity` has a `columns` block WITHOUT `contained`. The site is indexed by `/query-index.json` (189 pages), `/sitemap.xml` also lists them; all 8 pages are in both. The judge has no network: use this list and the agent's shell commands (judge sees them) to decide whether a listed page is real. A page not in this list is acceptable only if the commands show the agent fetched it and saw a `columns` block with `contained` (or it is the block library page); otherwise it is false.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Uses the block library page",
+      "max_score": 25,
+      "description": "The fixture has a block library page `/docs/library/blocks/columns` (local, served by `aem up`) with the default and `contained` variants. TEST-PAGES.md lists it, notes both variants, and the spec loads it (path relative to baseURL) and asserts the block renders. Zero if the agent never mentions or loads it (e.g. it builds a new test page instead)."
+    },
+    {
+      "name": "Finds real pages (beyond the library)",
+      "max_score": 15,
+      "description": "TEST-PAGES.md also lists real pages from the live site with `columns contained`. 5+ true pages: full credit. 3-4: 10. 1-2: 5. None: 0, unless the notes explain why the library alone is enough, then 5."
+    },
+    {
+      "name": "No false or invented pages",
+      "max_score": 15,
+      "description": "No entry claims `columns contained` on a page that does not have it (e.g. `/business/content-velocity`, or an invented URL). The library page is real. Each false or unverifiable entry costs 4 points down to 0."
+    },
+    {
+      "name": "Variants reported correctly",
+      "max_score": 10,
+      "description": "Variant classes in TEST-PAGES.md match the ground truth for listed pages and the library page (default `columns` and `columns contained`)."
+    },
+    {
+      "name": "Pages used in a spec",
+      "max_score": 15,
+      "description": "`test/e2e/columns.spec.js` exists, uses `@playwright/test`, loads every page in TEST-PAGES.md and asserts the block renders. Notes and spec list the same pages."
+    },
+    {
+      "name": "No block code changes",
+      "max_score": 10,
+      "description": "Nothing under `blocks/` is modified (the library page is not block code; adding to it is fine)."
+    },
+    {
+      "name": "Unattended, assumptions recorded",
+      "max_score": 10,
+      "description": "No questions to the user; TEST-PAGES.md has an assumptions or coverage note. Zero if it only asks for input."
+    }
+  ]
+}

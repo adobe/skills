@@ -1,0 +1,154 @@
+# Facts the EDS skills and evals rely on.
+# question: asked unaided to quiz whether models know the claim (the answer key).
+# source: external and re-checkable only; omitted for maintainer-endorsed practice.
+# used_by: paths relative to this plugin.
+
+- id: use-project-test-tooling
+  claim: >-
+    Test with the project's own runner and E2E tool (package.json scripts,
+    existing test files). Don't add a second framework. aem-boilerplate ships
+    no test runner; a project that has none needs a decision, not a default.
+  question: >-
+    An EDS project already runs unit tests with node:test and E2E with
+    Playwright. You need to add tests for a block. Which tools do you use?
+    What if the project has no test setup at all?
+  source: aem-boilerplate 5cea543, package.json has no test script or test dependencies
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
+
+- id: test-when-costly
+  claim: >-
+    Write a test only when a wrong answer is plausible and costly to miss.
+    100% coverage is not the goal, nor a test per variant or branch.
+  question: How do you decide which tests to write for an EDS block, and is there a coverage target?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
+
+- id: unit-vs-e2e-split
+  claim: >-
+    Unit tests: pure logic and malformed or missing authored input (absent
+    cells, empty rows), run against decorate() with a DOM shim. E2E: the
+    block's functional behavior, i.e. interactions, accessibility behavior
+    (focus, keyboard, ARIA state) and analytics.
+  question: >-
+    For an EDS block, what belongs in unit tests and what in browser (E2E)
+    tests?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
+
+- id: e2e-locate-by-a11y-tree
+  claim: >-
+    E2E specs locate elements by role and accessible name, not by classes or
+    ids the block's decorate() adds, and not by authored copy (read names from
+    the page at runtime). The block root class comes from aem.js, so it is
+    stable.
+  question: >-
+    In a Playwright spec for an EDS block, how should you locate elements
+    inside the block so the spec survives refactors and content edits?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
+
+- id: block-status-loaded
+  claim: >-
+    aem.js sets `data-block-status="loaded"` on the block once its CSS and
+    decorate() are done; wait on `.{block}[data-block-status="loaded"]`.
+  question: In a browser test, how do you wait until an EDS block has finished decorating?
+  source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
+
+- id: e2e-no-visual-asserts
+  claim: >-
+    Committed E2E specs assert behavior, not visuals: no computed CSS, geometry
+    or screenshot comparisons. During browser validation, inspect screenshots
+    to catch obvious layout or responsive issues and share screenshots or URLs
+    with the user when visual judgment against a design is needed.
+  question: Should a Playwright spec for an EDS block assert CSS values, element sizes or screenshots?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
+
+- id: analytics-assert-event
+  claim: >-
+    For analytics, assert that the event fired (read the data layer or wrap
+    the tracking function), not just that a tracking attribute is present.
+  question: How do you test that clicking an element in an EDS block sends an analytics event?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
+
+- id: e2e-library-content
+  claim: >-
+    E2E specs run against the block's library page, which is author-facing
+    reference content and the happy path. Don't add rows to it to drive a
+    test; cover edge cases in unit tests or a separate drafts page.
+  question: >-
+    Which page should an EDS block's E2E spec run against, and where do edge
+    cases go?
+  used_by:
+    - evals/testing-blocks-existing-test-setup
+    - skills/testing-blocks/SKILL.md
+
+- id: find-test-content-query-index
+  claim: >-
+    EDS sites that configure a query index expose indexed pages at
+    `/query-index.json` (`{ total, offset, limit, data: [{ path, ... }] }`;
+    `?limit=` and `?offset=` paginate). The server HTML of a page keeps the
+    authored block classes before client-side decoration
+    (`<div class="cards alternate">`), so block variants can be read from a
+    plain `curl` of the page, without a browser. An index lists only the pages
+    its index config includes, and a site can have other index files besides
+    `/query-index.json`.
+  question: >-
+    On a live EDS site you need every page that uses the `cards` block and the
+    variants those pages use, without opening each page in a browser. Where do
+    you get the list of pages, and what in the fetched markup tells you the
+    variant?
+  source: "live check 2026-11 of main--helix-website--adobe.aem.live (query-index.json 189 rows, a second index file with 141 rows, server HTML div classes)"
+  used_by:
+    - skills/find-test-content/SKILL.md
+
+- id: find-test-content-no-index-sitemap
+  claim: >-
+    Sites without a query index (the aem-boilerplate and Block Collection
+    `.aem.live` hosts return 404 for `/query-index.json`) still serve
+    `/sitemap.xml` when a sitemap is configured; its `<loc>` entries are a page
+    list, and each page's HTML can then be searched for the block class.
+    Without either, clone the content with `aem content clone` and search
+    `./content/` on disk.
+  question: >-
+    You want existing pages that use the `quote` block on
+    `main--aem-block-collection--adobe.aem.live`, and `/query-index.json`
+    returns 404. How else can you get a list of the site's pages?
+  source: "live check 2026-11 (main--aem-boilerplate--adobe and main--aem-block-collection--adobe: query-index.json 404, sitemap.xml 200)"
+  used_by:
+    - skills/find-test-content/SKILL.md
+
+- id: find-test-content-local-vs-proxied-index
+  claim: >-
+    `aem up` serves local files from `./content/` before proxying to the remote
+    origin, but does not auto-generate `/query-index.json` from `./content/*.html`:
+    unless `content/query-index.json` exists locally, `/query-index.json` on
+    `localhost` is proxied from the remote origin. Conversely, any stale local
+    file left in `./content/<path>.html` shadows newer content published or
+    previewed at `<path>` on `.aem.page`/`.aem.live` when viewing through
+    `aem up`. Therefore, an index-based search only discovers remotely
+    indexed pages (or a local `content/query-index.json`), unindexed local
+    test pages in `./content/` are found on disk, and stale `./content/` files
+    must be moved or deleted (`aem content merge` does not refresh unchanged files) to see remote changes
+    locally.
+  question: >-
+    You want to find all test pages for an existing `accordion` block on a
+    running local dev server (`aem up`), and you also just previewed an updated
+    page at `/about` on `.aem.page` to test it locally, but `localhost/about`
+    still shows the old content. What might a search based on `/query-index.json` miss
+    locally, and why is `/about` stale on `localhost`?
+  source: "@adobe/aem-cli@16.22.16 src/server/HelixServer.js (handleProxyModeRequest checks CONTENT_DIR first, then proxies missing paths including /query-index.json)"
+  used_by:
+    - skills/find-test-content/SKILL.md
+    - skills/aem-cli/SKILL.md
