@@ -160,7 +160,6 @@
     adobe-rnd/aem-boilerplate-xwalk scripts/scripts.js moveInstrumentation()
   used_by:
     - evals/javascript-block-decoration-patterns
-    - skills/building-blocks/SKILL.md
 
 - id: delivered-pictures
   claim: >-
@@ -211,7 +210,6 @@
   source: aem-boilerplate 5cea543, AGENTS.md, scripts/aem.js exports
   used_by:
     - evals/javascript-block-decoration-patterns
-    - skills/building-blocks/SKILL.md
 
 - id: no-build-step
   claim: >-

@@ -261,14 +261,12 @@ Expected: `200`
 - Analysis/requirements from Step 2
 - Type of changes: new block, existing block modification, CSS-only, etc.
 
-**The building-blocks skill lists** the EDS rules that differ from general front-end practice (reusing the delivered DOM, varying cells, section loading, the page grid, custom properties, late-loading code). Check your work in the browser as you go.
+**The building-blocks skill lists** the EDS rules that differ from general front-end practice (varying cells, section loading, the page grid, custom properties, late-loading code). Check your work in the browser as you go.
 
 **Success criteria:**
 - ✅ Code implementation complete
 - ✅ Functionality works across all viewports (mobile, tablet, desktop)
 - ✅ No console errors
-
-**Mark todo complete when:** the implementation works across viewports
 
 ---
 
