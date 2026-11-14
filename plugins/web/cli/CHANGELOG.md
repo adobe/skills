@@ -1,3 +1,10 @@
+## [2.4.2](https://github.com/adobe/skills/compare/web-cli-v2.4.1...web-cli-v2.4.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** update dependency commander to v15.1.0 ([#613](https://github.com/adobe/skills/issues/613)) ([d4eb6ca](https://github.com/adobe/skills/commit/d4eb6caaef803e52b8ff6642c7f395fd7c9e72bb))
+
 ## [2.4.1](https://github.com/adobe/skills/compare/web-cli-v2.4.0...web-cli-v2.4.1) (2026-11-09)
 
 
