@@ -63,7 +63,7 @@ Each workflow follows this pattern:
 ```yaml
 steps:
   - uses: actions/checkout@v7
-  - uses: actions/setup-node@v4
+  - uses: actions/setup-node@v7
     with:
       node-version: '20'
   - uses: adobe/aio-cli-setup-action@3

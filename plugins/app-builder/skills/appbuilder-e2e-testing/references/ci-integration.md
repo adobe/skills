@@ -52,7 +52,7 @@ If tests stub all action responses with `page.route()`, you may not need a dev s
 ```yaml
 steps:
   - uses: actions/checkout@v7
-  - uses: actions/setup-node@v4
+  - uses: actions/setup-node@v7
     with:
       node-version: '18'
       cache: 'npm'
@@ -147,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '18', cache: 'npm' }
       - run: npm ci
       - run: npx playwright install --with-deps chromium
