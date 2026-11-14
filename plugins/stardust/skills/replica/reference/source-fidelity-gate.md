@@ -532,7 +532,7 @@ rather than erroring.
    spoof and the headed tier its launch flags; `STARDUST_STEALTH=0` turns both off.
    The standard set (`Accept`, `Accept-Language`, `Upgrade-Insecure-Requests`, `sec-ch-ua*`)
    avoids the missing-header fingerprint (F-R1). Every instrument sends it by default via the
-   shared `diff/scripts/live-session.mjs`; `--ua` states a caller's identity
+   shared `skills/stardust/scripts/live-session.mjs`; `--ua` states a caller's identity
    instead. Live navigations to one host share cross-process pacing
    (`STARDUST_LIVE_PACE_MS`, default 1000 ms) and an in-flight cap
    (`STARDUST_LIVE_MAX_PARALLEL`, default 2), with
@@ -677,7 +677,7 @@ rather than erroring.
 
 The four manual adaptations this section used to prescribe are upstreamed
 into the shipped scripts. All live-target hardening lives in one shared
-module — `diff/scripts/live-session.mjs` (the browser's own identity + standard
+module — `skills/stardust/scripts/live-session.mjs` (the browser's own identity + standard
 headers, per-host pacing, challenge fail-loud, overlay dismissal, `--headed`
 escalation) — and the diff
 scripts expose it as flags:

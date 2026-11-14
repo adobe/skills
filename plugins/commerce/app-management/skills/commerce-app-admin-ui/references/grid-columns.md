@@ -5,7 +5,7 @@ Grid columns are **worker-only**: Commerce calls a runtime action to fetch the c
 
 ## Config (`app.commerce.config.ts`)
 
-Declared under `adminUi.<entity>.gridColumns` where `<entity>` is `order`, `product`, `customer`, `invoice`, `creditMemo`, `shipment`, or `newsletter`. One `gridColumns` object per entity. Only `order`, `product`, and `customer` also support `massActions` — `invoice`, `creditMemo`, `shipment`, and `newsletter` support `gridColumns` only.
+Declared under `adminUi.<entity>.gridColumns` where `<entity>` is `order`, `product`, `customer`, `invoice`, `creditMemo`, `shipment`, or `newsletter`. One `gridColumns` object per entity. Only `order`, `product`, and `customer` also support `massActions`. Order, invoice, and credit memo support `viewButtons`; shipment and newsletter support `gridColumns` only. Returns (`rma`) support `viewButtons` but not `gridColumns`.
 
 ```ts
 adminUi: {

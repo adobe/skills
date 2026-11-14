@@ -11,7 +11,7 @@
  * or { "meta": "<name>" }. Output rows: url, status, final_url, final_status, external, chain[], template,
  * bodyClass, title, html_key, bytes, ms, source (live | headed | archive), tier?, archived_at? — or error ("redirect
  * loop" when it never settles), or blocked (challenge | refused | network) when the origin turns the client away.
- * Challenges are classified by the diff skill's live-session.mjs (edge signatures), plus interstitial page text.
+ * Challenges are classified by the front door (edge signatures), plus interstitial page text.
  * Blocked origin: when 10% or more of the rows are blocked, exit 3 — ask the user, then re-run with one of:
  *   --headed             the blocked URLs through live-session's stealth real-Chrome tier (the plugin's `--headed`:
  *                        waits out a JS challenge; replica and diff use the same tier); one page at a time
@@ -22,7 +22,7 @@
 import { gzipSync } from 'node:zlib';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CHALLENGE, appendJSONL, arg, blockedBy, flag, helpAndExit, loadConfig, loadLiveSession, loadPlaywright, log, pool, readJSON, readJSONL, urlKey, writeJSON } from './lib.mjs';
+import { CHALLENGE, appendJSONL, arg, blockedBy, flag, helpAndExit, loadBrowser, loadConfig, log, pool, readJSON, readJSONL, urlKey, writeJSON } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -115,7 +115,7 @@ async function main() {
   const archive = arg('archive', null);
   const techFile = cfg.w('fetch', 'technique.json');
   const headed = flag('headed') || (!archive && readJSON(techFile, {}).technique === 'headed');
-  const ls = await loadLiveSession(); EDGE = ls.isChallengeResponse;
+  const ls = await loadBrowser(); EDGE = ls.isChallengeResponse;
   if (archive && !/^\d{4}-\d{2}-\d{2}$/.test(archive)) throw new Error('--archive needs a date: YYYY-MM-DD');
   const src = arg('urls', cfg.w('inventory', 'urls.txt'));
   const out = arg('out', cfg.w('fetch', 'fetch.jsonl'));
@@ -128,7 +128,7 @@ async function main() {
   log(`${urls.length} urls, ${last.size} done, ${todo.length} to fetch${archive ? ` (archive since ${archive})` : headed ? ' (headed)' : ''}`);
   const progress = (d, n) => { if (d % 200 === 0 || d === n) log(`${d}/${n}`); };
   if (headed) {
-    const { chromium } = await loadPlaywright(); const b = await ls.launchStealthHeaded(chromium); const tier = ls.browserTier(b);
+    const { openBrowser } = ls; const b = await openBrowser({ mode: 'headed' }); const tier = ls.browserTier(b);
     const ctx = await ls.newLiveContext(b, { viewport: { width: 1440, height: 900 } });
     writeJSON(techFile, { technique: 'headed', tier, since: new Date().toISOString().slice(0, 10) });
     await pool(todo, 1, async (u) => { appendJSONL(out, await fetchHeaded(ls, ctx, tier, u, cfg, htmlDir)); await new Promise((r) => { setTimeout(r, 800); }); }, progress);

@@ -62,6 +62,9 @@ so a skill's final phase must appear exactly as listed.
   when `stardust/journal.md` (beside the ledger) has no `## ` heading
   naming the phase (case-insensitive) — a warning only, never an
   exit-code change; an absent journal is not checked.
+- **A script you write uses `browser.mjs`** (`../SKILL.md` § Setup,
+  step 7). `ledger.mjs … end` names those written in the phase that
+  import `playwright` themselves — a warning only.
 - **Harness-agnostic.** Plugin skills must never reference
   harness-specific progress mechanisms (no `emit_milestone`, no
   session APIs). `stardust/status.jsonl` is the only progress
