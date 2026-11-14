@@ -48,8 +48,4 @@ for p in "<path>" /styles/styles.css /scripts/aem.js /scripts/scripts.js \
 done
 ```
 
-- `--compressed` is required. Without it curl gets the uncompressed response, and the HTML alone looks five times larger than what a browser downloads.
-- The blocks of the first section are the `<div class="…">` children of the first `<div>` in `<main>`. The first class name is the block name.
-- The LCP image comes from the user (DevTools or RUM). Take its URL with the query string from the `<source>` that matches a mobile viewport: the media pipeline sizes the image by `width`.
-- The sizes are bodies without response headers, so each is a few hundred bytes below what Lighthouse reports.
-- Say in the report that this is a static measurement: requests that scripts make before LCP (JSON, fragments, third-party tags) are not in it.
+The LCP image comes from the user (DevTools or RUM). Take its URL with the query string from the `<source>` that matches a mobile viewport: the media pipeline sizes the image by `width`.

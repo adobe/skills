@@ -32,9 +32,8 @@ jq -r -f scripts/bytes-before-lcp.jq lh.json
 
 The output has the LCP element, one line per request (transfer bytes, type, `SECOND ORIGIN` where it applies, URL) and the total. Transfer bytes are compressed, as the browser received them.
 
-- Measure the `.aem.live` URL for the budget. Measure the production host as well when there is one: the difference is what the customer's CDN adds (injected scripts, redirects).
+- The budget is for the `.aem.live` URL. A second run on the production host shows what the customer's CDN adds.
 - The LCP element depends on the viewport. For what visitors really get, read the `lcpSource` (selector) and `lcpTarget` (URL) facets of `@adobe/rum-distiller` from RUM data; `cwv-optimizer` shows how to load the bundles.
-- When the total is within 10 KB of the budget, run it three times and report the range. The cut-off moves with timing.
 - Lighthouse needs Chrome. Without it, ask the user for a Lighthouse report saved as JSON from Chrome DevTools, or measure with curl as described in `references/performance-budget-rules.md`. A curl measurement has no LCP element: report it as unknown and ask the user for it. Never infer it from the page structure.
 
 ## Step 2: Find what does not belong before LCP
@@ -53,10 +52,7 @@ Go through the request list. Only the HTML, `styles.css`, `aem.js`, `scripts.js`
 
 Also read `head.html`: `<link rel="preload">`, `preconnect` and `fetchpriority="high"` spend the budget and don't improve LCP in PageSpeed Insights. Recommend removing them.
 
-Two things that look like defects and aren't:
-
-- Every `<img>` in the delivered HTML has `loading="lazy"`. `aem.js` sets the first image of the first section to `eager` at runtime.
-- Minifying or bundling the code is not a fix. aem.live advises against it unless a measurement shows a gain.
+Not a defect: every `<img>` in the delivered HTML has `loading="lazy"`. `aem.js` sets the first image of the first section to `eager` at runtime.
 
 ### Where the delayed phase lives
 
@@ -67,10 +63,11 @@ Check which of the two the project has before you name a file:
 
 ## Step 3: Report
 
+Report the findings of Step 2, and with them:
+
 - The total against 102,400 bytes, with the headroom or the overrun, the URL, the Lighthouse version and the date.
 - The LCP element and where it came from (Lighthouse, RUM, or the user).
 - The request table, largest first.
-- Each finding from Step 2 with the bytes it would save, largest first.
 
 ## Step 4: Keep the budget in CI
 
@@ -82,4 +79,4 @@ To fail a pull request over the byte budget, add the workflow in `assets/perform
 2. Copy `scripts/bytes-before-lcp.jq` to `.github/scripts/bytes-before-lcp.jq`.
 3. Set `PAGES` in the workflow to the paths to check, one per template (home page, an article, a product page).
 
-It measures the branch's `.aem.page` preview with the same command as Step 1. Pull requests from forks are skipped, because their branch has no preview on this site. Show the user the workflow and ask before you commit it.
+It measures the branch's `.aem.page` preview with the same command as Step 1, after it has waited for AEM Code Sync. Pull requests from forks are skipped, because their branch has no preview on this site. A branch whose `branch--repo--owner` is longer than 63 characters has no preview either, and fails the check with that message. Show the user the workflow and ask before you commit it.

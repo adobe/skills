@@ -27,7 +27,24 @@ jobs:
           REPO: ${{ github.event.repository.name }}
           OWNER: ${{ github.repository_owner }}
         run: |
-          host="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
+          # The host of a preview has the names in lowercase, and a dash for every character
+          # that is not a letter, a digit or a dash: feat/hero_2 becomes feat-hero-2.
+          name() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-'; }
+          label="$(name "$BRANCH")--$(name "$REPO")--$(name "$OWNER")"
+          if [ "${#label}" -gt 63 ]; then
+            echo "::error::$label is longer than 63 characters, so this branch has no preview. Use a shorter branch name."
+            exit 1
+          fi
+          host="https://${label}.aem.page"
+          # Code Sync needs a moment after a push. Until then the code of a new branch answers 404.
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' "$host/scripts/scripts.js")" = "200" ]; then break; fi
+            if [ "$attempt" = 12 ]; then
+              echo "::error::$host serves no code after two minutes. Is AEM Code Sync installed on this repository?"
+              exit 1
+            fi
+            sleep 10
+          done
           failed=0
           for page in $PAGES; do
             echo "::group::$host$page"
