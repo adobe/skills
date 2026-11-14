@@ -6,17 +6,6 @@
     "name": "Adobe"
   },
   "license": "Apache-2.0",
-  "keywords": [
-    "adobe",
-    "aem",
-    "eds",
-    "edge-delivery-services",
-    "project",
-    "handover",
-    "documentation",
-    "whitepaper",
-    "pdf"
-  ],
   "skills": [
     "./skills/handover",
     "./skills/handover-author",
@@ -58,5 +47,16 @@
         ]
       }
     ]
-  }
+  },
+  "keywords": [
+    "adobe",
+    "aem",
+    "eds",
+    "edge-delivery-services",
+    "project",
+    "handover",
+    "documentation",
+    "whitepaper",
+    "pdf"
+  ]
 }
