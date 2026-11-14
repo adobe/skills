@@ -1,0 +1,26 @@
+# `check` selects the assertion in assert.mjs; ground truth is the fixture sitemaps in fixtures/.
+- description: fixture, sitemap index with gzip and a broken sitemap
+  vars:
+    check: inventory-fixture
+    url: http://localhost:8765/
+    task: List every URL of the site below from its sitemaps, and tell me which languages it has and whether anything could not be read.
+- description: fixture, exclusion pattern
+  vars:
+    check: exclude-fixture
+    url: http://localhost:8765/
+    task: List the URLs of the site below, leaving out everything under /archive/.
+- description: fixture, limit
+  vars:
+    check: limit-fixture
+    url: http://localhost:8765/
+    task: Give me just the first 3 URLs of the site below, from its sitemaps.
+- description: fixture, link following
+  vars:
+    check: links-fixture
+    url: http://localhost:8765/site/home.html
+    task: Ignore any sitemap. Starting from the page below, find the HTML pages of the site by following its links.
+- description: aem.live, sitemap
+  vars:
+    check: sitemap-valid
+    url: https://www.aem.live/
+    task: How many pages does the site below have, according to its sitemap? List them.

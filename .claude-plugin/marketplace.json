@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.32.1",
+      "version": "0.38.3",
       "category": "design",
       "keywords": [
         "design",
@@ -37,7 +37,14 @@
       "description": "Browser automation and web page analysis skills using playwright-cli: connect via CDP, probe bot protection, dismiss overlays, capture DOM trees, reduce pages to skeletons, extract page resources.",
       "version": "1.0.0",
       "category": "web",
-      "keywords": ["browser", "playwright", "cdp", "web-scraping", "page-analysis", "automation"],
+      "keywords": [
+        "browser",
+        "playwright",
+        "cdp",
+        "web-scraping",
+        "page-analysis",
+        "automation"
+      ],
       "author": {
         "name": "Adobe"
       },
@@ -179,7 +186,7 @@
     {
       "name": "commerce-app-management",
       "source": "./plugins/commerce/app-management",
-      "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk."
+      "description": "Skills for Adobe Commerce App Management \u2014 scaffold and configure Commerce apps using the aio-commerce-sdk."
     },
     {
       "name": "commerce-app-migration",
@@ -209,6 +216,27 @@
       },
       "homepage": "https://github.com/adobe/skills",
       "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "adobe-for-developers",
+      "displayName": "Adobe for Developers",
+      "source": "./plugins/adobe-for-developers",
+      "description": "Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters.",
+      "version": "1.0.0",
+      "category": "development",
+      "keywords": [
+        "adobe",
+        "adobe-developer-platform",
+        "developer-console",
+        "credentials",
+        "io-events",
+        "documentation",
+        "mcp"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
       "license": "Apache-2.0"
     }
   ]

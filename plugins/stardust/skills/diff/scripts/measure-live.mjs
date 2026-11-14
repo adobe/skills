@@ -7,7 +7,7 @@
  * shadow-DOM aware, cached per slug under stardust/current/measure/<slug>.json.
  *
  * Library for clip-probe, content-presence and unit-geometry (every gate probe settles both sides
- * with THIS routine — the instrument stays symmetric): openBrowser, openPage, visit, settle,
+ * with THIS routine — the instrument stays symmetric): openBrowser (the front door's, re-exported), openPage, visit, settle,
  * measureInPage, serializeInPage, cachePath / readCache / writeCache.
  *
  * Library only (no CLI): selectors are measured through the probes or `replica/measure.mjs`.
@@ -15,24 +15,36 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { REAL_CHROME_UA, browserTier, defaultWaitUntil, dismissOverlays, gotoLive, isLiveHttpUrl, launchStealthHeaded, newLiveContext } from './live-session.mjs';
+// browser.mjs (live-session.mjs beside it) lives in the master skill's scripts dir: the plugin tree
+// (skills/diff/scripts ↔ skills/stardust/scripts) or the project copy (scripts/diff ↔ scripts/stardust).
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+const front = BROWSER ? await import(BROWSER.href) : null;
+// Absent master scripts surface where a browser is first needed, so a caller's --help still answers.
+const frontDoor = () => {
+  if (!front) throw new Error('measure-live: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  return front;
+};
 
-export { browserTier };
+export async function openBrowser(options) {
+  const { openBrowser: open } = frontDoor();
+  return open(options);
+}
+export function browserTier(browser) {
+  const { browserTier: tier } = frontDoor();
+  return tier(browser);
+}
 
 export const MEASURE_DIR = 'stardust/current/measure';
 export const cachePath = (slug) => join(MEASURE_DIR, `${slug}.json`);
 export function readCache(slug) { const p = cachePath(slug); return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null; }
 export function writeCache(slug, data) { mkdirSync(MEASURE_DIR, { recursive: true }); writeFileSync(cachePath(slug), JSON.stringify(data)); return cachePath(slug); }
 
-/** Launch the measurement browser. 'stealth' = the window-free real-Chrome tier (default on BOTH sides
- * of a compare so the instrument is symmetric); 'plain' = bundled Chromium. */
-export async function openBrowser(chromium, { tier = 'stealth' } = {}) {
-  if (tier === 'plain') { const b = await chromium.launch(); b.stardustTier = 'chromium'; return b; }
-  return launchStealthHeaded(chromium); // the best available: Chrome, else Chromium (tagged 'chromium-fallback')
-}
-
-export async function openPage(browser, { width = 1440, height = 900, locale = 'en-US', ua = REAL_CHROME_UA } = {}) {
-  const ctx = await newLiveContext(browser, { ua, locale, viewport: { width, height } });
+export async function openPage(browser, {
+  width = 1440, height = 900, locale = 'en-US', ua = null, stateUrl,
+} = {}) {
+  const { newLiveContext } = frontDoor();
+  const ctx = await newLiveContext(browser, { ua, locale, viewport: { width, height }, stateUrl });
   const page = await ctx.newPage();
   return { ctx, page };
 }
@@ -69,6 +81,7 @@ export async function settle(page, { passes = 4, step = 400, dwell = 250, emptyS
  * with a warning), dismiss overlays, settle. `warmup` visits another URL first in the same context.
  */
 export async function visit(page, url, { warmup = null, settle: settleOpts = {}, dismiss = true, solveWindow = true, timeoutMs = 90000, httpError = 'measure' } = {}) {
+  const { defaultWaitUntil, dismissOverlays, gotoLive, isLiveHttpUrl } = frontDoor();
   if (warmup) {
     await gotoLive(page, warmup, { waitUntil: 'domcontentloaded', timeoutMs, settleMs: 0, solveWindow, httpError: 'measure' });
     await page.waitForTimeout(2500);

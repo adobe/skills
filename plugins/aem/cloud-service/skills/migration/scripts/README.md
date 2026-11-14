@@ -42,6 +42,8 @@ Each pattern declares a **detection strategy** in `PATTERN_META`:
 | `osgiConfig` | `config-scan` | `osgi-config-runner.js` (config-file scan) |
 | `lui`, `cdw`, `templateModernization` | BPA + `content-scan` | BPA/CAM → CSV first (`legacy-ui-runner.js` / `template-scan-runner.js` as fallback) |
 | `dispatcherConversion` | `content-scan` | `dispatcher-inventory.js` (`runDispatcherScan` — heuristic, no BPA subtype) |
+| `guavaCache` | `bpa-only` | BPA/CAM → CSV only (no analyzer, no content-scan) → LLM scan |
+| `inputStream` | `java-scan` | BPA/CAM → CSV first; `input-stream-runner.js` resolves the reported classes to files (rows outside the workspace collapsed per bundle) and scans every `src/main/java` file only when BPA has no `inputStream` findings. Never needs the LLM tier. |
 
 `html-scan` / `config-scan` findings, and the `content-scan` fallback for `lui`/`cdw`/`templateModernization`, are **heuristic** and tagged `confidence: "heuristic"` in the cache. BPA-sourced findings are authoritative. `osgiConfig` reports key names + locations only — **never secret values**.
 
@@ -82,6 +84,25 @@ Wraps the code-assessment deterministic analyzer (`../../code-assessment/scripts
 ### `htl-lint-runner.js`
 
 The `html-scan` strategy for `htlLint`. Pure-Node fs walk + regex over `.html` files detecting `data-sly-test` redundant-constant anti-patterns (`== true`, `/apps/…` string, split `${} || ${}`, numeric literals) — mirrors the `rg` discovery in `{code-assessment}/references/data-sly-test-redundant-constant.md`, but with **no external `rg` dependency** so it runs anywhere Node does. Heuristic (a regex is not the HTL compiler); findings are re-confirmed before editing.
+
+### `input-stream-runner.js`
+
+The `java-scan` strategy for `inputStream` (BPA `DG` / `java.io.inputstream`), with the same precedence as the other BPA patterns: BPA findings first (CAM targets via `--bpa-json`, then a BPA CSV via `--csv`), and a scan of every `src/main/java` file only when BPA has no `inputStream` findings. With BPA rows, only the reported classes' files are scanned, since BPA names classes but not lines. It skips tests and `target/` and ignores comments and string literals. It finds each stream acquisition site and pre-classifies it:
+- **F** deserialization (any `*ObjectInputStream`)
+- **E** binary streamed or processed in the JVM: DAM binary reads, binaries copied to the response, client uploads into the repository, asset processing in workflow steps, streams in a method that starts a native process (other streams in the class get a file-level note instead)
+- **D** local filesystem (hard-coded paths always; per-request scratch files excluded), with local-filesystem writes in the same file listed
+- **C** unbounded in-memory read (only a stream-level limit counts; a Content-Length check doesn't)
+- **B** unclosed stream or undisposed JCR `Binary`
+- **A** benign
+
+Each site also gets a fix kind (`decision` / `review` / `auto`). Ownership is tracked through try-with-resources, wrappers, returns, fields (with or without `this.`), lambdas, setters and builders, and same-file helpers or constructors that close or keep the stream; each method, including methods of nested classes, is its own scope. Output is **one finding per file**, ordered by risk.
+
+BPA rows resolve to their files (nested classes to the outer class's file). Rows that don't resolve collapse to one informational row per bundle (per package for CAM rows, which carry no bundle name): `missing-source` for customer code kept elsewhere (the bundle has workspace classes, or shares the workspace's package namespace), `platform-provided` for AEM Forms add-on code, and `not-in-workspace` for third-party code. A class that resolves but has no visible stream usage becomes `bpa-unmatched`, with a hint naming same-package files that do use streams.
+
+```bash
+node input-stream-runner.js <workspaceRoot> [--bpa-json <cam-targets.json>] [--csv <bpa.csv>] [--collections <dir>] [--json]
+node input-stream-runner.js <workspaceRoot> --files a/Foo.java,b/Bar.java --json   # verify after editing; exits 2 (ok: false) if a requested file can't be read
+```
 
 ### `osgi-config-runner.js`
 
@@ -167,7 +188,7 @@ DG,development.guideline,unsupported.asset.api,MAJOR,com.example.MyClass,Uses de
 
 ### Output: Unified Collection (`unified-collection.json`)
 
-Matches the cloud-adoption-service format with MongoDB-safe field names (dots → underscores). Includes metadata (timestamp, totalFindings) for display:
+Matches the cloud-adoption-service format with MongoDB-safe field names (dots → underscores). Includes metadata (timestamp, totalFindings) for display, and `parsedSubtypes`: every subtype the parser extracts. `bpa-findings-helper.js` uses it to rebuild, from the CSV, a collection written before a requested pattern was supported (collections without the field count as covering the subtypes parsers handled before it was added):
 
 ```json
 {
@@ -182,7 +203,8 @@ Matches the cloud-adoption-service format with MongoDB-safe field names (dots �
     "timestamp": "2026-03-18T06:16:37.755Z",
     "source": "local-bpa-parser",
     "totalFindings": 1,
-    "subtypeCount": 1
+    "subtypeCount": 1,
+    "parsedSubtypes": ["sling.commons.scheduler", "unsupported.asset.api", "…", "java.io.inputstream"]
   }
 }
 ```
@@ -201,5 +223,6 @@ Matches the cloud-adoption-service format with MongoDB-safe field names (dots �
 | templateModernization | legacy.static.template, custom.static.template |
 | replication | forward.replication, reverse.replication |
 | urc | unsupported.runmode |
+| inputStream | java.io.inputstream (keyed by the referenced `java.io` API from the `other` column → class names; bundles kept per API and class in `meta.inputStreamBundles`) |
 
 Summary rows (`code` starting with `_`, e.g. `_COUNT_*`, `_STAT`) are excluded. Content/legacy-UI subtypes (cdw/lui/template/replication) are keyed by JCR node path (stored raw, not MongoDB-safed, so underscores like `design_dialog` survive).

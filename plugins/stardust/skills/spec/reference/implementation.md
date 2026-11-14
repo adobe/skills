@@ -7,7 +7,7 @@
 reproducibility and status use the dynamics taxonomy (`../../dynamics/reference/classes-and-signals.md`, `triage.md`);
 S10 stops on any other value.
 Run the dynamics detector on the variant representatives (≥ 80% of each template) plus one page per data-driven
-block and form type, then curate its findings into features. `reach` selects the pages, in the rule format
+block, widget and form type, then curate its findings into features. `reach` selects the pages, in the rule format
 (knowledge.md § Rules), e.g. `live sitemap block:news-list,event-list` or `live sitemap signal:iframe:*forms*`.
 `signals` in the same file adds regex signals over the raw HTML (`{ "hcp": "HCP_CONTENT" }`). A feature on ≥ 90%
 of live sitemap pages is site-wide.

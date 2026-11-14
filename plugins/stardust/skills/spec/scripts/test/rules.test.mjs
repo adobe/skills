@@ -16,13 +16,14 @@ const K = {
   pageBlocks: [
     { url_id: 1, blocks: [{ pos: 0, block: "hero", variant: null, kind: "block", nested_in: null }, { pos: 1, block: "cards", variant: "3-up", kind: "block", nested_in: "tabs" }] },
     { url_id: 2, blocks: [{ pos: 0, block: "news-list", variant: null, kind: "dynamic", nested_in: null }] },
-    { url_id: 3, blocks: [{ pos: 0, block: "hero", variant: null, kind: "block", nested_in: null }] },
+    { url_id: 3, blocks: [{ pos: 0, block: "hero", variant: null, kind: "block", nested_in: null }, { pos: 1, block: "site-search", variant: null, kind: "widget", nested_in: null }] },
   ],
   signals: [{ url_id: 1, signals: ["script:cdn.Player.example", "noindex"] }, { url_id: 2, signals: ["iframe:forms.example"] }],
   blocks: [
     { name: "hero", url_count: 1, variants: [{ variant: null, verdict: "reuse" }] },
     { name: "cards", url_count: 1, variants: [{ variant: "3-up", verdict: "new" }] },
     { name: "news-list", url_count: 1, variants: [{ variant: null, verdict: "variant" }] },
+    { name: "site-search", url_count: 0, variants: [{ variant: null, verdict: "new" }] },
   ],
   templates: [{ id: "page · a", url_count: 1, variant_count: 3 }, { id: "page · b", url_count: 5, variant_count: 2 }],
   redirects: [{ src: "/x", kind: "legacy", status: 302, in_sitemap: 1 }, { src: "/y", kind: "migration", status: 301, in_sitemap: 1 }],
@@ -41,13 +42,14 @@ check("block, block|variant, nested, signal glob, verdict", () => {
   assert.deepEqual(ids("block:hero"), [1, 3]); assert.deepEqual(ids("block:cards|3-up"), [1]); assert.deepEqual(ids("block:hero|"), [1, 3]);
   assert.deepEqual(ids("nested"), [1]); assert.deepEqual(ids("signal:script:*player*,iframe:forms.example"), [1, 2]);
   assert.deepEqual(ids("live sitemap !verdict:new"), [2]);
+  assert.deepEqual(ids("verdict:new"), [1, 3], "a widget's verdict counts like a block's"); assert.deepEqual(ids("block:site-search"), [3]);
 });
 check("numbers: urls, count, sum, keyed and max lookups, value", () => {
   assert.equal(evalRule(K, "urls sitemap flag=empty"), 1); assert.equal(evalRule(K, "count redirects kind=legacy status=302"), 1);
   assert.equal(evalRule(K, 'sum templates.variant_count id="page · a","page · b"'), 5); assert.equal(evalRule(K, "sum locales.urls"), 0);
   assert.equal(evalRule(K, "templates[page · b].url_count"), 5); assert.equal(evalRule(K, "templates[max:url_count].variant_count"), 2);
   assert.equal(evalRule(K, "blocks[cards].url_count"), 1); assert.equal(evalRule(K, "value:7"), 7);
-  assert.equal(evalRule(K, "count block-variants verdict=new"), 1); assert.equal(evalRule(K, "count page-blocks kind=block"), 3);
+  assert.equal(evalRule(K, "count block-variants verdict=new"), 2); assert.equal(evalRule(K, "count page-blocks kind=block"), 3); assert.equal(evalRule(K, "count page-blocks kind=widget"), 1);
 });
 check("fillText resolves every placeholder with separators", () => {
   const f = fillText({ ...K, templates: [{ id: "t", url_count: 12345 }] }, "{{templates[t].url_count}} pages, {{count redirects}} redirects");

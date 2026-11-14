@@ -1,9 +1,7 @@
 # Classes and detection signals
 
 The class axis says **what a feature is**. It is read from evidence, never guessed from
-screenshots: a site's dynamic surface is invisible to a block-scoped, pixel-verified
-pipeline, and invisible in a way every existing gate certifies as correct (three
-migrations, three site shapes, the same finding).
+screenshots: a site's dynamic surface is invisible to a block-scoped, pixel-verified pipeline.
 
 ## Classes
 
@@ -17,7 +15,7 @@ migrations, three site shapes, the same finding).
 | **T** tag / consent | analytics, tag managers, consent, RUM, pixels, review/chat widgets | vendor table by host; **first-party collector subdomains** are tags that need a CNAME; **mount divs with vendor `data-*` attributes and zero script tags** = tag-manager-injected | `embed-passthrough`, scaffolded disabled, owner-enabled |
 | **A** API / personalisation / settings | first-party XHR that renders content, experimentation, CMS settings objects | `/api|/graphql|/ajax|/json|/client/|/webservices|_next/data` on the source host, POST bodies, `drupalSettings|dataLayer|digitalData|__NEXT_DATA__` **keys** (they name endpoints, ids and vendors) | `data-fed` when a consumer exists on migrated pages, else `decided-out`; **host-bound** when the target cannot serve the path |
 | **R** relationship | many-to-many listings | card groups keyed by taxonomy | `static-snapshot` until modelled (listings.md Tier 3) |
-| **X** auth / commerce | sign-in, account, cart, prices, session-bound features | `login|sign-in|account|register|oauth|sso` links, identity-provider hosts, cart/price tokens | `decided-out` off-origin, links kept |
+| **X** auth / commerce | sign-in, account, cart, prices, session-bound features | `login|sign-in|account|register|oauth|sso` links, identity-provider hosts, cart/price tokens | `decided-out` off-origin, links kept; the chrome's sign-in/account entry UI, when kept, is a widget |
 | **I18N** locale | language trees | `link[rel=alternate][hreflang]` (primary — sitemaps are not), language path prefixes | a **tree**, not a feature: every other class recurs inside it (locale-trees.md) |
 | **CR** client-rendered | slots or whole pages filled after load | placeholder/skeleton/`js-`/`data-endpoint` nodes with content, DOM added after `load`, **main empty at load** | `static-snapshot` from the settled DOM; a blank capture is a **hard content gap**, never migrated silently |
 | **D** sheet / data file | copy and settings from spreadsheets or JSON files | `.json` GETs that are not APIs, `placeholders.json`, `fetchPlaceholders` in a library | `data-fed` by syncing the files from the source origin |

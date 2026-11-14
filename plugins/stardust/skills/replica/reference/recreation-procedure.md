@@ -308,20 +308,24 @@ un-floating override.
 
 ## Fonts policy
 
-- **Same public source when available.** Extract intercepts the page's own
-  font loads; woff2 files that are freely licensed or already self-hostable
-  are self-hosted in the prototype (UC1-E1: same-source fonts, zero
-  substitutes needed, which is why the type matched exactly).
-- **Licensed commercial kits: substitute, never rehost** (prior art: the airport-site migration —
-  e.g. a domain-locked Monotype kit). Rules:
-  - Never re-host a commercial font on the new public domain.
-  - Pick a **metric-matched** substitute (or have the user supply their
-    licensed kit).
-  - Keep the brand family name FIRST in the font stack so a licensed
-    drop-in later wins without a code change.
-  - Surface the substitution to the user and log it in the progress ledger —
-    a substituted face is a permanent, justified gate residual (the width
-    probe will fork; record it as expected).
+Deploy § 4 principle 2 (#80) applies from the first archetype on:
+
+- **Self-host the source's own faces as-is.** Extract saves every font response under
+  `stardust/current/assets/fonts/`; ship those files — the same families, weights and styles — as
+  `@font-face` in the shared canon CSS (at delivery `styles/fonts.css`, per deploy § 4).
+- **Brand family FIRST in every stack; a metric-matched substitute only as the fallback entry
+  after it** — never a calibrated stand-in (no derived font files, no hand-tuned metrics), so a
+  licensed drop-in later wins without a code change.
+- **A `local()` source only for a face the gate's browser has.** The gate renders on Linux: a
+  fallback face whose `local()` names a macOS or Windows platform font resolves to nothing there,
+  the stack falls through to the browser default and every type metric forks. Name the
+  Linux-available metric fallbacks — Liberation Sans / Arimo (Arial class), Liberation Serif /
+  Tinos (Times class), Liberation Mono / Cousine (Courier class) — or self-host the fallback. The
+  capture names every dead face (`fontsFailed`, `source-fidelity-gate.md` § Hardening rule 14):
+  fix the stack before the next round.
+- **Proprietary faces raise deploy's licensing alert** (deploy § 4 principle 2, #80 — the banner,
+  `fonts/LICENSING.md`, the hand-off line; the remove path is deploy's) plus ONE register entry
+  for all of them (`preserve-direction.md` § 3).
 
 ## Asset harvest and the capture-state policy
 
@@ -365,13 +369,14 @@ instrument.** Two recurring cases:
   moving target. This is the one content class where confirm-justify stays
   legitimate under widget mirroring (§ Granularity parity).
 - **Live-data embeds** (stock tickers, YouTube/euroland-style iframe
-  widgets) — the winning move is loading the SAME live embed (same src) on
-  both sides so the moving data cancels out in the pixel diff, NOT freezing
-  a snapshot (confirmed in two independent 2026-08 sessions: a same-src
-  YouTube iframe canceled to zero; a euroland share ticker mirrored same-src
-  stopped contributing). A frozen snapshot guarantees a permanent residual
-  the size of the widget; a mirrored live embed usually zeroes out, and any
-  residual left (frame-timing skew) is logged as permanent.
+  widgets) — load the SAME live embed (same src) on both sides so the
+  moving data cancels out in the pixel diff, NOT a frozen snapshot (a
+  same-src player and a share ticker each zeroed out, recorded). A snapshot
+  guarantees a permanent residual the size of the widget; any residual left
+  (frame-timing skew) is logged as permanent. Same src, later mount: a
+  player is created after first paint (`../../deploy/SKILL.md` #157) — the
+  gates capture a settled page, so pixels are unchanged; when the source
+  loaded it eagerly, note the deferral in the progress ledger.
 - **Randomized decorative elements** (inline positions/paths regenerated per
   page load — generative line art, particle fields): the live side never
   pixel-matches ITSELF across captures, so no prototype can zero it out.
@@ -424,35 +429,24 @@ carousel, a live select carries its real option list, tabs switch,
 accordions open. Justifying a whole widget away as a class-level residual
 is not acceptable; confirm-justify stays reserved for genuinely
 unreachable or nondeterministic content (ticker values, personalization —
-§ Asset harvest, capture-state policy). The interaction-parity pass
-(§ Interaction parity) is what makes this affordable: probe the live
-behavior cheaply, replicate it, and mirror the full widget DOM so
-content-diff stays at zero structural red.
+§ Asset harvest, capture-state policy); § Interaction parity is what makes
+this affordable. On EDS the delivery form of an app-like component with no
+authored content is a widget (`widgets/<path>/<name>`, mounted as one link —
+`../../stardust/reference/data-attributes.md`), not a block with empty rows,
+and the fidelity gate measures the rendered DOM the same way.
 
-## Role parity (wrapping and heading level, not text)
+## Role parity (mirror the look; semantics may improve)
 
-content-diff classifies every string by **DOM wrapping + computed style +
-heading level, never by text alone**: a string inside an `<a>` is a CTA, an
-uppercase small-type node is an eyebrow, an `<h3>` is not an `<h2>`. So a
-recreation that carries every string verbatim can still open with dozens of
-structural 🔴 — recorded (furniture retailer, iteration 1): 43 CTAs vs 58 and 12
-eyebrows vs 6, **all role swaps, zero dropped copy** — the live page
-wrapped labels in anchors where the recreation used spans, and vice versa.
-
-Policy:
-
-- **Mirror the live element wrapping per string.** For each text node the
-  gate will inventory, reproduce the live page's wrapping element (`<a>` vs
-  `<button>` vs `<span>`), its heading LEVEL, and the eyebrow-style
-  signature (uppercase + small size) — not just the visible text. This is
-  the same discipline as § Granularity parity, one level up: granularity
-  parity mirrors how text is split, role parity mirrors what it is wrapped
-  in.
-- **Iteration 1's red map IS the parity worklist.** When iteration 1 opens
-  with a wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs, fix the wrapping
-  first and re-run before touching geometry — role reds are cheap,
-  mechanical fixes, and every one cleared un-buries the structural reds
-  that are real. Geometry second.
+content-diff classifies every string by **DOM wrapping + computed style**,
+never by text alone: a string inside an `<a>` is a CTA, an uppercase
+small-type node an eyebrow, an `<h*>` a heading. Severity follows
+visibility (`../../diff/SKILL.md` § Reading content-diff), so mirror the
+live **look** and every link per string; improve the semantics where the
+look holds. When iteration 1 opens with a
+wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs (a link where the live
+page has a span, or the reverse), fix those first and re-run before
+touching geometry — they are cheap, and clearing them un-buries the real
+reds.
 
 ## Carousels and animated sections
 
@@ -619,42 +613,37 @@ portation is logged.
 
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 
-`position: fixed`/`sticky` chrome interacts with the stitched capture in
-three ways, each observed live on the first fresh-site run (a design-furniture site):
+stitch-shot captures `position: fixed`/`sticky` layers **once**: chunk 1
+shows the top of the page as a visitor sees it; from chunk 2 a fixed layer
+— and a sticky one while it is stuck — is transparent, so the seams it
+covered neither repeat it nor hide the content under it. The scan re-runs
+after every chunk's scroll: a header that turns fixed on a scroll class, or
+a widget injected later, is hidden from the chunk where it appears (a
+stderr WARNING names it), so its scrolled state does not reach the capture
+either.
 
-1. **Seam repeats.** A fixed element renders in EVERY viewport chunk, so
-   the stitched PNG shows it repeated at each chunk seam (every `--vh` px).
-   Instrument behavior, not a page defect — but only while it is symmetric.
-2. **Content occlusion.** Each repeat occludes a band of real content under
-   that seam; the occluded band is invisible to the pixel probe on both
-   sides (again: harmless only while symmetric).
-3. **Scroll-state morph.** Chrome that changes with scroll captures
-   differently per chunk: the site swaps to a `body.header-minimized` 55px
-   hamburger bar once scrolled, so chunks 2+ carry different chrome than
-   chunk 1 — the stitched live capture contains BOTH states.
+What it does not cover:
+- a backdrop — a fixed layer with a negative z-index or covering ≥ 90 % of
+  the viewport (a background image or video, a full-screen modal) — stays
+  in every chunk by design; an undismissed full-screen modal with consent /
+  sign-up copy is a WARNING, any other one is not;
+- fixed elements inside a shadow root, an iframe's own document, or a
+  `::before` / `::after` pseudo-element are not seen and still repeat;
+- a layer that turns fixed on scroll is in the flow in the chunks before
+  that, as on the page — chunk 1's geometry is the page's, not a clean
+  top.
 
-**Resolution — symmetry, including the scroll-state trigger.** Replicate
-the fixed chrome AS fixed (never flattened to static/in-flow — that changes
-both the geometry and the seam behavior), and when the live chrome morphs
-with scroll, give the prototype the SAME morph so chunks 2+ match.
-
-This is the one sanctioned exception to the "no JS unless a section's
-initial state requires computing it" rule, and the tension resolves cleanly:
-that rule guards against *behavior for its own sake*, but scroll-state
-chrome is **instrument-induced state** — the capture instrument scrolls, so
-the instrument itself puts the live page into the morphed state, and a
-static prototype can never measure symmetric against it. Minimal prototype
-JS for scroll-state chrome is therefore permitted, tightly bounded: a few
+Replicate fixed chrome AS fixed all the same (never flattened to
+static/in-flow — that moves chunk 1's geometry), with its scroll-state
+morph: the header contract (`chrome-compare`) measures the scrolled state.
+Minimal prototype JS for that morph is the one sanctioned exception to the
+"no JS unless a section's initial state requires computing it" rule: a few
 lines toggling the same class at the same scroll threshold as the live site
-(lift both the class and the threshold from the source JS/CSS — never guess
-them), no frameworks, no other behavior. Log the addition in the progress
-ledger the way a CSS portation is logged.
+(lift both from the source JS/CSS — never guess them), no frameworks, no
+other behavior; log it in the progress ledger like a CSS portation.
 
-**Reading the diff:** any height delta between the captures de-aligns the
-seams, turning every seam repeat into a ghost band in the pixel diff
-(observed: seam ghosting of a fixed newsletter tab, plus a hot band exactly
-at a chunk boundary). Fix the height delta first — seam ghosts below the
-first hot band are offset contamination, not chrome bugs.
+**Reading the diff:** fix any height delta first — hot bands below the
+first one are offset contamination, not chrome bugs.
 
 ## CSS-portation fallback (per-section, never page-level)
 

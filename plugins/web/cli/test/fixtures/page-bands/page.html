@@ -1,0 +1,82 @@
+<!doctype html><meta charset="utf-8" /><title>
+  A fixed header over main, a hero, prose, a main column beside a side column, cards, a footer
+</title>
+<style>
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    margin: 0;
+    width: 1280px;
+    font: 16px/1.4 sans-serif;
+  }
+  header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 1280px;
+    height: 64px;
+    background: #fff;
+  }
+  main {
+    padding-top: 64px;
+  }
+  .hero {
+    height: 600px;
+    background: #333;
+    color: #fff;
+  }
+  h2,
+  p {
+    margin: 0;
+    padding: 20px 40px;
+  }
+  .split {
+    display: flex;
+    gap: 40px;
+    padding: 40px;
+  }
+  .split article {
+    width: 800px;
+    height: 900px;
+    background: #f4f4f4;
+  }
+  .split aside {
+    width: 360px;
+    height: 500px;
+    background: #eee;
+  }
+  .cards {
+    display: flex;
+    gap: 40px;
+    padding: 40px;
+  }
+  .card {
+    width: 373px;
+    height: 300px;
+    background: #ddd;
+  }
+  footer {
+    height: 400px;
+    background: #111;
+    color: #eee;
+  }
+</style>
+<header><a href="#">Home</a> <a href="#">Docs</a></header>
+<main>
+  <div class="hero">A hero</div>
+  <h2>A heading</h2>
+  <p>A paragraph of running text, long enough to be prose and not a label on a button.</p>
+  <p>Another paragraph of running text, long enough to be prose and not a label.</p>
+  <div class="split">
+    <article><p>The main column.</p></article>
+    <aside><p>The side column.</p></aside>
+  </div>
+  <div class="cards">
+    <div class="card"><p>One</p></div>
+    <div class="card"><p>Two</p></div>
+    <div class="card"><p>Three</p></div>
+  </div>
+</main>
+<footer><p>Footer</p></footer>

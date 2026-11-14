@@ -22,13 +22,10 @@ Do this once per machine before initializing a project — plus a login per envi
 App Builder needs **Node 20** (npm ships with it). Check what's active: `node -v` → expect `v20.x`.
 
 - **Have nvm?** `nvm install 20 && nvm use 20 && nvm alias default 20` so new shells keep it. If several Node versions are installed, the *active* one must be 20.
-- **No Node / no nvm?** Install nvm, then Node 20:
+- **No Node / no nvm?** Ask the user before installing anything. Prefer `brew install node@20` or the official installer at nodejs.org. If they want nvm, have them install it from [nvm's instructions](https://github.com/nvm-sh/nvm#installing-and-updating) themselves; don't pipe an installer from the network into a shell. Once nvm is there, in a new shell:
   ```bash
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-  # reopen the shell, then:
   nvm install 20 && nvm use 20 && nvm alias default 20
   ```
-  (Alternatives: `brew install node@20`, or the official installer at nodejs.org.)
 
 > Older Adobe docs say Node 18 — use **20**. A global `aio` belongs to whichever Node was active when you ran `npm i -g`; if you switch Node versions the old `aio` won't be on PATH. Symptom of a mismatch: `aio` dies with `SyntaxError: Unexpected token '??='` (a pre-20 Node parsing the Node-20 `aio`) — fix with `nvm use 20` and reinstall `aio` there.
 

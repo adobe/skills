@@ -10,8 +10,10 @@ Repository of Adobe skills for AI coding agents.
 /plugin marketplace add adobe/skills
 /plugin install adobe-analytics@adobe-skills
 /plugin install adobe-cja@adobe-skills
-/plugin install aem-design@adobe-skills
+/plugin install stardust@adobe-skills
+/plugin install web@adobe-skills
 /plugin install aem-edge-delivery-services@adobe-skills
+/plugin install aem-eds-content-ops@adobe-skills
 /plugin install aem-project-management@adobe-skills
 /plugin install app-builder@adobe-skills
 /plugin install aem-cloud-service@adobe-skills
@@ -20,6 +22,8 @@ Repository of Adobe skills for AI coding agents.
 /plugin install commerce-app-management@adobe-skills
 /plugin install commerce-app-migration@adobe-skills
 /plugin install commerce-app-review@adobe-skills
+/plugin install run-workflow@adobe-skills
+/plugin install adobe-for-developers@adobe-skills
 ```
 
 ### GitHub Copilot CLI
@@ -33,6 +37,7 @@ cloud agent.
 copilot plugin marketplace add adobe/skills
 copilot plugin install stardust@adobe-skills
 copilot plugin install aem-edge-delivery-services@adobe-skills
+copilot plugin install adobe-for-developers@adobe-skills
 ```
 
 Copilot CLI exposes plugin skills under their bare `name` with no plugin
@@ -126,17 +131,21 @@ See the [`workfront-planning-advisory`](plugins/workfront/skills/workfront-plann
 
 #### Adobe Experience Manager
 
-##### Designing with aem-design
+##### Designing and Modernising with stardust
 
-Design-phase skills that run *before* implementation. Produces static HTML and JSON artifacts under `aem-design/` — EDS-independent; no dev server or AEM instance required.
+Design-phase and modernisation skills that improve an existing website, with or without a redesign. Produces static HTML under `stardust/` with platform-agnostic output and optional Edge Delivery Services delivery.
 
-| Skill          | Description                                                                                                            |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `aem-design` | Navigator — assesses `aem-design/` state and recommends the next design stage                                       |
-| `brand`      | Extracts a brand profile (`brand-profile.json`) and visual brand board from a URL, PDF, or conversation              |
-| `briefings`  | Captures page intent, audience, key messages, CTAs, and (optionally) final copy under `aem-design/briefings/`        |
-| `wireframes` | Produces grey structural wireframes from briefings (section order, hierarchy, spatial relationships) — optional stage |
-| `prototype`  | Produces branded, high-fidelity static HTML prototypes that iterate in the browser until approved                      |
+| Skill | Description |
+| ----- | ----------- |
+| `stardust` | Master orchestrator — reasons in the open, assesses site state, and guides through redesign, replica, or reskin |
+| `extract` | Crawls a live site and captures its design system, brand surface, page inventory, and rendered DOM into `stardust/current/` |
+| `direct` | Resolves your intent into concrete `PRODUCT.md` and `DESIGN.md` target specifications under `stardust/direction.md` |
+| `prototype` | Renders before/after pages under `stardust/prototypes/` and iterates through design craft loops |
+| `replica` | Recreates page archetypes as clean HTML/CSS that match the live site near pixel-perfect |
+| `reskin` | Re-lays verbatim content onto a donor design system |
+| `migrate` | Applies the approved design or replica to every page and writes the deployable static tree to `stardust/migrated/` |
+
+See the [`stardust`](plugins/stardust/README.md) documentation for the complete pipeline guide, two-layer architecture, and evaluation details.
 
 ##### Developing with Edge Delivery Services
 
@@ -165,6 +174,7 @@ Design-phase skills that run *before* implementation. Produces static HTML and J
 | Skill | Description |
 |-------|-------------|
 | `page-import` | Import webpages into canonical EDS block format (orchestrator) |
+| `migrate-header` | Rebuild a site's header as the EDS header block, 1:1 with the source: captures its states with the `web` CLI (`web header capture`), configures a header template and its nav document, then checks it against the live source (`web header check`) closed, with every menu open, on mobile and while scrolling |
 | `scrape-webpage` | Scrape and analyze webpage content |
 | `identify-page-structure` | Analyze page sections |
 | `page-decomposition` | Analyze content sequences |
@@ -265,6 +275,16 @@ Skills for building customized **Workfront** UI applications on Adobe App Builde
 | `workfront-actions`       | Runtime actions: `{data,error}` shape, IMS auth passthrough, inputs/config, CommonJS, and the Workfront Public API v21 (search/count, bulk PUT, custom `DE:` fields) |
 | `workfront-local-testing` | Preview a local (`extensionOverride`) or deployed (Extension Manager BYO) build inside Workfront; fix common "not showing" issues |
 
+### Adobe for Developers
+
+Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters. The plugin registers the hosted Adobe for Developers MCP server (`https://adp-connector.adobe.io/mcp`, Adobe IMS sign-in)
+
+```bash
+/plugin install adobe-for-developers@adobe-skills
+```
+
+See the [`adobe-for-developers`](plugins/adobe-for-developers/README.md) doc for client setup and approval behavior.
+
 ### Commerce
 
 Skills that ease developing and integrating with Adobe Commerce alongside other Adobe products.
@@ -341,6 +361,17 @@ See the [`commerce-app-review`](plugins/commerce/app-review/README.md) doc for t
 
 ```
 plugins/
+├── adobe-for-developers/
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   ├── .mcp.json
+│   ├── hooks/
+│   └── skills/
+│       ├── dev-console-context/
+│       ├── dev-console-subscribe-api/
+│       ├── io-events-filtering/
+│       ├── io-events-registration/
+│       └── search-adobe-developer-docs/
 ├── adobe-analytics/
 │   ├── .claude-plugin/
 │   │   └── plugin.json

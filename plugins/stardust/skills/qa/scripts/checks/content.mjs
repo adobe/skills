@@ -13,6 +13,7 @@
  *   - source images lost: the capture has N images, the delivered page has
  *     almost none (the pipeline strips imagery from flat-authored content)
  *   - block classes resolve to served block code (/blocks/<name>/<name>.js|css)
+ *   - widget links (`a[href*="/widgets/"]`, the one sanctioned .html link) resolve to served widget code
  *
  * Verbatim fidelity (optional, needs --scrape <dir> of stardust scrape captures):
  *   - every captured text node (>= 5 words) must appear verbatim in the
@@ -35,7 +36,7 @@ const MIN_NODE_WORDS = 5;
  * section-metadata style (e.g. `.article-body`) — styling, not blocks; a
  * flat regex over `<div class=…>` confuses the two and invents phantom blocks.
  */
-function blockNames(sections) {
+export function blockNames(sections) {
   const names = new Set();
   for (const s of sections) {
     for (const c of s.children) {
@@ -46,6 +47,26 @@ function blockNames(sections) {
     }
   }
   return names;
+}
+
+/**
+ * Widget mounts in served HTML: every `a[href*="/widgets/"]` ending in .html(?params) — the loader turns each into
+ * a block named by the file stem (`div.<name>[data-block-name="widget"]`), so a widget-only page is a blocked page.
+ * Returns [{ name, href, path }] with `path` the code file to HEAD (/widgets/<path>/<name>.html). Pure.
+ */
+export function widgetLinks(html, base = null) {
+  const out = []; const seen = new Set();
+  const host = base ? new URL(base).host.toLowerCase() : null;
+  for (const m of String(html).matchAll(/<a\b[^>]*\shref="([^"]*\/widgets\/[^"]+)"/gi)) {
+    const href = m[1].replace(/&amp;/g, '&');
+    const origin = href.match(/^https?:\/\/([^/]+)/i);
+    if (origin && host && origin[1].toLowerCase() !== host) continue; // another origin's widget is not this site's block
+    const path = href.replace(/^https?:\/\/[^/]+/i, '').replace(/[?#].*/, '');
+    if (!/^\/widgets\/.+\.html$/i.test(path) || seen.has(path)) continue;
+    seen.add(path);
+    out.push({ name: path.replace(/^.*\//, '').replace(/\.html$/i, ''), href, path });
+  }
+  return out;
 }
 
 /* ------------------------------------------------ flattened collections -- */
@@ -257,7 +278,8 @@ export async function run(ctx) {
   const findings = [];
   const scrapeMap = loadScrapeMap(opts.scrapeDir);
   const fleetBlocks = new Set();
-  const pageBlocks = new Map(); // path -> Set(block names) — reused by templates check
+  const fleetWidgets = new Map(); // widget code path -> name
+  const pageBlocks = new Map(); // path -> Set(block names, widget stems included) — reused by templates check
 
   await pMap(inventory.pages, async (p) => {
     const res = await ctx.fetchPage(plainUrl(base, p.url || p.path));
@@ -331,8 +353,10 @@ export async function run(ctx) {
 
     // --- blocks used -------------------------------------------------------
     const blocks = blockNames(sections);
-    pageBlocks.set(p.path, [...blocks]);
     for (const b of blocks) fleetBlocks.add(b);
+    const widgets = widgetLinks(html, base);
+    for (const w of widgets) { blocks.add(w.name); fleetWidgets.set(w.path, w.name); }
+    pageBlocks.set(p.path, [...blocks]);
 
     // --- single-block hoard (structured page collapsed into one prose block) --
     const hoard = detectSingleBlockHoard(sections, { template: p.template || '', scrape: scrapeMap.get(p.path) });
@@ -396,6 +420,16 @@ export async function run(ctx) {
         `block "${b}" is authored but serves no code (/blocks/${b}/ has neither js nor css)`,
         { block: b, pages: where.slice(0, 10) }));
     }
+  }, 6);
+
+  // --- every widget link must resolve to served widget code (HEAD /widgets/<path>/<name>.html = 200) ---
+  await pMap([...fleetWidgets], async ([path, name]) => {
+    const res = await fetchUrl(`${base}${path}`, { method: 'HEAD' });
+    if (res.status === 200) return;
+    const where = inventory.pages.filter((p) => (pageBlocks.get(p.path) || []).includes(name)).map((p) => p.path);
+    findings.push(finding('content', 'unknown-widget', 'error', where[0] || '',
+      `widget "${name}" is linked but serves no code (${path} → ${res.status})`,
+      { widget: name, path, status: res.status, pages: where.slice(0, 10) }));
   }, 6);
 
   ctx.shared.pageBlocks = Object.fromEntries(pageBlocks); // handoff to templates check

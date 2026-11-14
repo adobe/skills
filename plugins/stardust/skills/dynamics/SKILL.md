@@ -2,7 +2,7 @@
 name: dynamics
 description: Find, classify, triage, re-implement and verify a source site's dynamic surface (APIs, search, forms, modals, media, tags, client-rendered and sheet-backed content) during a migration to a platform. Migration-bound — invoked by prepare-migration, replica, migrate and rollout, or standalone on an already-migrated site; never for redesign-only work.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:dynamics — the dynamic surface of a migration
@@ -52,7 +52,8 @@ there and marks dead ones **host-bound** — the signal a pixel gate reports as 
 
 `node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] [--knowledge] [--chrome] --out stardust/dynamics`
 drafts one row per finding with the four axes pre-filled — **class · disposition ·
-reproducibility · status** — plus pattern, phase and the owner decision; `--knowledge` adds a spec's
+reproducibility · status** — plus pattern, phase, the owner decision and `target`, the delivery form
+(`widget` where no authored rows remain — `reference/triage.md` § Target); `--knowledge` adds a spec's
 curated features, decisions from its open questions; `--chrome` a row per header-contract family (cart and
 account decide their backend, the UI ships). Curate it into `stardust/dynamic-features.md` (§ Listings
 contract + § Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
@@ -61,8 +62,8 @@ contract + § Features + § Decision batch + § Register) and `stardust/dynamic-
 - **Reconcile against the migrated output** before scheduling anything.
 - Only reproducibility `self` ships autonomously; everything else is **one decision batch**.
 - Never fabricate copy for a blank client-rendered capture; never auto-wire a `regulated-pii` form;
-  a search box implies a results page (class S over the site's own pages is `self` once the index
-  exists); decided-out is explicit and owner-stated — a hands-off assumption never writes it.
+  a search box implies a results page; decided-out is explicit and owner-stated — a hands-off
+  assumption never writes it.
 - **Gate:** a row without a disposition fails prepare-migration 4.5 / replica Phase 2 / rollout B2.
   The static migration continues regardless.
 - **Martech only on request:** when the owner asks to keep tags or consent, add `--martech`
@@ -76,7 +77,8 @@ From `reference/patterns.md` (catalogue + contracts + embedded example mechanism
 authoring contract before code · no owner input, no waiting (ship the interim tier, name the
 decision) · existing library first (feed it, do not fork it) · decided-out is explicit. Each phase
 ends with the flow verified on the published origin at 1440 and 360, a parity row, a journal entry
-and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. **The query index
+and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. A flow script you write
+follows the recipe in `../stardust/SKILL.md` § Setup, step 7. **The query index
 comes from `helix-query.yaml` in the code branch** — commit, push, publish live, poll — never from a
 configuration-service write; the sheet-backed interim index only when the branch is not writable
 (`reference/listings.md` § Getting an index at all). **Search** follows `reference/patterns.md`
