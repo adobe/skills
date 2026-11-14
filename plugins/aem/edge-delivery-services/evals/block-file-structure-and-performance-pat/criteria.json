@@ -28,9 +28,9 @@
       "description": "The synchronous/immediate part of decorate() does minimal work (e.g., adds placeholder UI or initializes observer) rather than eagerly fetching data or building complex DOM"
     },
     {
-      "name": "Dynamic import for heavy module",
+      "name": "Heavy code loaded late",
       "max_score": 12,
-      "description": "Any heavy or conditionally needed JavaScript module (e.g., a third-party player library or complex renderer) is loaded via dynamic `import()` inside the observer callback or conditional branch, NOT as a top-level static import"
+      "description": "Heavy or third-party code needed only later (e.g. the YouTube iframe API or a player library) is loaded inside the observer callback or on interaction: dynamic `import()` for ES modules, or `loadScript` from aem.js / an injected script element for classic scripts such as the YouTube iframe API. It is NOT a top-level static import and NOT loaded eagerly in decorate()."
     },
     {
       "name": "aem.js imports with .js extension",
@@ -43,9 +43,9 @@
       "description": "The solution does NOT modify or overwrite `scripts/aem.js`; it only imports from it"
     },
     {
-      "name": "async decorate function",
+      "name": "decorate does not wait for the deferred load",
       "max_score": 7,
-      "description": "The decorate function is declared with the `async` keyword (since it awaits operations or performs async logic)"
+      "description": "decorate() returns without awaiting the player or API load (it may be declared async or not); the slow load runs later from the observer callback or a click handler, so the block's section is not held hidden."
     },
     {
       "name": "Default export decorate",

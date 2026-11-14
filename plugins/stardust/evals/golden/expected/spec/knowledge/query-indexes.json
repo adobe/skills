@@ -1,0 +1,18 @@
+[
+ {
+  "name": "default",
+  "include_paths": [
+   "/en/**"
+  ],
+  "exclude_paths": [
+   "/nav"
+  ],
+  "filter": null,
+  "properties": [
+   "title"
+  ],
+  "consumers": [],
+  "source": null,
+  "yaml": "  default:\n    include:\n      - '/en/**'\n    exclude:\n      - '/nav'\n    target: /en/query-index.json\n    properties:\n      title:\n        select: head > meta[property=\"og:title\"]\n        value: attribute(el, 'content')"
+ }
+]
