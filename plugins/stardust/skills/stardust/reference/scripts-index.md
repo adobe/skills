@@ -48,7 +48,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
-- `replica/breakpoint-lint.mjs` — breakpoints vs target/source steps — `[--target 600,900,1200] [--root .] [--dirs <list>]` | `--inventory <file|dir…>`; exit 1 = off-target
+- `replica/breakpoint-lint.mjs` — mobile-first `@media` (`#162`), target steps — `[--target 600,900] [--root .] [--dirs …]` | `--inventory <path…>`; exit 1 = a finding
 - `replica/cap-probe.mjs` — content caps, capture or vs build — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>]`; exit 2 = FAIL
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
 - `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`

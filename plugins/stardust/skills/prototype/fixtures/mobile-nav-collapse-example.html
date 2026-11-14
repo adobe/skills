@@ -84,98 +84,105 @@
       border: 0;
     }
 
-    .ds-nav-burger { display: none; }
+    /* Base = phone: burger button, nav as a slide-down panel */
+    .ds-nav-burger {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 10px 14px;
+      font-family: var(--body-font-family);
+      font-size: var(--body-sm);
+      color: var(--color-fg);
+      background: transparent;
+      border: 1px solid currentColor;
+      border-radius: var(--radius);
+      user-select: none;
+    }
+    .ds-nav-burger-icon {
+      width: 16px;
+      height: 12px;
+      position: relative;
+    }
+    .ds-nav-burger-icon::before,
+    .ds-nav-burger-icon::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: currentColor;
+    }
+    .ds-nav-burger-icon::before { top: 0; }
+    .ds-nav-burger-icon::after  { bottom: 0; }
 
     .ds-nav {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
       display: flex;
-      align-items: center;
-      gap: var(--spacing-md);
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
       font-family: var(--body-font-family);
       list-style: none;
       margin: 0;
-      padding: 0;
+      padding: var(--spacing-md) var(--spacing-lg);
+      background: var(--color-bg);
+      border-top: 1px solid var(--color-fg);
+      transform: translateY(-8px);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: transform var(--dur-state) var(--ease-snap),
+                  opacity   var(--dur-state) var(--ease-snap),
+                  visibility 0s linear var(--dur-state);
+      z-index: 10;
     }
     .ds-nav a {
       color: var(--color-fg);
       text-decoration: none;
       font-size: var(--body);
-      padding: 4px 0;
+      padding: 12px 0;
+      border-bottom: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
     }
+    .ds-nav a:last-child { border-bottom: 0; }
     .ds-nav a:hover { color: var(--color-accent); }
 
-    @media (max-width: 640px) {
-      .ds-nav-burger {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        cursor: pointer;
-        padding: 10px 14px;
-        font-family: var(--body-font-family);
-        font-size: var(--body-sm);
-        color: var(--color-fg);
-        background: transparent;
-        border: 1px solid currentColor;
-        border-radius: var(--radius);
-        user-select: none;
-      }
-      .ds-nav-burger-icon {
-        width: 16px;
-        height: 12px;
-        position: relative;
-      }
-      .ds-nav-burger-icon::before,
-      .ds-nav-burger-icon::after {
-        content: "";
-        position: absolute;
-        left: 0; right: 0;
-        height: 2px;
-        background: currentColor;
-      }
-      .ds-nav-burger-icon::before { top: 0; }
-      .ds-nav-burger-icon::after  { bottom: 0; }
+    .ds-nav-toggle:checked ~ .ds-nav {
+      transform: translateY(0);
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition: transform var(--dur-state) var(--ease-snap),
+                  opacity   var(--dur-state) var(--ease-snap),
+                  visibility 0s linear 0s;
+    }
 
+    .ds-nav-burger:focus-visible,
+    .ds-nav a:focus-visible {
+      outline: 2px solid var(--color-accent);
+      outline-offset: 2px;
+    }
+
+    /* From 641px: inline nav, no burger */
+    @media (width >= 641px) {
+      .ds-nav-burger { display: none; }
       .ds-nav {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0;
-        padding: var(--spacing-md) var(--spacing-lg);
-        background: var(--color-bg);
-        border-top: 1px solid var(--color-fg);
-        transform: translateY(-8px);
-        opacity: 0;
-        visibility: hidden;
-        pointer-events: none;
-        transition: transform var(--dur-state) var(--ease-snap),
-                    opacity   var(--dur-state) var(--ease-snap),
-                    visibility 0s linear var(--dur-state);
-        z-index: 10;
-      }
-      .ds-nav a {
-        padding: 12px 0;
-        font-size: var(--body);
-        border-bottom: 1px solid color-mix(in srgb, var(--color-fg) 12%, transparent);
-      }
-      .ds-nav a:last-child { border-bottom: 0; }
-
-      .ds-nav-toggle:checked ~ .ds-nav {
-        transform: translateY(0);
+        position: static;
+        flex-direction: row;
+        align-items: center;
+        gap: var(--spacing-md);
+        padding: 0;
+        background: none;
+        border-top: 0;
+        transform: none;
         opacity: 1;
         visibility: visible;
         pointer-events: auto;
-        transition: transform var(--dur-state) var(--ease-snap),
-                    opacity   var(--dur-state) var(--ease-snap),
-                    visibility 0s linear 0s;
+        transition: none;
       }
-
-      .ds-nav-burger:focus-visible,
-      .ds-nav a:focus-visible {
-        outline: 2px solid var(--color-accent);
-        outline-offset: 2px;
-      }
+      .ds-nav a { padding: 4px 0; border-bottom: 0; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -189,20 +196,20 @@
     main {
       max-width: var(--max-width);
       margin: 0 auto;
-      padding: var(--spacing-2xl) var(--spacing-lg);
+      padding: var(--spacing-xl) var(--spacing-md);
     }
     h1 {
       font-family: var(--heading-font-family);
-      font-size: var(--heading-xl);
+      font-size: var(--heading-lg);
       line-height: var(--line-height-heading);
       margin: 0 0 var(--spacing-md);
       letter-spacing: -0.02em;
     }
     p { max-width: 60ch; }
 
-    @media (max-width: 640px) {
-      main { padding: var(--spacing-xl) var(--spacing-md); }
-      h1 { font-size: var(--heading-lg); }
+    @media (width >= 641px) {
+      main { padding: var(--spacing-2xl) var(--spacing-lg); }
+      h1 { font-size: var(--heading-xl); }
     }
   </style>
 </head>

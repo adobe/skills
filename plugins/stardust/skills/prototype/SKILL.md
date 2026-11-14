@@ -982,8 +982,7 @@ Skill {
 Pass the captured viewport breakpoints from
 `DESIGN.json#extensions.breakpoints` if present; otherwise adapt
 picks defaults (640 / 768 / 1024 / 1280 are the stardust spec
-defaults — anything above 640 used as a "mobile breakpoint" is a
-smell per § Mobile-adapt audit below). The full target list is
+defaults), written mobile-first per § Mobile-adapt audit below. The full target list is
 **1920 / 1440 / 1280 / 800 / 414 / 375** — adapt validates each
 viewport's doc-width · overflow · sticky behaviour · grid columns
 · font scaling.
@@ -1010,12 +1009,13 @@ Refuse the file when **any** of:
 
 - `<meta name="viewport" content="width=device-width, ...">` is
   missing or width is set to a fixed pixel value.
-- The file declares zero `@media (max-width: ...)` rules at all
-  (desktop-only).
-- The file declares mobile-targeted breakpoints **above 640px**
-  — `@media (max-width: 1024px)` as the *narrowest* breakpoint
-  is the recognisable shape of "didn't actually adapt for
-  phones." Adapt should produce at least one rule at ≤ 640px.
+- The file declares no `@media (width >= N)` rule (one layout at
+  every width), or any `@media` with an upper bound (`max-width`,
+  `width <`/`<=`). Queries are mobile-first: the base styles are
+  the phone layout, because deploy lifts this CSS into blocks as
+  written (deploy `#162`). Check: `breakpoint-lint.mjs --root
+  stardust/prototypes --dirs <slug>-proposed.html` exits 0.
+  Refusal code: `audit/responsive: desktop-first-query`.
 - **At a 360px-wide rendered viewport:** a landmark causes
   `scrollWidth > clientWidth` on `document.documentElement` or
   `document.body`. Refusal code:
@@ -1045,14 +1045,10 @@ inline `<script>` for a11y). The header gains
 `data-nav-collapse="hamburger"` so downstream consumers can detect
 the pattern is applied.
 
-**Source order is load-bearing.** The base
-`.ds-nav-burger { display: none; ... }` rule must be placed at
-the **top** of the `<style>` block (after `:root`, before any
-`@media` rules). The post-injection ordering check is a small
-`awk` one-liner documented in `reference/mobile-nav-collapse.md`
-§ Source order — it asserts the base rule appears at a lower line
-number than the first `@media (max-width: 640px)` rule. Exit 0 =
-correct ordering; exit 1 = regression.
+**Source order is load-bearing:** the base rules go at the top
+of the `<style>` block, before the `@media (width >= 641px)` rule
+that restores the inline nav; run the post-injection check in
+`reference/mobile-nav-collapse.md` § Source order.
 
 The stock pattern is the default; `reference/mobile-nav-collapse.md`
 § Alternative patterns documents priority+overflow, bottom nav,

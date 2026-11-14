@@ -127,101 +127,104 @@ header[data-nav-collapse="hamburger"] {
   border: 0;
 }
 
-/* Above 640px: horizontal nav, no burger */
+/* Base = phone: burger button, nav as a slide-down panel */
 .ds-nav-burger {
-  display: none;
-}
-.ds-nav {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: var(--spacing-md, 16px);
+  gap: 8px;
+  cursor: pointer;
+  padding: 10px 14px;
   font-family: var(--body-font-family, system-ui, sans-serif);
+  font-size: var(--body-sm, 0.9375rem);
+  color: var(--color-fg, #111);
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--radius, 8px);
+  user-select: none;
+}
+.ds-nav-burger-icon {
+  width: 16px;
+  height: 12px;
+  position: relative;
+}
+.ds-nav-burger-icon::before,
+.ds-nav-burger-icon::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  background: currentColor;
+}
+.ds-nav-burger-icon::before { top: 0; }
+.ds-nav-burger-icon::after  { bottom: 0; }
+
+/* Slide-down panel — full-width, anchored to header bottom */
+.ds-nav {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: var(--spacing-md, 16px);
+  font-family: var(--body-font-family, system-ui, sans-serif);
+  background: var(--color-bg, #fff);
+  border-top: 1px solid var(--color-fg, #111);
+  transform: translateY(-8px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform var(--dur-state, 180ms) var(--ease-snap, cubic-bezier(0.2, 0, 0, 1)),
+              opacity   var(--dur-state, 180ms) var(--ease-snap, cubic-bezier(0.2, 0, 0, 1)),
+              visibility 0s linear var(--dur-state, 180ms);
 }
 .ds-nav a {
   color: var(--color-fg, #111);
   text-decoration: none;
   font-size: var(--body, 1rem);
+  padding: 12px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-fg, #111) 12%, transparent);
+}
+.ds-nav a:last-child { border-bottom: 0; }
+
+/* Open state — sibling selector off the checkbox */
+.ds-nav-toggle:checked ~ .ds-nav {
+  transform: translateY(0);
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: transform var(--dur-state, 180ms) var(--ease-snap, cubic-bezier(0.2, 0, 0, 1)),
+              opacity   var(--dur-state, 180ms) var(--ease-snap, cubic-bezier(0.2, 0, 0, 1)),
+              visibility 0s linear 0s;
 }
 
-@media (max-width: 640px) {
-  /* Show burger button */
-  .ds-nav-burger {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    padding: 10px 14px;
-    font-family: var(--body-font-family, system-ui, sans-serif);
-    font-size: var(--body-sm, 0.9375rem);
-    color: var(--color-fg, #111);
-    background: transparent;
-    border: 1px solid currentColor;
-    border-radius: var(--radius, 8px);
-    user-select: none;
-  }
-  .ds-nav-burger-icon {
-    width: 16px;
-    height: 12px;
-    position: relative;
-  }
-  .ds-nav-burger-icon::before,
-  .ds-nav-burger-icon::after {
-    content: "";
-    position: absolute;
-    left: 0; right: 0;
-    height: 2px;
-    background: currentColor;
-  }
-  .ds-nav-burger-icon::before { top: 0; }
-  .ds-nav-burger-icon::after  { bottom: 0; }
+/* Focus-visible — brand accent for the focus ring */
+.ds-nav-burger:focus-visible,
+.ds-nav a:focus-visible {
+  outline: 2px solid var(--color-accent, #f4c01b);
+  outline-offset: 2px;
+}
 
-  /* Slide-down panel — full-width, anchored to header bottom */
+/* From 641px: inline nav, no burger */
+@media (width >= 641px) {
+  .ds-nav-burger { display: none; }
   .ds-nav {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0;
-    padding: var(--spacing-md, 16px);
-    background: var(--color-bg, #fff);
-    border-top: 1px solid var(--color-fg, #111);
-    transform: translateY(-8px);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: transform var(--dur-state, 180ms) var(--ease-snap, cubic-bezier(0.2, 0, 0, 1)),
-                opacity   var(--dur-state, 180ms) var(--ease-snap, cubic-bezier(0.2, 0, 0, 1)),
-                visibility 0s linear var(--dur-state, 180ms);
-  }
-  .ds-nav a {
-    padding: 12px 0;
-    font-size: var(--body, 1rem);
-    border-bottom: 1px solid color-mix(in srgb, var(--color-fg, #111) 12%, transparent);
-  }
-  .ds-nav a:last-child { border-bottom: 0; }
-
-  /* Open state — sibling selector off the checkbox */
-  .ds-nav-toggle:checked ~ .ds-nav {
-    transform: translateY(0);
+    position: static;
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spacing-md, 16px);
+    padding: 0;
+    background: none;
+    border-top: 0;
+    transform: none;
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
-    transition: transform var(--dur-state, 180ms) var(--ease-snap, cubic-bezier(0.2, 0, 0, 1)),
-                opacity   var(--dur-state, 180ms) var(--ease-snap, cubic-bezier(0.2, 0, 0, 1)),
-                visibility 0s linear 0s;
+    transition: none;
   }
-
-  /* Focus-visible — brand accent for the focus ring */
-  .ds-nav-burger:focus-visible {
-    outline: 2px solid var(--color-accent, #f4c01b);
-    outline-offset: 2px;
-  }
-  .ds-nav a:focus-visible {
-    outline: 2px solid var(--color-accent, #f4c01b);
-    outline-offset: 2px;
-  }
+  .ds-nav a { padding: 0; border-bottom: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -237,13 +240,12 @@ layout properties — per impeccable's motion rules.
 
 ## Source order (load-bearing)
 
-The base `.ds-nav-burger { display: none; ... }` block **must
-precede** the `@media (max-width: 640px) { ... }` block that flips
-it to `display: inline-flex`. Same selector, same specificity →
-the later declaration wins. If the base is appended *after* the
-media query, the burger stays hidden at every viewport, no
-warning, no error — the file silently regresses to the bare-nav
-failure mode this whole pattern exists to fix.
+The base (phone) rules **must precede** the `@media (width >= 641px)
+{ ... }` block that hides the burger and restores the inline nav.
+Same selector, same specificity → the later declaration wins. If
+the base is appended *after* the media query, the burger and the
+hidden panel win at every viewport — desktop loses its nav, no
+warning, no error.
 
 Place the stock pattern's CSS at the **top of the stylesheet**,
 right after the `:root` token block and before any existing
@@ -255,10 +257,10 @@ right after the `:root` token block and before any existing
   /* === Stock mobile-nav-collapse pattern === */
   header[data-nav-collapse="hamburger"] { ... }
   .ds-nav-toggle { ... }
-  .ds-nav-burger { display: none; ... }     /* base — first */
+  .ds-nav-burger { display: inline-flex; ... } /* base — first */
   .ds-nav { ... }
   /* ...component styles for the rest of the page... */
-  @media (max-width: 640px) { ... }         /* override — later */
+  @media (width >= 641px) { ... }           /* override — later */
   @media (prefers-reduced-motion: reduce) { ... }
 </style>
 ```
@@ -276,7 +278,7 @@ query (regression):
 
 ```bash
 awk '
-  /@media[[:space:]]*\(max-width:[[:space:]]*640px\)/ && !media_line {
+  /@media[[:space:]]*\(width[[:space:]]*>=[[:space:]]*641px\)/ && !media_line {
     media_line = NR
   }
   /\.ds-nav-burger[[:space:]]*\{/ && depth == 0 && !base_line {
@@ -286,7 +288,7 @@ awk '
   /\}/ { depth -= gsub(/\}/, "}") }
   END {
     if (!base_line)  { print "MISSING base .ds-nav-burger rule";          exit 1 }
-    if (!media_line) { print "MISSING @media (max-width: 640px) rule";    exit 1 }
+    if (!media_line) { print "MISSING @media (width >= 641px) rule";      exit 1 }
     if (base_line > media_line) {
       print "WRONG ORDER: base at line " base_line ", @media at " media_line
       print "Base must appear BEFORE the media query — same specificity = later wins."
@@ -301,14 +303,6 @@ Run this as the last step of the injection. A failure here means
 the agent placed the base block in the wrong spot — fix the
 ordering and re-run rather than shipping a silently-regressed
 file.
-
-Caught during manual dogfood on
-`stardust/prototypes/home-proposed-C2.html` (greenfield-beermaker)
-where an early draft appended the base block after the media
-queries and the burger never appeared at 360px. The audit's
-overflow check would still fail in that case (the bare nav still
-overflows), but the operator wastes a cycle diagnosing what
-should be a deterministic ordering bug.
 
 ## Token inheritance
 
