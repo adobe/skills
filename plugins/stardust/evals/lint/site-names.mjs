@@ -32,6 +32,8 @@ const ALLOW = [
   // source hosting, packages, CDNs, specs
   'github.com', 'githubusercontent.com', 'github.io', 'npmjs.org', 'npmjs.com', 'jsdelivr.net', 'unpkg.com',
   'schema.org', 'json-schema.org', 'sitemaps.org', 'w3.org', 'googleapis.com', 'gstatic.com', 'fontsource.org',
+  // the $schema of the plugin's root plugin.json (the Agent Plugins manifest format)
+  'agent-plugins.org',
   'opencollective.com', 'claude.com', 'anthropic.com', 'coolors.co', 'refero.design',
   // the plugin's own schema $id namespace, and a state.json field path (`site.da.org`) that reads like a host
   'stardust.dev', 'da.org',

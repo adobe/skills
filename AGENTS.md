@@ -78,8 +78,14 @@ Skills run with the user's credentials, on the user's machine. Treat a skill as 
   what it writes; CI fails when a generated file differs. What one client needs beyond the
   portable fields goes under `extensions["io.github.ai-ecoverse.x927"]` in `plugin.json`:
   `targets.<client>` for that client's manifest, `marketplace` for the catalog entry
-  ([x927](https://github.com/ai-ecoverse/x927)). The Commerce plugins and
-  `adobe-for-creativity` are brought in from elsewhere and have no root `plugin.json` yet.
+  ([x927](https://github.com/ai-ecoverse/x927)). A skill or hook that is only in
+  `targets.<client>` reaches that client alone.
+- Seven plugins have no root `plugin.json` yet and keep their hand-written manifests. The
+  Commerce plugins and `adobe-for-creativity` are brought in from elsewhere. `app-builder`,
+  `adobe-for-developers` and `aem-project-management` would lose something in GitHub Copilot
+  CLI: with a root `plugin.json` it loads only the folders directly under `skills/`, and
+  hooks only from `com.github.copilot/hooks/hooks.json`. `app-builder` has skills nested
+  deeper, and the other two have hooks elsewhere, one of which asks before a deletion.
 - A plugin's skills are the folders directly under `skills/`. No client looks below them, so
   a `SKILL.md` deeper down is a skill nobody can load. Move it up, or make it a reference
   that its parent skill links.
