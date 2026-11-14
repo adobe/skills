@@ -94,10 +94,10 @@ public class ContentPublisher {
 
 **CONSTRAINTS** (per [official Javadoc](https://developer.adobe.com/experience-manager/reference-materials/cloud-service/javadoc/com/day/cq/replication/Replicator.html)):
 - **Recommended limit**: 100 paths per call for a transactional guarantee
-- **Above 100 paths**: the system automatically splits into multiple non-transactional chunks — no extra options needed
+- **Hard limit**: 500 paths per call; above that a `ReplicationException` is thrown. For large trees use the Tree Activation workflow step
 - **Payload size**: 10 MB maximum (excluding binaries)
 
-> **Note**: `ReplicationOptions.setUseAtomicCalls()` is `@Deprecated` and marked "no longer required" in the Cloud Service Javadoc. Do **not** call it; the system handles auto-bucketing automatically.
+> **Note**: `ReplicationOptions.setUseAtomicCalls()` is `@Deprecated` and marked "no longer required" in the Cloud Service Javadoc. The [replication docs](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/replication) still describe `setUseAtomicCalls(false)` for non-atomic bucketing above the limit; prefer Tree Activation over relying on it.
 
 ### Example: Bulk Activation
 
@@ -110,7 +110,7 @@ public class BulkPublisher {
     /**
      * Publish multiple pages.
      * ≤100 paths → replicated atomically (transactional guarantee).
-     * >100 paths → system automatically splits into non-transactional chunks.
+     * >500 paths → ReplicationException; split the input or use Tree Activation.
      */
     public void publishMultiplePages(Session session, String[] pagePaths) 
             throws ReplicationException {
@@ -119,7 +119,7 @@ public class BulkPublisher {
             session,
             ReplicationActionType.ACTIVATE,
             pagePaths,
-            null  // No options needed; system handles auto-bucketing above 100 paths
+            null  // Keep pagePaths.length <= 500 (ideally < 100)
         );
     }
 }
@@ -129,7 +129,7 @@ public class BulkPublisher {
 
 ## Publishing to Preview Tier
 
-The Preview tier requires explicit agent filtering.
+Without an `AgentFilter`, `Replicator` targets **publish only**. The Preview tier requires explicit agent filtering.
 
 ### Example: Publish to Preview
 
@@ -217,7 +217,7 @@ public class SynchronousPublisher {
         // Optional: Add listener for synchronous feedback
         options.setListener(new ReplicationListener() {
             @Override
-            public void onStart(ReplicationAction action) {
+            public void onStart(Agent agent, ReplicationAction action) {
                 // Called when replication starts
             }
             
@@ -227,12 +227,12 @@ public class SynchronousPublisher {
             }
             
             @Override
-            public void onEnd(ReplicationAction action, ReplicationResult result) {
+            public void onEnd(Agent agent, ReplicationAction action, ReplicationResult result) {
                 // Called when replication completes
             }
             
             @Override
-            public void onError(ReplicationAction action, Exception error) {
+            public void onError(Agent agent, ReplicationAction action, Exception error) {
                 // Called if replication fails
             }
         });
@@ -316,7 +316,7 @@ public class StatusChecker {
             return false;  // No replication metadata
         }
         
-        return status.isActivated();
+        return status.isActivated();  // publish only; for preview use status.getStatusForAgent("preview")
     }
     
     /**
@@ -535,7 +535,7 @@ public class ReplicationEventLogger implements EventHandler {
 ## Best Practices
 
 ### 1. Respect Rate Limits
-- ≤100 paths per call for transactional guarantee; system auto-splits if exceeded
+- <100 paths per call recommended; 500 is the hard limit (`ReplicationException` above it)
 - ≤10 MB payload size
 
 ### 2. Use Workflow for Large Operations
@@ -561,12 +561,7 @@ See [references/patterns.md](references/patterns.md) for complete implementation
 
 ### Issue: Replication Fails Silently
 
-**Check**: Verify replication queues in Felix console (Sling Jobs console):
-```
-https://author-p<programId>-e<envId>.adobeaemcloud.com/system/console/slingjobs
-```
-
-Look for failed jobs with topic: `com/day/cq/replication`
+**Check**: In **Tools > Deployment > Distribution**, open the `publish` or `preview` agent. Review the **persisted** and **fully published** queues (Items Pending, red status) and the **Logs** tab. Only clearing **fully published** means content is live and Dispatcher is invalidated.
 
 ### Issue: Permission Errors
 
