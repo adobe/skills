@@ -30,7 +30,9 @@ Use this skill when:
 Before using this skill, ensure:
 - ✅ Node.js is available
 - ✅ Script dependencies (playwright, sharp) are installed (`npm install --prefix <SKILL_DIR>/scripts`)
-- ✅ Chromium browser is installed (`npx --prefix <SKILL_DIR>/scripts playwright install chromium`)
+- ✅ A browser is available — the script uses the locally installed Google Chrome when
+  there is one, and otherwise falls back to the Playwright-managed Chromium
+  (`npx --prefix <SKILL_DIR>/scripts playwright install chromium`)
 
 ## Related Skills
 
@@ -147,6 +149,16 @@ This skill provides:
 ```bash
 npx --prefix <SKILL_DIR>/scripts playwright install chromium
 ```
+
+Installing Chromium is enough. The script prefers a locally installed Google Chrome
+because it carries a real TLS fingerprint and gets past bot detection that rejects
+headless Chromium, but it falls back to the bundled Chromium on its own, so no Chrome
+install is required.
+
+**Site blocks the scrape or the navigation fails:**
+
+Installing Google Chrome on the machine running the scrape is the single biggest lever.
+The script picks it up automatically, with no configuration needed.
 
 **Playwright or Sharp not installed:**
 ```bash
