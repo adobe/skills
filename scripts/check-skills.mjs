@@ -4,11 +4,13 @@
 //   duplicate-in-plugin        two skills of one plugin share a name
 //   duplicate-across-plugins   skills of different plugins share a name (GitHub Copilot CLI
 //                              exposes skills under their bare name)
-//   orphaned                   no client finds the skill: it is in no plugin, or it lies
-//                              deeper than skills/<name>/SKILL.md and the plugin's Claude
-//                              Code manifest doesn't list its folder. Clients read the
+//   orphaned                   a client doesn't find the skill: it is in no plugin, or it
+//                              lies deeper than skills/<name>/SKILL.md. Clients read the
 //                              folders directly under skills/ and don't look further
-//                              (https://agent-plugins.org/specification, Skills).
+//                              (https://agent-plugins.org/specification, Skills). Claude
+//                              Code also reads the folders its manifest lists, which
+//                              counts only for a plugin without a root plugin.json: with
+//                              one, GitHub Copilot CLI reads that and not the manifest.
 //
 // main has skills that break them, so the rules are enforced the boy-scout way
 // (.boy-scout.json): a pull request that changes a SKILL.md which breaks a rule has to fix
@@ -52,18 +54,16 @@ function pluginOf(root, file) {
 
 const posix = (path) => path.split(sep).join('/');
 
-// The directories of a plugin that a client scans for skills: skills/, and what the Claude
-// Code manifest lists under "skills". An entry there is a directory of skill folders or one
-// skill folder, so a skill is found when its folder, or the folder above it, is scanned.
+// The directories of a plugin that every client scans for skills. That is skills/. In a
+// plugin without a root plugin.json, the clients read the Claude Code manifest, so what it
+// lists under "skills" counts too: a directory of skill folders or one skill folder, so a
+// skill is found when its folder, or the folder above it, is scanned.
 function scannedDirs(plugin) {
   const dirs = [join(plugin, 'skills')];
-  const read = (...path) => JSON.parse(readFileSync(join(plugin, ...path), 'utf8'));
+  if (existsSync(join(plugin, 'plugin.json'))) return dirs;
   try {
-    // from the root plugin.json where there is one: the Claude Code manifest is built from it
-    const listed = existsSync(join(plugin, 'plugin.json'))
-      ? read('plugin.json').extensions?.['io.github.ai-ecoverse.x927']?.targets?.claude?.skills
-      : read('.claude-plugin', 'plugin.json').skills;
-    for (const entry of [listed ?? []].flat()) {
+    const listed = JSON.parse(readFileSync(join(plugin, '.claude-plugin', 'plugin.json'), 'utf8')).skills ?? [];
+    for (const entry of [listed].flat()) {
       if (typeof entry === 'string') dirs.push(join(plugin, entry));
     }
   } catch {

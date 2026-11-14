@@ -129,12 +129,12 @@ test('a skill outside every plugin is orphaned', (t) => {
   assert.match(violations[0].detail, /is in no plugin/);
 });
 
-test('a plugin that has only its root plugin.json yet is a plugin, and its Claude Code skills paths count', (t) => {
+test('a plugin that has only its root plugin.json yet is a plugin; what it lists for Claude Code alone does not count', (t) => {
   const root = repo(t, {
     'plugins/new/plugin.json': '{"name":"new","extensions":{"io.github.ai-ecoverse.x927":{"targets":{"claude":{"skills":["./skills/suite/one"]}}}}}',
+    'plugins/new/.claude-plugin/plugin.json': '{"name":"new","skills":["./skills/suite/one"]}',
     'plugins/new/skills/suite/SKILL.md': skill('suite'),
     'plugins/new/skills/suite/one/SKILL.md': skill('one'),
-    'plugins/new/skills/suite/two/SKILL.md': skill('two'),
   });
-  assert.deepEqual(orphans(root), ['plugins/new/skills/suite/two/SKILL.md']);
+  assert.deepEqual(orphans(root), ['plugins/new/skills/suite/one/SKILL.md']);
 });

@@ -85,12 +85,15 @@ Skills run with the user's credentials, on the user's machine. Treat a skill as 
   catalog entry ([x927](https://github.com/ai-ecoverse/x927)).
 - A marketplace file is hand-written apart from those two fields. A new plugin gets its
   entry there by hand, with `name`, `source` and `category`; the build fills in the rest.
-- Seven plugins have no root `plugin.json` yet and keep their hand-written manifests. The
-  Commerce plugins and `adobe-for-creativity` are brought in from elsewhere. `app-builder`,
-  `adobe-for-developers` and `aem-project-management` would lose something in GitHub Copilot
-  CLI: with a root `plugin.json` it loads only the folders directly under `skills/`, and
-  hooks only from `com.github.copilot/hooks/hooks.json`. `app-builder` has skills nested
-  deeper, and the other two have hooks elsewhere, one of which asks before a deletion.
+- Every plugin has a root `plugin.json`. GitHub Copilot CLI reads it in place of the Claude
+  Code manifest, and then loads skills only from the folders directly under `skills/`, and
+  hooks only from `com.github.copilot/hooks/hooks.json`. Claude Code reads hooks from
+  `hooks/hooks.json`. So a plugin with hooks has both files, with the same content, and
+  none inline in a manifest. CI checks that: without its copy, the hook of
+  `adobe-for-developers` that asks before a deletion does not run in Copilot CLI.
+- A plugin brought in from another repository brings its `plugin.json`, `mcp.json`, skills
+  and hooks, not the generated manifests, and has its version from there: the Commerce
+  plugins, `adobe-for-creativity` and the skill of `run-workflow`.
 - A plugin's skills are the folders directly under `skills/`. No client looks below them, so
   a `SKILL.md` deeper down is a skill nobody can load. Move it up, or make it a reference
   that its parent skill links.
@@ -125,7 +128,7 @@ rules for that plugin; read it when you work there.
 - Don't change a version: `metadata.version` in a `SKILL.md` and `version` in a `plugin.json`
   are written by the release, and a pull request that changes one fails.
 - Say what you verified and how: the commands you ran, the eval run, the product version.
-- Don't edit a file that is synced from another repository; change it there. Commerce plugins
+- Don't edit a skill that is synced from another repository; change it there. Commerce plugins
   come from `adobe/aio-commerce-sdk`.
 - Changes to `.github/`, the marketplace files and the repository root need a review from
   their code owners.

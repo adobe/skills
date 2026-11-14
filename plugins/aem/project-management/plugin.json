@@ -1,0 +1,31 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aem-project-management",
+  "version": "1.0.0",
+  "description": "Project lifecycle management for AEM Edge Delivery Services - handover documentation, PDF generation, and project assistance",
+  "author": {
+    "name": "Adobe"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "adobe",
+    "aem",
+    "eds",
+    "edge-delivery-services",
+    "project",
+    "handover",
+    "documentation",
+    "whitepaper",
+    "pdf"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {}
+      },
+      "marketplace": {
+        "description": "Project lifecycle management for AEM Edge Delivery Services"
+      }
+    }
+  }
+}

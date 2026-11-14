@@ -1,8 +1,11 @@
-// Two rules for what is in plugins/, with one error annotation per violation:
+// Rules for what is in plugins/, with one error annotation per violation:
 //   codeowners   every plugin (a directory with .claude-plugin/plugin.json) has a line in
 //                .github/CODEOWNERS that starts with its path
 //   license      every SKILL.md has a license field in its frontmatter
-//   node scripts/check-plugins.mjs codeowners|license      (from the repository root)
+//   hooks        a plugin with a root plugin.json keeps its hooks in hooks/hooks.json and
+//                in com.github.copilot/hooks/hooks.json, the same in both
+//   source       every plugin has a root plugin.json, from which its manifests are built
+//   node scripts/check-plugins.mjs codeowners|license|hooks|source      (from the repository root)
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { summary, table } from './lib/actions.mjs';
@@ -55,6 +58,54 @@ export function licenses(root) {
     .map((file) => ({ file, ok: hasLicense(readFileSync(join(root, file), 'utf8')) }));
 }
 
+// A plugin's hooks, where each client that runs hooks looks for them. Claude Code reads
+// hooks/hooks.json. GitHub Copilot CLI reads the same file as long as a plugin has no root
+// plugin.json; with one, it reads com.github.copilot/hooks/hooks.json and nothing else
+// (checked with Copilot CLI 1.0.105). So a plugin with a root plugin.json has both files or
+// neither, with the same content, and no hooks inline in its manifest, where only Claude
+// Code would find them. Returns what is wrong, as { file, problem }.
+export function hookProblems(root) {
+  const problems = [];
+  const all = files(root);
+  const plugins = all.filter((file) => /^plugins\/(?:[^/]+\/)*plugin\.json$/.test(file) && !/\/\.[^/]+\/plugin\.json$/.test(file));
+  for (const manifest of plugins) {
+    const dir = manifest.slice(0, -'/plugin.json'.length);
+    let source;
+    try {
+      source = JSON.parse(readFileSync(join(root, manifest), 'utf8'));
+    } catch {
+      continue; // x927 reports a manifest that can't be read
+    }
+    if (!/agent-plugins\.org\/schemas\//.test(source.$schema ?? '')) continue;
+    const claude = `${dir}/hooks/hooks.json`;
+    const copilot = `${dir}/com.github.copilot/hooks/hooks.json`;
+    const read = (file) => (all.includes(file) ? readFileSync(join(root, file), 'utf8') : null);
+    const [forClaude, forCopilot] = [read(claude), read(copilot)];
+    if (source.extensions?.['io.github.ai-ecoverse.x927']?.targets?.claude?.hooks !== undefined) {
+      problems.push({ file: manifest, problem: `has hooks inline for Claude Code only; put them in ${claude} and ${copilot}` });
+    }
+    if (forClaude !== null && forCopilot === null) {
+      problems.push({ file: claude, problem: `GitHub Copilot CLI does not read this file in a plugin with a root plugin.json; copy it to ${copilot}` });
+    } else if (forClaude === null && forCopilot !== null) {
+      problems.push({ file: copilot, problem: `Claude Code does not read this file; copy it to ${claude}` });
+    } else if (forClaude !== null && forClaude !== forCopilot) {
+      problems.push({ file: copilot, problem: `differs from ${claude}; the two have to be the same file, so that each client runs the same hooks` });
+    }
+  }
+  return problems;
+}
+
+// Plugins that have a Claude Code manifest and no root plugin.json to build it from. An
+// import that copies a plugin's old layout over the new one would leave it like that, and
+// x927 leaves such a plugin alone without a word.
+export function withoutSource(root) {
+  const all = files(root);
+  return all
+    .filter((file) => file.endsWith('/.claude-plugin/plugin.json'))
+    .map((file) => file.slice(0, -'/.claude-plugin/plugin.json'.length))
+    .filter((dir) => !all.includes(`${dir}/plugin.json`));
+}
+
 function main() {
   const root = process.cwd();
   const rule = process.argv[2];
@@ -77,7 +128,19 @@ function main() {
     console.log(missing.length === 0 ? 'All SKILL.md files have a license field.' : `${missing.length} SKILL.md files have no license field.`);
     process.exit(missing.length === 0 ? 0 : 1);
   }
-  console.error('usage: check-plugins.mjs codeowners|license');
+  if (rule === 'hooks') {
+    const problems = hookProblems(root);
+    for (const { file, problem } of problems) console.log(`::error file=${file}::${file} ${problem}`);
+    console.log(problems.length === 0 ? 'Every plugin has its hooks where Claude Code and GitHub Copilot CLI look for them.' : `${problems.length} problem(s) with where plugins keep their hooks.`);
+    process.exit(problems.length === 0 ? 0 : 1);
+  }
+  if (rule === 'source') {
+    const missing = withoutSource(root);
+    for (const dir of missing) console.log(`::error file=${dir}/.claude-plugin/plugin.json::${dir} has no root plugin.json. The manifests are built from that file: add it (npx x927 init ${dir} writes one from the manifests that are there).`);
+    console.log(missing.length === 0 ? 'Every plugin has a root plugin.json.' : `${missing.length} plugin(s) have no root plugin.json.`);
+    process.exit(missing.length === 0 ? 0 : 1);
+  }
+  console.error('usage: check-plugins.mjs codeowners|license|hooks|source');
   process.exit(2);
 }
 

@@ -1,0 +1,37 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "commerce-app-management",
+  "version": "1.6.0",
+  "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "commerce",
+    "adobe",
+    "app-management",
+    "aio-commerce-sdk"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {},
+        "tessl": {
+          "name": "adobe/commerce-app-management",
+          "private": false,
+          "skills": [
+            "skills/commerce-app-init",
+            "skills/commerce-app-eventing",
+            "skills/commerce-app-webhooks",
+            "skills/commerce-app-business-config",
+            "skills/commerce-app-storage",
+            "skills/commerce-app-admin-ui",
+            "skills/commerce-app-api-mesh"
+          ]
+        }
+      }
+    }
+  }
+}

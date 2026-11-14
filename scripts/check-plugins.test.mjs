@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hasLicense, licenses, uncoveredPlugins } from './check-plugins.mjs';
+import { hasLicense, hookProblems, licenses, uncoveredPlugins, withoutSource } from './check-plugins.mjs';
 import { run, tree } from './lib/testing.mjs';
 
 const TREE = {
@@ -57,4 +57,46 @@ test('without a CODEOWNERS file the codeowners check fails', (t) => {
   const result = run(t, 'check-plugins.mjs', ['codeowners'], { cwd: tree(t, TREE) });
   assert.equal(result.status, 1);
   assert.match(result.stdout, /CODEOWNERS file not found/);
+});
+
+test('a plugin with a root plugin.json keeps its hooks where Claude Code and Copilot CLI both look, the same in both', (t) => {
+  const SCHEMA = '"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"';
+  const root = tree(t, {
+    'plugins/both/plugin.json': `{${SCHEMA},"name":"both"}`,
+    'plugins/both/hooks/hooks.json': '{"hooks":{}}',
+    'plugins/both/com.github.copilot/hooks/hooks.json': '{"hooks":{}}',
+    'plugins/none/plugin.json': `{${SCHEMA},"name":"none"}`,
+    'plugins/claude-only/plugin.json': `{${SCHEMA},"name":"claude-only"}`,
+    'plugins/claude-only/hooks/hooks.json': '{"hooks":{}}',
+    'plugins/copilot-only/plugin.json': `{${SCHEMA},"name":"copilot-only"}`,
+    'plugins/copilot-only/com.github.copilot/hooks/hooks.json': '{"hooks":{}}',
+    'plugins/drift/plugin.json': `{${SCHEMA},"name":"drift"}`,
+    'plugins/drift/hooks/hooks.json': '{"hooks":{"PreToolUse":[]}}',
+    'plugins/drift/com.github.copilot/hooks/hooks.json': '{"hooks":{}}',
+    'plugins/inline/plugin.json': `{${SCHEMA},"name":"inline","extensions":{"io.github.ai-ecoverse.x927":{"targets":{"claude":{"hooks":{}}}}}}`,
+    // without a root plugin.json, Copilot CLI reads hooks/hooks.json itself
+    'plugins/legacy/.claude-plugin/plugin.json': '{"name":"legacy"}',
+    'plugins/legacy/hooks/hooks.json': '{"hooks":{}}',
+  });
+  assert.deepEqual(hookProblems(root).map(({ file, problem }) => `${file}: ${problem.split(';')[0].slice(0, 40)}`), [
+    'plugins/claude-only/hooks/hooks.json: GitHub Copilot CLI does not read this fi',
+    'plugins/copilot-only/com.github.copilot/hooks/hooks.json: Claude Code does not read this file',
+    'plugins/drift/com.github.copilot/hooks/hooks.json: differs from plugins/drift/hooks/hooks.j',
+    'plugins/inline/plugin.json: has hooks inline for Claude Code only',
+  ]);
+  const result = run(t, 'check-plugins.mjs', ['hooks'], { cwd: root });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /::error file=plugins\/drift\/com\.github\.copilot\/hooks\/hooks\.json::/);
+});
+
+test('a plugin with a Claude Code manifest and no root plugin.json is found', (t) => {
+  const root = tree(t, {
+    'plugins/a/plugin.json': '{}',
+    'plugins/a/.claude-plugin/plugin.json': '{}',
+    'plugins/product/b/.claude-plugin/plugin.json': '{}',
+  });
+  assert.deepEqual(withoutSource(root), ['plugins/product/b']);
+  const result = run(t, 'check-plugins.mjs', ['source'], { cwd: root });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /::error file=plugins\/product\/b\/\.claude-plugin\/plugin\.json::plugins\/product\/b has no root plugin\.json/);
 });

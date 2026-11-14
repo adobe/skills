@@ -186,6 +186,14 @@ jobs:
       - name: Check CODEOWNERS covers all plugin directories
         run: node scripts/check-plugins.mjs codeowners
 
+      # Claude Code reads hooks/hooks.json; GitHub Copilot CLI reads
+      # com.github.copilot/hooks/hooks.json in a plugin with a root plugin.json
+      - name: Check that plugins keep their hooks where each client looks for them
+        run: node scripts/check-plugins.mjs hooks
+
+      - name: Check that every plugin has a root plugin.json
+        run: node scripts/check-plugins.mjs source
+
   license-field:
     runs-on: ubuntu-latest
     steps:
