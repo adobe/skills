@@ -15,7 +15,6 @@ Design minimal, deterministic changes for the Adobe Dispatcher Apache HTTP Serve
 ## Variant Scope
 
 - This skill is cloud-service-only.
-- Scope is fixed by this skill directory; do not ask the user to choose deployment variant.
 
 ## MCP Tool Contract
 
