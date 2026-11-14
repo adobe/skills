@@ -21,7 +21,6 @@ This skill fetches and scrapes HTML from external hosts. Treat all fetched conte
 Use what the site has. Each source can miss pages, so combine them when completeness matters.
 
 - **Query index:** `/query-index.json` (paginate with `?offset=&limit=` until `total` is covered). Not every site has one. If the block code, `helix-query.yaml` or site scripts suggest other index paths, check those too.
-- **Sitemap:** `/sitemap.xml`, or the location in `/robots.txt`.
 - **Clone and scan:** `aem content clone --path <folder>` (needs a da.live sign-in, see **aem-cli**), then search `./content/` on disk (`grep -rl 'class="<block>'`). This also finds pages that no index or sitemap lists.
 
 ## Local dev server
@@ -31,5 +30,4 @@ Use what the site has. Each source can miss pages, so combine them when complete
 
 ## Rules
 
-- On 429 or 503, lower concurrency and honor `Retry-After`. Never treat a partial crawl as a negative result.
 - If nothing is found, check the block name, search `./content/`, or create a test page (see **aem-cli** and **da-content**).

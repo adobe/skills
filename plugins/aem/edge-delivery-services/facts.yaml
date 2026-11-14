@@ -60,7 +60,6 @@
   source: aem-boilerplate 5cea543, scripts/aem.js loadBlock()
   used_by:
     - evals/testing-blocks-existing-test-setup
-    - skills/testing-blocks/SKILL.md
 
 - id: e2e-no-visual-asserts
   claim: >-
@@ -80,7 +79,6 @@
   question: How do you test that clicking an element in an EDS block sends an analytics event?
   used_by:
     - evals/testing-blocks-existing-test-setup
-    - skills/testing-blocks/SKILL.md
 
 - id: e2e-library-content
   claim: >-
