@@ -51,7 +51,7 @@ If tests stub all action responses with `page.route()`, you may not need a dev s
 
 ```yaml
 steps:
-  - uses: actions/checkout@v4
+  - uses: actions/checkout@v7
   - uses: actions/setup-node@v4
     with:
       node-version: '18'
@@ -146,7 +146,7 @@ jobs:
     needs: unit-tests  # run after unit tests pass
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with: { node-version: '18', cache: 'npm' }
       - run: npm ci
