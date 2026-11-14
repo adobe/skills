@@ -1,0 +1,1 @@
+{ "site": "Example", "origin": "https://www.example.com", "scopePath": "/en/", "template": { "bodyAttr": "data-template" }, "parser": { "profile": "generic" } }

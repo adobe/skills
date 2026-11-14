@@ -1,0 +1,18 @@
+{
+ "cut": 0.8,
+ "types": [
+  {
+   "type": "page",
+   "template": "page",
+   "variant_codes": [
+    "page#1"
+   ],
+   "rep_url": "https://www.example.com/en/a.html",
+   "urls": [
+    "https://www.example.com/en/a.html",
+    "https://www.example.com/en/b.html"
+   ],
+   "url_count": 2
+  }
+ ]
+}

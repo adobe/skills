@@ -1,0 +1,46 @@
+{
+  "/docs/getting-started": {
+    "exit": 0,
+    "file": "stardust/migrated/docs/getting-started.html",
+    "type": "page",
+    "findings": [
+      {
+        "sev": "P2",
+        "rule": "metadata",
+        "msg": "no metadata block — query-index rows will be thin (title/description/og:image)"
+      }
+    ],
+    "gate": "PASS"
+  },
+  "/docs/": {
+    "exit": 1,
+    "file": "stardust/migrated/docs/index.html",
+    "type": "page",
+    "findings": [
+      {
+        "sev": "P0",
+        "rule": "path-safety",
+        "msg": "path is not delivery-safe; normalize /docs/ → /docs (record in redirects.tsv)"
+      },
+      {
+        "sev": "P2",
+        "rule": "metadata",
+        "msg": "no metadata block — query-index rows will be thin (title/description/og:image)"
+      }
+    ],
+    "gate": "FAIL"
+  },
+  "/": {
+    "exit": 0,
+    "file": "stardust/migrated/index.html",
+    "type": "page",
+    "findings": [
+      {
+        "sev": "P2",
+        "rule": "metadata",
+        "msg": "no metadata block — query-index rows will be thin (title/description/og:image)"
+      }
+    ],
+    "gate": "PASS"
+  }
+}

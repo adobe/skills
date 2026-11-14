@@ -1,0 +1,1 @@
+[{"template":"page","code":"page#1","pages":3,"core":["banner","richtext","langnav"],"optional":["quicksearch","title","image"],"urls":["https://www.example.com/en/home.html","https://www.example.com/en/about.html","https://www.example.com/en/news.html"],"distinct_sets":2,"representative":"https://www.example.com/en/home.html"}]

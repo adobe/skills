@@ -1,0 +1,13 @@
+{
+  "_provenance": { "writtenBy": "golden fixture", "at": "2026-01-01" },
+  "site": { "originUrl": "https://www.example.com", "name": "Example" },
+  "direction": { "status": "active" },
+  "flow": "replica",
+  "flowChosenAt": "2026-01-01T00:00:00Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    { "slug": "home", "url": "/", "title": "Home", "status": "approved", "type": "landing" },
+    { "slug": "docs", "url": "/docs/", "title": "Documentation", "status": "approved", "type": "docs" },
+    { "slug": "docs-getting-started", "url": "/docs/getting-started.html", "title": "Getting started", "status": "directed", "type": "docs" }
+  ]
+}
