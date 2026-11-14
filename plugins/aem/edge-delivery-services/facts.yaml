@@ -1267,8 +1267,7 @@
     instance by the author. How does the author choose, and what does the
     block element carry?
   source: https://www.aem.live/developer/markup-sections-blocks (Block Options)
-  used_by:
-    - skills/content-modeling/SKILL.md
+  used_by: []
 
 - id: cm-simple-link-lists
   claim: >-
