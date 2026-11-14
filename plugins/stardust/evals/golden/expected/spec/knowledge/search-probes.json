@@ -1,0 +1,13 @@
+[
+ {
+  "term": "tennis",
+  "expect_count": 12,
+  "expect_titles": [
+   "A"
+  ],
+  "expect_includes": null,
+  "feature": "site-search",
+  "path": "/en/search",
+  "param": "q"
+ }
+]
