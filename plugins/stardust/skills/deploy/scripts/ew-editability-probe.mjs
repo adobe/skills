@@ -71,9 +71,18 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue, no-param-reassign */
 import fs from 'fs';
 import path from 'path';
-import { createRequire } from 'module';
-import { pathToFileURL } from 'url';
 import { cssAsText } from './css-as-text.mjs';
+
+// The browser front door is resolved lazily: importing this module (the tests, block-roundtrip) must not need it.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
+function frontDoor() {
+  if (!BROWSER) {
+    console.error('ew-editability-probe: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+    process.exit(2);
+  }
+  return import(BROWSER.href);
+}
 
 export const EDITABLE = 'h1, h2, h3, h4, h5, h6, p, ol, ul, pre, blockquote';
 export const QE_CSS = 'https://raw.githubusercontent.com/adobe/da-nx/main/nx/public/plugins/quick-edit/quick-edit.css';
@@ -465,7 +474,8 @@ export async function runDecorate(page, names) {
 export async function probeContent(browser, { content, blocksDir, stylesPath, width = 1440, simulate = false, extraCss = '', instrumentFirst = true }) {
   const mainHtml = readMainHtml(content);
   const styles = fs.readFileSync(stylesPath, 'utf8');
-  const page = await browser.newPage({ viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
+  const { newPage } = await frontDoor();
+  const page = await newPage(browser, { viewport: { width, height: 1000 }, reducedMotion: 'reduce' });
   // body.appear satisfies the vanilla foundation's body{display:none} gate the
   // way loadEager() does; body > header is hidden so sticky headers do not land
   // in tall element screenshots.
@@ -494,7 +504,8 @@ export async function probeContent(browser, { content, blocksDir, stylesPath, wi
 // URL mode: intercept the document response, instrument it in a scratch page,
 // let the served page's own scripts decorate, survey. Returns { texts, rows, sim, page, ctx }.
 export async function probeUrl(browser, url, { width = 1440, simulate = false, settleMs = 500, timeoutMs = 30000, waitUntil = 'networkidle', gotoTimeoutMs = 45000 } = {}) {
-  const ctx = await browser.newContext({ viewport: { width, height: 900 } });
+  const { newContext, goto } = await frontDoor();
+  const ctx = await newContext(browser, { viewport: { width, height: 900 } });
   const scratch = await ctx.newPage();
   const page = await ctx.newPage();
   let texts = [];
@@ -511,7 +522,7 @@ export async function probeUrl(browser, url, { width = 1440, simulate = false, s
     texts = out.texts;
     return route.fulfill({ response: resp, body: out.html, headers: { ...resp.headers(), 'content-type': 'text/html; charset=utf-8' } });
   });
-  await page.goto(url, { waitUntil, timeout: gotoTimeoutMs });
+  await goto(page, url, { waitUntil, timeout: gotoTimeoutMs });
   await page.waitForFunction(() => [...document.querySelectorAll('main .section')].every((s) => s.dataset.sectionStatus === 'loaded'), null, { timeout: timeoutMs }).catch(() => {});
   await page.waitForTimeout(settleMs);
   const rows = await page.evaluate(survey, texts);
@@ -522,20 +533,6 @@ export async function probeUrl(browser, url, { width = 1440, simulate = false, s
     sim = await page.evaluate(simulateEditor, texts);
   }
   return { texts, rows, sim, page, ctx };
-}
-
-// Resolve playwright from the cwd project first (plugin scripts live outside any
-// node_modules tree), then bare.
-export async function loadChromium() {
-  const normalize = (mod) => (mod.chromium ? mod : (mod.default?.chromium ? mod.default : null));
-  try {
-    const req = createRequire(path.join(process.cwd(), 'package.json'));
-    const mod = normalize(await import(pathToFileURL(req.resolve('playwright')).href));
-    if (mod) return mod.chromium;
-  } catch { /* fall through */ }
-  const mod = normalize(await import('playwright'));
-  if (!mod) throw new Error('playwright not found: run from a project that has it installed (npm i -D playwright)');
-  return mod.chromium;
 }
 
 // ──────────────────────────────────────────────────────────────── CLI ──
@@ -572,8 +569,8 @@ async function main() {
   }
   const opts = parseArgs(process.argv);
   if (!opts.urls.length && !opts.content) { process.stderr.write(USAGE); process.exit(2); }
-  const chromium = await loadChromium();
-  const browser = await chromium.launch();
+  const { openBrowser } = await frontDoor();
+  const browser = await openBrowser({ mode: 'plain' });
   const results = [];
   let fail = false;
   let probeError = false;
