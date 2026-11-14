@@ -717,6 +717,12 @@ check('selectPages — a page named with --only and given --eds-host is selected
   assert.deepEqual([migratedPathOf('stardust/migrated/index.html'), migratedPathOf('stardust/migrated/a/b/index.html'), migratedPathOf('/w/stardust/migrated/x.html'), migratedPathOf('elsewhere/x.html'), migratedPathOf(undefined)], ['/', '/a/b', '/x', null, null]);
   assert.equal(parseArgs(['node', 'x', '--eds-host', 'main--x--y.aem.page/']).edsHost, 'https://main--x--y.aem.page');
 });
+check('selectPages — prototype stage: a row without prototypePath is selected when the conventional prototype file exists; without the file it is not', () => {
+  const state = { pages: [{ slug: 'a', url: 'https://origin.example/a' }, { slug: 'b', url: 'https://origin.example/b', prototypePath: 'stardust/prototypes/b-v2.html' }, { slug: 'c', url: 'https://origin.example/c' }] };
+  const sel = selectPages({ state, stage: 'prototype', protoBase: 'http://localhost:9000', protoExists: (f) => f === 'stardust/prototypes/a-proposed.html' });
+  assert.deepEqual(sel.pages.map((p) => [p.slug, p.liveUrl]), [['a', 'http://localhost:9000/a-proposed.html'], ['b', 'http://localhost:9000/b-v2.html']]);
+  assert.deepEqual(selectPages({ state, stage: 'prototype' }).pages.map((p) => p.slug), ['b'], 'no file check: as before');
+});
 await checkAsync('recordRounds: a published measurement with a verdict is a round of its page in gates/<slug>-<width>/rounds.json; error rows, the prototype stage and no rows record nothing; at the cap the slug is named; a broken ledger never throws', async () => {
   const root = mkdtempSync(join(tmpdir(), 'gate-all-rounds-'));
   try {

@@ -221,11 +221,14 @@ const originOf = (u) => { try { return new URL(u).origin; } catch { return null;
  * source page: `noSourcePage`) or no build URL is returned in `skipped` [{ slug, why }], never guessed.
  * `only` filters both lists. No I/O.
  */
-export function selectPages({ state = null, coverage = null, stage = 'published', protoBase = null, edsHost = null, only = null } = {}) {
+export function selectPages({ state = null, coverage = null, stage = 'published', protoBase = null, edsHost = null, only = null, protoExists = () => false } = {}) {
   const statePages = (state && Array.isArray(state.pages) ? state.pages : []).filter((p) => p && typeof p === 'object');
   const keep = (p) => !only || only.includes(p.slug);
   if (stage === 'prototype') {
-    const pages = statePages.filter((p) => p.prototypePath && p.url).map((p) => ({ ...p, liveUrl: `${protoBase || 'http://localhost:8791'}/${basename(p.prototypePath)}` })).filter(keep);
+    // A row not yet advanced to `prototyped` has no prototypePath: the prototype table runs before state.mjs
+    // advance in a recreate unit (recorded: a hand-written state file). The conventional file stands in when it exists.
+    const protoOf = (p) => p.prototypePath || (p.slug && protoExists(`stardust/prototypes/${p.slug}-proposed.html`) ? `stardust/prototypes/${p.slug}-proposed.html` : null);
+    const pages = statePages.filter((p) => p.url && protoOf(p)).map((p) => ({ ...p, prototypePath: protoOf(p), liveUrl: `${protoBase || 'http://localhost:8791'}/${basename(protoOf(p))}` })).filter(keep);
     return { pages, skipped: [], from: { state: pages.length, coverage: 0 } };
   }
   const fromState = statePages.filter((p) => p.status === 'deployed' && p.liveUrl && p.url);
@@ -463,7 +466,7 @@ async function main() {
   if ((opts.clip || opts.content) && !DIFF_DIR) { console.error('gate-all: the diff skill\'s scripts dir was not found next to this one (../../diff/scripts or ../diff) — copy it (replica SKILL.md § Setup) or pass --no-probes'); process.exit(1); }
   const state = readJson(opts.state);
   const coverage = opts.stage === 'prototype' ? null : readJsonSafe(opts.coverage);
-  const { pages, skipped, from } = selectPages({ state, coverage, stage: opts.stage, protoBase: opts.protoBase, edsHost: opts.edsHost, only: opts.only });
+  const { pages, skipped, from } = selectPages({ state, coverage, stage: opts.stage, protoBase: opts.protoBase, edsHost: opts.edsHost, only: opts.only, protoExists: (f) => existsSync(f) });
   if (opts.stage === 'prototype' && !opts.protoBase) console.error('gate-all: --stage prototype without --proto-base — assuming http://localhost:8791 (serve the prototypes dir there, replica SKILL.md § Phase 4)');
   for (const s of skipped) console.error(`gate-all: ${s.slug} NOT gated — ${s.why}`);
   if (!pages.length) {
