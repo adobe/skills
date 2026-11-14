@@ -19,7 +19,7 @@ This skill fetches content from external sources including the Block Party index
 - **Block Collection** (github.com/adobe/aem-block-collection) is Adobe's vetted reference set. Live example: `https://main--aem-block-collection--adobe.aem.live/block-collection/{block}`. Prefer it for standard blocks; list the current blocks with `search-block-collection-github.js ""`. Its docs also cover default content (breadcrumbs, buttons, metadata, section metadata); find those with `search-block-collection.js`.
 - **Block Party** (https://www.aem.live/developer/block-party/) is the community catalog: blocks, sidekick and DA plugins, build tooling, framework integrations, code snippets. It is the only catalog for plugins, build tooling and integrations. Use approved entries only, and review their code for performance, accessibility and security before adapting.
 
-Search under alternative names too (FAQ → accordion, slideshow → carousel):
+Search:
 
 ```bash
 node <SKILL_DIR>/scripts/search-block-collection-github.js <term>   # blocks in the repo

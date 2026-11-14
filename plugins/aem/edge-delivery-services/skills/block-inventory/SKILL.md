@@ -16,8 +16,7 @@ This skill fetches content from live example URLs and external block references.
 
 ## Inventory
 
-- **Local:** folders under `blocks/`; purpose from the block's code or README.
-- **Block Collection (can be added):** list the current blocks with `node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js ""`, where `<SKILL_DIR>` is this file's directory. Skip header and footer (page chrome). Include each block's example URL, `https://main--aem-block-collection--adobe.aem.live/block-collection/{block}`.
+- **Block Collection (can be added):** list the current blocks with `node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js ""`, where `<SKILL_DIR>` is this file's directory. Include each block's example URL, `https://main--aem-block-collection--adobe.aem.live/block-collection/{block}`.
 
 Output:
 
