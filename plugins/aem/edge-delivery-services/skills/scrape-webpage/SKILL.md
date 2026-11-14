@@ -157,8 +157,22 @@ install is required.
 
 **Site blocks the scrape or the navigation fails:**
 
-Installing Google Chrome on the machine running the scrape is the single biggest lever.
-The script picks it up automatically, with no configuration needed.
+The first progress lines on stderr say which browser ran: `Browser: Google Chrome <version>`,
+or a warning with the reason Chrome could not be launched followed by
+`Browser: bundled Chromium <version>`. If a bot-protected site blocks a run that used the
+bundled Chromium, install Google Chrome on the machine running the scrape and run it again.
+The script picks Chrome up automatically, with no configuration needed. It already sends a
+User-Agent and client hints that match the browser that launched, so do not add stealth
+plugins or randomized User-Agents, which make that identity inconsistent.
+
+**Certificate errors (`net::ERR_CERT_*`):**
+
+The scrape refuses a source whose TLS certificate does not validate. Scraped HTML and images
+become migration source, so content served over an untrusted certificate could have been
+swapped in transit. Do not disable certificate validation in the script. Scrape a host that
+presents a valid certificate, or get the source host a certificate the browser trusts. The
+page and its images are fetched by the browser, not by Node, so `NODE_EXTRA_CA_CERTS` has no
+effect on these errors.
 
 **Playwright or Sharp not installed:**
 ```bash

@@ -70,16 +70,25 @@ const UA_PLATFORMS = {
  * Launch a browser, preferring the locally installed Google Chrome.
  *
  * Chrome carries a real TLS fingerprint and a non-headless build string, which
- * gets past bot detection that rejects bundled Chromium. When Chrome is not
- * installed the Playwright-managed Chromium is used instead, so the script
- * keeps working in containers and CI.
+ * gets past bot detection that rejects bundled Chromium. When Chrome cannot be
+ * launched the Playwright-managed Chromium is used instead, so the script keeps
+ * working in containers and CI. The browser that actually ran is always logged,
+ * along with the reason whenever Chrome was skipped, so a broken Chrome install
+ * is visible instead of silently downgrading the run.
  */
 async function launchBrowser() {
+  let browser;
+  let name = 'Google Chrome';
   try {
-    return await chromium.launch({ channel: 'chrome', args: BROWSER_ARGS });
-  } catch {
-    return chromium.launch({ args: BROWSER_ARGS });
+    browser = await chromium.launch({ channel: 'chrome', args: BROWSER_ARGS });
+  } catch (error) {
+    const reason = error.message.split('\n')[0];
+    console.error(`⚠️  Google Chrome could not be launched (${reason}), falling back to bundled Chromium`);
+    browser = await chromium.launch({ args: BROWSER_ARGS });
+    name = 'bundled Chromium';
   }
+  console.error(`Browser: ${name} ${browser.version()}`);
+  return browser;
 }
 
 /**
@@ -98,7 +107,6 @@ function buildContextOptions(browser) {
     userAgent: `Mozilla/5.0 (${platform.ua}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${majorVersion}.0.0.0 Safari/537.36`,
     locale: 'en-US',
     timezoneId: 'America/Los_Angeles',
-    ignoreHTTPSErrors: true,
     extraHTTPHeaders: {
       'sec-ch-ua': `"Google Chrome";v="${majorVersion}", "Chromium";v="${majorVersion}", "Not=A?Brand";v="24"`,
       'sec-ch-ua-mobile': '?0',
