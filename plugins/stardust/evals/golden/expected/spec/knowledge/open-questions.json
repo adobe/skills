@@ -1,0 +1,44 @@
+[
+ {
+  "id": "Q-1",
+  "area": "Media",
+  "owner": "stakeholder",
+  "blocking": 0,
+  "question": "Keep the player?",
+  "options": [
+   "yes",
+   "no"
+  ],
+  "default_assumption": "yes",
+  "default_option": 0,
+  "impact_rule": "features[player].reach_pages",
+  "impact": 1,
+  "link": null,
+  "features": [
+   "player"
+  ],
+  "answer": null,
+  "effective": "yes"
+ },
+ {
+  "id": "Q-2",
+  "area": "Scope",
+  "owner": "stakeholder",
+  "blocking": 0,
+  "question": "Empty pages?",
+  "options": [],
+  "default_assumption": "migrate",
+  "default_option": null,
+  "impact_rule": "urls sitemap flag=empty",
+  "impact": 1,
+  "link": null,
+  "features": [],
+  "answer": {
+   "answer": "retire them",
+   "option": null,
+   "by": "owner",
+   "at": "2026-01-01"
+  },
+  "effective": "retire them"
+ }
+]

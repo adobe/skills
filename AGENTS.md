@@ -33,6 +33,8 @@ repository; the pull request review reads them too.
   twice, doesn't belong in a skill: the review names each such line and denies the pull
   request until the line is gone or cut down to what the model missed. What the model gets
   wrong or doesn't know is what a skill is for.
+- A line that guards an action (see Security) is not redundant, whatever the small model knows:
+  it stays.
 - Every path, command, flag, tool name and other skill that a skill names must exist. A skill
   that routes to something that isn't there fails at the worst moment.
 - Write for any agent harness unless the plugin says it needs one. Don't name a harness's tools
