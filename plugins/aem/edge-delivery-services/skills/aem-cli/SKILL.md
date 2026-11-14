@@ -3,7 +3,7 @@ name: aem-cli
 description: Use this when running or troubleshooting the local Edge Delivery dev server or the Adobe AEM CLI (@adobe/aem-cli, formerly helix-cli; `aem up`, `aem content`, `aem import`). Covers starting `aem up` and its port (git worktrees, a port already in use), serving local test pages from `./content/`, cloning da.live content locally with `aem content clone` to preview, inspect or edit it and pushing edits back, `aem up` failures (cert errors, proxy 404s, local pages not found), .env / AEM_* configuration, HTTPS, installing or upgrading the CLI, and the importer server. For da.live content-format rules or the DA Source API use da-content; for writing EDS block code use content-driven-development.
 license: Apache-2.0
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # AEM CLI
