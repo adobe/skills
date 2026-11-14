@@ -82,7 +82,7 @@ Findings are in each unit's `.modernize/findings.json`. Present them by priority
 | Code | Meaning | Your action |
 |---|---|---|
 | RM-101 CRITICAL | Third-party dependency in a bundle or `ui.apps` | Decide with the user how it reaches Cloud Service: embed it in `all` (target `/apps/<appId>-packages/application/install`) or drop it if AEM provides it. [manual-followups §2](references/manual-followups.md) |
-| RM-107 CRITICAL | Content under `/libs` | Adobe owns `/libs`; customer code must not change it. With the user, move the customization to an `/apps` overlay or remove it. |
+| RM-107 CRITICAL | Content under `/libs` | Moved to `ui.apps` unchanged and flagged. Decide each item with the user. |
 | RM-108 HIGH | Run-mode folder Cloud Service ignores (e.g. `config.qa`) | Moved unchanged. Hand to the `migration` skill's OSGi branch (unsupported run modes): the user decides which Cloud run mode each maps to. Never merge folders silently — conflicting values would be lost. |
 | RM-901 NORMAL | Repoinit config moved without conversion | Nothing required. |
 | RM-902 HIGH | Bundle uses Felix SCR / `maven-bundle-plugin` | Hand to `code-assessment` (SCR → OSGi DS annotations, `bnd-maven-plugin`). |

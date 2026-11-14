@@ -49,7 +49,6 @@ Decide each one with the user:
   Cloud Service already provides it.
 - **Not available from any repository:** publish it to the team's repository manager, or wrap it in a
   project bundle.
-- **Provided by AEM** (an API AEM exports): remove the embed and keep the dependency `provided`.
 
 **Fixture — two distinct cases:**
 - **`mbassador`** (`net.engio:mbassador:1.3.2`): a direct dependency **and** a direct `<embedded>` in the legacy
@@ -103,10 +102,8 @@ The merge step (bundle POM dependency/plugin/profile merging into the modernized
 **`groupId`+`artifactId` only** — version is excluded from the equality key. When both the source and
 destination declare a version for the same `groupId:artifactId`, the higher one (compared via Maven's
 `ComparableVersion`, not string/lexical order) wins; if only one side declares a version, the existing
-(destination/archetype) value is kept. This is a deliberate, sensible default — it is **not** in the bugs
-list (§9 of `transform-rules.md`) — but "higher version wins" is a syntactic rule, not a semantic one: it
-has no idea whether the winning version is actually API-compatible with the code that was written against
-the losing one.
+(destination/archetype) value is kept. This is a deliberate default — it is **not** in the bugs
+list (§9 of `transform-rules.md`).
 
 **Where this bites hardest:** the archetype pins its own dependency versions (e.g. `aem.sdk.api`,
 `core.wcm.components.version`, `aemanalyser.version` in the parent's `<properties>`/`<dependencyManagement>`)
@@ -114,18 +111,14 @@ independently of whatever the legacy project's bundles assumed. A merge can sile
 materially different version of a shared dependency than the one it was last built and tested against.
 
 **Action:** after POM refactoring, diff every dependency version that changed as a result of the merge
-(not just ones a build error surfaces) and have a human confirm the winning version is actually intended —
-don't rely solely on `mvn compile` succeeding, since a version bump can be behaviorally incompatible without
-being a compile error.
+(not just ones a build error surfaces) and have a human confirm the winning version is actually intended.
 
 ## 6. Java breakage from the `uber-jar` → `aem-sdk-api` swap — hand off to `code-assessment`
 
 Dropping `com.adobe.aem:uber-jar` and relying on the archetype's pre-seeded `aem-sdk-api` (§6 of
 `transform-rules.md`) is a **version swap**, not an API-compatible one: `uber-jar` had no fixed
 relationship to any particular Cloud SDK release, and `aem-sdk-api` gets the version the plan's archetype
-templates carry (by default the latest AEM SDK). Code written against `uber-jar` APIs can fail to compile
-against that `aem-sdk-api` surface — removed/renamed classes, changed method signatures, deprecated-and-removed
-APIs.
+templates carry (by default the latest AEM SDK).
 
 **Fixture:** `core/pom.xml` depends on `com.adobe.aem:uber-jar` directly; this is dropped, and
 the bundle's bare `aem-sdk-api` dependency (as in the archetype's `core/pom.xml`) (inheriting `scope=provided` and
