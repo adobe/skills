@@ -1,15 +1,128 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { drifted } from './check-generated.mjs';
+import { delimiter, dirname, join } from 'node:path';
+import { editedFields, planned } from './check-generated.mjs';
 import { MESSAGE, written } from './rebuild-plugins.mjs';
-import { commit, fakeBin, git, run, tree, write } from './lib/testing.mjs';
+import { SCRIPTS, commit, fakeBin, git, run, tree, write } from './lib/testing.mjs';
+
+// ---- the check of a pull request, with the real x927 from node_modules ----
+
+const BIN = join(SCRIPTS, '..', 'node_modules', '.bin');
+const REAL = { PATH: [BIN, dirname(process.execPath), '/usr/bin', '/bin'].join(delimiter) };
+const json = (value) => `${JSON.stringify(value, null, 2)}\n`;
+const plugin = (name, more = {}) => json({ $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', name, version: '1.0.0', description: `Plugin ${name}.`, ...more });
+const catalog = (...plugins) => json({ name: 'fixture', owner: { name: 'X' }, plugins });
+const entry = (name, more = {}) => ({ name, source: `./plugins/${name}`, ...more });
+
+const SOURCE = 'plugins/a/plugin.json';
+const CLAUDE = 'plugins/a/.claude-plugin/plugin.json';
+const MARKET = '.claude-plugin/marketplace.json';
+
+test('what x927 would write is read from its dry run, without the notes after the last file', () => {
+  const files = planned('--- plugins/a/.claude-plugin/plugin.json ---\n{\n  "name": "a"\n}\n\n--- .claude-plugin/marketplace.json ---\n{\n  "plugins": []\n}\n\nnote: plugins/b is not listed\n');
+  assert.deepEqual([...files], [
+    ['plugins/a/.claude-plugin/plugin.json', '{\n  "name": "a"\n}\n'],
+    ['.claude-plugin/marketplace.json', '{\n  "plugins": []\n}\n'],
+  ]);
+});
+
+test('in a marketplace file, only a generated field that the pull request changed counts as edited', () => {
+  const base = { plugins: [entry('a', { description: 'old', version: '1.0.0', category: 'x' })] };
+  const built = { plugins: [entry('a', { description: 'new', version: '1.1.0', category: 'y' }), entry('b', { description: 'B', version: '1.0.0' })] };
+  // behind, and untouched: not edited. A hand-written field and a new entry: not edited.
+  assert.deepEqual(editedFields({ plugins: [entry('a', { description: 'old', version: '1.0.0', category: 'y' }), entry('b')] }, built, base), []);
+  assert.deepEqual(editedFields({ plugins: [entry('a', { description: 'mine', version: '1.0.0', category: 'y' })] }, built, base), ['the `description` of the `a` entry']);
+  assert.deepEqual(editedFields({ plugins: [entry('b')] }, built, null), []);
+});
+
+// A repository whose main has one plugin with everything built, and a change on top of it.
+function branch(t, change) {
+  const root = tree(t, { [SOURCE]: plugin('a'), [MARKET]: catalog(entry('a', { category: 'x' })), 'README.md': 'readme' });
+  const built = spawnSync(join(BIN, 'x927'), ['build', '--all'], { cwd: root, encoding: 'utf8' });
+  assert.equal(built.status, 0, `the real x927 has to be installed (npm ci): ${built.stderr || built.error}`);
+  const base = commit(root, 'base');
+  write(root, typeof change === 'function' ? change(root) : change);
+  commit(root, 'change');
+  return { root, base };
+}
+const check = (t, { root, base }) => run(t, 'check-generated.mjs', [base], { cwd: root, env: REAL });
+const read = (root, file) => JSON.parse(readFileSync(join(root, file), 'utf8'));
+
+test('a pull request that changes nothing generated passes', (t) => {
+  const result = check(t, branch(t, { 'README.md': 'changed' }));
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Every generated plugin file is what the build writes/);
+});
+
+test('a changed plugin.json with the generated files left alone passes: CI rebuilds them after the merge', (t) => {
+  const result = check(t, branch(t, { [SOURCE]: plugin('a', { version: '1.1.0' }) }));
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /CI rebuilds them on main after the merge:\n  plugins\/a\/\.claude-plugin\/plugin\.json\n  \.claude-plugin\/marketplace\.json/);
+  assert.doesNotMatch(result.stdout, /::error/);
+});
+
+test('a generated manifest edited by hand fails, and is named', (t) => {
+  const result = check(t, branch(t, (root) => ({ [CLAUDE]: json({ ...read(root, CLAUDE), description: 'edited by hand' }) })));
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /::error file=plugins\/a\/\.claude-plugin\/plugin\.json::.* is generated/);
+  assert.match(result.stdout, /::error::1 generated file\(s\) are changed here, and not to what the build writes: plugins\/a\/\.claude-plugin\/plugin\.json/);
+  assert.match(result.summary, /git checkout \S+ -- plugins\/a\/\.claude-plugin\/plugin\.json/);
+});
+
+test('a hand edit fails also when plugin.json changed with it; the marketplace file is only behind', (t) => {
+  const result = check(t, branch(t, (root) => ({ [SOURCE]: plugin('a', { version: '1.1.0' }), [CLAUDE]: json({ ...read(root, CLAUDE), version: '9.9.9' }) })));
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /not to what the build writes: plugins\/a\/\.claude-plugin\/plugin\.json\n/);
+  assert.match(result.stdout, /CI rebuilds them on main after the merge:\n  \.claude-plugin\/marketplace\.json/);
+});
+
+test('generated files changed to exactly what the build writes pass', (t) => {
+  const result = check(t, branch(t, (root) => {
+    write(root, { [SOURCE]: plugin('a', { version: '1.1.0' }) });
+    spawnSync(join(BIN, 'x927'), ['build', '--all'], { cwd: root });
+    return {};
+  }));
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /Every generated plugin file is what the build writes/);
+});
+
+test('a new plugin with its plugin.json and a hand-written marketplace entry passes', (t) => {
+  const result = check(t, branch(t, (root) => ({
+    'plugins/b/plugin.json': plugin('b'),
+    [MARKET]: json({ ...read(root, MARKET), plugins: [...read(root, MARKET).plugins, entry('b', { category: 'x' })] }),
+  })));
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /CI rebuilds them on main after the merge:\n  plugins\/b\/\.claude-plugin\/plugin\.json\n  \.claude-plugin\/marketplace\.json/);
+});
+
+test('the description of an existing marketplace entry changed by hand fails; its category is hand-written and passes', (t) => {
+  const edit = (field, value) => (root) => {
+    const market = read(root, MARKET);
+    market.plugins[0][field] = value;
+    return { [MARKET]: json(market) };
+  };
+  const description = check(t, branch(t, edit('description', 'Mine.')));
+  assert.equal(description.status, 1);
+  assert.match(description.stdout, /::error file=\.claude-plugin\/marketplace\.json::the `description` of the `a` entry in \.claude-plugin\/marketplace\.json comes from the plugin's plugin\.json/);
+  assert.doesNotMatch(description.summary, /git checkout/);
+  const category = check(t, branch(t, edit('category', 'y')));
+  assert.equal(category.status, 0, category.stdout + category.stderr);
+});
+
+test('a plugin.json that x927 refuses fails the check', (t) => {
+  const result = check(t, branch(t, { [SOURCE]: plugin('Not A Name') }));
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /::error::x927 build --all --dry-run failed: \S/);
+});
+
+// ---- the rebuild on main ----
 
 // A stand-in for x927: each plugins/<p>/plugin.json is the source of two generated files
 // that have to equal it. `build --all` writes the ones that differ and names them;
-// `diff --all` names them and exits 1. HOOK is a shell command that the first build runs.
+// HOOK is a shell command that the first build runs.
 const X927 = `status=0
 for src in plugins/*/plugin.json; do
   [ -f "$src" ] || continue
@@ -26,67 +139,11 @@ if [ "$1" = build ] && [ -n "$HOOK" ] && [ ! -f "$HOOK_DONE" ]; then touch "$HOO
 if [ "$1" = build ]; then echo "x927: built"; fi
 exit $status`;
 
-const SOURCE = 'plugins/a/plugin.json';
-const CLAUDE = 'plugins/a/.claude-plugin/plugin.json';
 const TESSL = 'plugins/a/.tessl-plugin/plugin.json';
 const IN_SYNC = { [SOURCE]: 'v1', [CLAUDE]: 'v1', [TESSL]: 'v1', 'README.md': 'readme' };
 
-test('the files x927 names as behind, and the files it names as written', () => {
-  assert.deepEqual(drifted('note: x\nmissing: plugins/a/.mcp.json\ndrift:   plugins/a/.claude-plugin/plugin.json\n'), ['plugins/a/.mcp.json', 'plugins/a/.claude-plugin/plugin.json']);
-  assert.deepEqual(drifted('x927: 3 file(s) in sync with plugin.json\n'), []);
+test('the files x927 names as written', () => {
   assert.deepEqual(written('wrote plugins/a/.mcp.json\nnote: y\nwrote .claude-plugin/marketplace.json\nx927: 1 plugin(s)\n'), ['plugins/a/.mcp.json', '.claude-plugin/marketplace.json']);
-});
-
-// A repository on main with everything in sync, and a branch on top of it.
-function branch(t, change) {
-  const root = tree(t, IN_SYNC);
-  const base = commit(root, 'base');
-  write(root, change);
-  commit(root, 'change');
-  return { root, base, env: { PATH: fakeBin(t, { x927: X927 }) } };
-}
-const check = (t, { root, base, env }) => run(t, 'check-generated.mjs', [`${base}...HEAD`], { cwd: root, env });
-
-test('a pull request that changes nothing generated passes', (t) => {
-  const result = check(t, branch(t, { 'README.md': 'changed' }));
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /Every generated plugin file is what the build writes/);
-});
-
-test('a changed plugin.json with the generated files left alone passes: CI rebuilds them after the merge', (t) => {
-  const result = check(t, branch(t, { [SOURCE]: 'v2' }));
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /CI rebuilds them on main after the merge/);
-  assert.match(result.stdout, new RegExp(`  ${CLAUDE.replaceAll('.', '\\.')}`));
-  assert.doesNotMatch(result.stdout, /::error/);
-});
-
-test('a generated file edited by hand fails, and is named', (t) => {
-  const result = check(t, branch(t, { [CLAUDE]: 'edited by hand' }));
-  assert.equal(result.status, 1);
-  assert.match(result.stdout, new RegExp(`::error file=${CLAUDE.replaceAll('.', '\\.')}::.* is generated`));
-  assert.match(result.stdout, /::error::1 generated file\(s\) are changed here, and not to what the build writes/);
-  assert.match(result.summary, /git checkout origin\/main -- plugins\/a\/\.claude-plugin\/plugin\.json/);
-  assert.doesNotMatch(result.stdout, new RegExp(`file=${TESSL.replaceAll('.', '\\.')}`));
-});
-
-test('a hand edit fails also when plugin.json changed with it, and only the edited file is blamed', (t) => {
-  const result = check(t, branch(t, { [SOURCE]: 'v2', [CLAUDE]: 'something else' }));
-  assert.equal(result.status, 1);
-  assert.match(result.stdout, /::error::1 generated file\(s\) are changed here, and not to what the build writes: plugins\/a\/\.claude-plugin\/plugin\.json/);
-  assert.match(result.stdout, /CI rebuilds them on main after the merge:\n  plugins\/a\/\.tessl-plugin\/plugin\.json/);
-});
-
-test('generated files changed to exactly what the build writes pass', (t) => {
-  const result = check(t, branch(t, { [SOURCE]: 'v2', [CLAUDE]: 'v2', [TESSL]: 'v2' }));
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-});
-
-test('x927 failing for another reason than files that are behind fails the check', (t) => {
-  const { root, base } = branch(t, { 'README.md': 'changed' });
-  const result = run(t, 'check-generated.mjs', [`${base}...HEAD`], { cwd: root, env: { PATH: fakeBin(t, { x927: 'echo "plugin.json: not valid" >&2; exit 2' }) } });
-  assert.equal(result.status, 1);
-  assert.match(result.stdout, /::error::x927 diff --all failed: plugin\.json: not valid/);
 });
 
 // A clone on main whose origin is a bare repository, with plugin.json ahead of the generated files.

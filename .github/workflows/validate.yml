@@ -38,7 +38,7 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: npm run plugins:check -- "origin/$BASE_REF...HEAD"
+        run: npm run plugins:check -- "origin/$BASE_REF"
 
       # The steps below look at the manifests as they will be on main.
       - name: Build the plugin manifests in this checkout
