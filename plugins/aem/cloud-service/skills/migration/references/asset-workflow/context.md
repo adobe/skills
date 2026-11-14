@@ -50,10 +50,9 @@ Do this before anything is committed. To undo everything, use the undo line the 
 
 Deploy the migrated project (an RDE is quickest: [`aem-rde` skill](../../../aem-rde/SKILL.md)) and work through these with the user:
 
-1. **Build and deploy.** `mvn clean install`; the new `aem-cloud-migration.*` modules must be in the all-package.
+1. **All-package.** The new `aem-cloud-migration.*` modules must be in it.
 2. **Sync each migrated model**: open it in the workflow model editor and click **Sync**. `GET /var/workflow/models/<id>.json` must return `200`.
 3. **Check the runner config** is active: the Developer Console (OSGi configurations) shows `CustomDamWorkflowRunnerImpl` with the expected `postProcWorkflowsByPath` / `postProcWorkflowsByExpression`. Look for overlapping entries; Adobe does not document which one wins when several match, so merge the models if the wrong one runs.
 4. **Attach processing profiles**: Folder → Properties → Asset Processing. The tool cannot attach them or name the folders: take the folders from the globs of the launchers it disabled (`git diff`).
 5. **Upload test assets** to every mapped folder, one per mime type each old launcher handled. Check that the profile's renditions exist, and that **Tools → Workflow → Instances / Archive** shows one instance of the expected model per asset and that its custom steps did their work.
 6. **Launcher conditions.** A launcher's `conditions` (for example `jcr:content/jcr:mimeType!=video/.*`) do not carry over to the runner. Upload an asset the old condition excluded and check the post-processing workflow handles or skips it as intended; add a guard step otherwise.
-7. **Custom workers.** For every *Migration Issues* entry that needs one, deploy the App Builder worker, add it to a processing profile and repeat step 5.
