@@ -3,7 +3,6 @@
 ## 1.0.0 (2026-05-14)
 
 - Initial release
-- 7-step query index audit workflow with property usage mapping
-- Stale entry detection and missing page identification
-- Index size and pagination analysis
-- Generates ready-to-apply index-definition recommendations (Index Admin tool)
+- Report script that reads the whole index page by page: size, fill rate per property, comparison with the sitemap, status of indexed paths
+- Checks the properties against the code that reads them
+- Proposes changes to the index definition for the Index Admin tool
