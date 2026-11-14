@@ -1,0 +1,45 @@
+# Fails a pull request when a page of its preview requests more than the budget before the
+# LCP element is ready. Needs .github/scripts/bytes-before-lcp.jq next to it.
+name: Performance budget
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # Bytes. 100 KB is the rule of thumb of https://www.aem.live/developer/keeping-it-100
+  BUDGET: 102400
+  # Paths to measure, separated by spaces. One per template is enough.
+  PAGES: "/"
+
+jobs:
+  bytes-before-lcp:
+    # The branch of a fork has no preview on this site.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Measure the preview of this branch
+        env:
+          BRANCH: ${{ github.head_ref }}
+          REPO: ${{ github.event.repository.name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          host="https://${BRANCH}--${REPO}--${OWNER}.aem.page"
+          failed=0
+          for page in $PAGES; do
+            echo "::group::$host$page"
+            npx --yes lighthouse@13.6.0 "$host$page" --only-categories=performance \
+              --output=json --output-path=lh.json --quiet \
+              --chrome-flags="--headless=new --no-sandbox"
+            jq -r -f .github/scripts/bytes-before-lcp.jq lh.json | tee budget.tsv
+            echo "::endgroup::"
+            total=$(tail -n 1 budget.tsv | cut -f 1)
+            if [ "$total" -gt "$BUDGET" ]; then
+              echo "::error::$page requests $total bytes before LCP. The budget is $BUDGET."
+              failed=1
+            fi
+          done
+          exit "$failed"

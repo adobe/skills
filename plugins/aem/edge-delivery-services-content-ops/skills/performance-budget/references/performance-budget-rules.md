@@ -1,103 +1,55 @@
-# EDS Performance Budget Rules
+# Performance budget: rules and a measurement without Chrome
 
-## The EDS Performance Model
+Source for every rule here: [Keeping it 100](https://www.aem.live/developer/keeping-it-100) and the [AEM boilerplate](https://github.com/adobe/aem-boilerplate), read in November 2026. Check them again before you rely on a detail.
 
-EDS is built around a strict performance budget: the Largest Contentful Paint (LCP) element should render within a **100KB total transfer budget**. This budget covers all resources the browser must download before the LCP element can paint.
+## The budget
 
-### E-L-D Loading Phases
+- The rule of thumb is that the aggregate payload before the LCP is displayed stays below 100 KB. On the bandwidth that PageSpeed Insights simulates for mobile, that usually gives an LCP under 1560 ms, which is what scores 100.
+- It is one budget for one host. A request to a second origin before LCP pays for a new connection as well.
+- Early hints, HTTP/2 push, preconnect and preload are part of the budget: they download things that the LCP doesn't need.
+- Lab results leave out redirects by default, but real visitors pay for each one. Report a redirect chain (`/` to `/en` to `/en/home`) as a separate finding.
 
-EDS uses a three-phase loading model that is central to its performance architecture:
+## The three phases
 
-1. **Eager (E)**: Loaded immediately with the initial HTML. Includes: the HTML document itself, `styles.css`, `aem.js`, above-fold block CSS/JS, and fonts needed for the first section. Everything in the eager phase counts against the 100KB LCP budget.
-2. **Lazy (L)**: Loaded after the initial paint. Includes: below-fold block CSS/JS, below-fold images, and non-critical styles. Loaded by `aem.js` as the user scrolls or after a short delay.
-3. **Delayed (D)**: Loaded at least 3 seconds after the LCP event (a guideline; the boilerplate no longer enforces it with a hard-coded timer). Includes: analytics, third-party scripts, chat widgets, social embeds, and any non-essential JavaScript. Loaded by `/scripts/delayed.js`.
+| Phase | What loads | Counts against the budget |
+|---|---|---|
+| Eager | The HTML, `styles.css`, `aem.js`, `scripts.js`, then the whole first section: its blocks' CSS and JS, and its first image, which is the LCP candidate. | Yes |
+| Lazy | Starts when the first section is shown: `fonts.css`, the other sections and their blocks, header and footer, `lazy-styles.css`, images as they scroll into view. Code the project controls, from the same origin. | No |
+| Delayed | Third-party code: tag managers, analytics, consent, chat. The guideline is to start it at least three seconds after the LCP. | No |
 
-### Why 100KB Matters
+The boilerplate takes the first `<img>` of the first section as the LCP candidate. When the real LCP element is not in the delivered HTML (it comes from a fragment, a JSON lookup or a service), the first block has to finish its changes to the DOM before the candidate is chosen. That lookup is then part of the budget.
 
-On a throttled mobile connection (Lighthouse's Slow 4G profile, which PageSpeed Insights uses), a 100KB budget leaves room to keep LCP under the 2.5-second "good" Core Web Vitals threshold once DNS, TLS, and server response time are included. Measure on the same throttled mobile profile you test with.
+## For comparison: the boilerplate
 
-## The 100KB LCP Budget
+Measured with Lighthouse 13.6.0 on `https://main--aem-boilerplate--adobe.aem.live/` in November 2026, transfer bytes:
 
-The 100KB budget is the total transfer size of all resources that must load before the Largest Contentful Paint (LCP) element renders. This includes:
+| Request | Bytes |
+|---|---|
+| LCP image (`width=750`, WebP) | 11,091 |
+| `scripts/aem.js` | 6,751 |
+| `favicon.ico` | 3,568 |
+| HTML | 2,725 |
+| `scripts/scripts.js` | 2,307 |
+| `styles/styles.css` | 1,917 |
+| CSS and JS of the two blocks in the first section | 2,335 |
+| **Total** | **30,694** |
 
-- HTML document
-- Eager CSS (styles.css + above-fold block CSS)
-- Eager JavaScript (aem.js + scripts.js + above-fold block JS)
-- Preloaded fonts
-- Above-fold images (including the LCP image)
+A project starts with about 70 KB of headroom. What a page has on top of these numbers is what the project added.
 
-## Recommended Allocation
+## Measuring with curl
 
-> The **100KB total budget** and the **E-L-D phase model** are the documented EDS performance model (see [keeping-it-100](https://www.aem.live/developer/keeping-it-100)). The per-resource sub-budgets and the letter grades below are this skill's own working heuristics for *distributing* that budget, not official Adobe limits. Treat them as guidance for spotting outliers, not as pass/fail thresholds.
+Use this only when Lighthouse can't run. It gives sizes, not the LCP element and not the order of requests.
 
-| Resource Category | Target | Maximum | Notes |
-|-------------------|--------|---------|-------|
-| HTML document | 10-15 KB | 25 KB | Minimal DOM, no inline scripts |
-| Main CSS (styles.css) | 3-5 KB | 8 KB | Site stylesheet |
-| Block CSS (eager) | 1-3 KB per block | 5 KB total | Only first-section blocks |
-| Core JS (aem.js) | 5-8 KB | 12 KB | Framework scripts only |
-| Custom JS (scripts.js) | 3-5 KB | 8 KB | Site-level customization |
-| Block JS (eager) | 1-3 KB per block | 5 KB total | Only first-section blocks |
-| Fonts | 15-25 KB | 30 KB | 1-2 weights maximum |
-| LCP image | 20-40 KB | 50 KB | WebP or AVIF preferred |
-| **Total** | **60-100 KB** | **100 KB** | |
+```bash
+BASE="https://<branch>--<repo>--<owner>.aem.live"
+for p in "<path>" /styles/styles.css /scripts/aem.js /scripts/scripts.js \
+  /blocks/<block>/<block>.css /blocks/<block>/<block>.js "<lcp-image-path-and-query>"; do
+  printf '%s\t%s\n' "$(curl -s --compressed -o /dev/null -w '%{size_download}' "$BASE$p")" "$p"
+done
+```
 
-## Grading Scale
-
-| Grade | Total Eager Bytes | Assessment |
-|-------|-------------------|------------|
-| A | Under 70 KB | Excellent, significant headroom |
-| B | 70-90 KB | Good, comfortable margin |
-| C | 90-100 KB | Acceptable, at the limit |
-| D | 100-120 KB | Over budget, needs optimization |
-| F | Over 120 KB | Critical, significant performance issues |
-
-## E-L-D Phase Rules
-
-### Eager (counts against budget)
-- styles.css and aem.js always load eager
-- Block CSS/JS for blocks in the first visible section
-- Images with loading="eager" (first-section images)
-- Preloaded fonts
-
-### Lazy (does not count against budget)
-- Block CSS/JS for blocks below the first section
-- Images with loading="lazy" (below-fold images)
-- Non-critical styles
-
-### Delayed (does not count against budget)
-- All third-party scripts (analytics, tag managers, chat)
-- Social media embeds
-- Non-essential JavaScript
-- Loads at least 3 seconds after the LCP event via scripts/delayed.js
-
-## Images: What EDS Optimizes for You
-
-Images that come through **content** are optimized automatically. EDS renders a full `<picture>` element with the resolutions needed for desktop and mobile, and in modern formats (WebP) for browsers that support them, so content images are delivered as WebP at responsive sizes regardless of the source format (JPEG, PNG, etc.). Do not recommend converting or resizing content images; that duplicates the media pipeline's work.
-
-Manual optimization applies only to images bundled in **code**: icons, logos, and decorative graphics shipped in a block or theme rather than authored as content:
-
-- Use SVG for icons and logos, and keep them small (typically under 5 KB).
-- Inline tiny SVGs into CSS/JS where practical; otherwise reference them as external files that load in the correct phase.
-
-To reduce the byte cost of a heavy content LCP image, fix it at the source: upload a source image not far larger than its largest rendered size, and have the block request an appropriate width, not hand-encode the delivered image.
-
-## Font Optimization Rules
-
-1. Use woff2 format exclusively (30% smaller than woff)
-2. Subset to the needed character range (Latin: ~15KB, full Unicode: ~100KB+)
-3. Preload at most 2 font files (1 heading weight + 1 body weight)
-4. Always use font-display: swap
-5. Define size-adjust fallback fonts to minimize CLS during font swap
-6. Consider variable fonts if using 3+ weights of the same family
-
-## Common Budget Violations
-
-| Violation | Typical Cost | Fix |
-|-----------|-------------|-----|
-| Oversized source image for the LCP hero | +30-80 KB | Upload a smaller source and/or have the block request a smaller width. EDS already delivers content images as WebP, so do not convert format by hand |
-| Google Tag Manager in head | +30-50 KB | Move to delayed.js |
-| Full font family preloaded | +50-150 KB | Subset and limit to 1-2 weights |
-| Below-fold block CSS loading eager | +5-15 KB | Verify aem.js lazy-loads correctly |
-| Inline SVG sprites in HTML | +10-30 KB | Move to external file, lazy-load |
-| Analytics scripts not delayed | +20-40 KB | Move to delayed.js |
+- `--compressed` is required. Without it curl gets the uncompressed response, and the HTML alone looks five times larger than what a browser downloads.
+- The blocks of the first section are the `<div class="…">` children of the first `<div>` in `<main>`. The first class name is the block name.
+- The LCP image comes from the user (DevTools or RUM). Take its URL with the query string from the `<source>` that matches a mobile viewport: the media pipeline sizes the image by `width`.
+- The sizes are bodies without response headers, so each is a few hundred bytes below what Lighthouse reports.
+- Say in the report that this is a static measurement: requests that scripts make before LCP (JSON, fragments, third-party tags) are not in it.
