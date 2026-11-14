@@ -131,6 +131,8 @@ without --skip-existing, shoots it again. Pages go through in batches of ${BATCH
 before the next batch is captured.
 Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error.`;
 
+/** --eds-host as an origin: a bare host (`main--site--org.aem.page`) gets https://, a trailing slash goes. */
+export const hostOrigin = (h) => { const x = String(h || '').trim().replace(/\/+$/, ''); return x && !/^[a-z][a-z0-9+.-]*:\/\//i.test(x) ? `https://${x}` : x; };
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
@@ -143,7 +145,7 @@ export function parseArgs(argv) {
     else if (a === '--state') o.state = v(); else if (a === '--out') o.out = v(); else if (a === '--width') o.width = Number(v());
     else if (a === '--only') o.only = v().split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--skip-existing') o.skip = true; else if (a === '--recapture-eds') o.recaptureEds = true; else if (a === '--recapture-origin') o.recaptureOrigin = true;
-    else if (a === '--eds-host') o.edsHost = v().replace(/\/$/, ''); else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
+    else if (a === '--eds-host') o.edsHost = hostOrigin(v()); else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
     else if (a === '--origin-concurrency') o.oc = Number(v()); else if (a === '--eds-concurrency') o.ec = Number(v()); else if (a === '--probe-concurrency') o.pc = Number(v());
     else if (a === '--threshold') o.threshold = Number(v()); else if (a === '--height-tol') o.heightTol = Number(v()); else if (a === '--clip-max') o.clipMax = Number(v()); else if (a === '--unit-tol') o.unitTol = Number(v());
     else if (a === '--no-clip') o.clip = false; else if (a === '--no-content') o.content = false; else if (a === '--no-probes') { o.clip = false; o.content = false; }
@@ -232,7 +234,7 @@ export function selectPages({ state = null, coverage = null, stage = 'published'
   const covRows = (Array.isArray(coverage) ? coverage : (coverage && Array.isArray(coverage.pages) ? coverage.pages : [])).filter((r) => r && r.slug && isDelivered(r.delivery));
   const tally = new Map();
   for (const r of covRows) { const o = originOf(r.delivery.deployedUrl); if (o) tally.set(o, (tally.get(o) || 0) + 1); }
-  const base = (edsHost || [...tally.entries()].sort((a, b) => b[1] - a[1]).map(([o]) => o)[0] || '').replace(/\/$/, '') || null;
+  const base = (hostOrigin(edsHost) || [...tally.entries()].sort((a, b) => b[1] - a[1]).map(([o]) => o)[0] || '').replace(/\/$/, '') || null;
   const fromCoverage = []; const skipped = [];
   for (const r of covRows) {
     if (named.has(r.slug)) continue;
@@ -246,7 +248,29 @@ export function selectPages({ state = null, coverage = null, stage = 'published'
     else if (!liveUrl) skipped.push({ slug: r.slug, why: 'delivered in the rollout ledger, but no build URL (no delivery.deployedUrl, and no --eds-host or sibling deployed origin to join its path to)' });
     else fromCoverage.push({ ...st, slug: r.slug, url, liveUrl, deployedPath: st.deployedPath || path || undefined, template: st.template ?? r.templateId });
   }
-  return { pages: [...fromState, ...fromCoverage].filter(keep), skipped: skipped.filter(keep), from: { state: fromState.filter(keep).length, coverage: fromCoverage.filter(keep).length } };
+  // A page named with --only and given a build host is gated although no ledger calls it delivered yet: the
+  // delivery unit gates its page BEFORE update-coverage writes the row (recorded: every unit's first call
+  // selected nothing). Path = the ledger row's (any status), else the migrated file's.
+  const fromNamed = [];
+  if (only && edsHost) {
+    const allCov = new Map((Array.isArray(coverage) ? coverage : (coverage && Array.isArray(coverage.pages) ? coverage.pages : [])).filter((r) => r && r.slug).map((r) => [r.slug, r]));
+    for (const slug of only) {
+      if (named.has(slug) || skipped.some((x) => x.slug === slug)) continue;
+      const st = bySlug.get(slug); if (!st || !st.url) continue;
+      const cov = allCov.get(slug);
+      const path = (cov && typeof cov.path === 'string' && cov.path.startsWith('/') ? cov.path : null) || migratedPathOf(st.migratedPath);
+      if (!path) { skipped.push({ slug, why: 'named with --only, but no path: no rollout ledger row and no migratedPath in state.json' }); continue; }
+      named.add(slug);
+      fromNamed.push({ ...st, slug, liveUrl: `${hostOrigin(edsHost)}${path}`, deployedPath: path });
+    }
+  }
+  return { pages: [...fromState, ...fromCoverage, ...fromNamed].filter(keep), skipped: skipped.filter(keep), from: { state: fromState.filter(keep).length, coverage: fromCoverage.filter(keep).length, ...(fromNamed.length ? { named: fromNamed.length } : {}) } };
+}
+/** stardust/migrated/<a>/<b>/index.html → /a/b ; …/x.html → /x ; the root index → / ; anything else → null. */
+export function migratedPathOf(file) {
+  const m = /(?:^|\/)stardust\/migrated\/(.+)$/.exec(String(file || '')); if (!m) return null;
+  const rel = m[1].replace(/(^|\/)index\.html$/, '').replace(/\.html$/, '').replace(/\/+$/, '');
+  return `/${rel}`;
 }
 
 // ---- pure: the child command lines ------------------------------------------------------------------------
@@ -650,8 +674,9 @@ async function main() {
 }
 
 /**
- * A published-stage measurement that ended in a verdict is a round of its page (rounds.mjs — the same
- * ledger gate.sh keeps, `gates/<slug>-<width>/rounds.json`). Recorded here, never refused here: the
+ * A published-stage measurement that ended in a verdict is recorded beside gate.sh's rounds
+ * (`gates/<slug>-<width>/rounds.json`), under its OWN stage: this verdict does not run gate.sh's probes,
+ * so its pass must never read as gate.sh's pass or free a confirmation there. Recorded, never refused: the
  * roster run must not stop on one page's budget. → the slugs at or over the cap. Never throws.
  */
 export async function recordRounds(rows, opts, { rounds = null, now = () => new Date().toISOString() } = {}) {
@@ -664,9 +689,9 @@ export async function recordRounds(rows, opts, { rounds = null, now = () => new 
       if (!r || isErrorRow(r)) continue;
       const d = join(root, `${r.slug}-${opts.width}`); mkdirSync(d, { recursive: true });
       const { ledger } = R.load(d);
-      R.record(ledger, 'published', label, r.pass ? 'pass' : 'fail');
+      R.record(ledger, R.ROSTER_STAGE, label, r.pass ? 'pass' : 'fail');
       R.save(d, ledger);
-      const t = R.tally(ledger, 'published');
+      const t = R.tally(ledger, R.ROSTER_STAGE);
       if (!r.pass && t.counted >= t.allowance) over.push(r.slug);
     }
   } catch (e) { console.error(`gate-all: rounds not recorded — ${String(e && e.message ? e.message : e).split('\n')[0]}`); }

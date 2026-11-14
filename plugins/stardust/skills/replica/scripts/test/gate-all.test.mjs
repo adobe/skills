@@ -27,7 +27,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, CHILD_FLAGS, DELIVERED, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, formatSummary, isErrorRow, parseArgs, passThrough, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, formatSummary, isErrorRow, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -704,6 +704,19 @@ check('a failed re-capture leaves no old PNG to diff: the capture is removed fir
     assert.deepEqual([pngs('bad'), rows().bad.pct], [['eds.png'], null], 'a plain run whose origin capture fails');
   } finally { done(); }
 });
+check('selectPages — a page named with --only and given --eds-host is selected before any ledger calls it delivered: path from the ledger row of any status, else from migratedPath; a bare host gets https://', () => {
+  const state = { pages: [{ slug: 'a', url: 'https://origin.example/a/', status: 'migrated', migratedPath: 'stardust/migrated/a/index.html' }, { slug: 'home', url: 'https://origin.example/', status: 'migrated', migratedPath: 'stardust/migrated/index.html' }, { slug: 'b', url: 'https://origin.example/b.html', status: 'migrated', migratedPath: 'stardust/migrated/b.html' }, { slug: 'nopath', url: 'https://origin.example/n', status: 'migrated' }] };
+  const coverage = { pages: [{ slug: 'b', path: '/bee', delivery: { status: 'pending' } }] };
+  const sel = (only, edsHost) => selectPages({ state, coverage, edsHost, only });
+  assert.deepEqual(sel(['a', 'home', 'b'], 'main--x--y.aem.page').pages.map((p) => [p.slug, p.liveUrl]), [['a', 'https://main--x--y.aem.page/a'], ['home', 'https://main--x--y.aem.page/'], ['b', 'https://main--x--y.aem.page/bee']]);
+  assert.deepEqual(sel(['a'], 'https://h.example/').from, { state: 0, coverage: 0, named: 1 });
+  assert.deepEqual(sel(['a'], null).pages, [], 'no build host: nothing to join the path to');
+  assert.deepEqual(sel(null, 'https://h.example').pages, [], 'without --only nothing is assumed delivered');
+  assert.match(sel(['nopath'], 'https://h.example').skipped[0].why, /no path/);
+  assert.deepEqual([hostOrigin('main--x--y.aem.page'), hostOrigin('https://h.example/'), hostOrigin('http://localhost:3000'), hostOrigin('')], ['https://main--x--y.aem.page', 'https://h.example', 'http://localhost:3000', '']);
+  assert.deepEqual([migratedPathOf('stardust/migrated/index.html'), migratedPathOf('stardust/migrated/a/b/index.html'), migratedPathOf('/w/stardust/migrated/x.html'), migratedPathOf('elsewhere/x.html'), migratedPathOf(undefined)], ['/', '/a/b', '/x', null, null]);
+  assert.equal(parseArgs(['node', 'x', '--eds-host', 'main--x--y.aem.page/']).edsHost, 'https://main--x--y.aem.page');
+});
 await checkAsync('recordRounds: a published measurement with a verdict is a round of its page in gates/<slug>-<width>/rounds.json; error rows, the prototype stage and no rows record nothing; at the cap the slug is named; a broken ledger never throws', async () => {
   const root = mkdtempSync(join(tmpdir(), 'gate-all-rounds-'));
   try {
@@ -714,11 +727,12 @@ await checkAsync('recordRounds: a published measurement with a verdict is a roun
     assert.equal(existsSync(join(root, 'gates', 'a-1440')), false);
     let n = 0; const now = () => `2026-01-01T00:00:0${n++}.000Z`;
     assert.deepEqual(await recordRounds([row('a', false), row('b', true), row('c', false, { pct: null, error: 'capture failed' })], opts, { now }), []);
-    const led = (s) => JSON.parse(readFileSync(join(root, 'gates', `${s}-1440`, 'rounds.json'), 'utf8')).stages.published.rounds;
+    const led = (s) => JSON.parse(readFileSync(join(root, 'gates', `${s}-1440`, 'rounds.json'), 'utf8')).stages['all-pages'].rounds;
     assert.deepEqual([led('a').map((r) => r.kind), led('b').map((r) => r.verdict), existsSync(join(root, 'gates', 'c-1440', 'rounds.json'))], [['first'], ['pass'], false]);
     assert.deepEqual(await recordRounds([row('a', false)], opts, { now }), []);
     assert.deepEqual(await recordRounds([row('a', false), row('b', true)], opts, { now }), ['a'], 'three counted rounds, the last a FAIL: at the cap');
     assert.deepEqual([led('a').length, led('b').map((r) => r.kind)], [3, ['first', 'confirm']]);
+    assert.equal(JSON.parse(readFileSync(join(root, 'gates', 'b-1440', 'rounds.json'), 'utf8')).stages.published, undefined, 'a pass here is never a gate.sh published round: it cannot free a confirmation there');
     assert.deepEqual(await recordRounds([row('a', false)], opts, { rounds: { load() { throw new Error('boom'); } } }), []);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

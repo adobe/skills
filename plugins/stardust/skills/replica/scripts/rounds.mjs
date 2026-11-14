@@ -68,6 +68,8 @@ import { fileURLToPath } from 'node:url';
 const SELF = fileURLToPath(import.meta.url);
 export const CAP = 3;
 export const STAGES = ['prototype', 'published'];
+/** gate-all's published measurements: recorded beside the gate.sh stages, counted, never capped by `check` — its verdict is not gate.sh's. */
+export const ROSTER_STAGE = 'all-pages';
 export const DECISIONS = ['accept-residual', 're-prototype', 'extend'];
 const CLOSING = ['accept-residual'];
 const LEDGER = 'rounds.json';
@@ -280,7 +282,7 @@ export function main(argv, env = process.env) {
   if (cmd === 'status') {
     const { ledger, source } = load(target);
     if (flags.json) { console.log(JSON.stringify({ source, ledger, tally: Object.fromEntries(STAGES.map((s) => [s, tally(ledger, s)])) }, null, 2)); return 0; }
-    for (const stage of STAGES) console.log(statusLine(name, stage, tally(ledger, stage), stageOf(ledger, stage).rounds));
+    for (const stage of [...STAGES, ...(stageOf(ledger, ROSTER_STAGE).rounds.length ? [ROSTER_STAGE] : [])]) console.log(statusLine(name, stage, tally(ledger, stage), stageOf(ledger, stage).rounds));
     if (source !== 'ledger') console.log(`rounds: ${source} from the verdict-*.json files in ${target}`);
     return 0;
   }
