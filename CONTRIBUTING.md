@@ -69,6 +69,14 @@ git push
 - Secrets are not available to pull requests from forks. Ask a maintainer to run the evals from a branch in this repository.
 - A run takes several minutes per plugin. The results are linked in a comment on the pull request.
 
+### Running evals locally
+
+Iterate on scenarios without Tessl credits using pi and nono; see [tools/skill-eval](tools/skill-eval/README.md):
+
+```bash
+npm run eval:local -- plugins/<plugin> -n 1 --scenario <name>
+```
+
 ## How to Contribute
 
 1. Fork the repository. Maintainers can push a branch to this repository instead.
