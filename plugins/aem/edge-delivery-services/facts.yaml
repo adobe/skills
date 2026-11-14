@@ -151,3 +151,139 @@
     - skills/content-modeling/SKILL.md
 
 # ue-component-model facts, checked against aem.live docs and aem-boilerplate-xwalk 6210531 (2026-11-12).
+
+# ue-component-model facts, checked against aem.live docs and aem-boilerplate-xwalk 6210531 (2026-11-12).
+
+- id: ue-block-table-mapping
+  claim: >-
+    In AEM authoring with the Universal Editor, a simple block renders each
+    model property (or group) as one row with a single column, in model order.
+    A container block renders its own properties as single-column rows first,
+    then each child item as a row with one column per property.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a hero
+    block's model lists image, imageAlt and text, in that order. What block
+    markup reaches the browser?
+  source: https://www.aem.live/developer/component-model-definitions (Block structure)
+  used_by: []
+
+- id: ue-field-collapse
+  claim: >-
+    Properties ending in the case-sensitive suffixes `Title`, `Type`,
+    `MimeType`, `Alt` or `Text` are not values but attributes of the property
+    they follow: `image` + `imageAlt` becomes one `<picture><img alt>`, `link` +
+    `linkText` + `linkTitle` + `linkType` one `<a>` (type primary or secondary
+    wraps it in strong or em), `heading` + `headingType` one heading.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a block model has fields `cta`, `ctaText` and `ctaType` (value
+    `primary`). What does the block's cell contain after rendering?
+  source: https://www.aem.live/developer/component-model-definitions (Field collapse)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-element-grouping
+  claim: >-
+    Fields named `<group>_<field>` (underscore) are concatenated into a single
+    cell, so an author gets separate fields (subtitle, title, description,
+    buttons) while the block gets one cell of semantic elements.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a teaser model needs a subtitle, title, description and two buttons that
+    must end up as one text cell of semantic markup. How do you name the
+    fields?
+  source: https://www.aem.live/developer/component-model-definitions (Element grouping)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-classes-block-options
+  claim: >-
+    A `classes` property becomes the block options in the table header (class
+    names on the block). `classes_<name>` fields extend it; a boolean `classes_`
+    field adds its name as an option when true.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, how do you let authors pick a background color and toggle a
+    full-width option so both end up as classes on the block element?
+  source: https://www.aem.live/developer/component-model-definitions (Type inference; Element Grouping for Block Options)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-nesting-sections
+  claim: >-
+    The content model allows one level of nesting: a section contains default
+    content or blocks. A component that contains other components (tabs,
+    accordion) is modelled as sections (resource type
+    `core/franklin/components/section/v1/section`, e.g. a `tab` definition)
+    that client-side auto-blocking combines.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, tabs must each hold a cards block. How do you define this
+    in the component definitions?
+  source: https://www.aem.live/developer/component-model-definitions (end of Blocks section)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+    - evals/ue-tabs-cards
+
+- id: ue-multifield-flag
+  claim: >-
+    Multi-field rendering (`multi: true` fields) is off by default. Enable it
+    with `public.xwalk.multi-field.enabled: true` in the Admin Configuration
+    API site config or in `xwalk.json` at the repo root. Otherwise multi values
+    render as one comma-separated list.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a block model has a `reference` field with `multi: true` for images, but
+    the block receives one comma-separated string. Why, and how do you fix it?
+  source: https://www.aem.live/developer/component-model-definitions (Multi-Fields)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+    - evals/ue-promo-banner-model
+
+- id: ue-block-resource-type
+  claim: >-
+    Every block uses resource type `core/franklin/components/block/v1/block`
+    and a template `name`; if either is missing the block does not render.
+    Custom AEM components are not recommended: the markup is a fixed contract.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, a block was added to component-definition.json and shows in the UE palette,
+    but renders nothing on the page. What do you check first?
+  source: https://www.aem.live/developer/component-model-definitions (Block model definition)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-columns-no-model
+  claim: >-
+    The columns block has no content modeling in UE: it only has `rows`,
+    `columns` and `classes` properties, and authors add only default content to
+    its cells.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, can a model give a columns block a dedicated field for each column's
+    content?
+  source: https://www.aem.live/developer/component-model-definitions (Columns Block)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-key-value-use
+  claim: >-
+    `"key-value": true` renders the block's properties as `name | value` rows.
+    It is for configuration-style blocks (section metadata, spreadsheet-driven
+    lists), not for content; content blocks use semantic cells.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor, when would you set `key-value` to true in a block's
+    template, and when not?
+  source: https://www.aem.live/developer/component-model-definitions (Key-value block)
+  used_by:
+    - skills/ue-component-model/SKILL.md
+
+- id: ue-aggregate-json-generated
+  claim: >-
+    In aem-boilerplate-xwalk a block's component definitions, models and
+    filters live in `blocks/<name>/_<name>.json` (and `models/_*.json`). The
+    root component-definition.json, component-models.json and
+    component-filters.json are generated from them with `npm run build:json`
+    (the pre-commit hook runs it when a partial is staged). Edit the partials,
+    not the root files.
+  question: >-
+    In an AEM Edge Delivery project authored with the Universal Editor (the
+    aem-boilerplate-xwalk setup), you edit component-models.json at the root
+    for a block that has `blocks/hero/_hero.json`, and the edit disappears
+    after a commit. Why, and where do you make the change?
+  source: aem-boilerplate-xwalk 6210531 package.json (build:json) and .husky/pre-commit.mjs
+  used_by:
+    - skills/ue-component-model/SKILL.md
