@@ -16,7 +16,6 @@
     Why, and how do you fix it?
   source: "@adobe/aem-cli 16.22.16 README.md, 'npm install fails with File exists'"
   used_by:
-    - skills/aem-cli/SKILL.md
     - evals/aem-cli-setup-and-troubleshooting
 
 - id: aem-cli-env-file
@@ -43,7 +42,6 @@
     network. How do you fix it, and can the fix go in the project's `.env`?
   source: "Node.js docs, NODE_EXTRA_CA_CERTS; @adobe/aem-cli 16.22.16 src/cli.js loads .env after start"
   used_by:
-    - skills/aem-cli/SKILL.md
     - evals/aem-cli-setup-and-troubleshooting
 
 - id: aem-cli-content-dir

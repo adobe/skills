@@ -37,9 +37,6 @@ aem up --no-open --no-stop-other
 - **`.env`:** every flag has an `AEM_` variable read from the project's `.env`: `AEM_PORT`,
   `AEM_PAGES_URL`, `AEM_TLS_CERT`, `AEM_TLS_KEY`, `AEM_NO_OPEN=true` (not `AEM_OPEN=false`).
 - **HTTPS:** `--tls-cert <crt> --tls-key <key>` (mkcert or openssl).
-- **Corporate TLS proxy** (`unable to get local issuer certificate`): export
-  `NODE_EXTRA_CA_CERTS=<ca.pem>` in the shell or CI. Not in `.env`: Node reads it only at
-  start.
 
 ## `aem content` (da.live)
 
@@ -81,7 +78,6 @@ page-import.
 
 | Symptom | Fix |
 |---|---|
-| `npm install -g @adobe/aem-cli` → `File exists: …/hlx` | `npm uninstall -g @adobe/helix-cli`, then install |
 | `Unknown argument: content` | CLI too old; upgrade |
 | Local page 404s | Put it under `./content/` (or `--html-folder` for other dirs) |
 | Live page 404s locally | Wrong origin: `--url https://main--<site>--<org>.aem.page` |

@@ -35,10 +35,9 @@ nothing in a site the user says has content, it may be on Source Bus; see
 </main><footer></footer></body>
 ```
 
-- Body only: no `<html>`, `<head>`, `<script>`, `<style>`, `style=`. The
-  pipeline adds head and scripts. `<main>` is required (sections with no
-  `<main>` around them preview empty); `<body>`, `<header>` and `<footer>` are
-  optional, and text placed in header or footer is dropped.
+- `<main>` is required (sections with no `<main>` around them preview empty);
+  `<body>`, `<header>` and `<footer>` are optional, and text placed in header
+  or footer is dropped.
 - **Everything must be inside a section div that is a direct child of
   `<main>`.** Elements placed directly in `<main>` are dropped. A div placed
   there is taken as a section, so a block or metadata div there is not a
@@ -120,8 +119,6 @@ position. Style with classes on the block, not on inline tags.
   content push` reports ✓ for PNG/SVG but writes nothing**; upload binaries
   with the PUT. Pages pushed by the CLI do arrive.
 - SVG over 40 KB fails preview with 409 `AEM_BACKEND_SVG_TOO_BIG`.
-- An absolute external image URL needs no upload. Upload only when you want
-  the binary under your control.
 
 ## Seeing what the pipeline did
 
