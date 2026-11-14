@@ -1,3 +1,5 @@
+## [1.0.3](https://github.com/adobe/skills/compare/block-inventory-v1.0.2...block-inventory-v1.0.3) (2026-11-14)
+
 ## [1.0.2](https://github.com/adobe/skills/compare/block-inventory-v1.0.1...block-inventory-v1.0.2) (2026-10-29)
 
 
