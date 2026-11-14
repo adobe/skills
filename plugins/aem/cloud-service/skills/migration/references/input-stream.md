@@ -19,7 +19,7 @@ In BPA reports, the `other` column names the stream type, for example `java.io.I
 
 The precedence is the same as for the other migration patterns:
 1. The **Step 0 runbook cache** (`migration-runbook.json`, `findingsByPattern.inputStream`), when it exists.
-2. **BPA findings:** CAM via `fetch-cam-bpa-findings-by-pattern` with `pattern: "inputStream"`, then a BPA CSV.
+2. **BPA findings:** CAM via `list-bpa-findings-by-pattern` (AEM MCP Server; the deprecated `fetch-cam-bpa-findings-by-pattern` otherwise) with `pattern: "inputStream"`, then a BPA CSV.
 3. The **local scan** of the whole workspace, only when BPA has no `inputStream` findings (no BPA source, or none reported).
 
 BPA names classes, never lines, so the scanner runs in every case. Run it from the skill's `scripts/` folder:

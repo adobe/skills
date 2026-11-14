@@ -1,0 +1,41 @@
+{
+  "context": "Tests whether the agent reads the output of `web header check text` as the migrate-header skill describes: exit 0 only means the check ran (clean is read from the lines), CHECK_FAILED means nothing was checked at that size, differences are fixed at their cause (the font weight, the icon drawn as the source draws it) rather than by nudging boxes, and only the sizes listed in `not clean at:` are re-run while fixing.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Exit 0 is not clean",
+      "max_score": 15,
+      "description": "States that the closed header is not done: exit 0 only means the check ran; the lines (3 and 2 differences, `not clean at: 1440x900,1200x900`) say it is not clean"
+    },
+    {
+      "name": "CHECK_FAILED is not a pass",
+      "max_score": 15,
+      "description": "States that the mobile-menu check is not done: CHECK_FAILED (exit 1) means the 460x1000 size was not compared, so nothing is certified there; the cause must be fixed if any (dev server, page load) and that size re-run (`--sizes 460x1000`) before moving to the 2x step"
+    },
+    {
+      "name": "Fixes the font weight at its cause",
+      "max_score": 15,
+      "description": "Sets the nav labels' font weight to the source's 500 (e.g. `--header-nav-font-weight: 500`, and the font face for weight 500 loaded if missing), and explains that the width difference of \"Products\" and the x shift of \"Pricing\" follow from it, so they are not fixed separately"
+    },
+    {
+      "name": "Header height, not a fixed height",
+      "max_score": 10,
+      "description": "Reads `(the page below the header)` as the header being 2 px taller than the source at 1440, and fixes its cause (the content, a padding or line height, re-checked after the weight fix) rather than fixing the header's height in px from the captured width"
+    },
+    {
+      "name": "Icon drawn as the source draws it",
+      "max_score": 15,
+      "description": "Reads the `icon \"Search\"` line as the search icon 1.5 px out of place, and fixes it by drawing it as the source does (an inline SVG at the source's size, 19.5 px) instead of the 20 px `<img>`, not with a sub-pixel offset or nudge"
+    },
+    {
+      "name": "Re-runs only the sizes not clean",
+      "max_score": 15,
+      "description": "Gives the next command with `--sizes 1440x900,1200x900` (the `not clean at:` list) and the same other options, and says the whole ladder runs in full once at the end"
+    },
+    {
+      "name": "No changes to pass the check",
+      "max_score": 15,
+      "description": "Does not suggest changing texts, adding sub-pixel nudges (`top: -0.5px`, a tuned line height), or editing the check; the source is what must match"
+    }
+  ]
+}

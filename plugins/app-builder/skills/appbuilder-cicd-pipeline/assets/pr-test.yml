@@ -24,7 +24,7 @@ jobs:
           os: ubuntu
 
       - name: Test
-        uses: adobe/aio-apps-action@3.3.0
+        uses: adobe/aio-apps-action@3.4.0
         with:
           os: ubuntu
           command: test
