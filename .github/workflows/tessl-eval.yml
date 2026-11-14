@@ -9,8 +9,9 @@ permissions:
   pull-requests: write
 
 jobs:
-  # Whether the last commit asks for evals. This job has no environment and no secrets,
-  # so a pull request that doesn't ask leaves no deployment waiting for approval.
+  # Whether the last commit asks for evals, and whether they can run. The request is the
+  # commit message; nobody has to approve it. A pull request from a fork gets no
+  # TESSL_TOKEN on pull_request, so it can ask but not run.
   eval-requested:
     runs-on: ubuntu-latest
     outputs:
@@ -23,10 +24,21 @@ jobs:
 
       - name: Check eval trigger
         id: trigger
+        env:
+          HAS_TOKEN: ${{ secrets.TESSL_TOKEN != '' }}
         run: |
           LAST_MSG=$(git log -1 --format=%s)
           echo "commit_message=$LAST_MSG"
-          if [[ "$LAST_MSG" =~ ^eval: ]]; then
+          if [[ "$LAST_MSG" =~ ^eval: ]] && [ "$HAS_TOKEN" != true ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "## Skill Eval"
+              echo ""
+              echo "Eval requested, but \`TESSL_TOKEN\` is not available to this run. Pull requests from forks get no secrets:"
+              echo "ask a maintainer to run the evals from a branch in this repository."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=Skill Eval::Evals were requested but can't run for a pull request from a fork"
+          elif [[ "$LAST_MSG" =~ ^eval: ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "Eval triggered by commit: $LAST_MSG"
           else
@@ -46,9 +58,8 @@ jobs:
     needs: eval-requested
     if: needs.eval-requested.outputs.run == 'true'
     runs-on: ubuntu-latest
-    # Uses the "eval" environment for protection rules (e.g. reviewer approval)
-    # to guard the TESSL_TOKEN secret against exfiltration via same-repo branches.
-    environment: eval
+    # No environment: TESSL_TOKEN is a repository secret, so an approval step here never
+    # kept a branch of this repository from using it. It only made every eval wait for a person.
     steps:
       - uses: actions/checkout@v7
         with:
@@ -137,6 +148,9 @@ jobs:
       - name: Run evals
         id: run-evals
         if: steps.detect.outputs.skip != 'true'
+        env:
+          # directory names come from the pull request: hand them over as data, not as script
+          PLUGIN_DIRS: ${{ steps.detect.outputs.dirs }}
         run: |
           PASS=0
           FAIL=0
@@ -150,7 +164,7 @@ jobs:
           POLL_INTERVAL=30
           TIMEOUT=900
 
-          for plugin_dir in ${{ steps.detect.outputs.dirs }}; do
+          for plugin_dir in $PLUGIN_DIRS; do
             PLUGIN_NAME=$(basename "$plugin_dir")
             echo "::group::Evaluating $PLUGIN_NAME ($plugin_dir)"
 
