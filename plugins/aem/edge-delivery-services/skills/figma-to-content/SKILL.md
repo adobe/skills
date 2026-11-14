@@ -274,8 +274,7 @@ marked `new` (or absent-and-user-confirmed) → new block (3B); plain prose/medi
 mapping — do not dump it as unresolved:
 
 1. Plain prose/media (headings, paragraphs, images, a standalone link) with no
-   repeating structure → **default content** (3C). The rules for default content
-   vs block are in **content-modeling**.
+   repeating structure → **default content** (3C).
 2. Otherwise match it against the 2.0 palette using the **reuse gate (structure
    AND visual, Phase 3A)**: does its content model fit an existing block *and*
    does that block's rendered example — under the project theme — look like the
