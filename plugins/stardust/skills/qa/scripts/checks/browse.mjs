@@ -30,7 +30,7 @@ const VIEWPORTS = [
   { name: 'desktop', width: 1440, height: 900 },
   { name: 'mobile', width: 390, height: 844 },
 ];
-const AXE_CDN = 'https://cdn.jsdelivr.net/npm/axe-core@4.10.2/axe.min.js';
+const AXE_CDN = 'https://cdn.jsdelivr.net/npm/axe-core@4.14.0/axe.min.js';
 const SETTLE_MS = 2000;
 const DECORATION_TIMEOUT = 15000;
 const DIFF_WARN = 0.005; // 0.5% pixels changed
