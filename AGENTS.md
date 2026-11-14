@@ -34,6 +34,11 @@ repository; the pull request review reads them too.
   or slash commands where a plain instruction does.
 - State facts about Adobe products that you checked against the product or its documentation.
   Version-specific behaviour says which version.
+- A version number in a skill goes stale. Renovate keeps these current in skills and their
+  assets: GitHub Actions written as `owner/repo@version`, jsDelivr and cdnjs URLs, and
+  `npx pkg@1.2.3` or `npm install pkg@1.2.3`. For any other version, put a comment with
+  `renovate: datasource=<datasource> depName=<name>` on the line above it. If a version is
+  pinned on purpose, say why next to it and disable it in `renovate.json`.
 
 ## Security
 
