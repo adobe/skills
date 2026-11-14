@@ -166,7 +166,6 @@ See the [`stardust`](plugins/stardust/README.md) documentation for the complete 
 | ------------------------------ | ------------------------------------------------------- |
 | `block-inventory`            | Survey available blocks in project and Block Collection |
 | `block-collection-and-party` | Search reference implementations                        |
-| `docs-search`                | Search aem.live documentation                           |
 | `find-test-content`          | Find existing content for testing                       |
 
 ##### Migrating Content

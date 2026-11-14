@@ -3,7 +3,7 @@ name: block-collection-and-party
 description: "Use this when you are starting AEM Edge Delivery Services (EDS, Franklin, Helix) development and want an existing reference to build from, such as a block, build tool, code snippet, integration pattern, or plugin. Searches the Block Collection and Block Party repositories, matches candidates against the need, and returns a suitable starting point to clone or adapt."
 license: Apache-2.0
 metadata:
-  version: "1.2.3"
+  version: "1.2.5"
 ---
 
 # Using the Block Collection and Block Party
@@ -31,14 +31,13 @@ Use this skill when:
 - Want to understand best practices through working examples
 
 **Do NOT use this skill when:**
-- You need official documentation (use `docs-search` instead)
+- You need official documentation (search `site:www.aem.live <related terms>` instead)
 - You're making minor CSS tweaks to existing code (just edit directly)
 - You already know exactly which block/example you need (use it directly)
 
 ## Related Skills
 
 - **building-blocks**: This skill is called from building-blocks during development
-- **docs-search**: Use for official aem.live documentation
 - **content-driven-development**: Use when creating content models for blocks
 
 ## Key Concepts
@@ -452,7 +451,7 @@ Use the reference implementations to inform your approach:
 
 **Found code but seems outdated:**
 - Check Block Collection for newer patterns
-- Review official docs with `docs-search` skill
+- Review official docs: web search `site:www.aem.live <related terms>`
 - Consider using as inspiration but implementing with modern approaches
 
 **Multiple implementations, unsure which to use:**
