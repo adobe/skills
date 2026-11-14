@@ -137,6 +137,18 @@ jobs:
       - name: Stardust version agrees across plugin.json, marketplace.json and the Tessl manifest
         run: node scripts/plugin-version.mjs plugins/stardust && node --test 'scripts/test/*.test.mjs'
 
+  aem-forms-validator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '26'
+
+      - name: AEM Forms create-custom-component script tests
+        run: node --test plugins/aem/forms/edge-delivery-services/tests/*.test.mjs
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:

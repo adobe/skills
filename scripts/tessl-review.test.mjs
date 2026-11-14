@@ -19,6 +19,7 @@ case "$3" in
   */good) echo '{"overall_score": 92}' ;;
   */low) echo '{"overall_score": 61}'; exit 1 ;;
   */broken) echo 'error: not authenticated' >&2; exit 2 ;;
+  */broke) echo '✘ Your organization has run out of credits. Upgrade your plan or buy more credits to continue.' >&2; exit 1 ;;
 esac`;
 const env = (t, root) => ({ PATH: fakeBin(t, { tessl: TESSL }), CALLS: join(root, 'calls') });
 
@@ -55,4 +56,30 @@ test('no skill to review is a failure', (t) => {
   const result = run(t, 'tessl-review.mjs', ['dirs.txt'], { cwd: root, env: env(t, root) });
   assert.equal(result.status, 1);
   assert.match(result.stdout, /No skills were reviewed/);
+});
+
+test('an organization out of credits is skipped, not failed, and the skills after it are not asked', (t) => {
+  const root = tree(t, { 'dirs.txt': 'plugins/a/skills/good\nplugins/a/skills/broke\nplugins/a/skills/low\n' });
+  const result = run(t, 'tessl-review.mjs', ['dirs.txt'], { cwd: root, env: env(t, root) });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.output, /^outcome=no-credits$/m);
+  assert.match(result.summary, /\| good \| 92% \| ✅ \|/);
+  assert.match(result.summary, /\| broke \| not run \| ⏭️ no credits \|/);
+  assert.match(result.summary, /\| low \| not run \| ⏭️ no credits \|/);
+  assert.match(result.summary, /2 skill\(s\) were not reviewed: the Tessl organization has run out of credits/);
+  assert.match(result.stdout, /::warning::2 skill\(s\) were not reviewed/);
+  assert.doesNotMatch(result.stdout, /::error::/);
+  assert.equal(readFileSync(join(root, 'calls'), 'utf8').trim().split('\n').length, 2, 'tessl is not asked about the third skill');
+});
+
+test('a low score before the credits run out still fails', (t) => {
+  const root = tree(t, { 'dirs.txt': 'plugins/a/skills/low\nplugins/a/skills/broke\n' });
+  const result = run(t, 'tessl-review.mjs', ['dirs.txt'], { cwd: root, env: env(t, root) });
+  assert.equal(result.status, 1);
+  assert.match(result.output, /^outcome=failed$/m);
+});
+
+test('the outcome of a clean run is passed', (t) => {
+  const root = tree(t, { 'dirs.txt': 'plugins/a/skills/good\n' });
+  assert.match(run(t, 'tessl-review.mjs', ['dirs.txt'], { cwd: root, env: env(t, root) }).output, /^outcome=passed$/m);
 });
