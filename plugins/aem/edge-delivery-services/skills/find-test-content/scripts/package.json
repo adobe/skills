@@ -7,6 +7,6 @@
     "find": "node scripts/find-block-content.js"
   },
   "dependencies": {
-    "jsdom": "^30.0.0"
+    "jsdom": "^31.0.0"
   }
 }
