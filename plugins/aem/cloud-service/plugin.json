@@ -1,0 +1,52 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aem-cloud-service",
+  "version": "1.0.0",
+  "description": "All AEM as a Cloud Service skills: component development, Workflow model design, development, triggering, launchers, debugging, and triaging, Dispatcher config authoring, advisory, incident response, performance tuning, and security hardening, Rapid Development Environment (RDE) deployment, log inspection, snapshots, and troubleshooting via `aio aem rde`, Jackrabbit Oak query/index tuning (property, Lucene index definitions), and extracting/inventorying JCR queries (XPath, SQL2, QueryBuilder) across a codebase.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aem",
+    "aemaacs",
+    "cloud-service",
+    "dispatcher",
+    "component",
+    "workflow",
+    "rde",
+    "rapid-development-environment",
+    "aio-cli",
+    "oak",
+    "jackrabbit",
+    "query",
+    "indexing",
+    "lucene",
+    "querybuilder",
+    "adobe"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {}
+      },
+      "marketplace": {
+        "description": "All AEM as a Cloud Service skills: component development, Dispatcher config authoring and hardening, workflow design and debugging, code assessment and migration from legacy AEM, content distribution, and Rapid Development Environment (RDE) support.",
+        "keywords": [
+          "adobe",
+          "aem",
+          "aemaacs",
+          "cloud-service",
+          "dispatcher",
+          "component",
+          "workflow",
+          "rde",
+          "code-assessment",
+          "migration",
+          "content-distribution"
+        ]
+      }
+    }
+  }
+}

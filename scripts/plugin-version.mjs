@@ -12,6 +12,11 @@
 // the Tessl publish job only fires when the Tessl manifest's version changes, so a
 // manifest left behind means the plugin silently stops publishing (stardust sat at
 // 0.21.1 while plugin.json reached 0.25.2).
+//
+// A plugin with a root plugin.json (https://agent-plugins.org) has its manifests compiled
+// from that file by x927, and `x927 diff --all` checks them. Setting a version here then
+// writes the root plugin.json too, the version and the Tessl skills list, so that the
+// next `x927 build` produces what this script wrote.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 
@@ -31,6 +36,8 @@ const dir = resolve(root, dirArg);
 const source = `./${relative(root, dir)}`;
 const pluginPath = join(dir, '.claude-plugin', 'plugin.json');
 const tesslPath = join(dir, '.tessl-plugin', 'plugin.json');
+const rootPath = join(dir, 'plugin.json');
+const X927 = 'io.github.ai-ecoverse.x927';
 const marketPath = join(root, '.claude-plugin', 'marketplace.json');
 
 if (!existsSync(pluginPath)) fail(`not a plugin dir: ${pluginPath} missing`);
@@ -91,6 +98,14 @@ if (version) {
   plugin.version = version;
   tessl.version = version;
   tessl.skills = skillDirs;
+  if (existsSync(rootPath)) {
+    const source = readJson(rootPath);
+    source.version = version;
+    const target = source.extensions?.[X927]?.targets?.tessl;
+    if (target && 'skills' in target) target.skills = skillDirs;
+    if (target && 'version' in target) target.version = version;
+    writeJson(rootPath, source);
+  }
   writeJson(pluginPath, plugin);
   writeFileSync(marketPath, marketNext);
   writeJson(tesslPath, tessl);
@@ -99,6 +114,9 @@ if (version) {
 }
 
 const drift = [];
+if (existsSync(rootPath) && readJson(rootPath).version !== plugin.version) {
+  drift.push(`.claude-plugin/plugin.json ${plugin.version} ≠ the root plugin.json ${readJson(rootPath).version}`);
+}
 if (entry.version !== plugin.version) {
   drift.push(`marketplace.json ${entry.version} ≠ plugin.json ${plugin.version}`);
 }

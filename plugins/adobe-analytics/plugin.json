@@ -1,0 +1,28 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "adobe-analytics",
+  "version": "1.0.0",
+  "description": "Practitioner-focused agent skills for Adobe Analytics via the AA MCP server — KPI pulse, top movers, conversion funnel analysis, segment performance comparator, and executive briefing.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "adobe",
+    "adobe-analytics",
+    "analytics",
+    "mcp",
+    "reporting"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {}
+      },
+      "marketplace": {
+        "description": "Practitioner skills for Adobe Analytics via the AA MCP server"
+      }
+    }
+  }
+}

@@ -8,8 +8,10 @@ repository; the pull request review reads them too.
 ## Layout
 
 - `plugins/<plugin>/`, or `plugins/<product>/<plugin>/` for AEM, Commerce and Creative Cloud, is
-  one installable plugin. Its manifest is `.claude-plugin/plugin.json`. It may also have
-  `.tessl-plugin/plugin.json`, `.cursor-plugin/plugin.json`, `.mcp.json`, `hooks/` and `evals/`.
+  one installable plugin. Its manifest is the root `plugin.json` of
+  [Agent Plugins](https://agent-plugins.org), with `mcp.json` next to it for MCP servers.
+  `.claude-plugin/plugin.json`, `.tessl-plugin/plugin.json`, `.cursor-plugin/plugin.json` and
+  `.mcp.json` are generated from those two. It may also have `hooks/` and `evals/`.
 - `plugins/**/skills/<skill>/SKILL.md` is one skill, with optional `references/`, `scripts/`
   and `assets/` next to it.
 - `.claude-plugin/marketplace.json` lists the plugins people can install. `README.md` lists
@@ -71,6 +73,16 @@ Skills run with the user's credentials, on the user's machine. Treat a skill as 
   entry.
 - A plugin that has `evals/` gets a scenario for behaviour you add or change. A claim that a
   skill helps is a claim an eval can check.
+- Edit `plugin.json` and `mcp.json`, not the manifests generated from them, and not the
+  description or version of a marketplace entry. Then run `npm run plugins:build` and commit
+  what it writes; CI fails when a generated file differs. What one client needs beyond the
+  portable fields goes under `extensions["io.github.ai-ecoverse.x927"]` in `plugin.json`:
+  `targets.<client>` for that client's manifest, `marketplace` for the catalog entry
+  ([x927](https://github.com/ai-ecoverse/x927)). The Commerce plugins and
+  `adobe-for-creativity` are brought in from elsewhere and have no root `plugin.json` yet.
+- A plugin's skills are the folders directly under `skills/`. No client looks below them, so
+  a `SKILL.md` deeper down is a skill nobody can load. Move it up, or make it a reference
+  that its parent skill links.
 
 ## Checks
 
@@ -81,6 +93,7 @@ npm ci
 npm run validate                       # every SKILL.md against the agentskills.io specification
 node scripts/check-release-configs.mjs # release configs point at files that exist
 npm test                               # when you touch scripts/: the workflows run these scripts
+npm run plugins:check                  # when you touch a plugin.json, mcp.json or a manifest
 npm run lint:stardust                  # when you touch plugins/stardust
 (cd plugins/web/cli && npm ci && npm run lint && npm test)  # when you touch plugins/web/cli
 ```

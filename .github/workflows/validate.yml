@@ -27,6 +27,11 @@ jobs:
       - name: Repository scripts pass their tests
         run: npm test
 
+      # Each plugin's root plugin.json (https://agent-plugins.org) is the source. x927 writes
+      # the Claude Code, Tessl and Cursor manifests and the marketplace entries from it.
+      - name: Generated plugin manifests and marketplace entries match each plugin.json
+        run: npm run plugins:check
+
       - name: Claude Code accepts the marketplace and every plugin manifest
         run: |
           npx claude plugin validate .
@@ -35,8 +40,8 @@ jobs:
           done
 
   # The boy-scout rule (.boy-scout.json): a pull request that changes a SKILL.md which is too
-  # long, shares its name with another skill or has a Tessl lint warning has to fix that in
-  # the same pull request.
+  # long, shares its name with another skill, has a Tessl lint warning or is one no client
+  # finds has to fix that in the same pull request.
   boy-scout:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest

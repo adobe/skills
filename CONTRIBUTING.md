@@ -46,6 +46,7 @@ CI runs these on every pull request:
 |---|---|
 | Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, and runs the tests of the `web` CLI and the lints of `stardust`. |
 | Tessl Plugin Lint | `tessl plugin lint` for plugins that have a `.tessl-plugin/plugin.json`. |
+| Validate Skills | `npm run plugins:check`: the Claude Code, Tessl and Cursor manifests and the marketplace entries are what `x927` builds from each plugin's root `plugin.json`. Change `plugin.json`, run `npm run plugins:build`, commit the result. |
 | Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |
 | AI Review | Claude and Codex review the pull request against [AGENTS.md](AGENTS.md) and leave a verdict, a summary and line comments. Drafts are not reviewed. |
 | Conventional Commits | At least one commit of the pull request follows [Conventional Commits](https://www.conventionalcommits.org). |
