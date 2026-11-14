@@ -1,9 +1,9 @@
 ---
 name: block-inventory
-description: Survey available blocks from local AEM Edge Delivery Services project and Block Collection to understand the block palette available for authoring. Returns block inventory with purposes to inform content modeling decisions.
+description: "Use this when the page-import pipeline needs to survey the block palette available from a local AEM Edge Delivery Services project and the Block Collection to inform content modeling decisions. Scans local block folders, searches the Block Collection for common blocks, resolves each block's purpose, and returns a consolidated block inventory annotated with per-block purpose and availability. Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
-  version: "1.0.0"
+  version: "1.0.2"
 ---
 
 # Block Inventory
@@ -62,18 +62,20 @@ ls -d blocks/*/
 
 Search for commonly-used blocks that might not be in the project yet.
 
+`<SKILL_DIR>` is the absolute path to the directory containing this SKILL.md.
+
 **Common blocks to search (run in parallel):**
 
 ```bash
 # Search all common blocks in parallel
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js hero &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js cards &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js columns &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js accordion &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js tabs &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js carousel &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js quote &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js fragment &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js hero &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js cards &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js columns &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js accordion &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js tabs &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js carousel &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js quote &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js fragment &
 wait
 ```
 
@@ -153,8 +155,8 @@ ls -d blocks/*/
 **Step 2 - Block Collection search:**
 ```bash
 # Run parallel searches
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js hero &
-node .claude/skills/block-collection-and-party/scripts/search-block-collection-github.js cards &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js hero &
+node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js cards &
 # ... (all common blocks)
 wait
 ```

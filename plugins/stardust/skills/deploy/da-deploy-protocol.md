@@ -1,0 +1,88 @@
+# DA Deploy Protocol
+
+Reference for the headless deploy sequence: write the sanitised **body-fragment** HTML to DA via the Source API, then preview. Replaces the older `aem put` / `aem preview` / `aem publish` pipeline.
+
+## Deploy (DA Source API + curl)
+
+Needs an IMS token (`DA_TOKEN`; see the `da-content` / `da-auth` skills — may live in the repo `.env`, which MUST be gitignored). Also **push the code branch to GitHub first** so AEM Code Sync builds it and the branch preview renders your blocks.
+
+**Two preconditions bite (both cost real debugging):**
+- **Branch-host length ≤ 63 chars.** The host label `<branch>--<repo>--<owner>` must fit the DNS 63-char limit. Over it, the host does not resolve at all (curl `000`, "label too long") — nothing renders. The page PATH is independent of the host, so keep the path descriptive and **shorten the BRANCH** (e.g. `velocity-refined-content-2`, not `velocity-global-refined-content-2`).
+- **Force Code Sync for a fresh/programmatic branch.** The GitHub webhook frequently does NOT fire on a scripted push — symptom: your edited blocks/assets `404` on the branch host (`code.status: 404` via `admin.hlx.page/status/...`) while baseline files serve. Force it: `POST https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*` (→ `202` + a job), then poll until the edited block JS/CSS are live before previewing.
+
+```bash
+ORG=<daOrg>; REPO=<daRepo>; BRANCH=<branch>; P=<path-without-extension>   # e.g. snowflake-blocks/test-1
+TOKEN="$DA_TOKEN"
+
+# 0. force Code Sync (webhook may not fire for a scripted push) — then wait for
+#    your edited blocks to be live before previewing. Assets gzip → curl --compressed.
+curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
+for i in $(seq 1 60); do   # capped: ~3 min, then fail loud — never an unbounded wait
+  curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
+    | grep -q "<a marker string from your edit>" && break
+  [ "$i" = 60 ] && { echo "code sync did not land in 3 min — check the POST above / Code Sync installation" >&2; exit 1; }
+  sleep 3
+done
+
+# 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
+node skills/deploy/scripts/sanitise.js content/$P.html
+
+# 2. write the body fragment to DA (multipart, field name MUST be `data`, type text/html)
+curl -sS -X PUT -H "Authorization: Bearer $TOKEN" \
+  -F "data=@content/$P.html;type=text/html" \
+  "https://admin.da.live/source/$ORG/$REPO/$P.html"           # expect 201
+
+# 2b. NEW image assets must be LIVE on Code Bus BEFORE the preview ingests them (#75).
+#     The preview fetches every <img src>, hashes the bytes into Media Bus, and writes
+#     about:error if a URL doesn't return image bytes AT THAT MOMENT. A just-pushed
+#     img/<brand>/x.jpg can lose the race with Code Sync. Wait for each authored image:
+for u in $(grep -oE 'https://[^"]+/img/[^"]+\.(jpg|jpeg|png|webp|svg)' content/$P.html | sort -u); do
+  for i in $(seq 1 40); do   # capped: ~2 min per asset, then fail loud
+    [ "$(curl -s -o /dev/null -w '%{http_code}' "$u")" = "200" ] && break
+    [ "$i" = 40 ] && { echo "asset never became live: $u" >&2; exit 1; }
+    sleep 3
+  done
+done
+# NB (#2): this bare-curl wait is for repo-relative /img/ assets only. Do NOT bare-curl
+#   - content.da.live/admin.da.live media URLs — they 401 to anon curl but ingest fine
+#     (verify them via step 3b about:error instead); and
+#   - external SOURCE/CDN <img> srcs on a bot-walled origin (Akamai/Cloudflare 403 a curl
+#     while serving a real browser) — verify those with an in-page fetch from a browser of the recorded
+#     tier (`_crawl-log.json#discovery.fetchTechnique`), and rehost a 403'd asset to DA media rather than omitting it
+#     (see deploy SKILL "The ENCODE contract → Images" image-fidelity rules).
+
+# 3. preview (separate, required; path WITHOUT .html; ref = the code branch)
+curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://admin.hlx.page/preview/$ORG/$REPO/$BRANCH/$P"       # expect 200
+
+# 3a'. ANY admin 4xx: the reason is in the `x-error` response header, not the body
+#      (deploy-batch appends it to lastError). `… N of 200 images` = the DA pipeline caps a
+#      document at 200 images (#125) → split long grids into /fragments/ documents.
+# 3a. preview 409 "error from content-bus" — the error is OPAQUE (no per-asset
+#     detail); do NOT dead-end on it. Two cheap diagnostics, in order:
+#   (i)  upload a known-good doc to the SAME path and re-preview — separates
+#        path-state problems from content problems in one request;
+#   (ii) if the known-good doc previews, check every image URL the real doc
+#        references for an SVG over ~40KB — a hard pipeline limit that
+#        surfaces at PREVIEW, not at upload (and distinct from the
+#        raster-embedding-SVG case, deploy SKILL #99: both present as this
+#        same 409). Remedy: rasterize the SVG to PNG, upload the PNG to DA
+#        media, re-author, re-preview. Field-proven: this turned a dead-end
+#        409 into a 3-minute fix.
+
+# 3b. VERIFY ingestion on the delivered .plain.html (per page; assets gzip → --compressed):
+#   (i)  no broken-image ingestion (#75) — must be 0; if not, an asset wasn't on Code Bus
+#        yet. Re-run step 3 (preview is idempotent; it re-ingests and repairs).
+#   (ii) authored EDITORIAL images actually landed — assert the expected <img>/alt count.
+#        CSS-background images are absent from .plain.html, so "it renders" is NOT proof
+#        that an image is authorable/AI-visible (see SKILL "The ENCODE contract → Images").
+curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -c about:error      # expect 0
+curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -oc '<img'          # expect = authored editorial image count
+
+# 4. publish to aem.live (the default; skip only on an explicit preview-only ask)
+curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P"
+```
+
+URLs: DA edit `https://da.live/#/$ORG/$REPO/$P` · preview `https://$BRANCH--$REPO--$ORG.aem.page/$P` · live `https://$BRANCH--$REPO--$ORG.aem.live/$P`. Token pre-flight: a 401 with empty body means it expired (dev tokens last ~24h) — re-auth.

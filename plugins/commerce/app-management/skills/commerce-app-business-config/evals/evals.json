@@ -1,0 +1,44 @@
+{
+  "skill_name": "commerce-app-business-config",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "My Commerce app needs to call an external tax service. Add a business config field so merchants can enter their tax service API key in Commerce Admin.",
+      "expected_output": "The agent adds a businessConfig.schema entry of type 'password' to app.commerce.config.ts. The entry has a name, type: 'password', and default: ''. No non-empty default is set. aio app build completes without errors.",
+      "assertions": [
+        "app.commerce.config.ts contains a businessConfig.schema array",
+        "At least one entry has type: 'password'",
+        "The password entry has default: '' (empty string only)",
+        "The password entry has a non-empty name field",
+        "aio app build completes without errors"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Add two settings to my Commerce app: a dropdown so merchants can choose their region (EU, US, or APAC), and a toggle to enable or disable a beta feature.",
+      "expected_output": "The agent adds two businessConfig.schema entries: one of type 'list' with selectionMode 'single', three options, and a valid default matching one of the option values; and one of type 'boolean' with default false. aio app build completes without errors.",
+      "assertions": [
+        "app.commerce.config.ts contains a businessConfig.schema array with at least two entries",
+        "One entry has type: 'list' and selectionMode: 'single'",
+        "The list entry has an options array with at least one { label, value } entry",
+        "The list entry default matches one of the option values",
+        "One entry has type: 'boolean'",
+        "aio app build completes without errors"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Set up business config for my Commerce app with the following merchant settings: a notification email address, the URL of an external fulfillment service, a support phone number, and a free-text field for a custom store identifier.",
+      "expected_output": "The agent adds four businessConfig.schema entries of types email, url, tel, and text respectively. All have name and type fields. Defaults are '' or omitted. After build passes, the agent suggests commerce-app-webhooks or commerce-app-eventing as next steps.",
+      "assertions": [
+        "app.commerce.config.ts contains a businessConfig.schema array with at least four entries",
+        "One entry has type: 'email'",
+        "One entry has type: 'url'",
+        "One entry has type: 'tel'",
+        "One entry has type: 'text'",
+        "aio app build completes without errors",
+        "Agent mentions commerce-app-webhooks or commerce-app-eventing as next steps"
+      ]
+    }
+  ]
+}

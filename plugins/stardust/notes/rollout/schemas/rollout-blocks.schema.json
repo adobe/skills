@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/rollout-blocks.schema.json",
+  "title": "stardust rollout/coverage/blocks.json",
+  "description": "The dedup unit. One row per DISTINCT block across the site (matched by a signature derived from canon / migrated sections). rollout converts each block to an EDS block once and reuses it across every page that composes it. Records the EDS mapping + delivery status. Owned by stardust:rollout; deploy is never modified.",
+  "type": "object",
+  "required": ["_provenance", "blocks"],
+  "additionalProperties": false,
+  "properties": {
+    "_provenance": { "$ref": "#/$defs/provenance" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt", "stardustVersion"],
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:rollout"] },
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "readArtifacts": { "type": "array", "items": { "type": "string" } },
+        "stardustVersion": { "type": "string" }
+      }
+    },
+    "block": {
+      "type": "object",
+      "required": ["id", "signature", "delivery"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["chrome", "module", "section"],
+          "description": "chrome = header/nav/footer (delivered as fragments); module = brand module; section = reusable section archetype."
+        },
+        "signature": {
+          "type": "string",
+          "description": "Stable fingerprint used to match identical block instances across pages for dedup (derived from canon module id or the section's structural signature)."
+        },
+        "source": {
+          "type": ["string", "null"],
+          "description": "Canon definition path when the block is canonized, e.g. stardust/canon/modules/<id>.html."
+        },
+        "usedByTemplates": { "type": "array", "items": { "type": "string" } },
+        "usedByPages": { "type": "array", "items": { "type": "string" } },
+        "instanceCount": { "type": "integer", "minimum": 0, "description": "How many page instances deploy this block." },
+        "delivery": {
+          "type": "object",
+          "required": ["status"],
+          "additionalProperties": false,
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["pending", "converted", "deployed", "verified", "failed"]
+            },
+            "edsBlockName": {
+              "type": ["string", "null"],
+              "description": "Canonical EDS block name this block was converted to (blocks/<name>/). The dedup target."
+            },
+            "blockPath": { "type": ["string", "null"], "description": "Delivered block path / fragment path." },
+            "convertedAt": { "type": ["string", "null"], "format": "date-time" }
+          }
+        }
+      }
+    }
+  }
+}

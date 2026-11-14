@@ -20,9 +20,9 @@ A project where extract + direct have completed:
 
 ## Expected behavior
 
-The `stardust:prototype` skill is invoked. It:
+The stardust `prototype` skill is invoked. It:
 
-1. Runs the master setup (impeccable dep, context loader, state read).
+1. Runs the master setup (impeccable dep, target-state file check, state read).
 2. Verifies the page is `directed` (and not `pending` direction).
 3. Reads `stardust/current/pages/home.json`, `stardust/direction.md`
    Active section, project-root `DESIGN.md` and `DESIGN.json`.

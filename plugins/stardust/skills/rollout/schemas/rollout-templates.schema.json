@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/rollout-templates.schema.json",
+  "title": "stardust rollout/coverage/templates.json",
+  "description": "Template grouping for delivery. A template is the structure shared by a set of migrated pages; rollout uses it to deliver a representative page first (establishing the EDS block library), to drive block reuse, and to roll up per-template delivery progress. Derived from the agnostic _meta.json / canon at inventory time. Owned by stardust:rollout.",
+  "type": "object",
+  "required": ["_provenance", "templates"],
+  "additionalProperties": false,
+  "properties": {
+    "_provenance": { "$ref": "#/$defs/provenance" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "templates": { "type": "array", "items": { "$ref": "#/$defs/template" } }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt", "stardustVersion"],
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:rollout"] },
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "readArtifacts": { "type": "array", "items": { "type": "string" } },
+        "stardustVersion": { "type": "string" }
+      }
+    },
+    "template": {
+      "type": "object",
+      "required": ["id", "pages"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "type": {
+          "type": ["string", "null"],
+          "description": "The agnostic page type this grouping reflects, when available from _meta.json (landing/article/listing/etc.). Informational for rollout."
+        },
+        "representativeSlug": {
+          "type": ["string", "null"],
+          "description": "The page rollout delivers first to establish this template's EDS block library; siblings then reuse those blocks."
+        },
+        "pages": {
+          "type": "array",
+          "description": "Slugs that share this structure.",
+          "items": { "type": "string" }
+        },
+        "pageCount": { "type": "integer", "minimum": 0 },
+        "blocks": {
+          "type": "array",
+          "description": "Block ids this template composes (rollout/coverage/blocks.json[].id).",
+          "items": { "type": "string" }
+        },
+        "delivery": {
+          "type": "object",
+          "description": "Roll-up of this template's pages by delivery progress.",
+          "additionalProperties": false,
+          "properties": {
+            "verified": { "type": "integer", "minimum": 0 },
+            "deployed": { "type": "integer", "minimum": 0 },
+            "pending": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}
