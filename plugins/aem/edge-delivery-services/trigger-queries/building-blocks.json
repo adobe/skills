@@ -1,0 +1,152 @@
+{
+  "name": "building-blocks trigger queries",
+  "description": "Should trigger when implementing block or core code with the content model already decided; near misses overlap the CDD set.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4",
+    "remote": "https://github.com/adobe/aem-boilerplate.git"
+  },
+  "queries": [
+    {
+      "id": "y-decorate",
+      "query": "Authors will write a new tabs block as a table: a tab label column and a content column, one row per tab. Write the decorate function and CSS for that block so it works with exactly that markup.",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-scope-css",
+      "query": "Here's the CSS for a new `stats` block I'm adding. It leaks into other blocks on the page. Rewrite it so it's properly scoped:\n\n```css\n.title { font-size: 2rem; }\n.item { display: flex; gap: 1rem; }\nh2 { color: var(--link-color); }\n```",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-lazy-load",
+      "query": "I'm adding a video-hero block whose decorate() imports a 400 KB lottie library up front. That would tank LCP. Structure the block so the library is only pulled in when needed and the first paint isn't blocked.",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-wire-delayed",
+      "query": "Wire up a chat widget loader so it only loads after LCP and stays out of the eager path in scripts.js. Use whatever this project already does for deferred scripts. Snippet:\n\n```html\n<script src=\"https://widget.example-chat.com/loader.js\" data-site=\"acme-123\" async></script>\n```",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-block-structure",
+      "query": "Create the folder structure and starter files for a new `callout` block in blocks/. The content model is already agreed: one cell with text and an optional icon. Just scaffold JS and CSS.",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-lint-fix",
+      "query": "My new block's decorate() rebuilds the block with `block.innerHTML = rows.map(...).join('')`, and eslint plus our perf rules flag it. Refactor it to move the existing children instead:\n\n```js\nexport default function decorate(block) {\n  const rows = [...block.children].map((r) => `<li>${r.innerHTML}</li>`);\n  block.innerHTML = `<ul>${rows.join('')}</ul>`;\n}\n```",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-core-hook",
+      "query": "I need to add a global click handler for outbound links in scripts.js that adds target=_blank. Where should that live so it runs on every page without affecting performance?",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "test"
+    },
+    {
+      "id": "y-images",
+      "query": "The hero block uses a plain img with a huge source. Switch it to use createOptimizedPicture with sensible breakpoints and keep eager loading for the first image.",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "test"
+    },
+    {
+      "id": "y-block-options",
+      "query": "Add support for `columns (reverse)` to the columns block using a CSS-only variant. Don't change the authoring structure.",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "test"
+    },
+    {
+      "id": "y-fragment",
+      "query": "Change how the footer block pulls in its fragment so it still works when the footer.plain.html is missing. I have the current footer.js open.",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "test"
+    },
+    {
+      "id": "n-author-content",
+      "query": "Our marketing team keeps asking how to add a second column of text next to an image on the product pages. They write everything in da.live. What do they actually type into the doc to get that layout with the blocks we already have?",
+      "should_trigger": false,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-import-page",
+      "query": "Can you take https://www.example-bakery.com/about and bring that page into our EDS project? I want the HTML ready to preview locally under /drafts. Don't touch any of our blocks.",
+      "should_trigger": false,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-review-pr",
+      "query": "Please review PR #214 on our EDS repo. Someone added a tabs block and I want to make sure it follows our conventions before I merge. Just leave comments, don't push changes.",
+      "should_trigger": false,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-js-question",
+      "query": "In vanilla JS, what's the cleanest way to debounce a resize handler? I've got three different snippets on my screen and can't decide. No need to look at any repo.",
+      "should_trigger": false,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-aem-up-fails",
+      "query": "`aem up` dies immediately with EADDRINUSE and I have no idea what is on the port. Fresh laptop, just installed the CLI. How do I get the dev server running?",
+      "should_trigger": false,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-da-token",
+      "query": "I need to PUT an updated nav fragment into DA via the admin API from a script but my token expired. How do I get a fresh IMS token for admin.da.live?",
+      "should_trigger": false,
+      "skill": "building-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-docs-question",
+      "query": "What does the aem.live documentation say about how the `delayed.js` phase is scheduled relative to LCP? I only need a short explanation with a link, not a code change.",
+      "should_trigger": true,
+      "skill": "building-blocks",
+      "split": "test",
+      "note": "relabelled: docs-search deleted (#576); building-blocks owns loading phases"
+    },
+    {
+      "id": "n-new-site",
+      "query": "We have a brand-new client and no repo yet. Set up an EDS site from the boilerplate with a nav, footer and a homepage in DA, and send me the preview link.",
+      "should_trigger": false,
+      "skill": "building-blocks",
+      "split": "test"
+    },
+    {
+      "id": "n-ue-model",
+      "query": "Add a `quote` block to our Universal Editor setup: I need the component definition, model with an author and a text field, and to allow it in the section filter. The block JS already exists.",
+      "should_trigger": false,
+      "skill": "building-blocks",
+      "split": "test"
+    },
+    {
+      "id": "n-docs-only",
+      "query": "Our README still says to run `npm start` but the project uses `aem up`. Fix the docs only — wording in README.md and CONTRIBUTING.md, no code.",
+      "should_trigger": false,
+      "skill": "building-blocks",
+      "split": "test"
+    }
+  ]
+}
