@@ -28,7 +28,7 @@ Use `assets/e2e-ci-workflow.yml` as the base template. Key steps:
 
 # 4. Upload failure artifacts (always, even if tests pass — for the HTML report)
 - name: Upload report
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   if: always()
   with:
     name: playwright-report
@@ -37,7 +37,7 @@ Use `assets/e2e-ci-workflow.yml` as the base template. Key steps:
 
 # 5. Upload traces and screenshots on failure
 - name: Upload test results
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   if: failure()
   with:
     name: test-results
@@ -52,7 +52,7 @@ If tests stub all action responses with `page.route()`, you may not need a dev s
 ```yaml
 steps:
   - uses: actions/checkout@v7
-  - uses: actions/setup-node@v4
+  - uses: actions/setup-node@v7
     with:
       node-version: '18'
       cache: 'npm'
@@ -61,7 +61,7 @@ steps:
   - run: npx playwright test
     env:
       CI: true
-  - uses: actions/upload-artifact@v4
+  - uses: actions/upload-artifact@v7
     if: always()
     with:
       name: playwright-report
@@ -147,13 +147,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with: { node-version: '18', cache: 'npm' }
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
         env: { CI: true }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: playwright-report, path: playwright-report/ }
 ```

@@ -1,0 +1,7 @@
+{ "blocks": {
+  "hero": { "kind": "block", "family": "hero", "description": "Hero", "aem": ["banner"], "reference": "hero", "verdict": "reuse" },
+  "cards": { "kind": "block", "family": "grid", "description": "Cards", "aem": ["tiles"], "reference": "cards", "verdict": "new" },
+  "header": { "kind": "global", "family": "other", "description": "Header", "verdict": "variant" },
+  "footer": { "kind": "global", "family": "other", "description": "Footer", "verdict": "variant" },
+  "site-search": { "kind": "widget", "family": "search", "description": "Search", "aem": ["search"], "reference": null, "verdict": "new" }
+} }
