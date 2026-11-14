@@ -65,7 +65,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
+          BEFORE: ${{ github.event.before }}
         run: node scripts/release-skills.mjs "$RUNNER_TEMP/release-dirs.txt"
+
+      # A plugin with a root plugin.json gets its version from semantic-release too, from
+      # the commits that touch it. A change to one of its skills releases the plugin as
+      # well: Claude Code keeps an installed plugin at its version until that changes.
+      - name: Detect changed plugins
+        id: plugins
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          node scripts/changed.mjs plugins "$BEFORE..$AFTER" --fallback HEAD > "$RUNNER_TEMP/plugin-dirs.txt"
+          if [ -s "$RUNNER_TEMP/plugin-dirs.txt" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Changed plugins:"
+            cat "$RUNNER_TEMP/plugin-dirs.txt"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No plugin with a root plugin.json changed."
+          fi
+
+      - name: Release changed plugins
+        if: steps.plugins.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEFORE: ${{ github.event.before }}
+        run: node scripts/release-plugins.mjs "$RUNNER_TEMP/plugin-dirs.txt"
 
       - name: Publish changed plugins
         env:

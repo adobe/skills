@@ -14,9 +14,10 @@
 // 0.21.1 while plugin.json reached 0.25.2).
 //
 // A plugin with a root plugin.json (https://agent-plugins.org) has its manifests compiled
-// from that file by x927, and `x927 diff --all` checks them. Setting a version here then
-// writes the root plugin.json too, the version and the Tessl skills list, so that the
-// next `x927 build` produces what this script wrote.
+// from that file by x927, and its version set by semantic-release after a merge
+// (scripts/release-plugins.mjs), which keeps the Tessl skills list in step too. For such a
+// plugin the check here still says whether everything agrees; setting a version by hand is
+// for a repair. It then writes the root plugin.json too, so that the next build agrees.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 

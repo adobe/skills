@@ -94,6 +94,10 @@ A maintainer will look at a pull request within one week. Feedback is given in w
 
 There is nothing to publish by hand. People install plugins from `main`, so a merged pull request is what they get next.
 
-On every push to `main`, [semantic-release](https://semantic-release.gitbook.io) releases each changed skill that has a `package.json`: it computes the version from the commit messages, writes the skill's `CHANGELOG.md`, and creates a GitHub release with the packaged skill. `feat` is a minor release; `fix`, `perf`, `docs`, `refactor` and `style` are patch releases; a breaking change is a major release.
+On every push to `main`, [semantic-release](https://semantic-release.gitbook.io) computes versions from the commit messages. `feat` is a minor release; `fix`, `perf`, `docs`, `refactor` and `style` are patch releases; a breaking change is a major release. Nobody sets a version by hand, and a pull request that changes one fails.
 
-A plugin with a `.tessl-plugin/plugin.json` is published to the Tessl registry when the `version` in that file changes. For a plugin with a root `plugin.json`, that is when you change the `version` there: the Tessl manifest is built from it after the merge.
+- **Skills.** Each changed skill is released: its version goes into `metadata.version` of its `SKILL.md`, its `CHANGELOG.md` is written, and a GitHub release with the packaged skill is created, tagged `<skill>-v<version>`. A skill needs no release files of its own.
+- **Plugins.** Each changed plugin that has a root `plugin.json` is released as well, also when only one of its skills changed: its version goes into `plugin.json`, the manifests and the marketplace entry are built from that, and the release is tagged `plugin/<name>/v<version>`. Claude Code keeps an installed plugin at its version until the version changes, so this is what brings a merged change to the people who installed it. In a `CHANGELOG.md` that a plugin's owners write by hand, put the entry under `## Unreleased`; the release renames that heading to the version.
+- **Not released here:** skills and plugins brought in from another repository (the Commerce plugins, `adobe-for-creativity`, the `run-workflow` skill), which keep the versions they have there; a skill whose folder name another skill has; and the version of a plugin without a root `plugin.json`.
+
+A plugin with a `.tessl-plugin/plugin.json` is published to the Tessl registry when the `version` in that file changes, which is with every release of the plugin.

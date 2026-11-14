@@ -40,6 +40,14 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: npm run plugins:check -- "origin/$BASE_REF"
 
+      # The version of a skill and of a plugin is computed by semantic-release after the
+      # merge. A version changed by hand would be overwritten, or throw the count off.
+      - name: The pull request leaves the versions alone that a release sets
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-versions.mjs "origin/$BASE_REF"
+
       # The steps below look at the manifests as they will be on main.
       - name: Build the plugin manifests in this checkout
         run: npm run plugins:build
