@@ -187,7 +187,6 @@
   source: aem-boilerplate 5cea543, AGENTS.md
   used_by:
     - evals/javascript-block-decoration-patterns
-    - skills/building-blocks/SKILL.md
 
 - id: block-dom-scope
   claim: >-

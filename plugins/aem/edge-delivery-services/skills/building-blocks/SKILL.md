@@ -12,7 +12,6 @@ EDS rules for block and site code that differ from general front-end practice. F
 
 ## JavaScript (`decorate(block)`)
 
-- **Cells vary:** authors leave cells out and add extra ones. Find content by what it is (e.g. the cell with a `picture`), not by index.
 - **Don't hold up the section:** a section stays hidden until all its blocks are decorated, and the first section gates LCP. Don't await slow fetches, large imports or embeds in `decorate()`; load them when the block comes into view (IntersectionObserver) or on interaction, and reserve their space (e.g. `aspect-ratio`) so late content doesn't shift the layout.
 
 ## CSS
