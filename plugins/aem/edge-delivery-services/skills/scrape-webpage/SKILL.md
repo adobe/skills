@@ -160,9 +160,7 @@ that match the launched browser, and a mismatch is itself a detection signal.
 
 **Certificate errors (`net::ERR_CERT_*`):**
 
-Don't disable certificate validation: scraped content becomes migration source. Scrape a host
-with a valid certificate, or get the source host one the browser trusts. `NODE_EXTRA_CA_CERTS`
-has no effect, because the browser, not Node, fetches the page and its images.
+Don't disable certificate validation: scraped content becomes migration source.
 
 **Playwright or Sharp not installed:**
 ```bash
