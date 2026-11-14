@@ -28,6 +28,20 @@ class labels).
   from the copy, a copy without the master's scripts stops with the instruction); the characterization test pins 106
   divergences (103 − 10 converged + 13 for code added in 0.35–0.38).
 
+## 0.38.6 — the scripts index lists what an agent runs, not the libraries it imports
+
+The scripts index has a 12 KB cap so an agent can read it at session start, and it had sat within 10 bytes of that cap
+for eight releases: every new script meant shortening someone else's row. 17 of its rows (about 1 KB) were pure
+libraries, marked "no CLI", which an agent never runs.
+
+- **`evals/lint/libraries.mjs`** is the one list of pure libraries (exported functions, no argv), moved from
+  `script-help.mjs`'s exemption list. `script-help.mjs` still skips them for `--help`; `scripts-index.mjs` now
+  requires no row for them and fails on a row that names one.
+- **`scripts-index.md`** drops the 17 library rows (12288 → 11282 bytes). The libraries an agent imports
+  (`browser.mjs`, `live-session.mjs`, `eds-path.mjs`, `measure-live.mjs`, `martech.mjs`) are documented in the skills
+  that use them, unchanged.
+- **AGENTS.md:** a new library goes in `libraries.mjs`, not the index.
+
 ## 0.38.5 — martech tags load from the boilerplate's consent phase
 
 aem-boilerplate replaced `delayed.js` with a consent phase: `loadDelayed()` imports `consent-check.js`,

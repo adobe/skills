@@ -69,7 +69,7 @@ aio runtime action get <action-name> --url
 **Fix:**
 ```yaml
 # Ensure setup-node runs BEFORE aio-cli-setup-action
-- uses: actions/setup-node@v4
+- uses: actions/setup-node@v7
   with:
     node-version: '20'  # Minimum: 18. Recommended: 20
 
@@ -81,7 +81,7 @@ aio runtime action get <action-name> --url
 ```
 
 **Prevention:**
-- Always pin `actions/setup-node@v4` with `node-version: '20'` before CLI setup
+- Always pin `actions/setup-node@v7` with `node-version: '20'` before CLI setup
 - Use the workflow templates from `assets/` which include correct Node.js version
 - Add a Node.js version check to your CI: `node --version` as a debug step
 
@@ -218,7 +218,7 @@ git commit -m "chore: update lockfile"
 # 3. Match Node.js version between local and CI
 node --version  # Check local version
 # Update workflow to match:
-# - uses: actions/setup-node@v4
+# - uses: actions/setup-node@v7
 #   with:
 #     node-version: '20'
 
