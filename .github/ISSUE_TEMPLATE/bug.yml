@@ -1,0 +1,51 @@
+name: A skill does the wrong thing
+description: A skill gives wrong instructions, fails, loads when it shouldn't, or doesn't install.
+labels: [bug]
+body:
+  - type: dropdown
+    id: plugin
+    attributes:
+      label: Plugin
+      options:
+        - adobe-analytics
+        - adobe-cja
+        - adobe-for-creativity
+        - adobe-for-developers
+        - aem-6-5-lts
+        - aem-cloud-service
+        - aem-edge-delivery-services
+        - aem-eds-content-ops
+        - aem-project-management
+        - app-builder
+        - commerce-app-management
+        - commerce-app-migration
+        - commerce-app-review
+        - run-workflow
+        - stardust
+        - web
+        - workfront
+        - Repository (CI, docs, installation)
+    validations:
+      required: true
+  - type: input
+    id: skill
+    attributes:
+      label: Skill
+      description: The name of the skill, if you know which one it is.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you asked the agent to do, what the skill made it do, and what you expected. Quote the lines of the skill that are wrong if you found them.
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and version
+      description: For example Claude Code 2.1.300, GitHub Copilot CLI 1.0.85 or Cursor 3.2, and how you installed the plugin.
+  - type: input
+    id: product
+    attributes:
+      label: Adobe product and version
+      description: If the problem depends on it, for example AEM 6.5 LTS SP2 or AEM as a Cloud Service 2026.10.

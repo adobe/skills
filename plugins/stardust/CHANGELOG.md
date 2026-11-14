@@ -28,6 +28,44 @@ class labels).
   from the copy, a copy without the master's scripts stops with the instruction); the characterization test pins 106
   divergences (103 − 10 converged + 13 for code added in 0.35–0.38).
 
+## 0.38.5 — martech tags load from the boilerplate's consent phase
+
+aem-boilerplate replaced `delayed.js` with a consent phase: `loadDelayed()` imports `consent-check.js`,
+whose placeholder `hasConsent()` declines by default and loads `consented.js` only on consent. The EDS
+`building-blocks` and `code-review` skills now state the rule (martech in `consented.js`). On such a
+project the scaffold hooked `loadTags()` straight into `loadDelayed()`, outside that phase.
+
+- **`deploy/scripts/martech-scaffold.mjs`:** when `scripts/consented.js` and `scripts/consent-check.js`
+  exist, `loadTags()` hooks into `consented.js`, and the boilerplate's placeholder `hasConsent()` (with its
+  JSDoc) is replaced by one that returns `martech.js` `hasConsent()`: true on the production hosts; off
+  them `?consent=accept|decline` decides as in the boilerplate, else `?martech=on`. Each route keeps its
+  own CMP category gate, so the source's consent model (`per-tag`, `google-consent-mode`) is unchanged.
+  Only the placeholder, matched token for token, is replaced. Any other `hasConsent()` (an owner's CMP
+  wiring, an `async` or arrow one, a placeholder reworded upstream) is a conflict that `--force` does not
+  override, until it calls `martechConsent()`; then it is kept as is. A `loadTags()` hook an older run left
+  in `loadDelayed()` or `delayed.js` is removed, so an upgraded site loads its tags once. Older projects
+  keep the `delayed.js` / `loadDelayed()` hooks.
+- Docs: `dynamics/reference/martech.md` (runtime step, `?consent=` switches).
+- Tests: `martech-scaffold.test.mjs` 24/24 — the consented.js hooks and re-run, the upgrade from an older
+  run's hook, every non-placeholder `hasConsent()` as a conflict, an owner-wired one kept, the JSDoc, the
+  `hasConsent()` matrix, and consent-check.js → consented.js → tags end to end.
+
+## 0.38.3 — spec: classic AEM components inside responsive grids
+
+Field learning from a medical-device manufacturer's run: the site mixes classic `c-*` components with responsive-grid
+members inside experience fragments. The `aem-classic` profile looked through the grids, so side-by-side members never
+became rows (the columns and cards a row maps to were missed) and components without the `c-` prefix went unnamed; the
+run had to extend the profile in its project copy.
+
+- **`aem-classic` reads responsive grids:** a grid member (`aem-GridColumn`) is the root, named by the classic
+  component it wraps, so one component keeps one name inside and outside grids. Member widths group members into rows,
+  as in `aem-core`, and the wrapped component is not counted as a second root.
+- **`parser.extraRoots`** (aem-classic) lists component classes without the `c-` prefix. The run needed four.
+- Pages without grids parse as before. On pages with grids, path ids change and grid containers appear as `container`:
+  a run already past S7 re-runs parse and capture, and adds `container` to the mapping's `layout` list.
+- Re-parsing that run's 2,883 cached pages with this code and its four `extraRoots` gives output identical to the run's
+  own parse. `spec-parse.test.mjs` covers grid rows, member naming and `extraRoots`.
+
 ## 0.38.2 — an mp4 goes to DA and is delivered on its own, authored root-relative (#161, amends #103)
 
 Field learning (a migrated site whose hero carousel played three videos): the videos were committed to the code repo
