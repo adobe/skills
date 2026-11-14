@@ -1,0 +1,43 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:prototype",
+    "writtenAt": "2026-10-12T09:30:00Z",
+    "stardustVersion": "0.33.0"
+  },
+  "site": {
+    "originUrl": "https://www.example.com",
+    "deployUrl": null,
+    "extractedAt": "2026-10-11T14:02:00Z",
+    "pageCap": 5,
+    "totalDiscovered": 12,
+    "crawled": 1
+  },
+  "direction": {
+    "phrase": "keep it calm and editorial, lead with the search",
+    "resolvedAt": "2026-10-11T15:10:00Z"
+  },
+  "handsOff": false,
+  "flow": "redesign",
+  "flowChosenAt": "2026-10-11T14:00:00Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "home",
+      "url": "https://www.example.com/",
+      "title": "A regional public-library network — home",
+      "type": "landing",
+      "status": "approved",
+      "history": [
+        { "status": "extracted", "at": "2026-10-11T14:02:00Z" },
+        { "status": "directed", "at": "2026-10-11T15:10:00Z" },
+        { "status": "prototyped", "at": "2026-10-12T09:30:00Z" },
+        { "status": "approved", "at": "2026-10-12T10:05:00Z" }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/home.json",
+      "prototypePath": "stardust/prototypes/home-proposed.html",
+      "migratedPath": null
+    }
+  ]
+}

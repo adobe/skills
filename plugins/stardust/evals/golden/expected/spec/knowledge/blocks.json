@@ -1,0 +1,119 @@
+[
+ {
+  "name": "hero",
+  "kind": "block",
+  "family": "hero",
+  "description": "Hero",
+  "source": [
+   "banner"
+  ],
+  "reference_block": "hero",
+  "verdict": "reuse",
+  "rationale": null,
+  "url_count": 1,
+  "instance_count": 1,
+  "template_count": 1,
+  "pageviews_90d": 0,
+  "variants": [
+   {
+    "variant": null,
+    "verdict": "reuse",
+    "rationale": null,
+    "url_count": 1,
+    "instance_count": 1,
+    "examples": []
+   }
+  ]
+ },
+ {
+  "name": "cards",
+  "kind": "block",
+  "family": "grid",
+  "description": "Cards",
+  "source": [
+   "tiles"
+  ],
+  "reference_block": "cards",
+  "verdict": "new",
+  "rationale": null,
+  "url_count": 1,
+  "instance_count": 1,
+  "template_count": 1,
+  "pageviews_90d": 0,
+  "variants": [
+   {
+    "variant": "3-up",
+    "verdict": "new",
+    "rationale": null,
+    "url_count": 1,
+    "instance_count": 1,
+    "examples": []
+   }
+  ]
+ },
+ {
+  "name": "header",
+  "kind": "global",
+  "family": "other",
+  "description": "Header",
+  "source": [],
+  "reference_block": null,
+  "verdict": "variant",
+  "rationale": null,
+  "url_count": 1,
+  "instance_count": 1,
+  "template_count": 1,
+  "pageviews_90d": 0,
+  "variants": [
+   {
+    "variant": null,
+    "verdict": "variant",
+    "rationale": null,
+    "url_count": 1,
+    "instance_count": 1,
+    "examples": []
+   }
+  ]
+ },
+ {
+  "name": "footer",
+  "kind": "global",
+  "family": "other",
+  "description": "Footer",
+  "source": [],
+  "reference_block": null,
+  "verdict": "variant",
+  "rationale": null,
+  "url_count": 1,
+  "instance_count": 1,
+  "template_count": 1,
+  "pageviews_90d": 0,
+  "variants": [
+   {
+    "variant": null,
+    "verdict": "variant",
+    "rationale": null,
+    "url_count": 1,
+    "instance_count": 1,
+    "examples": []
+   }
+  ]
+ },
+ {
+  "name": "site-search",
+  "kind": "widget",
+  "family": "search",
+  "description": "Search",
+  "source": [
+   "search"
+  ],
+  "reference_block": null,
+  "verdict": "new",
+  "rationale": null,
+  "url_count": 0,
+  "instance_count": 0,
+  "template_count": 0,
+  "pageviews_90d": 0,
+  "variants": []
+ }
+]

@@ -1,0 +1,158 @@
+{
+ "_provenance": {
+  "writtenBy": "stardust:dynamics plan",
+  "writtenAt": "2026-01-01T00:00:00.000Z",
+  "input": "findings.json",
+  "target": null,
+  "migrated": null,
+  "knowledge": null,
+  "chrome": null
+ },
+ "rows": [
+  {
+   "id": "T1",
+   "class": "T",
+   "feature": "tag manager: Adobe Launch",
+   "pages": 1,
+   "probed": 3,
+   "reach": null,
+   "evidence": [
+    "assets.adobedtm.com"
+   ],
+   "pattern": "consent-gated-tags",
+   "disposition": "embed-passthrough",
+   "target": "embed",
+   "reproducibility": "needs-business-decision",
+   "status": "pending",
+   "phase": "tags",
+   "decision": "which tags run on the new host; property ids"
+  },
+  {
+   "id": "S1",
+   "class": "S",
+   "feature": "site search form → /search",
+   "pages": 2,
+   "probed": 3,
+   "reach": null,
+   "evidence": [
+    "form[action=/search]"
+   ],
+   "pattern": "search-index-backed",
+   "disposition": "index-backed",
+   "target": "widget",
+   "reproducibility": "self",
+   "status": "pending",
+   "phase": "search",
+   "decision": "none (corpus = the migrated pages; second corpora stay out)"
+  },
+  {
+   "id": "F2",
+   "class": "F",
+   "feature": "form-less control group in main (4 controls, submit \"Send\")",
+   "pages": 1,
+   "probed": 3,
+   "reach": null,
+   "evidence": [
+    "main select×3",
+    "button Send"
+   ],
+   "pattern": "forms",
+   "disposition": "rebuild-native",
+   "target": "widget",
+   "reproducibility": "needs-backend",
+   "status": "pending",
+   "phase": "forms",
+   "decision": "production endpoint; interim capture ships now"
+  },
+  {
+   "id": "A1",
+   "class": "A",
+   "feature": "first-party API GET /api/store-locator",
+   "pages": 1,
+   "probed": 3,
+   "reach": null,
+   "evidence": [
+    "xhr /api/store-locator?lat=..&lng=.."
+   ],
+   "pattern": "off-origin-data",
+   "disposition": "data-fed",
+   "target": "widget",
+   "reproducibility": "needs-business-decision",
+   "status": "pending",
+   "phase": "off-origin data",
+   "decision": "which tier for the target host; consumer on the migrated pages?"
+  },
+  {
+   "id": "F3",
+   "class": "F",
+   "feature": "form \"contact\" → /thanks (5 fields)",
+   "pages": 1,
+   "probed": 3,
+   "reach": null,
+   "evidence": [
+    "form#contact"
+   ],
+   "pattern": "forms",
+   "disposition": "rebuild-native",
+   "target": "block",
+   "reproducibility": "needs-backend",
+   "status": "pending",
+   "phase": "forms",
+   "decision": "production endpoint; interim capture ships now"
+  },
+  {
+   "id": "L1",
+   "class": "L",
+   "feature": "listing candidate .news (8 cards)",
+   "pages": 1,
+   "probed": 3,
+   "reach": null,
+   "evidence": [
+    ".news article×8"
+   ],
+   "pattern": "listing-index-backed",
+   "disposition": "index-backed",
+   "target": "block",
+   "reproducibility": "needs-business-decision",
+   "status": "pending",
+   "phase": "listings",
+   "decision": "index-driven or editorially curated?"
+  },
+  {
+   "id": "M1",
+   "class": "M",
+   "feature": "modal trigger .js-modal → /contact",
+   "pages": 1,
+   "probed": 3,
+   "reach": null,
+   "evidence": [
+    "a.js-modal"
+   ],
+   "pattern": "modal-loader",
+   "disposition": "rebuild-native",
+   "target": "runtime",
+   "reproducibility": "self",
+   "status": "pending",
+   "phase": "interactive",
+   "decision": "none"
+  },
+  {
+   "id": "X1",
+   "class": "X",
+   "feature": "sign-in / account links",
+   "pages": 3,
+   "probed": 3,
+   "reach": null,
+   "evidence": [
+    "a[href=/account]"
+   ],
+   "pattern": "decided-out",
+   "disposition": "decided-out",
+   "target": null,
+   "reproducibility": "needs-backend",
+   "status": "pending",
+   "phase": "register",
+   "decision": "auth / commerce on the new host?"
+  }
+ ]
+}
