@@ -9,7 +9,9 @@
 // --sitemap  compare with this sitemap (a sitemap index is followed on the same host)
 // --check    request this many indexed paths, oldest first, and list those that are not 200.
 //            0 skips the check. Default 25.
-// Only sends GET and HEAD requests, to the host of <index-url> and of --sitemap. No dependencies.
+// Only sends GET and HEAD requests, to the host of <index-url> and of --sitemap. Paths that the
+// index or a sitemap names are data: they are requested on those hosts and nowhere else.
+// No dependencies.
 
 const PAGE = 1000;
 const LISTED = 50;
@@ -44,6 +46,22 @@ process.on('uncaughtException', (error) => {
   console.error(error.message);
   process.exit(1);
 });
+
+// The URL of a path on the host of base, or null when the value is not a path: an absolute URL,
+// or a reference like //other.host/x that a URL parser would resolve to another host.
+const onHost = (base, path) => {
+  if (typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//') || path.includes('\\')) return null;
+  const url = new URL(base.origin);
+  url.pathname = path;
+  return url.origin === base.origin ? url : null;
+};
+const pathOf = (value) => {
+  try {
+    return new URL(value).pathname;
+  } catch {
+    return null;
+  }
+};
 
 const get = async (url) => {
   const response = await fetch(url, { redirect: 'manual' });
@@ -111,7 +129,11 @@ if (sitemapUrl) {
     urls = [];
     for (const child of children) {
       // The sitemap index names the production host. Read the child from the host we were given.
-      const target = new URL(new URL(child).pathname, sitemapUrl);
+      const target = onHost(sitemapUrl, pathOf(child));
+      if (!target) {
+        skipped.push({ sitemap: child, error: 'not a path on the host of --sitemap' });
+        continue;
+      }
       try {
         urls.push(...(await locs(target)));
       } catch (error) {
@@ -120,7 +142,7 @@ if (sitemapUrl) {
     }
   }
   // A sitemap configuration can add an extension such as .html to every path. The index has none.
-  const raw = urls.map((url) => new URL(url).pathname);
+  const raw = urls.map(pathOf).filter((path) => path !== null);
   const extension = raw.length > 0 && raw.every((path) => path.endsWith('.html')) && !paths.some((path) => String(path).endsWith('.html')) ? '.html' : '';
   const inSitemap = new Set(raw.map((path) => path.slice(0, path.length - extension.length)));
   const noindex = new Set(entries.filter((entry) => /noindex/i.test(String(entry.robots ?? ''))).map((entry) => entry.path));
@@ -147,8 +169,13 @@ if (check > 0) {
   const sample = byAge.slice(0, check).map((entry) => entry.path);
   const notOk = [];
   for (const path of sample) {
+    const target = onHost(indexUrl, path);
+    if (!target) {
+      notOk.push({ path, error: 'not a path on the host of the index' });
+      continue;
+    }
     try {
-      const response = await fetch(new URL(path, indexUrl), { method: 'HEAD', redirect: 'manual' });
+      const response = await fetch(target, { method: 'HEAD', redirect: 'manual' });
       if (response.status !== 200) notOk.push({ path, status: response.status, location: response.headers.get('location') ?? undefined });
     } catch (error) {
       notOk.push({ path, error: error.message });

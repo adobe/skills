@@ -15,9 +15,7 @@ Sources: [Indexing](https://www.aem.live/developer/indexing), [Indexing referenc
 { "total": 1472, "offset": 0, "limit": 1000, "data": [{ "path": "/…" }], "columns": ["path", "title"], ":type": "sheet" }
 ```
 
-- `total` is the number of entries in the index, whatever `limit` was. Compare it with the number of entries you got.
 - Without a `limit` parameter, at most 1000 entries are returned. Page with `?offset=<n>&limit=<n>`.
-- A workbook with several delivered sheets answers with `":type": "multi-sheet"`. Ask for one sheet with `?sheet=<name>`.
 
 ## Limits
 
@@ -75,18 +73,13 @@ indices:
 - Functions: `attribute(el, name)`, `textContent(el)`, `innerHTML(el)`, `match(el, re)`, `words(el, start, end)`, `characters(el, start, end)`, `replace(el, substr, newSubstr)`, `replaceAll(el, substr, newSubstr)`, `parseTimestamp(el, format)`, `dateValue(el, format)`. Variables: `el`, `path`, `headers[name]`.
 - `path` needs no property: every entry has it.
 
-The properties the Index Admin tool offers, and where they come from:
+The Index Admin tool offers `title`, `description`, `image`, `author`, `date`, `category`, `tags`, `robots` and `lastModified`. Those whose source is not the meta tag of the same name:
 
 | Property | Source |
 |---|---|
 | `title` | `og:title` meta property |
-| `description` | `description` meta tag |
-| `image` | `og:image` meta property |
-| `author` | `author` meta tag |
 | `date` | `publication-date` meta tag |
-| `category` | `category` meta tag |
 | `tags` | `article:tag` meta tags, as an array |
-| `robots` | `robots` meta tag |
 | `lastModified` | `Last-Modified` response header of the page |
 
 ## Troubleshooting
@@ -98,6 +91,5 @@ The properties the Index Admin tool offers, and where they come from:
 | A property is empty on every page | The `select` doesn't match the delivered HTML. | View the page source, not the inspector, and fix the selector. Then reindex. |
 | A new property is empty on old pages | Only pages published since the change have it. | Reindex in the Index Admin tool. |
 | A list shows 1000 entries and no more | The consumer fetches without `limit`. | Page with `offset` and `limit` in the consumer. |
-| A deleted page is still in a list | The source document was deleted, the page was not unpublished. | Unpublish the path. |
 | `noindex` pages are in the sitemap | The index that the sitemap is built from has no `robots` property. | Add `robots` to the definition and reindex. |
 | The indexer reports errors | A broken expression in the definition. | Filter the [Log Viewer](https://tools.aem.live/tools/log-viewer/index.html) by `Indexer`. |

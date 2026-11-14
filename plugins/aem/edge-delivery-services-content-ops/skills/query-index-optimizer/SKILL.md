@@ -27,7 +27,7 @@ node scripts/index-report.mjs "https://<branch>--<repo>--<owner>.aem.live/query-
 ```
 
 - `/query-index.json` is only the default. A site can have several indexes, each at the `target` of its definition, for example `/blog/query-index.json`. Run the script once per index.
-- Use the `.aem.live` host. A production CDN can answer differently, for example with the whole index where `.aem.live` returns 1000 entries.
+- Use the `.aem.live` host: a production CDN can return the whole index where `.aem.live` returns 1000 entries.
 - The index is the same on `.aem.page` and `.aem.live`: it holds published pages only.
 - `--check=25` is the default: the script requests the 25 oldest indexed paths. Raise it for a full check, or pass `--check=0`.
 
@@ -47,24 +47,15 @@ The definition is part of the site configuration. It is not a file in the reposi
 
 3. If neither is possible, work from the properties in the report and say that the definition was not seen.
 
-If the repository still has a `helix-query.yaml`, report it as a leftover: the configuration service overrides it.
-
 Reconcile the definition with the report before you go on:
 
 - Every property of the definition is a column of the index, and every column is in the definition. `path` is the exception: it is always there.
-- A property that is defined and empty on every page: its `select` matches nothing. The indexer reads the delivered HTML, not the DOM after the blocks are decorated, so a selector for a decorated class never matches.
 - A property that is in the definition and not in the index, or the reverse: the definition changed and the site was not reindexed. A page gets its new values when it is published again, or when the user clicks **Reindex** in the Index Admin tool.
 - To see what the indexer extracts for one page: `GET https://admin.hlx.page/index/<org>/<site>/<branch>/<path>` with the same token.
 
 ## Step 3: Find who reads the index
 
-Don't guess the consumers from block names. Search the project's code:
-
-```bash
-grep -rnE "query-index|\.json" blocks scripts --include="*.js"
-```
-
-For each place that fetches the index, note the properties it reads and whether it passes `limit` or pages with `offset`. A fetch without `limit` gets the first 1000 entries: on an index with more, that is a list or a search that silently misses pages.
+For each place in the project's code that fetches the index, note the properties it reads and whether it passes `limit` or pages with `offset`. A fetch without `limit` gets the first 1000 entries: on an index with more, that is a list or a search that silently misses pages.
 
 The sitemap reads the index too, when the sitemap configuration names it as its `source`:
 
@@ -81,15 +72,12 @@ Never propose to remove `path`, `robots` or `lastModified` because no block read
 | `total` is close to 50,000 | An index can't hold more than 50,000 pages. | Split it into several indexes with `include` paths. |
 | `uncompressedBytes` is several MB | A consumer that reads the whole index makes every visitor download it. A response may not exceed 6 MB compressed. | Remove properties nobody reads, or split the index. |
 | A property with `fillRate` 0 | The selector matches nothing, or no page has the metadata. | Fix the selector or remove the property. |
-| A property with `sameEverywhere` | It tells consumers nothing. | Remove it, unless a consumer needs it. |
 | A low `fillRate` | Not a defect by itself: `robots` is only filled on `noindex` pages. | Remove it only when no consumer reads it. |
 | `sitemap.notInIndex` | Published pages that the index lacks. They are outside the `include` paths, inside an `exclude`, part of another index, or were published before the definition existed. | Change the paths, or publish the pages again. |
-| `sitemap.notInIndexCount` is 0 | Either nothing is missing, or the sitemap is built from this index and can't show what the index lacks. | Ask the user which pages they miss, and check each with the Admin API call from Step 2. |
+| `sitemap.notInIndexCount` is 0 | Nothing is missing, or the sitemap is built from this index. | Ask the user which pages they miss, and check each with the Admin API call from Step 2. |
 | `sitemap.notInSitemapWithNoindex` | Expected. | Nothing. |
 | `status.notOk` with 301 or 302 | A redirect was added for a path that is still published. The index keeps the entry. | Unpublish the page. |
 | `status.notOk` with 404 | Unexpected: the index holds published pages only. | List the paths and ask the user to reindex. |
-
-A page leaves the index when it is unpublished. Deleting the source document is not enough.
 
 ## Step 5: Propose the changes
 
