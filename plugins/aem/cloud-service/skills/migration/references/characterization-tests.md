@@ -43,8 +43,7 @@ plus a dev-deploy check before merge.
      `io.wcm:io.wcm.testing.aem-mock.junit5` for B/C). This is a once-per-module cost amortized
      across that module's findings, not per-finding. If a dependency you added does not resolve,
      remove it from the POM again before you record `no-test-harness`.
-   - **Guardrail — a run reporting `Tests run: 0` is a false pass, not a pin.** (Happens when a
-     JUnit 5 test is added to a module whose Surefire can't see the jupiter engine.) If the pre-edit
+   - **Guardrail — a run reporting `Tests run: 0` is a false pass, not a pin.** If the pre-edit
      run does not actually execute the test, record `no-test-harness` and move on — never report
      `pinned` for a test that did not run.
    - If deps can't be resolved (dead legacy repo / offline — common for 6.x/AMS) → skip
@@ -87,23 +86,18 @@ Run only the generated test, from the reactor root:
 mvn -pl <module> -am -Dtest=<TargetClass>MigrationTest -DfailIfNoTests=false -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Run it without `-q`: the checks below read `BUILD SUCCESS` and the `Tests run:` line.
+Run it without `-q`.
 
 - **Before the edit:** the run must end in `BUILD SUCCESS` (exit 0) with the target test green —
-  `Tests run: 1, Failures: 0, Errors: 0`. **`Tests run: 0` is a false pass, not a pin:**
-  `-DfailIfNoTests=false` lets a test that never executed still succeed (e.g. a freshly added
-  JUnit 5 test in a module whose Surefire can't see the jupiter engine). If the target test did not
-  actually run, record `no-test-harness` and move on.
+  `Tests run: 1, Failures: 0, Errors: 0`. If the target test did not actually run (`Tests run: 0`),
+  record `no-test-harness` and move on.
 - **After the edit:** re-run the identical command. `BUILD SUCCESS` with the target test green =
   behavior preserved. `BUILD FAILURE` with the target test failing = real regression → revert that
   finding's edit and record `pin-fail → reverted`.
 
 ## Skeletons (fill placeholders from the finding — do not extend)
 
-> **JUnit 4 modules:** the bodies are identical — only swap the annotations. Class-level
-> `@RunWith(MockitoJUnitRunner.class)`; for A/B/C an `AemContext` `@Rule` field
-> (`@Rule public final AemContext ctx = new AemContext();`) instead of `AemContextExtension`;
-> `org.junit.Test` and `org.junit.Assert.*`.
+> **JUnit 4 modules:** the bodies are identical — only swap the annotations.
 
 ### A. `guavaCache` — cached lookup returns a stable value (memoization check optional)
 
@@ -132,42 +126,13 @@ class <TargetClass>MigrationTest {
 
 ### B. `scheduler` — work method side effect (invoke the work directly, no scheduler)
 
-```java
-@ExtendWith(AemContextExtension.class)
-class <TargetClass>MigrationTest {
-  private final AemContext ctx = new AemContext();
-
-  @Test
-  void workMethodProducesExpectedSideEffect() throws Exception {
-    <TargetClass> sut = ctx.registerInjectActivateService(new <TargetClass>());
-    // arrange minimal input the work method reads (resource, service mock, etc.)
-
-    sut.<workMethod>();   // the body that survives migration — NOT the scheduler registration
-
-    // assert the observable outcome (resource written / collaborator called)
-    assertEquals(<EXPECTED>, ctx.resourceResolver().getResource(<PATH>).getValueMap().get(<PROP>));
-  }
-}
-```
+Register the class in an `AemContext` and call the work method itself: the body that survives the
+migration, **not** the scheduler registration. Assert one observable outcome (a resource property
+written, or a collaborator called).
 
 ### C. `resourceChangeListener` / `eventListener` / `eventHandler` — delegated-handler outcome
 
 Only when the callback delegates to a stable business method. If it does not, skip
-(`no-stable-seam`).
-
-```java
-@ExtendWith(AemContextExtension.class)
-class <TargetClass>MigrationTest {
-  private final AemContext ctx = new AemContext();
-
-  @Test
-  void handlingPathProducesExpectedSideEffect() throws Exception {
-    <TargetClass> sut = ctx.registerInjectActivateService(new <TargetClass>());
-    ctx.create().resource(<CHANGED_PATH>, <SEED_PROPS>);
-
-    sut.<delegatedBusinessMethod>(<CHANGED_PATH>);   // the seam that survives the interface swap
-
-    assertEquals(<EXPECTED>, ctx.resourceResolver().getResource(<TARGET_PATH>).getValueMap().get(<PROP>));
-  }
-}
-```
+(`no-stable-seam`). Register the class in an `AemContext`, create the changed resource, and call
+the delegated business method itself: the seam that survives the interface swap. Assert one
+observable outcome on the target resource.
