@@ -1,0 +1,5 @@
+[
+  { "title": "Reuse.", "text": "{{urls live sitemap !verdict:new}} of {{urls live sitemap}} live pages need no new block.", "chapter": "build", "rank": 1 },
+  { "title": "Search is code, not content.", "text": "{{urls live sitemap block:site-search}} of {{urls live sitemap}} live pages carry the search box; it ships as one widget over the query index.", "chapter": "dynamic", "rank": 1 },
+  { "title": "Redirects.", "text": "{{count redirects kind=migration needs_entry=1}} pages change path on EDS beyond dropping .html and need their own redirect.", "chapter": "risks", "rank": 1 }
+]
