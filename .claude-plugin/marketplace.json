@@ -107,6 +107,27 @@
       "license": "Apache-2.0"
     },
     {
+      "name": "aem-forms-edge-delivery-services",
+      "source": "./plugins/aem/forms/edge-delivery-services",
+      "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block.",
+      "version": "1.0.0",
+      "category": "aem",
+      "keywords": [
+        "adobe",
+        "aem",
+        "aem-forms",
+        "adaptive-forms",
+        "edge-delivery-services",
+        "form-block"
+      ],
+      "author": {
+        "name": "Adobe"
+      },
+      "homepage": "https://github.com/adobe/skills",
+      "repository": "https://github.com/adobe/skills",
+      "license": "Apache-2.0"
+    },
+    {
       "name": "aem-project-management",
       "source": "./plugins/aem/project-management",
       "description": "Project lifecycle management for AEM Edge Delivery Services"

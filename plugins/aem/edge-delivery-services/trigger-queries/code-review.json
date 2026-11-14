@@ -1,0 +1,129 @@
+{
+  "name": "code-review trigger queries",
+  "description": "Should trigger when asked to review an EDS pull request, branch, diff or own changes before a PR; near misses are implementing a block change (building-blocks / CDD), writing or running tests and browser validation (testing-blocks), fixing lint, non-EDS reviews, finding pages that use a block (find-test-content), changelog summaries and dev-server start (aem-cli).",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  },
+  "queries": [
+    {
+      "id": "y-review-pr-url",
+      "query": "Can you review this pull request before I merge it? https://github.com/adobe/aem-boilerplate/pull/412 It changes the cards block and a couple of styles.",
+      "should_trigger": true,
+      "skill": "code-review",
+      "split": "train"
+    },
+    {
+      "id": "y-review-branch-vs-main",
+      "query": "Review the changes on my `feature/hero-video` branch against `main` and tell me what's wrong with them. Blocks and scripts are touched.",
+      "should_trigger": true,
+      "skill": "code-review",
+      "split": "test"
+    },
+    {
+      "id": "y-self-review-before-pr",
+      "query": "I'm done with the cards CTA change. Before I open the PR, do a self-review of my uncommitted changes and list anything a reviewer would flag.",
+      "should_trigger": true,
+      "skill": "code-review",
+      "split": "train"
+    },
+    {
+      "id": "y-pr-checklist-eds",
+      "query": "Our team lead wants EDS-specific review of everything in this diff: block JS, block CSS, head.html and package.json. What would you flag?",
+      "should_trigger": true,
+      "skill": "code-review",
+      "split": "test"
+    },
+    {
+      "id": "y-review-perf-a11y",
+      "query": "Review PR 87 on our Edge Delivery site: check block structure, CSS and JS patterns, Lighthouse performance and accessibility, and tell me if it's safe to approve.",
+      "should_trigger": true,
+      "skill": "code-review",
+      "split": "train"
+    },
+    {
+      "id": "y-second-pair-of-eyes",
+      "query": "Give a second pair of eyes to the diff I just staged: it adds a countdown to the hero block and a tracking snippet. Findings with file and line, please.",
+      "should_trigger": true,
+      "skill": "code-review",
+      "split": "test"
+    },
+    {
+      "id": "y-review-teammate-block",
+      "query": "A teammate opened a PR adding an accordion block. I'm the reviewer; go through the diff and write up the problems.",
+      "should_trigger": true,
+      "skill": "code-review",
+      "split": "train"
+    },
+    {
+      "id": "y-review-comments-draft",
+      "query": "Review the open PR on this repo and draft the review comments with file:line for each issue. Don't post anything yet.",
+      "should_trigger": true,
+      "skill": "code-review",
+      "split": "test"
+    },
+    {
+      "id": "n-implement-cards-cta",
+      "query": "Add an optional CTA link as a third cell to the `cards` block and make sure existing cards without it still render.",
+      "should_trigger": false,
+      "skill": "code-review",
+      "split": "train"
+    },
+    {
+      "id": "n-write-tests-for-block",
+      "query": "The `columns` block is finished. Add the unit and E2E tests it needs.",
+      "should_trigger": false,
+      "skill": "code-review",
+      "split": "test"
+    },
+    {
+      "id": "n-validate-in-browser",
+      "query": "I changed `blocks/hero/hero.css`. Check it in the browser at a few viewport sizes and run lint before I open the PR.",
+      "should_trigger": false,
+      "skill": "code-review",
+      "split": "train"
+    },
+    {
+      "id": "n-fix-lint-errors",
+      "query": "`npm run lint` fails on `blocks/cards/cards.css` with a stylelint error. Fix it.",
+      "should_trigger": false,
+      "skill": "code-review",
+      "split": "test"
+    },
+    {
+      "id": "n-review-non-eds-python",
+      "query": "Review this pull request for our Python data pipeline: it adds a retry wrapper around the S3 client. Anything wrong with the error handling?",
+      "should_trigger": false,
+      "skill": "code-review",
+      "split": "train"
+    },
+    {
+      "id": "n-review-java-aem-cs",
+      "query": "Review my Java OSGi service change for AEM as a Cloud Service: does it follow the Sling Model best practices?",
+      "should_trigger": false,
+      "skill": "code-review",
+      "split": "test"
+    },
+    {
+      "id": "n-find-pages-with-block",
+      "query": "Which pages on our site already use the `hero` block, and with which variants?",
+      "should_trigger": false,
+      "skill": "code-review",
+      "split": "train"
+    },
+    {
+      "id": "n-explain-pr-history",
+      "query": "Summarize what changed in the last five commits on main for the footer block. I only want a changelog, not a review.",
+      "should_trigger": false,
+      "skill": "code-review",
+      "split": "test"
+    },
+    {
+      "id": "n-start-local-server",
+      "query": "Start the local dev server for this project and tell me the URL.",
+      "should_trigger": false,
+      "skill": "code-review",
+      "split": "train"
+    }
+  ]
+}
