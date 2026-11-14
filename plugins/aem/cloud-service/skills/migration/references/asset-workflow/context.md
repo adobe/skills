@@ -44,15 +44,13 @@ Do this before anything is committed. To undo everything, use the undo line the 
    - `CommandLineProcess` commands that are not simple ImageMagick conversions. The report lists the ones it could not map under *Migration Issues*; they need an [Asset Compute custom worker](https://experienceleague.adobe.com/en/docs/asset-compute/using/extend/understand-extensibility).
    - Steps categorized `UNSUPPORTED` in `workflowSteps.properties` (for example `CreateSubAssetsProcess`, `IDSJobProcess`, `ExtractImagesProcess`). Ask whether what they produced is still needed and agree a replacement: a custom worker, a profile rendition, or dropping it.
 5. **Custom Java steps** (a `PROCESS` that is not an Adobe class; the tool keeps them). For each one in the project source, check with the user that it **runs on Cloud Service**: it uses only APIs available there. Hand code that needs changes to the matching Branch B patterns (`asset-manager`, `replication`, `scr-to-osgi-ds`) instead of editing it here.
-6. Record decisions and anything accepted as-is, then let the user commit.
 
 ## Post-deploy checks (RDE or dev environment)
 
 Deploy the migrated project (an RDE is quickest: [`aem-rde` skill](../../../aem-rde/SKILL.md)) and work through these with the user:
 
-1. **All-package.** The new `aem-cloud-migration.*` modules must be in it.
-2. **Sync each migrated model**: open it in the workflow model editor and click **Sync**. `GET /var/workflow/models/<id>.json` must return `200`.
-3. **Check the runner config** is active: the Developer Console (OSGi configurations) shows `CustomDamWorkflowRunnerImpl` with the expected `postProcWorkflowsByPath` / `postProcWorkflowsByExpression`. Look for overlapping entries; Adobe does not document which one wins when several match, so merge the models if the wrong one runs.
-4. **Attach processing profiles**: Folder → Properties → Asset Processing. The tool cannot attach them or name the folders: take the folders from the globs of the launchers it disabled (`git diff`).
-5. **Upload test assets** to every mapped folder, one per mime type each old launcher handled. Check that the profile's renditions exist, and that **Tools → Workflow → Instances / Archive** shows one instance of the expected model per asset and that its custom steps did their work.
-6. **Launcher conditions.** A launcher's `conditions` (for example `jcr:content/jcr:mimeType!=video/.*`) do not carry over to the runner. Upload an asset the old condition excluded and check the post-processing workflow handles or skips it as intended; add a guard step otherwise.
+1. **Sync each migrated model**: open it in the workflow model editor and click **Sync**. `GET /var/workflow/models/<id>.json` must return `200`.
+2. **Check the runner config** is active: the Developer Console (OSGi configurations) shows `CustomDamWorkflowRunnerImpl` with the expected `postProcWorkflowsByPath` / `postProcWorkflowsByExpression`. Look for overlapping entries; Adobe does not document which one wins when several match, so merge the models if the wrong one runs.
+3. **Attach processing profiles**: Folder → Properties → Asset Processing. The tool cannot attach them or name the folders: take the folders from the globs of the launchers it disabled (`git diff`).
+4. **Upload test assets** to every mapped folder, one per mime type each old launcher handled. Check that the profile's renditions exist, and that **Tools → Workflow → Instances / Archive** shows one instance of the expected model per asset and that its custom steps did their work.
+5. **Launcher conditions.** A launcher's `conditions` (for example `jcr:content/jcr:mimeType!=video/.*`) do not carry over to the runner. Upload an asset the old condition excluded and check the post-processing workflow handles or skips it as intended; add a guard step otherwise.
