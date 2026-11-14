@@ -5,7 +5,8 @@ on:
     branches: [main]
   # pull_request_target (instead of pull_request) so the review job can access
   # TESSL_TOKEN on PRs from forks; secrets are never exposed to plain
-  # `pull_request` fork runs. Fork runs are gated by the `eval` environment below.
+  # `pull_request` fork runs. Fork runs by authors without write access are gated
+  # by the `fork-review` environment below.
   pull_request_target:
     branches: [main]
 
@@ -17,14 +18,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tessl-review:
+  # Whether this run needs a maintainer's approval first. It does when the pull request
+  # comes from a fork and its author has no write access to this repository: then
+  # TESSL_TOKEN would reach content from someone who could not have pushed it here.
+  # Everything else runs unattended: pull requests from branches of this repository, push
+  # to main, and forks of people with write access. If the permission can't be read, the
+  # run waits for approval.
+  approval:
     runs-on: ubuntu-latest
-    # Gate only PRs from forks behind the `eval` environment's required reviewers,
-    # so a maintainer approves before TESSL_TOKEN reaches untrusted PR content.
-    # Same-repo PRs (maintainers / anyone with write access push branches here)
-    # and push-to-main get an empty environment => no approval, run unattended.
-    environment: ${{ (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository) && 'eval' || '' }}
+    outputs:
+      environment: ${{ steps.author.outputs.environment }}
     steps:
+      - id: author
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          environment=''
+          if [ "$EVENT" = pull_request_target ] && [ "$FORK" = true ]; then
+            permission=$(gh api "repos/$REPO/collaborators/$AUTHOR/permission" --jq .permission 2>/dev/null || echo unknown)
+            echo "$AUTHOR has $permission permission on $REPO"
+            case "$permission" in
+              admin | write) ;;
+              *) environment=fork-review ;;
+            esac
+          fi
+          echo "environment=$environment" >> "$GITHUB_OUTPUT"
+
+  tessl-review:
+    needs: approval
+    runs-on: ubuntu-latest
+    # `fork-review` has required reviewers; an empty environment has none.
+    environment: ${{ needs.approval.outputs.environment }}
+    steps:
+      # The scripts below run with TESSL_TOKEN, so they come from the base of the pull
+      # request (or the pushed commit), never from the pull request itself. They are taken
+      # out of the workspace before the pull request is checked out into it.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.base.sha || github.sha }}
+          path: .trusted
+          sparse-checkout: scripts
+          persist-credentials: false
+      - run: |
+          mv .trusted/scripts "$RUNNER_TEMP/scripts"
+          rm -rf .trusted
+          echo "SCRIPTS=$RUNNER_TEMP/scripts" >> "$GITHUB_ENV"
+
       # Fork PRs: review the merged result via the PR merge ref.
       # Push to main: use the pushed commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -58,76 +101,33 @@ jobs:
         with:
           token: ${{ secrets.TESSL_TOKEN }}
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.prereq.outputs.skip != 'true'
+        with:
+          node-version: '24'
+
       - name: Detect changed skills
         id: detect
         if: steps.prereq.outputs.skip != 'true'
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request_target" ]; then
-            # base.sha/head.sha are hex SHAs (safe to interpolate) and both reachable
-            # from the merge commit, so this diff is exactly the PR's changes.
-            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
-
-            # Build list of all skill directories (parents of SKILL.md)
-            ALL_SKILL_DIRS=$(find plugins -name SKILL.md -exec dirname {} \; | sort)
-
-            # For each changed file, find which skill directory it belongs to
-            DIRS=""
-            for changed_file in $CHANGED_FILES; do
-              for skill_dir in $ALL_SKILL_DIRS; do
-                case "$changed_file" in
-                  "$skill_dir"/*)
-                    # Check not already added
-                    case " $DIRS " in
-                      *" $skill_dir "*) ;;
-                      *) DIRS="$DIRS $skill_dir" ;;
-                    esac
-                    break
-                    ;;
-                esac
-              done
-            done
-
-            DIRS=$(echo "$DIRS" | xargs)  # trim whitespace
-
-            if [ -z "$DIRS" ]; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "No skill files changed."
-            else
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-              echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
-              echo "Changed skills: $DIRS"
-            fi
+          if [ "$EVENT" = pull_request_target ]; then
+            # both commits are reachable from the merge commit, so this is exactly the pull request's change
+            node "$SCRIPTS/changed.mjs" skills "$BASE" "$HEAD" > "$RUNNER_TEMP/skill-dirs.txt"
           else
-            # Push to main: only review skills changed in this push
-            CHANGED_FILES=$(git diff --name-only HEAD~1...HEAD)
-
-            ALL_SKILL_DIRS=$(find plugins -name SKILL.md -exec dirname {} \; | sort)
-
-            DIRS=""
-            for changed_file in $CHANGED_FILES; do
-              for skill_dir in $ALL_SKILL_DIRS; do
-                case "$changed_file" in
-                  "$skill_dir"/*)
-                    case " $DIRS " in
-                      *" $skill_dir "*) ;;
-                      *) DIRS="$DIRS $skill_dir" ;;
-                    esac
-                    break
-                    ;;
-                esac
-              done
-            done
-
-            DIRS=$(echo "$DIRS" | xargs)
-
-            if [ -z "$DIRS" ]; then
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "Push to main — no skill files changed."
-            else
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-              echo "dirs=$DIRS" >> "$GITHUB_OUTPUT"
-              echo "Push to main — changed skills: $DIRS"
-            fi
+            # push to main: the skills this push changed
+            node "$SCRIPTS/changed.mjs" skills HEAD~1...HEAD > "$RUNNER_TEMP/skill-dirs.txt"
+          fi
+          if [ -s "$RUNNER_TEMP/skill-dirs.txt" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Changed skills:"
+            cat "$RUNNER_TEMP/skill-dirs.txt"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No skill files changed."
           fi
 
       - name: Post skip summary
@@ -141,107 +141,9 @@ jobs:
 
       - name: Review skills
         if: steps.prereq.outputs.skip != 'true' && steps.detect.outputs.skip != 'true'
-        run: |
-          THRESHOLD=80
-          # Tessl workspace to attribute review runs to (required when --json is set).
-          # Derived from the registry namespace used by this repo's plugins (e.g. .tessl-plugin/plugin.json "name": "adobe/...").
-          WORKSPACE=adobe
-          PASS=0
-          FAIL=0
-          ERROR=0
-          SUMMARY_FILE=$(mktemp)
-          ERRORS_FILE=$(mktemp)
-
-          SKILL_DIRS_INPUT="${{ steps.detect.outputs.dirs }}"
-          SKILL_LIST_FILE=$(mktemp)
-          trap 'rm -f "$SKILL_LIST_FILE" "$SUMMARY_FILE" "$ERRORS_FILE"' EXIT
-
-          if [ -z "$SKILL_DIRS_INPUT" ]; then
-            # Push to main or no filter: review all skills
-            find plugins -name SKILL.md -exec dirname {} \; > "$SKILL_LIST_FILE"
-          else
-            # PR mode: use detected skill dirs
-            printf '%s\n' $SKILL_DIRS_INPUT > "$SKILL_LIST_FILE"
-          fi
-
-          while IFS= read -r dir; do
-            [ -z "$dir" ] && continue
-            SKILL_NAME=$(basename "$dir")
-            echo "::group::Reviewing $SKILL_NAME"
-
-            EXIT_CODE=0
-            OUTPUT=$(tessl review run "$dir" --workspace "$WORKSPACE" --json --threshold "$THRESHOLD" 2>&1) || EXIT_CODE=$?
-            echo "$OUTPUT"
-            echo "::endgroup::"
-
-            # Parse the overall score from the --json payload; fall back to any percentage in the output.
-            SCORE=$(printf '%s' "$OUTPUT" | grep -oiE '"(overall[_]?score|review[_]?score)"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
-            [ -z "$SCORE" ] && SCORE=$(printf '%s' "$OUTPUT" | grep -oiE '"score"[[:space:]]*:[[:space:]]*[0-9]+' | grep -oE '[0-9]+' | head -1 || true)
-            [ -z "$SCORE" ] && SCORE=$(printf '%s' "$OUTPUT" | grep -oE '[0-9]+%' | tail -1 | tr -d '%' || true)
-
-            if [ "$EXIT_CODE" -eq 0 ]; then
-              # Review met the threshold — gating is done by the CLI exit code.
-              PASS=$((PASS + 1))
-              echo "| $SKILL_NAME | ${SCORE:-?}% | ✅ |" >> "$SUMMARY_FILE"
-            elif [ -n "$SCORE" ]; then
-              # Non-zero exit with a parseable score = below-threshold failure.
-              FAIL=$((FAIL + 1))
-              echo "  ❌ $SKILL_NAME: ${SCORE}% (below ${THRESHOLD}%)" >> "$ERRORS_FILE"
-              echo "| $SKILL_NAME | ${SCORE}% | ❌ |" >> "$SUMMARY_FILE"
-            else
-              # Non-zero exit with no parseable score = tool/auth error. The review
-              # never ran, so this is not a judgement on the skill — don't report it
-              # as a low score.
-              echo "::error::Review could not be run for $SKILL_NAME (tessl exit code $EXIT_CODE) — tooling/auth failure, not a low score"
-              ERROR=$((ERROR + 1))
-              echo "| $SKILL_NAME | not run | ⚠️ |" >> "$SUMMARY_FILE"
-              echo "  ⚠️ $SKILL_NAME: review could not be run (exit code $EXIT_CODE)" >> "$ERRORS_FILE"
-            fi
-          done < "$SKILL_LIST_FILE"
-
-          TOTAL=$((PASS + FAIL + ERROR))
-
-          # Fail if no skills were reviewed but some were expected
-          if [ "$TOTAL" -eq 0 ] && [ -n "$SKILL_DIRS_INPUT" ]; then
-            echo "::error::No skills were reviewed — expected at least one"
-            exit 1
-          fi
-
-          # Write GitHub Step Summary
-          {
-            echo "## Skill Review"
-            echo ""
-            echo "| Skill | Score | Status |"
-            echo "|-------|-------|--------|"
-            cat "$SUMMARY_FILE"
-            echo "| **Total** | **$PASS/$TOTAL passed** | $([ "$((FAIL + ERROR))" -eq 0 ] && echo '✅' || echo '❌') |"
-            if [ "$ERROR" -gt 0 ]; then
-              echo ""
-              echo "> ⚠️ $ERROR skill(s) could not be reviewed because the Tessl CLI did not complete."
-              echo "> This is a tooling or authentication problem, not a quality result."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          # Stdout summary for logs
-          echo ""
-          echo "============================="
-          echo "  Skill Review Summary"
-          echo "============================="
-          echo "  Total:   $TOTAL"
-          echo "  Passed:  $PASS"
-          echo "  Failed:  $FAIL"
-          echo "  Errored: $ERROR"
-          if [ -s "$ERRORS_FILE" ]; then
-            echo ""
-            echo "  Problem skills:"
-            cat "$ERRORS_FILE"
-          fi
-          echo "============================="
-
-          if [ "$FAIL" -gt 0 ]; then
-            echo "::error::$FAIL skill(s) scored below ${THRESHOLD}%"
-          fi
-          if [ "$((FAIL + ERROR))" -gt 0 ]; then
-            exit 1
-          fi
-
+        env:
+          THRESHOLD: '80'
+          # Tessl workspace the review runs are attributed to: the registry namespace of this
+          # repository's plugins (.tessl-plugin/plugin.json "name": "adobe/...")
+          WORKSPACE: adobe
+        run: node "$SCRIPTS/tessl-review.mjs" "$RUNNER_TEMP/skill-dirs.txt"
