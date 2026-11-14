@@ -27,10 +27,6 @@ Validate code changes and write maintainable tests in AEM Edge Delivery Services
 
 Exercise the block in a real browser on the test content URL(s): every variant, mobile, tablet and desktop widths (e.g. 375px, 768px, 1200px), and every interaction. Use whatever tooling you have: browser/Playwright MCP tools, a throwaway Playwright script (delete it afterwards), or a manual browser.
 
-Check that the functional acceptance criteria are met.
-
-Capture screenshots across viewports and inspect them to catch obvious layout, overflow or responsive issues. When visual fidelity against a design or mockup needs judgment, share the screenshots or URLs with the user as well rather than relying on automated checks alone.
-
 ---
 
 ## Step 3: Committed Tests
@@ -38,10 +34,6 @@ Capture screenshots across viewports and inspect them to catch obvious layout, o
 Committed tests guard functional behavior so it doesn't silently regress. Write a test only when a wrong answer is plausible and costly to miss. 100% coverage is not the goal, and neither is a test per variant or per branch; a block with static decoration and no behavior may need no tests at all.
 
 **Use the project's test tools.** Find them in `package.json` scripts, test config and existing tests, and follow their file locations and naming. Don't add a second framework. `aem-boilerplate` ships without one; if the project has no test setup, ask the user before adding one.
-
-**Unit tests** (run against `decorate()` or exported helpers with a DOM shim such as jsdom):
-- pure logic: parsing, index math, ID generation, URL handling
-- malformed or missing authored input: an absent cell, an empty row, a failed fetch. Mock the input; authors omit and add cells.
 
 **Browser (E2E) tests** assert the block's functional behavior. Rules for E2E specs:
 - Run them against the block's library page (the canonical example content). It is author-facing reference content and the happy path: don't add rows to it to drive a test. Cover edge cases in unit tests or on a separate drafts page (e.g. `./content/drafts/`).

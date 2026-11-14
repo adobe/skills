@@ -37,7 +37,6 @@
     tests?
   used_by:
     - evals/testing-blocks-existing-test-setup
-    - skills/testing-blocks/SKILL.md
 
 - id: e2e-locate-by-a11y-tree
   claim: >-
