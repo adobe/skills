@@ -28,7 +28,7 @@ Use `assets/e2e-ci-workflow.yml` as the base template. Key steps:
 
 # 4. Upload failure artifacts (always, even if tests pass — for the HTML report)
 - name: Upload report
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   if: always()
   with:
     name: playwright-report
@@ -37,7 +37,7 @@ Use `assets/e2e-ci-workflow.yml` as the base template. Key steps:
 
 # 5. Upload traces and screenshots on failure
 - name: Upload test results
-  uses: actions/upload-artifact@v4
+  uses: actions/upload-artifact@v7
   if: failure()
   with:
     name: test-results
@@ -61,7 +61,7 @@ steps:
   - run: npx playwright test
     env:
       CI: true
-  - uses: actions/upload-artifact@v4
+  - uses: actions/upload-artifact@v7
     if: always()
     with:
       name: playwright-report
@@ -153,7 +153,7 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
         env: { CI: true }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with: { name: playwright-report, path: playwright-report/ }
 ```
