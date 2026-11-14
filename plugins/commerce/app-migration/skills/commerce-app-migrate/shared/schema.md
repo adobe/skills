@@ -218,6 +218,16 @@ interface DomainResult {
   //   businessConfig    → { businessConfig: { schema: [...] } }
   configFragment: Record<string, unknown>;
 
+  // businessConfig domain only: env vars still read by runtime actions that were
+  // added to configFragment.businessConfig.schema as candidates (fields tagged "_source": "env").
+  envMigrations?: Array<{
+    key: string;
+    field: string;
+    type: string;
+    reads: Array<{ file: string; line: number; expression: string }>;
+    inputDeclarations: string[];
+  }>;
+
   unresolvedQuestions: Array<{
     id: string; // dot-notation identifier, e.g. "events.provider.label"
     prompt: string; // human-readable question to display to developer

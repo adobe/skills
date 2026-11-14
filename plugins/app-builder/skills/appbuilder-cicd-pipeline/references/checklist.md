@@ -12,7 +12,7 @@ Run through this checklist before merging CI/CD workflow changes.
 - [ ] All workflows use `actions/checkout@v4`
 - [ ] All workflows use `actions/setup-node@v4` with `node-version: '20'`
 - [ ] All workflows use `adobe/aio-cli-setup-action@3`
-- [ ] All workflows use `adobe/aio-apps-action@3.3.0`
+- [ ] All workflows use `adobe/aio-apps-action@3.4.0`
 - [ ] No references to deprecated `auth` command
 
 ## Secrets Configuration

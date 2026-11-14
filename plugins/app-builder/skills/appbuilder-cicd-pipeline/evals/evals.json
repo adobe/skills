@@ -31,7 +31,7 @@
         {
           "type": "file_contains",
           "path": ".github/workflows/deploy_stage.yml",
-          "pattern": "adobe/aio-apps-action@3.3.0",
+          "pattern": "adobe/aio-apps-action@3.4.0",
           "description": "Uses the official Adobe apps action with pinned version."
         },
         {

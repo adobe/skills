@@ -29,3 +29,15 @@ Use when:
 
 Key concepts: out-of-process webhooks, payment methods, shipping carriers,
 tax integrations, `sync-oauth-credentials`.
+
+## App Management: associate and install an app
+
+**URL:** https://experienceleague.adobe.com/en/docs/commerce/app-management/manage-app/manage-app
+
+Use when:
+
+- Explaining that the Commerce base URL is provided by association, not by environment variables
+- Telling the developer how to associate, install, configure or upgrade the migrated app
+
+Key concepts: association (Project and Workspace), installation, configuration forms,
+scopes.
