@@ -131,21 +131,32 @@ See the [`wf-planning-solution-architect`](plugins/workfront/skills/wf-planning-
 
 #### Adobe Experience Manager
 
-##### Designing and Modernising with stardust
+##### Modernising an existing site with stardust
 
-Design-phase and modernisation skills that improve an existing website, with or without a redesign. Produces static HTML under `stardust/` with platform-agnostic output and optional Edge Delivery Services delivery.
+Modernise a website that already exists, with or without a redesign, and ship it. Stardust reads the live site, works on design, performance, SEO, LLM visibility, accessibility and content fidelity, and delivers a static HTML tree or an Edge Delivery Services site. The design craft comes from [impeccable](https://github.com/pbakaus/impeccable), which is a required dependency. Available via the [`stardust`](plugins/stardust/README.md) plugin.
+
+```bash
+/plugin install stardust@adobe-skills
+```
 
 | Skill | Description |
-| ----- | ----------- |
-| `stardust` | Master orchestrator — reasons in the open, assesses site state, and guides through redesign, replica, or reskin |
-| `extract` | Crawls a live site and captures its design system, brand surface, page inventory, and rendered DOM into `stardust/current/` |
-| `direct` | Resolves your intent into concrete `PRODUCT.md` and `DESIGN.md` target specifications under `stardust/direction.md` |
-| `prototype` | Renders before/after pages under `stardust/prototypes/` and iterates through design craft loops |
-| `replica` | Recreates page archetypes as clean HTML/CSS that match the live site near pixel-perfect |
-| `reskin` | Re-lays verbatim content onto a donor design system |
+|-------|-------------|
+| `stardust` | Master skill: setup, routing of plain-language requests, state report, hands-off mode |
+| `extract` | Crawls the live site (capped, multi-page) and captures the design system, brand surface, per-page inventory and rendered DOM under `stardust/current/` |
+| `direct` | Resolves the redesign intent into a target `PRODUCT.md` and `DESIGN.md`, with the reasoning kept in `stardust/direction.md` |
+| `prototype` | Renders before/after pages under `stardust/prototypes/` and iterates them through impeccable's craft loop |
+| `prepare-migration` | Runs extract, direct and prototype in `--prep` mode with confirmation gates, for the redesign migration flow |
+| `replica` | Same-design migration: recreates one archetype per page type as clean HTML/CSS, gated against the live site per breakpoint |
+| `reskin` | Re-lays byte-faithful content onto a donor design system (another live site or local prototypes) |
 | `migrate` | Applies the approved design or replica to every page and writes the deployable static tree to `stardust/migrated/` |
+| `audit` | Scores any URL on seven dimensions: design, SEO/technical, LLM visibility, accessibility, Core Web Vitals and more |
+| `uplift` | Turns one URL into three presales redesign variants, one of them cinematic, with no further input |
+| `diff` | Compares any prototype with any build, pixel and structure, through an `eds` or `generic` profile |
+| `deploy` | Converts one page into EDS blocks and Document Authoring content and writes it through the DA Source API |
+| `rollout` | Delivers the whole migrated site to EDS: coverage ledger, block dedup, site assembly, verify, optimize gate, report |
+| `qa` | Read-only QA sweep of the live EDS site: routing, content fidelity, visual regression, metadata, links, axe, performance budgets |
 
-See the [`stardust`](plugins/stardust/README.md) documentation for the complete pipeline guide, two-layer architecture, and evaluation details.
+See the [`stardust` plugin README](plugins/stardust/README.md) for the two migration flows (keep the design vs redesign on the way) and hands-off mode.
 
 ##### Developing with Edge Delivery Services
 
@@ -486,6 +497,24 @@ plugins/
 │       ├── skills/
 │       │   └── ...
 │       └── .mcp.json
+├── stardust/
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   └── skills/
+│       ├── stardust/
+│       ├── extract/
+│       ├── direct/
+│       ├── prototype/
+│       ├── prepare-migration/
+│       ├── replica/
+│       ├── reskin/
+│       ├── migrate/
+│       ├── audit/
+│       ├── uplift/
+│       ├── diff/
+│       ├── deploy/
+│       ├── rollout/
+│       └── qa/
 └── workfront/
     ├── .claude-plugin/
     │   └── plugin.json
