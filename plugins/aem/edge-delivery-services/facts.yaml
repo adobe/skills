@@ -1,0 +1,637 @@
+# Facts the EDS skills and evals rely on.
+# question: asked unaided to quiz whether models know the claim (the answer key).
+# source: external and re-checkable only; omitted for maintainer-endorsed practice.
+# used_by: paths relative to this plugin.
+#
+# aem-cli facts, checked against @adobe/aem-cli 16.22.16 (npm tarball).
+
+- id: aem-cli-hlx-conflict
+  claim: >-
+    `npm install -g @adobe/aem-cli` fails with `EEXIST ... File exists: .../hlx`
+    while the old `@adobe/helix-cli` package is installed, because both ship
+    the `hlx` binary. Fix: `npm uninstall -g @adobe/helix-cli`, then install
+    again.
+  question: >-
+    Installing `@adobe/aem-cli` globally fails with `File exists: .../hlx`.
+    Why, and how do you fix it?
+  source: "@adobe/aem-cli 16.22.16 README.md, 'npm install fails with File exists'"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-setup-and-troubleshooting
+
+- id: aem-cli-env-file
+  claim: >-
+    `aem` loads the project's `.env` and reads options from `AEM_`-prefixed
+    variables named after the flag (`AEM_PORT`, `AEM_TLS_CERT`, `AEM_TLS_KEY`,
+    `AEM_PAGES_URL`, `AEM_NO_OPEN`).
+  question: >-
+    How do you persist `aem up` options (port, TLS cert/key, pages URL, no
+    browser) so they apply on every start without passing flags?
+  source: "@adobe/aem-cli 16.22.16 src/cli.js (dotenv, yargs .env('AEM_')); README.md"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-setup-and-troubleshooting
+
+- id: aem-cli-extra-ca-not-dotenv
+  claim: >-
+    Behind a TLS-intercepting proxy, `unable to get local issuer certificate`
+    is fixed with `NODE_EXTRA_CA_CERTS=<corporate CA>` set in the shell or CI
+    before `aem` starts. Node reads it only at process start, so putting it in
+    `.env` has no effect.
+  question: >-
+    `aem up` fails with `unable to get local issuer certificate` on a corporate
+    network. How do you fix it, and can the fix go in the project's `.env`?
+  source: "Node.js docs, NODE_EXTRA_CA_CERTS; @adobe/aem-cli 16.22.16 src/cli.js loads .env after start"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-setup-and-troubleshooting
+
+- id: aem-cli-content-dir
+  claim: >-
+    `aem up` serves files from the project's `./content/` folder first and
+    proxies only missing paths: `content/drafts/x.html` is served at
+    `/drafts/x` (and `/drafts/x.plain.html`) with no flag. `--html-folder` is
+    only needed for HTML outside `./content/`.
+  question: >-
+    With the AEM CLI, how do you serve a local HTML test page (not yet in any
+    content source) through `aem up` so it renders with the project's blocks?
+  source: "@adobe/aem-cli 16.22.16 src/server/HelixServer.js (CONTENT_DIR lookup), src/server/BaseServer.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-content-clone
+  claim: >-
+    `aem content clone --path <folder>` (or `--all`) clones da.live content
+    into `./content/` after a browser sign-in; `--path` is required otherwise.
+    Changes go back with `aem content add`, `aem content commit -m`, and
+    `aem content push`.
+  question: >-
+    How do you get a DA (da.live) project's pages onto your machine with the
+    AEM CLI, edit them, and send the edits back?
+  source: "@adobe/aem-cli 16.22.16 src/content/clone.js (--path required unless --all), src/content/*.cmd.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-push-no-preview
+  claim: >-
+    `aem content push` only writes the DA source; it does not preview or
+    publish. Pages need a preview (Sidekick or the admin API) before
+    `.aem.page` URLs show the change.
+  question: >-
+    After `aem content push`, is the change visible on the site's `.aem.page`
+    URL? If not, what else is needed?
+  source: "@adobe/aem-cli 16.22.16 src/content/push.cmd.js (putSource only, no preview call)"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-da-token-file
+  claim: >-
+    `aem content` caches the DA sign-in token in `.hlx/.da-token.json` in the
+    project (git-ignored); other DA environments use `.da-token-<label>.json`.
+  question: >-
+    Where does the AEM CLI store the DA (da.live) token after `aem content`
+    signs you in?
+  source: "@adobe/aem-cli 16.22.16 src/content/da-auth.js resolveDaTokenFile()"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-worktree-port
+  claim: >-
+    `aem up` defaults to port 3000, except in a git worktree: there, with no
+    explicit port, it picks 3000 + hash(branch) % 1000 and logs
+    `Git worktree detected. Using port N`. Use the logged port.
+  question: >-
+    Which port does `aem up` listen on when run without `--port`, and does
+    that change when the project is a git worktree?
+  source: "@adobe/aem-cli 16.22.16 src/up.cmd.js, src/git-utils.js hashBranchToPort()"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-worktree-port
+
+- id: aem-cli-stop-other
+  claim: >-
+    `aem up` has `--stop-other` on by default: starting it on a port where
+    another AEM CLI runs stops that other server (even one from another
+    checkout). Use another port (`--port`/`AEM_PORT`) to keep both.
+  question: >-
+    Another project's `aem up` is already running on port 3000. What happens
+    if you run `aem up` with default settings in a second checkout?
+  source: "@adobe/aem-cli 16.22.16 src/up.js (stop-other, default true)"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-worktree-port
+
+- id: aem-cli-min-versions
+  claim: >-
+    `aem content` and `./content/` serving need @adobe/aem-cli 16.18 or newer
+    (`.plain.html` from `./content/` 16.19.12, explicit port honoured in
+    worktrees 16.22.12). Check with `aem --version`; upgrade with
+    `npm install -g @adobe/aem-cli@latest`. Node 18+ is required.
+  question: >-
+    Which @adobe/aem-cli version do you need for `aem content` and serving
+    `./content/`, and how do you check and upgrade it?
+  source: "@adobe/aem-cli 16.22.16 CHANGELOG.md, package.json engines"
+  used_by:
+    - skills/aem-cli/SKILL.md
+
+- id: aem-cli-import-port
+  claim: >-
+    `aem import` starts the importer server and UI on port 3001 by default.
+  question: Which port does `aem import` use by default?
+  source: "@adobe/aem-cli 16.22.16 src/import.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+
+- id: aem-cli-clone-existing-content
+  claim: >-
+    `aem content clone` refuses to run when `./content/` already exists
+    (`'content' already exists. Use --force to overwrite.`); `--force` deletes
+    the folder first, including any local pages in it.
+  question: >-
+    You already have local test pages in `./content/` and now run
+    `aem content clone --path /drafts`. What happens to them?
+  source: "@adobe/aem-cli 16.22.16 src/content/clone.cmd.js"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-local-test-content
+
+- id: aem-cli-no-stop-other
+  claim: >-
+    `aem up --no-stop-other` leaves a server already on the port running and
+    exits with `Port N already in use by another process.` instead of
+    stopping it; then reuse that server if it is this checkout's, or start on
+    another port with `--port`.
+  question: >-
+    How do you start `aem up` so it can never stop a dev server another
+    checkout already runs on the same port, and what happens if the port is
+    taken?
+  source: "@adobe/aem-cli 16.22.16 src/up.js (stop-other), src/server/BaseServer.js; checked live"
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - evals/aem-cli-worktree-port
+
+- id: da-auth-helper-cache
+  claim: >-
+    adobe-rnd/da-auth-helper stores access_token and expires_at in
+    ~/.aem/da-token.json. This is a user-level helper cache, distinct from
+    the AEM CLI's project-level .hlx/.da-token.json cache. The helper's
+    token command returns a valid cached token or starts browser login.
+  question: >-
+    Where does adobe-rnd/da-auth-helper cache its DA token, what fields does
+    it store, and what happens when you run its token command again?
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js (TOKEN_FILE, storeToken, getValidToken); src/cli.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-cache-expiry
+  claim: >-
+    The helper and AEM CLI caches use expires_at as an epoch timestamp in
+    milliseconds, computed from the IMS response's expires_in in seconds.
+    Treat the cache as expired 60 seconds early; missing expires_at is
+    treated as expired. Do not assume a fixed one-hour or 24-hour lifetime.
+    A fresh timestamp is a local reuse check, not proof of server acceptance.
+  question: >-
+    How should a script decide whether a cached DA IMS token from the helper
+    or AEM CLI is reusable? Include timestamp units, buffer, missing expiry,
+    and whether you can assume all tokens last one hour.
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js (isTokenExpired, login); @adobe/aem-cli@16.22.16 src/content/da-auth.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-login-reuses-cache
+  claim: >-
+    da-auth-helper login and da-auth-helper token both call getValidToken;
+    neither forces refresh of a locally unexpired token. After a server
+    rejects such a token, repeating login can return the same rejected
+    credential. The helper's logout clears its own cache; it does not clear
+    the AEM CLI cache or the browser's IMS session. Real cache deletion
+    requires operator approval.
+  question: >-
+    DA rejected a token with 401, but ~/.aem/da-token.json has a future
+    expires_at. Does da-auth-helper login force a fresh token? What does
+    logout clear, and what other state is independent?
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/cli.js (login/token/logout cases); src/auth.js (getValidToken, clearStoredToken); operator deletion policy"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-http-status
+  claim: >-
+    DA admin returns 401 for an anonymous identity: absent, invalid or
+    expired token, or failure to resolve the IMS user can cause it. A 403
+    is permission denial for the authenticated request's current identity
+    and context, not proof that the token expired. Diagnose before retrying;
+    do not blindly loop login or assume a new grant is required.
+  question: >-
+    A direct admin.da.live request returns 401 or 403. What distinction
+    should guide recovery, and is an expired token the only cause of 401?
+  source: "https://github.com/adobe/da-admin/blob/72939616bbee62dc8534c35c2ab210310de47755/src/index.js (anonymous/authorized gates); src/utils/auth.js (getUsers, setUser)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-list-not-write
+  claim: >-
+    HTTP 200 from admin.da.live/list proves that listing request succeeded,
+    not that the token can write every path in the repository. DA checks
+    read/write permissions by path/action; a source write can return 403
+    after a successful list. Do not change ACLs without approval.
+  question: >-
+    Listing a DA repository succeeds with 200, but uploading a page under
+    /drafts returns 403 using the same token. Does the successful list
+    establish write permission? What should be checked next?
+  source: "https://github.com/adobe/da-admin/blob/72939616bbee62dc8534c35c2ab210310de47755/src/routes/list.js; src/routes/source.js; operator remote-write policy"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-cli-owned
+  claim: >-
+    @adobe/aem-cli@16.22.16 content commands manage their own DA login:
+    supplied --token override, then valid project cache, then browser login.
+    They cache in .hlx/.da-token.json for the default DA environment and
+    .hlx/.da-token-<label>.json for others. A separate da-auth-helper login
+    or manual token extraction is unnecessary for a normal CLI clone/push
+    workflow. Do not substitute the helper cache for another environment.
+  question: >-
+    You want to clone DA pages and later push local edits with the AEM CLI.
+    Must you obtain a DA token separately first? Where does the CLI store
+    its login, including non-default DA environments?
+  source: "@adobe/aem-cli@16.22.16 src/content/da-auth.js (resolveDaTokenFile, getValidToken); src/content/clone.cmd.js, push.cmd.js"
+  used_by: []
+
+- id: da-auth-mcp-specific
+  claim: >-
+    Do not assume all DA MCP servers expose an authentication tool or
+    require returning a raw token to the assistant. adobe-rnd/da-mcp at
+    bd5a2ed5 registers content tools, accepts caller Bearer auth or
+    DA_ADMIN_API_TOKEN, and documents router-managed IMS for its public
+    AEM API router deployment. Inspect the actual server's tools and auth
+    configuration; an authenticated content tool needs no separate login.
+  question: >-
+    A DA MCP server is available. Can you assume it has a login tool that
+    returns an IMS token? How should you decide whether separate DA auth
+    is needed, and does adobe-rnd/da-mcp always require a manually passed token?
+  source: "https://github.com/adobe-rnd/da-mcp/blob/bd5a2ed5d5dc24fff2ff36bd0a01f1a7c93b5ed9/src/mcp/server.ts; src/index.ts; README.md (Authentication)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-secret-handoff
+  claim: >-
+    Under the operator's policy, never ask for a Bearer token in chat,
+    print it in tool output, commit it, or put it in an answer artifact.
+    Capture helper stdout locally without echoing the credential; prefer
+    an authenticated CLI/MCP or approved local secret input. When browser
+    login is unavailable, report the required user action instead of
+    inventing credentials or bypassing a permission/runtime block.
+  question: >-
+    A headless DA task needs authentication, but no token is configured and
+    interactive login cannot complete here. What safe handoff should you
+    propose instead of asking the user to paste a DevTools token in chat?
+  source: "Maintainer security practice; https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/cli.js (token stdout, logs stderr)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-ims-org-context
+  claim: >-
+    A fresh IMS token can authenticate the same Adobe-email account yet
+    return DA 403 when issued under an IMS org other than the one supplying
+    the user's DA group permissions. In the verified case the intended org
+    and group were absent from the wrong-org token's IMS organizations
+    response; selecting the intended org restored DA access. Check IMS org,
+    account and path/action permissions before assuming a new DA grant is
+    needed. The IMS org is distinct from the DA URL's org/repo path. Not
+    every 403 is an org mismatch, and a missing chooser is not required for
+    this failure.
+  question: >-
+    A fresh IMS token successfully authenticates an Adobe-email account,
+    but DA returns 403 even though that account has a group-based DA grant.
+    What org/context issue should you investigate before requesting new
+    permissions, and is the IMS org the same thing as the DA URL's org?
+  source: "User-assisted live checks summarized in https://github.com/adobe/skills/pull/560: same account/target, authorized org 200 -> other org 403 -> authorized org 200; IMS profile 200 throughout, target org/group absent in denied context"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-org-recovery
+  claim: >-
+    For a da-auth-helper token issued under the wrong IMS org, invalidate
+    ~/.aem/da-token.json (helper logout), obtain a fresh token (helper token),
+    select the intended org and verify the same target API request. A valid
+    cached token is reused by both login and token, even if DA rejects it.
+    Two procedures restored access in live tests: completing the helper's
+    authorize URL in a private browser with the intended org; or switching
+    to that org in da.live, then clearing the helper cache and retrying
+    authentication. Switching da.live alone did not refresh the helper
+    credential and left DA returning 403. For private login, keep the
+    helper callback listener running and leave its automatically opened
+    normal-browser flow unfinished; there is no helper incognito flag.
+    These procedures worked in this setup, not proof either is necessary
+    or always forces a chooser. Helper recovery does not clear CLI caches.
+  question: >-
+    How do you recover from a locally unexpired da-auth-helper token issued
+    under the wrong IMS org? Explain the cache steps, private-browser and
+    da.live org-switch alternatives, whether switching da.live alone
+    refreshes the helper credential, and whether either browser procedure
+    is always necessary to show an org chooser.
+  source: "User-assisted live checks summarized in https://github.com/adobe/skills/pull/560: each procedure restored the same target from 403 to 200; da.live-switch-only control stayed 403. https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js; src/cli.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-token-verification
+  claim: >-
+    A non-empty string or eyJ prefix alone does not prove a usable DA access
+    token. DA admin verifies the JWT signature, access_token type, expiry
+    and resolved user, then checks permissions. A read-only request can
+    establish acceptance for that operation without exposing the credential.
+  question: >-
+    A helper returns a token beginning eyJ. Is that sufficient to declare
+    DA authentication and permissions verified? What does DA actually check?
+  source: "https://github.com/adobe/da-admin/blob/72939616bbee62dc8534c35c2ab210310de47755/src/utils/auth.js (getUsers); src/index.js"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-generic-bearer
+  claim: >-
+    A direct authenticated DA request carries Authorization: Bearer
+    <IMS access token>. The value is a secret; use a local variable or
+    secret store, not a literal in source or chat. This is the generic
+    Bearer-header comparison fact for the trimming quiz.
+  question: >-
+    How does a direct HTTP request send an IMS access token to the DA
+    admin API? Show the header shape with a placeholder, not a real token.
+  source: "https://github.com/adobe-rnd/da-mcp/blob/bd5a2ed5d5dc24fff2ff36bd0a01f1a7c93b5ed9/src/da-admin/client.ts; operator secret policy"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-generic-interactive
+  claim: >-
+    The helper's interactive IMS OAuth flow opens a browser and waits for
+    the user to complete login, then captures the callback token. The
+    assistant cannot complete the user's sign-in on their behalf or claim
+    success before it completes. A supplied-token override is not an
+    implementation of service-account token issuance.
+  question: >-
+    An IMS browser OAuth login opens while you automate a DA task. Who
+    completes sign-in, when can you claim success, and does accepting an
+    existing token make this a CI service-account token issuer?
+  source: "https://github.com/adobe-rnd/da-auth-helper/blob/1333f443d925a0240909424224aafd75c260e9d2/src/auth.js (login, getValidToken)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-source-bus-ims
+  claim: >-
+    da-auth-helper obtains an IMS access token, not a credential restricted
+    to DA. The api.aem.live implementation accepts IMS Bearer access tokens,
+    verifies signature/type/expiry, and requires aem.frontend.all or
+    aem.backend.all (with a cm-repo-service special case). The helper
+    requests aem.frontend.all. A cached token can therefore be reused for
+    eligible Source Bus / Experience Workspace API requests, subject to
+    server acceptance and org/site/action authorization; DA success does
+    not prove Source Bus access. The local variable can remain DA_TOKEN.
+    PR505/issue504 report that reuse succeeded on one site; not repeated
+    in this loop. Do not create a separate API key by default.
+  question: >-
+    An Experience Workspace site uses api.aem.live's Source Bus. You already
+    have an IMS access token from da-auth-helper. Is that necessarily a
+    DA-only token, or can it authenticate these API calls? What conditions
+    still need checking, and must you obtain a separate API key?
+  source: "https://github.com/adobe/helix-api-service/blob/473dd365ec20bdc5c0de2c4035b2bbae7ad0596b/src/auth/support.js (decodeImsToken, getAuthInfo); helper src/auth.js at 1333f443d925a0240909424224aafd75c260e9d2 (SCOPE); https://github.com/adobe/skills/issues/504 (prior single-site report)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-source-bus-verification
+  claim: >-
+    Authenticate/verify against the API the caller needs: DA admin and
+    api.aem.live are not interchangeable acceptance tests. A 200 from
+    GET https://api.aem.live/<org>/sites/<site>/status/ alone does not prove
+    authentication: the OpenAPI status operation allows unauthenticated
+    access. Check authenticated identity/permissions or an operation known
+    to require the intended access, without exposing the credential or
+    performing writes just to test auth. Source routes are under
+    /<org>/sites/<site>/source/. In this implementation an auth_token
+    cookie takes precedence over Authorization, so ensure a Bearer-token
+    check is not actually succeeding under a different cookie identity.
+  question: >-
+    A request to api.aem.live/<org>/sites/<site>/status/ returns 200 with an
+    IMS Bearer header. Does this prove that token can access Source Bus
+    content? How would you verify the intended credential and access
+    without uploading or publishing anything?
+  source: "https://github.com/adobe/helix-api-service/blob/473dd365ec20bdc5c0de2c4035b2bbae7ad0596b/docs/openapi/status-api.yaml (security); docs/openapi/source-api.yaml; docs/openapi/api-service.yaml (paths); src/auth/support.js (getAuthInfo)"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-auth-source-store-selection
+  claim: >-
+    Source Bus content is addressed through
+    api.aem.live/<org>/sites/<site>/source/; DA content through
+    admin.da.live/source/<org>/<repo>/ and admin.da.live/list/<org>/<repo>/.
+    A non-empty DA listing alone does not establish the site's active
+    authoring source: issue504 reports onboarding index/nav/footer in DA
+    while the authored content lived in Source Bus. Use the site's known
+    authoring setup/configuration and user confirmation; inspect both
+    stores read-only where authorized rather than choosing by which has
+    documents. Writing to an unused store need not update the served page.
+    Full content-writing/format guidance belongs to the content workflow,
+    not a requirement to obtain another token.
+  question: >-
+    A site is authored in Experience Workspace, but a DA listing contains
+    index, nav and footer. Does that prove DA is the content store to write
+    to? Which API families should you distinguish and how should you
+    resolve the intended store before writing?
+  source: "https://github.com/adobe/skills/issues/504 (prior mixed-store observation); https://github.com/adobe/helix-api-service/blob/473dd365ec20bdc5c0de2c4035b2bbae7ad0596b/docs/openapi/api-service.yaml (source paths); DA admin route API"
+  used_by:
+    - skills/da-auth/SKILL.md
+
+- id: da-content-icon-colon
+  claim: >-
+    In DA HTML an icon is written as :name: text. The preview pipeline
+    converts any :[a-z0-9-]+: into <span class="icon icon-name"></span> in
+    default content and block cells and eats the whitespace around it
+    (":rocket: text" becomes "<span></span>text"). ":+1:" is not matched.
+    An authored <span class="icon icon-name"></span> sent by direct PUT also
+    previews as an icon, but a stored page that went through the DA editor
+    lost the empty span (observed on a page the user opened and previewed
+    from the editor), so only :name: is reliable for content authors edit.
+  question: >-
+    You generate HTML for DA. How should you write an icon so it survives
+    preview and later editing in the DA editor, and what does the pipeline
+    do with it?
+  source: "Live check 2026-11-06, shsteimer/da-playground /drafts/dc-icon-a (:rocket: works), dc-ic (span via direct PUT previews as :name:), dc-icon-b (stored source had no span after editor open; cause unconfirmed)"
+  used_by: []
+
+- id: da-content-section-metadata-class
+  claim: >-
+    Section Metadata in div form needs class="section-metadata" (one
+    kebab-case token) inside the section it styles. class="Section Metadata"
+    (two tokens) produces a "Section (Metadata)" block and the delivered page
+    silently drops the block and its content. Table form with header text
+    "Section Metadata" works. Keys are delivered as typed.
+  question: >-
+    How do you write a Section Metadata block in DA HTML (div form), and what
+    happens if you write the class as "Section Metadata"?
+  source: "Live check 2026-11-06, /drafts/dc-sm (.md and .plain.html)"
+  used_by: []
+
+- id: da-content-sections-required
+  claim: >-
+    Every piece of page content must be inside a section div that is a direct
+    child of main. Elements placed directly in main (h1, p, ...) are dropped
+    silently, with no error. A div placed directly in main is itself taken
+    as a section, so a block div there is not a block: its rows become
+    default content (a div.metadata outside a section yields no Metadata
+    block and no <meta> tags). Blocks, metadata and default content all
+    belong inside the section div.
+  question: >-
+    You emit <main><h1>Title</h1><p>Intro</p><div class="metadata">…</div></main>
+    with nothing wrapping them in section divs. What survives preview, and
+    what is the correct structure?
+  source: "Live check 2026-11-06, shsteimer/da-playground /drafts/dc-nosec (direct children dropped), dc-pm (metadata as a section), dc-pmb (works inside a section)"
+  used_by: []
+
+- id: da-content-metadata-head-output
+  claim: >-
+    Page metadata rows become head tags: title -> <title>; description ->
+    meta description + og:description + twitter:description; og:title also
+    sets twitter:title; image -> og:image, twitter:image (absolute site URL
+    with ?width=1200); tags -> one article:tag per comma value; other keys
+    -> <meta name> with the key lowercased and spaces replaced by hyphens
+    ("my custom" -> my-custom); a link value delivers as its text; canonical,
+    og:url and twitter:card are added automatically.
+  question: >-
+    Which head tags does the EDS pipeline generate from a page metadata block
+    with title, description, image, tags and a custom key "my custom"? Do you
+    need to author og:* or twitter:* rows yourself?
+  source: "Live check 2026-11-06, /drafts/dc-pmb full page head"
+  used_by: []
+
+- id: da-content-picture-generated
+  claim: >-
+    Every absolute <img> in DA HTML is sideloaded and delivered as a
+    <picture> with two webp and one jpeg <source> (width 750 and 2000,
+    media (min-width: 600px), format and optimize query params) and an <img>
+    with width, height and loading="lazy". Hand-authored <picture>/<source>
+    markup is replaced by the pipeline's. A relative or document-relative
+    src delivers <img src="about:error"> with the alt kept. Missing alt
+    becomes alt="". Inline <svg> is dropped.
+  question: >-
+    What does the pipeline deliver for <img src="https://…/a.jpg" alt="x"> in
+    DA HTML? What if you hand-author <picture> with <source> elements, and
+    what if src is "/img/a.png"?
+  source: "Live check 2026-11-06, /drafts/dc-img .plain.html"
+  used_by: []
+
+- id: da-content-link-rewrite
+  claim: >-
+    Links to the same site's aem.page or aem.live URLs are rewritten to
+    relative paths; other hosts stay absolute. class and target attributes on
+    <a> are dropped, title is kept. Button promotion is not done by the
+    pipeline (decoration does it, per project).
+  question: >-
+    You write <a href="https://main--site--org.aem.page/foo" class="button"
+    target="_blank">. What does the delivered HTML contain?
+  source: "Live check 2026-11-06, /drafts/dc-links .plain.html"
+  used_by: []
+
+- id: da-content-attrs-stripped
+  claim: >-
+    The pipeline drops id, class, style and data-* attributes on default
+    content (headings get auto-generated ids from their text, also inside
+    cells), drops empty <p> and <p><br></p>, turns <hr> into a section
+    break, unwraps <span> and <ins>, rewrites <b>/<i>/<mark>/<s>/<kbd> to
+    strong/em/em/del/code, and keeps <u>, <sup>, <sub>. This is the same in
+    default content and block cells.
+  question: >-
+    Which inline tags and attributes does the pipeline keep, rewrite or strip
+    in DA HTML, and does that differ between default content and block
+    cells?
+  source: "Live check 2026-11-06, /drafts/dc-def, dc-cell, dc-misc"
+  used_by: []
+
+- id: da-content-table-becomes-block
+  claim: >-
+    A <table> in default content (not in a block) is converted to a block:
+    the first cell of the first row becomes the block name and is consumed.
+    <table><tr><th>h</th></tr><tr><td>d</td></tr></table> is delivered as
+    <div class="h">…d…</div>. A block nested inside a block cell is
+    flattened to its text.
+  question: >-
+    What happens to a plain <table> with a header row in DA HTML that you
+    meant as a data table? And to a block placed inside another block's cell?
+  source: "Live check 2026-11-06, /drafts/dc-def, dc-blk"
+  used_by: []
+
+- id: da-content-block-name-normalize
+  claim: >-
+    The pipeline normalizes block class tokens: "Feature_Block" becomes
+    class="feature-block", "columns (v)" becomes "columns v", table header
+    "Hero (dark, wide)" becomes "hero dark wide". Authoring guidance in this
+    repo stays alphanumeric plus single hyphens regardless.
+  question: >-
+    How are block names and variants in div and table form turned into CSS
+    classes by the pipeline (case, underscores, parentheses)?
+  source: "Live check 2026-11-06, /drafts/dc-blk .plain.html"
+  used_by: []
+
+- id: da-content-source-wrong-field
+  claim: >-
+    PUT to admin.da.live/source with a multipart field not named "data"
+    (e.g. file) returns 200 with a JSON body that looks successful but
+    writes nothing: a following GET returns 404. A missing or invalid token
+    returns 401 with an empty JSON body (content-length 0).
+  question: >-
+    You PUT a file to admin.da.live/source/... using curl -F "file=@x.html"
+    and get 200. Is the file in DA? What does a bad or missing token return?
+  source: "Live check 2026-11-06, /drafts/dc-wrongfield, dc-notoken, dc-badtoken"
+  used_by: []
+
+- id: da-content-cli-binary-noop
+  claim: >-
+    aem content push (@adobe/aem-cli 16.22.16) uploads with a raw request
+    body and Content-Type, not multipart "data". It reports "✓ pushed" for
+    PNG and SVG files but nothing is written to DA (list and GET show
+    neither file). Use PUT multipart field "data" to admin.da.live/source
+    for binaries. HTML pages pushed by the CLI do arrive.
+  question: >-
+    Can you upload a PNG with aem content push? If the CLI reports success,
+    is the image in DA?
+  source: "Live check 2026-11-06, /drafts/dc-pix.png, dc-push.svg; @adobe/aem-cli@16.22.16 src/content/da-api.js putSource"
+  used_by: []
+
+- id: da-content-svg-cap
+  claim: >-
+    A standalone SVG over 40 KB fails preview with 409
+    AEM_BACKEND_SVG_TOO_BIG ("SVG is larger than 40KB"). Under 40 KB it
+    previews (200). The DA source PUT itself accepts the large file (201).
+  question: >-
+    What happens when you preview a 44 KB SVG that is already in DA? What
+    size limit applies?
+  source: "Live check 2026-11-06, /drafts/dc-big.svg, dc-small.svg"
+  used_by: []
+
+- id: da-content-md-preview-check
+  claim: >-
+    To verify how the pipeline reads a DA page without the site's
+    authentication: POST admin.hlx.page/preview/{org}/{site}/{ref}/{path}
+    with Authorization Bearer, then GET the same URL with ".md" appended and
+    header x-auth-token. It returns the markdown the content bus built. The
+    aem.page URL itself needs the site token if the site is protected.
+  question: >-
+    You need to see how the pipeline interpreted a DA page that you just
+    previewed, but aem.page returns 401. How do you inspect the result?
+  source: "Live check 2026-11-06, shsteimer/da-playground /drafts/dc-* via admin.hlx.page"
+  used_by: []
+
+- id: da-content-main-required
+  claim: >-
+    DA HTML needs <main> around the section divs. <main> alone or
+    <body><main> previews fine; section divs without <main> preview empty.
+    <body>, <header> and <footer> are optional, and text inside header or
+    footer is dropped. A full HTML document is accepted: its <title> becomes
+    the title metadata and <style> is dropped.
+  question: >-
+    You generate DA page HTML as bare <div> sections with no <main>, or with
+    content in <header> and <footer>. What reaches the preview? Which
+    wrappers are required?
+  source: "Live check 2026-11-06, /drafts/dc-hf1..hf5 (preview .md); @adobe/helix-html2md as run by aem-cli 16.22.16: <main> alone, <body><main> and a full body all convert, no <main> returns empty ('contains no <main>'). aem up serves ./content/ through the same html2md, so local pages behave the same."
+  used_by: []
