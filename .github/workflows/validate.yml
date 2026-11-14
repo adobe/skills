@@ -134,6 +134,18 @@ jobs:
           git fetch --no-tags --depth=1 origin main
           node plugins/stardust/evals/lint/prose-delta.mjs --ref origin/main
 
+  aem-forms-validator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: AEM Forms create-custom-component script tests
+        run: node --test plugins/aem/forms/edge-delivery-services/tests/*.test.mjs
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:

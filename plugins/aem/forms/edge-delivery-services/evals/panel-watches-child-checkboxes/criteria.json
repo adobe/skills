@@ -1,0 +1,56 @@
+{
+  "context": "Tests whether the agent implements a panel/container custom component that observes child fields through the form model using the documented child-subscription pattern (subscribe() on each child wrapper selected by data-id), rather than DOM listeners or legacy model.subscribe change handlers.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Files and viewType",
+      "max_score": 10,
+      "description": "Files exist under `blocks/form/components/consent-panel/` named `consent-panel.js`, `consent-panel.css` and `_consent-panel.json`, and the JSON template sets `\"fd:viewType\": \"consent-panel\"` with `\"fieldType\": \"panel\"`"
+    },
+    {
+      "name": "Registered in mappings.js",
+      "max_score": 10,
+      "description": "`'consent-panel'` is added to `customComponents` in `blocks/form/mappings.js`"
+    },
+    {
+      "name": "Parent subscribe with listenChanges",
+      "max_score": 10,
+      "description": "`consent-panel.js` imports `subscribe` from `'../../rules/index.js'` and subscribes the panel element with `{ listenChanges: true }`"
+    },
+    {
+      "name": "Children found via model",
+      "max_score": 12,
+      "description": "Inside the parent's `'register'` callback, child checkbox models are found from the panel model's `items` (e.g. filtering `item.fieldType === 'checkbox'`) rather than only by scanning DOM inputs"
+    },
+    {
+      "name": "Child wrapper selected by data-id",
+      "max_score": 12,
+      "description": "Each child wrapper is selected with `[data-id=\"${child.id}\"]` (scoped to the panel element), NOT `#${child.id}` and NOT `document.querySelector`"
+    },
+    {
+      "name": "subscribe() per child",
+      "max_score": 14,
+      "description": "Each child checkbox is observed by calling `subscribe(childWrapper, formId, cb, { listenChanges: true })` and reacting to `'change'` payloads with `propertyName === 'value'`; the solution does NOT rely on `addEventListener('change')` on checkbox inputs or `childModel.subscribe(cb, 'change')` as the mechanism to detect changes"
+    },
+    {
+      "name": "Button enablement via model",
+      "max_score": 10,
+      "description": "The Continue button is enabled/disabled through its field model (e.g. `buttonModel.enabled = allChecked`) or equivalent that keeps model and DOM consistent, and the state is computed initially on register as well as on every change"
+    },
+    {
+      "name": "Authorable hint text",
+      "max_score": 7,
+      "description": "`_consent-panel.json` model adds a text property for the hint (e.g. `component: \"text\"`, unique `name`), and the JS reads it from the field JSON `properties`"
+    },
+    {
+      "name": "README documents subscriptions",
+      "max_score": 8,
+      "description": "`blocks/form/components/consent-panel/README.md` exists and documents the authoring property and that the component listens to child checkbox value changes (a Model Subscriptions-style section)"
+    },
+    {
+      "name": "Scoped DOM and CSS",
+      "max_score": 7,
+      "description": "DOM queries are scoped to the panel element and CSS selectors are namespaced with the component name (e.g. `.consent-panel`)"
+    }
+  ]
+}

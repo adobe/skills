@@ -1,0 +1,9 @@
+{
+  "name": "adobe/aem-forms-edge-delivery-services",
+  "version": "0.1.0",
+  "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block.",
+  "private": false,
+  "skills": [
+    "skills/create-custom-component"
+  ]
+}
