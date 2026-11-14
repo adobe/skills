@@ -1,6 +1,6 @@
 # Approval fold-back (Part III)
 
-The procedure `stardust:prototype` Phase 5 runs when the user
+The procedure the stardust `prototype` skill runs in Phase 5 when the user
 approves a non-A variant. Reads the approved file's structural
 moves, diffs against the active direction, and proposes folding
 the moves into the direction so subsequent prototype runs consume

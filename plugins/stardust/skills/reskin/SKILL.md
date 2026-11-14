@@ -2,6 +2,7 @@
 name: reskin
 description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, or local static HTML prototypes (Figma donors are contract-defined, not yet implemented). Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:reskin — same content, donor design
@@ -24,8 +25,8 @@ The two halves have different contracts:
   Structure (element counts, tag sequences) is informational, never
   gating — a reskin re-structures markup by design.
 
-The decisive rule, validated in the UC2-E1 experiment (hirslanden ×
-stripe: 2281/2281 text bytes, 7/7 images, 47/47 slots, 13/13 metadata,
+The decisive rule, validated in the UC2-E1 experiment (a healthcare site ×
+a fintech donor: 2281/2281 text bytes, 7/7 images, 47/47 slots, 13/13 metadata,
 17/17 donor-token probe): **the page is generated programmatically from
 the captured content model — content strings are never retyped.** Byte
 fidelity then holds by construction and the content gate becomes a
@@ -52,7 +53,7 @@ regression check instead of a debugging tool.
     later release."* Do not improvise a partial Figma capture.
 - `--pages <slug,slug,...>` — optional. Restrict the content capture
   to specific pages. Default: the archetype set (one page per page
-  family; scale to siblings happens in Phase 6 via `migrate`).
+  family; a spec's `archetypes.json` names them; scale to siblings happens in Phase 6 via `migrate`).
 - `--scope <selectors>` — optional. Pre-declare the content-root
   scope for a single-page run (comma-separated, `!` suffix keeps a
   scope whole; see `reference/content-model.md` § Scope declaration).
@@ -61,7 +62,11 @@ regression check instead of a debugging tool.
 ## Setup
 
 1. Run the master skill's setup (`../stardust/SKILL.md` § Setup):
-   impeccable dep check, context loader, state read.
+   impeccable dep check, context loader, state read. **Flow.** Stamp
+   `state.json.flow: "reskin"` if unset
+   (`../stardust/reference/state-machine.md` § Flow keys); if another
+   flow is set, print it and the switch command
+   (`$stardust reskin --switch-flow`) instead of running.
 2. **Playwright import-resolvability probe** — same contract as
    `../extract/SKILL.md` § Setup:
    `node -e "import('playwright').then(()=>process.exit(0))"` from the
@@ -74,15 +79,9 @@ regression check instead of a debugging tool.
    tree ships no `node_modules`. Copy `skills/reskin/scripts/*` (all
    five files — `capture-content.mjs` and `dom-equality.mjs` import
    `source-normalize.mjs` as a sibling) byte-identical to
-   `stardust/scripts/reskin/`, **and** `skills/diff/scripts/
-   live-session.mjs` to `stardust/scripts/diff/` — every reskin gate
-   script (capture-content, dom-equality, donor-probe, **and**
-   slot-coverage) imports it unconditionally at startup, regardless
-   of target type: without the copy each one exits 2 immediately,
-   even for `--help` or a local-file `--rendered` target. It supplies
-   ALL live-target hardening (real-Chrome UA + standard headers,
-   challenge detection, headed-stealth escalation), resolved from
-   `../diff/` next to `../reskin/`, so keep the two dirs siblings.
+   `stardust/scripts/reskin/`, **and** the master skill's scripts (`../stardust/SKILL.md`
+   § Setup, step 7): every reskin gate script resolves `browser.mjs` there at
+   startup and exits 2 without it, even for `--help`.
    Run the copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
@@ -97,7 +96,7 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
 `reference/donor-sources.md`; summary:
 
 - **Live URL** (`--donor <url>`): invoke
-  `stardust:extract <content-url> --design-source <donor-url>` — the
+  `$stardust extract <content-url> --design-source <donor-url>` — the
   existing skill, unchanged. It lands in `stardust/canon-source/`: the
   donor's `pages/`, `assets/` (screenshots included),
   `_brand-extraction.json`, `_crawl-log.json`, and a descriptive
@@ -362,7 +361,7 @@ per-family keeps the loop bounded without absorbing real failures.)
 Reskin owns the archetype pages; scale and shipping are the existing
 pipeline, unchanged:
 
-- **Scale via `stardust:migrate`** (`../migrate/SKILL.md`) with the
+- **Scale via the stardust `migrate` skill** (`../migrate/SKILL.md`) with the
   donor-pinned target (the `state.json.designSource` stamp Phase 1
   wrote is exactly what `direct`/`migrate` read for donor pinning;
   a bounded donor capture wrote no stamp — record the donor origin
@@ -372,7 +371,10 @@ pipeline, unchanged:
   gated archetype. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.
-- **Ship via `stardust:deploy` / `stardust:rollout`**, unchanged.
+- **Ship via the stardust `deploy` and `rollout` skills**, unchanged. Blocks
+  written for donor modules obey the Experience Workspace editability
+  contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW gate
+  (`block-roundtrip --ew`) before they are done.
 
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`
 holds per-page status (`captured → mapped → rendered → gated`), gate

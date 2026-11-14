@@ -5,7 +5,7 @@ metadata:
   category: project-initialization
 license: Apache-2.0
 compatibility: Requires aio CLI (Adobe I/O CLI) — install or refresh with `npm install -g @adobe/aio-cli` so the bundled plugins (`aio-cli-plugin-console`, `aio-cli-plugin-app`, etc.) are current. Node.js 18+ (Node 24 supported on Stage runtimes). Bash shell.
-allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Read Write
+allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Read Write Edit
 ---
 # App Builder Project Initialization
 
@@ -22,13 +22,10 @@ Do this once per machine before initializing a project — plus a login per envi
 App Builder needs **Node 20** (npm ships with it). Check what's active: `node -v` → expect `v20.x`.
 
 - **Have nvm?** `nvm install 20 && nvm use 20 && nvm alias default 20` so new shells keep it. If several Node versions are installed, the *active* one must be 20.
-- **No Node / no nvm?** Install nvm, then Node 20:
+- **No Node / no nvm?** Ask the user before installing anything. Prefer `brew install node@20` or the official installer at nodejs.org. If they want nvm, have them install it from [nvm's instructions](https://github.com/nvm-sh/nvm#installing-and-updating) themselves; don't pipe an installer from the network into a shell. Once nvm is there, in a new shell:
   ```bash
-  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-  # reopen the shell, then:
   nvm install 20 && nvm use 20 && nvm alias default 20
   ```
-  (Alternatives: `brew install node@20`, or the official installer at nodejs.org.)
 
 > Older Adobe docs say Node 18 — use **20**. A global `aio` belongs to whichever Node was active when you ran `npm i -g`; if you switch Node versions the old `aio` won't be on PATH. Symptom of a mismatch: `aio` dies with `SyntaxError: Unexpected token '??='` (a pre-20 Node parsing the Node-20 `aio`) — fix with `nvm use 20` and reinstall `aio` there.
 
@@ -189,6 +186,7 @@ Pick the template that matches the user's intent. When unclear, default to `@ado
 | User wants | Template |
 | --- | --- |
 | SPA with actions + React UI | @adobe/generator-app-excshell |
+| Content Hub extension (asset details panel, card action, bulk action) | No generator — scaffold from sample app, see [`references/templates.md`](references/templates.md) |
 | AEM Content Fragment Console extension | @adobe/aem-cf-admin-ui-ext-tpl |
 | AEM React SPA (WKND-based) | @adobe/generator-app-aem-react |
 | Adobe API Mesh (GraphQL) | @adobe/generator-app-api-mesh |
@@ -351,5 +349,5 @@ After initialization, hand off to:
 ## References
 
 - [references/bootstrap.md](references/bootstrap.md) — Agentic Developer Console bootstrap (project, workspace, API subscriptions) via raw `aio console …` commands from the latest `@adobe/aio-cli`
-- [references/templates.md](references/templates.md) — Template catalog with intent mapping and per-template post-init guidance
+- [references/templates.md](references/templates.md) — Template catalog with intent mapping and per-template post-init guidance (includes the Content Hub extension)
 - [references/debugging.md](references/debugging.md) — Troubleshooting guide for init failures, Node/npm issues, login problems, and first-run errors

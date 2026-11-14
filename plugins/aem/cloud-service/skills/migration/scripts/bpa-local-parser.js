@@ -20,14 +20,21 @@ const path = require('path');
 const PATTERN_TO_SUBTYPE = {
   scheduler: "sling.commons.scheduler",
   assetApi: "unsupported.asset.api",
+  guavaCache: "custom.guava.cache",
+  oakIndex: "oak.index.definition",
+  inputStream: "java.io.inputstream",
 };
 
 // CSV subtype to pattern mapping (based on actual CSV structure)
 const CSV_SUBTYPE_TO_PATTERN = {
   "unsupported.asset.api": "assetApi",
-  "javax.jcr.observation.EventListener": "eventListener", 
+  "javax.jcr.observation.EventListener": "eventListener",
   "org.apache.sling.api.resource.observation.ResourceChangeListener": "resourceChangeListener",
-  "org.osgi.service.event.EventHandler": "eventHandler"
+  "org.osgi.service.event.EventHandler": "eventHandler",
+  "custom.guava.cache": "guavaCache",
+  "index.rule.violation": "oakIndex",
+  "standard.index.modification": "oakIndex",
+  "java.io.inputstream": "inputStream"
 };
 
 // Known scheduler identifier
@@ -49,7 +56,29 @@ const CONTENT_SUBTYPES = [
   'custom.static.template',
   'forward.replication',
   'reverse.replication',
+  'unsupported.runmode',
 ];
+
+// Every subtype this parser extracts, recorded in the collection's
+// `meta.parsedSubtypes`. A collection written by an older parser lacks newer
+// subtypes even when its CSV has them, so readers re-parse the CSV instead of
+// trusting such a collection (see bpa-findings-helper.js).
+const PARSED_SUBTYPES = [
+  'sling.commons.scheduler',
+  'unsupported.asset.api',
+  'javax.jcr.observation.EventListener',
+  'org.apache.sling.api.resource.observation.ResourceChangeListener',
+  'org.osgi.service.event.EventHandler',
+  'custom.guava.cache',
+  'oak.index.definition',
+  'java.io.inputstream',
+  ...CONTENT_SUBTYPES,
+];
+// What collections written before `meta.parsedSubtypes` existed can be trusted
+// for: every subtype above except those added since.
+const LEGACY_PARSED_SUBTYPES = PARSED_SUBTYPES.filter(
+  subtype => subtype !== 'java.io.inputstream' && subtype !== 'oak.index.definition'
+);
 
 /**
  * Parse command line arguments
@@ -421,6 +450,182 @@ function processEventHandlerFindings(findings) {
 }
 
 /**
+ * Extract the bundle/module name from a `custom.guava.cache` finding's message.
+ *
+ * Unlike scheduler/eventListener/etc., `identifier` on this subtype is a
+ * *Guava-internal* class (e.g. `com.google.common.cache.AbstractCache`) —
+ * BPA is bytecode-scanning Guava's own cache implementation classes wherever
+ * they are reachable, not the customer's classes that import them. The only
+ * customer-relevant unit is the **bundle** the message names ("The X class
+ * in the <bundle> bundle uses Y."). A real bundle can produce hundreds of
+ * these rows (one per Guava-internal class pulled in) — dedupe to one entry
+ * per bundle, not per row.
+ */
+function extractGuavaBundleFromMessage(finding) {
+  const message = finding.message || '';
+  const match = message.match(/\bin the ([\w.-]+) bundle\b/);
+  return match ? match[1] : null;
+}
+
+/**
+ * Process Guava cache findings from CSV. One entry per bundle — BPA reports
+ * every Guava-internal class it finds on that bundle's classpath, not one
+ * finding per customer file, so grouping by row or by `identifier` would
+ * bloat to hundreds of entries for a single bundle that just embeds Guava.
+ */
+function processGuavaCacheFindings(findings) {
+  const guavaCacheFindings = findings.filter(finding =>
+    finding.subtype === 'custom.guava.cache' && !String(finding.code || '').startsWith('_')
+  );
+
+  const identifiers = {};
+  const bundleNames = [];
+
+  guavaCacheFindings.forEach(finding => {
+    const bundleName = extractGuavaBundleFromMessage(finding);
+    if (bundleName) {
+      if (!bundleNames.includes(bundleName)) {
+        bundleNames.push(bundleName);
+      }
+    } else {
+      console.warn(
+        `custom.guava.cache row could not be parsed for a bundle name — dropped, not counted. ` +
+        `identifier=${finding.identifier || '(none)'} message=${JSON.stringify(finding.message || '')}`
+      );
+    }
+  });
+
+  if (bundleNames.length > 0) {
+    identifiers['custom.guava.cache'] = bundleNames;
+  }
+
+  return {
+    subtype: 'custom.guava.cache',
+    identifiers: identifiers
+  };
+}
+
+/**
+ * Process oak index findings from CSV. `identifier` is the oak index JCR path
+ * (e.g. `/content/oak:index/enablementResourceName`), not a class name — kept
+ * as raw array values (never used as an object key), so no mongo-safe
+ * round-trip risk. One real index path produces multiple raw CSV rows (one
+ * per distinct rule violation — "must follow -custom-N pattern", "path must
+ * begin with /oak:/index", "type must be lucene", etc., all for the same
+ * path) — dedupe by path per subtype, not by row. Both BPA subtypes for
+ * category OID (`index.rule.violation`, `standard.index.modification`) are
+ * emitted under the single `oakIndex` pattern, keyed separately since a path
+ * can independently need both a naming fix and a modification review.
+ */
+function processOakIndexFindings(findings) {
+  const oakIndexFindings = findings.filter(finding =>
+    (finding.subtype === 'index.rule.violation' || finding.subtype === 'standard.index.modification') &&
+    !String(finding.code || '').startsWith('_')
+  );
+
+  const identifiers = {};
+
+  oakIndexFindings.forEach(finding => {
+    const subtype = finding.subtype;
+    const indexPath = (finding.identifier || '').trim();
+    if (!indexPath) return;
+    if (!identifiers[subtype]) {
+      identifiers[subtype] = [];
+    }
+    if (!identifiers[subtype].includes(indexPath)) {
+      identifiers[subtype].push(indexPath);
+    }
+  });
+
+  return {
+    subtype: 'oak.index.definition',
+    identifiers: identifiers
+  };
+}
+
+/**
+ * Extract the referenced `java.io.*InputStream` API from a `java.io.inputstream`
+ * finding. BPA puts it in the `other` column; older exports without that column
+ * still carry it in the message ("… bundle uses java.io.FileInputStream. …") and
+ * in the context JSON (`data.toId`).
+ */
+function extractInputStreamApi(finding) {
+  const isApi = (v) => typeof v === 'string' && /^java\.io\.[\w$]*InputStream[\w$]*$/.test(v.trim());
+  if (isApi(finding.other)) return finding.other.trim();
+
+  const fromMessage = (finding.message || '').match(/\buses (java\.io\.[\w$]*InputStream[\w$]*)/);
+  if (fromMessage) return fromMessage[1];
+
+  try {
+    const toId = JSON.parse(finding.context || '{}')?.data?.toId;
+    if (isApi(toId)) return toId.trim();
+  } catch (_) {
+    // context is free text on some exports — fall through
+  }
+  return null;
+}
+
+/**
+ * Process `java.io.inputstream` findings from CSV. Keyed by the referenced API
+ * (e.g. `java.io.FileInputStream`) → flagged class names, like assetApi — the
+ * API is the classification lead in references/input-stream.md. Summary rows
+ * (`_COUNT_DG`) share the subtype string and are excluded.
+ *
+ * Also returns `bundles` (API → class → BPA bundles). The bundle is what lets
+ * input-stream-runner.js collapse rows that don't resolve to workspace source
+ * into one row per bundle. A class can appear in several bundles (for example
+ * a shaded library embedded twice), so each keeps a list.
+ */
+function processInputStreamFindings(findings) {
+  const inputStreamFindings = findings.filter(finding =>
+    finding.subtype === 'java.io.inputstream' && !String(finding.code || '').startsWith('_')
+  );
+
+  const identifiers = {};
+  const bundles = {};
+
+  inputStreamFindings.forEach(finding => {
+    const className = finding.identifier && isValidClassName(finding.identifier) ? finding.identifier.trim() : null;
+    const api = extractInputStreamApi(finding);
+    if (!className || !api) {
+      console.warn(
+        `java.io.inputstream row could not be parsed for a class/API — dropped, not counted. ` +
+        `identifier=${finding.identifier || '(none)'} message=${JSON.stringify(finding.message || '')}`
+      );
+      return;
+    }
+    const classNames = identifiers[api] = identifiers[api] || [];
+    if (!classNames.includes(className)) {
+      classNames.push(className);
+    }
+    const bundle = extractBundle(finding);
+    if (bundle) {
+      const byClass = bundles[api] = bundles[api] || {};
+      const list = byClass[className] = byClass[className] || [];
+      if (!list.includes(bundle)) list.push(bundle);
+    }
+  });
+
+  return {
+    subtype: PATTERN_TO_SUBTYPE.inputStream,
+    identifiers: identifiers,
+    bundles
+  };
+}
+
+/** BPA bundle of a finding — context JSON `data.bundle`, else the message's "in the <bundle> bundle". */
+function extractBundle(finding) {
+  try {
+    const bundle = JSON.parse(finding.context || '{}')?.data?.bundle;
+    if (typeof bundle === 'string' && bundle.trim()) return bundle.trim();
+  } catch (_) {
+    // context is free text on some exports — fall through
+  }
+  const match = (finding.message || '').match(/\bin the ([\w.-]+) bundle\b/);
+  return match ? match[1] : null;
+}
+
+/**
  * Convert subtype to MongoDB-safe field name (matching cloud-adoption-service)
  */
 function toMongoSafeFieldName(fieldName) {
@@ -529,6 +734,55 @@ function createUnifiedCollection(bpaData, outputDir) {
     console.log(`Found ${Object.values(eventHandlerCollection.identifiers).flat().length} event handler classes`);
   }
 
+  // Process Guava cache findings
+  const guavaCacheCollection = processGuavaCacheFindings(findings);
+  if (Object.keys(guavaCacheCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(guavaCacheCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(guavaCacheCollection.identifiers).forEach(([identifier, bundleNames]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = bundleNames;
+      totalFindings += bundleNames.length;
+    });
+
+    console.log(`Found ${Object.values(guavaCacheCollection.identifiers).flat().length} bundles using Guava cache`);
+  }
+
+  // Process oak index findings
+  const oakIndexCollection = processOakIndexFindings(findings);
+  if (Object.keys(oakIndexCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(oakIndexCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(oakIndexCollection.identifiers).forEach(([identifier, indexPaths]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = indexPaths;
+      totalFindings += indexPaths.length;
+    });
+
+    console.log(`Found ${Object.values(oakIndexCollection.identifiers).flat().length} oak index paths`);
+  }
+
+  // Process java.io.InputStream findings
+  const inputStreamCollection = processInputStreamFindings(findings);
+  let inputStreamBundles = null;
+  if (Object.keys(inputStreamCollection.identifiers).length > 0) {
+    const mongoSafeSubtype = toMongoSafeFieldName(inputStreamCollection.subtype);
+    subtypes[mongoSafeSubtype] = {};
+
+    Object.entries(inputStreamCollection.identifiers).forEach(([identifier, classNames]) => {
+      const mongoSafeIdentifier = toMongoSafeIdentifier(identifier);
+      subtypes[mongoSafeSubtype][mongoSafeIdentifier] = classNames;
+      totalFindings += classNames.length;
+    });
+    if (Object.keys(inputStreamCollection.bundles).length > 0) {
+      inputStreamBundles = inputStreamCollection.bundles;
+    }
+
+    console.log(`Found ${Object.values(inputStreamCollection.identifiers).flat().length} java.io.InputStream usages`);
+  }
+
   // Process content / legacy-UI subtypes (cdw, lui, templates, replication).
   // Keys are RAW JCR paths (not MongoDB-safed) to avoid corrupting underscores.
   for (const subtype of CONTENT_SUBTYPES) {
@@ -553,7 +807,11 @@ function createUnifiedCollection(bpaData, outputDir) {
       timestamp: new Date().toISOString(),
       source: 'local-bpa-parser',
       totalFindings: totalFindings,
-      subtypeCount: subtypeKeys.length
+      subtypeCount: subtypeKeys.length,
+      parsedSubtypes: PARSED_SUBTYPES,
+      // API → class → BPA bundles (java.io.inputstream only); lets the reader
+      // emit one target per bundle so rows can be grouped per bundle downstream.
+      ...(inputStreamBundles ? { inputStreamBundles } : {})
     }
   };
 
@@ -626,5 +884,7 @@ module.exports = {
   validateBpaFile,
   parseBpaFile,
   createUnifiedCollection,
-  extractFindings
+  extractFindings,
+  PARSED_SUBTYPES,
+  LEGACY_PARSED_SUBTYPES
 };

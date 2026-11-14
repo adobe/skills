@@ -7,13 +7,15 @@ const os = require('os');
 const path = require('path');
 
 const { runHtlLint, classify } = require('./htl-lint-runner.js');
-const { runOsgiConfigScan } = require('./osgi-config-runner.js');
+const { runOsgiConfigScan, validateRunmodeFolder, scanUnsupportedRunmodes, reorderRunmodeFolder, planRunmodeReorders } = require('./osgi-config-runner.js');
+const { runVaultPackageScan, isLegacyGroup } = require('./vault-package-scan-runner.js');
 const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
-const { runTemplateScan } = require('./template-scan-runner.js');
-const { runAnalyzer } = require('./analyzer-runner.js');
+const { runTemplateScan, classifyStaticTemplate } = require('./template-scan-runner.js');
+const { runAnalyzer, isAnalyzerAvailable, DEFAULT_ANALYZE_SCRIPT } = require('./analyzer-runner.js');
+const { getBpaFindings } = require('./bpa-findings-helper.js');
 const {
-  gatherFindings, generateRunbook, renderRunbook, writeRunbookCache,
-  samplePrompt, CANONICAL_PATTERNS, PATTERN_META,
+  gatherFindings, generateRunbook, renderRunbook, writeRunbookCache, mergeLlmFindings,
+  samplePrompt, relPath, classKey, sourceLabel, CANONICAL_PATTERNS, PATTERN_META,
 } = require('./runbook-generator.js');
 
 function mkworkspace() {
@@ -28,24 +30,418 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 10 migration patterns with a valid strategy', () => {
+test('registry includes all 15 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
-    'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
+    'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
+    'guavaCache', 'inputStream', 'dispatcherConversion', 'oakIndex',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
     assert.ok(CANONICAL_PATTERNS.includes(key), `${key} in CANONICAL_PATTERNS`);
     assert.ok(
-      ['cascade', 'html-scan', 'config-scan', 'content-scan'].includes(PATTERN_META[key].strategy),
+      ['cascade', 'html-scan', 'config-scan', 'content-scan', 'pom-scan', 'bpa-only', 'java-scan'].includes(PATTERN_META[key].strategy),
       `${key} has a valid strategy`
     );
   }
+  assert.strictEqual(PATTERN_META.dispatcherConversion.strategy, 'content-scan');
+  assert.deepStrictEqual(PATTERN_META.dispatcherConversion.bpaSlugs, []);
+});
+
+test('guavaCache has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
+  assert.strictEqual(PATTERN_META.guavaCache.strategy, 'bpa-only');
+  assert.deepStrictEqual(PATTERN_META.guavaCache.bpaSlugs, ['guavaCache']);
+  assert.ok(!PATTERN_META.guavaCache.heuristic, 'guavaCache findings are BPA-authoritative, not heuristic');
+});
+
+test('oakIndex has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
+  assert.strictEqual(PATTERN_META.oakIndex.strategy, 'bpa-only');
+  assert.deepStrictEqual(PATTERN_META.oakIndex.bpaSlugs, ['oakIndex']);
+  assert.ok(!PATTERN_META.oakIndex.heuristic, 'oakIndex findings are BPA-authoritative, not heuristic');
+});
+
+test('inputStream is a java-scan pattern that merges BPA rows (no LLM tier, no bpaIncomplete)', () => {
+  assert.strictEqual(PATTERN_META.inputStream.strategy, 'java-scan');
+  assert.deepStrictEqual(PATTERN_META.inputStream.bpaSlugs, ['inputStream']);
+  assert.ok(PATTERN_META.inputStream.heuristic, 'site classification is regex-based — re-confirmed at apply time');
+  assert.ok(!PATTERN_META.inputStream.bpaIncomplete);
 });
 
 test('inject-in-sling-model and outdated-dependencies stay out of scope', () => {
   assert.ok(!CANONICAL_PATTERNS.includes('inject-in-sling-model'));
   assert.ok(!CANONICAL_PATTERNS.includes('outdated-dependencies'));
+});
+
+test('vault-package-dependencies is pom-scan with no BPA tier and no analyzer', () => {
+  assert.strictEqual(PATTERN_META['vault-package-dependencies'].strategy, 'pom-scan');
+  assert.deepStrictEqual(PATTERN_META['vault-package-dependencies'].bpaSlugs, []);
+  assert.ok(PATTERN_META['vault-package-dependencies'].heuristic, 'regex/text scan, not compiler-validated');
+});
+
+// ── vault-package-scan-runner ────────────────────────────────────────────────
+//
+// The runner delegates POM resolution to `mvn help:effective-pom`, so tests
+// inject a stub `getEffectivePom` that returns canned effective-POM XML. The
+// source `pom.xml` is still written to the workspace so the runner can look
+// up the source line for the legacy `<group>` tag.
+
+/** Build a stub getEffectivePom that returns canned XML per projectDir. */
+function stubEffective(byDir) {
+  return (projectDir) => {
+    if (Object.prototype.hasOwnProperty.call(byDir, projectDir)) {
+      return { ok: true, xml: byDir[projectDir] };
+    }
+    return { ok: false, error: `no stub for ${projectDir}` };
+  };
+}
+
+test('isLegacyGroup matches day/cq60, day/cq560, adobe/cq60 prefixes only', () => {
+  assert.ok(isLegacyGroup('day/cq60/product'));
+  assert.ok(isLegacyGroup('day/cq560/social/commons'));
+  assert.ok(isLegacyGroup('adobe/cq60'));
+  assert.ok(!isLegacyGroup('adobe/aem6/sample'));
+  assert.ok(!isLegacyGroup('com.example'));
+  assert.ok(!isLegacyGroup(null));
+});
+
+test('runVaultPackageScan flags a legacy <dependencies> block, one finding per block', () => {
+  const root = mkworkspace();
+  const module = path.join(root, 'ui.apps');
+  const pom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '            <dependency><group>day/cq60/product</group><name>cq-commerce-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'ui.apps/pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [module]: pom }) });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 1, 'one finding per <dependencies> block, not per <dependency>');
+  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+  assert.strictEqual(res.rawFindings[0].pattern, 'vault-package-dependencies');
+});
+
+test('runVaultPackageScan flags a legacy <dependencies> block under filevault-package-maven-plugin', () => {
+  const root = mkworkspace();
+  const module = path.join(root, 'ui.apps');
+  const pom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>filevault-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'ui.apps/pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [module]: pom }) });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 1, 'filevault-package-maven-plugin must be matched, not silently skipped');
+  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+  assert.match(res.findings[0].detail, /^filevault-package-maven-plugin:/, 'snippet must name the plugin that matched');
+});
+
+test('runVaultPackageScan flags the block after <pluginManagement> is merged by Maven', () => {
+  // Source pom declares the plugin in both <pluginManagement> (no deps) and
+  // <build> (with deps). Maven's effective pom is what the runner sees: a
+  // single merged <build> entry — no shadow <pluginManagement> occurrence.
+  const root = mkworkspace();
+  const sourcePom = [
+    '<project>', '  <build>',
+    '    <pluginManagement>', '      <plugins>', '        <plugin>',
+    '          <artifactId>content-package-maven-plugin</artifactId>',
+    '          <configuration><verbose>true</verbose></configuration>',
+    '        </plugin>', '      </plugins>', '    </pluginManagement>',
+    '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  const effectivePom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>',
+    '          <verbose>true</verbose>',
+    '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', sourcePom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: effectivePom }) });
+  assert.strictEqual(res.findings.length, 1);
+  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+});
+
+test('runVaultPackageScan flags plugins that only appear in an activated <profile>', () => {
+  // Profiles are not merged into <build> in the effective pom unless activated
+  // — the runner must still scan every <plugin> occurrence, including those
+  // inside a <profiles><profile><build> section.
+  const root = mkworkspace();
+  const pom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>',
+    '  <profiles>', '    <profile>', '      <id>legacy-6x</id>', '      <build>', '        <plugins>', '          <plugin>',
+    '            <artifactId>filevault-package-maven-plugin</artifactId>',
+    '            <configuration>', '              <dependencies>',
+    '                <dependency><group>day/cq560/social/commons</group></dependency>',
+    '              </dependencies>', '            </configuration>', '          </plugin>',
+    '        </plugins>', '      </build>', '    </profile>', '  </profiles>',
+    '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: pom }) });
+  assert.strictEqual(res.findings.length, 2, 'both <build> and <profiles> plugin blocks must be flagged');
+  const groups = res.findings.map(f => f.detail).join(' | ');
+  assert.match(groups, /day\/cq60\/product/);
+  assert.match(groups, /day\/cq560\/social\/commons/);
+});
+
+test('runVaultPackageScan ignores a per-<execution> <configuration> — only plugin-level counts', () => {
+  // Maven's effective pom keeps executions separate from the plugin-level
+  // configuration. The runner explicitly scopes to everything before
+  // <executions>, so a per-execution <configuration> with a legacy-looking
+  // <dependencies> can't shadow or forge a finding at plugin-level.
+  const root = mkworkspace();
+  const effectivePom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>',
+    '          <verbose>true</verbose>',
+    '        </configuration>',
+    '        <executions>', '          <execution>', '            <id>install-package</id>',
+    '            <configuration>',
+    '              <dependencies>',
+    '                <dependency><group>day/cq60/product</group></dependency>',
+    '              </dependencies>',
+    '            </configuration>',
+    '          </execution>', '        </executions>',
+    '      </plugin>', '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', effectivePom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: effectivePom }) });
+  assert.strictEqual(res.findings.length, 0, 'per-execution <configuration> is not install-time deps');
+});
+
+test('runVaultPackageScan reports the source-pom line where the legacy <group> appears', () => {
+  const root = mkworkspace();
+  const lines = [
+    '<project>',                                                     //  1
+    '  <build>',                                                     //  2
+    '    <plugins>',                                                 //  3
+    '      <plugin>',                                                //  4
+    '        <artifactId>content-package-maven-plugin</artifactId>', //  5  <- artifactId line
+    '        <configuration>',                                       //  6
+    '          <dependencies>',                                      //  7
+    '            <dependency><group>day/cq60/product</group></dependency>', //  8  <- legacy group line
+    '          </dependencies>',                                     //  9
+    '        </configuration>',                                      // 10
+    '      </plugin>',                                               // 11
+    '    </plugins>',                                                // 12
+    '  </build>',                                                    // 13
+    '</project>',                                                    // 14
+  ];
+  const pom = lines.join('\n');
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: pom }) });
+  assert.strictEqual(res.findings.length, 1);
+  assert.strictEqual(res.rawFindings[0].line, 8, 'expected line 8 (the legacy <group> tag), not the <artifactId> line');
+});
+
+test('runVaultPackageScan flags inherited blocks with (inherited) marker and line 1', () => {
+  // The customer's own pom.xml doesn't contain the legacy block — it comes
+  // from a parent pom Maven pulls in. The runner still detects it via the
+  // effective pom and reports the source pom with the (inherited) marker.
+  const root = mkworkspace();
+  const sourcePom = [
+    '<project>',
+    '  <parent><groupId>com.example</groupId><artifactId>legacy-parent</artifactId><version>1.0</version></parent>',
+    '  <artifactId>my-module</artifactId>',
+    '</project>',
+  ].join('\n');
+  const effectivePom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', sourcePom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: effectivePom }) });
+  assert.strictEqual(res.findings.length, 1);
+  assert.match(res.findings[0].detail, /\(inherited\)/, 'inherited blocks must be marked');
+  assert.strictEqual(res.rawFindings[0].line, 1, 'inherited blocks anchor at line 1 of the source pom');
+});
+
+test('runVaultPackageScan does not flag a legacy group under an unrelated plugin', () => {
+  const root = mkworkspace();
+  const pom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>some-other-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '      <plugin>', '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration><group>adobe/aem6/sample</group></configuration>',
+    '      </plugin>', '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: pom }) });
+  assert.strictEqual(res.findings.length, 0, 'legacy group under a different plugin must not match');
+});
+
+test('runVaultPackageScan returns empty (ok) when no pom.xml has the plugin', () => {
+  const root = mkworkspace();
+  const pom = '<project></project>\n';
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: pom }) });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 0);
+});
+
+test('runVaultPackageScan surfaces effective-pom resolution failures as warnings, not errors', () => {
+  const root = mkworkspace();
+  write(root, 'pom.xml', '<project><parent><artifactId>missing</artifactId></parent></project>\n');
+  const res = runVaultPackageScan(root, {
+    getEffectivePom: () => ({ ok: false, error: 'could not resolve parent com.example:missing:1.0' }),
+  });
+  assert.strictEqual(res.ok, true, 'a single unresolvable pom does not fail the whole scan');
+  assert.strictEqual(res.findings.length, 0);
+  assert.strictEqual(res.warnings.length, 1);
+  assert.match(res.warnings[0], /could not resolve/);
+});
+
+test('runVaultPackageScan text-scans raw pom.xml when effective-pom fails, so legacy blocks still surface', () => {
+  // Legacy AEM 6.x / AMS projects (the target audience) frequently can't
+  // resolve a Maven build anymore. The runner falls back to a raw text
+  // scan so the pattern doesn't silently report clean, and emits a warning
+  // announcing the degraded coverage.
+  const root = mkworkspace();
+  const pom = [
+    '<project>', '  <build>', '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group><name>cq-content</name></dependency>',
+    '          </dependencies>', '        </configuration>', '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', pom);
+  const res = runVaultPackageScan(root, {
+    getEffectivePom: () => ({ ok: false, error: 'offline: cannot download parent' }),
+  });
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.findings.length, 1, 'raw text-scan must still detect the legacy block');
+  assert.match(res.findings[0].detail, /day\/cq60\/product/);
+  assert.strictEqual(res.warnings.length, 1);
+  assert.match(res.warnings[0], /text-scanning raw pom\.xml/);
+});
+
+test('runVaultPackageScan skips <pluginManagement> so effective-pom does not double-report', () => {
+  // Effective POM retains <pluginManagement> even after merging its config
+  // into <build><plugins>. Without the skip the same block is reported
+  // once from pluginManagement and once from the merged <build> entry.
+  const root = mkworkspace();
+  const effectivePom = [
+    '<project>', '  <build>',
+    '    <pluginManagement>', '      <plugins>', '        <plugin>',
+    '          <artifactId>content-package-maven-plugin</artifactId>',
+    '          <configuration>', '            <dependencies>',
+    '              <dependency><group>day/cq60/product</group></dependency>',
+    '            </dependencies>', '          </configuration>',
+    '        </plugin>', '      </plugins>', '    </pluginManagement>',
+    '    <plugins>', '      <plugin>',
+    '        <artifactId>content-package-maven-plugin</artifactId>',
+    '        <configuration>', '          <dependencies>',
+    '            <dependency><group>day/cq60/product</group></dependency>',
+    '          </dependencies>', '        </configuration>',
+    '      </plugin>',
+    '    </plugins>', '  </build>', '</project>',
+  ].join('\n');
+  write(root, 'pom.xml', effectivePom);
+  const res = runVaultPackageScan(root, { getEffectivePom: stubEffective({ [root]: effectivePom }) });
+  assert.strictEqual(res.findings.length, 1, '<pluginManagement> copy must not create a duplicate finding');
+});
+
+test('runVaultPackageScan returns ok:false when no module could be scanned (false-clean guard)', () => {
+  // Effective POM fails AND the raw pom.xml can't be read — the pattern
+  // was NOT scanned, so the runner must return ok:false rather than
+  // ok:true / zero findings, otherwise the runbook would mark the
+  // pattern as clean.
+  const root = mkworkspace();
+  const pomPath = path.join(root, 'pom.xml');
+  write(root, 'pom.xml', '<project/>');
+  // Break read access so the text-scan fallback can't succeed either.
+  const originalRead = fs.readFileSync;
+  fs.readFileSync = (p, ...rest) => {
+    if (p === pomPath) throw new Error('EACCES: permission denied');
+    return originalRead(p, ...rest);
+  };
+  try {
+    const res = runVaultPackageScan(root, {
+      getEffectivePom: () => ({ ok: false, error: 'mvn missing' }),
+    });
+    assert.strictEqual(res.ok, false, 'a scan that ran against 0 modules must not report ok:true');
+    assert.match(res.error || '', /not scanned/);
+  } finally {
+    fs.readFileSync = originalRead;
+  }
+});
+
+test('runVaultPackageScan uses the reactor bulk path when a <modules> pom is present', () => {
+  // A reactor invocation costs one mvn call for every module in the
+  // reactor, not one per module. The runner picks up the reactor via
+  // the source pom's <modules> declaration and pairs modules to their
+  // effective-pom slice via <artifactId>.
+  const root = mkworkspace();
+  const rootPom = [
+    '<project>',
+    '  <artifactId>myapp-reactor</artifactId>',
+    '  <modules><module>ui.apps</module><module>ui.content</module></modules>',
+    '</project>',
+  ].join('\n');
+  const uiAppsPom = '<project><artifactId>myapp-ui.apps</artifactId></project>\n';
+  const uiContentPom = '<project><artifactId>myapp-ui.content</artifactId></project>\n';
+  write(root, 'pom.xml', rootPom);
+  write(root, 'ui.apps/pom.xml', uiAppsPom);
+  write(root, 'ui.content/pom.xml', uiContentPom);
+  const uiAppsEffective = [
+    '<project>', '  <artifactId>myapp-ui.apps</artifactId>',
+    '  <build><plugins><plugin>',
+    '    <artifactId>content-package-maven-plugin</artifactId>',
+    '    <configuration><dependencies>',
+    '      <dependency><group>day/cq60/product</group></dependency>',
+    '    </dependencies></configuration>',
+    '  </plugin></plugins></build>', '</project>',
+  ].join('\n');
+  const uiContentEffective = '<project><artifactId>myapp-ui.content</artifactId></project>';
+  const rootEffective = '<project><artifactId>myapp-reactor</artifactId></project>';
+  let reactorCalls = 0;
+  let perModuleCalls = 0;
+  const res = runVaultPackageScan(root, {
+    getReactorEffectivePoms: (dir) => {
+      reactorCalls++;
+      assert.strictEqual(dir, root, 'reactor call must fire at the reactor root, not per-module');
+      return { ok: true, byArtifactId: {
+        'myapp-reactor': rootEffective,
+        'myapp-ui.apps': uiAppsEffective,
+        'myapp-ui.content': uiContentEffective,
+      } };
+    },
+    getEffectivePom: () => { perModuleCalls++; return { ok: false, error: 'should not be called' }; },
+  });
+  assert.strictEqual(reactorCalls, 1, 'exactly one reactor mvn call, not per-module');
+  assert.strictEqual(perModuleCalls, 0, 'per-module fallback must not run when reactor bulk covers every module');
+  assert.strictEqual(res.findings.length, 1);
+  assert.match(res.findings[0].location, /ui\.apps\/pom\.xml/);
 });
 
 // ── htl-lint-runner ───────────────────────────────────────────────────────
@@ -118,19 +514,159 @@ test('runOsgiConfigScan ignores non-config folders and repoinit secret keys', ()
     'files outside config folders and repoinit files are not flagged for plaintext secrets');
 });
 
+// ── URC: run-mode folder validation ─────────────────────────────────────────
+
+test('validateRunmodeFolder accepts valid supported run-mode folders', () => {
+  for (const name of ['config', 'install', 'config.author', 'config.publish',
+    'config.dev', 'config.stage', 'config.prod', 'config.author.dev',
+    'config.publish.prod', 'install.author', 'install.publish.stage']) {
+    assert.strictEqual(validateRunmodeFolder(name), null, `${name} should be valid`);
+  }
+});
+
+test('validateRunmodeFolder flags tier-after-environment ordering violations', () => {
+  const bad = validateRunmodeFolder('config.dev.author');
+  assert.ok(bad, 'config.dev.author is unsupported');
+  assert.strictEqual(bad.runmode, 'dev.author');
+  assert.match(bad.reason, /must precede/i);
+});
+
+test('validateRunmodeFolder flags unknown tokens and preview', () => {
+  assert.ok(validateRunmodeFolder('config.preprod'), 'preprod is unknown');
+  assert.ok(validateRunmodeFolder('config.author.preprod'), 'preprod after author still unknown');
+  assert.ok(validateRunmodeFolder('install.local'), 'local is unknown');
+  assert.ok(validateRunmodeFolder('config.preview'), 'preview cannot be declared');
+});
+
+test('validateRunmodeFolder flags duplicate tier/environment tokens', () => {
+  assert.match(validateRunmodeFolder('config.author.publish').reason, /tier/i);
+  assert.match(validateRunmodeFolder('config.author.dev.stage').reason, /environment/i);
+});
+
+test('validateRunmodeFolder is case-sensitive — capitalized tokens are unsupported', () => {
+  const bad1 = validateRunmodeFolder('config.Author.dev');
+  assert.ok(bad1, 'config.Author.dev is unsupported (case-sensitive)');
+  assert.match(bad1.reason, /'Author'/);
+  const bad2 = validateRunmodeFolder('config.PUBLISH');
+  assert.ok(bad2, 'config.PUBLISH is unsupported (case-sensitive)');
+  assert.match(bad2.reason, /'PUBLISH'/);
+});
+
+test('scanUnsupportedRunmodes flags unsupported config/install folders only', () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  write(root, 'ui.apps/jcr_root/apps/my/install.local/my-bundle.jar', 'x');
+  write(root, 'ui.config/jcr_root/apps/my/config.author.dev/com.my.Ok.cfg.json', '{ "a": 1 }\n');
+  write(root, 'ui.apps/jcr_root/apps/my/install.publish/ok-bundle.jar', 'x');
+  const res = scanUnsupportedRunmodes(root);
+  assert.strictEqual(res.ok, true);
+  const kinds = res.rawFindings.map(f => f.kind);
+  assert.ok(kinds.every(k => k === 'unsupported-runmode'));
+  const runmodes = res.rawFindings.map(f => f.runmode).sort();
+  assert.deepStrictEqual(runmodes, ['dev.author', 'local']);
+});
+
+test('validateRunmodeFolder flags malformed run-mode folder names', () => {
+  assert.match(validateRunmodeFolder('config.').reason, /malformed/i);
+  assert.match(validateRunmodeFolder('config..dev').reason, /malformed/i);
+  // Bare config/install (no dot) and non-config names stay out of scope.
+  assert.strictEqual(validateRunmodeFolder('config'), null);
+  assert.strictEqual(validateRunmodeFolder('install'), null);
+  assert.strictEqual(validateRunmodeFolder('configuration'), null);
+});
+
+test('scanUnsupportedRunmodes flags a malformed run-mode folder on disk', () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config./com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const res = scanUnsupportedRunmodes(root);
+  assert.strictEqual(res.ok, true);
+  const malformedRaw = res.rawFindings.find(f => f.kind === 'unsupported-runmode');
+  assert.ok(malformedRaw, 'a finding is produced for the malformed folder');
+  const malformedFinding = res.findings.find(f => /malformed/i.test(f.detail));
+  assert.ok(malformedFinding, 'reason mentions the malformed folder name');
+});
+
+test('scanUnsupportedRunmodes returns ok with no findings for a clean tree', () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config.author.stage/com.my.Ok.cfg.json', '{ "a": 1 }\n');
+  const res = scanUnsupportedRunmodes(root);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.rawFindings.length, 0);
+});
+
+// ── URC: safe auto-reorder fix (emit git mv commands, read-only) ─────────────
+
+test('reorderRunmodeFolder fixes ordering-only violations and skips the rest', () => {
+  assert.deepStrictEqual(reorderRunmodeFolder('config.dev.author'), { from: 'config.dev.author', to: 'config.author.dev' });
+  assert.deepStrictEqual(reorderRunmodeFolder('install.stage.publish'), { from: 'install.stage.publish', to: 'install.publish.stage' });
+  assert.strictEqual(reorderRunmodeFolder('config.author.dev'), null, 'already valid');
+  assert.strictEqual(reorderRunmodeFolder('config.preprod'), null, 'unknown token — not auto-fixable');
+  assert.strictEqual(reorderRunmodeFolder('config.author.publish'), null, 'two tiers — not auto-fixable');
+});
+
+test('reorderRunmodeFolder does not silently case-fold a capitalized token', () => {
+  assert.strictEqual(reorderRunmodeFolder('config.DEV.author'), null, 'mixed-case token routed to manual, not auto-folded');
+  assert.deepStrictEqual(reorderRunmodeFolder('config.dev.author'), { from: 'config.dev.author', to: 'config.author.dev' },
+    'lowercase ordering violation is still auto-fixed');
+});
+
+test('planRunmodeReorders emits a git mv command and never touches disk', () => {
+  const root = mkworkspace();
+  const bad = write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const badDir = path.dirname(bad);
+  const res = planRunmodeReorders(root);
+  assert.strictEqual(res.ok, true);
+  assert.strictEqual(res.reorders.length, 1);
+  // Relative paths (not absolute) in a runnable git mv command.
+  assert.match(res.reorders[0].command, /^git mv "ui\.config\/.*config\.dev\.author" "ui\.config\/.*config\.author\.dev"$/);
+  assert.ok(!path.isAbsolute(res.reorders[0].from), 'from path is workspace-relative');
+  assert.ok(fs.existsSync(badDir), 'plan is read-only — nothing renamed on disk');
+});
+
+test('planRunmodeReorders routes collisions and unknown tokens to manual', () => {
+  const root = mkworkspace();
+  // Collision: valid target already exists next to the bad folder.
+  const collidedTarget = write(root, 'ui.config/jcr_root/apps/my/config.author.dev/com.my.Other.cfg.json', '{ "b": 2 }\n');
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  // Unknown token: never a command.
+  const unknown = write(root, 'ui.config/jcr_root/apps/my/config.preprod/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const res = planRunmodeReorders(root);
+  assert.strictEqual(res.reorders.length, 0, 'no git mv commands emitted');
+  const reasons = res.manual.map(s => s.reason).join(' | ');
+  assert.match(reasons, /already exists/i);
+  assert.match(reasons, /not auto-fixable/i);
+  assert.ok(fs.existsSync(path.dirname(collidedTarget)), 'existing target untouched');
+  assert.ok(fs.existsSync(path.dirname(unknown)), 'unknown-token folder untouched');
+});
+
 // ── orchestrator dispatch + cache tagging ────────────────────────────────────
 
-test('gatherFindings dispatches rg + config-scan and tags heuristic in cache', async () => {
+test('gatherFindings dispatches rg + config-scan + pom-scan and tags heuristic in cache', async () => {
   const root = mkworkspace();
   write(root, 'ui.apps/jcr_root/apps/comp/hero.html', '<div data-sly-test="${x == false}">x</div>\n');
   write(root, 'ui.config/jcr_root/apps/my/config/com.my.Svc.cfg.json', '{ "secret-token": "abc123" }\n');
+  const pom = [
+    '<project><build><plugins><plugin>',
+    '<artifactId>content-package-maven-plugin</artifactId>',
+    '<configuration><dependencies>',
+    '<dependency><group>day/cq60/product</group></dependency>',
+    '</dependencies></configuration></plugin></plugins></build></project>',
+  ].join('\n');
+  write(root, 'pom.xml', pom);
   // No BPA source, no Java project → cascade patterns go to needsLlmScan or analyzer(empty).
-  const gathered = await gatherFindings({ workspaceRoot: root });
+  // The vault-package scan delegates POM resolution to Maven; inject a stub that
+  // returns the source as the effective pom so this stays a unit test.
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    getEffectivePom: (dir) => (dir === root ? { ok: true, xml: pom } : { ok: false, error: 'no stub' }),
+  });
 
   assert.strictEqual(gathered.sourceByPattern.htlLint, 'html-scan');
   assert.ok(gathered.findingsByPattern.htlLint.length >= 1);
   assert.strictEqual(gathered.sourceByPattern.osgiConfig, 'config-scan');
   assert.ok(gathered.findingsByPattern.osgiConfig.length >= 1);
+  assert.strictEqual(gathered.sourceByPattern['vault-package-dependencies'], 'pom-scan');
+  assert.ok(gathered.findingsByPattern['vault-package-dependencies'].length >= 1);
 
   const cachePath = path.join(root, 'cache.json');
   writeRunbookCache(gathered, { generatedAt: 'now' }, cachePath);
@@ -139,6 +675,9 @@ test('gatherFindings dispatches rg + config-scan and tags heuristic in cache', a
     assert.strictEqual(f.confidence, 'heuristic');
   }
   for (const f of cache.findingsByPattern.htlLint) {
+    assert.strictEqual(f.confidence, 'heuristic');
+  }
+  for (const f of cache.findingsByPattern['vault-package-dependencies']) {
     assert.strictEqual(f.confidence, 'heuristic');
   }
 });
@@ -157,6 +696,15 @@ test('cascade findings are NOT tagged heuristic', async () => {
 test('samplePrompt uses the OSGi natural-language override', () => {
   assert.match(samplePrompt('osgiConfig', {}), /scan my config files/i);
   assert.match(samplePrompt('scheduler', {}), /migration skill: \*\*scheduler\*\* only/);
+});
+
+test('samplePrompt never leaks the internal code-assessment handoff to the user', () => {
+  // The runbook's copy-paste prompts are user-facing; reading the code-assessment
+  // pattern guide is the migration skill's own job (Branch B), not the user's.
+  for (const pattern of CANONICAL_PATTERNS) {
+    assert.doesNotMatch(samplePrompt(pattern, {}), /code-assessment/, pattern);
+    assert.doesNotMatch(samplePrompt(pattern, { bpaFilePath: './bpa.csv' }), /code-assessment/, pattern);
+  }
 });
 
 test('renderRunbook shows a heuristic note and never emits secret values', async () => {
@@ -263,8 +811,56 @@ test('runTemplateScan flags static templates under apps/*/templates/*', () => {
     '<jcr:root jcr:primaryType="cq:Template"/>'); // not under templates/ → ignored
   const res = runTemplateScan(root);
   assert.strictEqual(res.rawFindings.length, 1);
-  assert.strictEqual(res.rawFindings[0].subType, 'legacy.static.template');
+  // No foundation resource type → project-authored custom template.
+  assert.strictEqual(res.rawFindings[0].subType, 'custom.static.template');
   assert.match(res.findings[0].detail, /content-page/);
+  assert.match(res.findings[0].detail, /custom/);
+});
+
+test('runTemplateScan classifies foundation-derived templates as legacy', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/legacy-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"><jcr:content sling:resourceType="wcm/foundation/components/page"/></jcr:root>');
+  write(root, 'ui.apps/jcr_root/apps/my/templates/custom-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"><jcr:content sling:resourceType="my/components/structure/page"/></jcr:root>');
+  const res = runTemplateScan(root);
+  const bySub = Object.fromEntries(res.rawFindings.map(f => [f.subType, f]));
+  assert.ok(bySub['legacy.static.template'], 'foundation RT → legacy');
+  assert.ok(bySub['custom.static.template'], 'project RT → custom');
+  assert.match(bySub['legacy.static.template'].file, /legacy-page/);
+  assert.match(bySub['custom.static.template'].file, /custom-page/);
+});
+
+test('classifyStaticTemplate strips leading /libs and /apps prefixes', () => {
+  assert.strictEqual(
+    classifyStaticTemplate('<jcr:content sling:resourceType="/libs/wcm/foundation/components/page"/>'),
+    'legacy.static.template');
+  assert.strictEqual(
+    classifyStaticTemplate('<jcr:content sling:resourceType="/apps/my/components/page"/>'),
+    'custom.static.template');
+});
+
+test('classifyStaticTemplate prefers jcr:content over a descendant parsys', () => {
+  // jcr:content has no RT of its own but a child parsys is foundation-derived;
+  // the template is still project-authored → must not be flagged legacy.
+  const xml = '<jcr:root jcr:primaryType="cq:Template">' +
+    '<jcr:content jcr:primaryType="cq:PageContent">' +
+    '<par sling:resourceType="wcm/foundation/components/responsivegrid"/>' +
+    '</jcr:content></jcr:root>';
+  assert.strictEqual(classifyStaticTemplate(xml), 'custom.static.template');
+  // When jcr:content itself is foundation-derived, it is legacy.
+  const legacy = '<jcr:content sling:resourceType="wcm/foundation/components/page">' +
+    '<par sling:resourceType="my/components/parsys"/></jcr:content>';
+  assert.strictEqual(classifyStaticTemplate(legacy), 'legacy.static.template');
+});
+
+test('runTemplateScan detects nested static templates', () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/marketing/hero/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"/>');
+  const res = runTemplateScan(root);
+  assert.strictEqual(res.rawFindings.length, 1, 'nested template must be found');
+  assert.match(res.findings[0].detail, /hero/);
 });
 
 test('gatherFindings dispatches content-scan patterns as heuristic', async () => {
@@ -307,6 +903,7 @@ test('runAnalyzer normalizes analyzer slugs and skips non-migration patterns', (
     { pattern: 'resource-change-listener', file: 'B.java', line: 5, snippet: 'impl RCL' },
     { pattern: 'asset-manager', file: 'C.java', line: 7, snippet: 'AssetManager.createAsset' },
     { pattern: 'inject-in-sling-model', file: 'D.java', line: 9, snippet: '@Inject' },
+    { pattern: 'vault-package-dependencies', file: 'pom.xml', line: 12, snippet: '<group>day/cq60/product</group>' },
   ], warnings: ['w1'] };
   const stub = writeAnalyzeStub(root, `#!/usr/bin/env bash\ncat <<'JSON'\n${JSON.stringify(payload)}\nJSON\n`);
   const res = runAnalyzer(root, { analyzeScript: stub });
@@ -315,6 +912,7 @@ test('runAnalyzer normalizes analyzer slugs and skips non-migration patterns', (
   assert.ok(res.findingsByPattern.resourceChangeListener, 'resource-change-listener → resourceChangeListener');
   assert.ok(res.findingsByPattern.assetApi, 'asset-manager → assetApi');
   assert.ok(!res.findingsByPattern['inject-in-sling-model'], 'non-migration slug dropped');
+  assert.ok(!res.findingsByPattern['vault-package-dependencies'], 'vault-package-dependencies has no analyzer detector — dropped like non-migration slugs, detected via pom-scan instead');
   assert.deepStrictEqual(res.warnings, ['w1']);
   assert.strictEqual(res.rawFindingsByPattern.scheduler[0].line, 3);
 });
@@ -336,8 +934,6 @@ test('runAnalyzer returns ok:false on unparseable output', () => {
 });
 
 // ── BPA parsing of the new subtypes (parser + reader) ───────────────────────
-
-const { getBpaFindings } = require('./bpa-findings-helper.js');
 
 function writeBpaCsv(root) {
   const rows = [
@@ -375,6 +971,89 @@ test('BPA parser extracts cdw/lui/template/replication and excludes _COUNT rows'
 
   const tpl = await getBpaFindings('templateModernization', opts);
   assert.strictEqual(tpl.targets.length, 2, 'legacy.static.template + custom.static.template');
+});
+
+function writeGuavaCacheBpaCsv(root) {
+  const rows = [
+    'code,type,subtype,importance,identifier,message,context',
+    // Three Guava-internal-class rows for the SAME bundle — must dedupe to one target.
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.AbstractCache,The com.google.common.cache.AbstractCache class in the com.example.bundle-a bundle uses com.google.common.cache.Cache.,ctx',
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.CacheBuilder,The com.google.common.cache.CacheBuilder class in the com.example.bundle-a bundle uses com.google.common.cache.CacheBuilder.,ctx',
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.LoadingCache,The com.google.common.cache.LoadingCache class in the com.example.bundle-a bundle uses com.google.common.cache.LoadingCache.,ctx',
+    // A row that matches the subtype but whose message does not match the
+    // "in the <bundle> bundle" phrasing — must be dropped, not counted, with a warning.
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.Foo,Some unexpected BPA message format with no bundle phrase.,ctx',
+  ];
+  const p = path.join(root, 'guava.csv');
+  fs.writeFileSync(p, rows.join('\n') + '\n', 'utf8');
+  return p;
+}
+
+test('guavaCache dedupes multiple rows for one bundle to a single target, and warns (not drops silently) on an unparseable message', async () => {
+  const root = mkworkspace();
+  const csv = writeGuavaCacheBpaCsv(root);
+  const opts = { bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 };
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let result;
+  try {
+    result = await getBpaFindings('guavaCache', opts);
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.strictEqual(result.targets.length, 1, 'three rows for the same bundle dedupe to one target');
+  assert.strictEqual(result.targets[0].className, 'com.example.bundle-a');
+  assert.ok(
+    warnings.some(w => /could not be parsed for a bundle name/.test(w)),
+    'the unparseable row emits a warning instead of vanishing silently'
+  );
+});
+
+function writeOakIndexBpaCsv(root) {
+  const rows = [
+    'code,type,subtype,importance,identifier,message,context',
+    // Two rule-violation rows for the SAME index path — must dedupe to one target.
+    'OID,oak.index.definition,index.rule.violation,CRITICAL,/content/oak:index/enablementResourceName,The /content/oak:index/enablementResourceName Oak index has a rule violation: Custom definition name must follow the pattern <name>-custom-<version>,ctx',
+    'OID,oak.index.definition,index.rule.violation,CRITICAL,/content/oak:index/enablementResourceName,The /content/oak:index/enablementResourceName Oak index has a rule violation: Path must begin with /oak:/index,ctx',
+    // A distinct rule-violation path.
+    'OID,oak.index.definition,index.rule.violation,CRITICAL,/oak:index/wkndId,The /oak:index/wkndId Oak index has a rule violation: Custom definition name must follow the pattern <name>-custom-<version>,ctx',
+    // A standard-index-modification finding (OOTB index modified in place).
+    'OID,oak.index.definition,standard.index.modification,CRITICAL,/oak:index/damAssetLucene,The /oak:index/damAssetLucene Oak index modifies a standard OOTB index definition,ctx',
+    // Summary row — bare numeric identifier, must be excluded, not mistaken for a path.
+    '_COUNT_OID,_count.oak.index.definition,index.rule.violation,CRITICAL,182,Count: 182,ctx',
+  ];
+  const p = path.join(root, 'oakindex.csv');
+  fs.writeFileSync(p, rows.join('\n') + '\n', 'utf8');
+  return p;
+}
+
+test('oakIndex dedupes repeat rows for the same index path, excludes _COUNT_OID, and splits by sub-type', async () => {
+  const root = mkworkspace();
+  const csv = writeOakIndexBpaCsv(root);
+  const opts = { bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 };
+
+  const result = await getBpaFindings('oakIndex', opts);
+
+  assert.strictEqual(result.targets.length, 3, 'two rule-violation rows for the same path dedupe to one target, plus the distinct path and the standard-modification finding');
+  assert.strictEqual(
+    result.targets.filter(t => t.identifier === 'index.rule.violation').length, 2,
+    'two distinct rule-violation index paths'
+  );
+  assert.strictEqual(
+    result.targets.filter(t => t.identifier === 'standard.index.modification').length, 1,
+    'one standard-index-modification finding'
+  );
+  assert.ok(
+    result.targets.some(t => t.className === '/content/oak:index/enablementResourceName'),
+    'JCR index path preserved as the actionable className'
+  );
+  assert.ok(
+    !result.targets.some(t => t.className === '182'),
+    '_COUNT_OID summary row (bare numeric identifier) must not be mistaken for an index path'
+  );
 });
 
 test('a real BPA fetch failure is surfaced (warning + needsLlmScan), NOT reported clean', async () => {
@@ -423,4 +1102,591 @@ test('runbook lui is filtered to dialog sub-types when sourced from BPA', async 
   assert.strictEqual(result.patternCounts.cdw, 2);
   assert.strictEqual(result.patternCounts.templateModernization, 2);
   assert.strictEqual(result.gathered.sourceByPattern.lui, 'csv');
+});
+
+// ── URC: BPA report mapping ─────────────────────────────────────────────────
+
+test('getBpaFindings resolves the urc pattern from a BPA CSV, excluding count rows', async () => {
+  const dir = mkworkspace();
+  const csv = path.join(dir, 'bpa.csv');
+  fs.copyFileSync(path.join(__dirname, 'fixtures', 'urc-bpa.csv'), csv);
+  const collectionsDir = path.join(dir, 'collections');
+  const res = await getBpaFindings('urc', { bpaFilePath: csv, collectionsDir, limit: null, offset: 0 });
+  assert.strictEqual(res.success, true);
+  assert.strictEqual(res.targets.length, 2, 'two URC detail rows, count row excluded');
+  const locations = res.targets.map(t => t.className).sort();
+  assert.deepStrictEqual(locations, ['/apps/demo/config.dev.author', '/apps/demo/config.preprod']);
+});
+
+// ── URC: report-first with local fallback (end to end) ──────────────────────
+
+test('URC comes from the BPA report when a report is present (report owns it)', async () => {
+  const root = mkworkspace();
+  // Bad folder on disk that the report does NOT list — report ownership means
+  // it is treated as clean and the local scanner is not consulted.
+  write(root, 'ui.config/jcr_root/apps/my/config.stage.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const csv = path.join(root, 'bpa.csv');
+  fs.copyFileSync(path.join(__dirname, 'fixtures', 'urc-bpa.csv'), csv);
+  const gathered = await gatherFindings({ workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'collections') });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  // BPA-sourced URC findings now carry the same `kind`/`runmode` shape as the
+  // local scanner — two report rows, not the on-disk bad folder the test
+  // planted (which the report does NOT list).
+  assert.strictEqual(urc.length, 2, 'both report URC rows enriched with kind: unsupported-runmode');
+  const urcFiles = urc.map(f => f.file).sort();
+  assert.deepStrictEqual(
+    urcFiles,
+    ['/apps/demo/config.dev.author', '/apps/demo/config.preprod'],
+    'URC raw findings come from the report paths, not the on-disk config.stage.author folder — proving report ownership'
+  );
+  const devAuthor = urc.find(f => f.file === '/apps/demo/config.dev.author');
+  assert.strictEqual(devAuthor.runmode, 'dev.author', 'runmode derived from the folder basename via validateRunmodeFolder');
+
+  // …and the report URC folders are present as osgiConfig findings, with a
+  // rich detail carrying the folder basename (not the bare BPA identifier
+  // string 'unsupported.runmode').
+  const finding = gathered.findingsByPattern.osgiConfig.find(f => String(f.location).includes('config.dev.author'));
+  assert.ok(finding, 'URC from report present');
+  assert.ok(finding.detail.includes('config.dev.author'), 'detail contains the folder basename');
+  assert.ok(!finding.detail.includes('unsupported.runmode'), 'detail is not the bare BPA identifier string');
+});
+
+test('URC falls back to local detection when no BPA source is present', async () => {
+  const root = mkworkspace();
+  write(root, 'ui.config/jcr_root/apps/my/config.dev.author/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.strictEqual(urc.length, 1, 'local scanner produced the URC finding');
+  assert.strictEqual(urc[0].runmode, 'dev.author');
+});
+
+// ── URC: MCP path (the masking hole also exists via MCP, not just CSV) ──────
+
+test('URC comes from MCP when the mcpFetcher reports URC targets', async () => {
+  const root = mkworkspace();
+  const mcpFetcher = async ({ pattern }) => {
+    if (pattern === 'urc') {
+      return {
+        success: true,
+        targets: [
+          { className: '/apps/demo/config.dev.author', identifier: 'unsupported.runmode', issue: 'bad runmode' },
+        ],
+      };
+    }
+    // Any other pattern (scheduler, resourceChangeListener, ...) — report clean.
+    return { success: true, targets: [] };
+  };
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'mcp-collections'),
+    projectId: 'proj-mcp-urc',
+    mcpFetcher,
+  });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.strictEqual(urc.length, 1, 'MCP-sourced URC finding surfaces');
+  assert.strictEqual(urc[0].file, '/apps/demo/config.dev.author');
+  assert.strictEqual(urc[0].runmode, 'dev.author');
+  assert.ok(!gathered.analyzerWarnings.some(w => w.includes('safety net')),
+    'no safety-net warning when MCP actually reports URC findings');
+});
+
+test('URC safety-net scan also runs when the mcpFetcher reports success with EMPTY URC targets', async () => {
+  const root = mkworkspace();
+  // On-disk unsupported folder the (URC-empty) MCP response does not mention.
+  write(root, 'ui.config/jcr_root/apps/my/config.qa/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const mcpFetcher = async ({ pattern }) => {
+    if (pattern === 'urc') return { success: true, targets: [] };
+    return { success: true, targets: [] };
+  };
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'mcp-collections'),
+    projectId: 'proj-mcp-urc-empty',
+    mcpFetcher,
+  });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.ok(urc.some(f => String(f.file).includes('config.qa')),
+    'on-disk URC finding surfaces via the local safety-net scan even though MCP is configured');
+  assert.ok(
+    gathered.analyzerWarnings.some(w => w.includes(
+      'BPA source present but reported no URC (unsupported.runmode) findings — running the local config.*/install.* run-mode scan as a safety net (the report may predate URC detection or be scoped to other patterns).'
+    )),
+    'a safety-net warning is surfaced for the MCP masking path too'
+  );
+});
+
+test('a BPA report present but with NO URC rows warns and still runs the local safety-net scan', async () => {
+  const root = mkworkspace();
+  // On-disk unsupported folder the (URC-less) BPA report does not mention.
+  write(root, 'ui.config/jcr_root/apps/my/config.qa/com.my.Svc.cfg.json', '{ "a": 1 }\n');
+  const bpaFilePath = path.join(__dirname, 'fixtures', 'minimal-scheduler-bpa.csv');
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath, collectionsDir: path.join(root, 'uc'),
+  });
+  const urc = gathered.rawFindingsByPattern.osgiConfig.filter(f => f.kind === 'unsupported-runmode');
+  assert.ok(urc.some(f => String(f.file).includes('config.qa')),
+    'on-disk URC finding surfaces even though a BPA source is present');
+  assert.ok(
+    gathered.analyzerWarnings.some(w => w.includes(
+      'BPA source present but reported no URC (unsupported.runmode) findings — running the local config.*/install.* run-mode scan as a safety net (the report may predate URC detection or be scoped to other patterns).'
+    )),
+    'a safety-net warning is surfaced'
+  );
+});
+
+// ── Performance-fix behaviors: relPath, classKey, sourceLabel, preFetchedBpa, LLM merge ──
+
+test('relPath collapses a finding AT the workspace root to "." (no absolute-path leak)', () => {
+  const ws = '/Users/me/project';
+  assert.strictEqual(relPath('/Users/me/project', ws), '.');       // config at root — was the leak
+  assert.strictEqual(relPath('/Users/me/project/', ws), '.');      // trailing separator
+  assert.strictEqual(relPath('/Users/me/project/dispatcher', ws), 'dispatcher');
+  assert.strictEqual(relPath('com.acme.MyJob', ws), 'com.acme.MyJob'); // non-path value untouched
+});
+
+test('classKey normalizes a BPA className and an analyzer file path to the same key', () => {
+  assert.strictEqual(classKey('com.acme.jobs.MyJob'), 'myjob');
+  assert.strictEqual(classKey('core/src/main/java/com/acme/jobs/MyJob.java'), 'myjob');
+  assert.strictEqual(classKey('com.acme.jobs.MyJob'), classKey('core/src/main/java/com/acme/jobs/MyJob.java'));
+  assert.strictEqual(classKey(null), null);
+});
+
+test('sourceLabel renders unioned sources (mcp+analyzer) with both labels', () => {
+  assert.strictEqual(sourceLabel('mcp'), 'BPA / CAM');
+  assert.strictEqual(sourceLabel('mcp+analyzer'), 'BPA / CAM + analyzer');
+  assert.strictEqual(sourceLabel('csv+analyzer'), 'BPA CSV + analyzer');
+  assert.strictEqual(sourceLabel(undefined), '—');
+});
+
+test('preFetchedBpa drives BPA findings with no mcpFetcher bridge (CLI --bpa-json path)', async () => {
+  const root = mkworkspace();
+  // Pre-fetched CAM/MCP result: slug → raw BPA targets, exactly what the agent dumps to JSON.
+  const preFetchedBpa = {
+    scheduler: [{ className: 'com.acme.MySchedulerJob', identifier: 'scheduler', severity: 'high' }],
+  };
+  const gathered = await gatherFindings({ workspaceRoot: root, preFetchedBpa });
+  assert.strictEqual(gathered.bpaMode, 'mcp', 'pre-fetched BPA counts as a CAM/MCP source');
+  assert.strictEqual(gathered.sourceByPattern.scheduler, 'mcp');
+  assert.strictEqual(gathered.findingsByPattern.scheduler.length, 1);
+  assert.strictEqual(gathered.findingsByPattern.scheduler[0].location, 'com.acme.MySchedulerJob');
+  // A slug absent from the map is a benign "clean" — not an error, not needsLlmScan.
+  assert.ok(!gathered.needsLlmScan.includes('scheduler'));
+  assert.ok(!gathered.analyzerWarnings.some(w => /scheduler/.test(w)), 'absent slug does not raise a fetch error');
+});
+
+test('mergeLlmFindings folds Tier-4 results in one pass (source llm, dropped from needsLlmScan)', () => {
+  const gathered = {
+    findingsByPattern: { guavaCache: [] },
+    rawFindingsByPattern: { guavaCache: [] },
+    sourceByPattern: {},
+    needsLlmScan: ['guavaCache', 'replication'],
+  };
+  mergeLlmFindings(gathered, {
+    guavaCache: [{ file: 'core/src/main/java/com/acme/Cache.java', line: 42, snippet: 'import com.google.common.cache.CacheBuilder' }],
+  });
+  assert.strictEqual(gathered.sourceByPattern.guavaCache, 'llm');
+  assert.strictEqual(gathered.findingsByPattern.guavaCache.length, 1);
+  assert.strictEqual(gathered.findingsByPattern.guavaCache[0].location, 'core/src/main/java/com/acme/Cache.java:42');
+  assert.strictEqual(gathered.rawFindingsByPattern.guavaCache[0].snippet, 'import com.google.common.cache.CacheBuilder');
+  assert.deepStrictEqual(gathered.needsLlmScan, ['replication'], 'merged pattern is removed; others remain');
+});
+
+test('generateRunbook applies llmByPattern end to end (one command, no re-render)', async () => {
+  const root = mkworkspace();
+  const out = path.join(root, 'runbook.md');
+  const cache = path.join(root, 'runbook.json');
+  const result = await generateRunbook({
+    workspaceRoot: root, outputPath: out, cachePath: cache,
+    llmByPattern: { guavaCache: [{ file: 'bundle/Foo.java', line: 3, snippet: 'com.google.common.cache' }] },
+  });
+  assert.strictEqual(result.gathered.sourceByPattern.guavaCache, 'llm');
+  assert.ok(!result.needsLlmScan.includes('guavaCache'));
+  const md = fs.readFileSync(out, 'utf8');
+  assert.match(md, /LLM scan/);            // rendered "Detected via: LLM scan"
+  assert.match(md, /bundle\/Foo\.java:3/);
+});
+
+test('Fix D: analyzer union fills a BPA-clean cascade pattern and dedups by class name', async (t) => {
+  const root = mkworkspace();
+  write(root, 'core/src/main/java/com/acme/LegacyJob.java',
+    'package com.acme;\n' +
+    'import org.apache.sling.commons.scheduler.Scheduler;\n' +
+    'import org.osgi.service.component.annotations.Component;\n' +
+    '@Component(service = Runnable.class, property = {"scheduler.expression=0 0 * * * ?"})\n' +
+    'public class LegacyJob implements Runnable { private Scheduler scheduler; public void run() {} }\n');
+
+  // Probe: with no BPA source the analyzer owns scheduler. If it can't run here
+  // (no JDK / analyzer), skip — this behavior needs the real analyzer.
+  const probe = await gatherFindings({ workspaceRoot: root });
+  if (!isAnalyzerAvailable(DEFAULT_ANALYZE_SCRIPT) || probe.sourceByPattern.scheduler !== 'analyzer' || probe.findingsByPattern.scheduler.length < 1) {
+    t.skip('analyzer/JDK not available in this environment');
+    return;
+  }
+
+  // BPA reports scheduler CLEAN → the union must still surface the analyzer's finding.
+  const unioned = await gatherFindings({ workspaceRoot: root, preFetchedBpa: { scheduler: [] } });
+  assert.strictEqual(unioned.findingsByPattern.scheduler.length, 1, 'analyzer finding unioned into a BPA-clean pattern');
+  assert.strictEqual(unioned.sourceByPattern.scheduler, 'mcp+analyzer');
+
+  // BPA already reports the SAME class → deduped by class name, no double count.
+  const deduped = await gatherFindings({ workspaceRoot: root, preFetchedBpa: { scheduler: [{ className: 'com.acme.LegacyJob', identifier: 'scheduler' }] } });
+  assert.strictEqual(deduped.findingsByPattern.scheduler.length, 1, 'same class is deduped');
+  assert.strictEqual(deduped.sourceByPattern.scheduler, 'mcp', 'no analyzer suffix when nothing new was added');
+});
+
+// ── bpaIncomplete: a BPA source that structurally can't report a pattern must not mark it clean ──
+
+test('bpaIncomplete: BPA-clean templateModernization still runs the content-scan fallback (CAM cannot see templates)', async () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/content-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"/>');
+  // A BPA source is present (isolated collectionsDir) but reports nothing for
+  // templateModernization — CAM can't report templates, so this must NOT be clean.
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { templateModernization: [] },
+  });
+  assert.strictEqual(gathered.bpaMode, 'mcp');
+  assert.strictEqual(gathered.sourceByPattern.templateModernization, 'content-scan',
+    'content-scan ran despite the BPA source');
+  assert.strictEqual(gathered.findingsByPattern.templateModernization.length, 1);
+  assert.ok(!gathered.needsLlmScan.includes('templateModernization'));
+});
+
+test('bpaIncomplete: BPA-clean guavaCache falls through to needsLlmScan (own bundle may be filtered out)', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { guavaCache: [] },
+  });
+  assert.ok(gathered.needsLlmScan.includes('guavaCache'),
+    'a zero BPA result for a bpaIncomplete bpa-only pattern is not treated as clean');
+  assert.notStrictEqual(gathered.sourceByPattern.guavaCache, 'mcp');
+});
+
+test('bpaIncomplete does NOT change lui/cdw: CAM reports those reliably, so BPA-clean stays clean', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { lui: [], cdw: [] },
+  });
+  for (const p of ['lui', 'cdw']) {
+    assert.strictEqual(gathered.sourceByPattern[p], 'mcp', `${p} owned by BPA`);
+    assert.ok(!gathered.needsLlmScan.includes(p), `${p} not pushed to LLM tier`);
+  }
+});
+
+test('bpaIncomplete: when BPA DOES report the pattern, BPA still owns it (no fallback override)', async () => {
+  const root = mkworkspace();
+  write(root, 'ui.apps/jcr_root/apps/my/templates/content-page/.content.xml',
+    '<jcr:root jcr:primaryType="cq:Template"/>');
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { templateModernization: [{ className: '/apps/my/templates/reported', identifier: 'legacy.static.template' }] },
+  });
+  assert.strictEqual(gathered.sourceByPattern.templateModernization, 'mcp', 'BPA owns it when it reports findings');
+  assert.strictEqual(gathered.findingsByPattern.templateModernization.length, 1, 'BPA finding, not the content-scan one');
+});
+
+// ── CAM project handoff to validate-migration ──────────────────────────────
+
+test('writeRunbookCache records the CAM project in the sidecar when one is given', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  const cache = path.join(root, 'migration-runbook.json');
+  writeRunbookCache(gathered, { generatedAt: 'now', projectId: '000000000000000000000001', projectName: 'Example Project' }, cache);
+  const cached = JSON.parse(fs.readFileSync(cache, 'utf8'));
+  assert.deepStrictEqual(cached.project, { id: '000000000000000000000001', name: 'Example Project' });
+});
+
+test('writeRunbookCache writes project null when no CAM project is linked', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  const cache = path.join(root, 'migration-runbook.json');
+  writeRunbookCache(gathered, { generatedAt: 'now' }, cache);
+  assert.strictEqual(JSON.parse(fs.readFileSync(cache, 'utf8')).project, null);
+});
+
+test('generateRunbook keeps the CAM project in migration-runbook.json and creates no separate context.json', async () => {
+  const root = mkworkspace();
+  const cachePath = path.join(root, 'r.json');
+  await generateRunbook({
+    workspaceRoot: root, outputPath: path.join(root, 'r.md'), cachePath,
+    projectId: '000000000000000000000001', projectName: 'Example Project',
+  });
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(cachePath, 'utf8')).project, { id: '000000000000000000000001', name: 'Example Project' });
+  assert.strictEqual(fs.existsSync(path.join(root, '.validate-migration', 'context.json')), false);
+});
+
+test('CLI parseArgs passes the confirmed CAM project through to generateRunbook', () => {
+  const { parseArgs } = require('./runbook-generator');
+  const args = parseArgs(['/ws', '--bpa-json', 'b.json', '--project-id', '000000000000000000000001', '--project-name', 'Example Project']);
+  assert.strictEqual(args.workspaceRoot, '/ws');
+  assert.strictEqual(args.projectId, '000000000000000000000001');
+  assert.strictEqual(args.projectName, 'Example Project');
+  assert.strictEqual(parseArgs(['/ws']).projectId, undefined, 'no project when the flag is omitted');
+});
+
+// ── inputStream (java.io.inputstream) ───────────────────────────────────────
+
+function writeInputStreamBpaCsv(root, { withOther = true } = {}) {
+  const header = withOther
+    ? 'code,type,subtype,importance,identifier,other,message,moreInfo,context'
+    : 'code,type,subtype,importance,identifier,message,moreInfo,context';
+  const row = (cls, api, bundle) => {
+    const msg = `The ${cls} class in the ${bundle} bundle uses ${api}. This may cause issues if used in AEM as a Cloud Service.`;
+    const ctx = `"{""data"":{""toId"":""${api}"",""bundle"":""${bundle}"",""class"":""${cls}""},""type"":""java.io.inputstream""}"`;
+    return withOther
+      ? `DG,development.guideline,java.io.inputstream,ADVISORY,${cls},${api},${msg},https://www.adobe.com/go/aem_pd_DG,${ctx}`
+      : `DG,development.guideline,java.io.inputstream,ADVISORY,${cls},${msg},https://www.adobe.com/go/aem_pd_DG,${ctx}`;
+  };
+  const rows = [
+    header,
+    withOther
+      ? '_COUNT_DG,_count.development.guideline,java.io.inputstream,ADVISORY,4,\\N,Count: 4,\\N,\\N'
+      : '_COUNT_DG,_count.development.guideline,java.io.inputstream,ADVISORY,4,Count: 4,\\N,\\N',
+    row('com.acme.core.servlets.DownloadServlet', 'java.io.InputStream', 'com.acme.core'),
+    row('com.acme.core.servlets.DownloadServlet', 'java.io.InputStream', 'com.acme.core'), // duplicate row
+    row('com.acme.core.servlets.DownloadServlet', 'java.io.FileInputStream', 'com.acme.core'),
+    row('acscommons.com.google.common.cache.LocalCache$LoadingSerializationProxy', 'java.io.ObjectInputStream', 'com.adobe.acs.acs-aem-commons-bundle'),
+  ];
+  const p = path.join(root, 'inputstream.csv');
+  fs.writeFileSync(p, rows.join('\n') + '\n', 'utf8');
+  return p;
+}
+
+for (const withOther of [true, false]) {
+  test(`inputStream CSV parsing keys targets by java.io API, dedupes, drops _COUNT rows (other column: ${withOther})`, async () => {
+    const root = mkworkspace();
+    const csv = writeInputStreamBpaCsv(root, { withOther });
+    const result = await getBpaFindings('inputStream', {
+      bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0,
+    });
+
+    assert.ok(result.success, result.error);
+    const got = result.targets.map(t => `${t.identifier}|${t.className}`).sort();
+    assert.deepStrictEqual(got, [
+      'java.io.FileInputStream|com.acme.core.servlets.DownloadServlet',
+      'java.io.InputStream|com.acme.core.servlets.DownloadServlet',
+      'java.io.ObjectInputStream|acscommons.com.google.common.cache.LocalCache$LoadingSerializationProxy',
+    ]);
+    assert.ok(result.targets.every(t => t.pattern === 'inputStream'));
+    const acs = result.targets.find(t => t.className.startsWith('acscommons.'));
+    assert.strictEqual(acs.bundle, 'com.adobe.acs.acs-aem-commons-bundle', 'bundle survives CSV → unified collection → target');
+  });
+}
+
+test('inputStream: an unparseable row warns and is dropped, not silently counted', async () => {
+  const root = mkworkspace();
+  const p = path.join(root, 'bad.csv');
+  fs.writeFileSync(p, [
+    'code,type,subtype,importance,identifier,message,context',
+    'DG,development.guideline,java.io.inputstream,ADVISORY,com.acme.Foo,Unexpected message format.,ctx',
+    'DG,development.guideline,java.io.inputstream,ADVISORY,com.acme.Bar,The com.acme.Bar class in the b bundle uses java.io.InputStream. x,ctx',
+  ].join('\n') + '\n', 'utf8');
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let result;
+  try {
+    result = await getBpaFindings('inputStream', { bpaFilePath: p, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 });
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.deepStrictEqual(result.targets.map(t => t.className), ['com.acme.Bar']);
+  assert.ok(warnings.some(w => /java\.io\.inputstream row could not be parsed/.test(w)));
+});
+
+test('inputStream: a class listed under two bundles keeps one target per bundle, and Forms add-on rows are platform-provided', async () => {
+  const root = mkworkspace();
+  const csv = path.join(root, 'bundles.csv');
+  const row = (cls, api, bundle) =>
+    `DG,development.guideline,java.io.inputstream,ADVISORY,${cls},${api},The ${cls} class in the ${bundle} bundle uses ${api}. This may cause issues if used in AEM as a Cloud Service.,https://www.adobe.com/go/aem_pd_DG,ctx`;
+  fs.writeFileSync(csv, [
+    'code,type,subtype,importance,identifier,other,message,moreInfo,context',
+    row('shaded.io.ByteSource', 'java.io.InputStream', 'com.adobe.acs.acs-aem-commons-bundle'),
+    row('shaded.io.ByteSource', 'java.io.InputStream', 'com.adobe.acs.acs-aem-tools-bundle'),
+    row('com.adobe.fd.signatures.Sig', 'java.io.ObjectInputStream', 'adobe-aemfd-signatures'),
+  ].join('\n') + '\n', 'utf8');
+
+  const targets = (await getBpaFindings('inputStream', { bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 })).targets;
+  assert.deepStrictEqual(targets.map(t => `${t.className}@${t.bundle}`).sort(), [
+    'com.adobe.fd.signatures.Sig@adobe-aemfd-signatures',
+    'shaded.io.ByteSource@com.adobe.acs.acs-aem-commons-bundle',
+    'shaded.io.ByteSource@com.adobe.acs.acs-aem-tools-bundle',
+  ]);
+
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  const groups = gathered.rawFindingsByPattern.inputStream.filter(r => r.file === null);
+  assert.deepStrictEqual(groups.map(g => `${g.kind}:${g.bundle}:${g.rowCount}`), [
+    'not-in-workspace:com.adobe.acs.acs-aem-commons-bundle:1',
+    'not-in-workspace:com.adobe.acs.acs-aem-tools-bundle:1',
+    'platform-provided:adobe-aemfd-signatures:1',
+  ]);
+});
+
+function writeDownloadServlet(root) {
+  return write(root, 'core/src/main/java/com/acme/core/servlets/DownloadServlet.java', [
+    'package com.acme.core.servlets;',
+    '',
+    'import java.io.FileInputStream;',
+    'import java.io.InputStream;',
+    'import org.apache.commons.io.IOUtils;',
+    '',
+    'public class DownloadServlet {',
+    '    protected void doGet(Asset asset, SlingHttpServletResponse response) throws Exception {',
+    '        InputStream in = asset.getOriginal().getStream();',
+    '        IOUtils.copy(in, response.getOutputStream());',
+    '    }',
+    '',
+    '    String config() throws Exception {',
+    '        try (InputStream in = new FileInputStream("/opt/acme/config.json")) {',
+    '            return IOUtils.toString(in, "UTF-8");',
+    '        }',
+    '    }',
+    '}',
+    '',
+  ].join('\n'));
+}
+
+test('inputStream: CAM has no rows for the subtype → the Java source scan owns it (no LLM tier)', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { inputStream: [] },
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.bpaMode, 'mcp');
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'source-scan');
+  assert.ok(!gathered.needsLlmScan.includes('inputStream'));
+  assert.strictEqual(gathered.findingsByPattern.inputStream.length, 1, 'one finding per file, not per site');
+});
+
+test('inputStream: a workspace with no Java sources is clean, not LLM-scanned, and emits no warning', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({ workspaceRoot: root, collectionsDir: path.join(root, 'nocollections'), analyzeScript: path.join(root, 'missing-analyze.sh') });
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'source-scan');
+  assert.deepStrictEqual(gathered.findingsByPattern.inputStream, []);
+  assert.ok(!gathered.needsLlmScan.includes('inputStream'));
+  assert.ok(!gathered.analyzerWarnings.some(w => /inputStream/.test(w)));
+});
+
+function writeLocalOnlyStreamFile(root) {
+  // Uses streams, but isn't in the BPA report.
+  return write(root, 'core/src/main/java/com/acme/core/LocalOnly.java', [
+    'package com.acme.core;',
+    'import java.io.InputStream;',
+    'public class LocalOnly {',
+    '    void run(Resource res) { InputStream in = res.adaptTo(InputStream.class); use(in); }',
+    '    void use(InputStream in) {}',
+    '}',
+    '',
+  ].join('\n'));
+}
+
+test('inputStream: BPA rows take precedence — only BPA-reported classes become findings; third-party rows collapse per bundle', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  writeLocalOnlyStreamFile(root);
+  const csv = writeInputStreamBpaCsv(root);
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    bpaFilePath: csv,
+    collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'csv', 'BPA owns the pattern, like the other BPA patterns');
+
+  const raw = gathered.rawFindingsByPattern.inputStream;
+  const sourceFiles = raw.filter(r => r.kind === 'source').map(r => path.basename(r.file));
+  assert.deepStrictEqual(sourceFiles, ['DownloadServlet.java'], 'LocalOnly.java is not in the BPA report, so it is out of scope');
+  const fileFinding = raw.find(r => r.kind === 'source');
+  assert.deepStrictEqual(fileFinding.bpa.apis, ['java.io.FileInputStream', 'java.io.InputStream']);
+  const cats = fileFinding.sites.map(s => `${s.line}:${s.categories.join('+')}`);
+  assert.deepStrictEqual(cats, ['9:E+B', '14:D'], 'E (proxied binary) + B (unclosed) on L9, D (local file) on L14');
+  assert.strictEqual(fileFinding.severity, 'high');
+
+  const group = raw.find(r => r.kind === 'not-in-workspace');
+  assert.strictEqual(group.bundle, 'com.adobe.acs.acs-aem-commons-bundle');
+  assert.strictEqual(group.informational, true);
+
+  // Only the workspace file counts as outstanding work.
+  const actionable = gathered.findingsByPattern.inputStream.filter(f => !f.informational);
+  assert.strictEqual(actionable.length, 1);
+});
+
+test('inputStream: a BPA report without inputStream rows falls back to the local scan', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  writeLocalOnlyStreamFile(root);
+  const csv = path.join(root, 'other.csv');
+  fs.writeFileSync(csv, [
+    'code,type,subtype,importance,identifier,message,context',
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.Cache,The com.google.common.cache.Cache class in the b bundle uses com.google.common.cache.Cache.,ctx',
+  ].join('\n') + '\n', 'utf8');
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.bpaMode, 'csv');
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'source-scan');
+  const files = gathered.rawFindingsByPattern.inputStream.filter(r => r.kind === 'source').map(r => path.basename(r.file)).sort();
+  assert.deepStrictEqual(files, ['DownloadServlet.java', 'LocalOnly.java']);
+});
+
+test('inputStream: CAM targets (no bundle names) take precedence and group Forms classes by package', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  writeLocalOnlyStreamFile(root);
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: {
+      inputStream: [
+        { pattern: 'inputStream', className: 'com.acme.core.servlets.DownloadServlet', identifier: 'java.io.InputStream' },
+        { pattern: 'inputStream', className: 'com.adobe.fd.signatures.SigUtil', identifier: 'java.io.InputStream' },
+        { pattern: 'inputStream', className: 'org.jsoup.helper.DataUtil', identifier: 'java.io.InputStream' },
+      ],
+    },
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'mcp');
+  const raw = gathered.rawFindingsByPattern.inputStream;
+  assert.deepStrictEqual(raw.filter(r => r.kind === 'source').map(r => path.basename(r.file)), ['DownloadServlet.java']);
+  assert.deepStrictEqual(raw.filter(r => r.file === null).map(g => `${g.kind}:${g.group}`), [
+    'not-in-workspace:package org.jsoup.helper',
+    'platform-provided:package com.adobe.fd',
+  ]);
+});
+
+test('inputStream: rendered runbook + cache stay workspace-relative and carry site-level detail', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  const csv = writeInputStreamBpaCsv(root);
+  const out = path.join(root, 'migration-runbook.md');
+  const cachePath = path.join(root, 'migration-runbook.json');
+  await generateRunbook({
+    workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'), outputPath: out, cachePath,
+  });
+  const md = fs.readFileSync(out, 'utf8');
+  assert.ok(!md.includes(root), 'no absolute workspace path in the runbook');
+  assert.ok(md.includes('core/src/main/java/com/acme/core/servlets/DownloadServlet.java:9'));
+  assert.ok(/bundle com\.adobe\.acs\.acs-aem-commons-bundle/.test(md));
+
+  const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+  const entry = cache.findingsByPattern.inputStream.find(r => r.kind === 'source');
+  assert.strictEqual(entry.file, 'core/src/main/java/com/acme/core/servlets/DownloadServlet.java');
+  assert.strictEqual(entry.confidence, 'heuristic');
+  assert.ok(entry.sites.every(s => Number.isInteger(s.line) && s.fix));
 });

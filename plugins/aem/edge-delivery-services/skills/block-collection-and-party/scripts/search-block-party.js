@@ -15,15 +15,12 @@
 
 import https from 'https';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Block Party constants
 const BLOCK_PARTY_INDEX_URL = 'https://www.aem.live/developer/block-party/block-party.json?sheet=curated-list-new';
-const CACHE_DIR = path.join(__dirname, '..', '.cache');
+const CACHE_DIR = path.join(os.tmpdir(), 'adobe-skills', 'block-collection-and-party');
 const CACHE_FILE = path.join(CACHE_DIR, 'block-party-index.json');
 const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
@@ -277,7 +274,7 @@ async function main() {
 
     // Filter to only approved entries
     const approvedEntries = allEntries.filter(entry =>
-      entry.approved === 'Yes' || entry.approved === true || entry.approved === 'true'
+      ['yes', 'true'].includes(String(entry.approved).trim().toLowerCase())
     );
 
     // Get available categories (from approved entries only)

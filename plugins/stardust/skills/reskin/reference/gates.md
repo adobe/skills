@@ -57,8 +57,8 @@ snapshot.
 
 **The gate re-crawls the LIVE source at gate time — so its live
 navigation is hardened exactly like the capture's**, via the shared
-`live-session.mjs` (real-Chrome UA + the standard request headers —
-the UA alone still 403s on Akamai-class bot managers —
+`live-session.mjs` (real Chrome's own identity + the standard request headers —
+a bare context still 403s on Akamai-class bot managers —
 `domcontentloaded` on live targets, challenge detection). This is the
 byte gate's own correctness: a gate that silently measured a
 challenge interstitial or a degraded UA-served document as the
@@ -66,8 +66,6 @@ source would pass/fail the render against the wrong reference. A bot
 challenge exits **3** (distinct from 1=FAIL, 2=setup), never
 measured; a non-challenge HTTP ≥ 400 exits 2. Escalate bot-managed
 sites with `--headed`; pin geo-redirecting sources with `--locale`.
-The reskin scripts resolve `live-session.mjs` from the diff scripts
-copied alongside (`stardust/scripts/diff/`, SKILL.md § Setup).
 Local/file targets keep the legacy `networkidle` path — file-path
 sources and rendered pages behave as before.
 
@@ -95,8 +93,8 @@ localizes any failure to a named slot. It asserts, from the model:
 
 Live `--rendered` targets (a staged deploy on a real host) navigate
 via the same shared `live-session.mjs` hardening as its siblings
-(real-Chrome UA + standard headers, `domcontentloaded`, challenge
-detection, webdriver spoof; `--ua` / `--wait-until` / `--headed` /
+(real Chrome's own identity + standard headers, `domcontentloaded`,
+challenge detection; `--ua` / `--wait-until` / `--headed` /
 `--locale` flags). A byte-adjacent gate must never measure a
 challenge interstitial or an error page: a bot challenge exits **3**
 (never measured; escalate with `--headed`), a non-challenge
@@ -110,8 +108,8 @@ exit 0. No partial credit — one dropped CTA is a fail. Exit codes:
 #### Image paint — a PASSing image check is not a rendering image
 
 Both image checks above compare **URL strings** (host+path). A
-string can match perfectly while the pixel never arrives: kew's
-image CDN returns HTTP 403 to any non-kew-origin request, so the
+string can match perfectly while the pixel never arrives: a botanical garden's
+image CDN returned HTTP 403 to any non-origin request, so the
 reskin's 19 hotlinked `currentSrc` images all "passed" the string
 gates while every one rendered as a broken-image icon. The gate was
 provably right and the page was provably broken.
@@ -123,6 +121,13 @@ Defenses, in order:
   have `naturalWidth > 0`. A zero-painted image is a named **FAIL**
   line (`--paint warn` downgrades to a warning; do that only with a
   recorded reason in the ledger).
+- Paint is necessary but not sufficient: an image with
+  `naturalWidth > 0` can still RENDER 0×0 (circular flex sizing —
+  the item's width derives from the image while the image's
+  `max-width: 100%` derives from the item — collapses both to
+  zero). When eyeballing, confirm each content image occupies real
+  area; a rendered-size assertion (`clientWidth > 0` on visible
+  content images) closes the gap the string and paint checks share.
 - The **eyeball step must check paint explicitly**: open the
   rendered page (or the `--shot` capture) and look at the images
   themselves, not just the layout — a broken-image icon in a
@@ -300,7 +305,7 @@ check, and a human-readable verdict (`accepted` | `needs-owner` |
   string, which is the honest, probe-able contract.
 - **Hotlinked source images.** `currentSrc` URLs point at the
   source's CDN — a delivery liability always, and on an
-  **origin-locked CDN** (kew: 403 to every non-origin request,
+  **origin-locked CDN** (recorded: 403 to every non-origin request,
   verified with curl, real-Chrome UA, with and without referrer) a
   broken page *now*: the URL-string checks pass while nothing
   paints. slot-coverage's paint assertion (§ Image paint) catches
@@ -315,7 +320,7 @@ check, and a human-readable verdict (`accepted` | `needs-owner` |
   in `_provenance` and echoed in gate report headers — check them
   when a gate result looks impossible.
 
-## Relationship to stardust:diff
+## Relationship to the stardust `diff` skill
 
 `../../diff/SKILL.md`'s two probes (pixel + structural) remain the
 **build-side** check after Phase 6 deploys the page to EDS — run them

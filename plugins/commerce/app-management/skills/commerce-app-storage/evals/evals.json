@@ -18,10 +18,10 @@
     {
       "id": 2,
       "prompt": "When an order is placed in Commerce, I want to record it in our database. The order event handler already needs to be created. Scaffold the event action and have it write the order to a collection.",
-      "expected_output": "The agent scaffolds an event/webhook action (web: \"no\") registered with include-ims-credentials: true, reading the payload from params.data, and writing to a collection using the init/connect/close lifecycle. After build passes it suggests commerce-app-eventing to wire the action to the order event via runtimeActions.",
+      "expected_output": "The agent scaffolds an App Builder runtime action to consume the Commerce event (web: \"no\") registered with include-ims-credentials: true, reading the payload from params.data.value, and writing to a collection using the init/connect/close lifecycle. After build passes it suggests commerce-app-eventing to wire the action to the order event via runtimeActions.",
       "assertions": [
         "The action is registered with include-ims-credentials: true",
-        "The handler reads the event payload from params.data",
+        "The handler reads the event payload from params.data.value",
         "The handler uses init() -> connect() -> collection write -> close() in finally",
         "The action is registered with web: \"no\"",
         "Agent mentions commerce-app-eventing (or runtimeActions) to wire the action to the event"
@@ -73,6 +73,58 @@
         "The agent runs npx @adobe/aio-commerce-lib-app init before doing storage work",
         "The existing app.commerce.config.ts is not overwritten",
         "Storage work (installing @adobe/aio-lib-db, scaffolding the action) proceeds only after initialization"
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "My initialized TypeScript Commerce app needs a storage web action and a custom installation step that creates a unique held_orders index. The app does not yet depend on @adobe/aio-lib-db. Use the skill's reference assets and validate the SDK-generated installation path with strict TypeScript checks and aio app build. Also run temporary compile-only probes confirming that numeric token and region inputs, an invalid index direction, and an unrelated type error are rejected. Remove all probes and rerun the final checks. Do not provision a database, deploy, or invoke the actions.",
+      "expected_output": "The agent installs @adobe/aio-lib-db without imposing a skill-specific version range and verifies the installed package supplies declarations. It uses both reference assets without ambient DB bridges or import suppressions. It registers scripts/setup-database.ts at the root installation.customInstallationSteps, regenerates the installation action, and verifies the generated import and actual compiler reachability without replacing existing includes. Strict typecheck and build pass without contacting a database. Compile-only probes reject numeric token/region inputs and invalid index directions through package-owned types, and an unrelated TypeScript error is still rejected. Probes are removed before final checks.",
+      "assertions": [
+        "The library is installed without a skill-specific version range, and actual package declaration resolution is verified rather than inferred from the version",
+        "Package-owned declarations are used; no ambient DB bridges, import suppressions or disabled strict checking are introduced",
+        "Both the storage runtime asset and scripts/setup-database.ts are checked by the project's strict TypeScript configuration",
+        "Root installation.customInstallationSteps registration produces a generated import of scripts/setup-database.ts, which appears in the actual compiler file list without changing existing includes or exclusions",
+        "The project's strict typecheck and aio app build complete without errors",
+        "Compile-only numeric token/region and invalid index direction probes are rejected by package-owned types, and an unrelated TypeScript error is still rejected",
+        "Negative probes are removed and the final strict typecheck passes",
+        "No database provisioning, deployment or live database calls are performed"
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Add TypeScript storage support to my initialized Commerce app. Inspect package.json, the lockfile, the installed @adobe/aio-lib-db package and src/types before changing files. This is an existing app: it may still be pinned to 1.0.4 with local DB declarations, or may already use 1.1.0. Do not change dependency pins or delete application declarations without approval.",
+      "expected_output": "The agent inspects the dependency, lockfile, installed package and actual declaration resolution, preserving existing ranges and pins. It uses package-owned types when available, otherwise compatible existing application declarations, and reports declaration conflicts without silently deleting application types. If neither source supplies types, it recommends an upgrade without requiring one or changing dependencies without approval; keeping the installed version uses documented ts-expect-error directives only on DB imports reporting TS7016. Strict typecheck and build run with both runtime and generated installation setup checked. The fallback is explicitly untyped; compilation is not runtime verification.",
+      "assertions": [
+        "Declared, locked and installed versions and package declaration resolution are inspected; an existing app is not assumed to have upgraded",
+        "Existing dependency ranges and pins are preserved; an upgrade is recommended only when types are missing and is not required or performed without approval",
+        "Package-owned types are preferred, otherwise compatible existing application declarations are reused; no suppression is added when types resolve",
+        "Declaration conflicts are reported without silently deleting or overwriting application types",
+        "When neither package nor application types resolve, only DB imports reporting TS7016 receive documented ts-expect-error directives; no ambient bridges or broad suppressions are added",
+        "Unrelated declarations and existing strict compiler settings are preserved",
+        "Strict typecheck and build check both runtime and generated installation setup without changing includes; the fallback is acknowledged as untyped and compilation is not claimed as runtime verification"
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "My initialized TypeScript Commerce app pins @adobe/aio-lib-db to 1.0.4, with no package or application declarations. Keep that version and lockfile unchanged. Add a storage runtime action and custom installation step from the reference assets, then validate strict compilation and aio app build without provisioning, deploying or calling a database. Also run temporary compile-only probes confirming that removing the DB import suppressions reproduces TS7016 and an unrelated type error remains rejected. Restore the required directives, remove all probes and rerun the final checks.",
+      "expected_output": "The agent verifies that no declarations resolve, mentions that package-owned types were introduced in 1.1.0 and recommends upgrading without forcing it. It keeps the pin and lockfile unchanged and adds documented ts-expect-error directives immediately above only the DB imports reporting TS7016. Root installation.customInstallationSteps registration produces the actual generated setup import, and both setup and runtime are checked. Strict typecheck and build pass; virtual removal of the directives reproduces TS7016 and an unrelated type error remains rejected. It acknowledges that DB calls remain untyped.",
+      "assertions": [
+        "Actual missing declarations are verified and the existing dependency pin and lockfile are preserved",
+        "Only DB imports reporting TS7016 receive documented ts-expect-error directives; no ambient bridges or disabled strict checking are introduced",
+        "The generated installation imports setup and the actual compiler graph checks both setup and runtime without changing includes or exclusions",
+        "Strict typecheck and aio app build pass; removing directives reproduces TS7016 and an unrelated type error is rejected",
+        "Probes are removed before final checks; DB APIs are acknowledged as untyped and no database provisioning, deployment or live calls occur"
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "In my initialized Commerce app, add a web runtime action backed by App Builder Database Storage that queries active records. The public response should contain only title and status; records also contain a private internalMemo field. Explain inclusion and exclusion projections, including the _id exception. Do not provision or call a live database.",
+      "expected_output": "The agent uses an inclusion projection to select title and status, optionally excluding _id as the sole allowed exclusion. It explains that filters select documents while projections select fields, and inclusion and exclusion fields cannot be mixed except for _id. It does not claim that compiler or mocked checks prove live database acceptance.",
+      "assertions": [
+        "Explains inclusion versus exclusion projections and that _id may be excluded alongside included fields",
+        "Distinguishes the query filter, which selects documents, from the projection, which selects returned fields",
+        "Uses explicit public-field inclusion without mixing private-field exclusions",
+        "Does not claim compiler or mocked checks prove live database acceptance or provision/call a live database"
       ]
     }
   ]

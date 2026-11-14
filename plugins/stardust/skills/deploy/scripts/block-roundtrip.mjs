@@ -25,12 +25,43 @@
  *     --blocks-dir <dir> blocks root (default eds/blocks, then blocks)
  *     --width <px>       viewport width (default 1280)
  *     --profile <p>      eds | generic (default eds)
- *     --json             dump per-block inventories
+ *     --ew | --no-ew     Experience Workspace editability gate (default ON): before
+ *                        decorate() the authored content is instrumented like the
+ *                        da.live canvas (`data-prose-index` on every outermost
+ *                        h1-h6/p/ul/ol/pre/blockquote, bare-text cells re-wrapped
+ *                        as <p>); afterwards each text must survive on EXACTLY one
+ *                        element. Dead (rebuilt from textContent/innerHTML,
+ *                        synthesized, retagged) or duplicated (clone slides) texts
+ *                        are 🔴 alongside MISSING CTA/HEADING; `@ew-exempt <reason>`
+ *                        in the block's leading JSDoc declares config/derived/index
+ *                        texts (⚪ advisory). Shared instrument: ew-editability-probe.mjs.
+ *     --json             dump per-block inventories (+ the editability survey)
  *
- * Exit codes: 0 = round-trip closed (no structural 🔴, no decorate errors),
- * 2 = structural 🔴 found OR a block's decorate() failed to install/run (a block
- * that cannot be decorated must never pass — its raw rows would match the
- * prototype and green-light a decode that was never exercised), 1 = tool error.
+ * Widgets (aem.live/docs/widgets): a paragraph holding only a link whose href contains
+ * `/widgets/` (or `a[data-widget]`) is an EDS widget named by the file stem. It is listed as
+ * `widget:<name>` and skipped — no prototype diff (its heading/CTA are code, not authored),
+ * no `blocks/<name>/<name>.js` to inline, and its paragraph is removed before the EW survey
+ * (`data-block-name="widget"` is editability-exempt). `--blocks <name>` may name a widget.
+ *
+ * Writes: nothing — the verdict (and the --json dump) goes to stdout.
+ *
+ * EW contract in two sentences (deploy SKILL.md § Experience Workspace editability
+ * contract, EW1–EW10): the workspace stamps an index on every authored text element,
+ * runs the page's own decorate() over it, and can only attach an editor to an element
+ * that still carries its index — so block JS must MOVE authored h1-h6/p/ul/ol/picture
+ * nodes into generated wrappers (append/prepend), never rebuild them from text or
+ * clone-and-discard. Wrappers carry the layout classes; presentational clones strip
+ * instrumentation; exempt text is declared with `@ew-exempt`, never silently dropped.
+ *
+ * A dead text whose words are ABSENT from the decorated unit is reported as
+ * DROPPED CONTENT (the decoder never consumed that element type — an authored
+ * <ul> rendered as nothing) rather than DEAD TEXT (rebuilt, EW1); both are 🔴.
+ *
+ * Exit codes: 0 = round-trip closed (no structural 🔴, no dead/duplicated text, no
+ * decorate errors), 2 = structural 🔴 found (incl. DEAD TEXT / DROPPED CONTENT / DUPLICATED INDEX under
+ * --ew) OR a block's decorate() failed to install/run (a block that cannot be
+ * decorated must never pass — its raw rows would match the prototype and
+ * green-light a decode that was never exercised), 1 = tool error.
  *
  * Limitation: block JS is INLINED into the harness page, so module-scope
  * `import` statements cannot be resolved — such a block FAILS the gate loudly
@@ -38,14 +69,58 @@
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
-import { chromium } from 'playwright';
 import fs from 'fs';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, diffInventories, summarise } from './content-inventory.mjs';
+import { EDITABLE, runtimeMimic, instrument, survey, installBlockJs, runDecorate, readBlockExemptions, aggregate } from './ew-editability-probe.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
+
+// ── pure helpers (exported for scripts/test/block-roundtrip.test.mjs) ──
+
+// File stem of a widget href (`/widgets/search/site-search.html?q=docs` → `site-search`); null
+// when the href is not a widget link. The stem is the widget's block class on the rendered page.
+export function widgetStem(href) {
+  if (typeof href !== 'string') return null;
+  const path = href.replace(/[?#].*$/, '');
+  const m = path.match(/\/widgets\/(?:[^/]+\/)*([^/]+?)(?:\.[a-z0-9]+)?$/i);
+  return m && m[1] ? m[1] : null;
+}
+
+// Widget mounts authored in a <main> HTML string: every <p> whose only content is one <a> with a
+// `/widgets/` href or a data-widget attribute → [{ name, href }] in document order (deduped by href).
+export function widgetLinks(mainHtml) {
+  const out = [];
+  const seen = new Set();
+  const re = /<p\b[^>]*>\s*(<a\b[^>]*>)(?:(?!<a\b)[\s\S])*?<\/a>\s*<\/p>/gi; // one <a>, alone in its <p> — same rule as dropWidgets and the stock auto-block
+  let m;
+  while ((m = re.exec(mainHtml || '')) !== null) {
+    const a = m[1];
+    const href = (a.match(/\bhref=(["'])(.*?)\1/i) || [])[2] || '';
+    const isWidget = /\/widgets\//i.test(href) || /\bdata-widget=/i.test(a);
+    const name = widgetStem(href) || (((a.match(/\bdata-widget=(["'])(.*?)\1/i) || [])[2] || '').split('/').pop() || null);
+    if (!isWidget || !name || seen.has(href || name)) continue;
+    seen.add(href || name);
+    out.push({ name, href });
+  }
+  return out;
+}
+
+// Split the requested block names into real blocks and widgets (a widget may be named in --blocks).
+export function splitWidgets(names, widgets) {
+  const widgetNames = new Set(widgets.map((w) => w.name));
+  return { blocks: names.filter((n) => !widgetNames.has(n)), widgets: names.filter((n) => widgetNames.has(n)) };
+}
 
 function parseArgs(argv) {
   const [, , proto, content, ...rest] = argv;
-  const opts = { blocks: null, map: {}, styles: null, blocksDir: null, width: 1280, profile: 'eds', json: false };
+  const opts = { blocks: null, map: {}, styles: null, blocksDir: null, width: 1280, profile: 'eds', json: false, ew: true };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--blocks') { opts.blocks = rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean); }
@@ -55,6 +130,8 @@ function parseArgs(argv) {
     else if (a === '--width') { opts.width = Number(rest[i += 1]); }
     else if (a === '--profile') { opts.profile = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
+    else if (a === '--ew') { opts.ew = true; }
+    else if (a === '--no-ew') { opts.ew = false; }
   }
   return { proto, content, opts };
 }
@@ -129,7 +206,7 @@ async function settle(page) {
 async function main() {
   const { proto, content, opts } = parseArgs(process.argv);
   if (!proto || !content) {
-    process.stderr.write('usage: node skills/deploy/scripts/block-roundtrip.mjs <prototypeURL> <content/page.html> [--blocks a,b] [--map name=sel] [--styles css] [--blocks-dir dir] [--width px] [--profile p] [--json]\n');
+    process.stderr.write('usage: node skills/deploy/scripts/block-roundtrip.mjs <prototypeURL> <content/page.html> [--blocks a,b] [--map name=sel] [--styles css] [--blocks-dir dir] [--width px] [--profile p] [--ew|--no-ew] [--json]\n');
     process.exit(1);
   }
   const prof = resolveProfile(opts.profile);
@@ -147,19 +224,35 @@ async function main() {
   // over-swallows past a shallow/empty metadata block and silently deletes real
   // sections).
   const dropMetadata = () => document.querySelectorAll('main div.metadata, main div.section-metadata').forEach((el) => el.remove());
+  // Widget mounts: a <p> holding only a /widgets/ link. On live the loader replaces the paragraph
+  // with code-rendered DOM, so the harness drops it before inventory/EW instrumentation — its
+  // link text would otherwise read as an authored CTA.
+  const widgets = widgetLinks(mainHtml);
+  const dropWidgets = () => document.querySelectorAll('main p > a[href*="/widgets/"], main p > a[data-widget]').forEach((a) => { const p = a.parentElement; if (p.childElementCount === 1 && p.textContent.trim() === a.textContent.trim()) p.remove(); });
 
-  const browser = await chromium.launch();
+  // the browser front door is loaded only past the --help guard, so --help (and the test import) answers on a checkout without it.
+  const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+    .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
+  if (!BROWSER) {
+    console.error('block-roundtrip: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+    process.exit(1);
+  }
+  const { openBrowser, newPage, goto } = await import(BROWSER.href);
+  const browser = await openBrowser({ mode: 'plain' });
   let failed = false;
   try {
     // ── harness: authored content + foundation/block CSS, decorate locally ──
-    const harness = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
+    const harness = await newPage(browser, { viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
     const styles = fs.readFileSync(stylesPath, 'utf8');
     // First pass with no block CSS just to discover block names when --blocks omitted.
     await harness.setContent(`<!doctype html><html><head><meta charset="utf-8"></head><body><main>${mainHtml}</main></body></html>`);
     await harness.evaluate(dropMetadata);
+    await harness.evaluate(dropWidgets);
     const discovered = await harness.evaluate(tagHarnessSections, opts.blocks);
-    const names = opts.blocks || Object.keys(discovered);
-    if (!names.length) throw new Error('no block divs found in the content page');
+    const requested = splitWidgets(opts.blocks || Object.keys(discovered), widgets);
+    const names = requested.blocks;
+    const listedWidgets = opts.blocks ? widgets.filter((w) => requested.widgets.includes(w.name)) : widgets;
+    if (!names.length && !listedWidgets.length) throw new Error('no block divs or widget links found in the content page');
 
     const blockCss = names.map((n) => { try { return fs.readFileSync(`${blocksDir}/${n}/${n}.css`, 'utf8'); } catch { return ''; } }).join('\n');
     // body.appear satisfies the vanilla foundation's body{display:none} gate the
@@ -169,83 +262,43 @@ async function main() {
       { waitUntil: 'networkidle' },
     );
     await harness.evaluate(dropMetadata);
+    await harness.evaluate(dropWidgets);
     const harnessCounts = await harness.evaluate(tagHarnessSections, names);
     // AFTER tagging (which reads the raw authored shape), mimic the vanilla
-    // runtime's decorateSections/decorateBlock DOM — .section wrappers,
-    // .default-content-wrapper, .<name>-wrapper/.block/.<name>-container, AND
-    // wrapTextNodes cell normalization (#104: a media-led / unlisted-first-child
+    // runtime's decorateButtons/decorateSections/decorateBlock DOM — .section
+    // wrappers, .default-content-wrapper, .<name>-wrapper/.block/.<name>-container,
+    // AND wrapTextNodes cell normalization (#104: a media-led / unlisted-first-child
     // cell's whole content folds into ONE <p> on live; without mimicking it here
     // a collector that reads cell.children false-passes the gate and drops every
     // sibling after the image in production) — so block/foundation CSS and
     // decode both face the live shape. data-rt tags survive: the tagged
-    // elements are moved, not recreated.
-    await harness.evaluate(() => {
-      const VALID_WRAPPERS = ['P', 'PRE', 'UL', 'OL', 'PICTURE', 'TABLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'];
-      const wrapTextNodes = (block) => {
-        const wrap = (el) => { const w = document.createElement('p'); w.append(...el.childNodes); el.append(w); };
-        block.querySelectorAll(':scope > div > div').forEach((cell) => {
-          if (!cell.hasChildNodes()) return;
-          const first = cell.firstElementChild;
-          const hasWrapper = !!first && VALID_WRAPPERS.includes(first.tagName);
-          if (!hasWrapper) wrap(cell);
-          else if (first.tagName === 'PICTURE' && (cell.children.length > 1 || !!cell.textContent.trim())) wrap(cell);
-        });
-      };
-      document.querySelectorAll('main > div').forEach((section) => {
-        const wrappers = [];
-        let defaultContent = false;
-        [...section.children].forEach((e) => {
-          if (e.tagName === 'DIV' || !defaultContent) {
-            const wrapper = document.createElement('div');
-            wrappers.push(wrapper);
-            defaultContent = e.tagName !== 'DIV';
-            if (defaultContent) wrapper.classList.add('default-content-wrapper');
-          }
-          wrappers[wrappers.length - 1].append(e);
-        });
-        wrappers.forEach((w) => section.append(w));
-        section.classList.add('section');
-        section.querySelectorAll(':scope > div > div[class]').forEach((block) => {
-          const name = block.classList[0];
-          if (!name) return;
-          block.classList.add('block');
-          block.dataset.blockName = name;
-          wrapTextNodes(block);
-          block.parentElement.classList.add(`${name}-wrapper`);
-          section.classList.add(`${name}-container`);
-        });
-      });
-    });
+    // elements are moved, not recreated. Shared with the EW probe / render-harness.
+    await harness.evaluate(runtimeMimic);
+    // --ew: stamp the workspace's instrumentation on the authored (pre-decorate)
+    // shape; each text remembers its data-rt unit so survivors are counted per block.
+    const ewTexts = opts.ew ? (await harness.evaluate(instrument, EDITABLE)).texts : [];
     const decorateErrs = [];
-    const withJs = [];
-    for (const name of names) {
-      let js;
-      try { js = fs.readFileSync(`${blocksDir}/${name}/${name}.js`, 'utf8'); } catch { continue; } // CSS-only block: nothing to decode
-      withJs.push(name);
-      await harness.addScriptTag({ content: `window.__b=window.__b||{};window.__b[${JSON.stringify(name)}]=(function(){${js.replace(/export default\s+/, '')}\nreturn decorate;})();` });
-    }
     // A block whose inlined JS failed to evaluate (module-scope import/export, a
     // syntax error) leaves window.__b[name] undefined — that MUST fail the gate:
     // the undecorated raw rows would match the prototype and exit 0 while the
     // decode was never exercised.
-    const notInstalled = await harness.evaluate((ns) => ns.filter((n) => !(window.__b && window.__b[n])), withJs);
+    const notInstalled = await installBlockJs(harness, names, blocksDir);
     notInstalled.forEach((n) => decorateErrs.push(`${n}: block JS failed to install — module-scope import/export or a syntax error (the harness inlines block JS and cannot resolve imports; inline the helper or verify this block via the dev-server harness)`));
-    const errs = await harness.evaluate(async (ns) => {
-      const out = [];
-      for (const n of ns) {
-        if (!window.__b || !window.__b[n]) continue;
-        for (const el of document.querySelectorAll(`.${n}`)) {
-          try { await window.__b[n](el); } catch (e) { out.push(`${n}: ${e.message}`); }
-        }
-      }
-      return out;
-    }, names);
-    decorateErrs.push(...errs);
+    decorateErrs.push(...await runDecorate(harness, names));
     await harness.waitForTimeout(800);
+    const ewRows = opts.ew ? await harness.evaluate(survey, ewTexts) : [];
+    // Per-unit rendered text, to split a dead text into two causes: REBUILT (the
+    // words survive, the authored node was replaced — EW1) vs DROPPED (the words
+    // are gone — the decoder never consumed that element type; recorded: a
+    // feature-row decorate() that copied heading/paragraph/CTAs but not <ul>,
+    // authored benefit lists rendered as nothing on two sections, lint green).
+    const unitText = opts.ew ? await harness.evaluate(() => Object.fromEntries([...document.querySelectorAll('[data-rt]')].map((el) => [el.getAttribute('data-rt'), (el.textContent || '').replace(/\s+/g, ' ').trim()]))) : {};
+    const exemptions = opts.ew ? readBlockExemptions(blocksDir, names) : {};
+    const ewTotals = { authored: 0, editable: 0, dead: 0, duplicated: 0, exempt: 0 };
 
     // ── prototype ──
-    const protoPage = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
-    await protoPage.goto(proto, { waitUntil: 'networkidle', timeout: 60000 });
+    const protoPage = await newPage(browser, { viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
+    await goto(protoPage, proto, { waitUntil: 'networkidle', timeout: 60000 });
     await settle(protoPage);
     const protoCounts = await protoPage.evaluate(tagProtoSections, names.map((name) => ({ name, selector: opts.map[name] || null })));
 
@@ -254,6 +307,10 @@ async function main() {
     if (decorateErrs.length) process.stdout.write(`🔴 decorate errors (these alone fail the gate — an erroring/uninstalled block renders raw rows that can false-match the prototype):\n${decorateErrs.map((e) => `  ${e}`).join('\n')}\n`);
     let totalRed = 0;
     const dump = {};
+    listedWidgets.forEach((w) => {
+      process.stdout.write(`\n■ widget:${w.name}: ⚪ EDS widget (${w.href}) — code-driven, no authored rows; heading/CTA not diffed, no blocks/${w.name} JS inlined; renders as div.${w.name}[data-block-name="widget"] via the stock loader (qa-gate: the dev server must serve widgets/)\n`);
+      if (opts.json) dump[`widget:${w.name}`] = { widget: w };
+    });
     for (const name of names) {
       const nProto = protoCounts[name] || 0;
       const nHarness = (harnessCounts[name] || 0);
@@ -268,16 +325,36 @@ async function main() {
         const tgtInv = await harness.evaluate(inventory, [`[data-rt="${name}-${i}"]`, prof.eyebrow]);
         const { flags } = diffInventories(srcInv.items, tgtInv.items, rtProf);
         if (srcInv.imgCount !== tgtInv.imgCount) flags.push({ sev: '🟡', kind: 'IMG COUNT', msg: `${prof.source} renders ${srcInv.imgCount} img, ${prof.target} ${tgtInv.imgCount} — a dropped/duplicated <picture>, or an intentional CSS-background/image-slot difference.` });
+        // ── Experience Workspace editability (per data-rt unit) ──
+        let ew = null;
+        if (opts.ew) {
+          const unit = `${name}-${i}`;
+          ew = aggregate(ewRows.filter((r) => r.unit === unit), { exemptions, keyOf: () => unit }).blocks[0]
+            || { authored: 0, editable: 0, dead: 0, duplicated: 0, exempt: 0, deadItems: [], dupItems: [], exemptItems: [], exemptReasons: [] };
+          Object.keys(ewTotals).forEach((k) => { ewTotals[k] += ew[k]; });
+          const quote = (d) => `<${d.tag}> "${d.text.slice(0, 48)}${d.text.length > 48 ? '…' : ''}"`;
+          const normed = (s) => (s || '').replace(/\s+/g, ' ').trim();
+          const isDropped = (d) => { const t = normed(d.text); return t.length >= 8 && !(unitText[unit] || '').includes(t); };
+          const dropped = ew.deadItems.filter(isDropped);
+          const rebuilt = ew.deadItems.filter((d) => !isDropped(d));
+          dropped.slice(0, 8).forEach((d) => flags.push({ sev: '🔴', kind: 'DROPPED CONTENT', msg: `${quote(d)} — authored element not rendered at all: the decoder never consumed this element type (handle the full default-content set h1–h6/p/ul/ol/picture/table, or end decorate() with a leftovers pass that appends unconsumed authored nodes)` }));
+          if (dropped.length > 8) flags.push({ sev: '🔴', kind: 'DROPPED CONTENT', msg: `… and ${dropped.length - 8} more authored element(s) not rendered in this block — same cause, same fix` });
+          rebuilt.slice(0, 8).forEach((d) => flags.push({ sev: '🔴', kind: 'DEAD TEXT', msg: `${quote(d)} — rebuilt from textContent/innerHTML, synthesized, or retagged; MOVE the authored element (EW1)` }));
+          if (rebuilt.length > 8) flags.push({ sev: '🔴', kind: 'DEAD TEXT', msg: `… and ${rebuilt.length - 8} more dead text(s) in this block (${ew.dead} of ${ew.authored} authored) — same cause, same fix (EW1)` });
+          ew.dupItems.forEach((d) => flags.push({ sev: '🔴', kind: 'DUPLICATED INDEX', msg: `${quote(d)} on ${d.hits} elements — strip instrumentation from presentational clones (EW4)` }));
+          if (ew.exemptItems.length) flags.push({ sev: '⚪', kind: 'EXEMPT', msg: `${ew.exemptItems.length} declared non-editable text(s) (${ew.exemptReasons.join('; ')}): ${ew.exemptItems.slice(0, 4).map(quote).join(', ')}${ew.exemptItems.length > 4 ? ', …' : ''} (EW5)` });
+        }
         const red = flags.filter((f) => f.sev === '🔴').length;
         totalRed += red;
         const label = pairs > 1 ? `${name}[${i}]` : name;
-        process.stdout.write(`\n■ ${label}: ${flags.length ? `${flags.length} finding(s), ${red} structural 🔴` : '✓ round-trip closed'}\n`);
+        process.stdout.write(`\n■ ${label}: ${flags.length ? `${flags.length} finding(s), ${red} structural 🔴` : '✓ round-trip closed'}${ew ? ` — EW editable ${ew.editable}/${ew.authored}, dead ${ew.dead}, duplicated ${ew.duplicated}, exempt ${ew.exempt}` : ''}\n`);
         process.stdout.write(`    ${prof.source}: ${summarise(srcInv)}\n    ${prof.target}: ${summarise(tgtInv)}\n`);
         flags.forEach((f) => process.stdout.write(`  ${f.sev} ${f.kind}: ${f.msg}\n`));
-        if (opts.json) dump[label] = { [prof.source]: srcInv, [prof.target]: tgtInv };
+        if (opts.json) dump[label] = { [prof.source]: srcInv, [prof.target]: tgtInv, ...(ew ? { editability: ew } : {}) };
       }
     }
     if (opts.json) process.stdout.write(`\nInventories JSON:\n${JSON.stringify(dump, null, 1)}\n`);
+    if (opts.ew) process.stdout.write(`\nEW gate: editable ${ewTotals.editable}/${ewTotals.authored}, dead ${ewTotals.dead}, duplicated ${ewTotals.duplicated}, exempt ${ewTotals.exempt}${ewTotals.dead || ewTotals.duplicated ? ' — dead/duplicated texts are 🔴 above' : ''}\n`);
     const bad = [];
     if (totalRed) bad.push(`${totalRed} structural 🔴`);
     if (decorateErrs.length) bad.push(`${decorateErrs.length} decorate error(s)`);
@@ -289,4 +366,4 @@ async function main() {
   process.exit(failed ? 2 : 0);
 }
 
-main().catch((e) => { process.stderr.write(`block-roundtrip error: ${e.message}\n`); process.exit(1); });
+if (process.argv[1] && /block-roundtrip\.mjs$/.test(process.argv[1])) main().catch((e) => { process.stderr.write(`block-roundtrip error: ${e.message}\n`); process.exit(1); });

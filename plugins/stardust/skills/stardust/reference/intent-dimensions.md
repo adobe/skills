@@ -175,7 +175,7 @@ fires for every Mode A variant:
   immediate-services panel rendered in the first viewport (the
   `T-cross-promo` cluster from extract often surfaces these as
   recurring page-level blocks; the Crisis-Line Block detected on
-  theroadhome.org is the canonical example).
+  a nonprofit shelter site is the canonical example).
 - **Audience routing** — multiple distinct audience CTAs rendered
   above the fold (e.g. *"Get help"* + *"Donate"* + *"Volunteer"* on
   a nonprofit home; *"Shop"* + *"Trade"* + *"Press"* on a retail
@@ -254,7 +254,7 @@ signature-preservation rule fires for every Mode A variant:
 - **Signature hero medium** — a background `<video>` (incl. HLS /
   `.m3u8` / Cloudflare-Stream / Mux), a `<canvas>` / WebGL / Three.js
   scene, a Lottie/Rive animation, or an animated SVG that occupies the
-  hero or first viewport. (The moneyhub.com home — an autoplay HLS
+  hero or first viewport. (A fintech home — an autoplay HLS
   brand-animation behind the hero — is the canonical example.)
 - **Signature motion** — scroll-driven / parallax / pinned-section
   motion, a marquee, a hero typewriter/kinetic-type effect, or a
@@ -327,6 +327,11 @@ brief-time `surprise` budget, and the approval fold-back.
   forks only).
 - `reimagined` — variant fork produces **A + B + C** with IA-priority
   moves allowed.
+- `verbatim` on **every** axis — IA, palette, type, density all pinned,
+  nothing moved — is not a redesign tier at all: it is the keep-design
+  migration flow. `direct` hands off to `replica`
+  (`skills/stardust/SKILL.md` § Two migration flows); do not pin and
+  proceed.
 
 #### Auto-pin trigger phrases
 

@@ -10,12 +10,31 @@
  * Usage:
  *   node style-fingerprint.mjs "file:///abs/path/to/<prototype>.html"
  * Output: JSON — [{ section, bg, color, variationGroups:[{selector,count,variants:[{style,indices}]}] }]
+ * Writes: nothing — the JSON goes to stdout. The single positional is the prototype URL; there are no flags.
  */
-import { chromium } from 'playwright';
+import { existsSync, readFileSync } from 'node:fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
+
+// the browser front door is loaded only past the --help guard, so --help answers on a checkout without it.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!BROWSER) {
+  console.error('style-fingerprint: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { openBrowser, newPage, goto } = await import(BROWSER.href);
+
 const url = process.argv[2];
-const b = await chromium.launch();
-const p = await b.newPage({ viewport: { width: 1280, height: 900 } });
-await p.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+const b = await openBrowser({ mode: 'plain' });
+const p = await newPage(b, { viewport: { width: 1280, height: 900 } });
+await goto(p, url, { waitUntil: 'networkidle', timeout: 60000 });
 await p.waitForTimeout(1200);
 const out = await p.evaluate(() => {
   const KEY = (el) => { const s = getComputedStyle(el); return {

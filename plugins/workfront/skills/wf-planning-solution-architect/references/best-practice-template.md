@@ -1,6 +1,6 @@
 # Best-practice multi-workspace template: Fréscopa reference
 
-This reference summarizes the Fréscopa multi-workspace template that the WF Planning team treats as an internal best-practice exemplar. A trimmed sample export is preserved as `best-practice-template.json` in this folder — it keeps the full structure (all 6 workspaces, 37 record types, and their fields/views/hierarchies) but caps sample data at ~5 records per record type. This .md file is the digest the skill should read first; consult the JSON only when a question requires field-level or record-level detail.
+This reference summarizes the Fréscopa multi-workspace template, a best-practice exemplar for a multi-workspace Planning build. A trimmed sample export is preserved as `best-practice-template.json` in this folder — it keeps the full structure (all 6 workspaces, 37 record types, and their fields/views/hierarchies) but caps sample data at ~5 records per record type. This .md file is the digest the skill should read first; consult the JSON only when a question requires field-level or record-level detail.
 
 **Use this file in two distinct ways:**
 1. **Pattern source** for "what should a real multi-workspace build look like" questions.
@@ -128,7 +128,7 @@ The Campaigns hierarchy uses the full 4-level depth (Campaigns > Channel Tactics
 
 `businessRules: list[0]`. For a template marketed as best-practice exemplar, the absence of any rules is a teaching gap.
 
-**Skill behavior:** when building a workspace, consider whether business rules would enforce useful invariants (e.g., "Campaign Status cannot move to Complete unless End Date is in the past"). Recommend 1 to 2 rules where they earn their keep. Do not skip them just because this template did.
+**Skill behavior:** when building a workspace, consider whether business rules would enforce useful editing or deleting restrictions (e.g., allow editing only while Campaign Status is Draft). Recommend 1 to 2 rules where they earn their keep. Do not skip them just because this template did. Business rules are unavailable on global record types, and Formula, Lookup, and Reference fields cannot be used in conditions.
 
 ### 7. 500-connected-records sizing ceiling on Channel Tactics
 
