@@ -9,19 +9,32 @@
  *   node snapshot-api.mjs --origin https://www.source.example --calls calls.json [--out data/<feature>] [--entry /]
  *   calls.json: [{ "name": "airports", "method": "GET", "path": "/api/airports" },
  *                { "name": "suggest-a", "method": "POST", "path": "/api/suggest", "body": { "term": "a" } }]
+ *
+ * Writes (under --out, default data/snapshot):
+ *   <name>.json        the parsed JSON body of each call that answered 200 (one file per call name)
+ *   _provenance.json   origin, timestamp and per-call status / byte count / response shape
+ * Per-call lines go to stderr. Exit 0 on completion, 2 on usage or a setup error.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { arg, readJSON, writeJSON, provenance, loadPlaywright, settlePage } from './lib.mjs';
+import { arg, readJSON, writeJSON, provenance, openBrowser, newPage, goto, settlePage, stopOnSetupError } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const ORIGIN = (arg('origin') || '').replace(/\/$/, '');
 const CALLS = arg('calls') && readJSON(arg('calls'));
 if (!ORIGIN || !CALLS) { console.error('usage: snapshot-api.mjs --origin <source origin> --calls calls.json [--out dir]'); process.exit(2); }
 const OUT = arg('out', 'data/snapshot');
-const { chromium } = await loadPlaywright();
-const browser = await chromium.launch({ headless: true, args: ['--disable-blink-features=AutomationControlled'] });
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-await page.goto(ORIGIN + (arg('entry', '/')), { waitUntil: 'domcontentloaded', timeout: 60000 });
+const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: true, args: ['--disable-blink-features=AutomationControlled'] } }).catch(stopOnSetupError);
+const page = await newPage(browser, { viewport: { width: 1440, height: 900 } });
+await goto(page, ORIGIN + (arg('entry', '/')), { waitUntil: 'domcontentloaded', timeout: 60000 });
 await settlePage(page, { settleMs: 2000, maxScroll: 0 });
 const describe = (v, d = 0) => { if (d > 3 || v === null || typeof v !== 'object') return typeof v; if (Array.isArray(v)) return `[${v.length}] of ${v.length ? describe(v[0], d + 1) : '?'}`; return `{${Object.keys(v).slice(0, 14).map((k) => `${k}: ${describe(v[k], d + 1)}`).join(', ')}}`; };
 const shapes = {};

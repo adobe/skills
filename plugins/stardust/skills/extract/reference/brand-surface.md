@@ -85,6 +85,13 @@ Cross-page aggregation rules:
    `sources` so the agent can verify and `direct` can reason about
    "where this motif lives."
 
+The computed values these rules run on come from
+`stardust/current/_computed-styles.json#aggregate`, written by
+`skills/extract/scripts/style-census.mjs` over every captured page
+(palette clusters with `sources[]`, type sizes and weights, the
+radius/shadow/gradient histograms, hover deltas) — the page records
+supply structure and copy, not computed style.
+
 If a field's mode-on-home and mode-cross-page disagree, prefer the
 cross-page value and surface the divergence in `_provenance.notes`
 (e.g. `"home suggested borderRadius=150px (pill, buttons-only); cross-page mode is 3px (cards/inputs/chips, 122 occurrences)"`).
@@ -359,7 +366,7 @@ should adopt a modular scale by default.
   "baseUnit": 4,                   // 4 | 8 — inferred from mode of paddings/gaps
   "scale": [4, 8, 12, 16, 24, 32, 48, 64, 96],
   "sectionPadding": "96px",
-  "containerMaxWidth": "1280px",
+  "containerMaxWidth": "1280px",   // measured (cap-probe #124); null when fluid
   "gridGap": "24px"
 }
 ```

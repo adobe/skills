@@ -1,130 +1,123 @@
 ---
 name: browser-probe
 license: Apache-2.0
-compatibility: Requires playwright-cli on PATH. Run `playwright-cli --help` for usage.
+compatibility: Requires Node 22+ and playwright-cli on PATH; uses the web CLI (plugins/web/cli)
 description: >-
-  Probe a URL with escalating headless browser configurations to detect CDN bot
-  protection (Akamai, Cloudflare, DataDome, AWS WAF) and produce a
-  browser-recipe.json that downstream playwright-cli consumers use to bypass
-  blocking. Runs an automated escalation ladder: default headless → stealth
-  script injection → system Chrome (TLS fingerprint fix) → persistent profile.
-  Use BEFORE any playwright-cli interaction with an untrusted domain. Triggers
-  on: browser probe, site blocked, headless blocked, CDN blocking, bot
-  detection, browser recipe, can't load page, 403 error page, access denied.
+  Detects CDN bot protection (Akamai, Cloudflare, DataDome, AWS WAF) by probing a
+  URL with escalating headless browser configurations through `web probe`, and
+  writes a browser recipe that other web commands load with `--recipe`. Use when a
+  page is blocked, empty, or shows a 403, "access denied", or captcha page in
+  headless Chrome, or before automating a site known to block bots.
+metadata:
+  version: "1.0.0"
 ---
 
 # Browser Probe
 
 Detect CDN bot protection blocking headless Chrome and produce a browser recipe
-for downstream `playwright-cli` consumers. Node 22+ required. No npm
-dependencies.
+for the other `web` commands.
+
+## Requirements
+
+Node 22+ and `playwright-cli` >= 0.1.20 on PATH (`playwright-cli --version`).
+Locate the `web` CLI once:
+
+```bash
+# <skill-dir> is the directory containing this SKILL.md
+WEB=$(command -v web || echo "node <skill-dir>/../../cli/dist/web.mjs")
+```
+
+then run `$WEB …`; it prints exactly one JSON document on stdout,
+so `$WEB … > file.json` is safe.
+Fallback when published: `npx -y @adobe/web-cli`. Use an absolute `<skill-dir>`; don't `cd` into it.
+
+**Sessions.** If `WEB_SESSION` or `PLAYWRIGHT_CLI_SESSION` is set, do not pass
+`--session`: every `web` command uses that browser and leaves it open. Otherwise
+either run one-shot (`$WEB page tree "$URL"` opens and closes its own browser) or
+start a browser and reuse the generated name:
+`S=$($WEB browser open "$URL" | jq -r .session)` then `--session "$S"`.
+Never invent a fixed session name.
+
 
 ## When to Use
 
-Run **before** any `playwright-cli` interaction with an untested domain, or when
-a downstream script reports a blocked/empty page (403, "access denied", "captcha").
+When a `web` command exits 3 (blocked), a page comes back blocked or empty (403,
+"access denied", "captcha"), or before automating a site known to block bots.
 
-## Script Location
-
-```bash
-if [[ -n "${CLAUDE_SKILL_DIR:-}" ]]; then
-  PROBE_DIR="${CLAUDE_SKILL_DIR}/scripts"
-else
-  PROBE_DIR="$(dirname "$(command -v browser-probe.js 2>/dev/null || \
-    find ~/.claude -path "*/browser-probe/scripts/browser-probe.js" \
-    -type f 2>/dev/null | head -1)")"
-fi
-```
-
-## Workflow
-
-### Step 1 — Run the probe
+## Command
 
 ```bash
-node "$PROBE_DIR/browser-probe.js" "$URL" "$OUTPUT_DIR"
+$WEB probe "$URL" [--output <dir>]
 ```
 
-The script tries up to 5 browser configurations, stopping at the first success:
+It tries up to 5 browser configurations and stops at the first success:
 
-1. **default** — headless Chromium (baseline)
-2. **stealth** — headless Chromium + JS stealth init script (patches `navigator.webdriver`, plugins, languages)
-3. **stealth-ua** — headless Chromium + JS stealth + User-Agent override (removes `HeadlessChrome` from HTTP UA header via `--user-agent` launch arg)
-4. **chrome** — system Chrome (`--browser=chrome`) + JS stealth + UA override (fixes TLS fingerprint detection)
-5. **persistent** — system Chrome + JS stealth + UA override + persistent profile (cookie/session challenges)
+1. **default**: headless Chromium (baseline)
+2. **stealth**: headless Chromium + JS stealth init script (patches `navigator.webdriver`, plugins, languages)
+3. **stealth-ua**: stealth + User-Agent override (removes `HeadlessChrome` from the HTTP UA header)
+4. **chrome**: system Chrome + stealth + UA override (fixes TLS fingerprint detection)
+5. **persistent**: system Chrome + stealth + UA override + persistent profile (cookie/session challenges)
 
-Output: `$OUTPUT_DIR/probe-report.json`
+Progress goes to stderr. Files under `--output` (default `./.web`):
+`probe-<id>/probe-report.json` and, on success, `probe-<id>/browser-recipe.json`. The path
+is printed as `recipePath`. With `--save-recipe` the recipe goes to `--recipe` (default
+`./recipe.json`) instead, replacing its `probe` entries and keeping its other types.
 
-### Step 2 — Read the report
+## Reading the JSON
 
-Load `probe-report.json`. Check `firstSuccess`:
-- If non-null: a configuration worked. Proceed to Step 3.
-- If null: all configurations failed. Skip to Step 5.
+`{ report: { url, timestamp, steps, firstSuccess, detectedSignals }, recipePath }`
 
-### Step 3 — Interpret results
+- `firstSuccess` non-null: that configuration worked and is the minimum sufficient
+  one; `recipePath` points at the recipe.
+- A step with `headerError` could not read response headers, so `detectedSignals`
+  may be incomplete; mention it in the report.
+- Match `detectedSignals` against the Provider Signature Table in
+  [references/stealth-config.md](references/stealth-config.md) to confirm why
+  blocking occurred.
 
-Match `detectedSignals` against the Provider Signature Table in
-`references/stealth-config.md` to confirm why blocking occurred and validate
-that `firstSuccess` is the minimum sufficient config.
+Exit 3 (`BLOCKED`): every step was blocked and **no recipe is written**. Do not
+continue with a broken configuration. Report:
 
-### Step 4 — Generate recipe
-
-Write `browser-recipe.json` to `$OUTPUT_DIR`:
-
-```json
-{
-  "url": "<probed URL>",
-  "generated": "<ISO timestamp>",
-  "cliConfig": {
-    "browser": {
-      "browserName": "chromium",
-      "launchOptions": { "channel": "<from firstSuccess step>" }
-    }
-  },
-  "stealthInitScript": "<full script from stealth-config.md if stealth was needed>",
-  "notes": "<1-2 sentence explanation of what was detected and why this config>"
-}
-```
-
-**Config mapping from `firstSuccess`:**
-
-| firstSuccess | channel | args | stealthInitScript |
-|---|---|---|---|
-| `default` | — | — | null |
-| `stealth` | — | — | from reference |
-| `stealth-ua` | — | `--user-agent=<realistic UA>` | from reference |
-| `chrome` | `chrome` | `--user-agent=<realistic UA>` | from reference |
-| `persistent` | `chrome` | `--user-agent=<realistic UA>` | from reference |
-
-If `firstSuccess` is `persistent`, add `"persistent": true` to the recipe.
-
-### Step 5 — Report results
-
-**If a configuration worked:**
-```
-Browser probe complete for <url>.
-  Working config: <firstSuccess>
-  Detected: <detectedSignals or "no bot protection detected">
-  Recipe: <path to browser-recipe.json>
-```
-
-**If all configurations failed:**
 ```
 Browser probe failed for <url>. No headless configuration could load the page.
   Tried: default, stealth, stealth-ua, chrome, persistent
   Detected signals: <detectedSignals>
 
   Options:
-  1. Use --headed flag for manual browser interaction
+  1. Use --headed for manual browser interaction
   2. Provide pre-captured data (DOM snapshot, screenshots) manually
   3. Check if the URL requires authentication or VPN access
 ```
 
-Do NOT produce a recipe when all steps fail. Do NOT silently continue
-with a broken configuration.
+On success report:
 
-## How Consumers Use the Recipe
+```
+Browser probe complete for <url>.
+  Working config: <firstSuccess>
+  Detected: <detectedSignals or "no bot protection detected">
+  Recipe: <recipePath>
+```
 
-Pass `--config=<path-to-cliConfig>` to `playwright-cli open`. If the recipe has
-`stealthInitScript`, add it to `browser.initScript` in the config (not via `eval` —
-eval is expression-only). If `"persistent": true`, also pass `--persistent`.
-Run `playwright-cli --help` for the full command reference.
+## Chaining: use the recipe
+
+Save the recipe once; every browser command (`browser open`, `page *`, `ext launch`) then
+launches with it, from `--recipe <file>`, `$WEB_RECIPE`, or `./recipe.json` when it exists:
+
+```bash
+$WEB probe "$URL" --save-recipe                  # writes ./recipe.json
+$WEB page tree "$URL"                            # picks it up
+S=$($WEB browser open "$URL" | jq -r .session)
+```
+
+Without `--save-recipe`, pass the printed path: `--recipe "$($WEB probe "$URL" | jq -r .recipePath)"`.
+The recipe applies when a browser is launched; a session that is already open keeps its own.
+
+A recipe is one object with an array of entries per type. `probe` entries are
+`{ url, config: { browserName, launchOptions }, persistent, stealth }` (`stealth: true`
+when `firstSuccess` is stealth or later: the stealth script is injected at launch;
+`persistent: true` when it is `persistent`). `page overlays --save-recipe` adds `overlays`
+entries, see the page-prep skill.
+
+## Escape hatch
+
+`playwright-cli -s <session> …` drives the same browser.

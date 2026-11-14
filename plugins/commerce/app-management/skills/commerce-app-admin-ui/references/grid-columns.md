@@ -1,11 +1,11 @@
 # Grid Columns (`commerce/backend-ui/2`)
 
-Adds custom columns to the order, product, or customer grid in Commerce Admin.
+Adds custom columns to the order, product, customer, invoice, credit memo, shipment, or newsletter grid in Commerce Admin.
 Grid columns are **worker-only**: Commerce calls a runtime action to fetch the cell values for the rows currently visible in the grid.
 
 ## Config (`app.commerce.config.ts`)
 
-Declared under `adminUi.<entity>.gridColumns` where `<entity>` is `order`, `product`, or `customer`. One `gridColumns` object per entity.
+Declared under `adminUi.<entity>.gridColumns` where `<entity>` is `order`, `product`, `customer`, `invoice`, `creditMemo`, `shipment`, or `newsletter`. One `gridColumns` object per entity. Only `order`, `product`, and `customer` also support `massActions`. Order, invoice, and credit memo support `viewButtons`; shipment and newsletter support `gridColumns` only. Returns (`rma`) support `viewButtons` but not `gridColumns`.
 
 ```ts
 adminUi: {
@@ -43,7 +43,7 @@ Import from `@adobe/aio-commerce-sdk/admin-ui/grid-columns`.
 
 Commerce POSTs `{ requestId, gridType, ids }`:
 
-- `gridType` — `"order" | "product" | "customer"`
+- `gridType` — `"order" | "product" | "customer" | "invoice" | "creditmemo" | "shipment" | "newsletter"` (note: credit memo sends the lowercase `"creditmemo"`, not `"creditMemo"`)
 - `ids` — `string[]`, the entity IDs of the visible rows
 
 Builders:

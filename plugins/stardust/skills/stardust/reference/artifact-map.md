@@ -31,8 +31,7 @@ under `stardust/current/` written by `$stardust extract`.
 
 ### `DESIGN.json.extensions`
 
-The `extensions` object grows with the migrate-template-canon
-refactor (see `notes/migrate-template-canon-refactor.md`):
+The `extensions` object:
 
 - **`extensions.canon`** — pinned token values, compositional moves
   (free-text), and references to `stardust/canon/*` chrome and CSS
@@ -43,9 +42,11 @@ refactor (see `notes/migrate-template-canon-refactor.md`):
   `canonicalRendering` reference. Auto-detected during `$stardust
   extract --prep`; promoted/refined during `$stardust direct
   --prep`.
+- **`extensions.widgets[]`** — EDS widgets (`{ id, path, params }`):
+  candidates marked as widgets in `direct --prep`. Per page, the
+  rendered references live in `_meta.json.widgets[]`.
 - **`extensions.colorReservations[]`** — colors reserved to specific
-  modules or contexts (e.g., centennial-red reserved to a
-  `trh-100-lockup` module). Validated at migrate time; violation
+  modules or contexts. Validated at migrate time; violation
   refuses the page.
 - **`extensions.metadata`** — site-level metadata defaults: site
   name, default OG image, theme color, organization JSON-LD,
@@ -65,6 +66,7 @@ stardust/
 ├── dynamic-features-plan.md          # phases with deliverables, authoring contract, verification, owner decision (dynamics Phase 3)
 ├── dynamics/                         # dynamics working dir: generated-plan draft, parity.json (Phase 5), snapshot sync logs
 ├── redirects.tsv                     # original→normalized path pairs from the path-safety gate (rollout Phase C)
+├── spec/                             # spec skill: config, judgement/, knowledge/ (raw material in .work/spec/)
 ├── runtime-contract.json             # EDS runtime probe result (deploy § Runtime-detection probe)
 ├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by the stardust `uplift` skill Phase 2a; absent otherwise)
 ├── uplift-questions.md               # 6–8 "what if…" candidates with disqualifications (written by the stardust `uplift` skill Phase 2b; absent otherwise)
@@ -366,8 +368,8 @@ what `skills/stardust/reference/stardust.gitignore` lists. The rule of
 thumb is cost to reproduce, not regenerability: an LLM-written artifact
 comes back different on a re-run, and a capture of the source site cannot
 come back at all once the site is replaced. Size alone never drops a
-file; screenshots and four rewritten-on-every-run folders are the
-exceptions. The master skill installs the ignore file as
+file; screenshots, gate images and two rewritten-on-every-run folders are
+the exceptions. The master skill installs the ignore file as
 `stardust/.gitignore` (Setup step 6); a project that wants one of the
 excluded folders tracked deletes that line or adds a negation below it.
 
@@ -380,22 +382,25 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `canon/**` | yes | prototype | the design canon |
 | `canon-source/**` except `assets/screenshots/` | yes | extract | donor capture |
 | `current/` text: `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `_brand-extraction.json`, `_crawl-log.json`, `_dynamics.json`, `brand-review.html`, `pages/*.json`, `pages/*.html` | yes | extract | `pages/*.json` feeds nine skills; the substrate of the pipeline |
-| `current/assets/**` | **no** | extract | 50 MB screenshots rewritten on every extract + source media; `migrate`/`deploy` need it → re-run extract on a clone |
+| `current/assets/**` except `screenshots/` | yes | extract | fonts, logo, source media (#156) |
+| `current/assets/screenshots/` | **no** | extract | rewritten on every extract |
 | `current/brand-sources/*/assets/screenshots/` | **no** | extract | screenshots |
 | `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
 | `validation/**` | **no** | master / prototype | clean-pass screenshots |
 | `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB) |
-| `replica/gates/**` | **no** | replica | per-iteration renders and diffs; verdicts live in `progress.json`; `live.png` re-taken on first run |
+| `replica/gates/**` except `*.png` | yes | replica | tables, verdicts, capture records: a resumed run reads them (#156) |
+| `**/gates/**/*.png` except `baseline.png` | **no** | replica | captures and diffs, re-taken when needed (`gate-all.mjs --help`) |
 | `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger |
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
 | `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |
 | `audit/**` | yes | audit | score of the original site; irreplaceable after launch |
+| `spec/**` (`spec.config.json`, `judgement/`, `knowledge/`) | yes | spec | judgement and computed knowledge; raw material stays in `.work/spec/` |
 | `eds-schema/**` | yes | deploy | small JSON |
 | `rollout/` except `qa/` | yes | rollout | `rollout.json`, `coverage/`, `optimize/`, `plan.json`, `site/`, `dashboard/` |
 | `rollout/qa/**` | **no** | rollout | screenshots of the delivered site |
 | `qa/allowlist.json`, `qa/report.*`, `qa/inventory.json`, `qa/dynamics-report.*`, `qa/ai-readability.json` | yes | qa | judgement and last report |
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
-| `scripts/**` | yes (for now) | extract / reskin / replica | byte copies of plugin scripts so ESM resolves the project's `node_modules`; stale against the installed plugin — removing the copies is a planned change |
+| `scripts/**` | yes (for now) | extract / reskin / replica / spec | byte copies of plugin scripts so ESM resolves the project's `node_modules`; stale against the installed plugin — removing the copies is a planned change |
 | `_pre-publish-backup/**`, `_palette-pick.html`, `*.generated.*` drafts | backup yes; picker no | prototype / direct / dynamics | |
 | `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps |
 | `*.log`, `*.err`, `*.out`, `last-run.json` anywhere | **no** | any | safety net until every writer routes to `.work/logs/` |
@@ -420,8 +425,9 @@ installed and tracked binaries under `stardust/` exceed 50 MB, offer
 `.gitattributes` patterns for
 `stardust/**/*.{png,jpg,jpeg,webp,gif,woff,woff2,ttf,otf,mp4}` — never
 write them unasked. Consequences to state in the state report when they
-apply on this checkout: without `current/assets/`, `brand-review.html`
-has no thumbnails and `migrate` / `deploy` need an `extract` re-run.
+apply on this checkout: without `current/assets/`, `migrate` / `deploy`
+need an `extract` re-run; without its screenshots, `brand-review.html`
+has no thumbnails.
 
 Who reads `stardust/current/` (the dependency that decides what a clone
 can do): `pages/*.json` — migrate, prototype, replica, master, direct,

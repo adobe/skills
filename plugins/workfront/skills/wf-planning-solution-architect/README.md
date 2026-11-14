@@ -27,6 +27,8 @@ wf-planning-solution-architect/
     ├── best-practice-template.md               # Fréscopa exemplar + known deviations
     ├── best-practice-template.json             # Trimmed Fréscopa sample export (minified, ~1.6 MB)
     ├── limits-and-tiers.md                     # Practitioner limit reference by tier
+    ├── api-contract.md                         # Versioned API usage and safe write guidance
+    ├── release-and-access.md                   # Licensing, access, phased release ledger
     ├── public-vs-api-discrepancies.md          # Reconciliation table
     ├── customer-conversation-framings.md       # Stock SA framings
     └── synthesized/                            # Content not published on Experience League
@@ -41,7 +43,7 @@ Public Adobe documentation is deliberately **not** bundled. `scripts/search.js` 
 
 SKILL.md routes incoming questions into 14 categories (A through N) plus cross-category cases. For each category, only the relevant references load; the skill does not preload the entire corpus.
 
-Top-level synthesis files (workspace-build-playbook, best-practice-template, limits-and-tiers, public-vs-api-discrepancies, customer-conversation-framings) are the primary surfaces. The synthesized/ folder is the deep layer for specific lookups, and public UI/UX documentation is searched and fetched live. API-surface facts are stated inline in SKILL.md rather than in a separate reference file.
+Top-level synthesis files (workspace-build-playbook, best-practice-template, limits-and-tiers, public-vs-api-discrepancies, customer-conversation-framings, api-contract, release-and-access) are the primary surfaces. The synthesized/ folder is the deep layer for specific lookups, and public UI/UX documentation is searched and fetched live. API-surface facts are stated inline in SKILL.md and in `references/api-contract.md`.
 
 ## Preferences honored
 
@@ -56,4 +58,5 @@ Procedure for keeping references current is in `references/INDEX.md` under "Refr
 ## Version
 
 Authored: May 11, 2026 (Batch 4 of the WF Planning Solution Architect skill build).
-Reference corpus: a 74-page Experience League search index (pages fetched live), the Fréscopa best-practice template, 5 authored synthesis files, and 3 synthesized references for topics Adobe does not publish.
+Last reviewed: October 8, 2026, against Planning release notes through Q4 2026 (October 6 update).
+Reference corpus: an 82-page Experience League search index (pages fetched live), the Fréscopa best-practice template, 7 authored synthesis files, and 3 synthesized references for topics Adobe does not publish.

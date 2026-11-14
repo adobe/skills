@@ -5,22 +5,35 @@
  * Records, per probed page, everything the live page renders from JavaScript,
  * a service or a data source, then classifies each finding into the dynamic
  * classes (reference/classes-and-signals.md). Evidence only: no decision is
- * taken here. Output: `<out>/_dynamics.json` (+ `dynamic-features.generated.md`).
+ * taken here.
  *
  *   node dynamics-detect.mjs --urls <url,url,…> [--out stardust/current]
  *        [--from-state stardust/state.json]   one URL per page type + the home page, from extract's inventory
  *        [--reach stardust/current]           roll per-page `dynamic` sections (extract --dynamics) into feature reach
  *        [--settle 5000] [--width 1440] [--headed]
  *
+ * Writes (under --out, default stardust/current):
+ *   _dynamics.json                  per-page evidence + classified findings (+ `reach` with --reach)
+ *   dynamic-features.generated.md   the findings as a table, one row per feature
+ * Progress lines go to stderr. Exit 0 on completion, 2 on usage or a setup error.
+ *
  * Probes the SOURCE site. No auth header is sent (the source is public); the
  * target-host probe lives in dynamics-plan.mjs.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
-import { readdirSync, existsSync } from 'node:fs';
+import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  arg, flag, list, readJSON, writeJSON, writeText, provenance, loadPlaywright, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
+  arg, flag, list, readJSON, writeJSON, writeText, provenance, openBrowser, newContext, goto, stopOnSetupError, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
 } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const OUT = arg('out', 'stardust/current');
 const SETTLE = Number(arg('settle', 5000));
@@ -157,8 +170,7 @@ function classify(page, path, add) {
 }
 
 /* ---------------------------------------------------------------- main -- */
-const { chromium } = await loadPlaywright();
-const browser = await chromium.launch({ headless: !flag('headed'), args: ['--disable-blink-features=AutomationControlled'] });
+const browser = await openBrowser({ mode: 'plain', launchOptions: { headless: !flag('headed'), args: ['--disable-blink-features=AutomationControlled'] } }).catch(stopOnSetupError);
 const report = { _provenance: provenance('detect', { settleMs: SETTLE, width: WIDTH, urls: URLS }), pages: {}, findings: [] };
 const findingsByKey = new Map();
 const add = (f) => {
@@ -172,7 +184,7 @@ const add = (f) => {
 for (const url of URLS) {
   const { host, origin } = new URL(url);
   const path = new URL(url).pathname || '/';
-  const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, locale: 'en-US' });
+  const ctx = await newContext(browser, { viewport: { width: WIDTH, height: 900 }, locale: 'en-US' });
   await ctx.addInitScript(() => { window.__sdDomAfterLoad = 0; let loaded = false; window.addEventListener('load', () => setTimeout(() => { loaded = true; }, 300)); document.addEventListener('DOMContentLoaded', () => new MutationObserver((ms) => { if (loaded) for (const m of ms) window.__sdDomAfterLoad += m.addedNodes.length; }).observe(document.documentElement, { childList: true, subtree: true })); });
   const page = await ctx.newPage();
   const hosts = {}; const scripts = new Set(); const firstPartyApi = new Map(); const thirdPartyXhr = new Set(); const postBodies = [];
@@ -191,7 +203,7 @@ for (const url of URLS) {
   });
   let status = 0; let textAtLoad = 0;
   try {
-    const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    const resp = await goto(page, url, { waitUntil: 'domcontentloaded', timeout: 60000 });
     status = resp?.status() || 0;
     textAtLoad = await page.evaluate(() => (document.querySelector('main') || document.body)?.innerText.replace(/\s+/g, ' ').trim().length || 0);
     await settlePage(page, { settleMs: SETTLE });

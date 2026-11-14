@@ -6,6 +6,7 @@
   "skills": [
     "skills/analyze-and-plan",
     "skills/create-site",
+    "skills/brand-setup",
     "skills/da-content",
     "skills/authoring-analysis",
     "skills/block-collection-and-party",
@@ -21,6 +22,7 @@
     "skills/identify-page-structure",
     "skills/page-decomposition",
     "skills/page-import",
+    "skills/migrate-header",
     "skills/preview-import",
     "skills/scrape-webpage",
     "skills/slicc-handoff",

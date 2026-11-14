@@ -15,10 +15,25 @@
  *
  * Usage: node skills/rollout/scripts/autofix-aem.mjs --project <eds-root>
  *          [--out <rolloutDir>] [--slug <s>] [--check <check>] [--dry-run]
+ *   defaults: --out stardust/rollout; --slug / --check narrow the findings considered
+ *
+ * Reads <out>/optimize/findings.json (required — run optimize first) and <out>/coverage/pages.json.
+ * Writes (nothing with --dry-run): the fixed project files IN PLACE under <project> (content pages,
+ * styles), <out>/optimize/findings.json (autofix status per finding) and <out>/optimize/scorecard.json
+ * (a new history snapshot). The per-finding outcome table goes to stdout. Exit 2 without --project,
+ * 1 when findings.json is missing.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { readJSON, writeJSON, computeScorecard, resolveLocalFile } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
 const PROJECT = arg('project', null);

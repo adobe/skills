@@ -22,10 +22,21 @@
  * the third file was ignored on top). The script now refuses >2 args; batch
  * by running once per file:  for f in content/*.html; do node …/sanitise.js "$f"; done
  *
+ * Writes: <input> in place, or <output> when given; the stdin form writes no file
+ * (encoded HTML on stdout). The one-line result goes to stderr.
+ *
  * Exit codes: 0 success, 1 error.
  */
 
 import { readFileSync, writeFileSync } from 'fs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 // Named HTML entities for common non-ASCII characters.
 // Anything not listed here falls back to a decimal numeric reference (&#NNN;).

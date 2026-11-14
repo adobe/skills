@@ -70,6 +70,17 @@ the chrome crop gate (`source-fidelity-gate.md` § Pass bar, item 5) against
 the NEW page's live chrome, and flag any page-level compensation for
 back-port into the canon files so later archetypes don't re-discover it.
 
+### Repeated-unit families (#125)
+
+A block that repeats a unit — cards, rail items, list rows, FAQ rows — is declared once in
+`stardust/replica/units.json` when it is authored: `{ "<family>": { "origin": "<live unit
+selector>", "build": "<block unit selector>", "n": 2, "required": true, "pages": ["<slug>"],
+"templates": ["<template>"] } }`. `gate.sh --full`, `gate-all.mjs` and `unit-geometry.mjs
+--families` resolve the page's families from it and compare the first N units element by
+element (Δx/Δy/Δw/Δh within 4 px, hidden where the build clips); `required: false` makes a
+family advisory. The pixel gate sees the grid of shapes, not whether the badge sits on the
+corner or the body starts 30 px low — the workstreams that converged measured exactly this.
+
 ## CSS lifting — fidelity values come from the original site's CSS, not the eye
 
 (Prior art: an earlier airport-site migration's improvement notes §3.6; re-confirmed in UC1-E1 where
@@ -84,7 +95,8 @@ Before any screenshot-eyeball tuning:
    pattern): container max-widths, the full type ramp (family / size /
    line-height / letter-spacing / weight per level), button specs (border,
    radius, padding — the whole spec, not just color), section paddings,
-   radii, shadows, hero heights, breakpoint values — **and the
+   radii, shadows, hero heights, breakpoint values, **`box-sizing` per
+   container** (§ Box model is a lifted value) — **and the
    text-rendering group**: `text-rendering`, `-webkit-font-smoothing`,
    `font-synthesis`, `font-variant-numeric`, `font-kerning`. Sites commonly
    set these globally, and the ramp alone doesn't carry them: a ±1%
@@ -121,6 +133,18 @@ Before any screenshot-eyeball tuning:
 This converts 3–4 guess-and-screenshot loops into one. Eyeballing is for
 step 4 of the authoring order only — and even then, the gate's instruments
 outrank the eye.
+
+**Every `url()` in a lifted rule is rehosted.** A canon rule carries a
+`url()` only when it resolves to a file under `stardust/current/assets/`
+(harvest it — § Asset harvest — and keep its intrinsic size and
+`background-size`): a `url()` pointing at the source host is a gate FAIL,
+not a pass — it renders in the pixel compare and vanishes on the delivered
+site; a dropped `background-image` (icons, flags, decorative marks under
+the extract size filter) is the same defect (recorded: a language
+switcher's flag icons transcribed into the canon CSS without their
+`url()`s, and the one kept hot-linked the source site, which masked the
+pixel gate). `measure.mjs` now lists `backgroundImage`, so a `--against`
+run names the miss.
 
 **No foundation `text-wrap: balance` on headings.** The redesign
 prototype's refined pass prescribes `h1–h6 { text-wrap: balance }`; live
@@ -162,20 +186,21 @@ Both were caught only by the gate in UC1-E1; check for them proactively:
 ### Lift the sizing MODEL, not the resolved value (#116)
 
 A computed-style lift records `width: 720px` from an element whose authored
-rule is `width: 50%`. At the gate widths the two are byte-identical — BOTH
-gate breakpoints render them the same — so the frozen value ships invisibly
-and diverges only on wider screens (recorded: a live hero card 940px at
-1920 vs the frozen 720px; the CTA row wrapped as a side effect). The same
-trap applies to DOM: capturing the 1440 layout OUTCOME (a button row that
-wrapped 3+1, authored as two rows / styled with an `.x + .x` sibling rule)
-instead of the layout MODEL (one wrapping flex row) freezes a
-viewport-specific artifact into content and CSS.
+rule is `width: 50%`; both gate widths render the two the same, so the frozen
+value ships invisibly and diverges on wider screens (#116, recorded). The
+same trap applies to DOM: a 1440 layout OUTCOME (a button row wrapped 3+1)
+captured instead of the layout MODEL (one wrapping flex row).
 
-- **Lift at TWO OR THREE widths (e.g. 1280 + 1440 + 1920) and diff the
-  lifts — widths AND heights.** Any box whose width scales between them is
-  FLUID: find the authored rule (`%` / `vw` / max-width model) in the
-  source CSS and encode the RULE, never the resolved px. Boxes that hold
-  constant are legitimately fixed. Section heights and overlaps get the
+- **Read the measured cap model first (#124), then lift widths AND heights
+  at two widths.** DESIGN.json `extensions.breakpoints` (extract's
+  `cap-probe.mjs` run) lists every cap origin: `caps[]` by kind (`shell` /
+  `content` / `module`, px, authored via), `modules[]` (capped or full-bleed
+  per section), `containerMaxWidth`, the derived `probeWidth`. Encode a
+  wrapper cap as `main { max-width }`, a module cap on the section column —
+  never a resolved px, never a breakpoint (a cap is not a layout switch;
+  breakpoints are `preserve-direction.md` § 4's concern). For everything else diff a lift at 1440 against one at `probeWidth`:
+  a box that scales is FLUID — encode its authored rule (`%` / `vw` /
+  max-width model), never the px; a box that holds is fixed. Heights get the
   same test: a fixed-height hero gated pixel-perfect at 1440 read "10px
   off" to a reviewer browsing at 1512 because live scaled it with the
   viewport (recorded); when a height or overlap scales, encode it
@@ -183,10 +208,75 @@ viewport-specific artifact into content and CSS.
 - **Layout groups get the same test**: if a row's children redistribute
   between the two widths, the model is a wrapping flex/grid row — author
   ONE row and let it wrap; never encode the wrap point as structure.
-- The gate-side backstop is the ≥1920 box-map spot check
-  (`source-fidelity-gate.md` § Wide-viewport fluid check) — but the check
-  only catches what this rule prevents; lifting the model up front is the
+- The gate-side backstop is the mandatory content-cap row
+  (`source-fidelity-gate.md` § Pass bar item 6: `cap-probe.mjs … --against`)
+  — it catches what this rule prevents; lifting the model up front is the
   cheap half.
+
+### Box model is a lifted value (`box-sizing` per container)
+
+`box-sizing` is a first-class lifted value: read per container from the
+computed-style capture (step 4), declared per block in the recreation and
+in its block CSS — never assumed, never set once for the page. A recorded
+hands-off run's prototypes all gated at ≤ 0.1 %, and the delivered pages
+came out with the chrome 9 px narrower and a facts row 106 px shorter at
+360: the source laid out its grids content-box, the prototype carried no
+reset, and the delivery boilerplate's universal `*, *::before, *::after {
+box-sizing: border-box }` shrank every padded %-width container after
+conversion — the agent had to discover the source's box model itself, at
+the published-origin gate. Rules:
+
+- **Lift it.** For every container the gate measures (section wrappers,
+  grids, cards, rows, chrome bars) record `boxSizing` beside width and
+  padding. `measure.mjs` lists it in its default props, so a `--against`
+  run prints `boxSizing: content-box → border-box` per box — the fork is
+  named before a pixel round.
+- **Declare it per block.** The block's CSS states the box model its lifted
+  widths were authored under (`.block-x, .block-x * { box-sizing:
+  content-box }` when the source was content-box), and the canon file
+  header records the source's box model per container family.
+- **On a replica the boilerplate reset is SCOPED, never universal.** The
+  deploy skill's global `border-box` reset (#106) is a redesign rule. A
+  replica project declares the reset in `styles/styles.css` scoped to the
+  blocks whose lift recorded `border-box` (or to the wrapper classes the
+  source applied it to), states the scope in the canon header and the
+  progress ledger, and leaves everything else at the browser default the
+  source relied on. A universal reset is a design change without a register
+  entry.
+- **Read the symptom.** A width or height short by exactly a padding sum
+  (2 × padding-x on a width, 2 × padding-y on a row) at one breakpoint is a
+  box-model fork, not a spacing error — re-lift `boxSizing`, do not nudge
+  the padding. The same fork is one of the recorded causes of horizontal
+  overflow at 360 (`source-fidelity-gate.md` § Iteration discipline, the
+  HARD assert).
+
+### Image renditions per breakpoint (`srcset` / `sizes` are lifted values)
+
+The browser picks a rendition per viewport from `srcset` / `sizes`. A
+recorded hands-off run's live page selected the 400 px rendition at 360
+while the build served its 1600 px rendition at every width; each rendition
+rounds its rendered height from its own intrinsic ratio, so every inline
+image differed by a fraction of a pixel (0.64 px recorded), and summed down
+the page that was a 2.2 px root-height delta that cost iterations chasing a
+layout bug that was not there. Rules:
+
+- **Record per image which rendition live selects at EACH gate width.**
+  `measure.mjs "$LIVE" --against "$PROTO" --selectors "img" --all-matches
+  --width 1440,360` prints `img <naturalWidth>×<naturalHeight> …/<file>` per
+  match per side and `img.naturalWidth: a → b; img.file: a → b` on the Δ line
+  when the selection differs (`--json`: `img: { naturalWidth, naturalHeight,
+  currentSrc }` per match). Write the per-width table into the capture notes
+  beside the lifted CSS.
+- **Author the same `srcset` / `sizes`** — the same candidate widths and the
+  same `sizes` expression, on the rehosted files — so the build selects the
+  same rendition at every gate width. On the delivery platform map them onto
+  the pipeline's rendition widths (the `/media_<hash>?width=…` set the
+  optimizer emits; `source-fidelity-gate.md` § The published-origin gate:
+  read dimensions from the delivered rendition, not the authored asset).
+- **Read the symptom.** A sub-3 px root-height delta with equal boxes (every
+  measured section Δh 0 while `img.naturalWidth` differs) is a
+  rendition-ratio symptom, not a layout bug — fix the rendition, do not touch
+  spacing, and do not spend an iteration on it.
 
 ## Wrap-junction margins (cards-on-a-canvas sites)
 
@@ -218,20 +308,24 @@ un-floating override.
 
 ## Fonts policy
 
-- **Same public source when available.** Extract intercepts the page's own
-  font loads; woff2 files that are freely licensed or already self-hostable
-  are self-hosted in the prototype (UC1-E1: same-source fonts, zero
-  substitutes needed, which is why the type matched exactly).
-- **Licensed commercial kits: substitute, never rehost** (prior art: the airport-site migration —
-  e.g. a domain-locked Monotype kit). Rules:
-  - Never re-host a commercial font on the new public domain.
-  - Pick a **metric-matched** substitute (or have the user supply their
-    licensed kit).
-  - Keep the brand family name FIRST in the font stack so a licensed
-    drop-in later wins without a code change.
-  - Surface the substitution to the user and log it in the progress ledger —
-    a substituted face is a permanent, justified gate residual (the width
-    probe will fork; record it as expected).
+Deploy § 4 principle 2 (#80) applies from the first archetype on:
+
+- **Self-host the source's own faces as-is.** Extract saves every font response under
+  `stardust/current/assets/fonts/`; ship those files — the same families, weights and styles — as
+  `@font-face` in the shared canon CSS (at delivery `styles/fonts.css`, per deploy § 4).
+- **Brand family FIRST in every stack; a metric-matched substitute only as the fallback entry
+  after it** — never a calibrated stand-in (no derived font files, no hand-tuned metrics), so a
+  licensed drop-in later wins without a code change.
+- **A `local()` source only for a face the gate's browser has.** The gate renders on Linux: a
+  fallback face whose `local()` names a macOS or Windows platform font resolves to nothing there,
+  the stack falls through to the browser default and every type metric forks. Name the
+  Linux-available metric fallbacks — Liberation Sans / Arimo (Arial class), Liberation Serif /
+  Tinos (Times class), Liberation Mono / Cousine (Courier class) — or self-host the fallback. The
+  capture names every dead face (`fontsFailed`, `source-fidelity-gate.md` § Hardening rule 14):
+  fix the stack before the next round.
+- **Proprietary faces raise deploy's licensing alert** (deploy § 4 principle 2, #80 — the banner,
+  `fonts/LICENSING.md`, the hand-off line; the remove path is deploy's) plus ONE register entry
+  for all of them (`preserve-direction.md` § 3).
 
 ## Asset harvest and the capture-state policy
 
@@ -275,13 +369,14 @@ instrument.** Two recurring cases:
   moving target. This is the one content class where confirm-justify stays
   legitimate under widget mirroring (§ Granularity parity).
 - **Live-data embeds** (stock tickers, YouTube/euroland-style iframe
-  widgets) — the winning move is loading the SAME live embed (same src) on
-  both sides so the moving data cancels out in the pixel diff, NOT freezing
-  a snapshot (confirmed in two independent 2026-08 sessions: a same-src
-  YouTube iframe canceled to zero; a euroland share ticker mirrored same-src
-  stopped contributing). A frozen snapshot guarantees a permanent residual
-  the size of the widget; a mirrored live embed usually zeroes out, and any
-  residual left (frame-timing skew) is logged as permanent.
+  widgets) — load the SAME live embed (same src) on both sides so the
+  moving data cancels out in the pixel diff, NOT a frozen snapshot (a
+  same-src player and a share ticker each zeroed out, recorded). A snapshot
+  guarantees a permanent residual the size of the widget; any residual left
+  (frame-timing skew) is logged as permanent. Same src, later mount: a
+  player is created after first paint (`../../deploy/SKILL.md` #157) — the
+  gates capture a settled page, so pixels are unchanged; when the source
+  loaded it eagerly, note the deferral in the progress ledger.
 - **Randomized decorative elements** (inline positions/paths regenerated per
   page load — generative line art, particle fields): the live side never
   pixel-matches ITSELF across captures, so no prototype can zero it out.
@@ -334,35 +429,24 @@ carousel, a live select carries its real option list, tabs switch,
 accordions open. Justifying a whole widget away as a class-level residual
 is not acceptable; confirm-justify stays reserved for genuinely
 unreachable or nondeterministic content (ticker values, personalization —
-§ Asset harvest, capture-state policy). The interaction-parity pass
-(§ Interaction parity) is what makes this affordable: probe the live
-behavior cheaply, replicate it, and mirror the full widget DOM so
-content-diff stays at zero structural red.
+§ Asset harvest, capture-state policy); § Interaction parity is what makes
+this affordable. On EDS the delivery form of an app-like component with no
+authored content is a widget (`widgets/<path>/<name>`, mounted as one link —
+`../../stardust/reference/data-attributes.md`), not a block with empty rows,
+and the fidelity gate measures the rendered DOM the same way.
 
-## Role parity (wrapping and heading level, not text)
+## Role parity (mirror the look; semantics may improve)
 
-content-diff classifies every string by **DOM wrapping + computed style +
-heading level, never by text alone**: a string inside an `<a>` is a CTA, an
-uppercase small-type node is an eyebrow, an `<h3>` is not an `<h2>`. So a
-recreation that carries every string verbatim can still open with dozens of
-structural 🔴 — recorded (furniture retailer, iteration 1): 43 CTAs vs 58 and 12
-eyebrows vs 6, **all role swaps, zero dropped copy** — the live page
-wrapped labels in anchors where the recreation used spans, and vice versa.
-
-Policy:
-
-- **Mirror the live element wrapping per string.** For each text node the
-  gate will inventory, reproduce the live page's wrapping element (`<a>` vs
-  `<button>` vs `<span>`), its heading LEVEL, and the eyebrow-style
-  signature (uppercase + small size) — not just the visible text. This is
-  the same discipline as § Granularity parity, one level up: granularity
-  parity mirrors how text is split, role parity mirrors what it is wrapped
-  in.
-- **Iteration 1's red map IS the parity worklist.** When iteration 1 opens
-  with a wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs, fix the wrapping
-  first and re-run before touching geometry — role reds are cheap,
-  mechanical fixes, and every one cleared un-buries the structural reds
-  that are real. Geometry second.
+content-diff classifies every string by **DOM wrapping + computed style**,
+never by text alone: a string inside an `<a>` is a CTA, an uppercase
+small-type node an eyebrow, an `<h*>` a heading. Severity follows
+visibility (`../../diff/SKILL.md` § Reading content-diff), so mirror the
+live **look** and every link per string; improve the semantics where the
+look holds. When iteration 1 opens with a
+wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs (a link where the live
+page has a span, or the reverse), fix those first and re-run before
+touching geometry — they are cheap, and clearing them un-buries the real
+reds.
 
 ## Carousels and animated sections
 
@@ -370,9 +454,18 @@ Policy:
   compute the offset and reproduce it statically — stable across runs
   (UC1-E1: both mid-page carousels were centered tracks, reproduced at
   their computed offsets with zero JS).
-- **Autoplaying carousels / marquees**: freeze policy — capture and
-  recreate the t=0 state; the gate's animation-freeze injection keeps both
-  sides stable. Log the freeze.
+- **Autoplaying carousels / marquees / muted loop videos**: freeze policy
+  FOR THE CAPTURE ONLY — stitch-shot's animation freeze, timer clear and
+  video seek to t=0 keep both sides stable, so the recreation reproduces
+  slide 1 / frame 0 as its INITIAL state. The freeze is capture state, never
+  the deliverable: every freeze or mask the gate needs is one `captureState`
+  entry in `progress.json` whose `restoreAtDelivery` names the live
+  behaviour as observed (`autoplay muted loop`, `rotates every 5 s`,
+  `marquee 40 px/s`), and C-deliver implements that list before the page
+  counts as delivered (`source-fidelity-gate.md § Residual logging format`).
+  "Poster + paused video" or "static first slide" is a capture artefact,
+  not a spec — a recorded run passed 26/26 parity rows while nothing
+  played because the freeze had quietly become the brief.
 - **Loop clones are presentational**: when Splide/Swiper geometry needs
   `2×perView` clones before and after the track, clones carry no text nodes,
   `alt=""`, no `href`, no `role`/`aria-*` (`aria-hidden`/`inert` do not
@@ -407,7 +500,13 @@ Implement ONLY behaviors that measurably fired, with the recorded trigger
 mechanism, durations, and thresholds. Static source CSS is then the
 authority for the exact keyframe/easing VALUES of those fired animations.
 A behavior implemented without a runtime trace naming it is a fidelity bug
-— same severity as an unregistered design change.
+— same severity as an unregistered design change. **Timer-driven media IS
+a fired behavior** even though the capture instruments stop it: `autoplay`
+/ `loop` on a `<video>`, a `currentTime` that advances between two samples,
+a slide index that changes with no interaction — the observe JSON's `media`
+block records them before any freeze. "Dead" means never fired on live,
+never "stopped by the freeze"; a video or carousel the freeze paused is
+implemented and listed in `captureState[].restoreAtDelivery`.
 
 Static lifting INVENTS motion three distinct ways (all field-recorded, all
 caught in user review — this is why the evidence rule exists):
@@ -435,16 +534,9 @@ caught in user review — this is why the evidence rule exists):
    element morphing, same class-state transitions, same restore
    thresholds — the observe JSON's headerTimeline and classMutations name
    them) — never as a different mechanism with a similar look.
-4. **Hover-path reachability.** The live site's dropdown either has no gap
-   between the trigger and its sub-list or bridges it (padding on the
-   item, a pseudo-element, or a mouseleave delay in JS); a replica that
-   lifts the sub-list rect but not the bridge reproduces the look and
-   loses the click — the pointer crosses a dead strip and `:hover` closes
-   the menu (recorded: every desktop dropdown of a deployed replica
-   unreachable while all crops passed). Reachability is part of the state
-   machine: verify pointer travel trigger link → first sub-link keeps the
-   menu open (qa's `dropdown-unreachable` rendered check does this on the
-   deployed page).
+4. **The header is a contract, not a look.** Menus, drawers, search and
+   their reachability are recorded and gated by `chrome-explore` /
+   `chrome-compare` (`../../diff/SKILL.md` § The header contract).
 
 The two probe patterns the instrument wraps (both cheap, generic, no source
 JS needed): **hover diff** (`--hover`) — computed
@@ -495,10 +587,8 @@ number must return to (± noise of) the gated value (recorded: 1.01% gated
 → 1.06% with invented motion → 1.01% exact after the evidence-only
 rewrite). The drift itself is the smell test: motion code that changes t=0
 is wrong. (2) **behavior match** — a headless run against the PROTOTYPE
-asserting, per page: tagged-element count == live fired count; chrome
-state at {top, scrolled-down, scrolled-up, back-to-top} == the live
-headerTimeline states; zero pageerrors. This is the motion analog of the
-anchor probe, trivial to script from the observe JSON.
+asserting, per page: tagged-element count == live fired count; zero
+pageerrors; the header's scroll states are chrome-compare's.
 
 Pitfalls (each field-recorded):
 
@@ -519,48 +609,41 @@ Pitfalls (each field-recorded):
   inconsistency-register item, not a freebie.
 
 Log each implemented interaction in the progress ledger the way a CSS
-portation is logged; the static gate is then re-run per the verification
-protocol above (markup rarely changes — hover CSS and trigger JS are
-capture-invisible under the freeze, and the pixel re-run proves it).
+portation is logged.
 
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 
-`position: fixed`/`sticky` chrome interacts with the stitched capture in
-three ways, each observed live on the first fresh-site run (a design-furniture site):
+stitch-shot captures `position: fixed`/`sticky` layers **once**: chunk 1
+shows the top of the page as a visitor sees it; from chunk 2 a fixed layer
+— and a sticky one while it is stuck — is transparent, so the seams it
+covered neither repeat it nor hide the content under it. The scan re-runs
+after every chunk's scroll: a header that turns fixed on a scroll class, or
+a widget injected later, is hidden from the chunk where it appears (a
+stderr WARNING names it), so its scrolled state does not reach the capture
+either.
 
-1. **Seam repeats.** A fixed element renders in EVERY viewport chunk, so
-   the stitched PNG shows it repeated at each chunk seam (every `--vh` px).
-   Instrument behavior, not a page defect — but only while it is symmetric.
-2. **Content occlusion.** Each repeat occludes a band of real content under
-   that seam; the occluded band is invisible to the pixel probe on both
-   sides (again: harmless only while symmetric).
-3. **Scroll-state morph.** Chrome that changes with scroll captures
-   differently per chunk: the site swaps to a `body.header-minimized` 55px
-   hamburger bar once scrolled, so chunks 2+ carry different chrome than
-   chunk 1 — the stitched live capture contains BOTH states.
+What it does not cover:
+- a backdrop — a fixed layer with a negative z-index or covering ≥ 90 % of
+  the viewport (a background image or video, a full-screen modal) — stays
+  in every chunk by design; an undismissed full-screen modal with consent /
+  sign-up copy is a WARNING, any other one is not;
+- fixed elements inside a shadow root, an iframe's own document, or a
+  `::before` / `::after` pseudo-element are not seen and still repeat;
+- a layer that turns fixed on scroll is in the flow in the chunks before
+  that, as on the page — chunk 1's geometry is the page's, not a clean
+  top.
 
-**Resolution — symmetry, including the scroll-state trigger.** Replicate
-the fixed chrome AS fixed (never flattened to static/in-flow — that changes
-both the geometry and the seam behavior), and when the live chrome morphs
-with scroll, give the prototype the SAME morph so chunks 2+ match.
-
-This is the one sanctioned exception to the "no JS unless a section's
-initial state requires computing it" rule, and the tension resolves cleanly:
-that rule guards against *behavior for its own sake*, but scroll-state
-chrome is **instrument-induced state** — the capture instrument scrolls, so
-the instrument itself puts the live page into the morphed state, and a
-static prototype can never measure symmetric against it. Minimal prototype
-JS for scroll-state chrome is therefore permitted, tightly bounded: a few
+Replicate fixed chrome AS fixed all the same (never flattened to
+static/in-flow — that moves chunk 1's geometry), with its scroll-state
+morph: the header contract (`chrome-compare`) measures the scrolled state.
+Minimal prototype JS for that morph is the one sanctioned exception to the
+"no JS unless a section's initial state requires computing it" rule: a few
 lines toggling the same class at the same scroll threshold as the live site
-(lift both the class and the threshold from the source JS/CSS — never guess
-them), no frameworks, no other behavior. Log the addition in the progress
-ledger the way a CSS portation is logged.
+(lift both from the source JS/CSS — never guess them), no frameworks, no
+other behavior; log it in the progress ledger like a CSS portation.
 
-**Reading the diff:** any height delta between the captures de-aligns the
-seams, turning every seam repeat into a ghost band in the pixel diff
-(observed: seam ghosting of a fixed newsletter tab, plus a hot band exactly
-at a chunk boundary). Fix the height delta first — seam ghosts below the
-first hot band are offset contamination, not chrome bugs.
+**Reading the diff:** fix any height delta first — hot bands below the
+first one are offset contamination, not chrome bugs.
 
 ## CSS-portation fallback (per-section, never page-level)
 

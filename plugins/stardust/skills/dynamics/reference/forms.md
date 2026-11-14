@@ -5,8 +5,8 @@
 `scripts/snapshot-forms.mjs` collects content-area `input/select/textarea` controls (chrome, search,
 consent, login excluded; forms inside dialogs included), groups radio/checkbox by name, reads label,
 section heading, required, options **after settle** (servers ship selects empty and fill them
-client-side — 53 states / 260 countries in one case), conditional visibility, the submit label and
-hidden field names, and flags `piiSignals`. Output `data/forms/<name>.json` with provenance. Forms
+client-side), conditional visibility, the submit label and hidden field names, and flags
+`piiSignals` and `protection`. Output `data/forms/<name>.json` with provenance. Forms
 the source has retired become the same notice, not a form.
 
 ## 2. Key the inventory on name + field signature, never on `action`
@@ -26,22 +26,26 @@ site search (`index-backed`, needs a results page); email + message = intake (`r
 
 Never pretend: success copy on a captured submission says it was captured locally.
 
-## 4. The block
+## 4. The block — or the widget
 
-Definition-driven (`Source | /data/forms/<name>.json`) or field rows; optional `Action`, `Success`,
-`Intro`. Sections, selects with a placeholder option, choice groups, required marks, validation copy
+Definition-driven with no authored copy is a widget (`widgets/forms/<name>`, mounted as
+`<p><a href="/widgets/forms/<name>.html?definition=/data/forms/<name>.json">…</a></p>`); a form with
+authored `Intro` / `Success` rows, or field rows, stays a block (optional `Action`). Either way:
+sections, selects with a placeholder option, choice groups, required marks, validation copy
 from live, dependent fields follow their controlling option, **empty submission refused**, honeypot
-instead of the source's anti-forgery token, posts `{ data, page, timestamp }` as JSON to `Action` or
-a per-page endpoint in `scripts/site-config.js` (empty = native post). Vendor-backed flows
-(marketing-automation token + antibot key) **cannot be replayed off-origin**: keep the token fetch
-client-side and let the owner name the vendor form id and field mapping.
+instead of the source's anti-forgery token; a recorded `protection` (captcha) renders the same
+widget in the same slot with the vendor's published always-pass test key and posts its response
+field with the data — the owner's real key, domain allowlist and server-side verify are one
+`needs-backend` decision row, **never a silent drop**; posts `{ data, page, timestamp }` as JSON to
+`Action` or a per-page endpoint in `scripts/site-config.js` (empty = native post). Vendor-backed
+flows **cannot be replayed off-origin**: keep the token fetch client-side and let the owner name the
+vendor form id and field mapping.
 
 ## 5. Regulated data — hard rule
 
 `regulated-pii` (SSN, date of birth, financial account, minors, ID upload): rebuild the UI with
 submission **blocked** until a human configures the secured endpoint; never route to a sheet or a
-generic handler; never replicate a payment or card capture on a sandbox. Most intake help pages
-deep-link to an authenticated app — migrate the link, do not manufacture a form.
+generic handler; never replicate a payment or card capture on a sandbox (triage.md rule 3).
 
 ## 6. Verify (flow)
 

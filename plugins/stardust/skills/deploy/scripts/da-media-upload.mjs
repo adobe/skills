@@ -1,0 +1,543 @@
+#!/usr/bin/env node
+/**
+ * skills/deploy/scripts/da-media-upload.mjs
+ *
+ * Media rehosting for the stardust:deploy ENCODE contract (deploy SKILL.md
+ * "The ENCODE contract → Images" and "Distinguish 403-bot-wall from
+ * 404-missing"): upload captured editorial images to the DA media folder and
+ * print the branch-independent URL to author for each one.
+ *
+ * Protocol implemented, per file:
+ *   PUT https://admin.da.live/source/{org}/{repo}/media/<scope>/<file>
+ *       multipart form data, field name `data`, the image's own Content-Type
+ *   author https://content.da.live/{org}/{repo}/media/<scope>/<file>
+ *       (that URL answers 401 to an anonymous request and still ingests fine —
+ *       verify post-preview, never with a bare GET)
+ *   images: jpg/jpeg/png/webp/gif/avif and small pure-vector svg. An svg that
+ *       embeds raster data or exceeds 40 KB fails every page preview that
+ *       references it (409 from the content bus, no per-asset error) and is
+ *       refused here as FAIL svg-unsafe.
+ *   mp4 video up to 36 MB (deploy SKILL.md #161, amending #103): the content.da.live
+ *       URL of a video is never authored (it reaches the page verbatim and
+ *       answers 401 to every visitor). After the PUT the file ITSELF is
+ *       previewed and, unless --no-publish, published:
+ *         POST https://admin.hlx.page/preview|live/{org}/{repo}/{branch}/media/<scope>/<file>
+ *       and the URL to author is the root-relative content path
+ *       /media/<scope>/<file> (the delivery host redirects it to the media bus).
+ *       The preview API maps a path to its web form (lowercase, `_` and other
+ *       non-alphanumerics → `-`), so a video is stored under that form
+ *       (main_Video01.mp4 → main-video01.mp4): stored as is, its preview 404s.
+ *       Larger mp4s, other video, audio and PDF are listed as SKIP and stay on
+ *       the code origin or an external host.
+ *   source fetch (manifest entries whose local file is absent but name a
+ *       `source` URL): 2xx image bytes are saved to the local path and then
+ *       uploaded; 401/403 is a hot-link bot wall — the asset EXISTS, capture it
+ *       in-page and re-run (never omit); 404 is genuinely missing — omit, after
+ *       the rendition/delimiter repairs the skill describes, never substitute.
+ *
+ * Ledger (default stardust/deploy/media-ledger.json, --ledger to move it):
+ *   keyed by the DA path `media/<scope>/<file>`; a file already recorded as
+ *   uploaded with the same local path and byte size is skipped on re-run, so
+ *   the command is safe to repeat after a token refresh or a partial failure.
+ *   Transient responses (429, 5xx, network errors) are retried with capped
+ *   exponential backoff, and so is a 401 from the admin API (a valid token can
+ *   be answered 401 under a concurrent burst — recorded: a whole first burst at
+ *   concurrency 4, while a lone sequential PUT went through). The ledger is
+ *   written atomically (tmp + rename, trailing newline) from one place.
+ *
+ * 401 policy (two recorded facts: one 401 must not halt; a persistent 401 must
+ * halt fast — an expired token once left an 894-row batch failing file by file
+ * for 5.5 hours):
+ *   preflight — if the token is a JWT whose `exp` has passed, exit 3 before any
+ *       request, naming the expiry (a non-JWT token, or one without exp, is
+ *       simply tried).
+ *   first upload — runs alone to prove the token, with the bounded 401 retries.
+ *   any 401 — retried with the same short backoff as a 429. A 401 that persists
+ *       through its retries on ANY file (first or later) HALTS the batch: exit 3,
+ *       ledger persisted, in-flight uploads allowed to finish, remaining files
+ *       left `not attempted`, one stderr line naming the token's variable or file
+ *       and the exact re-run command (the same command resumes from the ledger).
+ *       A file is never marked `failed` because of a 401 — it prints HALT, not FAIL.
+ *
+ * Token: from the environment variable named by --token-env (default DA_TOKEN),
+ * or from --token-file <path> (read once at start; one of the two — a hands-off
+ * harness hands the token over as a file, and a recorded run's uploader read
+ * DA_TOKEN only). The value is never printed, never part of the re-run command
+ * and never written to the ledger or anywhere else.
+ *
+ * Usage:
+ *   DA_TOKEN=… node skills/deploy/scripts/da-media-upload.mjs --org <org> --repo <repo> --scope <scope> \
+ *     (--dir <local dir> | --manifest <json>) [options]
+ *     --token-env <NAME>   environment variable holding the token       (default DA_TOKEN)
+ *     --token-file <path>  read the token from this file instead (never both flags)
+ *     --scope <name>       the folder under media/; relative — never media/<name> (the DA
+ *                          path would double to media/media/<name>; refused as a usage error)
+ *     --dir <path>         upload every image under this directory; the path
+ *                          relative to it becomes <file> (sub-folders kept)
+ *     --manifest <json>    upload the entries listed in a JSON manifest (below)
+ *     --concurrency <n>    parallel uploads                       (default 4)
+ *     --ledger <path>      ledger file   (default stardust/deploy/media-ledger.json)
+ *     --retries <n>        attempts after the first for 401/429/5xx (default 4)
+ *     --backoff-ms <n>     base delay of the capped backoff        (default 500)
+ *     --dry-run            list what would be uploaded; no network, no ledger write
+ *     --admin-url <base>   override https://admin.da.live   (local test double)
+ *     --content-url <base> override https://content.da.live (local test double)
+ *     --branch <name>      branch a video is previewed/published on    (default main)
+ *     --no-publish         preview videos only, never publish them
+ *     --hlx-url <base>     override https://admin.hlx.page  (local test double)
+ *
+ * Manifest shapes (any one file):
+ *   [ { "file": "stardust/current/assets/media/hero-a3f9.jpg",
+ *       "source": "https://origin.example/img/hero.jpg",     optional: fetched when `file` is absent
+ *       "name": "hero-a3f9.jpg" } ]                          optional: <file> under media/<scope>/ (default: basename)
+ *   { "<file>": "<source>" } or { "<file>": { "source": …, "name": … } }
+ *   { "images": [ { "localPath": …, "src": … } ] }            the extract current-state § Media list
+ *
+ * Output, one line per file, then a summary:
+ *   OK <file> -> https://content.da.live/{org}/{repo}/media/<scope>/<name>
+ *   OK <file> -> /media/<scope>/<name> (video: previewed[ + published] …)
+ *   SKIP <file> already uploaded (ledger) | not-an-image | video-too-large
+ *   FAIL <file> <status|reason> …
+ *   HALT <file> 401 …                                          (the token halt; not a FAIL)
+ *   DRY <file> -> <content url>                               (--dry-run)
+ * Exit codes: 0 no failures, 1 any FAIL, 2 usage error (a value flag followed by
+ *   nothing or by another --flag included), 3 token halt (expired JWT before any
+ *   request, or a 401 that persisted through its retries — refresh the token in
+ *   the variable or file the halt line names and re-run the same command; the
+ *   ledger skips what already landed).
+ */
+
+/* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-await-in-loop */
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { mergeLedger } from './file-lock.mjs';
+import { basename, dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const HELP = `da-media-upload — rehost captured images (and mp4 video up to 36 MB) to the DA media folder
+
+Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <scope> (--dir <dir> | --manifest <json>) [options]
+  --scope <name>        the folder under media/ (relative — never media/<name>: the path would double to media/media/<name>)
+  --dir <path>          upload every image under the directory (relative path = <file>)
+  --manifest <json>     upload the listed entries: [{file, source?, name?}], {file: source}, or {images:[{localPath, src}]}
+  --concurrency <n>     parallel uploads (default 4)
+  --ledger <path>       ledger file (default stardust/deploy/media-ledger.json)
+  --retries <n>         attempts after the first for 401/429/5xx/network (default 4)
+  --backoff-ms <n>      base delay of the capped backoff (default 500)
+  --dry-run             list what would be uploaded; no network, no ledger write
+  --admin-url <base>    override https://admin.da.live (local test double)
+  --content-url <base>  override https://content.da.live (local test double)
+  --branch <name>       branch a video is previewed/published on (default main)
+  --no-publish          preview videos only, never publish them
+  --hlx-url <base>      override https://admin.hlx.page (local test double)
+  --token-env <NAME>    environment variable holding the token (default DA_TOKEN)
+  --token-file <path>   read the token from this file instead (one of the two, never both)
+  --help                this text
+
+Token: from the variable named by --token-env, or from --token-file (read once at start); never printed,
+never in the re-run command, never written to the ledger.
+Video (#161): an mp4 up to 36 MB is uploaded, then previewed and published itself; author the printed
+root-relative /media/<scope>/<file>, never its content.da.live URL. Two files with one stored name: the
+later one FAILs name-collision, nothing sent for it. Bigger mp4s and other video/audio/PDF are
+skipped and stay on the code origin or an external host.
+Writes: the ledger at --ledger (not with --dry-run) and, for a manifest entry whose local
+file is absent but names a source, the fetched image bytes saved to that entry's file path.
+Prints one line per file (OK / SKIP / FAIL / HALT / DRY) and a summary. Exit 0 = no failures, 1 = any FAIL,
+2 = usage (a value flag followed by nothing or another --flag included), 3 = token halt.
+Token halt: an expired JWT exits 3 before any request; the first upload runs alone to prove the token; a 401
+retries like a 429, and a 401 that still persists through its retries on any file halts the batch (ledger
+saved, in-flight uploads finish, the rest not attempted, never marked failed) — refresh the token in the
+variable or file the halt line names and re-run the same command; the ledger skips what already landed.`;
+
+const USAGE_EXIT = 2;
+const TOKEN_EXIT = 3;
+const IMAGE_TYPES = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif', '.avif': 'image/avif', '.svg': 'image/svg+xml' };
+const SVG_MAX_BYTES = 40 * 1024;
+const VIDEO_TYPES = { '.mp4': 'video/mp4' };
+// The content-source limit for mp4 (aem.live docs, limits): a bigger file fails its preview.
+export const VIDEO_MAX_BYTES = 36 * 1024 * 1024;
+const RETRYABLE = new Set([0, 408, 425, 429, 500, 502, 503, 504]);
+// The admin PUT also retries a 401: a valid token can be answered 401 under a concurrent burst (recorded —
+// the whole first burst of a batch, on a token with hours of validity left, while a lone sequential PUT
+// went straight through). The source fetch keeps RETRYABLE as is: there a 401/403 is the bot wall.
+const ADMIN_RETRYABLE = new Set([...RETRYABLE, 401]);
+// A browser-shaped request for the source fetch: bot-managed origins answer a bare client with 403
+// even for assets that exist. A UA and Referer are the closest a script gets; the capture itself
+// fetched in-page, which is why a 403 here means "rehost the captured copy", never "missing".
+const SOURCE_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
+
+function usage(msg) { console.error(`da-media-upload error: ${msg}\n\n${HELP}`); process.exit(USAGE_EXIT); }
+
+export function parseArgs(argv, env = process.env) {
+  const rest = argv.slice(2);
+  if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
+  const o = { concurrency: 4, ledger: join('stardust', 'deploy', 'media-ledger.json'), retries: 4, backoffMs: 500, dryRun: false, adminUrl: 'https://admin.da.live', contentUrl: 'https://content.da.live', hlxUrl: 'https://admin.hlx.page', branch: 'main', publish: true };
+  const num = (flag, v, min) => { const n = Number(v); if (!Number.isFinite(n) || n < min) usage(`${flag} needs a number ≥ ${min}`); return n; };
+  for (let i = 0; i < rest.length; i += 1) {
+    const a = rest[i];
+    // A value flag swallows nothing: followed by the end of the line or by another --flag it is a usage error
+    // (recorded: `--ledger --dry-run` silently took "--dry-run" as the ledger path and then uploaded for real).
+    const next = () => { const v = rest[i + 1]; if (v === undefined || /^--/.test(v)) usage(`${a} needs a value${v === undefined ? '' : ` (got ${v})`}`); return rest[i += 1]; };
+    if (a === '--org') o.org = next();
+    else if (a === '--repo') o.repo = next();
+    else if (a === '--scope') o.scope = next();
+    else if (a === '--dir') o.dir = next();
+    else if (a === '--manifest') o.manifest = next();
+    else if (a === '--concurrency') o.concurrency = num(a, next(), 1);
+    else if (a === '--ledger') o.ledger = next();
+    else if (a === '--retries') o.retries = num(a, next(), 0);
+    else if (a === '--backoff-ms') o.backoffMs = num(a, next(), 0);
+    else if (a === '--dry-run') o.dryRun = true;
+    else if (a === '--admin-url') o.adminUrl = next().replace(/\/+$/, '');
+    else if (a === '--content-url') o.contentUrl = next().replace(/\/+$/, '');
+    else if (a === '--hlx-url') o.hlxUrl = next().replace(/\/+$/, '');
+    else if (a === '--branch') o.branch = next();
+    else if (a === '--no-publish') o.publish = false;
+    else if (a === '--token-env') o.tokenEnv = next();
+    else if (a === '--token-file') o.tokenFile = next();
+    else usage(`unknown argument ${a}`);
+  }
+  for (const k of ['org', 'repo', 'scope']) if (!o[k]) usage(`--${k} is required`);
+  if (!/^[A-Za-z0-9][A-Za-z0-9_.-]*(\/[A-Za-z0-9][A-Za-z0-9_.-]*)*$/.test(o.scope)) usage('--scope must be a path segment (letters, digits, - _ .), optionally nested with /');
+  // --scope is the folder UNDER media/: the DA path is media/<scope>/<file>. A recorded run passed
+  // `--scope media/<name>` and uploaded 242 files to media/media/<name>, then deleted them all.
+  if (/^media\//.test(o.scope)) usage(`--scope is relative to media/ — pass the folder name under it (--scope ${o.scope.slice(6)}), never media/<name>: the upload path would double to media/${o.scope}/<file>`);
+  if (!!o.dir === !!o.manifest) usage('give exactly one of --dir or --manifest');
+  // The token source: one variable (default DA_TOKEN) or one file, never both. The file is read here,
+  // once, before anything else runs; a dry run uses no token and so reads none. The value is kept on
+  // `token` only — every message names the source (`tokenLabel`), never the value.
+  if (o.tokenEnv && o.tokenFile) usage('give at most one of --token-env / --token-file');
+  o.tokenEnv ||= 'DA_TOKEN';
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(o.tokenEnv)) usage('--token-env needs an environment variable name (letters, digits, underscore)');
+  if (o.tokenFile) {
+    if (!o.dryRun) {
+      try { o.token = readFileSync(o.tokenFile, 'utf8').trim(); } catch (e) { usage(`cannot read --token-file ${o.tokenFile}: ${e.message}`); }
+      if (!o.token) usage(`--token-file ${o.tokenFile} is empty`);
+    }
+  } else o.token = env[o.tokenEnv];
+  if (!o.dryRun && !o.token) usage(`${o.tokenEnv} is not set in the environment (the token is read from there — or from --token-file — only)`);
+  return o;
+}
+
+// How the messages name the token and say how to refresh it — the variable or the file, never the value.
+const tokenLabel = (o) => (o.tokenFile ? `the token in ${o.tokenFile}` : o.tokenEnv);
+const refreshHint = (o) => (o.tokenFile ? `write a fresh token to ${o.tokenFile}` : `refresh ${o.tokenEnv} in the environment`);
+
+// ---- inputs ------------------------------------------------------------------------------------
+
+function walk(dir, base = dir) {
+  const out = [];
+  for (const name of readdirSync(dir).sort()) {
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) out.push(...walk(full, base));
+    else out.push({ file: full, name: relative(base, full).split(sep).join('/') });
+  }
+  return out;
+}
+
+export function readManifest(path) {
+  let doc;
+  try { doc = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { usage(`cannot read manifest ${path}: ${e.message}`); }
+  const entries = [];
+  const push = (file, source, name) => { if (typeof file === 'string' && file) entries.push({ file, source: typeof source === 'string' && source ? source : null, name: typeof name === 'string' && name ? name : basename(file) }); };
+  if (Array.isArray(doc)) for (const e of doc) { if (e && typeof e === 'object') push(e.file || e.localPath, e.source || e.src, e.name); }
+  else if (doc && typeof doc === 'object' && Array.isArray(doc.images)) for (const e of doc.images) { if (e && typeof e === 'object') push(e.localPath || e.file, e.src || e.source, e.name); }
+  else if (doc && typeof doc === 'object') for (const [file, v] of Object.entries(doc)) { if (typeof v === 'string') push(file, v); else if (v && typeof v === 'object') push(file, v.source || v.src, v.name); }
+  else usage(`manifest ${path} is neither an array, a map, nor an {images:[…]} object`);
+  if (!entries.length) usage(`manifest ${path} lists no entries with a file path`);
+  return entries;
+}
+
+// ---- classification --------------------------------------------------------------------------------
+
+export function classify(name, bytes) {
+  const ext = extname(name).toLowerCase();
+  if (VIDEO_TYPES[ext]) {
+    if (bytes && bytes.length > VIDEO_MAX_BYTES) return { ok: false, skip: 'video-too-large', why: `${bytes.length} bytes is over the 36 MB content-source limit — ship it from the code origin or an external video host` };
+    return { ok: true, type: VIDEO_TYPES[ext], video: true };
+  }
+  const type = IMAGE_TYPES[ext];
+  if (!type) return { ok: false, skip: 'not-an-image', why: 'only jpg/jpeg/png/webp/gif/avif/svg and mp4 are rehosted; other video, audio and PDF ship from the code origin' };
+  if (type === 'image/svg+xml' && bytes) {
+    const text = bytes.toString('utf8');
+    if (/<image[\s>]|data:image\//i.test(text)) return { ok: false, fail: 'svg-unsafe', why: 'embeds raster data — extract it to a png and author that (every referencing page would fail preview with 409)' };
+    if (bytes.length > SVG_MAX_BYTES) return { ok: false, fail: 'svg-unsafe', why: `${bytes.length} bytes exceeds the ~40KB pipeline limit — rasterize to png` };
+  }
+  return { ok: true, type };
+}
+
+// ---- token preflight ----------------------------------------------------------------------------------
+
+// The `exp` claim (seconds since the epoch) of a JWT-shaped token, or null when the token is not a JWT or
+// carries no numeric exp. Decodes the middle segment only; nothing about the token is ever printed.
+export function jwtExpiry(token) {
+  if (typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3 || !parts.every((x) => /^[A-Za-z0-9_-]+$/.test(x))) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+    return claims && Number.isFinite(claims.exp) ? claims.exp : null;
+  } catch { return null; }
+}
+
+// The exact command to re-run once the token is fresh: same script, same arguments (the token itself is
+// never on the command line — it comes from the environment variable, or from the --token-file path).
+const shellQuote = (a) => (/^[A-Za-z0-9_./:=@%+,-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`);
+const rerunCommand = (o) => (o.tokenFile
+  ? `node ${process.argv.slice(1).map(shellQuote).join(' ')}   (after writing the fresh token to ${o.tokenFile})`
+  : `${o.tokenEnv}=<fresh token> node ${process.argv.slice(1).map(shellQuote).join(' ')}`);
+
+// ---- http --------------------------------------------------------------------------------------------
+
+const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
+const encodePath = (p) => p.split('/').map(encodeURIComponent).join('/');
+// Every response body is consumed or cancelled: an undrained body keeps its connection open, and a
+// batch of a hundred files at concurrency 4 would run out of sockets long before it ran out of files.
+const drain = async (res) => { if (res) await res.arrayBuffer().catch(() => {}); };
+
+async function withRetries(doFetch, { retries, backoffMs, retryStatuses = RETRYABLE }) {
+  for (let attempt = 0; ; attempt += 1) {
+    let res = null; let status = 0; let err = '';
+    try { res = await doFetch(); status = res.status; } catch (e) { status = 0; err = String(e.message || e); }
+    if (!retryStatuses.has(status) || attempt >= retries) return { res, status, err, attempts: attempt + 1 };
+    const retryAfter = res && Number(res.headers.get('retry-after'));
+    const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(15000, retryAfter * 1000) : Math.min(15000, backoffMs * 2 ** attempt) + attempt * 37;
+    await drain(res);
+    await sleep(wait);
+  }
+}
+
+async function fetchSource(url, opts) {
+  let referer = '';
+  try { referer = new URL(url).origin + '/'; } catch { return { kind: 'bad-url' }; }
+  const { res, status, err } = await withRetries(() => fetch(url, { headers: { 'user-agent': SOURCE_UA, referer, accept: opts.video ? 'video/mp4,video/*,*/*;q=0.8' : 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8' }, redirect: 'follow' }), opts);
+  if (status === 0) return { kind: 'network', why: err };
+  if (status === 401 || status === 403) { await drain(res); return { kind: 'bot-wall', status }; }
+  if (status === 404 || status === 410) { await drain(res); return { kind: 'missing', status }; }
+  if (status < 200 || status >= 300) { await drain(res); return { kind: 'http', status }; }
+  const ct = (res.headers.get('content-type') || '').split(';')[0].trim();
+  if (!ct.startsWith('image/') && !(opts.video && ct.startsWith('video/'))) { await drain(res); return { kind: 'not-media-response', status, contentType: ct || 'none' }; }
+  // An over-limit video is skipped on its declared length, before its body is buffered.
+  const len = Number(res.headers.get('content-length'));
+  if (opts.video && Number.isFinite(len) && len > VIDEO_MAX_BYTES) { await res.body?.cancel().catch(() => {}); return { kind: 'ok', status, bytes: null, size: len, contentType: ct }; }
+  return { kind: 'ok', status, bytes: Buffer.from(await res.arrayBuffer()), contentType: ct };
+}
+
+async function putMedia(bytes, type, name, daPath, opts) {
+  const url = `${opts.adminUrl}/source/${encodeURIComponent(opts.org)}/${encodeURIComponent(opts.repo)}/${encodePath(daPath)}`;
+  return withRetries(() => {
+    const fd = new FormData();
+    fd.append('data', new Blob([bytes], { type }), basename(name));
+    return fetch(url, { method: 'PUT', headers: { authorization: `Bearer ${opts.token}` }, body: fd });
+  }, { ...opts, retryStatuses: ADMIN_RETRYABLE });
+}
+
+// Preview (and publish) the uploaded video itself: its root-relative content path then redirects to the media
+// bus on the delivery host. A page preview does not ingest a linked video the way it ingests an <img>.
+async function deliverVideo(daPath, opts) {
+  const steps = opts.publish ? ['preview', 'live'] : ['preview'];
+  const done = [];
+  for (const step of steps) {
+    const url = `${opts.hlxUrl}/${step}/${encodeURIComponent(opts.org)}/${encodeURIComponent(opts.repo)}/${encodeURIComponent(opts.branch)}/${encodePath(daPath)}`;
+    const { res, status, err, attempts } = await withRetries(() => fetch(url, { method: 'POST', headers: { authorization: `Bearer ${opts.token}` } }), { ...opts, retryStatuses: ADMIN_RETRYABLE });
+    await drain(res);
+    if (status < 200 || status >= 300) return { ok: false, step, status, err, attempts, done };
+    done.push(step);
+  }
+  return { ok: true, done };
+}
+
+// The file name as the preview API resolves it: lowercased, every run of characters other than a-z/0-9 turned
+// into one `-` (trimmed), the extension kept. A video stored under any other name uploads fine and then 404s on
+// preview (recorded: `main-mvisual_video01.mp4`). Folder segments resolve as is (checked: `media/Scope_Test/`
+// previews and delivers verbatim), so only the last segment is rewritten.
+export function webPath(name) {
+  const segs = name.split('/');
+  const last = segs.pop();
+  const dot = last.lastIndexOf('.');
+  const clean = (x) => x.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return [...segs, `${clean(dot > 0 ? last.slice(0, dot) : last)}${dot > 0 ? last.slice(dot).toLowerCase() : ''}`].join('/');
+}
+
+// ---- main ------------------------------------------------------------------------------------------
+
+async function pool(items, n, worker) {
+  const q = [...items];
+  const run = async () => { while (q.length) await worker(q.shift()); };
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, run));
+}
+
+function loadLedger(path) {
+  if (!existsSync(path)) return {};
+  try { const l = JSON.parse(readFileSync(path, 'utf8')); return l && typeof l === 'object' && !Array.isArray(l) ? l : {}; } catch (e) { usage(`ledger ${path} is not readable JSON: ${e.message} (move it aside to start a fresh ledger)`); }
+  return {};
+}
+
+async function main() {
+  const opts = parseArgs(process.argv);
+  const entries = opts.dir
+    ? (existsSync(opts.dir) && statSync(opts.dir).isDirectory() ? walk(opts.dir).map((e) => ({ ...e, source: null })) : usage(`--dir ${opts.dir} is not a directory`))
+    : readManifest(opts.manifest);
+  // Preflight: an expired JWT never reaches the network (recorded: an expired token left an 894-row batch
+  // failing file by file for 5.5 hours). Anything that is not a JWT with an exp is simply tried.
+  if (!opts.dryRun) {
+    const exp = jwtExpiry(opts.token);
+    if (exp !== null && exp * 1000 <= Date.now()) {
+      const ago = Math.max(1, Math.round((Date.now() - exp * 1000) / 60000));
+      console.error(`da-media-upload: ${tokenLabel(opts)} is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand(opts)}`);
+      process.exit(TOKEN_EXIT);
+    }
+  }
+  const ledger = loadLedger(opts.ledger);
+  // The ledger is shared by every uploader on the site (cluster subagents upload at once during a
+  // fan-out): persist takes the cross-process lock, re-reads the file on disk, lays this run's entries
+  // over it (ours win — they are the newest facts about the files we touched) and writes tmp + rename.
+  // Synchronous on purpose — concurrent workers in this process cannot cut in between read and rename.
+  const persist = () => {
+    if (opts.dryRun) return;
+    try {
+      mergeLedger(opts.ledger, ledger, { onBad: (e) => console.error(`da-media-upload: ledger ${opts.ledger} on disk is not readable JSON (${e.message}) — this run's entries are written over it`) });
+    } catch (e) { console.error(`da-media-upload: ${e.message}`); }
+  };
+  const counts = { uploaded: 0, skipped: 0, notImage: 0, tooLarge: 0, failed: 0, dry: 0 };
+  let halted = null;
+  // Set by the first 2xx from the admin API. Until then entries run one at a time (the single-flight loop
+  // below), so nothing else is in flight while the token is being proved.
+  let tokenAccepted = false;
+  const lines = [];
+  const say = (s) => { lines.push(s); console.log(s); };
+  const daPathOf = (e) => `media/${opts.scope}/${classify(e.name, null).video ? webPath(e.name) : e.name}`;
+  const contentUrlOf = (daPath) => `${opts.contentUrl}/${encodeURIComponent(opts.org)}/${encodeURIComponent(opts.repo)}/${encodePath(daPath)}`;
+  // What the author writes: the content.da.live URL for an image (the page preview rehosts it), the
+  // root-relative content path for a video (#161 — its content.da.live URL would reach visitors as a 401).
+  const authorUrlOf = (daPath, video) => (video ? `/${encodePath(daPath)}` : contentUrlOf(daPath));
+  const recordFailure = (e, what, why, extra = {}) => {
+    const daPath = daPathOf(e);
+    counts.failed += 1;
+    ledger[daPath] = { ...(ledger[daPath] || {}), status: 'failed', file: e.file, source: e.source, contentUrl: contentUrlOf(daPath), error: `${what} ${why}`.trim(), ts: new Date().toISOString(), ...extra };
+    say(`FAIL ${e.file} ${what}${why ? ` (${why})` : ''}`);
+  };
+  // A video is stored under its web name, so two different files (`Clip_A.mp4`, `clip-a.mp4`) can map to one DA
+  // path; the second PUT would overwrite the first and both OK lines would name the same path. The first file in
+  // the batch keeps the path; a later one FAILs before any request and writes no ledger entry (the key is the
+  // first file's).
+  const takenBy = new Map();
+  const collision = new Map();
+  for (const e of entries) {
+    if (classify(e.name, null).skip) continue;
+    const p = daPathOf(e);
+    const first = takenBy.get(p);
+    if (!first) takenBy.set(p, e.file);
+    else if (first !== e.file) collision.set(e, { path: p, first });
+  }
+
+  // A 401 that survived every retry (the PUT, or a video's preview/live POST) is the token, not this file: the
+  // batch halts (exit 3) and the file is left not attempted — never `failed` — so the same command resumes
+  // exactly here. Workers already in flight finish their own upload; nothing new starts.
+  const haltOn = (e, attempts, what) => {
+    say(`HALT ${e.file} ${what} (unauthorized through ${attempts} attempt${attempts === 1 ? '' : 's'} — ${tokenLabel(opts)} rejected; not recorded as failed, the re-run resumes here)`);
+    if (halted) return;
+    halted = `${tokenLabel(opts)} rejected (${what} through ${attempts} attempt${attempts === 1 ? '' : 's'} on ${e.file}${tokenAccepted ? ', after the token had been accepted earlier in this batch' : ', the lone first upload'}): ${refreshHint(opts)} and re-run the same command — the ledger skips what already uploaded: ${rerunCommand(opts)}`;
+    persist();
+  };
+
+  const worker = async (e) => {
+    if (halted) return;
+    const clash = collision.get(e);
+    if (clash) { counts.failed += 1; say(`FAIL ${e.file} name-collision (stored as ${clash.path}, which ${clash.first} already takes in this batch — rename one of them and re-run)`); return; }
+    const daPath = daPathOf(e);
+    const contentUrl = contentUrlOf(daPath);
+    const rec = ledger[daPath] || {};
+    const pre = classify(e.name, null);
+    if (pre.skip) { counts.skipped += 1; counts.notImage += 1; say(`SKIP ${e.file} ${pre.skip} (${pre.why})`); return; }
+    const authorUrl = authorUrlOf(daPath, pre.video);
+
+    let bytes = null;
+    if (existsSync(e.file) && statSync(e.file).isFile()) bytes = readFileSync(e.file);
+    // One skip path for a local and a fetched file: classify() on the bytes (an over-limit video).
+    const skipOn = (c) => { counts.skipped += 1; counts.tooLarge += 1; say(`SKIP ${e.file} ${c.skip} (${c.why})`); };
+    const local = bytes && classify(e.name, bytes);
+    if (local && local.skip) { skipOn(local); return; }
+    // A video counts as done only once delivered (previewed, and published unless --no-publish).
+    const delivered = !pre.video || (rec.delivered || []).includes(opts.publish ? 'live' : 'preview');
+    if (bytes && rec.status === 'uploaded' && rec.file === e.file && rec.size === bytes.length && delivered) { counts.skipped += 1; say(`SKIP ${e.file} already uploaded (ledger) -> ${rec.authorUrl || rec.contentUrl || authorUrl}`); return; }
+
+    if (opts.dryRun) {
+      counts.dry += 1;
+      say(`DRY ${e.file} -> ${authorUrl}${pre.video ? ` (video: ${opts.publish ? 'preview + publish' : 'preview'})` : ''}${bytes ? ` (${bytes.length} bytes)` : e.source ? ' (fetch from source first)' : ' (LOCAL FILE MISSING and no source)'}`);
+      return;
+    }
+
+    const fail = (what, why, extra = {}) => recordFailure(e, what, why, extra);
+
+    if (!bytes) {
+      if (!e.source) { fail('missing-local', 'no such file and the manifest names no source'); return; }
+      const got = await fetchSource(e.source, { ...opts, video: pre.video });
+      if (got.kind === 'bot-wall') { fail(`source ${got.status}`, 'bot wall: blocked when hot-linked, NOT missing — capture it in-page (extract keeps a local copy) and re-run; never omit'); return; }
+      if (got.kind === 'missing') { fail(`source ${got.status}`, 'missing at origin — try the rendition/delimiter repairs first, then omit; never substitute a placeholder'); return; }
+      if (got.kind === 'not-media-response') { fail(`source ${got.status}`, `answered ${got.contentType}, not ${pre.video ? 'video' : 'image'} bytes`); return; }
+      if (got.kind !== 'ok') { fail(`source ${got.status || got.kind}`, got.why || 'fetch failed'); return; }
+      if (!got.bytes) { skipOn(classify(e.name, { length: got.size })); return; }
+      bytes = got.bytes;
+      mkdirSync(dirname(resolve(e.file)), { recursive: true });
+      writeFileSync(e.file, bytes);
+    }
+
+    const c = classify(e.name, bytes);
+    if (c.skip) { skipOn(c); return; }
+    if (c.fail) { fail(c.fail, c.why); return; }
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
+    const { res, status, err, attempts } = await putMedia(bytes, c.type, e.name, daPath, opts);
+    if (status >= 200 && status < 300) {
+      await drain(res);
+      tokenAccepted = true;
+      const record = { status: 'uploaded', file: e.file, size: bytes.length, sha256, contentType: c.type, source: e.source, contentUrl, httpStatus: status, attempts, ts: new Date().toISOString() };
+      if (c.video) {
+        const d = await deliverVideo(daPath, opts);
+        if (!d.ok && d.status === 401) { haltOn(e, d.attempts, `${d.step} 401`); return; }
+        if (!d.ok) { fail(`${d.step} ${d.status || 'network'}`, `uploaded to DA but not delivered${d.err ? `: ${d.err}` : ''} — do not author it yet; re-run the same command`, { authorUrl, delivered: d.done }); return; }
+        Object.assign(record, { authorUrl, delivered: d.done });
+      }
+      counts.uploaded += 1;
+      ledger[daPath] = record;
+      const renamed = c.video && webPath(e.name) !== e.name ? `; stored as ${webPath(e.name)}, the name the preview resolves — update links that use ${e.name}` : '';
+      say(`OK ${e.file} -> ${c.video ? authorUrl : contentUrl}${c.video ? ` (video: ${record.delivered.join(' + ')}; author this root-relative path${renamed})` : ''}${attempts > 1 ? ` (after ${attempts} attempts)` : ''}`);
+      return;
+    }
+    if (status === 401) { await drain(res); haltOn(e, attempts, '401'); return; }
+    const body = res ? (await res.text().catch(() => '')).slice(0, 160).replace(/\s+/g, ' ') : '';
+    const why = status === 0 ? `network: ${err}` : status === 403 ? 'forbidden — the token has no write access to this org/repo (a source-CDN 403 is a different thing; see source fetch)' : status === 404 ? 'org/repo path not found on DA — check --org/--repo' : status === 413 ? 'payload too large' : body;
+    fail(String(status || 'network'), `${why}${attempts > 1 ? `; ${attempts} attempts` : ''}`, { httpStatus: status, attempts });
+  };
+
+  let sinceSave = 0;
+  const guarded = async (e) => {
+    // One file's exception (an unreadable local file, an unexpected fetch error) is that file's FAIL line
+    // and ledger entry — never the end of the batch with the ledger unsaved.
+    try { await worker(e); } catch (err) { if (!halted) recordFailure(e, 'error', String(err && err.message ? err.message : err)); }
+    if ((sinceSave += 1) % 5 === 0) persist();
+  };
+  // Single flight: entries run one at a time until the admin API has accepted the token (the first 2xx) or
+  // the batch halted on it. Only then does the pool open, so nothing else is in flight while the token is
+  // being proved. A dry run or a fully ledger-skipped batch never reaches the admin API and simply runs
+  // through this loop, with the same lines and counts as before.
+  let next = 0;
+  while (next < entries.length && !tokenAccepted && !halted) { await guarded(entries[next]); next += 1; }
+  await pool(entries.slice(next), opts.concurrency, guarded);
+  persist();
+
+  const notRun = halted ? entries.length - (counts.uploaded + counts.skipped + counts.failed) : 0;
+  console.log(`da-media-upload: ${entries.length} file(s) — ${counts.uploaded} uploaded, ${counts.skipped} skipped (${counts.notImage} not an image${counts.tooLarge ? `, ${counts.tooLarge} over the video limit` : ''}), ${counts.failed} failed${counts.dry ? `, ${counts.dry} dry-run` : ''}${notRun ? `, ${notRun} not attempted` : ''}${opts.dryRun ? '' : ` · ledger ${opts.ledger}`}`);
+  if (halted) console.error(`da-media-upload: ${halted}`);
+  process.exitCode = halted ? TOKEN_EXIT : counts.failed ? 1 : 0;
+}
+
+// Compare by real path: node resolves the entry's symlinks for import.meta.url but not for argv[1], so a
+// symlinked checkout or temp dir would otherwise turn the CLI into a silent no-op (exit 0, no OK lines —
+// which reads as "uploaded" and ships about:error images).
+function isMainModule() {
+  try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; }
+}
+if (process.argv[1] && isMainModule()) {
+  main().catch((e) => { console.error(`da-media-upload error: ${e.message}`); process.exit(USAGE_EXIT); });
+}

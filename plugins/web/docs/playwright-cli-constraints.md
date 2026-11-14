@@ -1,28 +1,26 @@
 # playwright-cli Constraints
 
-All web plugin skills use `playwright-cli` as their browser layer. This document
-covers constraints that affect skill authors — behaviours that differ from the
-Playwright API and will silently break your skill if you're not aware of them.
+Only `plugins/web/cli/src/driver/playwright-cli.mjs` talks to `playwright-cli`
+now; skills call the `web` CLI, which goes through that driver. This document is
+the driver's reference: behaviours of `playwright-cli` that differ from the
+Playwright API and break callers that are not aware of them. Skills use
+`playwright-cli -s <session> …` directly only as an escape hatch on a browser
+the `web` CLI opened.
 
-## File Path Restrictions
+## File Paths
 
-`playwright-cli` restricts all file I/O to the **project root** and the
-**`.playwright-cli/`** directory. Absolute paths outside these roots are denied
-at runtime with a `File access denied` error.
-
-Affected commands:
-- `screenshot --filename <path>`
-- `run-code --filename <path>`
-
-**Do not use `os.tmpdir()` or `/tmp/` for any file that playwright-cli reads or
-writes.** Use the output directory (which must be project-relative) or
-`.playwright-cli/` instead.
+Some `playwright-cli` versions restrict file I/O to the **project root** and the
+**`.playwright-cli/`** directory and deny other absolute paths with a
+`File access denied` error. 0.1.20 allows `/tmp/`, but skills cannot pin the
+user's version, so keep files you generate for playwright-cli (configs,
+temporary init scripts, screenshots) in the output directory or
+`.playwright-cli/`.
 
 ```js
-// ✗ Breaks — /tmp/ is outside allowed roots
+// ✗ Breaks on versions that restrict paths
 const configPath = join(tmpdir(), `my-skill-${process.pid}-config.json`);
 
-// ✓ Works — output dir is project-relative
+// ✓ Works everywhere — output dir is project-relative
 const configPath = join(outputDir, `.tmp-${process.pid}-config.json`);
 ```
 
@@ -36,14 +34,14 @@ argument, not a file path. Passing a file path as a positional argument causes a
 
 ```bash
 # ✗ Wrong — path is parsed as a CSS selector
-playwright-cli -s <session> screenshot /path/to/file.png
+playwright-cli screenshot /path/to/file.png
 
 # ✓ Correct — use --filename flag
-playwright-cli -s <session> screenshot --filename .playwright-cli/file.png
+playwright-cli screenshot --filename .playwright-cli/file.png
 ```
 
-The `-s <session>` flag is required. The path must be within the allowed roots
-(see above). After saving, use the `Read` tool to view the image.
+Without `-s` the command targets the default session. Keep the path inside the
+project or `.playwright-cli/` (see above), then view the saved image.
 
 ## eval Expression Constraints
 
@@ -55,6 +53,8 @@ The `-s <session>` flag is required. The path must be within the allowed roots
 - **IIFEs work** — `(function(){ ...; return value; })()` is a valid expression.
 - **Comma operator works** for chaining side effects:
   `(a.remove(), b.remove(), 'done')`
+- **Promises are awaited** — call async page functions directly:
+  `window.fn().then(r => JSON.stringify(r))`
 
 ```js
 // ✗ Silent failure — semicolons split into statements
@@ -67,17 +67,35 @@ playwright-cli eval "(a.remove(), b.remove(), 'done')"
 playwright-cli eval "(function(){ a.remove(); b.remove(); return 'done'; })()"
 ```
 
-## initScript Path Resolution
+## initScript Paths
 
-When building a `--config` JSON that includes `browser.initScript`, paths must
-also be within the allowed roots. Temp script files written to `/tmp/` will be
-rejected.
-
-Write initScript files to the output directory or `.playwright-cli/` and clean
-them up after the session closes.
+`browser.initScript` entries in a `--config` JSON are file paths. Use absolute
+paths, keep generated scripts in the output directory or `.playwright-cli/`
+(see File Paths). `.playwright-cli/` is playwright-cli's own scratch directory;
+clean up anything you put in the output directory.
 
 ## Session Naming
 
-Session names passed via `-s <name>` persist across calls in the same
-working directory. Always close sessions explicitly with
+Session names passed via `-s <name>` are global per user and machine
+(not scoped to the working directory) and persist until closed. Always close sessions
+explicitly with
 `playwright-cli -s <name> close` to avoid stale sessions blocking future runs.
+
+## `--json` Envelope
+
+The driver always passes `--json`. Output is one document:
+
+- Success from `eval` / `run-code`: `{ "result": "<json string>" }`. The value is
+  a JSON string inside the JSON, so parse twice (`JSON.parse(JSON.parse(out).result)`).
+- Failure: `{ "isError": true, "error": "<message>" }` (exit code can still be 0;
+  check `isError`).
+
+## `file:` URLs
+
+`file:` URLs are refused by playwright-cli. Serve local pages over HTTP
+(`node:http` on `127.0.0.1`) when a real page is needed, as the tests do.
+
+## `run-code` Sandbox
+
+`run-code` runs in a sandbox with no `setTimeout`. Wait with
+`page.waitForTimeout(ms)` instead.

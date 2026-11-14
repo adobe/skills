@@ -1,13 +1,11 @@
 #!/usr/bin/env node
 
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import https from 'https';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const CACHE_DIR = path.join(__dirname, '..', '.cache');
+const CACHE_DIR = path.join(os.tmpdir(), 'adobe-skills', 'docs-search');
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const USER_AGENT = 'AdobeSkills/1.0 (https://github.com/adobe/skills; skill:docs-search)';
 
