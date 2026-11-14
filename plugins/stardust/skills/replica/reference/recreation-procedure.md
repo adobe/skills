@@ -308,20 +308,24 @@ un-floating override.
 
 ## Fonts policy
 
-- **Same public source when available.** Extract intercepts the page's own
-  font loads; woff2 files that are freely licensed or already self-hostable
-  are self-hosted in the prototype (UC1-E1: same-source fonts, zero
-  substitutes needed, which is why the type matched exactly).
-- **Licensed commercial kits: substitute, never rehost** (prior art: the airport-site migration —
-  e.g. a domain-locked Monotype kit). Rules:
-  - Never re-host a commercial font on the new public domain.
-  - Pick a **metric-matched** substitute (or have the user supply their
-    licensed kit).
-  - Keep the brand family name FIRST in the font stack so a licensed
-    drop-in later wins without a code change.
-  - Surface the substitution to the user and log it in the progress ledger —
-    a substituted face is a permanent, justified gate residual (the width
-    probe will fork; record it as expected).
+Deploy § 4 principle 2 (#80) applies from the first archetype on:
+
+- **Self-host the source's own faces as-is.** Extract saves every font response under
+  `stardust/current/assets/fonts/`; ship those files — the same families, weights and styles — as
+  `@font-face` in the shared canon CSS (at delivery `styles/fonts.css`, per deploy § 4).
+- **Brand family FIRST in every stack; a metric-matched substitute only as the fallback entry
+  after it** — never a calibrated stand-in (no derived font files, no hand-tuned metrics), so a
+  licensed drop-in later wins without a code change.
+- **A `local()` source only for a face the gate's browser has.** The gate renders on Linux: a
+  fallback face whose `local()` names a macOS or Windows platform font resolves to nothing there,
+  the stack falls through to the browser default and every type metric forks. Name the
+  Linux-available metric fallbacks — Liberation Sans / Arimo (Arial class), Liberation Serif /
+  Tinos (Times class), Liberation Mono / Cousine (Courier class) — or self-host the fallback. The
+  capture names every dead face (`fontsFailed`, `source-fidelity-gate.md` § Hardening rule 14):
+  fix the stack before the next round.
+- **Proprietary faces raise deploy's licensing alert** (deploy § 4 principle 2, #80 — the banner,
+  `fonts/LICENSING.md`, the hand-off line; the remove path is deploy's) plus ONE register entry
+  for all of them (`preserve-direction.md` § 3).
 
 ## Asset harvest and the capture-state policy
 
@@ -365,13 +369,14 @@ instrument.** Two recurring cases:
   moving target. This is the one content class where confirm-justify stays
   legitimate under widget mirroring (§ Granularity parity).
 - **Live-data embeds** (stock tickers, YouTube/euroland-style iframe
-  widgets) — the winning move is loading the SAME live embed (same src) on
-  both sides so the moving data cancels out in the pixel diff, NOT freezing
-  a snapshot (confirmed in two independent 2026-08 sessions: a same-src
-  YouTube iframe canceled to zero; a euroland share ticker mirrored same-src
-  stopped contributing). A frozen snapshot guarantees a permanent residual
-  the size of the widget; a mirrored live embed usually zeroes out, and any
-  residual left (frame-timing skew) is logged as permanent.
+  widgets) — load the SAME live embed (same src) on both sides so the
+  moving data cancels out in the pixel diff, NOT a frozen snapshot (a
+  same-src player and a share ticker each zeroed out, recorded). A snapshot
+  guarantees a permanent residual the size of the widget; any residual left
+  (frame-timing skew) is logged as permanent. Same src, later mount: a
+  player is created after first paint (`../../deploy/SKILL.md` #157) — the
+  gates capture a settled page, so pixels are unchanged; when the source
+  loaded it eagerly, note the deferral in the progress ledger.
 - **Randomized decorative elements** (inline positions/paths regenerated per
   page load — generative line art, particle fields): the live side never
   pixel-matches ITSELF across captures, so no prototype can zero it out.

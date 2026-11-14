@@ -95,20 +95,51 @@ function hideScript(rules) {
 const withoutTypes = (recipe, skip) =>
   Object.fromEntries(Object.entries(recipe).filter(([type]) => !skip.includes(type)));
 
+// `"env:NAME"` in these fields reads the value from the environment, so a recipe can name a
+// remote browser endpoint without holding its credentials.
+const ENV_REF = /^env:([A-Za-z_][A-Za-z0-9_]*)$/;
+
+function fromEnv(path, field, value, env) {
+  const name = typeof value === 'string' && value.match(ENV_REF)?.[1];
+  if (!name) return value;
+  const resolved = env[name];
+  if (!resolved) {
+    throw new CliError('USAGE', `recipe ${path}: ${field} reads ${name}, which is not set`, {
+      hint: `export ${name} before running web`,
+    });
+  }
+  return resolved;
+}
+
+/** The probe config with `env:NAME` references in cdpEndpoint and cdpHeaders resolved. */
+function resolveEnvRefs(path, config, env) {
+  if (!config) return config;
+  const out = { ...config };
+  if ('cdpEndpoint' in out) out.cdpEndpoint = fromEnv(path, 'cdpEndpoint', out.cdpEndpoint, env);
+  if (isObject(out.cdpHeaders)) {
+    out.cdpHeaders = Object.fromEntries(
+      Object.entries(out.cdpHeaders).map(([k, v]) => [k, fromEnv(path, `cdpHeaders.${k}`, v, env)]),
+    );
+  }
+  return out;
+}
+
 /**
  * Turn a recipe into browser launch options. Types in `skip` are ignored: recording a type
  * must not replay it.
+ * `env:NAME` in the probe config's cdpEndpoint or cdpHeaders values is read from `env`.
  * @param {string} path
- * @param {{ skip?: string[] }} [options]
+ * @param {{ skip?: string[], env?: NodeJS.ProcessEnv }} [options]
  * @returns {{ config: object | undefined, persistent: boolean, initSources: string[] }}
  */
-export function loadRecipe(path, { skip = [] } = {}) {
+export function loadRecipe(path, { skip = [], env = process.env } = {}) {
   const { probe = [], overlays = [] } = withoutTypes(readRecipe(path), skip);
   const initSources = [];
   if (probe[0]?.stealth) initSources.push(loadBundle('stealth-init.js'));
   const rules = overlays.flatMap((entry) => entry.rules ?? []);
   if (rules.length > 0) initSources.push(hideScript(rules));
-  return { config: probe[0]?.config, persistent: probe[0]?.persistent === true, initSources };
+  const config = resolveEnvRefs(path, probe[0]?.config, env);
+  return { config, persistent: probe[0]?.persistent === true, initSources };
 }
 
 /**
@@ -121,4 +152,17 @@ export function loadRecipe(path, { skip = [] } = {}) {
 export function resolveLaunch(recipePath, explicit = {}, options = {}) {
   const set = Object.fromEntries(Object.entries(explicit).filter(([, v]) => v !== undefined));
   return { ...(recipePath ? loadRecipe(recipePath, options) : {}), ...set };
+}
+
+/**
+ * Copy of a Playwright config with extra launchOptions / contextOptions merged in.
+ * @param {object | undefined} config
+ * @param {{ launchOptions?: object, contextOptions?: object }} extra
+ * @returns {object}
+ */
+export function extendConfig(config, { launchOptions, contextOptions } = {}) {
+  const merged = { ...config };
+  if (launchOptions) merged.launchOptions = { ...merged.launchOptions, ...launchOptions };
+  if (contextOptions) merged.contextOptions = { ...merged.contextOptions, ...contextOptions };
+  return merged;
 }

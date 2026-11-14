@@ -76,6 +76,20 @@ aio app db provision --region <amer|apac|emea|aus>
 npm install @adobe/aio-lib-db
 ```
 
+For existing apps, inspect the dependency, lockfile and installed package before installing; preserve ranges and pins.
+
+For TypeScript or checked JavaScript, check actual declaration resolution, not just the version (package types first appeared in 1.1.0):
+
+- **Types resolve:** prefer package declarations, otherwise reuse compatible application declarations. Report conflicts without silently changing application declarations.
+- **No types resolve:** recommend a typed release, but require approval before dependency or lockfile changes. To keep the installed version, add this comment immediately above each DB import reporting TS7016, including copied asset imports:
+
+```ts
+// @ts-expect-error -- Installed aio-lib-db has no resolvable TypeScript declarations.
+import { init as initDb } from "@adobe/aio-lib-db";
+```
+
+The fallback leaves DB APIs untyped. Keep strict checking; do not add ambient DB bridges, downgrade dependencies, or suppress unrelated errors. Compilation does not prove runtime compatibility.
+
 ## Step 3 — Understand intent
 
 Gather from the user:
@@ -89,6 +103,9 @@ Gather from the user:
 Add the action to a user-defined package in `src/commerce-extensibility-1/ext.config.yaml` (any name except `app-management`, which is reserved).
 
 > **`include-ims-credentials: true` is required on every DB action.** Without it, `aio-lib-db` has no IMS token to authenticate with and the connection fails at runtime (and the app installation fails if the action runs during install). Do not omit this annotation.
+>
+> Do not manually wire OAuth Server-to-Server credentials with `AIO_COMMERCE_AUTH_IMS_*` inputs.
+> That legacy fallback is deprecated and planned for removal in a future major release.
 
 ```yaml
 # src/commerce-extensibility-1/ext.config.yaml
@@ -100,7 +117,7 @@ runtimeManifest:
       actions:
         store-record:
           function: actions/store-record/index.js # relative to src/commerce-extensibility-1/
-          runtime: nodejs:24
+          runtime: nodejs:26
           web: "yes" # "yes" for a web action; "no" for an event/webhook action
           annotations:
             include-ims-credentials: true # REQUIRED for aio-lib-db auth
@@ -131,7 +148,7 @@ import { init as initDb } from "@adobe/aio-lib-db";
 export async function main(params: Record<string, unknown>) {
   let client;
   try {
-    // Resolve the injected AIO_COMMERCE_AUTH_IMS_* params, then mint a raw token string.
+    // Resolve credentials injected by include-ims-credentials, then mint a raw token string.
     const authProvider = getImsAuthProvider(resolveImsAuthParams(params));
     const token = await authProvider.getAccessToken();
     const db = await initDb({ token, region: "emea" }); // must match the manifest database.region
@@ -284,6 +301,8 @@ This is what adds the `installation` action to `ext.config.yaml`'s `app-manageme
 
 ## Step 8 — Validate
 
+Run the project's strict typecheck, including the storage runtime action. If adding a custom installation step, verify its root `installation.customInstallationSteps` registration produces a generated import of the configured script and that the actual compiler file list includes it. Preserve existing compiler includes and exclusions; do not add `scripts/**/*.ts` to compensate for missing registration.
+
 ```sh
 aio app build
 ```
@@ -294,7 +313,17 @@ A build failure points directly to the offending config field. To exercise the a
 
 - **Always close connections** in a `finally` block — leaked connections exhaust resources.
 - **Match the region** — the manifest `database.region` is the single source of truth; every `init()` call and the install step must use it (see the region callout in Step 1). A mismatch fails the connection silently from the caller's view.
-- **Use projections** (`.project({ field: 1 })`) and **indexes** (`createIndex`) for frequently queried fields; index fields must total ≤ 2048 bytes.
+- **Use projections** (`.project({ field: 1 })`) and **indexes** (`createIndex`) for frequently queried fields; index fields must total ≤ 2048 bytes. For public responses, prefer inclusion projections.
+
+  Filters select documents; projections select fields. Inclusion returns selected fields and `_id` by default; `_id: 0` is the only exclusion allowed alongside included fields. Otherwise, do not mix inclusion and exclusion.
+
+  ```ts
+  const cursor = client
+    .collection("records")
+    .find({ status: "active" })
+    .project({ _id: 0, title: 1, status: 1 });
+  ```
+
 - **Iterate large result sets with cursors** (`for await (const doc of collection.find(...))`) instead of `toArray()` to bound memory.
 - **Don't hardcode the region or secrets** — prefer `AIO_DB_REGION` and the injected IMS token over inline values.
 - **Prefer the most specific Adobe I/O library** in runtime actions over the `@adobe/aio-sdk` umbrella — e.g. `@adobe/aio-commerce-lib-auth` for IMS auth and `@adobe/aio-lib-core-logging` for the logger — to keep action bundles small.
@@ -327,7 +356,7 @@ A build failure points directly to the offending config field. To exercise the a
 
   See [assets/db-action.ts](assets/db-action.ts) for the full reference.
 
-- **Auth fails inside an installation step**: resolve the IMS auth params from `context.params` (`resolveImsAuthParams(context.params)`) — which carries the injected `AIO_COMMERCE_AUTH_IMS_*` credentials — not from `config`, which holds no credentials. Use `@adobe/aio-commerce-lib-auth`, not `@adobe/aio-lib-core-auth`: the latter's `generateAccessToken` expects `clientId`/`clientSecret` directly and cannot consume the injected params.
+- **Auth fails inside an installation step**: resolve the injected IMS auth params from `context.params` with `resolveImsAuthParams(context.params)` — not from `config`, which holds no credentials. Ensure the action is annotated with `include-ims-credentials: true`; manually wired `AIO_COMMERCE_AUTH_IMS_*` credentials are deprecated.
 - **Installation step fails to load (`must export a default function or object`)**: the script was authored as CommonJS. Author it as an ES module with `export default`; `module.exports` (or `module.exports.default`) surfaces through the framework's `import * as` loader as `.default.default` and fails validation.
 - **`createIndex` errors or has no effect**: it must be called on a collection object (`client.collection("name").createIndex({ field: 1 })`), not with a collection-name string. Get the collection first, then call `createIndex` on it.
 - **Custom installation step registered and deployed but never runs**: `init` wasn't re-run after registering the first install-requiring domain (Step 7) — no `installation` action, no install endpoint.

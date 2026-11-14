@@ -100,9 +100,17 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, overflow-<label>.txt; under
+# (live.png, build.png, diff-<label>.png, overflow-<label>.txt — a round deletes earlier rounds'
+# diff-*.png and vdiff-*/ dirs, their text and JSON stay (#156, disk); under
 # --gate-against-baseline also live.json, beside the frozen baseline.png + baseline.json; a
-# live capture also leaves live.capture.json, stitch-shot's record).
+# capture also leaves its record, live.capture.json / build.capture.json — stitch-shot's).
+#
+# Fonts (every round, both sides — source-fidelity-gate.md § Hardening rule 14): after the
+#   overflow line, one `gate.sh: fonts on the <live|build> capture — …` line per side from the
+#   capture record's fontsFailed — the DEAD FACE(S), `every declared face loaded`, or NOT CHECKED
+#   (null, or no readable record: an older stitch-shot copy, or a live.png from a round before
+#   the check). Under --gate-against-baseline the live side reads the frozen baseline's check.
+#   Information for the loop, never a verdict (gate-all fails its rows on the same records).
 #
 # Fail-loud contract: a stitch-shot bot challenge (exit 3 — an edge
 # interstitial or a 2xx denial page; the capture's one-line reason precedes
@@ -356,6 +364,10 @@ SW=$(grep -oE 'scrollWidth +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
 VP=$(grep -oE 'viewport +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
 [ -z "$SW" ] && { echo "gate.sh: overflow probe printed no root line ($OVF) — re-copy measure.mjs from the plugin; the assert needs its root line" >&2; exit 1; }
 
+# Disk (#156): only this round's diff image and vdiff dir stay; earlier rounds keep their text and JSON evidence.
+find "$DIR" -maxdepth 1 -name 'diff-*.png' ! -name "diff-$LBL.png" -delete
+find "$DIR" -mindepth 1 -maxdepth 1 -type d -name 'vdiff-*' ! -name "vdiff-$LBL" -exec rm -r {} +
+
 # pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
 node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"
 PIXEL_RC=$?
@@ -370,6 +382,22 @@ elif [ -n "$OVER" ]; then
 else
   echo "gate.sh: overflow assert at $W — build scrollWidth $SW = viewport → ok"
 fi
+
+# Fonts (header § Fonts): one line per side from the capture record, after the overflow line — the dead faces, every
+# face loaded, or NOT CHECKED (fontsFailed null, or no readable record). The live side of a --gate-against-baseline
+# round has no capture record (live.png is the frozen copy): its line reads baseline.json. Information, never a verdict.
+fonts_line() { # $1 side, $2 record, $3 the frozen baseline's record (live side only)
+  node -e 'const [side, rec, base] = process.argv.slice(1); const read = (f) => { try { return JSON.parse(require("fs").readFileSync(f, "utf8")); } catch { return null; } };
+    let j = read(rec); let from = "";
+    if (!(j && typeof j === "object" && "fontsFailed" in j) && base) { const b = read(base); if (b && Array.isArray(b.fontsFailed)) { j = b; from = " (the frozen baseline\x27s check)"; } }
+    const hint = side === "live" ? " — delete live.png to re-take it with the check" : " — re-copy stitch-shot.mjs (replica SKILL.md § Setup)";
+    if (!j || typeof j !== "object" || !("fontsFailed" in j)) console.log(`gate.sh: fonts on the ${side} capture — NOT CHECKED (no readable capture record at ${rec}${hint})`);
+    else if (!Array.isArray(j.fontsFailed)) console.log(`gate.sh: fonts on the ${side} capture — NOT CHECKED (${String(j.fontCheck || "the check could not run").replace(/^failed: /, "")}) — no face is known to have loaded`);
+    else if (j.fontsFailed.length) console.log(`gate.sh: fonts on the ${side} capture — DEAD FACE(S) ${j.fontsFailed.join(", ")}: the capture renders fallback type for them (a file that failed to fetch, or a local() source this browser cannot resolve — recreation-procedure.md § Fonts policy)${from}`);
+    else console.log(`gate.sh: fonts on the ${side} capture — every declared face loaded${from}`);' "$1" "$2" "$3"
+}
+fonts_line live "$DIR/live.capture.json" "$([ "$BASELINE" = 1 ] && echo "$DIR/baseline.json")"
+fonts_line build "$DIR/build.capture.json" ""
 [ "$FULL" = 1 ] || exit $PIXEL_RC
 # No pixel verdict (124 deadline, 1 error, 3 bot challenge, 4 identity): the probes would spend three
 # Chromiums on a round that already has to be re-run — say so in one line and exit with the pixel rc.

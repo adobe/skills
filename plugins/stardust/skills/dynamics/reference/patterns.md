@@ -91,7 +91,8 @@ fields; Escape closes; the target still serves standalone.
 import { loadCSS, loadSections } from './aem.js';
 export default async function openModal(href, { decorateMain, playerHosts = [] } = {}) {
   await loadCSS(`${window.hlx.codeBasePath}/styles/modal.css`);
-  const isMedia = playerHosts.some((h) => href.includes(h));
+  const url = new URL(href, window.location.href); url.hash = '';
+  const isMedia = url.protocol === 'https:' && playerHosts.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`));
   const dialog = document.createElement('dialog'); dialog.className = `modal modal--${isMedia ? 'large' : 'medium'}`;
   dialog.innerHTML = '<div class="modal__content"><div class="modal__header"><h2 class="modal__heading"></h2><button type="button" class="modal__close" aria-label="Close dialog">×</button></div><div class="modal__body"></div></div>';
   dialog.querySelector('.modal__close').onclick = () => dialog.close();
@@ -99,9 +100,9 @@ export default async function openModal(href, { decorateMain, playerHosts = [] }
   dialog.addEventListener('close', () => { document.body.classList.remove('modal-open'); dialog.remove(); });
   document.body.append(dialog); document.body.classList.add('modal-open'); dialog.showModal();
   const body = dialog.querySelector('.modal__body');
-  if (isMedia) { body.innerHTML = `<iframe src="${href.replace(/#modal$/, '')}&autoplay=true" allow="autoplay; encrypted-media; fullscreen" allowfullscreen title="Video"></iframe>`; return; }
+  if (isMedia) { url.searchParams.set('autoplay', 'true'); const f = document.createElement('iframe'); // never innerHTML (#157)
+    Object.assign(f, { src: url.href, title: 'Video', allowFullscreen: true, allow: 'autoplay; encrypted-media; fullscreen' }); body.append(f); return; }
   try {
-    const url = new URL(href, window.location.href); url.hash = '';
     const doc = new DOMParser().parseFromString(await (await fetch(`${url.pathname}.plain.html`)).text(), 'text/html');
     dialog.querySelector('.modal__heading').textContent = doc.querySelector('meta[name="modal-title"]')?.content || doc.querySelector('h1')?.textContent || '';
     doc.querySelectorAll('h1').forEach((h) => h.remove());
@@ -114,7 +115,8 @@ export default async function openModal(href, { decorateMain, playerHosts = [] }
 ## media-as-url
 
 **Intent.** The player URL is the content. **Contract.** A link to the vendor player URL carrying
-account, player and video id, plus `#modal` for overlays; inline via the site's video/embed block.
+account, player and video id, plus `#modal` for overlays; inline via the site's video/embed block,
+mounted after first paint (`../../deploy/SKILL.md` #157).
 Ids come from the detector's V rows **per page and per locale** (six of fourteen locale twins
 carried a different id), never from copy, never reused by path. Drive the probe from every
 target-less CTA, not a hand-made list. **Verify.** Playback, not presence: a vendor iframe needs a

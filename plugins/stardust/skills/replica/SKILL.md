@@ -2,7 +2,7 @@
 name: replica
 description: Same-design migration — re-platform a site to AEM Edge Delivery (or any clean front end) keeping its current design near pixel-perfect. Recreates key pages (one archetype per page type) as clean re-authored HTML/CSS (never DOM copies), verifies each against the live site with a measured source-fidelity gate (structural + visual + stitched pixel diff per breakpoint), then hands off to migrate/deploy/rollout for site-wide delivery (subsumes prepare-migration's prep cascade — never chain the two). The only permitted design changes are entries in an explicit inconsistency register. Use when the user says "migrate this site keeping its current design", "same-design migration", "pixel-perfect replatform to AEM", or "keep the design, change the platform". NOT for redesigns — those are the stardust core pipeline (direct/prototype) or uplift.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:replica — same-design migration
@@ -67,15 +67,12 @@ eyeballing.
    own location.
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
-   `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs) to `stardust/scripts/stardust/`, the migrate
-   skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
-   AND the whole
-   `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
-   import diff-profiles.mjs, and ALL live-target hardening — including
-   stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
-   from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
-   keep the two dirs siblings). Never copy into the project-root
+   `stardust/scripts/replica/`, the master skill's whole
+   `../stardust/scripts/` dir to `stardust/scripts/stardust/`, the
+   migrate skill's `../migrate/scripts/` (migrate.mjs) to
+   `stardust/scripts/migrate/`, AND the whole `../diff/scripts/` dir to
+   `stardust/scripts/diff/` (the gates import its diff-profiles.mjs and
+   image-signature.mjs; keep the dirs siblings). Never copy into the project-root
    `scripts/` — that is the EDS boilerplate's directory (master skill
    § Artifacts, the write boundary).
 
@@ -88,7 +85,9 @@ section per call); captured CSS through `css-rules.mjs`, capture JSON through
 `json-query.mjs` (values that feed a command from `--tsv`/`--path`, never the
 table), captured HTML through `html-slice.mjs`; instrument output through
 `run-bg.mjs wait` and `log --grep`, never `cat`; live-vs-prototype boxes
-through `measure.mjs`, never an authored probe; images one crop per fact,
+through `measure.mjs`, never an authored probe; any other script that opens
+a page follows the recipe in `../stardust/SKILL.md` § Setup, step 7; images
+one crop per fact,
 never a stitched page or the live/build/diff triplet (the extract thumbnail,
 `thumb.mjs`, is the one exception); script flags from
 `../stardust/reference/scripts-index.md` first, then `--help`, never the
@@ -269,7 +268,7 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
-# --headed in any instrument = the window-free real-Chrome stealth tier (#125); STARDUST_HEADED_WINDOW=1 is the only way to a window.
+# Every instrument runs real Chrome headless with its real user agent and client hints (#151); existing automation-signal handling stays on unless STARDUST_STEALTH=0; STARDUST_HEADED_WINDOW=1 opens the --headed window (#125).
 # gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL). Rounds run in
 # the BACKGROUND: start every round at once (the slots pace the Chromiums — no `sleep N;` staggering),
 # then `wait` prints verdict lines only; exit 75 = still going → `wait` again as your NEXT step, never
@@ -327,9 +326,10 @@ in the foreground, or two as parallel tool calls in one turn, is the same
 blocked step (reference doc § Iteration discipline).
 
 **Hardening (each is a recorded false-measurement trap — see the reference
-doc for the full list):** real-Chrome UA **plus the standard request
-headers** on every capture (built into the shared
-`diff/scripts/live-session.mjs`); a challenge/blocked interstitial or a
+doc for the full list):** real Chrome headless with **its own identity plus
+the standard request headers** on every capture, live navigations paced per
+host (built into the shared `skills/stardust/scripts/live-session.mjs`); a
+challenge/blocked interstitial or a
 2xx denial page **fails loud (exit 3)**, never measured — escalate with
 `--headed`, and a site that still blocks needs crawl.mjs-class capture;
 `domcontentloaded` on live targets, never `networkidle`;
@@ -347,7 +347,7 @@ scrims invisible to computed styles (recover by per-row luminance fitting).
 
 The live-target hardening ships as flags on the diff scripts (`--ua`,
 `--wait-until`, `--dismiss`, `--headed`, `--locale`, visual-diff `--main`)
-backed by `live-session.mjs` — copy the scripts and pass flags; a project
+backed by the shared `skills/stardust/scripts/live-session.mjs` — pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 
@@ -471,11 +471,8 @@ inconsistency register, `progress.json` (one map: `types.<archetype>` —
 page type, iterations used, per-breakpoint gate results, residuals, motion
 inventory — beside `gate-evidence.mjs`'s `siblings` / `migrate`; extended
 per entry, never replaced), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
-The delivery gate (#125) adds `gates/all-<width>/` — one dir per deployed
-page (`origin.png`, `eds.png`, `diff.png`, `pixel.json`, `content.json`,
-`clip.json`, `units.json`), `summary.{json,md}`, `runs/` for `--only` runs and
-the documented sidecars (`masks.json`, `overrides.json`, `clip-allow.json`,
-`presence.json`, `units.json`).
+The delivery gate (#125) adds `gates/all-<width>/`: one dir per deployed page,
+`summary.{json,md}`, `runs/` and the sidecars (`gate-all.mjs --help`).
 Phase 5 adds three files under `stardust/rollout/`: `progress.json` (the
 C-deliver unit ledger — status, gates and verdict per unit),
 `foundation-freeze.json` (the sha256 manifest of the frozen foundation) and
@@ -510,7 +507,7 @@ stardust/
 │   ├── breakpoint-map.md               ← source → target breakpoint map (only with --target-breakpoints)
 │   ├── progress.json                   ← per-page-type ledger: iterations, gate results, residuals, motion inventory
 │   ├── motion/<slug>.json              ← motion-observe evidence
-│   └── gates/<slug>-<width>/           ← live.png, proto.png, diff.png, probe outputs per iteration
+│   └── gates/<slug>-<width>/           ← live.png, build.png, the latest round's diff, probe outputs per round
 ├── migrated/                           ← from migrate (Phase 5)
 └── rollout/                            ← from rollout (Phase 5); coverage/, plan.json … per its SKILL.md
     ├── progress.json                   ← C-deliver unit ledger: status, gates, verdict per unit

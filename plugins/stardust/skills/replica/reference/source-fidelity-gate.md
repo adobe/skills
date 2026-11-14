@@ -523,18 +523,28 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 Each of these was hit live; skipping one silently corrupts the measurement
 rather than erroring.
 
-1. **Real-Chrome UA + the standard request headers on every capture and
-   probe.** The default HeadlessChrome UA can receive a Cloudflare managed
-   challenge, and the probe then **measures the challenge page as the
-   source** (3 headings, "Performing security verification" — it diffs
-   cleanly, wrongly). And the UA alone is NOT sufficient: field-proven
-   (F-R1, a nonprofit site), a real-Chrome UA with Playwright's minimal default
-   headers still got HTTP 403 from Akamai; adding the standard set every
-   real Chrome sends (`Accept`, `Accept-Language`,
-   `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced HTTP 200 — Akamai
-   bot-manager fingerprints on the *absence* of those headers, not just the
-   UA. All three instruments now send both by default via the shared
-   `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
+1. **Real Chrome presenting its own identity + the standard request headers
+   on every capture and probe.** Every live instrument launches the installed
+   Chrome headless (`launchLiveBrowser`; bundled Chromium only when Chrome is
+   missing, said on stderr), presents its user agent without the headless token,
+   and derives Chrome-tier client hints from its version; bundled hints ride (#151).
+   Main's automation-signal handling stays on: every context gets the `navigator.webdriver`
+   spoof and the headed tier its launch flags; `STARDUST_STEALTH=0` turns both off.
+   The standard set (`Accept`, `Accept-Language`, `Upgrade-Insecure-Requests`, `sec-ch-ua*`)
+   avoids the missing-header fingerprint (F-R1). Every instrument sends it by default via the
+   shared `skills/stardust/scripts/live-session.mjs`; `--ua` states a caller's identity
+   instead. Live navigations to one host share cross-process pacing
+   (`STARDUST_LIVE_PACE_MS`, default 1000 ms) and an in-flight cap
+   (`STARDUST_LIVE_MAX_PARALLEL`, default 2), with
+   `STARDUST_LIVE_MAX_WAIT_MS` (default 300000; 0 disables) bounding slot waits, even during a hold;
+   bookkeeping lock waits cap at 10 s and failures warn once per host, then proceed unthrottled.
+   Transport response marks prevent duplicate challenge accounting. Bot signals reduce the cap to one
+   and back off the pace: edge challenges, denial pages, any 429, a 503 with `Retry-After`, and post-answer timeout or
+   connection errors; 50 clean navigations recover one pace step, one more window the parallelism, and the
+   backoff is forgotten `STARDUST_LIVE_STATE_TTL_MS` after the last signal; `Retry-After` holds are capped at 120 s.
+   0 disables either limit, not holds, and
+   fresh contexts reuse repository-scoped OS-temp browser state for up to
+   `STARDUST_LIVE_STATE_TTL_MS` (default 12 hours).
    The header set rides **document requests only** (F-B2, financial-services site):
    forcing it on every request makes cross-origin CORS-mode webfont fetches
    non-simple and kills them with `net::ERR_FAILED` — the capture then
@@ -613,7 +623,7 @@ rather than erroring.
 12. **A challenge/blocked response FAILS LOUD — it is never measured.** Every
     live instrument detects bot-management interstitials on every
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
-    403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
+    403/429/503 with a Cloudflare/Akamai/F5/Imperva/CloudFront-AWS WAF edge signature) and
     exits **3** with a `BotChallengeError` naming the URL and the marker.
     Recorded (luggage retailer): Akamai served "Access Denied" to the headless
     instruments — which, without this rule, would have silently measured
@@ -623,8 +633,10 @@ rather than erroring.
     reads the page (`pageDenial` owns what counts) and throws the
     same error (marker `HTTP <status> denial page — …`, "origin blocked");
     stitch-shot reads once more after its dismissal sweeps and leaves no PNG
-    and no `capture.json`. The escalation ladder: default (UA + standard headers) → `--headed`
-    (stealth real Chrome, same tier as crawl.mjs's fallback) → if STILL
+    and no `capture.json`. The escalation ladder: default (real Chrome, its own
+    identity + standard headers, paced) → `--headed` (the same browser plus the
+    challenge-solve window and existing launch flags, window-free; `STARDUST_STEALTH=0` disables
+    automation-signal handling, while `STARDUST_HEADED_WINDOW=1` opens a window) → if STILL
     blocked, the site needs crawl.mjs-class capture and **the gate must
     not silently degrade** — record the breakpoint as gate-blocked in the
     ledger and surface it to the user; a gate that can't read the live
@@ -651,7 +663,11 @@ rather than erroring.
     "one-line-off" defects vanished). stitch-shot now checks after
     `document.fonts.ready` for declared faces with FontFace status `error`
     and warns loudly with the family names; mirror the check in any ad-hoc
-    capture. On the warning, decide before gating: load the face in a real
+    capture. The capture record carries the dead faces as `fontsFailed`
+    (`null` = the check could not run — never a pass; stitch-shot's
+    `deadFontFaces` owns the rule, `recreation-procedure.md` § Fonts policy
+    the fix); gate.sh prints it per side, gate-all fails the row. On the
+    warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
     capture defect: fix the instrument, and the poisoned runs don't consume
     the iteration cap per § Iteration discipline); if it fails there too,
@@ -661,8 +677,9 @@ rather than erroring.
 
 The four manual adaptations this section used to prescribe are upstreamed
 into the shipped scripts. All live-target hardening lives in one shared
-module — `diff/scripts/live-session.mjs` (UA + standard headers, challenge
-fail-loud, overlay dismissal, headed-stealth escalation) — and the diff
+module — `skills/stardust/scripts/live-session.mjs` (the browser's own identity + standard
+headers, per-host pacing, challenge fail-loud, overlay dismissal, `--headed`
+escalation) — and the diff
 scripts expose it as flags:
 
 ```bash
@@ -798,7 +815,7 @@ every `deployed` page in `stardust/state.json`, the stitched captures and pixel-
 archetype gate PLUS two DOM probes that load both pages in the same window-free real-Chrome tier
 and settle them the same way (`measure-live.mjs`), and writes
 `stardust/replica/gates/all-<width>/<slug>/{origin,eds,diff}.png + pixel.json + content.json +
-clip.json [+ units.json]` and `summary.{json,md}`. **Verdict, per page — all four:**
+clip.json [+ units.json]` and `summary.{json,md}` (a passed page keeps no PNG, #156). **Verdict, per page — all four:**
 
 1. **pixel** — overlap % ≤ `--threshold` (default 10).
 2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see
