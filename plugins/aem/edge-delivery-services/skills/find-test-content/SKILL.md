@@ -3,7 +3,7 @@ name: find-test-content
 description: "Use this when you need real pages that already use a specific block or block variant on an AEM Edge Delivery Services site (local dev, `.aem.page` or `.aem.live`): to audit usage before removing, renaming or restyling a block, or to find real pages to regression-test a change when the block has no library test page. For creating or cloning local test pages use aem-cli; for importing an external URL use page-import; for searching Adobe's Block Collection or Block Party use block-collection-and-party."
 license: Apache-2.0
 metadata:
-  version: "2.0.0"
+  version: "1.2.3"
 ---
 
 # Find Pages That Use a Block
