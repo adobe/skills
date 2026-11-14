@@ -16,7 +16,7 @@
  * itself is slow, findings are downgraded to info (a degraded measurement
  * window must not read as a site regression).
  */
-import { loadPlaywright, finding, pageUrl, attachOriginAuth } from '../lib.mjs';
+import { openBrowser, newContext, goto, finding, pageUrl, attachOriginAuth } from '../lib.mjs';
 
 const BUDGET_TRANSFER_KB = 800;
 const BUDGET_JS_KB = 250;
@@ -110,12 +110,11 @@ export async function run(ctx) {
   }
   const sev = (s) => (degraded ? 'info' : s);
 
-  const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: 'plain' });
   const reps = representatives(inventory, opts.perfPages || 10);
 
   for (const p of reps) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    const context = await newContext(browser, { viewport: { width: 1440, height: 900 } });
     await attachOriginAuth(context);
     const page = await context.newPage();
     const client = await context.newCDPSession(page);
@@ -130,7 +129,7 @@ export async function run(ctx) {
     const requests = collectRequests(page, client);
 
     try {
-      await page.goto(pageUrl(base, p.url || p.path), { waitUntil: 'load', timeout: 60000 });
+      await goto(page, pageUrl(base, p.url || p.path), { waitUntil: 'load', timeout: 60000 });
     } catch {
       findings.push(finding('perf', 'load-timeout', sev('warn'), p.path, 'page did not fire load within 60s'));
       await context.close();

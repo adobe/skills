@@ -4,6 +4,9 @@ description: Use when the user wants to subscribe to Adobe I/O Events, create an
 license: Apache-2.0
 ---
 
+**Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).
+
+
 # I/O Events Registration Flow
 
 Guide the user through creating an event registration to receive events from Adobe services.
@@ -21,9 +24,7 @@ Guide the user through creating an event registration to receive events from Ado
    - Call `get_projects` with `filterBy: "me"` → show as numbered list → user picks project.
 
    **If new project:**
-   - Ask for a **title** only. Derive `name` automatically (strip non-alphanumeric, camelCase, truncate to 20 chars).
-   - Call `create_project` with `projectType: "default"`, the derived `name`, and title.
-   - The response returns `projectId` and `workspaceId` directly — the default workspace is **Production**. Use these directly.
+   - Invoke `dev-console-create-project` and reuse its returned `projectId` and workspace context directly. A default project has a single **Production** workspace; an App Builder template project has **Production** and **Stage**, so ask the user which one to use unless they already said.
 
 3. For existing projects: call `list_workspaces` → auto-select if only one workspace (Production), otherwise ask user to pick.
 
@@ -138,15 +139,15 @@ How would you like to receive events?
 
 ---
 
-### Step 6 — Registration name
+### Step 6 — Resolve registration metadata
 
-Ask: *"What would you like to name this event registration?"*
+Apply the [shared naming rules](references/common-rules.md#names-titles-and-descriptions).
 
 ---
 
 ### Step 7 — Create registration
 
-One `create_event_registration` call for the delivery type the user picked. Use `consumerOrgId`, `projectId`, `workspaceId`, `client_id`, `events_of_interest`, `enabled: true`.
+One `create_event_registration` call for the delivery type the user picked. Use `consumerOrgId`, `projectId`, `workspaceId`, `client_id`, `name`, optional `description`, `events_of_interest`, `enabled: true`.
 
 | Delivery | `delivery_type` | Extra fields |
 |---|---|---|
@@ -369,13 +370,9 @@ Always prefer fetching from official docs over guessing.
 
 ## Rules
 
-- **Do not assume anything not explicitly described in this skill** — if a behavior, field, or API detail is unclear or not covered here, call `search_adobe_docs` to look it up in official Adobe documentation before proceeding.
-- Always show name and ID together — never show a raw ID alone
-- Never show `client_secret` values
 - Use **`patch_event_registration`** for targeted changes (enable/disable, rename, change webhook URL)
 - Use **`update_event_registration`** when changing multiple fields at once (events, delivery type, etc.)
 - JSON Patch path examples: `"/enabled"`, `"/name"`, `"/webhook_url"`, `"/delivery_type"`
-- Never guess `event_code` or `provider_id` — always fetch from the API
 - Use `providerMetadata.type` to determine valid credential types — never offer credential types not supported by the provider
 - Only create one registration — the delivery type the user explicitly chose
 - A registration can include events from multiple providers — if the user wants to add more providers to an existing registration, use the **Add Event Providers to Existing Registration** flow (`update_event_registration`); if they explicitly want a new separate registration, proceed with the main creation flow

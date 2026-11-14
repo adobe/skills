@@ -4,6 +4,9 @@ description: Use when the user asks any question about Adobe developer products,
 license: Apache-2.0
 ---
 
+**Mandatory prerequisite:** Before starting this skill, read and apply [Common Skill Rules](references/common-rules.md).
+
+
 # Search Adobe Developer Docs
 
 Retrieve grounded answers from official Adobe developer documentation. This skill is a **retriever** — passages are fetched and returned for you to synthesize into a final answer. Do not answer from training knowledge alone.
@@ -50,7 +53,7 @@ Sources:
 
 **Zero results:**
 
-Tell the user no documentation was found and suggest:
+Tell the user no documentation was found and suggest rephrasing or broadening the query. If offering collection scopes, first reuse or call `list_doc_collections` and use only returned collection names; omit that suggestion if none are available:
 ```
 No results found for "{query}". Try:
 - Rephrasing with different keywords
