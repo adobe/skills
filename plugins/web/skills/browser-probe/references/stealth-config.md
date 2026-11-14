@@ -75,12 +75,12 @@ or for scripts using Playwright API directly.
 
 ## Provider Signature Table
 
-Maps observable signals (from `playwright-cli network` response headers and
-page content) to CDN bot detection providers and typical remedies.
+Maps observable signals (from `playwright-cli response-headers 1` main-document
+headers and page content) to CDN bot detection providers and typical remedies.
 
 | Signal | Provider | Confidence | Typical fix |
 |--------|----------|------------|-------------|
-| `server: AkamaiGHost` or `server: AkamaiNetStorage` | Akamai | medium | System Chrome (`--browser=chrome`) — TLS fingerprint |
+| `server: AkamaiGHost`, `server: AkamaiNetStorage`, or `akamai-grn` header | Akamai | medium | System Chrome (`--browser=chrome`) — TLS fingerprint |
 | `bm_sz` cookie in `set-cookie` | Akamai Bot Manager | high | System Chrome — TLS fingerprint |
 | `_abck` cookie in `set-cookie` | Akamai Bot Manager | high | System Chrome — TLS fingerprint |
 | `stealth` blocked + `stealth-ua` succeeds (no provider headers) | CloudFront UA filter | high | UA override (`--user-agent` launch arg) |

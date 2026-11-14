@@ -18,7 +18,7 @@ export default defineConfig({
       webhook: {
         batch_name: "my_app", // [a-zA-Z0-9_]+ only — no hyphens or dots
         hook_name: "validate_product_save", // [a-zA-Z0-9_]+ only — no hyphens or dots
-        method: "POST", // HTTP method
+        method: "POST", // "POST", "PUT", "DELETE", or "GET"
         webhook_method: "plugin.magento.catalog_product.save", // Commerce operation to intercept
         webhook_type: "before", // "before" or "after"
         // timeout: 5000,                  // optional: max ms to wait (positive integer)

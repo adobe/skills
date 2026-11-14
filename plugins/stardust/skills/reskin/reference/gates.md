@@ -57,8 +57,8 @@ snapshot.
 
 **The gate re-crawls the LIVE source at gate time — so its live
 navigation is hardened exactly like the capture's**, via the shared
-`live-session.mjs` (real-Chrome UA + the standard request headers —
-the UA alone still 403s on Akamai-class bot managers —
+`live-session.mjs` (real Chrome's own identity + the standard request headers —
+a bare context still 403s on Akamai-class bot managers —
 `domcontentloaded` on live targets, challenge detection). This is the
 byte gate's own correctness: a gate that silently measured a
 challenge interstitial or a degraded UA-served document as the
@@ -66,8 +66,6 @@ source would pass/fail the render against the wrong reference. A bot
 challenge exits **3** (distinct from 1=FAIL, 2=setup), never
 measured; a non-challenge HTTP ≥ 400 exits 2. Escalate bot-managed
 sites with `--headed`; pin geo-redirecting sources with `--locale`.
-The reskin scripts resolve `live-session.mjs` from the diff scripts
-copied alongside (`stardust/scripts/diff/`, SKILL.md § Setup).
 Local/file targets keep the legacy `networkidle` path — file-path
 sources and rendered pages behave as before.
 
@@ -95,8 +93,8 @@ localizes any failure to a named slot. It asserts, from the model:
 
 Live `--rendered` targets (a staged deploy on a real host) navigate
 via the same shared `live-session.mjs` hardening as its siblings
-(real-Chrome UA + standard headers, `domcontentloaded`, challenge
-detection, webdriver spoof; `--ua` / `--wait-until` / `--headed` /
+(real Chrome's own identity + standard headers, `domcontentloaded`,
+challenge detection; `--ua` / `--wait-until` / `--headed` /
 `--locale` flags). A byte-adjacent gate must never measure a
 challenge interstitial or an error page: a bot challenge exits **3**
 (never measured; escalate with `--headed`), a non-challenge
@@ -322,7 +320,7 @@ check, and a human-readable verdict (`accepted` | `needs-owner` |
   in `_provenance` and echoed in gate report headers — check them
   when a gate result looks impossible.
 
-## Relationship to stardust:diff
+## Relationship to the stardust `diff` skill
 
 `../../diff/SKILL.md`'s two probes (pixel + structural) remain the
 **build-side** check after Phase 6 deploys the page to EDS — run them

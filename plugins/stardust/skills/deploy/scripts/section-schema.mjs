@@ -32,17 +32,36 @@
  *     --width <px>     viewport width (default 1280)
  *     --profile <p>    eds | generic — eyebrow classifier thresholds (default eds)
  *
+ * Writes: only --out <file> when given (parent directories are created; a one-line
+ * section summary then goes to stdout); without --out the schema JSON is stdout.
+ *
  * The prototype must be RENDERABLE (serve static prototypes from their own dir;
  * pre-render JSX first — deploy SKILL.md Step 1). file:// works when the
  * prototype's CSS is inline.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus */
-import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import { resolveProfile } from './diff-profiles.mjs';
 import { inventory, editableInventory } from './content-inventory.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
+
+// the browser front door is loaded only past the --help guard, so --help answers on a checkout without it.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => fs.existsSync(u));
+if (!BROWSER) {
+  console.error('section-schema: browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { openBrowser, newPage, goto } = await import(BROWSER.href);
 
 function parseArgs(argv) {
   const [, , url, ...rest] = argv;
@@ -117,13 +136,13 @@ async function main() {
     process.exit(1);
   }
   const prof = resolveProfile(opts.profile);
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: 'plain' });
   let sections;
   try {
     // reducedMotion matches content-diff's grab(): all three gates must inventory
     // the same settled DOM, or an entrance animation flips a role across gates.
-    const page = await browser.newPage({ viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+    const page = await newPage(browser, { viewport: { width: opts.width, height: 1000 }, reducedMotion: 'reduce' });
+    await goto(page, url, { waitUntil: 'networkidle', timeout: 60000 });
     await page.waitForTimeout(1200);
     await page.evaluate(async () => {
       for (let y = 0; y < document.body.scrollHeight; y += 600) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 40); }); }

@@ -14,6 +14,7 @@ allowed-tools: adobe_mandatory_init asset_inline_preview asset_preview_file asse
 metadata:
   version: 1.0.1
   visibility: public
+  surface: [claude]
 ---
 
 # InDesign Data Merge Skill

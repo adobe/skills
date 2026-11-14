@@ -1,16 +1,17 @@
 ---
 name: wf-planning-solution-architect
 description: >-
-  Expert guidance for architecting and troubleshooting Adobe Workfront Planning (WFP, also called
+  Expert guidance for architecting and troubleshooting Adobe Workfront Planning (WFP, aka
   "Maestro"): workspace and record-type design, record connections and hierarchies, formula fields,
   object and connection limits across Select/Prime/Ultimate tiers, the Planning API (filtering,
-  bulk actions, workspace builds), Fusion, AI Assistant, GenStudio, Canvas Dashboards, views,
-  access/licensing, and request forms. Use this skill whenever the user asks about Workfront Planning
-  or Maestro: designing or building a workspace, connecting record types, fixing a broken formula,
-  hitting or asking to raise a limit (such as the 500 connected-records or 25,000 records-per-type
-  caps), tier and capacity questions, filtering records through the API, choosing an automation
-  surface, or reconciling Adobe's public docs against actual API behavior. Also trigger for
-  "build me a Planning workspace", "why is my formula failing", "what's the max records per type",
+  bulk actions, workspace builds, API v2), Fusion, AI Assistant, CX Enterprise Coworker, GenStudio,
+  Canvas Dashboards, views, access, licensing (incl. standalone Planning), permissions, business rules, and
+  request forms. Use this skill whenever
+  the user asks about Workfront Planning or Maestro: designing or building a workspace, connecting
+  record types, fixing a broken formula, hitting or raising a limit (such as the 500
+  connected-records or 25,000 records-per-type caps), tier and capacity questions, filtering records
+  through the API, choosing an automation surface, or reconciling public docs with actual
+  API behavior. Also trigger for "build me a Planning workspace", "why is my formula failing",
   or "Select vs Prime vs Ultimate limits".
 metadata:
   category: solution-architecture
@@ -29,7 +30,7 @@ The audience is practitioners: solution architects, consultants, administrators,
 
 2. **Two reference layers, both authoritative.** Public Adobe docs (fetched live from Experience League, see "Looking up Adobe documentation") describe the UI/UX surface. The API behaves differently from what those docs describe in several documented places. Both are real. When they disagree, see `references/public-vs-api-discrepancies.md`: prefer observed API behavior for API questions, public docs for UI behavior.
 
-3. **Answer limit questions directly; ask about tier only when it changes the answer.** Most object limits are identical across Select, Prime, and Ultimate. Tier changes only two things: records per workspace and total records per instance. For anything else, give the number, then note it does not vary by tier. Ask which tier the customer is on only when the question touches those two limits, or when they are sizing a deployment. See `references/limits-and-tiers.md`.
+3. **Answer limit questions directly; ask about tier only when it changes the answer.** Most object limits are identical across Select, Prime, and Ultimate. Tier changes only two numeric limits: records per workspace and total records per instance. For anything else, give the number, then note it does not vary by tier. Ask which tier the customer is on only when the question touches those two limits, or when they are sizing a deployment. See `references/limits-and-tiers.md`. Feature eligibility is separate: template bundles require Workflow Prime or Ultimate, and connecting record types across workspaces requires Planning Prime or Ultimate in both bundled and standalone deployments. See `references/release-and-access.md`.
 
 4. **Performance numbers are observations, not commitments.** Adobe does not publish a P95 or SLA contract for Planning. Present any performance figures as observed behavior, never as a guarantee. Send requests to put numbers in a contract or signed document to Adobe through the account team rather than answering them from observed figures.
 
@@ -91,75 +92,101 @@ Identify the question type first, then load only the references you need. Do not
 - Up to 20 formula fields per record type, 50,000 characters per expression.
 
 ### Category E: Filtering or searching via the API
+- Load: `references/api-contract.md`.
 - Search docs: `node scripts/search.js api basics` and `node scripts/search.js filter records`.
-- All operators are `$-prefixed`. Filters MUST be a JSON array, not an object. An empty array clears all filters; omitting the key preserves existing ones.
-- Field type determines the operator set:
+- API v2 is available for all customers from May 28, 2026. Version 1 remains available, but Adobe recommends switching to v2. It adds PATCH partial updates, bulk record operations, and improvements to filtering, pagination, errors, and permissions.
+- v2 single-select uses `IS_ANY_OF`/`IS_NONE_OF`; multi-select/People/reference use `HAS_ANY_OF`/`HAS_ALL_OF`/`IS_EXACTLY`/`HAS_NONE_OF`. UI labels do not change API tokens.
+- For v1, all operators are `$-prefixed`. Filters MUST be a JSON array, not an object. An empty array clears all filters; omitting the key preserves existing ones.
+- Field type determines the v1 operator set:
   - Text, Long Text, Formula, Attachment: `$is`, `$isNot`, `$contains`, `$doesNotContain`, `$isEmpty`, `$isNotEmpty`
   - Number, Percentage, Currency: `$is`, `$isNot`, `$greaterThan`, `$greaterThanOrEqual`, `$lessThan`, `$lessThanOrEqual`, `$isEmpty`, `$isNotEmpty`
   - Date and timestamp fields: `$is`, `$isNot`, `$isAfter`, `$isBefore`, `$isBetween`, `$isNotBetween`, `$isEmpty`, `$isNotEmpty`
-  - Single and multi select, connections: `$is`, `$isNot`, `$hasAnyOf`, `$hasAllOf`, `$hasNoneOf`, `$isEmpty`, `$isNotEmpty`
-- Combine with `$and` / `$or`, nest arbitrarily.
-- Bulk record operations are NOT atomic; check for per-record errors on every response. Partial success is the normal case.
+  - Single-select: `$is`, `$isNot`, `$isAnyOf`, `$isNoneOf`, `$isEmpty`, `$isNotEmpty`
+  - Multi-select, People, connections: `$hasAnyOf`, `$hasAllOf`, `$isExactly`, `$hasNoneOf`, `$isEmpty`, `$isNotEmpty`
+- Combine v1 conditions with `$and` / `$or`, nest arbitrarily.
+- See `references/api-contract.md` for versioned filter examples.
+- Prefer PATCH for partial updates (v2 only; PUT replaces the whole record and nulls omitted fields).
+- Bulk record operations are v2 only, limited to 100 records per request, and NOT atomic; check for per-record errors on every response. Partial success is the normal case.
 
 ### Category F: Connection or hierarchy question
+- Load: `references/release-and-access.md` for dependent connections, duplicate defaults, and standalone exclusions.
 - Search docs: `node scripts/search.js connect record types` and `node scripts/search.js hierarchy breadcrumb`.
 - Bidirectional vs unidirectional: provide `backField` for bidirectional, omit for unidirectional.
-- Hierarchy: up to 4 record types deep, max 5 hierarchies per workspace, max 10 parents per child inside a hierarchy.
+- Hierarchy: up to 4 record types deep, max 5 hierarchies per workspace, max 10 parent records per child inside a hierarchy.
+- A record type can only have one parent record type per workspace. It can be a parent in several hierarchies, but not a parent in one hierarchy and a child in another in the same workspace. Workfront Projects are always the last level.
 - Multi-select non-hierarchy connection cap: 500 records connected to one record. This limit has been hit in past customer escalations. Treat further exception requests as a design problem.
 - External connections: Workfront (Project, Task, Issue, User, Portfolio, Program, Company, Group), AEM (assets and folders), Brand (GenStudio).
+- Original Request connections expose request and approval metadata. AEM Content Fragment lookups now include Created by/at and Modified by/at. Workfront connections are unavailable in standalone Planning.
 
 ### Category G: Automation question (when to use which surface)
-- Load: `references/synthesized/automations-deep-dive.md`.
-- Five surfaces: native button-click, native field-value-change, Fusion, AI Assistant, request-form approval.
+- Load: `references/synthesized/automations-deep-dive.md` and `references/release-and-access.md` for eligibility.
+- Five surfaces: native button-click, native field-value-change, Fusion, Coworker/retained AI Assistant, request-form approval.
 - Decision tree:
   - User-initiated, simple action, stable permissions: native button-click.
   - Internal state transition, no post-save edits needed: native field-change.
   - External trigger or multi-step orchestration: Fusion.
-  - Ad-hoc bulk, one-time, verifiable: AI Assistant.
+  - Ad-hoc bulk, one-time, verifiable: CX Enterprise Coworker where rolled out, or retained AI Assistant. Coworker writes require administrator-granted access.
   - Human gate before record creation: request-form approval.
 
-### Category H: AI Assistant question
-- Search docs: `node scripts/search.js ai assistant` (covers both the Planning-scoped and Workfront-wide surfaces) and `node scripts/search.js ai designer` for the separate beta Designer.
-- Two surfaces: Planning-scoped AI Assistant and Workfront-wide AI Assistant.
-- Separate from the beta AI Designer for workspace generation.
-- Plan-tier gating applies.
+### Category H: AI Assistant, Coworker, or Planning Designer question
+- Search docs: `node scripts/search.js ai assistant` (covers both the Planning-scoped and Workfront-wide surfaces), `node scripts/search.js coworker`, and `node scripts/search.js planning designer` for the separate beta Designer.
+- Two retained Assistant surfaces: Planning-scoped AI Assistant and Workfront-wide AI Assistant.
+- Separate from the beta Planning Designer for workspace generation. An accepted Beta agreement is required; admins control it under Setup > System > Preferences > AI Preferences (Opt in to AI Betas, then Planning Designer).
+- Plan-tier gating applies to retained AI Assistant.
+- Load: `references/release-and-access.md` for Coworker and Designer availability.
+- Coworker replaces Assistant through a phased rollout; check tenant availability before recommending it. Coworker is read-only by default, with administrator-enabled writes. Sensitive-industry exclusions retain Assistant. See the availability ledger in `references/release-and-access.md` for rollout dates.
 
 ### Category I: GenStudio integration
 - Search docs: `node scripts/search.js genstudio`.
 - Multi-instance permission rules apply.
 - Activations are read-only from Planning's perspective.
 - The connection key used by the API is `Brand`, which corresponds to "Adobe Applications" in the UI picker.
+- Brands request forms require GenStudio; AEM metadata sync requires Planning, GenStudio, and AEM, and covers only GenStudio workspace types (Campaign, Product, Persona, Region, Channel). Content Fragment lookups include audit metadata.
 
 ### Category J: Reporting and dashboards
+- Load: `references/release-and-access.md` for availability and entitlement checks.
 - Search docs: `node scripts/search.js canvas dashboard`.
 - Canvas Dashboard is the only Workfront-native reporting path that treats Planning record types as base entities.
 - Beta. Cloud-provider exclusions apply. Layout template gate, currency toggle, three report types.
+- Currency fields are now supported in table, KPI, and chart reports.
 - Table report: field selector, Planning Record Type as base entity, children-relationship limits.
+- Workfront Data Connect now provides entitlement-driven access to Planning data in Snowflake.
 
 ### Category K: Access, sharing, license question
+- Load: `references/release-and-access.md` and, for record collaboration, `references/synthesized/record-collaboration.md`.
 - Search docs: `node scripts/search.js access overview`, `node scripts/search.js license type`, or `node scripts/search.js sharing permissions`.
-- License types matter: Planning Standard, Light, Contribute, Plan, Work, Review.
+- Separate equal bundles (Standard/Contributor/None), unequal licensing (no Planning Contributor), and standalone (Administrator/Standard). Workflow Light is a paid Workflow license, not a Planning license.
 - Sharing entities cap: 100 per WFP object.
 - Workspace, record type, and view all share separately. Permission requests have their own flow.
+- Restricted defaults restrict editing of new records, not viewing. The creator is always an editor; added editors need Contribute/Manage on the type; only Planning Standard users can hold record Manage. View/Manage record overrides cannot exceed type permissions or remove inherited individual View. Field and request sharing have separate phased rollouts. Field sharing (No Access/View/Manage) is not enforced on request forms or public views, and formula fields expose values unless restricted too. The Q4 release note says request forms are enforced; follow the newer share-fields doc (see `references/release-and-access.md`).
 
 ### Category L: Fusion modules
 - Search docs: `node scripts/search.js fusion modules`.
-- Fusion has dedicated Planning modules for Watch Events, CRUD operations, search.
+- Fusion has dedicated Planning modules for Watch Events, CRUD operations, search, and a custom API call.
+- Fusion has a separate Workfront Planning V2 connector with workspace, record type, record, field, view, and permissions modules; some record modules also have Legacy variants. Older API basics and Q3 text (May 2026) saying the connector stays on Version 1 predates the V2 connector docs; follow the V2 docs. Check which connector an existing scenario uses; see `references/api-contract.md`.
+- Standalone Planning cannot create or connect Workfront objects.
 - Use Fusion when triggers come from outside Planning or actions need multi-step orchestration.
 
 ### Category M: Views (Table, Timeline, Calendar)
+- Load: `references/release-and-access.md` for the per-feature availability ledger.
 - Search docs: `node scripts/search.js table view`, `node scripts/search.js timeline view`, or `node scripts/search.js calendar view`.
 - Every record type gets a default Table view automatically. Do not create another table view unless the user wants an additional one.
 - Timeline and Calendar require 2 Date fields.
 - Calendar supports filters only (no grouping, no sorting).
 - Timeline: only one breakdown at a time; the child record type also needs date fields for breakdown to work.
+- Timeline adds swimlanes, breakdown filters, sorting, group collapse, a grouping panel resizable in Swimlane layout only, and custom weeks where available. Calendar week initially displays 1,000 across the week, with Load more, not a storage cap.
+- Table non-number aggregates: EMPTY/NOT EMPTY for text, select, checkbox, people; MAX/MIN for dates; formulas follow their format; NONE is default. Created by, Last modified by, and Record ID are excluded.
 - Default 2 to 3 configured views per work record type; only the default Table for reference types.
 
 ### Category N: Request forms and approvals
+- Load: `references/release-and-access.md`.
 - Search docs: `node scripts/search.js request forms` and `node scripts/search.js approvals`.
 - Request form is the gate between submission and record creation.
 - Approvers can be Any license tier.
 - First-match resolution on default vs custom rules.
+- AI Form Fill can pull context from records referenced with a link.
+- Single-stage and sequential multi-stage approvals support templates and required-approver completion (only-one/team exceptions). Submitted edits before creation do not establish revise/resubmit loops.
+- Explain request View/Contribute/Manage, requester defaults, Original Request metadata, and global secondary/original routing with populated Workspace override.
 
 ## Insider knowledge to surface proactively
 
@@ -181,7 +208,7 @@ Mention these when they bear on the question actually asked. "Relevant" means th
 
 - **Percentage values are stored as decimals via API.** 0.75 represents 75%. UI shows the percent symbol.
 
-- **Bulk record operations are NOT atomic.** Always check the response for per-record errors. Partial success is the normal case.
+- **Bulk record operations are NOT atomic.** Always check the response for per-record errors. Partial success is the normal case. Bulk and PATCH are v2 only; bulk requests take at most 100 records.
 
 - **Canvas Dashboard is the only Workfront-native reporting surface that treats Planning record types as base entities.** Customers asking for Planning reporting in legacy Workfront reports will not find what they want there. Set expectations accordingly.
 

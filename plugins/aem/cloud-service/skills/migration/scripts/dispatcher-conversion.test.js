@@ -28,6 +28,27 @@ test('detectMode: flexible/on-prem (monolithic dispatcher.any, no conf.dispatche
   assert.strictEqual(INV.detectMode(r), 'flexible');
 });
 
+test("detectMode: ams (monolithic layout WITH AMS markers) labelled 'ams', not 'flexible'", () => {
+  const r = mk();
+  w(r, 'conf.d/dispatcher.any', '/farms {\n  /website { }\n}\n');
+  w(r, 'conf.vhost.d/vhosts.conf', '<VirtualHost *:80></VirtualHost>');
+  // AMS markers on the same monolithic layout: a *_farm.any file and conf.d/whitelists/.
+  w(r, 'conf.d/website_farm.any', '/farms { }\n');
+  fs.mkdirSync(path.join(r, 'conf.d/whitelists'), { recursive: true });
+  assert.strictEqual(INV.detectMode(r), 'ams');
+});
+
+test("'ams' routes to the on-premise executor (same as flexible) and is convertible", () => {
+  const RUN = require('./dispatcher-run.js');
+  const toolDir = mk();
+  fs.mkdirSync(path.join(toolDir, 'executors'), { recursive: true });
+  fs.writeFileSync(path.join(toolDir, 'executors/main.js'), '');
+  fs.writeFileSync(path.join(toolDir, 'executors/singleFileMain.js'), '');
+  assert.match(RUN.resolveExecutor(toolDir, 'ams'), /executors\/singleFileMain\.js$/);
+  // and runConverter must not refuse it as non-convertible (CONVERTIBLE includes 'ams')
+  assert.strictEqual(RUN.resolveExecutor(toolDir, 'standard').endsWith('main.js'), true);
+});
+
 test('detectMode: already-cloud (has opt-in / default_*.any, no AMS markers)', () => {
   const r = mk();
   fs.mkdirSync(path.join(r, 'conf.dispatcher.d/enabled_farms'), { recursive: true });

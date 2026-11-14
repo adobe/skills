@@ -1,7 +1,8 @@
 ---
 name: qa
-description: Read-only automated QA sweep of a deployed stardust site on AEM Edge Delivery Services — validates routing, content fidelity vs the source capture, template conformance, rendered integrity (geometry, JS errors, broken images), visual regression vs baselines, metadata/SEO/JSON-LD, link integrity, accessibility (axe), and performance budgets, then emits a findings report with an allowlist for documented non-defects. Finds issues; never fixes them. Use when the user asks to "QA the site", "validate the migration", "check the live site for issues", "run a QA sweep/regression check", or invokes /stardust:qa <live-url>.
+description: Read-only automated QA sweep of a deployed stardust site on AEM Edge Delivery Services — validates routing, content fidelity vs the source capture, template conformance, rendered integrity (geometry, JS errors, broken images), visual regression vs baselines, metadata/SEO/JSON-LD, link integrity, accessibility (axe), and performance budgets, then emits a findings report with an allowlist for documented non-defects. Finds issues; never fixes them. Use when the user asks to "QA the site", "validate the migration", "check the live site for issues", "run a QA sweep/regression check", or invokes `$stardust qa` (`/stardust:qa` in Claude Code) <live-url>.
 license: Apache-2.0
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:qa — read-only site QA sweep
@@ -16,7 +17,8 @@ rollout asks "did every page ship?", qa asks "is everything that shipped
 actually correct?" — at all three layers a deploy can silently break:
 
 1. **delivery** — what the pipeline serves (`.plain.html`, full HTML, sheets, sitemap)
-2. **rendered** — what a browser shows after block decoration
+2. **rendered** — what a browser shows after block decoration (and what it
+   does: an autoplay video that only shows its poster is a rendered defect)
 3. **regression** — what changed since the last approved state (visual baselines)
 
 A green upper layer never implies the lower one: a publish 200 ≠ delivered,
@@ -32,12 +34,18 @@ delivered HTML ≠ rendered correctly.
    (`site.liveHost`) or ask.
 3. Resolve the **inventory source** — what pages the sweep covers, merged from
    any of: `stardust/template-map.json` (also supplies template assignments for
-   conformance), a paths file, and the live `sitemap.xml` (always fetched;
+   conformance; `scripts/from-knowledge.mjs` writes it from a spec, plus allowlist
+   entries for 404s the source already had), a paths file, and the live `sitemap.xml` (always fetched;
    parity mismatches become findings, so a wrong sitemap can't silently shrink
    coverage).
 4. Optional inputs that unlock deeper checks:
    - `--scrape stardust/scrape` — verbatim fidelity vs the extraction capture
    - `--expected-blocks <json>` — explicit per-template block expectations
+   - `--parity <json>` — dynamic parity file to replay (default
+     `stardust/dynamics/parity.json`; the `dynamics` check reports
+     `parity-missing` when absent)
+   - `--auth-header "token …"` / `--token-env SITE_TOKEN` — protected
+     origins; the secret is sent to the base origin only
      (otherwise derived by fleet consensus)
    - `--blocks-dir <dir>` — the site's `blocks/` checkout, so the
      `editability` check can honour `@ew-exempt` JSDoc tags (otherwise
@@ -64,7 +72,9 @@ under `stardust/qa/shots/`, and (first run) visual baselines under
 `stardust/qa/baselines/`. Exit 0 = no active errors, 1 = active errors,
 2 = infra failure. `reference/checks.md` documents every check, its finding
 ids, and severity rationale. Useful variants: `--checks <subset>`,
-`--max-pages <n>` (smoke run), `--fail-on warn` (strict gate).
+`--max-pages <n>` (smoke run), `--fail-on warn` (strict gate). The `ai-readability` check
+reproduces Adobe's AI Content Visibility Checker per page (served words ÷ rendered words) and
+attributes the gap per block (`deploy/reference/ai-readability.md`).
 
 The `editability` check is the post-deploy **Experience Workspace
 editability gate** (deploy SKILL.md § 8, EW1–EW10): per page it re-creates
@@ -76,8 +86,11 @@ the author cannot click it in the canvas; `editability/duplicated-index`
 declared `@ew-exempt` (or listed in `--ew-exempt`) are info, not errors.
 
 First run on a site: expect a wave of `visual/baseline-created` info findings —
-that is the baseline being established, not a defect. Baselines should be
-committed to the workspace repo so later runs diff against an approved state.
+that is the baseline being established, not a defect. Baselines are
+screenshots and therefore local (`stardust/.gitignore` excludes
+`qa/baselines/` and `qa/shots/`, master skill § Artifacts): later runs on the
+same machine diff against them; a fresh clone re-establishes them on its
+first sweep. `qa/allowlist.json` is the tracked record of judgement.
 
 ### Phase 2 — triage the ambiguous flags (LLM judgment, still read-only)
 

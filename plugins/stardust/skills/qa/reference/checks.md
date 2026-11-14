@@ -19,7 +19,8 @@ for a judgment pass without re-crawling.
 | `redirect-not-firing` | error | a /redirects.json rule doesn't redirect |
 | `redirect-dest-broken` | error | redirect lands on a non-200 |
 | `no-redirects-sheet` | info | no /redirects.json — verification skipped |
-| `trailing-slash-broken` | warn | `/path/` variant of a sample path fails |
+| `redirect-missing` / `redirect-dest-differs` | error / warn | a `stardust/redirects.tsv` row is absent from `/redirects.json` / points elsewhere |
+| `trailing-slash-broken` | warn | a folder index fails at `/path` (no redirect to `/path/`) |
 | `404-not-404` | error | unknown paths don't 404 (soft-404s poison crawlers) |
 | `404-page-empty` | warn | 404 body is near-empty (unstyled error page) |
 | `sitemap-missing` | error | no sitemap.xml |
@@ -38,9 +39,10 @@ for a judgment pass without re-crawling.
 | `bare-ordinals` | warn | `<p>1</p>` rows — numbered component flattened |
 | `duplicate-text` | warn | 12-word shingle repeats within 400 words — pasted twice |
 | `flattened-collection` | warn / error (≥6 repeats + >40% of page words unblocked) | a periodic tag cycle (e.g. `h4+p+p` ×24) or ≥5 same-level headings at a steady stride in DEFAULT content — a structured directory/card set rendered as plain prose instead of a block ("masthead + prose dump + CTA" pages). Fixture-tested: `scripts/test/flattened.test.mjs` |
-| `single-block-hoard` | warn / error (source-confirmed or ≥5 latent headings) | a page that DOES use blocks but one PROSE-CONTAINER block (`*-body`/`prose`/`text`/`content`) holds ≥60% of the page across ≤2 block types — the source's multi-section structure collapsed into one long body (the "fat single block" flatten variant `unblocked-page`/`flattened-collection` miss). Distinguishes defect from an INTENTIONAL single block: skips prose-by-design template families (article/blog/wellness/legal…); with a source capture, fires only when the source had ≥3 heading-led regions (≤1 region = faithfully flat, skipped); without source, fires only when the hoarding block's own inner headings/lists reveal recoverable structure. Fixture-tested: `scripts/test/single-block-hoard.test.mjs` |
+| `single-block-hoard` | warn / error (source-confirmed or ≥5 latent headings) | one PROSE-CONTAINER block (`*-body`/`prose`/`text`/`content`) holds ≥60% of a blocked page across ≤2 block types — the source's sections collapsed into one body (the flatten variant `unblocked-page`/`flattened-collection` miss). Skips prose-by-design template families (article/blog/wellness/legal…); with a source capture fires only when the source had ≥3 heading-led regions, without one only when the block's inner headings/lists reveal structure. Fixture-tested: `scripts/test/single-block-hoard.test.mjs` |
 | `source-images-lost` | error | capture has ≥4 images, delivered page renders <25% of them — pipeline strips imagery authored inside flat content |
 | `unknown-block` | error | authored block class serves no code under /blocks/ |
+| `unknown-widget` | error | a `/widgets/<path>/<name>.html` link (the one sanctioned `.html` link) whose code does not HEAD 200 |
 | `verbatim-below-threshold` | warn *(triage)* | <95% of captured source text found verbatim; evidence lists missing nodes |
 | `verbatim-missing-nodes` | info | coverage ok but some nodes absent |
 | `scrape-dir-empty` | info | fidelity skipped |
@@ -49,8 +51,8 @@ for a judgment pass without re-crawling.
 
 | id | sev | what |
 |---|---|---|
-| `missing-template-blocks` | error | page lacks blocks its template prescribes (explicit config, else >70% sibling consensus) |
-| `unblocked-page` | error | zero blocks while template siblings have them — fell back to plain prose |
+| `missing-template-blocks` | error | page lacks blocks its template prescribes (explicit config, else >70% sibling consensus); a widget link counts as a block named by its file stem |
+| `unblocked-page` | error | zero blocks (widget links included) while template siblings have them — fell back to plain prose |
 | `no-template-map` | info | no template assignments; check skipped |
 
 ## rendered (D, browser; desktop 1440 + mobile 390)
@@ -68,12 +70,30 @@ for a judgment pass without re-crawling.
 | `console-error` | warn | console.error output (third-party noise → allowlist) |
 | `request-failed` | error | same-origin request failed or ≥400 |
 | `decoration-stalled` | warn | sections never reached `data-section-status="loaded"` (hanging tags stall EDS decoration) |
+| `video-not-playing` | error | an `autoplay` `<video>` scrolled to ≥ ¼ visible is paused, has no advancing `currentTime`, or never reached `readyState ≥ 2` (the `content.da.live` 401 class — poster shows, nothing plays). Evidence: src, readyState, paused, Δt. Media the source freezes at capture is a `captureState[].restoreAtDelivery` promise, so a poster where live autoplays is a defect, not a residual. A probe that errors is `video-probe-failed` (info). Fixture-tested: `scripts/test/video-not-playing.test.mjs` |
+| `dropdown-unreachable` | error | desktop only — a hover-opened submenu closes while the pointer travels in 2px steps from the trigger link's centre to the first sub-link (its nearest point, i.e. straight down), or the sub-link is not the element under the pointer on arrival (`pointer-events: none`, occlusion). Submenus are discovered generically as header elements that become visible on `mouse.move` over a `header nav li`; items with none are skipped; probed once per distinct header (a probe that errors is `dropdown-probe-failed`, info). Fixture-tested: `scripts/test/dropdown-unreachable.test.mjs` |
+
+## dynamics (H, browser; replay of `stardust/dynamics/parity.json`)
+
+Flows, not presence — each check replays a user-visible flow through `skills/dynamics/scripts/dynamics-check.mjs` (closed check set: `fetch-json`, `dom-count`, `click-dialog`, `search-query`, `form-flow`, `video-plays`, `consent-gate`, `martech`, `no-page-errors`; `martech` runs when `stardust/martech-contract.json` exists). Third-party request statuses are recorded per check so a probe-induced failure is distinguishable from a vendor restriction. Pass `--parity <file>` to point at another parity file; `--auth-header` / `--token-env` for protected origins (sent to the base origin only).
+
+| id | sev | what |
+|---|---|---|
+| `parity-missing` | info | no parity file — the migration never ran the stardust `dynamics` skill |
+| `parity-failed` | error | a replayed flow did not complete (empty form accepted, dialog did not open, query returned nothing, player never requested playback, video present but not playing) |
+| `parity-env-limit` | warn | a failed flow whose feature records an environment limit (geo-fenced hand-off target) |
+| `parity-unchecked` | info | a feature with a non-final status and no replayable check — an owner item |
+
+## chrome (L, browser; the header contract)
+
+The live header against `stardust/chrome/header-contract.json` (`../../diff/SKILL.md` § The header contract): comparer
+ids and severities, owner-decided ones info; `header-contract-missing` info, `header-explore-failed` error.
 
 ## visual (E, browser)
 
 | id | sev | what |
 |---|---|---|
-| `baseline-created` | info | first run — screenshot saved as baseline (commit it) |
+| `baseline-created` | info | first run on this machine — screenshot saved as baseline (local, not tracked; a clone re-creates it) |
 | `visual-diff` | warn >0.5% / error >5% *(triage)* | pixels changed vs baseline; evidence: both PNG paths + per-band ratios. Iframes are masked; judge warn-level diffs before calling them regressions |
 | `page-height-changed` | warn | full-page height moved >2% |
 | `screenshot-failed` | warn | capture failed |
@@ -88,7 +108,7 @@ for a judgment pass without re-crawling.
 | `jsonld-invalid` | error · `jsonld-no-type` warn | structured data must parse server-side |
 | `jsonld-visible-as-text` | error | `"@context"` in visible copy — JSON-LD row landed outside the metadata block |
 | `duplicate-title` / `duplicate-description` | warn | fleet-wide duplicates |
-| `favicon-broken` | warn | |
+| `favicon-broken` | error · `favicon-default` error · `favicon-mismatch` warn | the icon the home page links serves 200; is not the aem-boilerplate default (the site's icon never shipped — the recorded first-pass miss); matches `stardust/current/assets/favicon.<ext>` when present |
 
 ## links (G, delivery)
 
@@ -117,7 +137,9 @@ for a judgment pass without re-crawling.
 | `transfer-over-budget` | warn | encoded bytes > budget (default 800KB) |
 | `js-over-budget` | warn | JS transfer > budget (default 250KB) |
 | `lcp-poor` | warn | lab LCP > 2.5s · `cls-poor` warn | CLS > 0.1 |
-| `network-degraded` | info | neutral-host TTFB control tripped — all perf findings this run downgraded to info (a slow network must not read as a site regression) |
+| `player-before-paint` | warn | a player document, script or API request (any frame) started before first contentful paint (deploy #157) |
+| `player-timing-unknown` | warn | a player request had no browser start time and neither bound placed it — `player-before-paint` could not judge it |
+| `network-degraded` | info | neutral-host TTFB control tripped — all perf findings this run except `player-before-paint` downgraded to info (a slow network must not read as a site regression) |
 | `measurement` | info | per-page numbers, always recorded |
 | `load-timeout` | warn | no load event in 60s |
 
@@ -152,6 +174,20 @@ copy at worst. Exemptions (EW5 — declared, never silent): `--ew-exempt a,b`
 counted under `exempt` in the summary and never raise `dead-text`. Desktop
 viewport only (instrumentation is viewport-independent); `--max-pages` applies;
 needs playwright like `browse`.
+
+## ai-readability (K, browser + raw fetch — Adobe AI Content Visibility Checker, exact formula)
+
+Per page: served HTML (ChatGPT-User UA, no JS) vs the rendered DOM as textContent; landmarks
+stripped by default. `strict` = the tool's popup number; `code` = fragments credited + app blocks
+excluded (`--ai-exclude-blocks`, default `client-app,widget`); `servedGap` = rendered words absent
+from the served HTML, per block. Formula, cause classes and fixes: `deploy/reference/ai-readability.md`.
+
+| id | sev | what |
+|---|---|---|
+| `ai-readability-poor` | error | strict < 75 — the owner's gauge reads Fair/Poor; the rendered DOM carries hundreds of words the document lacks (clones, index cards, fragments) |
+| `ai-readability-low` | warn | strict < 95 or code < 98 — block code adds words the document does not have |
+| `ai-readability-served-gap` | info | ≥ 40 rendered main words never served — non-rendering crawlers miss them (fragment / index / generated text); evidence names the blocks |
+| `ai-readability-unmeasured` | info | page could not be fetched or rendered for the check |
 
 ## Cross-cutting
 

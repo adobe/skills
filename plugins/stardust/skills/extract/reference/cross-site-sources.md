@@ -53,7 +53,7 @@ extracted separately and its design system becomes the fixed
 - Stamp `state.json.designSource = { "url", "capturedAt", "path":
   "stardust/canon-source/" }`.
 
-`stardust:direct` reads this stamp and pins the donor system as the
+The stardust `direct` skill reads this stamp and pins the donor system as the
 target: Mode A's brand-faithful pins transfer to the **donor**
 surface while content stays with the primary origin — see
 `skills/direct/SKILL.md` § Mode A. The donor records

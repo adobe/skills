@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { RUNNER_DIR, loadEval } from "./lib/workspace.mjs";
 import { buildJudgePrompt } from "./lib/judge-prompt.mjs";
-import { computeScore } from "./lib/score.mjs";
+import { computeScore, normalizeCriteria } from "./lib/score.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -52,7 +52,7 @@ for (const evalName of evalNames) {
     // the snapshot fall back to the live rubric.
     let criteria = evalDef.criteria;
     try {
-      criteria = JSON.parse(await readFile(join(dir, "criteria.json"), "utf8"));
+      criteria = normalizeCriteria(JSON.parse(await readFile(join(dir, "criteria.json"), "utf8")));
     } catch {}
 
     const prompt = buildJudgePrompt({

@@ -41,14 +41,18 @@ a redesign, a replica or a reskin as self-contained static HTML under
 
 - `extract` crawls the site (capped, multi-page) and writes the captured
   design system, brand surface, per-page inventory and rendered DOM to
-  `stardust/current/`.
+  `stardust/current/` (with `--dynamics`, set by the migration flows, also
+  the per-page reach signals of the dynamic surface).
 - `direct` resolves your intent into a target `PRODUCT.md` and `DESIGN.md`,
   with reference research when the refero MCP is present and the reasoning
   kept in `stardust/direction.md`.
 - `prototype` renders before/after pages under `stardust/prototypes/` and
   iterates them through impeccable's craft loop.
 - `prepare-migration` runs extract, direct and prototype in `--prep` mode
-  with confirmation gates, for the redesign migration flow.
+  with confirmation gates, for the redesign migration flow, and closes with
+  the dynamic-surface gate (`dynamics` Phases 1–3): every API, search box,
+  form, modal, player, tag and client-rendered surface gets a disposition
+  before import.
 - `replica` recreates one archetype per page type as clean HTML/CSS that
   matches the live site near pixel-perfect, proven by a measured gate.
 - `reskin` re-lays byte-faithful content onto a donor design system.
@@ -66,7 +70,7 @@ a redesign, a replica or a reskin as self-contained static HTML under
 Outputs: `stardust/current/`, `stardust/prototypes/`, `stardust/migrated/`,
 `stardust/state.json`, `stardust/status.jsonl`, `stardust/learnings.md`.
 
-**EDS delivery.** Three skills that take the migrated tree to AEM Edge
+**EDS delivery.** Four skills that take the migrated tree to AEM Edge
 Delivery Services.
 
 - `deploy` converts one page into EDS blocks under `blocks/` and Document
@@ -76,10 +80,21 @@ Delivery Services.
   internal links are localized, and a per-page atomic contract checks the
   delivered page before it counts as deployed.
 - `rollout` delivers the whole site: coverage ledger, block dedup, per-page
-  delivery through `deploy`, site assembly (sitemap, redirects, dynamic
-  listings, multilingual trees), full-site verify and link audit, an
+  delivery through `deploy`, site assembly (sitemap, redirects, multilingual
+  trees), the dynamic features phase (`dynamics` Phases 4–5: index-backed
+  listings and search, modal loader, forms, tags, off-origin data, parity
+  replay), full-site verify and link audit, an
   optimize gate that aggregates accessibility, SEO, AI-search and
   brand-tension findings, deterministic AEM autofixes, and a report.
+- `dynamics` is the dynamic surface of a migration: detect on archetypes,
+  classify, triage on four axes (class, disposition, reproducibility,
+  status), implement from a pattern catalogue, replay parity. Default-on in
+  both migration flows, never for redesign-only work.
+- `spec` measures a site before a migration (inventory, redirects, 404s,
+  templates and layout variants, blocks per page with reuse verdicts against a
+  block library, dynamic features, martech, locales) and records the
+  judgement calls and open questions with defaults, as committed knowledge
+  files with a documented contract that any client can read.
 - `qa` sweeps the live EDS site read-only: routing, content fidelity against
   the capture, template conformance, rendered integrity, visual regression,
   metadata and JSON-LD, links, axe accessibility, performance budgets,
@@ -87,6 +102,21 @@ Delivery Services.
 
 Outputs: `blocks/`, `content/`, `stardust/rollout/` (ledger, coverage,
 findings, dashboard), `stardust/qa/`.
+
+## What goes to git
+
+Stardust keeps its own files under `stardust/` and ships its own ignore
+file there (`stardust/.gitignore`, installed at setup). Everything under
+`stardust/` is meant to be committed: it cost tokens to produce or
+captured a site that will not exist after launch, and a clone in another
+environment resumes from it. Not tracked by default: screenshots wherever
+a skill writes them, gate images (their JSON verdicts stay), two heavy
+folders rewritten on every run (`migrated/assets/`, `rollout/qa/`),
+run residue under `stardust/.work/`, and captured session state. The
+project's own `.gitignore` is left alone apart from a managed block for
+`.env`; on an EDS project `stardust/` is added to `.hlxignore` so nothing
+in it is served. The per-directory table is in
+`skills/stardust/reference/artifact-map.md` § Versioning.
 
 ## Two migration flows
 
@@ -166,6 +196,69 @@ run appends to `stardust/learnings.md`. General findings from that ledger are
 folded back into the skills. The chrome crop gate, the sizing-model lift, the
 editability contract, link localization and the glyph-noise floor all entered
 the plugin that way.
+
+## Installing
+
+Stardust is packaged as a Claude Code plugin, and GitHub Copilot reads the
+same manifests, so both install from the adobe/skills marketplace. Impeccable
+is a hard dependency and is installed separately; Copilot does not resolve
+plugin dependencies.
+
+Claude Code:
+
+```bash
+/plugin marketplace add adobe/skills
+/plugin install stardust@adobe-skills
+/plugin marketplace add pbakaus/impeccable
+/plugin install impeccable@impeccable
+```
+
+GitHub Copilot CLI (also picked up by Copilot in VS Code and the cloud agent;
+verified 2026-09-17 with Copilot CLI 1.0.85):
+
+```bash
+copilot plugin marketplace add adobe/skills
+copilot plugin install stardust@adobe-skills
+copilot plugin marketplace add pbakaus/impeccable
+copilot plugin install impeccable@impeccable
+```
+
+In Copilot CLI the skills are addressed by their bare names (`stardust`,
+`extract`, `deploy`), not as `stardust:extract`. Where a skill body uses the
+Claude Code form, use the bare name.
+
+Other agents install the skills without plugin grouping. `npx skills add
+adobe/skills --list` shows all 109 skills in this repository as one flat
+list, so name stardust's sixteen explicitly, and install impeccable the same
+way:
+
+```bash
+npx skills add adobe/skills -s stardust -s extract -s direct -s prototype \
+  -s migrate -s prepare-migration -s replica -s reskin -s audit -s uplift \
+  -s diff -s deploy -s rollout -s dynamics -s qa -s spec
+npx skills add pbakaus/impeccable -s impeccable
+```
+
+`gh skill install adobe/skills --all` (GitHub CLI 2.90 or later) is the
+equivalent for the agents it supports. Both paths copy loose skills: no
+plugin grouping, no dependency check, updates through `npx skills update`
+or `gh skill update`.
+
+### Verified on
+
+| Harness | Version | Date | What was run |
+|---|---|---|---|
+| Claude Code | 2.1.x plugin | continuous | `evals/runner` suite |
+| GitHub Copilot CLI | 1.0.85 | 2026-09-17 | `evals/copilot-smoke/run.sh`: skill listing, bare-name load, master Setup |
+| Grok Build, Amp | | | expected to work (Claude plugin compatible), not run |
+| Codex, Cursor, Gemini CLI, OpenCode, Kiro and other `.agents/skills` adopters | | | installable through `npx skills add`; not run |
+
+### Prerequisites
+
+Stardust's bundled scripts run under Node 22 or later and need Playwright with
+Chromium resolvable from the project (`npm i -D playwright && npx playwright
+install chromium`). No harness installs these for you; the skills probe for them
+and print the install command when they are missing.
 
 ## Dependencies
 

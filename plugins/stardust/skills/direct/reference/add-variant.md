@@ -1,6 +1,6 @@
 # direct --add-variant — incremental variant extension
 
-Flow run by `stardust:direct` when invoked with `--add-variant
+Flow run by the stardust `direct` skill when invoked with `--add-variant
 <name>`: extend the active direction with an additional variant
 expression, without re-resolving the direction itself.
 

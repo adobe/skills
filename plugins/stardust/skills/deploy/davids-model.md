@@ -1,4 +1,4 @@
-# David's Model — the authored-structure contract for stardust:deploy
+# David's Model — the authored-structure contract for the stardust `deploy` skill
 
 Distilled from https://www.aem.live/docs/davidsmodel (David Nuescheler's content-modeling
 rules, "second take") and https://www.aem.live/developer/component-model-definitions.
@@ -14,7 +14,7 @@ lives in the skill.
 | # | Rule | Where it's enforced in this skill |
 |---|------|-----------------------------------|
 | D1 | **Blocks aren't ideal for authoring.** Blocks are tables; default content is easier. A prose section (heading/text/image/CTAs, no repeating units, no bespoke structure) is DEFAULT CONTENT, never a block. Never wrap bare text/heading/image in a `text`/`heading`/`image` block. URL-based content (video/embeds) is auto-blocked from a plain link, not authored as a block. Section heads above repeating blocks are default content. | Step 2 triage question 1; "The one rule"; ENCODE contract; `buildAutoBlocks()` in Step 3; lint 🔴 (default-content wrapper blocks, authored embed-URL rows) + 🟡 (whole-section over-blocking) |
-| D2 | **No nested blocks.** A table inside a table is unmaintainable. Use fragments or auto-blocked links. | ENCODE structural rules; lint 🔴 |
+| D2 | **No nested blocks.** A table inside a table is unmaintainable. Use fragments or auto-blocked links — an embed URL, a fragment link, or a `/widgets/<path>/<name>.html` widget link (code-driven UI, no authored content). | ENCODE structural rules; lint 🔴 |
 | D3 | **Limit row/column spans.** Only the block-name header spans. Merged-cell layouts don't survive doc editors. | ENCODE structural rules; lint 🟡 |
 | D4 | **Fully-qualified URLs.** Authors copy/paste URLs as opaque tokens; code extracts pathnames. (Editorial images: `content.da.live` URLs — see ENCODE → Images; internal links to pages in the migration set ARE root-relative — `localize-links.mjs` rewrites captured source-host hrefs.) | ENCODE structural rules; Step 9 image rules; lint 🔴 (relative/repo-relative src or href), lint 🟡 LOCALIZE (source-host href whose path exists locally, with `--source-host`) |
 | D5 | **Lists.** Complex list items → one block row per item (the `cards` pattern). Simple inferred lists (related links) → one cell of links; code pulls the links. FAQ/accordion → one row per Q/A. | ENCODE contract (grouped item sets, Lists/FAQ) |
@@ -27,7 +27,7 @@ lives in the skill.
 | D12 | **Fragments may be harmful.** Chrome (`/nav`, `/footer`) and genuinely reused bands (disclaimers, sign-up forms) are the legitimate uses. Fragments add indirection; SEO-relevant copy belongs directly on the page (duplicate-content caveat). | Step 6 (chrome documents); ENCODE contract #86/D12 (key facts in page content) |
 | D13 | **Don't overload alt-text.** Alt-text is the image description, nothing else — never data a block parses (easily lost in copy/paste, invisible to authors). | ENCODE structural rules; Images (alt required, description only) |
 | D14 | **Name/value pairs only for configuration.** They map to `data-`/`<meta>`; never model displayed content (Heading/Image/Text) as name/value. | ENCODE contract; page `metadata` + section-metadata usage; lint 🔴 (display copy in a key-value block) |
-| D15 | **No HTML, CSS, or JSON in documents.** A visible `<tag>`, `{{ }}`, or style rule as author-facing text is a modeling mistake — code lives in the repo. | ENCODE structural rules; content-page checklist; lint 🔴 |
+| D15 | **No HTML, CSS, or JSON in documents.** A visible `<tag>`, `{{ }}`, or style rule as author-facing text is a modeling mistake — code lives in the repo. | ENCODE structural rules (#134 — a bare declaration in a cell is the same mistake); content-page checklist; lint 🔴 (tags, bindings, rules, declarations, `--token`), lint 🟡 (lone length / hex colour) |
 
 ## Component-model shape compatibility (forward-looking)
 

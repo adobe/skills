@@ -76,6 +76,20 @@ aio app db provision --region <amer|apac|emea|aus>
 npm install @adobe/aio-lib-db
 ```
 
+For existing apps, inspect the dependency, lockfile and installed package before installing; preserve ranges and pins.
+
+For TypeScript or checked JavaScript, check actual declaration resolution, not just the version (package types first appeared in 1.1.0):
+
+- **Types resolve:** prefer package declarations, otherwise reuse compatible application declarations. Report conflicts without silently changing application declarations.
+- **No types resolve:** recommend a typed release, but require approval before dependency or lockfile changes. To keep the installed version, add this comment immediately above each DB import reporting TS7016, including copied asset imports:
+
+```ts
+// @ts-expect-error -- Installed aio-lib-db has no resolvable TypeScript declarations.
+import { init as initDb } from "@adobe/aio-lib-db";
+```
+
+The fallback leaves DB APIs untyped. Keep strict checking; do not add ambient DB bridges, downgrade dependencies, or suppress unrelated errors. Compilation does not prove runtime compatibility.
+
 ## Step 3 — Understand intent
 
 Gather from the user:
@@ -89,6 +103,9 @@ Gather from the user:
 Add the action to a user-defined package in `src/commerce-extensibility-1/ext.config.yaml` (any name except `app-management`, which is reserved).
 
 > **`include-ims-credentials: true` is required on every DB action.** Without it, `aio-lib-db` has no IMS token to authenticate with and the connection fails at runtime (and the app installation fails if the action runs during install). Do not omit this annotation.
+>
+> Do not manually wire OAuth Server-to-Server credentials with `AIO_COMMERCE_AUTH_IMS_*` inputs.
+> That legacy fallback is deprecated and planned for removal in a future major release.
 
 ```yaml
 # src/commerce-extensibility-1/ext.config.yaml
@@ -100,7 +117,7 @@ runtimeManifest:
       actions:
         store-record:
           function: actions/store-record/index.js # relative to src/commerce-extensibility-1/
-          runtime: nodejs:24
+          runtime: nodejs:26
           web: "yes" # "yes" for a web action; "no" for an event/webhook action
           annotations:
             include-ims-credentials: true # REQUIRED for aio-lib-db auth
@@ -131,7 +148,7 @@ import { init as initDb } from "@adobe/aio-lib-db";
 export async function main(params: Record<string, unknown>) {
   let client;
   try {
-    // Resolve the injected AIO_COMMERCE_AUTH_IMS_* params, then mint a raw token string.
+    // Resolve credentials injected by include-ims-credentials, then mint a raw token string.
     const authProvider = getImsAuthProvider(resolveImsAuthParams(params));
     const token = await authProvider.getAccessToken();
     const db = await initDb({ token, region: "emea" }); // must match the manifest database.region
@@ -153,12 +170,16 @@ export async function main(params: Record<string, unknown>) {
 }
 ```
 
-For an **event/webhook action** the only differences are `web: "no"` in registration and that the payload arrives in `params.data`:
+Event and webhook actions both register with `web: "no"`, but their payloads have different shapes — do not treat them as the same:
+
+- **Event handler** (wired via `commerce-app-eventing`): the extracted fields arrive in `params.data.value`. `params.data` also carries `_metadata` (Commerce instance metadata) and `source` (the merchant/environment ID pair from the Commerce eventing configuration) — neither is handler input.
+- **Webhook handler** (wired via `commerce-app-webhooks`): there is no `data` wrapper — the Commerce operation payload arrives directly on `params` (e.g. `params.order`), and the response must use the operation helpers from `@adobe/aio-commerce-lib-webhooks/responses` (see `commerce-app-webhooks`), not the plain `ok`/`buildErrorResponse` shape used above.
 
 ```ts
-// Event/webhook handler — same init/connect/close lifecycle
+// Event handler — src/commerce-extensibility-1/actions/store-order/index.ts
 export async function main(params: Record<string, unknown>) {
   const data = params.data as Record<string, unknown>;
+  const value = data.value as Record<string, unknown>;
   let client;
   try {
     const authProvider = getImsAuthProvider(resolveImsAuthParams(params));
@@ -167,8 +188,33 @@ export async function main(params: Record<string, unknown>) {
     client = await db.connect();
     await client
       .collection("orders")
-      .insertOne({ orderId: data.order_id, receivedAt: new Date() });
+      .insertOne({ orderId: value.order_id, receivedAt: new Date() });
     return ok({ body: { processed: true } });
+  } finally {
+    if (client) await client.close();
+  }
+}
+```
+
+```ts
+// Webhook handler — src/commerce-extensibility-1/actions/log-order/index.ts
+import {
+  ok,
+  successOperation,
+} from "@adobe/aio-commerce-lib-webhooks/responses";
+
+export async function main(params: Record<string, unknown>) {
+  const order = params.order as Record<string, unknown>; // Commerce operation payload, directly on params
+  let client;
+  try {
+    const authProvider = getImsAuthProvider(resolveImsAuthParams(params));
+    const token = await authProvider.getAccessToken();
+    const db = await initDb({ token, region: "emea" });
+    client = await db.connect();
+    await client
+      .collection("orders")
+      .insertOne({ orderId: order.entity_id, receivedAt: new Date() });
+    return ok(successOperation());
   } finally {
     if (client) await client.close();
   }
@@ -243,19 +289,41 @@ installation: {
 
 See [assets/setup-database.ts](assets/setup-database.ts) for the full annotated install/uninstall reference.
 
-## Step 7 — Validate
+## Step 7 — Regenerate the `installation` action
+
+If this custom installation step is the first install-requiring domain in the config (the others are `webhooks`, `eventing.commerce`, `eventing.external`, `adminUi`), re-run:
+
+```sh
+npx @adobe/aio-commerce-lib-app init
+```
+
+This is what adds the `installation` action to `ext.config.yaml`'s `app-management` package — `aio app build`/`aio app deploy` only read the existing file, they never regenerate it. Skip this and the script never runs, even though it's registered in code and the DB action is deployed. Safe to re-run even when the action already exists.
+
+## Step 8 — Validate
+
+Run the project's strict typecheck, including the storage runtime action. If adding a custom installation step, verify its root `installation.customInstallationSteps` registration produces a generated import of the configured script and that the actual compiler file list includes it. Preserve existing compiler includes and exclusions; do not add `scripts/**/*.ts` to compensate for missing registration.
 
 ```sh
 aio app build
 ```
 
-A build failure points directly to the offending config field. To exercise the action against the real database, deploy and invoke it (`aio app deploy`).
+A build failure points directly to the offending config field. To exercise the action against the real database, deploy and invoke it (`aio app deploy`). If this step needed Step 7, also check that `ext.config.yaml` now has `actions.installation` under `app-management`.
 
 ## Best practices
 
 - **Always close connections** in a `finally` block — leaked connections exhaust resources.
 - **Match the region** — the manifest `database.region` is the single source of truth; every `init()` call and the install step must use it (see the region callout in Step 1). A mismatch fails the connection silently from the caller's view.
-- **Use projections** (`.project({ field: 1 })`) and **indexes** (`createIndex`) for frequently queried fields; index fields must total ≤ 2048 bytes.
+- **Use projections** (`.project({ field: 1 })`) and **indexes** (`createIndex`) for frequently queried fields; index fields must total ≤ 2048 bytes. For public responses, prefer inclusion projections.
+
+  Filters select documents; projections select fields. Inclusion returns selected fields and `_id` by default; `_id: 0` is the only exclusion allowed alongside included fields. Otherwise, do not mix inclusion and exclusion.
+
+  ```ts
+  const cursor = client
+    .collection("records")
+    .find({ status: "active" })
+    .project({ _id: 0, title: 1, status: 1 });
+  ```
+
 - **Iterate large result sets with cursors** (`for await (const doc of collection.find(...))`) instead of `toArray()` to bound memory.
 - **Don't hardcode the region or secrets** — prefer `AIO_DB_REGION` and the injected IMS token over inline values.
 - **Prefer the most specific Adobe I/O library** in runtime actions over the `@adobe/aio-sdk` umbrella — e.g. `@adobe/aio-commerce-lib-auth` for IMS auth and `@adobe/aio-lib-core-logging` for the logger — to keep action bundles small.
@@ -268,15 +336,37 @@ A build failure points directly to the offending config field. To exercise the a
 - **Connection fails after a region change**: the library region doesn't match the manifest `database.region`. Moving regions is destructive — `aio app db delete`, update `database.region` in the manifest, then re-provision (`aio app deploy`, or the CLI fallback for local dev).
 - **Querying by `_id` from a string returns nothing**: convert it first — `new ObjectId(idString)` from `bson`. A raw string never matches the stored `ObjectId`.
 - **`DbError` vs unexpected error**: errors thrown by the service have `name === "DbError"`; branch on it to separate database failures from application bugs.
-- **Auth fails inside an installation step**: resolve the IMS auth params from `context.params` (`resolveImsAuthParams(context.params)`) — which carries the injected `AIO_COMMERCE_AUTH_IMS_*` credentials — not from `config`, which holds no credentials. Use `@adobe/aio-commerce-lib-auth`, not `@adobe/aio-lib-core-auth`: the latter's `generateAccessToken` expects `clientId`/`clientSecret` directly and cannot consume the injected params.
+- **`findOne` throws instead of returning `null` on no match**: unlike MongoDB, a miss is not a successful `null` result — it throws a `DbError` with a message containing `"Document not found"`. `name === "DbError"` alone isn't enough to detect this, since every `DbError` (including a genuine connection failure) has that name; check `error.message` too:
+
+  ```ts
+  function isDocumentNotFoundError(error: unknown) {
+    const e = error as { name?: string; message?: string };
+    return e.name === "DbError" && e.message?.includes("Document not found");
+  }
+
+  let existing;
+  try {
+    existing = await records.findOne({ order_id: orderId });
+  } catch (error) {
+    if (!isDocumentNotFoundError(error)) {
+      throw error;
+    }
+  }
+  ```
+
+  See [assets/db-action.ts](assets/db-action.ts) for the full reference.
+
+- **Auth fails inside an installation step**: resolve the injected IMS auth params from `context.params` with `resolveImsAuthParams(context.params)` — not from `config`, which holds no credentials. Ensure the action is annotated with `include-ims-credentials: true`; manually wired `AIO_COMMERCE_AUTH_IMS_*` credentials are deprecated.
 - **Installation step fails to load (`must export a default function or object`)**: the script was authored as CommonJS. Author it as an ES module with `export default`; `module.exports` (or `module.exports.default`) surfaces through the framework's `import * as` loader as `.default.default` and fails validation.
 - **`createIndex` errors or has no effect**: it must be called on a collection object (`client.collection("name").createIndex({ field: 1 })`), not with a collection-name string. Get the collection first, then call `createIndex` on it.
+- **Custom installation step registered and deployed but never runs**: `init` wasn't re-run after registering the first install-requiring domain (Step 7) — no `installation` action, no install endpoint.
 
 ## Quality Bar
 
 - `aio app build` completes without errors
 - Every user-authored DB action declares `include-ims-credentials: true` in its annotations
 - The action closes the client in a `finally` block and initializes the library in the region declared in the manifest `database` block
+- `installation` action present in `ext.config.yaml` when this custom installation step requires it
 
 ## Chaining
 

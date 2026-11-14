@@ -327,6 +327,11 @@ brief-time `surprise` budget, and the approval fold-back.
   forks only).
 - `reimagined` — variant fork produces **A + B + C** with IA-priority
   moves allowed.
+- `verbatim` on **every** axis — IA, palette, type, density all pinned,
+  nothing moved — is not a redesign tier at all: it is the keep-design
+  migration flow. `direct` hands off to `replica`
+  (`skills/stardust/SKILL.md` § Two migration flows); do not pin and
+  proceed.
 
 #### Auto-pin trigger phrases
 

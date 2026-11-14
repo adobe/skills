@@ -10,9 +10,10 @@ Repository of Adobe skills for AI coding agents.
 /plugin marketplace add adobe/skills
 /plugin install adobe-analytics@adobe-skills
 /plugin install adobe-cja@adobe-skills
-/plugin install aem-design@adobe-skills
 /plugin install stardust@adobe-skills
+/plugin install web@adobe-skills
 /plugin install aem-edge-delivery-services@adobe-skills
+/plugin install aem-eds-content-ops@adobe-skills
 /plugin install aem-project-management@adobe-skills
 /plugin install app-builder@adobe-skills
 /plugin install aem-cloud-service@adobe-skills
@@ -21,7 +22,27 @@ Repository of Adobe skills for AI coding agents.
 /plugin install commerce-app-management@adobe-skills
 /plugin install commerce-app-migration@adobe-skills
 /plugin install commerce-app-review@adobe-skills
+/plugin install run-workflow@adobe-skills
+/plugin install adobe-for-developers@adobe-skills
 ```
+
+### GitHub Copilot CLI
+
+Copilot reads the Claude plugin manifests in this repository, so the same
+marketplace works there (verified 2026-09-17 with Copilot CLI 1.0.85 and the
+`stardust` plugin). Plugins are also picked up by Copilot in VS Code and the
+cloud agent.
+
+```bash
+copilot plugin marketplace add adobe/skills
+copilot plugin install stardust@adobe-skills
+copilot plugin install aem-edge-delivery-services@adobe-skills
+copilot plugin install adobe-for-developers@adobe-skills
+```
+
+Copilot CLI exposes plugin skills under their bare `name` with no plugin
+prefix, so two installed plugins with a same-named skill are ambiguous there.
+Plugin `dependencies` are not resolved; install them explicitly.
 
 ### Vercel Skills (npx skills)
 
@@ -104,22 +125,11 @@ Solution-architecture guidance for Adobe Workfront Planning (WFP, also called Ma
 | Skill | Description |
 | ----- | ----------- |
 | `wf-planning-solution-architect` | Workspace and record-type design, connections and hierarchies, formula fields, tier limits, and API behavior for Workfront Planning<br>• `Design a Planning workspace for our marketing team`<br>• `A customer wants us to raise the 500 connected records limit`<br>• `Is the CASE function supported in Planning formulas?` |
+| `wf-planning-fusion-optimizer` | Read-only review of an exported Fusion scenario blueprint using the Workfront Planning connector: flags what's hurting run time, operations, and API call volume<br>• `Why is this Planning Fusion scenario so slow?`<br>• `Review this blueprint for rate-limit issues`<br>• `Reduce operations on our replication scenario` |
 
-See the [`wf-planning-solution-architect`](plugins/workfront/skills/wf-planning-solution-architect/README.md) doc for the routing model, reference layout, and documentation search script.
+See the [`wf-planning-solution-architect`](plugins/workfront/skills/wf-planning-solution-architect/README.md) and [`wf-planning-fusion-optimizer`](plugins/workfront/skills/wf-planning-fusion-optimizer/README.md) docs for the routing model, reference layout, and scripts.
 
 #### Adobe Experience Manager
-
-##### Designing with aem-design
-
-Design-phase skills that run *before* implementation. Produces static HTML and JSON artifacts under `aem-design/` — EDS-independent; no dev server or AEM instance required.
-
-| Skill          | Description                                                                                                            |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `aem-design` | Navigator — assesses `aem-design/` state and recommends the next design stage                                       |
-| `brand`      | Extracts a brand profile (`brand-profile.json`) and visual brand board from a URL, PDF, or conversation              |
-| `briefings`  | Captures page intent, audience, key messages, CTAs, and (optionally) final copy under `aem-design/briefings/`        |
-| `wireframes` | Produces grey structural wireframes from briefings (section order, hierarchy, spatial relationships) — optional stage |
-| `prototype`  | Produces branded, high-fidelity static HTML prototypes that iterate in the browser until approved                      |
 
 ##### Modernising an existing site with stardust
 
@@ -175,6 +185,7 @@ See the [`stardust` plugin README](plugins/stardust/README.md) for the two migra
 | Skill | Description |
 |-------|-------------|
 | `page-import` | Import webpages into canonical EDS block format (orchestrator) |
+| `migrate-header` | Rebuild a site's header as the EDS header block, 1:1 with the source: captures its states with the `web` CLI (`web header capture`), configures a header template and its nav document, then checks it against the live source (`web header check`) closed, with every menu open, on mobile and while scrolling |
 | `scrape-webpage` | Scrape and analyze webpage content |
 | `identify-page-structure` | Analyze page sections |
 | `page-decomposition` | Analyze content sequences |
@@ -275,6 +286,16 @@ Skills for building customized **Workfront** UI applications on Adobe App Builde
 | `workfront-actions`       | Runtime actions: `{data,error}` shape, IMS auth passthrough, inputs/config, CommonJS, and the Workfront Public API v21 (search/count, bulk PUT, custom `DE:` fields) |
 | `workfront-local-testing` | Preview a local (`extensionOverride`) or deployed (Extension Manager BYO) build inside Workfront; fix common "not showing" issues |
 
+### Adobe for Developers
+
+Search the developer.adobe.com docs. Manage Adobe Developer Console projects, workspaces, APIs, and credentials. Create and test I/O Events registrations and subscriber defined filters. The plugin registers the hosted Adobe for Developers MCP server (`https://adp-connector.adobe.io/mcp`, Adobe IMS sign-in)
+
+```bash
+/plugin install adobe-for-developers@adobe-skills
+```
+
+See the [`adobe-for-developers`](plugins/adobe-for-developers/README.md) doc for client setup and approval behavior.
+
 ### Commerce
 
 Skills that ease developing and integrating with Adobe Commerce alongside other Adobe products.
@@ -341,10 +362,27 @@ See the [`commerce-app-review`](plugins/commerce/app-review/README.md) doc for t
 | `adobe-retouch-portraits`        | Bulk walk-away retouching for wedding and event portraits: auto-straighten, auto-tone, and auto-light across a folder |
 | `adobe-resize-photos-and-videos` | Resize images and videos to exact pixel dimensions, aspect ratios, or named sizes (4K, HD, A4)                        |
 
+#### Run Workflow (requires enterprise Firefly Creative Production entitlement)
+
+| Skill          | Description                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| `run-workflow` | Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server  |
+
 ## Repository Structure
 
 ```
 plugins/
+├── adobe-for-developers/
+│   ├── .claude-plugin/
+│   │   └── plugin.json
+│   ├── .mcp.json
+│   ├── hooks/
+│   └── skills/
+│       ├── dev-console-context/
+│       ├── dev-console-subscribe-api/
+│       ├── io-events-filtering/
+│       ├── io-events-registration/
+│       └── search-adobe-developer-docs/
 ├── adobe-analytics/
 │   ├── .claude-plugin/
 │   │   └── plugin.json
@@ -483,9 +521,13 @@ plugins/
     ├── .cursor-plugin/
     │   └── plugin.json
     └── skills/
-        └── wf-planning-solution-architect/
+        ├── wf-planning-solution-architect/
+        │   ├── SKILL.md
+        │   ├── evals/
+        │   ├── references/
+        │   └── scripts/
+        └── wf-planning-fusion-optimizer/
             ├── SKILL.md
-            ├── evals/
             ├── references/
             └── scripts/
 ```

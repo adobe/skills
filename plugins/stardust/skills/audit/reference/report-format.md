@@ -188,8 +188,8 @@ Schema rules:
 ## Part 2 — the `report.html` craft brief
 
 `report.html` is a **designed artifact**. The audit skill does not
-hand-template it; it delegates rendering to `$impeccable craft` via the
-Skill tool (the same delegation mechanic as
+hand-template it; it delegates rendering to `$impeccable craft` through
+the skill-invocation tool (the same delegation mechanic as
 `../../prototype/SKILL.md` § Invoking impeccable), passing:
 
 1. the finished `audit.json` (the single source of every number),
@@ -245,7 +245,7 @@ color belongs to the report or to the subject.
    better.
 9. **Uplift directions** — three pitch cards (A / B / C per
    `audit.json#upliftDirections`), each naming the findings it resolves,
-   closing with the next step: *run `stardust:uplift <url>`*.
+   closing with the next step: *run `$stardust uplift <url>`*.
 10. **Methodology appendix** — the full measurement table (value, unit,
     method, status), the degradation record, and the scoring-rubric
     pointer.

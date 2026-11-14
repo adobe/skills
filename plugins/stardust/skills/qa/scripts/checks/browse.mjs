@@ -6,7 +6,10 @@
  *     page errors, console errors, failed/4xx same-origin requests, collapsed
  *     main/sections (getBoundingClientRect().height — computed display lies
  *     inside display:none ancestors), broken/upscaled images, mobile
- *     horizontal overflow, stalled EDS section decoration
+ *     horizontal overflow, stalled EDS section decoration, hover dropdowns
+ *     unreachable along the pointer path (desktop, once per distinct header),
+ *     autoplay videos that show a poster but never play (paused, not
+ *     advancing, or never buffered — the content.da.live 401 class)
  *   visual (E) — full-page screenshots vs committed baselines; first run
  *     creates baselines (info), later runs report % changed pixels. Diffs are
  *     computed in-browser in horizontal bands (no native image deps).
@@ -20,7 +23,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  loadPlaywright, finding, pageUrl, pathSlug, ensureDir, pMap,
+  openBrowser, newContext, goto, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth,
 } from '../lib.mjs';
 
 const VIEWPORTS = [
@@ -99,11 +102,119 @@ async function pixelDiff(diffPage, pngA, pngB) {
   }, [pngA.toString('base64'), pngB.toString('base64')]);
 }
 
+/**
+ * Hover-dropdown reachability (rendered/D, desktop). Submenu = the outermost header
+ * element holding a link that becomes visible on mouse.move over a top-level
+ * `header nav li`; the pointer then walks in `stepPx` steps from the trigger's centre
+ * straight down to the first sub-link (its point nearest the trigger's x). Unreachable
+ * = the submenu closes on the way or on arrival, or the sub-link is not under the pointer
+ * (`pointer-events: none`, occlusion). Items that open nothing on hover are skipped.
+ */
+export async function probeDropdowns(page, { stepPx = 2, settleMs = 150, maxItems = 12 } = {}) {
+  const items = await page.evaluate((max) => {
+    const vis = (el) => {
+      const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.left < innerWidth && r.top < innerHeight
+        && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0;
+    };
+    const all = [...document.querySelectorAll('header *')];
+    const trig = (li) => [...li.querySelectorAll('a, button')].find((el) => el.closest('li') === li);
+    window.__sdt = { vis, all, vis0: all.map(vis), trig, lis: [...document.querySelectorAll('header nav li')].filter((li) => !li.parentElement.closest('li')) };
+    return window.__sdt.lis.map((li, idx) => {
+      const t = trig(li);
+      if (!t || !vis(li) || !vis(t)) return null;
+      const r = t.getBoundingClientRect();
+      return { idx, label: t.textContent.trim().replace(/\s+/g, ' ').slice(0, 60), x: r.x + r.width / 2, y: r.y + r.height / 2, bottom: r.bottom };
+    }).filter(Boolean).slice(0, max);
+  }, maxItems);
+  const { width, height } = page.viewportSize() || { width: 1440, height: 900 };
+  const park = async () => { await page.mouse.move(width - 2, height - 2); await page.keyboard.press('Escape'); await page.waitForTimeout(settleMs); };
+  const out = { probed: 0, skipped: 0, items: [] };
+  for (const it of items) {
+    await park();
+    await page.mouse.move(it.x, it.y);
+    await page.waitForTimeout(settleMs);
+    const sub = await page.evaluate(({ idx, tx }) => {
+      const { vis, all, vis0, trig, lis } = window.__sdt; const li = lis[idx]; const t = trig(li);
+      const appeared = all.map((el, i) => (!vis0[i] && vis(el) && el.querySelector('a') && !el.contains(t) ? { el, i } : null)).filter(Boolean);
+      const outer = appeared.filter((a) => !appeared.some((b) => b !== a && b.el.contains(a.el)));
+      const pick = outer.find((a) => li.contains(a.el)) || outer[0];
+      const link = pick && [...pick.el.querySelectorAll('a')].find(vis);
+      if (!link) return null;
+      const r = link.getBoundingClientRect();
+      return { i: pick.i, href: link.getAttribute('href') || '', x: Math.min(Math.max(tx, r.left + 4), r.right - 4), y: r.y + r.height / 2, top: r.top };
+    }, { idx: it.idx, tx: it.x });
+    if (!sub) { out.skipped += 1; continue; }
+    out.probed += 1;
+    const gap = Math.round(sub.top - it.bottom);
+    const dx = sub.x - it.x; const dy = sub.y - it.y; const dist = Math.hypot(dx, dy);
+    const steps = Math.max(1, Math.ceil(dist / stepPx));
+    let reason = null;
+    for (let k = 1; k <= steps && !reason; k += 1) {
+      const last = k === steps;
+      await page.mouse.move(it.x + (dx * k) / steps, it.y + (dy * k) / steps);
+      await page.waitForTimeout(last ? settleMs : 8);
+      const state = await page.evaluate(({ i, x, y, final }) => {
+        const { vis, all } = window.__sdt; const el = all[i];
+        if (!vis(el)) return 'closed';
+        if (!final || y >= innerHeight || x >= innerWidth) return 'open';
+        const hit = document.elementFromPoint(x, y); const a = hit && hit.closest('a');
+        return a && el.contains(a) ? 'open' : `blocked by ${hit ? hit.tagName.toLowerCase() + (hit.className ? `.${String(hit.className).split(' ')[0]}` : '') : 'nothing'}`;
+      }, { ...sub, final: last });
+      if (state === 'closed') reason = `submenu closed ${Math.max(0, Math.round((dist * k) / steps - (it.bottom - it.y)))}px below the trigger link (first sub-link ${gap}px below)`;
+      else if (state !== 'open') reason = `first sub-link is not the element under the pointer (${state} — pointer-events/occlusion)`;
+    }
+    out.items.push({ label: it.label, href: sub.href, gap, ok: !reason, reason });
+  }
+  await park();
+  return out;
+}
+
+// Media playback probe: each <video> (first `maxItems`) scrolled to the viewport centre, read twice
+// `sampleMs` apart. Presence is not playback — a paused autoplay video shows its poster and looks
+// intentional, so only a currentTime delta tells. Returns one sample per video.
+export async function probeVideos(page, { maxItems = 6, settleMs = 1500, sampleMs = 800 } = {}) {
+  const count = await page.evaluate(() => document.querySelectorAll('video').length);
+  const read = (idx) => page.evaluate((i) => {
+    const v = document.querySelectorAll('video')[i];
+    if (!v) return null;
+    const r = v.getBoundingClientRect();
+    const visible = Math.max(0, Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0)) / (r.height || 1);
+    return {
+      src: (v.currentSrc || v.src || v.querySelector('source')?.src || '').slice(0, 250),
+      autoplay: v.hasAttribute('autoplay'), paused: v.paused, t: v.currentTime,
+      readyState: v.readyState, error: v.error ? v.error.code : null, visible: Math.round(visible * 100) / 100,
+    };
+  }, idx);
+  const out = [];
+  for (let i = 0; i < Math.min(count, maxItems); i += 1) {
+    await page.evaluate((idx) => document.querySelectorAll('video')[idx]?.scrollIntoView({ block: 'center' }), i);
+    await page.waitForTimeout(settleMs);
+    const a = await read(i);
+    if (!a) continue;
+    await page.waitForTimeout(sampleMs);
+    const b = (await read(i)) || a;
+    out.push({ src: a.src, autoplay: a.autoplay, visible: b.visible, readyState: b.readyState, error: b.error, paused: b.paused, dt: Math.round((b.t - a.t) * 100) / 100 });
+  }
+  return out;
+}
+
+// Pure verdict over probeVideos() samples: the autoplay videos at least a quarter visible that are
+// not playing, each with a `why`. Videos without autoplay (click-to-play) are the user's to start.
+export function judgeVideos(samples) {
+  return samples.filter((v) => v.autoplay && v.visible >= 0.25).flatMap((v) => {
+    if (v.readyState < 2 || v.error !== null) {
+      return [{ ...v, why: `never buffered (readyState ${v.readyState}${v.error !== null ? `, MediaError ${v.error}` : ''}) — poster only; check the src serves to anonymous visitors` }];
+    }
+    if (v.paused || v.dt <= 0) return [{ ...v, why: `is ${v.paused ? 'paused' : 'not advancing'} (Δt ${v.dt.toFixed(2)}s) while ≥ ¼ visible` }];
+    return [];
+  });
+}
+
 export async function run(ctx) {
   const { base, inventory, opts } = ctx;
   const findings = [];
-  const { chromium } = await loadPlaywright();
-  const browser = await chromium.launch();
+  const browser = await openBrowser({ mode: 'plain' });
   const baselineDir = opts.baselineDir;
   const shotDir = join(opts.outDir, 'shots');
   ensureDir(shotDir);
@@ -111,10 +222,11 @@ export async function run(ctx) {
 
   const axeAgg = new Map(); // ruleId -> {impact, help, pages:Set, sample}
   const upscaled = new Map(); // src -> {pages:Set, nw, rw}
+  const dropdowns = new Map(); // header signature -> {pages:Set, result, path}
   // canvas diff worker; recreated on demand — a crashed tab must not sink the sweep
   let diffPage = null;
   const getDiffPage = async () => {
-    if (!diffPage || diffPage.isClosed()) diffPage = await (await browser.newContext()).newPage();
+    if (!diffPage || diffPage.isClosed()) { const dctx = await newContext(browser); await attachOriginAuth(dctx); diffPage = await dctx.newPage(); }
     return diffPage;
   };
 
@@ -132,7 +244,8 @@ export async function run(ctx) {
 
   async function sweepPage(p, vp) {
     {
-      const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+      const context = await newContext(browser, { viewport: { width: vp.width, height: vp.height } });
+      await attachOriginAuth(context);
       const page = await context.newPage();
       const consoleErrors = []; const pageErrors = []; const badRequests = [];
       page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
@@ -150,7 +263,7 @@ export async function run(ctx) {
       });
 
       try {
-        await page.goto(pageUrl(base, p.path), { waitUntil: 'domcontentloaded', timeout: 45000 });
+        await goto(page, pageUrl(base, p.url || p.path), { waitUntil: 'domcontentloaded', timeout: 45000 });
       } catch (e) {
         findings.push(finding('rendered', 'load-failed', 'error', p.path,
           `[${vp.name}] page failed to load: ${String(e).slice(0, 200)}`));
@@ -221,6 +334,21 @@ export async function run(ctx) {
         findings.push(finding('rendered', 'zero-size-image', 'warn', p.path,
           `[${vp.name}] ${zeroSize.length} loaded image(s) render 0px wide (layout collapse — naturalWidth > 0 but clientWidth 0)`,
           { srcs: [...new Set(zeroSize.map((i) => i.src))].slice(0, 8) }));
+      }
+      // Presence is not playback: an autoplay <video> that is paused, never
+      // advances, or never buffers (readyState < 2 — the content.da.live 401
+      // class) shows its poster and looks intentional. Autoplay the source had
+      // and the capture froze is a captureState[].restoreAtDelivery promise, so
+      // a poster where live played is a defect, never a residual.
+      try {
+        for (const v of judgeVideos(await probeVideos(page))) {
+          findings.push(finding('rendered', 'video-not-playing', 'error', p.path,
+            `[${vp.name}] autoplay video ${v.why}`,
+            { src: v.src, readyState: v.readyState, paused: v.paused, dt: v.dt }));
+        }
+      } catch (e) {
+        findings.push(finding('rendered', 'video-probe-failed', 'info', p.path,
+          `[${vp.name}] video playback probe errored: ${String(e).slice(0, 200)}`));
       }
       if (vp.name === 'desktop') {
         for (const i of geo.imgs.filter((x) => x.nw > 0 && x.nw < 200 && x.rw > x.nw * 2 && x.rw - x.nw > 100)) {
@@ -304,6 +432,20 @@ export async function run(ctx) {
           `[${vp.name}] screenshot failed: ${String(e).slice(0, 150)}`));
       }
 
+      // ---- rendered (D): hover-dropdown reachability, desktop, once per distinct header
+      if (vp.name === 'desktop') {
+        try {
+          const sig = await page.evaluate(() => document.querySelector('header')?.innerText.trim().replace(/\s+/g, ' ').slice(0, 1500) || null);
+          if (sig) {
+            if (!dropdowns.has(sig)) dropdowns.set(sig, { pages: new Set(), path: p.path, result: await probeDropdowns(page) });
+            dropdowns.get(sig).pages.add(p.path);
+          }
+        } catch (e) {
+          findings.push(finding('rendered', 'dropdown-probe-failed', 'info', p.path,
+            `[${vp.name}] hover-dropdown probe did not complete: ${String(e).slice(0, 150)}`));
+        }
+      }
+
       await context.close();
     }
   }
@@ -313,6 +455,13 @@ export async function run(ctx) {
     findings.push(finding('rendered', 'upscaled-image', 'warn', [...u.pages][0],
       `image rendered ${u.rw}px wide from a ${u.nw}px source (blurry) on ${u.pages.size} page(s)`,
       { src, pages: [...u.pages].slice(0, 8) }));
+  }
+  for (const d of dropdowns.values()) {
+    const bad = d.result.items.filter((i) => !i.ok);
+    if (!bad.length) continue;
+    findings.push(finding('rendered', 'dropdown-unreachable', 'error', d.path,
+      `[desktop] ${bad.length}/${d.result.probed} hover dropdown(s) close before the first sub-link is reachable — ${bad.map((i) => `"${i.label}": ${i.reason}`).join('; ').slice(0, 400)} — header shared by ${d.pages.size} page(s)`,
+      { items: bad, probed: d.result.probed, skipped: d.result.skipped, pages: [...d.pages].slice(0, 8) }));
   }
   const impactSeverity = { critical: 'error', serious: 'error', moderate: 'warn', minor: 'info' };
   for (const [id, v] of axeAgg) {

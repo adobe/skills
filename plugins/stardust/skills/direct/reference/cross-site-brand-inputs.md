@@ -1,6 +1,6 @@
 # Cross-site brand inputs (--design-source / --brand-source)
 
-Consumed by `stardust:direct` Setup step 3b when extract captured
+Consumed by the stardust `direct` skill Setup step 3b when extract captured
 brand signal beyond the primary origin.
 
 Two extract-written signals widen the brand surface beyond the

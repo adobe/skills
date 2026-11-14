@@ -30,6 +30,31 @@
  *                          Every mask is printed on the verdict line; a masked
  *                          number is never reported as an unmasked one.
  *     --json               emit machine-readable summary on stdout
+ *     --text-boxes <json>  AUXILIARY number (#125 D4): a JSON file with the
+ *                          ORIGIN's text boxes ({ boxes: [{x,y,w,h}, …] } in A's
+ *                          page coordinates — content-presence.mjs --json writes
+ *                          one per side under `textBoxes`); the differing-pixel
+ *                          share is re-computed over those boxes only and
+ *                          reported as `textPct`. Pixelmatch underweights small
+ *                          text inside otherwise matching shapes (a recorded page
+ *                          read 6.7 % full-page, 16.5 % text-only). Not a verdict
+ *                          criterion; summary.md carries it beside the pixel %.
+ *     --timeout <s>        hard wall-clock deadline (default 120; 0 disables).
+ *                          Enforced from a supervising process (the compare
+ *                          itself is synchronous, so an in-process timer could
+ *                          never fire). Exit 124 = deadline hit, not a gate
+ *                          verdict — re-run; raise the cap only for a
+ *                          legitimately huge capture.
+ *
+ * The hang this guards against (three field migrations, 2026-08/09, "0 % CPU
+ * for 10+ minutes after the verdict was printed") was reproduced on
+ * 2026-09-18: with stdout redirected to a file or /dev/null — how gate.sh and
+ * every agent pipeline runs it — `process.exit()` after the compare could
+ * block forever inside Node's platform shutdown (stack: Environment::Exit →
+ * DisposePlatform → WorkerThreadsTaskRunner::Shutdown → uv_thread_join), 1 in
+ * ~4 runs on Node 25. Letting the process drain (`process.exitCode`) instead
+ * of forcing exit did not hang in 10/10 runs. The deadline stays as the
+ * belt to that fix's braces.
  *
  * Example:
  *   node skills/replica/scripts/pixel-compare.mjs \
@@ -38,7 +63,8 @@
  *     --out stardust/replica/gates/home-1440/diff.png
  *
  * Requires: pixelmatch, pngjs (project devDependencies).
- * Exit codes: 0 under threshold, 1 error, 2 over threshold (gate FAIL).
+ * Exit codes: 0 under threshold, 1 error, 2 over threshold (gate FAIL),
+ * 124 deadline exceeded (see --timeout; not a measurement).
  * Note: the height delta does NOT affect the exit code — the SKILL gate
  * requires height Δ ≈ 0 separately; a large delta is printed as a warning
  * because the overlap-crop can make the % look artificially healthy.
@@ -47,8 +73,10 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { PNG } from 'pngjs';
 import pixelmatch from 'pixelmatch';
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, realpathSync } from 'fs';
 import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { runCapped, DEADLINE_EXIT } from './run-capped.mjs';
 
 const HELP = `pixel-compare — pixelmatch two stitched full-page PNGs with per-band breakdown
 
@@ -60,6 +88,8 @@ Usage: node pixel-compare.mjs <a.png> <b.png> [options]
   --mask <yA:h[@yB]>  exclude a row band (authored-volatile region) on both sides;
                       repeatable / comma list; yB defaults to yA
   --json              machine-readable summary on stdout
+  --text-boxes <json> also report the % over the origin's text boxes only — auxiliary (#125 D4)
+  --timeout <s>       hard deadline, exit 124 when hit (default 120; 0 disables)
   --help              this text
 
 Convention: <a.png> = live/source capture, <b.png> = prototype capture.`;
@@ -68,7 +98,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, masks: [] };
+  const opts = { out: 'diff.png', threshold: 10, band: 500, pmThreshold: 0.1, json: false, masks: [], timeout: 120, worker: false, textBoxes: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = rest[i += 1]; }
@@ -76,6 +106,9 @@ function parseArgs(argv) {
     else if (a === '--band') { opts.band = Number(rest[i += 1]); }
     else if (a === '--pm-threshold') { opts.pmThreshold = Number(rest[i += 1]); }
     else if (a === '--json') { opts.json = true; }
+    else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
+    else if (a === '--worker') { opts.worker = true; }
+    else if (a === '--text-boxes') { opts.textBoxes = rest[i += 1]; }
     else if (a === '--mask') {
       for (const spec of rest[i += 1].split(',').map((s) => s.trim()).filter(Boolean)) {
         const m = spec.match(/^(\d+):(\d+)(?:@(\d+))?$/);
@@ -98,8 +131,45 @@ function cropTo(img, w, h) {
   return o;
 }
 
+// --text-boxes: the share of differing pixels inside the origin's text boxes
+// (A's page coordinates), read off the diff image already computed over the
+// overlap crop. Masked rows are skipped like everywhere else. Exported for the test.
+export function textBoxPct(diff, boxes, w, h, masked) {
+  let total = 0; let differing = 0;
+  for (const bx of boxes) {
+    const x0 = Math.max(0, Math.floor(bx.x)); const x1 = Math.min(w, Math.ceil(bx.x + bx.w));
+    const y0 = Math.max(0, Math.floor(bx.y)); const y1 = Math.min(h, Math.ceil(bx.y + bx.h));
+    for (let y = y0; y < y1; y += 1) {
+      if (masked && masked[y]) continue;
+      for (let x = x0; x < x1; x += 1) {
+        total += 1;
+        const i = (y * w + x) * 4;
+        if (diff.data[i] === 255 && diff.data[i + 1] < 100) differing += 1;
+      }
+    }
+  }
+  return { boxes: boxes.length, pixels: total, pct: total ? (100 * differing) / total : 0 };
+}
+
+function readTextBoxes(path) {
+  const raw = JSON.parse(readFileSync(path, 'utf8'));
+  const list = Array.isArray(raw) ? raw : (raw.textBoxes || raw.boxes || []);
+  return list.filter((b) => b && Number.isFinite(b.x) && Number.isFinite(b.y) && b.w > 0 && b.h > 0);
+}
+
+// --timeout: the compare is synchronous end to end, so the deadline lives in a
+// supervising copy of this process: the parent re-spawns itself with --worker
+// under run-capped and mirrors the worker's exit code (124 on the deadline).
+async function supervise(timeoutSec) {
+  const args = [fileURLToPath(import.meta.url), '--worker', ...process.argv.slice(2).filter((x, i, arr) => !(x === '--timeout' || arr[i - 1] === '--timeout'))];
+  const code = await runCapped(process.execPath, args, { timeoutSec, label: 'pixel-compare' });
+  if (code === DEADLINE_EXIT) console.error(`pixel-compare: no verdict — deadline ${timeoutSec}s exceeded (exit ${DEADLINE_EXIT}). Not a gate FAIL: re-run, or pass --timeout <s> above ${timeoutSec} for a legitimately huge capture.`);
+  process.exitCode = code;
+}
+
 function main() {
   const { aPath, bPath, opts } = parseArgs(process.argv);
+  if (!opts.worker && opts.timeout > 0) { supervise(opts.timeout); return; }
   const a = PNG.sync.read(readFileSync(aPath));
   const b = PNG.sync.read(readFileSync(bPath));
   const w = Math.min(a.width, b.width);
@@ -146,18 +216,27 @@ function main() {
   }
 
   const pass = pct <= opts.threshold;
+  // Auxiliary number (never the verdict — header): --text-boxes text-only %.
+  const text = opts.textBoxes ? textBoxPct(diff, readTextBoxes(opts.textBoxes), w, h, masked) : null;
   if (opts.json) {
-    console.log(JSON.stringify({ a: aPath, b: bPath, compared: { width: w, height: h }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks: opts.masks, maskedRows, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })) }, null, 2));
+    console.log(JSON.stringify({ a: aPath, b: bPath, compared: { width: w, height: h, mode: 'overlap' }, heightDelta, differingPixels: n, pct: Number(pct.toFixed(2)), threshold: opts.threshold, pass, diff: opts.out, masks: opts.masks, maskedRows, textPct: text ? Number(text.pct.toFixed(2)) : null, textBoxes: text ? text.boxes : null, textPixels: text ? text.pixels : null, bands: bands.map((x) => ({ ...x, pct: Number(x.pct.toFixed(1)) })) }, null, 2));
   } else {
     console.log(`A ${a.width}x${a.height}  B ${b.width}x${b.height}  → compare ${w}x${h}, height delta ${heightDelta}px`);
     if (Math.abs(heightDelta) > 8) console.log(`  ⚠ height delta ${heightDelta}px — overlap-crop hides the tail; fix heights before trusting the %`);
     console.log(`differing pixels: ${n} / ${denom} = ${pct.toFixed(2)}%  (threshold ${opts.threshold}%) → ${pass ? 'PASS' : 'FAIL'}${maskedRows ? `  [MASKED ${maskedRows} rows: ${opts.masks.map((m) => `${m.yA}:${m.h}${m.yB !== m.yA ? `@${m.yB}` : ''}`).join(', ')} — authored-volatile, excluded]` : ''}`);
+    if (text) console.log(`  text-boxes only: ${text.pct.toFixed(2)}% over ${text.boxes} boxes / ${text.pixels} px — auxiliary (#125 D4)`);
     console.log(`diff image: ${opts.out}`);
     for (const bd of bands) {
       console.log(`  y ${String(bd.y0).padStart(6)}–${bd.y1}: ${bd.pct.toFixed(1)}%${bd.pct > 15 ? '  ◄◄ hot band' : ''}`);
     }
   }
-  process.exit(pass ? 0 : 2);
+  // Never process.exit() here — see the header: forcing exit after the compare
+  // hung Node's platform shutdown; the loop has nothing left and drains at once.
+  process.exitCode = pass ? 0 : 2;
 }
 
-try { main(); } catch (e) { console.error(`pixel-compare error: ${e.message}`); process.exit(1); }
+// Main-module guard by real path: the contract test imports textBoxPct without running a compare.
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  try { main(); } catch (e) { console.error(`pixel-compare error: ${e.message}`); process.exit(1); }
+}
