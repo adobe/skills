@@ -42,9 +42,17 @@
  * `requestBudget`, `sameSite`, `siteHost` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+// browser.mjs lives in the master skill's scripts dir: the plugin tree (skills/diff/scripts ↔ skills/stardust/scripts)
+// or the project copy (scripts/diff ↔ scripts/stardust).
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+// Loaded where a browser is needed, so the pure exports and --help work without the master scripts.
+const frontDoor = () => {
+  if (!BROWSER) throw new Error('browser.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  return import(BROWSER.href);
+};
 
 const TOUCH_BELOW = 768;
 
@@ -300,18 +308,13 @@ function installInPage({ rootSel }) {
   return true;
 }
 
-async function loadPlaywright() {
-  const norm = (m) => (m.chromium ? m : m.default);
-  try { const req = createRequire(join(process.cwd(), 'package.json')); return norm(await import(pathToFileURL(req.resolve('playwright')).href)); } catch { /* fall through */ }
-  return norm(await import('playwright'));
-}
-
 // null = the document was replaced (a navigation slipped through) or is being replaced
 const call = async (page, fn, arg = {}) => { try { return await page.evaluate(async ({ f, a }) => (window.__sdtc ? { v: await window.__sdtc[f](a) } : null), { f: fn, a: arg }); } catch { return null; } };
 
 /** Explore one width. `probe` is the term or an async (page) => term resolved on first use (saves a load).
  * Returns { root, controls[], scroll[], truncated, states, loads, requests, maxRequests, inputsSkipped, probe }. */
 export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDepth, probe, shotsDir, settleMs = 250, visitOpts = {}, gotoFn, paceMs = DEFAULTS['pace-ms'], reloadPauseMs = DEFAULTS['reload-pause-ms'], maxRequests = DEFAULTS['max-requests'], maxTypeahead = DEFAULTS['max-typeahead'] }) {
+  const { goto } = await frontDoor();
   const touch = width < TOUCH_BELOW;
   const vh = page.viewportSize().height;
   let nav = null; let armed = true; let states = 0; let truncated = null; let shotN = 0; let typeaheads = 0; let inputsSkipped = 0;
@@ -339,7 +342,7 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
   const load = async () => {
     armed = false;
     if (loads++ === 0) { await gotoFn(page, url, visitOpts); at = page.url(); budget.rebase(at); }
-    else { if (reloadPauseMs > 0) await page.waitForTimeout(reloadPauseMs); await page.goto(at, { waitUntil: 'load', timeout: 60000 }); await page.waitForTimeout(400); }
+    else { if (reloadPauseMs > 0) await page.waitForTimeout(reloadPauseMs); await goto(page, at, { waitUntil: 'load', timeout: 60000 }); await page.waitForTimeout(400); }
     await page.evaluate(installInPage, { rootSel }); await call(page, 'snapshot', { root: true });
     trail.length = 0;
     armed = true;
@@ -504,6 +507,7 @@ async function main() {
   if (opts.help) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, '').trim()); process.exit(0); }
   const { url, out, widths } = opts;
   if (!url || !out) { console.error('usage: chrome-explore.mjs <url> <out.json> [--width 1440,390] [--root <sel>] [--max-states 400] [--max-depth 4] [--probe <term>] [--shots <dir>] [--plain] [--pace-ms 400] [--reload-pause-ms 1500] [--max-requests 600] [--max-typeahead 2]'); process.exit(1); }
+  const { openBrowser } = await frontDoor();
   const shotsDir = opts.shots || join('stardust', '.work', 'chrome', basename(out, '.json'));
   mkdirSync(shotsDir, { recursive: true }); mkdirSync(dirname(out), { recursive: true });
   let probe = opts.probe;
@@ -512,9 +516,8 @@ async function main() {
   // no term yet: a nav label word, read from the explored page itself when an input turns up (no extra page load)
   const navWord = (p) => p.evaluate(() => ((document.querySelector('header nav,header') || document.body).innerText.match(/\p{L}{4,}/u) || ['news'])[0].toLowerCase());
   const here = dirname(fileURLToPath(import.meta.url));
-  const { openBrowser, openPage, visit } = await import(pathToFileURL(join(here, 'measure-live.mjs')).href);
-  const { chromium } = await loadPlaywright();
-  const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
+  const { openPage, visit } = await import(pathToFileURL(join(here, 'measure-live.mjs')).href);
+  const browser = await openBrowser({ mode: opts.plain ? 'plain' : 'headed' });
   const doc = { tool: 'chrome-explore', url, at: new Date().toISOString(), shots: shotsDir, widths: {} };
   try {
     for (const width of widths) {
