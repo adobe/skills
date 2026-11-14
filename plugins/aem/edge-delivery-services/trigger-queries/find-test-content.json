@@ -1,6 +1,6 @@
 {
   "name": "find-test-content trigger queries",
-  "description": "Should trigger when searching an EDS site (local dev, .aem.page or .aem.live) for existing pages that use a specific block or block variant; near misses are creating local test pages or cloning DA content (aem-cli), authoring HTML for DA (da-content), surveying local block folders or the Block Collection (block-inventory / block-collection-and-party), importing an external page (page-import), or running block tests (testing-blocks).",
+  "description": "Should trigger when searching an EDS site (local dev, .aem.page or .aem.live) for existing pages that use a specific block or block variant; near misses are creating local test pages or cloning DA content (aem-cli), authoring HTML for DA (da-content), surveying local block folders or the Block Collection (block-collection-and-party), importing an external page (page-import), or running block tests (testing-blocks).",
   "fixture": {
     "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
     "ref": "5cea543707db900c92014b0bba93564fe325b9e4"

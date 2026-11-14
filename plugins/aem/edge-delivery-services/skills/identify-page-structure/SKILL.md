@@ -35,7 +35,7 @@ From scrape-webpage skill, you need:
 - **page-import** - Orchestrator that invokes this skill
 - **scrape-webpage** - Provides input (screenshot, HTML)
 - **page-decomposition** - This skill invokes it for EACH section
-- **block-inventory** - This skill invokes it to survey available blocks
+- **block-collection-and-party** - Its search script lists the Block Collection blocks for Step 2.5
 - **authoring-analysis** - Uses this skill's output to make authoring decisions
 
 ## Key Concepts
@@ -135,16 +135,13 @@ Section 4 (dark):
 
 **STOP: Before making any authoring decisions, understand what blocks are available.**
 
-**INVOKE block-inventory skill** to catalog available blocks.
+List the blocks an author could use, each with a one-line purpose in author language ("grid of items with images"). Choosing among them is authoring-analysis's job.
+
+- **Local blocks:** the folders under `blocks/`; take each purpose from the block's code or README.
+- **Block Collection (can be added):** list the current blocks with `node <SKILL_DIR>/../block-collection-and-party/scripts/search-block-collection-github.js ""`, where `<SKILL_DIR>` is this file's directory. Skip header and footer (page chrome). Give each block's example URL, `https://main--aem-block-collection--adobe.aem.live/block-collection/{block}`.
 
 **Why this matters:**
 Real authors see a block library and choose from available options. You need the same context to make authentic authoring decisions following David's Model.
-
-**What this provides:**
-- Local blocks already in project
-- Common Block Collection blocks that can be added
-- Purpose/description for each block
-- Live example URLs
 
 **Example output:**
 ```

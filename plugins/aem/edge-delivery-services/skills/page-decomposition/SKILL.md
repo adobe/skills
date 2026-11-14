@@ -31,7 +31,7 @@ From the calling skill (identify-page-structure), you need:
 
 - **page-import** - Top-level orchestrator
 - **identify-page-structure** - Invokes this skill for each section (Step 2b)
-- **block-inventory** - Provides available blocks AFTER decomposition
+- **identify-page-structure** (Step 2.5) - Surveys available blocks AFTER decomposition
 - **content-modeling** - Makes authoring decisions AFTER decomposition
 - **content-driven-development** - References section structure in html-structure.md
 

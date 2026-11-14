@@ -17,7 +17,7 @@
     github.com/adobe/aem-block-collection blocks/
   used_by:
     - skills/block-collection-and-party/SKILL.md
-    - skills/block-inventory/SKILL.md
+    - skills/identify-page-structure/SKILL.md
 
 - id: block-party
   claim: >-
