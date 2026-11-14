@@ -98,9 +98,11 @@ OUT="$(run "$FIX/scheduler")"
 assert_contains "LegacyScheduler (implements Sling Job) flagged"   "$OUT" 'LegacyScheduler.java'
 assert_contains "ProgrammaticScheduler (imports Scheduler) flagged" "$OUT" 'ProgrammaticScheduler.java'
 assert_contains "OsgiPropertyScheduler (Runnable + scheduler.expression) flagged" "$OUT" 'OsgiPropertyScheduler.java'
+assert_contains "FelixScrScheduler (Felix SCR @Service(Runnable) + scheduler.expression) flagged" "$OUT" 'FelixScrScheduler.java'
 assert_contains "scheduler pattern present"                         "$OUT" '"pattern":"scheduler"'
 assert_absent  "NotASchedulerJob (non-Sling Job) not flagged"       "$OUT" 'NotASchedulerJob.java'
 assert_absent  "PlainRunnableHelper (Runnable + @Component, no scheduler.* prop) not flagged" "$OUT" 'PlainRunnableHelper.java'
+assert_absent  "FelixPlainRunnable (Felix SCR Runnable, no scheduler.* prop) not flagged" "$OUT" 'FelixPlainRunnable.java'
 assert_absent  "CollisionComponentScheduler (non-OSGi @Component) not flagged" "$OUT" 'CollisionComponentScheduler.java'
 
 echo "[resource-change-listener] modern ResourceChangeListener / ExternalRCL detected, name-collision skipped"
@@ -132,6 +134,33 @@ assert_contains "createAssetForBinary call captured in snippet"     "$OUT" 'crea
 assert_contains "removeAssetForBinary call captured in snippet"     "$OUT" 'removeAssetForBinary'
 assert_count   "LegacyAssetWorkflow emits one finding per call site (3)" "$OUT" '"file":"LegacyAssetWorkflow.java"' 3
 assert_absent  "UnrelatedCreateAsset (no AssetManager import) skipped" "$OUT" 'UnrelatedCreateAsset.java'
+
+echo "[tuning-oak-query-indexes] JCR/Sling/QueryBuilder query construction sites flagged"
+OUT="$(run "$FIX/tuning-oak-query-indexes")"
+assert_contains "pattern emitted"                       "$OUT" '"pattern":"tuning-oak-query-indexes"'
+# JCR: getQueryManager + createQuery, and QueryBuilder PredicateGroup.create (Antipattern.java: 3 sites)
+assert_contains "Antipattern.java flagged"              "$OUT" 'Antipattern.java'
+assert_contains "getQueryManager captured"              "$OUT" 'getQueryManager'
+assert_contains "createQuery captured"                  "$OUT" 'createQuery'
+assert_contains "PredicateGroup.create captured"        "$OUT" 'PredicateGroup.create'
+assert_count   "Antipattern.java emits 3 query sites"   "$OUT" '"file":"Antipattern.java"' 3
+# Sling ResourceResolver query APIs
+assert_contains "SlingResolver.java flagged"            "$OUT" 'SlingResolver.java'
+assert_contains "findResources captured"                "$OUT" 'findResources'
+assert_contains "queryResources captured"               "$OUT" 'queryResources'
+assert_count   "SlingResolver.java emits 2 query sites" "$OUT" '"file":"SlingResolver.java"' 2
+# QueryBuilder via the PredicateGroup constructor
+assert_contains "QueryBuilderCtor.java flagged"         "$OUT" 'QueryBuilderCtor.java'
+assert_contains "new PredicateGroup captured"           "$OUT" 'new PredicateGroup'
+assert_count   "QueryBuilderCtor.java emits 2 sites"    "$OUT" '"file":"QueryBuilderCtor.java"' 2
+# Wrappers — the query call inside a wrapper body is flagged (once); callers + opaque DAO are not
+assert_contains "wrapper body flagged"                  "$OUT" 'Wrapper.java'
+assert_count   "Wrapper.java emits 1 site (the body)"   "$OUT" '"file":"Wrapper.java"' 1
+assert_absent  "wrapper callers not traced"             "$OUT" 'WrapperCaller.java'
+assert_absent  "opaque DAO (API in another module) not flagged" "$OUT" 'OpaqueDao.java'
+# Negatives — exact-name matching only, no false positives
+assert_absent  "clean file not flagged"                 "$OUT" 'Clean.java'
+assert_absent  "near-miss names not flagged"            "$OUT" 'Negatives.java'
 
 echo "[wiring] each registered detector has an expert skill + ready/analyzer catalog row"
 PATTERNS_MD="$SKILL_ROOT/references/patterns.md"

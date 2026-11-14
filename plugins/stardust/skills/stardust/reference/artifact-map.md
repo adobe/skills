@@ -15,7 +15,7 @@ how its provenance block is shaped.
 | `AGENTS.md`      | impeccable   | never (read-only for stardust)                               | every sub-command (Design Context)     |
 
 Stardust authors `PRODUCT.md`, `DESIGN.md`, and `DESIGN.json` **directly**,
-treating impeccable's `reference/teach.md` and `reference/document.md` as
+treating impeccable's `reference/init.md` and `reference/document.md` as
 **format specs** rather than runtime commands. Reasoning: by the time
 `$stardust direct` runs, the user has already gone through stardust's
 intent-reasoning interview — re-running impeccable's interview would
@@ -23,7 +23,7 @@ duplicate questions. The resolved direction in `stardust/direction.md`
 carries every answer impeccable's interviews would surface.
 
 Users who want impeccable to validate or refine the project-root files
-can run `$impeccable teach` or `$impeccable document` directly at any
+can run `$impeccable init` or `$impeccable document` directly at any
 time; stardust does not own those commands and will not interfere.
 
 The same direct-authoring pattern is used for the descriptive files
@@ -31,8 +31,7 @@ under `stardust/current/` written by `$stardust extract`.
 
 ### `DESIGN.json.extensions`
 
-The `extensions` object grows with the migrate-template-canon
-refactor (see `notes/migrate-template-canon-refactor.md`):
+The `extensions` object:
 
 - **`extensions.canon`** — pinned token values, compositional moves
   (free-text), and references to `stardust/canon/*` chrome and CSS
@@ -43,9 +42,11 @@ refactor (see `notes/migrate-template-canon-refactor.md`):
   `canonicalRendering` reference. Auto-detected during `$stardust
   extract --prep`; promoted/refined during `$stardust direct
   --prep`.
+- **`extensions.widgets[]`** — EDS widgets (`{ id, path, params }`):
+  candidates marked as widgets in `direct --prep`. Per page, the
+  rendered references live in `_meta.json.widgets[]`.
 - **`extensions.colorReservations[]`** — colors reserved to specific
-  modules or contexts (e.g., centennial-red reserved to a
-  `trh-100-lockup` module). Validated at migrate time; violation
+  modules or contexts. Validated at migrate time; violation
   refuses the page.
 - **`extensions.metadata`** — site-level metadata defaults: site
   name, default OG image, theme color, organization JSON-LD,
@@ -61,11 +62,14 @@ stardust/
 ├── status.jsonl                      # append-only phase-transition log — every skill appends start/end/blocked lines (run-status.md)
 ├── direction.md                      # resolved intent + reasoning trace
 ├── learnings.md                      # per-run learnings ledger — rollout writes, maintainers harvest (learnings.md)
-├── dynamic-blocks-map.md             # dynamic-vs-static listing blocks + per-type metadata contract (prepare-migration Phase 4.5 / rollout Phase B2)
+├── dynamic-features.md               # the dynamic-surface inventory: listings contract + one row per feature with class · disposition · reproducibility · status (dynamics Phase 3; prepare-migration 4.5 / replica Phase 2 / rollout B2)
+├── dynamic-features-plan.md          # phases with deliverables, authoring contract, verification, owner decision (dynamics Phase 3)
+├── dynamics/                         # dynamics working dir: generated-plan draft, parity.json (Phase 5), snapshot sync logs
 ├── redirects.tsv                     # original→normalized path pairs from the path-safety gate (rollout Phase C)
+├── spec/                             # spec skill: config, judgement/, knowledge/ (raw material in .work/spec/)
 ├── runtime-contract.json             # EDS runtime probe result (deploy § Runtime-detection probe)
-├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by `stardust:uplift` Phase 2a; absent otherwise)
-├── uplift-questions.md               # 6–8 "what if…" candidates with disqualifications (written by `stardust:uplift` Phase 2b; absent otherwise)
+├── uplift-improvements.md            # >=3 specific weaknesses (cut, not padded) — load-bearing for uplift's variant A (written by the stardust `uplift` skill Phase 2a; absent otherwise)
+├── uplift-questions.md               # 6–8 "what if…" candidates with disqualifications (written by the stardust `uplift` skill Phase 2b; absent otherwise)
 ├── canon/                            # design canon (canon-extraction.md) — written by prototype --prep on first approval, extended on subsequent approvals
 │   ├── header.html                   # canonical header chrome
 │   ├── footer.html                   # canonical footer chrome
@@ -140,13 +144,17 @@ failure class its SKILL.md didn't anticipate. Entry shape + lifecycle
 in `reference/learnings.md`. Plugin maintainers harvest `pending`
 entries into skill diffs and flip them to `folded`.
 
-### `stardust/dynamic-blocks-map.md`
-Owner: `$stardust prepare-migration` (Phase 4.5) or `$stardust
-rollout` (Phase B2) — whichever runs first; the other verifies rather
-than redoes. Classifies every listing block dynamic vs static and
-defines the per-content-type metadata contract; `helix-query.yaml`
-(authored at the EDS project root from the same contract) is its
-sibling. Mechanics in `skills/rollout/reference/dynamic-listings.md`.
+### `stardust/dynamic-features.md` (+ `-plan.md`, `dynamics/`)
+Owner: `$stardust dynamics` Phase 3, run from `prepare-migration` (4.5),
+`replica` (Phase 2) or `migrate`'s safety net — whichever comes first;
+`rollout` B2 verifies rather than redoes. § Listings contract (per-type
+`<meta>` fields; `helix-query.yaml` at the EDS project root is its
+sibling), § Features (one row per finding: class · disposition ·
+reproducibility · status · pattern · decision), § Decision batch,
+§ Register (decided-out). The gate fails on a row without a
+disposition. `dynamics/parity.json` is Phase 5's replayable parity
+report; `qa` and `rollout` read it. Contract:
+`skills/dynamics/reference/triage.md`, `parity-report.md`.
 
 ### `stardust/runtime-contract.json`
 Owner: `$stardust deploy` (runtime-detection probe, before Step 1).
@@ -163,7 +171,7 @@ Owner: `$stardust rollout` (Phase C path-safety gate). One
 redirects mechanism at Phase D so original inbound URLs don't 404.
 
 ### `stardust/current/PRODUCT.md` and `DESIGN.md`
-Owner: `$stardust extract`. Authored by `$impeccable teach` /
+Owner: `$stardust extract`. Authored by `$impeccable init` /
 `$impeccable document` against the extracted site, but seeded by
 stardust. These files describe what *is*, not what *should be*.
 
@@ -194,7 +202,10 @@ than overwriting. Schema in
 
 ### `stardust/current/pages/<slug>.json`
 Owner: `$stardust extract`. Per-page parsed model. Schema lives in
-`skills/extract/reference/current-state-schema.md` (Phase 1).
+`skills/extract/reference/current-state-schema.md` (Phase 1). The
+crawler writes a `pages/<slug>.html` sidecar next to it — the settled
+rendered DOM (`renderedHtml` field) for offline parsing by importers;
+it is not a page record and never matches `pages/*.json`.
 
 ### `stardust/current/assets/`
 Owner: `$stardust extract`. Logo + media extracted from the live site.
@@ -349,6 +360,84 @@ carries the full trace. Both are redundant on purpose — downstream
 consumers can read either source.
 
 ---
+
+## Versioning — what a clone holds
+
+Policy (2026-09): **everything under `stardust/` is committed** except
+what `skills/stardust/reference/stardust.gitignore` lists. The rule of
+thumb is cost to reproduce, not regenerability: an LLM-written artifact
+comes back different on a re-run, and a capture of the source site cannot
+come back at all once the site is replaced. Size alone never drops a
+file; screenshots, gate images and two rewritten-on-every-run folders are
+the exceptions. The master skill installs the ignore file as
+`stardust/.gitignore` (Setup step 6); a project that wants one of the
+excluded folders tracked deletes that line or adds a negation below it.
+
+| Path | Tracked | Owner | Notes |
+|---|---|---|---|
+| `state.json`, `status.jsonl`, `journal.md`, `learnings.md`, `direction.md` | yes | master / all | delivery state and decisions; a clone is dead without `state.json` |
+| `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json`, `trees.json` | yes | dynamics | dispositions and parity checks |
+| `dynamics/` other (`*.generated-plan.*`, `sheets/_sync.json`) | yes | dynamics | small text; drafts superseded by the curated file |
+| `redirects.tsv`, `runtime-contract.json`, `eds-conversion-log.md`, `ai-readability-allowlist.json` | yes | rollout / deploy | |
+| `canon/**` | yes | prototype | the design canon |
+| `canon-source/**` except `assets/screenshots/` | yes | extract | donor capture |
+| `current/` text: `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `_brand-extraction.json`, `_crawl-log.json`, `_dynamics.json`, `brand-review.html`, `pages/*.json`, `pages/*.html` | yes | extract | `pages/*.json` feeds nine skills; the substrate of the pipeline |
+| `current/assets/**` except `screenshots/` | yes | extract | fonts, logo, source media (#156) |
+| `current/assets/screenshots/` | **no** | extract | rewritten on every extract |
+| `current/brand-sources/*/assets/screenshots/` | **no** | extract | screenshots |
+| `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
+| `validation/**` | **no** | master / prototype | clean-pass screenshots |
+| `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB) |
+| `replica/gates/**` except `*.png` | yes | replica | tables, verdicts, capture records: a resumed run reads them (#156) |
+| `**/gates/**/*.png` except `baseline.png` | **no** | replica | captures and diffs, re-taken when needed (`gate-all.mjs --help`) |
+| `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger |
+| `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
+| `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |
+| `audit/**` | yes | audit | score of the original site; irreplaceable after launch |
+| `spec/**` (`spec.config.json`, `judgement/`, `knowledge/`) | yes | spec | judgement and computed knowledge; raw material stays in `.work/spec/` |
+| `eds-schema/**` | yes | deploy | small JSON |
+| `rollout/` except `qa/` | yes | rollout | `rollout.json`, `coverage/`, `optimize/`, `plan.json`, `site/`, `dashboard/` |
+| `rollout/qa/**` | **no** | rollout | screenshots of the delivered site |
+| `qa/allowlist.json`, `qa/report.*`, `qa/inventory.json`, `qa/dynamics-report.*`, `qa/ai-readability.json` | yes | qa | judgement and last report |
+| `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
+| `scripts/**` | yes (for now) | extract / reskin / replica / spec | byte copies of plugin scripts so ESM resolves the project's `node_modules`; stale against the installed plugin — removing the copies is a planned change |
+| `_pre-publish-backup/**`, `_palette-pick.html`, `*.generated.*` drafts | backup yes; picker no | prototype / direct / dynamics | |
+| `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps |
+| `*.log`, `*.err`, `*.out`, `last-run.json` anywhere | **no** | any | safety net until every writer routes to `.work/logs/` |
+| `_storage-state.json`, `*-clearance.json` | **never** | extract | captured session cookies; secrets |
+
+Outside `stardust/`: the impeccable target files at the project root and
+the EDS project are tracked by the project's own rules; `.env` / `.env.*`
+are excluded by the managed block Setup step 6 appends. `stardust/` is
+also appended to `.hlxignore` on EDS projects so nothing here is served.
+
+Setup step 6 in detail (idempotent, writes only what is missing):
+(a) `stardust/.gitignore` from `stardust.gitignore`, byte-identical, only
+if absent — the project owns any line it adds afterwards; (b) root
+`.gitignore`: a block between `# >>> stardust` and `# <<< stardust`
+holding `.env` and `.env.*`, lines outside the markers never touched;
+(c) `.hlxignore`, when present: append `stardust/`; (d) assert
+`git check-ignore -q stardust/state.json` fails — a bare `state.json`
+pattern in `.git/info/exclude` or a global excludes file silently drops
+the state machine from every clone (field finding); if it is ignored,
+stop and tell the user which rule does it; (e) when `git lfs` is
+installed and tracked binaries under `stardust/` exceed 50 MB, offer
+`.gitattributes` patterns for
+`stardust/**/*.{png,jpg,jpeg,webp,gif,woff,woff2,ttf,otf,mp4}` — never
+write them unasked. Consequences to state in the state report when they
+apply on this checkout: without `current/assets/`, `migrate` / `deploy`
+need an `extract` re-run; without its screenshots, `brand-review.html`
+has no thumbnails.
+
+Who reads `stardust/current/` (the dependency that decides what a clone
+can do): `pages/*.json` — migrate, prototype, replica, master, direct,
+uplift, audit, prepare-migration, stardust; `_brand-extraction.json` —
+direct, prototype, uplift, audit, master; `PRODUCT.md` / `DESIGN*.*` —
+replica, prototype, direct, uplift, master; `assets/media`, favicon, logo
+— migrate, deploy, prepare-migration, direct; `assets/screenshots` —
+prototype, replica, audit, reskin; `brand-review.html` — direct, uplift,
+audit, rollout, master; `pages/*.html` (DOM sidecars) — no skill. Only
+`qa` and `diff` never read `current/`.
 
 ## Provenance shapes
 

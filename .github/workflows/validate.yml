@@ -21,39 +21,126 @@ jobs:
 
       - run: npm run validate
 
+      - name: Skill release configs extend a file that exists
+        run: node scripts/check-release-configs.mjs
+
+      - name: Repository scripts pass their tests
+        run: npm test
+
+      - name: Claude Code accepts the marketplace and every plugin manifest
+        run: |
+          npx claude plugin validate .
+          find plugins -path '*/.claude-plugin/plugin.json' | sort | while read -r manifest; do
+            npx claude plugin validate "${manifest%/.claude-plugin/plugin.json}"
+          done
+
+  # The boy-scout rule (.boy-scout.json): a pull request that changes a SKILL.md which is too
+  # long, shares its name with another skill or has a Tessl lint warning has to fix that in
+  # the same pull request.
+  boy-scout:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # the gate needs the merge base
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      # scripts/tessl-lint-debt.mjs runs tessl plugin lint, which needs no token
+      - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e  # v2
+
+      - uses: ai-ecoverse/boy-scout@beb07aa7b5a822f1e36f0eb593af6df3931f3256  # v1.1.0
+
+  web-cli:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/web/cli
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm test
+
+      - run: npm run check:dist
+
+  web-cli-browser:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: plugins/web/cli
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '24'
+
+      - run: npm ci
+
+      # `web header` launches Playwright's own headless Chromium. Other commands use the
+      # runner's Chrome. npm exec installs the build that the pinned playwright-cli expects.
+      - run: npm exec -- playwright-cli install-browser chromium --only-shell --with-deps
+
+      - name: Fixture tests on real renders
+        run: npm run test:smoke
+
+  stardust-harness-neutral:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - name: Stardust skill text stays harness-neutral
+        run: node plugins/stardust/evals/lint/harness-neutral.mjs
+
+      - name: Stardust skill text names only scripts and references that exist
+        run: node plugins/stardust/evals/lint/script-paths.mjs
+
+      - name: Stardust scripts index names every shipped script once
+        run: node plugins/stardust/evals/lint/scripts-index.mjs
+
+      - name: Stardust scripts take their browser from the front door
+        run: node plugins/stardust/evals/lint/browser-front-door.mjs
+
+      - name: Stardust scripts answer --help without touching a file (playwright/pngjs scripts skip without devDependencies)
+        run: node plugins/stardust/evals/lint/script-help.mjs
+
+      - name: Stardust source names no site (placeholders, infrastructure and vendor patterns are allowlisted)
+        run: node plugins/stardust/evals/lint/site-names.mjs
+
+      - name: Stardust skill prose delta against main (advisory — printed, never fails)
+        run: |
+          git fetch --no-tags --depth=1 origin main
+          node plugins/stardust/evals/lint/prose-delta.mjs --ref origin/main
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Check CODEOWNERS covers all skill directories
-        run: |
-          codeowners=".github/CODEOWNERS"
-          if [ ! -f "$codeowners" ]; then
-            echo "::error::CODEOWNERS file not found at $codeowners"
-            exit 1
-          fi
-
-          missing=()
-          while IFS= read -r plugin_json; do
-            # Extract the directory path from the plugin.json file path
-            path="/${plugin_json%/.claude-plugin/plugin.json}"
-            echo "Checking $path in CODEOWNERS..."
-            if ! grep -q "^${path}[/ ]" "$codeowners"; then
-              missing+=("$path")
-            fi
-          done < <(find plugins -name "plugin.json" -path "*/.claude-plugin/plugin.json")
-
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::The following skill directories are not covered in CODEOWNERS:"
-            for p in "${missing[@]}"; do
-              echo "  $p"
-            done
-            exit 1
-          fi
-
-          echo "All skill directories are covered in CODEOWNERS."
-
+      - name: Check CODEOWNERS covers all plugin directories
+        run: node scripts/check-plugins.mjs codeowners
 
   license-field:
     runs-on: ubuntu-latest
@@ -61,36 +148,4 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Check SKILL.md files have license field in frontmatter
-        run: |
-          missing=()
-          for file in $(find plugins -name SKILL.md); do
-            # Extract frontmatter (between first two --- delimiters) and check for license field
-            if ! awk '/^---$/{n++; next} n==1{print} n>=2{exit}' "$file" | grep -q "^license:"; then
-              missing+=("$file")
-            fi
-          done
-
-          # Write GitHub Step Summary
-          echo "## License Field Check" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Skill | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|-------|--------|" >> "$GITHUB_STEP_SUMMARY"
-
-          for file in $(find plugins -name SKILL.md | sort); do
-            if printf '%s\n' "${missing[@]}" | grep -qx "$file"; then
-              echo "| $file | ❌ Missing |" >> "$GITHUB_STEP_SUMMARY"
-            else
-              echo "| $file | ✅ Pass |" >> "$GITHUB_STEP_SUMMARY"
-            fi
-          done
-
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo ""
-            echo "::error::The following SKILL.md files are missing a 'license:' field in their frontmatter:"
-            for f in "${missing[@]}"; do
-              echo "  $f"
-            done
-            exit 1
-          fi
-
-          echo "All SKILL.md files have a license field."
+        run: node scripts/check-plugins.mjs license

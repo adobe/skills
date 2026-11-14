@@ -1,6 +1,6 @@
 ---
 name: ue-component-model
-description: Create or edit the Universal Editor component configuration (component-definition.json, component-models.json, component-filters.json) for AEM Edge Delivery Services blocks. Use this skill whenever the user mentions component models, component definitions, component filters, block configuration for the Universal Editor, UE block setup, adding a new block to UE, configuring block properties, block authoring fields, or any task involving the three JSON config files that control how blocks appear in the Universal Editor. Also trigger when the user wants to create a new EDS/Franklin block with UE support, modify block fields, add a block to the section filter, or asks about how blocks connect to the Universal Editor.
+description: Use this when the user mentions component models, component definitions, component filters, block configuration for the Universal Editor, UE block setup, adding a new block to UE, configuring block properties or block authoring fields, or wants to create an EDS/Franklin block with Universal Editor support, modify block fields, or add a block to the section filter. Covers creating and editing the three JSON files that control how AEM Edge Delivery Services blocks appear and behave in the Universal Editor — component-definition.json, component-models.json, and component-filters.json.
 license: Apache-2.0
 ---
 

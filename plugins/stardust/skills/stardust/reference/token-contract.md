@@ -3,7 +3,7 @@
 Every prototype and every migrated page renders against the project-root
 `DESIGN.md` tokens, exposed as CSS custom properties on `:root`. The
 contract below is the **interface** between stardust's renderers and
-any downstream consumer (`stardust:deploy`/`stardust:rollout` for EDS, a framework component
+any downstream consumer (the stardust `deploy`/`rollout` skills for EDS, a framework component
 library, a design handoff).
 
 Carried from stardust v1 (design-guide.md) and aligned with
@@ -116,7 +116,9 @@ a comment showing the role name above the token.
 ## Sizing `--max-width`
 
 The `1200px` in the example block is illustrative, not normative —
-stardust ships **no default container width**. Derive it per project:
+stardust ships **no default container width**. The replica flow MEASURES
+it — `cap-probe.mjs --write-design` (#124) writes `containerMaxWidth` (null
+when fluid) and `probeWidth`; inherit both as-is. Redesign derives it:
 
 1. **Captured surface first** (Mode A, per `direct/SKILL.md`).
    Inherit the captured container when it holds up. When it reads
@@ -199,5 +201,5 @@ HTML file. When the user gives feedback during iteration:
   re-derived from the latest DESIGN.md so token edits propagate.
 - **`extract`** does not touch this block (extract describes the
   current site, which has its own arbitrary tokens).
-- Downstream consumers (e.g., `stardust:deploy`) read the block from
+- Downstream consumers (e.g., the stardust `deploy` skill) read the block from
   migrated pages as the canonical token interface.

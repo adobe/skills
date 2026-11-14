@@ -39,7 +39,7 @@ detection — those describe the primary site's IA.
 
 ## `--design-source <url>` — design donor
 
-Formalizes the proven canon.com pattern: a golden design source is
+Formalizes the proven golden-source pattern: a golden design source is
 extracted separately and its design system becomes the fixed
 **target**, while the primary origin supplies content.
 
@@ -53,7 +53,7 @@ extracted separately and its design system becomes the fixed
 - Stamp `state.json.designSource = { "url", "capturedAt", "path":
   "stardust/canon-source/" }`.
 
-`stardust:direct` reads this stamp and pins the donor system as the
+The stardust `direct` skill reads this stamp and pins the donor system as the
 target: Mode A's brand-faithful pins transfer to the **donor**
 surface while content stays with the primary origin — see
 `skills/direct/SKILL.md` § Mode A. The donor records

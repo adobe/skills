@@ -5,6 +5,27 @@ All agents that produce or consume these types must conform to these schemas exa
 
 ---
 
+## Assembled Metadata
+
+The orchestrator always includes `upgradeMode` in the generated
+`app.commerce.config.ts` metadata:
+
+```typescript
+interface AssembledMetadata {
+  id: string;
+  displayName: string;
+  version: string;
+  description: string;
+  upgradeMode: "auto" | "manual";
+}
+```
+
+`"auto"` is the migration default: the generated post-deploy hook plans an
+upgrade and starts it immediately. Use `"manual"` only when the developer
+explicitly wants the plan left pending without starting it.
+
+---
+
 ## ProjectSnapshot
 
 Produced by the **Analyzer agent**. Consumed by all domain agents and the Executor agent.
@@ -196,6 +217,16 @@ interface DomainResult {
   //   adminUi domain    → { adminUi: { menu?: {...}, order?: {...}, product?: {...}, customer?: {...} } }
   //   businessConfig    → { businessConfig: { schema: [...] } }
   configFragment: Record<string, unknown>;
+
+  // businessConfig domain only: env vars still read by runtime actions that were
+  // added to configFragment.businessConfig.schema as candidates (fields tagged "_source": "env").
+  envMigrations?: Array<{
+    key: string;
+    field: string;
+    type: string;
+    reads: Array<{ file: string; line: number; expression: string }>;
+    inputDeclarations: string[];
+  }>;
 
   unresolvedQuestions: Array<{
     id: string; // dot-notation identifier, e.g. "events.provider.label"

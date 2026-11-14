@@ -1,0 +1,185 @@
+# Pattern catalogue
+
+Pick by class and by whether the target already has an implementation (greenfield vs existing
+library). Each pattern: intent · authoring contract · what the mechanism must do · verification
+(flows, not presence). Where the mechanism is non-obvious a minimal reference implementation is
+embedded as an **example the run adapts** — the plugin ships contracts and tooling, not blocks:
+every site's CSS is lifted from the source, and an existing library is fed, never forked.
+
+| pattern | classes | disposition | target | greenfield | existing library |
+|---|---|---|---|---|---|
+| `search-index-backed` | S | index-backed | widget | query index + results page + search widget | feed the library's search (off-origin-data.md) |
+| `listing-index-backed` | L, R | index-backed | block | listings.md | same |
+| `modal-loader` | M | rebuild-native | runtime | link marker + one runtime module | library's own dialog |
+| `chrome-interaction` | M | rebuild-native | runtime | the header contract → header/footer JS | keep |
+| `media-as-url` | V | embed-passthrough | content | player URL as content | same |
+| `forms` | F | rebuild-native | block / widget | forms.md | forms.md § existing library |
+| `client-compute` | F | client-only | widget | one widget per tool: controls + logic in code | same |
+| `consent-gated-tags` | T, A | embed-passthrough | embed | owner config, disabled | library martech behind a host guard |
+| `off-origin-data` | A, S, D | data-fed | block / widget | snapshot + `Source` row | endpoint indirection + shim (off-origin-data.md) |
+| `sheet-sync` | D | data-fed | content | — | `scripts/sync-sheets.mjs` |
+| `client-rendered-page` | CR | static-snapshot | content | settled DOM; blank = human capture | same |
+| `locale-tree` | I18N | rebuild-native | runtime | locale-trees.md | same |
+| `decided-out` | X, A | decided-out | — | register row | library guards |
+
+`target` = delivery form (triage.md § Target); locators and other API-fed tools with no authored
+copy are `off-origin-data` shipped as a widget.
+
+## search-index-backed
+
+**Intent.** Search is a service, not a page. The header form's action never becomes a
+root-relative link to nowhere, nor stays on the source origin's results page. **Contract.** A `/search` page mounting the
+search widget (`<p><a href="/widgets/search/<name>.html?q=">…</a></p>` — the `?q=` and any other
+query param land as `data-*` on the widget root; accept the source's parameter name too); the
+header form posts `?q=`. **Mechanism.** The query index comes
+from `helix-query.yaml` in the CODE branch (skeleton in listings.md § Getting an index at all):
+commit, push, publish the pages live, poll `/query-index.json` (no more often than every 5 s,
+bounded) — never a configuration-service write (a 403 there with the migration token is
+expected and means nothing; a recorded hands-off run read it as "no index possible" and shipped
+a sheet-backed interim index for want of one yaml file). A `text` property gives excerpts; the
+block clips excerpt windows around matches **after skipping the breadcrumb + title lead** the
+`text` property starts with, pages client-side, reflects the query into the inputs. Second
+corpora (a non-migrated library) are explicitly not reproduced. Per locale tree: one results
+page each and a `lang` index property.
+
+**Ranking and shape — read from the source during detect.** For each probe term the detect step
+records what the SOURCE shows: the visible result count, the top titles (≤ 3) and one expected
+hit, onto the feature's `search-query` check in `parity.json` (`expectCount`, `expectTitles`,
+`expectIncludes`). The block then: (1) title matches rank first; (2) description, then body-text
+(`text`) matches are consulted only while there are fewer than N title hits, N = the source's
+visible count; (3) results are deduped by title + description (two locale home pages under one
+title are one entry, or none — the source showed neither); (4) the typeahead dropdown is capped
+at N; the results page pages beyond it. Chrome and search documents are excluded from the index
+(their `Robots | noindex` row plus the `exclude` globs), so they never surface as results.
+
+**Verify.** `search-query` with `expectCount` + `expectTitles` (+ `expectIncludes`): the count
+must equal the source's, the top titles must be the source's, no duplicates — a count mismatch
+FAILS (`scripts/dynamics-check.mjs`). Then pagination; an excerpt sample.
+
+```js
+// example — index fetch, title-first ranking, deeper fields only below the source's visible count, dedupe, cap
+async function search(q, { index = '/query-index.json', visible = 3, pageSize = 20, page = 1 } = {}) {
+  const terms = q.toLowerCase().split(/\s+/).filter((t) => t.length > 1);
+  const rows = []; for (let off = 0; ; off += 500) { const j = await (await fetch(`${index}?offset=${off}&limit=500`)).json(); rows.push(...j.data); if (off + 500 >= j.total) break; }
+  const hasAll = (s) => terms.every((t) => String(s || '').toLowerCase().includes(t));
+  const titleHits = rows.filter((r) => hasAll(r.title));
+  const descHits = titleHits.length < visible ? rows.filter((r) => !hasAll(r.title) && hasAll(r.description)) : [];
+  const textHits = titleHits.length + descHits.length < visible ? rows.filter((r) => !hasAll(r.title) && !hasAll(r.description) && hasAll(r.text)) : [];
+  const seen = new Set();
+  const hits = [...titleHits, ...descHits, ...textHits].filter((r) => { const k = `${r.title}|${r.description}`.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return { total: hits.length, typeahead: hits.slice(0, visible), items: hits.slice((page - 1) * pageSize, page * pageSize) };
+}
+```
+
+## modal-loader
+
+**Intent.** Pages the source opened in an overlay (a contact form on 49 pages, video pills) stay
+ordinary pages and ordinary links. **Contract.** The converter appends `#modal` to any link whose
+source carried the modal-load class; the target is a normal page; its dialog heading comes from a
+`modal-title` metadata row **on the target page** (on the source it lived on the trigger, with
+several variants per target — take the majority across captures, log the variance, never pick a
+translation). **Mechanism.** One runtime module: click delegation on `a[href$="#modal"]`; fetch
+`<path>.plain.html`; run the site's `decorateMain` + `loadSections` inside a `<dialog>` whose
+measures are lifted from the live modal; focus trap, Escape, overlay click, ✕, body scroll lock;
+media hrefs embed the player iframe in the large size (autoplay appended here, never authored);
+on fetch failure navigate instead. Import only `aem.js` and receive `decorateMain` as an argument —
+importing `scripts.js` is a cycle. **Verify.** Click → dialog with the target's heading and its
+fields; Escape closes; the target still serves standalone.
+
+```js
+// example — scripts/modal.js (styles lifted per site into styles/modal.css)
+import { loadCSS, loadSections } from './aem.js';
+export default async function openModal(href, { decorateMain, playerHosts = [] } = {}) {
+  await loadCSS(`${window.hlx.codeBasePath}/styles/modal.css`);
+  const url = new URL(href, window.location.href); url.hash = '';
+  const isMedia = url.protocol === 'https:' && playerHosts.some((h) => url.hostname === h || url.hostname.endsWith(`.${h}`));
+  const dialog = document.createElement('dialog'); dialog.className = `modal modal--${isMedia ? 'large' : 'medium'}`;
+  dialog.innerHTML = '<div class="modal__content"><div class="modal__header"><h2 class="modal__heading"></h2><button type="button" class="modal__close" aria-label="Close dialog">×</button></div><div class="modal__body"></div></div>';
+  dialog.querySelector('.modal__close').onclick = () => dialog.close();
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+  dialog.addEventListener('close', () => { document.body.classList.remove('modal-open'); dialog.remove(); });
+  document.body.append(dialog); document.body.classList.add('modal-open'); dialog.showModal();
+  const body = dialog.querySelector('.modal__body');
+  if (isMedia) { url.searchParams.set('autoplay', 'true'); const f = document.createElement('iframe'); // never innerHTML (#157)
+    Object.assign(f, { src: url.href, title: 'Video', allowFullscreen: true, allow: 'autoplay; encrypted-media; fullscreen' }); body.append(f); return; }
+  try {
+    const doc = new DOMParser().parseFromString(await (await fetch(`${url.pathname}.plain.html`)).text(), 'text/html');
+    dialog.querySelector('.modal__heading').textContent = doc.querySelector('meta[name="modal-title"]')?.content || doc.querySelector('h1')?.textContent || '';
+    doc.querySelectorAll('h1').forEach((h) => h.remove());
+    const main = document.createElement('main'); main.append(...doc.body.children); body.append(main);
+    if (decorateMain) decorateMain(main); await loadSections(main);
+  } catch { dialog.close(); window.location.href = href.replace(/#modal$/, ''); }
+}
+```
+
+## media-as-url
+
+**Intent.** The player URL is the content. **Contract.** A link to the vendor player URL carrying
+account, player and video id, plus `#modal` for overlays; inline via the site's video/embed block,
+mounted after first paint (`../../deploy/SKILL.md` #157).
+Ids come from the detector's V rows **per page and per locale** (six of fourteen locale twins
+carried a different id), never from copy, never reused by path. Drive the probe from every
+target-less CTA, not a hand-made list. **Verify.** Playback, not presence: a vendor iframe needs a
+playback request observed with status < 400; a native `<video>` must be PLAYING once at least a
+quarter visible (`!paused`, `currentTime` advancing) and paused under `prefers-reduced-motion` when
+the check sets `reducedMotionPauses` (`dynamics-check.mjs video-plays`); auth scoped to the origin
+(parity-report.md).
+
+## client-compute
+
+**Intent.** Calculators, filters, score lookups, comparisons: controls + inline logic, no network.
+**Signature.** A form (or control group) without action, inline scripts with no `fetch`/XHR.
+**Contract.** One widget per tool (`widgets/<path>/<name>`): controls and logic in the widget's
+code, labels/ranges/options in its `.json` or as query params (`?rate=…` → `data-rate`); no
+authored rows. **Rule.** Never flatten a client-compute section into a prose block — the
+deploy/rollout block triage must refuse to convert a section the inventory marks `client-only` or
+modal-bearing into a generic block. **Verify.** Known input → known output.
+
+## consent-gated-tags
+
+**Intent.** Nothing about a tag stack can be re-wired autonomously (domain-bound CMP scripts, report
+suites, property ids), but everything observed can be pre-filled. **Contract.** One owner-facing
+`scripts/site-config.js`: every observed vendor with ids and endpoints, all `enabled: false`; no
+per-page authoring. **Mechanism.** A consent phase loads the CMP with the recorded id and gates the
+rest on its groups; a consented phase builds the data layer from page metadata, then loads the tag
+manager, analytics, marketing, feedback vendors from config. RUM vendors recorded, not proposed.
+First-party collector subdomains need a CNAME on the new host — an owner item. Capture scripts keep
+suppressing the banner. Existing library: its martech already does this; keep it behind a hostname
+guard on sandbox hosts and document the config. When the owner asks to carry the source CMP and tag
+managers over, `martech.md` is the contract. **Verify.** Consent declined → no request to any
+gated host; accepted → host-list parity with `_dynamics.json`. Status in the parity report reads
+`scaffolded-awaiting-owner`, never "dropped".
+
+## forms → forms.md · off-origin-data → off-origin-data.md · listings → listings.md · locale → locale-trees.md
+
+```js
+// example — JSON post with honeypot; empty submission refused; endpoint from config (forms.md)
+export async function submit(form, endpoint) {
+  if (!endpoint) return form.submit(); // native post when the owner has not named one
+  if (form.querySelector('[name="website"]')?.value) return null; // honeypot
+  if (!form.checkValidity()) { form.reportValidity(); return null; }
+  const data = Object.fromEntries(new FormData(form).entries());
+  const res = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ data, page: window.location.pathname, timestamp: new Date().toISOString() }) });
+  return res.ok;
+}
+```
+
+## chrome-interaction
+
+Header behaviour (mega menus, dropdowns, search overlay, drawers, sticky states) is M `chrome
+only`, recorded and gated by the header contract (`../../diff/SKILL.md` § The header contract),
+not the detector; `dynamics-plan --chrome` adds a row per contract control family. Clock-dependent
+strings are behaviour: reproduce the function with thresholds read from the live JS, never the
+captured string.
+
+## client-rendered-page
+
+`CR` with main empty at load. Capture the settled DOM (network idle + non-empty landmark + byte
+threshold). A still-blank capture is `needs-human-capture`, batched with every other bot-walled
+surface into one request; check first that the source renders for a real user
+(`skipped-source-broken` otherwise). Never migrate blank, never fabricate.
+
+## decided-out
+
+triage.md § Dispositions. Links kept; library guards left in place; the sign-in/account entry UI the
+chrome keeps is a widget.

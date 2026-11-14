@@ -1,6 +1,6 @@
 # direct multi-variant fork — roles, forks, and contracts
 
-Consumed by `stardust:direct` Phase 2.6 when the user requests
+Consumed by the stardust `direct` skill Phase 2.6 when the user requests
 N > 1 variants, and by `--add-variant` for role resolution
 (`reference/add-variant.md`).
 

@@ -1,0 +1,30 @@
+- description: fill and submit the greeter form
+  vars:
+    check: greet
+    task: Open http://localhost:8765/cdp-app.html, type "Ada" in the name field, submit the form, and tell me exactly what message the page shows.
+- description: screenshot
+  vars:
+    check: screenshot
+    task: Open http://localhost:8765/cdp-app.html and save a screenshot of it to ./out/page.png.
+- description: network request on load
+  vars:
+    check: network
+    task: Open http://localhost:8765/cdp-app.html and tell me which API endpoint the page calls when it loads, and what it returns.
+- description: accessible buttons
+  vars:
+    check: buttons
+    task: Open http://localhost:8765/cdp-app.html and list the buttons on the page by their accessible names.
+- description: several tabs, click in the right one
+  vars:
+    check: multi-tab
+    tabs: http://localhost:8765/cdp-counter.html http://localhost:8765/cdp-other.html # space-separated: promptfoo expands array vars into separate tests
+    task: Chrome has several tabs open. In the tab that shows the "Inventory" page, click the Add button three times and tell me the counter value.
+- description: console output after a reload
+  vars:
+    check: console
+    tabs: http://localhost:8765/cdp-counter.html
+    task: Reload the "Inventory" tab and tell me everything the page writes to the browser console, including warnings.
+- description: live, open basecamp.com and read the title
+  vars:
+    check: basecamp
+    task: Open https://basecamp.com/ in the Chrome on 9222 and tell me the page title.

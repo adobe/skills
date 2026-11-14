@@ -15,14 +15,15 @@ its current design"
 
 ## Expected behavior
 
-The `stardust:replica` skill is invoked. It:
+The stardust `replica` skill is invoked. It:
 
-1. Runs `stardust:extract --prep` unchanged (full inventory, page types,
-   screenshots, fonts, media, descriptive `stardust/current/` spec). No
-   extract behavior is modified or bypassed.
+1. Runs `$stardust extract --prep` unchanged (full inventory, page types,
+   screenshots, fonts, media, descriptive `stardust/current/` spec, and the
+   header contract `stardust/chrome/header-contract.json`). No extract
+   behavior is modified or bypassed.
 2. **Preserve direction is mechanical**: `stardust/current/{PRODUCT,DESIGN}.{md,json}`
    are promoted verbatim to the project root as the target spec;
-   `stardust/direction.md` records preserve mode. `stardust:direct` is NOT
+   `stardust/direction.md` records preserve mode. the stardust `direct` skill is NOT
    invoked; no divergence roll, no palette/type re-selection, no invented
    improvements.
 3. Creates the **inconsistency register** at
@@ -41,9 +42,12 @@ The `stardust:replica` skill is invoked. It:
    `stitch-shot.mjs` + `pixel-compare.mjs`. Gate evidence (metrics per
    iteration, band breakdown, height delta) is recorded under
    `stardust/replica/`. Hard cap of 3 iterations per breakpoint; unresolved
-   deltas land in the residual log, not in silence.
+   deltas land in the residual log, not in silence. After the 1440 pass the
+   **content-cap row** runs once per archetype: replica's `cap-probe.mjs`
+   live `--against` the served prototype at the derived `probeWidth` that
+   extract wrote to DESIGN.json (never a pinned width), PASS required.
 6. Hands off through the standard pipeline: archetypes at
-   `stardust/prototypes/<slug>-proposed.html` so `stardust:migrate` Path A /
+   `stardust/prototypes/<slug>-proposed.html` so the stardust `migrate` skill Path A /
    sibling tier consume them unchanged; core `state.json` lifecycle is used,
    not redefined.
 
@@ -54,5 +58,9 @@ The `stardust:replica` skill is invoked. It:
 - "Improving" the design outside the inconsistency register.
 - DOM-copying the source page instead of re-authoring.
 - Declaring fidelity without gate evidence on disk (metrics, diff artifacts).
+- A crafted prototype with no row in `stardust/replica/gates/prototypes-<width>/summary.json`
+  (the pixel table is the source of record; a sidecar claim alone is not evidence).
 - Only gating desktop (mobile is not free — the 360 pass is required).
+- Skipping the content-cap row — a container cap wider than 1440 is invisible to both pixel gates.
 - Rehosting a licensed brand font.
+- Treating the header as a picture: no header contract, so its menus, drawer and search go unchecked.
