@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/rollout-findings.schema.json",
+  "title": "stardust rollout/optimize/findings.json",
+  "description": "The in-flow delivery-quality findings ledger. stardust:rollout/optimize runs deterministic detectors over the delivered (or migrated) HTML and records findings; the resolving phase flips status to fixed on re-run when the issue is no longer detected (the detect -> fix -> verify loop). Append-only runs[]; findings[] updated in place by status. Findings are keyed by a stable id derived from layer+check+scope, so re-runs match without duplicating.",
+  "type": "object",
+  "required": ["_provenance", "runs", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "_provenance": { "$ref": "#/$defs/provenance" },
+    "runs": { "type": "array", "items": { "$ref": "#/$defs/run" } },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt", "stardustVersion"],
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:rollout/optimize"] },
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "stardustVersion": { "type": "string" }
+      }
+    },
+    "layer": {
+      "type": "string",
+      "enum": ["brand-tensions", "design-ux", "accessibility", "seo", "content-conversion", "ai-search", "cross-page"],
+      "description": "The 7 optimize layers. rollout's automated gate currently assesses accessibility, seo, ai-search, cross-page; the judgment layers are reserved for an LLM-driven enrichment pass."
+    },
+    "run": {
+      "type": "object",
+      "required": ["id", "at", "layersRun"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" },
+        "scopePages": { "type": "array", "items": { "type": "string" }, "description": "Slugs this run covered (empty = whole site)." },
+        "layersRun": { "type": "array", "items": { "$ref": "#/$defs/layer" } },
+        "trigger": { "type": "string", "enum": ["deliver", "reverify", "manual"] },
+        "source": { "type": "string", "description": "What was inspected, e.g. a base URL or a local root." }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["id", "source", "layer", "check", "severity", "scope", "fixability", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "description": "Stable id = f-<hash(source|layer|check|scope)>; re-runs match by this." },
+        "source": {
+          "type": "string",
+          "description": "Which audit produced the finding. Known values: rollout:baseline (built-in deterministic detectors), impeccable:critique, impeccable:audit, marketing:seo-audit, marketing:schema, marketing:ai-seo, marketing:site-architecture, stardust:tensions. Extensible — new sources may be added without a schema change.",
+          "examples": ["rollout:baseline", "impeccable:audit", "marketing:seo-audit", "stardust:tensions"]
+        },
+        "layer": { "$ref": "#/$defs/layer" },
+        "check": { "type": "string", "description": "Check id within the layer (catalog in reference/checks.md; grows without a schema change)." },
+        "severity": { "type": "string", "enum": ["P1", "P2", "P3"] },
+        "scope": {
+          "type": "object",
+          "required": ["level", "ids"],
+          "additionalProperties": false,
+          "properties": {
+            "level": { "type": "string", "enum": ["site", "template", "page", "block"] },
+            "ids": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "evidence": { "type": "string" },
+        "fixability": {
+          "type": "string",
+          "enum": ["platform-migration", "design-pass", "out-of-scope"],
+          "description": "platform-migration = rollout fixes it by re-running deploy (and the AEM autofix engine may auto-apply). design-pass = upstream (fix in migrate/prototype; rollout can only surface). out-of-scope = informational."
+        },
+        "recommendedMove": { "type": "string" },
+        "status": { "type": "string", "enum": ["open", "in-progress", "fixed", "accepted", "wontfix"] },
+        "autofix": {
+          "type": ["object", "null"],
+          "description": "Platform autofix linkage (AEM-EDS in v1). Set by optimize when a fixer is registered for the check; updated by autofix-aem.",
+          "additionalProperties": false,
+          "properties": {
+            "available": { "type": "boolean" },
+            "target": { "type": "string", "examples": ["aem-eds"] },
+            "strategy": { "type": ["string", "null"], "description": "Fixer id, e.g. eds-metadata-title, eds-fix-h1." },
+            "kind": { "type": ["string", "null"], "enum": ["deterministic", "content-draft", "manual", null], "description": "deterministic = mechanical edit; content-draft = generated copy (applied under aggressive policy, logged); manual = payload prepared, human applies." },
+            "status": { "type": "string", "enum": ["unavailable", "pending", "applied", "failed", "manual"] },
+            "appliedBy": { "type": ["string", "null"] },
+            "at": { "type": ["string", "null"], "format": "date-time" },
+            "detail": { "type": ["string", "null"], "description": "What changed (before→after) or why it needs manual handling." }
+          }
+        },
+        "resolvedBy": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "properties": {
+            "phase": { "type": "string", "enum": ["deploy", "migrate", "prototype", "rollout", "autofix"] },
+            "artifact": { "type": "string" },
+            "at": { "type": "string", "format": "date-time" },
+            "note": { "type": "string" }
+          }
+        },
+        "firstSeenRun": { "type": "string" }
+      }
+    }
+  }
+}

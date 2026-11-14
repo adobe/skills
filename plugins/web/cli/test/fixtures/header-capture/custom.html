@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom header fixture</title>
+<style>
+  body { margin: 0; font: 16px/1.5 sans-serif; }
+  #custom { display: flex; align-items: center; gap: 24px; height: 64px; padding: 0 24px; border-bottom: 1px solid #ddd; }
+  #custom .menu { display: flex; gap: 24px; margin: 0; padding: 0; list-style: none; }
+  #custom .menu > li { position: relative; }
+  #custom .menu button { font: inherit; border: 0; background: none; cursor: pointer; }
+  #custom .sub { display: none; position: absolute; top: 100%; left: 0; flex-direction: column; gap: 8px; min-width: 160px; margin: 0; padding: 12px; background: #fff; box-shadow: 0 2px 8px #0003; list-style: none; }
+  #custom .menu > li.open .sub { display: flex; }
+  main { padding: 24px; }
+</style>
+</head>
+<body>
+<div id="custom">
+  <a href="/" class="logo">Logo</a>
+  <ul class="menu">
+    <li><button type="button" aria-expanded="false" onclick="const li = this.parentElement; li.classList.toggle('open'); this.setAttribute('aria-expanded', li.classList.contains('open'))">Shop</button>
+      <ul class="sub"><li><a href="/shop/a">Shop A</a></li><li><a href="/shop/b">Shop B</a></li></ul>
+    </li>
+    <li><a href="/about">About</a></li>
+  </ul>
+</div>
+<main>
+  <h1>Custom header fixture</h1>
+  <p>A header that is a div, with no header or nav element: its menus are found through --header.</p>
+</main>
+</body>
+</html>

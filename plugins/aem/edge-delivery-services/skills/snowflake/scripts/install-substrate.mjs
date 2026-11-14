@@ -45,15 +45,38 @@ import { execSync } from 'node:child_process';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = dirname(SCRIPT_DIR);
-const SUBSTRATE_DIR = join(SKILL_DIR, 'assets', 'substrate');
 
-const flags = new Set(process.argv.slice(2));
+const argv = process.argv.slice(2);
+const flags = new Set(argv);
 const DRY_RUN = flags.has('--dry-run');
 const FORCE = flags.has('--force');
+
+// Flavor override: --milo / --flavor=milo / --flavor=eds. Absent → auto-detect
+// from the target repo. SUBSTRATE_DIR is resolved AFTER the repo root is known,
+// because auto-detection inspects the repo's bootstrap files.
+const flavorArg = argv.find((a) => a.startsWith('--flavor='))?.split('=')[1]
+  || (flags.has('--milo') ? 'milo' : null)
+  || (flags.has('--eds') ? 'eds' : null);
 
 const log = (msg) => console.log(`[snowflake] ${msg}`);
 const warn = (msg) => console.warn(`[snowflake] WARN: ${msg}`);
 const die = (msg, code = 3) => { console.error(`[snowflake] ${msg}`); process.exit(code); };
+
+/**
+ * Decide which substrate flavor to install.
+ *   - eds  → vanilla EDS boilerplate (replaces head.html + scripts.js, etc.)
+ *   - milo → Milo repo (adds only blocks/snowflake; Milo keeps its runtime)
+ * Explicit --flavor/--milo/--eds wins. Otherwise auto-detect: a Milo repo
+ * boots milolibs from head.html and calls setLibs() in scripts/scripts.js.
+ */
+function resolveFlavor(repoRoot) {
+  if (flavorArg === 'milo' || flavorArg === 'eds') return flavorArg;
+  if (flavorArg) die(`unknown --flavor "${flavorArg}" (expected "milo" or "eds")`, 1);
+  const head = (() => { try { return readFileSync(join(repoRoot, 'head.html'), 'utf8'); } catch { return ''; } })();
+  const scripts = (() => { try { return readFileSync(join(repoRoot, 'scripts', 'scripts.js'), 'utf8'); } catch { return ''; } })();
+  const looksMilo = /milolibs/.test(head) || /milolibs/.test(scripts) || /\bsetLibs\s*\(/.test(scripts);
+  return looksMilo ? 'milo' : 'eds';
+}
 
 // ---------------------------------------------------------------------------
 // 1. Locate the target repo (the EDS repo we're installing into)
@@ -69,6 +92,14 @@ if (!existsSync(join(REPO_ROOT, 'package.json'))) {
   die(`no package.json at ${REPO_ROOT} — does not look like an EDS boilerplate repo`, 1);
 }
 log(`target repo: ${REPO_ROOT}`);
+
+// ---------------------------------------------------------------------------
+// 1b. Resolve substrate flavor + bundle directory
+// ---------------------------------------------------------------------------
+
+const FLAVOR = resolveFlavor(REPO_ROOT);
+const SUBSTRATE_DIR = join(SKILL_DIR, 'assets', FLAVOR === 'milo' ? 'substrate-milo' : 'substrate');
+log(`substrate flavor: ${FLAVOR}${flavorArg ? ' (explicit)' : ' (auto-detected)'}`);
 
 // ---------------------------------------------------------------------------
 // 2. Load the bundled manifest + version
@@ -318,6 +349,7 @@ const existingConfig = existsSync(configPath)
   : {};
 const configOut = {
   substrateVersion: bundledVersion,
+  substrateFlavor: FLAVOR,
   installedAt: new Date().toISOString(),
 };
 const merged = { ...defaults, ...existingConfig, ...configOut };

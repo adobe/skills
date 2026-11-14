@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stardust.dev/schemas/rollout-scorecard.schema.json",
+  "title": "stardust rollout/optimize/scorecard.json",
+  "description": "Delivery-quality scorecard: per-layer health 0-100 (null = not assessed by the automated gate), an overall health, the open severity mix, and a history[] so progress across rollout runs is visible. Written by stardust:rollout/optimize.",
+  "type": "object",
+  "required": ["_provenance", "current", "history"],
+  "additionalProperties": false,
+  "properties": {
+    "_provenance": { "$ref": "#/$defs/provenance" },
+    "current": { "$ref": "#/$defs/snapshot" },
+    "history": { "type": "array", "items": { "$ref": "#/$defs/snapshot" } }
+  },
+  "$defs": {
+    "provenance": {
+      "type": "object",
+      "required": ["writtenBy", "writtenAt", "stardustVersion"],
+      "properties": {
+        "writtenBy": { "type": "string", "examples": ["stardust:rollout/optimize"] },
+        "writtenAt": { "type": "string", "format": "date-time" },
+        "stardustVersion": { "type": "string" }
+      }
+    },
+    "score": { "type": ["integer", "null"], "minimum": 0, "maximum": 100 },
+    "snapshot": {
+      "type": "object",
+      "required": ["runId", "at", "overall", "dimensions", "severity"],
+      "additionalProperties": false,
+      "properties": {
+        "runId": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" },
+        "overall": { "$ref": "#/$defs/score" },
+        "dimensions": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["brand-tensions", "design-ux", "accessibility", "seo", "content-conversion", "ai-search", "cross-page"],
+          "properties": {
+            "brand-tensions": { "$ref": "#/$defs/score" },
+            "design-ux": { "$ref": "#/$defs/score" },
+            "accessibility": { "$ref": "#/$defs/score" },
+            "seo": { "$ref": "#/$defs/score" },
+            "content-conversion": { "$ref": "#/$defs/score" },
+            "ai-search": { "$ref": "#/$defs/score" },
+            "cross-page": { "$ref": "#/$defs/score" }
+          }
+        },
+        "severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "P1": { "type": "integer", "minimum": 0 },
+            "P2": { "type": "integer", "minimum": 0 },
+            "P3": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "fixed": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "P1": { "type": "integer", "minimum": 0 },
+            "P2": { "type": "integer", "minimum": 0 },
+            "P3": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}

@@ -6,8 +6,10 @@ substitution for a captured cliché pattern; pages declare the
 move they're applying in `<slug>-shape.md#surpriseMoves[]` with a
 captured-source citation.
 
-The bank is **closed**. New moves require an entry here with a
-worked example and a captured-trait amplification rationale.
+The bank is a set of **worked exemplars, not a closed set** — a
+new move is admissible per § Extension rule below. A move that
+proves out across runs earns a permanent entry here with its
+worked example.
 
 See `stardust/reference/divergence-toolkit.md` § Non-template
 move bank for the move list summary; this file is the
@@ -314,3 +316,24 @@ Pairings that fight:
   document-shape wants per-block structure. Pick one.
 - **scale-displacement + document-shape** — same conflict;
   document-shape's per-block rhythm fights one-element-at-8×.
+
+## Extension rule
+
+A new non-template move — one not among the five above — is
+admissible when it carries the same evidence shape as the bank
+entries:
+
+1. **Captured-trait citation** — the captured-but-underused trait
+   the move amplifies, cited into the capture the way every
+   `surpriseMoves[]` entry above cites `capturedSource`.
+2. **A refusal-patterns list** — the conditions under which the
+   move must NOT be applied (every bank entry carries one; a move
+   without exclusions is too broad to trust).
+3. **Degradation fallbacks** — how the move degrades when its
+   mechanism is unavailable (for any motion-bearing move:
+   `prefers-reduced-motion` and no-JS behavior).
+
+Record the extension in the brief's `surpriseMoves[]` entry with
+`extension: true` and a rationale for why no bank move fits.
+Extensions count against the same surprise-tier allowances as bank
+moves.

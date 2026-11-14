@@ -1,0 +1,1027 @@
+{
+  "source": "wknd https://wknd.site/us/en/magazine.html",
+  "range": { "top": 194, "bottom": 2217 },
+  "tree": {
+    "tag": "BODY",
+    "selector": "#page-7b40bb1a67",
+    "bounds": { "x": 0, "y": 0, "width": 1280, "height": 2477 },
+    "children": [
+      {
+        "tag": "HEADER",
+        "selector": "#container-fb3b036f33 > div > header",
+        "bounds": { "x": 0, "y": 0, "width": 1280, "height": 194 },
+        "children": [
+          {
+            "tag": "DIV",
+            "selector": "#container-e4d23bfdbe > div.container.responsivegrid.cmp-layoutcontainer--utility",
+            "bounds": { "x": 0, "y": 0, "width": 1280, "height": 25 },
+            "children": [],
+            "className": "container responsivegrid cmp-layoutcontainer--utility",
+            "background": {
+              "type": "color",
+              "value": "rgb(32, 32, 32)",
+              "raw": "rgb(32, 32, 32) none repeat scroll 0% 0% / auto padding-box border-box",
+              "source": "css"
+            },
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-e4d23bfdbe > div.container.responsivegrid.cmp-layoutcontainer--utility",
+                "className": "container responsivegrid cmp-layoutcontainer--utility"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#container-42405427ac",
+                "id": "container-42405427ac",
+                "className": "cmp-container"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#container-42405427ac > div",
+                "className": "aem-Grid aem-Grid--12 aem-Grid--tablet--12 aem-Grid--default--12 aem-Grid--phone--12 "
+              },
+              {
+                "tag": "DIV",
+                "selector": "#container-42405427ac > div > div.sign-in-buttons.aem-GridColumn--offset--tablet--0.aem-GridColumn--default--none.aem-GridColumn--phone--none.aem-GridColumn--tablet--none.aem-GridColumn--phone--8.aem-GridColumn.aem-GridColumn--default--10.aem-GridColumn--tablet--8.aem-GridColumn--offset--phone--0.aem-GridColumn--offset--default--0",
+                "className": "sign-in-buttons aem-GridColumn--offset--tablet--0 aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--tablet--none aem-GridColumn--phone--8 aem-GridColumn aem-GridColumn--default--10 aem-GridColumn--tablet--8 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#container-42405427ac > div > div.sign-in-buttons.aem-GridColumn--offset--tablet--0.aem-GridColumn--default--none.aem-GridColumn--phone--none.aem-GridColumn--tablet--none.aem-GridColumn--phone--8.aem-GridColumn.aem-GridColumn--default--10.aem-GridColumn--tablet--8.aem-GridColumn--offset--phone--0.aem-GridColumn--offset--default--0 > div",
+                "className": "wknd-sign-in-buttons"
+              }
+            ],
+            "text": "Welcome Sign In Sign Out",
+            "layout": "2x1"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-e4d23bfdbe > div.container.responsivegrid.cmp-layoutcontainer--header",
+            "bounds": { "x": 0, "y": 25, "width": 1280, "height": 169 },
+            "children": [],
+            "className": "container responsivegrid cmp-layoutcontainer--header",
+            "background": {
+              "type": "color",
+              "value": "rgb(255, 255, 255)",
+              "raw": "rgb(255, 255, 255) none repeat scroll 0% 0% / auto padding-box border-box",
+              "source": "css"
+            },
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-e4d23bfdbe > div.container.responsivegrid.cmp-layoutcontainer--header",
+                "className": "container responsivegrid cmp-layoutcontainer--header"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#container-be388e7f58",
+                "id": "container-be388e7f58",
+                "className": "cmp-container"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#container-be388e7f58 > div",
+                "className": "aem-Grid aem-Grid--12 aem-Grid--tablet--12 aem-Grid--default--12 aem-Grid--phone--12 "
+              },
+              {
+                "tag": "DIV",
+                "selector": "#container-be388e7f58 > div > div.navigation.cmp-navigation--header.aem-GridColumn--tablet--12.aem-GridColumn--offset--tablet--0.aem-GridColumn--phone--hide.aem-GridColumn--default--none.aem-GridColumn--phone--12.aem-GridColumn.aem-GridColumn--default--8.aem-GridColumn--offset--phone--0.aem-GridColumn--offset--default--0.aem-GridColumn--tablet--hide",
+                "className": "navigation cmp-navigation--header aem-GridColumn--tablet--12 aem-GridColumn--offset--tablet--0 aem-GridColumn--phone--hide aem-GridColumn--default--none aem-GridColumn--phone--12 aem-GridColumn aem-GridColumn--default--8 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--tablet--hide"
+              },
+              {
+                "tag": "NAV",
+                "selector": "#navigation-ff05112fb0",
+                "id": "navigation-ff05112fb0",
+                "className": "cmp-navigation"
+              },
+              {
+                "tag": "UL",
+                "selector": "#navigation-ff05112fb0 > ul",
+                "className": "cmp-navigation__group"
+              },
+              {
+                "tag": "LI",
+                "selector": "#navigation-ff05112fb0 > ul > li",
+                "className": "cmp-navigation__item cmp-navigation__item--level-0 cmp-navigation__item--active"
+              }
+            ],
+            "text": "Home Magazine Adventures FAQs ",
+            "layout": "3x1"
+          }
+        ],
+        "className": "experiencefragment cmp-experiencefragment--header aem-GridColumn aem-GridColumn--default--12",
+        "fixed": true,
+        "collapsed": [
+          {
+            "tag": "HEADER",
+            "selector": "#container-fb3b036f33 > div > header",
+            "className": "experiencefragment cmp-experiencefragment--header aem-GridColumn aem-GridColumn--default--12"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#experiencefragment-50bb5a6e56",
+            "id": "experiencefragment-50bb5a6e56",
+            "className": "cmp-experiencefragment cmp-experiencefragment--header"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#experiencefragment-50bb5a6e56 > div",
+            "className": "xf-content-height"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-45ab0e4ba9",
+            "id": "container-45ab0e4ba9",
+            "className": "cmp-container"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-45ab0e4ba9 > div",
+            "className": "container responsivegrid"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-e4d23bfdbe",
+            "id": "container-e4d23bfdbe",
+            "className": "cmp-container"
+          }
+        ]
+      },
+      {
+        "tag": "MAIN",
+        "selector": "#container-fb3b036f33 > div > main",
+        "bounds": { "x": 58, "y": 200, "width": 1164, "height": 1969 },
+        "children": [
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div > div:nth-child(1)",
+            "bounds": { "x": 58, "y": 200, "width": 1164, "height": 101 },
+            "children": [],
+            "className": "title aem-GridColumn aem-GridColumn--default--12",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-0e56066edf > div > div:nth-child(1)",
+                "className": "title aem-GridColumn aem-GridColumn--default--12"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#title-e83f9afeef",
+                "id": "title-e83f9afeef",
+                "className": "cmp-title"
+              },
+              { "tag": "H1", "selector": "#title-e83f9afeef > h1", "className": "cmp-title__text" }
+            ],
+            "text": "Magazine"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div > div.teaser.cmp-teaser--featured.aem-GridColumn.aem-GridColumn--default--12",
+            "bounds": { "x": 58, "y": 301, "width": 1164, "height": 527 },
+            "children": [
+              {
+                "tag": "DIV",
+                "selector": "#featured-article-magazine > div.cmp-teaser__content",
+                "bounds": { "x": 781, "y": 301, "width": 427, "height": 509 },
+                "children": [
+                  {
+                    "tag": "P",
+                    "selector": "#featured-article-magazine > div.cmp-teaser__content > p",
+                    "bounds": { "x": 817, "y": 364, "width": 355, "height": 45 },
+                    "children": [],
+                    "className": "cmp-teaser__pretitle",
+                    "text": "Featured Article"
+                  },
+                  {
+                    "tag": "H2",
+                    "selector": "#featured-article-magazine > div.cmp-teaser__content > h2",
+                    "bounds": { "x": 817, "y": 440, "width": 355, "height": 108 },
+                    "children": [],
+                    "className": "cmp-teaser__title",
+                    "text": "Camping in Western Australia"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#featured-article-magazine > div.cmp-teaser__content > div.cmp-teaser__description",
+                    "bounds": { "x": 817, "y": 566, "width": 355, "height": 123 },
+                    "children": [],
+                    "className": "cmp-teaser__description",
+                    "text": "The Australian West coast is a"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#featured-article-magazine > div.cmp-teaser__content > div.cmp-teaser__action-container",
+                    "bounds": { "x": 817, "y": 707, "width": 355, "height": 49 },
+                    "children": [],
+                    "className": "cmp-teaser__action-container",
+                    "text": "Read More"
+                  }
+                ],
+                "className": "cmp-teaser__content",
+                "background": {
+                  "type": "color",
+                  "value": "rgb(235, 235, 235)",
+                  "raw": "rgb(235, 235, 235) none repeat scroll 0% 0% / auto padding-box border-box",
+                  "source": "css"
+                }
+              },
+              {
+                "tag": "DIV",
+                "selector": "#featured-article-magazine > div.cmp-teaser__image",
+                "bounds": { "x": 72, "y": 301, "width": 709, "height": 509 },
+                "children": [],
+                "className": "cmp-teaser__image",
+                "collapsed": [
+                  {
+                    "tag": "DIV",
+                    "selector": "#featured-article-magazine > div.cmp-teaser__image",
+                    "className": "cmp-teaser__image"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#featured-article-magazine-image",
+                    "id": "featured-article-magazine-image",
+                    "className": "cmp-image"
+                  },
+                  {
+                    "tag": "IMG",
+                    "selector": "#featured-article-magazine-image > img",
+                    "className": "cmp-image__image"
+                  }
+                ],
+                "background": {
+                  "type": "image",
+                  "value": "/us/en/magazine/_jcr_content/root/container/teaser_main.coreimg.jpeg/1660323792132/adobestock-156407519.jpeg",
+                  "raw": "",
+                  "source": "img"
+                }
+              }
+            ],
+            "className": "teaser cmp-teaser--featured aem-GridColumn aem-GridColumn--default--12",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-0e56066edf > div > div.teaser.cmp-teaser--featured.aem-GridColumn.aem-GridColumn--default--12",
+                "className": "teaser cmp-teaser--featured aem-GridColumn aem-GridColumn--default--12"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#featured-article-magazine",
+                "id": "featured-article-magazine",
+                "className": "cmp-teaser"
+              }
+            ],
+            "layout": "2x1"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div > div:nth-child(3)",
+            "bounds": { "x": 58, "y": 828, "width": 1164, "height": 105 },
+            "children": [],
+            "className": "title cmp-title--underline aem-GridColumn aem-GridColumn--default--12",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-0e56066edf > div > div:nth-child(3)",
+                "className": "title cmp-title--underline aem-GridColumn aem-GridColumn--default--12"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#title-0f80375ce9",
+                "id": "title-0f80375ce9",
+                "className": "cmp-title"
+              },
+              { "tag": "H2", "selector": "#title-0f80375ce9 > h2", "className": "cmp-title__text" }
+            ],
+            "text": "All Articles"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12",
+            "bounds": { "x": 58, "y": 932, "width": 1164, "height": 633 },
+            "children": [
+              {
+                "tag": "LI",
+                "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(1)",
+                "bounds": { "x": 72, "y": 932, "width": 274, "height": 271 },
+                "children": [
+                  {
+                    "tag": "A",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(1) > article > a.cmp-image-list__item-image-link",
+                    "bounds": { "x": 72, "y": 932, "width": 260, "height": 207 },
+                    "children": [],
+                    "className": "cmp-image-list__item-image-link",
+                    "collapsed": [
+                      {
+                        "tag": "A",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(1) > article > a.cmp-image-list__item-image-link",
+                        "className": "cmp-image-list__item-image-link"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(1) > article > a.cmp-image-list__item-image-link > div",
+                        "className": "cmp-image-list__item-image"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#image-202ce093a1",
+                        "id": "image-202ce093a1",
+                        "className": "cmp-image"
+                      },
+                      {
+                        "tag": "IMG",
+                        "selector": "#image-202ce093a1 > img",
+                        "className": "cmp-image__image"
+                      }
+                    ],
+                    "background": {
+                      "type": "image",
+                      "value": "/us/en/magazine/arctic-surfing/_jcr_content/root/container/container/contentfragment/par1/image.coreimg.jpeg/1660323789770/surfer-wave-02.jpeg",
+                      "raw": "",
+                      "source": "img"
+                    }
+                  },
+                  {
+                    "tag": "SPAN",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(1) > article > span",
+                    "bounds": { "x": 72, "y": 1182, "width": 260, "height": 21 },
+                    "children": [],
+                    "className": "cmp-image-list__item-description",
+                    "text": "We traveled to Northern Norway"
+                  }
+                ],
+                "className": "cmp-image-list__item",
+                "collapsed": [
+                  {
+                    "tag": "LI",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(1)",
+                    "className": "cmp-image-list__item"
+                  },
+                  {
+                    "tag": "ARTICLE",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(1) > article",
+                    "className": "cmp-image-list__item-content"
+                  }
+                ]
+              },
+              {
+                "tag": "LI",
+                "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(2)",
+                "bounds": { "x": 346, "y": 932, "width": 274, "height": 271 },
+                "children": [
+                  {
+                    "tag": "A",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(2) > article > a.cmp-image-list__item-image-link",
+                    "bounds": { "x": 346, "y": 932, "width": 260, "height": 207 },
+                    "children": [],
+                    "className": "cmp-image-list__item-image-link",
+                    "collapsed": [
+                      {
+                        "tag": "A",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(2) > article > a.cmp-image-list__item-image-link",
+                        "className": "cmp-image-list__item-image-link"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(2) > article > a.cmp-image-list__item-image-link > div",
+                        "className": "cmp-image-list__item-image"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#image-6a793d42ed",
+                        "id": "image-6a793d42ed",
+                        "className": "cmp-image"
+                      },
+                      {
+                        "tag": "IMG",
+                        "selector": "#image-6a793d42ed > img",
+                        "className": "cmp-image__image"
+                      }
+                    ],
+                    "background": {
+                      "type": "image",
+                      "value": "/us/en/magazine/san-diego-surf/_jcr_content/root/container/container/contentfragment/par1/image.coreimg.jpeg/1660323790169/adobestock-164735399.jpeg",
+                      "raw": "",
+                      "source": "img"
+                    }
+                  },
+                  {
+                    "tag": "SPAN",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(2) > article > span",
+                    "bounds": { "x": 346, "y": 1182, "width": 260, "height": 21 },
+                    "children": [],
+                    "className": "cmp-image-list__item-description",
+                    "text": "Best beach breaks"
+                  }
+                ],
+                "className": "cmp-image-list__item",
+                "collapsed": [
+                  {
+                    "tag": "LI",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(2)",
+                    "className": "cmp-image-list__item"
+                  },
+                  {
+                    "tag": "ARTICLE",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(2) > article",
+                    "className": "cmp-image-list__item-content"
+                  }
+                ]
+              },
+              {
+                "tag": "LI",
+                "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(3)",
+                "bounds": { "x": 620, "y": 932, "width": 274, "height": 271 },
+                "children": [
+                  {
+                    "tag": "A",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(3) > article > a.cmp-image-list__item-image-link",
+                    "bounds": { "x": 620, "y": 932, "width": 260, "height": 207 },
+                    "children": [],
+                    "className": "cmp-image-list__item-image-link",
+                    "collapsed": [
+                      {
+                        "tag": "A",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(3) > article > a.cmp-image-list__item-image-link",
+                        "className": "cmp-image-list__item-image-link"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(3) > article > a.cmp-image-list__item-image-link > div",
+                        "className": "cmp-image-list__item-image"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#image-6b251a7d65",
+                        "id": "image-6b251a7d65",
+                        "className": "cmp-image"
+                      },
+                      {
+                        "tag": "IMG",
+                        "selector": "#image-6b251a7d65 > img",
+                        "className": "cmp-image__image"
+                      }
+                    ],
+                    "background": {
+                      "type": "image",
+                      "value": "/us/en/magazine/ski-touring/_jcr_content/root/container/container/contentfragment/par1/image.coreimg.jpeg/1660323789866/skitouring5sjoeberg.jpeg",
+                      "raw": "",
+                      "source": "img"
+                    }
+                  },
+                  {
+                    "tag": "SPAN",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(3) > article > span",
+                    "bounds": { "x": 620, "y": 1182, "width": 260, "height": 21 },
+                    "children": [],
+                    "className": "cmp-image-list__item-description",
+                    "text": "Learn about our ski touring ex"
+                  }
+                ],
+                "className": "cmp-image-list__item",
+                "collapsed": [
+                  {
+                    "tag": "LI",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(3)",
+                    "className": "cmp-image-list__item"
+                  },
+                  {
+                    "tag": "ARTICLE",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(3) > article",
+                    "className": "cmp-image-list__item-content"
+                  }
+                ]
+              },
+              {
+                "tag": "LI",
+                "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(4)",
+                "bounds": { "x": 894, "y": 932, "width": 274, "height": 298 },
+                "children": [
+                  {
+                    "tag": "A",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(4) > article > a.cmp-image-list__item-image-link",
+                    "bounds": { "x": 894, "y": 932, "width": 260, "height": 207 },
+                    "children": [],
+                    "className": "cmp-image-list__item-image-link",
+                    "collapsed": [
+                      {
+                        "tag": "A",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(4) > article > a.cmp-image-list__item-image-link",
+                        "className": "cmp-image-list__item-image-link"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(4) > article > a.cmp-image-list__item-image-link > div",
+                        "className": "cmp-image-list__item-image"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#image-2291ecda75",
+                        "id": "image-2291ecda75",
+                        "className": "cmp-image"
+                      },
+                      {
+                        "tag": "IMG",
+                        "selector": "#image-2291ecda75 > img",
+                        "className": "cmp-image__image"
+                      }
+                    ],
+                    "background": {
+                      "type": "image",
+                      "value": "/us/en/magazine/guide-la-skateparks/_jcr_content/root/container/container/contentfragment/par2/image_copy.coreimg.png/1660323783259/article-01-picture-01.png",
+                      "raw": "",
+                      "source": "img"
+                    }
+                  },
+                  {
+                    "tag": "SPAN",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(4) > article > span",
+                    "bounds": { "x": 894, "y": 1209, "width": 260, "height": 21 },
+                    "children": [],
+                    "className": "cmp-image-list__item-description",
+                    "text": "Breaking down the top skate de"
+                  }
+                ],
+                "className": "cmp-image-list__item",
+                "collapsed": [
+                  {
+                    "tag": "LI",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(4)",
+                    "className": "cmp-image-list__item"
+                  },
+                  {
+                    "tag": "ARTICLE",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(4) > article",
+                    "className": "cmp-image-list__item-content"
+                  }
+                ]
+              },
+              {
+                "tag": "LI",
+                "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(5)",
+                "bounds": { "x": 72, "y": 1262, "width": 274, "height": 271 },
+                "children": [
+                  {
+                    "tag": "A",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(5) > article > a.cmp-image-list__item-image-link",
+                    "bounds": { "x": 72, "y": 1262, "width": 260, "height": 207 },
+                    "children": [],
+                    "className": "cmp-image-list__item-image-link",
+                    "collapsed": [
+                      {
+                        "tag": "A",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(5) > article > a.cmp-image-list__item-image-link",
+                        "className": "cmp-image-list__item-image-link"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(5) > article > a.cmp-image-list__item-image-link > div",
+                        "className": "cmp-image-list__item-image"
+                      },
+                      {
+                        "tag": "DIV",
+                        "selector": "#image-d589492249",
+                        "id": "image-d589492249",
+                        "className": "cmp-image"
+                      },
+                      {
+                        "tag": "IMG",
+                        "selector": "#image-d589492249 > img",
+                        "className": "cmp-image__image"
+                      }
+                    ],
+                    "background": {
+                      "type": "image",
+                      "value": "/us/en/magazine/western-australia/_jcr_content/root/container/container/contentfragment/par2/image.coreimg.jpeg/1660323770369/adobe-waadobe-wa-b6a7083.jpeg",
+                      "raw": "",
+                      "source": "img"
+                    }
+                  },
+                  {
+                    "tag": "SPAN",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(5) > article > span",
+                    "bounds": { "x": 72, "y": 1512, "width": 260, "height": 21 },
+                    "children": [],
+                    "className": "cmp-image-list__item-description",
+                    "text": "The Australian West coast is a"
+                  }
+                ],
+                "className": "cmp-image-list__item",
+                "collapsed": [
+                  {
+                    "tag": "LI",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(5)",
+                    "className": "cmp-image-list__item"
+                  },
+                  {
+                    "tag": "ARTICLE",
+                    "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul > li:nth-child(5) > article",
+                    "className": "cmp-image-list__item-content"
+                  }
+                ]
+              }
+            ],
+            "className": "image-list list aem-GridColumn aem-GridColumn--default--12",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12",
+                "className": "image-list list aem-GridColumn aem-GridColumn--default--12"
+              },
+              {
+                "tag": "UL",
+                "selector": "#container-0e56066edf > div > div.image-list.list.aem-GridColumn.aem-GridColumn--default--12 > ul",
+                "className": "cmp-image-list"
+              }
+            ],
+            "layout": "4x2"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div > div:nth-child(5)",
+            "bounds": { "x": 58, "y": 1565, "width": 1164, "height": 105 },
+            "children": [],
+            "className": "title cmp-title--underline aem-GridColumn aem-GridColumn--default--12",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-0e56066edf > div > div:nth-child(5)",
+                "className": "title cmp-title--underline aem-GridColumn aem-GridColumn--default--12"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#title-59d441f861",
+                "id": "title-59d441f861",
+                "className": "cmp-title"
+              },
+              { "tag": "H2", "selector": "#title-59d441f861 > h2", "className": "cmp-title__text" }
+            ],
+            "text": "Members Only"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div > div.text.aem-GridColumn.aem-GridColumn--default--12",
+            "bounds": { "x": 58, "y": 1670, "width": 1164, "height": 59 },
+            "children": [],
+            "className": "text aem-GridColumn aem-GridColumn--default--12",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-0e56066edf > div > div.text.aem-GridColumn.aem-GridColumn--default--12",
+                "className": "text aem-GridColumn aem-GridColumn--default--12"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#text-bb7bdee5e8",
+                "id": "text-bb7bdee5e8",
+                "className": "cmp-text"
+              },
+              { "tag": "P", "selector": "#text-bb7bdee5e8 > p" }
+            ],
+            "text": "to un-lock exclusive content f"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div > div.separator.cmp-separator--space-medium.aem-GridColumn.aem-GridColumn--default--12",
+            "bounds": { "x": 58, "y": 1728, "width": 1164, "height": 74 },
+            "children": [],
+            "className": "separator cmp-separator--space-medium aem-GridColumn aem-GridColumn--default--12",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-0e56066edf > div > div.separator.cmp-separator--space-medium.aem-GridColumn.aem-GridColumn--default--12",
+                "className": "separator cmp-separator--space-medium aem-GridColumn aem-GridColumn--default--12"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#separator-ec1f08c411",
+                "id": "separator-ec1f08c411",
+                "className": "cmp-separator"
+              },
+              {
+                "tag": "HR",
+                "selector": "#separator-ec1f08c411 > hr",
+                "className": "cmp-separator__horizontal-rule"
+              }
+            ]
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div > div:nth-child(8)",
+            "bounds": { "x": 58, "y": 1802, "width": 388, "height": 367 },
+            "children": [],
+            "className": "teaser cmp-teaser--list cmp-teaser--secure aem-GridColumn--offset--tablet--0 aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn--tablet--none aem-GridColumn aem-GridColumn--tablet--6 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-0e56066edf > div > div:nth-child(8)",
+                "className": "teaser cmp-teaser--list cmp-teaser--secure aem-GridColumn--offset--tablet--0 aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn--tablet--none aem-GridColumn aem-GridColumn--tablet--6 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#teaser-9344f77f31",
+                "id": "teaser-9344f77f31",
+                "className": "cmp-teaser"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#teaser-9344f77f31 > div.cmp-teaser__image",
+                "className": "cmp-teaser__image"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#teaser-9344f77f31-image",
+                "id": "teaser-9344f77f31-image",
+                "className": "cmp-image"
+              },
+              {
+                "tag": "IMG",
+                "selector": "#teaser-9344f77f31-image > img",
+                "className": "cmp-image__image"
+              }
+            ]
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div > div:nth-child(9)",
+            "bounds": { "x": 446, "y": 1802, "width": 388, "height": 354 },
+            "children": [
+              {
+                "tag": "DIV",
+                "selector": "#teaser-2f8f9cdcc7 > div.cmp-teaser__content",
+                "bounds": { "x": 460, "y": 1802, "width": 274, "height": 133 },
+                "children": [
+                  {
+                    "tag": "H2",
+                    "selector": "#teaser-2f8f9cdcc7 > div.cmp-teaser__content > h2",
+                    "bounds": { "x": 460, "y": 1811, "width": 274, "height": 27 },
+                    "children": [],
+                    "className": "cmp-teaser__title",
+                    "text": "Fly Fishing the Amazon"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#teaser-2f8f9cdcc7 > div.cmp-teaser__content > div.cmp-teaser__description",
+                    "bounds": { "x": 460, "y": 1847, "width": 274, "height": 25 },
+                    "children": [],
+                    "className": "cmp-teaser__description",
+                    "text": "Experience the Amazon like nev"
+                  }
+                ],
+                "className": "cmp-teaser__content"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#teaser-2f8f9cdcc7 > div.cmp-teaser__image",
+                "bounds": { "x": 460, "y": 1802, "width": 360, "height": 354 },
+                "children": [],
+                "className": "cmp-teaser__image",
+                "collapsed": [
+                  {
+                    "tag": "DIV",
+                    "selector": "#teaser-2f8f9cdcc7 > div.cmp-teaser__image",
+                    "className": "cmp-teaser__image"
+                  },
+                  {
+                    "tag": "DIV",
+                    "selector": "#teaser-2f8f9cdcc7-image",
+                    "id": "teaser-2f8f9cdcc7-image",
+                    "className": "cmp-image"
+                  },
+                  {
+                    "tag": "IMG",
+                    "selector": "#teaser-2f8f9cdcc7-image > img",
+                    "className": "cmp-image__image"
+                  }
+                ]
+              }
+            ],
+            "className": "teaser cmp-teaser--list cmp-teaser--secure aem-GridColumn--offset--tablet--0 aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn--tablet--none aem-GridColumn aem-GridColumn--tablet--6 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-0e56066edf > div > div:nth-child(9)",
+                "className": "teaser cmp-teaser--list cmp-teaser--secure aem-GridColumn--offset--tablet--0 aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--phone--12 aem-GridColumn--tablet--none aem-GridColumn aem-GridColumn--tablet--6 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0 aem-GridColumn--default--4"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#teaser-2f8f9cdcc7",
+                "id": "teaser-2f8f9cdcc7",
+                "className": "cmp-teaser"
+              }
+            ]
+          }
+        ],
+        "className": "container responsivegrid cmp-layout-container--fixed aem-GridColumn aem-GridColumn--default--12",
+        "collapsed": [
+          {
+            "tag": "MAIN",
+            "selector": "#container-fb3b036f33 > div > main",
+            "className": "container responsivegrid cmp-layout-container--fixed aem-GridColumn aem-GridColumn--default--12"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf",
+            "id": "container-0e56066edf",
+            "className": "cmp-container"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-0e56066edf > div",
+            "className": "aem-Grid aem-Grid--12 aem-Grid--tablet--12 aem-Grid--default--12 aem-Grid--phone--12 "
+          }
+        ],
+        "layout": "2x8"
+      },
+      {
+        "tag": "FOOTER",
+        "selector": "#container-fb3b036f33 > div > footer",
+        "bounds": { "x": 0, "y": 2217, "width": 1280, "height": 260 },
+        "children": [
+          {
+            "tag": "DIV",
+            "selector": "#container-73a1283330 > div > div.navigation.cmp-navigation--footer.aem-GridColumn--offset--tablet--0.aem-GridColumn--default--none.aem-GridColumn--phone--none.aem-GridColumn--tablet--none.aem-GridColumn--phone--8.aem-GridColumn.aem-GridColumn--tablet--8.aem-GridColumn--default--6.aem-GridColumn--offset--phone--0.aem-GridColumn--offset--default--0",
+            "bounds": { "x": 252, "y": 2233, "width": 582, "height": 42 },
+            "children": [],
+            "className": "navigation cmp-navigation--footer aem-GridColumn--offset--tablet--0 aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--tablet--none aem-GridColumn--phone--8 aem-GridColumn aem-GridColumn--tablet--8 aem-GridColumn--default--6 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-73a1283330 > div > div.navigation.cmp-navigation--footer.aem-GridColumn--offset--tablet--0.aem-GridColumn--default--none.aem-GridColumn--phone--none.aem-GridColumn--tablet--none.aem-GridColumn--phone--8.aem-GridColumn.aem-GridColumn--tablet--8.aem-GridColumn--default--6.aem-GridColumn--offset--phone--0.aem-GridColumn--offset--default--0",
+                "className": "navigation cmp-navigation--footer aem-GridColumn--offset--tablet--0 aem-GridColumn--default--none aem-GridColumn--phone--none aem-GridColumn--tablet--none aem-GridColumn--phone--8 aem-GridColumn aem-GridColumn--tablet--8 aem-GridColumn--default--6 aem-GridColumn--offset--phone--0 aem-GridColumn--offset--default--0"
+              },
+              {
+                "tag": "NAV",
+                "selector": "#navigation-e6530ac93f",
+                "id": "navigation-e6530ac93f",
+                "className": "cmp-navigation"
+              },
+              {
+                "tag": "UL",
+                "selector": "#navigation-e6530ac93f > ul",
+                "className": "cmp-navigation__group"
+              },
+              {
+                "tag": "LI",
+                "selector": "#navigation-e6530ac93f > ul > li",
+                "className": "cmp-navigation__item cmp-navigation__item--level-0 cmp-navigation__item--active"
+              }
+            ],
+            "text": "Home Magazine Adventures FAQs "
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-73a1283330 > div > div.separator.cmp-separator--hidden.cmp-separator--space-small.aem-GridColumn.aem-GridColumn--default--12",
+            "bounds": { "x": 58, "y": 2302, "width": 1164, "height": 36 },
+            "children": [],
+            "className": "separator cmp-separator--hidden cmp-separator--space-small aem-GridColumn aem-GridColumn--default--12"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-73a1283330 > div > div.text.cmp-text--font-xsmall.aem-GridColumn.aem-GridColumn--default--12",
+            "bounds": { "x": 58, "y": 2338, "width": 1164, "height": 116 },
+            "children": [
+              {
+                "tag": "P",
+                "selector": "#text-ef458381cd > p:nth-child(1)",
+                "bounds": { "x": 72, "y": 2338, "width": 1136, "height": 15 },
+                "children": [],
+                "text": "Ⓒ 2019, WKND Site."
+              },
+              {
+                "tag": "P",
+                "selector": "#text-ef458381cd > p:nth-child(2)",
+                "bounds": { "x": 72, "y": 2366, "width": 1136, "height": 45 },
+                "children": [],
+                "text": "WKND is a fictitious adventure",
+                "layout": "4x1"
+              },
+              {
+                "tag": "P",
+                "selector": "#text-ef458381cd > p:nth-child(3)",
+                "bounds": { "x": 72, "y": 2425, "width": 1136, "height": 15 },
+                "children": [],
+                "text": "Many of the beautiful images i"
+              }
+            ],
+            "className": "text cmp-text--font-xsmall aem-GridColumn aem-GridColumn--default--12",
+            "collapsed": [
+              {
+                "tag": "DIV",
+                "selector": "#container-73a1283330 > div > div.text.cmp-text--font-xsmall.aem-GridColumn.aem-GridColumn--default--12",
+                "className": "text cmp-text--font-xsmall aem-GridColumn aem-GridColumn--default--12"
+              },
+              {
+                "tag": "DIV",
+                "selector": "#text-ef458381cd",
+                "id": "text-ef458381cd",
+                "className": "cmp-text"
+              }
+            ]
+          }
+        ],
+        "className": "experiencefragment cmp-experiencefragment--footer aem-GridColumn aem-GridColumn--default--12",
+        "background": {
+          "type": "color",
+          "value": "rgb(32, 32, 32)",
+          "raw": "rgb(32, 32, 32) none repeat scroll 0% 0% / auto padding-box border-box",
+          "source": "css"
+        },
+        "collapsed": [
+          {
+            "tag": "FOOTER",
+            "selector": "#container-fb3b036f33 > div > footer",
+            "className": "experiencefragment cmp-experiencefragment--footer aem-GridColumn aem-GridColumn--default--12"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#experiencefragment-846bc16ae0",
+            "id": "experiencefragment-846bc16ae0",
+            "className": "cmp-experiencefragment cmp-experiencefragment--footer"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#experiencefragment-846bc16ae0 > div",
+            "className": "xf-content-height"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-607c3c82dd",
+            "id": "container-607c3c82dd",
+            "className": "cmp-container"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-607c3c82dd > div",
+            "className": "container responsivegrid"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-e30937fdbf",
+            "id": "container-e30937fdbf",
+            "className": "cmp-container"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-e30937fdbf > div",
+            "className": "container responsivegrid cmp-layout-container--fixed cmp-layoutcontainer--footer"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-73a1283330",
+            "id": "container-73a1283330",
+            "className": "cmp-container"
+          },
+          {
+            "tag": "DIV",
+            "selector": "#container-73a1283330 > div",
+            "className": "aem-Grid aem-Grid--12 aem-Grid--tablet--12 aem-Grid--default--12 aem-Grid--phone--12 "
+          }
+        ],
+        "layout": "4x3"
+      }
+    ],
+    "id": "page-7b40bb1a67",
+    "className": "page basicpage",
+    "background": {
+      "type": "color",
+      "value": "rgb(255, 255, 255)",
+      "raw": "rgb(255, 255, 255) none repeat scroll 0% 0% / auto padding-box border-box",
+      "source": "css"
+    },
+    "collapsed": [
+      {
+        "tag": "BODY",
+        "selector": "#page-7b40bb1a67",
+        "id": "page-7b40bb1a67",
+        "className": "page basicpage"
+      },
+      {
+        "tag": "DIV",
+        "selector": "#page-7b40bb1a67 > div.root.container.responsivegrid",
+        "className": "root container responsivegrid"
+      },
+      {
+        "tag": "DIV",
+        "selector": "#container-fb3b036f33",
+        "id": "container-fb3b036f33",
+        "className": "cmp-container"
+      },
+      {
+        "tag": "DIV",
+        "selector": "#container-fb3b036f33 > div",
+        "className": "aem-Grid aem-Grid--12 aem-Grid--default--12 "
+      }
+    ]
+  },
+  "expected": [
+    [194, 301],
+    [301, 828],
+    [828, 932],
+    [932, 1565],
+    [1565, 1670],
+    [1670, 1728],
+    [1728, 1802],
+    [1802, 2217]
+  ]
+}

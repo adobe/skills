@@ -1,0 +1,1410 @@
+#!/usr/bin/env node
+/**
+ * crawl.mjs — reference Playwright crawler for stardust:extract.
+ *
+ * Solves two stardust multitest findings:
+ *   #4  extract ships no runnable crawler — every migration re-implements the
+ *       Playwright recipe by hand (expensive, inconsistent). This is the bundled
+ *       `extract/scripts/crawl.mjs` the recipe always implied.
+ *   #7  capture hardening — the hand-rolled crawls captured hidden / transient /
+ *       modal DOM as real content (consent banners and "temporarily unavailable"
+ *       overlays became headings; AJAX-modal detail pages captured byte-identical
+ *       to their listing; SPA shells captured a tracking pixel + global h1 as a
+ *       "page"). This crawler filters those at capture time.
+ *
+ * It implements the CORE of reference/playwright-recipe.md (browser config +
+ * bot-management fallback, consent dismissal, wait+scroll, the capture list,
+ * response validation) plus the finding-#7 hardening below. The recipe remains
+ * the authoritative field spec; extend the in-page capture() to match it fully.
+ *
+ * Hardening (#7), all applied inside the page context:
+ *   - VISIBILITY FILTER: headings/body/CTAs skip nodes that are display:none,
+ *     visibility:hidden, aria-hidden, [hidden], or off-screen / zero-area.
+ *   - INTERSTITIAL/ERROR heuristic: nodes matching known consent / language-gate
+ *     / "temporarily unavailable" patterns are dropped from content and counted
+ *     in `_filtered`.
+ *   - MODAL/AJAX capture: [role=dialog] / .modal / [aria-modal] containers are
+ *     read via textContent even when display:none (XHR-populated detail), so a
+ *     URL-addressable modal route is not captured as its listing page.
+ *   - TRACKING-PIXEL = zero media: a lone off-origin <=2px img doesn't count as
+ *     "has media" (so the low-media flag fires on an SPA shell).
+ *   - SUBSTANCE check: a page with <2 distinct in-main headings AND tiny main
+ *     innerText AND no real media is flagged `spaShellSuspect`.
+ *   - DUPLICATE check (cross-page, after the crawl): a page whose main-content
+ *     hash equals another page's is flagged `duplicateOf` (catches detail==listing).
+ *     Attribution is deterministic by discovery order: the earliest-queued page
+ *     per hash is canonical, regardless of pool completion order.
+ *   - RENDERED DOM: the settled page's `page.content()` is saved verbatim as
+ *     <out>/pages/<slug>.html next to the JSON (path in the record's
+ *     `renderedHtml` field). Capture once, parse offline: importers and sibling
+ *     generators iterate their extraction against this artifact (free,
+ *     reproducible, and provenance) instead of re-running live probes per
+ *     selector guess. Live probes stay for what the static DOM cannot answer
+ *     (geometry, computed styles).
+ *   - SCREENSHOT: a full-page PNG per page under <out>/assets/screenshots/<slug>.png
+ *     (viewport-only fallback on extremely tall pages; mode in _signals.screenshotMode,
+ *     relative path in the page record's `screenshot` field) — feeds the extract
+ *     SKILL.md Phase 2.5 vision gate.
+ *   - LOCALE-ROOT CAPTURE GAPS (cross-page, after the crawl): for every captured
+ *     locale root — a one- or two-segment path of locale codes, such as /en, /fr-ca,
+ *     /ca/en — the same-origin links ON that page under its own path are listed and
+ *     the ones the crawl never captured are written to _crawl-log.json#captureGaps
+ *     ({ roots: [{ root, slug, linked, uncaptured[] }], detail }) and summarised on
+ *     stderr. `detail` is the ready ledger string ("uncaptured first-level targets:
+ *     ca/en 15, fr/fr 0") for the extract `end` line, so the owner sees the gap
+ *     before Phase 2. Two recorded hands-off runs captured a locale root whose
+ *     15-page subtree discovery never listed, and learned it six hours later from
+ *     the rollout link audit (15 × 404, then repointed to the source).
+ *
+ * Usage:
+ *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] [--link-first] \
+ *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
+ *     [--concurrency 4] [--dynamics] [--page-timeout 60]
+ *     --url <url>             required; the entry page — its origin scopes discovery
+ *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
+ *                             is added) instead of discovering via sitemap / same-origin nav links
+ *     --max <n>               discovery cap (default 25; 0 = no cap; listed --pages are never dropped)
+ *     --link-first            the user named the page count: entry page, then its own same-origin page
+ *                             links in document order, then the other discovered pages, up to --max
+ *     --out <dir>             output root (default stardust/current)
+ *     --wait fast|medium|slow settle after load: 1200 / 2500 / 5000 ms (default medium)
+ *     --no-consent-dismiss    do not auto-dismiss consent overlays before capture
+ *     --concurrency <n>       parallel browser contexts (default 4)
+ *     --dynamics              also record each page's dynamic surface (network endpoints, forms,
+ *                             hydration hints) — set by the calling skill, off by default
+ *     --page-timeout <s>      per-page deadline (default 60; 0 = none): a page that never settles is
+ *                             recorded as TimeoutError instead of eating the run's cap
+ *
+ * Browser and bot walls: real Chrome headless (channel: chrome — the installed browser's own identity,
+ * no launch flags) first, bundled Chromium only when Chrome is missing (technique chrome |
+ * chromium-fallback). A wall is NAMED within seconds, never captured as content: an edge challenge
+ * (cf-mitigated, or a 403/429/503 with a Cloudflare / Akamai / F5 / Imperva signature, a 403 from
+ * CloudFront / AWS WAF), or a 2xx VERIFICATION INTERSTITIAL served as a normal page ("One moment,
+ * please…" reloading itself, "Just a moment…", CloudFront's "Request blocked" body — read from the
+ * page, not the headers: this script's title rule, then the vendor list in
+ * stardust/scripts/browser.mjs). On the ENTRY page → one relaunch (technique chrome-escalated;
+ * the existing launch flags and webdriver spoof stay on, STARDUST_STEALTH=0 turns them off;
+ * STARDUST_HEADED_WINDOW=1 is not read here) with the
+ * challenge-solve window, then a fatal `bot-management … not cleared` error naming the wall; on an
+ * inner page → the page is recorded as failed with errorClass BotChallenge and the marker. Live
+ * navigations to one host are paced across processes — STARDUST_LIVE_PACE_MS apart (default 1000; 0 disables),
+ * at most STARDUST_LIVE_MAX_PARALLEL in flight (default 2), backing off on bot signals — by the shared throttle
+ * (runLiveNavigation) in stardust/scripts/browser.mjs.
+ *
+ * Writes capture artifacts under --out. The shared helper (stardust/scripts/browser.mjs)
+ * keeps its repository-scoped throttle and browser state under OS temp:
+ *   pages/<slug>.json              one record per captured page — slug, url, finalUrl, title,
+ *                                  description, og, headings, body, codeBlocks, ctas, links,
+ *                                  media {imgs, allImgCount, cssBackgrounds, modals, videos,
+ *                                  iframes}, customProps (CSS custom properties resolved on
+ *                                  :root), _signals, _provenance, renderedHtml, screenshot
+ *                                  (+ `dynamic` with --dynamics; `_signals.duplicateOf` marks a
+ *                                  page whose main content hashes equal to an earlier page's)
+ *   pages/<slug>.html              the settled rendered DOM, verbatim (parse offline — never re-scrape)
+ *   assets/screenshots/<slug>.png  full-page screenshot (viewport-only on very tall pages;
+ *                                  `_signals.screenshotMode` says which)
+ *   assets/favicon.<ext>           the site icon from <link rel~=icon> or /favicon.ico, <ext> from
+ *                                  its content-type — the ONLY media file this crawler downloads
+ *   _crawl-log.json                discovery technique + page count, consent mode, favicon result,
+ *                                  per-URL failures, slash retries, `captureGaps` (locale roots,
+ *                                  above) (+ `dynamicSurface` with --dynamics); merged into an
+ *                                  existing log, never replaced
+ * Not captured here: page images and videos (recorded as URLs under `media`, never downloaded),
+ * stylesheets, font files, the logo and the rest of the brand surface — those belong to the
+ * extract skill's Phase 3 (brand-surface extraction), not to the crawl; do not look for them
+ * under --out after a crawl. Progress lines go to stderr. Exit 0 on completion, 2 on a fatal
+ * error (unknown or missing arguments included).
+ *
+ * Needs playwright importable from the project (see extract/SKILL.md Setup —
+ * `npm i -D playwright` or the Playwright MCP server; the `npx playwright`
+ * availability probe alone does NOT make the ESM module importable).
+ */
+import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+// Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op — and
+// a test that imports the pure helpers below (captureGaps, localeRootPath) must not start a crawl.
+const SELF = fileURLToPath(import.meta.url);
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+const IS_MAIN = Boolean(process.argv[1]) && SELF === safeRealpath(process.argv[1]);
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (IS_MAIN && (process.argv.includes('--help') || process.argv.includes('-h'))) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
+
+const WAIT_MS = { fast: 1200, medium: 2500, slow: 5000 };
+
+// One context config for probe, headed fallback, and workers — a tweak (locale,
+// UA, colorScheme) must land everywhere or discovery renders under different
+// conditions than capture. Viewport here also saves a per-page CDP round-trip.
+const CRAWL_CONTEXT = { reducedMotion: 'reduce', viewport: { width: 1440, height: 900 } };
+
+const sharedHookWarningHosts = new Set();
+function warnSharedHook(url, error) {
+  let host;
+  try { host = new URL(url).host; } catch { host = 'unknown host'; }
+  if (sharedHookWarningHosts.has(host)) return;
+  sharedHookWarningHosts.add(host);
+  console.error(`[crawl] WARNING: shared live-session bookkeeping unavailable for ${host}: ${String(error && error.message ? error.message : error).split('\n')[0]} — continuing without it`);
+}
+async function callSharedHook(hook, args, url) {
+  try { return await hook(...args); }
+  catch (error) { warnSharedHook(url, error); return false; }
+}
+
+/** The front door's live-session helpers; a hook that throws is reported once per host and the crawl goes on. */
+export function crawlerLiveBindings(shared) {
+  return {
+    newLiveContext: shared.newLiveContext,
+    runLiveNavigation: async (page, url, navigate) => {
+      let operation;
+      const run = () => {
+        if (!operation) {
+          operation = Promise.resolve().then(navigate);
+          operation.catch(() => {});
+        }
+        return operation;
+      };
+      try {
+        return await shared.runLiveNavigation(page, url, run);
+      } catch (error) {
+        if (!operation) { warnSharedHook(url, error); return run(); }
+        const response = await operation; // the navigation's own rejection still escapes unchanged
+        warnSharedHook(url, error);
+        return response;
+      }
+    },
+    persistLiveStorageState: (page, url) => callSharedHook(shared.persistLiveStorageState, [page, url], url),
+    recordLiveBotSignal: (url) => callSharedHook(shared.recordLiveBotSignal, [url], url),
+    recordLiveNavigationSuccess: (url) => callSharedHook(shared.recordLiveNavigationSuccess, [url], url),
+    liveResponseSignalRecorded: shared.liveResponseSignalRecorded,
+  };
+}
+
+/** The discovery cap from --max: 0 means no cap (--all, --prep), a missing or bad value the default 25. Pure. */
+export const maxPages = (v) => (String(v).trim() === '0' ? Infinity : Math.max(1, Math.floor(+v) || 25));
+/** The per-page deadline from --page-timeout <s> in ms: 0 means none, a missing or bad value the default 60 s. Pure. */
+export const PAGE_TIMEOUT_MS_DEFAULT = 60000;
+export function pageTimeoutMs(v) {
+  if (v === undefined || v === null || String(v).trim() === '') return PAGE_TIMEOUT_MS_DEFAULT;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n * 1000) : PAGE_TIMEOUT_MS_DEFAULT;
+}
+
+export function parseArgs(argv) {
+  const a = { out: 'stardust/current', max: 25, linkFirst: false, wait: 'medium', consent: true, concurrency: 4, dynamics: false, pageTimeoutMs: PAGE_TIMEOUT_MS_DEFAULT };
+  for (let i = 2; i < argv.length; i += 1) {
+    const k = argv[i];
+    if (k === '--url') a.url = argv[(i += 1)];
+    else if (k === '--pages') a.pages = argv[(i += 1)].split(',').map((s) => s.trim()).filter(Boolean);
+    else if (k === '--out') a.out = argv[(i += 1)];
+    else if (k === '--max') a.max = maxPages(argv[(i += 1)]);
+    else if (k === '--link-first') a.linkFirst = true;
+    else if (k === '--wait') a.wait = argv[(i += 1)];
+    else if (k === '--no-consent-dismiss') a.consent = false;
+    else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
+    else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
+    else if (k === '--page-timeout') a.pageTimeoutMs = pageTimeoutMs(argv[(i += 1)]);
+    else throw new Error(`unknown arg: ${k}`);
+  }
+  if (!a.url) throw new Error('--url is required');
+  a.origin = new URL(a.url).origin;
+  return a;
+}
+
+const slugify = (u) => {
+  const { pathname } = new URL(u);
+  const s = pathname.replace(/^\/|\/$/g, '').replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+  return s || 'index';
+};
+
+// Slugs key the output FILES (pages/<slug>.json, screenshots/<slug>.png), but
+// distinct pages can collide on one slug: dedupeKey keeps url.search (so
+// /p?a=1 and /p?a=2 are two pages) while slugify reads pathname only, and
+// /about-us vs /about/us flatten identically. Without disambiguation two
+// concurrent workers write the same files (silent last-writer-wins) and the
+// duplicate post-pass can mark a page duplicateOf itself. Assign slugs once,
+// up front: first claimant keeps the clean slug, later distinct pages get a
+// deterministic -<hash4> suffix.
+function assignSlugs(urls) {
+  const bySlug = new Map(); // slug -> dedupeKey of first claimant
+  return urls.map((u) => {
+    const base = slugify(u);
+    const key = dedupeKey(u);
+    if (!bySlug.has(base)) { bySlug.set(base, key); return base; }
+    if (bySlug.get(base) === key) return base; // same page (shouldn't recur post-dedupe)
+    const suffix = crypto.createHash('sha1').update(key).digest('hex').slice(0, 4);
+    const alt = `${base}-${suffix}`;
+    if (!bySlug.has(alt)) bySlug.set(alt, key);
+    return alt;
+  });
+}
+
+// ---- the shared browser module (stardust/scripts/browser.mjs, the front door), beside this script ----
+// Three layouts: plugin tree, project copy (stardust/scripts/<skill>/), flat (stardust/scripts/). It lends
+// the crawler the browser, the consent vendor list, the denial-page reader, the per-host pacing and the
+// deadline helper. Without it the crawler stops (exit 2, its fatal-error code); a hook that fails at run time is tolerated below.
+const BROWSER = ['../../stardust/scripts/browser.mjs', '../stardust/browser.mjs', './stardust/browser.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+let liveSessionModule;
+async function liveSession() {
+  if (liveSessionModule === undefined) {
+    if (!BROWSER) {
+      console.error('crawl: browser.mjs not found (looked in ../../stardust/scripts/, ../stardust/ and ./stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+      process.exit(2);
+    }
+    liveSessionModule = await import(BROWSER.href);
+  }
+  return liveSessionModule;
+}
+
+// ---- the browser: real Chrome headless first, its own identity; bundled Chromium only when Chrome is missing ----
+// The default tier presents itself as what it is — the installed Chrome, headless, under automation: no user agent
+// is set, no launch flag is passed; the real binary is what clears TLS/H2-fingerprint blocks (not a window — the
+// container has no display). The escalation below keeps the launch flags and the navigator.webdriver spoof the
+// crawler always had; STARDUST_STEALTH=0 turns them off.
+const stealthEnabled = () => process.env.STARDUST_STEALTH !== '0';
+const STEALTH_ARGS = ['--disable-blink-features=AutomationControlled'];
+async function launchWithFallback() {
+  const { openBrowser, browserTier } = await liveSession();
+  const browser = await openBrowser({ mode: 'chrome' });
+  return { browser, technique: browserTier(browser) };
+}
+// The one escalation after an entry-page block: a fresh real Chrome, window-free (the container has no display),
+// with the existing launch flags unless STARDUST_STEALTH=0. A launch failure is one stderr line and null — the
+// crawl continues with the browser it has.
+async function launchEscalated() {
+  const stealth = stealthEnabled();
+  const opts = { headless: true, channel: 'chrome', ...(stealth ? { args: [...STEALTH_ARGS], ignoreDefaultArgs: ['--enable-automation'] } : {}) };
+  const { openBrowser } = await liveSession();
+  try {
+    return await openBrowser({ mode: 'plain', launchOptions: opts, tier: 'chrome-escalated' });
+  } catch (e) {
+    console.error(`[crawl] WARN real Chrome relaunch failed (${String(e.message).split('\n')[0]}) — continuing with the browser already running`);
+    return null;
+  }
+}
+// A context factory so the webdriver spoof lands on EVERY context (probe + workers) once the run escalated — the
+// challenge re-fires per context (no cross-context cookie sharing). Before the escalation, and under
+// STARDUST_STEALTH=0, no init script: navigator.webdriver stays true.
+async function newContext(browser, stealth, stateUrl) {
+  const { newLiveContext } = crawlerLiveBindings(await sharedLiveSession());
+  const ctx = await newLiveContext(browser, { ...CRAWL_CONTEXT, stateUrl });
+  if (stealth) {
+    await ctx.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
+  }
+  return ctx;
+}
+// Network-level fingerprint reject: navigation THROWS before any JS runs.
+export function isFingerprintBlock(err) {
+  const m = String(err && err.message || err);
+  return /ERR_HTTP2_PROTOCOL_ERROR|ERR_QUIC_PROTOCOL_ERROR|ERR_CONNECTION_RESET|net::ERR/.test(m);
+}
+// Bot-management CHALLENGE / block: navigation SUCCEEDS (domcontentloaded fires,
+// no throw) but the response is a 403/429/503 interstitial, not the page. The
+// original fallback only caught isFingerprintBlock() throws, so a Cloudflare
+// managed challenge (cf-mitigated: challenge, HTTP 403) sailed past the probe
+// and only blew up at capture-time as a fatal HTTPError. Validate the RESPONSE,
+// not just DOM-ready. Returns the marker naming the signature, or null — the same
+// rules as live-session.mjs challengeMarker (keep the two in step).
+export function challengeMarker(resp) {
+  if (!resp) return null;
+  const status = resp.status();
+  const h = resp.headers();
+  // Cloudflare stamps this header specifically on managed/JS-challenge responses.
+  if ((h['cf-mitigated'] || '').toLowerCase() === 'challenge') return 'cf-mitigated: challenge';
+  // AWS WAF stamps its action (captcha / challenge) on the response it intercepts, whatever the status.
+  if (h['x-amzn-waf-action']) return `HTTP ${status} + CloudFront/AWS WAF edge signature (x-amzn-waf-action: ${h['x-amzn-waf-action']})`;
+  // A hard 403/429/503 that ALSO carries an edge/CDN signature is an edge
+  // interstitial (Cloudflare / Akamai / F5 / Imperva / CloudFront) — the escalation is
+  // the correct response regardless of vendor. Requiring the edge signature (not the
+  // bare status) is deliberate: the marker gates clearChallenge() on EVERY page, so a
+  // legitimate app-level 403 (e.g. an auth-gated deep page with no CDN header) must
+  // fail fast, not eat the ~12s challenge-solve retry loop.
+  const server = (h.server || '').toLowerCase();
+  if (status === 403 || status === 429 || status === 503) {
+    if (h['cf-ray'] || server.includes('cloudflare')) return `HTTP ${status} + Cloudflare edge signature (cf-ray/server)`;
+    if (h['x-akamai-transformed'] || server.includes('akamai')) return `HTTP ${status} + Akamai edge signature`;
+    if (server.includes('big-ip') || server.includes('bigip') || server.includes('imperva') || h['x-iinfo']) return `HTTP ${status} + F5/Imperva edge signature`;
+    // CloudFront answering 403 itself after a burst of requests ("The request could not be satisfied. Request blocked.")
+    // is the AWS WAF block (recorded on a CloudFront-fronted site); an origin 403 relayed by CloudFront carries the same
+    // headers, so the label names the edge, not a verdict on the origin.
+    if (status === 403 && (server.includes('cloudfront') || (h['x-cache'] || '').toLowerCase().includes('error from cloudfront'))) return 'HTTP 403 + CloudFront/AWS WAF edge signature (server/x-cache)';
+    // no edge signature — treat as a genuine app-level status, not a challenge.
+  }
+  // Akamai escalates to HTTP 400 {"result":"Bad Request"} after a burst of probes.
+  if (status === 400 && (server.includes('akamai') || h['x-akamai-transformed'])) return 'HTTP 400 + Akamai edge signature (bot-management escalation)';
+  return null;
+}
+export const isChallengeResponse = (resp) => challengeMarker(resp) !== null;
+
+// ---- the 2xx verification interstitial: a wall served as a normal page ----
+// A site served "One moment, please…" (HTTP 200, reloading itself every few seconds) to every client and the crawler
+// waited out the run's whole cap without naming it. The headers say nothing; the PAGE is read. The inline rule below
+// reads first: a <title> or <h1> that names a wall on a page under 2 KB of visible text, or one that reloads itself
+// (<meta http-equiv=refresh> / location.reload) under such a title. The shared reader (live-session pageDenial: vendor
+// signatures, the tiny one-error-heading page) reads after it.
+// "verify" alone is no wall word: an age or e-mail verification page is a page, and a small single-page-app entry page
+// under such a title would abort the crawl; the verification interstitials name the visitor ("verify you are human",
+// "verifying your request / browser", "human verification", "checking your browser").
+export const WALL_TITLE = /one moment|just a moment|verify (?:that )?you(?:'re| are)|verifying (?:(?:that )?you(?:'re| are)|your (?:request|browser|connection))|human verification|are you (?:a )?human|checking your browser|pardon our interruption|access denied|request blocked|attention required/i;
+export const WALL_TEXT_MAX_BYTES = 2048;
+/* eslint-disable no-undef */
+/** page.evaluate(wallProbeInPage) → { title, h1, bytes, selfReload } (self-contained: playwright serialises it). */
+export function wallProbeInPage() {
+  const collapse = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  const text = collapse(document.body ? document.body.innerText : '');
+  const h1 = document.querySelector('h1');
+  const metaRefresh = Boolean(document.querySelector('meta[http-equiv="refresh" i]'));
+  const scriptReload = [...document.scripts].some((s) => /location\.reload\(|location\.href\s*=\s*(?:window\.)?location|window\.location\s*=\s*window\.location/.test(s.textContent || ''));
+  return { title: document.title, h1: h1 ? collapse(h1.innerText) : '', bytes: new TextEncoder().encode(text).length, selfReload: metaRefresh || scriptReload };
+}
+/* eslint-enable no-undef */
+/** The inline wall marker of a wallProbeInPage probe, or null (pure). */
+export function inlineWallMarker(probe) {
+  if (!probe || typeof probe !== 'object') return null;
+  const title = String(probe.title || '').replace(/\s+/g, ' ').trim();
+  const h1 = String(probe.h1 || '').replace(/\s+/g, ' ').trim();
+  const hit = [title, h1].find((t) => t && WALL_TITLE.test(t));
+  if (!hit) return null;
+  const small = Number.isFinite(probe.bytes) && probe.bytes < WALL_TEXT_MAX_BYTES;
+  if (!small && !probe.selfReload) return null;
+  return `interstitial page — "${hit.slice(0, 80)}"${probe.selfReload ? ' (self-reloading)' : ''}`;
+}
+// One wall read's deadline: page.evaluate has no timeout of its own, and a renderer stuck in a busy loop never answers it.
+const WALL_PROBE_MS = 10000;
+// → { marker, skipped }: this script's own rule first (wallProbeInPage + inlineWallMarker — a wall named by its title or
+// h1 on a small or self-reloading page), then the shared reader (live-session pageDenial: the vendor signature list
+// and the one-error-heading rule). A page no reader could read is `skipped` with the error's first line (the caller
+// logs it — never a silent pass, never a false wall).
+async function pageWall(page) {
+  const { withDeadline, pageDenial } = await liveSession();
+  let skipped = null;
+  try {
+    const marker = inlineWallMarker(await withDeadline(page.evaluate(wallProbeInPage), WALL_PROBE_MS, 'wall probe'));
+    if (marker) return { marker, skipped: null };
+  } catch (e) {
+    skipped = String(e && e.message ? e.message : e).split('\n')[0];
+  }
+  const shared = await pageDenial(page);
+  if (shared.marker) return shared;
+  return { marker: null, skipped: skipped && shared.skipped ? skipped : null };
+}
+const ENTRY_SETTLE_MS = 1200;
+/**
+ * The entry-page probe: navigate, then classify — null (the page), or { kind, marker } with kind 'fingerprint' (the
+ * goto threw a network-level reject), 'challenge' (an edge signature on the response) or 'interstitial' (a 2xx wall
+ * read from the page after a short settle). With `solve` (the escalated probe) a challenge gets clearChallenge's
+ * wait+reload window and an interstitial up to three settled reloads before it counts. Any other goto error throws.
+ */
+export async function probeEntry(page, url, { timeout = 30000, solve = false } = {}) {
+  let resp;
+  const { goto } = await liveSession();
+  try {
+    resp = await sharedNavigate(page, url, () => goto(page, url, { waitUntil: 'domcontentloaded', timeout }));
+  } catch (err) {
+    // a network-level reject is not a pacing matter (the relaunch answers it) — no shared signal for it
+    if (isFingerprintBlock(err)) return { kind: 'fingerprint', marker: String(err.message || err).split('\n')[0] };
+    throw err;
+  }
+  if (solve) resp = await clearChallenge(page, resp); // records the challenge signal itself, once per response
+  const edge = challengeMarker(resp);
+  if (edge) {
+    // the first probe's verdict slows every process pacing this host; a 429 the shared navigation already counted is
+    // not counted twice, and the escalated probe's clearChallenge has recorded its own
+    if (!solve) await recordSharedBotSignal(url, resp).catch(() => {});
+    return { kind: 'challenge', marker: edge };
+  }
+  if (!resp || resp.status() >= 400) return null; // an app-level status: not a wall; the capture reports it as HTTPError
+  await page.waitForTimeout(ENTRY_SETTLE_MS);
+  let wall = await pageWall(page);
+  for (let attempt = 0; solve && wall.marker && attempt < 3; attempt += 1) {
+    await page.waitForTimeout(4000);
+    const reloaded = await sharedNavigate(page, url, () => page.reload({ waitUntil: 'domcontentloaded', timeout })).catch(() => null);
+    if (!reloaded || challengeMarker(reloaded) || reloaded.status() >= 400) break; // not cleared
+    await page.waitForTimeout(ENTRY_SETTLE_MS);
+    const next = await pageWall(page);
+    if (!next.skipped) wall = next; // only a verdict replaces the confirmed wall (fail closed)
+  }
+  if (wall.skipped) console.error(`[crawl] wall check skipped on the entry page: ${wall.skipped}`);
+  if (!wall.marker) return null;
+  await recordSharedBotSignal(url, resp).catch(() => {}); // a 2xx wall: no header layer counted it
+  return { kind: 'interstitial', marker: wall.marker };
+}
+
+// ---- the per-page deadline (--page-timeout): a page that never settles is a TimeoutError, not the run's cap ----
+async function withPageDeadline(promise, ms) {
+  if (!(ms > 0)) return promise;
+  const { withDeadline } = await liveSession();
+  try {
+    return await withDeadline(promise, ms, 'page capture');
+  } catch (e) {
+    if (e && e.name === 'DeadlineError') throw Object.assign(new Error(`page deadline ${ms / 1000} s exceeded (--page-timeout)`), { errorClass: 'TimeoutError' });
+    throw e;
+  }
+}
+// Cloudflare's non-interactive managed challenge serves the 403/503 interstitial,
+// runs its JS, sets a clearance cookie, then the real page becomes reachable.
+// Wait for that window and reload to pick up the cookie before treating the
+// status as a hard failure. No-op for a normal 200 (isChallengeResponse false),
+// so zero overhead on the common path. A challenged page is ONE shared bot signal,
+// however many reloads stay challenged: the reloads ask for the same page 4 s apart
+// and are the same wall, not new evidence (counted per reload, one walled inner
+// page took its host to the top of the backoff ladder within a single crawl). A
+// response the transport layer already counted (a marked 429) is the page's signal.
+export async function clearChallenge(page, resp, {
+  recordBotSignal = recordSharedBotSignal, navigate = sharedNavigate, signalRecorded,
+} = {}) {
+  const alreadyRecorded = signalRecorded || (await sharedLiveSession()).liveResponseSignalRecorded;
+  let signalled = false;
+  const recordSignal = async () => {
+    if (signalled || !isChallengeResponse(resp)) return;
+    signalled = true;
+    if (!alreadyRecorded(resp)) await callSharedHook(recordBotSignal, [page.url()], page.url());
+  };
+  await recordSignal();
+  for (let attempt = 0; attempt < 3 && isChallengeResponse(resp); attempt += 1) {
+    await page.waitForTimeout(4000);
+    const reloaded = await navigate(page, page.url(), () => page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 }))
+      .catch(() => null);
+    if (reloaded) { resp = reloaded; await recordSignal(); }
+  }
+  return resp;
+}
+
+// ---- URL normalization: one canonical form for entry, --pages, sitemap, BFS ----
+// resolve against base, strip hash, keep query, normalize trailing slash
+// (non-root paths lose it) so `/about`, `/about/` and `/about#team` dedupe.
+function normalizeUrl(u, base) {
+  const url = new URL(u, base);
+  url.hash = '';
+  // Keep the source's trailing-slash form VERBATIM (stardust-style e2e finding):
+  // static hosts commonly serve /docs/ as 200 and /docs as 404 with NO redirect
+  // between the variants, so rewriting the fetched URL turns sitemap-declared
+  // pages into 404s. Dedupe happens by slash-stripped KEY (dedupeKey below),
+  // never by rewriting the URL we fetch.
+  return url.href;
+}
+// slash-insensitive identity for dedupe: /about, /about/ and /about#x are one page.
+function dedupeKey(href) {
+  const url = new URL(href);
+  return url.origin + url.pathname.replace(/\/+$/, '') + url.search;
+}
+
+// ---- locale-root capture gaps (post-pass; pure, exported for tests) ----
+// A locale root is a captured page whose path is one or two segments of locale codes — `/en`,
+// `/fr-ca`, `/de_DE`, `/ca/en` (region, then language). Its first-level targets are the same-origin
+// links ON that page that lie under its own path (query, hash and trailing slash folded; assets,
+// mailto:/tel: and other hosts dropped; a `www.` prefix folded). Those the crawl never captured
+// (no record with that url or finalUrl) are the gaps. Two recorded hands-off runs captured a locale
+// root while its 15-page subtree, linked from that very page, never entered the inventory.
+const LOCALE_SEG = /^[a-z]{2,3}(?:[-_][a-z]{2,4})?$/i;
+const ASSET_EXT = /\.(?:css|js|mjs|json|xml|txt|pdf|zip|gz|ico|png|jpe?g|gif|svg|webp|avif|mp[34]|webm|woff2?|ttf|otf|eot)$/i;
+export function localeRootPath(href) {
+  let u;
+  try { u = new URL(href); } catch { return null; }
+  const segs = u.pathname.split('/').filter(Boolean);
+  if (!segs.length || segs.length > 2 || !segs.every((s) => LOCALE_SEG.test(s))) return null;
+  return `/${segs.join('/')}`;
+}
+const hostKey = (u) => u.host.toLowerCase().replace(/^www\./, '');
+const pathKey = (u) => u.pathname.replace(/\/+$/, '') || '/';
+// a record's `links` is the flat href list capture() writes; the schema's { internal, external } shape is read too
+const linkList = (links) => (Array.isArray(links) ? links : links && typeof links === 'object' ? [...(links.internal || []), ...(links.external || [])] : []);
+export function captureGaps(records) {
+  const captured = new Set();
+  for (const r of records) {
+    for (const h of [r.url, r.finalUrl]) { try { const u = new URL(h); captured.add(`${hostKey(u)}${pathKey(u)}`); } catch { /* absent or not a URL */ } }
+  }
+  const roots = [];
+  for (const r of records) {
+    const root = localeRootPath(r.url);
+    if (!root) continue;
+    const base = new URL(r.url);
+    const targets = new Set();
+    for (const raw of linkList(r.links)) {
+      let u;
+      try { u = new URL(raw, r.url); } catch { continue; }
+      if (!/^https?:$/.test(u.protocol) || hostKey(u) !== hostKey(base)) continue;
+      const p = pathKey(u);
+      if (!p.startsWith(`${root}/`) || ASSET_EXT.test(p)) continue;
+      targets.add(p);
+    }
+    const uncaptured = [...targets].filter((p) => !captured.has(`${hostKey(base)}${p}`)).sort();
+    roots.push({ root, slug: r.slug, linked: targets.size, uncaptured });
+  }
+  roots.sort((a, b) => a.root.localeCompare(b.root));
+  const detail = roots.length
+    ? `uncaptured first-level targets: ${roots.map((r) => `${r.root.slice(1)} ${r.uncaptured.length}`).join(', ')}`
+    : 'uncaptured first-level targets: none (no locale root captured)';
+  return { roots, detail };
+}
+
+/**
+ * The page list: entry first, normalized dedupe, capped at max. With linkFirst (the user named N), the entry
+ * page's links follow in document order, then the discovered list, both kept to same-origin non-asset pages;
+ * without it, the discovered list follows the entry directly. Unparsable hrefs are skipped and returned in
+ * `skipped`. Pure. Returns { urls, skipped }.
+ */
+export function selectPages({ entry, origin, linked, discovered, max, linkFirst }) {
+  const skipped = [];
+  const parse = (list) => list.flatMap((h) => {
+    try { return [normalizeUrl(h, origin)]; } catch { skipped.push(h); return []; }
+  });
+  const page = (u) => { const url = new URL(u); return url.origin === origin && !ASSET_EXT.test(url.pathname); };
+  const candidates = linkFirst ? [...parse(linked), ...parse(discovered)].filter(page) : parse(discovered);
+  const seen = new Set(); const urls = [];
+  for (const u of [entry, ...candidates]) {
+    const k = dedupeKey(u);
+    if (!seen.has(k)) { seen.add(k); urls.push(u); }
+  }
+  return { urls: urls.slice(0, max), skipped };
+}
+
+// ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
+export async function discover(args, page) {
+  const entry = normalizeUrl(args.url);
+  // explicit --pages: NEVER drop a listed page. The entry URL is ADDED on top
+  // (the effective cap grows by one when needed); if the total still exceeds
+  // --max, warn instead of silently evicting a requested page.
+  if (args.pages) {
+    const seen = new Set();
+    const listed = args.pages.map((p) => normalizeUrl(p, args.url))
+      .filter((u) => { const k = dedupeKey(u); if (seen.has(k)) return false; seen.add(k); return true; });
+    const entryKey = dedupeKey(entry);
+    const urls = listed.some((u) => dedupeKey(u) === entryKey) ? listed : [entry, ...listed];
+    if (urls.length > args.max) {
+      console.error(`[crawl] WARN --pages lists ${listed.length} page(s); with the entry URL the total is ${urls.length}, exceeding --max ${args.max} — crawling all of them (explicitly listed pages are never dropped)`);
+    }
+    return urls;
+  }
+  // discovered lists (sitemap/BFS) go through selectPages; --link-first puts the entry page's links first.
+  const readLinks = () => page.evaluate((origin) => [...document.querySelectorAll('a[href]')]
+    .map((a) => a.href).filter((h) => h.startsWith(origin)), args.origin);
+  let linked = args.linkFirst ? await readLinks() : null;
+  const withEntry = (discovered) => {
+    const { urls, skipped } = selectPages({
+      entry, origin: args.origin, linked: linked || [], discovered, max: args.max, linkFirst: args.linkFirst,
+    });
+    if (skipped.length) console.error(`[crawl] WARN discovery skipped ${skipped.length} unparsable URL(s): ${skipped.join(', ')}`);
+    return urls;
+  };
+  // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
+  // sitemap must fall through to BFS — finding from a media-site run).
+  for (const sm of ['/sitemap.xml', '/sitemap_index.xml']) {
+    try {
+      const xml = await page.evaluate(async (u) => {
+        const r = await fetch(u); return r.ok ? r.text() : '';
+      }, new URL(sm, args.origin).href);
+      const locs = [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((m) => m[1])
+        .filter((u) => u.startsWith(args.origin));
+      // a sitemap INDEX's <loc>s are child-sitemap .xml URLs, not pages —
+      // recurse one level (capped) instead of queueing them as pages, where
+      // every capture would throw ContentTypeError and discovery would
+      // silently collapse to the entry page.
+      const isXml = (u) => /\.xml(?:[?#]|$)/i.test(u);
+      let pageLocs = locs.filter((u) => !isXml(u));
+      const childMaps = locs.filter(isXml).slice(0, 8);
+      if (!pageLocs.length && childMaps.length) {
+        for (const child of childMaps) {
+          try {
+            const cx = await page.evaluate(async (u) => {
+              const r = await fetch(u); return r.ok ? r.text() : '';
+            }, child);
+            pageLocs = pageLocs.concat([...cx.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+              .map((m) => m[1]).filter((u) => u.startsWith(args.origin) && !isXml(u)));
+          } catch { /* skip unreadable child sitemap */ }
+        }
+      }
+      if (pageLocs.length >= 1) return withEntry(pageLocs);
+    } catch { /* fall through */ }
+  }
+  // BFS depth-1 from the entry page's same-origin nav links.
+  linked = linked || await readLinks();
+  return withEntry(linked);
+}
+
+// The shared live-session hooks (throttle, browser-state jar, bot signals) ride the same loader.
+const sharedLiveSession = liveSession;
+async function sharedNavigate(page, url, navigate) {
+  const { runLiveNavigation } = crawlerLiveBindings(await sharedLiveSession());
+  return runLiveNavigation(page, url, navigate);
+}
+async function persistSharedState(page, url = page.url()) {
+  const { persistLiveStorageState } = crawlerLiveBindings(await sharedLiveSession());
+  return persistLiveStorageState(page, url);
+}
+async function recordSharedBotSignal(url, response) {
+  const { recordLiveBotSignal, liveResponseSignalRecorded } = crawlerLiveBindings(await sharedLiveSession());
+  if (liveResponseSignalRecorded(response)) return false;
+  return recordLiveBotSignal(url);
+}
+async function recordSharedSuccess(url) {
+  const { recordLiveNavigationSuccess } = crawlerLiveBindings(await sharedLiveSession());
+  return recordLiveNavigationSuccess(url);
+}
+
+// The shared consent pass (stardust/scripts/browser.mjs acceptConsent — the vendor list every
+// gate instrument uses) runs first (liveSession above); the passes below stay the fallback when it misses.
+async function dismissConsent(page) {
+  const { acceptConsent } = await liveSession();
+  const shared = await acceptConsent(page).catch(() => null);
+  if (shared) console.error(`[crawl] consent dismissed via ${shared}`);
+  const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '[aria-label*="Accept" i]',
+    'button[id*="accept" i]', 'button[class*="accept" i]'];
+  let matched = Boolean(shared);
+  for (const s of matched ? [] : sels) {
+    const el = await page.$(s);
+    if (el) { await el.click().catch(() => {}); matched = true; await page.waitForTimeout(300); break; }
+  }
+  // Usercentrics renders inside shadow DOM (#usercentrics-root) — regular
+  // selectors can't reach it (tools-retailer e2e finding).
+  const ucMatched = !matched && await page.evaluate(() => {
+    const root = document.querySelector('#usercentrics-root')?.shadowRoot;
+    if (root) {
+      const btn = root.querySelector('[data-testid="uc-deny-all-button"], [data-testid="uc-accept-all-button"]');
+      if (btn) { btn.click(); return true; }
+    }
+    return false;
+  }).catch(() => false);
+  // Text-match fallback, only when the selector pass matched NOTHING (two field
+  // harvests, 2026-08: two different consent widgets — a custom
+  // dialog, cookieconsent's a.cc-btn — were missed by the list above; on
+  // one of them the banner baked into the ground-truth screenshot AND repeated at
+  // all 7 stitch seams → 32% false pixel diff). Guards keep it from ever
+  // hitting an in-content link: exact match on a short consent label (≤25
+  // chars after whitespace collapse), visible, and inside a fixed/sticky or
+  // high-z overlay container. Worst case = today's behavior (banner stays).
+  if (!matched && !ucMatched) {
+    const hit = await page.evaluate(() => {
+      const LABELS = new Set(['accept', 'accept all', 'allow all', 'agree', 'ok', 'decline',
+        'alle akzeptieren', 'accepter']);
+      const inOverlay = (el) => {
+        for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          if (cs.position === 'fixed' || cs.position === 'sticky') return true;
+          if (cs.position !== 'static' && +cs.zIndex >= 100) return true;
+        }
+        return false;
+      };
+      for (const el of document.querySelectorAll('button, a, [role="button"]')) {
+        const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+        if (!t || t.length > 25 || !LABELS.has(t.toLowerCase())) continue;
+        const cs = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        if (cs.display === 'none' || cs.visibility === 'hidden' || r.width < 2 || r.height < 2) continue;
+        if (!inOverlay(el)) continue;
+        el.click();
+        return t;
+      }
+      return null;
+    }).catch(() => null);
+    if (hit) { console.error(`[crawl] consent dismissed via text-match fallback ("${hit}")`); await page.waitForTimeout(300); }
+  }
+  await page.waitForTimeout(300);
+  // assert: prune any consent container still present (don't leave it for capture).
+  await page.evaluate(() => {
+    document.querySelectorAll('#onetrust-banner-sdk, #truste-consent-track, #usercentrics-root, [class*="cookie" i][class*="banner" i], [id*="consent" i]')
+      .forEach((n) => n.remove());
+  });
+}
+
+// Favicon — captured on the ENTRY page in ALL modes (healthcare-site harvest, 2026-08:
+// bounded --pages extracts skip Phase 3 (brand surface) where favicon capture
+// otherwise lives, and deploy's favicon step then skips SILENTLY — the deployed
+// site shipped the default icon). One cheap request. The fetch runs in-page so
+// it inherits the context's fingerprint + cookies — bot-walled origins usually
+// serve assets even when pages are challenged.
+async function captureFavicon(page, args) {
+  try {
+    const fetchIcon = (u) => page.evaluate(async (iconUrl) => {
+      try {
+        const r = await fetch(iconUrl);
+        if (!r.ok) return null;
+        return { type: r.headers.get('content-type') || '', bytes: [...new Uint8Array(await r.arrayBuffer())] };
+      } catch { return null; }
+    }, u);
+    const href = await page.evaluate(() => document.querySelector('link[rel~="icon" i]')?.href || null);
+    const fallback = new URL('/favicon.ico', args.origin).href;
+    let url = href || fallback;
+    let res = await fetchIcon(url);
+    // a cross-origin <link> icon (CDN-hosted) dies on the CORS-bound in-page
+    // fetch even when the asset is fine — retry the same-origin /favicon.ico
+    // before giving up.
+    if ((!res || !res.bytes.length) && url !== fallback) { url = fallback; res = await fetchIcon(url); }
+    if (!res || !res.bytes.length) return null;
+    // content-type is authoritative for <ext> (a /favicon.ico path routinely
+    // serves PNG); the URL path is the fallback, .ico the default.
+    const extFromType = /svg/.test(res.type) ? 'svg' : /png/.test(res.type) ? 'png'
+      : /jpe?g/.test(res.type) ? 'jpg' : /gif/.test(res.type) ? 'gif'
+        : /webp/.test(res.type) ? 'webp' : /icon/.test(res.type) ? 'ico' : '';
+    const extFromPath = (path.extname(new URL(url).pathname).slice(1) || '').toLowerCase();
+    const ext = extFromType || extFromPath || 'ico';
+    await mkdir(path.join(args.out, 'assets'), { recursive: true });
+    const file = `assets/favicon.${ext}`;
+    await writeFile(path.join(args.out, file), Buffer.from(res.bytes));
+    return { url, file };
+  } catch { return null; }
+}
+
+// ---- the capture, run in-page; returns the per-page record + hardening signals ----
+// ---- dynamic-surface evidence (network side) — OPT-IN (`--dynamics`) --------
+// Records WHAT the page fetched while rendering — never what it means. Cheap
+// per-page REACH signals for the dynamics sub-skill: `dynamics-detect.mjs`
+// probes archetypes in depth and folds these per-page sections (`--reach`) into
+// each finding's reach. Migration-bound: prepare-migration, replica and migrate
+// pass `--dynamics`; a bare extract, uplift and audit never do (dynamics is a
+// migration concern, not a redesign one).
+const DYNAMIC_MAX_ENDPOINTS = 150;
+const DYNAMIC_MAX_HOSTS = 60;
+const JSON_CT = /application\/(json|[a-z0-9.+-]*\+json)|text\/json|application\/graphql/i;
+
+// collapse ids so /api/products/1234 and /api/products/5678 read as one endpoint
+function pathPattern(u) {
+  return u.pathname
+    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '{uuid}')
+    .replace(/\/[0-9a-f]{16,}(?=\/|$)/gi, '/{hash}')
+    .replace(/\/\d+(?=\/|$)/g, '/{n}');
+}
+function queryKeys(u) { return [...new Set([...u.searchParams.keys()])].sort(); }
+// loose eTLD+1: enough to tell cdn.brand.com from analytics.vendor.com
+function registrable(host) { return host.split('.').slice(-2).join('.'); }
+
+function attachDynamicRecorder(page) {
+  const endpoints = new Map(); // "METHOD host/path-pattern" → row
+  const scriptHosts = new Map(); // host → count
+  let truncated = false;
+  page.on('response', (resp) => {
+    try {
+      const req = resp.request();
+      const type = req.resourceType();
+      const ct = (resp.headers()['content-type'] || '').split(';')[0].trim().toLowerCase();
+      const u = new URL(resp.url());
+      if (!/^https?:$/.test(u.protocol)) return;
+      if (type === 'script') { scriptHosts.set(u.host, (scriptHosts.get(u.host) || 0) + 1); return; }
+      if (type === 'document') return; // the page itself (and iframes' documents)
+      const dataLike = type === 'xhr' || type === 'fetch' || type === 'eventsource' || JSON_CT.test(ct);
+      if (!dataLike) return;
+      const method = req.method();
+      const key = `${method} ${u.host}${pathPattern(u)}`;
+      const len = Number(resp.headers()['content-length']) || null;
+      const row = endpoints.get(key);
+      if (row) { row.hits += 1; if (len) row.bytes = Math.max(row.bytes || 0, len); return; }
+      if (endpoints.size >= DYNAMIC_MAX_ENDPOINTS) { truncated = true; return; }
+      endpoints.set(key, {
+        method, host: u.host, path: pathPattern(u), query: queryKeys(u), resourceType: type,
+        contentType: ct || null, status: resp.status(), bytes: len, hits: 1, example: `${u.origin}${u.pathname}`,
+      });
+    } catch { /* evidence only — never fail a capture on it */ }
+  });
+  return {
+    finish(finalUrl) {
+      const site = registrable(new URL(finalUrl).host);
+      return {
+        endpoints: [...endpoints.values()].map((r) => ({ ...r, sameSite: registrable(r.host) === site })),
+        thirdPartyScriptHosts: [...scriptHosts.entries()]
+          .filter(([h]) => registrable(h) !== site)
+          .sort((a, b) => b[1] - a[1]).slice(0, DYNAMIC_MAX_HOSTS)
+          .map(([host, count]) => ({ host, count })),
+        truncated,
+      };
+    },
+  };
+}
+
+// site-level roll-up (written to _crawl-log.json#dynamicSurface): which
+// endpoints / hosts / frameworks / form targets recur across pages, with up to
+// three example slugs each — the view Phase 4.5 reads first.
+function newDynamicRollup() {
+  return { endpoints: new Map(), thirdPartyScriptHosts: new Map(), frameworkHints: new Map(), globalState: new Map(), formTargets: new Map(), pages: 0, pagesWithSameSiteData: 0, pagesWithSearchForm: 0, pagesHydrated: 0, truncatedPages: 0 };
+}
+function bump(map, key, slug, extra) {
+  const row = map.get(key) || { ...extra, pages: 0, examples: [] };
+  row.pages += 1;
+  if (row.examples.length < 3) row.examples.push(slug);
+  map.set(key, row);
+}
+function rollupDynamic(acc, d, slug) {
+  acc.pages += 1;
+  if (d.truncated) acc.truncatedPages += 1;
+  if (d.summary.sameSiteEndpoints) acc.pagesWithSameSiteData += 1;
+  if (d.summary.searchForms) acc.pagesWithSearchForm += 1;
+  if (d.summary.hydrated) acc.pagesHydrated += 1;
+  for (const e of d.endpoints) bump(acc.endpoints, `${e.method} ${e.host}${e.path}`, slug, { method: e.method, host: e.host, path: e.path, query: e.query, resourceType: e.resourceType, contentType: e.contentType, sameSite: e.sameSite, example: e.example });
+  for (const h of d.thirdPartyScriptHosts) bump(acc.thirdPartyScriptHosts, h.host, slug, { host: h.host });
+  for (const f of d.frameworkHints) bump(acc.frameworkHints, f, slug, { hint: f });
+  for (const g of d.globalState) bump(acc.globalState, g, slug, { name: g });
+  for (const f of d.forms) bump(acc.formTargets, `${f.method} ${f.action || '(js-handled)'}`, slug, { action: f.action, method: f.method, sameOrigin: f.sameOrigin, search: f.search, fieldNames: f.fieldNames });
+}
+function finalizeDynamic(acc) {
+  const list = (m, cap) => [...m.values()].sort((a, b) => b.pages - a.pages).slice(0, cap);
+  return {
+    pages: acc.pages,
+    pagesWithSameSiteData: acc.pagesWithSameSiteData,
+    pagesWithSearchForm: acc.pagesWithSearchForm,
+    pagesHydrated: acc.pagesHydrated,
+    truncatedPages: acc.truncatedPages,
+    endpoints: list(acc.endpoints, 300),
+    thirdPartyScriptHosts: list(acc.thirdPartyScriptHosts, DYNAMIC_MAX_HOSTS),
+    frameworkHints: list(acc.frameworkHints, 20),
+    globalState: list(acc.globalState, 20),
+    formTargets: list(acc.formTargets, 50),
+  };
+}
+
+function capture() {
+  const vis = (el) => {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.closest('[aria-hidden="true"],[hidden]')) return false;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || +cs.opacity === 0) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return false; // zero-area
+    if (r.bottom < -2000 || r.right < -2000) return false; // far off-screen
+    return true;
+  };
+  const INTERSTITIAL = /(temporarily unavailable|page unavailable|continuing to a page|go back to spanish|continue in english|this site uses cookies|accept all cookies|change cookie settings|privacy notice)/i;
+  const isInterstitial = (t) => t && INTERSTITIAL.test(t.trim());
+
+  let filtered = 0;
+  const text = (el) => (el.textContent || '').replace(/\s+/g, ' ').trim();
+
+  const meta = (n) => document.querySelector(`meta[name="${n}"]`)?.content
+    || document.querySelector(`meta[property="${n}"]`)?.content || null;
+
+  // headings: visible only, drop interstitial copy
+  const headings = [...document.querySelectorAll('h1,h2,h3,h4,h5,h6')].filter((h) => {
+    if (!vis(h)) return false;
+    if (isInterstitial(text(h))) { filtered += 1; return false; }
+    return true;
+  }).map((h) => ({ tag: h.tagName.toLowerCase(), text: text(h) })).filter((h) => h.text);
+
+  const main = document.querySelector('main') || document.body;
+  // body paragraphs: visible, non-interstitial
+  const body = [...main.querySelectorAll('p,blockquote,li')].filter((p) => {
+    if (!vis(p)) return false;
+    const t = text(p);
+    if (!t || t.length < 2) return false;
+    if (isInterstitial(t)) { filtered += 1; return false; }
+    return true;
+  }).map(text);
+
+  // CTAs (visible button-like)
+  const ctas = [...document.querySelectorAll('a[href],button,[role="button"]')].filter(vis)
+    .map((a) => ({ label: text(a), href: a.getAttribute('href') || null }))
+    .filter((c) => c.label && !isInterstitial(c.label)).slice(0, 100);
+
+  // links
+  const links = [...new Set([...document.querySelectorAll('a[href]')].map((a) => a.href))];
+
+  // media — tracking pixels (lone off-origin <=2px) do NOT count as media
+  const imgs = [...document.querySelectorAll('img')].map((im) => ({
+    src: im.currentSrc || im.src, alt: im.alt || '', w: im.naturalWidth, h: im.naturalHeight,
+  }));
+  const realImgs = imgs.filter((im) => im.src && im.w > 2 && im.h > 2
+    && !/(^data:|1x1|pixel|track|beacon|\/p\?|\/b\?)/i.test(im.src));
+  const cssBgs = [];
+  for (const el of document.querySelectorAll('*')) {
+    const bg = getComputedStyle(el).backgroundImage;
+    if (bg && bg !== 'none' && /url\(/.test(bg)) {
+      const r = el.getBoundingClientRect();
+      const m = bg.match(/url\(["']?([^"')]+)/);
+      if (r.width >= 100 && r.height >= 80 && m) cssBgs.push(m[1]);
+    }
+  }
+
+  // MODAL / AJAX detail: read textContent of dialog/modal containers EVEN IF hidden
+  // (XHR-populated detail sits in a display:none .modal until opened).
+  const modals = [...document.querySelectorAll('[role="dialog"],[aria-modal="true"],.modal,.modal-content')]
+    .map((m) => text(m)).filter((t) => t && t.length > 40).slice(0, 10);
+
+  const mainText = text(main);
+  // custom props — discovery-vs-value split:
+  //   * the stylesheet walk DISCOVERS property NAMES declared on :root/html-ish
+  //     selectors, recursing into @media/@supports groups AND @import'ed sheets
+  //     (a CSSImportRule exposes .styleSheet, not .cssRules — WordPress/legacy
+  //     CMS token sheets commonly arrive via @import);
+  //   * the recorded VALUE is always the LIVE one from
+  //     getComputedStyle(documentElement). A declared value is accepted as
+  //     fallback ONLY from unconditional rules (not inside any grouping rule
+  //     with a condition, nor a conditional @import/link media) whose selector
+  //     list contains exactly ':root' or 'html'. Names that only appear in
+  //     conditional/themed rules (e.g. `:root.dark`, `@media (…)`) and compute
+  //     empty are skipped — the rendered page never used them.
+  const propNames = new Set();
+  const declaredFallback = {};
+  const isConditionalMedia = (media) => !!(media && media.mediaText && !/^(all)?$/i.test(media.mediaText.trim()));
+  const walkRules = (rules, conditional) => {
+    for (const rule of rules || []) {
+      if (rule.type === 3 /* CSSRule.IMPORT_RULE */ || (typeof CSSImportRule !== 'undefined' && rule instanceof CSSImportRule)) {
+        try {
+          if (rule.styleSheet) walkRules(rule.styleSheet.cssRules, conditional || isConditionalMedia(rule.media));
+        } catch { /* cross-origin imported sheet */ }
+        continue;
+      }
+      if (rule.style && rule.selectorText) {
+        const selectors = rule.selectorText.split(',').map((s) => s.trim());
+        if (selectors.some((s) => /^(:root|html)\b/.test(s))) {
+          const unconditionalRoot = !conditional && selectors.some((s) => s === ':root' || s === 'html');
+          for (const p of rule.style) {
+            if (!p.startsWith('--')) continue;
+            propNames.add(p);
+            // last unconditional exact-:root/html declaration wins (cascade order)
+            if (unconditionalRoot) declaredFallback[p] = rule.style.getPropertyValue(p).trim();
+          }
+        }
+      }
+      if (rule.cssRules && rule.cssRules.length) {
+        // grouping rule: @media/@supports carry a condition; @layer etc. do not
+        const groupConditional = conditional || typeof rule.conditionText === 'string';
+        try { walkRules(rule.cssRules, groupConditional); } catch { /* skip */ }
+      }
+    }
+  };
+  for (const sheet of document.styleSheets) {
+    try { walkRules(sheet.cssRules, isConditionalMedia(sheet.media)); } catch { /* cross-origin sheet */ }
+  }
+  for (const p of document.documentElement.style) {
+    if (p.startsWith('--')) {
+      propNames.add(p);
+      declaredFallback[p] = document.documentElement.style.getPropertyValue(p).trim();
+    }
+  }
+  const rootStyle = getComputedStyle(document.documentElement);
+  const customProps = {};
+  for (const name of propNames) {
+    const live = rootStyle.getPropertyValue(name).trim();
+    if (live) customProps[name] = live;
+    else if (declaredFallback[name]) customProps[name] = declaredFallback[name];
+    // else: conditional/themed-only name with empty computed value — skip
+  }
+
+  // substance / SPA-shell signal
+  const distinctHeadings = new Set(headings.map((h) => h.text)).size;
+  const spaShellSuspect = distinctHeadings < 2 && mainText.length < 200 && realImgs.length === 0;
+
+  // content hash for cross-page duplicate detection (detail == listing)
+  const contentHash = `${headings.map((h) => h.text).join('|')}::${mainText.slice(0, 4000)}`;
+
+  // code blocks: pre/code contents verbatim (stardust-style e2e finding — on a
+  // developer-tool site the install commands are the most load-bearing content
+  // and innerText body capture skips them). Visible pres only; innerText keeps
+  // line structure.
+  const codeBlocks = [...document.querySelectorAll('pre')].filter(vis)
+    .map((el) => (el.innerText || '').trim()).filter(Boolean);
+
+  // dynamic-surface evidence (DOM side): data blobs, hydration hints, forms.
+  // Evidence only — prepare-migration Phase 4.5 classifies; merged with the
+  // network-side recorder into `dynamic` by capturePage.
+  const inlineData = [...document.querySelectorAll('script[type^="application/"][type*="json"],script#__NEXT_DATA__')]
+    .filter((s) => !/ld\+json/i.test(s.type || ''))
+    .slice(0, 20)
+    .map((s) => {
+      let keys = null;
+      try { const j = JSON.parse(s.textContent); keys = j && typeof j === 'object' ? Object.keys(j).slice(0, 12) : null; } catch { /* not parseable */ }
+      return { id: s.id || null, type: s.type || null, bytes: (s.textContent || '').length, topLevelKeys: keys };
+    });
+  const globalState = ['__NEXT_DATA__', '__NUXT__', '__INITIAL_STATE__', '__PRELOADED_STATE__', '__APOLLO_STATE__', '__remixContext', '__SVELTEKIT__', 'drupalSettings', 'wpApiSettings', 'Shopify', 'dataLayer']
+    .filter((k) => { try { return k in window; } catch { return false; } });
+  const q = (sel) => { try { return !!document.querySelector(sel); } catch { return false; } };
+  const frameworkHints = [
+    q('#__next') && 'next',
+    q('#___gatsby') && 'gatsby',
+    q('#__nuxt,#__layout') && 'nuxt',
+    q('[data-reactroot],[data-reactid]') && 'react',
+    q('[ng-version]') && 'angular',
+    q('[data-v-app],[data-server-rendered]') && 'vue',
+    q('[data-sveltekit-preload-data],[data-sveltekit-hydrate]') && 'sveltekit',
+    q('astro-island') && 'astro',
+    q('[data-turbo],[data-turbolinks]') && 'turbo',
+    q('[data-wf-page],[data-wf-site]') && 'webflow',
+    q('link[href*="/wp-content/"],script[src*="/wp-content/"]') && 'wordpress',
+    q('script[src*="cdn.shopify.com"]') && 'shopify',
+    q('.hs-form,[data-hs-forms-root],script[src*="hsforms"]') && 'hubspot-forms',
+    q('script[src*="marketo"],form[id^="mktoForm"]') && 'marketo-forms',
+    q('.aem-Grid,[data-cmp-is]') && 'aem-sites',
+  ].filter(Boolean);
+  const forms = [...document.querySelectorAll('form')].filter(vis).slice(0, 20).map((f) => {
+    const inputs = [...f.querySelectorAll('input,select,textarea')].filter((i) => !['hidden', 'submit', 'button', 'reset'].includes((i.type || '').toLowerCase()));
+    const names = inputs.map((i) => i.name || i.id || '').filter(Boolean);
+    const rawAction = f.getAttribute('action');
+    let action = null;
+    try { action = new URL(rawAction || location.href, location.href); } catch { /* keep null */ }
+    const search = f.getAttribute('role') === 'search'
+      || inputs.some((i) => (i.type || '').toLowerCase() === 'search')
+      || names.some((n) => /^(q|s|query|search|keyword|keywords|term)$/i.test(n))
+      || (!!action && /search/i.test(action.pathname));
+    return {
+      action: action ? `${action.origin}${action.pathname}` : null,
+      hasAction: !!rawAction, // no action attribute → almost always JS-submitted
+      method: (f.getAttribute('method') || 'get').toLowerCase(),
+      sameOrigin: action ? action.origin === location.origin : true,
+      fieldCount: inputs.length,
+      fieldNames: [...new Set(names)].slice(0, 12),
+      search,
+    };
+  });
+  const ariaLiveRegions = document.querySelectorAll('[aria-live]:not([aria-live="off"])').length;
+  // reach signals for dynamics-detect --reach: modal-trigger markers and player ids per page
+  const triggers = [...document.querySelectorAll('a, button')].map((el) => {
+    const cls = el.getAttribute('class') || ''; const attrs = [...el.attributes].map((a) => a.name);
+    const marker = (cls.match(/[\w-]*(modal|dialog|lightbox|popup)[\w-]*/i) || [])[0] || attrs.find((n) => /modal|dialog|lightbox|popup/i.test(n)) || (el.getAttribute('aria-haspopup') === 'dialog' ? 'aria-haspopup=dialog' : null);
+    return marker && !/close|dismiss/i.test(cls) ? { marker, href: el.getAttribute('href') || null } : null;
+  }).filter(Boolean).slice(0, 40);
+  const mediaIds = [...document.querySelectorAll('video-js, [data-video-id], [data-videoid], iframe[src*="player" i]')].map((el) => el.getAttribute('data-video-id') || el.getAttribute('data-videoid') || el.getAttribute('src')).filter(Boolean).slice(0, 20);
+
+  return {
+    dynamicDom: { inlineData, globalState, frameworkHints, forms, ariaLiveRegions, triggers, mediaIds },
+    finalUrl: location.href,
+    title: document.title || null,
+    description: meta('description'),
+    og: { title: meta('og:title'), description: meta('og:description'), image: meta('og:image'), type: meta('og:type') },
+    headings,
+    body,
+    codeBlocks,
+    ctas,
+    links,
+    media: {
+      imgs: realImgs,
+      allImgCount: imgs.length,
+      cssBackgrounds: [...new Set(cssBgs)],
+      modals,
+      videos: [...document.querySelectorAll('video')].filter(vis).map((v) => ({
+        src: v.currentSrc || v.src || v.querySelector('source')?.src || null,
+        poster: v.poster || null,
+        autoplay: v.autoplay,
+        loop: v.loop,
+        muted: v.muted,
+      })),
+      iframes: [...document.querySelectorAll('iframe')].filter(vis).map((f) => ({
+        src: f.src || null,
+        title: f.title || null,
+      })),
+    },
+    customProps,
+    _signals: {
+      filteredInterstitials: filtered,
+      distinctHeadings,
+      mainTextLen: mainText.length,
+      realImageCount: realImgs.length,
+      trackingOnlyMedia: imgs.length > 0 && realImgs.length === 0,
+      spaShellSuspect,
+    },
+    _contentHash: contentHash,
+  };
+}
+
+/**
+ * Capture one page on a fresh tab of `context` under the per-page deadline (args.pageTimeoutMs; 0 = none): a page
+ * that never settles is recorded as TimeoutError instead of eating the run's cap. The deadline closes the tab, so
+ * the abandoned navigation or probe dies with it. Every exit path releases the page. `sharedBindings` (tests) stands in
+ * for the front door's live-session hooks: they pace, record and persist for this capture.
+ */
+export async function capturePage(context, url, slug, args, sharedBindings = null) {
+  const page = await context.newPage();
+  try {
+    return await withPageDeadline(captureOnPage(page, url, slug, args, sharedBindings), args.pageTimeoutMs);
+  } finally {
+    // every exit path — success, validation throw, goto error, the deadline — releases the
+    // page, or failure-heavy crawls accumulate open tabs in the long-lived worker context.
+    await page.close().catch(() => {});
+  }
+}
+async function captureOnPage(page, url, slug, args, sharedBindings = null) {
+  const live = sharedBindings ? crawlerLiveBindings(sharedBindings) : null;
+  const navigateLive = live ? live.runLiveNavigation : sharedNavigate;
+  const recordSuccess = live ? live.recordLiveNavigationSuccess : recordSharedSuccess;
+  const persistState = live ? live.persistLiveStorageState : persistSharedState;
+  const recordBotSignal = live ? live.recordLiveBotSignal : recordSharedBotSignal;
+  const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
+  const { goto } = await liveSession();
+  let resp = await navigateLive(page, url, () => goto(page, url, { waitUntil: 'domcontentloaded', timeout: 45000 }));
+  // response validation
+  if (!resp) throw Object.assign(new Error('no response'), { errorClass: 'TimeoutError' });
+  // bot-management challenge (Cloudflare cf-mitigated: challenge, etc.): the
+  // worker's fresh context is re-challenged even after the probe cleared it, so
+  // give the interstitial its JS-solve window and reload before validating —
+  // a challenge that does not clear is recorded as BotChallenge naming the
+  // signature, never as a bare HTTPError (a 403 under cf-mitigated on every inner
+  // page after a clean entry — recorded on a Cloudflare-managed site).
+  resp = await clearChallenge(page, resp, {
+    recordBotSignal, navigate: navigateLive, signalRecorded: live && live.liveResponseSignalRecorded,
+  });
+  const edge = challengeMarker(resp);
+  if (edge) throw Object.assign(new Error(`bot-management challenge not cleared: ${edge}`), { errorClass: 'BotChallenge' });
+  let status = resp.status();
+  // 404 on a slash variant: retry ONCE with the trailing slash flipped before
+  // recording a failure (stardust-style e2e finding — slash-required hosts).
+  let resolvedUrl = url;
+  if (status === 404) {
+    const u = new URL(url);
+    if (u.pathname.length > 1) {
+      u.pathname = u.pathname.endsWith('/') ? u.pathname.replace(/\/+$/, '') : `${u.pathname}/`;
+      // guarded + short timeout: a hanging flipped-variant probe must not
+      // replace the crisp HTTPError 404 with a raw TimeoutError.
+      const retry = await navigateLive(page, u.href, () => goto(page, u.href, { waitUntil: 'domcontentloaded', timeout: 15000 }))
+        .catch(() => null);
+      if (retry && retry.status() < 400) {
+        console.error(`[crawl] slash-retry OK ${url} -> ${u.href}`);
+        resp = retry; status = retry.status(); resolvedUrl = u.href;
+      }
+    }
+  }
+  if (status >= 400) throw Object.assign(new Error(`HTTP ${status}`), { errorClass: 'HTTPError' });
+  const ct = resp.headers()['content-type'] || '';
+  if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
+
+  if (args.consent) await dismissConsent(page);
+  await recordSuccess(resolvedUrl).catch(() => {});
+  await persistState(page, resolvedUrl).catch(() => {});
+  await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
+  // a 2xx verification interstitial served as a normal page ("One moment, please…", "Just a moment…", CloudFront's
+  // "Request blocked" body): the headers say nothing, the page is read (pageWall) — recorded as BotChallenge, never
+  // captured as content.
+  const wall = await pageWall(page);
+  if (wall.skipped) console.error(`[crawl] wall check skipped on ${slug}: ${wall.skipped}`);
+  if (wall.marker) throw Object.assign(new Error(`bot-management interstitial served as HTTP ${status}: ${wall.marker}`), { errorClass: 'BotChallenge' });
+  // 4-step scroll to trigger lazy content
+  for (let y = 0; y <= 1; y += 0.34) {
+    await page.evaluate((f) => window.scrollTo(0, document.body.scrollHeight * f), y);
+    await page.waitForTimeout(400);
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  // settle after return-to-top: entry animations (hero reveals) must reach
+  // their final state before the visibility filter reads computed opacity, or
+  // the animated h1 is silently dropped. reducedMotion emulation neutralizes
+  // most of it; the settle covers JS-driven reveals. Deliberately a FLAT wait:
+  // gating on document.getAnimations() was tried and re-dropped the h1 — a
+  // JS-delayed reveal has no running animation at check time, so the gate
+  // resolves before the reveal even starts. The 800ms floor is load-bearing.
+  await page.waitForTimeout(800);
+
+  const rec = await page.evaluate(capture);
+  // dynamic surface (opt-in): network recorder + DOM-side evidence → one `dynamic` section
+  if (!recorder) delete rec.dynamicDom;
+  else {
+    const net = recorder.finish(rec.finalUrl || resolvedUrl);
+    const dom = rec.dynamicDom;
+    delete rec.dynamicDom;
+    rec.dynamic = {
+      ...net,
+      ...dom,
+      summary: {
+        sameSiteEndpoints: net.endpoints.filter((e) => e.sameSite).length,
+        thirdPartyEndpoints: net.endpoints.filter((e) => !e.sameSite).length,
+        thirdPartyScriptHosts: net.thirdPartyScriptHosts.length,
+        inlineDataBlobs: dom.inlineData.length,
+        forms: dom.forms.length,
+        searchForms: dom.forms.filter((f) => f.search).length,
+        hydrated: dom.frameworkHints.length > 0 || dom.globalState.some((g) => g !== 'dataLayer'),
+      },
+    };
+  }
+  // rendered DOM sidecar — the settled document as the instrument saw it
+  // (written by the caller as pages/<slug>.html; parse offline, never re-scrape).
+  rec._renderedHtml = await page.content();
+  // soft-404: empty page (no text, no headings, no media, no forms)
+  if (!rec.headings.length && rec._signals.mainTextLen === 0 && rec._signals.realImageCount === 0) {
+    throw Object.assign(new Error('empty page — possibly soft-404'), { errorClass: 'EmptyPageError' });
+  }
+  // full-page screenshot for the Phase 2.5 vision gate. Extremely tall pages
+  // can exceed Playwright's raster limit — catch and retry viewport-only,
+  // recording which mode was used in _signals.
+  const shotsDir = path.join(args.out, 'assets', 'screenshots');
+  await mkdir(shotsDir, { recursive: true });
+  const shotPath = path.join(shotsDir, `${slug}.png`);
+  let screenshotMode = 'fullPage';
+  try {
+    await page.screenshot({ path: shotPath, fullPage: true, timeout: 30000 });
+  } catch {
+    screenshotMode = 'viewport';
+    try {
+      await page.screenshot({ path: shotPath, fullPage: false, timeout: 30000 });
+    } catch {
+      screenshotMode = 'failed';
+    }
+  }
+  rec.screenshot = screenshotMode === 'failed' ? null : `assets/screenshots/${slug}.png`;
+  rec._signals.screenshotMode = screenshotMode;
+  // live-render evidence per SKILL.md § Phase 2 / current-state-schema.md —
+  // validateProvenance() downstream refuses pages without these five fields.
+  if (resolvedUrl !== url) rec._resolvedUrl = resolvedUrl;
+  rec._provenance = {
+    renderedBy: 'playwright',
+    fetchedAt: new Date().toISOString(),
+    waitMode: args.wait || 'medium',
+    waitMs: WAIT_MS[args.wait] || WAIT_MS.medium,
+    httpStatus: status,
+  };
+  return rec;
+}
+
+async function main() {
+  const args = parseArgs(process.argv);
+  const outPages = path.join(args.out, 'pages');
+  await mkdir(outPages, { recursive: true });
+
+  let stealth = false;
+  let { browser, technique } = await launchWithFallback();
+  let context = await newContext(browser, stealth, args.url);
+  let probe = await context.newPage();
+
+  // bot-management probe on the entry URL (probeEntry). Three block modes, all named within seconds:
+  //   1. a network fingerprint block — the goto THROWS (isFingerprintBlock);
+  //   2. a challenge / edge block — the goto SUCCEEDS but the response is a 403/429/503 interstitial with an edge
+  //      signature (challengeMarker; CloudFront / AWS WAF included) — this one once slipped through the probe and
+  //      only failed at capture-time (Cloudflare-fronted site finding);
+  //   3. a 2xx VERIFICATION INTERSTITIAL the headers say nothing about ("One moment, please…" reloading itself) —
+  //      read from the page; a crawler that trusted the 200 waited out the run's whole cap on it.
+  // Any of them → ONE relaunch (launchEscalated: fresh real Chrome, window-free, the existing launch flags unless
+  // STARDUST_STEALTH=0) + the challenge-solve window, then fail fast naming the wall — never capture it as content
+  // (stop-condition (a) for the skill).
+  const botBlock = await probeEntry(probe, args.url, { timeout: 30000 }); // { kind, marker } | null — the first verdict, for the log
+  if (botBlock) {
+    console.error(`[crawl] bot-management block on the entry page (${botBlock.kind}: ${botBlock.marker}) — relaunching real Chrome (channel: chrome, window-free${stealthEnabled() ? '' : ', STARDUST_STEALTH=0: automation-signal handling off'}) and running the challenge-solve window`);
+    const escalated = await launchEscalated();
+    if (escalated) {
+      await browser.close().catch(() => {});
+      browser = escalated;
+      technique = 'chrome-escalated';
+      stealth = stealthEnabled();
+    } else {
+      await context.close().catch(() => {});
+    }
+    context = await newContext(browser, stealth, args.url);
+    probe = await context.newPage();
+    const still = await probeEntry(probe, args.url, { timeout: 45000, solve: true });
+    if (still) {
+      await browser.close().catch(() => {});
+      throw Object.assign(
+        new Error(`bot-management ${still.kind} not cleared after the real-Chrome relaunch + challenge-solve window: ${still.marker} — the site requires an interactive challenge solve; complete it by hand in a session with a window (STARDUST_HEADED_WINDOW=1 on the gate instruments) or capture it another way`),
+        { errorClass: 'BotChallengeError' },
+      );
+    }
+  }
+  await persistSharedState(probe).catch(() => {});
+
+  // adopt the post-redirect origin (apex→www etc.): the same-origin filter and
+  // sitemap fetch must use where the site actually lives, or discovery silently
+  // collapses to 1 page (agency-site e2e finding).
+  let originRedirect = null;
+  try {
+    const landed = new URL(probe.url());
+    if (landed.origin !== args.origin) {
+      originRedirect = { from: args.origin, to: landed.origin };
+      console.error(`[crawl] origin redirect ${args.origin} -> ${landed.origin} — adopting post-redirect origin`);
+      args.origin = landed.origin;
+      args.url = landed.href;
+    }
+  } catch { /* keep declared origin */ }
+
+  const urls = await discover(args, probe);
+  // favicon rides the probe page (already on the entry URL) — runs in every
+  // mode, so bounded extracts can't silently drop it (CEN-4).
+  const favicon = await captureFavicon(probe, args);
+  if (favicon) console.error(`[crawl] favicon captured: ${favicon.file} (${favicon.url})`);
+  else console.error('[crawl] WARN no favicon captured — no link[rel~=icon] and /favicon.ico unreachable; deploy will ship the default icon unless one is provided');
+  await probe.close();
+  console.error(`[crawl] technique=${technique} pages=${urls.length}`);
+
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock: botBlock.kind, botMarker: botBlock.marker } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [], pageTimeoutMs: args.pageTimeoutMs } };
+  let ok = 0;
+  await context.close();
+
+  // worker pool: N parallel BrowserContexts drain the shared queue. Consent is
+  // re-established per page (dismissConsent runs inside capturePage), so each
+  // fresh context is covered without cross-context cookie sharing.
+  // During capture we only RECORD content hashes (indexed by queue position);
+  // duplicate attribution happens in a deterministic post-pass below.
+  const results = new Array(urls.length).fill(null); // { slug, file, hash } per queue index
+  const dynamicRollup = newDynamicRollup();
+  const slugs = assignSlugs(urls);
+  let nextIdx = 0;
+  async function worker() {
+    const ctx = await newContext(browser, stealth, args.url);
+    while (nextIdx < urls.length) {
+      const idx = nextIdx;
+      nextIdx += 1;
+      const url = urls[idx];
+      const slug = slugs[idx];
+      try {
+        const rec = await capturePage(ctx, url, slug, args);
+        if (rec.dynamic) rollupDynamic(dynamicRollup, rec.dynamic, slug);
+        const hash = crypto.createHash('sha1').update(rec._contentHash).digest('hex');
+        delete rec._contentHash;
+        // slash-retry rescue: record the URL that actually served the page and
+        // an audit-trail entry — downstream consumers of `url` must not re-hit
+        // the 404 variant the crawler already learned to avoid.
+        const recordUrl = rec._resolvedUrl || url;
+        if (rec._resolvedUrl) {
+          log.crawl.slashRetries = log.crawl.slashRetries || [];
+          log.crawl.slashRetries.push({ requested: url, resolved: rec._resolvedUrl, slug });
+          delete rec._resolvedUrl;
+        }
+        const file = path.join(outPages, `${slug}.json`);
+        const htmlFile = path.join(outPages, `${slug}.html`);
+        await writeFile(htmlFile, rec._renderedHtml);
+        delete rec._renderedHtml;
+        rec.renderedHtml = `pages/${slug}.html`;
+        const { _provenance, ...rest } = rec;
+        // top-level renderedBy/fetchedAt are legacy-reader aliases of the same
+        // _provenance fields — _provenance is the authoritative contract.
+        await writeFile(file, JSON.stringify({ _provenance, slug, url: recordUrl, renderedBy: _provenance.renderedBy, fetchedAt: _provenance.fetchedAt, ...rest }, null, 2));
+        results[idx] = { slug, file, hash, url: recordUrl, finalUrl: rec.finalUrl, links: rec.links }; // url/finalUrl/links feed the capture-gap post-pass
+        ok += 1;
+        const s = rec._signals;
+        const dy = rec.dynamic?.summary || {};
+        const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
+        console.error(`[crawl] OK   ${slug}  ${warn}`);
+      } catch (err) {
+        log.crawl.failures.push({ url, slug, errorClass: err.errorClass || 'Error', message: String(err.message || err), at: new Date().toISOString() });
+        console.error(`[crawl] FAIL ${slug}  ${err.errorClass || 'Error'}: ${err.message}`);
+      }
+    }
+    await ctx.close();
+  }
+  await Promise.all(Array.from({ length: Math.min(args.concurrency, urls.length) }, worker));
+  await browser.close();
+
+  // cross-page duplicate (detail == listing) detection — deterministic post-pass
+  // in original queue order: canonical = earliest-QUEUED page per content hash
+  // (not whichever finished first under the pool); later ones marked duplicateOf.
+  const canonicalByHash = new Map();
+  for (const r of results) {
+    if (!r) continue;
+    if (!canonicalByHash.has(r.hash)) { canonicalByHash.set(r.hash, r.slug); continue; }
+    const canonical = canonicalByHash.get(r.hash);
+    const rec = JSON.parse(await readFile(r.file, 'utf8'));
+    rec._signals = rec._signals || {};
+    rec._signals.duplicateOf = canonical;
+    await writeFile(r.file, JSON.stringify(rec, null, 2));
+    console.error(`[crawl] DUP  ${r.slug}  DUP-OF:${canonical}`);
+  }
+  // locale-root capture gaps: the subtree a captured locale root links to but discovery never listed —
+  // surfaced here, and as a ready --detail string for the extract `end` ledger line, not six hours later
+  // in the rollout link audit.
+  log.captureGaps = captureGaps(results.filter(Boolean));
+  if (log.captureGaps.roots.length) {
+    console.error(`[crawl] capture gaps: ${log.captureGaps.roots.map((r) => `${r.root} ${r.uncaptured.length} of ${r.linked} first-level target(s) uncaptured`).join('; ')} — list in _crawl-log.json#captureGaps; ledger --detail "${log.captureGaps.detail}"`);
+  }
+  if (args.dynamics) {
+    log.dynamicSurface = finalizeDynamic(dynamicRollup);
+    console.error(`[crawl] dynamic surface (reach): ${log.dynamicSurface.endpoints.filter((e) => e.sameSite).length} same-site data endpoints, ${log.dynamicSurface.pagesWithSearchForm} pages with a search form, ${log.dynamicSurface.pagesHydrated} hydrated — depth + classification: stardust:dynamics`);
+  }
+  // merge into existing _crawl-log.json if present
+  const logPath = path.join(args.out, '_crawl-log.json');
+  const prev = existsSync(logPath) ? JSON.parse(await readFile(logPath, 'utf8')) : {};
+  await writeFile(logPath, JSON.stringify({ ...prev, ...log }, null, 2));
+  console.error(`[crawl] done. ${ok}/${urls.length} captured, ${log.crawl.failures.length} failed. log: ${logPath}`);
+}
+
+if (IS_MAIN) main().catch((e) => { console.error(`[crawl] fatal: ${e.message}`); process.exit(2); });

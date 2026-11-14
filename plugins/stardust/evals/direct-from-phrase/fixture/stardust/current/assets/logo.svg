@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 32" width="180" height="32" role="img" aria-label="Ledgerline">
+  <rect x="0" y="4" width="24" height="24" rx="4" fill="#1f3a5f"/>
+  <path d="M6 10h4v10h8v4H6z" fill="#ffffff"/>
+  <text x="32" y="23" font-family="Georgia, serif" font-size="18" font-weight="700" fill="#1f3a5f">Ledgerline</text>
+</svg>

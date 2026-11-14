@@ -20,7 +20,7 @@ A project where extract + direct + partial prototype have completed:
 
 ## Expected behavior (run 1)
 
-The `stardust:migrate` skill is invoked. It:
+The stardust `migrate` skill is invoked. It:
 
 1. Runs the master setup.
 2. Verifies state contract: directed pages exist, DESIGN.md exists,

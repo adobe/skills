@@ -1,0 +1,475 @@
+/**
+ * qa/checks/browse.mjs — one browser pass per page per viewport, emitting three
+ * check categories (a page load is the expensive unit — never pay it twice):
+ *
+ *   rendered (D) — geometry & runtime integrity at the rendered layer:
+ *     page errors, console errors, failed/4xx same-origin requests, collapsed
+ *     main/sections (getBoundingClientRect().height — computed display lies
+ *     inside display:none ancestors), broken/upscaled images, mobile
+ *     horizontal overflow, stalled EDS section decoration, hover dropdowns
+ *     unreachable along the pointer path (desktop, once per distinct header),
+ *     autoplay videos that show a poster but never play (paused, not
+ *     advancing, or never buffered — the content.da.live 401 class)
+ *   visual (E) — full-page screenshots vs committed baselines; first run
+ *     creates baselines (info), later runs report % changed pixels. Diffs are
+ *     computed in-browser in horizontal bands (no native image deps).
+ *   a11y (H) — axe-core (CDN-injected) on the desktop viewport, violations
+ *     deduped fleet-wide by rule; falls back to info when axe can't load.
+ *
+ * EDS-aware settle: waits for [data-section-status] to reach "loaded"
+ * everywhere, then a grace delay — hanging third-party tags (GTM) stall
+ * decoration, so a plain networkidle wait never fires.
+ */
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  openBrowser, newContext, goto, finding, pageUrl, pathSlug, ensureDir, pMap, attachOriginAuth,
+} from '../lib.mjs';
+
+const VIEWPORTS = [
+  { name: 'desktop', width: 1440, height: 900 },
+  { name: 'mobile', width: 390, height: 844 },
+];
+const AXE_CDN = 'https://cdn.jsdelivr.net/npm/axe-core@4.10.2/axe.min.js';
+const SETTLE_MS = 2000;
+const DECORATION_TIMEOUT = 15000;
+const DIFF_WARN = 0.005; // 0.5% pixels changed
+const DIFF_ERROR = 0.05; // 5%
+
+async function settle(page) {
+  try {
+    await page.waitForFunction(() => {
+      const sections = [...document.querySelectorAll('[data-section-status]')];
+      return sections.length === 0 || sections.every((s) => s.dataset.sectionStatus === 'loaded');
+    }, null, { timeout: DECORATION_TIMEOUT });
+    await page.waitForTimeout(SETTLE_MS);
+    return true;
+  } catch {
+    await page.waitForTimeout(SETTLE_MS);
+    return false;
+  }
+}
+
+async function autoScroll(page) {
+  // trigger lazy loading before a full-page screenshot (CDP capture doesn't)
+  await page.evaluate(async () => {
+    const step = window.innerHeight;
+    for (let y = 0; y < document.body.scrollHeight; y += step) {
+      window.scrollTo(0, y);
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    window.scrollTo(0, 0);
+    await new Promise((r) => setTimeout(r, 300));
+  });
+}
+
+/** Compare two PNGs inside the browser, in horizontal bands (memory-safe). */
+async function pixelDiff(diffPage, pngA, pngB) {
+  return diffPage.evaluate(async ([a64, b64]) => {
+    const load = (b64) => new Promise((res, rej) => {
+      const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('decode failed'));
+      i.src = `data:image/png;base64,${b64}`;
+    });
+    const [ia, ib] = await Promise.all([load(a64), load(b64)]);
+    const w = Math.min(ia.width, ib.width);
+    const h = Math.min(ia.height, ib.height);
+    const BAND = 2000;
+    const ca = document.createElement('canvas'); const cb = document.createElement('canvas');
+    ca.width = w; cb.width = w;
+    let diff = 0; const bands = [];
+    for (let y = 0; y < h; y += BAND) {
+      const bh = Math.min(BAND, h - y);
+      ca.height = bh; cb.height = bh;
+      const xa = ca.getContext('2d', { willReadFrequently: true });
+      const xb = cb.getContext('2d', { willReadFrequently: true });
+      xa.clearRect(0, 0, w, bh); xb.clearRect(0, 0, w, bh);
+      xa.drawImage(ia, 0, y, w, bh, 0, 0, w, bh);
+      xb.drawImage(ib, 0, y, w, bh, 0, 0, w, bh);
+      const da = xa.getImageData(0, 0, w, bh).data;
+      const db = xb.getImageData(0, 0, w, bh).data;
+      let bandDiff = 0;
+      for (let i = 0; i < da.length; i += 4) {
+        const d = Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]);
+        if (d > 48) bandDiff += 1;
+      }
+      diff += bandDiff;
+      bands.push({ fromY: y, ratio: +(bandDiff / (w * bh)).toFixed(4) });
+    }
+    return {
+      widthA: ia.width, heightA: ia.height, widthB: ib.width, heightB: ib.height,
+      compared: { w, h }, diffPixels: diff, ratio: diff / (w * h), bands: bands.filter((b) => b.ratio > 0.001),
+    };
+  }, [pngA.toString('base64'), pngB.toString('base64')]);
+}
+
+/**
+ * Hover-dropdown reachability (rendered/D, desktop). Submenu = the outermost header
+ * element holding a link that becomes visible on mouse.move over a top-level
+ * `header nav li`; the pointer then walks in `stepPx` steps from the trigger's centre
+ * straight down to the first sub-link (its point nearest the trigger's x). Unreachable
+ * = the submenu closes on the way or on arrival, or the sub-link is not under the pointer
+ * (`pointer-events: none`, occlusion). Items that open nothing on hover are skipped.
+ */
+export async function probeDropdowns(page, { stepPx = 2, settleMs = 150, maxItems = 12 } = {}) {
+  const items = await page.evaluate((max) => {
+    const vis = (el) => {
+      const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+      return r.width > 0 && r.height > 0 && r.bottom > 0 && r.right > 0 && r.left < innerWidth && r.top < innerHeight
+        && cs.visibility !== 'hidden' && parseFloat(cs.opacity) > 0;
+    };
+    const all = [...document.querySelectorAll('header *')];
+    const trig = (li) => [...li.querySelectorAll('a, button')].find((el) => el.closest('li') === li);
+    window.__sdt = { vis, all, vis0: all.map(vis), trig, lis: [...document.querySelectorAll('header nav li')].filter((li) => !li.parentElement.closest('li')) };
+    return window.__sdt.lis.map((li, idx) => {
+      const t = trig(li);
+      if (!t || !vis(li) || !vis(t)) return null;
+      const r = t.getBoundingClientRect();
+      return { idx, label: t.textContent.trim().replace(/\s+/g, ' ').slice(0, 60), x: r.x + r.width / 2, y: r.y + r.height / 2, bottom: r.bottom };
+    }).filter(Boolean).slice(0, max);
+  }, maxItems);
+  const { width, height } = page.viewportSize() || { width: 1440, height: 900 };
+  const park = async () => { await page.mouse.move(width - 2, height - 2); await page.keyboard.press('Escape'); await page.waitForTimeout(settleMs); };
+  const out = { probed: 0, skipped: 0, items: [] };
+  for (const it of items) {
+    await park();
+    await page.mouse.move(it.x, it.y);
+    await page.waitForTimeout(settleMs);
+    const sub = await page.evaluate(({ idx, tx }) => {
+      const { vis, all, vis0, trig, lis } = window.__sdt; const li = lis[idx]; const t = trig(li);
+      const appeared = all.map((el, i) => (!vis0[i] && vis(el) && el.querySelector('a') && !el.contains(t) ? { el, i } : null)).filter(Boolean);
+      const outer = appeared.filter((a) => !appeared.some((b) => b !== a && b.el.contains(a.el)));
+      const pick = outer.find((a) => li.contains(a.el)) || outer[0];
+      const link = pick && [...pick.el.querySelectorAll('a')].find(vis);
+      if (!link) return null;
+      const r = link.getBoundingClientRect();
+      return { i: pick.i, href: link.getAttribute('href') || '', x: Math.min(Math.max(tx, r.left + 4), r.right - 4), y: r.y + r.height / 2, top: r.top };
+    }, { idx: it.idx, tx: it.x });
+    if (!sub) { out.skipped += 1; continue; }
+    out.probed += 1;
+    const gap = Math.round(sub.top - it.bottom);
+    const dx = sub.x - it.x; const dy = sub.y - it.y; const dist = Math.hypot(dx, dy);
+    const steps = Math.max(1, Math.ceil(dist / stepPx));
+    let reason = null;
+    for (let k = 1; k <= steps && !reason; k += 1) {
+      const last = k === steps;
+      await page.mouse.move(it.x + (dx * k) / steps, it.y + (dy * k) / steps);
+      await page.waitForTimeout(last ? settleMs : 8);
+      const state = await page.evaluate(({ i, x, y, final }) => {
+        const { vis, all } = window.__sdt; const el = all[i];
+        if (!vis(el)) return 'closed';
+        if (!final || y >= innerHeight || x >= innerWidth) return 'open';
+        const hit = document.elementFromPoint(x, y); const a = hit && hit.closest('a');
+        return a && el.contains(a) ? 'open' : `blocked by ${hit ? hit.tagName.toLowerCase() + (hit.className ? `.${String(hit.className).split(' ')[0]}` : '') : 'nothing'}`;
+      }, { ...sub, final: last });
+      if (state === 'closed') reason = `submenu closed ${Math.max(0, Math.round((dist * k) / steps - (it.bottom - it.y)))}px below the trigger link (first sub-link ${gap}px below)`;
+      else if (state !== 'open') reason = `first sub-link is not the element under the pointer (${state} — pointer-events/occlusion)`;
+    }
+    out.items.push({ label: it.label, href: sub.href, gap, ok: !reason, reason });
+  }
+  await park();
+  return out;
+}
+
+// Media playback probe: each <video> (first `maxItems`) scrolled to the viewport centre, read twice
+// `sampleMs` apart. Presence is not playback — a paused autoplay video shows its poster and looks
+// intentional, so only a currentTime delta tells. Returns one sample per video.
+export async function probeVideos(page, { maxItems = 6, settleMs = 1500, sampleMs = 800 } = {}) {
+  const count = await page.evaluate(() => document.querySelectorAll('video').length);
+  const read = (idx) => page.evaluate((i) => {
+    const v = document.querySelectorAll('video')[i];
+    if (!v) return null;
+    const r = v.getBoundingClientRect();
+    const visible = Math.max(0, Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0)) / (r.height || 1);
+    return {
+      src: (v.currentSrc || v.src || v.querySelector('source')?.src || '').slice(0, 250),
+      autoplay: v.hasAttribute('autoplay'), paused: v.paused, t: v.currentTime,
+      readyState: v.readyState, error: v.error ? v.error.code : null, visible: Math.round(visible * 100) / 100,
+    };
+  }, idx);
+  const out = [];
+  for (let i = 0; i < Math.min(count, maxItems); i += 1) {
+    await page.evaluate((idx) => document.querySelectorAll('video')[idx]?.scrollIntoView({ block: 'center' }), i);
+    await page.waitForTimeout(settleMs);
+    const a = await read(i);
+    if (!a) continue;
+    await page.waitForTimeout(sampleMs);
+    const b = (await read(i)) || a;
+    out.push({ src: a.src, autoplay: a.autoplay, visible: b.visible, readyState: b.readyState, error: b.error, paused: b.paused, dt: Math.round((b.t - a.t) * 100) / 100 });
+  }
+  return out;
+}
+
+// Pure verdict over probeVideos() samples: the autoplay videos at least a quarter visible that are
+// not playing, each with a `why`. Videos without autoplay (click-to-play) are the user's to start.
+export function judgeVideos(samples) {
+  return samples.filter((v) => v.autoplay && v.visible >= 0.25).flatMap((v) => {
+    if (v.readyState < 2 || v.error !== null) {
+      return [{ ...v, why: `never buffered (readyState ${v.readyState}${v.error !== null ? `, MediaError ${v.error}` : ''}) — poster only; check the src serves to anonymous visitors` }];
+    }
+    if (v.paused || v.dt <= 0) return [{ ...v, why: `is ${v.paused ? 'paused' : 'not advancing'} (Δt ${v.dt.toFixed(2)}s) while ≥ ¼ visible` }];
+    return [];
+  });
+}
+
+export async function run(ctx) {
+  const { base, inventory, opts } = ctx;
+  const findings = [];
+  const browser = await openBrowser({ mode: 'plain' });
+  const baselineDir = opts.baselineDir;
+  const shotDir = join(opts.outDir, 'shots');
+  ensureDir(shotDir);
+  if (baselineDir) ensureDir(baselineDir);
+
+  const axeAgg = new Map(); // ruleId -> {impact, help, pages:Set, sample}
+  const upscaled = new Map(); // src -> {pages:Set, nw, rw}
+  const dropdowns = new Map(); // header signature -> {pages:Set, result, path}
+  // canvas diff worker; recreated on demand — a crashed tab must not sink the sweep
+  let diffPage = null;
+  const getDiffPage = async () => {
+    if (!diffPage || diffPage.isClosed()) { const dctx = await newContext(browser); await attachOriginAuth(dctx); diffPage = await dctx.newPage(); }
+    return diffPage;
+  };
+
+  await pMap(inventory.pages, async (p) => {
+    for (const vp of VIEWPORTS) {
+      // one page/viewport failing (tab crash, OOM) is a finding, never a sweep abort
+      try {
+        await sweepPage(p, vp);
+      } catch (e) {
+        findings.push(finding('rendered', 'page-sweep-failed', 'warn', p.path,
+          `[${vp.name}] browser pass aborted mid-page: ${String(e).slice(0, 200)}`));
+      }
+    }
+  }, opts.browserConcurrency || 3);
+
+  async function sweepPage(p, vp) {
+    {
+      const context = await newContext(browser, { viewport: { width: vp.width, height: vp.height } });
+      await attachOriginAuth(context);
+      const page = await context.newPage();
+      const consoleErrors = []; const pageErrors = []; const badRequests = [];
+      page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text().slice(0, 300)); });
+      page.on('pageerror', (e) => pageErrors.push(String(e).slice(0, 300)));
+      page.on('requestfailed', (r) => {
+        const failure = r.failure()?.errorText || '';
+        if (r.url().startsWith(base) && !failure.includes('ERR_ABORTED')) {
+          badRequests.push(`${failure} ${r.url().slice(base.length)}`.slice(0, 300));
+        }
+      });
+      page.on('response', (r) => {
+        if (r.url().startsWith(base) && r.status() >= 400) {
+          badRequests.push(`HTTP ${r.status()} ${r.url().slice(base.length)}`.slice(0, 300));
+        }
+      });
+
+      try {
+        await goto(page, pageUrl(base, p.url || p.path), { waitUntil: 'domcontentloaded', timeout: 45000 });
+      } catch (e) {
+        findings.push(finding('rendered', 'load-failed', 'error', p.path,
+          `[${vp.name}] page failed to load: ${String(e).slice(0, 200)}`));
+        await context.close();
+        return;
+      }
+      const decorated = await settle(page);
+      if (!decorated) {
+        findings.push(finding('rendered', 'decoration-stalled', 'warn', p.path,
+          `[${vp.name}] EDS section decoration did not reach "loaded" within ${DECORATION_TIMEOUT / 1000}s`));
+      }
+      await autoScroll(page);
+
+      // ---- rendered (D): geometry --------------------------------------
+      const geo = await page.evaluate(() => {
+        const main = document.querySelector('main');
+        const mainH = main ? Math.round(main.getBoundingClientRect().height) : 0;
+        const sections = [...document.querySelectorAll('main > div')].map((s, i) => ({
+          i,
+          h: Math.round(s.getBoundingClientRect().height),
+          status: s.dataset.sectionStatus || null,
+          hasContent: !!(s.textContent.trim() || s.querySelector('img,picture,iframe,svg,form')),
+          cls: s.className.slice(0, 80),
+        }));
+        const imgs = [...document.querySelectorAll('img')].map((img) => {
+          const r = img.getBoundingClientRect();
+          return {
+            src: (img.currentSrc || img.src || '').slice(0, 250),
+            complete: img.complete,
+            nw: img.naturalWidth,
+            rw: Math.round(r.width),
+            visible: r.width > 0 && r.height > 0,
+            // 0 rects = display:none subtree (intentionally hidden);
+            // ≥1 zero-size rect = in layout but collapsed (the defect class).
+            inLayout: img.getClientRects().length > 0,
+          };
+        });
+        return {
+          mainH,
+          sections,
+          imgs,
+          scrollW: document.scrollingElement.scrollWidth,
+          innerW: window.innerWidth,
+        };
+      });
+
+      if (geo.mainH < 50) {
+        findings.push(finding('rendered', 'main-collapsed', 'error', p.path,
+          `[${vp.name}] <main> renders ${geo.mainH}px tall — page is effectively blank`));
+      }
+      for (const s of geo.sections.filter((x) => x.hasContent && x.h === 0)) {
+        findings.push(finding('rendered', 'section-collapsed', 'error', p.path,
+          `[${vp.name}] section ${s.i} (${s.cls || 'no class'}) has content but renders 0px tall`,
+          { section: s }));
+      }
+      const broken = geo.imgs.filter((i) => i.complete && i.nw === 0 && i.src && !i.src.startsWith('data:'));
+      if (broken.length) {
+        findings.push(finding('rendered', 'broken-image', 'error', p.path,
+          `[${vp.name}] ${broken.length} image(s) failed to load`,
+          { srcs: [...new Set(broken.map((i) => i.src))].slice(0, 8) }));
+      }
+      // Loaded ≠ rendered: naturalWidth > 0 but 0px wide while participating
+      // in layout — circular flex sizing (item width derives from the image,
+      // image max-width:100% derives from the item) collapses to zero; the
+      // broken-image probe and .plain.html checks both miss it.
+      const zeroSize = geo.imgs.filter((i) => i.complete && i.nw > 0 && i.rw === 0 && i.inLayout);
+      if (zeroSize.length) {
+        findings.push(finding('rendered', 'zero-size-image', 'warn', p.path,
+          `[${vp.name}] ${zeroSize.length} loaded image(s) render 0px wide (layout collapse — naturalWidth > 0 but clientWidth 0)`,
+          { srcs: [...new Set(zeroSize.map((i) => i.src))].slice(0, 8) }));
+      }
+      // Presence is not playback: an autoplay <video> that is paused, never
+      // advances, or never buffers (readyState < 2 — the content.da.live 401
+      // class) shows its poster and looks intentional. Autoplay the source had
+      // and the capture froze is a captureState[].restoreAtDelivery promise, so
+      // a poster where live played is a defect, never a residual.
+      try {
+        for (const v of judgeVideos(await probeVideos(page))) {
+          findings.push(finding('rendered', 'video-not-playing', 'error', p.path,
+            `[${vp.name}] autoplay video ${v.why}`,
+            { src: v.src, readyState: v.readyState, paused: v.paused, dt: v.dt }));
+        }
+      } catch (e) {
+        findings.push(finding('rendered', 'video-probe-failed', 'info', p.path,
+          `[${vp.name}] video playback probe errored: ${String(e).slice(0, 200)}`));
+      }
+      if (vp.name === 'desktop') {
+        for (const i of geo.imgs.filter((x) => x.nw > 0 && x.nw < 200 && x.rw > x.nw * 2 && x.rw - x.nw > 100)) {
+          if (!upscaled.has(i.src)) upscaled.set(i.src, { pages: new Set(), nw: i.nw, rw: i.rw });
+          upscaled.get(i.src).pages.add(p.path);
+        }
+      }
+      if (geo.scrollW > geo.innerW + 4) {
+        findings.push(finding('rendered', 'horizontal-overflow', vp.name === 'mobile' ? 'error' : 'warn', p.path,
+          `[${vp.name}] page scrolls horizontally (${geo.scrollW}px content in ${geo.innerW}px viewport)`));
+      }
+      if (pageErrors.length) {
+        findings.push(finding('rendered', 'page-error', 'error', p.path,
+          `[${vp.name}] ${pageErrors.length} uncaught JS error(s)`, { errors: [...new Set(pageErrors)].slice(0, 5) }));
+      }
+      if (consoleErrors.length) {
+        findings.push(finding('rendered', 'console-error', 'warn', p.path,
+          `[${vp.name}] ${consoleErrors.length} console error(s)`, { errors: [...new Set(consoleErrors)].slice(0, 5) }));
+      }
+      if (badRequests.length) {
+        findings.push(finding('rendered', 'request-failed', 'error', p.path,
+          `[${vp.name}] ${badRequests.length} same-origin request(s) failed`, { requests: [...new Set(badRequests)].slice(0, 8) }));
+      }
+
+      // ---- a11y (H): axe on desktop only --------------------------------
+      if (vp.name === 'desktop' && !opts.skipA11y) {
+        try {
+          await page.addScriptTag({ url: AXE_CDN });
+          const axe = await page.evaluate(async () => {
+            const r = await window.axe.run(document, { resultTypes: ['violations'] });
+            return r.violations.map((v) => ({
+              id: v.id, impact: v.impact, help: v.help,
+              sample: v.nodes.slice(0, 3).map((n) => n.target.join(' ')),
+              nodes: v.nodes.length,
+            }));
+          });
+          for (const v of axe) {
+            if (!axeAgg.has(v.id)) axeAgg.set(v.id, { ...v, pages: new Set() });
+            axeAgg.get(v.id).pages.add(p.path);
+          }
+        } catch (e) {
+          findings.push(finding('a11y', 'axe-unavailable', 'info', p.path,
+            `axe-core could not run: ${String(e).slice(0, 120)}`));
+        }
+      }
+
+      // ---- visual (E): screenshot vs baseline ----------------------------
+      try {
+        const shot = await page.screenshot({
+          fullPage: true,
+          animations: 'disabled',
+          mask: [page.locator('iframe')],
+          timeout: 30000,
+        });
+        const name = `${pathSlug(p.path)}.${vp.name}.png`;
+        writeFileSync(join(shotDir, name), shot);
+        if (baselineDir) {
+          const baseFile = join(baselineDir, name);
+          if (!existsSync(baseFile)) {
+            writeFileSync(baseFile, shot);
+            findings.push(finding('visual', 'baseline-created', 'info', p.path,
+              `[${vp.name}] no baseline existed — current screenshot saved as baseline`, { file: baseFile }));
+          } else {
+            const baseline = readFileSync(baseFile);
+            const d = await pixelDiff(await getDiffPage(), baseline, shot);
+            const heightDelta = Math.abs(d.heightA - d.heightB) / Math.max(d.heightA, 1);
+            if (heightDelta > 0.02) {
+              findings.push(finding('visual', 'page-height-changed', 'warn', p.path,
+                `[${vp.name}] page height changed ${d.heightA}px -> ${d.heightB}px (${(heightDelta * 100).toFixed(1)}%) vs baseline`,
+                { baseline: baseFile, current: join(shotDir, name) }));
+            }
+            if (d.ratio > DIFF_WARN) {
+              findings.push(finding('visual', 'visual-diff', d.ratio > DIFF_ERROR ? 'error' : 'warn', p.path,
+                `[${vp.name}] ${(d.ratio * 100).toFixed(2)}% of pixels differ from baseline — needs triage: regression or accepted change?`,
+                { ratio: +d.ratio.toFixed(4), bands: d.bands.slice(0, 10), baseline: baseFile, current: join(shotDir, name) }));
+            }
+          }
+        }
+      } catch (e) {
+        findings.push(finding('visual', 'screenshot-failed', 'warn', p.path,
+          `[${vp.name}] screenshot failed: ${String(e).slice(0, 150)}`));
+      }
+
+      // ---- rendered (D): hover-dropdown reachability, desktop, once per distinct header
+      if (vp.name === 'desktop') {
+        try {
+          const sig = await page.evaluate(() => document.querySelector('header')?.innerText.trim().replace(/\s+/g, ' ').slice(0, 1500) || null);
+          if (sig) {
+            if (!dropdowns.has(sig)) dropdowns.set(sig, { pages: new Set(), path: p.path, result: await probeDropdowns(page) });
+            dropdowns.get(sig).pages.add(p.path);
+          }
+        } catch (e) {
+          findings.push(finding('rendered', 'dropdown-probe-failed', 'info', p.path,
+            `[${vp.name}] hover-dropdown probe did not complete: ${String(e).slice(0, 150)}`));
+        }
+      }
+
+      await context.close();
+    }
+  }
+
+  // fleet-level aggregates
+  for (const [src, u] of upscaled) {
+    findings.push(finding('rendered', 'upscaled-image', 'warn', [...u.pages][0],
+      `image rendered ${u.rw}px wide from a ${u.nw}px source (blurry) on ${u.pages.size} page(s)`,
+      { src, pages: [...u.pages].slice(0, 8) }));
+  }
+  for (const d of dropdowns.values()) {
+    const bad = d.result.items.filter((i) => !i.ok);
+    if (!bad.length) continue;
+    findings.push(finding('rendered', 'dropdown-unreachable', 'error', d.path,
+      `[desktop] ${bad.length}/${d.result.probed} hover dropdown(s) close before the first sub-link is reachable — ${bad.map((i) => `"${i.label}": ${i.reason}`).join('; ').slice(0, 400)} — header shared by ${d.pages.size} page(s)`,
+      { items: bad, probed: d.result.probed, skipped: d.result.skipped, pages: [...d.pages].slice(0, 8) }));
+  }
+  const impactSeverity = { critical: 'error', serious: 'error', moderate: 'warn', minor: 'info' };
+  for (const [id, v] of axeAgg) {
+    findings.push(finding('a11y', `axe-${id}`, impactSeverity[v.impact] || 'warn', [...v.pages][0],
+      `${v.help} (${v.impact}) — ${v.pages.size} page(s) affected`,
+      { rule: id, pages: [...v.pages].slice(0, 10), sampleTargets: v.sample, nodesOnFirstPage: v.nodes }));
+  }
+
+  await browser.close();
+  return findings;
+}

@@ -1,0 +1,44 @@
+{
+  "skill_name": "commerce-app-webhooks",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need to validate product data before it gets saved to Commerce. Add a webhook that intercepts the product save operation and routes it to a runtime action in my app.",
+      "expected_output": "The agent adds a webhooks entry to app.commerce.config.ts with a runtimeAction-based webhook. The entry has label, description, a runtimeAction in <package>/<action> format, and a webhook object with webhook_method, webhook_type, batch_name ([a-zA-Z0-9_]+), hook_name ([a-zA-Z0-9_]+), and method. No webhook.url is present. aio app build completes without errors.",
+      "assertions": [
+        "app.commerce.config.ts contains a webhooks array",
+        "At least one webhook entry has a runtimeAction field in <package>/<action> format",
+        "No url field appears inside the webhook object for runtimeAction entries",
+        "batch_name matches [a-zA-Z0-9_]+ (no hyphens, dots, or spaces)",
+        "hook_name matches [a-zA-Z0-9_]+ (no hyphens, dots, or spaces)",
+        "aio app build completes without errors"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "We use an external fraud detection service. When an order is placed, I want Commerce to call that service's endpoint before completing the order. The service URL is https://fraud.example.com/check.",
+      "expected_output": "The agent adds a URL-based webhook entry to app.commerce.config.ts. The entry has label, description, and a webhook object containing url set to https://fraud.example.com/check, webhook_method for order placement, webhook_type before, batch_name, hook_name, and method. No runtimeAction field is present at the top level.",
+      "assertions": [
+        "app.commerce.config.ts contains a webhooks array",
+        "At least one webhook entry has webhook.url set to an absolute URL",
+        "No runtimeAction field is present on the url-based webhook entry",
+        "batch_name matches [a-zA-Z0-9_]+",
+        "hook_name matches [a-zA-Z0-9_]+",
+        "aio app build completes without errors"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Add two webhooks to my Commerce app: one that validates customer data on registration (using a runtime action), and one that appends loyalty points data to order placement (calling an external loyalty service at https://loyalty.example.com/points).",
+      "expected_output": "The agent adds two webhook entries to app.commerce.config.ts. The first uses runtimeAction and has category validation. The second uses webhook.url and has category append. Both have valid batch_name and hook_name identifiers. After build passes, the agent suggests commerce-app-business-config or commerce-app-eventing as next steps.",
+      "assertions": [
+        "app.commerce.config.ts contains a webhooks array with at least two entries",
+        "One entry uses runtimeAction (no webhook.url)",
+        "One entry uses webhook.url (no runtimeAction)",
+        "All batch_name and hook_name values match [a-zA-Z0-9_]+",
+        "aio app build completes without errors",
+        "Agent mentions commerce-app-business-config or commerce-app-eventing as next steps"
+      ]
+    }
+  ]
+}
