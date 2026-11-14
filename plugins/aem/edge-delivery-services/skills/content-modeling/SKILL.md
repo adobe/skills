@@ -31,7 +31,6 @@ Skip this skill when the block's structure does not change (CSS or code only).
 - **Limit columns.** Aim for 4 or fewer. Many columns usually mean the content is split into small values.
 - **Key/value rows only for settings that are not displayed.** Never model a heading, image or text as `label | value`. Section Metadata is key/value too: use it for styles and settings, never for content. A tab title or any label for the content below it is a heading in default content.
 - **Tabular data:** small data shown on one page can use the Block Collection `table` block. Large or reused data goes in a spreadsheet (published as JSON) that the block links to.
-- **Variants go in the header, in parentheses:** `Cards (dark, wide)`. Do not use a `style | dark` row.
 - **Per-item options (featured, highlighted) are not content, so keep them out of the content where you can.** Prefer a default (the first item is featured, plus a variant to turn that off), a variant, or separate blocks that auto-blocking combines. Weigh these options. A marker in the content is acceptable when nothing else works. Never use item index lists (`featured-2`), text suffixes like "(open)", or image alt text.
 - **Lists:** complex items are one row each. Simple link lists are links in one cell, and code collects every link. Do not require authors to build bullet lists.
 - **Authors enter** fully qualified URLs, and no HTML, CSS or JSON. Write examples as the author sees them.
