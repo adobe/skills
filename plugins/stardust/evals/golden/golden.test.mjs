@@ -5,7 +5,7 @@
 // Run: node plugins/stardust/evals/golden/golden.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,6 +32,13 @@ check('run.mjs without --out is a usage error (exit 2) naming the flag', () => {
   const r = spawnSync(process.execPath, [RUN], { encoding: 'utf8' });
   assert.equal(r.status, 2); assert.match(r.stderr, /--out is required/);
 });
+check('run.mjs refuses an --out directory that holds something other than a snapshot, and leaves it alone', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'golden-other-'));
+  writeFileSync(join(dir, 'keep.txt'), 'not a snapshot');
+  const r = spawnSync(process.execPath, [RUN, '--out', dir], { encoding: 'utf8' });
+  assert.equal(r.status, 2); assert.match(r.stderr, /not a golden snapshot/);
+  assert.deepEqual(readdirSync(dir), ['keep.txt']); rmSync(dir, { recursive: true, force: true });
+});
 
 const tmp = mkdtempSync(join(tmpdir(), 'golden-run-'));
 const t0 = Date.now();
@@ -48,6 +55,10 @@ check('every file is byte-identical to expected/', () => {
   if (!differing.length) return;
   const first = differing[0];
   assert.fail(`${differing.length} file(s) differ: ${differing.join(', ')}\nfirst diff (${first}):\n${unifiedDiff(join(EXPECTED, first), join(tmp, first), `expected/${first}`, `run/${first}`)}\n  an intended output change is re-baselined with: node evals/golden/run.mjs --out evals/golden/expected (one deliberate commit explaining the change)`);
+});
+check('run.mjs writes again over an earlier snapshot', () => {
+  const again = spawnSync(process.execPath, [RUN, '--out', tmp], { encoding: 'utf8' });
+  assert.equal(again.status, 0, again.stderr);
 });
 rmSync(tmp, { recursive: true, force: true });
 console.log(failed ? `golden: ${failed} check(s) failed` : `golden: all checks passed in ${ms} ms`);

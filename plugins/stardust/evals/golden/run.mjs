@@ -39,7 +39,8 @@ const USAGE = `run.mjs — golden pipeline snapshot: migrate → rollout invento
 spec-knowledge on committed fixtures, normalised to byte-stable output (README.md § Normalisations).
 
 Usage: node evals/golden/run.mjs --out <dir> [--now 2026-01-01T00:00:00.000Z] [--plugin <plugin root>]
-  --out     where the snapshot is written (created; existing files inside are replaced)
+  --out     where the snapshot is written. A missing or empty directory is filled; an earlier snapshot
+            (a directory with run.json) is deleted and written again; any other directory is refused
   --now     the timestamp every ISO-8601 stamp in the output is rewritten to (default 2026-01-01T00:00:00.000Z)
   --plugin  the plugin root whose skills/*/scripts run (default: the one this file lives in)
 Exit 0 all steps ran · 1 a step failed (stderr shown) · 2 usage.`;
@@ -70,6 +71,11 @@ const put = (rel, text) => { const f = join(out, rel); mkdirSync(dirname(f), { r
 const copy = (src, rel) => { if (existsSync(src)) cpSync(src, join(out, rel), { recursive: true }); };
 const walk = (dir, acc = []) => { for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) { const p = join(dir, e.name); if (e.isDirectory()) walk(p, acc); else acc.push(p); } return acc; };
 
+// The destination is deleted before the run, so it has to be ours: missing, empty, or an earlier snapshot.
+if (existsSync(out) && (!statSync(out).isDirectory() || (readdirSync(out).length && !existsSync(join(out, 'run.json'))))) {
+  console.error(`run.mjs: --out ${OUT} exists and is not a golden snapshot (no run.json); refusing to delete it\n${USAGE}`);
+  rmSync(WORK, { recursive: true, force: true }); process.exit(2);
+}
 rmSync(out, { recursive: true, force: true }); mkdirSync(out, { recursive: true });
 
 // ---- migrate -------------------------------------------------------------------------------------

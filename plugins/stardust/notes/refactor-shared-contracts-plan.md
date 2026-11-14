@@ -111,35 +111,30 @@ Tier C (one vocabulary) is deliberately out: it changes sidecars, schemas and in
 Rollback is per PR: PR 1 keeps re-exports, so PR 3 alone can be reverted; PR 2 stops the duplication from
 growing back.
 
-## Hands-off run protocol
+## How the run was organised
 
-- Branches off `origin/main`: `refactor/0-prep`, `refactor/1-lib`, `refactor/2-drift`, `refactor/3-model`,
-  each based on the previous. Pushed to `fork`. PRs opened against `adobe/skills` main in that order, each
-  body carrying the prose-delta line, test and lint output, and (PR 3) the eval comparison table.
-- Conventional commits; attribution line per the session rule. No force-push. Never commit `results/` or
-  the field-replay outputs.
-- Log of every step appended to `notes/refactor-shared-contracts-run.md` (started, done, evidence,
-  deviations), so the morning read is one file.
-- Stop conditions (write the reason to the run log, leave the branch pushed, continue with the next
-  independent item if any): characterization or golden test red that is not explained by the commit's own
-  intended change; an eval criterion stable at 3/3 in baseline dropping to ≤1/3; eval spend reaching the cap
-  in § Inputs; any `gh pr create` denied by the permission layer (push the branch, leave the body file at
-  `/tmp/<branch>-pr.md`, note it); a lint that needs a new site-name allowlist entry (never add one
-  unattended).
-- Budget: eval runs are the only external spend. Baseline 6 evals × 3 runs + per-skill reruns in PR 3
-  (~10 × 3) at the observed ~$8–20 per run.
+A record of how PR 0 to PR 3 were produced. It describes one run and is not an instruction for a later one.
 
-## Inputs (filled from the owner before the run)
+- Four branches off `origin/main`, each based on the previous: `refactor/0-prep`, `refactor/1-lib`,
+  `refactor/2-drift`, `refactor/3-model`. One pull request per branch, in that order, each body carrying the
+  prose-delta line, the test and lint output, and (PR 3) the eval comparison table.
+- Conventional commits, no force-push. `results/` and the field-replay outputs were never committed.
+- Every step was logged in `notes/refactor-shared-contracts-run.md` (started, done, evidence, deviations).
+- The run stopped a step, and wrote the reason to the run log, on any of these: a characterization or golden
+  test red that the commit's own intended change did not explain; an eval criterion stable at 3/3 in the
+  baseline dropping to ≤1/3; eval spend reaching the cap its owner had set; a lint that needed a new
+  site-name allowlist entry.
+- Eval runs were the only external spend: baseline 6 evals × 3 runs, plus per-skill reruns in PR 3
+  (~10 × 3), at the observed ~$8–20 per run.
 
-- eval spend cap: **$500** (2026-10-20)
-- eval runs enabled overnight: **yes**
+## Inputs
+
 - field replay: **several captures, not one** — offline replays re-run the deterministic scripts on saved
   artifacts (dynamics-plan on the saved findings; rollout inventory → blocks → plan → delivery-lint on the
   migrated tree) and diff the JSON. Set (2026-10-20): five offline — an enterprise-SaaS site (100 pages, full
   chain), a retail site (106), a bank redesign (100), a storage-vendor site (4), a sports-club site (9, dynamics
   only) — plus one live spec+dynamics run on the airport site whose arrivals board is the widget case. Outputs
   stay local (site names); the run log names the project dirs.
-- PR mode: **open PRs** against `adobe/skills` main, stacked 0 → 3
 - vocabulary: **no rename, confirmed**
 - version bump: ~~0.35.0 in PR 3 only~~ — superseded 2026-11-13: main shipped 0.35.0–0.38.2 meanwhile, so each
   PR that changes shipped scripts or skill prose bumps per `AGENTS.md` § Releases (PR 1 minor; none in PR 0)

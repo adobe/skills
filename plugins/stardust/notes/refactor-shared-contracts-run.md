@@ -7,8 +7,8 @@ One entry per step: started / done / evidence / deviations. No site names here e
 Replay set: five offline projects — an enterprise-SaaS site, a retail site, a bank redesign, a storage-vendor site, a
 sports-club site (dynamics only) — and one live spec+dynamics run on the airport site.
 
-Baseline worktree (pre-refactor, pinned to origin/main at start): `/Users/paolo/stardust/source/201026/skills-baseline`.
-Eval spend cap: $500. PRs: open against adobe/skills main, stacked refactor/0-prep → 1-lib → 2-drift → 3-model.
+Baseline: a separate worktree, pre-refactor, pinned to origin/main at the start of the run.
+Pull requests: stacked refactor/0-prep → 1-lib → 2-drift → 3-model.
 
 ## Log
 
@@ -17,7 +17,7 @@ Eval spend cap: $500. PRs: open against adobe/skills main, stacked refactor/0-pr
 - three parallel workstreams started: (1) characterization tests → `skills/stardust/scripts/test/contracts-characterize.test.mjs`;
   (2) golden chain `evals/golden/` + offline field replays into `../replay-baseline/` from the baseline worktree, one live
   spec+dynamics run on the airport project; (3) three new evals + `pre-refactor` baseline runs from the baseline worktree
-  (hard cap for this step $220 of the $500).
+  (this step had its own spend cap).
 - rule for this phase: no script edits in the EDIT worktree until (1) and (2) have produced their expected tables.
 ### Phase 0 step 2 + 4 — done
 - `evals/golden/` committed: 9-step chain (migrate 3-page fixture → inventory → blocks → plan → delivery-lint; dynamics-plan; spec-knowledge), 49 expected files, fixed-clock preload, `golden.test.mjs` ~0.4 s, two consecutive runs identical. Left out (network/Playwright): spec-inventory/fetch/links, dynamics-detect, rollout deploy/verify.
