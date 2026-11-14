@@ -53,7 +53,7 @@ This orchestrator delegates work to:
 These skills invoke additional skills as needed:
 - **page-decomposition** - (via identify-page-structure) Analyze content sequences per section
 - **block-inventory** - (via identify-page-structure) Survey available blocks
-- **content-modeling** - (via authoring-analysis) Validate unclear block selections
+- **content-modeling** - Rules for default content vs block (authoring-analysis points to it; not invoked)
 - **block-collection-and-party** - (via authoring-analysis) Validate block existence
 
 ## Import Workflow
