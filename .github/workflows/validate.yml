@@ -55,7 +55,7 @@ jobs:
       # scripts/tessl-lint-debt.mjs runs tessl plugin lint, which needs no token
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e  # v2
 
-      - uses: ai-ecoverse/boy-scout@1df9be227764c82547a0e5b1b1ac56bf501cfbaf  # v1.1.0
+      - uses: ai-ecoverse/boy-scout@beb07aa7b5a822f1e36f0eb593af6df3931f3256  # v1.1.0
 
   web-cli:
     runs-on: ubuntu-latest
