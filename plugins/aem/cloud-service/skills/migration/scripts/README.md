@@ -42,6 +42,7 @@ Each pattern declares a **detection strategy** in `PATTERN_META`:
 | `osgiConfig` | `config-scan` | `osgi-config-runner.js` (config-file scan) |
 | `lui`, `cdw`, `templateModernization` | BPA + `content-scan` | BPA/CAM → CSV first (`legacy-ui-runner.js` / `template-scan-runner.js` as fallback) |
 | `dispatcherConversion` | `content-scan` | `dispatcher-inventory.js` (`runDispatcherScan` — heuristic, no BPA subtype) |
+| `assetWorkflowMigration` | `content-scan` | `asset-workflow-run.js` (`runAssetWorkflowScan` — heuristic, no BPA subtype) |
 | `guavaCache` | `bpa-only` | BPA/CAM → CSV only (no analyzer, no content-scan) → LLM scan |
 | `inputStream` | `java-scan` | BPA/CAM → CSV first; `input-stream-runner.js` resolves the reported classes to files (rows outside the workspace collapsed per bundle) and scans every `src/main/java` file only when BPA has no `inputStream` findings. Never needs the LLM tier. |
 
@@ -127,6 +128,16 @@ Output verification for a generated Cloud Service Dispatcher config (`verifyOutp
 ### `dispatcher-run.js`
 
 Drives the end-to-end conversion: writes the tool `config.yaml`, resolves the mode-specific executor, and wraps Adobe's [`@adobe/aem-cs-source-migration-dispatcher-converter`](https://github.com/adobe/aem-cs-source-migration). That Adobe tool is **not a bundled dependency** — it is auto-installed on first use into the gitignored `scripts/dispatcher-tool/node_modules/` (`ensureToolInstalled`), keeping the core scripts zero-dependency.
+
+### Asset workflow migration (Branch H)
+
+Wraps Adobe's Asset Workflow Migration Tool ([`adobe/aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration), `wf-migrator` JAR) — see [`../references/asset-workflow/context.md`](../references/asset-workflow/context.md). Pure Node, no npm dependencies; only the tool run needs Java 11+.
+
+| Script | Role |
+|---|---|
+| `asset-workflow-run.js` | CLI: pre-flight (Maven project with a content-package module, Java 11+, clean git tree) → download and checksum-verify the pinned JAR (or `--jar`) → run it → check it printed `Migration complete.` and wrote `migration-report.md`. `node scripts/asset-workflow-run.js <project> [--jar <path>] [--report-dir <dir>] [--allow-dirty]`. Exit `0` done, `1` tool failed, `2` stopped before changing anything. Also exports `runAssetWorkflowScan`, the runbook's content scan for enabled DAM asset launchers. |
+
+Tests: `asset-workflow.test.js` covers the pre-flight, argument handling, the success check (with a stub `java`) and the scan; it needs no Java. `asset-workflow-e2e.test.js` runs the real JAR on a small project and is opt-in: `ASSET_WF_E2E=1 npm test` (needs Java 11+, git, curl; `ASSET_WF_JAR=<path>` uses a local JAR).
 
 ### `bpa-findings-helper.js` (main entry point)
 
