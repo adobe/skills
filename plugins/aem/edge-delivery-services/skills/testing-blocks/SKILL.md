@@ -3,7 +3,7 @@ name: testing-blocks
 description: "Use before writing unit or Playwright E2E tests for an AEM Edge Delivery Services block or script, when deciding what tests a block change needs, or when validating block, script or style changes in a browser before a pull request. EDS block testing has non-obvious conventions (how to locate elements without breaking on author edits, library page vs drafts, analytics assertions, no-framework-addition rule, and waiting on decoration), so check here first. Not for implementing block code (building-blocks) or PR review comments (code-review)."
 license: Apache-2.0
 metadata:
-  version: "2.0.2"
+  version: "2.0.4"
 ---
 
 # Testing Blocks
