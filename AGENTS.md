@@ -28,6 +28,9 @@ repository; the pull request review reads them too.
 - Keep `SKILL.md` short: what a capable agent gets wrong without it, not general practice. Put
   detail in `references/` and link it by a path that exists. Don't grow a `SKILL.md` past 500
   lines.
+- The review tests that. It asks a small model without tools, files or web access, which has
+  not read the skill, the questions the skill answers. What that model gets right by itself
+  doesn't belong in a skill; what it gets wrong or doesn't know does.
 - Every path, command, flag, tool name and other skill that a skill names must exist. A skill
   that routes to something that isn't there fails at the worst moment.
 - Write for any agent harness unless the plugin says it needs one. Don't name a harness's tools
