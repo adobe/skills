@@ -4,8 +4,8 @@
 // path; the exit code per error class (BotChallengeError → 3, anything else → 1); recheckDenial on stub pages
 // through the real pageDenial / botChallengeError — a vendor signature or a tiny one-error-heading page throws the
 // exit-3 error naming "HTTP <status> denial page — …", "origin blocked" and --headed, an ordinary page is 'ok', a
-// page the probe cannot read or a live-session copy that predates pageDenial is 'skipped: <reason>' with ONE stderr
-// line. End to end, where playwright and pngjs are importable from the scripts dir: a local server's denial pages
+// page the probe cannot read is 'skipped: <reason>' with ONE stderr line. End to end, where playwright and pngjs are
+// importable from the scripts dir: a local server's denial pages
 // (the recorded shape — about 900 px of "can't process your request" + "Incident Number" served with 200 — the same
 // rendered by script after load, and a tiny page under one error heading) exit 3 with no PNG and no capture.json;
 // an ordinary page and a long article that mentions "press & hold" exit 0 and capture.json records denialCheck 'ok'.
@@ -23,11 +23,11 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { runInNewContext } from 'node:vm';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   BASELINE_JSON, BASELINE_PNG, BASELINE_SCHEMA, BASELINE_WRITER, HELP, LIVE_RECORD_WRITER, UsageError,
   baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, deadFontFaces, exitCodeFor, faceKey,
@@ -37,9 +37,9 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
-// live-session.mjs in either layout (plugin tree / project copy) — imports nothing, so the pure part can use it
-const LIB = ['../../../diff/scripts/live-session.mjs', '../../diff/live-session.mjs'].map((p) => resolve(HERE, p)).find((p) => existsSync(p));
-const session = await import(pathToFileURL(LIB).href);
+// the front door (browser.mjs) in either layout (plugin tree / project copy) — the pure part uses its live-session names
+const BROWSER = ['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+const session = await import(BROWSER.href);
 let checks = 0; let failed = 0;
 const check = async (name, fn) => { checks += 1; try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 // stderr lines console.error printed while fn ran
@@ -142,13 +142,14 @@ await check('recheckDenial: an ordinary page → \'ok\', nothing on stderr; a pa
   assert.deepEqual(await stderrOf(async () => { skipped = await recheckDenial(session, unreadable, 'https://x.test/', 200); }), ['stitch-shot: denial-page check skipped (Execution context was destroyed, most likely because of a navigation)']);
   assert.equal(skipped, 'skipped: Execution context was destroyed, most likely because of a navigation');
 });
-await check('recheckDenial: a live-session copy that predates pageDenial / botChallengeError never throws — \'skipped: live-session.mjs predates pageDenial\' and ONE stderr line naming the stale copy', async () => {
-  for (const stale of [{}, { pageDenial: session.pageDenial }, { botChallengeError: session.botChallengeError }]) {
-    let out;
-    const lines = await stderrOf(async () => { out = await recheckDenial(stale, { evaluate: async () => { throw new Error('never read'); } }, 'https://x.test/', 200); });
-    assert.deepEqual(lines, ['stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)'], Object.keys(stale).join() || 'neither');
-    assert.equal(out, 'skipped: live-session.mjs predates pageDenial');
-  }
+await check('a copy without the master scripts stops with the copy instruction', () => {
+  const copy = mkdtempSync(join(tmpdir(), 'stitch-nomaster-'));
+  try {
+    copyFileSync(SCRIPT, join(copy, 'stitch-shot.mjs'));
+    const r = spawnSync(process.execPath, [join(copy, 'stitch-shot.mjs'), '--help'], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(r.stderr.includes('browser.mjs not found') && r.stderr.includes('stardust/scripts/stardust/'), r.stderr);
+  } finally { rmSync(copy, { recursive: true, force: true }); }
 });
 await check('--help in an empty cwd: exit 0, usage, exit 3 named for an edge interstitial or a 2xx denial page with --headed, the capture.json record — nothing written, no playwright needed; importing this module started no capture', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'stitch-help-'));

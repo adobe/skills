@@ -337,6 +337,7 @@ function sandbox(slugs) {
   mkdirSync(rep, { recursive: true });
   copyFileSync(SCRIPT, join(rep, 'gate-all.mjs'));
   cpSync(join(HERE, '../../../diff/scripts'), join(root, 'stardust/scripts/diff'), { recursive: true });
+  cpSync(join(HERE, '../../../stardust/scripts'), join(root, 'stardust/scripts/stardust'), { recursive: true });
   writeFileSync(join(rep, 'stitch-shot.mjs'), `import { appendFileSync, readdirSync, writeFileSync } from 'node:fs';
 const [url, out] = process.argv.slice(2); appendFileSync(process.env.STUB_LOG, url + '\\n');
 if (process.env.STUB_PNGS) appendFileSync(process.env.STUB_PNGS, readdirSync('stardust/replica/gates', { recursive: true }).filter((f) => f.endsWith('.png')).length + '\\n');

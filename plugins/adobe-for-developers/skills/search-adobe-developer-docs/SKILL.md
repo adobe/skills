@@ -53,7 +53,7 @@ Sources:
 
 **Zero results:**
 
-Tell the user no documentation was found and suggest:
+Tell the user no documentation was found and suggest rephrasing or broadening the query. If offering collection scopes, first reuse or call `list_doc_collections` and use only returned collection names; omit that suggestion if none are available:
 ```
 No results found for "{query}". Try:
 - Rephrasing with different keywords

@@ -7,7 +7,7 @@
 // ×N HEADING FACE summary, and IMAGE FIT (info, the source distorts what the build crops). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -130,6 +130,22 @@ if (playwrightOk) {
   server.close();
   rmSync(out, { recursive: true, force: true });
 }
+
+const copyWithoutMaster = () => {
+  const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
+  const copy = join(root, 'a', 'b');
+  cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => !src.endsWith('/test') });
+  return { root, copy };
+};
+await check('a copy without the master scripts stops with the copy instruction, no stack trace', () => {
+  const { root, copy } = copyWithoutMaster();
+  try {
+    const r = spawnSync(process.execPath, [join(copy, 'visual-diff.mjs'), 'https://a.test/', 'https://b.test/'], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 1, r.stderr);
+    assert.ok(r.stderr.includes('browser.mjs not found') && r.stderr.includes('stardust/scripts/stardust/'), r.stderr);
+    assert.ok(!r.stderr.includes('    at '), r.stderr);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 console.log(failed ? `\n${failed} failing` : '\nvisual-diff: all checks passed');
 process.exit(failed ? 1 : 0);
