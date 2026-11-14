@@ -60,11 +60,13 @@ sub-commands that delegate the actual design work to **impeccable**.
 5. **Status ledger.** Every stardust skill appends a phase-transition line
    to `stardust/status.jsonl` at each phase start/end, per
    `reference/run-status.md` — written with `skills/stardust/scripts/ledger.mjs
-   <skill> <phase> <start|end|blocked> [--detail …]` (it knows each skill's
-   phase names and warns on an unknown one; `--strict` refuses it), never
-   with a hand-built `printf`. Page status moves with
+   <skill> <phase> <start|end|blocked> [--detail …]` (`--strict` refuses
+   unknown phases), never with hand-built `printf`. Page status moves with
    `skills/stardust/scripts/state.mjs advance <slug…> --to <status>`; a
-   resuming agent orients with `ledger.mjs tail` and `state.mjs summary`.
+   resuming agent reads `ledger.mjs tail` and `state.mjs summary`.
+   For progress, recommend `node stardust/scripts/stardust/ledger.mjs
+   tail [-n 10]` or `last [<skill>]`; **ledger has no `summary` command**.
+   Report recorded status, not process liveness.
 6. **Project hygiene** (idempotent). Write `stardust/.gitignore` from
    `reference/stardust.gitignore` if absent; never edit a project's copy.
    In a git repo: root `.gitignore` covers `.env` / `.env.*` (managed

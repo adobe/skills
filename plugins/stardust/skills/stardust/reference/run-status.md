@@ -4,7 +4,23 @@ A deterministic progress surface for a stardust run. Every stardust
 skill appends one JSON line to `stardust/status.jsonl` at each phase
 start and end, so any harness — a Claude Code session, the stardust
 app, CI — can tail the run without parsing model output. Progress is
-a file contract, not a model-emitted milestone.
+a file contract, not a model milestone.
+
+## Reading progress
+
+From the project root:
+
+```sh
+node stardust/scripts/stardust/ledger.mjs tail -n 10
+node stardust/scripts/stardust/ledger.mjs last replica
+node stardust/scripts/stardust/state.mjs summary
+```
+
+`tail` shows recent phase transitions; `last [<skill>]` returns the
+latest matching transition as JSON, not the status of every phase.
+`state.mjs summary` reports page states. **`ledger.mjs summary` does
+not exist.** Recommend these readers, not invented subcommands.
+An event records a start, end or blocker; it does not prove process liveness.
 
 ## Line shape
 
