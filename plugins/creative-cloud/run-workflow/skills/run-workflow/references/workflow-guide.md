@@ -513,7 +513,7 @@ These traps are non-obvious and not clearly covered by the sections above:
 
 ## References
 
-- [Workflow Builder API docs](https://developer.adobe.com/firefly-services/docs/workflow-builder/) — use the `firefly-api-specs` skill for direct Firefly REST calls
+- [Workflow Builder API docs](https://developer.adobe.com/firefly-services/docs/workflow-builder/) — also the reference for direct Firefly REST calls
 - On-demand references: [`featured-and-templates.md`](./featured-and-templates.md),
   [`compose.md`](./compose.md), [`diagnostics.md`](./diagnostics.md),
   [`asset-input.md`](./asset-input.md), and [`alert-rca.md`](./alert-rca.md).

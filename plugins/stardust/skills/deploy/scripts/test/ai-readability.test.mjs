@@ -4,14 +4,21 @@
 // exact site origin (look-alike hosts, userinfo URLs, other ports and schemes get nothing); scorePage refuses a path
 // that resolves off the origin before any request; with playwright in the project, a real page's third-party
 // request carries no secret. Redirect scoping of the raw requests: ai-readability-redirect.test.mjs.
+// And setup errors of the deploy gates whose exit 1 means a failed check (render-harness, ai-readability,
+// qa-gate): a missing browser.mjs or a missing playwright is one line and exit 2, never exit 1.
 // Run: node plugins/stardust/skills/deploy/scripts/test/ai-readability.test.mjs
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { attachOriginAuth, scorePage } from '../ai-readability.mjs';
+import { scorePage } from '../ai-readability.mjs';
+
+// the front door (browser.mjs) in either layout (plugin tree / project copy)
+const { attachOriginAuth } = await import(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u)).href);
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SECRET = 'token fixture';
@@ -72,6 +79,44 @@ if (chromium) {
     } finally { await browser.close(); site.close(); other.close(); }
   });
 } else console.log('- browser check skipped: no playwright in this project (run from a project copy)');
+
+// ---- setup errors exit 2: in these three gates exit 1 is the failed-check code ----
+const GATES = [
+  ['render-harness.mjs', 'content.html', 'out.png'],
+  ['ai-readability.mjs', '--origin', 'http://localhost:9', '/'],
+  ['qa-gate.mjs', 'http://localhost:9/'],
+];
+const FRONT_DOOR_DIR = dirname(fileURLToPath(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u))));
+const copyDeploy = (to) => cpSync(join(HERE, '..'), to, { recursive: true, filter: (src) => !src.endsWith('/test') });
+const runGate = (dir, cwd, [script, ...args]) => spawnSync(process.execPath, [join(dir, script), ...args], { cwd, encoding: 'utf8' });
+
+await checkAsync('a copy without the master scripts: the three gates stop with the copy instruction, exit 2, no stack trace', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'deploy-no-master-'))); // real path: ai-readability compares argv[1] with import.meta.url
+  try {
+    const dir = join(root, 'a', 'b'); copyDeploy(dir); // no stardust/ beside or above it
+    for (const gate of GATES) {
+      const r = runGate(dir, dir, gate);
+      assert.equal(r.status, 2, `${gate[0]}: exit ${r.status}\n${r.stderr}`);
+      assert.ok(r.stderr.includes('browser.mjs not found') && r.stderr.includes('stardust/scripts/stardust/'), `${gate[0]}: ${r.stderr}`);
+      assert.ok(!/^\s+at /m.test(r.stderr), `${gate[0]} printed a stack trace:\n${r.stderr}`);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+await checkAsync('master scripts present, playwright missing: ai-readability and qa-gate stop with the install line, exit 2, no stack trace', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'deploy-no-playwright-')));
+  try {
+    const dir = join(root, 'deploy'); copyDeploy(dir);
+    mkdirSync(join(root, 'stardust'));
+    for (const f of ['browser.mjs', 'live-session.mjs']) cpSync(join(FRONT_DOOR_DIR, f), join(root, 'stardust', f));
+    for (const gate of GATES.slice(1)) {
+      const r = runGate(dir, root, gate);
+      assert.equal(r.status, 2, `${gate[0]}: exit ${r.status}\n${r.stderr}`);
+      assert.ok(r.stderr.includes('npm i -D playwright'), `${gate[0]}: ${r.stderr}`);
+      assert.ok(!/^\s+at /m.test(r.stderr), `${gate[0]} printed a stack trace:\n${r.stderr}`);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nai-readability: all ${checks} checks passed`);
 process.exit(failed ? 1 : 0);
