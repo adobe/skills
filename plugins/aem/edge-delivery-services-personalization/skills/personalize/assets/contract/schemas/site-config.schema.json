@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adobe.com/aem/eds-personalization/0.1/site-config.schema.json",
+  "title": "Site configuration (scripts/personalization/config.js)",
+  "description": "The JSON part of the site-owned config.js default export. Function options (hasConsent, audiences, providers, api.mapRequest, api.mapResponse) are code and are described in contract.md, not here.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "fragmentPrefixes": {
+      "description": "Paths a variant fragment may come from. Default ['/fragments/'].",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "pattern": "^/[A-Za-z0-9/_-]*/$"
+      }
+    },
+    "budgets": {
+      "description": "Milliseconds a section may stay hidden for its decision and fragment. Default { eager: 800, lazy: 2000 }.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "eager": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 3000
+        },
+        "lazy": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 10000
+        }
+      }
+    },
+    "devices": {
+      "description": "device: names and media queries; first match wins.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "geo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "description": "Opt-in geo lookup answering { country, region }. Empty = none.",
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "consent": {
+      "description": "How the skill wired consent, and what the site's privacy/legal team allows without consent. Always recorded at setup (contract section 3).",
+      "type": "object",
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "description": "cmp: hasConsent reads a consent tool. allow: the site owner confirmed no consent is needed. deny: off until a consent tool is connected.",
+          "enum": [
+            "cmp",
+            "allow",
+            "deny"
+          ]
+        },
+        "tool": {
+          "description": "cmp only: e.g. onetrust, cookiebot, usercentrics, didomi, trustarc, adobe-websdk, custom.",
+          "type": "string"
+        },
+        "withoutConsent": {
+          "description": "Exceptions the site's privacy/legal team approved. Default []: without consent every section shows its default and the skill reads, stores and sends nothing. The skill never adds a value on its own.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "rules",
+              "split",
+              "api",
+              "rum",
+              "data-layer"
+            ]
+          }
+        },
+        "policyRef": {
+          "description": "Where the approval is recorded (link or ticket). Required when withoutConsent is not empty.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "cmp"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tool"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "tool"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "withoutConsent": {
+                "minItems": 1
+              }
+            },
+            "required": [
+              "withoutConsent"
+            ]
+          },
+          "then": {
+            "required": [
+              "policyRef"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "allow"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "required": [
+                "withoutConsent"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "api": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "description": "Decision engine URL; same-origin path recommended.",
+          "type": "string"
+        },
+        "feedback": {
+          "description": "Optional URL for decision-feedback beacons. Empty = none.",
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "engine": {
+          "description": "Engine profile. generic (default) or of1. A profile sets the limits the validator checks (contract section 5).",
+          "enum": [
+            "generic",
+            "of1"
+          ]
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "transport": {
+          "description": "delivery-api (default) or websdk (reuse the page's alloy instance).",
+          "enum": [
+            "delivery-api",
+            "websdk"
+          ]
+        },
+        "clientCode": {
+          "type": "string"
+        },
+        "propertyToken": {
+          "type": "string"
+        },
+        "endpoint": {
+          "description": "Delivery API only: optional same-origin proxy.",
+          "type": "string"
+        },
+        "alloyInstance": {
+          "description": "websdk only: global name of the alloy instance. Default 'alloy'.",
+          "type": "string"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "overrides": {
+      "description": "Where ?pzn... preview params work.",
+      "enum": [
+        "preview",
+        "always",
+        "never"
+      ]
+    },
+    "botsGetDefault": {
+      "type": "boolean"
+    },
+    "analytics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dataLayer": {
+          "type": "boolean"
+        },
+        "rum": {
+          "type": "boolean"
+        },
+        "seenThreshold": {
+          "description": "Share of the section that must be visible for pzn:seen. Default 0.25.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "mock": {
+      "description": "Tests and demos only; must be false at launch.",
+      "type": [
+        "boolean",
+        "object"
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "target": {
+            "properties": {
+              "transport": {
+                "const": "websdk"
+              }
+            },
+            "required": [
+              "transport"
+            ]
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "then": {
+        "properties": {
+          "target": {
+            "not": {
+              "required": [
+                "endpoint"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ],
+  "required": [
+    "consent"
+  ]
+}

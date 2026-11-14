@@ -1,0 +1,18 @@
+{
+  "id": "hero-message",
+  "source": "split",
+  "variants": [
+    {
+      "name": "speed",
+      "fragment": "/fragments/personalization/hero-message/speed"
+    },
+    {
+      "name": "team",
+      "fragment": "/fragments/personalization/hero-message/team"
+    }
+  ],
+  "split": [
+    40,
+    30
+  ]
+}

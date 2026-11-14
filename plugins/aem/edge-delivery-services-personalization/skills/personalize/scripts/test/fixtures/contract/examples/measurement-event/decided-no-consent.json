@@ -1,0 +1,12 @@
+{
+  "event": "pzn:decided",
+  "personalization": {
+    "id": "plan-offer",
+    "decisionId": "plan-offer#1",
+    "variant": "default",
+    "source": "target",
+    "where": "browser",
+    "outcome": "no-consent",
+    "trigger": "initial"
+  }
+}

@@ -1,0 +1,1022 @@
+{
+  "$comment": "Pilot baseline (contract v0.4, pilot.md). Each step lists the OF1 answer for the section, the section attributes after it, and the measurement events expected, in order. Validated by test/pilot.test.mjs.",
+  "section": {
+    "id": "home-hero",
+    "mode": "edge (OF1 proxy)",
+    "page": "/"
+  },
+  "scenarios": [
+    {
+      "id": "selected-variant",
+      "pilot": "required",
+      "title": "OF1 selects a variant",
+      "context": {
+        "geo": {
+          "country": "US",
+          "region": "CA"
+        },
+        "params": {
+          "utm_source": "espresso-forum"
+        },
+        "referrer": "espresso-forum.example"
+      },
+      "steps": [
+        {
+          "step": "page load",
+          "answer": {
+            "decisions": {
+              "home-hero": {
+                "variant": "pro",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-91",
+                  "model": "clef",
+                  "confidence": 0.82,
+                  "cached": false
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-where": "edge",
+            "data-pzn-status": "applied",
+            "data-pzn-variant": "pro",
+            "data-pzn-outcome": "variant",
+            "data-pzn-decision": "home-hero#1"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "trigger": "initial",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-91",
+                  "model": "clef",
+                  "confidence": 0.82,
+                  "cached": false
+                }
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "result": "applied"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "result": "applied",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-91",
+                  "model": "clef",
+                  "confidence": 0.82,
+                  "cached": false
+                }
+              }
+            },
+            {
+              "event": "pzn:clicked",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "result": "applied",
+                "href": "https://www.example.com/espresso"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "intentional-default",
+      "pilot": "required",
+      "title": "OF1 chooses the authored hero as the best fit",
+      "context": {
+        "geo": {
+          "country": "US",
+          "region": "CA"
+        },
+        "params": {
+          "utm_source": "espresso-forum"
+        },
+        "referrer": "espresso-forum.example"
+      },
+      "steps": [
+        {
+          "step": "page load",
+          "answer": {
+            "decisions": {
+              "home-hero": {
+                "variant": "default",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-94",
+                  "confidence": 0.77
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-where": "edge",
+            "data-pzn-status": "applied",
+            "data-pzn-variant": "default",
+            "data-pzn-outcome": "intentional-default",
+            "data-pzn-decision": "home-hero#1"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "api",
+                "where": "edge",
+                "outcome": "intentional-default",
+                "assigned": "default",
+                "trigger": "initial",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-94",
+                  "confidence": 0.77
+                }
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "api",
+                "where": "edge",
+                "outcome": "intentional-default",
+                "assigned": "default",
+                "result": "kept-default"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "api",
+                "where": "edge",
+                "outcome": "intentional-default",
+                "assigned": "default",
+                "result": "kept-default",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-94",
+                  "confidence": 0.77
+                }
+              }
+            },
+            {
+              "event": "pzn:clicked",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "api",
+                "where": "edge",
+                "outcome": "intentional-default",
+                "assigned": "default",
+                "result": "kept-default",
+                "href": "https://www.example.com/espresso"
+              }
+            }
+          ],
+          "checks": [
+            "Not counted as control exposure",
+            "Rule rows not evaluated",
+            "The <template data-pzn-default> is absent (nothing was swapped)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "low-confidence-rules",
+      "pilot": "required",
+      "title": "Low confidence; the Rule row decides from utm_campaign",
+      "context": {
+        "geo": {
+          "country": "US",
+          "region": "CA"
+        },
+        "params": {
+          "utm_campaign": "black-friday"
+        },
+        "referrer": "espresso-forum.example"
+      },
+      "steps": [
+        {
+          "step": "page load",
+          "answer": {
+            "decisions": {
+              "home-hero": {
+                "reason": "low_confidence",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-92",
+                  "confidence": 0.41
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-where": "edge",
+            "data-pzn-status": "applied",
+            "data-pzn-variant": "deals",
+            "data-pzn-outcome": "low-confidence",
+            "data-pzn-decision": "home-hero#1",
+            "data-pzn-reason": "low_confidence"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "deals",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "low-confidence",
+                "assigned": "deals",
+                "reason": "low_confidence",
+                "trigger": "initial",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-92",
+                  "confidence": 0.41
+                }
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "deals",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "low-confidence",
+                "assigned": "deals",
+                "reason": "low_confidence",
+                "result": "applied"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "deals",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "low-confidence",
+                "assigned": "deals",
+                "reason": "low_confidence",
+                "result": "applied",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-92",
+                  "confidence": 0.41
+                }
+              }
+            },
+            {
+              "event": "pzn:clicked",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "deals",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "low-confidence",
+                "assigned": "deals",
+                "reason": "low_confidence",
+                "result": "applied",
+                "href": "https://www.example.com/espresso"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "low-confidence-default",
+      "pilot": "required",
+      "title": "Low confidence; no Rule row matches",
+      "context": {
+        "geo": {
+          "country": "US",
+          "region": "CA"
+        },
+        "params": {
+          "utm_source": "espresso-forum"
+        },
+        "referrer": "espresso-forum.example"
+      },
+      "steps": [
+        {
+          "step": "page load",
+          "answer": {
+            "decisions": {
+              "home-hero": {
+                "reason": "low_confidence",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-96",
+                  "confidence": 0.38
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-where": "edge",
+            "data-pzn-status": "applied",
+            "data-pzn-variant": "default",
+            "data-pzn-outcome": "low-confidence",
+            "data-pzn-decision": "home-hero#1",
+            "data-pzn-reason": "low_confidence"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "low-confidence",
+                "reason": "low_confidence",
+                "trigger": "initial",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-96",
+                  "confidence": 0.38
+                }
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "low-confidence",
+                "reason": "low_confidence",
+                "result": "kept-default"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "low-confidence",
+                "reason": "low_confidence",
+                "result": "kept-default",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-96",
+                  "confidence": 0.38
+                }
+              }
+            }
+          ],
+          "checks": [
+            "No assigned field: nothing chose the default",
+            "Not counted as control exposure"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "provider-fallback",
+      "pilot": "required",
+      "title": "OF1 reports a provider error",
+      "context": {
+        "geo": {
+          "country": "US",
+          "region": "CA"
+        },
+        "params": {
+          "utm_source": "espresso-forum"
+        },
+        "referrer": "espresso-forum.example"
+      },
+      "steps": [
+        {
+          "step": "page load",
+          "answer": {
+            "decisions": {
+              "home-hero": {
+                "reason": "provider_error",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-93"
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-where": "edge",
+            "data-pzn-status": "applied",
+            "data-pzn-variant": "default",
+            "data-pzn-outcome": "fallback",
+            "data-pzn-decision": "home-hero#1",
+            "data-pzn-reason": "provider_error"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "fallback",
+                "reason": "provider_error",
+                "trigger": "initial",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-93"
+                }
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "fallback",
+                "reason": "provider_error",
+                "result": "kept-default"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "default",
+                "source": "rules",
+                "where": "edge",
+                "outcome": "fallback",
+                "reason": "provider_error",
+                "result": "kept-default",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-93"
+                }
+              }
+            }
+          ],
+          "checks": [
+            "Same events when OF1 is unreachable or answers bad JSON (reason HTTP status / bad JSON, no tracking)"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cache-hit",
+      "pilot": "required",
+      "title": "Answer served from OF1's decision cache",
+      "context": {
+        "geo": {
+          "country": "US",
+          "region": "CA"
+        },
+        "params": {
+          "utm_source": "espresso-forum"
+        },
+        "referrer": "espresso-forum.example"
+      },
+      "steps": [
+        {
+          "step": "page load (second visitor with the same context)",
+          "answer": {
+            "decisions": {
+              "home-hero": {
+                "variant": "pro",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-91",
+                  "model": "clef",
+                  "confidence": 0.82,
+                  "cached": true
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-where": "edge",
+            "data-pzn-status": "applied",
+            "data-pzn-variant": "pro",
+            "data-pzn-outcome": "variant",
+            "data-pzn-decision": "home-hero#1",
+            "data-pzn-cached": "true"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "trigger": "initial",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-91",
+                  "model": "clef",
+                  "confidence": 0.82,
+                  "cached": true
+                },
+                "cached": true
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "result": "applied"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "result": "applied",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-91",
+                  "model": "clef",
+                  "confidence": 0.82,
+                  "cached": true
+                }
+              }
+            },
+            {
+              "event": "pzn:clicked",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "result": "applied",
+                "href": "https://www.example.com/espresso"
+              }
+            }
+          ],
+          "checks": [
+            "New decisionId on this page view; OF1 requestId is the original r-91",
+            "Edge latency of this case recorded separately from uncached cases"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "consent-withdrawal",
+      "pilot": "required",
+      "title": "Visitor withdraws consent after the variant was shown",
+      "context": {
+        "geo": {
+          "country": "US",
+          "region": "CA"
+        },
+        "params": {
+          "utm_source": "espresso-forum"
+        },
+        "referrer": "espresso-forum.example"
+      },
+      "steps": [
+        {
+          "step": "page load",
+          "answer": {
+            "decisions": {
+              "home-hero": {
+                "variant": "pro",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-91",
+                  "model": "clef",
+                  "confidence": 0.82,
+                  "cached": false
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-where": "edge",
+            "data-pzn-status": "applied",
+            "data-pzn-variant": "pro",
+            "data-pzn-outcome": "variant",
+            "data-pzn-decision": "home-hero#1"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "trigger": "initial",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-91",
+                  "model": "clef",
+                  "confidence": 0.82,
+                  "cached": false
+                }
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "result": "applied"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "home-hero",
+                "decisionId": "home-hero#1",
+                "variant": "pro",
+                "source": "api",
+                "where": "edge",
+                "outcome": "variant",
+                "assigned": "pro",
+                "result": "applied",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-91",
+                  "model": "clef",
+                  "confidence": 0.82,
+                  "cached": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "step": "consent withdrawn (CMP calls refresh())",
+          "answer": null,
+          "attributes": {
+            "data-pzn-where": "edge",
+            "data-pzn-status": "applied",
+            "data-pzn-variant": "default",
+            "data-pzn-outcome": "no-consent",
+            "data-pzn-decision": "home-hero#2"
+          },
+          "events": [],
+          "checks": [
+            "Authored hero restored from <template data-pzn-default>",
+            "No engine call, no events (no rum or data-layer exception in the pilot)",
+            "pzn-consent, pzn-seen, pzn-vs cookies and stored decisions deleted",
+            "A later click in the section sends nothing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "refresh-new-payload",
+      "pilot": "recommended",
+      "title": "refresh() returns the same variant with a new OF1 request (browser-decided section)",
+      "section": "promo",
+      "context": {
+        "geo": {
+          "country": "US",
+          "region": "CA"
+        },
+        "params": {
+          "utm_source": "espresso-forum"
+        },
+        "referrer": "espresso-forum.example"
+      },
+      "steps": [
+        {
+          "step": "page load",
+          "answer": {
+            "decisions": {
+              "promo": {
+                "variant": "festive",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-97"
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-variant": "festive",
+            "data-pzn-outcome": "variant",
+            "data-pzn-decision": "promo#1"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "promo",
+                "decisionId": "promo#1",
+                "variant": "festive",
+                "source": "api",
+                "where": "browser",
+                "outcome": "variant",
+                "assigned": "festive",
+                "trigger": "initial",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-97"
+                }
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "promo",
+                "decisionId": "promo#1",
+                "variant": "festive",
+                "source": "api",
+                "where": "browser",
+                "outcome": "variant",
+                "assigned": "festive",
+                "result": "applied"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "promo",
+                "decisionId": "promo#1",
+                "variant": "festive",
+                "source": "api",
+                "where": "browser",
+                "outcome": "variant",
+                "assigned": "festive",
+                "result": "applied",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-97"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "step": "refresh()",
+          "answer": {
+            "decisions": {
+              "promo": {
+                "variant": "festive",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-98"
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-variant": "festive",
+            "data-pzn-outcome": "variant",
+            "data-pzn-decision": "promo#2"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "promo",
+                "decisionId": "promo#2",
+                "variant": "festive",
+                "source": "api",
+                "where": "browser",
+                "outcome": "variant",
+                "assigned": "festive",
+                "trigger": "refresh",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-98"
+                }
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "promo",
+                "decisionId": "promo#2",
+                "variant": "festive",
+                "source": "api",
+                "where": "browser",
+                "outcome": "variant",
+                "assigned": "festive",
+                "result": "unchanged"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "promo",
+                "decisionId": "promo#2",
+                "variant": "festive",
+                "source": "api",
+                "where": "browser",
+                "outcome": "variant",
+                "assigned": "festive",
+                "result": "unchanged",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-98"
+                }
+              }
+            }
+          ],
+          "checks": [
+            "Content not swapped again",
+            "pzn:seen for promo#2 sent at once because the section is still visible"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "refresh-identical",
+      "pilot": "recommended",
+      "title": "refresh() returns exactly the same decision (browser-decided section)",
+      "section": "promo",
+      "context": {
+        "geo": {
+          "country": "US",
+          "region": "CA"
+        },
+        "params": {
+          "utm_source": "espresso-forum"
+        },
+        "referrer": "espresso-forum.example"
+      },
+      "steps": [
+        {
+          "step": "page load",
+          "answer": {
+            "decisions": {
+              "promo": {
+                "variant": "festive",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-97"
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-variant": "festive",
+            "data-pzn-outcome": "variant",
+            "data-pzn-decision": "promo#1"
+          },
+          "events": [
+            {
+              "event": "pzn:decided",
+              "personalization": {
+                "id": "promo",
+                "decisionId": "promo#1",
+                "variant": "festive",
+                "source": "api",
+                "where": "browser",
+                "outcome": "variant",
+                "assigned": "festive",
+                "trigger": "initial",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-97"
+                }
+              }
+            },
+            {
+              "event": "pzn:applied",
+              "personalization": {
+                "id": "promo",
+                "decisionId": "promo#1",
+                "variant": "festive",
+                "source": "api",
+                "where": "browser",
+                "outcome": "variant",
+                "assigned": "festive",
+                "result": "applied"
+              }
+            },
+            {
+              "event": "pzn:seen",
+              "personalization": {
+                "id": "promo",
+                "decisionId": "promo#1",
+                "variant": "festive",
+                "source": "api",
+                "where": "browser",
+                "outcome": "variant",
+                "assigned": "festive",
+                "result": "applied",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-97"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "step": "refresh() (answer reused from the session cache)",
+          "answer": {
+            "decisions": {
+              "promo": {
+                "variant": "festive",
+                "tracking": {
+                  "engine": "of1",
+                  "requestId": "r-97"
+                }
+              }
+            }
+          },
+          "attributes": {
+            "data-pzn-variant": "festive",
+            "data-pzn-outcome": "variant",
+            "data-pzn-decision": "promo#1"
+          },
+          "events": [],
+          "checks": [
+            "Same decision identity (source, assigned, outcome, reason, cached, tracking): same decision, decisionId stays promo#1",
+            "Shown in the ?pzn-debug table with trigger refresh"
+          ]
+        }
+      ]
+    }
+  ]
+}

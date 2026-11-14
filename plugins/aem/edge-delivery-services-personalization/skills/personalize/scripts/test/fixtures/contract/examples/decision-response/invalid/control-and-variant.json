@@ -1,0 +1,8 @@
+{
+  "decisions": {
+    "promo": {
+      "control": true,
+      "variant": "default"
+    }
+  }
+}

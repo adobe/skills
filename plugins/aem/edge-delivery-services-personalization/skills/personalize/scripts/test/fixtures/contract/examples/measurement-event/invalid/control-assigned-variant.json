@@ -1,0 +1,13 @@
+{
+  "event": "pzn:decided",
+  "personalization": {
+    "id": "home-hero",
+    "decisionId": "home-hero#1",
+    "variant": "pro",
+    "assigned": "pro",
+    "source": "split",
+    "where": "browser",
+    "outcome": "control",
+    "trigger": "initial"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "home-hero",
+  "source": "rules",
+  "variants": [
+    {
+      "name": "default",
+      "fragment": "/fragments/personalization/home-hero/default"
+    }
+  ],
+  "rules": [
+    {
+      "variant": "default",
+      "condition": "geo: IN"
+    }
+  ]
+}

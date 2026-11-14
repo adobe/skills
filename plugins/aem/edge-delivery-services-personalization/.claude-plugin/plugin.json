@@ -1,0 +1,24 @@
+{
+  "name": "aem-eds-personalization",
+  "description": "Section-based personalization for AEM Edge Delivery Services (DA) pages, following the EDS personalization contract: Section Metadata rows let rules (geo, device, visitor, URL/UTM param, page state, custom audiences), a decision engine (v1 API, OF1), an A/B split or Adobe Target (inline or popup) pick the EDS fragment a section shows, with the authored content as default. Consent first, measurement events per decision, a client runtime plus an optional Cloudflare edge worker, a simulator and Playwright checks.",
+  "version": "1.0.0",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aem",
+    "edge-delivery-services",
+    "da",
+    "personalization",
+    "section-metadata",
+    "fragments",
+    "geo",
+    "consent",
+    "ab-testing",
+    "adobe-target",
+    "decision-engine",
+    "cloudflare"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "event": "pzn:applied",
+  "personalization": {
+    "id": "home-hero",
+    "decisionId": "home-hero#1",
+    "variant": "default",
+    "assigned": "pro",
+    "source": "api",
+    "where": "browser",
+    "outcome": "variant",
+    "result": "failed",
+    "reason": "fragment failed: /fragments/personalization/home-hero/pro"
+  }
+}

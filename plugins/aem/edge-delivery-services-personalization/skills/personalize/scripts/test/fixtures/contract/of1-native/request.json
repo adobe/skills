@@ -1,0 +1,42 @@
+{
+  "id": "aemsites/intuit-erp",
+  "index": "publish",
+  "page": {
+    "url": "/",
+    "title": "Intuit Enterprise Suite"
+  },
+  "signals": {
+    "profile": {
+      "intent": "comparing",
+      "interests": [
+        "payroll",
+        "multi-entity accounting"
+      ]
+    },
+    "acquisition": {
+      "source": "search"
+    },
+    "audiences": []
+  },
+  "decisions": [
+    {
+      "id": "home-hero",
+      "hint": "Show the hero that best matches why the visitor came: \u2026",
+      "candidates": [
+        {
+          "id": "c0",
+          "summary": "Intuit Enterprise Suite: the all-in-one platform for growing mid-market businesses.",
+          "isDefault": true
+        },
+        {
+          "id": "c1",
+          "summary": "Multi-entity accounting and consolidation for finance leaders managing several entities."
+        },
+        {
+          "id": "c2",
+          "summary": "Payroll and HR for growing teams: run payroll, benefits and compliance in one place."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "ttl": 60,
+  "cacheable": true,
+  "placeholders": {
+    "offer": {
+      "geo: IN & visitor: returning": "india",
+      "geo: US": "default",
+      "device: mobile": {
+        "control": true
+      }
+    }
+  }
+}

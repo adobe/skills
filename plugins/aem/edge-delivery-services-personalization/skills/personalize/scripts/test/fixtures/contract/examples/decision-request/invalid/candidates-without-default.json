@@ -1,0 +1,20 @@
+{
+  "version": "1",
+  "page": {
+    "path": "/home"
+  },
+  "placeholders": [
+    {
+      "id": "promo",
+      "candidates": [
+        "festive"
+      ]
+    }
+  ],
+  "context": {
+    "consent": {
+      "personalization": true
+    }
+  },
+  "mode": "client"
+}

@@ -1,0 +1,14 @@
+{
+  "version": "1",
+  "page": {
+    "path": "/home"
+  },
+  "events": [
+    {
+      "id": "promo",
+      "variant": "festive",
+      "type": "converted",
+      "decisionId": "promo#1"
+    }
+  ]
+}

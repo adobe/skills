@@ -1,0 +1,9 @@
+{
+  "consent": {
+    "mode": "deny"
+  },
+  "target": {
+    "transport": "websdk",
+    "endpoint": "/rest/v1/delivery"
+  }
+}

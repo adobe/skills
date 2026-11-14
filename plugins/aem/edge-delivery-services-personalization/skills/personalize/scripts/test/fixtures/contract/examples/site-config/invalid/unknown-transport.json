@@ -1,0 +1,8 @@
+{
+  "consent": {
+    "mode": "deny"
+  },
+  "target": {
+    "transport": "atjs"
+  }
+}

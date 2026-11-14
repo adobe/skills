@@ -1,0 +1,9 @@
+{
+  "name": "adobe/aem-eds-personalization",
+  "version": "0.1.0",
+  "description": "Section-based personalization for AEM Edge Delivery Services (DA) pages, following the EDS personalization contract: rules, a decision engine, an A/B split or Adobe Target pick the EDS fragment a section shows, with the authored content as default; consent first, events per decision, client runtime plus an optional Cloudflare edge worker.",
+  "private": false,
+  "skills": [
+    "skills/personalize"
+  ]
+}

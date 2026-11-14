@@ -1,0 +1,12 @@
+{
+  "id": "newsletter",
+  "source": "target",
+  "variants": [
+    {
+      "name": "signup",
+      "fragment": "/fragments/personalization/newsletter/signup"
+    }
+  ],
+  "trigger": "scroll: 60%",
+  "display": "popup"
+}

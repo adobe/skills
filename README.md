@@ -14,6 +14,7 @@ Repository of Adobe skills for AI coding agents.
 /plugin install web@adobe-skills
 /plugin install aem-edge-delivery-services@adobe-skills
 /plugin install aem-eds-content-ops@adobe-skills
+/plugin install aem-eds-personalization@adobe-skills
 /plugin install aem-project-management@adobe-skills
 /plugin install app-builder@adobe-skills
 /plugin install aem-cloud-service@adobe-skills
@@ -189,6 +190,14 @@ See the [`stardust`](plugins/stardust/README.md) documentation for the complete 
 | Skill | Description |
 |-------|-------------|
 | `da-content` | Reference for DA + EDS content rules: block HTML format, metadata, media handling, DA Source API contract, and silent-failure rules |
+
+##### Personalizing with Edge Delivery Services
+
+Section-based personalization for DA pages, on any EDS site or on top of a migration. Available via the [`aem-eds-personalization`](plugins/aem/edge-delivery-services-personalization/README.md) plugin.
+
+| Skill | Description |
+|-------|-------------|
+| `personalize` | Personalization rows in a section's Section Metadata let rules (geo, device, new/returning visitor, URL/UTM param, app state, custom audiences), a decision API, an A/B split or Adobe Target pick the EDS fragment the section shows, with the authored content as default; client runtime plus an optional Cloudflare edge worker, validated with a rules simulator and a Playwright check |
 
 ##### Managing Projects
 
@@ -401,6 +410,12 @@ plugins/
 │   │       ├── content-driven-development/
 │   │       ├── building-blocks/
 │   │       └── ...
+│   ├── edge-delivery-services-personalization/
+│   │   ├── .claude-plugin/
+│   │   │   └── plugin.json
+│   │   ├── evals/
+│   │   └── skills/
+│   │       └── personalize/
 │   ├── project-management/
 │   │   ├── .claude-plugin/
 │   │   │   └── plugin.json

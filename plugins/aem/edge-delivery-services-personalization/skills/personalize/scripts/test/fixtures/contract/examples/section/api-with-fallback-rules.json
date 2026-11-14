@@ -1,0 +1,20 @@
+{
+  "id": "promo",
+  "source": "api",
+  "variants": [
+    {
+      "name": "festive",
+      "fragment": "/fragments/personalization/promo/festive"
+    },
+    {
+      "name": "clearance",
+      "fragment": "/fragments/personalization/promo/clearance"
+    }
+  ],
+  "rules": [
+    {
+      "variant": "festive",
+      "condition": "param: utm_campaign=diwali"
+    }
+  ]
+}

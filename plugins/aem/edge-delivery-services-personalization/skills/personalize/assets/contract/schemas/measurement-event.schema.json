@@ -1,0 +1,640 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adobe.com/aem/eds-personalization/0.1/measurement-event.schema.json",
+  "title": "Measurement event",
+  "description": "One object per event pushed to window.adobeDataLayer and dispatched as a CustomEvent on the section. pzn:decided = assignment, pzn:applied = application, pzn:seen / pzn:clicked = exposure, pzn:notified = product feedback. Every event names its decision (decisionId), what was assigned and what was shown, so a failed treatment or an unassigned visitor never looks like control exposure.",
+  "type": "object",
+  "required": [
+    "event",
+    "personalization"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event": {
+      "enum": [
+        "pzn:decided",
+        "pzn:applied",
+        "pzn:seen",
+        "pzn:clicked",
+        "pzn:notified"
+      ]
+    },
+    "personalization": {
+      "type": "object",
+      "required": [
+        "id",
+        "decisionId",
+        "variant",
+        "source",
+        "where"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "decisionId": {
+          "description": "Unique per decision in the page view: <section id>#<n>. n starts at 1 and goes up by one only when a re-evaluation produces a new decision, i.e. when source, assigned, outcome, reason, cached, tracking, test or Target tokens differ (contract section 9). Seen/clicked and notifications are sent at most once per decisionId.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*#[1-9][0-9]*$"
+        },
+        "variant": {
+          "description": "What the page shows: a variant name, or \"default\" for the authored content.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "assigned": {
+          "description": "What the deciding source chose: a variant name, or \"default\" (control or intentional default). Absent when nothing was assigned: no-consent, bot, timeout, error, invalid, or no-match with no matching rule.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "source": {
+          "description": "Who decided: rules, split, api, target, override (?pzn= preview) or bot.",
+          "enum": [
+            "rules",
+            "split",
+            "api",
+            "target",
+            "override",
+            "bot"
+          ]
+        },
+        "where": {
+          "enum": [
+            "browser",
+            "edge"
+          ]
+        },
+        "outcome": {
+          "description": "Assignment outcome, repeated on every event of the decision. variant: a variant was chosen. control: the control arm of a test (split default arm, engine control: true, Target { control: true }). intentional-default: the engine chose the authored content as the best fit (variant \"default\"). no-match: nothing fitted. low-confidence: engine reason low_confidence. no-consent: no consent and no approved exception (not assigned). fallback: the source failed or answered something not listed. timeout, error, invalid: see contract.md. bot / override: crawler or preview.",
+          "enum": [
+            "variant",
+            "control",
+            "intentional-default",
+            "no-match",
+            "low-confidence",
+            "no-consent",
+            "fallback",
+            "timeout",
+            "error",
+            "invalid",
+            "bot",
+            "override"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "ms": {
+          "description": "Time from start to decision (decided) or to content shown (applied).",
+          "type": "number",
+          "minimum": 0
+        },
+        "result": {
+          "description": "Application result, repeated on exposure events. applied: the assigned variant is shown. kept-default: the assigned or fallback result is the default and it is shown. unchanged: a new decision with the same content already shown. failed: the assigned variant could not be shown, so the default shows (never counted as control exposure).",
+          "enum": [
+            "applied",
+            "kept-default",
+            "unchanged",
+            "failed"
+          ]
+        },
+        "test": {
+          "description": "Present when the section is an A/B test.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "enum": [
+                "split",
+                "target"
+              ]
+            },
+            "weights": {
+              "description": "split only: the Personalization Split row, or \"even\".",
+              "oneOf": [
+                {
+                  "const": "even"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "tracking": {
+          "description": "Opaque data from the engine or Target (activity, experience). Never personal data.",
+          "type": "object"
+        },
+        "href": {
+          "description": "pzn:clicked only: the clicked link, without query string or hash.",
+          "type": "string",
+          "pattern": "^[^?#]*$",
+          "maxLength": 2048
+        },
+        "notification": {
+          "description": "pzn:notified only. Target: display / click. Decision engine feedback: seen / clicked.",
+          "type": "object",
+          "required": [
+            "product",
+            "type",
+            "ok"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "product": {
+              "enum": [
+                "target",
+                "api"
+              ]
+            },
+            "type": {
+              "enum": [
+                "display",
+                "click",
+                "seen",
+                "clicked"
+              ]
+            },
+            "ok": {
+              "type": "boolean"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "product": {
+                    "const": "target"
+                  }
+                }
+              },
+              "then": {
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "display",
+                      "click"
+                    ]
+                  }
+                }
+              },
+              "else": {
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "seen",
+                      "clicked"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "cached": {
+          "description": "pzn:decided only: the answer was reused from a cache (browser session or the engine's own). The engine's id in tracking stays the original one.",
+          "type": "boolean"
+        },
+        "trigger": {
+          "description": "pzn:decided only: why the section was evaluated. initial: page load. refresh: refresh(). consent: a consent change. state: setState().",
+          "enum": [
+            "initial",
+            "refresh",
+            "consent",
+            "state"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "variant",
+                  "control",
+                  "intentional-default",
+                  "override"
+                ]
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "required": [
+              "assigned"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "no-consent",
+                  "bot",
+                  "timeout",
+                  "error",
+                  "invalid"
+                ]
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "not": {
+              "required": [
+                "assigned"
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "control",
+                  "intentional-default"
+                ]
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assigned": {
+                "const": "default"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "variant"
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "assigned": {
+                "not": {
+                  "const": "default"
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "const": "failed"
+              }
+            },
+            "required": [
+              "result"
+            ]
+          },
+          "then": {
+            "properties": {
+              "variant": {
+                "const": "default"
+              },
+              "assigned": {
+                "not": {
+                  "const": "default"
+                }
+              }
+            },
+            "required": [
+              "assigned"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "const": "variant"
+              },
+              "result": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "outcome",
+              "result"
+            ]
+          },
+          "then": {
+            "properties": {
+              "result": {
+                "enum": [
+                  "applied",
+                  "unchanged",
+                  "failed"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "control",
+                  "intentional-default"
+                ]
+              }
+            },
+            "required": [
+              "outcome"
+            ]
+          },
+          "then": {
+            "properties": {
+              "variant": {
+                "const": "default"
+              },
+              "result": {
+                "enum": [
+                  "kept-default",
+                  "unchanged"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "const": "kept-default"
+              }
+            },
+            "required": [
+              "result"
+            ]
+          },
+          "then": {
+            "properties": {
+              "variant": {
+                "const": "default"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "const": "applied"
+              }
+            },
+            "required": [
+              "result"
+            ]
+          },
+          "then": {
+            "properties": {
+              "variant": {
+                "not": {
+                  "const": "default"
+                }
+              }
+            }
+          }
+        }
+      ],
+      "description": "Event fields. JSON Schema can't compare two fields, so one more rule is checked in code (test/semantics.mjs): when assigned is present and result isn't failed, variant equals assigned."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "pzn:decided"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "personalization": {
+            "required": [
+              "outcome",
+              "trigger"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "result"
+                  ]
+                },
+                {
+                  "required": [
+                    "href"
+                  ]
+                },
+                {
+                  "required": [
+                    "notification"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "pzn:applied"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "personalization": {
+            "required": [
+              "outcome",
+              "result"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "href"
+                  ]
+                },
+                {
+                  "required": [
+                    "notification"
+                  ]
+                },
+                {
+                  "required": [
+                    "cached"
+                  ]
+                },
+                {
+                  "required": [
+                    "trigger"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "pzn:seen"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "personalization": {
+            "required": [
+              "outcome",
+              "result"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "href"
+                  ]
+                },
+                {
+                  "required": [
+                    "notification"
+                  ]
+                },
+                {
+                  "required": [
+                    "cached"
+                  ]
+                },
+                {
+                  "required": [
+                    "trigger"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "pzn:clicked"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "personalization": {
+            "required": [
+              "outcome",
+              "result",
+              "href"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "notification"
+                  ]
+                },
+                {
+                  "required": [
+                    "cached"
+                  ]
+                },
+                {
+                  "required": [
+                    "trigger"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event": {
+            "const": "pzn:notified"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "personalization": {
+            "required": [
+              "outcome",
+              "notification"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "href"
+                  ]
+                },
+                {
+                  "required": [
+                    "cached"
+                  ]
+                },
+                {
+                  "required": [
+                    "trigger"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "version": "1",
+  "page": {
+    "path": "/home"
+  },
+  "placeholders": [
+    {
+      "id": "promo",
+      "candidates": [
+        "festive",
+        "default"
+      ]
+    }
+  ],
+  "context": {
+    "geo": {
+      "country": "US",
+      "region": "CA"
+    },
+    "params": {},
+    "consent": {
+      "personalization": true
+    }
+  },
+  "mode": "edge"
+}

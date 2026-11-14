@@ -21,6 +21,9 @@
 /plugins/aem/edge-delivery-services/                   @shsteimer
 /plugins/aem/edge-delivery-services-content-ops/       @trieloff
 
+# AEM EDS Personalization
+/plugins/aem/edge-delivery-services-personalization/   @srshrm
+
 # AEM Project Management (Astha Bhargava is sole author)
 /plugins/aem/project-management/                       @asthabh23
 

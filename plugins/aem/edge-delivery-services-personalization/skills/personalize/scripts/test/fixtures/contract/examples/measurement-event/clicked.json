@@ -1,0 +1,14 @@
+{
+  "event": "pzn:clicked",
+  "personalization": {
+    "id": "plan-offer",
+    "decisionId": "plan-offer#1",
+    "variant": "free-trial",
+    "assigned": "free-trial",
+    "source": "target",
+    "where": "browser",
+    "outcome": "variant",
+    "result": "applied",
+    "href": "https://www.example.com/trial"
+  }
+}

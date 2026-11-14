@@ -1,0 +1,20 @@
+{
+  "event": "pzn:seen",
+  "personalization": {
+    "id": "home-hero",
+    "decisionId": "home-hero#1",
+    "variant": "pro",
+    "assigned": "pro",
+    "source": "api",
+    "where": "edge",
+    "outcome": "variant",
+    "result": "applied",
+    "tracking": {
+      "engine": "of1",
+      "requestId": "r-91",
+      "model": "clef",
+      "confidence": 0.82,
+      "cached": false
+    }
+  }
+}

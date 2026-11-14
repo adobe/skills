@@ -1,0 +1,10 @@
+{
+  "id": "home-hero",
+  "source": "rules",
+  "variants": [
+    {
+      "name": "india",
+      "fragment": "/fragments/personalization/home-hero/india"
+    }
+  ]
+}

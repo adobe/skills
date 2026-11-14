@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adobe.com/aem/eds-personalization/0.1/decision-feedback.schema.json",
+  "title": "Decision engine feedback (optional, v1)",
+  "description": "Sent with navigator.sendBeacon to config.api.feedback when set, so an engine learns which of its answers were seen or clicked. Only with consent. Best effort: no retry, no delivery guarantee.",
+  "type": "object",
+  "required": [
+    "version",
+    "page",
+    "events"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "const": "1"
+    },
+    "page": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/",
+          "maxLength": 256
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "decisionId",
+          "variant",
+          "type"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "decisionId": {
+            "description": "Unique per decision in the page view: <section id>#<n>, n = 1 for the first decision, +1 each time the section is decided again (refresh, consent, setState). Seen/clicked and notifications are sent at most once per decisionId.",
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*#[1-9][0-9]*$"
+          },
+          "variant": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]*$"
+          },
+          "type": {
+            "enum": [
+              "seen",
+              "clicked"
+            ]
+          },
+          "tracking": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

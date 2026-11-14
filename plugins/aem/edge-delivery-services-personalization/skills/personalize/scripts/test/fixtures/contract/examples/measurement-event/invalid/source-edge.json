@@ -1,0 +1,13 @@
+{
+  "event": "pzn:seen",
+  "personalization": {
+    "id": "home-hero",
+    "decisionId": "home-hero#1",
+    "variant": "pro",
+    "assigned": "pro",
+    "source": "edge",
+    "where": "edge",
+    "outcome": "variant",
+    "result": "applied"
+  }
+}
