@@ -11,7 +11,6 @@ Adobe docs: [Asset Workflow Migration Tool](https://experienceleague.adobe.com/e
 Only workflows that still do something on Cloud Service need migrating. The Step 0 runbook (pattern `assetWorkflowMigration`) lists enabled launchers whose glob is under `/content/dam`; it does not read the models. Open each launcher's model with the user:
 
 - **Custom or supported steps** (custom Java, ECMA script, `CreateVersionProcess`, `ReplicationWorkflowProcess`, …) — becomes a post-processing workflow.
-- **Only OOTB rendition / metadata steps with standard settings** — nothing to migrate; the microservices already do that work.
 - **Non-standard renditions** (e.g. `CreateWebEnabledImageProcess` with custom sizes, simple ImageMagick `CommandLineProcess`) — the tool maps them to a `Migrated from <model>` processing profile.
 
 ## Prerequisites
@@ -44,9 +43,7 @@ Do this before anything is committed. To undo everything, use the undo line the 
 4. **Look at what the report does not list.** The tool disables the launcher of a model that has only rendition steps (for example OOTB steps plus a `CommandLineProcess`) but does not migrate or list that model. Open every model behind a disabled launcher and flag:
    - `CommandLineProcess` commands that are not simple ImageMagick conversions. The report lists the ones it could not map under *Migration Issues*; they need an [Asset Compute custom worker](https://experienceleague.adobe.com/en/docs/asset-compute/using/extend/understand-extensibility).
    - Steps categorized `UNSUPPORTED` in `workflowSteps.properties` (for example `CreateSubAssetsProcess`, `IDSJobProcess`, `ExtractImagesProcess`). Ask whether what they produced is still needed and agree a replacement: a custom worker, a profile rendition, or dropping it.
-5. **Custom Java steps** (a `PROCESS` that is not an Adobe class; the tool keeps them). For each one in the project source, check with the user that it:
-   - **runs on Cloud Service** — it uses only APIs available there. Hand code that needs changes to the matching Branch B patterns (`asset-manager`, `replication`, `scr-to-osgi-ds`) instead of editing it here;
-   - **does not write renditions** — renditions come from the processing profile; a step that writes them needs a custom worker instead.
+5. **Custom Java steps** (a `PROCESS` that is not an Adobe class; the tool keeps them). For each one in the project source, check with the user that it **runs on Cloud Service**: it uses only APIs available there. Hand code that needs changes to the matching Branch B patterns (`asset-manager`, `replication`, `scr-to-osgi-ds`) instead of editing it here.
 6. Record decisions and anything accepted as-is, then let the user commit.
 
 ## Post-deploy checks (RDE or dev environment)
