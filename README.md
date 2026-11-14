@@ -15,7 +15,7 @@ Pick plugins from the [table below](#plugins). The first column is the name to i
 
 ### GitHub Copilot CLI
 
-Copilot reads the Claude plugin manifests in this repository, so the same marketplace works there (verified 2026-09-17 with Copilot CLI 1.0.85 and the `stardust` plugin). Copilot in VS Code and the cloud agent pick the plugins up too.
+Copilot reads the plugin manifests in this repository, so the same marketplace works there (verified 2026-09-17 with Copilot CLI 1.0.85 and the `stardust` plugin). Copilot in VS Code and the cloud agent pick the plugins up too.
 
 ```bash
 copilot plugin marketplace add adobe/skills
