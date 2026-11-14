@@ -83,6 +83,9 @@ check('stageOfVerdict: pub* labels and content-presence rounds are published, th
   stageOfVerdict('pub1', V()) === 'published' && stageOfVerdict('pubF1', V()) === 'published'
   && stageOfVerdict('eds2', V({ probes: { 'content-presence': { rc: 0 } } })) === 'published'
   && stageOfVerdict('iter1', V()) === 'prototype' && stageOfVerdict('final', V()) === 'prototype');
+check('stageOfVerdict: a verdict file that names its stage (gate.sh writes it for every round) is read as that stage, whatever the label',
+  stageOfVerdict('iter1', { ...V(), stage: 'published' }) === 'published' && stageOfVerdict('pub1', { ...V(), stage: 'prototype' }) === 'prototype'
+  && stageOfVerdict('pub1', { ...V(), stage: 'roster' }) === 'published');
 
 // ── reconstruction from verdict-*.json ────────────────────────────────────────────────────────────────────────
 const rdir = gateDir('home-1440');

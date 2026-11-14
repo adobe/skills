@@ -7,6 +7,14 @@
 // line from the capture records — the dead faces, every face loaded, or NOT CHECKED for a record whose fontsFailed is
 // null or no readable record; information, the exit code unchanged; a failed live capture removes its record with
 // live.png), with stub instruments (no browser, no network).
+// The origin reference (the default origin): the first round freezes one (reference.mjs freeze, the round's overlay
+// flags and locale) and gates against it, the next reuses it with no live capture; an unstable reference ends the
+// round with exit 5 — no verdict file, no round recorded; a bot challenge is 3, a deadline 124; --live-origin and
+// GATE_REFERENCE=live are the round as it was; the reference's mask reaches pixel-compare merged with --mask. The
+// pixel criterion (pixel-compare --offset-max, the regime's bound or GATE_OFFSET_MAX_PX): aligned pass within the
+// bound → 0, offsets over it → 2 with the offsets reason, alignment not used → the unaligned rule; verdict-<label>.json
+// carries the round's pixel numbers. The sections written for the live-origin round run it through GATE_REFERENCE=live
+// (the `gate` helper's default here); the reference sections pass DEF.
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -81,9 +89,63 @@ stub(replica, 'measure.mjs', `
   console.log('measure  ' + process.argv[2]); console.log('  widths ' + w + ' · 1 selector(s) · 1 props · first match'); console.log(''); console.log('@ ' + w + 'px');
   if (!process.env.STUB_MEASURE_NO_ROOT) console.log('  root  scrollWidth ' + String(w + o).padStart(5) + '  viewport ' + w + '  scrollHeight   5410' + (o ? '  ◄◄ OVERFLOW +' + o + 'px' : ''));
   console.log('  html'); console.log('       x     0  y      0  w  ' + w + '  h  5410  vis  ""'); console.log('      display: block');`);
+// pixel-compare: the two legacy lines, then — through the REAL pixelVerdict / alignedLine (the rule's one home) — the
+// aligned line and the \`pixel:\` line for the summary STUB_PIXEL_JSON describes ({ pct, aligned: { used, pct, steps } };
+// default 1.2 %, alignment not used) under the --offset-max gate.sh passed; --json-out gets that summary (maskedRows =
+// the rows of --mask). Exit: STUB_PIXEL_RC when set (no summary written for a non-verdict code), else the rule's.
+// STUB_PIXEL_ARGS records the argv.
+const REAL_PIXEL = join(scripts, 'pixel-compare.mjs');
 stub(replica, 'pixel-compare.mjs', `
+  import { appendFileSync, writeFileSync } from 'node:fs';
+  import { alignedLine, pixelVerdict } from ${JSON.stringify(REAL_PIXEL)};
+  const a = process.argv.slice(2); const arg = (f) => (a.includes(f) ? a[a.indexOf(f) + 1] : null);
+  if (process.env.STUB_PIXEL_ARGS) appendFileSync(process.env.STUB_PIXEL_ARGS, a.join(' ') + '\\n');
   console.log('height delta 0px'); console.log('differing 1.20%');
-  process.exit(Number(process.env.STUB_PIXEL_RC || 0));`);
+  const forced = process.env.STUB_PIXEL_RC ? Number(process.env.STUB_PIXEL_RC) : null;
+  if (forced !== null && forced !== 0 && forced !== 2) process.exit(forced);
+  const given = JSON.parse(process.env.STUB_PIXEL_JSON || '{}');
+  const pct = given.pct ?? 1.2; const al = given.aligned || { used: false, pct, steps: [], reason: 'no offset step found' };
+  const aligned = { used: al.used, pct: al.pct ?? pct, steps: al.steps || [], totalShift: (al.steps || []).reduce((n, s) => n + Math.abs(s.shift), 0), maxOffset: 0, insertedRows: 0, deletedRows: 0, bands: [], reason: al.reason || null };
+  const maskedRows = (arg('--mask') || '').split(',').filter(Boolean).reduce((n, m) => n + Number(m.split(':')[1].split('@')[0]), 0);
+  const j = { pct, heightDelta: given.heightDelta ?? 0, compared: { width: 1440, height: given.height ?? 2000, mode: 'overlap' }, threshold: 10, maskedRows, bands: [], verdict: 'aligned', aligned };
+  const om = arg('--offset-max'); const v = pixelVerdict(j, { threshold: 10, offsetMax: om === 'prototype' || om === 'published' ? om : om === null ? null : Number(om) });
+  console.log(alignedLine(aligned, pct)); console.log(v.line);
+  const rc = forced ?? (v.pass ? 0 : 2);
+  if (arg('--json-out')) writeFileSync(arg('--json-out'), JSON.stringify({ ...j, pass: rc === 0, offsets: { bound: v.bound, totalShift: v.totalShift, pass: v.offsetsPass }, reason: v.reason }, null, 2) + '\\n');
+  process.exit(rc);`);
+// reference.mjs: \`freeze\` is the stub — it appends REF to STUB_STITCH_COUNT and its argv to STUB_REF_ARGS, then exits
+// STUB_REF_RC with reference.mjs's line for that code (2 = unstable: reference-unstable.json, nothing frozen; 3 = bot
+// challenge), fails ONCE with 1 under STUB_REF_FAIL_ONCE (a marker file), sleeps STUB_REF_SLEEP ms first, or freezes:
+// baseline.png + baseline.json in reference.mjs's shape — noiseFloor STUB_REF_FLOOR, the variable regions and maskArg
+// of STUB_REF_MASK ("y:h,…"). \`mask\` / \`status\` are the real script's (no browser).
+const REAL_REFERENCE = join(scripts, 'reference.mjs');
+stub(replica, 'reference.mjs', `
+  import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+  import { join } from 'node:path';
+  const [cmd, ...rest] = process.argv.slice(2);
+  if (cmd !== 'freeze') {
+    const { spawnSync } = await import('node:child_process');
+    const r = spawnSync(process.execPath, [${JSON.stringify(REAL_REFERENCE)}, cmd, ...rest], { stdio: 'inherit' });
+    process.exit(r.status ?? 1);
+  }
+  const [url, dir] = rest; const width = Number(rest[rest.indexOf('--width') + 1]);
+  if (process.env.STUB_STITCH_COUNT) appendFileSync(process.env.STUB_STITCH_COUNT, 'REF\\n');
+  if (process.env.STUB_REF_ARGS) appendFileSync(process.env.STUB_REF_ARGS, rest.join(' ') + '\\n');
+  if (process.env.STUB_REF_SLEEP) await new Promise((r) => setTimeout(r, Number(process.env.STUB_REF_SLEEP)));
+  mkdirSync(dir, { recursive: true });
+  const once = process.env.STUB_REF_FAIL_ONCE;
+  if (once && !existsSync(once)) { writeFileSync(once, '1'); console.log('reference: not frozen — the priming capture failed (stitch-shot exit 1)'); process.exit(1); }
+  const rc = Number(process.env.STUB_REF_RC || 0);
+  if (rc === 2) { writeFileSync(join(dir, 'reference-unstable.json'), '{ "stable": false }'); console.log('reference: UNSTABLE — heights 2000 vs 2640 after priming; not frozen'); process.exit(2); }
+  if (rc === 3) { console.log('reference: not frozen — the priming capture met a bot challenge (stitch-shot exit 3)'); process.exit(3); }
+  if (rc) { console.log('reference: not frozen — the capture failed (stitch-shot exit ' + rc + ')'); process.exit(rc); }
+  const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(',').filter(Boolean).map((m) => ({ y: Number(m.split(':')[0]), h: Number(m.split(':')[1]), pct: 12 }));
+  const noiseFloor = Number(process.env.STUB_REF_FLOOR || 0);
+  writeFileSync(join(dir, 'baseline.png'), 'frozen-reference-bytes');
+  writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width, vh: 900, height: 2000, settle: true, chunks: 3,
+    fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, prime: { height: 2100, pct: 31.4, heightDelta: 100 }, captures: 2, heights: [2000, 2000], noiseFloor, heightSpread: 0, outside: 0,
+    variable, variableShare: 0, maskArg, stable: true, reason: null, frozenAt: '2026-11-01T09:00:05.000Z' }, null, 2) + '\\n');
+  console.log('reference: frozen ' + width + '×2000, primed, noise floor ' + noiseFloor.toFixed(2) + '%' + (maskArg ? ' in ' + variable.length + ' variable region(s) → mask ' + maskArg : ', no variable region'));`);
 stub(replica, 'chrome-parity.mjs', `
   console.log('argv ' + process.argv.slice(2).join(' '));
   if (process.env.STUB_SLEEP) await new Promise((r) => setTimeout(r, Number(process.env.STUB_SLEEP)));
@@ -124,7 +186,7 @@ function gate(args, env = {}) {
   return new Promise((resolve) => {
     const child = spawn('bash', [join(replica, 'gate.sh'), ...args], {
       cwd: root,
-      env: { ...process.env, GATE_REAP_MIN: '0', ...env },
+      env: { ...process.env, GATE_REAP_MIN: '0', GATE_REFERENCE: 'live', ...env },
     });
     let stdout = '';
     let stderr = '';
@@ -133,6 +195,9 @@ function gate(args, env = {}) {
     child.on('close', (status) => resolve({ status, stdout, stderr }));
   });
 }
+
+// The default origin (the frozen reference): pass DEF as the env — the helper's own default is the live-origin round.
+const DEF = { GATE_REFERENCE: '' };
 
 // --help
 let r = await gate(['--help']);
@@ -373,7 +438,10 @@ const freezeBaseline = (slug, prov = PROV) => {
   writeFileSync(join(d, 'baseline.json'), `${JSON.stringify(prov, null, 2)}\n`);
 };
 r = await gate(['--help']);
-check('--help names --gate-against-baseline and its exit-125 precondition', /--gate-against-baseline/.test(r.stdout) && /without a usable\s+frozen baseline/.test(r.stdout), r.stdout.slice(0, 200));
+check('--help names the origin reference: the default, --live-origin, GATE_REFERENCE=live, --gate-against-baseline as a no-op, exit 5', /Origin reference/.test(r.stdout) && /--live-origin/.test(r.stdout) && /GATE_REFERENCE=live/.test(r.stdout)
+  && /--gate-against-baseline\s+accepted, a no-op/.test(r.stdout) && /5 origin reference UNSTABLE/.test(r.stdout) && /reference\.mjs freeze/.test(r.stdout), r.stdout.slice(0, 200));
+check('--help documents the pixel criterion and its env: aligned % ≤ threshold AND total offset ≤ GATE_OFFSET_MAX_PX (8 prototype; published the larger of 8 and 1 %)', /Pixel criterion/.test(r.stdout) && /GATE_OFFSET_MAX_PX/.test(r.stdout)
+  && /larger\s+of 8 and 1 % of the origin height/.test(r.stdout) && /offsets: 3 step\(s\), 37px total/.test(r.stdout), r.stdout.slice(0, 200));
 
 resetCount();
 freezeBaseline('blon');
@@ -385,36 +453,30 @@ check('live.json records origin "baseline", at = the capture time and originBase
   return lj.writtenBy === 'gate.sh --gate-against-baseline' && lj.origin === 'baseline' && lj.url === 'https://live.example/' && lj.width === 1440 && lj.at === PROV.capturedAt
     && JSON.stringify(lj.originBaseline) === JSON.stringify({ capturedAt: PROV.capturedAt, height: PROV.height });
 })(), liveJson('blon'));
-check('one stdout line names the frozen baseline and its capture time, before the verdict lines', /^gate\.sh: gating against the frozen origin baseline \(captured 2026-10-19T08:00:00\.000Z\) — origin side from baseline\.png, no fresh live shot\n[^]*differing/m.test(r.stdout), r.stdout);
+check('one stdout line names the frozen reference and its capture time among the verdict lines — a baseline frozen by stitch-shot has no measured noise floor, and the line says so', /differing[^]*^gate\.sh: reference: frozen 2026-10-19T08:00:00\.000Z, noise floor not measured \(frozen without priming — reference\.mjs freeze --force measures it\) — 0 rows excluded$/m.test(r.stdout), r.stdout);
 check('the pixel verdict and the overflow assert still print (the rest of the round is unchanged)', /differing 1\.20%/.test(r.stdout) && /overflow assert at 1440/.test(r.stdout), r.stdout);
 check('the live fonts line of a flagged round reads the frozen baseline\'s check (live.png is its copy and has no capture record)', /^gate\.sh: fonts on the live capture — every declared face loaded \(the frozen baseline's check\)$/m.test(r.stdout), r.stdout);
 
+// No usable baseline (missing, frozen for another width or URL, a lone PNG): the round freezes one — once — and gates
+// against it; the reason the old one was unusable is on the line.
 resetCount();
 r = await gate(['blmiss', 'https://live.example/', buildUrl, '1440', 'bl2', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
-check('flag ON with no baseline: exit 125 before any capture (no live, no build), one stderr line naming what is missing and the two ways out', r.status === 125 && attempts().length === 0
-  && /^gate\.sh: --gate-against-baseline set but no frozen baseline in stardust\/replica\/gates\/blmiss-1440 \(baseline\.png \+ baseline\.json\) — not gating against a live shot in its place: freeze one \(stitch-shot\.mjs "https:\/\/live\.example\/" stardust\/replica\/gates\/blmiss-1440\/baseline\.png --freeze-baseline --width 1440 --settle\) or drop the flag$/m.test(r.stderr)
-  && (r.stderr.match(/^gate\.sh: /gm) || []).length === 1, `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
-check('… and nothing was written: no live.png, no live.json, no verdict lines', livePng('blmiss') === null && liveJson('blmiss') === null && !/differing|overflow assert/.test(r.stdout), r.stdout);
-resetCount();
-freezeBaseline('blstale', { ...PROV, width: 360 });
-r = await gate(['blstale', 'https://live.example/', buildUrl, '1440', 'bl3', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
-check('flag ON with a baseline frozen at another width: exit 125, no capture, the one line says stale and names both widths', r.status === 125 && attempts().length === 0
-  && /^gate\.sh: --gate-against-baseline set but stale: stardust\/replica\/gates\/blstale-1440\/baseline\.json was frozen at 360px, this round is 1440px — re-freeze with --force — not gating against a live shot in its place/m.test(r.stderr) && livePng('blstale') === null, `status ${r.status} ${r.stderr}`);
-resetCount();
-freezeBaseline('blurl', { ...PROV, url: 'https://live.example/other' });
-r = await gate(['blurl', 'https://live.example/', buildUrl, '1440', 'bl4', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
-check('flag ON with a baseline frozen for another URL: exit 125, no capture, the one line names both URLs', r.status === 125 && attempts().length === 0
-  && /was frozen for https:\/\/live\.example\/other, this round's live URL is https:\/\/live\.example\/ — re-freeze with --force/.test(r.stderr), `status ${r.status} ${r.stderr}`);
-resetCount();
-mkdirSync(join(root, gdir('bllone')), { recursive: true }); writeFileSync(join(root, gdir('bllone'), 'baseline.png'), 'baseline-png-bytes');
-r = await gate(['bllone', 'https://live.example/', buildUrl, '1440', 'bl5', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
-check('flag ON with a lone baseline.png (no provenance): exit 125, no capture, the line names the interrupted freeze', r.status === 125 && attempts().length === 0 && /baseline\.png has no baseline\.json beside it \(an interrupted freeze\) — re-freeze with --force/.test(r.stderr), `status ${r.status} ${r.stderr}`);
+check('no baseline: the round freezes a reference (one freeze, then the build), says why, and passes against it', r.status === 0 && attempts().join(',') === 'REF,BUILD'
+  && /^gate\.sh: no usable frozen reference for blmiss@1440 \(no frozen baseline in stardust\/replica\/gates\/blmiss-1440 \(baseline\.png \+ baseline\.json\)\) — freezing one: a priming capture, then two kept \(reference\.mjs freeze\)$/m.test(r.stdout)
+  && livePng('blmiss') === 'frozen-reference-bytes' && JSON.parse(liveJson('blmiss') || '{}').origin === 'baseline', `status ${r.status} attempts ${attempts().join(',')} ${r.stdout} ${r.stderr}`);
+for (const [slug, prov, why] of [['blstale', { ...PROV, width: 360 }, /stale: .*was frozen at 360px, this round is 1440px/], ['blurl', { ...PROV, url: 'https://live.example/other' }, /was frozen for https:\/\/live\.example\/other, this round's live URL is https:\/\/live\.example\//], ['bllone', null, /baseline\.png has no baseline\.json beside it \(an interrupted freeze\)/]]) {
+  resetCount();
+  if (prov) freezeBaseline(slug, prov); else { mkdirSync(join(root, gdir(slug)), { recursive: true }); writeFileSync(join(root, gdir(slug), 'baseline.png'), 'baseline-png-bytes'); }
+  r = await gate([slug, 'https://live.example/', buildUrl, '1440', 'bl3', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+  check(`${slug}: an unusable baseline (another width / another URL / a lone PNG) is frozen again for this round's URL and width — its reason named, never compared`, r.status === 0 && attempts().join(',') === 'REF,BUILD'
+    && why.test(r.stdout) && livePng(slug) === 'frozen-reference-bytes' && JSON.parse(readFileSync(join(root, gdir(slug), 'baseline.json'), 'utf8')).width === 1440, `status ${r.status} attempts ${attempts().join(',')} ${r.stdout} ${r.stderr}`);
+}
 
 resetCount();
 freezeBaseline('bloff');
 r = await gate(['bloff', 'https://live.example/', buildUrl, '1440', 'bl6', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
-check('flag OFF (the default) with a baseline beside the round: unchanged — a fresh live shot, then the build; no live.json, no baseline line, live.png is the live capture', r.status === 0 && attempts().join(',') === 'LIVE,BUILD'
-  && liveJson('bloff') === null && livePng('bloff') === 'png' && !/frozen origin baseline/.test(r.stdout + r.stderr), `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+check('GATE_REFERENCE=live with a baseline beside the round: the round as it was — a fresh live shot, then the build; no live.json, the reference line says live, live.png is the live capture', r.status === 0 && attempts().join(',') === 'LIVE,BUILD'
+  && liveJson('bloff') === null && livePng('bloff') === 'png' && !/reference: frozen/.test(r.stdout + r.stderr) && /^gate\.sh: reference: a live capture \(--live-origin \/ GATE_REFERENCE=live, or no reference\.mjs\) — not primed, no noise floor measured, no rows excluded$/m.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
 resetCount();
 r = await gate(['bloff', 'https://live.example/', buildUrl, '1440', 'bl7', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
 check('… and the next round reuses that live.png (BUILD only), as on every round before this flag existed', r.status === 0 && attempts().join(',') === 'BUILD' && liveJson('bloff') === null, `attempts ${attempts().join(',')}`);
@@ -423,7 +485,7 @@ resetCount();
 writeFileSync(join(root, gdir('blon'), 'live.capture.json'), '{ "stale": "a live round\'s record" }\n');
 r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl8', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
 check('flag dropped after a flagged round: the baseline-derived live.png is retaken with one line — LIVE then BUILD, live.json removed, live.png is the live capture', r.status === 0 && attempts().join(',') === 'LIVE,BUILD'
-  && /^gate\.sh: live\.png is the frozen origin baseline \(a --gate-against-baseline round\); this round gates against the live origin — retaking it$/m.test(r.stderr) && (r.stderr.match(/retaking/g) || []).length === 1
+  && /^gate\.sh: live\.png is the frozen origin reference's copy; this round gates against the live origin \(--live-origin \/ GATE_REFERENCE=live\) — retaking it$/m.test(r.stderr) && (r.stderr.match(/retaking/g) || []).length === 1
   && liveJson('blon') === null && livePng('blon') === 'png', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr} ${liveJson('blon')}`);
 check('… and the stale capture record (live.capture.json) went with the retaken live.png — the retake wrote a fresh one', existsSync(join(root, gdir('blon'), 'live.capture.json')) && !readFileSync(join(root, gdir('blon'), 'live.capture.json'), 'utf8').includes('stale'));
 resetCount();
@@ -447,6 +509,134 @@ resetCount();
 r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl12', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
 check('… so the next unflagged round captures live (LIVE,BUILD) instead of reusing baseline bytes', r.status === 0 && attempts().join(',') === 'LIVE,BUILD' && livePng('blon') === 'png', `attempts ${attempts().join(',')} ${r.stderr}`);
 check('the frozen baseline itself is untouched by every round above', readFileSync(join(root, gdir('blon'), 'baseline.png'), 'utf8') === 'baseline-png-bytes' && JSON.parse(readFileSync(join(root, gdir('blon'), 'baseline.json'), 'utf8')).capturedAt === PROV.capturedAt);
+
+// ---- The origin reference as the DEFAULT origin, and the aligned pixel criterion (DEF: no GATE_REFERENCE) ------------
+// rounds.mjs is the real one for this section, so "recorded" and "not recorded" are read from rounds.json.
+cpSync(join(scripts, 'rounds.mjs'), join(replica, 'rounds.mjs'));
+const refArgsFile = join(root, 'ref-args.txt'); const pixelArgsFile = join(root, 'pixel-args.txt'); const stitchArgsFile = join(root, 'stitch-args-ref.txt');
+const lines = (f) => (existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').filter(Boolean) : []);
+const resetRefArgs = () => { for (const f of [refArgsFile, pixelArgsFile, stitchArgsFile]) if (existsSync(f)) unlinkSync(f); };
+const roundsOf = (slug) => { try { return Object.values(JSON.parse(readFileSync(join(root, gdir(slug), 'rounds.json'), 'utf8')).stages).flatMap((st) => st.rounds); } catch { return []; } };
+const verdictJson = (slug, label) => { const f = join(root, gdir(slug), `verdict-${label}.json`); return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null; };
+const REFENV = { ...DEF, STUB_STITCH_COUNT: countFile, STUB_REF_ARGS: refArgsFile, STUB_PIXEL_ARGS: pixelArgsFile, STUB_STITCH_ARGS: stitchArgsFile };
+const refRound = (slug, label, extra = [], env = {}) => gate([slug, `https://live.example/${slug}`, buildUrl, '1440', label, '--marker', 'home-proposed', ...extra], { ...REFENV, ...env });
+const steps = (...pairs) => { let c = 0; return pairs.map(([y, shift]) => { c += shift; return { y, shift, cumulative: c }; }); };
+const aligned = (pct, alignedPct, st, extra = {}) => JSON.stringify({ pct, aligned: { used: true, pct: alignedPct, steps: st }, ...extra });
+
+// First round: no reference → frozen (one freeze, the round's flags), then gated against; second round: reused.
+resetCount(); resetRefArgs();
+r = await refRound('ref1', 'r1', ['--consent', '#accept-all', '--dismiss', '.promo .close', '--locale', 'en-GB'], { STUB_REF_FLOOR: '2.31', STUB_REF_MASK: '392:56,4000:652' });
+check('default origin, first round: a reference is frozen (one freeze, no stitched live capture), then the build is captured and the round passes', r.status === 0 && attempts().join(',') === 'REF,BUILD', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+check('the freeze gets the live URL, the evidence dir, the width, the capture deadline and the round\'s overlay flags and locale', lines(refArgsFile).length === 1
+  && lines(refArgsFile)[0] === `https://live.example/ref1 ${gdir('ref1')} --width 1440 --timeout 300 --consent #accept-all --dismiss .promo .close --locale en-GB`, lines(refArgsFile).join('|'));
+check('… and the build capture gets the same flags and locale', /^BUILD .* --consent #accept-all --dismiss \.promo \.close --locale en-GB$/.test(lines(stitchArgsFile)[0] || ''), lines(stitchArgsFile).join('|'));
+check('the freeze is announced with the reason, and reference.mjs\'s own line is relayed', /^gate\.sh: no usable frozen reference for ref1@1440 \(no frozen baseline in .*\) — freezing one/m.test(r.stdout) && /^gate\.sh: reference: frozen 1440×2000, primed, noise floor 2\.31% in 2 variable region\(s\) → mask 392:56,4000:652$/m.test(r.stdout), r.stdout);
+check('the round gates against the frozen reference: live.png is its copy, live.json says origin "baseline"', livePng('ref1') === 'frozen-reference-bytes' && JSON.parse(liveJson('ref1') || '{}').origin === 'baseline');
+check('one verdict line says what the round was gated against: capture time, noise floor, regions, rows excluded', /^gate\.sh: reference: frozen 2026-11-01T09:00:00\.000Z, noise floor 2\.31% in 2 region\(s\) — 708 rows excluded$/m.test(r.stdout), r.stdout);
+check('the reference\'s mask reaches pixel-compare, with --offset-max at the regime\'s default and --json-out in the evidence dir', (() => { const a = lines(pixelArgsFile)[0] || ''; return / --offset-max prototype /.test(a) && a.includes(` --json-out ${gdir('ref1')}/pixel-r1.json`) && / --mask 392:56,4000:652$/.test(a); })(), lines(pixelArgsFile).join('|'));
+check('a round that passed on the unaligned number still passes (alignment not used → the unaligned rule), and the pixel: line says so', /^pixel: 1\.20% \(alignment not used — the unaligned number rules\) → PASS$/m.test(r.stdout), r.stdout);
+check('the round is recorded once, as a pass', roundsOf('ref1').length === 1 && roundsOf('ref1')[0].verdict === 'pass' && roundsOf('ref1')[0].label === 'r1', JSON.stringify(roundsOf('ref1')));
+check('verdict-<label>.json is written for a pixel-only round too: stage, the pixel numbers, the masked rows, the noise floor, the reference', (() => {
+  const v = verdictJson('ref1', 'r1');
+  return v && v.round === 'r1' && v.width === 1440 && v.stage === 'prototype' && v.pixel.rc === 0 && v.pixel.pct === 1.2 && v.pixel.alignedPct === 1.2 && v.pixel.alignedUsed === false && v.pixel.totalShift === 0
+    && Array.isArray(v.pixel.steps) && v.pixel.steps.length === 0 && v.pixel.maskedRows === 708 && v.pixel.noiseFloor === 2.31 && v.pixel.diff.endsWith('diff-r1.png') && v.pixel.json.endsWith('pixel-r1.json')
+    && v.reference.origin === 'frozen' && v.reference.capturedAt === '2026-11-01T09:00:00.000Z' && v.reference.primed === true && v.reference.maskArg === '392:56,4000:652'
+    && JSON.stringify(v.probes) === '{}' && v.structural === 0 && v.nothingLost === 0 && typeof v.at === 'string';
+})(), JSON.stringify(verdictJson('ref1', 'r1')));
+resetCount(); resetRefArgs();
+r = await refRound('ref1', 'r2', ['--mask', '10:20', '--mask', '300:40@310']);
+check('second round: the frozen reference is reused — no freeze, no live capture, only the build', r.status === 0 && attempts().join(',') === 'BUILD' && lines(refArgsFile).length === 0 && !/freezing one/.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')}`);
+check('a caller --mask (repeatable) is merged with the reference\'s: the caller\'s first, then the self-varying rows', / --mask 10:20,300:40@310,392:56,4000:652$/.test(lines(pixelArgsFile)[0] || '') && verdictJson('ref1', 'r2').pixel.maskedRows === 768, lines(pixelArgsFile).join('|'));
+resetCount();
+r = await refRound('ref1', 'r3', ['--full']);
+check('a --full round on the default origin: the probes run against the live URL, the verdict file keeps the pixel numbers beside the probes', r.status === 0 && attempts().join(',') === 'BUILD' && /^content-diff: none/m.test(r.stdout)
+  && readFileSync(join(root, gdir('ref1'), 'content-diff-r3.txt'), 'utf8').length > 0 && verdictJson('ref1', 'r3').pixel.noiseFloor === 2.31 && verdictJson('ref1', 'r3').probes['content-diff'].rc === 0 && verdictJson('ref1', 'r3').pixel.rc === 0, `status ${r.status} ${r.stdout}`);
+
+// An unstable reference: no verdict, a distinct exit, nothing recorded.
+resetCount(); resetRefArgs();
+r = await refRound('refun', 'u1', ['--full'], { STUB_REF_RC: '2' });
+check('an UNSTABLE reference ends the round with exit 5 after ONE freeze: no retry, no build capture, no pixel line, no probe', r.status === 5 && attempts().join(',') === 'REF' && !/differing|overflow assert|content-diff/.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')} ${r.stdout}`);
+check('reference.mjs\'s one-line reason is printed, then the way out: pin the state (overlay flags, --locale) or freeze --force after reading reference-unstable.json', /^gate\.sh: reference: UNSTABLE — heights 2000 vs 2640 after priming; not frozen$/m.test(r.stderr)
+  && new RegExp(`^gate\\.sh: REFERENCE UNSTABLE \\(exit 5\\) — .*NO VERDICT, the round is not counted\\. Pin the page's state and re-run — overlay flags \\(--consent <sel> / --dismiss <sel,…>\\), --locale <tag> — or read ${gdir('refun')}/reference-unstable\\.json \\(\\+ ref-\\*\\.png\\) and, when the variation is the page's own, freeze it anyway: node .*reference\\.mjs freeze "https://live\\.example/refun" ${gdir('refun')} --width 1440 --force$`, 'm').test(r.stderr), r.stderr);
+check('no verdict file, no round recorded, no baseline, no live.png', !readdirSync(join(root, gdir('refun'))).some((f) => /^verdict-|^baseline\.|^live\.png$|^pixel-/.test(f)) && roundsOf('refun').length === 0, `${readdirSync(join(root, gdir('refun'))).join(',')} ${JSON.stringify(roundsOf('refun'))}`);
+resetCount();
+r = await refRound('refun', 'u2');
+check('the next round freezes again (nothing was frozen) and, the page now stable, passes', r.status === 0 && attempts().join(',') === 'REF,BUILD', `status ${r.status} attempts ${attempts().join(',')}`);
+
+// No-verdict exits of the freeze: a bot challenge (3), a deadline (124), a capture error (1, retried once).
+resetCount();
+r = await refRound('refbot', 'b1', [], { STUB_REF_RC: '3' });
+check('a bot challenge during the freeze is exit 3 on the first attempt — the BLOCKED line, no build capture, nothing recorded, no verdict file', r.status === 3 && attempts().join(',') === 'REF'
+  && /^gate\.sh: reference capture BLOCKED \(exit 3\) — a bot challenge or 2xx denial page, not the page: no verdict for this round; escalate --headed$/m.test(r.stderr) && roundsOf('refbot').length === 0 && verdictJson('refbot', 'b1') === null, `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+resetCount();
+r = await refRound('refslow', 's1', [], { STUB_REF_SLEEP: '6000', GATE_REFERENCE_TIMEOUT: '1' });
+check('a freeze over GATE_REFERENCE_TIMEOUT is exit 124 — no verdict, not retried, nothing recorded', r.status === 124 && attempts().join(',') === 'REF' && /^gate\.sh: reference freeze hit its deadline \(exit 124\) — no verdict, re-run the round/m.test(r.stderr) && roundsOf('refslow').length === 0, `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+resetCount();
+r = await refRound('refonce', 'o1', [], { STUB_REF_FAIL_ONCE: join(root, 'once-ref') });
+check('a freeze that exits 1 once is retried once and the round passes', r.status === 0 && attempts().join(',') === 'REF,REF,BUILD' && /^gate\.sh: reference freeze exited 1 — retrying once/m.test(r.stderr), `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+resetCount();
+r = await refRound('referr', 'e1', [], { STUB_REF_RC: '1' });
+check('two exit-1 freezes: exit 1, re-queue named, no verdict', r.status === 1 && attempts().join(',') === 'REF,REF' && /reference capture failed \(exit 1\) — not comparing \(twice: no verdict — re-queue the round\)/.test(r.stderr) && roundsOf('referr').length === 0, `status ${r.status} ${r.stderr}`);
+r = await refRound('ref1', 'd1', [], { STUB_PIXEL_RC: '124' });
+check('a pixel deadline on the default origin is still exit 124 with no verdict file and no round recorded', r.status === 124 && verdictJson('ref1', 'd1') === null && !roundsOf('ref1').some((x) => x.label === 'd1'), `status ${r.status}`);
+r = await refRound('ref1', 'd2', [], { STUB_STITCH_RC_BUILD: '3' });
+check('a blocked build capture on the default origin is still exit 3', r.status === 3 && verdictJson('ref1', 'd2') === null, `status ${r.status}`);
+
+// --live-origin: the round as it was, for one round; GATE_REFERENCE=live the same for every round (the helper default).
+resetCount();
+r = await refRound('reflive', 'l1', ['--live-origin']);
+check('--live-origin: a live capture, then the build — no freeze, no baseline written, live.png is the capture, the reference line says live', r.status === 0 && attempts().join(',') === 'LIVE,BUILD' && livePng('reflive') === 'png'
+  && !existsSync(join(root, gdir('reflive'), 'baseline.png')) && liveJson('reflive') === null && /^gate\.sh: reference: a live capture/m.test(r.stdout) && verdictJson('reflive', 'l1').reference.origin === 'live' && verdictJson('reflive', 'l1').pixel.noiseFloor === null, `status ${r.status} attempts ${attempts().join(',')}`);
+check('… and pixel-compare gets no reference mask', !/--mask/.test(lines(pixelArgsFile).pop() || ''), lines(pixelArgsFile).pop());
+resetCount();
+r = await gate(['reflive', 'https://live.example/reflive', buildUrl, '1440', 'l2', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile, GATE_REFERENCE: 'live' });
+check('GATE_REFERENCE=live: the same for every round — the cached live.png is reused, no freeze', r.status === 0 && attempts().join(',') === 'BUILD' && !existsSync(join(root, gdir('reflive'), 'baseline.png')), `status ${r.status} attempts ${attempts().join(',')}`);
+resetCount();
+r = await gate(['reflive', 'https://live.example/reflive', buildUrl, '1440', 'l3', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile, GATE_REFERENCE: 'live' });
+check('--gate-against-baseline is accepted and means the default: over GATE_REFERENCE=live it freezes and gates against the reference', r.status === 0 && attempts().join(',') === 'REF,BUILD' && livePng('reflive') === 'frozen-reference-bytes', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+r = await gate(['reflive', 'https://live.example/reflive', buildUrl, '1440', 'l4', '--marker', 'home-proposed'], { GATE_REFERENCE: 'sometimes' });
+check('GATE_REFERENCE takes frozen or live only (exit 125)', r.status === 125 && /GATE_REFERENCE must be frozen or live/.test(r.stderr), `status ${r.status} ${r.stderr}`);
+resetCount();
+unlinkSync(join(replica, 'rounds.mjs')); const refStub = readFileSync(join(replica, 'reference.mjs'), 'utf8'); unlinkSync(join(replica, 'reference.mjs'));
+r = await gate(['refnone', 'https://live.example/refnone', buildUrl, '1440', 'n1', '--marker', 'home-proposed'], { ...DEF, STUB_STITCH_COUNT: countFile });
+check('a project copy without reference.mjs: one stdout line, the round gates against a live capture', r.status === 0 && attempts().join(',') === 'LIVE,BUILD' && /^gate\.sh: .*reference\.mjs missing — this round gates against a live capture/m.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')} ${r.stdout}`);
+writeFileSync(join(replica, 'reference.mjs'), refStub); cpSync(join(scripts, 'rounds.mjs'), join(replica, 'rounds.mjs'));
+
+// The pixel criterion: aligned % ≤ threshold AND total offset ≤ the bound (8 prototype; published the larger of 8 and 1 %).
+r = await refRound('px1', 'a1', [], { STUB_PIXEL_JSON: aligned(16.62, 1.23, steps([103, -5])) });
+check('aligned % within the threshold, offsets within the bound → exit 0 although the unaligned number is over the threshold', r.status === 0, `status ${r.status} ${r.stdout}`);
+check('the aligned line of pixel-compare and the pixel: line — both percentages, the offset list, the bound — are printed after the pixel lines', /differing 1\.20%\n^aligned: 1\.23% \(unaligned 16\.62%\) — 1 offset step: −5px at y=103$/m.test(r.stdout)
+  && /^pixel: aligned 1\.23% \(unaligned 16\.62%\) → PASS — offsets: 1 step\(s\), 5px total — −5px at y=103 \(bound 8px\)$/m.test(r.stdout), r.stdout);
+check('the verdict file carries both percentages, alignedUsed, the total shift and the steps', (() => { const v = verdictJson('px1', 'a1').pixel; return v.rc === 0 && v.pct === 16.62 && v.alignedPct === 1.23 && v.alignedUsed === true && v.totalShift === 5 && JSON.stringify(v.steps) === JSON.stringify(steps([103, -5])) && v.offsetBound === 8 && v.reason === null; })(), JSON.stringify(verdictJson('px1', 'a1')));
+r = await refRound('px1', 'a2', [], { STUB_PIXEL_JSON: aligned(16.62, 1.23, steps([103, -5], [2125, -20], [3300, -12])) });
+check('aligned % within the threshold but offsets over the bound → exit 2, and the reason names the offsets, not a percentage', r.status === 2
+  && /^pixel: aligned 1\.23% \(unaligned 16\.62%\) → FAIL — offsets: 3 step\(s\), 37px total — −5px at y=103, −20px at y=2125, −12px at y=3300 \(bound 8px\)$/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+check('… recorded as a FAIL round, the verdict file says why', roundsOf('px1').map((x) => x.verdict).join(',') === 'pass,fail' && (() => { const v = verdictJson('px1', 'a2').pixel; return v.rc === 2 && v.totalShift === 37 && v.steps.length === 3 && /^offsets: 3 step\(s\), 37px total/.test(v.reason) && !/%/.test(v.reason); })(), JSON.stringify(verdictJson('px1', 'a2')));
+resetRefArgs();
+r = await refRound('px2', 'a3', [], { STUB_PIXEL_JSON: aligned(16.62, 1.23, steps([103, -5], [2125, -20], [3300, -12]), { height: 5000 }), GATE_REGIME: 'published' });
+check('published regime: the bound is the larger of 8 and 1 % of the origin height — 37 px pass on a 5000 px origin (bound 50)', r.status === 0 && / --offset-max published /.test(lines(pixelArgsFile)[0] || '') && /\(bound 50px\)$/m.test(r.stdout) && verdictJson('px2', 'a3').stage === 'published' && verdictJson('px2', 'a3').pixel.offsetBound === 50, `status ${r.status} ${r.stdout}`);
+resetRefArgs();
+r = await refRound('px3', 'a4', [], { STUB_PIXEL_JSON: aligned(16.62, 1.23, steps([103, -5], [2125, -20], [3300, -12])), GATE_OFFSET_MAX_PX: '40' });
+check('GATE_OFFSET_MAX_PX overrides the bound: 37 px pass at 40', r.status === 0 && / --offset-max 40 /.test(lines(pixelArgsFile)[0] || '') && /\(bound 40px\)$/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+r = await refRound('px3', 'a5', [], { STUB_PIXEL_JSON: aligned(16.62, 1.23, steps([103, -5], [2125, -20], [3300, -12])), GATE_OFFSET_MAX_PX: '36' });
+check('… and fail at 36', r.status === 2, `status ${r.status}`);
+r = await refRound('px3', 'a6', [], { GATE_OFFSET_MAX_PX: '8px' });
+check('GATE_OFFSET_MAX_PX must be a whole number (exit 125)', r.status === 125 && /GATE_OFFSET_MAX_PX must be a whole number of px/.test(r.stderr), `status ${r.status} ${r.stderr}`);
+r = await refRound('px4', 'a7', [], { STUB_PIXEL_JSON: aligned(30.1, 12, steps([103, 4])) });
+check('the aligned % over the threshold fails on the percentage', r.status === 2 && /^pixel: aligned 12\.00% \(unaligned 30\.10%\) > 10% → FAIL — offsets: 1 step\(s\), 4px total/m.test(r.stdout) && verdictJson('px4', 'a7').pixel.reason === 'pixel aligned 12% (unaligned 30.1%) > 10%', `status ${r.status} ${r.stdout}`);
+r = await refRound('px5', 'a8', [], { STUB_PIXEL_JSON: JSON.stringify({ pct: 16.62, aligned: { used: false, pct: 16.62, steps: [], reason: 'aligned number not lower than the unaligned one' } }) });
+check('alignment not used (used: false) → the unaligned number rules: 16.62 % fails', r.status === 2 && /^pixel: 16\.62% \(alignment not used — the unaligned number rules\) > 10% → FAIL$/m.test(r.stdout) && verdictJson('px5', 'a8').pixel.alignedUsed === false && verdictJson('px5', 'a8').pixel.alignedPct === 16.62, `status ${r.status} ${r.stdout}`);
+r = await refRound('px5', 'a9', [], { STUB_PIXEL_JSON: JSON.stringify({ pct: 9.5, aligned: { used: false, pct: 9.5, steps: [] } }) });
+check('… and 9.5 % passes, as it did before alignment', r.status === 0, `status ${r.status}`);
+r = await refRound('px6', 'a10', [], { STUB_PIXEL_JSON: aligned(9.5, 4, steps([400, 3], [900, -5])) });
+check('a round that passed on the unaligned number (9.5 %) still passes when its offsets are within the bound (8 px) …', r.status === 0, `status ${r.status} ${r.stdout}`);
+r = await refRound('px6', 'a11', [], { STUB_PIXEL_JSON: aligned(9.5, 4, steps([400, 3], [900, -6])) });
+check('… and fails only when they exceed it (9 px): the one new way to fail', r.status === 2 && /→ FAIL — offsets: 2 step\(s\), 9px total/.test(r.stdout), `status ${r.status} ${r.stdout}`);
+r = await refRound('px7', 'a12', [], { STUB_PIXEL_JSON: aligned(16.62, 1.23, steps([1, 1], [2, 1], [3, 1], [4, 1], [5, 1], [6, 1], [7, 1], [8, 1], [9, 1], [10, 1], [11, 1], [12, 1], [13, 1], [14, 1])) });
+check('the offset list prints at most 6 steps then "… N more"; the verdict file keeps at most 12', r.status === 2 && /\+1px at y=6, … 8 more \(bound 8px\)$/m.test(r.stdout) && verdictJson('px7', 'a12').pixel.steps.length === 12 && verdictJson('px7', 'a12').pixel.totalShift === 14, `status ${r.status} ${r.stdout}`);
+r = await refRound('px8', 'a13', [], { STUB_PIXEL_JSON: aligned(16.62, 1.23, steps([103, -5])), STUB_OVERFLOW: '13' });
+check('the overflow assert still rules an aligned PASS (exit 2), and the verdict file records the round\'s exit', r.status === 2 && /OVERFLOW at 1440/.test(r.stdout) && verdictJson('px8', 'a13').pixel.rc === 2, `status ${r.status}`);
+unlinkSync(join(replica, 'rounds.mjs'));
 
 // Disk (#156): a round keeps only its own diff image and vdiff dir; earlier rounds keep their text and JSON evidence.
 const kdir = join(root, 'stardust/replica/gates/keep-1440');

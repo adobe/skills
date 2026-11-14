@@ -90,6 +90,11 @@ check('parsers read the instruments\' verdict lines and nothing else', () => {
   assert.deepEqual(parseVerdict(`${pixelLog(-9, 12, 100, '12.00', 'FAIL')}\n`), { px: 12, total: 100, pct: 12, threshold: 10, verdict: 'FAIL', heightDelta: -9 });
   assert.equal(parseVerdict('differing pixels: 1 / 100 = 1.00%  (threshold 10%) → PASS  [MASKED 40 rows: 0:40 — authored-volatile, excluded]').verdict, 'PASS');
   assert.equal(parseVerdict('run-bg: x launched: gate.sh a b c 1440'), null);
+  // an aligned round: the differing line keeps the unaligned %, its PASS|FAIL is the pixel criterion's; the pixel: line adds the aligned % and the offsets
+  const alignedLog = (verdict, tail) => `${pixelLog(-5, 1662, 10000, '16.62', verdict)}\naligned: 1.23% (unaligned 16.62%) — 1 offset step: −5px at y=103  [verdict on the aligned number]\npixel: aligned 1.23% (unaligned 16.62%) → ${verdict} — ${tail}\ndiff image: d.png\n`;
+  assert.deepEqual(parseVerdict(alignedLog('PASS', 'offsets: 1 step(s), 5px total — −5px at y=103 (bound 8px)')), { px: 1662, total: 10000, pct: 16.62, threshold: 10, verdict: 'PASS', heightDelta: -5, alignedPct: 1.23, offsets: 'offsets: 1 step(s), 5px total — −5px at y=103 (bound 8px)' });
+  assert.equal(parseVerdict(alignedLog('FAIL', 'offsets: 3 step(s), 37px total — −5px at y=103, −20px at y=2125, −12px at y=3300 (bound 8px)')).verdict, 'FAIL', 'offsets over the bound: the round is a FAIL although the aligned % is low');
+  assert.equal(parseVerdict(`${pixelLog(0, 12, 1000, '1.20', 'PASS')}\npixel: 1.20% (alignment not used — the unaligned number rules) → PASS\n`).alignedPct, undefined, 'alignment not used: no aligned number');
   assert.deepEqual(parseFindings('x\nFindings: none — content + roles match\n'), { total: 0, structural: 0, lost: 0, text: 'none — content + roles match' });
   assert.deepEqual(parseFindings('Findings: 3 (1 structural 🔴)\n  🔴 MISSING'), { total: 3, structural: 1, lost: 0, text: '3 (1 structural 🔴)' });
   assert.deepEqual(parseFindings('Findings: 4 (0 structural 🔴)\nTiers: looks-same 🔴 0 · nothing-lost 🟡 2 · accepted 🟢 5 · advisory 2\n'), { total: 4, structural: 0, lost: 2, text: '4 (0 structural 🔴)' }, 'the probe\'s own Tiers line');

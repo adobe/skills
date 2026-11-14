@@ -49,7 +49,7 @@
  * thresholds }.
  *
  * Exit codes: 0 frozen / reused / usable (status, mask) / stable (assess), 1 error or no usable reference,
- * 2 unstable (not frozen), 3 bot challenge (stitch-shot's), 125 usage.
+ * 2 unstable (not frozen), 3 bot challenge (stitch-shot's), 124 a capture exceeded --timeout (no verdict), 125 usage.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-continue */
@@ -88,7 +88,7 @@ maskArg, stable, reason, frozenAt, flags, thresholds. Unstable → nothing froze
 reference-unstable.json stay. A usable baseline for this URL and width is reused without a capture.
 One verdict line on stdout; the children's output goes to stderr.
 Exit codes: 0 frozen / reused / usable / stable, 1 error or no usable reference, 2 unstable (not frozen),
-3 bot challenge (stitch-shot's exit 3), 125 usage.`;
+3 bot challenge (stitch-shot's exit 3), 124 a capture exceeded --timeout, 125 usage.`;
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) { console.log(HELP); process.exit(0); }
 
@@ -228,7 +228,7 @@ export function freeze(o, deps) {
   const names = ['prime', ...Array.from({ length: o.captures }, (_, i) => `ref-${i + 1}`)].map((n) => join(o.dir, `${n}.png`));
   for (const png of names) {
     const code = deps.capture(o.url, png, o);
-    if (code !== 0) return { code: code === 3 ? 3 : 1, line: `reference: not frozen — the ${png === names[0] ? 'priming ' : ''}capture ${code === 3 ? 'met a bot challenge (stitch-shot exit 3)' : `failed (stitch-shot exit ${code})`}` };
+    if (code !== 0) return { code: code === 3 || code === 124 ? code : 1, line: `reference: not frozen — the ${png === names[0] ? 'priming ' : ''}capture ${code === 3 ? 'met a bot challenge (stitch-shot exit 3)' : code === 124 ? `exceeded its ${o.timeout}s deadline (exit 124 — no verdict, re-run)` : `failed (stitch-shot exit ${code})`}` };
   }
   const [primePng, ...refs] = names;
   const first = deps.compare(primePng, refs[0], { band: o.band, out: join(o.dir, 'ref-diff-prime.png') });
@@ -277,7 +277,7 @@ export const realDeps = {
   capture(url, png, o) {
     const r = spawnSync(process.execPath, [join(HERE, 'stitch-shot.mjs'), url, png, ...captureArgs(o)], { stdio: ['ignore', 2, 2], timeout: o.timeout > 0 ? o.timeout * 1000 : undefined });
     if (r.error) console.error(`reference: stitch-shot ${r.error.code === 'ETIMEDOUT' ? `exceeded ${o.timeout}s` : r.error.message}`);
-    return r.status ?? 1;
+    return r.error && r.error.code === 'ETIMEDOUT' ? 124 : r.status ?? 1;
   },
   // stitch-shot's `baseline <dir>` — the one definition of a usable frozen baseline
   baselineCheck(dir, { url = null, width = null } = {}) {

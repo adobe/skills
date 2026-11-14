@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  ALIGN, alignVerdict, alignedCompare, alignedLine, offsetBreakpoints, offsetMap, rowSignatures, stepsOf,
+  ALIGN, alignVerdict, alignedCompare, alignedLine, offsetBound, offsetBreakpoints, offsetMap, offsetsText, pixelVerdict, rowSignatures, stepsOf,
 } from '../pixel-compare.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -260,6 +260,69 @@ check('alignVerdict: lower and plausible → used; not lower, too many steps, ba
   assert.equal(alignVerdict(cand({ totalShift: ALIGN.maxChurn + 10 }), 50, -10), null);
 });
 
+// ── the gates' pixel criterion (--offset-max): aligned % ≤ threshold AND the offsets within the bound ─────────────────
+const stepsN = (...shifts) => { let c = 0; return shifts.map((shift, i) => { c += shift; return { y: 100 + 1000 * i, shift, cumulative: c }; }); };
+const pxj = (pct, al = null, height = 5000, heightDelta = 0) => ({ pct, heightDelta, compared: { width: 1440, height }, ...(al ? { aligned: { used: al.used !== false, pct: al.pct ?? pct, steps: al.steps || [], totalShift: (al.steps || []).reduce((n, s) => n + Math.abs(s.shift), 0), reason: al.reason || null } } : {}) });
+check('offsetBound: a number as given; prototype = 8; published = the larger of 8 and 1 % of the origin height; null = no bound', () => {
+  assert.equal(offsetBound(20, 99999), 20); assert.equal(offsetBound('prototype', 99999), 8);
+  assert.equal(offsetBound('published', 500), 8); assert.equal(offsetBound('published', 5000), 50); assert.equal(offsetBound('published', 849), 8); assert.equal(offsetBound('published', 850), 9);
+  assert.equal(offsetBound(null, 5000), null); assert.equal(offsetBound(0, 5000), 0);
+});
+check('pixelVerdict: aligned % within the threshold and offsets within the bound → pass, both numbers on the line', () => {
+  const v = pixelVerdict(pxj(16.62, { pct: 1.23, steps: stepsN(-5, 2) }), { threshold: 10, offsetMax: 'prototype' });
+  assert.equal(v.pass, true); assert.equal(v.reason, null); assert.equal(v.used, true); assert.equal(v.alignedPct, 1.23); assert.equal(v.pct, 16.62); assert.equal(v.totalShift, 7); assert.equal(v.bound, 8);
+  assert.equal(v.line, 'pixel: aligned 1.23% (unaligned 16.62%) → PASS — offsets: 2 step(s), 7px total — −5px at y=103, +2px at y=1100 (bound 8px)'.replace('y=103', 'y=100'));
+});
+check('pixelVerdict: aligned % within the threshold but offsets over the bound → FAIL, and the reason names the offsets, not a percentage', () => {
+  const v = pixelVerdict(pxj(16.62, { pct: 1.23, steps: stepsN(-5, -20, -12) }), { threshold: 10, offsetMax: 'prototype' });
+  assert.equal(v.pass, false); assert.equal(v.offsetsPass, false);
+  assert.equal(v.reason, 'offsets: 3 step(s), 37px total — −5px at y=100, −20px at y=1100, −12px at y=2100 (bound 8px)');
+  assert.doesNotMatch(v.reason, /%/);
+  assert.match(v.line, /^pixel: aligned 1\.23% \(unaligned 16\.62%\) → FAIL — offsets: 3 step\(s\), 37px total/);
+});
+check('pixelVerdict: the bound per stage — 37 px fail the prototype bound (8) and pass the published one on a 5000 px origin (50); an explicit number wins', () => {
+  const p = pxj(16.62, { pct: 1.23, steps: stepsN(-5, -20, -12) });
+  assert.equal(pixelVerdict(p, { offsetMax: 'prototype' }).pass, false);
+  const pub = pixelVerdict(p, { offsetMax: 'published' }); assert.equal(pub.pass, true); assert.equal(pub.bound, 50);
+  assert.equal(pixelVerdict(pxj(16.62, { pct: 1.23, steps: stepsN(-5, -20, -12) }, 600), { offsetMax: 'published' }).pass, false, '1 % of 600 is under 8: the floor rules');
+  assert.equal(pixelVerdict(p, { offsetMax: 40 }).pass, true); assert.equal(pixelVerdict(p, { offsetMax: 36 }).pass, false);
+  assert.equal(pixelVerdict(p, { offsetMax: null }).pass, true, 'no bound asked: the aligned number alone');
+});
+check('pixelVerdict: the origin height is the overlap plus the origin\'s own tail (heightDelta = A − B > 0)', () => {
+  assert.equal(pixelVerdict(pxj(3, { pct: 1, steps: stepsN(-30) }, 2000, 1000), { offsetMax: 'published' }).bound, 30);
+  assert.equal(pixelVerdict(pxj(3, { pct: 1, steps: stepsN(30) }, 2000, -1000), { offsetMax: 'published' }).bound, 20);
+});
+check('pixelVerdict: the aligned % over the threshold fails on the percentage, the offsets still listed on the line', () => {
+  const v = pixelVerdict(pxj(30.1, { pct: 12, steps: stepsN(4) }), { threshold: 10, offsetMax: 'prototype' });
+  assert.equal(v.pass, false); assert.equal(v.reason, 'pixel aligned 12% (unaligned 30.1%) > 10%');
+  assert.equal(v.line, 'pixel: aligned 12.00% (unaligned 30.10%) > 10% → FAIL — offsets: 1 step(s), 4px total — +4px at y=100 (bound 8px)');
+});
+check('pixelVerdict: alignment not used (used false, or a summary from before --align) → the unaligned rule, no bound', () => {
+  for (const p of [pxj(9.9, { used: false, pct: 9.9, reason: 'no offset step found' }), pxj(9.9)]) {
+    const v = pixelVerdict(p, { threshold: 10, offsetMax: 'prototype' });
+    assert.equal(v.pass, true); assert.equal(v.used, false); assert.equal(v.bound, null); assert.equal(v.alignedPct, 9.9); assert.deepEqual(v.steps, []);
+    assert.equal(v.line, 'pixel: 9.90% (alignment not used — the unaligned number rules) → PASS');
+  }
+  const f = pixelVerdict(pxj(16.62, { used: false, pct: 16.62 }), { threshold: 10, offsetMax: 'prototype' });
+  assert.equal(f.pass, false); assert.equal(f.reason, 'pixel 16.62% > 10%');
+});
+check('pixelVerdict: a page that passed on the unaligned number still passes unless its offsets exceed the bound', () => {
+  // the aligned number is never above the unaligned one, so the percentage half can only get easier
+  for (const pct of [0, 1.2, 9.99, 10]) {
+    assert.equal(pixelVerdict(pxj(pct), { threshold: 10, offsetMax: 'prototype' }).pass, true, `unaligned ${pct}, no alignment`);
+    assert.equal(pixelVerdict(pxj(pct, { used: false, pct }), { threshold: 10, offsetMax: 'prototype' }).pass, true, `unaligned ${pct}, not used`);
+    assert.equal(pixelVerdict(pxj(pct, { pct: pct / 2, steps: stepsN(3, -5) }), { threshold: 10, offsetMax: 'prototype' }).pass, true, `unaligned ${pct}, 8 px of offsets`);
+    assert.equal(pixelVerdict(pxj(pct, { pct: pct / 2, steps: stepsN(3, -6) }), { threshold: 10, offsetMax: 'prototype' }).pass, pct === 0 ? false : false, `unaligned ${pct}, 9 px of offsets: the one new way to fail`);
+  }
+});
+check('offsetsText / pixelVerdict: at most 6 steps on the line then "… N more"; at most 12 kept in steps, stepCount says how many there were', () => {
+  const s = stepsN(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1);
+  assert.equal(offsetsText(s.slice(0, 6)), '+1px at y=100, +1px at y=1100, +1px at y=2100, +1px at y=3100, +1px at y=4100, +1px at y=5100');
+  assert.match(offsetsText(s), /\+1px at y=5100, … 8 more$/);
+  const v = pixelVerdict(pxj(20, { pct: 1, steps: s }), { offsetMax: 'prototype' });
+  assert.equal(v.steps.length, 12); assert.equal(v.stepCount, 14); assert.equal(v.totalShift, 14); assert.match(v.reason, /^offsets: 14 step\(s\), 14px total — .*… 8 more \(bound 8px\)$/);
+});
+
 check('alignedLine: the one text line, used and not used', () => {
   assert.equal(alignedLine({ used: true, pct: 0.21, steps: [{ y: 64, shift: -5, cumulative: -5 }], insertedRows: 0, deletedRows: 5 }, 13.57), 'aligned: 0.21% (unaligned 13.57%) — 1 offset step: −5px at y=64  [0 rows only in B, 5 only in A — counted as differing]');
   assert.match(alignedLine({ used: true, pct: 1, steps: [{ y: 3, shift: 10, cumulative: 10 }, { y: 9, shift: 6, cumulative: 16 }], insertedRows: 16, deletedRows: 0 }, 40), /2 offset steps: \+10px at y=3, \+6px at y=9/);
@@ -364,6 +427,22 @@ if (PNG && pixelmatch) {
     assert.deepEqual(j.aligned.compared, { width: W, height: H + 10 - 60, mode: 'aligned' });
     const open = JSON.parse(run(a, b, '--align', '--json', '--out', join(dir, 'm2', 'diff.png')).stdout);
     assert.ok(open.aligned.differingPixels >= 10 * W + 0.8 * 60 * W);
+  });
+
+  check('CLI --offset-max: one +10 step fails the prototype bound (exit 2, the offsets reason, a pixel: line) and passes at 10 px; --json-out writes the same summary beside the text', () => {
+    const b = write('shift10.png', insertAt(A, 330, blanks(10)));
+    const out = join(dir, 'om', 'diff.png'); const jf = join(dir, 'om.json');
+    const r = run(a, b, '--offset-max', 'prototype', '--json-out', jf, '--out', out);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stdout, /^differing pixels: .* → FAIL$/m); assert.match(r.stdout, /^aligned: .* 1 offset step: \+10px at y=\d+/m);
+    assert.match(r.stdout, /^pixel: aligned \d+\.\d\d% \(unaligned \d+\.\d\d%\) → FAIL — offsets: 1 step\(s\), 10px total — \+10px at y=\d+ \(bound 8px\)$/m);
+    const j = JSON.parse(readFileSync(jf, 'utf8'));
+    assert.equal(j.pass, false); assert.equal(j.verdict, 'aligned'); assert.deepEqual(j.offsets, { bound: 8, totalShift: 10, pass: false }); assert.match(j.reason, /^offsets: 1 step\(s\), 10px total/);
+    assert.equal(j.aligned.used, true); assert.ok(j.aligned.pct < 10 && j.pct > 10);
+    const ok = run(a, b, '--offset-max', '10', '--json', '--out', out);
+    assert.equal(ok.status, 0); const k = JSON.parse(ok.stdout); assert.equal(k.pass, true); assert.equal(k.reason, null); assert.deepEqual(k.offsets, { bound: 10, totalShift: 10, pass: true });
+    assert.equal(run(a, a, '--offset-max', 'prototype', '--out', out).status, 0, 'identical pages: alignment not used, the unaligned rule');
+    assert.equal(run(a, b, '--offset-max', 'wide', '--out', out).status, 1);
   });
 
   check('CLI: deterministic — two runs print byte-identical JSON; --timeout 0 (no supervisor) prints the same', () => {

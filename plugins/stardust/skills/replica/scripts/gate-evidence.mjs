@@ -277,11 +277,15 @@ export const deadline = (job) => job.timedOut === true || job.exit === 124;
 
 // ---- verdict parsers (pure) --------------------------------------------------------------------
 // pixel-compare: `A WxH  B WxH  → compare WxH, height delta Npx` then `differing pixels: n / m = p%  (threshold t%) → PASS|FAIL…`.
+// p is the UNALIGNED %; the PASS|FAIL is the pixel criterion's (gate.sh runs the compare aligned, --offset-max: aligned %
+// and offsets), so a round that used alignment also prints `pixel: aligned a% (unaligned p%) → …` after it — `alignedPct`,
+// present only then, with `offsets` (the step list) when the line carries one.
 export function parseVerdict(text) {
   const v = [...text.matchAll(/differing pixels: (\d+) \/ (\d+) = ([\d.]+)%\s+\(threshold ([\d.]+)%\) → (PASS|FAIL)/g)].pop();
   if (!v) return null;
   const h = [...text.matchAll(/→ compare \d+x\d+, height delta (-?\d+)px/g)].pop();
-  return { px: Number(v[1]), total: Number(v[2]), pct: Number(v[3]), threshold: Number(v[4]), verdict: v[5], heightDelta: h ? Number(h[1]) : null };
+  const al = /^pixel: aligned ([\d.]+)% \(unaligned [\d.]+%\)[^\n]*? → (?:PASS|FAIL)(?: — (offsets: [^\n]*))?$/m.exec(text.slice(v.index));
+  return { px: Number(v[1]), total: Number(v[2]), pct: Number(v[3]), threshold: Number(v[4]), verdict: v[5], heightDelta: h ? Number(h[1]) : null, ...(al ? { alignedPct: Number(al[1]), ...(al[2] ? { offsets: al[2] } : {}) } : {}) };
 }
 // content-diff: `Findings: none — content + roles match` | `Findings: N (S structural 🔴)`, then `Tiers: looks-same 🔴 S ·
 // nothing-lost 🟡 L · …`; gate.sh --full echoes both on one `content-diff: ` line. lost = the nothing-lost count of the
@@ -392,7 +396,7 @@ export function derive(page, jobs, o, ctx) {
       if (!row) { open(`pixel-gate-${w}`, `no row in the pixel table (${[t.published && 'all', t.prototype && 'prototypes'].filter(Boolean).map((n) => `${n}-${w}`).join(', ')}) — run gate-all.mjs${t.published ? '' : ' --stage prototype'} so the page is measured`); continue; }
       const regime = t.published && t.published[page.slug] ? 'published' : 'prototype';
       facts.pixel[w] = { pct: row.pct, px: null, heightDelta: row.heightDelta, overflowX: null, clipped: row.clipped ?? null, content: row.content || null, verdict: row.pass ? 'PASS' : 'FAIL', label: 'table', regime };
-      const line = `${fmtPct(row.pct)}, height delta ${row.heightDelta ?? '?'}px, clipped ${row.clipped ?? 'n/a'}, content ${row.contentNA ? 'n/a' : row.content ? `MISSING ${row.content.missing} / HIDDEN ${row.content.hidden}` : 'n/a'} (${relative(process.cwd(), row.file).replace(/\.json$/, '.md')}) [${regime} regime]`;
+      const line = `${row.alignedUsed && row.alignedPct != null ? `aligned ${fmtPct(row.alignedPct)} (unaligned ${fmtPct(row.pct)}), offsets ${row.totalShift}px` : fmtPct(row.pct)}, height delta ${row.heightDelta ?? '?'}px, clipped ${row.clipped ?? 'n/a'}, content ${row.contentNA ? 'n/a' : row.content ? `MISSING ${row.content.missing} / HIDDEN ${row.content.hidden}` : 'n/a'} (${relative(process.cwd(), row.file).replace(/\.json$/, '.md')}) [${regime} regime]`;
       if (row.pass) pass(`pixel-gate-${w}`, line); else open(`pixel-gate-${w}`, `${(row.reasons || []).join('; ') || 'FAIL'} — ${line}`, 'FAIL');
       continue;
     }
@@ -403,7 +407,7 @@ export function derive(page, jobs, o, ctx) {
     const regime = regimeOf(j);
     const ov = parseOverflow(j.log);
     facts.pixel[w] = { pct: v.pct, px: v.px, heightDelta: v.heightDelta, overflowX: ov ? ov.px : null, verdict: v.verdict, label, regime };
-    const line = `${fmtPct(v.pct)} (${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)} [${regime} regime]`;
+    const line = `${v.alignedPct != null ? `aligned ${fmtPct(v.alignedPct)} (unaligned ${fmtPct(v.pct)}${v.offsets ? `; ${v.offsets}` : ''}) (` : `${fmtPct(v.pct)} (`}${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)} [${regime} regime]`;
     const withinHeight = v.heightDelta !== null && Math.abs(v.heightDelta) <= o.heightTolerance;
     // The overflow assert and the --full element lines outrank the pixel line: a build wider than its viewport, a
     // clipped text / control or a MISSING / HIDDEN link never earns the gate (#125).

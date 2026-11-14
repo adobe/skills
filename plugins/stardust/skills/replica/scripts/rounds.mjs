@@ -45,10 +45,10 @@
  *     "stages": { "<stage>": { "rounds": [ { label, at, verdict, kind } ], "decisions": [ … ] } } }
  *
  * Reconstruction (a gate dir with no readable rounds.json): the verdict-<label>.json files are
- * the rounds, ordered by their `at` (file mtime when absent). Only `--full` rounds leave one, so
- * pixel-only rounds of that past are not counted. Stage = published when the label starts with
- * `pub` or the file carries a content-presence probe (gate.sh runs it in the published regime
- * only), else prototype. Verdict as gate.sh exits: none (not counted) on any exit 124, a pixel
+ * the rounds, ordered by their `at` (file mtime when absent). Before gate.sh wrote one for every
+ * round only `--full` rounds left one, so pixel-only rounds of that past are not counted. Stage =
+ * the file's `stage` when it has one; else published when the label starts with `pub` or the file
+ * carries a content-presence probe (gate.sh runs it in the published regime only), else prototype. Verdict as gate.sh exits: none (not counted) on any exit 124, a pixel
  * exit other than 0 / 2 or a probe exit other than 0 / 2; fail on pixel 2, structural or
  * nothing-lost > 0, or exit 2 from chrome-parity, clip-probe, content-presence or unit-geometry;
  * else pass. Kinds come from order and verdict alone, never from the label: `map0` is `first`
@@ -121,7 +121,7 @@ export function verdictOf(v) {
   return fail ? 'fail' : 'pass';
 }
 
-export const stageOfVerdict = (label, v) => (/^pub/i.test(label) || Boolean(v?.probes?.['content-presence']) ? 'published' : 'prototype');
+export const stageOfVerdict = (label, v) => (['published', 'prototype'].includes(v?.stage) ? v.stage : /^pub/i.test(label) || Boolean(v?.probes?.['content-presence']) ? 'published' : 'prototype');
 
 /** Rebuild a ledger from the verdict-*.json files of a gate dir (header § Reconstruction). `skipLabel`: this round's own file. */
 export function reconstruct(dir, { skipLabel = null } = {}) {

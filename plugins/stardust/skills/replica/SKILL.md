@@ -260,7 +260,7 @@ node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
 # A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
 # round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
-node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, height delta, hot bands, structural 🔴, flags, chrome deltas
+node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, offsets, height delta, hot bands, structural 🔴, flags, chrome deltas
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
 G=stardust/replica/gates/<slug>-1440
@@ -287,9 +287,8 @@ a verdict; 0 only when all four ran and passed).
 **Pass bar (all four per breakpoint, plus the content-cap row):**
 - content-diff: **0 🔴 and 0 nothing-lost 🟡** on the main and chrome roots (gate doc § Pass bar item 1);
 - visual-diff: flags none or justified;
-- pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
-  (the band breakdown is the navigation instrument — fix the first hot band,
-  top-down; everything below it is offset-contaminated);
+- pixel: aligned **≤ 10%** and offsets within the bound, no per-500px band unexplained
+  (the offset steps are the fix list; bands are read after alignment);
 - height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar);
 - **content-cap row: `cap-probe.mjs … --against` prints `cap-probe: PASS`**
   (gate doc § Pass bar item 6 — every live cap held within ±20 px by kind,

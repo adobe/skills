@@ -90,9 +90,9 @@ The prototype capture is re-taken every iteration.
    fork. A live page's own quirks are justified when the prototype mirrors
    them (e.g. a 1×1 SEO h1 at x0, a carousel tile at a negative offset —
    both real UC1-E1 justifications).
-3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
-   breakdown). 10% is the ship bar, not the target; the validated run
-   landed at 1.31%.
+3. **pixel: aligned % ≤ 10% AND the offsets within the bound**
+   (`gate.sh --help` § Pixel criterion) — AND no band left unexplained (§ Band
+   breakdown). 10% is the ship bar; the validated run landed at 1.31%.
 4. **height delta: |Δ| ≤ 8px** — pixel-compare's own warning threshold is
    the bar (it prints ⚠ above 8px), so a −9px result is unambiguously a
    residual, not a pass. A large delta invalidates the % — the overlap crop
@@ -281,16 +281,14 @@ Only when `DESIGN.json` `extensions.breakpoints.target` is set (replica
 
 ## Reading the band breakdown
 
-The overall % hides WHERE drift starts. `pixel-compare.mjs` prints per-500px
-bands (`--band` to change); read them top-down:
+The overall % hides WHERE drift starts. `pixel-compare.mjs` prints the offset
+steps and per-500px bands (`--band` to change):
 
-- **The first hot band (◄◄, >15%) is the actionable one.** It points at the
-  section whose height or geometry is wrong at that y-range.
-- **Every band below the first hot band is contaminated** by the vertical
-  offset that section introduced — do not chase them yet.
-- Fix the first hot band's section (usually a margin/padding/height value —
-  re-lift it from the source CSS rather than nudging), re-capture the
-  prototype, re-compare, repeat.
+- **The offset steps are the fix list** — each a section's height or gap wrong
+  at that y (usually a margin/padding/height value — re-lift it from the
+  source CSS rather than nudging): fix every one in ONE round.
+- **Bands are read after alignment** (`aligned N%`): a band still hot there
+  differs in itself, not by an offset above it.
 - A page with height Δ 0 and uniformly warm bands (no single hot band) has a
   global fault — wrong base font metric, wrong container width, a missing
   background — not a per-section one.
@@ -304,9 +302,8 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width $W   # once per fix ro
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width $W   # free — build-side only
 ```
 
-Diff the two outputs, fix the FIRST section whose `[y, height]` disagrees
-(top-down — everything below it is offset-contaminated, the same rule as
-the band table), re-run pixels. Field-validated (a financial-services site, 8 pages): this
+Diff the two outputs, fix every section whose `height` disagrees (an offset
+step's y names it), re-run pixels. Field-validated (a financial-services site, 8 pages): this
 loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
 wraps one full pixel round (stitch both sides — live cached — + compare +
 verdict) in one command.
@@ -334,8 +331,7 @@ runs over the same stitched PNGs — no live hit):**
   `--color <#rrggbb>` lists every row run dominated by it on both sides and
   pairs them in order: the per-pair delta is each landmark's offset, and the
   CHANGE in delta between consecutive pairs (`gapShift`) names the one
-  inter-landmark CSS gap that absorbed the shift. Patch that gap, re-measure,
-  top-down — the same contamination rule as the band table. Recorded: three
+  inter-landmark CSS gap that absorbed the shift. Patch that gap, re-measure. Recorded: three
   passes driven this way took a page 16.9% → 11.05% and a 1559px height
   delta → 48px. Do not tune margins by eye against crops. (Crop with pngjs;
   macOS `sips --cropOffset` is unreliable for band crops.)
@@ -458,15 +454,14 @@ named instrument defect — `extend`. More loops mean the inputs were wrong
   `BotChallengeError` on the first challenge-classified response (the
   wait+reload solve window runs only under `--headed`, where clearance can
   actually land) — so the block budget is still intact when you escalate.
-- **Origin baseline (opt-in, default off): gate every round against ONE
-  frozen origin.** When the live site changes between rounds (a hero
-  rotates, a banner appears) the pixel target moves under the fix rounds and
-  a FAIL measures the origin, not the build. Freeze it once per archetype and
-  width (`stitch-shot.mjs "$LIVE" "$GATE/baseline.png" --freeze-baseline
-  --width $W --settle`), then pass `--gate-against-baseline` to every
-  `gate.sh` round. It holds the pixel-compare's origin still and nothing
-  else — a `--full` round's diff probes still read the live page. The two
-  `--help` texts own the refusals, the records and the exit codes.
+- **Origin reference (the default): every round gates against ONE frozen
+  origin.** `gate.sh` freezes it on the page's first round
+  (`reference.mjs freeze`: session primed, the page measured against itself,
+  its self-varying rows masked) and never re-captures it; a page that is not
+  one page across captures ends the round with exit 5, no verdict. It holds
+  the pixel-compare's origin still and nothing else — a `--full` round's diff
+  probes still read the live page. The two `--help` texts own the opt-out,
+  the records and the exit codes.
 - **Instrument deadlines are the gate's, not yours.** `gate.sh` runs each
   capture under `run-capped.mjs` (stitch 300 s, compare 120 s —
   `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's
@@ -820,7 +815,7 @@ and settle them the same way (`measure-live.mjs`), and writes
 `stardust/replica/gates/all-<width>/<slug>/{origin,eds,diff}.png + pixel.json + content.json +
 clip.json [+ units.json]` and `summary.{json,md}` (a passed page keeps no PNG, #156). **Verdict, per page — all four:**
 
-1. **pixel** — overlap % ≤ `--threshold` (default 10).
+1. **pixel** — the archetype gate's criterion (`--threshold`, default 10; `--offset-max`).
 2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see
    a render thousands of px too tall; a union (white-padded) metric was tried and rejected
    (white gaps score as matches), so the guard is explicit.
@@ -839,7 +834,7 @@ clip.json [+ units.json]` and `summary.{json,md}` (a passed page keeps no PNG, #
    `required: true`; others are advisory rows.)
 
 **The table rule.** `--stage prototype` (pages with a `prototypePath`, build = the served
-prototype dir, origin = the archetype round's cached `live.png` when present) writes
+prototype dir, origin = the page's frozen reference) writes
 `gates/prototypes-<w>/summary.{json,md}`; the default published stage writes
 `gates/all-<w>/`. Both are read by `gate-evidence.mjs`: with a table for the width, a
 page's row decides `pixel-gate-<w>` and a page without a row is `OPEN: no table row`;

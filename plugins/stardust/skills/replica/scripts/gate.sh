@@ -1,20 +1,65 @@
 #!/bin/bash
 # skills/replica/scripts/gate.sh — one pixel-gate round in one command
 #
-# Stitches both sides (live capture CACHED across iterations — hit
-# minimization, source-fidelity-gate.md § Iteration discipline), runs the
-# horizontal-overflow assert on the build side, runs pixel-compare, and prints
-# the verdict lines that drive the loop (size / height delta / differing % /
-# hot bands / overflow). The prototype/build side is re-captured every round;
-# the live side only when live.png is absent — delete it explicitly to re-take
-# (site changed, capture hardening changed, a new --consent / --dismiss selector) —
-# or, opt-in, never: a frozen origin baseline (--gate-against-baseline, below)
-# holds the pixel-compare's origin still.
+# Gates the build against the page's FROZEN ORIGIN REFERENCE (§ Origin reference: primed, measured
+# against itself, frozen once per page × width by reference.mjs — hit minimization,
+# source-fidelity-gate.md § Iteration discipline), runs the horizontal-overflow assert on the build
+# side, runs pixel-compare ALIGNED (§ Pixel criterion), and prints the verdict lines that drive the
+# loop (size / height delta / differing % / aligned % and offset steps / bands / reference /
+# overflow). The prototype/build side is re-captured every round; the origin never is, until its
+# baseline.png + baseline.json are deleted (site changed, capture hardening changed, a new
+# --consent / --dismiss selector, another --locale).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
 #       [--marker <string>] [--full] [--main <selector>] [--consent <sel>] [--dismiss <sel,…>]
-#       [--no-dismiss] [--gate-against-baseline] [--help]
+#       [--no-dismiss] [--locale <tag>] [--mask <yA:h[@yB],…>] [--live-origin]
+#       [--gate-against-baseline] [--help]
+#
+# Origin reference (the default origin of every round):
+#   No usable frozen reference in the evidence dir (`stitch-shot.mjs baseline <dir> --url --width`:
+#   baseline.png + baseline.json for this URL and width) → the round freezes one first:
+#   `reference.mjs freeze <live-url> <dir> --width <w>` with the round's overlay flags and locale — one
+#   PRIMING capture discarded (the session's first visit is not the page's steady state: on 5 of 25
+#   recorded pages it differed from every later capture by 4–75 %), two kept captures compared with
+#   each other (the NOISE FLOOR; 4 of 25 pages vary 2–16 % on every capture), the rows where the page
+#   differs from itself derived as a mask. Its exits: 0 frozen → the round goes on; 2 UNSTABLE (the
+#   captures are not one page: nothing frozen) → reference.mjs's one line, then this round ENDS WITHOUT
+#   A VERDICT, exit 5, not counted — pin the page's state (--consent / --dismiss, --locale) and re-run,
+#   or read <dir>/reference-unstable.json + ref-*.png and, when the variation is the page's own,
+#   `reference.mjs freeze <live-url> <dir> --width <w> --force`; 3 bot challenge and 124 deadline as a
+#   capture's (below); 1 is retried once like a capture. The freeze runs under GATE_REFERENCE_TIMEOUT
+#   (each capture under GATE_STITCH_TIMEOUT).
+#   A usable reference is the origin side with no capture: baseline.png copied over live.png (sibling
+#   temp + rename), live.json records origin "baseline" + originBaseline { capturedAt, height }; a copy
+#   or record that fails ends the round (exit 1). `reference.mjs mask <dir>` — the page's self-varying
+#   rows — joins the pixel-compare --mask list (with any --mask of the caller), and one line says what
+#   the round was gated against:
+#   `gate.sh: reference: frozen <capturedAt>, noise floor 2.31% in 2 region(s) — 708 rows excluded`.
+#   It holds the PIXEL target still only: a --full round's probes still navigate the live URL.
+#   --live-origin   this round gates against a live capture instead, as every round did before the
+#            reference: live.png captured when absent and reused (unprimed, no noise floor, no mask); a
+#            live.png whose live.json says origin "baseline" is retaken (one line), one with no
+#            live.json is reused when its live.capture.json records fixedLayers, else retaken.
+#            GATE_REFERENCE=live in the environment does the same for every round — the opt-out for a
+#            project copy mid-run. Without reference.mjs beside this script: one stdout line, the round
+#            gates against a live capture (re-copy the replica scripts dir).
+#   --gate-against-baseline   accepted, a no-op: the frozen reference is the default (it overrides
+#            GATE_REFERENCE=live for the round).
+#
+# Pixel criterion (pixel-compare.mjs --offset-max owns the rule; its --help):
+#   pixel-compare runs with --align: beside the overlap number (B laid on A from the top-left, so a
+#   5 px shift near the top read 13.7 %) it finds the vertical offset steps between the two captures
+#   and counts again. The criterion passes when
+#       aligned % ≤ threshold (10)   AND   total offset (the sum of |step|) ≤ GATE_OFFSET_MAX_PX
+#   GATE_OFFSET_MAX_PX defaults to 8 in the prototype regime and, in the published regime, to the larger
+#   of 8 and 1 % of the origin height. Aligned % within the threshold but offsets over the bound → FAIL
+#   with `offsets: 3 step(s), 37px total — −5px at y=103, −20px at y=2125, …`, never a percentage: the
+#   steps are the fix list, every one in ONE round (at most 6 printed, then `… N more`; all of them in
+#   pixel-<label>.json). Alignment not used (aligned.used false: no step found, or not lower) → the
+#   unaligned number against the threshold, as before; a round that passed on the unaligned number
+#   still passes unless its offsets exceed the bound. The line, after pixel-compare's own:
+#   `pixel: aligned 1.23% (unaligned 16.62%) → PASS — offsets: 1 step(s), 5px total — −5px at y=103 (bound 8px)`.
 #
 # Horizontal-overflow assert (every round, build side only — no live hit):
 #   after the build capture, measure.mjs reads document.documentElement's
@@ -83,53 +128,49 @@
 #   --dismiss <sel,…>   extra overlay-dismiss selectors (marketing modals with non-standard closers), same reach
 #   --no-dismiss        do not dismiss consent/marketing overlays — captures, probes and chrome-parity (exit 125
 #                       together with --consent / --dismiss: they contradict)
-#   --gate-against-baseline  Origin baseline (opt-in, default OFF): the frozen baseline.png + baseline.json in the
-#            evidence dir (written once by `stitch-shot.mjs <live-url> <dir>/baseline.png --freeze-baseline --width <w>
-#            --settle`) is the origin side of the pixel-compare instead of a live shot — copied over live.png (sibling
-#            temp + rename), live.json records origin "baseline" + originBaseline { capturedAt, height }, one stdout
-#            line names the capture time. It holds the PIXEL target still only: a --full round's diff probes still
-#            navigate the live URL. Checked BEFORE any capture (`stitch-shot.mjs baseline <dir> --url --width`): a
-#            missing, lone, unreadable or stale baseline (another URL or width) ends the round with that one line on
-#            stderr and exit 125 — never a live shot in its place. Flag OFF: the round is the one it always was; a
-#            live.png whose live.json says origin "baseline" is retaken (one line; its records go with it), a
-#            live.png with no live.json is a live capture: reused when its live.capture.json records fixedLayers,
-#            retaken (one line) when it does not — captured before fixed layers were captured once.
+#   --locale <tag>      pin Accept-Language + locale (e.g. en-GB) — the reference, both captures, the probes
+#   --mask <yA:h[@yB],…>  rows excluded from the pixel number (pixel-compare --mask; repeatable) — merged with
+#                       the reference's self-varying rows
+#   --live-origin | --gate-against-baseline   § Origin reference
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, overflow-<label>.txt — a round deletes earlier rounds'
-# diff-*.png and vdiff-*/ dirs, their text and JSON stay (#156, disk); under
-# --gate-against-baseline also live.json, beside the frozen baseline.png + baseline.json; a
-# capture also leaves its record, live.capture.json / build.capture.json — stitch-shot's).
+# (baseline.png + baseline.json — the frozen reference, with its ref-*.png captures — live.png, live.json,
+# build.png, diff-<label>.png + diff-<label>-aligned.png, pixel-<label>.json (pixel-compare's summary: both
+# numbers, every offset step, the aligned bands), overflow-<label>.txt, and verdict-<label>.json for every
+# round that reached a verdict: { round, width, stage, pixel { rc, diff, json, pct, alignedPct, alignedUsed,
+# totalShift, steps (≤ 12), offsetBound, maskedRows, noiseFloor, reason }, reference, probes, structural,
+# nothingLost, at } — a round deletes earlier rounds' diff-*.png and vdiff-*/ dirs, their text and JSON stay
+# (#156, disk); a capture also leaves its record, live.capture.json / build.capture.json — stitch-shot's).
 #
 # Fonts (every round, both sides — source-fidelity-gate.md § Hardening rule 14): after the
 #   overflow line, one `gate.sh: fonts on the <live|build> capture — …` line per side from the
 #   capture record's fontsFailed — the DEAD FACE(S), `every declared face loaded`, or NOT CHECKED
 #   (null, or no readable record: an older stitch-shot copy, or a live.png from a round before
-#   the check). Under --gate-against-baseline the live side reads the frozen baseline's check.
+#   the check). On a frozen-reference round the live side reads the frozen baseline's check.
 #   Information for the loop, never a verdict (gate-all fails its rows on the same records).
 #
 # Fail-loud contract: a stitch-shot bot challenge (exit 3 — an edge
 # interstitial or a 2xx denial page; the capture's one-line reason precedes
 # this script's BLOCKED line on stderr) or capture error aborts the round — a
 # missing/blocked side must never be compared, and a blocked round has no
-# verdict. Exit codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal
+# verdict. Exit codes: 0 gate PASS, 2 gate FAIL (the pixel criterion, or horizontal
 # overflow on the build side), 3 bot challenge, 1 capture/compare error (after the one
 # retry — re-queue, not a verdict), 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
-# server), 124 instrument deadline exceeded (not a measurement — see below),
-# 125 unknown argument (usage) or --gate-against-baseline without a usable
-# frozen baseline (freeze one, or drop the flag), 6 round refused by the cap.
+# server), 5 origin reference UNSTABLE — nothing frozen, no verdict, not a counted
+# round (§ Origin reference), 124 instrument deadline exceeded (not a measurement —
+# see below), 125 unknown argument (usage), 6 round refused by the cap.
 #
 # Round cap (source-fidelity-gate.md § Iteration discipline): before any other work
 #   `rounds.mjs check` reads <evidence dir>/rounds.json for this stage (prototype | published
 #   — the regime rule under --full, GATE_REGIME overrides); at the cap, or after a recorded
 #   decision closed the triple, the round ends with rounds.mjs's one line on stderr (it names
 #   the `rounds.mjs decide` command) and exit 6 — no curl, no capture. A round that ends with
-#   a verdict (exit 0 or 2) is recorded by `rounds.mjs record`; 1, 3, 4, 124 and 125 never are.
+#   a verdict (exit 0 or 2) is recorded by `rounds.mjs record`; 1, 3, 4, 5, 124 and 125 never are.
 #   STARDUST_ROUND_CAP=0 turns the refusal off (rounds are still recorded) — for a project
 #   mid-run when this check arrives. Without rounds.mjs beside this script: one stdout line,
 #   the round runs uncounted (re-copy the replica scripts dir).
@@ -151,6 +192,10 @@
 #   GATE_COMPARE_TIMEOUT seconds per pixel-compare        (default 120)
 #   GATE_REAP_MIN        stale-instrument age in minutes  (default 15; 0 disables)
 #   GATE_PROBE_TIMEOUT   seconds per --full probe          (default 300)
+#   GATE_REFERENCE_TIMEOUT  seconds for one reference freeze (default 3 × GATE_STITCH_TIMEOUT + 3 × GATE_COMPARE_TIMEOUT)
+#   GATE_OFFSET_MAX_PX   px of total offset the pixel criterion allows (default: 8 prototype; published the
+#                        larger of 8 and 1 % of the origin height)
+#   GATE_REFERENCE       live = every round gates against a live capture (--live-origin); default frozen
 set -u
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
@@ -169,7 +214,13 @@ MAIN=main
 DISMISS=1
 CONSENT=""
 DISMISS_EXTRA=""
-BASELINE=0
+LOCALE=""
+MASK=""
+case "${GATE_REFERENCE:-frozen}" in
+  frozen) BASELINE=1 ;;
+  live) BASELINE=0 ;;
+  *) echo "gate.sh: GATE_REFERENCE must be frozen or live (got '${GATE_REFERENCE}')" >&2; exit 125 ;;
+esac
 shift 4
 if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then LBL=$1; shift; fi
 while [ $# -gt 0 ]; do
@@ -180,7 +231,10 @@ while [ $# -gt 0 ]; do
     --consent) CONSENT=${2:?--consent needs a selector}; shift 2 ;;
     --dismiss) DISMISS_EXTRA=${2:?--dismiss needs a selector list}; shift 2 ;;
     --no-dismiss) DISMISS=0; shift ;;
+    --locale) LOCALE=${2:?--locale needs a tag}; shift 2 ;;
+    --mask) MASK="${MASK:+$MASK,}${2:?--mask needs yA:h[@yB],…}"; shift 2 ;;
     --gate-against-baseline) BASELINE=1; shift ;;
+    --live-origin) BASELINE=0; shift ;;
     --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
     *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
   esac
@@ -202,6 +256,8 @@ if [ "$DISMISS" = 1 ]; then
 else
   STITCH_OPTS=(--no-dismiss); CHROME_OPTS=(--no-dismiss)
 fi
+# --locale reaches the reference, both captures and every probe (they all take the flag).
+if [ -n "$LOCALE" ]; then STITCH_OPTS+=(--locale "$LOCALE"); PROBE_OPTS+=(--locale "$LOCALE"); CHROME_OPTS+=(--locale "$LOCALE"); fi
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
@@ -210,8 +266,10 @@ mkdir -p "$DIR"
 STITCH_TIMEOUT=${GATE_STITCH_TIMEOUT:-300}
 COMPARE_TIMEOUT=${GATE_COMPARE_TIMEOUT:-120}
 PROBE_TIMEOUT=${GATE_PROBE_TIMEOUT:-300}
+REF_TIMEOUT=${GATE_REFERENCE_TIMEOUT:-$(( 3 * STITCH_TIMEOUT + 3 * COMPARE_TIMEOUT ))}
 OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
 case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
+case "${GATE_OFFSET_MAX_PX:-}" in *[!0-9]*) echo "gate.sh: GATE_OFFSET_MAX_PX must be a whole number of px (got '$GATE_OFFSET_MAX_PX')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
 # Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
 case "${GATE_REGIME:-auto}" in
@@ -234,16 +292,17 @@ if [ -f "$HERE/rounds.mjs" ]; then
 else
   echo "gate.sh: $HERE/rounds.mjs missing — the round runs uncounted; re-copy the replica scripts dir (replica SKILL.md § Setup)"
 fi
-# --gate-against-baseline (header § flags; default OFF): the flag's precondition is settled before any process is
-# reaped or any capture spent. `stitch-shot.mjs baseline <dir> --url --width` answers with the frozen baseline's
-# capturedAt (exit 0) or the one-line reason it is unusable (exit 1) — then the round ends with that line: the flag
-# exists so the origin cannot move under the run, so a live shot is never taken in the baseline's place.
-BASE_AT=""
+# Origin reference (header § Origin reference): `stitch-shot.mjs baseline <dir> --url --width` answers with the frozen
+# baseline's capturedAt (exit 0) or the one-line reason it is unusable (exit 1) — then one is frozen below, after the
+# reap and the identity assertion (a foreign build server costs one curl, not three live captures).
+BASE_AT=""; HAVE_BASE=0; ORIGIN=live
+if [ "$BASELINE" = 1 ] && [ ! -f "$HERE/reference.mjs" ]; then
+  echo "gate.sh: $HERE/reference.mjs missing — this round gates against a live capture (unprimed, no noise floor); re-copy the replica scripts dir (replica SKILL.md § Setup)"
+  BASELINE=0
+fi
 if [ "$BASELINE" = 1 ]; then
-  if ! BASE_AT=$(node "$HERE/stitch-shot.mjs" baseline "$DIR" --url "$LIVE_URL" --width "$W"); then
-    echo "gate.sh: --gate-against-baseline set but ${BASE_AT:-no usable frozen baseline for $SLUG@$W} — not gating against a live shot in its place: freeze one (stitch-shot.mjs \"$LIVE_URL\" $DIR/baseline.png --freeze-baseline --width $W --settle) or drop the flag" >&2
-    exit 125
-  fi
+  ORIGIN=frozen
+  if BASE_AT=$(node "$HERE/stitch-shot.mjs" baseline "$DIR" --url "$LIVE_URL" --width "$W"); then HAVE_BASE=1; fi
 fi
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 # One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
@@ -329,15 +388,37 @@ fi
 # (--settle: live JS-heavy pages need the lazyload pass; STITCH_OPTS: the
 # round's overlay dismissal, header § Overlay dismissal). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
-# --gate-against-baseline: the frozen baseline is the origin side instead — baseline.png copied over live.png
-# (sibling temp + rename, so a crash never leaves a torn origin) and live.json written by `stitch-shot.mjs record`
-# (origin "baseline", originBaseline { capturedAt, height }), so a later round can tell the frozen copy from a live
-# capture; no live shot is taken (a --full round's probes still navigate the live URL). The previous round's records
-# — live.json and the capture record live.capture.json — go first, and a copy or record that fails removes
-# live.png and ends the round (exit 1, one line): baseline bytes never sit under a missing or stale record.
-# Flag OFF: a live.png whose live.json says origin "baseline" was a flagged round's copy — retaken with one line,
-# its records removed with it; a live.png with no live.json is a live capture — reused only when live.capture.json
-# records fixedLayers, else retaken (below).
+# The frozen reference (the default) is the origin side instead — frozen first when the dir has no usable one
+# (reference.mjs freeze: its one line on stdout, its captures' output on stderr; exit 2 = unstable → exit 5, no
+# verdict), then baseline.png copied over live.png (sibling temp + rename, so a crash never leaves a torn origin) and
+# live.json written by `stitch-shot.mjs record` (origin "baseline", originBaseline { capturedAt, height }), so a later
+# round can tell the frozen copy from a live capture; no live shot is taken (a --full round's probes still navigate
+# the live URL). The previous round's records — live.json and the capture record live.capture.json — go first, and a
+# copy or record that fails removes live.png and ends the round (exit 1, one line): baseline bytes never sit under a
+# missing or stale record.
+# --live-origin / GATE_REFERENCE=live: a live.png whose live.json says origin "baseline" was a frozen round's copy —
+# retaken with one line, its records removed with it; a live.png with no live.json is a live capture — reused only
+# when live.capture.json records fixedLayers, else retaken (below).
+if [ "$BASELINE" = 1 ] && [ "$HAVE_BASE" = 0 ]; then
+  echo "gate.sh: no usable frozen reference for $SLUG@$W (${BASE_AT:-none}) — freezing one: a priming capture, then two kept (reference.mjs freeze)"
+  REF_LINE="$DIR/reference-freeze.txt"
+  freeze_ref() { capped "$REF_TIMEOUT" "reference freeze $SLUG@$W" node "$HERE/reference.mjs" freeze "$LIVE_URL" "$DIR" --width "$W" --timeout "$STITCH_TIMEOUT" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} > "$REF_LINE"; }
+  retry_once "reference freeze" freeze_ref
+  rc=$?
+  WHY=$(grep -E '^reference:' "$REF_LINE" 2>/dev/null | tail -1)
+  case "$rc" in
+    0) echo "gate.sh: ${WHY:-reference: frozen}" ;;
+    2) echo "gate.sh: ${WHY:-reference: UNSTABLE; not frozen}" >&2
+       echo "gate.sh: REFERENCE UNSTABLE (exit 5) — the live page is not one page from capture to capture, so no build could meet it: NO VERDICT, the round is not counted. Pin the page's state and re-run — overlay flags (--consent <sel> / --dismiss <sel,…>), --locale <tag> — or read $DIR/reference-unstable.json (+ ref-*.png) and, when the variation is the page's own, freeze it anyway: node $HERE/reference.mjs freeze \"$LIVE_URL\" $DIR --width $W --force" >&2
+       exit 5 ;;
+    3) [ -n "$WHY" ] && echo "gate.sh: $WHY" >&2; capture_failed reference 3 ;;
+    124) echo "gate.sh: reference freeze hit its deadline (exit 124) — no verdict, re-run the round${WHY:+: $WHY}" >&2; exit 124 ;;
+    *) [ -n "$WHY" ] && echo "gate.sh: $WHY" >&2; capture_failed reference "$rc" ;;
+  esac
+  if ! BASE_AT=$(node "$HERE/stitch-shot.mjs" baseline "$DIR" --url "$LIVE_URL" --width "$W"); then
+    echo "gate.sh: reference.mjs freeze exited 0 but $DIR holds no usable baseline (${BASE_AT:-none}) — not comparing; re-run the round" >&2; exit 1
+  fi
+fi
 if [ "$BASELINE" = 1 ]; then
   rm -f "$DIR/live.json" "$DIR/live.capture.json"
   if ! { cp -f "$DIR/baseline.png" "$DIR/live.png.$$.tmp" && mv -f "$DIR/live.png.$$.tmp" "$DIR/live.png"; }; then
@@ -348,10 +429,9 @@ if [ "$BASELINE" = 1 ]; then
     rm -f "$DIR/live.png"
     echo "gate.sh: could not write $DIR/live.json for the frozen origin — not comparing (a later round would read the copy as a live shot); re-run the round" >&2; exit 1
   fi
-  echo "gate.sh: gating against the frozen origin baseline (captured $BASE_AT) — origin side from baseline.png, no fresh live shot"
 else
   if [ -f "$DIR/live.png" ] && [ -f "$DIR/live.json" ] && grep -qE '"origin": *"baseline"' "$DIR/live.json"; then
-    echo "gate.sh: live.png is the frozen origin baseline (a --gate-against-baseline round); this round gates against the live origin — retaking it" >&2
+    echo "gate.sh: live.png is the frozen origin reference's copy; this round gates against the live origin (--live-origin / GATE_REFERENCE=live) — retaking it" >&2
     rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
   fi
   # A live capture from before fixed layers were captured once (its live.capture.json has no fixedLayers) would be
@@ -399,9 +479,27 @@ VP=$(grep -oE 'viewport +[0-9]+' "$OVF" | head -1 | grep -oE '[0-9]+$')
 find "$DIR" -maxdepth 1 -name 'diff-*.png' ! -name "diff-$LBL.png" -delete
 find "$DIR" -mindepth 1 -maxdepth 1 -type d -name 'vdiff-*' ! -name "vdiff-$LBL" -exec rm -r {} +
 
-# pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict.
-node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT"
+# pixel-compare supervises its own deadline (--timeout); exit 124 = no verdict. --offset-max is the pixel criterion
+# (header § Pixel criterion — pixel-compare owns the rule and prints the `pixel:` line): the regime's default bound,
+# or GATE_OFFSET_MAX_PX. Masks: the caller's, then the reference's self-varying rows (reference.mjs mask).
+REF_MASK=""
+[ "$ORIGIN" = frozen ] && REF_MASK=$(node "$HERE/reference.mjs" mask "$DIR" 2>/dev/null | tail -1)
+ALL_MASK="${MASK}${MASK:+${REF_MASK:+,}}${REF_MASK}"
+MASK_OPTS=(); [ -n "$ALL_MASK" ] && MASK_OPTS=(--mask "$ALL_MASK")
+PXJ="$DIR/pixel-$LBL.json"; rm -f "$PXJ" "$DIR/verdict-$LBL.json"
+node "$HERE/pixel-compare.mjs" "$DIR/live.png" "$DIR/build.png" --out "$DIR/diff-$LBL.png" --timeout "$COMPARE_TIMEOUT" \
+  --offset-max "${GATE_OFFSET_MAX_PX:-$REGIME}" --json-out "$PXJ" ${MASK_OPTS[@]+"${MASK_OPTS[@]}"}
 PIXEL_RC=$?
+# What the round was gated against, in one line: the frozen reference with its noise floor and the rows it excludes,
+# or the live capture of an opted-out round.
+if [ "$ORIGIN" = frozen ]; then
+  node -e 'const b = (() => { try { return JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch { return {}; } })();
+    const v = Array.isArray(b.variable) ? b.variable : []; const rows = v.reduce((n, r) => n + (Number(r.h) || 0), 0);
+    const floor = typeof b.noiseFloor === "number" ? `noise floor ${b.noiseFloor.toFixed(2)}%${v.length ? ` in ${v.length} region(s)` : ", no self-varying region"} — ${rows} rows excluded` : "noise floor not measured (frozen without priming — reference.mjs freeze --force measures it) — 0 rows excluded";
+    console.log(`gate.sh: reference: frozen ${b.capturedAt || process.argv[2]}, ${floor}${b.stable === false ? ` [FORCED over an unstable page: ${b.reason}]` : ""}`);' "$DIR/baseline.json" "$BASE_AT"
+else
+  echo "gate.sh: reference: a live capture (--live-origin / GATE_REFERENCE=live, or no reference.mjs) — not primed, no noise floor measured, no rows excluded"
+fi
 # The overflow assert rules a PASS: a build wider than its viewport by more than the tolerance is a FAIL
 # (exit 2) whatever the pixel number says; a round with no pixel verdict (124 / 1 / 3 / 4) keeps that code —
 # the line is still printed. Within the tolerance (integer rounding of a subpixel width) the line says so.
@@ -415,7 +513,7 @@ else
 fi
 
 # Fonts (header § Fonts): one line per side from the capture record, after the overflow line — the dead faces, every
-# face loaded, or NOT CHECKED (fontsFailed null, or no readable record). The live side of a --gate-against-baseline
+# face loaded, or NOT CHECKED (fontsFailed null, or no readable record). The live side of a frozen-reference
 # round has no capture record (live.png is the frozen copy): its line reads baseline.json. Information, never a verdict.
 fonts_line() { # $1 side, $2 record, $3 the frozen baseline's record (live side only)
   node -e 'const [side, rec, base] = process.argv.slice(1); const read = (f) => { try { return JSON.parse(require("fs").readFileSync(f, "utf8")); } catch { return null; } };
@@ -428,7 +526,25 @@ fonts_line() { # $1 side, $2 record, $3 the frozen baseline's record (live side 
     else console.log(`gate.sh: fonts on the ${side} capture — every declared face loaded${from}`);' "$1" "$2" "$3"
 }
 case "$PIXEL_RC" in 0|2) ROUND_VERDICT=1 ;; esac
-fonts_line live "$DIR/live.capture.json" "$([ "$BASELINE" = 1 ] && echo "$DIR/baseline.json")"
+# The round's record (header § Evidence): the pixel numbers of THIS round — both percentages, the offsets, the masked
+# rows, the reference's noise floor — and, under --full, which evidence file each probe's verdict read, its exit code
+# and the two tiers, so a ledger entry points at this round's files, never at an older -iterN file beside them.
+# Written for every round that reached a pixel verdict (0 or 2); a --full round writes it again with its probes.
+write_verdict() { # $@: probe triples (name rc evidence-file; an empty file = the probe did not run)
+  [ "$ROUND_VERDICT" = 1 ] || return 0
+  G_PIXEL_RC="$PIXEL_RC" G_DIFF="$DIR/diff-$LBL.png" G_PXJ="$PXJ" G_BASE="$DIR/baseline.json" G_ORIGIN="$ORIGIN" G_STAGE="$REGIME" G_STRUCTURAL="${STRUCTURAL:-0}" G_LOST="${LOST:-0}" \
+  node -e 'const [out, round, width, ...a] = process.argv.slice(1); const fs = require("fs"); const e = process.env; const n = (k) => Number(e[k] || 0);
+    const read = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
+    const probes = {}; for (let i = 0; i + 2 < a.length; i += 3) if (a[i + 2]) probes[a[i]] = { rc: Number(a[i + 1]), evidence: a[i + 2] };
+    const j = read(e.G_PXJ) || {}; const al = j.aligned && j.aligned.used ? j.aligned : null; const b = e.G_ORIGIN === "frozen" ? read(e.G_BASE) || {} : null;
+    const pixel = { rc: n("G_PIXEL_RC"), diff: e.G_DIFF, json: read(e.G_PXJ) ? e.G_PXJ : null, pct: j.pct ?? null, alignedPct: al ? al.pct : j.pct ?? null, alignedUsed: !!al, totalShift: al ? al.totalShift : 0,
+      steps: al ? al.steps.slice(0, 12) : [], offsetBound: j.offsets ? j.offsets.bound : null, maskedRows: j.maskedRows ?? 0, noiseFloor: b && typeof b.noiseFloor === "number" ? b.noiseFloor : null, reason: j.reason ?? null };
+    const reference = b ? { origin: "frozen", capturedAt: b.capturedAt ?? null, primed: b.primed === true, stable: b.stable !== false, maskArg: b.maskArg || "" } : { origin: "live" };
+    fs.writeFileSync(out, JSON.stringify({ round, width: Number(width), stage: e.G_STAGE, pixel, reference, probes, structural: n("G_STRUCTURAL"), nothingLost: n("G_LOST"), at: new Date().toISOString() }, null, 2) + "\n");' \
+    "$DIR/verdict-$LBL.json" "$LBL" "$W" "$@" 2>/dev/null || true
+}
+write_verdict
+fonts_line live "$DIR/live.capture.json" "$([ "$ORIGIN" = frozen ] && echo "$DIR/baseline.json")"
 fonts_line build "$DIR/build.capture.json" ""
 [ "$FULL" = 1 ] || exit $PIXEL_RC
 # No pixel verdict (124 deadline, 1 error, 3 bot challenge, 4 identity): the probes would spend three
@@ -511,12 +627,8 @@ if [ -n "$P_UG" ]; then
   verdict "$RC_UG" "unit-geometry" "${UNITS:-no Units line}" "$UG"
 fi
 echo "evidence: $CD $VD $CP $CL${P_PR:+ $PR}${P_UG:+ $UG} $DIR/vdiff-$LBL/"
-# The round's record: which evidence file each probe's verdict read, its exit code, the two tiers — so a ledger entry
-# points at THIS round's files, never at an older -iterN or -mapped file beside them.
-G_PIXEL_RC="$PIXEL_RC" G_DIFF="$DIR/diff-$LBL.png" G_STRUCTURAL="${STRUCTURAL:-0}" G_LOST="${LOST:-0}" \
-node -e 'const [out, round, width, ...a] = process.argv.slice(1); const probes = {}; for (let i = 0; i + 2 < a.length; i += 3) if (a[i + 2]) probes[a[i]] = { rc: Number(a[i + 1]), evidence: a[i + 2] }; const n = (k) => Number(process.env[k] || 0); require("fs").writeFileSync(out, JSON.stringify({ round, width: Number(width), pixel: { rc: n("G_PIXEL_RC"), diff: process.env.G_DIFF }, probes, structural: n("G_STRUCTURAL"), nothingLost: n("G_LOST"), at: new Date().toISOString() }, null, 2) + "\n");' \
-  "$DIR/verdict-$LBL.json" "$LBL" "$W" content-diff "$RC_CD" "$CD" visual-diff "$RC_VD" "$VD" chrome-parity "$RC_CP" "$CP" clip-probe "$RC_CL" "$CL" \
-  content-presence "$RC_PR" "${P_PR:+$PR}" unit-geometry "$RC_UG" "${P_UG:+$UG}" 2>/dev/null || true
+write_verdict content-diff "$RC_CD" "$CD" visual-diff "$RC_VD" "$VD" chrome-parity "$RC_CP" "$CP" clip-probe "$RC_CL" "$CL" \
+  content-presence "$RC_PR" "${P_PR:+$PR}" unit-geometry "$RC_UG" "${P_UG:+$UG}"
 
 
 # Exit: any deadline → 124 (re-run); else the pixel verdict rules, and a structural content 🔴, a

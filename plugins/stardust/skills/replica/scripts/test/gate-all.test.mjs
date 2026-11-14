@@ -27,7 +27,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, CHILD_FLAGS, DELIVERED, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, formatSummary, isErrorRow, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, formatSummary, isErrorRow, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -36,6 +36,14 @@ try { ({ textBoxPct } = await import('../pixel-compare.mjs')); } catch { console
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-all.mjs');
+// The sandboxes' pixel-compare stub: gate-all imports the pixel criterion (pixelVerdict) from pixel-compare.mjs, so a
+// stub re-exports the REAL module and runs its stub body only as the main module. The stitch stubs hand `baseline`
+// (a browserless subcommand) to the real stitch-shot. The runner sections written for the live-origin table run it
+// through GATE_REFERENCE=live (the helpers' default); the reference sections pass REF.
+const REAL_PIXEL = join(HERE, '..', 'pixel-compare.mjs');
+const REAL_STITCH = join(HERE, '..', 'stitch-shot.mjs');
+const MAIN_ONLY = `import { realpathSync as __rp } from 'node:fs'; import { fileURLToPath as __fu } from 'node:url'; if (process.argv[1] && __rp(process.argv[1]) === __fu(import.meta.url))`;
+const REF = { GATE_REFERENCE: '' };
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 const checkAsync = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
@@ -89,7 +97,7 @@ check('formatSummary: header, calibration line, rows, asymmetric flag, override 
   const totals = { pages: 3, pass: 1, pixelOnlyPass: 2, overridePass: 1, passWithOverrides: 2, fail: 2, error: 0, failPixel: 1, failHeight: 0, failClip: 1, failContent: 1, failUnits: 1, contentNA: 1 };
   const md = formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 1440, verdict: 'V' }, totals, rows });
   assert.match(md, /\*\*1 PASS \/ 2 FAIL \/ 0 error of 3\*\*/); assert.match(md, /pixel-only verdict \(criteria 1\+2\): \*\*2 PASS\*\*; full verdict \(1–4\): \*\*1 PASS\*\*/);
-  assert.match(md, /\| `\/a` \|.*FAIL \(elements\)/); assert.match(md, /6\.68 \(12\.3\)/); assert.match(md, /crawl-fullpage ⚠asym/); assert.match(md, /n\/a \(origin HTTP 403\)/); assert.match(md, /masked 70 rows: store notice/); assert.match(md, /→ PASS \(source capture\): live drifted/);
+  assert.match(md, /\| `\/a` \|.*FAIL \(elements\)/); assert.match(md, /\| 6\.68 \[12\.3\] \| - \| 69 \|/); assert.match(md, /crawl-fullpage ⚠asym/); assert.match(md, /n\/a \(origin HTTP 403\)/); assert.match(md, /masked 70 rows: store notice/); assert.match(md, /→ PASS \(source capture\): live drifted/);
   assert.match(md, /off 12 hidden 2 missing 4 \|/);
 });
 check('parseArgs: defaults, --out derived from --width, --no-probes drops both probe criteria', () => {
@@ -235,12 +243,13 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
     const fonts = process.env['STUB_FONTS_NULL_' + side] ? { fontsFailed: null, fontCheck: 'failed: Execution context was destroyed' } : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
     if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: true, ...fonts, fixedLayers: { capture: 'once', count: 0, late: 0 }, height: 2000 }, null, 2) + '\\n');
     console.log('overflow: scrollWidth=1440 viewport=1440 delta=0'); console.log('stitched ' + out);`);
-  stub('pixel-compare.mjs', `console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 2000 }, pass: true, bands: [] }));`);
+  // gate-all imports the pixel criterion from pixel-compare.mjs: the stub re-exports the real module and is a stub only when run
+  stub('pixel-compare.mjs', `export * from ${JSON.stringify(REAL_PIXEL)};\n${MAIN_ONLY} console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 2000 }, pass: true, bands: [] }));`);
   const pages = (extra = {}) => ({ pages: [{ slug: 'a', url: 'https://origin.example/a', liveUrl: 'https://served.example/a', status: 'deployed', template: 't', fidelityTier: 'thin', ...extra }] });
   const runAll = (tag, args, env = {}, state = pages()) => {
     const out = join(root, `out-${tag}`); const stateFile = join(root, `state-${tag}.json`);
     writeFileSync(stateFile, JSON.stringify(state));
-    const r = spawnSync(process.execPath, [join(replica, 'gate-all.mjs'), '--state', stateFile, '--out', out, '--no-probes', ...args], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, ...env } });
+    const r = spawnSync(process.execPath, [join(replica, 'gate-all.mjs'), '--state', stateFile, '--out', out, '--no-probes', ...args], { cwd: root, encoding: 'utf8', timeout: 60000, env: { ...process.env, GATE_REFERENCE: 'live', ...env } });
     const read = (f) => (existsSync(join(out, f)) ? JSON.parse(readFileSync(join(out, f), 'utf8')) : null);
     return { status: r.status, stdout: r.stdout, stderr: r.stderr, summary: read('summary.json'), origin: read('a/origin.json'), eds: read('a/eds.json'), record: read('a/origin.capture.json'), out };
   };
@@ -380,16 +389,40 @@ function sandbox(slugs, { probes = false } = {}) {
   cpSync(join(HERE, '../../../diff/scripts'), join(root, 'stardust/scripts/diff'), { recursive: true });
   cpSync(join(HERE, '../../../stardust/scripts'), join(root, 'stardust/scripts/stardust'), { recursive: true });
   writeFileSync(join(rep, 'stitch-shot.mjs'), `import { appendFileSync, readdirSync, writeFileSync } from 'node:fs';
+if (process.argv[2] === 'baseline') { const { spawnSync } = await import('node:child_process'); process.exit(spawnSync(process.execPath, [${JSON.stringify(REAL_STITCH)}, ...process.argv.slice(2)], { stdio: 'inherit' }).status ?? 1); }
 const [url, out] = process.argv.slice(2); appendFileSync(process.env.STUB_LOG, url + '\\n');
 if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['stitch-shot', ...process.argv.slice(2)]) + '\\n');
 if (process.env.STUB_PNGS) appendFileSync(process.env.STUB_PNGS, readdirSync('stardust/replica/gates', { recursive: true }).filter((f) => f.endsWith('.png')).length + '\\n');
 if (url === process.env.STUB_KILL) { process.kill(process.ppid, 'SIGKILL'); process.exit(1); }
 if (url === process.env.STUB_FAIL) { console.error('capture failed'); process.exit(1); }
 writeFileSync(out, 'png'); writeFileSync(out.replace(/\\.png$/, '.capture.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 }, fontsFailed: [] }));\n`);
-  writeFileSync(join(rep, 'pixel-compare.mjs'), `import { writeFileSync } from 'node:fs';
+  // pixel-compare: `/bad/` pages read 30 %, the rest 1 %; STUB_PX = { "<slug>": { pct, aligned: { used, pct, steps } } } gives
+  // a page an aligned summary (totalShift = the sum of |shift|); STUB_PX_ARGV logs each call's argv (apart from STUB_ARGV: the captures and probes).
+  writeFileSync(join(rep, 'pixel-compare.mjs'), `export * from ${JSON.stringify(REAL_PIXEL)};
+import { appendFileSync, writeFileSync } from 'node:fs';
+${MAIN_ONLY} {
 const a = process.argv.slice(2); writeFileSync(a[a.indexOf('--out') + 1], 'png');
-const pct = a[0].includes('/bad/') ? 30 : 1;
-console.log(JSON.stringify({ pct, heightDelta: 0, compared: { width: 1440, height: 5000 }, pass: pct <= 10 }));\n`);
+if (process.env.STUB_PX_ARGV) appendFileSync(process.env.STUB_PX_ARGV, JSON.stringify(a) + '\\n');
+const slug = a[0].split('/').slice(-2)[0]; const given = (JSON.parse(process.env.STUB_PX || '{}'))[slug] || {};
+const pct = given.pct ?? (a[0].includes('/bad/') ? 30 : 1);
+const al = given.aligned ? { ...given.aligned, totalShift: (given.aligned.steps || []).reduce((n, x) => n + Math.abs(x.shift), 0) } : null;
+const maskedRows = a.includes('--mask') ? a[a.indexOf('--mask') + 1].split(',').reduce((n, m) => n + Number(m.split(':')[1].split('@')[0]), 0) : 0;
+console.log(JSON.stringify({ pct, heightDelta: 0, compared: { width: 1440, height: 5000 }, pass: pct <= 10, maskedRows, ...(al ? { aligned: al } : {}) }));
+}\n`);
+  // reference.mjs: `freeze <url> <dir>` logs "freeze <url>" (STUB_LOG) and its argv (STUB_ARGV); the URL in STUB_REF_UNSTABLE is
+  // unstable (exit 2, reference-unstable.json, nothing frozen); else baseline.png + baseline.json in reference.mjs's shape
+  // (noiseFloor 2.31, the regions of STUB_REF_MASK) beside the kept captures ref-1.png / ref-2.png.
+  writeFileSync(join(rep, 'reference.mjs'), `import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs'; import { join } from 'node:path';
+const [cmd, url, dir, ...rest] = process.argv.slice(2);
+appendFileSync(process.env.STUB_LOG, cmd + ' ' + url + '\\n');
+if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['reference', ...process.argv.slice(2)]) + '\\n');
+mkdirSync(dir, { recursive: true });
+for (const f of ['ref-1.png', 'ref-2.png', 'ref-diff-1-2.png', 'ref-1.capture.json']) writeFileSync(join(dir, f), 'x');
+if (url === process.env.STUB_REF_UNSTABLE) { writeFileSync(join(dir, 'reference-unstable.json'), '{}'); console.log('reference: UNSTABLE — heights 5000 vs 5640 after priming; not frozen'); process.exit(2); }
+const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(',').filter(Boolean).map((m) => ({ y: Number(m.split(':')[0]), h: Number(m.split(':')[1]), pct: 9 }));
+writeFileSync(join(dir, 'baseline.png'), 'frozen');
+writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width: Number(rest[rest.indexOf('--width') + 1]), vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, noiseFloor: 2.31, variable, maskArg, stable: true, reason: null }));
+console.log('reference: frozen, primed');\n`);
   // Stub probes (probes: true): each logs its argv (STUB_ARGV), then exits STUB_<CONTENT|CLIP>_RC without a result
   // ("kill" = killed mid-run, what a timeout leaves) or writes a clean one.
   const probeStub = (name, envKey, body) => writeFileSync(join(root, 'stardust/scripts/diff', `${name}.mjs`), `import { appendFileSync, writeFileSync } from 'node:fs';
@@ -409,10 +442,13 @@ else { const counts = { total: 0, textClipped: 0, textHidden: 0, controlHidden: 
   writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ pages: slugs.map(page) }));
   const out = join(root, 'stardust/replica/gates/all-1440');
   const log = join(root, 'stitch.log');
-  const argvLog = join(root, 'argv.log');
-  const gateAll = (args = [], env = {}) => { writeFileSync(log, ''); writeFileSync(argvLog, ''); return spawnSync(process.execPath, [join(rep, 'gate-all.mjs'), ...(probes ? [] : ['--no-probes']), ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, STUB_LOG: log, STUB_ARGV: argvLog, ...env } }); };
+  const argvLog = join(root, 'argv.log'); const pxLog = join(root, 'px-argv.log');
+  const gateAll = (args = [], env = {}) => { writeFileSync(log, ''); writeFileSync(argvLog, ''); writeFileSync(pxLog, ''); return spawnSync(process.execPath, [join(rep, 'gate-all.mjs'), ...(probes ? [] : ['--no-probes']), ...args], { cwd: root, encoding: 'utf8', env: { ...process.env, GATE_REFERENCE: 'live', STUB_LOG: log, STUB_ARGV: argvLog, STUB_PX_ARGV: pxLog, ...env } }); };
   return {
     root, out, gateAll,
+    compares: () => Object.fromEntries(readFileSync(pxLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).map((a) => [a[0].split('/').slice(-2)[0], a])),
+    files: (d) => (existsSync(join(root, d)) ? readdirSync(join(root, d)).sort() : []),
+    tableOf: (d) => { const f = join(root, 'stardust/replica/gates', d, 'summary.json'); return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null; },
     spawned: () => readFileSync(argvLog, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)),
     totals: () => JSON.parse(readFileSync(join(out, 'summary.json'), 'utf8')).totals,
     shots: () => readFileSync(log, 'utf8').split('\n').filter(Boolean).sort(),
@@ -741,6 +777,211 @@ await checkAsync('recordRounds: a published measurement with a verdict is a roun
     assert.equal(JSON.parse(readFileSync(join(root, 'gates', 'b-1440', 'rounds.json'), 'utf8')).stages.published, undefined, 'a pass here is never a gate.sh published round: it cannot free a confirmation there');
     assert.deepEqual(await recordRounds([row('a', false)], opts, { rounds: { load() { throw new Error('boom'); } } }), []);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+// ---- the pixel criterion (aligned % + offsets) and the frozen reference ---------------------------------------------------
+const st = (...shifts) => { let c = 0; return shifts.map((shift, i) => { c += shift; return { y: 103 + 1000 * i, shift, cumulative: c }; }); };
+const pxa = (pct, alignedPct, steps, height = 5000) => ({ ...px(pct, 0, height), aligned: { used: true, pct: alignedPct, steps, totalShift: steps.reduce((n, x) => n + Math.abs(x.shift), 0) } });
+check('verdict: the row carries alignedPct / alignedUsed / totalShift / steps / offsetBound; pixelPass follows the rule — aligned % within the threshold AND offsets within the bound', () => {
+  const v = verdict({ pixel: pxa(16.62, 1.23, st(-5)) }, { stage: 'prototype' });
+  assert.deepEqual([v.pixelPass, v.pixelOnlyPass, v.pass, v.alignedPct, v.alignedUsed, v.totalShift, v.offsetBound, v.reasons], [true, true, true, 1.23, true, 5, 8, []]);
+  assert.deepEqual(v.steps, st(-5));
+});
+check('verdict: aligned % within the threshold but offsets over the bound fails with the offsets reason — at the prototype stage 37 px > 8; at the published stage the bound is the larger of 8 and 1 % of the origin height', () => {
+  const p = pxa(16.62, 1.23, st(-5, -20, -12));
+  const proto = verdict({ pixel: p }, { stage: 'prototype' });
+  assert.deepEqual([proto.pixelPass, proto.pass, proto.offsetBound], [false, false, 8]);
+  assert.deepEqual(proto.reasons, ['offsets: 3 step(s), 37px total — −5px at y=103, −20px at y=1103, −12px at y=2103 (bound 8px)']);
+  const pub = verdict({ pixel: p }, { stage: 'published' });
+  assert.deepEqual([pub.pixelPass, pub.pass, pub.offsetBound, pub.reasons], [true, true, 50, []]);
+  assert.equal(verdict({ pixel: pxa(16.62, 1.23, st(-5, -20, -12), 600) }, { stage: 'published' }).pixelPass, false, '1 % of 600 px is under the 8 px floor');
+  assert.equal(verdict({ pixel: p }).pixelPass, true, 'the default stage is published');
+  assert.equal(verdict({ pixel: p }, { stage: 'prototype', offsetMax: 40 }).pixelPass, true, '--offset-max overrides the stage default');
+  assert.equal(verdict({ pixel: p }, { stage: 'published', offsetMax: 36 }).pixelPass, false);
+});
+check('verdict: alignment not used, or a pixel.json from before --align → the unaligned rule and its reason, as before; a page that passed unaligned still passes unless its offsets exceed the bound', () => {
+  for (const pixel of [px(12, 0), { ...px(12, 0), aligned: { used: false, pct: 12, steps: [], totalShift: 0 } }]) {
+    const v = verdict({ pixel }, { stage: 'prototype' });
+    assert.deepEqual([v.pixelPass, v.alignedUsed, v.alignedPct, v.totalShift, v.offsetBound, v.reasons], [false, false, 12, 0, null, ['pixel 12% > 10%']]);
+  }
+  assert.equal(verdict({ pixel: px(9.9, 0) }, { stage: 'prototype' }).pixelPass, true);
+  assert.equal(verdict({ pixel: pxa(9.9, 4, st(3, -5)) }, { stage: 'prototype' }).pixelPass, true, '8 px of offsets: within the bound');
+  assert.equal(verdict({ pixel: pxa(9.9, 4, st(3, -6)) }, { stage: 'prototype' }).pixelPass, false, '9 px: the one new way to fail');
+  assert.deepEqual(verdict({ pixel: pxa(30.1, 12, st(4)) }, { stage: 'prototype' }).reasons, ['pixel aligned 12% (unaligned 30.1%) > 10%']);
+});
+check('verdict / isErrorRow: an unstable reference is the row\'s reason as it stands — an error row, never a FAIL; no aligned numbers', () => {
+  const v = verdict({ pixel: { error: 'reference-unstable: heights 5000 vs 5640 after priming; not frozen (d/reference-unstable.json)' } });
+  assert.deepEqual(v.reasons, ['reference-unstable: heights 5000 vs 5640 after priming; not frozen (d/reference-unstable.json)']);
+  assert.deepEqual([v.pass, v.pixelPass, v.alignedPct, v.totalShift], [false, false, null, null]);
+  assert.equal(isErrorRow({ pct: null, ...v }), true); assert.ok(UNSTABLE.test(v.reasons[0]));
+  assert.deepEqual(verdict({ pixel: { error: 'stitch exit 1' } }).reasons, ['pixel error: stitch exit 1'], 'any other pixel error reads as before');
+});
+check('formatSummary: the pixel cell is aligned % (unaligned %), an offsets column, and the calibration line counts the rows passing only thanks to alignment, the offsets-only fails and the unstable references', () => {
+  const base = { template: 't', tier: 'thin', origin: 'stitch-live', heightDelta: 0, clipped: 0, clipAllowance: 0, content: null, units: null, masked: false, override: null, error: null, reasons: [] };
+  const rows = [
+    { ...base, slug: 'a', path: '/a', pct: 16.62, alignedPct: 1.23, alignedUsed: true, totalShift: 5, steps: st(-5), offsetBound: 50, pass: true, pixelOnlyPass: true },
+    { ...base, slug: 'b', path: '/b', pct: 16.62, alignedPct: 1.23, alignedUsed: true, totalShift: 137, steps: st(-5, -120, -12), offsetBound: 50, pass: false, pixelOnlyPass: false, reasons: ['offsets: 3 step(s), 137px total — −5px at y=103, −120px at y=1103, −12px at y=2103 (bound 50px)'] },
+    { ...base, slug: 'c', path: '/c', pct: 2, alignedPct: 2, alignedUsed: false, totalShift: 0, steps: [], offsetBound: null, pass: true, pixelOnlyPass: true },
+    { ...base, slug: 'd', path: '/d', pct: null, alignedPct: null, alignedUsed: false, steps: [], pass: false, pixelOnlyPass: false, error: 'reference-unstable: heights 5000 vs 5640', reasons: ['reference-unstable: heights 5000 vs 5640'] },
+  ];
+  const totals = { pages: 4, pass: 2, pixelOnlyPass: 2, overridePass: 0, fail: 1, error: 1, failPixel: 1, failOffsets: 1, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0, alignedOnlyPass: 1, referenceUnstable: 1 };
+  const md = formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 1440, verdict: 'V' }, totals, rows });
+  assert.match(md, /\| pixel % aligned \(unaligned\) \[text\] \| offsets \|/);
+  assert.match(md, /\| `\/a` \|.*\| 1\.23 \(16\.62\) \| 1 step\(s\), 5px \(bound 50\) \| 0 \|.*\| PASS \|/);
+  assert.match(md, /\| `\/b` \|.*\| 1\.23 \(16\.62\) \| 3 step\(s\), 137px \(bound 50\) \|.*\| FAIL \| offsets: 3 step\(s\), 137px total/);
+  assert.match(md, /\| `\/c` \|.*\| 2 \| - \| 0 \|/);
+  assert.match(md, /\| `\/d` \|.*\| n\/a \| - \|.*\| ERROR reference-unstable: heights 5000 vs 5640 \|/);
+  assert.match(md, /Failing by criterion: pixel 1 \(1 on offsets alone\), height 0/);
+  assert.match(md, /pixel criterion met only thanks to alignment \(unaligned % over the threshold\): 1; \*\*1 unstable reference\(s\)\*\* \(error rows/);
+  const wide = formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 2560, verdict: 'V', wide: true }, totals: { ...totals, overThreshold: 1 }, rows });
+  assert.match(wide, /^# Wide report — all deployed pages \(a report, not a delivery criterion\), 2560px/); assert.match(wide, /over the threshold at this width: \*\*1 of 4\*\*/);
+});
+check('parseArgs: --offset-max, --live-origin (and GATE_REFERENCE=live), --wide → gates/wide-<w> at DESIGN.json\'s probeWidth else 2560, no content probe; an explicit --width wins', () => {
+  const d = parseArgs(['node', 'x']);
+  assert.deepEqual([d.offsetMax, d.liveOrigin, d.wide], [null, process.env.GATE_REFERENCE === 'live', false]);
+  const o = parseArgs(['node', 'x', '--offset-max', '20', '--live-origin']);
+  assert.deepEqual([o.offsetMax, o.liveOrigin], [20, true]);
+  const tmp = mkdtempSync(join(tmpdir(), 'gate-all-design-'));
+  try {
+    assert.equal(wideWidth(join(tmp, 'DESIGN.json')), WIDE_DEFAULT); assert.equal(WIDE_DEFAULT, 2560);
+    writeFileSync(join(tmp, 'DESIGN.json'), JSON.stringify({ extensions: { breakpoints: { probeWidth: 1920 } } }));
+    assert.equal(wideWidth(join(tmp, 'DESIGN.json')), 1920);
+    const w = parseArgs(['node', 'x', '--wide', '--design', join(tmp, 'DESIGN.json')]);
+    assert.deepEqual([w.wide, w.width, w.out, w.content, w.clip, w.stage], [true, 1920, 'stardust/replica/gates/wide-1920', false, true, 'published']);
+    writeFileSync(join(tmp, 'DESIGN.json'), JSON.stringify({ extensions: { breakpoints: { probeWidth: null } } }));
+    assert.equal(parseArgs(['node', 'x', '--wide', '--design', join(tmp, 'DESIGN.json')]).out, 'stardust/replica/gates/wide-2560');
+    assert.equal(parseArgs(['node', 'x', '--wide', '--width', '3000', '--design', join(tmp, 'DESIGN.json')]).out, 'stardust/replica/gates/wide-3000');
+    assert.equal(parseArgs(['node', 'x', '--wide', '--stage', 'prototype', '--design', join(tmp, 'nope.json')]).out, 'stardust/replica/gates/wide-2560');
+  } finally { rmSync(tmp, { recursive: true, force: true }); }
+});
+check('referenceOf: what the origin meta keeps of a frozen reference — noise floor, self-varying rows, mask; a baseline frozen by stitch-shot has no measured floor', () => {
+  assert.deepEqual(referenceOf({ capturedAt: 'T', primed: true, stable: true, noiseFloor: 2.31, variable: [{ y: 392, h: 56 }, { y: 4000, h: 652 }], maskArg: '392:56,4000:652' }, 'd'),
+    { dir: 'd', capturedAt: 'T', primed: true, stable: true, noiseFloor: 2.31, variableRows: 708, maskArg: '392:56,4000:652' });
+  assert.deepEqual(referenceOf({ capturedAt: 'T' }, 'd'), { dir: 'd', capturedAt: 'T', primed: false, stable: true, noiseFloor: null, variableRows: 0, maskArg: '' });
+  assert.equal(referenceOf({ stable: false }, 'd').stable, false);
+});
+check('dropPassedCaptures keeps baseline.png — the page\'s frozen reference outlives the pass, every other PNG goes', () => {
+  const d = pageDir({ ...RECORDS, 'origin.png': 'x', 'eds.png': 'x', 'diff.png': 'x', 'diff-aligned.png': 'x', 'baseline.png': 'ref', 'baseline.json': {} });
+  try {
+    assert.equal(dropPassedCaptures(d, { masks: [], edsUrl: 'https://eds.example/a' }), 4);
+    assert.deepEqual(readdirSync(d).filter((f) => f.endsWith('.png')), ['baseline.png']);
+  } finally { rmSync(d, { recursive: true, force: true }); }
+});
+
+// The runner on the default origin (REF: no GATE_REFERENCE): the frozen reference per page.
+const BASELINE = (url, extra = {}) => ({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-10-30T08:00:00.000Z', url, width: 1440, vh: 900, height: 5000, settle: true, chunks: 6, fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, noiseFloor: 3.5, variable: [{ y: 100, h: 40, pct: 9 }], maskArg: '100:40', stable: true, reason: null, ...extra });
+check('reference: the archetype gate dir\'s frozen baseline is the origin (no freeze, no origin stitch); otherwise one is frozen into the page dir, once, and reused by the next run', () => {
+  const { root, out, gateAll, shots, rows, compares, files, done } = sandbox(['arch', 'page', 'bad']);
+  try {
+    const gdir = join(root, 'stardust/replica/gates/arch-1440'); mkdirSync(gdir, { recursive: true });
+    writeFileSync(join(gdir, 'baseline.png'), 'archetype-reference'); writeFileSync(join(gdir, 'baseline.json'), JSON.stringify(BASELINE('https://origin.example/arch')));
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, 'masks.json'), JSON.stringify({ arch: { masks: ['0:20'], reason: 'a rotating banner' } }));
+    let r = gateAll([], { ...REF, STUB_REF_MASK: '392:56,4000:652', STUB_PX: JSON.stringify({ page: { pct: 16.62, aligned: { used: true, pct: 1.23, steps: st(-5, 12) } } }) });
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual(shots(), ['freeze https://origin.example/bad', 'freeze https://origin.example/page', 'https://eds.example/arch', 'https://eds.example/bad', 'https://eds.example/page'], 'no origin stitch at all; the archetype page spends no freeze');
+    const row = rows();
+    assert.deepEqual([row.arch.pass, row.arch.reference, row.arch.noiseFloor, row.arch.variableRows, row.arch.origin], [true, 'stardust/replica/gates/arch-1440', 3.5, 40, 'stitch-live']);
+    assert.deepEqual([row.page.reference, row.page.noiseFloor, row.page.variableRows], ['stardust/replica/gates/all-1440/page', 2.31, 708]);
+    assert.deepEqual(compares().arch.slice(compares().arch.indexOf('--mask')), ['--mask', '0:20,100:40'], 'masks.json rows, then the reference\'s self-varying rows');
+    assert.deepEqual(compares().page.slice(compares().page.indexOf('--offset-max'), compares().page.indexOf('--offset-max') + 2), ['--offset-max', 'published']);
+    assert.deepEqual(compares().page.slice(compares().page.indexOf('--mask')), ['--mask', '392:56,4000:652']);
+    assert.deepEqual([row.arch.masked, row.arch.maskedRows], [true, 60]); assert.match(row.arch.maskReason, /^a rotating banner; self-varying rows of the frozen reference \(noise floor 3\.5%\)$/);
+    assert.match(row.page.maskReason, /^self-varying rows of the frozen reference \(noise floor 2\.31%\)$/);
+    // the aligned row: pct stays the unaligned number, the aligned fields beside it, pixelPass by the rule (17 px ≤ 1 % of 5000)
+    assert.deepEqual([row.page.pct, row.page.alignedPct, row.page.alignedUsed, row.page.totalShift, row.page.steps.length, row.page.offsetBound, row.page.pixelPass, row.page.pass], [16.62, 1.23, true, 17, 2, 50, true, true]);
+    assert.deepEqual([row.bad.pct, row.bad.alignedPct, row.bad.alignedUsed, row.bad.pixelPass, row.bad.reasons], [30, 30, false, false, ['pixel 30% > 10%']]);
+    const t = JSON.parse(readFileSync(join(out, 'summary.json'), 'utf8'));
+    assert.deepEqual([t.totals.alignedOnlyPass, t.totals.failOffsets, t.totals.referenceUnstable, t._provenance.originReference], [1, 0, 0, 'frozen']);
+    assert.match(readFileSync(join(out, 'summary.md'), 'utf8'), /\| 1\.23 \(16\.62\) \| 2 step\(s\), 17px \(bound 50\) \|/);
+    assert.equal(JSON.parse(readFileSync(join(out, 'page/origin.json'), 'utf8')).reference.maskArg, '392:56,4000:652');
+    assert.deepEqual(files('stardust/replica/gates/all-1440/page').filter((f) => /^(baseline|ref-)/.test(f)), ['baseline.json', 'baseline.png'], 'the passed page keeps its frozen reference; reference.mjs\'s kept captures are gone (disk)');
+    assert.deepEqual(files('stardust/replica/gates/all-1440/bad').filter((f) => f.endsWith('.png')), ['baseline.png', 'diff.png', 'eds.png', 'origin.png']);
+    assert.equal(readFileSync(join(out, 'bad/origin.png'), 'utf8'), 'frozen', 'origin.png is the reference\'s copy');
+
+    r = gateAll([], { ...REF, STUB_REF_MASK: '392:56,4000:652' });
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual(shots(), ['https://eds.example/arch', 'https://eds.example/bad', 'https://eds.example/page'], 'the next run freezes nothing: every page has its reference');
+    assert.deepEqual([rows().page.reference, rows().page.noiseFloor, rows().page.variableRows], ['stardust/replica/gates/all-1440/page', 2.31, 708]);
+
+    r = gateAll(['--offset-max', '16'], { ...REF, STUB_PX: JSON.stringify({ page: { pct: 16.62, aligned: { used: true, pct: 1.23, steps: st(-5, 12) } } }) });
+    assert.deepEqual([rows().page.pixelPass, rows().page.offsetBound, rows().page.reasons], [false, 16, ['offsets: 2 step(s), 17px total — −5px at y=103, +12px at y=1103 (bound 16px)']], '--offset-max is the bound');
+    assert.equal(JSON.parse(readFileSync(join(out, 'summary.json'), 'utf8')).totals.failOffsets, 1);
+    assert.deepEqual(compares().page.slice(compares().page.indexOf('--offset-max'), compares().page.indexOf('--offset-max') + 2), ['--offset-max', '16']);
+  } finally { done(); }
+});
+check('reference: an UNSTABLE reference is an error row — reason reference-unstable: <line>, counted in totals.error, not a FAIL, not a pass, no crawl shot in its place; the next run tries again; --recapture-origin re-freezes without --force', () => {
+  const { root, out, gateAll, shots, rows, totals, spawned, files, done } = sandbox(['good', 'wobbly']);
+  try {
+    mkdirSync(join(root, 'stardust/current/assets/screenshots'), { recursive: true }); writeFileSync(join(root, 'stardust/current/assets/screenshots/wobbly.png'), 'crawl');
+    let r = gateAll([], { ...REF, STUB_REF_UNSTABLE: 'https://origin.example/wobbly' });
+    assert.equal(r.status, 2, r.stderr);
+    const w = rows().wobbly;
+    assert.deepEqual([w.pct, w.pass, w.origin, w.originAsymmetric], [null, false, 'none', false]);
+    assert.deepEqual(w.reasons, ['reference-unstable: heights 5000 vs 5640 after priming; not frozen (stardust/replica/gates/all-1440/wobbly/reference-unstable.json)']);
+    assert.equal(w.error, w.reasons[0]);
+    assert.deepEqual([totals().error, totals().fail, totals().pass, totals().referenceUnstable], [1, 0, 1, 1]);
+    assert.ok(!existsSync(join(out, 'wobbly/baseline.png')) && !existsSync(join(out, 'wobbly/origin.png')), 'nothing frozen, no origin picture');
+    assert.ok(files('stardust/replica/gates/all-1440/wobbly').includes('ref-1.png'), 'the unstable captures stay for inspection');
+    assert.match(readFileSync(join(out, 'summary.md'), 'utf8'), /ERROR reference-unstable: heights 5000 vs 5640/);
+    assert.equal(existsSync(join(root, 'stardust/replica/gates/wobbly-1440/rounds.json')), false, 'an error row records no round');
+
+    r = gateAll([], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(shots(), ['freeze https://origin.example/wobbly', 'https://eds.example/good', 'https://eds.example/wobbly'], 'the unstable page is frozen again (now stable); the good one reuses its reference');
+    assert.equal(rows().wobbly.pass, true);
+
+    r = gateAll(['--recapture-origin'], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(shots().filter((x) => x.startsWith('freeze')), ['freeze https://origin.example/good', 'freeze https://origin.example/wobbly'], '--recapture-origin freezes every page again');
+    assert.ok(spawned().filter((a) => a[0] === 'reference').every((a) => !a.includes('--force') && a.includes('--headed') && a[a.indexOf('--locale') + 1] === 'en-US'), 'never --force; the capture flags ride');
+    r = gateAll(['--recapture-origin'], { ...REF, STUB_REF_UNSTABLE: 'https://origin.example/good' });
+    assert.equal(r.status, 2);
+    assert.deepEqual([rows().good.pct, totals().error, existsSync(join(out, 'good/baseline.png'))], [null, 1, false], 'a re-freeze that finds the page unstable leaves an error row and no reference');
+  } finally { done(); }
+});
+check('reference: --recapture-origin re-freezes where the reference lives (the archetype gate dir), --live-origin stitches the origin as before, --compare-only spawns no freeze and no browser', () => {
+  const { root, out, gateAll, shots, rows, spawned, files, done } = sandbox(['arch', 'bad']);
+  try {
+    const gdir = join(root, 'stardust/replica/gates/arch-1440'); mkdirSync(gdir, { recursive: true });
+    writeFileSync(join(gdir, 'baseline.png'), 'archetype-reference'); writeFileSync(join(gdir, 'baseline.json'), JSON.stringify(BASELINE('https://origin.example/arch')));
+    let r = gateAll(['--recapture-origin'], { ...REF });
+    assert.equal(r.status, 2, r.stderr);
+    assert.equal(readFileSync(join(gdir, 'baseline.png'), 'utf8'), 'frozen', 'frozen again in the archetype gate dir, so gate.sh and the table keep one reference');
+    assert.deepEqual([rows().arch.reference, existsSync(join(out, 'arch/baseline.png'))], ['stardust/replica/gates/arch-1440', false]);
+    assert.ok(files('stardust/replica/gates/arch-1440').includes('ref-1.png'), 'the archetype dir keeps reference.mjs\'s evidence');
+
+    r = gateAll(['--compare-only'], { ...REF });
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual([shots(), spawned()], [[], []], 'no capture, no freeze, no probe');
+    assert.deepEqual([rows().bad.pct, rows().bad.reference, rows().bad.noiseFloor], [30, 'stardust/replica/gates/all-1440/bad', 2.31], 'the reference of the recorded origin is still on the row');
+
+    r = gateAll(['--live-origin'], { ...REF });
+    assert.equal(r.status, 2, r.stderr);
+    assert.deepEqual(shots(), ['https://eds.example/arch', 'https://eds.example/bad', 'https://origin.example/arch', 'https://origin.example/bad'], 'a fresh origin stitch per page, no freeze');
+    assert.deepEqual([rows().arch.reference, rows().arch.noiseFloor, rows().arch.variableRows], [null, null, 0]);
+    assert.equal(JSON.parse(readFileSync(join(out, 'summary.json'), 'utf8'))._provenance.originReference, 'live');
+  } finally { done(); }
+});
+check('--wide: a report table at the wide width — gates/wide-<w>/summary.{json,md}, the same rows, exit 0 whatever they say, the pages over the threshold counted, no round recorded, the delivery table untouched', () => {
+  const { root, gateAll, shots, tableOf, compares, done } = sandbox(['good', 'bad']);
+  try {
+    let r = gateAll(['--wide'], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    const t = tableOf('wide-2560');
+    assert.ok(t, 'summary.json in gates/wide-2560'); assert.ok(existsSync(join(root, 'stardust/replica/gates/wide-2560/summary.md')));
+    assert.deepEqual([t._provenance.wide, t._provenance.breakpoint, t.totals.pages, t.totals.pass, t.totals.fail, t.totals.overThreshold], [true, 2560, 2, 1, 1, 1]);
+    const bad = t.rows.find((x) => x.slug === 'bad');
+    assert.deepEqual([bad.pct, bad.alignedPct, bad.pass, bad.reference], [30, 30, false, 'stardust/replica/gates/wide-2560/bad']);
+    assert.deepEqual(Object.keys(bad).sort(), Object.keys(tableOf('wide-2560').rows[0]).sort(), 'one row shape');
+    assert.match(readFileSync(join(root, 'stardust/replica/gates/wide-2560/summary.md'), 'utf8'), /^# Wide report — all deployed pages \(a report, not a delivery criterion\), 2560px[^]*over the threshold at this width: \*\*1 of 2\*\*/);
+    assert.ok(shots().includes('freeze https://origin.example/bad'), 'the wide reference is frozen at the wide width, in the report\'s page dir');
+    assert.equal(tableOf('all-1440'), null, 'the delivery table is not written'); assert.equal(tableOf('all-2560'), null);
+    assert.equal(existsSync(join(root, 'stardust/replica/gates/bad-2560/rounds.json')), false, 'a report records no round');
+    assert.ok(compares().bad.includes('--offset-max'));
+    writeFileSync(join(root, 'DESIGN.json'), JSON.stringify({ extensions: { breakpoints: { probeWidth: 1920 } } }));
+    r = gateAll(['--wide'], { ...REF });
+    assert.equal(r.status, 0, r.stderr); assert.equal(tableOf('wide-1920').totals.overThreshold, 1, 'DESIGN.json\'s probeWidth is the wide width');
+  } finally { done(); }
 });
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-all-help-'));

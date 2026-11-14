@@ -56,9 +56,9 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/css-rules.mjs` — rules by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/diff-report.mjs` — diff % per block, HTML — `<gateDir> <buildURL> [--blocks <css>] [--top 4]`
 - `replica/foundation-freeze.mjs` — foundation sha256 manifest — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes]`; exit 2 = FAIL
+- `replica/gate-all.mjs` — pixel tables (`--stage prototype --proto-base <u>`) — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--wide]`; exit 2 = FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from tables — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
-- `replica/gate.sh` — gate round + overflow (`--full`: probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--gate-against-baseline]`
+- `replica/gate.sh` — gate round + overflow (`--full`: probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent] [--[no-]dismiss] [--live-origin]`
 - `replica/html-slice.mjs` — captured-HTML element — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded JSON view — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
 - `replica/measure.mjs` — rects, values, scrollWidth, renditions — `<url> --selectors "a,b" [--against <url>] [--width 1440,360] [--all-matches]`
