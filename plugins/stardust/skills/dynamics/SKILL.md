@@ -2,7 +2,7 @@
 name: dynamics
 description: Find, classify, triage, re-implement and verify a source site's dynamic surface (APIs, search, forms, modals, media, tags, client-rendered and sheet-backed content) during a migration to a platform. Migration-bound — invoked by prepare-migration, replica, migrate and rollout, or standalone on an already-migrated site; never for redesign-only work.
 license: Apache-2.0
-compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
 
 # stardust:dynamics — the dynamic surface of a migration
@@ -77,7 +77,8 @@ From `reference/patterns.md` (catalogue + contracts + embedded example mechanism
 authoring contract before code · no owner input, no waiting (ship the interim tier, name the
 decision) · existing library first (feed it, do not fork it) · decided-out is explicit. Each phase
 ends with the flow verified on the published origin at 1440 and 360, a parity row, a journal entry
-and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. **The query index
+and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. A flow script you write
+follows the recipe in `../stardust/SKILL.md` § Setup, step 7. **The query index
 comes from `helix-query.yaml` in the code branch** — commit, push, publish live, poll — never from a
 configuration-service write; the sheet-backed interim index only when the branch is not writable
 (`reference/listings.md` § Getting an index at all). **Search** follows `reference/patterns.md`

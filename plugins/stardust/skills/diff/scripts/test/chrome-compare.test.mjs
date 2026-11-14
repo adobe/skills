@@ -4,8 +4,14 @@
 // motion and scroll states under `replica` only, search typeahead, and site-owner decisions (agents cannot sign).
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-compare.test.mjs
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { applyDecisions, compareDocs, findingKey, pairControls } from '../chrome-compare.mjs';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
@@ -112,4 +118,19 @@ check('decisions: a site-owner entry clears its finding (exact or prefix*); an a
   assert.equal(out[0].decided.decision, 'decided-out'); assert.equal(out[1].decided, undefined);
   assert.equal(out.filter((x) => x.id === 'decision-invalid').length, 2);
 });
+const copyWithoutMaster = () => {
+  const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
+  const copy = join(root, 'a', 'b');
+  cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => !src.endsWith('/test') });
+  return { root, copy };
+};
+check('a copy without the master scripts answers --help, no stack trace', () => {
+  const { root, copy } = copyWithoutMaster();
+  try {
+    const r = spawnSync(process.execPath, [join(copy, 'chrome-compare.mjs'), '--help'], { encoding: 'utf8', timeout: 15000 });
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(!r.stderr.includes('    at '), r.stderr);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 process.exit(failed ? 1 : 0);
