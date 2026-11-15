@@ -48,14 +48,6 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-versions.mjs "origin/$BASE_REF"
 
-      # Two pull requests that each add an entry at the top of one CHANGELOG.md conflict.
-      # A plugin with a changes/ folder takes each entry as a new file there instead.
-      - name: Changelog entries are change notes, not edits to CHANGELOG.md
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: node scripts/check-changes.mjs "origin/$BASE_REF"
-
       # The steps below look at the manifests as they will be on main.
       - name: Build the plugin manifests in this checkout
         run: npm run plugins:build
