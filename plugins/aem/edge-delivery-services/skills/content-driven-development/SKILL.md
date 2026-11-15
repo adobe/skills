@@ -3,7 +3,7 @@ name: content-driven-development
 description: "Use this when building a new AEM Edge Delivery Services (EDS, Franklin, Helix) block, or when changing what authors put into an existing block (new rows or cells, author-selectable variants, a different table structure). Runs the content-first workflow: find or create test content before code, design an author-friendly content model, and validate against that content. For code-only changes that keep the authored structure (CSS fixes, JavaScript bugs, scripts.js, performance, lint) use building-blocks directly."
 license: Apache-2.0
 metadata:
-  version: "2.0.3"
+  version: "2.0.4"
 ---
 
 # Content Driven Development (CDD)
