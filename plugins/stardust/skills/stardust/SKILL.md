@@ -4,7 +4,7 @@ description: Guided multi-page redesign of an existing website through a four-ph
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # stardust

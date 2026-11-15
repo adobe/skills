@@ -1,3 +1,5 @@
+## [1.1.1](https://github.com/adobe/skills/compare/stardust-v1.1.0...stardust-v1.1.1) (2026-11-15)
+
 # [1.1.0](https://github.com/adobe/skills/compare/stardust-v1.0.0...stardust-v1.1.0) (2026-11-15)
 
 
