@@ -4,6 +4,66 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.39.0 — delivered CSS is mobile-first (#162)
+
+The EDS code-review checklist flags any `max-width` query: base styles are the mobile layout, wider layouts
+sit in `(width >= …)` queries. Deploy lifted prototype CSS as written, and the prototype nav pattern, the
+deploy `--nav-height` example and the migrate / publish-sample audits all asked for `max-width` rules, so
+delivered sites failed that review. Replica already required mobile-first output (`preserve-direction.md`);
+nothing enforced it.
+
+- **`replica/scripts/breakpoint-lint.mjs`:** a direction check that runs with or without a target — any
+  `@media` / `@custom-media` / `@import` upper bound (`max-width`, `width <`/`<=`, the top of a range) fails
+  with the mobile-first rewrite point (`max-width: 599px` → `(width >= 600px)`). `media="…"` attributes and
+  JS thresholds are not direction-checked. No target set no longer skips the run.
+- Rule home: deploy Step 3 (`#162`) — convert desktop-first prototype CSS while lifting it; deploy wires
+  `lint:breakpoints` into `npm run lint` on every project (replica C0 already did with a target). Pointers:
+  deploy Lint bullet and checklist row; the `--nav-height` example (on the boilerplate's 600/900 steps) and
+  the `#109` note are now mobile-first.
+- Prototype: the Mobile-adapt audit refuses a desktop-first query (`audit/responsive: desktop-first-query`)
+  instead of requiring a `max-width` rule ≤ 640px; the stock hamburger pattern and its fixture are
+  mobile-first (`@media (width >= 641px)` restores the inline nav; same switch as before). Migrate and
+  publish-sample point at the audit instead of restating it.
+- Folded: the `#113` un-float trap (a mobile query un-floating columns does not occur in mobile-first CSS).
+- Tests: `breakpoint-lint.test.mjs` (direction on CSS only, rewrite point, no-target runs, prototype
+  `<style>` vs `<source media>`). Nav fixture checked with `mobile-nav-audit.mjs` (clean at 360px) and at
+  641 / 1280px (inline nav, no burger).
+
+- **`deploy`, `prototype` and `migrate` `SKILL.md` are outlines now.** This change touches the three files, and
+  each was over the repository's limits for a `SKILL.md` (500 lines, about 5,000 tokens; `deploy` had 1,189
+  lines and 203 KB). Every section keeps its heading there, so `§` pointers from other files still resolve,
+  and names the file under `reference/` that holds its text, moved as it was: 16 files for `deploy`
+  (`step-1-audit.md` … `step-10-reconcile.md`, `encode-contract.md`, `anti-patterns.md`, `checklist.md`, …),
+  7 for `prototype`, 4 for `migrate`. No rule changed. A rule cited as `#N` is found by searching
+  `skills/deploy/` for it. `player-before-paint-browser.test.mjs` reads the `#157` snippet from
+  `deploy/reference/step-3-foundation.md`.
+
+## Unreleased — one copy of the shared script rules, shipped with the master's scripts
+
+Adding the EDS widget (0.34.0) touched 17 scripts, because every skill's scripts carried their own copy of the path,
+widget, chrome and kind rules. Those copies had drifted (nine path normalisers, five widget-stem helpers, two sets of
+class labels).
+
+- **`skills/stardust/scripts/lib/`** (`paths`, `names`, `kinds`, `taxonomy`, `resolve`) behind `contracts.mjs`, next to
+  `browser.mjs`. Setup step 7 already copies the master's `scripts/` to `stardust/scripts/stardust/`, so the library
+  ships with it, and a consumer finds `contracts.mjs` with the same two-layout lookup it uses for `browser.mjs` (0.38.0's
+  mechanism; no new copy step). dynamics, qa, rollout and spec resolve it once in their `lib.mjs`.
+- **Swapped**, each script's own copy deleted: rollout (inventory, assemble, delivery-lint, lib, seed-redirects,
+  da-library's page path), deploy (eds-path, deploy-batch, davids-model-lint, ai-readability), qa (lib, from-knowledge,
+  checks), spec (lib, spec-knowledge, spec-map), migrate, dynamics, replica (gate-evidence, gate-all), diff
+  (chrome-compare). Outputs are unchanged (golden snapshots byte-identical, field replays identical) except for these
+  bugs, converged on purpose: a widget stem takes `.htm` and any case of `.html`, and, as deploy's `block-roundtrip`
+  always did, a `/widgets/…` href with another extension or none (so delivery-lint and qa now read `/widgets/x.js` or
+  `/widgets/x` as a widget link, where they required `.html`); only a `/widgets/…` href is a widget
+  (rollout `pageWidgets`, qa `widgetLinks` and migrate `widgetsIn` took `/a/b.html` or `/nav` for one); spec-knowledge's
+  class labels for A and D now read as dynamics' do.
+- **Project copies:** a `stardust/scripts/stardust/` copied before this release has no `contracts.mjs`, and the scripts
+  that need it stop with the copy instruction: re-copy the master's scripts. `deploy/scripts/eds-path.mjs` and spec
+  `lib.mjs` `loadSibling` stay as re-exports for one release.
+- Tests: `lib.test.mjs`, `layout.test.mjs` (every skill copied the way the copy steps do, every script's `--help` run
+  from the copy, a copy without the master's scripts stops with the instruction); the characterization test pins 106
+  divergences (103 − 10 converged + 13 for code added in 0.35–0.38).
+
 ## 0.38.6 — the scripts index lists what an agent runs, not the libraries it imports
 
 The scripts index has a 12 KB cap so an agent can read it at session start, and it had sat within 10 bytes of that cap

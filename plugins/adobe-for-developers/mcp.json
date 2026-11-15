@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "adobe-for-developers": {
+      "type": "streamable-http",
+      "url": "https://adp-connector.adobe.io/mcp"
+    }
+  }
+}
