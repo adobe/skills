@@ -18,7 +18,9 @@ class labels).
   da-library's page path), deploy (eds-path, deploy-batch, davids-model-lint, ai-readability), qa (lib, from-knowledge,
   checks), spec (lib, spec-knowledge, spec-map), migrate, dynamics, replica (gate-evidence, gate-all), diff
   (chrome-compare). Outputs are unchanged (golden snapshots byte-identical, field replays identical) except for these
-  bugs, converged on purpose: a widget stem takes `.htm` and any case of `.html`; only a `/widgets/…` href is a widget
+  bugs, converged on purpose: a widget stem takes `.htm` and any case of `.html`, and, as deploy's `block-roundtrip`
+  always did, a `/widgets/…` href with another extension or none (so delivery-lint and qa now read `/widgets/x.js` or
+  `/widgets/x` as a widget link, where they required `.html`); only a `/widgets/…` href is a widget
   (rollout `pageWidgets`, qa `widgetLinks` and migrate `widgetsIn` took `/a/b.html` or `/nav` for one); spec-knowledge's
   class labels for A and D now read as dynamics' do.
 - **Project copies:** a `stardust/scripts/stardust/` copied before this release has no `contracts.mjs`, and the scripts

@@ -74,6 +74,10 @@ check('names: widgetStem — only /widgets/<path>/<name>[.ext], extension case-i
   assert.equal(names.widgetStem('/WIDGETS/a/b.html#f'), 'b');
   assert.equal(names.widgetStem('https://partner.example/widgets/map/finder.html'), 'finder');
   assert.equal(names.widgetStem('/widgets/a/results-wrapper.html'), 'results-wrapper');
+  // block-roundtrip's rule, which every consumer now shares: no extension and any other extension give a stem too
+  assert.equal(names.widgetStem('/widgets/search/site-search'), 'site-search');
+  assert.equal(names.widgetStem('/widgets/x.js'), 'x');
+  assert.equal(names.widgetStem('/widgets/img/logo.png'), 'logo');
   for (const notWidget of ['/a/b.html', '/nav', '/widgets/', '/x/widgets/a.html', 'widgets/a.html', '', null, undefined, 42]) assert.equal(names.widgetStem(notWidget), null, `${notWidget}`);
 });
 check('names: widgetHref (migrate) and widgetCodePath (rollout) unchanged', () => {

@@ -106,7 +106,7 @@ for (const blk of OPTIMIZING) {
 for (const m of html.matchAll(/href="(\/[^"]*)"/gi)) {
   const href = m[1]; const bare = href.replace(/[?#].*/, '');
   if (bare === '/') continue;
-  const stem = widgetStem(bare); // lib/names.mjs: non-null only for /widgets/<path>/<name>.html (any case, .htm too)
+  const stem = widgetStem(bare); // lib/names.mjs: non-null for /widgets/<path>/<name> with any extension or none
   if (stem !== null) {
     const code = widgetCodePath(bare); // widgets/<path>/<name>.html
     if (reservedStem(stem)) add('P1', 'widget-name', `widget name "${stem}" collides with a reserved block class or a derived -wrapper/-container class: ${href}`);

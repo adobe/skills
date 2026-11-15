@@ -60,7 +60,7 @@ State at pause:
 - Green at pause: golden byte-identical (316 ms), characterization all checks passed, lint exit 0, 67/67 runnable tests.
 - Worktrees: `skills` (refactor/1-lib), `skills-prep` (refactor/0-prep), `skills-baseline` (detached pre-refactor main, with the runner SDK bump and eval copies, uncommitted). `../replay-baseline/` holds the local field-replay baselines. caffeinate stopped.
 - Eval spend so far: $11.46 of $500.
-Resume: `git fetch origin && git rebase origin/main` on 0-prep then 1-lib (expect conflicts only if the other developers touched the same scripts); re-run golden + characterization + layout tests; finish the three Phase 1b workstreams from the checklist above; then Phase 2 (drift lints) and Phase 3 (eds-model.md) per the plan.
+Plan for the resume, as recorded at the pause: 0-prep and then 1-lib go onto the current `main` (conflicts expected only where the other developers touched the same scripts), golden, characterization and layout tests are run again, and the three Phase 1b workstreams are finished from the checklist above, followed by Phase 2 (drift lints) and Phase 3 (eds-model.md) of the plan. The next section records what happened.
 
 ### Resume — 2026-11-13, PR 1 (`refactor/1-lib`)
 - started: `refactor/1-lib` rebased onto the resumed `refactor/0-prep`. Three conflicts (qa `checks/ai-readability.mjs`, rollout
@@ -82,7 +82,7 @@ Resume: `git fetch origin && git rebase origin/main` on 0-prep then 1-lib (expec
 - extract and reskin: nothing to swap (extract's `normalizeUrl`/`dedupeKey` are source-side crawl keys, not an EDS contract;
   reskin carries browser plumbing only).
 - history rebuilt as one commit per step: census pins; library + `contracts.mjs` + `lib.test`; rollout; deploy; qa (with the
-  pre-existing static `../../../deploy/scripts/` import fix); layout test; spec; migrate; dynamics; replica; diff; 0.39.0.
+  pre-existing static `../../../deploy/scripts/` import fix); layout test; spec; migrate; dynamics; replica; diff; the CHANGELOG entry.
   Gate after every commit: 7 lints exit 0, every script test but `dropdown-unreachable` (Playwright), characterization
   equal except the whitelisted removals, golden byte-identical.
 - KNOWN_DIVERGENCE: 103 (PR 0) → 116 (census) → 106. Removed, all whitelisted: rollout pageWidgets ×4 (`.htm`, `.HTML`,
@@ -92,4 +92,4 @@ Resume: `git fetch origin && git rebase origin/main` on 0-prep then 1-lib (expec
 - field replay vs `../replay-baseline-2026-11/`: offline diff zero over 402 files (ISO stamps and `stardustVersion`
   normalised). Live airport run: spec S1–S3 outputs and the dynamics plan identical; `_dynamics.json` differs only in
   live noise (script load order, a reCAPTCHA cache-buster).
-- version 0.39.0 (minor: the project copy now needs the master's scripts for `contracts.mjs` too).
+- version: a minor was intended (the project copy now needs the master's scripts for `contracts.mjs` too). Since #653 the release sets it after the merge, from the `feat` in the pull request's title.
