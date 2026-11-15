@@ -11,6 +11,8 @@ description: |
   edits on a branch or in place, then verifies with mvn compile. It recognises the intent and
   handles each issue type itself, reporting anything it cannot yet fix.
 license: Apache-2.0
+metadata:
+  version: "1.0.1"
 ---
 
 # AEM as a Cloud Service — Code Assessment
