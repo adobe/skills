@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## Unreleased
+## 0.39.1
 
 - **Progress-reader guidance (#132).** A progress reply suggested `ledger.mjs summary`,
   but the reader supports only `tail` and `last`. Skill instructions and the run-status
