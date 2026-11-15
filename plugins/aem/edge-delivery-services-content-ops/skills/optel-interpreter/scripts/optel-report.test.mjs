@@ -231,6 +231,36 @@ test('two periods with the same values are not a change; fewer than 20 values in
   assert.equal(few.aboveCommonP75, undefined);
 });
 
+// references/rum-distiller.md has an example for a conversion rate and its test. It runs here
+// as it is written there, so that it can't go wrong unnoticed.
+test('the conversion example of the reference finds a rate that rose from 10% to 50%, and none that stayed', async () => {
+  const reference = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'references', 'rum-distiller.md'), 'utf8');
+  const [, example] = reference.match(/## A conversion rate\n\n```javascript\n([\s\S]*?)```/);
+  const visits = (n, submits) => Array.from({ length: n }, (_, i) => {
+    const visit = bundle(HOME);
+    if (i < submits) visit.events.push({ checkpoint: 'formsubmit', source: 'form', timeDelta: 9 });
+    return visit;
+  });
+  writeFileSync(join(dir, 'conversion.mjs'), `
+import { DataChunks, series, facets, stats, utils } from '@adobe/rum-distiller';
+const [bundlesBefore, bundlesAfter] = JSON.parse(process.env.PERIODS);
+[...bundlesBefore, ...bundlesAfter].forEach((bundle) => utils.addCalculatedProps(bundle));
+${example}
+console.log(JSON.stringify({ before, after, pValue }));
+`);
+  const example1 = (before, after) => {
+    const result = spawnSync(process.execPath, ['conversion.mjs'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PERIODS: JSON.stringify([before, after]) } });
+    assert.equal(result.status, 0, result.stderr);
+    return JSON.parse(result.stdout);
+  };
+  const rose = example1(visits(1000, 100), visits(1000, 500));
+  assert.deepEqual(rose.before, { rate: 0.1, visits: 1000, submits: 100 });
+  assert.deepEqual(rose.after, { rate: 0.5, visits: 1000, submits: 500 });
+  assert.ok(rose.pValue < 0.001);
+  const stayed = example1(visits(1000, 100), visits(500, 50));
+  assert.equal(stayed.pValue, 1);
+});
+
 test('arguments that make no sense are refused with the usage', () => {
   const refused = (...args) => {
     const result = run({}, ...args);

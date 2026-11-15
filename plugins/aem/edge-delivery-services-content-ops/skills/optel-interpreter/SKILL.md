@@ -77,7 +77,7 @@ These are the mistakes an analysis makes without this skill:
 With a baseline period, the report has `baseline` and `change`:
 
 - **`change.lcp`, `.cls`, `.inp`** hold `p75`, `rating` and `goodShare` for both periods, and `pValue` with `significant` where both have at least 20 samples. The test is about the p75 itself: `aboveCommonP75` is the share of each period's values above the p75 of both periods together, and `pValue` says whether those two shares differ. It also finds a change that stays within one rating.
-- Report a metric as changed when `significant` is true, and say by how much with the two p75 values. When it is false, say that the data doesn't show a change. That is not proof that nothing changed. With 100 samples in each period the test finds a p75 that rose by half in four of five cases, and one that rose by a fifth in one of five. Under 20 samples there is no test.
+- Report a metric as changed when `significant` is true, and say by how much with the two p75 values. When it is false, say that the data doesn't show a change. That is not proof that nothing changed. With 100 samples in each period and a typical spread of LCP values, the test finds a p75 that rose by half in about four of five cases, and one that rose by a fifth in about one of five. Under 20 samples there is no test.
 - **`change.pagesWorse`** lists the pages whose rating got worse, with a `pValue` and `significant` where the page has at least 20 samples in both periods. Start with the significant ones.
 - **`change.deviceShare` and `change.lcpElementsNew`** show a changed device mix or a new LCP element.
 - **`change.pageViews`**: traffic changed only if the two numbers are further apart than their margins.

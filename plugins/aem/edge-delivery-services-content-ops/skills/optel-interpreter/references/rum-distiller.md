@@ -66,7 +66,7 @@ Each entry of `data.facets.<name>` has `value`, `count` (bundles), `weight` (pag
 `data.totals.<series>` and `entry.metrics.<series>` are aggregates:
 
 - `sum` is the weighted total. Read it for `pageViews`, `visits` and the other counting series.
-- `count` is the number of bundles with a value. For `lcp`, `cls`, `inp` and `ttfb` it is the sample size.
+- `count` is the number of bundles for which the series returned a number, 0 included. For `lcp`, `cls`, `inp` and `ttfb` that is the sample size, because a bundle without the metric returns nothing. For a counting series it is every bundle, not the ones that were counted: `visits.count` is not the number of visits.
 - `percentile(p)`, `median`, `min`, `max`, `mean`, `stddev` and `stderr` are over the values, each bundle counted once whatever its weight. `values` is the array.
 
 ## Filters
@@ -125,13 +125,25 @@ data.addHistogramFacet('lcpHistogram', 'lcpValue', { count: 4, steps: 'quantiles
 ## A conversion rate
 
 ```javascript
-data.addFacet('checkpoint', facets.checkpoint);
-data.addSeries('visits', series.visits);
-data.addSeries('submits', (bundle) => (bundle.visit && data.hasConversion(bundle, { checkpoint: ['formsubmit'] }) ? bundle.weight : 0));
-const { visits, submits } = data.totals;
-const rate = visits.sum ? submits.sum / visits.sum : null;
+// The visits of a period and those with a form submit: weighted, for the rate, and as
+// numbers of bundles, for a test.
+function conversion(rumBundles) {
+  const data = new DataChunks();
+  data.load([{ date: 'period', rumBundles }]);
+  data.addFacet('checkpoint', facets.checkpoint);
+  const submitted = (bundle) => bundle.visit && data.hasConversion(bundle, { checkpoint: ['formsubmit'] });
+  data.addSeries('visits', series.visits);
+  data.addSeries('submits', (bundle) => (submitted(bundle) ? bundle.weight : 0));
+  data.addSeries('visitBundles', (bundle) => (bundle.visit ? 1 : 0));
+  data.addSeries('submitBundles', (bundle) => (submitted(bundle) ? 1 : 0));
+  const { visits, submits, visitBundles, submitBundles } = data.totals;
+  return { rate: visits.sum ? submits.sum / visits.sum : null, visits: visitBundles.sum, submits: submitBundles.sum };
+}
+
+const [before, after] = [conversion(bundlesBefore), conversion(bundlesAfter)];
+const pValue = stats.zTestTwoProportions(before.visits, before.submits, after.visits, after.submits);
 ```
 
-For two variants or two periods, test the difference with `stats.zTestTwoProportions(visitsA.count, submitsA.count, visitsB.count, submitsB.count)`.
+The test takes numbers of bundles, so count them with a series that returns 1. The `count` of the weighted series is the same in every period and gives a p-value of 1 whatever changed.
 
 The library has no test for a percentile. To test whether a p75 differs between two sets of values, take the p75 of both sets together, count the values above it in each set, and pass the four counts to `stats.zTestTwoProportions`. `scripts/optel-report.mjs` does that for two periods.
