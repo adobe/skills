@@ -144,6 +144,6 @@ const [before, after] = [conversion(bundlesBefore), conversion(bundlesAfter)];
 const pValue = stats.zTestTwoProportions(before.visits, before.submits, after.visits, after.submits);
 ```
 
-The test takes numbers of bundles, so count them with a series that returns 1. The `count` of the weighted series is the same in every period and gives a p-value of 1 whatever changed.
+The test takes numbers of bundles, so count them with a series that returns 1. The `count` of a weighted series is every bundle, for `visits` and `submits` alike, so a test on those counts sees a share of 1 in both periods and gives a p-value of 1 whatever changed.
 
 The library has no test for a percentile. To test whether a p75 differs between two sets of values, take the p75 of both sets together, count the values above it in each set, and pass the four counts to `stats.zTestTwoProportions`. `scripts/optel-report.mjs` does that for two periods.

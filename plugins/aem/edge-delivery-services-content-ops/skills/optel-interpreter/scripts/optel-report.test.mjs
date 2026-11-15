@@ -243,13 +243,16 @@ test('the conversion example of the reference finds a rate that rose from 10% to
   });
   writeFileSync(join(dir, 'conversion.mjs'), `
 import { DataChunks, series, facets, stats, utils } from '@adobe/rum-distiller';
-const [bundlesBefore, bundlesAfter] = JSON.parse(process.env.PERIODS);
+import { readFileSync } from 'node:fs';
+const [bundlesBefore, bundlesAfter] = JSON.parse(readFileSync(process.env.PERIODS_FILE, 'utf8'));
 [...bundlesBefore, ...bundlesAfter].forEach((bundle) => utils.addCalculatedProps(bundle));
 ${example}
 console.log(JSON.stringify({ before, after, pValue }));
 `);
   const example1 = (before, after) => {
-    const result = spawnSync(process.execPath, ['conversion.mjs'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PERIODS: JSON.stringify([before, after]) } });
+    // in a file: two periods of a thousand bundles are too long for an environment variable on Linux
+    writeFileSync(join(dir, 'periods.json'), JSON.stringify([before, after]));
+    const result = spawnSync(process.execPath, ['conversion.mjs'], { cwd: dir, encoding: 'utf8', env: { ...process.env, PERIODS_FILE: join(dir, 'periods.json') } });
     assert.equal(result.status, 0, result.stderr);
     return JSON.parse(result.stdout);
   };
