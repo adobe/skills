@@ -10,7 +10,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: Adobe
-  version: "1.0"
+  version: "1.0.0"
 ---
 
 # Funnel Health Check (Customer Journey Analytics)
