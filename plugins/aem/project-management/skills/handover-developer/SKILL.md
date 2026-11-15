@@ -4,7 +4,7 @@ description: Generate comprehensive technical documentation for developers takin
 license: Apache-2.0
 allowed-tools: Read, Write, Edit, Bash, Skill, Glob, Grep
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Project Handover - Development
