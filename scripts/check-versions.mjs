@@ -67,7 +67,7 @@ function main() {
     '',
     'After the merge, semantic-release computes the version of each changed skill and plugin from the commit messages: `fix`, `perf`, `docs`, `refactor` and `style` are a patch release, `feat` a minor one, a breaking change a major one. The title of the pull request is the commit message. Take the change to the version out of the pull request.',
     '',
-    `In a hand-written \`CHANGELOG.md\` of a plugin, put the entry under \`## Unreleased\`; the release renames that heading to the version.`,
+    `For a plugin with a hand-written \`CHANGELOG.md\`, write the entry as a new file in the plugin's \`changes/\` folder; the release moves it into the changelog under the version.`,
   ]);
   error(`${found.length} version(s) that a release sets are changed by hand: ${found.map(({ file }) => dirname(file)).join(', ')}`);
   process.exit(1);

@@ -4,16 +4,6 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## Unreleased
-
-- **`breakpoint-lint.mjs` gaps (#162, issue #624).** A `--dirs` entry naming a missing
-  `.css`/`.js`/`.mjs`/`.html` file exits 2 instead of linting nothing clean (a mistyped
-  `<slug>-proposed.html` passed the prototype audit). A lower bound under `not`
-  (`not all and (min-width: 900px)`, `not (min-width: 900px)`) is desktop-first. HTML comments
-  are blanked outside `<style>`/`<script>`. Under a target, the rewrite hint names the nearest
-  target step. Replica's desktop-first float/BFC corollary ("add `flow-root` to the un-floating
-  override") is removed.
-
 ## 0.39.1
 
 - **Progress-reader guidance (#132).** A progress reply suggested `ledger.mjs summary`,
@@ -56,7 +46,7 @@ nothing enforced it.
   `skills/deploy/` for it. `player-before-paint-browser.test.mjs` reads the `#157` snippet from
   `deploy/reference/step-3-foundation.md`.
 
-## Unreleased — one copy of the shared script rules, shipped with the master's scripts
+## 0.39.0 — one copy of the shared script rules, shipped with the master's scripts
 
 Adding the EDS widget (0.34.0) touched 17 scripts, because every skill's scripts carried their own copy of the path,
 widget, chrome and kind rules. Those copies had drifted (nine path normalisers, five widget-stem helpers, two sets of

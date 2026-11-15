@@ -4,14 +4,17 @@
 //
 // 1. Writes the version to the root plugin.json. A version that a target overrides follows,
 //    and so does a Tessl target's list of skills, which has to name the skills that ship.
-// 2. In a CHANGELOG.md that the plugin's owners write by hand, the heading "## Unreleased"
-//    becomes "## <version>".
+// 2. In a CHANGELOG.md that the plugin's owners write by hand, the change notes of
+//    changes/*.md become the entries of this version, and the notes are removed
+//    (scripts/lib/changes.mjs). A heading "## Unreleased" that is still there from before
+//    the notes becomes "## <version>".
 // 3. Builds the generated manifests and the marketplace entries (x927 build --all) and
 //    stages what changed, so that the release is one commit.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readNotes, withNotes } from './lib/changes.mjs';
 import { isMain } from './lib/is-main.mjs';
 import { isVersion } from './lib/release.mjs';
 
@@ -54,8 +57,12 @@ function main() {
   const changelogPath = join(dir, 'CHANGELOG.md');
   if (existsSync(changelogPath)) {
     const before = readFileSync(changelogPath, 'utf8');
-    const after = released(before, version);
+    const notes = readNotes(dir);
+    const after = withNotes(released(before, version), version, notes);
     if (after !== before) writeFileSync(changelogPath, after);
+    // staged, so that the release commit takes the removal along with the changelog
+    if (notes.length > 0) execFileSync('git', ['rm', '-q', '--', ...notes.map((note) => note.file)], { cwd: dir, stdio: 'inherit' });
+    console.log(`${dir}: ${notes.length} change note(s) moved into CHANGELOG.md`);
   }
 
   const x927 = join(root, 'node_modules', '.bin', 'x927');
