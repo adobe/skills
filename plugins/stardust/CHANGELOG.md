@@ -1,18 +1,21 @@
 # Changelog
 
-This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
+## [0.39.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.1...plugin/stardust/v0.39.2) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** breakpoint-lint fails a missing --dirs file and negated desktop-first queries ([#677](https://github.com/adobe/skills/issues/677)) ([8dda267](https://github.com/adobe/skills/commit/8dda26746899a082dad4cfa3acf1736335064a8c))
+
+## 0.14.0 to 0.39.1: entries written by hand
+
+From here down, each entry was written with its pull request. The entries above are
+written by the release, from the titles of the pull requests; a pull request's description
+has what its change is about.
+
+This part starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
-
-## Unreleased
-
-- **`breakpoint-lint.mjs` gaps (#162, issue #624).** A `--dirs` entry naming a missing
-  `.css`/`.js`/`.mjs`/`.html` file exits 2 instead of linting nothing clean (a mistyped
-  `<slug>-proposed.html` passed the prototype audit). A lower bound under `not`
-  (`not all and (min-width: 900px)`, `not (min-width: 900px)`) is desktop-first. HTML comments
-  are blanked outside `<style>`/`<script>`. Under a target, the rewrite hint names the nearest
-  target step. Replica's desktop-first float/BFC corollary ("add `flow-root` to the un-floating
-  override") is removed.
 
 ## 0.39.1
 
@@ -56,7 +59,7 @@ nothing enforced it.
   `skills/deploy/` for it. `player-before-paint-browser.test.mjs` reads the `#157` snippet from
   `deploy/reference/step-3-foundation.md`.
 
-## Unreleased — one copy of the shared script rules, shipped with the master's scripts
+## 0.39.0 — one copy of the shared script rules, shipped with the master's scripts
 
 Adding the EDS widget (0.34.0) touched 17 scripts, because every skill's scripts carried their own copy of the path,
 widget, chrome and kind rules. Those copies had drifted (nine path normalisers, five widget-stem helpers, two sets of

@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.39.1",
+      "version": "0.39.2",
       "category": "design",
       "keywords": [
         "design",
@@ -56,7 +56,7 @@
       "name": "aem-edge-delivery-services",
       "source": "./plugins/aem/edge-delivery-services",
       "description": "Skills for AEM Edge Delivery Services development",
-      "version": "1.0.1"
+      "version": "1.0.3"
     },
     {
       "name": "aem-cloud-service",
