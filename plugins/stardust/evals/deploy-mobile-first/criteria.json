@@ -1,0 +1,46 @@
+{
+  "context": "deploy — desktop-first prototype CSS is delivered mobile-first and the breakpoint lint is wired into npm run lint (#162). Task and setup in task.md; each item is judged pass/fail by inspecting the workspace (package.json, stardust/scripts/replica/, styles/, blocks/, stardust/eds-conversion-log.md) and by running the commands named below in it, and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "activated",
+      "max_score": 5,
+      "description": "The stardust `deploy` skill was invoked for the prototype (the session loaded the deploy skill / read its SKILL.md or the Step 3 reference and worked from `stardust/prototypes/home-proposed.html`)."
+    },
+    {
+      "name": "lint_script_copied",
+      "max_score": 10,
+      "description": "ARTIFACT: `stardust/scripts/replica/breakpoint-lint.mjs` exists and is byte-identical to the plugin's `skills/replica/scripts/breakpoint-lint.mjs` (compare with `cmp` or a checksum); `node stardust/scripts/replica/breakpoint-lint.mjs --help` prints its usage."
+    },
+    {
+      "name": "lint_chain_wired",
+      "max_score": 15,
+      "description": "ARTIFACT: `package.json` `scripts` has `\"lint:breakpoints\": \"node stardust/scripts/replica/breakpoint-lint.mjs\"` (extra flags allowed) and `lint` runs it chained with `&&` (`npm run lint:js && npm run lint:css && npm run lint:breakpoints`, any order); `lint:js` and `lint:css` are still in `lint` with their stock commands. A lint that is only run by hand, or a `lint` that lost `lint:js` or `lint:css`, fails."
+    },
+    {
+      "name": "lint_breakpoints_clean",
+      "max_score": 20,
+      "description": "RUN: in the workspace, `npm run lint:breakpoints` exits 0 and prints `breakpoint-lint: clean — … all mobile-first`; and `grep -rnE '@media[^{]*(max-width|width *<)' styles blocks` finds nothing. A `blocks/` directory with at least `hero` and `cards` CSS must exist — an empty tree passes the lint trivially and fails this item."
+    },
+    {
+      "name": "switch_point_kept",
+      "max_score": 15,
+      "description": "RUN: `node stardust/scripts/replica/breakpoint-lint.mjs --inventory styles blocks` lists the converted queries at `600px` and no switch point at 599px or 601px; the stock `900px` switches of `styles/styles.css` are still there."
+    },
+    {
+      "name": "phone_is_the_base",
+      "max_score": 20,
+      "description": "ARTIFACT: read the delivered CSS at 360px (base rules only) and at 1280px (base plus the `>= 600px` and `>= 900px` rules). At 360px the hero and card grid are one column, the CTAs stack, the hero image is 4 / 3 and sections are padded `40px 20px`; at 1280px the hero is `1.2fr 0.8fr`, the cards are three columns, the CTAs sit in a row and sections are padded `72px 64px` — what the prototype shows at those widths. Equivalent values (a different property that yields the same layout, a token for a literal) pass; a phone override that was dropped in the conversion fails. Where the judge has a browser, rendering the blocks at 360 and 1280 settles a doubt."
+    },
+    {
+      "name": "lint_run_and_logged",
+      "max_score": 10,
+      "description": "TRANSCRIPT + ARTIFACT: the session ran `npm run lint:breakpoints` (or the copied script) after writing the blocks and before declaring the code done, saw the clean line, and `stardust/eds-conversion-log.md` records that the prototype's desktop-first queries were converted to mobile-first at 600px and the lint result. A claim of a clean lint the transcript does not show fails."
+    },
+    {
+      "name": "no_site_names",
+      "max_score": 5,
+      "description": "ARTIFACT: `stardust/eds-conversion-log.md`, `styles/` and `blocks/` name no real-world site, brand or hostname — only the fixture's role name (\"a neighbourhood bakery cooperative\") and `example.com` placeholders."
+    }
+  ]
+}

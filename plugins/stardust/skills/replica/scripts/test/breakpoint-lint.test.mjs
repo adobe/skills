@@ -2,9 +2,9 @@
 // skills/replica/scripts/test/breakpoint-lint.test.mjs — the breakpoint-lint.mjs contract: every query form normalised to
 // its switch point (min/max, range, reversed, em, 1px complementary pairs collapse, `max-width: 900px` ≠ 900), CSS read in
 // @media preludes only (never declarations or comments), JS media strings and innerWidth comparisons read, interpolated
-// features advisory, a CSS upper bound → desktop-first exit 1 with or without a target (attributes and JS exempt),
-// off-target → exit 1 with file:line, DESIGN.json target read,
-// --inventory distinct points, --help that reads nothing, usage errors on exit 2.
+// features advisory, a CSS upper bound (also a lower bound under `not`) → desktop-first exit 1 with or without a target
+// (attributes and JS exempt), the rewrite hint on a target step, HTML comments blanked, off-target → exit 1 with file:line,
+// DESIGN.json target read, --inventory distinct points, --help that reads nothing, usage errors and a missing named file on exit 2.
 // Run: node plugins/stardust/skills/replica/scripts/test/breakpoint-lint.test.mjs   (well under 1 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -76,6 +76,22 @@ check('desktop-first = a CSS upper bound only (max, <, <=, range top); attribute
   assert.deepEqual(flagged("matchMedia('(max-width: 899px)'); if (innerWidth < 900) {}", 'js'), []);
 });
 
+check('`not` reverses the bound: query-level `not` its query, `not (…)` its group', () => {
+  const hits = (text) => switchPoints(text, 'css').map((h) => [h.px, h.form]);
+  assert.deepEqual(hits('@media not all and (min-width: 900px) {}'), [[900, 'max']]);
+  assert.deepEqual(hits('@media not all and (max-width: 899px) {}'), [[900, 'min']]);
+  assert.deepEqual(hits('@media (min-width: 600px) and (not (min-width: 900px)) {}'), [[600, 'min'], [900, 'max']]);
+  assert.deepEqual(hits('@media not (width < 900px) {}'), [[900, 'min']]);
+  assert.deepEqual(hits('@media not print, (min-width: 600px) {}'), [[600, 'min']]);
+  assert.deepEqual(hits('@media not all and (not (min-width: 600px)) {}'), [[600, 'min']]);
+  assert.deepEqual(switchPoints('@media not all and (min-width: 900px) {}', 'css').filter(isDesktopFirst).map((h) => h.text), ['not min-width: 900px']);
+});
+
+check('HTML: `<!-- -->` blanked outside <style>/<script>, lines kept', () => {
+  const html = "<p>don't</p><!-- @media (max-width: 600px)\n<source media=\"(max-width: 599px)\"> -->\n<style>\n@media (width >= 600px) {}\n</style>\n";
+  assert.deepEqual(switchPoints(html, 'html').map((h) => [h.px, h.line]), [[600, 4]]);
+});
+
 check('parseTarget: sorted unique positive integers, else null', () => {
   assert.deepEqual(parseTarget('1200, 600,900,600'), [600, 900, 1200]);
   assert.deepEqual(parseTarget([900, 600]), [600, 900]);
@@ -125,6 +141,20 @@ check('a prototype dir lints its inline <style> and <source media> (.html)', () 
   assert.match(r.out, /home-proposed\.html:3 {2}max-width: 899px {2}→ desktop-first/);
   assert.match(r.out, /1 desktop-first, 1 off-target in 1 files/);
   assert.doesNotMatch(r.out, /:5 /);
+});
+
+check('under a target the desktop-first hint names the nearest target step', () => {
+  const protos = join(root, 'protos-hint');
+  write(protos, 'a-proposed.html', '<style>\n@media (max-width: 1023px) { .y { a: b } }\n</style>\n');
+  const r = run(root, '--root', protos, '--dirs', 'a-proposed.html', '--target', '600,900,1200');
+  assert.equal(r.code, 1);
+  assert.match(r.out, /a-proposed\.html:2 {2}max-width: 1023px {2}→ desktop-first: .* \(width >= 900px\)/);
+});
+
+check('a missing named file in --dirs → exit 2; a missing dir is skipped', () => {
+  const r = run(root, '--root', join(root, 'protos'), '--dirs', 'nope-proposed.html');
+  assert.equal(r.code, 2); assert.match(r.err, /nope-proposed\.html does not exist/);
+  assert.equal(run(proj, '--dirs', 'blocks,missing-dir').code, 0);
 });
 
 check('target read from DESIGN.json extensions.breakpoints.target; bad value → exit 2', () => {
