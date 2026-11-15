@@ -1,3 +1,10 @@
+# 1.0.0 (2026-11-15)
+
+
+### Features
+
+* **aem-eds-content-ops:** add optel-interpreter skill ([#660](https://github.com/adobe/skills/issues/660)) ([648dae6](https://github.com/adobe/skills/commit/648dae67536b6ace53e9864cc54ece9cb00a8155))
+
 # Changelog
 
 ## 1.0.0 (2026-05-15)
