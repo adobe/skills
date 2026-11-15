@@ -29,6 +29,15 @@ nothing enforced it.
   `<style>` vs `<source media>`). Nav fixture checked with `mobile-nav-audit.mjs` (clean at 360px) and at
   641 / 1280px (inline nav, no burger).
 
+- **`deploy`, `prototype` and `migrate` `SKILL.md` are outlines now.** This change touches the three files, and
+  each was over the repository's limits for a `SKILL.md` (500 lines, about 5,000 tokens; `deploy` had 1,189
+  lines and 203 KB). Every section keeps its heading there, so `§` pointers from other files still resolve,
+  and names the file under `reference/` that holds its text, moved as it was: 16 files for `deploy`
+  (`step-1-audit.md` … `step-10-reconcile.md`, `encode-contract.md`, `anti-patterns.md`, `checklist.md`, …),
+  7 for `prototype`, 4 for `migrate`. No rule changed. A rule cited as `#N` is found by searching
+  `skills/deploy/` for it. `player-before-paint-browser.test.mjs` reads the `#157` snippet from
+  `deploy/reference/step-3-foundation.md`.
+
 ## 0.38.6 — the scripts index lists what an agent runs, not the libraries it imports
 
 The scripts index has a 12 KB cap so an agent can read it at session start, and it had sat within 10 bytes of that cap
