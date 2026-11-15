@@ -31,6 +31,17 @@ repository; the pull request review reads them too.
 - Keep `SKILL.md` short: what a capable agent gets wrong without it, not general practice. Put
   detail in `references/` and link it by a path that exists. Don't grow a `SKILL.md` past 500
   lines.
+- A `SKILL.md` has a token limit: 5,000 tokens for a skill with an eval, 1,000 for a skill
+  without one. A token is counted as four characters. An eval of a skill is one of:
+  - `skills/<skill>/evals/evals.json` with at least one entry that has a `prompt` and an
+    `expected_output` or `assertions`;
+  - a scenario of its plugin, `evals/<scenario>/` with `task.md` and `criteria.json`, whose
+    folder is named after the skill: `<skill>` or `<skill>-<what it tests>`;
+  - any scenario of its plugin, when the plugin has no other skill.
+
+  `node scripts/check-skills.mjs --tokens <plugin dir>` prints each skill's tokens, limit and
+  eval. A pull request that changes a `SKILL.md` over its limit has to bring it under: with an
+  eval, or by cutting.
 - The review tests that. It asks a small model without tools, files or web access, which has
   not read the skill, the questions the skill answers. What that model gets right by itself,
   twice, doesn't belong in a skill: the review names each such line and denies the pull
