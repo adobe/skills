@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/adobe/skills/compare/migration-v1.1.0...migration-v1.2.0) (2026-11-15)
+
+
+### Features
+
+* **aem-cloud-service:** pin behavior with characterization tests around Java migrations ([#381](https://github.com/adobe/skills/issues/381)) ([a59d6d2](https://github.com/adobe/skills/commit/a59d6d2f852d0df4dac53c8375499ed81be645d6))
+
 # [1.1.0](https://github.com/adobe/skills/compare/migration-v1.0.1...migration-v1.1.0) (2026-11-15)
 
 
