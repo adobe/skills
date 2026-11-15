@@ -54,14 +54,16 @@ export const RULES = 'Rules for this run: work in the current directory, with th
 
 // The models CI's Bedrock key can reach, as the review workflow names them. Used when the
 // run is on Bedrock and no --model is given.
-export const MODELS = { claude: 'global.anthropic.claude-opus-5-5', codex: 'global.openai.gpt-6.1-sol', grok: 'xai.grok-4.6', agy: 'global.openai.gpt-6.1-sol' };
+export const MODELS = { claude: 'global.anthropic.claude-opus-5-5', codex: 'global.openai.gpt-6.1-sol', grok: 'xai.grok-4.6', agy: 'xai.grok-4.6' };
 
-// Bedrock's OpenAI-compatible endpoints for the two clients that need to be told where it is.
-// Grok's own model is served on bedrock-mantle under /openai/v1 (Responses API). Antigravity
-// speaks Chat Completions, which bedrock-runtime serves.
+// Bedrock's OpenAI-compatible endpoint for the two clients that need to be told where it is:
+// bedrock-mantle serves xai.grok-4.6 under /openai/v1, as the Responses API (Grok) and as
+// Chat Completions (Antigravity). Antigravity sends function tools with a reasoning effort,
+// which Bedrock refuses for global.openai.gpt-6.1-sol on Chat Completions, so it runs on
+// Grok's model too.
 export const ENDPOINTS = {
   grok: (region) => `https://bedrock-mantle.${region}.api.aws/openai/v1`,
-  agy: (region) => `https://bedrock-runtime.${region}.amazonaws.com/openai/v1`,
+  agy: (region) => `https://bedrock-mantle.${region}.api.aws/openai/v1`,
 };
 
 const BEDROCK = ['AWS_BEARER_TOKEN_BEDROCK', 'AWS_REGION', 'AWS_DEFAULT_REGION'];

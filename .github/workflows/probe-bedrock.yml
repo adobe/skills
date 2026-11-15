@@ -11,48 +11,6 @@ permissions:
   contents: read
 
 jobs:
-  endpoints:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
-      REGION: us-west-2
-    steps:
-      - name: Models on bedrock-mantle
-        run: |
-          for prefix in v1 openai/v1; do
-            echo "== GET bedrock-mantle /$prefix/models"
-            curl -sS -o body.json -w '%{http_code}\n' -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" "https://bedrock-mantle.$REGION.api.aws/$prefix/models" || true
-            jq -r '.data[]?.id' body.json 2>/dev/null | sort | tr '\n' ' ' | cut -c1-4000 || true
-            echo
-            jq -c 'del(.data)' body.json 2>/dev/null | cut -c1-400 || head -c 400 body.json
-            echo
-          done
-      - name: Which model answers on which endpoint
-        run: |
-          ask() { # <label> <url> <body>
-            code=$(curl -sS -o body.json -w '%{http_code}' -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" -H 'Content-Type: application/json' -d "$3" "$2" || true)
-            echo "== $1: HTTP $code"
-            jq -c '{model, error, message, text: (.choices[0].message.content // (.output // [] | map(.content // [] | map(.text // "") | join("")) | join("")))}' body.json 2>/dev/null | cut -c1-500 || head -c 500 body.json
-            echo
-          }
-          chat() { printf '{"model":"%s","messages":[{"role":"user","content":"Reply with the one word: pong"}],"max_completion_tokens":200}' "$1"; }
-          resp() { printf '{"model":"%s","input":"Reply with the one word: pong","store":false}' "$1"; }
-          runtime="https://bedrock-runtime.$REGION.amazonaws.com/openai/v1"
-          mantle="https://bedrock-mantle.$REGION.api.aws"
-          for m in global.openai.gpt-6.1-sol global.openai.gpt-5.6-luna global.anthropic.claude-haiku-5-5 global.xai.grok-4.6 us.xai.grok-4.6 xai.grok-4.6; do
-            ask "runtime chat $m" "$runtime/chat/completions" "$(chat "$m")"
-          done
-          for m in global.xai.grok-4.6 xai.grok-4.6; do
-            ask "runtime responses $m" "$runtime/responses" "$(resp "$m")"
-          done
-          for m in xai.grok-4.6 xai.grok-4.6-build openai.gpt-6.1-sol openai.gpt-oss-120b; do
-            ask "mantle /openai/v1 chat $m" "$mantle/openai/v1/chat/completions" "$(chat "$m")"
-            ask "mantle /openai/v1 responses $m" "$mantle/openai/v1/responses" "$(resp "$m")"
-            ask "mantle /v1 chat $m" "$mantle/v1/chat/completions" "$(chat "$m")"
-            ask "mantle /v1 responses $m" "$mantle/v1/responses" "$(resp "$m")"
-          done
-
   evals:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -60,11 +18,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { client: claude, args: '' }
-          - { client: codex, args: '' }
-          - { client: grok, args: '' }
+          - { client: grok, args: '--model global.xai.grok-4.6 --base-url https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1' }
           - { client: agy, args: '' }
-          - { client: agy, args: '--model xai.grok-4.6 --base-url https://bedrock-mantle.us-west-2.api.aws/openai/v1' }
+          - { client: agy, args: '--model global.xai.grok-4.6 --base-url https://bedrock-runtime.us-west-2.amazonaws.com/openai/v1' }
+          - { client: agy, args: '--model google.gemma-4-31b --base-url https://bedrock-mantle.us-west-2.api.aws/v1' }
+          - { client: agy, args: '--model openai.gpt-6-astra --base-url https://bedrock-mantle.us-west-2.api.aws/v1' }
     env:
       AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
       AWS_REGION: us-west-2
