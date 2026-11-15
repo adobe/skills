@@ -1,0 +1,33 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "adobe-cja",
+  "version": "1.0.0",
+  "description": "Practitioner-focused agent skills for Adobe Customer Journey Analytics via the CJA MCP server — KPI pulse, top movers, funnel health check, dimension analysis, segment performance comparator, and executive briefing.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "adobe",
+    "customer-journey-analytics",
+    "cja",
+    "analytics",
+    "mcp",
+    "reporting"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {},
+        "tessl": {
+          "name": "adobe/adobe-cja",
+          "private": false
+        }
+      },
+      "marketplace": {
+        "description": "Practitioner skills for Adobe Customer Journey Analytics via the CJA MCP server"
+      }
+    }
+  }
+}

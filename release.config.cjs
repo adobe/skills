@@ -1,6 +1,11 @@
+// The release of one skill. scripts/release-skills.mjs runs semantic-release in the skill's
+// directory with this file as its configuration (--extends), so a skill needs no release
+// files of its own. The tag is <folder>-v<version>; a package.json there may give another name.
+const fs = require("fs");
 const path = require("path");
-const pkg = require(path.resolve("package.json"));
-const name = pkg.name;
+const name = fs.existsSync(path.resolve("package.json"))
+  ? require(path.resolve("package.json")).name
+  : path.basename(process.cwd());
 const pathFilteredAnalyzer = path.resolve(__dirname, "scripts/path-filtered-analyzer.cjs");
 const pathFilteredNotesGenerator = path.resolve(__dirname, "scripts/path-filtered-notes-generator.cjs");
 
