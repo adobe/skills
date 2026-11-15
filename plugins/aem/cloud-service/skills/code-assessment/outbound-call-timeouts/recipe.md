@@ -75,6 +75,11 @@ CloseableHttpClient client = HttpClientBuilder.create()
 form above. Imports to add: `org.apache.http.client.config.RequestConfig`,
 `org.apache.http.impl.client.HttpClientBuilder` (drop `HttpClients` import if now unused).
 
+`HttpClients.createMinimal()` (4.x and 5.x) builds a minimal client that has no default `RequestConfig`; it
+only reads the config set on each request. Do not swap it for the builder, which adds
+redirect, retry, cookie and auth handling. Set `request.setConfig(config)` on every request it
+executes when they are all in the same method; otherwise skip it as `ambiguous-construction`.
+
 ### Apache HttpClient 5.x (`org.apache.hc`)
 
 5.x deprecates `setSocketTimeout`/`setConnectTimeout(int)` in favour of `Timeout` and renames the

@@ -25,7 +25,7 @@
         {
           "type": "file_contains",
           "path": ".github/workflows/deploy_stage.yml",
-          "pattern": "adobe/aio-cli-setup-action@3",
+          "pattern": "adobe/aio-cli-setup-action@1.3.0",
           "description": "Uses the official Adobe CLI setup action."
         },
         {

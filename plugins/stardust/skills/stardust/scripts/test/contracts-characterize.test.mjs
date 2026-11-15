@@ -316,9 +316,10 @@ OBSERVED.chromeSets = {
   const metaPage = (k, v) => `<html><body><main><div><div class="metadata"><div><div>${k}</div><div>${v}</div></div></div></div></main></body></html>`;
   const lib = join(root, 'da-library'); for (const f of ['a.html', 'a/index.html', 'b/index.html', 'C.html', 'nav.html']) { mkdirSync(join(lib, dirname(f)), { recursive: true }); writeFileSync(join(lib, f), '<main></main>'); }
   const rel = (f) => (f ? f.slice(lib.length + 1) : null);
+  // no '/c' probe: whether it finds C.html is the filesystem's case rule (macOS yes, Linux CI no), not the script's
   OBSERVED.census202611 = {
     daLibraryChromeRefs: Object.fromEntries(['/footer-home', '/de/nav/', 'https://site.example/nav.html', '/Footer.HTML', 'footer?x=1', '/nav/index'].map((v) => [v, daLibrary.chromeRefs(metaPage('Nav', v))])),
-    daLibraryContentFile: Object.fromEntries(['/', '/a', '/a/', '/b/', '/c', '/C', '/a/b.html', '/nav'].map((p) => [p, rel(daLibrary.contentFile(lib, p))])),
+    daLibraryContentFile: Object.fromEntries(['/', '/a', '/a/', '/b/', '/C', '/a/b.html', '/nav'].map((p) => [p, rel(daLibrary.contentFile(lib, p))])),
     daLibraryDocName: Object.fromEntries(['Hero', 'Section', 'cards-container', 'Two Words', '***', 'Café'].map((n) => [n, daLibrary.docName(n)])),
     daLibrarySkip: [...daLibrary.SKIP],
     mediaWebPath: Object.fromEntries(['media/Scope_Test/Clip A.MP4', 'x/clip.v2.mp4', 'main-mvisual_video01.mp4', 'noext'].map((n) => [n, mediaUpload.webPath(n)])),
@@ -528,7 +529,7 @@ const EXPECTED = {
     "hero": {"rollout": false, "spec": false, "aiReadability": false, "qaFragments": false, "deliveryLint": false}
   },
   chromeSets: {"rollout": ["header", "nav", "footer"], "spec": ["header", "nav", "footer"], "qaDefault": ["/nav", "/footer"], "aiReadabilityOnPaths": {"/": false, "/a": false, "/a/": false, "/a/b": false, "/a/b/": false, "/a/index.html": false, "/a/b.html": false, "/a?x=1": false, "/a#f": false, "/A/B": false, "https://HOST.example/a/b.html?q": false, "/widgets/search/site-search.html?q=docs": false, "/widgets/search/site-search.htm": false, "/nav": true, "/footer": true, "/fragments/x": false}},
-  census202611: {"daLibraryChromeRefs": {"/footer-home": ["footer-home"], "/de/nav/": ["de/nav"], "https://site.example/nav.html": ["nav"], "/Footer.HTML": ["Footer.HTML"], "footer?x=1": ["footer?x=1"], "/nav/index": ["nav/index"]}, "daLibraryContentFile": {"/": null, "/a": "a.html", "/a/": "a.html", "/b/": "b/index.html", "/c": "c.html", "/C": "C.html", "/a/b.html": null, "/nav": "nav.html"}, "daLibraryDocName": {"Hero": "hero", "Section": "section", "cards-container": "cards-container", "Two Words": "two-words", "***": "untitled", "Café": "caf"}, "daLibrarySkip": ["metadata", "section-metadata", "library-metadata", "template-metadata"], "mediaWebPath": {"media/Scope_Test/Clip A.MP4": "media/Scope_Test/clip-a.mp4", "x/clip.v2.mp4": "x/clip-v2.mp4", "main-mvisual_video01.mp4": "main-mvisual-video01.mp4", "noext": "noext"}},
+  census202611: {"daLibraryChromeRefs": {"/footer-home": ["footer-home"], "/de/nav/": ["de/nav"], "https://site.example/nav.html": ["nav"], "/Footer.HTML": ["Footer.HTML"], "footer?x=1": ["footer?x=1"], "/nav/index": ["nav/index"]}, "daLibraryContentFile": {"/": null, "/a": "a.html", "/a/": "a.html", "/b/": "b/index.html", "/C": "C.html", "/a/b.html": null, "/nav": "nav.html"}, "daLibraryDocName": {"Hero": "hero", "Section": "section", "cards-container": "cards-container", "Two Words": "two-words", "***": "untitled", "Café": "caf"}, "daLibrarySkip": ["metadata", "section-metadata", "library-metadata", "template-metadata"], "mediaWebPath": {"media/Scope_Test/Clip A.MP4": "media/Scope_Test/clip-a.mp4", "x/clip.v2.mp4": "x/clip-v2.mp4", "main-mvisual_video01.mp4": "main-mvisual-video01.mp4", "noext": "noext"}},
   classLabels: {
     "L": {"dynamics": "listing", "spec": "listing", "inTaxonomy": true},
     "S": {"dynamics": "search", "spec": "search", "inTaxonomy": true},
