@@ -24,7 +24,7 @@
 import { readdirSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  arg, flag, list, readJSON, writeJSON, writeText, provenance, openBrowser, newContext, goto, stopOnSetupError, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
+  CLASS_NAMES, arg, flag, list, readJSON, writeJSON, writeText, provenance, openBrowser, newContext, goto, stopOnSetupError, vendorFor, registrable, sameSite, pathPattern, settlePage, slug,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -47,7 +47,6 @@ if (!URLS.length && arg('from-state')) {
 }
 if (!URLS.length) { console.error('usage: dynamics-detect.mjs --urls <url,…> | --from-state stardust/state.json [--out dir]'); process.exit(2); }
 
-const CLASS_NAMES = { L: 'listing', S: 'search', F: 'form', M: 'modal / interactive', V: 'media', T: 'tag / consent', A: 'API / personalisation / settings', R: 'relationship', X: 'auth / commerce', I18N: 'locale', CR: 'client-rendered', D: 'sheet / data file' };
 const API_PATH = /\/(api|graphql|ajax|json|search|autocomplete|typeahead|suggest|client\/|webservices|_next\/data|wp-json|\.rest|odata)/i;
 
 /* ------------------------------------------------------ in-page capture -- */

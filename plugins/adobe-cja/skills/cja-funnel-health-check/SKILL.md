@@ -10,7 +10,7 @@ description: >
 license: Apache-2.0
 metadata:
   author: Adobe
-  version: "1.0"
+  version: "1.0.0"
 ---
 
 # Funnel Health Check (Customer Journey Analytics)
@@ -212,7 +212,7 @@ Generate the funnel report inline and write to
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1/dist/chart.umd.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   :root {

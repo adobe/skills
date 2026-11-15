@@ -1,3 +1,5 @@
+## [1.1.1](https://github.com/adobe/skills/compare/da-auth-v1.1.0...da-auth-v1.1.1) (2026-11-14)
+
 # [1.1.0](https://github.com/adobe/skills/compare/da-auth-v1.0.0...da-auth-v1.1.0) (2026-05-29)
 
 

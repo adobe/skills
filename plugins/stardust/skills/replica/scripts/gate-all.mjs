@@ -61,6 +61,12 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpat
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+// The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) { console.error('gate-all: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); process.exit(1); }
+const { siblingPath } = await import(CONTRACTS.href);
+
 // Pages go through in batches, so a passed batch's PNGs are gone before the next batch is captured (peak disk).
 export const BATCH = 25;
 
@@ -202,10 +208,10 @@ export function formatSummary(summary) {
 
 // ---- runner ---------------------------------------------------------------------------------------------
 const HERE = dirname(fileURLToPath(import.meta.url));
-const firstExisting = (cands) => cands.map((p) => resolve(HERE, p)).find((p) => existsSync(p));
 const STITCH = join(HERE, 'stitch-shot.mjs');
 const PIXEL = join(HERE, 'pixel-compare.mjs');
-const DIFF_DIR = firstExisting(['../../diff/scripts', '../diff']);
+// The diff skill's scripts dir (content-presence, clip-probe, unit-geometry), in whichever layout holds it (lib/resolve.mjs).
+const DIFF_DIR = (() => { const p = siblingPath('diff', 'unit-geometry.mjs'); return p ? dirname(p) : null; })();
 const { unitsFor } = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'unit-geometry.mjs')).href) : { unitsFor: () => [] };
 const readJson = (p, d = null) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : d);
 const readJsonSafe = (p) => { try { return readJson(p); } catch { return null; } };
