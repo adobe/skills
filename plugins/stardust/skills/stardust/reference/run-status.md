@@ -18,9 +18,8 @@ node stardust/scripts/stardust/state.mjs summary
 
 `tail` shows recent phase transitions; `last [<skill>]` returns the
 latest matching transition as JSON, not the status of every phase.
-`state.mjs summary` reports page states. **`ledger.mjs summary` does
-not exist.** Recommend these readers, not invented subcommands.
-An event records a start, end or blocker; it does not prove process liveness.
+`state.mjs summary` reports page states. Any other ledger verb exits 2
+naming these readers. An event records a start, end or blocker; it does not prove process liveness.
 
 ## Line shape
 

@@ -4,6 +4,14 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## Unreleased — ledger.mjs names the readers for a guessed verb (#634)
+
+- **`ledger.mjs summary` exits 2 with one line.** A guessed reader verb (`summary`, `status`, `show`)
+  printed the writer's usage; it now prints `ledger: no \`summary\` command — use \`tail [-n 5]\` or
+  \`last [<skill>]\`; page states: \`state.mjs summary\``. A known skill with too few arguments keeps
+  the arity error. Pointer: `reference/run-status.md` "Reading progress" (0.39.1, #132) loses its
+  "does not exist" sentence.
+
 ## 0.39.1
 
 - **Progress-reader guidance (#132).** A progress reply suggested `ledger.mjs summary`,

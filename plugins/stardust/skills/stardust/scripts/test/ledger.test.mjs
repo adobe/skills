@@ -3,7 +3,7 @@
 // shape and key order, skill normalisation, file/dir creation on first write, append-only with
 // newline repair, unknown skill/phase warning vs --strict refusal, blocked-without-detail, tail
 // and last output, --next / --owner, the value-flag swallow rule, an explicit --dir that must exist,
-// usage errors, the start guard (an end needs an open start: warning, or exit 2 under --strict with
+// usage errors, an unknown reader verb (`summary`) naming the readers that exist, the start guard (an end needs an open start: warning, or exit 2 under --strict with
 // nothing written) and the journal check on end (a journal.md without a "## " heading naming the
 // phase warns, never changes the exit code); --track (the guard pairs on skill + phase + track, `last
 // --track` filters) and replica's first-page-first phases; the own-browser check on end (a script written in
@@ -158,6 +158,17 @@ check('usage errors exit 2: wrong arity, bad event, unknown option, missing valu
   const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
   const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs <skill> <phase> <start\|end\|blocked>/); assert.match(h.out, /Known skills: stardust, extract, prototype, migrate, replica, dynamics, spec, rollout, deploy/);
   assert.match(h.out, /\[--next "…"\] \[--owner "…"\]/); assert.match(h.out, /explicit --dir must already exist/);
+});
+check('an unknown reader verb exits 2 with one line naming tail, last and state.mjs summary', () => {
+  for (const verb of ['summary', 'status', 'show']) {
+    const r = run(verb);
+    assert.equal(r.code, 2, verb); assert.equal(r.out, '');
+    assert.equal(r.err, `ledger: no \`${verb}\` command — use \`tail [-n 5]\` or \`last [<skill>]\`; page states: \`state.mjs summary\`\n`);
+  }
+  assert.match(run('show', 'extract').err, /^ledger: no `show` command/);
+  // A known skill with too few arguments is a forgotten phase or event, not a guessed verb.
+  assert.match(run('Stardust:Migrate').err, /expected <skill> <phase> <start\|end\|blocked>, got 1 argument/);
+  assert.match(run('migrate', 'render').err, /got 2 argument/);
 });
 check('--help prints the phase table: every ledger-form phase and every alias of every skill, one line per skill', () => {
   const h = run('--help');
