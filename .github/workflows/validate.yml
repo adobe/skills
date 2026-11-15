@@ -186,6 +186,24 @@ jobs:
       - name: AEM Forms create-custom-component script tests
         run: node --test plugins/aem/forms/edge-delivery-services/tests/*.test.mjs
 
+  # The tests install the pinned @adobe/rum-distiller themselves, so a Renovate bump of it
+  # or an edit to the script is checked before it ships. fetch is stubbed: no network to OpTel.
+  optel-interpreter:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: '26'
+
+      - name: optel-interpreter report script tests
+        run: node --test plugins/aem/edge-delivery-services-content-ops/skills/optel-interpreter/scripts/*.test.mjs
+
   codeowners-coverage:
     runs-on: ubuntu-latest
     steps:
