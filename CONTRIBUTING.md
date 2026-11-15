@@ -48,10 +48,21 @@ CI runs these on every pull request:
 | Tessl Plugin Lint | `tessl plugin lint` for every plugin. |
 | Validate Skills | `npm run plugins:check`: the pull request leaves alone the files that `x927` generates from each plugin's root `plugin.json` and `mcp.json` (the Claude Code, Tessl and Cursor manifests, `.mcp.json`, and the description and version of marketplace entries). Change `plugin.json`; after the merge, the Release workflow builds the generated files on `main` and pushes them. |
 | Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |
-| AI Review | Claude and Codex review the pull request against [AGENTS.md](AGENTS.md) and leave a verdict, a summary and line comments. Drafts are not reviewed. |
+| Plugin Test Drive | Installs each changed plugin into Claude Code, Codex, Grok and Google Antigravity, each with an empty home directory, and reports the skills, MCP servers and hooks the client then lists. It fails when a client can't install the plugin or loads fewer skills than the plugin has. No sign-in and no model is involved. |
+| AI Review | Claude and Codex review the pull request against [AGENTS.md](AGENTS.md) and leave a verdict, a summary and line comments. They get the result of the test drive, and can run a task in an agent with the plugin and without it to see what a changed skill does. Drafts are not reviewed. |
 | Conventional Commits | At least one commit of the pull request follows [Conventional Commits](https://www.conventionalcommits.org). |
 | Adobe CLA | You have signed the CLA. |
 | Tessl Skill Eval | Only on request, see below. |
+
+To test-drive a plugin on your machine (about 600 MB of CLIs, in `.agent-clis/` and `scripts/agent-clis/node_modules/`, both ignored by git):
+
+```bash
+npm ci
+node scripts/setup-agent-clis.mjs     # claude, codex, grok and agy, at the versions CI uses
+node scripts/test-drive.mjs --build plugins/<your plugin>
+```
+
+`--build` builds the manifests the clients read from your `plugin.json`, and puts those files back afterwards: they are not part of a pull request.
 
 Pull requests from forks: the Tessl review of a pull request whose author has no write access to this repository waits for a maintainer to approve the run.
 
@@ -83,6 +94,17 @@ Keep a pull request to one plugin where you can. It is reviewed by the owners of
 ### AI-Generated Contributions
 
 If your pull request contains code or text that was generated or co-authored by AI tools (such as GitHub Copilot, ChatGPT, Claude, or similar), apply the `ai-generated` label to it. If you can't set labels, say so in the description and a maintainer will add it.
+
+### Without scenarios
+
+A plugin without scenarios is still run. The AI reviewers write a task of their own, aimed at what the pull request changes in a skill, and run it in an agent with the plugin and without it. The summary of the review says which task they ran and what the two runs did. You can do the same with the client you are signed in to:
+
+```bash
+node scripts/skill-eval.mjs --client claude --plugin plugins/<your plugin> \
+  --prompt "<a task, as a user would put it>" --auth-home "$HOME"
+```
+
+It prints both answers and the files each run wrote. `--scenario plugins/<your plugin>/evals/<name>` takes the task of a scenario and adds its criteria to the result. The agent of such a run may do whatever you may do on that machine: run it for plugins you trust.
 
 ## How Contributions Get Reviewed
 

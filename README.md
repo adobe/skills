@@ -111,6 +111,19 @@ Two things hold for every plugin with an MCP server:
 - A plugin registers its server only in a client that installs plugins: Claude Code, Copilot CLI, the Claude desktop app. With `npx skills` or `gh upskill` you get the skills and have to add the server to your agent yourself. The same goes for `agy plugin install` in Antigravity.
 - These servers sign you in with Adobe IMS or the vendor's OAuth. A client without a browser at hand, such as a headless or cloud agent, cannot complete that sign-in.
 
+## What each client loads
+
+CI installs every plugin a pull request changes into four clients, each with an empty home directory, and reports what the client then lists (the `Plugin Test Drive` check). With all plugins on 2026-11-15:
+
+| Client | Skills | MCP servers | Hooks |
+| --- | --- | --- | --- |
+| Claude Code 2.1.322 | All | Registered | Loaded |
+| Codex CLI 0.169.0 | All | Registered | Not checked: Codex has no command that lists them |
+| Grok CLI 1.0.77 | All. For `aem-cloud-service` and `aem-6-5-lts` also the skills in deeper folders, which the other clients reach only through the skill above them | Registered | Loaded |
+| Antigravity CLI 1.5.9 | All | Not registered | Not loaded |
+
+Listed is not the same as working: no client was signed in, and no hook or MCP server was called. `adobe-for-creativity` is not in the marketplace, so only Grok and Antigravity, which install from a directory, were given it.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add or change a skill, and [AGENTS.md](AGENTS.md) for the rules the review checks. Join [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Adobe Slack for questions.
