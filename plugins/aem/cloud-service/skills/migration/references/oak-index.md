@@ -8,7 +8,7 @@ Rewrites legacy `_oak_index/*.xml` definitions to AEM as a Cloud Service compati
 
 Not a Cloud-Service-native code-quality issue — legacy `_oak_index/*.xml` layouts only exist in pre-cloud (AEM 6.x / AMS) projects, so this is a migration reference, not a `code-assessment` pattern. Like Dispatcher Conversion (Branch E), this pattern wraps an Adobe-maintained conversion tool rather than re-implementing transformation rules, so it lives under `migration/references/` only.
 
-**Before transformation steps:** [aem-cloud-service-pattern-prerequisites.md](aem-cloud-service-pattern-prerequisites.md).
+**Before transformation steps:** [aem-cloud-service-pattern-prerequisites.md](../../code-assessment/references/aem-cloud-service-pattern-prerequisites.md).
 
 **Scope:**
 - Custom Oak index definitions under `ui.apps/.../_oak_index/`

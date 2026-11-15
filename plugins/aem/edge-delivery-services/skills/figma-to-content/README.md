@@ -80,7 +80,6 @@ skills/figma-to-content/
 - [`da-auth`](../da-auth) — DA IMS token
 - [`da-content`](../da-content) — DA HTML rules + Source API + preview/publish + media
 - [`block-collection-and-party`](../block-collection-and-party) — whether a block exists + its authoring model
-- [`block-inventory`](../block-inventory) — survey the available block palette
 - [`content-modeling`](../content-modeling) — design a content model for a new block
 - [`content-driven-development`](../content-driven-development) — full dev workflow for a reusable new block (invokes [`building-blocks`](../building-blocks), [`testing-blocks`](../testing-blocks))
 - [`testing-blocks`](../testing-blocks) — render a block + screenshot and compare to the design; reused directly for the **reuse gate's visual check**

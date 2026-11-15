@@ -36,7 +36,8 @@ date: "[Full Date — e.g., February 17, 2026]"
 ├── scripts/
 │   ├── aem.js        # Core library (DO NOT MODIFY)
 │   ├── scripts.js    # Custom page decoration
-│   ├── delayed.js    # Analytics, marketing tools
+│   ├── consent-check.js # Loads consented.js once the visitor consents
+│   ├── consented.js  # Analytics, marketing tools (older projects: delayed.js)
 │   └── utils.js      # Shared utilities
 ├── styles/
 │   ├── styles.css    # Critical styles + design tokens
@@ -53,9 +54,9 @@ Edge Delivery Services uses a strict Eager-Lazy-Delayed loading strategy to achi
 |-------|---------|------------|-------------------|
 | **Eager** | Render above-the-fold content (LCP) | `styles/styles.css`, first section's blocks, `scripts/scripts.js` | Blocks LCP — keep minimal |
 | **Lazy** | Load remaining content after first paint | Remaining blocks, header, footer, `fonts.css`, `lazy-styles.css` | Runs after Eager — safe for non-critical UI |
-| **Delayed** | Load non-essential third-party scripts | `scripts/delayed.js` (analytics, marketing, chat) | Runs ~3s after page load — never blocks rendering |
+| **Delayed** | Load non-essential third-party scripts | `loadDelayed()` in `scripts/scripts.js` imports `consent-check.js`, which loads `consented.js` (analytics, marketing, chat) once the visitor consents. Older projects: `scripts/delayed.js` | Runs after the lazy phase — never blocks rendering |
 
-Rules: Never add third-party scripts to `scripts.js` — always use `delayed.js`. Never load fonts eagerly. Blocks in the first section load eagerly; all others load lazily.
+Rules: Never add third-party scripts to the eager or lazy phases: analytics and marketing go in `consented.js` (older projects: `delayed.js`). Never load fonts eagerly. Blocks in the first section load eagerly; all others load lazily.
 
 ### Key Files
 
@@ -63,7 +64,8 @@ Rules: Never add third-party scripts to `scripts.js` — always use `delayed.js`
 |------|------|
 | `scripts/aem.js` | Core library — `loadBlock`, `loadCSS`, `decorateBlock`, `sampleRUM`, `loadHeader`/`loadFooter`. DO NOT MODIFY. |
 | `scripts/scripts.js` | Entry point — orchestrates E-L-D phases, `buildAutoBlocks`, `decorateMain`, template loading |
-| `scripts/delayed.js` | Loaded last — analytics, marketing tags, third-party scripts |
+| `scripts/consent-check.js` | Loaded by `loadDelayed()`; loads `consented.js` after consent |
+| `scripts/consented.js` | Analytics, marketing tags, third-party scripts, only after consent (older projects: `scripts/delayed.js`, loaded last without a consent check) |
 | `scripts/utils.js` | Shared helpers used across blocks and scripts |
 | `styles/styles.css` | Critical CSS + design tokens. Loaded eagerly. |
 | `styles/fonts.css` | Font `@font-face` declarations. Loaded lazily. |
@@ -180,9 +182,9 @@ npm run lint
 4. Watch for CLS impact
 
 ### Add Analytics/Marketing Tool
-1. Add to `scripts/delayed.js`
-2. Never add to `scripts.js` (blocks performance)
-3. Test with Network tab to verify delayed loading
+1. Add to `scripts/consented.js` (older projects: `scripts/delayed.js`)
+2. Never add to the eager or lazy phases (blocks performance)
+3. Test with the Network tab that it loads last, and only after consent (`?consent=accept` with the boilerplate's placeholder check)
 
 ### Debug a Block
 1. Check browser console for errors

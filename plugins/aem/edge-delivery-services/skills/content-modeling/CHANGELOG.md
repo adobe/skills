@@ -1,3 +1,5 @@
+## [2.0.2](https://github.com/adobe/skills/compare/content-modeling-v2.0.1...content-modeling-v2.0.2) (2026-11-15)
+
 ## [2.0.1](https://github.com/adobe/skills/compare/content-modeling-v2.0.0...content-modeling-v2.0.1) (2026-07-06)
 
 # [2.0.0](https://github.com/adobe/skills/compare/content-modeling-v1.0.0...content-modeling-v2.0.0) (2026-05-14)

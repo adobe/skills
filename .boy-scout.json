@@ -15,6 +15,23 @@
       ]
     },
     {
+      // What a SKILL.md says is in the context of every session that loads the skill. A
+      // skill with an eval may have 5,000 tokens, which the Agent Skills specification
+      // recommends as the most. A skill without one may have 1,000: nobody has shown yet
+      // that what it says changes what an agent does.
+      "name": "skill-md-over-token-limit",
+      "command": "node scripts/check-skills.mjs --list over-token-limit",
+      "fix": [
+        "Fix: in this same pull request, bring the SKILL.md under its limit: 5,000",
+        "tokens for a skill with an eval, 1,000 for one without. Either give the skill",
+        "an eval: skills/<skill>/evals/evals.json, or a scenario evals/<skill>-<what it",
+        "tests>/ in its plugin with task.md and criteria.json (CONTRIBUTING.md, Evals).",
+        "Or cut it: keep what an agent gets wrong without it and move the rest to",
+        "references/. Run node scripts/check-skills.mjs --tokens <plugin dir> to see",
+        "each skill's tokens, limit and eval."
+      ]
+    },
+    {
       // What `tessl plugin lint` warns about, for plugins with a Tessl manifest. Needs the
       // tessl CLI. A warning about a skill is on its SKILL.md; any other is on the plugin's
       // .tessl-plugin/plugin.json.
@@ -46,6 +63,23 @@
         "exposes skills under their bare name, so two installed plugins with a",
         "same-named skill are ambiguous. Renaming one of the two clears both. Run",
         "node scripts/check-skills.mjs to see which skill it collides with."
+      ]
+    },
+    {
+      // A SKILL.md that no client finds. Clients read the folders directly under a
+      // plugin's skills/ and don't look further (https://agent-plugins.org/specification,
+      // Skills); Claude Code also reads what its manifest lists under "skills".
+      "name": "orphaned-skill",
+      "command": "node scripts/check-skills.mjs --list orphaned",
+      "fix": [
+        "Fix: in this same pull request, make the skill one a client finds, or stop",
+        "calling it a skill. A plugin's skills are the folders directly under skills/;",
+        "no client looks below them (#497). Either move it to skills/<name>/, with a",
+        "name no other skill has. Or, if a parent skill loads it as a reference, rename",
+        "the file so that it is no SKILL.md (for example references/<name>.md) and link",
+        "it from the parent. Listing its folder under \"skills\" for the Claude Code",
+        "target in plugin.json makes it found in Claude Code only. Run",
+        "node scripts/check-skills.mjs to see where it lies."
       ]
     }
   ]

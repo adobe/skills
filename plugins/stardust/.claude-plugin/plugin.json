@@ -1,7 +1,7 @@
 {
   "name": "stardust",
+  "version": "0.39.0",
   "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-  "version": "0.38.6",
   "author": {
     "name": "Adobe"
   },

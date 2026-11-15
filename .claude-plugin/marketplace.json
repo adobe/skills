@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.38.6",
+      "version": "0.39.0",
       "category": "design",
       "keywords": [
         "design",
@@ -55,13 +55,14 @@
     {
       "name": "aem-edge-delivery-services",
       "source": "./plugins/aem/edge-delivery-services",
-      "description": "Skills for AEM Edge Delivery Services development"
+      "description": "Skills for AEM Edge Delivery Services development",
+      "version": "1.0.1"
     },
     {
       "name": "aem-cloud-service",
       "source": "./plugins/aem/cloud-service",
       "description": "All AEM as a Cloud Service skills: component development, Dispatcher config authoring and hardening, workflow design and debugging, code assessment and migration from legacy AEM, content distribution, and Rapid Development Environment (RDE) support.",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "category": "aem",
       "keywords": [
         "adobe",
@@ -130,17 +131,20 @@
     {
       "name": "aem-project-management",
       "source": "./plugins/aem/project-management",
-      "description": "Project lifecycle management for AEM Edge Delivery Services"
+      "description": "Project lifecycle management for AEM Edge Delivery Services",
+      "version": "1.0.1"
     },
     {
       "name": "app-builder",
       "source": "./plugins/app-builder",
-      "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects, including the Workfront UI-extension suite (appbuilder-workfront)"
+      "description": "Development, customization, testing, and deployment skills for Adobe App Builder projects, including the Workfront UI-extension suite (appbuilder-workfront)",
+      "version": "1.0.0"
     },
     {
       "name": "aem-eds-content-ops",
       "source": "./plugins/aem/edge-delivery-services-content-ops",
-      "description": "Content operations skills for AEM Edge Delivery Services: page auditing, SEO optimization, AI search (GEO), WCAG accessibility, bulk metadata, structured data, sitemap validation, and content diffing"
+      "description": "Content operations skills for AEM Edge Delivery Services: page auditing, SEO optimization, AI search (GEO), WCAG accessibility, bulk metadata, structured data, sitemap validation, and content diffing",
+      "version": "1.3.0"
     },
     {
       "name": "adobe-analytics",
@@ -166,7 +170,7 @@
       "name": "adobe-cja",
       "source": "./plugins/adobe-cja",
       "description": "Practitioner skills for Adobe Customer Journey Analytics via the CJA MCP server",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "analytics",
       "keywords": [
         "adobe",
@@ -207,17 +211,20 @@
     {
       "name": "commerce-app-management",
       "source": "./plugins/commerce/app-management",
-      "description": "Skills for Adobe Commerce App Management \u2014 scaffold and configure Commerce apps using the aio-commerce-sdk."
+      "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk.",
+      "version": "1.6.0"
     },
     {
       "name": "commerce-app-migration",
       "source": "./plugins/commerce/app-migration",
-      "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach."
+      "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach.",
+      "version": "1.4.0"
     },
     {
       "name": "commerce-app-review",
       "source": "./plugins/commerce/app-review",
-      "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange."
+      "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange.",
+      "version": "1.0.0"
     },
     {
       "name": "run-workflow",

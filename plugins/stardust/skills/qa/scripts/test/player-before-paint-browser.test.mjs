@@ -19,12 +19,12 @@ try {
 } catch { /* skipped below */ }
 const browserTest = { skip: chromium ? false : 'Playwright is not available from the project', timeout: 30000 };
 
-// the snippet ships in the deploy skill doc; a project copy of the qa scripts has no doc beside it
-const SKILL = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'deploy', 'SKILL.md');
+// the snippet ships in the deploy skill doc (step 3, foundation); a project copy of the qa scripts has no doc beside it
+const SKILL = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'deploy', 'reference', 'step-3-foundation.md');
 const SNIPPET = existsSync(SKILL)
   ? readFileSync(SKILL, 'utf8').match(/\(#157\)[\s\S]*?```js\n([\s\S]*?)\n {2}```/)?.[1].replace(/^ {2}/gm, '')
   : null;
-const snippetTest = { ...browserTest, skip: browserTest.skip || (SNIPPET ? false : 'deploy/SKILL.md #157 snippet not found') };
+const snippetTest = { ...browserTest, skip: browserTest.skip || (SNIPPET ? false : 'deploy/reference/step-3-foundation.md #157 snippet not found') };
 
 const ORIGIN = 'https://site.test';
 const PLAYER = 'https://www.youtube.com/embed/abc';
