@@ -55,7 +55,7 @@ for (const facet of data.facets.url) console.log(facet.value, facet.metrics.page
 
 ## Causes by metric
 
-Typical causes on Edge Delivery Services. Confirm each one on the page before you report it as the cause.
+Typical causes on Edge Delivery Services for LCP and INP. For CLS this file has none: go to `cwv-optimizer`. Confirm each one on the page before you report it as the cause.
 
 ### LCP
 
@@ -64,10 +64,6 @@ Typical causes on Edge Delivery Services. Confirm each one on the page before yo
 - Third-party scripts or fonts load before LCP instead of in the lazy or delayed phase.
 - A redirect or a slow CDN in front of the site. Compare LCP on the production host with the `.aem.live` host.
 - An LCP that is much worse on `mobile` than on `desktop` points at the bytes before LCP, because mobile has less bandwidth.
-
-### CLS
-
-- `createOptimizedPicture()` in `aem.js` does not set `width` and `height` on the images it creates.
 
 ### INP
 
