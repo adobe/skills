@@ -12,6 +12,7 @@ description: >-
   App Builder.
 metadata:
   category: deployment-automation
+  version: "1.0.1"
 license: Apache-2.0
 compatibility: Requires aio CLI, Node.js 20.17+, and a CI/CD platform (GitHub Actions, Azure DevOps, or GitLab CI)
 allowed-tools: Bash(aio:*) Bash(npm:*) Bash(git:*) Read Write Edit
