@@ -1,6 +1,12 @@
 # Changelog
 
-This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
+## 0.14.0 to 0.39.1: entries written by hand
+
+From here down, each entry was written with its pull request. The entries above are
+written by the release, from the titles of the pull requests; a pull request's description
+has what its change is about.
+
+This part starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 

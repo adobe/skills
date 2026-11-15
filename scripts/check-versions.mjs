@@ -1,4 +1,4 @@
-// Whether a pull request leaves the versions alone that a release sets.
+// Whether a pull request leaves alone what a release writes: versions and changelogs.
 //
 // After a merge, semantic-release computes the version of each changed skill and of each
 // changed plugin with a root plugin.json from the commit messages, and writes it:
@@ -6,6 +6,10 @@
 // scripts/release-plugins.mjs). A version changed by hand would be overwritten by the
 // next release, or make it count from the wrong number. So this fails a pull request
 // that changes one. A new skill or plugin may carry any version: its first release is 1.0.0.
+//
+// The release also writes CHANGELOG.md in the directory of each skill and plugin it
+// releases, from the same commits. A pull request that edits one fails here as well: every
+// pull request would add its entry at the top of the same file, so any two of them conflict.
 //
 // Not checked: what is brought in from another repository and has its version from there,
 // a skill whose folder name another skill has, and a plugin without a root plugin.json.
@@ -45,16 +49,57 @@ export function changedVersions(root, fork) {
   return found;
 }
 
+// The files that say how a release writes a changelog. A pull request that changes one may
+// have to bring the changelogs in line with it, so it may edit them.
+export const RELEASE_CONFIGS = ['plugin.release.config.cjs', 'release.config.cjs'];
+
+// The changelogs a pull request edits although a release writes them, as file names.
+// A changelog that comes with a new skill or plugin, or goes with a removed one, is not one.
+export function changedChangelogs(root, fork) {
+  const changed = new Set(changedFiles(root, [fork]));
+  if (RELEASE_CONFIGS.some((file) => changed.has(file))) return [];
+  const all = skillDirs(root);
+  const outer = all.filter((dir) => !all.some((other) => dir.startsWith(`${other}/`)));
+  const duplicates = duplicateNames(outer);
+  const released = [
+    ...pluginDirs(root).filter((dir) => !isImported(dir)),
+    ...outer.filter((dir) => !isImported(dir) && !duplicates.has(basename(dir))),
+  ];
+  return released.map((dir) => `${dir}/CHANGELOG.md`)
+    .filter((file) => changed.has(file) && fileAt(root, fork, file) !== null && existsSync(join(root, file)))
+    .sort();
+}
+
 function main() {
   const root = process.cwd();
   const base = process.argv[2] || 'origin/main';
   const fork = execFileSync('git', ['merge-base', base, 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   const found = changedVersions(root, fork);
-  if (found.length === 0) {
-    console.log('No version that a release sets is changed here.');
+  const changelogs = changedChangelogs(root, fork);
+  if (found.length === 0 && changelogs.length === 0) {
+    console.log('No version that a release sets is changed here, and no changelog that a release writes.');
     return;
   }
   const say = (version) => (version === undefined ? 'none' : version);
+  for (const file of changelogs) {
+    console.log(`::error file=${file}::The release writes ${file}, from the commit messages. Take the change to it out of this pull request: what the change is about goes into the title and the description of the pull request.`);
+  }
+  if (changelogs.length > 0) {
+    summary([
+      '## Changelogs',
+      '',
+      'This pull request edits changelogs that a release writes:',
+      '',
+      ...changelogs.map((file) => `- \`${file}\``),
+      '',
+      'After the merge, semantic-release adds an entry for each commit that touched the skill or plugin: the title of the pull request, with a link to it. Take the change to the changelog out. To get it back as it is on `main`: `git checkout origin/main -- <file>`.',
+      '',
+    ]);
+  }
+  if (found.length === 0) {
+    error(`${changelogs.length} changelog(s) that a release writes are edited by hand: ${changelogs.map((file) => dirname(file)).join(', ')}`);
+    process.exit(1);
+  }
   for (const { file, name, was, now } of found) {
     console.log(`::error file=${file}::The version of ${name} is set by the release, from the commit messages. This pull request changes it from ${say(was)} to ${say(now)}. Take that change out.`);
   }
@@ -66,8 +111,6 @@ function main() {
     ...found.map(({ file, was, now }) => `- \`${file}\`: ${say(was)} → ${say(now)}`),
     '',
     'After the merge, semantic-release computes the version of each changed skill and plugin from the commit messages: `fix`, `perf`, `docs`, `refactor` and `style` are a patch release, `feat` a minor one, a breaking change a major one. The title of the pull request is the commit message. Take the change to the version out of the pull request.',
-    '',
-    `For a plugin with a hand-written \`CHANGELOG.md\`, write the entry as a new file in the plugin's \`changes/\` folder; the release moves it into the changelog under the version.`,
   ]);
   error(`${found.length} version(s) that a release sets are changed by hand: ${found.map(({ file }) => dirname(file)).join(', ')}`);
   process.exit(1);
