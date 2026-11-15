@@ -30,6 +30,29 @@ Don't open a public issue for a vulnerability. See [SECURITY.md](SECURITY.md).
 
 A skill follows the [Agent Skills specification](https://agentskills.io): a folder with a `SKILL.md` whose frontmatter has `name`, `description` and `license: Apache-2.0`. It lives in a plugin, at `plugins/<plugin>/skills/<skill>/` (AEM, Commerce and Creative Cloud plugins are one level deeper). [AGENTS.md](AGENTS.md) says what makes a skill good and what a new plugin needs.
 
+### How long a skill may be
+
+What a `SKILL.md` says is put into the context of every session that loads the skill. So its length has a limit, counted in tokens of four characters each:
+
+| The skill has | Limit for its `SKILL.md` |
+| --- | --- |
+| An eval | 5,000 tokens, which the [Agent Skills specification](https://agentskills.io/specification) recommends as the most |
+| No eval | 1,000 tokens, about 60 lines |
+
+Without an eval nobody has shown that what a skill says changes what an agent does, so it gets a page. An eval of a skill is one of these:
+
+- `skills/<skill>/evals/evals.json`, with at least one entry that has a `prompt` and an `expected_output`, `assertions` or `expectations`.
+- A scenario of the plugin, `evals/<scenario>/` with `task.md` and `criteria.json`, whose folder is named after the skill: `<skill>` or `<skill>-<what it tests>`. The folder name is how a scenario says which skill it tests.
+- Any scenario of the plugin, when the plugin has only this one skill.
+
+`references/` are not counted: an agent reads them when it needs them.
+
+```bash
+node scripts/check-skills.mjs --tokens plugins/<your plugin>   # each skill's tokens, limit and eval
+```
+
+Many skills are over their limit today. Nobody has to fix a skill they don't touch: the `boy-scout` check fails a pull request only when it changes a `SKILL.md` that is over its limit, also when it adds one. Then the fix comes with the change: an eval, or a shorter `SKILL.md` with the detail in `references/`.
+
 ## Quality Checks
 
 Run the local checks before you open a pull request:
