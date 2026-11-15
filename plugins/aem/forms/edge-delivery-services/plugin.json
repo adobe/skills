@@ -1,0 +1,43 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aem-forms-edge-delivery-services",
+  "version": "1.0.0",
+  "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aem",
+    "aem-forms",
+    "adaptive-forms",
+    "edge-delivery-services",
+    "form-block",
+    "adobe"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {},
+        "tessl": {
+          "name": "adobe/aem-forms-edge-delivery-services",
+          "private": false,
+          "skills": [
+            "skills/create-custom-component"
+          ]
+        }
+      },
+      "marketplace": {
+        "keywords": [
+          "adobe",
+          "aem",
+          "aem-forms",
+          "adaptive-forms",
+          "edge-delivery-services",
+          "form-block"
+        ]
+      }
+    }
+  }
+}

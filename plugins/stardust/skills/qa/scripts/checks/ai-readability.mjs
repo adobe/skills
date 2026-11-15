@@ -12,8 +12,10 @@
  *   ai-readability-served-gap info  ≥ 40 rendered main words never served (fragment / index / generated text)
  * Evidence carries the top blocks by DOM-only words so the fix lands on the right block.
  */
-import { openBrowser, newContext, finding, originAuthFor, attachOriginAuth, arg } from '../lib.mjs';
-import { scorePage } from '../../../deploy/scripts/ai-readability.mjs';
+import { openBrowser, newContext, finding, originAuthFor, attachOriginAuth, arg, loadSibling, AI_EXCLUDE_DEFAULT } from '../lib.mjs';
+
+// deploy's instrument, found in the plugin tree or a project copy (a static ../../../deploy/scripts/ path resolves only in the plugin tree)
+const { scorePage } = await loadSibling('deploy', 'ai-readability.mjs');
 
 export function isPageOnOrigin(base, path) {
   try {
@@ -29,7 +31,7 @@ export async function run(ctx) {
   const browser = await openBrowser({ mode: 'plain' });
   const auth = originAuthFor(base);
   const headers = auth ? { authorization: auth } : {};
-  const excludeBlocks = (arg('ai-exclude-blocks', 'client-app,widget') || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const excludeBlocks = (arg('ai-exclude-blocks', AI_EXCLUDE_DEFAULT.join(',')) || '').split(',').map((s) => s.trim()).filter(Boolean);
   const context = await newContext(browser, { viewport: { width: 1440, height: 900 } });
   await attachOriginAuth(context);
   const summary = [];

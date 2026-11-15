@@ -47,6 +47,23 @@
         "same-named skill are ambiguous. Renaming one of the two clears both. Run",
         "node scripts/check-skills.mjs to see which skill it collides with."
       ]
+    },
+    {
+      // A SKILL.md that no client finds. Clients read the folders directly under a
+      // plugin's skills/ and don't look further (https://agent-plugins.org/specification,
+      // Skills); Claude Code also reads what its manifest lists under "skills".
+      "name": "orphaned-skill",
+      "command": "node scripts/check-skills.mjs --list orphaned",
+      "fix": [
+        "Fix: in this same pull request, make the skill one a client finds, or stop",
+        "calling it a skill. A plugin's skills are the folders directly under skills/;",
+        "no client looks below them (#497). Either move it to skills/<name>/, with a",
+        "name no other skill has. Or, if a parent skill loads it as a reference, rename",
+        "the file so that it is no SKILL.md (for example references/<name>.md) and link",
+        "it from the parent. Listing its folder under \"skills\" for the Claude Code",
+        "target in plugin.json makes it found in Claude Code only. Run",
+        "node scripts/check-skills.mjs to see where it lies."
+      ]
     }
   ]
 }

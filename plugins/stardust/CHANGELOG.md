@@ -12,6 +12,32 @@ git history only (plus the branch-scoped notes in
   page states via `state.mjs summary`. No CLI change; recorded status is not process liveness.
   Touches the ledger writer/start-guard guidance in 0.25.0 and 0.25.1.
 
+## Unreleased — one copy of the shared script rules, shipped with the master's scripts
+
+Adding the EDS widget (0.34.0) touched 17 scripts, because every skill's scripts carried their own copy of the path,
+widget, chrome and kind rules. Those copies had drifted (nine path normalisers, five widget-stem helpers, two sets of
+class labels).
+
+- **`skills/stardust/scripts/lib/`** (`paths`, `names`, `kinds`, `taxonomy`, `resolve`) behind `contracts.mjs`, next to
+  `browser.mjs`. Setup step 7 already copies the master's `scripts/` to `stardust/scripts/stardust/`, so the library
+  ships with it, and a consumer finds `contracts.mjs` with the same two-layout lookup it uses for `browser.mjs` (0.38.0's
+  mechanism; no new copy step). dynamics, qa, rollout and spec resolve it once in their `lib.mjs`.
+- **Swapped**, each script's own copy deleted: rollout (inventory, assemble, delivery-lint, lib, seed-redirects,
+  da-library's page path), deploy (eds-path, deploy-batch, davids-model-lint, ai-readability), qa (lib, from-knowledge,
+  checks), spec (lib, spec-knowledge, spec-map), migrate, dynamics, replica (gate-evidence, gate-all), diff
+  (chrome-compare). Outputs are unchanged (golden snapshots byte-identical, field replays identical) except for these
+  bugs, converged on purpose: a widget stem takes `.htm` and any case of `.html`, and, as deploy's `block-roundtrip`
+  always did, a `/widgets/…` href with another extension or none (so delivery-lint and qa now read `/widgets/x.js` or
+  `/widgets/x` as a widget link, where they required `.html`); only a `/widgets/…` href is a widget
+  (rollout `pageWidgets`, qa `widgetLinks` and migrate `widgetsIn` took `/a/b.html` or `/nav` for one); spec-knowledge's
+  class labels for A and D now read as dynamics' do.
+- **Project copies:** a `stardust/scripts/stardust/` copied before this release has no `contracts.mjs`, and the scripts
+  that need it stop with the copy instruction: re-copy the master's scripts. `deploy/scripts/eds-path.mjs` and spec
+  `lib.mjs` `loadSibling` stay as re-exports for one release.
+- Tests: `lib.test.mjs`, `layout.test.mjs` (every skill copied the way the copy steps do, every script's `--help` run
+  from the copy, a copy without the master's scripts stops with the instruction); the characterization test pins 106
+  divergences (103 − 10 converged + 13 for code added in 0.35–0.38).
+
 ## 0.38.6 — the scripts index lists what an agent runs, not the libraries it imports
 
 The scripts index has a 12 KB cap so an agent can read it at session start, and it had sat within 10 bytes of that cap
