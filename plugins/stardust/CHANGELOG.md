@@ -4,6 +4,14 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## Unreleased
+
+- **Progress-reader guidance (#132).** A progress reply suggested `ledger.mjs summary`,
+  but the reader supports only `tail` and `last`. Skill instructions and the run-status
+  reference now give existing commands: ledger transitions via `tail` / `last [<skill>]`,
+  page states via `state.mjs summary`. No CLI change; recorded status is not process liveness.
+  Touches the ledger writer/start-guard guidance in 0.25.0 and 0.25.1.
+
 ## 0.39.0 — delivered CSS is mobile-first (#162)
 
 The EDS code-review checklist flags any `max-width` query: base styles are the mobile layout, wider layouts
