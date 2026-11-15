@@ -1,0 +1,46 @@
+{
+  "context": "The working directory is aem-boilerplate 5cea543 (setup.sh clones it) with site content in ./content/, which `aem up` serves at the file's path without `content/` and `.html`. The task is content-driven development, Step 4 Option C (existing block): choose test content for styling the `cards horizontal` variant, recorded in TEST-CONTENT.md, then change blocks/cards/cards.css. Ground truth for ./content/: the block library page content/docs/library/blocks/cards.html (/docs/library/blocks/cards) has only the default `cards` block, no `horizontal`. Real pages with the variant: content/products/overview.html (/products/overview, two `cards horizontal` blocks) and content/solutions/retail.html (/solutions/retail, `cards horizontal dark`). Decoys: content/blog/launch.html (/blog/launch) mentions horizontal cards in its text but its block is default `cards`; content/partners/directory.html (/partners/directory) has `cards-compact horizontal`, a different block. The judge sees the agent's shell commands.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Starts from the block library page",
+      "max_score": 20,
+      "description": "The agent looked at the block library page /docs/library/blocks/cards (content/docs/library/blocks/cards.html) before or while choosing test content, and TEST-CONTENT.md lists it and notes that it shows only the default variant, not `horizontal`. Zero if the library page is never mentioned."
+    },
+    {
+      "name": "Finds the real pages with the variant",
+      "max_score": 20,
+      "description": "TEST-CONTENT.md lists /products/overview and /solutions/retail as pages with `cards horizontal`. Both: full credit. One: 10. None: 0. The commands show the agent searched the content (e.g. grep over ./content/ or fetching pages), not that it guessed."
+    },
+    {
+      "name": "No false pages",
+      "max_score": 15,
+      "description": "No entry claims the `horizontal` variant of `cards` on /blog/launch (text mention only) or /partners/directory (`cards-compact`, another block), and no invented URL. Listing /blog/launch as default `cards` coverage is fine. Each false entry costs 8 points down to 0."
+    },
+    {
+      "name": "Variants reported correctly",
+      "max_score": 10,
+      "description": "The variant classes in TEST-CONTENT.md match the ground truth: `cards horizontal` on /products/overview (two instances is a plus, not required), `cards horizontal dark` on /solutions/retail, default `cards` on the library page."
+    },
+    {
+      "name": "No new test page when real pages cover it",
+      "max_score": 15,
+      "description": "Because real pages already use `cards horizontal`, the agent does not create a new test page for it (e.g. content/drafts/cards-horizontal.html or a .plain.html file). Adding a `horizontal` example to the library page, or recommending that, is fine. Fail if a new standalone test page is created and listed as test content."
+    },
+    {
+      "name": "Local URLs match the files",
+      "max_score": 10,
+      "description": "Each local URL is the file's path under content/ without `content/` and `.html` (content/products/overview.html → http://localhost:3000/products/overview; another port is fine). Fail if a URL contains /content/ or .html."
+    },
+    {
+      "name": "Scoped CSS change",
+      "max_score": 5,
+      "description": "blocks/cards/cards.css gets rules for `.cards.horizontal` that put the image beside the text on wider viewports (a min-width media query), leaving the default cards unchanged. No other block files are added."
+    },
+    {
+      "name": "Unattended, assumptions recorded",
+      "max_score": 5,
+      "description": "No questions to the user; TEST-CONTENT.md has an assumptions or coverage note."
+    }
+  ]
+}
