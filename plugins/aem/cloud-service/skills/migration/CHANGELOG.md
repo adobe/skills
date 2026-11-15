@@ -1,3 +1,11 @@
+# [1.3.0](https://github.com/adobe/skills/compare/migration-v1.2.0...migration-v1.3.0) (2026-11-15)
+
+
+### Features
+
+* **aem-cloud-service:** asset workflow migration for AEMaaCS — Branch H ([#475](https://github.com/adobe/skills/issues/475)) ([7b9cf32](https://github.com/adobe/skills/commit/7b9cf32f2274713a6f5f39e8d44db72caf2ace88))
+* **aem-cloud-service:** migration restructures a legacy project with Adobe's Repository Modernizer (Branch I, beta) ([#401](https://github.com/adobe/skills/issues/401)) ([461b043](https://github.com/adobe/skills/commit/461b043342015b15430a5b398ba11e0007497bd9))
+
 # [1.2.0](https://github.com/adobe/skills/compare/migration-v1.1.0...migration-v1.2.0) (2026-11-15)
 
 
