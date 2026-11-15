@@ -16,10 +16,11 @@ import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import { CODED, arg, helpAndExit, loadConfig, loadSibling, log, readJSON, readJSONL, templateOf, urlKey, writeJSON, writeText } from './lib.mjs';
 import { evalRule, fillText, selectUrls, tokens } from './rules.mjs';
+// the shared rules (lib/taxonomy.mjs, lib/paths.mjs): the one copy of the class labels (dynamics-detect uses the same) and
+// the one path contract (the delivered URL of a source page; the redirect comparison key)
+import { CLASS_NAMES, TAXONOMY, deliveredUrl as edsPath, redirectKey } from './lib.mjs';
 
 helpAndExit(import.meta.url);
-
-const CLASS_NAMES = { L: 'listing', S: 'search', F: 'form', M: 'modal / interactive', V: 'media', T: 'tag / consent', A: 'API / settings', R: 'relationship', X: 'auth / commerce', I18N: 'locale', CR: 'client-rendered', D: 'data file' };
 
 export const band = (v) => (!v ? 'none' : v >= 10000 ? 'high' : v >= 1000 ? 'medium' : 'low');
 export const outcome = (r) => (r.error ? (/loop/.test(r.error) ? 'loop' : 'error') : r.external ? 'redirect-external' : [301, 302, 303, 307, 308].includes(r.status) ? (r.final_status === 200 ? 'redirect' : 'redirect-broken') : r.status === 200 ? 'page' : `http-${r.status}`);
@@ -110,8 +111,8 @@ export function offVocabulary(features, taxonomy) {
 
 /** The latest recorded answer per question id, from judgement/answers.json. Pure. */
 /** A migration redirect needs its own entry when its path changes beyond dropping .html, an index name or a folder's
- *  trailing slash (one rule covers those); a change of case, characters or place does not. */
-export const needsEntry = (src, target) => { const k = (p) => String(p).replace(/\.html$/, '').replace(/\/index$/, '').replace(/\/$/, ''); return k(src) !== k(target) ? 1 : 0; };
+ *  trailing slash (one rule covers those — lib/paths.mjs redirectKey); a change of case, characters or place does not. */
+export const needsEntry = (src, target) => (redirectKey(src) !== redirectKey(target) ? 1 : 0);
 /** The chapters of a spec's story a finding belongs to (reference/knowledge.md § findings.json). */
 export const CHAPTERS = ['start', 'pages', 'build', 'dynamic', 'risks', 'decide'];
 
@@ -123,8 +124,6 @@ export function latestAnswers(list) {
 
 async function main() {
   const cfg = loadConfig();
-  // the delivered URL of a source page: deploy's one path contract (../../deploy/scripts/eds-path.mjs)
-  const { deliveredUrl: edsPath } = await loadSibling('deploy', 'eds-path.mjs');
   const W = (...p) => cfg.w(...p); const J = (...p) => cfg.p('judgement', ...p); const OUT = (...p) => cfg.p('knowledge', ...p);
   const rum = readJSON(W('rum', 'rum.json'), { available: false });
   const views = rum.available ? rum.pages : {};
@@ -274,8 +273,7 @@ async function main() {
   const K = { urls, pageBlocks, signals, blocks, variants: variantRows, templates, redirects, broken, badLinks, features: [] };
 
   // ---- features: reach in the rule format
-  // dynamics consumes these rows: they use its vocabulary (../../dynamics/reference/triage.md) or the stage stops
-  const { TAXONOMY } = await loadSibling('dynamics', 'lib.mjs');
+  // dynamics consumes these rows: they use its vocabulary (../../dynamics/reference/triage.md, lib/taxonomy.mjs) or the stage stops
   const off = offVocabulary(impl.features || [], TAXONOMY);
   if (off.length) throw new Error(`implementation.json features outside the dynamics vocabulary:\n  ${off.join('\n  ')}`);
   const nlive = live.length; const featByQ = {}; const features = [];
