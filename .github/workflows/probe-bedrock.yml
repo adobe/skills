@@ -1,0 +1,93 @@
+name: Probe (throwaway)
+
+# Not for main: finds out what the Bedrock key reaches and whether the four agent CLIs run
+# an eval on it. This pull request is closed without merging.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  endpoints:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+      REGION: us-west-2
+    steps:
+      - name: Models on bedrock-mantle
+        run: |
+          for prefix in v1 openai/v1; do
+            echo "== GET bedrock-mantle /$prefix/models"
+            curl -sS -o body.json -w '%{http_code}\n' -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" "https://bedrock-mantle.$REGION.api.aws/$prefix/models" || true
+            jq -r '.data[]?.id' body.json 2>/dev/null | sort | tr '\n' ' ' | cut -c1-4000 || true
+            echo
+            jq -c 'del(.data)' body.json 2>/dev/null | cut -c1-400 || head -c 400 body.json
+            echo
+          done
+      - name: Which model answers on which endpoint
+        run: |
+          ask() { # <label> <url> <body>
+            code=$(curl -sS -o body.json -w '%{http_code}' -H "Authorization: Bearer $AWS_BEARER_TOKEN_BEDROCK" -H 'Content-Type: application/json' -d "$3" "$2" || true)
+            echo "== $1: HTTP $code"
+            jq -c '{model, error, message, text: (.choices[0].message.content // (.output // [] | map(.content // [] | map(.text // "") | join("")) | join("")))}' body.json 2>/dev/null | cut -c1-500 || head -c 500 body.json
+            echo
+          }
+          chat() { printf '{"model":"%s","messages":[{"role":"user","content":"Reply with the one word: pong"}],"max_completion_tokens":200}' "$1"; }
+          resp() { printf '{"model":"%s","input":"Reply with the one word: pong","store":false}' "$1"; }
+          runtime="https://bedrock-runtime.$REGION.amazonaws.com/openai/v1"
+          mantle="https://bedrock-mantle.$REGION.api.aws"
+          for m in global.openai.gpt-6.1-sol global.openai.gpt-5.6-luna global.anthropic.claude-haiku-5-5 global.xai.grok-4.6 us.xai.grok-4.6 xai.grok-4.6; do
+            ask "runtime chat $m" "$runtime/chat/completions" "$(chat "$m")"
+          done
+          for m in global.xai.grok-4.6 xai.grok-4.6; do
+            ask "runtime responses $m" "$runtime/responses" "$(resp "$m")"
+          done
+          for m in xai.grok-4.6 xai.grok-4.6-build openai.gpt-6.1-sol openai.gpt-oss-120b; do
+            ask "mantle /openai/v1 chat $m" "$mantle/openai/v1/chat/completions" "$(chat "$m")"
+            ask "mantle /openai/v1 responses $m" "$mantle/openai/v1/responses" "$(resp "$m")"
+            ask "mantle /v1 chat $m" "$mantle/v1/chat/completions" "$(chat "$m")"
+            ask "mantle /v1 responses $m" "$mantle/v1/responses" "$(resp "$m")"
+          done
+
+  evals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { client: claude, args: '' }
+          - { client: codex, args: '' }
+          - { client: grok, args: '' }
+          - { client: agy, args: '' }
+          - { client: agy, args: '--model xai.grok-4.6 --base-url https://bedrock-mantle.us-west-2.api.aws/openai/v1' }
+    env:
+      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+      AWS_REGION: us-west-2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '26'
+          cache: 'npm'
+      - run: npm ci
+      - run: node scripts/setup-agent-clis.mjs "$RUNNER_TEMP/agent-clis/bin"
+      - name: An eval in ${{ matrix.client }}
+        env:
+          ARGS: ${{ matrix.args }}
+          CLIENT: ${{ matrix.client }}
+        run: |
+          # shellcheck disable=SC2086
+          node scripts/skill-eval.mjs --client "$CLIENT" --plugin plugins/aem/edge-delivery-services-content-ops \
+            --prompt "I am auditing the query index of an AEM Edge Delivery Services site. In two sentences: how many entries does /query-index.json return when a consumer fetches it without a limit parameter, and how do I see whether I got all of them? Then write your answer to answer.md. Do not search the web." \
+            --max-turns 10 --timeout 420 --out "$RUNNER_TEMP/eval" $ARGS | tee result.json || echo "::warning::skill-eval exited $?"
+          echo '--- stderr of each run, last lines'
+          for f in "$RUNNER_TEMP"/eval/*/stderr.txt; do echo "== $f"; tail -15 "$f" | cut -c1-600; done
+          echo '--- stdout of each run, first bytes'
+          for f in "$RUNNER_TEMP"/eval/*/stdout.txt; do echo "== $f"; head -c 1500 "$f"; echo; done

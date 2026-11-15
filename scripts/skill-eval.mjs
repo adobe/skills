@@ -7,6 +7,8 @@
 //
 //   --bin <dir>        where the CLIs are (default: where setup-agent-clis.mjs put them, or the PATH)
 //   --model <id>       the model, as the client names it (default: MODELS below, or the client's own)
+//   --base-url <url>   for grok and agy on Bedrock: the OpenAI-compatible endpoint, up to and
+//                      with /v1 (default: ENDPOINTS below, in AWS_REGION or us-west-2)
 //   --arms with,without   which runs to make (default: both)
 //   --workdir <dir>    files the task starts from; copied, never changed
 //   --max-turns <n>    for the clients that take it (default 30)
@@ -27,8 +29,14 @@
 // environment and are handed to the client only, never printed:
 //   claude  AWS_BEARER_TOKEN_BEDROCK (as in CI), or ANTHROPIC_API_KEY
 //   codex   AWS_BEARER_TOKEN_BEDROCK (as in CI), or OPENAI_API_KEY
-//   grok    XAI_API_KEY
-//   agy     GEMINI_API_KEY
+//   grok    AWS_BEARER_TOKEN_BEDROCK (as in CI), or XAI_API_KEY
+//   agy     AWS_BEARER_TOKEN_BEDROCK (as in CI), or GEMINI_API_KEY
+// All four run on the one Bedrock key. Claude Code and Codex know Bedrock themselves. Grok
+// and Antigravity are pointed at Bedrock's OpenAI-compatible endpoints, where the key is a
+// bearer token: Grok with a model of its own in ~/.grok/config.toml, Antigravity through its
+// enterprise gateway mode (AGY_LLM_GATEWAY_*). Bedrock has no Gemini, so Antigravity runs on
+// another vendor's model there: such a run tests what Antigravity does with a skill, not
+// what Gemini does with it.
 // Exit 3 when the client has no credentials here, 2 for wrong arguments, 1 when a run failed.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -46,7 +54,15 @@ export const RULES = 'Rules for this run: work in the current directory, with th
 
 // The models CI's Bedrock key can reach, as the review workflow names them. Used when the
 // run is on Bedrock and no --model is given.
-export const MODELS = { claude: 'global.anthropic.claude-opus-5-5', codex: 'global.openai.gpt-6.1-sol' };
+export const MODELS = { claude: 'global.anthropic.claude-opus-5-5', codex: 'global.openai.gpt-6.1-sol', grok: 'xai.grok-4.6', agy: 'global.openai.gpt-6.1-sol' };
+
+// Bedrock's OpenAI-compatible endpoints for the two clients that need to be told where it is.
+// Grok's own model is served on bedrock-mantle under /openai/v1 (Responses API). Antigravity
+// speaks Chat Completions, which bedrock-runtime serves.
+export const ENDPOINTS = {
+  grok: (region) => `https://bedrock-mantle.${region}.api.aws/openai/v1`,
+  agy: (region) => `https://bedrock-runtime.${region}.amazonaws.com/openai/v1`,
+};
 
 const BEDROCK = ['AWS_BEARER_TOKEN_BEDROCK', 'AWS_REGION', 'AWS_DEFAULT_REGION'];
 
@@ -97,21 +113,39 @@ export const RUNNERS = {
     answer: ({ stdout, lastMessage }) => ({ text: existsSync(lastMessage) ? readFileSync(lastMessage, 'utf8') : stdout }),
   },
   grok: {
-    credentials: (env) => (env.XAI_API_KEY ? ['XAI_API_KEY'] : null),
-    needs: 'XAI_API_KEY',
+    credentials: (env) => (env.XAI_API_KEY ? ['XAI_API_KEY'] : env.AWS_BEARER_TOKEN_BEDROCK ? ['AWS_BEARER_TOKEN_BEDROCK'] : null),
+    needs: 'AWS_BEARER_TOKEN_BEDROCK, or XAI_API_KEY',
     stored: ['.grok/auth.json'],
-    prepare({ run, plugin, withPlugin }) {
+    bedrock: (env) => Boolean(env.AWS_BEARER_TOKEN_BEDROCK) && !env.XAI_API_KEY,
+    prepare({ run, home, plugin, withPlugin, bedrock, model, baseUrl }) {
+      if (bedrock) {
+        // a model of Grok's own configuration, named "bedrock": the key is read from the
+        // environment and sent as a bearer token; Bedrock rejects reasoning.summary
+        mkdirSync(join(home, '.grok'), { recursive: true });
+        writeFileSync(join(home, '.grok', 'config.toml'), [
+          '[model.bedrock]',
+          `model = ${JSON.stringify(model)}`,
+          `base_url = ${JSON.stringify(baseUrl)}`,
+          `name = ${JSON.stringify(`${model} (Amazon Bedrock)`)}`,
+          'api_backend = "responses"',
+          'reasoning_summary = "none"',
+          'env_key = "AWS_BEARER_TOKEN_BEDROCK"',
+          '',
+        ].join('\n'));
+      }
       if (!withPlugin) return null;
       const result = run(['plugin', 'install', plugin.dir, '--trust']);
       return result.status === 0 ? null : `grok plugin install failed: ${`${result.stdout}${result.stderr}`.trim().split('\n').pop()}`;
     },
-    command: ({ prompt, model, maxTurns, workdir }) => [
+    command: ({ prompt, model, maxTurns, workdir, bedrock }) => [
       '-p', prompt, '--output-format', 'json', '--permission-mode', 'bypassPermissions', '--cwd', workdir, '--max-turns', String(maxTurns),
-      ...(model ? ['-m', model] : []),
+      ...(bedrock ? ['-m', 'bedrock'] : model ? ['-m', model] : []),
     ],
     answer: ({ stdout }) => {
       try {
         const result = JSON.parse(stdout);
+        // grok exits 0 when the model can't be reached, and says so in the result
+        if (result.type === 'error') return { text: String(result.message ?? stdout), failed: true };
         return { text: result.text ?? result.result ?? stdout, turns: result.num_turns, costUsd: result.total_cost_usd };
       } catch {
         return { text: stdout };
@@ -119,9 +153,19 @@ export const RUNNERS = {
     },
   },
   agy: {
-    credentials: (env) => (env.GEMINI_API_KEY ? ['GEMINI_API_KEY'] : null),
-    needs: 'GEMINI_API_KEY',
+    // on Bedrock the key is handed over as the gateway's key, not under its own name
+    credentials: (env) => (env.GEMINI_API_KEY ? ['GEMINI_API_KEY'] : env.AWS_BEARER_TOKEN_BEDROCK ? [] : null),
+    needs: 'AWS_BEARER_TOKEN_BEDROCK, or GEMINI_API_KEY',
     stored: [],
+    bedrock: (env) => Boolean(env.AWS_BEARER_TOKEN_BEDROCK) && !env.GEMINI_API_KEY,
+    // the enterprise gateway mode: Antigravity adds /v1/chat/completions to the URL itself
+    env: (home, bedrock, { model, baseUrl, key } = {}) => (bedrock ? {
+      AGY_LLM_GATEWAY_URL: baseUrl.replace(/\/v1\/?$/, ''),
+      AGY_LLM_GATEWAY_API_KEY: key,
+      AGY_LLM_GATEWAY_WIRE_PROTOCOL: 'openai',
+      AGY_LLM_GATEWAY_MODELS: model,
+      AGY_CLI_DISABLE_AUTO_UPDATE: '1',
+    } : {}),
     prepare({ run, plugin, withPlugin }) {
       if (!withPlugin) return null;
       const result = run(['plugin', 'install', plugin.dir]);
@@ -131,7 +175,7 @@ export const RUNNERS = {
     answer: ({ stdout }) => {
       try {
         const result = JSON.parse(stdout);
-        return { text: result.result ?? result.response ?? result.text ?? stdout };
+        return { text: result.response ?? result.result ?? stdout, turns: result.num_turns, failed: result.status !== undefined && result.status !== 'SUCCESS' };
       } catch {
         return { text: stdout };
       }
@@ -163,7 +207,7 @@ export function changedSince(before, after) {
 
 function parse(argv) {
   const options = { arms: ['with', 'without'], maxTurns: 30, timeout: 600 };
-  const names = { '--client': 'client', '--plugin': 'plugin', '--task': 'task', '--prompt': 'prompt', '--scenario': 'scenario', '--bin': 'bin', '--model': 'model', '--workdir': 'workdir', '--out': 'out', '--auth-home': 'authHome' };
+  const names = { '--client': 'client', '--plugin': 'plugin', '--task': 'task', '--prompt': 'prompt', '--scenario': 'scenario', '--bin': 'bin', '--model': 'model', '--base-url': 'baseUrl', '--workdir': 'workdir', '--out': 'out', '--auth-home': 'authHome' };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (names[arg]) options[names[arg]] = argv[++index];
@@ -184,7 +228,7 @@ function main() {
   const options = parse(process.argv.slice(2));
   if (!options) {
     console.error(`usage: skill-eval.mjs --client ${CLIENTS.join('|')} --plugin <plugin dir> (--task <file> | --prompt <text> | --scenario <dir>)
-       [--bin <dir>] [--model <id>] [--arms with,without] [--workdir <dir>] [--max-turns 30] [--timeout 600] [--out <dir>] [--auth-home <dir>]`);
+       [--bin <dir>] [--model <id>] [--base-url <url>] [--arms with,without] [--workdir <dir>] [--max-turns 30] [--timeout 600] [--out <dir>] [--auth-home <dir>]`);
     process.exit(2);
   }
   const client = RUNNERS[options.client];
@@ -217,8 +261,11 @@ function main() {
   }
   const bedrock = Boolean(client.bedrock?.(process.env)) && stored.length === 0;
   const model = options.model ?? (bedrock ? MODELS[options.client] : undefined);
+  const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-west-2';
+  const baseUrl = bedrock ? options.baseUrl ?? ENDPOINTS[options.client]?.(region) : undefined;
+  const on = { bedrock, model, baseUrl, key: bedrock ? process.env.AWS_BEARER_TOKEN_BEDROCK : undefined };
   const out = resolve(options.out ?? mkdtempSync(join(tmpdir(), 'skill-eval-')));
-  const result = { client: options.client, model: model ?? 'the client\'s default', plugin: plugin.name, arms: {}, notes, transcripts: out };
+  const result = { client: options.client, model: model ?? 'the client\'s default', ...(baseUrl ? { endpoint: baseUrl } : {}), plugin: plugin.name, arms: {}, notes, transcripts: out };
   if (criteria) result.criteria = criteria;
   let failed = false;
 
@@ -235,10 +282,10 @@ function main() {
         cpSync(join(resolve(options.authHome), file), join(home, file));
         chmodSync(join(home, file), 0o600);
       }
-      const env = { PATH: process.env.PATH, HOME: home, TMPDIR: process.env.TMPDIR ?? '/tmp', LANG: 'C.UTF-8', TERM: 'dumb', NO_COLOR: '1', CI: '1', ...(client.env?.(home, bedrock) ?? {}) };
+      const env = { PATH: process.env.PATH, HOME: home, TMPDIR: process.env.TMPDIR ?? '/tmp', LANG: 'C.UTF-8', TERM: 'dumb', NO_COLOR: '1', CI: '1', ...(client.env?.(home, bedrock, on) ?? {}) };
       for (const name of credentials) if (process.env[name] !== undefined) env[name] = process.env[name];
       const run = (args, more = {}) => spawnSync(bin, args, { cwd: workdir, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, ...more });
-      const problem = client.prepare?.({ run, home, plugin, withPlugin, repoRoot: root, bedrock });
+      const problem = client.prepare?.({ run, home, plugin, withPlugin, repoRoot: root, ...on });
       if (problem) {
         result.arms[arm] = { error: problem };
         failed = true;
@@ -247,7 +294,7 @@ function main() {
       const before = listFiles(workdir);
       const lastMessage = join(armOut, 'last-message.txt');
       const started = Date.now();
-      const ran = run(client.command({ prompt: `${RULES}\n\n${prompt}`, model, maxTurns: options.maxTurns, plugin, withPlugin, workdir, lastMessage }), { timeout: options.timeout * 1000 });
+      const ran = run(client.command({ prompt: `${RULES}\n\n${prompt}`, model, maxTurns: options.maxTurns, plugin, withPlugin, workdir, lastMessage, bedrock }), { timeout: options.timeout * 1000 });
       writeFileSync(join(armOut, 'stdout.txt'), ran.stdout ?? '');
       writeFileSync(join(armOut, 'stderr.txt'), ran.stderr ?? '');
       const answer = client.answer({ stdout: ran.stdout ?? '', lastMessage });
@@ -260,6 +307,7 @@ function main() {
         seconds: Math.round((Date.now() - started) / 1000),
         ...(answer.turns !== undefined ? { turns: answer.turns } : {}),
         ...(answer.costUsd !== undefined ? { costUsd: answer.costUsd } : {}),
+        ...(answer.failed ? { failed: true } : {}),
         answer: String(answer.text ?? '').slice(0, 8000),
         files: written,
         removed,
