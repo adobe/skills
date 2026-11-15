@@ -4,7 +4,7 @@ description: Apply DESIGN, canon, and modules to every page in the inventory, pr
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # stardust:migrate
