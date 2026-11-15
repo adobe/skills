@@ -1,0 +1,45 @@
+{
+  "skill_name": "migration",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "This is our AEM 6.5 project. ui.apps deploys /apps, /etc/designs and /content in one package and we have no ui.config or all module. Restructure it for AEM as a Cloud Service.",
+      "expected_output": "The agent takes Branch I (repository restructuring): it reads references/repo-structure/flow.md and runs `node scripts/repo-modernizer-run.js plan <project>`, which changes nothing in the project. It then reviews the plan with the user before running the tool: the content package /ui.apps, the bundle /core, the app id `example`, and the run-mode folder /apps/example/config.qa, which AEM as a Cloud Service ignores and which the user has to map to a Cloud run mode. It does not restructure files by hand, does not pick the run mode itself, and does not run the tool or adopt its output before the user approves the plan.",
+      "assertions": [
+        "references/repo-structure/flow.md is read before anything in the project is changed",
+        "`repo-modernizer-run.js plan` is run, not `run` or `adopt`, as the first step",
+        "The agent stops for the user's approval of the plan before it runs the tool",
+        "The agent asks which Cloud run mode config.qa maps to, and does not choose config.stage or config.dev itself",
+        "No file of the project is moved, created or edited by hand",
+        "The dispatcher module is named as one the tool leaves out, or as work for the Dispatcher branch"
+      ],
+      "files": [
+        "files/legacy-project"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review my code for AEMaaCS migration.",
+      "expected_output": "The agent takes Step 0: it generates a read-only migration runbook with the one command `node scripts/runbook-generator.js <workspaceRoot> --out ./migration-runbook.md --cache ./migration-runbook.json` and tells the user what it found. It does not read the generator's source, does not edit project files, and does not start fixing a pattern.",
+      "assertions": [
+        "`scripts/runbook-generator.js` is run with --out and --cache",
+        "No project file is edited",
+        "The agent does not start a pattern migration before the user picks one"
+      ],
+      "files": [
+        "files/legacy-project"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Fix everything BPA found in this project so it runs on AEM as a Cloud Service: schedulers, replication, event listeners, all of it.",
+      "expected_output": "The agent does not start several patterns at once. It explains that the migration runs one pattern per session and asks the user which pattern to start with (for example scheduler, replication or eventListener), and for the source of the findings: a BPA CSV path, a CAM project, or the files to migrate.",
+      "assertions": [
+        "The agent asks which single pattern to start with",
+        "No Java file is edited before the user has chosen a pattern",
+        "The agent asks for a BPA CSV, a CAM project or concrete files as the source of the findings"
+      ],
+      "files": []
+    }
+  ]
+}

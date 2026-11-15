@@ -137,3 +137,11 @@ node scripts/bpa-findings-helper.js scheduler ./unified-collections ./cleaned_fi
 # Same batching on the low-level reader
 node scripts/unified-collection-reader.js all ./unified-collections 0 5
 ```
+
+## Quick reference
+
+Moved here from `SKILL.md` as written.
+
+**Source priority (BPA patterns):** unified collection → BPA CSV → MCP → manual paths — **not** an automatic cascade after MCP errors (if MCP fails, stop; see **MCP errors and fallback** in `SKILL.md`). Batch size 5 on every BPA source. `htlLint`, OSGi→Cloud Manager, Template Modernization (C), Dispatcher Conversion (E), Asset Workflow Migration (H), and Repository restructuring (I) do not use BPA/MCP — see their branches in **Required delegation** in `SKILL.md`.
+
+**User-facing snippets:** *"Using existing BPA collection (N findings)…"* / *"Processing your BPA report…"* / *"Fetched findings from CAM."* / *"Scanning HTL templates for data-sly-test lint issues…"* / optional prompt after MCP stop above.
