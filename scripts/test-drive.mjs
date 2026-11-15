@@ -4,8 +4,6 @@
 //   node scripts/test-drive.mjs [options] --changed <git diff args>     the plugins a change touches;
 //                                                                 all of them when it changes a CLI
 //                                                                 or the test drive itself
-//   node scripts/test-drive.mjs [options] --against <tree>          the plugins that differ from
-//                                                                 another checkout of the repository
 //   node scripts/test-drive.mjs [options] --all
 //
 //   --build            build the generated manifests first, and put the files back afterwards:
@@ -26,7 +24,6 @@
 // run. Hooks and MCP servers that a client does not load are reported, not failed: which
 // client runs which is in the README.
 import { execFileSync, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
@@ -68,26 +65,6 @@ export function describePlugin(root, dir) {
     hasHooks: existsSync(join(abs, 'hooks', 'hooks.json')),
     marketplace,
   };
-}
-
-// A fingerprint of a directory: every file below it with a hash of its content.
-function fingerprint(dir) {
-  const hash = createHash('sha256');
-  const walk = (current, prefix) => {
-    for (const entry of readdirSync(current, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      if (entry.name === 'node_modules' || entry.name === '.git') continue;
-      const path = join(current, entry.name);
-      if (entry.isDirectory()) walk(path, `${prefix}${entry.name}/`);
-      else if (entry.isFile()) hash.update(`${prefix}${entry.name}\0`).update(readFileSync(path)).update('\0');
-    }
-  };
-  walk(dir, '');
-  return hash.digest('hex');
-}
-
-// The plugins of root that another checkout of the repository doesn't have, or has differently.
-export function differingPlugins(root, other) {
-  return pluginDirs(root).filter((dir) => !existsSync(join(other, dir, 'plugin.json')) || fingerprint(join(root, dir)) !== fingerprint(join(other, dir)));
 }
 
 // Builds the generated manifests in root and returns what puts the files back: a file git
@@ -161,13 +138,12 @@ export function report(plugin, results) {
 }
 
 function parse(argv) {
-  const options = { bin: null, build: false, clients: CLIENTS, json: null, markdown: null, changed: null, against: null, all: false, dirs: [] };
+  const options = { bin: null, build: false, clients: CLIENTS, json: null, markdown: null, changed: null, all: false, dirs: [] };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--all') options.all = true;
     else if (arg === '--build') options.build = true;
     else if (arg === '--bin') options.bin = argv[++index];
-    else if (arg === '--against') options.against = argv[++index];
     else if (arg === '--clients') options.clients = argv[++index].split(',').map((name) => name.trim()).filter(Boolean);
     else if (arg === '--json') options.json = argv[++index];
     else if (arg === '--markdown') options.markdown = argv[++index];
@@ -184,12 +160,12 @@ function parse(argv) {
 function main() {
   const root = process.cwd();
   const options = parse(process.argv.slice(2));
-  if (!options || (!options.all && !options.changed && !options.against && options.dirs.length === 0)) {
-    console.error(`usage: test-drive.mjs [--build] [--bin <dir>] [--clients ${CLIENTS.join(',')}] [--json <file>] [--markdown <file>] (<plugin dir>… | --changed <git diff args> | --against <tree> | --all)`);
+  if (!options || (!options.all && !options.changed && options.dirs.length === 0)) {
+    console.error(`usage: test-drive.mjs [--build] [--bin <dir>] [--clients ${CLIENTS.join(',')}] [--json <file>] [--markdown <file>] (<plugin dir>… | --changed <git diff args> | --all)`);
     process.exit(2);
   }
   const all = pluginDirs(root);
-  const dirs = options.all ? all : options.changed ? pluginsToDrive(changedFiles(root, options.changed), all) : options.against ? differingPlugins(root, resolve(options.against)) : options.dirs;
+  const dirs = options.all ? all : options.changed ? pluginsToDrive(changedFiles(root, options.changed), all) : options.dirs;
   const lines = ['## Plugin test drive', ''];
   if (dirs.length === 0) {
     lines.push('No plugin is touched by this change.');

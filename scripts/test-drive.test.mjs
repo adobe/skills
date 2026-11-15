@@ -4,8 +4,8 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agyWarnings, findCli, parseClaudeDetails, parseCodexSkills, parseGrokInspect } from './lib/clients.mjs';
-import { notes } from './review-env.mjs';
-import { buildManifests, describePlugin, differingPlugins, pluginsToDrive, problems, report } from './test-drive.mjs';
+import { baseCommit, notes } from './review-env.mjs';
+import { buildManifests, describePlugin, pluginsToDrive, problems, report } from './test-drive.mjs';
 import { commit, git, run, tree, write } from './lib/testing.mjs';
 
 // ---- what the clients print, as captured from claude 2.1.322, codex 0.169.0, grok 1.0.77, agy 1.5.9 ----
@@ -129,12 +129,6 @@ test('the report has a row per client and says what was not loaded, not checked,
   assert.match(lines, /- \*\*agy:\*\* did not load 1 of 2 skills: two\n- \*\*agy:\*\* hooks\/hooks\.json: never loaded/);
 });
 
-test('the plugins that differ from another checkout: changed, new, and not the same ones', (t) => {
-  const base = tree(t, { 'plugins/same/plugin.json': manifest('same'), 'plugins/same/skills/s/SKILL.md': 'a', 'plugins/changed/plugin.json': manifest('changed'), 'plugins/changed/skills/s/SKILL.md': 'a' });
-  const head = tree(t, { 'plugins/same/plugin.json': manifest('same'), 'plugins/same/skills/s/SKILL.md': 'a', 'plugins/changed/plugin.json': manifest('changed'), 'plugins/changed/skills/s/SKILL.md': 'b', 'plugins/new/plugin.json': manifest('new') });
-  assert.deepEqual(differingPlugins(head, base), ['plugins/changed', 'plugins/new']);
-});
-
 test('a change to a CLI or to the test drive itself test-drives every plugin', () => {
   const all = ['plugins/a', 'plugins/b'];
   assert.deepEqual(pluginsToDrive(['plugins/a/skills/s/SKILL.md', 'README.md'], all), ['plugins/a']);
@@ -222,9 +216,11 @@ test('a CLI that is not installed is reported and does not fail the run; a plugi
 
 test('without a changed plugin there is nothing to test-drive, and wrong arguments print the usage', (t) => {
   const root = tree(t, PLUGIN);
-  write(root, { 'other/plugins/p/plugin.json': PLUGIN['plugins/p/plugin.json'] });
-  const same = tree(t, PLUGIN);
-  const none = run(t, 'test-drive.mjs', ['--bin', bin(t), '--against', same], { cwd: root });
+  commit(root);
+  write(root, { 'README.md': 'not a plugin' });
+  const head = commit(root);
+  const none = run(t, 'test-drive.mjs', ['--bin', bin(t), '--changed', 'HEAD~1...HEAD'], { cwd: root });
+  assert.ok(head);
   assert.equal(none.status, 0);
   assert.match(none.summary, /No plugin is touched by this change/);
   for (const args of [[], ['--clients', 'claude,nope', 'plugins/p'], ['--what']]) {
@@ -261,6 +257,35 @@ done`);
 });
 
 // ---- the notes for the reviewers ----
+
+const plugin = (name) => ({ [`plugins/${name}/plugin.json`]: manifest(name), [`plugins/${name}/skills/s/SKILL.md`]: skill('s') });
+
+test('the review test-drives what the pull request changes, not what main changed since the branch was cut', (t) => {
+  // main moves on after the branch is cut: it changes plugin "theirs"; the branch changes "mine"
+  const root = tree(t, { ...plugin('mine'), ...plugin('theirs'), ...plugin('untouched') });
+  const start = commit(root);
+  git(root, 'checkout', '-q', '-b', 'branch');
+  write(root, { 'plugins/mine/skills/s/SKILL.md': skill('s') + 'changed here\n' });
+  commit(root);
+  git(root, 'checkout', '-q', 'main');
+  write(root, { 'plugins/theirs/skills/s/SKILL.md': skill('s') + 'changed on main\n' });
+  const tip = commit(root);
+  // the review has the base tree at the tip of main, in a checkout of its own
+  const runner = mkdtempSync(join(tmpdir(), 'review-runner-'));
+  t.after(() => rmSync(runner, { recursive: true, force: true }));
+  git(root, 'worktree', 'add', '-q', '--detach', join(runner, 'base'), tip);
+  git(root, 'checkout', '-q', 'branch');
+
+  assert.equal(baseCommit(root, { RUNNER_TEMP: runner }), tip);
+  assert.notEqual(tip, start);
+  const result = run(t, 'test-drive.mjs', ['--bin', bin(t), '--changed', `${baseCommit(root, { RUNNER_TEMP: runner })}...HEAD`], { cwd: root });
+  assert.match(result.stdout, /^mine: /m);
+  assert.doesNotMatch(result.stdout, /theirs|untouched/);
+  // without a base tree, or with one this checkout doesn't know, it is the remote's main
+  assert.equal(baseCommit(root, {}), 'origin/main');
+  assert.equal(baseCommit(root, { RUNNER_TEMP: tmpdir(), GITHUB_BASE_REF: 'release' }), 'origin/release');
+});
+
 
 test('the notes for the reviewers fit the prompt and name what each client loaded', () => {
   const plugin = { name: 'p', dir: 'plugins/p', skills: ['one', 'two'], hasMcp: true, hasHooks: true };

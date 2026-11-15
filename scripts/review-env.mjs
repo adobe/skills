@@ -5,7 +5,10 @@
 // 1. Installs the agent CLIs (setup-agent-clis.mjs) below RUNNER_TEMP, where test-drive.mjs
 //    and skill-eval.mjs find them. Not on the PATH: the reviewers are a claude and a codex
 //    of the review workflow's own versions, and must stay that.
-// 2. Test-drives the plugins this pull request changes in each client (test-drive.mjs). A
+// 2. Test-drives the plugins this pull request changes in each client (test-drive.mjs):
+//    the diff from the merge base, as the Plugin Test Drive workflow takes it. Not the
+//    difference to the base tree, which is the tip of main and has moved on for most pull
+//    requests. A
 //    pull request leaves the generated manifests alone, so the test drive builds them and
 //    puts them back (--build): the reviewers get the tree as the pull request has it.
 // 3. Writes notes for the prompt: what each client loaded, where the full report is, and
@@ -18,7 +21,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { CLIENTS } from './lib/clients.mjs';
 import { isMain } from './lib/is-main.mjs';
-import { differingPlugins } from './test-drive.mjs';
 
 // The notes for the prompt, which takes their first 4000 bytes: one line per plugin and
 // client, then the commands.
@@ -51,9 +53,19 @@ export function notes({ results, report, bin, setupFailed, driveStatus }) {
   lines.push(
     '',
     'To run it again: `node scripts/test-drive.mjs --build <plugin dir>`.',
-    'To see what a skill changes, run a task with and without its plugin: `node scripts/skill-eval.mjs --client claude --plugin <plugin dir> --prompt "<task>"`, or `--scenario <plugin dir>/evals/<name>` for a scenario the plugin has. It prints both answers and the files each run wrote. `claude` and `codex` run on the Bedrock key of this review; `grok` and `agy` have no credentials here, and the script says so (exit 3) for a client it can\'t run.',
+    'To see what a skill changes, run a task with and without its plugin: `node scripts/skill-eval.mjs --client claude --plugin <plugin dir> --prompt "<task>"`, or `--scenario <plugin dir>/evals/<name>` for a scenario the plugin has. It prints both answers and the files each run wrote or removed. `claude` and `codex` run on the Bedrock key of this review; `grok` and `agy` have no credentials here, and the script says so (exit 3) for a client it can\'t run.',
   );
   return `${lines.join('\n')}\n`;
+}
+
+// The commit the pull request is compared with: the one the base tree of the review is at,
+// when this checkout has it, and the remote's main otherwise. `git diff <it>...HEAD` then
+// starts from the merge base.
+export function baseCommit(root = process.cwd(), env = process.env) {
+  const git = (cwd, ...args) => spawnSync('git', args, { cwd, encoding: 'utf8' });
+  const base = env.RUNNER_TEMP ? join(env.RUNNER_TEMP, 'base') : null;
+  const commit = base && existsSync(base) ? git(base, 'rev-parse', 'HEAD').stdout.trim() : '';
+  return commit && git(root, 'cat-file', '-e', `${commit}^{commit}`).status === 0 ? commit : `origin/${env.GITHUB_BASE_REF || 'main'}`;
 }
 
 function main() {
@@ -65,22 +77,15 @@ function main() {
     return;
   }
   const bin = join(process.env.RUNNER_TEMP ?? resolve('.agent-clis'), 'agent-clis', 'bin');
-  const base = process.env.RUNNER_TEMP ? join(process.env.RUNNER_TEMP, 'base') : null;
   const setup = spawnSync(process.execPath, ['scripts/setup-agent-clis.mjs', bin], { stdio: 'inherit', env: { ...process.env, AGENT_CLIS_NO_PATH: '1' } });
   const json = join(out, 'test-drive.json');
   const report = join(out, 'test-drive.md');
-  // which plugins changed is decided before the manifests are built: a build can change more
-  const dirs = base && existsSync(base) ? differingPlugins(process.cwd(), base) : null;
-  let results = dirs?.length === 0 ? [] : null;
-  let status = 0;
-  if (results === null) {
-    const target = dirs ?? ['--changed', 'origin/main...HEAD'];
-    status = spawnSync(process.execPath, ['scripts/test-drive.mjs', '--build', '--bin', bin, '--json', json, '--markdown', report, ...target], { stdio: 'inherit' }).status;
-    try {
-      results = JSON.parse(readFileSync(json, 'utf8'));
-    } catch {
-      // the notes say that there is no result
-    }
+  const { status } = spawnSync(process.execPath, ['scripts/test-drive.mjs', '--build', '--bin', bin, '--json', json, '--markdown', report, '--changed', `${baseCommit()}...HEAD`], { stdio: 'inherit' });
+  let results = null;
+  try {
+    results = JSON.parse(readFileSync(json, 'utf8'));
+  } catch {
+    // the notes say that there is no result
   }
   writeFileSync(join(out, 'notes.md'), notes({ results, report, bin, setupFailed: setup.status === 0 ? null : `exit ${setup.status}`, driveStatus: status }));
 }

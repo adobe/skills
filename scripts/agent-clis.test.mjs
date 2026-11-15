@@ -83,13 +83,15 @@ test('a newer Antigravity than the pinned one is said, and a manifest service th
 
 // ---- skill-eval.mjs ----
 
-test('the files a run wrote: new and changed ones, without what a client keeps for itself', (t) => {
-  const dir = tree(t, { 'kept.md': 'same', 'changed.md': 'short', '.claude/settings.json': '{}', 'node_modules/x/index.js': '' });
+test('what a run did to the files: new, changed at the same size, and removed ones, without what a client keeps for itself', (t) => {
+  const dir = tree(t, { 'kept.md': 'same', 'changed.md': 'value=1', 'removed.md': 'gone soon', '.claude/settings.json': '{}', 'node_modules/x/index.js': '' });
   const before = listFiles(dir);
-  assert.deepEqual(before.map((file) => file.path), ['changed.md', 'kept.md']);
-  writeFileSync(join(dir, 'changed.md'), 'longer than before');
+  assert.deepEqual(before.map((file) => file.path), ['changed.md', 'kept.md', 'removed.md']);
+  writeFileSync(join(dir, 'changed.md'), 'value=2'); // as many bytes as before
   writeFileSync(join(dir, 'new.md'), 'new');
-  assert.deepEqual(changedSince(before, listFiles(dir)), [{ path: 'changed.md', bytes: 18 }, { path: 'new.md', bytes: 3 }]);
+  rmSync(join(dir, 'removed.md'));
+  assert.deepEqual(changedSince(before, listFiles(dir)), { written: [{ path: 'changed.md', bytes: 7 }, { path: 'new.md', bytes: 3 }], removed: ['removed.md'] });
+  assert.deepEqual(changedSince(before, before), { written: [], removed: [] });
 });
 
 test('credentials: each client names the variables it is given, and no others', () => {
@@ -149,11 +151,27 @@ test('an eval runs the task with the plugin and without it, and reports both ans
   assert.equal(report.arms.with.answer, 'plugin yes, key bedrock-key, token none, started with given');
   assert.equal(report.arms.without.answer, 'plugin no, key bedrock-key, token none, started with given');
   assert.deepEqual(report.arms.with.files, [{ path: 'result.md', bytes: 11 }]);
+  assert.deepEqual(report.arms.with.removed, []);
   assert.equal(report.arms.with.turns, 2);
   assert.deepEqual(report.criteria, { checklist: [{ name: 'done', max_score: 10 }] });
   assert.match(report.notes.join(' '), /setup\.sh, which this runner does not run/);
   assert.equal(readFileSync(join(out, 'claude-with', 'workdir', 'result.md'), 'utf8'), 'plugin yes\n');
   assert.equal(readFileSync(join(root, 'plugins/p/evals/case/resources/start.md'), 'utf8'), 'given'); // the scenario is not changed
+});
+
+test('a run that edits a file without changing its size, or only removes one, is reported and its work directory kept', (t) => {
+  const root = tree(t, { ...PLUGIN, 'start/config.txt': 'value=1', 'start/old.txt': 'old' });
+  const out = temp(t);
+  const edits = `case "$*" in *--plugin-dir*) echo value=2 | tr -d '\\n' > config.txt ;; *) rm old.txt ;; esac; echo '{"result":"ok"}'`;
+  const result = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--prompt', 'x', '--workdir', 'start', '--bin', claude(t, edits), '--out', out], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const { arms } = JSON.parse(result.stdout);
+  assert.deepEqual([arms.with.files, arms.with.removed], [[{ path: 'config.txt', bytes: 7 }], []]);
+  assert.deepEqual([arms.without.files, arms.without.removed], [[], ['old.txt']]);
+  assert.equal(readFileSync(join(out, 'claude-with', 'workdir', 'config.txt'), 'utf8'), 'value=2');
+  assert.equal(existsSync(join(out, 'claude-without', 'workdir', 'old.txt')), false);
+  assert.equal(readFileSync(join(out, 'claude-without', 'workdir', 'config.txt'), 'utf8'), 'value=1');
+  assert.equal(readFileSync(join(root, 'start/config.txt'), 'utf8'), 'value=1'); // the files the task starts from are not changed
 });
 
 test('the task is given with the rule to stay in the work directory', (t) => {

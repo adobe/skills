@@ -1,5 +1,5 @@
 // Runs one task in an agent CLI twice, with a plugin installed and without it, and prints
-// what each run answered and which files it wrote. For a reviewer who wants to see what a
+// what each run answered and which files it wrote or removed. For a reviewer who wants to see what a
 // skill changes: the comparison is the eval, and the reviewer is the judge.
 //
 //   node scripts/skill-eval.mjs --client claude|codex|grok|agy --plugin <plugin dir>
@@ -31,6 +31,7 @@
 //   agy     GEMINI_API_KEY
 // Exit 3 when the client has no credentials here, 2 for wrong arguments, 1 when a run failed.
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -138,21 +139,26 @@ export const RUNNERS = {
   },
 };
 
-// The files below dir, as { path, bytes }, without what a client keeps for itself.
+// The files below dir, as { path, bytes, hash }, without what a client keeps for itself.
 export function listFiles(dir, base = dir, found = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (['.git', 'node_modules', '.claude', '.codex', '.grok', '.gemini'].includes(entry.name)) continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) listFiles(path, base, found);
-    else if (entry.isFile()) found.push({ path: relative(base, path), bytes: statSync(path).size });
+    else if (entry.isFile()) found.push({ path: relative(base, path), bytes: statSync(path).size, hash: createHash('sha256').update(readFileSync(path)).digest('hex') });
   }
   return found.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-// The files a run added or changed, compared with the listing before it.
+// What a run did to the files, compared with the listing before it: the ones it wrote (new,
+// or with other content, whatever their size) and the ones it removed.
 export function changedSince(before, after) {
-  const was = new Map(before.map((file) => [file.path, file.bytes]));
-  return after.filter((file) => was.get(file.path) !== file.bytes);
+  const was = new Map(before.map((file) => [file.path, file.hash]));
+  const is = new Set(after.map((file) => file.path));
+  return {
+    written: after.filter((file) => was.get(file.path) !== file.hash).map(({ path, bytes }) => ({ path, bytes })),
+    removed: before.filter((file) => !is.has(file.path)).map((file) => file.path),
+  };
 }
 
 function parse(argv) {
@@ -245,8 +251,9 @@ function main() {
       writeFileSync(join(armOut, 'stdout.txt'), ran.stdout ?? '');
       writeFileSync(join(armOut, 'stderr.txt'), ran.stderr ?? '');
       const answer = client.answer({ stdout: ran.stdout ?? '', lastMessage });
-      const files = changedSince(before, listFiles(workdir));
-      if (files.length > 0) cpSync(workdir, join(armOut, 'workdir'), { recursive: true });
+      const { written, removed } = changedSince(before, listFiles(workdir));
+      // the work directory as the run left it, for the judge: it is deleted below
+      if (written.length > 0 || removed.length > 0) cpSync(workdir, join(armOut, 'workdir'), { recursive: true });
       const timedOut = ran.error?.code === 'ETIMEDOUT';
       result.arms[arm] = {
         exit: timedOut ? `timed out after ${options.timeout} s` : ran.status,
@@ -254,7 +261,8 @@ function main() {
         ...(answer.turns !== undefined ? { turns: answer.turns } : {}),
         ...(answer.costUsd !== undefined ? { costUsd: answer.costUsd } : {}),
         answer: String(answer.text ?? '').slice(0, 8000),
-        files,
+        files: written,
+        removed,
         ...(ran.status !== 0 && !timedOut ? { stderr: String(ran.stderr ?? '').trim().split('\n').slice(-5).join('\n').slice(0, 1000) } : {}),
       };
       if (ran.status !== 0 || answer.failed) failed = true;

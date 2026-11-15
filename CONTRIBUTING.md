@@ -104,7 +104,7 @@ node scripts/skill-eval.mjs --client claude --plugin plugins/<your plugin> \
   --prompt "<a task, as a user would put it>" --auth-home "$HOME"
 ```
 
-It prints both answers and the files each run wrote. `--scenario plugins/<your plugin>/evals/<name>` takes the task of a scenario and adds its criteria to the result. The agent of such a run may do whatever you may do on that machine: run it for plugins you trust.
+It prints both answers and the files each run wrote or removed. `--scenario plugins/<your plugin>/evals/<name>` takes the task of a scenario and adds its criteria to the result. The agent of such a run may do whatever you may do on that machine: run it for plugins you trust.
 
 ## How Contributions Get Reviewed
 
