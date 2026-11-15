@@ -41,7 +41,7 @@ What a `SKILL.md` says is put into the context of every session that loads the s
 
 Without an eval nobody has shown that what a skill says changes what an agent does, so it gets a page. An eval of a skill is one of these:
 
-- `skills/<skill>/evals/evals.json`, with at least one entry that has a `prompt` and an `expected_output` or `assertions`.
+- `skills/<skill>/evals/evals.json`, with at least one entry that has a `prompt` and an `expected_output`, `assertions` or `expectations`.
 - A scenario of the plugin, `evals/<scenario>/` with `task.md` and `criteria.json`, whose folder is named after the skill: `<skill>` or `<skill>-<what it tests>`. The folder name is how a scenario says which skill it tests.
 - Any scenario of the plugin, when the plugin has only this one skill.
 

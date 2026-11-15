@@ -288,6 +288,7 @@ test('--tokens lists every skill with its tokens, its limit and its eval, for th
     'over    1200 of 1000  plugins/a/skills/grown/SKILL.md  (no eval)',
     'ok      1200 of 5000  plugins/a/skills/tested/SKILL.md  (eval: plugins/a/skills/tested/evals/evals.json)',
   ]);
+  assert.deepEqual(execFileSync('node', [SCRIPT, '--tokens', './plugins/a'], { cwd: root, encoding: 'utf8' }).trim().split('\n'), lines);
   assert.equal(execFileSync('node', [SCRIPT, '--tokens'], { cwd: root, encoding: 'utf8' }).trim().split('\n').length, 3);
   assert.equal(execFileSync('node', [SCRIPT, '--list', 'over-token-limit'], { cwd: root, encoding: 'utf8' }), 'plugins/a/skills/grown/SKILL.md\n');
 });

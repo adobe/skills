@@ -218,7 +218,7 @@ export function findViolations(root) {
 
 function main() {
   if (process.argv[2] === '--tokens') {
-    const below = (process.argv[3] ?? '').replace(/\/+$/, '');
+    const below = (process.argv[3] ?? '').replace(/^(\.\/)+/, '').replace(/\/+$/, '');
     const skills = readSkills(process.cwd()).filter((skill) => below === '' || skill.file.startsWith(`${below}/`));
     for (const skill of skills) {
       console.log(`${skill.tokens > skill.limit ? 'over ' : 'ok   '} ${String(skill.tokens).padStart(6)} of ${String(skill.limit).padStart(4)}  ${skill.file}  ${skill.eval ? `(eval: ${skill.eval})` : '(no eval)'}`);

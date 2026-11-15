@@ -34,7 +34,7 @@ repository; the pull request review reads them too.
 - A `SKILL.md` has a token limit: 5,000 tokens for a skill with an eval, 1,000 for a skill
   without one. A token is counted as four characters. An eval of a skill is one of:
   - `skills/<skill>/evals/evals.json` with at least one entry that has a `prompt` and an
-    `expected_output` or `assertions`;
+    `expected_output`, `assertions` or `expectations`;
   - a scenario of its plugin, `evals/<scenario>/` with `task.md` and `criteria.json`, whose
     folder is named after the skill: `<skill>` or `<skill>-<what it tests>`;
   - any scenario of its plugin, when the plugin has no other skill.
