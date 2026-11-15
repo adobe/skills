@@ -1,6 +1,6 @@
 {
   "name": "aem-cloud-service",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "All AEM as a Cloud Service skills: component development, Workflow model design, development, triggering, launchers, debugging, and triaging, Dispatcher config authoring, advisory, incident response, performance tuning, and security hardening, Rapid Development Environment (RDE) deployment, log inspection, snapshots, and troubleshooting via `aio aem rde`, Jackrabbit Oak query/index tuning (property, Lucene index definitions), and extracting/inventorying JCR queries (XPath, SQL2, QueryBuilder) across a codebase.",
   "author": {
     "name": "Adobe"
