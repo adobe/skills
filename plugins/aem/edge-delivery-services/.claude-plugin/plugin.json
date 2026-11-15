@@ -1,6 +1,6 @@
 {
   "name": "aem-edge-delivery-services",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Skills for AEM Edge Delivery Services development, including Content Driven Development workflow, block building, testing, content modeling, code review, and page migration.",
   "author": {
     "name": "Adobe"
