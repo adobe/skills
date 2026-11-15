@@ -20,8 +20,9 @@
  *            direction (always) — an `@media` / `@custom-media` / `@import` condition with an upper
  *              bound (`max-width`, `width <`, `width <=`, the upper end of a range, a lower bound
  *              under `not`) is desktop-first: `<file>:<line>  <source text>  → desktop-first: write
- *              the narrow layout as the base, the wider one in (width >= <N>px)`, N snapped to the
- *              nearest target step when one is set. `media="…"` attributes (art direction) and JS
+ *              the narrow layout as the base, the wider one in (width >= <N>px)`; with a target set,
+ *              <N> is the nearest target step (`…, the nearest target step to <M>px`) and the row is
+ *              not listed again as off-target. `media="…"` attributes (art direction) and JS
  *              thresholds are not direction-checked.
  *            target (when set) — Target = --target, else `extensions.breakpoints.target` in
  *              --design (default ./DESIGN.json, the project root's). One line per off-target
@@ -187,8 +188,15 @@ export function walk(path, exts, out = []) {
 // A CSS query with an upper bound — the desktop-first form (deploy rule 162).
 export const isDesktopFirst = (h) => h.src === 'css' && h.form === 'max';
 
-// { desktopFirst, offTarget: [{file, line, px, text}], unresolved, count, files } for the scanned
-// files; target null → direction only.
+// The target step closest to px; a tie goes to the lower step.
+export const nearestStep = (px, target) => target.reduce((best, t) => {
+  const d = Math.abs(t - px) - Math.abs(best - px);
+  return d < 0 || (d === 0 && t < best) ? t : best;
+});
+
+// { desktopFirst: [{file, line, px, text, step?}], offTarget: [{file, line, px, text}], unresolved, count, files }
+// for the scanned files; target null → direction only. With a target, a desktop-first row carries the
+// nearest target `step` for its rewrite and is not also an off-target row.
 export function lintFiles(files, target, root = '.') {
   const allowed = target ? new Set(target) : null;
   const res = { desktopFirst: [], offTarget: [], unresolved: [], count: 0, files: 0 };
@@ -199,8 +207,8 @@ export function lintFiles(files, target, root = '.') {
       const row = { file: relative(root, f) || f, line: h.line, px: h.px, text: h.text };
       if (h.px === null) { res.unresolved.push(row); continue; }
       res.count += 1;
-      if (isDesktopFirst(h)) res.desktopFirst.push(row);
-      if (allowed && !allowed.has(h.px)) res.offTarget.push(row);
+      if (isDesktopFirst(h)) res.desktopFirst.push(target ? { ...row, step: nearestStep(h.px, target) } : row);
+      else if (allowed && !allowed.has(h.px)) res.offTarget.push(row);
     }
   }
   return res;
@@ -265,8 +273,10 @@ function main(argv) {
     if (missing) return fail(`${missing} does not exist`);
     const dirs = entries.filter((d) => existsSync(d));
     const res = lintFiles(dirs.flatMap((d) => walk(d, EXT)), target, opts.root);
-    const step = (n) => (target ? target.reduce((b, t) => (Math.abs(t - n) < Math.abs(b - n) ? t : b)) : n);
-    for (const r of res.desktopFirst) console.log(`${r.file}:${r.line}  ${r.text}  → desktop-first: write the narrow layout as the base, the wider one in (width >= ${step(r.px)}px)`);
+    for (const r of res.desktopFirst) {
+      const at = r.step === undefined ? `${r.px}px)` : `${r.step}px)${r.step === r.px ? '' : `, the nearest target step to ${r.px}px`}`;
+      console.log(`${r.file}:${r.line}  ${r.text}  → desktop-first: write the narrow layout as the base, the wider one in (width >= ${at}`);
+    }
     for (const r of res.offTarget) console.log(`${r.file}:${r.line}  ${r.text}  → switches at ${r.px}px`);
     for (const r of res.unresolved) console.log(`${r.file}:${r.line}  ${r.text}  → ? interpolated — check by hand (advisory)`);
     const set = target ? `target ${target.join(',')}` : 'no target set';

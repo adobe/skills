@@ -3,8 +3,9 @@
 // its switch point (min/max, range, reversed, em, 1px complementary pairs collapse, `max-width: 900px` ≠ 900), CSS read in
 // @media preludes only (never declarations or comments), JS media strings and innerWidth comparisons read, interpolated
 // features advisory, a CSS upper bound (also a lower bound under `not`) → desktop-first exit 1 with or without a target
-// (attributes and JS exempt), the rewrite hint on a target step, HTML comments blanked, off-target → exit 1 with file:line,
-// DESIGN.json target read, --inventory distinct points, --help that reads nothing, usage errors and a missing named file on exit 2.
+// (attributes and JS exempt), HTML comments blanked, off-target → exit 1 with file:line, a desktop-first row under a
+// target listed once with its rewrite on the nearest target step, DESIGN.json target read, --inventory distinct points,
+// --help that reads nothing, usage errors and a missing named file on exit 2.
 // Run: node plugins/stardust/skills/replica/scripts/test/breakpoint-lint.test.mjs   (well under 1 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -12,7 +13,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isDesktopFirst, parseTarget, switchPoints } from '../breakpoint-lint.mjs';
+import { isDesktopFirst, nearestStep, parseTarget, switchPoints } from '../breakpoint-lint.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'breakpoint-lint.mjs');
@@ -141,6 +142,18 @@ check('a prototype dir lints its inline <style> and <source media> (.html)', () 
   assert.match(r.out, /home-proposed\.html:3 {2}max-width: 899px {2}→ desktop-first/);
   assert.match(r.out, /1 desktop-first, 1 off-target in 1 files/);
   assert.doesNotMatch(r.out, /:5 /);
+});
+
+check('with a target, a desktop-first row is listed once, its rewrite on the nearest target step', () => {
+  const snap = join(root, 'snap');
+  write(snap, 'styles/styles.css', '@media (max-width: 767px) { .a { b: c } }\n@media (max-width: 599px) { .d { e: f } }\n');
+  const r = run(snap, '--target', '600,900');
+  assert.equal(r.code, 1);
+  assert.match(r.out, /styles\.css:1 {2}max-width: 767px {2}→ desktop-first: write the narrow layout as the base, the wider one in \(width >= 900px\), the nearest target step to 768px/);
+  assert.match(r.out, /styles\.css:2 {2}max-width: 599px {2}→ desktop-first: [^\n]*\(width >= 600px\)\n/);
+  assert.doesNotMatch(r.out, /→ switches at/);
+  assert.match(r.out, /breakpoint-lint: 2 desktop-first, 0 off-target in 1 files \(target 600,900\)/);
+  assert.equal(nearestStep(750, [600, 900]), 600); assert.equal(nearestStep(750, [900, 600]), 600);
 });
 
 check('under a target the desktop-first hint names the nearest target step', () => {
