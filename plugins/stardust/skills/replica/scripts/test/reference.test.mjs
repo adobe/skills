@@ -38,8 +38,9 @@ await check('settings: the recorded capture flags against the current call — c
   assert.deepEqual(settingsChanged(rec, { consent: '#ok', locale: 'de-DE' }), ['consent', 'locale']);
   assert.deepEqual(settingsChanged({ ...rec, dismiss: '.a,.b' }, { dismiss: ['.a', '.b'] }), [], 'a selector list as an array or a string');
   assert.deepEqual(settingsChanged({ ...rec, dismiss: '.a' }, { dismiss: '.b' }), ['dismiss']);
-  assert.deepEqual(settingsChanged({ ...rec, consent: '#ok' }, { noDismiss: true }), ['consent', 'noDismiss']);
-  assert.deepEqual(settingsChanged({ ...rec, locale: 'en-GB' }, {}), ['locale']);
+  assert.deepEqual(settingsChanged({ ...rec, consent: '#ok' }, { noDismiss: true }), ['noDismiss']);
+  assert.deepEqual(settingsChanged({ ...rec, locale: 'en-GB', consent: '#ok' }, {}), [], 'a call that omits a setting inherits the reference\'s: no re-freeze');
+  assert.deepEqual(settingsChanged({ ...rec, locale: 'en-GB' }, { locale: 'en-US' }), ['locale'], 'a locale the call gives is compared');
   for (const none of [undefined, null, 'x']) assert.equal(settingsChanged(none, { consent: '#ok' }), null);
   // the subcommand: one line, no browser, no baseline-check child (deps.readJson only)
   const dir = mkdtempSync(join(tmpdir(), 'reference-settings-'));
@@ -50,8 +51,8 @@ await check('settings: the recorded capture flags against the current call — c
     writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ url: 'https://x.test/', flags: { ...rec, consent: '#ok' } }));
     assert.deepEqual(settings(['--consent', '#ok']), { code: 0, out: 'same' });
     assert.deepEqual(settings(['--consent', '#ok', '--locale', 'en-US']), { code: 0, out: 'same' });
-    assert.deepEqual(settings(['--locale', 'fr-FR']), { code: 0, out: 'changed: consent, locale' });
-    assert.deepEqual(settings(['--no-dismiss']), { code: 0, out: 'changed: consent, noDismiss' });
+    assert.deepEqual(settings(['--locale', 'fr-FR']), { code: 0, out: 'changed: locale' });
+    assert.deepEqual(settings(['--no-dismiss']), { code: 0, out: 'changed: noDismiss' });
     writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ url: 'https://x.test/' }));
     assert.deepEqual(settings(['--consent', '#ok']), { code: 0, out: 'not recorded' });
     assert.match(HELP, /reference\.mjs settings <dir>/);

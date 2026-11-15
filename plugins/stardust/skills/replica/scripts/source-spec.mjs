@@ -15,6 +15,7 @@
  * without a browser). Browser work goes through ../../diff/scripts/measure-live.mjs (the shared live session:
  * pacing, overlay handling, challenge detection), resolved in the plugin tree and in the project copy.
  */
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,6 +40,8 @@ Usage:
     --consent <sel> / --dismiss <sel,…> / --no-dismiss   overlay handling, as gate.sh and stitch-shot spell it
     --locale <tag>      pin Accept-Language + locale (default en-US)
     --headed            headed stealth real Chrome (escalation after an exit 3)
+    --no-chrome         skip the header and footer inventory (default: chrome-parity --live-only per width, written as
+                        <out>/<slug>-<width>-chrome.json and as the gate's live cache stardust/replica/gates/<slug>-<width>/chrome-live.json)
     --out <dir>         default ${DEFAULT_OUT}
 
   node source-spec.mjs compare <spec.json> <build-url> [--main <sel>] [--tol ${DEFAULT_TOL}] [--json <file>]
@@ -90,13 +93,13 @@ export function parseArgs(argv) {
   const [cmd, ...rest] = argv;
   if (!cmd) throw new UsageError('need a subcommand: capture | compare | view (see --help)');
   if (!['capture', 'compare', 'view'].includes(cmd)) throw new UsageError(`unknown subcommand "${cmd}" — capture | compare | view`);
-  const o = { cmd, pos: [], slug: null, widths: [], main: null, consent: null, dismiss: [], noDismiss: false, locale: null, headed: false, out: DEFAULT_OUT, tol: DEFAULT_TOL, json: null, section: null, kind: null, grep: null, tsv: false, max: VIEW_MAX };
+  const o = { cmd, pos: [], slug: null, widths: [], main: null, consent: null, dismiss: [], noDismiss: false, locale: null, headed: false, noChrome: false, out: DEFAULT_OUT, tol: DEFAULT_TOL, json: null, section: null, kind: null, grep: null, tsv: false, max: VIEW_MAX };
   const flags = {
     capture: { '--slug': 'slug', '--widths': 'widths', '--main': 'main', '--consent': 'consent', '--dismiss': 'dismiss', '--locale': 'locale', '--out': 'out' },
     compare: { '--main': 'main', '--tol': 'tol', '--json': 'json' },
     view: { '--section': 'section', '--kind': 'kind', '--grep': 'grep', '--max': 'max' },
   }[cmd];
-  const bools = { capture: { '--no-dismiss': 'noDismiss', '--headed': 'headed' }, compare: {}, view: { '--tsv': 'tsv' } }[cmd];
+  const bools = { capture: { '--no-dismiss': 'noDismiss', '--headed': 'headed', '--no-chrome': 'noChrome' }, compare: {}, view: { '--tsv': 'tsv' } }[cmd];
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (bools[a]) { o[bools[a]] = true; continue; }
@@ -692,7 +695,25 @@ async function capture(o) {
       console.log(`${formatBrief(spec, { path })}\n`);
     }
   } finally { await browser.close().catch(() => {}); }
+  if (!o.noChrome) for (const width of o.widths) chromeInventory(o, url, width);
   return 0;
+}
+
+/**
+ * The header and footer are authored from an inventory too (texts by channel, icons, background, position): the
+ * same capture, the same settings, saved as the gate's live side. Never fails the capture — an unresolved region
+ * prints its own line (chrome-parity exit 4) and the spec stands.
+ */
+function chromeInventory(o, url, width) {
+  const script = join(dirname(fileURLToPath(import.meta.url)), 'chrome-parity.mjs');
+  if (!existsSync(script)) { console.error('source-spec: chrome-parity.mjs is not beside this script — header and footer inventory skipped'); return; }
+  const gateDir = join('stardust', 'replica', 'gates', `${o.slug}-${width}`); mkdirSync(gateDir, { recursive: true });
+  const args = [script, url, '--live-only', '--width', String(width), '--live-cache', join(gateDir, 'chrome-live.json'), '--json', join(o.out, `${o.slug}-${width}-chrome.json`)];
+  if (o.noDismiss) args.push('--no-dismiss'); else { if (o.consent) args.push('--consent', o.consent); if (o.dismiss && o.dismiss.length) args.push('--dismiss', [].concat(o.dismiss).join(',')); }
+  if (o.locale) args.push('--locale', o.locale);
+  const r = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 240000 });
+  console.log(`${(r.stdout || '').trimEnd()}\n`);
+  if (r.status !== 0) console.error(`source-spec: header and footer inventory at ${width} ended with exit ${r.status} — ${((r.stderr || '').trim().split('\n').pop() || 'see above').slice(0, 200)}`);
 }
 
 async function compare(o) {
