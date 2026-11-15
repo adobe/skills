@@ -63,8 +63,6 @@ Check which of the two the project has before you name a file:
 
 ## Step 3: Report
 
-Report the findings of Step 2, and with them:
-
 - The total against 102,400 bytes, with the headroom or the overrun, the URL, the Lighthouse version and the date.
 - The LCP element and where it came from (Lighthouse, RUM, or the user).
 - The request table, largest first.
