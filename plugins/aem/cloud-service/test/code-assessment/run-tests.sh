@@ -239,9 +239,12 @@ echo "[outbound-call-timeouts] timeout-less clients + JDK requests flagged; conf
 OUT="$(run "$FIX/outbound-call-timeouts")"
 assert_contains "pattern present"                       "$OUT" '"pattern":"outbound-call-timeouts"'
 assert_contains "Apache no-timeout client flagged"      "$OUT" 'BadHttpService.java'
+assert_contains "HttpClients.createSystem() flagged"    "$OUT" 'SystemHttpService.java'
+assert_contains "HttpClients.createMinimal() flagged"   "$OUT" '"file":"MinimalHttpService.java"'
 assert_contains "JDK newHttpClient flagged"             "$OUT" 'JdkHttpService.java'
 assert_contains "JDK request without timeout flagged"   "$OUT" 'JdkRequestBad.java'
 assert_absent  "RequestConfig-timeout client not flagged" "$OUT" 'GoodHttpService.java'
+assert_absent  "createMinimal() + per-request RequestConfig not flagged" "$OUT" 'GoodMinimalHttpService.java'
 assert_absent  "JDK request with timeout not flagged"   "$OUT" 'JdkRequestGood.java'
 assert_absent  "non-JDK HttpRequest not flagged"        "$OUT" 'OtherHttpRequest.java'
 assert_absent  "Mockito .build() stub not flagged (CA-12)" "$OUT" 'MockitoStub.java'
