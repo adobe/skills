@@ -10,8 +10,8 @@ description: |
   Guava cache → Caffeine swaps (guavaCache), java.io.InputStream usage triage (inputStream),
   Oak index conversion (oakIndex, beta), and static→editable template modernization. Also
   externalizes OSGi config secrets to Cloud Manager (scans ui.config/.cfg.json for $[secret:]/$[env:]
-  placeholders), converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E), and validates
-  migrated code on a local Cloud SDK (Branch G, beta).
+  placeholders), converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E), validates migrated code on a
+  local Cloud SDK (Branch G, beta), and migrates asset workflows (Branch H).
 license: Apache-2.0
 metadata:
   version: "1.2.0"
@@ -48,7 +48,7 @@ Applies to **finding and editing the user's AEM project** (Java, bundles, config
 
 ## Required delegation (do this first)
 
-Find the branch for the request and read its file before anything else. Each of Branches A and C–G **skips Branch B**. A, C, E and G take **no BPA pattern id**.
+Find the branch for the request and read its file before anything else. Each of Branches A and C–H **skips Branch B**. A, C, E, G and H take **no BPA pattern id**.
 
 | Branch | The user asks to… | Read first, and follow |
 |---|---|---|
@@ -59,6 +59,7 @@ Find the branch for the request and read its file before anything else. Each of 
 | **E — Dispatcher conversion** | convert or migrate an AMS / on-premise Dispatcher configuration | [references/dispatcher/flow.md](references/dispatcher/flow.md): six phases around Adobe's `dispatcher-converter`. **HARD STOP on `filter-acl-loss`.** Do not present the result as done on validation failure. |
 | **F — Oak index** (`oakIndex`, beta) | fix Oak index findings; convert `_oak_index` definitions | [references/oak-index.md](references/oak-index.md): six steps around Adobe's `index-converter`. Compute the next free `-custom-N`, never assume `-custom-1`. Flag a datatype mismatch as `needs_manual_review`; do not apply it silently. Tell the user that the output needs a careful review. |
 | **G — Validate a migration** (beta) | validate, verify or smoke-test migrated code on the local Cloud SDK | [references/validation/validate-migration.md](references/validation/validate-migration.md). It never edits customer source; a failure goes back to the branch that owns the pattern. |
+| **H — Asset workflow migration** | migrate DAM asset workflows (`DAM Update Asset` customizations, asset workflow launchers, custom asset process steps, ImageMagick `CommandLineProcess` renditions); or mentions Adobe's Asset Workflow Migration Tool / `wf-migrator` / `aem-cloud-migration` | [references/asset-workflow/flow.md](references/asset-workflow/flow.md): four steps around Adobe's `wf-migrator`, which makes every change. The skill runs it and guides the review; it never edits project files itself. Never present a failed run as done. |
 
 **Branch B — Java / HTL / BPA pattern migration:**
 
@@ -110,10 +111,6 @@ After stopping, you may summarize what failed in plain language and re-show the 
 
 **Optional prompt after stop (user must reply):** *"Reply with the CAM project to use (id or name from the list), a path to your BPA CSV, or the Java files for a manual migration."*
 
-## Pattern guides
-
-Do **not** duplicate the pattern table here. Use **`{code-assessment}/SKILL.md` → Pattern Guides**, and **Branch B step 2** above for the route of each pattern.
-
 ## Workflow
 
 ### Step 0: Migration runbook (review / scan entry point)
@@ -134,7 +131,7 @@ If the user asks to fix everything or BPA mixes patterns, **ask which pattern fi
 
 ### Step 1: Pattern id
 
-First check the branches other than B (see **Required delegation**): A (OSGi configs), C (templates), D (Legacy UI: `lui` for dialogs, `cdw` for widgets), E (Dispatcher), F (Oak index, `oakIndex`), G (validate).
+First check the branches other than B (see **Required delegation**): A (OSGi configs), C (templates), D (Legacy UI: `lui` for dialogs, `cdw` for widgets), E (Dispatcher), F (Oak index, `oakIndex`), G (validate), H (asset workflows).
 
 Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`, `inputStream`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 
@@ -176,14 +173,6 @@ Then **stop and wait** — resume only when the user explicitly asks, per the Ba
 
 User-named files → classify (code-assessment Manual Pattern Hints or ask) → confirm the pattern guide or reference exists → read **`{code-assessment}/SKILL.md`** + the pattern guide (or reference) — see Branch B step 2 routing — → transform → report.
 
-### OSGi → Cloud Manager flow
-
-Does **not** use BPA CSV, CAM/MCP, or code-assessment pattern guides for collection. Follow **Branch A** and the **One-prompt workflow** in its file.
-
-### Template modernization flow (Branch C)
-
-No BPA / MCP. Three phases: context → per-template execute → validate, with the files of **Branch C**. Work from the confirmed context and the per-template plan table.
-
 ### htlLint flow
 
 `htlLint` does not use BPA CSV or CAM/MCP. Instead:
@@ -204,6 +193,6 @@ The full rules and an example exchange: [references/bpa-helper.md](references/bp
 
 ## Quick reference
 
-**Source priority (BPA patterns):** unified collection → BPA CSV → MCP → manual paths — **not** an automatic cascade after MCP errors (if MCP fails, stop; see **MCP errors and fallback**). Batch size 5 on every BPA source. `htlLint`, OSGi→Cloud Manager and Template Modernization (C) do not use BPA/MCP — see their branches in **Required delegation**.
+**Source priority (BPA patterns):** unified collection → BPA CSV → MCP → manual paths — **not** an automatic cascade after MCP errors (if MCP fails, stop; see **MCP errors and fallback**). Batch size 5 on every BPA source. `htlLint`, OSGi→Cloud Manager, Template Modernization (C), Dispatcher Conversion (E), and Asset Workflow Migration (H) do not use BPA/MCP — see their branches in **Required delegation**.
 
 **User-facing snippets:** *"Using existing BPA collection (N findings)…"* / *"Processing your BPA report…"* / *"Fetched findings from CAM."* / *"Scanning HTL templates for data-sly-test lint issues…"* / optional prompt after MCP stop above.

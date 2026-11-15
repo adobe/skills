@@ -42,6 +42,8 @@ For `lui` findings, the `identifier` in each target is the **JCR component path*
 
 For **`dispatcherConversion`**, targets are the Dispatcher config root(s) and detected mode from the `dispatcher-inventory.js` scan (surfaced in the Step 0 runbook), not from BPA — go straight to **Branch E**.
 
+For **`assetWorkflowMigration`**, targets are the whole Maven project — the tool migrates every affected model in one run, so there is no batching. Go straight to **Branch H** in `SKILL.md`.
+
 For **`inputStream`**, the precedence is the same as for the other BPA patterns: the runbook cache (above), then BPA findings — CAM via `list-bpa-findings-by-pattern` (or the deprecated `fetch-cam-bpa-findings-by-pattern`) with `pattern: "inputStream"`, then a BPA CSV — and the local scan only when BPA has no `inputStream` findings. BPA names classes, not lines, so always run the scanner once to resolve them: write the CAM targets to a JSON file and run `node scripts/input-stream-runner.js <workspaceRoot> --bpa-json <cam-targets.json> [--csv <bpa.csv>] --json` (CAM targets win over the CSV; with neither, it scans the whole workspace). Do **not** hand BPA rows to `analyze.sh`. With BPA rows, only the reported classes are in scope: the scanner resolves them to workspace files with line-level sites and collapses classes outside the workspace per bundle (per package for CAM rows, which carry no bundle name). A batch is **five non-informational file findings** in the scanner's (risk) order. After editing a batch, verify with `--files <touched files>` (a missing or unreadable path fails the re-scan). Full loop: [references/input-stream.md](input-stream.md).
 
 `getBpaFindings` returns **a batch of 5 findings** (default `limit=5`) along with a `paging`
