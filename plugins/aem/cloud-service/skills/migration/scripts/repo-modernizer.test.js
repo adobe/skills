@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const {
-  TOOL_PKG, CLOUD_RUN_MODE, readPom, inventory, proposePlan, planProblems, readLog, runTool, targets, checkOutput, adopt, main,
+  TOOL_PKG, CLOUD_RUN_MODE, readPom, inventory, proposePlan, planProblems, readLog, runTool, outputProblem, targets, checkOutput, adopt, main,
 } = require('./repo-modernizer-run.js');
 
 const tmp = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rm-')));
@@ -132,9 +132,9 @@ module.exports = {
   async checkConfig(config) { return ${behaviour === 'refuses' ? 'false' : 'Boolean(config.groupId)'}; },
   async performModernization(config, base) {
     if (!fs.existsSync(path.join(base, 'index.js'))) throw new Error('templates not found at ' + base);
-    ${behaviour === 'throws' ? "throw new Error('getaddrinfo ENOTFOUND search.maven.org');" : ''}
     const project = config.projects[0];
     const out = path.join('target/project/src', path.basename(project.projectPath));
+    ${behaviour === 'throws' ? "w(path.join(out, 'pom.xml'), '<project><!-- partial --></project>'); w(path.join(out, 'ui.content/pom.xml'), '<project/>'); w('target/result.log', 'Sun | error: could not copy /ui.apps'); throw new Error('getaddrinfo ENOTFOUND search.maven.org');" : ''}
     w(path.join(out, 'pom.xml'), '<project><modules><module>all</module><module>core</module><module>ui.apps</module><module>ui.config</module><module>ui.content</module></modules><properties><aemanalyser.version>0.0.12</aemanalyser.version><aem.sdk.api>2025.7.1</aem.sdk.api></properties><plugin><artifactId>filevault-package-maven-plugin</artifactId>\\n<version>1.1.4</version></plugin></project>');
     w(path.join(out, 'all/pom.xml'), '<project><dependencies><dependency><artifactId>acme.core</artifactId><version></version></dependency></dependencies></project>');
     w(path.join(out, 'core/pom.xml'), fs.readFileSync(path.join(project.projectPath, 'core/pom.xml'), 'utf8'));
@@ -259,12 +259,70 @@ test('adopt replaces the modules of the output, keeps what the tool left out, an
   assert.ok(fs.existsSync(path.join(root, 'ui.apps/src/main/content/jcr_root/apps/acme/config/a.xml')));
 });
 
+test('adopt refuses the output of a failed run, and an output the plan no longer describes, and changes nothing', () => {
+  const { root, planPath } = planned();
+  const say = [];
+  const out = (line) => say.push(line);
+  const untouched = () => {
+    assert.strictEqual(git(root, 'status', '--porcelain').stdout, '');
+    assert.ok(fs.existsSync(path.join(root, 'ui.apps/src/main/content/jcr_root/apps/acme/config/a.xml')));
+    assert.doesNotMatch(fs.readFileSync(path.join(root, 'pom.xml'), 'utf8'), /partial/);
+  };
+
+  // the tool wrote a partial output, logged an error and threw
+  const failed = runTool(planPath, fakeTool('throws'));
+  assert.strictEqual(failed.code, 1);
+  assert.ok(fs.existsSync(path.join(failed.outputDir, path.basename(root), 'pom.xml'))); // the partial output is there
+  assert.match(outputProblem(planPath), /has not completed a run/);
+  assert.strictEqual(main(['adopt', planPath], out), 2);
+  assert.match(say.join('\n'), /Not adopting: the tool has not completed a run for this plan/);
+  untouched();
+
+  // a good run, then a failed one: the record of the good run does not survive
+  assert.strictEqual(runTool(planPath, fakeTool()).code, 0);
+  assert.strictEqual(outputProblem(planPath), null);
+  assert.strictEqual(runTool(planPath, fakeTool('logs-error')).code, 1);
+  assert.match(outputProblem(planPath), /has not completed a run/);
+  assert.strictEqual(main(['adopt', planPath], out), 2);
+  untouched();
+
+  // a good run, then the plan is edited: the output is not what the plan says
+  assert.strictEqual(runTool(planPath, fakeTool()).code, 0);
+  const plan = JSON.parse(fs.readFileSync(planPath, 'utf8'));
+  plan.repositoryModernizer.projects[0].osgiFoldersToRename = { '/apps/acme/config.qa': 'config.stage' };
+  fs.writeFileSync(planPath, JSON.stringify(plan));
+  assert.match(outputProblem(planPath), /plan was changed after the run/);
+  say.length = 0;
+  assert.strictEqual(main(['adopt', planPath], out), 2);
+  assert.match(say.join('\n'), /Not adopting: the plan was changed after the run/);
+  untouched();
+});
+
+test('adopt leaves what git ignores in a replaced module, so the undo brings everything back', () => {
+  const { root, planPath } = planned();
+  write(root, 'core/target/classes/Old.class', 'built'); // target/ is ignored
+  write(root, 'ui.apps/target/old.zip', 'built');
+  assert.strictEqual(git(root, 'status', '--porcelain').stdout, '');
+  assert.strictEqual(runTool(planPath, fakeTool()).code, 0);
+  const say = [];
+  assert.strictEqual(main(['adopt', planPath], (line) => say.push(line)), 0);
+  assert.ok(fs.existsSync(path.join(root, 'core/target/classes/Old.class')));
+  assert.ok(fs.existsSync(path.join(root, 'ui.apps/target/old.zip')));
+  assert.ok(!fs.existsSync(path.join(root, 'ui.apps/src/main/content/jcr_root/apps/acme/config'))); // tracked files of the module went
+  assert.match(say.join('\n'), /Files that git ignores in the replaced folders were left alone/);
+  git(root, 'checkout', '.');
+  git(root, 'clean', '-fdq');
+  assert.strictEqual(git(root, 'status', '--porcelain').stdout, '');
+  assert.ok(fs.existsSync(path.join(root, 'ui.apps/src/main/content/jcr_root/apps/acme/config/a.xml')));
+  assert.ok(fs.existsSync(path.join(root, 'core/target/classes/Old.class')));
+});
+
 test('the adopt command needs a plan, an output and a clean git tree, and changes nothing without them', () => {
   const { root, planPath } = planned();
   const say = [];
   const out = (line) => say.push(line);
   assert.strictEqual(main(['adopt', path.join(root, 'no-plan.json')], out), 2);
-  assert.strictEqual(main(['adopt', planPath], out), 2); // no output yet
+  assert.strictEqual(main(['adopt', planPath], out), 2); // no run yet
   assert.match(say.join('\n'), /Run the tool first/);
   runTool(planPath, fakeTool());
   write(root, 'mine.txt', 'uncommitted');

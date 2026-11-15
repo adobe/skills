@@ -18,7 +18,6 @@ Run this branch **before** the per-pattern branches: A expects `ui.config`, and 
 4. **Work through the findings with the user** — each has an id, a place and a next step; [review.md](review.md#the-findings) says what each means. A finding about the plan (a run mode, a content package that was left out) is fixed in `plan.json` and by running again. A finding about the output is fixed in the output, under `target/repository-modernizer/target/project/src/`. Do not hide a finding: what the user decides to leave goes into the final report.
 5. **Adopt and build** — only after the user has seen the findings and said to go on. This step changes the project; without that answer, STOP after step 4 and report the findings.
    1. Create a branch: `git checkout -b repo-modernize/<YYYY-MM-DD>-<short-sha>`.
-   2. `node scripts/repo-modernizer-run.js adopt <plan.json>` copies the output over the project. It needs a clean working tree and prints the undo line. Modules the tool did not handle stay as they are.
-   3. Review `git status` and `git diff --stat -M` with the user: content moved, nothing lost.
-   4. Build with `mvn clean install`. [What a failure means](review.md#the-build): a problem of the restructuring is fixed here; a problem in legacy code goes to the branch or skill that owns it, as its own session.
-   5. Report what was restructured, each finding and what became of it, and the hand-offs. Do not commit for the user.
+   2. `node scripts/repo-modernizer-run.js adopt <plan.json>` copies the output over the project. It needs a clean working tree, and it refuses (exit `2`) after a failed run and when `plan.json` changed since the run: run again first. It prints how to review the change and the undo line. Modules the tool did not handle stay as they are, and so do files git ignores.
+   3. Build with `mvn clean install`. [What a failure means](review.md#the-build): a problem of the restructuring is fixed here; a problem in legacy code goes to the branch or skill that owns it, as its own session.
+   4. Report what was restructured, each finding and what became of it, and the hand-offs. Do not commit for the user.

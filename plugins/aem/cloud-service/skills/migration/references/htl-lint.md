@@ -1,6 +1,6 @@
 # htlLint flow
 
-Moved here from `SKILL.md` as written. `{code-assessment}` is `skills/aem/cloud-service/skills/code-assessment/`.
+`{code-assessment}` is the `code-assessment` skill, next to this one: `../../code-assessment/` from this file.
 
 `htlLint` does not use BPA CSV or CAM/MCP. Instead:
 

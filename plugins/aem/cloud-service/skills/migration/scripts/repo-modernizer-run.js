@@ -14,12 +14,14 @@
 //       Runs the tool into the plan's folder and checks the output. The project is not
 //       changed.
 //   node scripts/repo-modernizer-run.js adopt <plan.json>
-//       Copies the output over the project. Needs a clean git working tree.
+//       Copies the output of a completed run over the project. Needs a clean git working
+//       tree, and refuses after a failed run or when the plan changed since the run.
 //
 // The plan lives in <project>/target/repository-modernizer/, which ignores itself.
 // Exit 0: done. 1: the tool failed. 2: stopped before anything was changed.
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { execFileSync, spawnSync } = require('child_process');
 
 const TOOL_PKG = '@adobe/aem-cs-source-migration-repository-modernizer';
@@ -227,8 +229,28 @@ function readLog(file) {
   return { warnings: of('warn'), errors: of('error') };
 }
 
+// The record of a run that finished: adopt copies an output only when this says that the
+// tool completed for the plan as it is now. It is removed before every run, so a failed run
+// leaves none, and a plan edited after the run no longer matches it.
+const RUN_RECORD = 'run.json';
+const planHash = (planPath) => crypto.createHash('sha256').update(fs.readFileSync(planPath)).digest('hex');
+
+// Why the output next to this plan must not be adopted, or null when it may be.
+function outputProblem(planPath) {
+  const workDir = path.dirname(path.resolve(planPath));
+  const file = path.join(workDir, RUN_RECORD);
+  let record = null;
+  try { record = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* no record, or not readable: the same answer */ }
+  if (!record || record.completed !== true) return 'the tool has not completed a run for this plan (the last run failed, or there was none)';
+  if (record.plan !== planHash(planPath)) return 'the plan was changed after the run: the output is not what this plan describes';
+  if (!fs.existsSync(path.join(workDir, OUTPUT))) return 'the output of the run is gone';
+  return null;
+}
+
 function runTool(planPath, toolDir = TOOL_DIR) {
   const workDir = path.dirname(path.resolve(planPath));
+  fs.rmSync(path.join(workDir, RUN_RECORD), { force: true });
+  fs.rmSync(path.join(workDir, 'findings.json'), { force: true });
   fs.rmSync(path.join(workDir, 'target'), { recursive: true, force: true });
   fs.mkdirSync(path.join(workDir, 'target'), { recursive: true });
   const pkg = path.join(toolDir, 'node_modules', TOOL_PKG);
@@ -241,6 +263,7 @@ function runTool(planPath, toolDir = TOOL_DIR) {
   // the tool logs an error and goes on in places, and writes its report last: without the
   // report, or with an error in the log, the output is not a finished restructuring
   const failed = r.status !== 0 || log.errors.length > 0 || !fs.existsSync(reportPath);
+  if (!failed) fs.writeFileSync(path.join(workDir, RUN_RECORD), `${JSON.stringify({ completed: true, plan: planHash(planPath), tool: `${TOOL_PKG}`, finished: new Date().toISOString() }, null, 2)}\n`);
   return { code: failed ? 1 : 0, output, outputDir, reportPath, logPath: path.join(workDir, 'target', 'result.log'), ...log };
 }
 
@@ -350,10 +373,25 @@ function copyDir(from, to) {
   }
 }
 
-// Copies the output over the project. A module of the output replaces the folder of that
-// name; a reactor of the output replaces only the pom and is followed into its modules; a
-// legacy content package that the output no longer has is removed. Everything else in the
-// project stays as it is.
+// Empties a folder of the project for its replacement. In a git working tree only the files
+// git tracks are removed: what git ignores there (a build's target/, IDE settings, a local
+// .env) is not in the output and could not be brought back by the undo, so it stays.
+function removeModule(dir) {
+  if (!fs.existsSync(dir)) return;
+  const tracked = spawnSync('git', ['ls-files', '-z', '--', '.'], { cwd: dir, encoding: 'utf8' });
+  if (tracked.status !== 0) { fs.rmSync(dir, { recursive: true, force: true }); return; }
+  for (const file of tracked.stdout.split('\0').filter(Boolean)) fs.rmSync(path.join(dir, file), { force: true });
+  const prune = (d) => {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) if (entry.isDirectory()) prune(path.join(d, entry.name));
+    if (fs.readdirSync(d).length === 0) fs.rmdirSync(d);
+  };
+  prune(dir);
+}
+
+// Copies the output over the project. A module of the output replaces the files git tracks
+// in the folder of that name; a reactor of the output replaces only the pom and is followed
+// into its modules; a legacy content package that the output no longer has is removed.
+// Everything else in the project stays as it is.
 function adopt(plan, outputDir) {
   const target = targets(plan, outputDir);
   if (!target) throw new Error('The projects of this plan have no common parent folder: copy the output by hand, with the user.');
@@ -367,7 +405,7 @@ function adopt(plan, outputDir) {
       if (!entry.isDirectory()) { fs.mkdirSync(to, { recursive: true }); fs.copyFileSync(source, dest); continue; }
       const reactor = isModule(source) && subdirs(source).some((name) => isModule(path.join(source, name)));
       if (reactor) { overlay(source, dest); continue; }
-      fs.rmSync(dest, { recursive: true, force: true });
+      removeModule(dest);
       copyDir(source, dest);
       replaced.push(path.relative(target.to, dest));
     }
@@ -379,7 +417,7 @@ function adopt(plan, outputDir) {
     for (const folder of project.existingContentPackageFolder || []) {
       const legacy = path.join(project.projectPath, folder);
       if (fs.existsSync(legacy) && !fs.existsSync(path.join(out, folder))) {
-        fs.rmSync(legacy, { recursive: true, force: true });
+        removeModule(legacy);
         removed.push(path.relative(target.to, legacy));
       }
     }
@@ -447,12 +485,14 @@ function main(argv, out = console.log) {
     out(`The tool's report: ${result.reportPath}`);
     out(`Findings (${findings.length}), also in ${path.join(workDir, 'findings.json')}:`);
     for (const finding of findings) out(`  [${finding.id}] ${finding.where}: ${finding.what}\n      → ${finding.next}`);
-    out('The project is unchanged. Fix the findings in the output or in the plan, then: repo-modernizer-run.js adopt <plan.json>');
+    out('The project is unchanged. A finding about the plan: change plan.json and run again. A finding about the output: fix it in the output. Then, with the user\'s agreement: repo-modernizer-run.js adopt <plan.json>');
     return 0;
   }
 
   const target = targets(plan, outputDir);
   if (!target) { out('The projects of this plan have no common parent folder: copy the output by hand, with the user.'); return 2; }
+  const problem = outputProblem(arg);
+  if (problem) { out(`Not adopting: ${problem}. Run the tool first: repo-modernizer-run.js run ${arg}. Nothing was changed.`); return 2; }
   if (!fs.existsSync(target.from)) { out(`No output at ${target.from}. Run the tool first: repo-modernizer-run.js run ${arg}`); return 2; }
   const status = git(target.to, 'status', '--porcelain');
   if (status.status !== 0) { out(`${target.to} is not a git working tree: the change could not be reviewed or undone. Nothing was changed.`); return 2; }
@@ -460,10 +500,10 @@ function main(argv, out = console.log) {
   const result = adopt(plan, outputDir);
   out(`Replaced: ${result.replaced.join(', ')}`);
   if (result.removed.length > 0) out(`Removed (their content is now in ui.apps, ui.content and ui.config): ${result.removed.join(', ')}`);
-  out('Review with: git status, git diff --stat. To undo: git checkout . && git clean -fd');
+  out('Review with: git status, git diff --stat -M. Files that git ignores in the replaced folders were left alone. To undo: git checkout . && git clean -fd');
   return 0;
 }
 
-module.exports = { TOOL_PKG, TOOL_DIR, ISSUES, CLOUD_RUN_MODE, readPom, inventory, proposePlan, planProblems, isToolInstalled, ensureToolInstalled, readLog, runTool, targets, checkOutput, adopt, main };
+module.exports = { TOOL_PKG, TOOL_DIR, ISSUES, CLOUD_RUN_MODE, readPom, inventory, proposePlan, planProblems, isToolInstalled, ensureToolInstalled, readLog, runTool, outputProblem, targets, checkOutput, adopt, main };
 
 if (require.main === module) process.exit(main(process.argv.slice(2)));
