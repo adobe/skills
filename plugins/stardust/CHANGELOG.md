@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.39.0 — delivered CSS is mobile-first (#162)
+## Unreleased — delivered CSS is mobile-first (#162)
 
 The EDS code-review checklist flags any `max-width` query: base styles are the mobile layout, wider layouts
 sit in `(width >= …)` queries. Deploy lifted prototype CSS as written, and the prototype nav pattern, the

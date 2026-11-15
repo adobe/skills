@@ -48,11 +48,18 @@ jobs:
           fi
           echo "environment=$environment" >> "$GITHUB_OUTPUT"
 
-  tessl-review:
+  # Runs the reviews. Its verdict is the `tessl-review` job below, so this job stays green
+  # when a review fails: one red check per failure, not two.
+  review-skills:
     needs: approval
     runs-on: ubuntu-latest
     # `fork-review` has required reviewers; an empty environment has none.
     environment: ${{ needs.approval.outputs.environment }}
+    outputs:
+      # failed, no-credits or passed; empty when there was nothing to review
+      outcome: ${{ steps.review.outputs.outcome }}
+      # failure when the script exited with an error, whatever it wrote before
+      step: ${{ steps.review.outcome }}
     steps:
       # The scripts below run with TESSL_TOKEN, so they come from the base of the pull
       # request (or the pushed commit), never from the pull request itself. They are taken
@@ -123,8 +130,10 @@ jobs:
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ "$EVENT" = pull_request_target ]; then
-            # both commits are reachable from the merge commit, so this is exactly the pull request's change
-            node "$SCRIPTS/changed.mjs" skills "$BASE" "$HEAD" > "$RUNNER_TEMP/skill-dirs.txt"
+            # Three dots: what the pull request changed since it left main. Two dots also
+            # list what main changed since then, so a branch that is behind had every
+            # skill reviewed that was merged in the meantime, at the cost of a review each.
+            node "$SCRIPTS/changed.mjs" skills "$BASE...$HEAD" > "$RUNNER_TEMP/skill-dirs.txt"
           else
             # push to main: the skills this push changed
             node "$SCRIPTS/changed.mjs" skills HEAD~1...HEAD > "$RUNNER_TEMP/skill-dirs.txt"
@@ -148,10 +157,34 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Review skills
+        id: review
         if: steps.prereq.outputs.skip != 'true' && steps.detect.outputs.skip != 'true'
+        # the tessl-review job reads the result and decides
+        continue-on-error: true
         env:
           THRESHOLD: '80'
           # Tessl workspace the review runs are attributed to: the registry namespace of this
           # repository's plugins (.tessl-plugin/plugin.json "name": "adobe/...")
           WORKSPACE: adobe
         run: node "$SCRIPTS/tessl-review.mjs" "$RUNNER_TEMP/skill-dirs.txt"
+
+  # The check to look at. It fails when a skill scored below the threshold or a review could
+  # not run, and passes when every review passed or there was nothing to review. When the
+  # Tessl organization has run out of credits it is skipped: nothing was reviewed, and that
+  # says nothing about the skills.
+  tessl-review:
+    needs: review-skills
+    if: ${{ !cancelled() && needs.review-skills.result != 'skipped' && needs.review-skills.outputs.outcome != 'no-credits' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - env:
+          JOB: ${{ needs.review-skills.result }}
+          STEP: ${{ needs.review-skills.outputs.step }}
+          OUTCOME: ${{ needs.review-skills.outputs.outcome }}
+        run: |
+          if [ "$JOB" != success ] || [ "$STEP" = failure ] || [ "$OUTCOME" = failed ]; then
+            echo "::error::The Tessl review failed (job: $JOB, review step: ${STEP:-not run}, outcome: ${OUTCOME:-none}). The review-skills job has the scores."
+            exit 1
+          fi
+          echo "Tessl review: ${OUTCOME:-nothing to review}"
