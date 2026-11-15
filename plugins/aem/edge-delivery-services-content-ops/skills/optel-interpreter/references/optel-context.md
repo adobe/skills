@@ -1,6 +1,6 @@
 # OpTel Interpreter: reference
 
-Sources: [Operational Telemetry](https://www.aem.live/docs/operational-telemetry), [Developing Operational Telemetry](https://www.aem.live/developer/rum) and `@adobe/rum-distiller` 1.24.0, read in November 2026.
+Sources: [Operational Telemetry](https://www.aem.live/docs/operational-telemetry), [Developing Operational Telemetry](https://www.aem.live/developer/rum) and the open data of `emigrationbrewing.com`, read in November 2026. The library that reads bundles is in `rum-distiller.md`.
 
 ## What a bundle is
 
@@ -12,46 +12,27 @@ A bundle is one sampled page view. The bundle API returns `{ "rumBundles": [...]
 | `userAgent` | Device class, operating system and engine, for example `mobile:ios:webkit` or `desktop:windows:blink`. Bots are `bot:…`. |
 | `weight` | How many page views this bundle stands for. 100 at the default sampling rate. |
 | `time`, `timeSlot` | UTC. Minutes are rounded down to the hour. |
-| `events` | Checkpoints of the page view, each with `checkpoint`, `timeDelta`, and often `source` and `target`. |
+| `events` | Checkpoints of the page view, each with `checkpoint`, `timeDelta`, and often `source` and `target`. The `cwv-lcp`, `cwv-cls`, `cwv-inp` and `cwv-ttfb` events have the measurement in `value`. |
 
 What `source` and `target` hold depends on the checkpoint:
 
 | Checkpoint | `source` | `target` |
 |---|---|---|
 | `cwv-lcp` | Selector of the LCP element | URL of the LCP image |
+| `cwv-cls` | Selector of an element that shifted | |
 | `click` | Selector of the clicked element | Link target, if it was a link |
 | `viewblock` | Class name of the block | |
 | `viewmedia` | Selector of the element | URL of the image or video |
 | `enter` | Referrer, empty for a direct visit | `visible` or `hidden`: whether the page opened in the foreground |
 | `navigate` | The page of this site the visitor came from | `visible` or `hidden` |
+| `reload`, `back_forward` | The page | `visible` or `hidden` |
+| `paid` | The vendor, for example `google` | The click id parameter, for example `gclid` |
+| `utm` | The parameter, for example `utm_source` | Its value |
 | `error` | Where the unhandled JavaScript error came from | The error message |
 | `missingresource` | URL that failed to load | HTTP status |
 | `formsubmit` | The form | Form action |
 
-A site can send checkpoints of its own. List what a site sends with `facets.checkpoint` before you interpret one.
-
-## The library
-
-`utils.addCalculatedProps(bundle)` must run on every bundle before it is loaded. It sets `cwvLCP`, `cwvCLS`, `cwvINP`, `cwvTTFB` and `visit`. Without it every Core Web Vitals series is empty.
-
-```javascript
-import { DataChunks, series, facets, utils } from '@adobe/rum-distiller';
-
-const data = new DataChunks();
-data.load([{ date: '2026/10', rumBundles }]); // after addCalculatedProps
-data.addSeries('pageViews', series.pageViews);
-data.addSeries('lcp', series.lcp);
-data.addFacet('url', facets.url);
-data.filter = { url: ['https://www.example.com/'] }; // values of one facet are ORed, facets are ANDed
-console.log(data.totals.lcp.percentile(75), data.totals.lcp.count);
-for (const facet of data.facets.url) console.log(facet.value, facet.metrics.pageViews.sum);
-```
-
-- Series: `pageViews`, `visits`, `bounces`, `engagement`, `organic`, `earned`, `lcp`, `cls`, `inp`, `ttfb`.
-- Facets: `url`, `plainURL`, `userAgent`, `checkpoint`, `vitals`, `lcpSource`, `lcpTarget`, `acquisitionSource`, `enterSource`, `mediaTarget`. A facet can also be a function from a bundle to an array of strings.
-- An aggregate (`data.totals.<series>` or `facet.metrics.<series>`) has `sum` (weighted, for page views and visits), `count` (number of values, the sample size), `percentile(p)`, `min`, `max`, `median` and `mean`.
-- `utils.scoreCWV(value, 'lcp' | 'cls' | 'inp' | 'ttfb')` returns `good`, `ni` or `poor`.
-- `userAgent` facet values are cumulative: a bundle from `mobile:ios:webkit` counts under `mobile`, `mobile:ios` and `mobile:ios:webkit`.
+A site can send checkpoints of its own. The `checkpoints` of the report list what a site sends. Look at the `source` and `target` of a checkpoint in the data before you interpret it.
 
 ## Causes by metric
 
@@ -72,16 +53,21 @@ Typical causes on Edge Delivery Services for LCP and INP. For CLS this file has 
 ## Report template
 
 ### Summary
-Domain, slots, device filter, page views, and one sentence on the state of the site. Name the slots that failed to load.
+Domain, period, device filter, page views with their margin, and one sentence on the state of the site. Name the slots that failed to load.
 
 ### Core Web Vitals
 
-| Metric | p75 | Samples | Rating | Compared with the other period |
-|---|---|---|---|---|
-| LCP | | | | |
-| LCP, page views with a click | | | | |
-| CLS (Chromium only) | | | | |
-| INP | | | | |
+| Metric | p75 | Samples | Rating | Good share | Baseline p75 | Baseline good share | Changed |
+|---|---|---|---|---|---|---|---|
+| LCP | | | | | | | yes or no, with the p-value |
+| LCP, page views with a click | | | | | | | |
+| CLS (Chromium only) | | | | | | | |
+| INP | | | | | | | |
+
+Leave the baseline columns out when there is no baseline period.
+
+### Pages that got worse
+The entries of `change.pagesWorse`, when there is a baseline period.
 
 ### Pages to fix first
 For each of the top entries of `pagesToFix`: the URL pattern, page views, the failing metric with p75 and samples, the likely cause, and the fix to try with `cwv-optimizer`.
@@ -90,7 +76,7 @@ For each of the top entries of `pagesToFix`: the URL pattern, page views, the fa
 What differs between `mobile` and `desktop`, and which elements are the LCP.
 
 ### What the data can't say
-Numbers with too few samples, slots that failed, and metrics a browser doesn't report.
+Numbers with too few samples, slots that failed, metrics a browser doesn't report, and the pages that are not in the sample (`pagesEstimated` against `pagesSeen`).
 
 ## Troubleshooting
 
@@ -99,5 +85,5 @@ Numbers with too few samples, slots that failed, and metrics a browser doesn't r
 | `HTTP 403` for every slot | The key is not valid for this domain. | Ask the user for the domain exactly as the Explorer shows it, and for the key of that domain. |
 | `HTTP 404` | The path is not a month, day or hour. | Use `YYYY/MM`, `YYYY/MM/DD` or `YYYY/MM/DD/HH`. |
 | Zero bundles | No sampled page view in that slot. | Try a month slot. |
-| Every Core Web Vitals value is missing | `addCalculatedProps` did not run. | Run it on each bundle before `load()`. |
+| Every Core Web Vitals value is missing in a script of your own | `addCalculatedProps` did not run. | Run it on each bundle before `load()`. |
 | `cls.samples` is far below `lcp.samples` | WebKit sends no CLS. | Report CLS as Chromium data. |
