@@ -1,1 +1,49 @@
-.claude-plugin/plugin.json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "workfront",
+  "version": "2.0.0",
+  "description": "Adobe Workfront skills for AI agents. Includes Workfront Planning (WFP/Maestro) solution architecture: workspace design, record connections, formula fixes, tier limits, the Planning API, and a Fusion scenario optimizer.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "adobe",
+    "workfront",
+    "workfront-planning",
+    "maestro",
+    "solution-architecture",
+    "fusion"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {},
+        "tessl": {
+          "name": "adobe/workfront",
+          "private": false
+        },
+        "cursor": {
+          "displayName": "Adobe Workfront",
+          "description": "Adobe Workfront skills for AI agents. Includes Workfront Planning (WFP/Maestro) solution architecture: workspace design, record connections, formula fixes, Select/Prime/Ultimate tier limits, the Planning API, Fusion, and Canvas Dashboards. Also includes a Fusion scenario optimizer for Planning-connected blueprints.",
+          "homepage": "https://github.com/adobe/skills",
+          "keywords": [
+            "adobe",
+            "workfront",
+            "workfront-planning",
+            "maestro",
+            "solution-architecture",
+            "fusion",
+            "experience-cloud",
+            "performance-optimization"
+          ],
+          "skills": "./skills/"
+        }
+      },
+      "marketplace": {
+        "description": "Adobe Workfront skills for AI agents, including Workfront Planning (WFP/Maestro) solution architecture and a Fusion scenario optimizer"
+      }
+    }
+  }
+}

@@ -1,1 +1,34 @@
-.claude-plugin/plugin.json
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "run-workflow",
+  "version": "1.0.0",
+  "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server, including predefined featured workflows for common marketing and production use cases. Requires an enterprise Adobe account with a Firefly Services or Firefly Creative Production entitlement.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "adobe",
+    "firefly",
+    "run-workflow",
+    "mcp",
+    "creative-cloud"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {
+          "skills": "./skills"
+        },
+        "tessl": {
+          "name": "adobe/run-workflow",
+          "description": "Discover, compose, run, publish, and save Adobe Firefly workflows through the run-workflow MCP server.",
+          "skills": [
+            "skills/run-workflow"
+          ]
+        }
+      }
+    }
+  }
+}

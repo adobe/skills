@@ -40,7 +40,7 @@
     {
       "name": "No premature implementation",
       "max_score": 5,
-      "description": "Does not execute any phase, write code/HTML, modify the repo, or make tool calls beyond planning."
+      "description": "Does not execute any phase, write code/HTML, modify the repo (other than writing ANSWER.md), or make tool calls beyond planning."
     }
   ]
 }
