@@ -23,7 +23,7 @@ import * as crawl from '../crawl.mjs';
 const session = await import(['../../../stardust/scripts/browser.mjs', '../../stardust/browser.mjs'].map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u)).href);
 
 const {
-  captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, selectPages, parseArgs, discover, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage,
+  captureGaps, clearChallenge, crawlerLiveBindings, localeRootPath, maxPages, selectPages, parseArgs, discover, pageTimeoutMs, PAGE_TIMEOUT_MS_DEFAULT, challengeMarker, isChallengeResponse, isFingerprintBlock, WALL_TITLE, WALL_TEXT_MAX_BYTES, wallProbeInPage, inlineWallMarker, probeEntry, capturePage, screenshotPage,
 } = crawl;
 
 // the stub pages below navigate one host back-to-back; live-session's per-host pacing has its own tests
@@ -255,6 +255,57 @@ const stubPage = ({ responses = [{ status: 200, headers: HTML }], gotoError = nu
   };
   return { page, context: { newPage: async () => page } };
 };
+// A stub page for screenshotPage: `size` = what pageSizeInPage measures, `fail` = the screenshot calls that throw
+// (by their index), `crash` = the first full-page call crashes the renderer (the crash handler fires, then it throws).
+const shotPage = ({ size = { w: 1440, h: 2862 }, fail = [], crash = false } = {}) => {
+  const calls = { shots: [], closed: 0 }; let onCrash = null;
+  const page = {
+    calls,
+    on: (ev, fn) => { if (ev === 'crash') onCrash = fn; },
+    viewportSize: () => ({ width: 1440, height: 900 }),
+    evaluate: async (fn) => (fn.name === 'pageSizeInPage' ? size : undefined),
+    screenshot: async (o) => {
+      const i = calls.shots.push(o) - 1;
+      if (crash && o.fullPage) { onCrash(); throw new Error('page.screenshot: Target crashed'); }
+      if (fail.includes(i)) throw new Error('page.screenshot: Protocol error (Page.captureScreenshot): Unable to capture screenshot');
+    },
+    close: async () => { calls.closed += 1; },
+  };
+  return page;
+};
+await checkAsync('screenshotPage (#602): measured first — an ordinary page in full; a tall one capped by a fullPage clip; a layout overflow gets the viewport only (no full-page call) and says why; a failed full-page shot retries the viewport on the same page', async () => {
+  const plain = shotPage();
+  assert.deepEqual(await screenshotPage(plain, '/x.png'), { mode: 'fullPage', pageSize: { w: 1440, h: 2862 }, layoutOverflow: false, reason: null });
+  assert.deepEqual(plain.calls.shots.map((o) => [o.fullPage, o.clip]), [[true, undefined]]);
+  const tall = shotPage({ size: { w: 1440, h: 90000 } });
+  const t = await screenshotPage(tall, '/x.png');
+  assert.equal(t.mode, 'capped');
+  assert.deepEqual(tall.calls.shots[0].clip, { x: 0, y: 0, width: 1440, height: 30000 });
+  const broken = shotPage({ size: { w: 33554432, h: 33554432 } });
+  const b = await screenshotPage(broken, '/x.png');
+  assert.deepEqual([b.mode, b.layoutOverflow], ['viewport', true]);
+  assert.match(b.reason, /^layout overflow: the page lays out at 33554432x33554432px/);
+  assert.deepEqual(broken.calls.shots.map((o) => o.fullPage), [false], 'never a full-page screenshot of an overflowed layout');
+  const raster = shotPage({ fail: [0] });
+  const r = await screenshotPage(raster, '/x.png');
+  assert.equal(r.mode, 'viewport');
+  assert.match(r.reason, /^the full-page screenshot failed \(page\.screenshot: Protocol error/);
+  assert.deepEqual(raster.calls.shots.map((o) => o.fullPage), [true, false]);
+  const none = shotPage({ fail: [0, 1] });
+  assert.equal((await screenshotPage(none, '/x.png')).mode, 'failed');
+});
+await checkAsync('screenshotPage (#602): a renderer crash during the full-page shot → the viewport from a fresh page (reopen), closed afterwards, never the dead page; without reopen, or when reopening fails → failed with the reason', async () => {
+  const dead = shotPage({ crash: true });
+  const fresh = shotPage();
+  const r = await screenshotPage(dead, '/x.png', { reopen: async () => fresh });
+  assert.equal(r.mode, 'viewport');
+  assert.match(r.reason, /crashed the renderer: the viewport came from a fresh page/);
+  assert.deepEqual([dead.calls.shots.length, fresh.calls.shots.map((o) => o.fullPage), fresh.calls.closed], [1, [false], 1]);
+  const alone = await screenshotPage(shotPage({ crash: true }), '/x.png');
+  assert.deepEqual([alone.mode, /^the renderer crashed/.test(alone.reason)], ['failed', true]);
+  const noReopen = await screenshotPage(shotPage({ crash: true }), '/x.png', { reopen: async () => { throw new Error('goto failed'); } });
+  assert.deepEqual([noReopen.mode, /reopening the page failed \(goto failed\)/.test(noReopen.reason)], ['failed', true]);
+});
 const CF_403 = { status: 403, headers: { 'cf-ray': 'abc-FRA', server: 'cloudflare' } };
 const CLOUDFRONT_403 = { status: 403, headers: { server: 'CloudFront', 'x-cache': 'Error from cloudfront' } };
 
@@ -643,6 +694,9 @@ function entryProbeWithFrontDoor(copyDir, doorDir) {
       export const recordLiveBotSignal = async () => { captureCalls.signals += 1; throw new Error('signal unavailable'); };
       export const recordLiveNavigationSuccess = async () => { captureCalls.successes += 1; throw new Error('success unavailable'); };
       export const persistLiveStorageState = async () => { captureCalls.saves += 1; throw new Error('state unavailable'); };
+      export const pageSizeInPage = () => null;
+      export const layoutOverflow = () => null;
+      export const shotPlan = () => ({ mode: 'fullPage', clip: null, reason: null });
     `);
     for (const status of ['403', '429']) {
       const out = join(root, `capture-${status}`);
