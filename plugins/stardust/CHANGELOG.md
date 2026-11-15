@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.39.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.2...plugin/stardust/v0.39.3) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** ledger.mjs names the readers for a guessed verb such as summary ([#681](https://github.com/adobe/skills/issues/681)) ([facbc0b](https://github.com/adobe/skills/commit/facbc0b30c63229a252e9d7878896ccec7b647b8))
+* **stardust:** measure the page before a screenshot; a layout overflow is a WARN, not a crash ([#687](https://github.com/adobe/skills/issues/687)) ([75e1d21](https://github.com/adobe/skills/commit/75e1d21458839d10312cec1370b54c1e48f99428))
+* **stardust:** mobile-first checks take a project's own breakpoint steps ([#682](https://github.com/adobe/skills/issues/682)) ([b761eee](https://github.com/adobe/skills/commit/b761eee55d938ae54610296359ec32f4a0cd356d))
+
 ## [0.39.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.1...plugin/stardust/v0.39.2) (2026-11-15)
 
 
