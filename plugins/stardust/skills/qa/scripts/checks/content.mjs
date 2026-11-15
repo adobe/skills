@@ -23,7 +23,7 @@
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  fetchUrl, pMap, finding, plainUrl, stripTags, normText, paragraphTexts, readJSON,
+  fetchUrl, pMap, finding, plainUrl, stripTags, normText, paragraphTexts, readJSON, widgetLinks as widgetMounts, isMetaBlock,
 } from '../lib.mjs';
 
 const PLACEHOLDER_RE = /\[placeholder[^\]]*\]|REPLACE_WITH_[A-Z_]+|lorem ipsum|\bTODO\b|\bTBD\b/gi;
@@ -42,7 +42,7 @@ export function blockNames(sections) {
     for (const c of s.children) {
       if (isBlock(c)) {
         const name = c.cls.split(' ')[0];
-        if (name !== 'metadata' && name !== 'section-metadata') names.add(name);
+        if (!isMetaBlock(name)) names.add(name);
       }
     }
   }
@@ -50,24 +50,13 @@ export function blockNames(sections) {
 }
 
 /**
- * Widget mounts in served HTML: every `a[href*="/widgets/"]` ending in .html(?params) — the loader turns each into
- * a block named by the file stem (`div.<name>[data-block-name="widget"]`), so a widget-only page is a blocked page.
- * Returns [{ name, href, path }] with `path` the code file to HEAD (/widgets/<path>/<name>.html). Pure.
+ * Widget mounts in served HTML: every `a[href]` that is a widget link (`/widgets/<path>/<name>.html?<params>`, any
+ * mount shape — served HTML, not the authored lone paragraph) — the loader turns each into a block named by the file
+ * stem (`div.<name>[data-block-name="widget"]`), so a widget-only page is a blocked page. With `base`, a widget on
+ * another origin is not this site's block. One row per code file: [{ name, href, path }] with `path` the code file
+ * to HEAD. The widget contract itself (stem, extension, origin) is lib/names.mjs widgetLinks. Pure.
  */
-export function widgetLinks(html, base = null) {
-  const out = []; const seen = new Set();
-  const host = base ? new URL(base).host.toLowerCase() : null;
-  for (const m of String(html).matchAll(/<a\b[^>]*\shref="([^"]*\/widgets\/[^"]+)"/gi)) {
-    const href = m[1].replace(/&amp;/g, '&');
-    const origin = href.match(/^https?:\/\/([^/]+)/i);
-    if (origin && host && origin[1].toLowerCase() !== host) continue; // another origin's widget is not this site's block
-    const path = href.replace(/^https?:\/\/[^/]+/i, '').replace(/[?#].*/, '');
-    if (!/^\/widgets\/.+\.html$/i.test(path) || seen.has(path)) continue;
-    seen.add(path);
-    out.push({ name: path.replace(/^.*\//, '').replace(/\.html$/i, ''), href, path });
-  }
-  return out;
-}
+export const widgetLinks = (html, base = null) => widgetMounts(html, { mount: 'any', base, dedupeBy: 'path' });
 
 /* ------------------------------------------------ flattened collections -- */
 
@@ -215,7 +204,7 @@ const MIN_HOARD_WORDS = 120;
  * headings, lists, severity, reason, sourceRegions? }` or null.
  */
 export function detectSingleBlockHoard(sections, { template = '', scrape = null } = {}) {
-  const isMeta = (c) => { const n = (c.cls || '').split(' ')[0]; return n === 'metadata' || n === 'section-metadata'; };
+  const isMeta = (c) => isMetaBlock((c.cls || '').split(' ')[0]);
   // metadata blocks are config, not page content — exclude from word + block counts
   const children = sections.flatMap((s) => s.children).filter((c) => !isMeta(c));
   const totalWords = children.reduce((a, c) => a + c.words, 0);

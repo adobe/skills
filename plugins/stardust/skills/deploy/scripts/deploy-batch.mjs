@@ -86,6 +86,15 @@ import { mergeLedger } from './file-lock.mjs';
 // The sibling uploader guards its CLI behind a main-module check, so the import runs nothing.
 import { jwtExpiry } from './da-media-upload.mjs';
 
+// The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) {
+  console.error('deploy-batch: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { documentPath } = await import(CONTRACTS.href);
+
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   const src = readFileSync(new URL(import.meta.url), 'utf8');
@@ -158,8 +167,7 @@ async function walkHtml(dir, base = dir) {
     const s = await stat(full);
     if (s.isDirectory()) out.push(...(await walkHtml(full, base)));
     else if (name.endsWith('.html')) {
-      const rel = path.relative(base, full).replace(/\.html$/, '');
-      out.push({ file: full, webPath: `/${rel}` });
+      out.push({ file: full, webPath: documentPath(path.relative(base, full)) }); // lib/paths.mjs: a/index.html → /a/index
     }
   }
   return out;
