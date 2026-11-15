@@ -155,6 +155,13 @@ jobs:
       - name: Stardust source names no site (placeholders, infrastructure and vendor patterns are allowlisted)
         run: node plugins/stardust/evals/lint/site-names.mjs
 
+      # an intended output change re-baselines expected/ in the same pull request (evals/golden/README.md)
+      - name: Stardust golden pipeline snapshot is byte-identical to expected/
+        run: node plugins/stardust/evals/golden/golden.test.mjs
+
+      - name: Stardust contracts characterization keeps its pinned outputs and known divergences
+        run: node plugins/stardust/skills/stardust/scripts/test/contracts-characterize.test.mjs
+
       - name: Stardust skill prose delta against main (advisory — printed, never fails)
         run: |
           git fetch --no-tags --depth=1 origin main
