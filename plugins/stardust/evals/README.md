@@ -93,6 +93,7 @@ v2 evals without modification.
 | `ew-editability/`            | Entry point (`deploy`)    | Experience Workspace editability contract (EW1–EW10): node-slotting not value-slotting, authored elements moved into wrappers, wrapper-descendant selectors, `block-roundtrip --ew` + probe evidence, exemptions declared, fidelity not traded. |
 | `ai-readability/`            | Entry point (`deploy`)    | AI readability (#100): presentational carousel clones, document-first index-backed listing, explicit fragment decision, no generated visible text, gate run and reported, correct checker facts (no hidden-text or chrome work for the score). |
 | `routing-migration-flow/`    | Master skill routing      | § Two migration flows enforced: keep-design phrases → `replica` without a question, plain asks → `replica` by default, redesign phrases → redesign flow; `flow` recorded in state.json; `prepare-migration` never loaded for keep-design; `migrate` never first; no hand-built pipeline. |
+| `deploy-mobile-first/`       | Entry point (`deploy`)    | Mobile-first delivery (#162): a desktop-first prototype `<style>` (`max-width: 599px`, `width < 600px`) is converted as it is lifted, the 600px switch point is kept, `breakpoint-lint.mjs` is copied and chained into `npm run lint`, and `npm run lint:breakpoints` runs clean. |
 
 ## Coverage map
 

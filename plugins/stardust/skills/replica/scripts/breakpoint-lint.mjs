@@ -15,13 +15,15 @@
  *   node stardust/scripts/replica/breakpoint-lint.mjs --inventory <file|dir>…
  *
  *   lint (default)  scan .css/.js/.mjs/.html under --dirs (relative to --root, default `.`; missing dirs
- *            are skipped; node_modules, dot-entries and *.min.* are not walked). Two checks:
+ *            are skipped, but a missing entry with one of those extensions is exit 2; node_modules,
+ *            dot-entries and *.min.* are not walked). Two checks:
  *            direction (always) — an `@media` / `@custom-media` / `@import` condition with an upper
- *              bound (`max-width`, `width <`, `width <=`, the upper end of a range) is desktop-first:
- *              `<file>:<line>  <source text>  → desktop-first: write the narrow layout as the base,
- *              the wider one in (width >= <N>px)`; with a target set, <N> is the nearest target step
- *              (`…, the nearest target step to <M>px`) and the row is not listed again as off-target.
- *              `media="…"` attributes (art direction) and JS thresholds are not direction-checked.
+ *              bound (`max-width`, `width <`, `width <=`, the upper end of a range, a lower bound
+ *              under `not`) is desktop-first: `<file>:<line>  <source text>  → desktop-first: write
+ *              the narrow layout as the base, the wider one in (width >= <N>px)`; with a target set,
+ *              <N> is the nearest target step (`…, the nearest target step to <M>px`) and the row is
+ *              not listed again as off-target. `media="…"` attributes (art direction) and JS
+ *              thresholds are not direction-checked.
  *            target (when set) — Target = --target, else `extensions.breakpoints.target` in
  *              --design (default ./DESIGN.json, the project root's). One line per off-target
  *              switch: `<file>:<line>  <source text>  → switches at <N>px`.
@@ -37,7 +39,8 @@
  *   CSS  @media / @custom-media / @import preludes, plus `media="…"` attributes in .html — never
  *        declarations (a `max-width` declaration is not a query):
  *        (min-width: N) and (width >= N) → N; (max-width: N) and (width <= N) → N+1;
- *        (width < N) → N; (width > N) → N+1; reversed and range forms alike; em/rem × 16.
+ *        (width < N) → N; (width > N) → N+1; reversed and range forms alike; em/rem × 16;
+ *        `not all and (min-width: N)` and `not (min-width: N)` → N, an upper bound.
  *        So `max-width: 899px` passes on a 900 step and `max-width: 900px` does not (it
  *        switches at 901), and a complementary 840/841 pair is ONE switch point.
  *   JS   parenthesised media features in any string (`matchMedia('(min-width: 900px)')`, a
@@ -45,7 +48,8 @@
  *        documentElement.clientWidth / screen.width
  *        comparisons with a number. A media feature built by interpolation (`${BP}px`) cannot be
  *        resolved: it prints as `?` — advisory, never a failure; resolve it by hand.
- *   Comments are blanked first; zero-width switches (`min-width: 0`) are ignored.
+ *   Comments are blanked first (in .html also `<!-- -->` outside <style>/<script>); zero-width
+ *   switches (`min-width: 0`) are ignored.
  * Exit codes: 0 clean / inventory · 1 desktop-first or off-target switches · 2 usage or unreadable input
  * (one stderr line). --help / -h prints this usage and reads nothing.
  */
@@ -81,6 +85,11 @@ export function blankComments(text, js = false) {
   return out.join('');
 }
 
+// Blank `<!-- -->` outside <style> and <script> (newlines kept); their content is left to blankComments.
+export function blankHtmlComments(text) {
+  return text.replace(/<(style|script)\b[\s\S]*?<\/\1\s*>|<!--[\s\S]*?(?:-->|$)/gi, (m) => (m.startsWith('<!--') ? m.replace(/[^\n]/g, ' ') : m));
+}
+
 const toPx = (num, unit) => Number(num) * (/^r?em$/i.test(unit || '') ? 16 : 1);
 // The first integer width at which the min-side of the comparison holds.
 function switchPoint(op, px) {
@@ -99,9 +108,32 @@ const JS_R = new RegExp(`${JS_WIDTH}\\s*(<=|>=|<|>)\\s*(\\d+(?:\\.\\d+)?)(?![\\w
 const JS_L = new RegExp(`(?<![\\w.])(\\d+(?:\\.\\d+)?)\\s*(<=|>=|<|>)\\s*(?:window\\.|document\\.)?${JS_WIDTH}`, 'g');
 const JS_UNRESOLVED = /\(\s*(?:(?:min|max)-width\s*:|width\s*[<>]=?)\s*\$\{/g;
 
+// 1 where a `not` reverses the condition: a query-level `not` (`not all and …`) its comma-separated
+// query, a condition-level `not (…)` its parenthesised group; nested negations cancel.
+function negations(cond) {
+  const neg = new Array(cond.length + 1).fill(0);
+  const flip = (a, b) => { for (let k = a; k < b; k += 1) neg[k] ^= 1; };
+  for (let i = 0, start = 0, depth = 0; i <= cond.length; i += 1) {
+    if (cond[i] === '(') depth += 1;
+    else if (cond[i] === ')') depth -= 1;
+    else if (i === cond.length || (cond[i] === ',' && depth === 0)) {
+      if (/^\s*not\s+(?!\()/i.test(cond.slice(start, i))) flip(start, i);
+      start = i + 1;
+    }
+  }
+  for (const m of cond.matchAll(/\bnot\s*\(/gi)) {
+    const open = m.index + m[0].length - 1;
+    let k = open;
+    for (let d = 0; k < cond.length; k += 1) { if (cond[k] === '(') d += 1; else if (cond[k] === ')') { d -= 1; if (d === 0) break; } }
+    flip(open, k + 1);
+  }
+  return neg;
+}
+
 // Switch points in one media-condition string; `base` is its offset in the file.
 function fromCondition(cond, base, src) {
   const hits = [];
+  const neg = negations(cond);
   for (const m of cond.matchAll(FEATURE)) {
     const op = m[1].toLowerCase() === 'min' ? '>=' : '<=';
     hits.push({ px: switchPoint(op, toPx(m[2], m[3])), form: op === '>=' ? 'min' : 'max', at: base + m.index, text: m[0] });
@@ -113,13 +145,16 @@ function fromCondition(cond, base, src) {
     const op = FLIP[m[3]];
     hits.push({ px: switchPoint(op, toPx(m[1], m[2])), form: op[0] === '>' ? 'min' : 'max', at: base + m.index, text: m[0] });
   }
-  return hits.map((h) => ({ ...h, src }));
+  return hits.map((h) => {
+    if (!neg[h.at - base]) return { ...h, src };
+    return { ...h, form: h.form === 'min' ? 'max' : 'min', text: `not ${h.text}`, src };
+  });
 }
 
 // [{ px, form: 'min'|'max'|'?', src: 'css'|'attr'|'js', line, text }] for one file's text; kind = 'css' | 'js' | 'html'.
 export function switchPoints(raw, kind) {
   const js = kind === 'js';
-  const text = blankComments(raw, js);
+  const text = blankComments(kind === 'html' ? blankHtmlComments(raw) : raw, js);
   const hits = [];
   if (js) {
     for (const m of text.matchAll(/\(\s*(?:(?:min|max)-(?:device-)?width\s*:|\d[^()]*?[<>]=?\s*width|width\s*[<>])[^()]*\)/gi)) hits.push(...fromCondition(m[0], m.index, 'js'));
@@ -233,7 +268,10 @@ function main(argv) {
         if (!target) return fail(`${design} extensions.breakpoints.target is not a list of positive integers`);
       }
     }
-    const dirs = opts.dirs.split(',').map((d) => join(opts.root, d.trim())).filter((d) => existsSync(d));
+    const entries = opts.dirs.split(',').map((d) => join(opts.root, d.trim()));
+    const missing = entries.find((d) => !existsSync(d) && EXT.has(extname(d)));
+    if (missing) return fail(`${missing} does not exist`);
+    const dirs = entries.filter((d) => existsSync(d));
     const res = lintFiles(dirs.flatMap((d) => walk(d, EXT)), target, opts.root);
     for (const r of res.desktopFirst) {
       const at = r.step === undefined ? `${r.px}px)` : `${r.step}px)${r.step === r.px ? '' : `, the nearest target step to ${r.px}px`}`;

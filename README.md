@@ -15,7 +15,7 @@ Pick plugins from the [table below](#plugins). The first column is the name to i
 
 ### GitHub Copilot CLI
 
-Copilot reads the plugin manifests in this repository, so the same marketplace works there (verified 2026-09-17 with Copilot CLI 1.0.85 and the `stardust` plugin). Copilot in VS Code and the cloud agent pick the plugins up too.
+Copilot takes the marketplace from `.claude-plugin/marketplace.json`, so the same marketplace works there. Of each plugin it reads the root `plugin.json`, the [Agent Plugins](https://agent-plugins.org) manifest, not `.claude-plugin/plugin.json`: it loads skills only from the folders directly under `skills/`, MCP servers from `mcp.json` and hooks from `com.github.copilot/hooks/hooks.json`. A `skills` list in the Claude Code manifest does not reach Copilot (verified 2026-11-15 with Copilot CLI 1.0.112, the `aem-edge-delivery-services` and `adobe-for-developers` plugins, and the [plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)). Copilot in VS Code and the cloud agent pick the plugins up too.
 
 ```bash
 copilot plugin marketplace add adobe/skills
