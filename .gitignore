@@ -5,6 +5,9 @@
 # Dependencies
 node_modules/
 
+# The agent CLIs of a local test drive (scripts/setup-agent-clis.mjs)
+.agent-clis/
+
 # OS files
 .DS_Store
 

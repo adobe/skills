@@ -1,0 +1,56 @@
+{
+  "context": "Content model checkpoint for 'Stats strip'. Criteria come from aem.live (David's Model, Markup/Sections/Blocks, Widgets), not from the skill. Author experience beyond these rules is reviewed by a person.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "No nested blocks",
+      "max_score": 10,
+      "description": "No block table appears inside another block's cell. Combining structures uses sibling sections, a fragment link, or a different design. Score 0 if any table is nested in a cell."
+    },
+    {
+      "name": "Cells hold default content, found by type",
+      "max_score": 12,
+      "description": "Each cell holds natural default content (heading, paragraphs, links, picture). The model does not need one cell per field, and it does not rely on cell position to tell parts apart (e.g. 'third cell is the price'). Parts are identifiable by what they are (heading, link, picture, bold)."
+    },
+    {
+      "name": "Column limit and consistency",
+      "max_score": 8,
+      "description": "Rows have 4 or fewer columns (guideline), and repeating rows have the same shape. Many small unlabeled cells score low."
+    },
+    {
+      "name": "No key/value for displayed content",
+      "max_score": 10,
+      "description": "Name/value rows (`label | value`) are not used for content the page displays (headings, text, images, prices). They appear only for non-displayed settings, if at all."
+    },
+    {
+      "name": "Assumptions recorded",
+      "max_score": 6,
+      "description": "ANSWER.md lists the assumptions that were made without the author."
+    },
+    {
+      "name": "Questions are decision-changing and few",
+      "max_score": 8,
+      "description": "ANSWER.md lists at most 6 questions, each of which would change the model if answered differently. Generic or unnecessary questions score low; asking nothing when real ambiguity exists scores low."
+    },
+    {
+      "name": "Number and label authored as content",
+      "max_score": 14,
+      "description": "The number, label and optional footnote are authored as natural text and a link in cells (e.g. a bold number and a label in one cell), not as `number | 12M` key/value rows."
+    },
+    {
+      "name": "Optional footnote does not break rows",
+      "max_score": 10,
+      "description": "Items without a footnote keep the same row shape; no required empty cells."
+    },
+    {
+      "name": "Block vs default content reasoned",
+      "max_score": 10,
+      "description": "States the block is justified (repeating items needing a strip layout) or weighs default content with a variant; reasoning given."
+    },
+    {
+      "name": "Reuse across pages considered",
+      "max_score": 4,
+      "description": "Mentions how the strip is kept consistent across three pages (copy of the block is acceptable; fragment only if reasoned)."
+    }
+  ]
+}

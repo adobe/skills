@@ -1,10 +1,20 @@
 /**
  * rollout/lib.mjs — shared IO + roll-up helpers so every script derives the same
  * counts from the same per-unit truth (counts are always recomputed, never
- * incremented).
+ * incremented). The EDS rules (names, kinds, paths) come from the master skill's
+ * contracts.mjs (skills/stardust/scripts/lib/README.md), resolved here once and
+ * re-exported, so the rollout scripts keep importing them from ./lib.mjs.
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+
+// The shared rules live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) throw Object.assign(new Error('rollout/lib.mjs: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'), { code: 'FRONT_DOOR_MISSING' });
+const C = await import(CONTRACTS.href);
+export const { RESERVED, edsName, reservedStem, widgetCodePath, pageWidgets, widgetStem, CHROME_IDS, kindOf, DEFAULT_CONTENT, documentKind } = C;
+export const { pathKey, safePath, sidecarName, treePath, rosterPath, pathSlug, sitemapKey, servedPath, isFolderIndexFile } = C;
 
 export function readJSON(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
@@ -80,7 +90,6 @@ export function pageCounts(pages) {
  * build, so such a row is never pending whatever its status. A recorded hands-off run left four of
  * them at `status: pending` and the block roll-up read a finished, verified site as unfinished.
  */
-export const DEFAULT_CONTENT = 'default-content';
 export const isDefaultContent = (b) => !!(b && b.delivery && b.delivery.edsBlockName === DEFAULT_CONTENT);
 
 /** Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted. */
@@ -119,39 +128,14 @@ export function rollupConfig(config, pages, blocks, now) {
   };
 }
 
-/** EDS block name from a block id: kebab + guard against reserved EDS classes (#15). */
-export const RESERVED = new Set(['section', 'block', 'wrap', 'button', 'widget']);
-export function edsName(id) {
-  let n = String(id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  if (!n) n = 'block';
-  if (RESERVED.has(n)) n = `blk-${n}`;
-  // decorateBlock derives .<name>-wrapper/.<name>-container classes, so a block
-  // NAMED with one of those suffixes collides with another block's derived class.
-  if (/-(wrapper|container)$/.test(n)) n = `${n}-block`;
-  return n;
-}
-
-/** Chrome ids deliver as site-wide authored documents (/nav, /footer), not per-page blocks. */
 /**
  * The URL EDS serves a page at: its path, plus `/` when the page is a folder index (its migrated file is
- * `…/index.html`; `/a` 404s on a plain EDS site). `path` stays the page's key. Pure.
+ * `…/index.html`; `/a` 404s on a plain EDS site). `path` stays the page's key (lib/paths.mjs servedPath). Pure.
  */
 export function publicUrl(page) {
   const p = page.path || `/${page.slug}`;
-  const src = (page.source && page.source.migratedHtml) || '';
-  return p !== '/' && !p.endsWith('/') && /(^|[/\\])index\.html$/.test(src) ? `${p}/` : p;
+  return servedPath(p, { folderIndex: isFolderIndexFile((page.source && page.source.migratedHtml) || '') });
 }
-
-export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
-export const kindOf = (id) => (CHROME_IDS.has(String(id).toLowerCase()) ? 'chrome' : 'module');
-/** A widget's file stem becomes its block class verbatim, so a reserved or -wrapper/-container stem collides (#15); the lint rejects it, nothing renames it. Pure. */
-export const reservedStem = (n) => RESERVED.has(String(n)) || /-(wrapper|container)$/.test(String(n));
-/** Code path of a widget from its authored link: /widgets/<path>/<name>.html?<params> → widgets/<path>/<name>.html. Pure. */
-export const widgetCodePath = (href) => String(href).replace(/^https?:\/\/[^/]+/, '').replace(/[?#].*/, '').replace(/^\//, '');
-/** Widget rows of a page: `{ id, href }` pairs from the sidecar's widgets[]; id defaults to the href's file stem. Pure. */
-export const pageWidgets = (meta) => (Array.isArray(meta && meta.widgets) ? meta.widgets : [])
-  .filter((w) => w && typeof w.href === 'string')
-  .map((w) => ({ id: String(w.id || widgetCodePath(w.href).replace(/^.*\//, '').replace(/\.html$/, '')), href: w.href }));
 
 /** Map a delivered (extensionless) path to a file under root (migrated-tree shape). */
 export function resolveLocalFile(root, p) {

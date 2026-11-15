@@ -14,9 +14,9 @@
  * - PUT https://admin.da.live/source/{org}/{repo}/<path>
  * - Authorization: Bearer <IMS token>
  * - multipart/form-data, field name MUST be `data` (other names silently
- *   succeed but write no file — da-content silent-failure rule #7)
+ *   succeed but write no file — see da-content, Uploading)
  * - Size caps: SVG 40KB, PNG/JPG/AVIF/WEBP 20MB, MP4 36MB
- *   (da-content silent-failure rule #8 / media.md §5)
+ *   (da-content, Uploading, and references/media.md)
  *
  * Usage:
  *   node tools/da-media-upload.mjs \

@@ -22,6 +22,8 @@ script you touch — playwright scripts from a project copy, the plugin tree shi
 - **Harness-neutral text**, and docs name only paths that exist (the existing lints).
 - **Field learnings** = one anonymised CHANGELOG entry + the rule in the skill doc, with the next
   deploy-improvement number and the numbers it touches.
-- **Releases** bump `plugins/stardust/.claude-plugin/plugin.json`, the stardust entry in the root
-  `.claude-plugin/marketplace.json` and the CHANGELOG heading together — patch for follow-ups,
-  minor for a new skill or a changed contract.
+- **Releases** are made by CI after the merge: the version comes from the title of the pull
+  request (`fix` and the like for follow-ups, a patch; `feat` for a new skill or a changed
+  contract, a minor), goes into `plugins/stardust/plugin.json`, and the manifests and the
+  marketplace entry are built from it. Don't put a version into a pull request. Write the
+  CHANGELOG entry under `## Unreleased — <title>`; the release puts the version there.

@@ -1,0 +1,115 @@
+{
+  "name": "testing-blocks trigger queries",
+  "description": "Should trigger when validating completed EDS block/script/style changes in a browser, running lint/tests before a PR, or deciding/writing unit and Playwright E2E tests for a block; near misses are implementing block JS/CSS (building-blocks / CDD), reviewing a PR without running tests (code-review), finding pages that use a block (find-test-content), and dev-server setup (aem-cli).",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  },
+  "queries": [
+    {
+      "id": "y-add-block-tests",
+      "query": "The `tabs` block in `blocks/tabs/` is finished and has a library page at `/docs/library/blocks/tabs`, but it has no tests. Add the unit and E2E tests it needs.",
+      "should_trigger": true,
+      "skill": "testing-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-validate-before-pr",
+      "query": "I just finished modifying `blocks/cards/cards.js` and `cards.css`, and my test page is running at `http://localhost:3000/drafts/cards`. Run the pre-PR validation and browser checks.",
+      "should_trigger": true,
+      "skill": "testing-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-playwright-a11y-analytics",
+      "query": "Write a Playwright E2E spec for our `accordion` block that tests keyboard navigation, ARIA expanded state, and that clicking a header fires the analytics event.",
+      "should_trigger": true,
+      "skill": "testing-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-unit-test-malformed-rows",
+      "query": "Add unit tests for `blocks/pricing/pricing.js` covering its price-parsing helper and how `decorate()` handles authored rows with missing cells.",
+      "should_trigger": true,
+      "skill": "testing-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-what-tests-worth-writing",
+      "query": "We just added a simple CSS-only `quote (centered)` variant and a complex `carousel` block with keyboard controls. Which tests should we commit for each in this EDS repo?",
+      "should_trigger": true,
+      "skill": "testing-blocks",
+      "split": "train"
+    },
+    {
+      "id": "y-browser-check-viewports",
+      "query": "Verify our updated `hero` block in a real browser across mobile, tablet and desktop viewports on `http://localhost:3000/drafts/hero`, check for console errors, and capture screenshots.",
+      "should_trigger": true,
+      "skill": "testing-blocks",
+      "split": "test"
+    },
+    {
+      "id": "y-e2e-locators-refactor",
+      "query": "Our Playwright spec for the `tabs` block keeps breaking every time authors edit the tab titles on the library page or we rename internal classes in `decorate()`. Rewrite the spec so it follows EDS E2E conventions.",
+      "should_trigger": true,
+      "skill": "testing-blocks",
+      "split": "test"
+    },
+    {
+      "id": "y-no-test-runner-yet",
+      "query": "I want to add unit tests for helper functions in `blocks/search/search.js`, but this `aem-boilerplate` repo has no test script in `package.json`. How should we approach testing it?",
+      "should_trigger": true,
+      "skill": "testing-blocks",
+      "split": "test"
+    },
+    {
+      "id": "n-implement-block-from-scratch",
+      "query": "Build a new `timeline` block from scratch: design the content model for authors, create test content, and write `timeline.js` and `timeline.css`.",
+      "should_trigger": false,
+      "skill": "testing-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-find-existing-pages",
+      "query": "Find all pages on `main--site--org.aem.page` that currently contain the `cards` block and list which variants each page uses.",
+      "should_trigger": false,
+      "skill": "testing-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-review-pr-comments",
+      "query": "Review PR #42 on GitHub and post inline review comments on any CSS scoping or performance issues in the diff.",
+      "should_trigger": false,
+      "skill": "testing-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-start-aem-up-worktree",
+      "query": "Start `aem up` in this git worktree without stopping the dev server running in my main checkout.",
+      "should_trigger": false,
+      "skill": "testing-blocks",
+      "split": "train"
+    },
+    {
+      "id": "n-write-decorate-only",
+      "query": "In `blocks/columns/columns.js`, update `decorate()` so cells containing only a `<picture>` get the `columns-img-col` class. Only change `columns.js`.",
+      "should_trigger": false,
+      "skill": "testing-blocks",
+      "split": "test"
+    },
+    {
+      "id": "n-da-upload-page",
+      "query": "Upload `drafts/promo.html` to `admin.da.live` and trigger a preview so it's live on `.aem.page`.",
+      "should_trigger": false,
+      "skill": "testing-blocks",
+      "split": "test"
+    },
+    {
+      "id": "n-css-scoping-only",
+      "query": "Fix the selectors in `blocks/cards/cards.css` so they use the CSS custom properties from `styles/styles.css` and logical properties instead of `margin-left`.",
+      "should_trigger": false,
+      "skill": "testing-blocks",
+      "split": "test"
+    }
+  ]
+}
