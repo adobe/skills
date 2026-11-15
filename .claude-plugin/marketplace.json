@@ -132,7 +132,7 @@
       "name": "aem-project-management",
       "source": "./plugins/aem/project-management",
       "description": "Project lifecycle management for AEM Edge Delivery Services",
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "name": "app-builder",

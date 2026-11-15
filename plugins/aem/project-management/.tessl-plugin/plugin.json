@@ -1,6 +1,6 @@
 {
   "name": "adobe/aem-project-management",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Project lifecycle management for AEM Edge Delivery Services - handover documentation, PDF generation, and project assistance",
   "author": {
     "name": "Adobe"
