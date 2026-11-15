@@ -9,6 +9,7 @@
   "license": "Apache-2.0",
   "private": false,
   "skills": [
+    "skills/aem-block-library",
     "skills/aem-cli",
     "skills/analyze-and-plan",
     "skills/authoring-analysis",

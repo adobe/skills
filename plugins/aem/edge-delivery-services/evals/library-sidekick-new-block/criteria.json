@@ -1,0 +1,46 @@
+{
+  "context": "aem-boilerplate with a finished testimonial block (default look, `dark` variant, handles a missing avatar and very long quotes). The project is authored in Word/Google Docs and uses the Sidekick Library: tools/sidekick/library.html (loads tools.aem.live/tools/sidekick/library/index.js, base /tools/sidekick/library.json), a library sheet content/tools/sidekick/library.json with a `helix-blocks` sheet (`name`, relative `path`) and block documents under content/tools/sidekick/blocks/ (cards has two sections: default with `library-metadata` description, then a `featured` visual variant). Source: https://www.aem.live/docs/sidekick-library. Backing facts: facts.yaml (sidekick-library-sheet, sidekick-library-block-docs, sidekick-library-page, sidekick-library-metadata, e2e-library-content).",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Block document in the project's library",
+      "max_score": 15,
+      "description": "A document for the block exists at content/tools/sidekick/blocks/testimonial.html, next to cards and columns. No new library location is invented."
+    },
+    {
+      "name": "One section per variant",
+      "max_score": 18,
+      "description": "The document shows the default look and the `dark` variant, each once, as `<div class=\"testimonial\">` and `<div class=\"testimonial dark\">`, each in its own section (its own top-level `<div>` in `main`, as in the cards document), so the Sidekick Library lists them as separate items. Sample content is realistic. The default look is shown exactly once (a third example that repeats the default look as an edge case loses points)."
+    },
+    {
+      "name": "Happy path only",
+      "max_score": 15,
+      "description": "The document has no edge cases: no missing-avatar example, no very long quote. Edge-case content, if any, lives outside content/tools/sidekick (e.g. content/drafts/) or only in unit tests. Leaving the avatar picture out of the examples is not penalized here."
+    },
+    {
+      "name": "Library metadata used well",
+      "max_score": 7,
+      "description": "A `library-metadata` block with a `description` row (as cards has) explains when to use the block. If a `name` is set it is a plain label. No invented keys."
+    },
+    {
+      "name": "Registered in helix-blocks with a relative path",
+      "max_score": 17,
+      "description": "content/tools/sidekick/library.json has a new row in the `helix-blocks` sheet with `name` Testimonial and `path` `/tools/sidekick/blocks/testimonial` (relative, no host), existing rows intact, `total` updated, JSON valid. The sheet name `helix-blocks` is not changed."
+    },
+    {
+      "name": "Existing library untouched",
+      "max_score": 8,
+      "description": "tools/sidekick/library.html, the cards and columns documents and existing sheet rows are unchanged (the page loader needs no edit), and blocks/testimonial/* is not modified."
+    },
+    {
+      "name": "Outside-repo steps in NOTES.md",
+      "max_score": 12,
+      "description": "NOTES.md says the new document and the updated library workbook must be pushed to the content source and previewed and published for the library to show the block, and (credit) that example pages under /tools/** should be excluded from indexing with bulk metadata if not already. It doesn't claim the block is already visible to authors."
+    },
+    {
+      "name": "Scoped and lean",
+      "max_score": 8,
+      "description": "Only the new document, the sheet row and NOTES.md (and optional drafts/unit tests) changed; no tooling, dependencies or config files added; NOTES.md is short."
+    }
+  ]
+}

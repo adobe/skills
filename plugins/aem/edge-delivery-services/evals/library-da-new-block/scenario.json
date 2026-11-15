@@ -1,0 +1,10 @@
+{
+  "description": "Make a finished block available to authors of an Experience Workspace project whose content lives in ./content/ (aem-boilerplate 5cea543 cloned by setup.sh)",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixtures/project",
+      "installPath": "."
+    }
+  }
+}
