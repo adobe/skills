@@ -1,3 +1,7 @@
+## [1.0.2](https://github.com/adobe/skills/compare/aem-cli-v1.0.1...aem-cli-v1.0.2) (2026-11-15)
+
+## [1.0.1](https://github.com/adobe/skills/compare/aem-cli-v1.0.0...aem-cli-v1.0.1) (2026-11-14)
+
 # 1.0.0 (2026-05-29)
 
 

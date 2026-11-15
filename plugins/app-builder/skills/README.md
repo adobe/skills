@@ -15,9 +15,9 @@ This folder contains the Adobe App Builder agent skills maintained in this repos
 | appbuilder-ui-scaffolder | Generate React Spectrum UI components for ExC Shell SPAs and AEM surfaces. | Active |
 | appbuilder-e2e-testing | Playwright browser E2E tests for ExC Shell SPAs and AEM extensions. | Active |
 | appbuilder-workfront | Umbrella for building customized **Workfront** UIs on App Builder; routes to the three Workfront sub-skills below. | Active |
-| appbuilder-workfront/workfront-ui-extension | Workfront front-end SPA: extension points (Main Menu, per-object left panel, widgets) + shared context. | Active |
-| appbuilder-workfront/workfront-actions | Workfront Runtime actions: `{data,error}` contract, IMS passthrough, Workfront Public API v21. | Active |
-| appbuilder-workfront/workfront-local-testing | Preview a local/deployed build inside Workfront (`extensionOverride`, Extension Manager BYO). | Active |
+| workfront-ui-extension | Workfront front-end SPA: extension points (Main Menu, per-object left panel, widgets) + shared context. | Active |
+| workfront-actions | Workfront Runtime actions: `{data,error}` contract, IMS passthrough, Workfront Public API v21. | Active |
+| workfront-local-testing | Preview a local/deployed build inside Workfront (`extensionOverride`, Extension Manager BYO). | Active |
 | _shared | Shared guardrails, validation scripts, and runtime references used across skills. | Shared support |
 
 ## Architecture
@@ -32,7 +32,7 @@ Each skill lives in `skills/<skill-name>/` and is usually organized as:
 
 ## App Builder — Workfront
 
-The `appbuilder-workfront/` group packages the skills for building a **customized Workfront UI on Adobe App Builder** — a React/Spectrum SPA embedded through Workfront extension points, backed by Runtime actions that call the Workfront / Planning / Adobe APIs. It follows the parent-router layout (like `aem-workflow/` in the AEM plugin): a parent `SKILL.md` plus nested sub-skills.
+The `appbuilder-workfront` skill and the three `workfront-*` skills next to it are the skills for building a **customized Workfront UI on Adobe App Builder** — a React/Spectrum SPA embedded through Workfront extension points, backed by Runtime actions that call the Workfront / Planning / Adobe APIs. `appbuilder-workfront` is the router; the three sub-skills are folders of their own directly under `skills/`, because clients load only those.
 
 - **`appbuilder-workfront`** (parent / umbrella) — start here when orienting or planning. Maps the end-to-end journey (set up → scaffold → build → test → deploy → publish) and routes each stage to a sub-skill. Shared `references/`: `troubleshooting.md` (symptom → cause → fix) and `commands.md` (the `aio` command catalog).
 - **`workfront-ui-extension`** — the front-end SPA: extension points (`mainMenu`, per-object `secondaryNav`, `widgets`), routing, and the Workfront shared context. Calls into `appbuilder-ui-scaffolder` for generic Spectrum patterns.

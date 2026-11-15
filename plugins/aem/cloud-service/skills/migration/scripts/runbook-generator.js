@@ -68,6 +68,13 @@
  *                   file. The local scan is always available, so the pattern
  *                   never needs the LLM tier.
  *
+ * Separately from the patterns, `integrationDiscovery` (strategy
+ * 'integration-scan', integration-scanner.js) inventories external
+ * integrations. It is detection-only — not a remediation pattern — so it is
+ * not in `PATTERN_META`, never enters `needsLlmScan`, and is stored under the
+ * cache's top-level `integrationDiscovery` field rather than
+ * `findingsByPattern`. It runs locally and does not depend on BPA/CAM.
+ *
  * `html-scan`/`config-scan`/`content-scan` (fallback)/`java-scan` findings are tagged `confidence: 'heuristic'` in the
  * cache. Patterns no available strategy could scan (e.g. a cascade pattern
  * with no BPA source and no JDK) are returned in `needsLlmScan` for the agent.
@@ -97,6 +104,8 @@ const { runLuiScan, runCdwScan } = require('./legacy-ui-runner.js');
 const { runTemplateScan } = require('./template-scan-runner.js');
 const { runDispatcherScan } = require('./dispatcher-inventory.js');
 const { runInputStreamScan } = require('./input-stream-runner.js');
+const { runAssetWorkflowScan } = require('./asset-workflow-run.js');
+const { runIntegrationScan, renderIntegrationDiscovery } = require('./integration-scanner.js');
 
 // Canonical pattern taxonomy for the runbook — every pattern the migration
 // skill can address. Each declares a detection `strategy`:
@@ -278,6 +287,16 @@ const PATTERN_META = {
     promptPattern: 'oakIndex',
     sampleOverride: 'Use the migration skill: fix oakIndex findings using BPA CSV at ./reports/bpa.csv.',
   },
+  assetWorkflowMigration: {
+    label: 'Asset Workflows → Processing Profiles + Post-Processing',
+    severity: 'high',
+    strategy: 'content-scan',
+    bpaSlugs: [],
+    heuristic: true,
+    description: 'Enabled DAM asset workflow launchers (heuristic; models are not read). On AEMaaCS, renditions and metadata come from Asset Compute processing profiles and the rest runs as a post-processing workflow. Branch H runs Adobe\'s aem-cloud-migration wf-migrator and guides review of its report and diff.',
+    promptPattern: 'asset workflow migration',
+    sampleOverride: 'Use the migration skill: migrate my DAM asset workflows to AEM as a Cloud Service post-processing workflows and processing profiles.',
+  },
 };
 
 // content-scan strategy → the runner that produces that pattern's findings.
@@ -286,6 +305,7 @@ const CONTENT_SCANNERS = {
   cdw: runCdwScan,
   templateModernization: runTemplateScan,
   dispatcherConversion: runDispatcherScan,
+  assetWorkflowMigration: runAssetWorkflowScan,
 };
 
 const CANONICAL_PATTERNS = Object.keys(PATTERN_META);
@@ -369,6 +389,9 @@ async function gatherFindings(options = {}) {
     workspaceRoot = process.cwd(),
     analyzeScript = DEFAULT_ANALYZE_SCRIPT,
     getEffectivePom,
+    integrationCatalogPath,
+    outputPath = './migration-runbook.md',
+    cachePath = DEFAULT_CACHE_PATH,
   } = options;
 
   const sources = checkAvailableSources({ bpaFilePath, collectionsDir, projectId, mcpFetcher });
@@ -631,7 +654,20 @@ async function gatherFindings(options = {}) {
   // ── Tier 4: anything still unscanned → LLM scan (agent handles it) ───────
   const needsLlmScan = CANONICAL_PATTERNS.filter(p => !scannedBy[p]);
 
-  return { findingsByPattern, rawFindingsByPattern, sourceByPattern, needsLlmScan, analyzerWarnings: scanWarnings, bpaMode, analyzerUsed };
+  // ── Strategy 'integration-scan': integrationDiscovery inventory (read-only,
+  //    independent of BPA; its warnings stay inside its own result). A scanner
+  //    fault must never break the pattern runbook, so it degrades to not-run. ──
+  let integrationDiscovery;
+  try {
+    integrationDiscovery = runIntegrationScan(workspaceRoot, { catalogPath: integrationCatalogPath, exclude: [outputPath, cachePath] });
+  } catch (err) {
+    integrationDiscovery = {
+      ok: false, strategy: 'integration-scan', status: 'not-run', integrations: [],
+      warnings: [`integration-scan did not run: ${err.message}`], error: err.message,
+    };
+  }
+
+  return { findingsByPattern, rawFindingsByPattern, sourceByPattern, needsLlmScan, analyzerWarnings: scanWarnings, bpaMode, analyzerUsed, integrationDiscovery };
 }
 
 /** Build the per-pattern copy-paste sample prompt. */
@@ -774,6 +810,12 @@ function renderRunbook(gathered, ctx = {}) {
     lines.push('');
   }
 
+  if (gathered.integrationDiscovery) {
+    lines.push(...renderIntegrationDiscovery(gathered.integrationDiscovery));
+    lines.push('---');
+    lines.push('');
+  }
+
   if (analyzerWarnings && analyzerWarnings.length > 0) {
     lines.push('## Scan warnings');
     lines.push('');
@@ -845,6 +887,8 @@ function writeRunbookCache(gathered, ctx, cachePath = DEFAULT_CACHE_PATH) {
       return rel;
     });
   }
+  // Evidence paths are already workspace-relative; no endpoint values are stored.
+  if (gathered.integrationDiscovery) cache.integrationDiscovery = gathered.integrationDiscovery;
   fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2), 'utf8');
   return cachePath;
 }
@@ -921,6 +965,7 @@ async function generateRunbook(options = {}) {
     totalFindings,
     patternCounts,
     needsLlmScan: gathered.needsLlmScan,
+    integrationSummary: gathered.integrationDiscovery ? gathered.integrationDiscovery.summary : null,
     gathered,
   };
 }
@@ -975,6 +1020,13 @@ async function main() {
       ? 'needs-llm-scan'
       : (result.gathered.sourceByPattern[pattern] || '—');
     console.log(`  ${pattern.padEnd(25)} ${String(count).padStart(3)}  (${src})`);
+  }
+  const integ = result.gathered.integrationDiscovery;
+  if (integ) {
+    console.log('');
+    console.log(integ.status === 'not-run'
+      ? 'Integration discovery: did not run (see runbook warnings)'
+      : `Integration discovery: ${integ.summary.total} integration(s) — ${integ.summary.known} known, ${integ.summary.unknown} unknown external, ${integ.summary.candidates} low-confidence candidate(s)${integ.status === 'partial' ? ' — partial scan, see warnings' : ''}`);
   }
   if (result.needsLlmScan.length > 0) {
     console.log('');

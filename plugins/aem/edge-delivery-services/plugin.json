@@ -1,0 +1,61 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aem-edge-delivery-services",
+  "version": "1.0.1",
+  "description": "Skills for AEM Edge Delivery Services development, including Content Driven Development workflow, block building, testing, content modeling, code review, and page migration.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aem",
+    "edge-delivery-services",
+    "adobe",
+    "blocks",
+    "development"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {},
+        "tessl": {
+          "name": "adobe/aem-edge-delivery-services",
+          "version": "1.0.1",
+          "description": "Skills for building AEM Edge Delivery Services sites — site creation, block development, content modeling, code review, testing, and page import.",
+          "private": false,
+          "skills": [
+            "skills/aem-cli",
+            "skills/analyze-and-plan",
+            "skills/authoring-analysis",
+            "skills/block-collection-and-party",
+            "skills/brand-setup",
+            "skills/building-blocks",
+            "skills/code-review",
+            "skills/content-driven-development",
+            "skills/content-modeling",
+            "skills/create-site",
+            "skills/da-auth",
+            "skills/da-content",
+            "skills/figma-to-content",
+            "skills/find-test-content",
+            "skills/generate-import-html",
+            "skills/identify-page-structure",
+            "skills/migrate-header",
+            "skills/page-decomposition",
+            "skills/page-import",
+            "skills/preview-import",
+            "skills/scrape-webpage",
+            "skills/slicc-handoff",
+            "skills/snowflake",
+            "skills/testing-blocks",
+            "skills/ue-component-model"
+          ]
+        }
+      },
+      "marketplace": {
+        "description": "Skills for AEM Edge Delivery Services development"
+      }
+    }
+  }
+}

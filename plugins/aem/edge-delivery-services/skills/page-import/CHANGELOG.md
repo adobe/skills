@@ -1,3 +1,5 @@
+## [1.1.2](https://github.com/adobe/skills/compare/page-import-v1.1.1...page-import-v1.1.2) (2026-11-15)
+
 ## [1.1.1](https://github.com/adobe/skills/compare/page-import-v1.1.0...page-import-v1.1.1) (2026-05-29)
 
 

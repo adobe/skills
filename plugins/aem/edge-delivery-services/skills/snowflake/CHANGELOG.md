@@ -1,3 +1,5 @@
+## [1.2.1](https://github.com/adobe/skills/compare/snowflake-v1.2.0...snowflake-v1.2.1) (2026-11-14)
+
 # [1.2.0](https://github.com/adobe/skills/compare/snowflake-v1.1.0...snowflake-v1.2.0) (2026-07-06)
 
 

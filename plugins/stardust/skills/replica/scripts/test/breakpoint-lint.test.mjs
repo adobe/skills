@@ -2,7 +2,8 @@
 // skills/replica/scripts/test/breakpoint-lint.test.mjs — the breakpoint-lint.mjs contract: every query form normalised to
 // its switch point (min/max, range, reversed, em, 1px complementary pairs collapse, `max-width: 900px` ≠ 900), CSS read in
 // @media preludes only (never declarations or comments), JS media strings and innerWidth comparisons read, interpolated
-// features advisory, no target → skipped exit 0, off-target → exit 1 with file:line, DESIGN.json target read,
+// features advisory, a CSS upper bound → desktop-first exit 1 with or without a target (attributes and JS exempt),
+// off-target → exit 1 with file:line, DESIGN.json target read,
 // --inventory distinct points, --help that reads nothing, usage errors on exit 2.
 // Run: node plugins/stardust/skills/replica/scripts/test/breakpoint-lint.test.mjs   (well under 1 s)
 import assert from 'node:assert/strict';
@@ -11,7 +12,7 @@ import { mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseTarget, switchPoints } from '../breakpoint-lint.mjs';
+import { isDesktopFirst, parseTarget, switchPoints } from '../breakpoint-lint.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'breakpoint-lint.mjs');
@@ -66,6 +67,15 @@ check('JS: an interpolated feature is advisory (px null), never a number', () =>
   assert.deepEqual(hits.map((h) => [h.px, h.form]), [[null, '?']]);
 });
 
+check('desktop-first = a CSS upper bound only (max, <, <=, range top); attributes and JS exempt', () => {
+  const flagged = (text, kind = 'css') => switchPoints(text, kind).filter(isDesktopFirst).map((h) => h.text);
+  assert.deepEqual(flagged('@media (max-width: 767px) {} @media (width <= 480px) {} @media (width < 900px) {}'), ['max-width: 767px', 'width <= 480px', 'width < 900px']);
+  assert.deepEqual(flagged('@media (600px <= width < 900px) {}'), ['width < 900px']);
+  assert.deepEqual(flagged('@media (min-width: 768px) {} @media (width >= 900px) {} @media (prefers-reduced-motion: reduce) {}'), []);
+  assert.deepEqual(flagged('<source media="(max-width: 599px)" srcset="a.jpg">', 'html'), []);
+  assert.deepEqual(flagged("matchMedia('(max-width: 899px)'); if (innerWidth < 900) {}", 'js'), []);
+});
+
 check('parseTarget: sorted unique positive integers, else null', () => {
   assert.deepEqual(parseTarget('1200, 600,900,600'), [600, 900, 1200]);
   assert.deepEqual(parseTarget([900, 600]), [600, 900]);
@@ -80,14 +90,22 @@ write(proj, 'blocks/cards/cards.css', '.cards { display: grid; }\n@media (max-wi
 write(proj, 'blocks/cards/vendor.min.js', "matchMedia('(min-width: 1234px)');\n");
 write(proj, 'node_modules/x/x.css', '@media (min-width: 1234px) {}\n');
 
-check('no target anywhere → skipped, exit 0', () => {
+check('no target: direction only — a desktop-first query → exit 1 with the mobile-first rewrite point', () => {
   const r = run(proj);
-  assert.equal(r.code, 0); assert.match(r.out, /no target set — skipped/);
+  assert.equal(r.code, 1, r.out + r.err);
+  assert.match(r.out, /blocks\/cards\/cards\.css:2 {2}max-width: 599px {2}→ desktop-first: write the narrow layout as the base, the wider one in \(width >= 600px\)/);
+  assert.match(r.out, /breakpoint-lint: 1 desktop-first, 0 off-target in 1 files \(no target set\)/);
+});
+
+check('no target, mobile-first → clean, exit 0', () => {
+  write(proj, 'blocks/cards/cards.css', '.cards { display: grid; gap: 8px; }\n@media (width >= 600px) { .cards { gap: 16px; } }\n');
+  const r = run(proj);
+  assert.equal(r.code, 0, r.out + r.err); assert.match(r.out, /clean — 3 switches in 3 files, all mobile-first \(no target set\)/);
 });
 
 check('clean against --target (min.js and node_modules not walked)', () => {
   const r = run(proj, '--target', '600,900,1200');
-  assert.equal(r.code, 0, r.out + r.err); assert.match(r.out, /clean — 3 switches in 3 files, all on 600,900,1200/);
+  assert.equal(r.code, 0, r.out + r.err); assert.match(r.out, /clean — 3 switches in 3 files, all mobile-first, all on 600,900,1200/);
 });
 
 check('off-target → exit 1, one file:line row each, summary', () => {
@@ -95,16 +113,18 @@ check('off-target → exit 1, one file:line row each, summary', () => {
   const r = run(proj, '--target', '600,900,1200');
   assert.equal(r.code, 1);
   assert.match(r.out, /blocks\/hero\/hero\.css:2 {2}min-width: 1024px {2}→ switches at 1024px/);
-  assert.match(r.out, /breakpoint-lint: 1 off-target in 1 files \(target 600,900,1200\)/);
+  assert.match(r.out, /breakpoint-lint: 0 desktop-first, 1 off-target in 1 files \(target 600,900,1200\)/);
 });
 
 check('a prototype dir lints its inline <style> and <source media> (.html)', () => {
   const protos = join(root, 'protos');
-  write(protos, 'home-proposed.html', '<style>\n@media (min-width: 768px) { .x { a: b } }\n</style>\n<source media="(min-width: 900px)">\n');
+  write(protos, 'home-proposed.html', '<style>\n@media (min-width: 768px) { .x { a: b } }\n@media (max-width: 899px) { .y { a: b } }\n</style>\n<source media="(min-width: 900px)"><source media="(max-width: 599px)">\n');
   const r = run(root, '--root', protos, '--dirs', '.', '--target', '600,900,1200');
   assert.equal(r.code, 1);
   assert.match(r.out, /home-proposed\.html:2 {2}min-width: 768px {2}→ switches at 768px/);
-  assert.doesNotMatch(r.out, /900px  →/);
+  assert.match(r.out, /home-proposed\.html:3 {2}max-width: 899px {2}→ desktop-first/);
+  assert.match(r.out, /1 desktop-first, 1 off-target in 1 files/);
+  assert.doesNotMatch(r.out, /:5 /);
 });
 
 check('target read from DESIGN.json extensions.breakpoints.target; bad value → exit 2', () => {

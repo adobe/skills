@@ -6,7 +6,7 @@
  *   node spec-map.mjs [--config <file>] [--rules <mapping.json>] [--in <components.jsonl>] [--out <jsonl>]
  *
  * Rules (reference/judgement.md): direct { component: { kind, block, variant?, keepEmpty? } } with kind
- * block|dynamic|widget|default|metadata|drop (options: dropIfEmpty — default true for default/metadata only; keepEmpty;
+ * block|dynamic|widget|default|metadata|drop (SPEC_MAP_KINDS in skills/stardust/scripts/lib/kinds.mjs; options: dropIfEmpty — default true for default/metadata only; keepEmpty;
  * whenKids — map only when the wrapper has non-empty children); layout [components flattened into their children]; sections
  * { component: { block, modsMatch } } (a styled wrapper → section-style row + its children); nesting
  * { component: block } (tabs/accordion: children become nested_in rows); carousels { component: { single, multi } };
@@ -14,7 +14,7 @@
  * Writes <work>/map/page-blocks.jsonl (or --out): { url, final_url, template, blocks: [{ pos, kind, block, variant, aem[], path, nested_in?, section? }] };
  * stderr lists unmapped components (kind "unmapped") with instance counts — iterate until it is empty.
  */
-import { arg, helpAndExit, loadConfig, log, readJSON, readJSONL, writeText } from './lib.mjs';
+import { CODED, arg, helpAndExit, loadConfig, log, readJSON, readJSONL, writeText } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -83,7 +83,7 @@ export function mapPage(comps, R) {
       return r ? [inst(r.kind || 'block', r.block, r.variant, n, ctx)] : [];
     }
     if (nesting[c]) {
-      const nested = mapNodes(n.kids || [], { ...ctx, nested_in: nesting[c] }).filter((x) => ['block', 'dynamic', 'widget'].includes(x.kind));
+      const nested = mapNodes(n.kids || [], { ...ctx, nested_in: nesting[c] }).filter((x) => CODED.has(x.kind)); // only coded kinds nest
       return [inst('block', nesting[c], nested.length ? 'with-nested-blocks' : null, n, ctx), ...nested];
     }
     const d = direct[c];
