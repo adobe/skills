@@ -11,7 +11,8 @@ git history only (plus the branch-scoped notes in
   `<slug>-proposed.html` passed the prototype audit). A lower bound under `not`
   (`not all and (min-width: 900px)`, `not (min-width: 900px)`) is desktop-first. HTML comments
   are blanked outside `<style>`/`<script>`. Under a target, the rewrite hint names the nearest
-  target step. Replica's float/BFC corollary now reads mobile-first (`flow-root` on the base rule).
+  target step. Replica's desktop-first float/BFC corollary ("add `flow-root` to the un-floating
+  override") is removed.
 
 ## 0.39.1
 

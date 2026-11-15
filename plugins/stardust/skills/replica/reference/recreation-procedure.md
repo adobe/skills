@@ -301,10 +301,7 @@ recreation's would: AEM-classic (and any clearfix-era) components wrap each
 section in a clearfix, whose block formatting context contains child margins.
 `display: flow-root` on the recreated section wrapper reproduces that
 containment exactly — one rule fixed systematic −48/−20px per-section errors
-across a whole page in the field. Corollary for responsive work: a column
-floated only in its `(width >= N)` rule has no BFC in the narrow base, and
-the last child's margin escapes at mobile only — put `flow-root` on the
-base rule.
+across a whole page in the field.
 
 ## Fonts policy
 
