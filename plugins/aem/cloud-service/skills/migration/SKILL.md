@@ -7,11 +7,12 @@ description: |
   blockers: scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler,
   DAM AssetManager, HTL data-sly-test lint, Classic UI / ExtJS / Coral 2 → Coral 3 dialog migration (lui),
   Custom Design Widgets (cdw), Vault package install-time dependencies (vault-package-dependencies),
-  Guava cache → Caffeine swaps (guavaCache), java.io.InputStream usage triage (inputStream),
+  Guava cache → Caffeine (guavaCache), java.io.InputStream triage (inputStream),
   Oak index conversion (oakIndex, beta), and static→editable template modernization. Also
-  externalizes OSGi config secrets to Cloud Manager (scans ui.config/.cfg.json for $[secret:]/$[env:]
-  placeholders), converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E), validates migrated code on a
-  local Cloud SDK (Branch G, beta), and migrates asset workflows (Branch H).
+  externalizes OSGi config secrets to Cloud Manager ($[secret:]/$[env:]), converts AMS/on-prem
+  Dispatcher configs, validates migrated code on a local Cloud SDK (beta), migrates asset
+  workflows, and restructures a project into the Cloud Service layout (ui.apps, ui.config,
+  ui.content, all; beta).
 license: Apache-2.0
 metadata:
   version: "1.2.0"
@@ -48,7 +49,7 @@ Applies to **finding and editing the user's AEM project** (Java, bundles, config
 
 ## Required delegation (do this first)
 
-Find the branch for the request and read its file before anything else. Each of Branches A and C–H **skips Branch B**. A, C, E, G and H take **no BPA pattern id**.
+Find the branch for the request and read its file before anything else. Each of Branches A and C–I **skips Branch B**. A, C, E, G, H and I take **no BPA pattern id**.
 
 | Branch | The user asks to… | Read first, and follow |
 |---|---|---|
@@ -60,6 +61,7 @@ Find the branch for the request and read its file before anything else. Each of 
 | **F — Oak index** (`oakIndex`, beta) | fix Oak index findings; convert `_oak_index` definitions | [references/oak-index.md](references/oak-index.md): six steps around Adobe's `index-converter`. Compute the next free `-custom-N`, never assume `-custom-1`. Flag a datatype mismatch as `needs_manual_review`; do not apply it silently. Tell the user that the output needs a careful review. |
 | **G — Validate a migration** (beta) | validate, verify or smoke-test migrated code on the local Cloud SDK | [references/validation/validate-migration.md](references/validation/validate-migration.md). It never edits customer source; a failure goes back to the branch that owns the pattern. |
 | **H — Asset workflow migration** | migrate DAM asset workflows (`DAM Update Asset` customizations, asset workflow launchers, custom asset process steps, ImageMagick `CommandLineProcess` renditions); or mentions Adobe's Asset Workflow Migration Tool / `wf-migrator` / `aem-cloud-migration` | [references/asset-workflow/flow.md](references/asset-workflow/flow.md): four steps around Adobe's `wf-migrator`, which makes every change. The skill runs it and guides the review; it never edits project files itself. Never present a failed run as done. |
+| **I — Repository restructuring** (beta) | restructure the project for AEM as a Cloud Service; split a content package into code (`ui.apps`) and content (`ui.content`); create `ui.config` or the `all` package; or mentions the Repository Modernizer | [references/repo-structure/flow.md](references/repo-structure/flow.md): five steps around Adobe's `repository-modernizer`. The plan review with the user is required. The tool's output is a copy: check it, then adopt it on a branch. Run this before the other branches when the project has no `ui.config` or `all`. |
 
 **Branch B — Java / HTL / BPA pattern migration:**
 
@@ -131,7 +133,7 @@ If the user asks to fix everything or BPA mixes patterns, **ask which pattern fi
 
 ### Step 1: Pattern id
 
-First check the branches other than B (see **Required delegation**): A (OSGi configs), C (templates), D (Legacy UI: `lui` for dialogs, `cdw` for widgets), E (Dispatcher), F (Oak index, `oakIndex`), G (validate), H (asset workflows).
+First check the branches other than B (see **Required delegation**): A (OSGi configs), C (templates), D (Legacy UI: `lui` for dialogs, `cdw` for widgets), E (Dispatcher), F (Oak index, `oakIndex`), G (validate), H (asset workflows), I (repository restructuring).
 
 Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`, `inputStream`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 
@@ -175,11 +177,7 @@ User-named files → classify (code-assessment Manual Pattern Hints or ask) → 
 
 ### htlLint flow
 
-`htlLint` does not use BPA CSV or CAM/MCP. Instead:
-
-1. **Read** [`{code-assessment}/references/data-sly-test-redundant-constant.md`](../code-assessment/references/data-sly-test-redundant-constant.md): its **Workflow**, the **Proactive Discovery** `rg` patterns and the four fix patterns.
-2. **Discover** targets with those `rg` commands (scope: `ui.apps/**/jcr_root/**/*.html` or the user's content package paths), **group** the hits by file and **fix** each per its pattern section.
-3. **Report**, and recommend that the user run `mvn clean install` or HTL validate to confirm that no warnings remain.
+`htlLint` does not use BPA CSV or CAM/MCP. Its three steps (read the reference, discover with `rg`, fix and report): [references/htl-lint.md](references/htl-lint.md).
 
 ## Batched processing (batch size 5)
 
@@ -193,6 +191,4 @@ The full rules and an example exchange: [references/bpa-helper.md](references/bp
 
 ## Quick reference
 
-**Source priority (BPA patterns):** unified collection → BPA CSV → MCP → manual paths — **not** an automatic cascade after MCP errors (if MCP fails, stop; see **MCP errors and fallback**). Batch size 5 on every BPA source. `htlLint`, OSGi→Cloud Manager, Template Modernization (C), Dispatcher Conversion (E), and Asset Workflow Migration (H) do not use BPA/MCP — see their branches in **Required delegation**.
-
-**User-facing snippets:** *"Using existing BPA collection (N findings)…"* / *"Processing your BPA report…"* / *"Fetched findings from CAM."* / *"Scanning HTL templates for data-sly-test lint issues…"* / optional prompt after MCP stop above.
+The source priority for BPA patterns and the snippets to show the user: [references/bpa-helper.md](references/bpa-helper.md#quick-reference).
