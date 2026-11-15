@@ -56,7 +56,7 @@ Find the branch for the request and read its file before anything else. Each of 
 | **D — Legacy UI** (`lui`, `cdw`) | convert Classic UI / ExtJS dialogs; upgrade Coral 2 dialogs; migrate custom ExtJS widgets; fix LUI or CDW findings; or mentions `cq:Dialog` / `xtype` / `cq:Widget` | The steps under **Branch D** below |
 | **E — Dispatcher conversion** | convert or migrate an AMS / on-premise Dispatcher configuration | [references/dispatcher/flow.md](references/dispatcher/flow.md): six phases around Adobe's `dispatcher-converter`. **HARD STOP on `filter-acl-loss`.** Do not present the result as done on validation failure. |
 | **F — Oak index** (`oakIndex`, beta) | fix Oak index findings; convert `_oak_index` definitions | [references/oak-index.md](references/oak-index.md): six steps around Adobe's `index-converter`. Compute the next free `-custom-N`, never assume `-custom-1`. Flag a datatype mismatch as `needs_manual_review`; do not apply it silently. Tell the user that the output needs a careful review. |
-| **G — Validate a migration** (beta) | validate, verify or smoke-test migrated code on the local Cloud SDK | [references/validation/validate-migration.md](references/validation/validate-migration.md). It never edits customer source; a failure goes back to the branch that owns the pattern. A PASS is a strong signal, not a guarantee. |
+| **G — Validate a migration** (beta) | validate, verify or smoke-test migrated code on the local Cloud SDK | [references/validation/validate-migration.md](references/validation/validate-migration.md). It never edits customer source; a failure goes back to the branch that owns the pattern. |
 
 **Branch B — Java / HTL / BPA pattern migration:**
 
@@ -81,7 +81,6 @@ Do not transform **Java or HTL** until the pattern guide (or reference) is read 
 
 - **Dialog findings** (`lui`, sub-types `legacy.dialog.classic` and `legacy.dialog.coral2` only): read [dialog/context.md](references/legacy-ui/dialog/context.md) (`getBpaFindings('lui', …)`, filter to the dialog sub-types, skip all others with a note); convert with [extjs-to-coral3.md](references/legacy-ui/dialog/extjs-to-coral3.md) (`convert-extjs`) or [coral2-to-coral3.md](references/legacy-ui/dialog/coral2-to-coral3.md) (`upgrade-coral2`); validate with [dialog/validation.md](references/legacy-ui/dialog/validation.md).
 - **Custom widget findings** (`cdw`): read [cdw/context.md](references/legacy-ui/cdw/context.md) (`getBpaFindings('cdw', …)`, inventory the xtypes); per xtype apply [cdw/conversion.md](references/legacy-ui/cdw/conversion.md) (a mapping, or a scaffolded Granite UI component); validate with [cdw/validation.md](references/legacy-ui/cdw/validation.md).
-- **Run order when both are needed: CDW first, then dialog.** CDW resolves custom xtypes, so dialog conversion proceeds without stops.
 
 ## Prerequisites
 
@@ -176,7 +175,7 @@ Does **not** use BPA CSV, CAM/MCP, or code-assessment pattern guides for collect
 
 ### Template modernization flow (Branch C)
 
-No BPA / MCP. Three phases: context → per-template execute → validate, with the files of **Branch C**. Work from the confirmed context and the per-template plan table. Do not commit on validation failure.
+No BPA / MCP. Three phases: context → per-template execute → validate, with the files of **Branch C**. Work from the confirmed context and the per-template plan table.
 
 ### htlLint flow
 
@@ -198,6 +197,6 @@ The full rules and an example exchange: [references/bpa-helper.md](references/bp
 
 ## Quick reference
 
-**Source priority (BPA patterns):** unified collection → BPA CSV → MCP → manual paths — **not** an automatic cascade after MCP errors (if MCP fails, stop; see **MCP errors and fallback**). Batch size 5 on every BPA source. `htlLint`, OSGi→Cloud Manager, Template Modernization (C), and Legacy UI (D) do not use BPA/MCP — see their branches in **Required delegation**.
+**Source priority (BPA patterns):** unified collection → BPA CSV → MCP → manual paths — **not** an automatic cascade after MCP errors (if MCP fails, stop; see **MCP errors and fallback**). Batch size 5 on every BPA source. `htlLint`, OSGi→Cloud Manager and Template Modernization (C) do not use BPA/MCP — see their branches in **Required delegation**.
 
 **User-facing snippets:** *"Using existing BPA collection (N findings)…"* / *"Processing your BPA report…"* / *"Fetched findings from CAM."* / *"Scanning HTL templates for data-sly-test lint issues…"* / optional prompt after MCP stop above.
