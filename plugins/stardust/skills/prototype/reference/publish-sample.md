@@ -151,12 +151,8 @@ combine into a single "not eligible" message.
 8. **Mobile-adapt audit on every variant being published.** For
    every variant in scope (the primary, plus any variants named
    in `--variants <list>`), run the audit per
-   `skills/prototype/SKILL.md` § Mobile-adapt audit:
-
-   - `<meta name="viewport" content="width=device-width, ...">`
-     present, width not pinned to a fixed pixel value.
-   - At least one `@media (max-width: ...)` rule.
-   - At least one mobile-targeted breakpoint at ≤ 640px.
+   `skills/prototype/SKILL.md` § Mobile-adapt audit (viewport
+   meta, mobile-first queries, the 360px render checks).
 
    Refuse to publish variants that fail — the audit is
    mandatory. Record the audit result per variant in the PR

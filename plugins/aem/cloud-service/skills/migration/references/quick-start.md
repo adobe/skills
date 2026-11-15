@@ -1,0 +1,51 @@
+# Migration: quick start for the person driving the agent
+
+What to say to the agent, and what happens then. The agent's own routing is in `SKILL.md`.
+
+**One pattern per chat/session** — if you ask to "fix everything," the skill will ask you to pick first (e.g. scheduler vs replication vs htlLint).
+
+| You have… | Say something like… | What happens |
+|-----------|---------------------|--------------|
+| **A whole project to assess** | *"Review my code for AEMaaCS migration"* | Generates read-only `migration-runbook.md` — **all** migration patterns (Java cascade + `htlLint` + `osgiConfig`), affected files, sample prompts. **No edits.** |
+| A **BPA CSV** | *"Fix **scheduler** findings using `./path/to/bpa.csv`"* | Fastest path: CSV → cached collection → files |
+| **CAM + MCP** only | *"Get **scheduler** findings from CAM; I'll pick the project when you list them."* | Agent lists projects → you confirm → MCP fetch ([cam-mcp.md](cam-mcp.md)) |
+| **Just a few files** | *"Migrate **scheduler** in `core/.../MyJob.java`"* | Manual flow: no BPA required |
+| **OSGi → Cloud Manager** | *"**Scan my config files and create Cloud Manager environment secrets or variables.**"* | Agent **auto-reads** [references/osgi-cfg-json-cloud-manager.md](osgi-cfg-json-cloud-manager.md) (full Adobe-aligned rules inlined there); no BPA pattern id |
+| **HTL lint warnings** | *"Fix **htlLint** issues in `ui.apps`"* | Proactive discovery via `rg` → fix per the HTL lint reference |
+| **Vault package dependencies** | *"Fix **vault-package-dependencies** findings"* / *"Package install fails on AEMaaCS."* | Agent reads [references/vault-package-dependencies.md](vault-package-dependencies.md) — heuristic `pom.xml` scan (no BPA subtype, no analyzer) for `day/cq60/product:*` install-time deps in `content-package-maven-plugin`; removes the whole `<dependencies>` block. Not a `code-assessment` pattern — this dependency shape never occurs in native AEMaaCS code. |
+| **Oak index findings (OID)** [BETA] | *"Fix **oakIndex** findings using `./path/to/bpa.csv`"* — covers `index.rule.violation` and `standard.index.modification` | Invokes Adobe's `@adobe/aem-cs-source-migration-index-converter` per [references/oak-index.md](oak-index.md); computes the next available `-custom-N` instead of assuming `-custom-1`; shows diff + type-compatibility check in IDE; validates with `mvn` and `aemanalyser`. **Branch F.** |
+| **Template modernization** | *"**Migrate my static templates to editable templates and generate Modernize Tools rules.**"* / *"Create editable templates from my static templates."* / *"Generate AEM Modernize Tools structure/component/policy rules."* | Agent **auto-reads** [references/template-modernization/template-modernization-context.md](template-modernization/template-modernization-context.md) (shared discovery + structured context), produces a **per-template plan table**, then executes the plan using [editable-template-creation.md](template-modernization/editable-template-creation.md) and [aem-modernization.md](template-modernization/aem-modernization.md), and validates via [template-modernization-validation.md](template-modernization/template-modernization-validation.md). No BPA pattern id. |
+| **Dialog migration** | *"Convert my Classic UI / ExtJS dialogs to Touch UI."* / *"Upgrade Coral 2 dialogs to Coral 3."* / *"Fix LUI dialog findings."* | Agent reads [references/legacy-ui/dialog/context.md](legacy-ui/dialog/context.md) — filters BPA LUI to dialog sub-types, converts via [extjs-to-coral3.md](legacy-ui/dialog/extjs-to-coral3.md) or [coral2-to-coral3.md](legacy-ui/dialog/coral2-to-coral3.md), validates via [validation.md](legacy-ui/dialog/validation.md). BPA pattern id: `lui`. |
+| **Custom widget migration** | *"Fix my CDW findings."* / *"Migrate custom ExtJS widgets to Coral 3."* | Agent reads [references/legacy-ui/cdw/context.md](legacy-ui/cdw/context.md) — inventories xtypes, maps or scaffolds Granite UI components via [conversion.md](legacy-ui/cdw/conversion.md), validates via [validation.md](legacy-ui/cdw/validation.md). BPA pattern id: `cdw`. Run CDW before dialog migration when both are needed. |
+| **Guava cache warnings** | *"Fix **guavaCache** findings using BPA CSV."* / *"Swap Guava cache for Caffeine."* | Agent reads [references/guava-cache.md](guava-cache.md) — BPA is the source of truth (subtype `custom.guava.cache`); one finding per **bundle**, not per Guava-internal class row. BPA pattern id: `guavaCache`. Not a `code-assessment` pattern — Guava cache usage only occurs in pre-migration code, never native AEMaaCS code. |
+| **InputStream advisories** | *"Fix **inputStream** findings."* / *"Triage the `java.io.InputStream` warnings in my BPA report."* | Agent reads [references/input-stream.md](input-stream.md) and runs the deterministic scanner `scripts/input-stream-runner.js` (pure Node). Adobe documents the risk as binary data streamed through the JVM, fixed by direct binary upload and CDN delivery. The scanner produces one finding per file, ordered by risk, with every stream site pre-classified (F deserialization / E binary streamed or processed in the JVM / D local filesystem / C unbounded read / B unclosed stream or undisposed `Binary` / A benign) and tagged with a fix kind (`decision` / `review` / `auto`). Same precedence as the other BPA patterns: BPA findings first (CAM, then a BPA CSV, subtype `java.io.inputstream`), whose classes the scanner resolves to workspace files for line-level sites, with classes outside the workspace collapsed to one informational row per bundle (customer code kept elsewhere, platform-provided AEM Forms add-on, or third-party); the whole workspace is scanned only when BPA has no `inputStream` findings. The agent proposes tier-aware fixes for D/E/F, fixes unclosed streams, and verifies each edit with a `--files` re-scan. BPA pattern id: `inputStream`. Not a `code-assessment` pattern, since BPA only raises it for code carried over from legacy AEM. |
+| **Dispatcher conversion** | *"Convert my AMS / on-prem Dispatcher config to AEM as a Cloud Service."* | Agent reads [references/dispatcher/context.md](dispatcher/context.md) — detects the config **mode**, generates the tool config, runs Adobe's `dispatcher-converter`, **verifies** output (filter/ACL hard-gate), and validates. **Branch E.** Runbook pattern id: `dispatcherConversion` (heuristic). |
+| **Validate a migration** [BETA] | *"Validate my migration on the local Cloud SDK."* / *"Verify the scheduler fix before I raise a PR."* | Agent reads [references/validation/validate-migration.md](validation/validate-migration.md) — builds, deploys to the running local SDK, checks bundle/component state via the AEM Quickstart MCP, and writes a local report (reporting to CAM is paused for now). **Branch G.** |
+| **Asset workflow migration** | *"Migrate my DAM asset workflows / DAM Update Asset customizations to AEM as a Cloud Service."* | Agent reads [references/asset-workflow/context.md](asset-workflow/context.md), runs Adobe's `wf-migrator` (`aem-cloud-migration`) — which makes every change — then reviews its report and diff with the user and hands over post-deploy checks. **Branch H.** Runbook pattern id: `assetWorkflowMigration` (heuristic). |
+
+**Starter prompts (copy-paste)** — the Quick start table above covers each pattern individually; these add the whole-project entry point, source-specific invocations (CSV / CAM / manual), and multi-step combinations:
+
+- *"Review my code for AEMaaCS migration"* — **start here** for a full runbook before changing anything.
+- *"Use the migration skill: **scheduler** only, BPA CSV at `./reports/bpa.csv`."*
+- *"**Replication** only from CAM; list projects first, I'll pick one."*
+- *"**Manual:** **event listener** migration for `.../Listener.java`."*
+- *"Fix **oakIndex** findings using BPA CSV at `./reports/bpa.csv`."*
+- *"Fix all Classic UI and custom widget findings — CDW first, then dialogs."*
+- *"Fix **guavaCache** findings using BPA CSV at `./reports/bpa.csv`."*
+- *"Fix **inputStream** findings using BPA CSV at `./reports/bpa.csv`."*
+
+## When to use this skill
+
+- Migrate legacy AEM Java toward **Cloud Service–compatible** patterns (scheduler, ResourceChangeListener, replication, EventListener/EventHandler, AssetManager)
+- Fix **HTL (Sightly)** lint warnings (`data-sly-test: redundant constant value comparison`)
+- Fix **Vault package install-time dependencies** (`day/cq60/product:*`) blocking package installation on AEMaaCS
+- Swap **Guava cache** (`com.google.common.cache.*`) for **Caffeine** (`guavaCache`)
+- Triage and fix **`java.io.InputStream`** advisories (`inputStream`, BPA `DG` / `java.io.inputstream`)
+- **OSGi → Cloud Manager** secret/variable externalization (Branch A), **Template Modernization** (Branch C), **Legacy UI** dialog/CDW migration (Branch D)
+- Drive work from **BPA** (CSV or cached collection) or **CAM via MCP**, **one pattern per session**
+- **Dispatcher Conversion:** **Branch E** — convert AMS / on-premise Apache+Dispatcher configs to AEMaaCS via Adobe's `dispatcher-converter`, with mode detection, config generation, output verification (filter/ACL hard-gate), cross-boundary handoff, and SDK validation. References: [references/dispatcher/](dispatcher/).
+- **Oak Index Migration:** **Branch F** (beta) — convert legacy `_oak_index/*.xml` definitions via Adobe's `index-converter`, with a dynamic `-custom-N` naming override, a type/datatype compatibility check, and validation. BPA pattern id: `oakIndex`. Reference: [references/oak-index.md](oak-index.md).
+- **Validate migrated code:** **Branch G** (beta) — build, deploy to the local Cloud SDK, and check the migration contract and bundle/component state. Reference: [references/validation/validate-migration.md](validation/validate-migration.md).
+- **Asset Workflow Migration:** **Branch H** — migrate DAM asset workflows (launchers, `DAM Update Asset` overlays, custom steps) to processing profiles + post-processing workflows by running Adobe's `wf-migrator`, then reviewing its report and diff with the user and handing over post-deploy checks. References: [references/asset-workflow/](asset-workflow/).
+
+Branch routing and the read-first delegation for each entry above are defined once in `SKILL.md` under **Required delegation**. This list is only the "when".

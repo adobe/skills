@@ -1,0 +1,36 @@
+{
+  "context": "Hand-written DA page draft with several silent failures. Facts live-verified 2026-11-06 against shsteimer/da-playground (preview .md and delivered .plain.html), facts.yaml: da-content-sections-required (elements directly in <main> are dropped; a div directly in <main> is a section, so div.metadata there yields no metadata and no <meta>), da-content-section-metadata-class (class must be exactly section-metadata; 'Section Metadata' as a class makes a different block and the content is lost), da-content-table-becomes-block (a bare <table> in default content becomes a block named by its first cell and consumes the header row; the table must be a block), da-content-metadata-head-output (tags row -> article:tag; image row for a social image), da-content-attrs-stripped / inline tag rules (span and ins unwrapped; b rewritten to strong). Not asserted: hand-adding og:/twitter: rows (harmless), the exact name used for the table block. Also verified: <main> alone, or <body><main>, previews fine; bare section divs with no <main> preview empty; a full HTML document is accepted but <head><title> becomes the title metadata, <style> is dropped; text inside <header>/<footer> is dropped; header/footer are not required.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "All content inside section divs",
+      "max_score": 25,
+      "description": "In page.html all content is inside <main> (a page with sections but no <main> previews empty) and every element under <main> is inside a <div> that is a direct child of <main>; no h1, p, table, block or metadata div is a direct child of <main>. The title and intro paragraph are inside a section. Having or omitting <body>, <header> and <footer> is not graded."
+    },
+    {
+      "name": "Section Metadata block named correctly",
+      "max_score": 20,
+      "description": "The dark style is applied with a block whose class is exactly section-metadata (or a table whose header text is exactly 'Section Metadata'), with a Style row 'dark', placed inside the section that holds the cards, not inside another section. No element has class=\"Section Metadata\"."
+    },
+    {
+      "name": "Comparison data table is a block",
+      "max_score": 20,
+      "description": "Score 0 if the plan comparison is a bare <table> (with or without thead/tbody/th) anywhere in default content, even a well-formed one. Full score only if it is a block (div form with a block class, or table form whose first row is a single block-name header cell such as 'Table') with the Plan/Pages/Price header row and both plan rows kept as content."
+    },
+    {
+      "name": "Page metadata inside its own section with all rows",
+      "max_score": 25,
+      "description": "The metadata block has class exactly metadata, sits inside a section div (not directly in <main>), and has title and description rows plus a tags row containing launch and product. A social image row is a bonus and not required."
+    },
+    {
+      "name": "Image URL and body fragment",
+      "max_score": 5,
+      "description": "The hero <img> uses https://picsum.photos/seed/orbit/1200/600 (not a repo-relative path) with alt text, and page.html contains no <html>, <head>, <script>, <style> or style= attribute."
+    },
+    {
+      "name": "Cell content uses surviving tags",
+      "max_score": 5,
+      "description": "Inside block cells, the span class 'price' and bare <b> from the draft are replaced with markup that survives the pipeline (for example <strong> or plain text), or removed. No <span> or <b> remains in block cells."
+    }
+  ]
+}

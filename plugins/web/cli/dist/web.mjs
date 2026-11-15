@@ -227,11 +227,11 @@ var Help = class {
         visibleOptions.push(helpOption);
       } else if (helpOption.long && !removeLong) {
         visibleOptions.push(
-          cmd.createOption(helpOption.long, helpOption.description)
+          cmd.createOption(helpOption.long, helpOption.description).helpGroup(helpOption.helpGroupHeading)
         );
       } else if (helpOption.short && !removeShort) {
         visibleOptions.push(
-          cmd.createOption(helpOption.short, helpOption.description)
+          cmd.createOption(helpOption.short, helpOption.description).helpGroup(helpOption.helpGroupHeading)
         );
       }
     }
@@ -763,7 +763,7 @@ var Option = class {
     this.description = description || "";
     this.required = flags.includes("<");
     this.optional = flags.includes("[");
-    this.variadic = /\w\.\.\.[>\]]$/.test(flags);
+    this.variadic = new RegExp("\\p{ID_Continue}\\.\\.\\.[>\\]]$", "u").test(flags);
     this.mandatory = false;
     const optionFlags = splitOptionFlags(flags);
     this.short = optionFlags.shortFlag;
@@ -1946,7 +1946,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
   getOptionValueSourceWithGlobals(key) {
     let source;
     this._getCommandAndAncestors().forEach((cmd) => {
-      if (cmd.getOptionValueSource(key) !== void 0) {
+      if (Object.hasOwn(cmd._optionValueSources, key)) {
         source = cmd.getOptionValueSource(key);
       }
     });
@@ -2589,7 +2589,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
       return arg.length > 1 && arg[0] === "-";
     }
     const negativeNumberArg = (arg) => {
-      if (!/^-(\d+|\d*\.\d+)(e[+-]?\d+)?$/.test(arg)) return false;
+      if (!/^-(\d+|\d*\.\d+)([eE][+-]?\d+)?$/.test(arg)) return false;
       return !this._getCommandAndAncestors().some(
         (cmd) => cmd.options.map((opt) => opt.short).some((short) => /^-\d$/.test(short))
       );
@@ -3037,7 +3037,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * (This does not override a group set directly on the subcommand using .helpGroup().)
    *
    * @example
-   * program.commandsGroup('Development Commands:);
+   * program.commandsGroup('Development Commands:');
    * program.command('watch')...
    * program.command('lint')...
    * ...
@@ -3208,7 +3208,7 @@ Expecting one of '${allowedValues.join("', '")}'`);
    * Pass in false to disable the built-in help option.
    *
    * @example
-   * program.helpOption('-?, --help' 'show help'); // customise
+   * program.helpOption('-?, --help', 'show help'); // customise
    * program.helpOption(false); // disable
    *
    * @param {(string | boolean)} flags
@@ -3337,16 +3337,20 @@ function incrementNodeInspectorPort(args) {
     let debugHost = "127.0.0.1";
     let debugPort = "9229";
     let match;
-    if ((match = arg.match(/^(--inspect(-brk)?)$/)) !== null) {
+    if ((match = arg.match(/^(--inspect(-brk|-wait)?)$/)) !== null) {
       debugOption = match[1];
-    } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+)$/)) !== null) {
+    } else if ((match = arg.match(
+      /^(--inspect(-brk|-port|-wait)?)=(\[[^\]]+\]|[^:]+)$/
+    )) !== null) {
       debugOption = match[1];
       if (/^\d+$/.test(match[3])) {
         debugPort = match[3];
       } else {
         debugHost = match[3];
       }
-    } else if ((match = arg.match(/^(--inspect(-brk|-port)?)=([^:]+):(\d+)$/)) !== null) {
+    } else if ((match = arg.match(
+      /^(--inspect(-brk|-port|-wait)?)=(\[[^\]]+\]|[^:]+):(\d+)$/
+    )) !== null) {
       debugOption = match[1];
       debugHost = match[3];
       debugPort = match[4];

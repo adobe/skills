@@ -121,7 +121,7 @@ links) maps cleanly to DA block table rows.
 - Repeating items where the author needs to add/remove (not just
   edit): works in DA but authoring UX is less clean
 - Rich text with complex inline formatting: works if the pipeline's
-  inline-tag normalization (§3.9) preserves what's needed
+  inline-tag normalization (da-content, Inline tags) preserves what's needed
 - SVG icons embedded inline: stay as decorator chrome, not authored
 
 ### 4. JavaScript independence

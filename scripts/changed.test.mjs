@@ -5,6 +5,9 @@ import { commit, run, tree, write } from './lib/testing.mjs';
 
 const TREE = {
   'plugins/a/.tessl-plugin/plugin.json': '{}',
+  'plugins/a/evals/scenario/task.md': 'task',
+  'plugins/c/.tessl-plugin/plugin.json': '{}',
+  'plugins/c/skills/three/SKILL.md': 'three',
   'plugins/a/skills/one/SKILL.md': 'one',
   'plugins/a/skills/one/references/r.md': 'r',
   'plugins/a/skills/one/inner/SKILL.md': 'inner',
@@ -18,8 +21,8 @@ const TREE = {
 
 test('skill and plugin directories come from the tree, without node_modules', (t) => {
   const root = tree(t, TREE);
-  assert.deepEqual(skillDirs(root), ['plugins/a/skills/one', 'plugins/a/skills/one-more', 'plugins/a/skills/one/inner', 'plugins/b/skills/two']);
-  assert.deepEqual(tesslPluginDirs(root), ['plugins/a']);
+  assert.deepEqual(skillDirs(root), ['plugins/a/skills/one', 'plugins/a/skills/one-more', 'plugins/a/skills/one/inner', 'plugins/b/skills/two', 'plugins/c/skills/three']);
+  assert.deepEqual(tesslPluginDirs(root), ['plugins/a', 'plugins/c']);
 });
 
 test('a file belongs to the outermost skill it lies in, and a similar name is another skill', (t) => {
@@ -58,6 +61,17 @@ test('the command prints what changed between two commits', (t) => {
   assert.equal(run(t, 'changed.mjs', ['skills', before, after], { cwd: root }).stdout, 'plugins/b/skills/two\n');
   assert.equal(run(t, 'changed.mjs', ['release', `${before}..${after}`], { cwd: root }).stdout, 'plugins/b/skills/two\nplugins/web/cli\n');
   assert.equal(run(t, 'changed.mjs', ['tessl-plugins', `${before}...${after}`], { cwd: root }).stdout, 'plugins/a\n');
+});
+
+test('a plugin without scenarios in evals/ is not evaluated', (t) => {
+  const root = tree(t, TREE);
+  const before = commit(root);
+  write(root, { 'plugins/c/skills/three/SKILL.md': 'three, changed' });
+  const mid = commit(root);
+  assert.equal(run(t, 'changed.mjs', ['tessl-plugins', before, mid], { cwd: root }).stdout, '');
+  write(root, { 'plugins/a/skills/one/SKILL.md': 'one, changed' });
+  const after = commit(root);
+  assert.equal(run(t, 'changed.mjs', ['tessl-plugins', before, after], { cwd: root }).stdout, 'plugins/a\n');
 });
 
 test('a directory name with shell syntax is printed, not run', (t) => {

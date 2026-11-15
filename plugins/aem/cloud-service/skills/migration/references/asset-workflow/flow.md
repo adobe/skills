@@ -1,0 +1,12 @@
+# Asset workflow migration: the four steps (Branch H)
+
+On-premise or AMS DAM asset-processing workflows to asset microservices and post-processing workflows. No Java BPA pattern in this session.
+
+Paths that start with `scripts/` are relative to the migration skill directory, the folder of `SKILL.md`.
+
+If the user asks to **migrate DAM asset workflows** — `DAM Update Asset` customizations, asset workflow launchers, custom asset process steps, ImageMagick `CommandLineProcess` renditions — or mentions Adobe's **Asset Workflow Migration Tool** / `wf-migrator` / `aem-cloud-migration`, follow the **4-step flow**. Adobe's `wf-migrator` JAR makes every change; the skill runs it, gathers the user's decisions and guides the review, and never edits project files itself. The tool version is **[wf-migrator 0.7.0](https://github.com/adobe/aem-cloud-migration/releases/tag/v0.7.0)**, pinned by checksum and downloaded on first run; v0.6.0 lacks its fixes (split handling, Completed step, ImageMagick, runner config, XML formatting), so do not use it. Start by reading [context.md](context.md). **Skip** Branch B.
+
+1. **Decide if it applies** — open the model behind each enabled asset launcher with the user ([context.md](context.md#does-this-project-need-it)). If it only uses OOTB steps with standard settings, STOP — the microservices already do the work.
+2. **Run** — `node scripts/asset-workflow-run.js <project>`. The first run downloads the pinned JAR and checks its SHA-256; `--jar <path>` uses a local copy instead ([context.md](context.md#tool-version-070)). It needs Java 11+ and a clean git tree. Exit `0` = the tool finished; `1` = the tool failed; `2` = stopped before changing anything. Never present a failed run as done.
+3. **Review** — go through `target/asset-workflow-migration/migration-report.md`, the script's warnings and `git diff` with the user, including the models and custom Java steps the report does not cover ([context.md](context.md#review-with-the-user)). Keep the result or undo it with the undo line the script printed (`git checkout . && git clean -fd` only when the tree was clean before the run).
+4. **Post-deploy** — hand over the checks in [context.md](context.md#post-deploy-checks-rde-or-dev-environment): sync models, attach processing profiles, custom workers, launcher conditions, overlapping runner entries; verify on an RDE. Hand-offs for custom Java steps run as separate Branch B sessions. Branch H never edits Java.

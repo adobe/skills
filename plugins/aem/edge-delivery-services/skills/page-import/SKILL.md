@@ -3,7 +3,7 @@ name: page-import
 description: Use this when importing or migrating a single webpage from any URL into canonical EDS block format — structured HTML that authors edit in DA — including when the request uses terms like migrate, migration, or migrating. Covers scraping the page, analyzing structure, mapping to existing blocks, and generating HTML for immediate local preview. Use the snowflake skill instead when the user wants to preserve the original DOM byte-for-byte (static-to-EDS overlay); for building new blocks from scratch use content-driven-development.
 license: Apache-2.0
 metadata:
-  version: "1.1.1"
+  version: "1.1.2"
 ---
 
 # Page Import Orchestrator
@@ -52,8 +52,7 @@ This orchestrator delegates work to:
 
 These skills invoke additional skills as needed:
 - **page-decomposition** - (via identify-page-structure) Analyze content sequences per section
-- **block-inventory** - (via identify-page-structure) Survey available blocks
-- **content-modeling** - (via authoring-analysis) Validate unclear block selections
+- **content-modeling** - Rules for default content vs block (authoring-analysis points to it; not invoked)
 - **block-collection-and-party** - (via authoring-analysis) Validate block existence
 
 ## Import Workflow
