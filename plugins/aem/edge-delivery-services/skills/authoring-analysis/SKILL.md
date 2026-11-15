@@ -31,7 +31,7 @@ From identify-page-structure skill, you need:
 
 - **page-import** - Orchestrator that invokes this skill
 - **identify-page-structure** - Provides section structure and block inventory
-- **content-modeling** - This skill invokes it when block selection is unclear
+- **content-modeling** - Owns the rules for default content vs block (Step 3a). Not invoked here; a block that does not exist yet is recorded as "new block needed" (Step 3b)
 - **block-collection-and-party** - This skill invokes it to validate blocks
 - **generate-import-html** - Uses this skill's output to create HTML
 
@@ -71,6 +71,8 @@ If ANY sections meet these criteria → Execute Step 3e for EACH qualifying sect
 - ❌ Complex layouts (side-by-side columns, split content)
 - ❌ Requires specific structure for decoration
 
+Rules and reasons: see content-modeling (never a `text`, `heading` or `image` block).
+
 **Decision:**
 - If YES (can type normally) → **Mark as DEFAULT CONTENT, DONE** ✅
 - If NO (needs structure) → **Proceed to Step 3b**
@@ -100,43 +102,18 @@ If ANY sections meet these criteria → Execute Step 3e for EACH qualifying sect
 
 **With block inventory context, ask:** "Which available block would an author choose for this?"
 
-**DECISION TREE: When to Invoke content-modeling**
+**Obvious match** (pattern matches a block's purpose 1:1): use it.
+- "Grid of items with images/text" + "cards" block → USE IT ✅
+- "Expandable questions" + "accordion" block → USE IT ✅
+- "Tabbed content panels" + "tabs" block → USE IT ✅
+- "Side-by-side content" + "columns" block → USE IT ✅
+- "Rotating images" + "carousel" block → USE IT ✅
 
-**OBVIOUS MATCH (Don't invoke content-modeling):**
+**Several blocks could fit** ("three items with images": cards or columns?; "customer quotes with photos": quote or cards?): compare the content with each candidate's authored structure (Step 3d) and pick the block whose structure fits the content without bending it. Note the runner-up and why in the output.
 
-Pattern matches block purpose 1:1:
-- "Grid of items with images/text" + see "cards" block → USE IT ✅
-- "Expandable questions" + see "accordion" block → USE IT ✅
-- "Tabbed content panels" + see "tabs" block → USE IT ✅
-- "Side-by-side content" + see "columns" block → USE IT ✅
-- "Rotating images" + see "carousel" block → USE IT ✅
+**Content between two blocks** ("hero-like content in the middle of the page", "card-like items but only two"): use the closest existing block and its variants. Note the mismatch in the output.
 
-**Criteria for OBVIOUS:**
-- Content description matches block purpose exactly
-- No ambiguity about structure
-- Block exists in inventory
-
-**UNCLEAR MATCH (Invoke content-modeling):**
-
-Ambiguous which block to use:
-- "Three items with images" - Could be cards? Could be columns? → INVOKE
-- "List of features with icons" - Cards? Custom list block? → INVOKE
-- "Customer quotes with photos" - Quote block? Cards? Testimonial block? → INVOKE
-
-Missing from inventory:
-- Content needs structure BUT no matching block exists → INVOKE
-- content-modeling can recommend canonical model or suggest creating custom block
-
-Complex authoring consideration:
-- "Hero-like content but in middle of page" → INVOKE
-- "Card-like items but only 2 of them" → INVOKE
-- Need validation on author mental model → INVOKE
-
-**Criteria for UNCLEAR:**
-- Multiple blocks could work
-- No obvious block match
-- Need authoring perspective validation
-- Creating custom block might be needed
+**No block fits** (content needs structure and nothing in the inventory has that shape): record **NEW BLOCK NEEDED** with the content description and why existing blocks do not fit. Do not design the block here: new blocks are built through content-driven-development, which uses content-modeling. Use the closest existing block in the import in the meantime, or default content if nothing is close.
 
 ---
 
@@ -153,22 +130,19 @@ Invoke **block-collection-and-party** skill to:
 
 ### Step 3d: Get Block HTML Structure (BEFORE generating HTML)
 
-**CRITICAL:** Before generating any HTML in next skill, fetch the pre-decoration HTML structure for ALL blocks you'll use.
-
-`<SKILL_DIR>` is the absolute path to the directory containing this SKILL.md.
+**CRITICAL:** Before generating any HTML in the next skill, read the authored (pre-decoration) structure of ALL blocks you will use. Append `.plain.html` to a page that shows the block:
 
 ```bash
-# Get structure examples for each block
-node <SKILL_DIR>/../block-collection-and-party/scripts/get-block-structure.js cards
-node <SKILL_DIR>/../block-collection-and-party/scripts/get-block-structure.js tabs
-node <SKILL_DIR>/../block-collection-and-party/scripts/get-block-structure.js accordion
-node <SKILL_DIR>/../block-collection-and-party/scripts/get-block-structure.js columns
+# Block Collection example page
+curl -s https://main--aem-block-collection--adobe.aem.live/block-collection/cards.plain.html
 ```
+
+For a block in the project, use its page in the block library or a local test page (`http://localhost:3000/<path>.plain.html`).
 
 **Why this prevents mistakes:**
 - Shows exact row/column structure (e.g., cards: each card = 1 row with 2 columns)
 - Reveals all variants (e.g., "Cards" vs "Cards (no images)")
-- Displays clean HTML without decoration
+- Displays the markup without decoration
 - Prevents the #1 HTML generation error: wrong structure
 
 **Use the output to:**
@@ -367,7 +341,7 @@ Before proceeding to next skill, verify you have completed:
 This skill provides complete authoring analysis:
 
 **1. Authoring decisions for all sequences:**
-- Each sequence marked as DEFAULT CONTENT or specific block name
+- Each sequence marked as DEFAULT CONTENT, a specific block name, or NEW BLOCK NEEDED
 - Reasoning documented
 
 **2. Block structures fetched:**

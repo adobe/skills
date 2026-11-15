@@ -23,7 +23,6 @@ Skills for developing sites on AEM Edge Delivery Services: blocks, content model
 
 | Skill                          | Description                                             |
 | ------------------------------ | ------------------------------------------------------- |
-| `block-inventory`            | Survey available blocks in project and Block Collection |
 | `block-collection-and-party` | Search reference implementations                        |
 | `find-test-content`          | Find existing content for testing                       |
 

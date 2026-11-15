@@ -33,6 +33,8 @@ aem up --no-open --no-stop-other
   `content/drafts/x.html` is at `/drafts/x` (and `/drafts/x.plain.html`). The file is a full
   document (`<body><header></header><main>…</main><footer></footer></body>`). Use
   `--html-folder <dir>` only for HTML outside `./content/`, such as import output.
+  Local pages are not indexed: `/query-index.json` is proxied from the remote site unless
+  `content/query-index.json` exists, so find local pages on disk in `./content/`.
 - **Other origin:** `--url https://main--<site>--<org>.aem.page` (e.g. stage).
 - **`.env`:** every flag has an `AEM_` variable read from the project's `.env`: `AEM_PORT`,
   `AEM_PAGES_URL`, `AEM_TLS_CERT`, `AEM_TLS_KEY`, `AEM_NO_OPEN=true` (not `AEM_OPEN=false`).
