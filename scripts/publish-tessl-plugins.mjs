@@ -1,6 +1,9 @@
-// Publishes each Tessl plugin whose manifest version differs from the one before this
-// push. Without a usable "before" (a first push, a force push), a plugin is published
-// only if its manifest is among the changed files.
+// Publishes plugins to the Tessl registry. Every plugin has a Tessl manifest, built from its
+// root plugin.json (check-plugins.mjs source holds a pull request to that), and each is
+// published when the version in that manifest differs from the one before this push: with
+// every release of the plugin, and the first time it has a manifest at all. Without a usable
+// "before" (a first push, a force push), a plugin is published only if its manifest is among
+// the changed files.
 //   node scripts/publish-tessl-plugins.mjs <before sha> <after sha>
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';

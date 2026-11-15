@@ -1,7 +1,7 @@
 {
   "name": "aem-forms-edge-delivery-services",
-  "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block.",
   "version": "1.0.0",
+  "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block.",
   "author": {
     "name": "Adobe"
   },

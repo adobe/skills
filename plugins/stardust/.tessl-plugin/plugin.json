@@ -2,6 +2,11 @@
   "name": "adobe/stardust",
   "version": "0.38.6",
   "description": "Redesign an existing website to make it better. Built on top of impeccable.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
   "skills": [
     "skills/audit",
     "skills/deploy",

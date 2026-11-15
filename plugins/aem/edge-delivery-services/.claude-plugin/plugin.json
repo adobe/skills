@@ -1,11 +1,17 @@
 {
   "name": "aem-edge-delivery-services",
-  "description": "Skills for AEM Edge Delivery Services development, including Content Driven Development workflow, block building, testing, content modeling, code review, and page migration.",
   "version": "1.0.0",
+  "description": "Skills for AEM Edge Delivery Services development, including Content Driven Development workflow, block building, testing, content modeling, code review, and page migration.",
   "author": {
     "name": "Adobe"
   },
   "repository": "https://github.com/adobe/skills",
   "license": "Apache-2.0",
-  "keywords": ["aem", "edge-delivery-services", "adobe", "blocks", "development"]
+  "keywords": [
+    "aem",
+    "edge-delivery-services",
+    "adobe",
+    "blocks",
+    "development"
+  ]
 }
