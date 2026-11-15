@@ -42,9 +42,11 @@
  *     selector guess. Live probes stay for what the static DOM cannot answer
  *     (geometry, computed styles).
  *   - SCREENSHOT: a full-page PNG per page under <out>/assets/screenshots/<slug>.png
- *     (viewport-only fallback on extremely tall pages; mode in _signals.screenshotMode,
+ *     (the page is measured first — screenshotPage: capped at 30000px, viewport-only when
+ *     the page's own CSS overflowed to Chrome's layout maximum; mode in _signals.screenshotMode,
  *     relative path in the page record's `screenshot` field) — feeds the extract
- *     SKILL.md Phase 2.5 vision gate.
+ *     SKILL.md Phase 2.5 vision gate. A page with no screenshot or a layout overflow is a
+ *     `[crawl] WARN` line and an entry in _crawl-log.json#crawl.degraded with the reason.
  *   - LOCALE-ROOT CAPTURE GAPS (cross-page, after the crawl): for every captured
  *     locale root — a one- or two-segment path of locale codes, such as /en, /fr-ca,
  *     /ca/en — the same-origin links ON that page under its own path are listed and
@@ -101,12 +103,14 @@
  *                                  (+ `dynamic` with --dynamics; `_signals.duplicateOf` marks a
  *                                  page whose main content hashes equal to an earlier page's)
  *   pages/<slug>.html              the settled rendered DOM, verbatim (parse offline — never re-scrape)
- *   assets/screenshots/<slug>.png  full-page screenshot (viewport-only on very tall pages;
- *                                  `_signals.screenshotMode` says which)
+ *   assets/screenshots/<slug>.png  full-page screenshot (`_signals.screenshotMode`: fullPage |
+ *                                  capped | viewport | failed; `screenshotReason`, `pageSize`,
+ *                                  `layoutOverflow` say why)
  *   assets/favicon.<ext>           the site icon from <link rel~=icon> or /favicon.ico, <ext> from
  *                                  its content-type — the ONLY media file this crawler downloads
  *   _crawl-log.json                discovery technique + page count, consent mode, favicon result,
- *                                  per-URL failures, slash retries, `captureGaps` (locale roots,
+ *                                  per-URL failures, `crawl.degraded` (pages captured without a
+ *                                  usable screenshot, or with a layout overflow), slash retries, `captureGaps` (locale roots,
  *                                  above) (+ `dynamicSurface` with --dynamics); merged into an
  *                                  existing log, never replaced
  * Not captured here: page images and videos (recorded as URLs under `media`, never downloaded),
@@ -1104,6 +1108,49 @@ function capture() {
 }
 
 /**
+ * The page's screenshot for the vision gate (#602) → { mode, pageSize, layoutOverflow, reason }. The page is measured
+ * first (live-session pageSizeInPage / shotPlan): a page at Chrome's layout maximum — a CSS defect on the source — or
+ * wider than 4 viewports gets the viewport only, a page taller than SHOT_MAX_HEIGHT is captured down to it ('capped'),
+ * any other page in full. A full-page capture that throws is retried viewport-only on the same page — unless the
+ * renderer crashed: then on a fresh page from `reopen` (null = none), closed afterwards, never on the dead one.
+ * mode: 'fullPage' | 'capped' | 'viewport' | 'failed'; `reason` says why a capture is less than the full page.
+ */
+export async function screenshotPage(page, shotPath, { reopen = null } = {}) {
+  const { pageSizeInPage, shotPlan, layoutOverflow } = await liveSession();
+  let crashed = false;
+  if (typeof page.on === 'function') page.on('crash', () => { crashed = true; });
+  const viewport = (typeof page.viewportSize === 'function' && page.viewportSize()) || CRAWL_CONTEXT.viewport;
+  const measured = await page.evaluate(pageSizeInPage).catch(() => null);
+  const pageSize = measured && Number.isFinite(measured.w) && Number.isFinite(measured.h) ? { w: measured.w, h: measured.h } : null;
+  const plan = shotPlan(pageSize, viewport.width);
+  const out = { mode: plan.mode, pageSize, layoutOverflow: Boolean(layoutOverflow(pageSize)), reason: plan.reason };
+  const viewportShot = async (p) => p.screenshot({ path: shotPath, fullPage: false, timeout: 30000 });
+  if (plan.mode === 'viewport') {
+    try { await viewportShot(page); } catch (e) { return { ...out, mode: 'failed', reason: `${plan.reason}; the viewport screenshot failed too (${String(e.message || e).split('\n')[0]})` }; }
+    return out;
+  }
+  try {
+    await page.screenshot({ path: shotPath, fullPage: true, timeout: 30000, ...(plan.clip ? { clip: plan.clip } : {}) });
+    return out;
+  } catch (e) {
+    const why = String(e.message || e).split('\n')[0];
+    let target = page;
+    if (crashed || (typeof page.isClosed === 'function' && page.isClosed())) {
+      if (!reopen) return { ...out, mode: 'failed', reason: `the renderer crashed during the full-page screenshot (${why})` };
+      try { target = await reopen(); } catch (re) { return { ...out, mode: 'failed', reason: `the renderer crashed during the full-page screenshot (${why}); reopening the page failed (${String(re.message || re).split('\n')[0]})` }; }
+    }
+    try {
+      await viewportShot(target);
+      return { ...out, mode: 'viewport', reason: `the full-page screenshot failed (${why})${target === page ? '' : ' and crashed the renderer: the viewport came from a fresh page'}` };
+    } catch (ve) {
+      return { ...out, mode: 'failed', reason: `the full-page screenshot failed (${why}); the viewport screenshot too (${String(ve.message || ve).split('\n')[0]})` };
+    } finally {
+      if (target !== page) await target.close().catch(() => {});
+    }
+  }
+}
+
+/**
  * Capture one page on a fresh tab of `context` under the per-page deadline (args.pageTimeoutMs; 0 = none): a page
  * that never settles is recorded as TimeoutError instead of eating the run's cap. The deadline closes the tab, so
  * the abandoned navigation or probe dies with it. Every exit path releases the page. `sharedBindings` (tests) stands in
@@ -1112,14 +1159,14 @@ function capture() {
 export async function capturePage(context, url, slug, args, sharedBindings = null) {
   const page = await context.newPage();
   try {
-    return await withPageDeadline(captureOnPage(page, url, slug, args, sharedBindings), args.pageTimeoutMs);
+    return await withPageDeadline(captureOnPage(page, url, slug, args, sharedBindings, context), args.pageTimeoutMs);
   } finally {
     // every exit path — success, validation throw, goto error, the deadline — releases the
     // page, or failure-heavy crawls accumulate open tabs in the long-lived worker context.
     await page.close().catch(() => {});
   }
 }
-async function captureOnPage(page, url, slug, args, sharedBindings = null) {
+async function captureOnPage(page, url, slug, args, sharedBindings = null, context = null) {
   const live = sharedBindings ? crawlerLiveBindings(sharedBindings) : null;
   const navigateLive = live ? live.runLiveNavigation : sharedNavigate;
   const recordSuccess = live ? live.recordLiveNavigationSuccess : recordSharedSuccess;
@@ -1216,25 +1263,24 @@ async function captureOnPage(page, url, slug, args, sharedBindings = null) {
   if (!rec.headings.length && rec._signals.mainTextLen === 0 && rec._signals.realImageCount === 0) {
     throw Object.assign(new Error('empty page — possibly soft-404'), { errorClass: 'EmptyPageError' });
   }
-  // full-page screenshot for the Phase 2.5 vision gate. Extremely tall pages
-  // can exceed Playwright's raster limit — catch and retry viewport-only,
-  // recording which mode was used in _signals.
+  // full-page screenshot for the Phase 2.5 vision gate — measured first, captured by screenshotPage.
   const shotsDir = path.join(args.out, 'assets', 'screenshots');
   await mkdir(shotsDir, { recursive: true });
   const shotPath = path.join(shotsDir, `${slug}.png`);
-  let screenshotMode = 'fullPage';
-  try {
-    await page.screenshot({ path: shotPath, fullPage: true, timeout: 30000 });
-  } catch {
-    screenshotMode = 'viewport';
-    try {
-      await page.screenshot({ path: shotPath, fullPage: false, timeout: 30000 });
-    } catch {
-      screenshotMode = 'failed';
-    }
-  }
+  const shot = await screenshotPage(page, shotPath, {
+    reopen: context && (async () => {
+      const fresh = await context.newPage();
+      await navigateLive(fresh, resolvedUrl, () => goto(fresh, resolvedUrl, { waitUntil: 'domcontentloaded', timeout: 45000 }));
+      await fresh.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
+      return fresh;
+    }),
+  });
+  const screenshotMode = shot.mode;
   rec.screenshot = screenshotMode === 'failed' ? null : `assets/screenshots/${slug}.png`;
   rec._signals.screenshotMode = screenshotMode;
+  if (shot.pageSize) rec._signals.pageSize = shot.pageSize;
+  if (shot.layoutOverflow) rec._signals.layoutOverflow = true;
+  if (shot.reason) rec._signals.screenshotReason = shot.reason;
   // live-render evidence per SKILL.md § Phase 2 / current-state-schema.md —
   // validateProvenance() downstream refuses pages without these five fields.
   if (resolvedUrl !== url) rec._resolvedUrl = resolvedUrl;
@@ -1316,7 +1362,7 @@ async function main() {
   await probe.close();
   console.error(`[crawl] technique=${technique} pages=${urls.length}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock: botBlock.kind, botMarker: botBlock.marker } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [], pageTimeoutMs: args.pageTimeoutMs } };
+  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock: botBlock.kind, botMarker: botBlock.marker } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [], degraded: [], pageTimeoutMs: args.pageTimeoutMs } };
   let ok = 0;
   await context.close();
 
@@ -1364,7 +1410,12 @@ async function main() {
         const s = rec._signals;
         const dy = rec.dynamic?.summary || {};
         const warn = [s.spaShellSuspect && 'SPA-SHELL?', s.trackingOnlyMedia && 'TRACKING-PIXEL-ONLY', s.filteredInterstitials && `filtered:${s.filteredInterstitials}`, dy.sameSiteEndpoints && `data-endpoints:${dy.sameSiteEndpoints}`, dy.searchForms && 'SEARCH-FORM', dy.hydrated && 'HYDRATED'].filter(Boolean).join(' ');
-        console.error(`[crawl] OK   ${slug}  ${warn}`);
+        // a page without a usable screenshot, or one whose own CSS overflowed, is a WARN with the reason (#602):
+        // `screenshotReason` says whether a recrawl can help — never for a layout overflow
+        if (s.screenshotMode === 'failed' || s.layoutOverflow) {
+          log.crawl.degraded.push({ url: recordUrl, slug, screenshotMode: s.screenshotMode, ...(s.layoutOverflow ? { layoutOverflow: true } : {}), reason: s.screenshotReason || null });
+          console.error(`[crawl] WARN ${slug}  screenshot ${s.screenshotMode}: ${s.screenshotReason || 'no reason recorded'}  ${warn}`);
+        } else console.error(`[crawl] OK   ${slug}  ${[s.screenshotMode === 'fullPage' ? '' : `shot:${s.screenshotMode}`, warn].filter(Boolean).join(' ')}`);
       } catch (err) {
         log.crawl.failures.push({ url, slug, errorClass: err.errorClass || 'Error', message: String(err.message || err), at: new Date().toISOString() });
         console.error(`[crawl] FAIL ${slug}  ${err.errorClass || 'Error'}: ${err.message}`);
@@ -1404,7 +1455,7 @@ async function main() {
   const logPath = path.join(args.out, '_crawl-log.json');
   const prev = existsSync(logPath) ? JSON.parse(await readFile(logPath, 'utf8')) : {};
   await writeFile(logPath, JSON.stringify({ ...prev, ...log }, null, 2));
-  console.error(`[crawl] done. ${ok}/${urls.length} captured, ${log.crawl.failures.length} failed. log: ${logPath}`);
+  console.error(`[crawl] done. ${ok}/${urls.length} captured, ${log.crawl.failures.length} failed${log.crawl.degraded.length ? `, ${log.crawl.degraded.length} without a full screenshot (crawl.degraded)` : ''}. log: ${logPath}`);
 }
 
 if (IS_MAIN) main().catch((e) => { console.error(`[crawl] fatal: ${e.message}`); process.exit(2); });
