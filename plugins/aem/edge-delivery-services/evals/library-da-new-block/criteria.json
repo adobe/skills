@@ -10,12 +10,12 @@
     {
       "name": "Each variant once, via the block class",
       "max_score": 15,
-      "description": "The page shows the default look and the `dark` variant, each once, as `<div class=\"testimonial\">` and `<div class=\"testimonial dark\">` (the variant is a class after the block name, as in the cards page). Content is realistic sample text with a short quote and an avatar picture. The default look is shown exactly once (a third example that repeats the default look as an edge case loses points)."
+      "description": "The page shows the default look and the `dark` variant, each once, as `<div class=\"testimonial\">` and `<div class=\"testimonial dark\">` (the variant is a class after the block name, as in the cards page). Content is realistic sample text with a short quote and an avatar picture. The default look is shown exactly once (a third example that repeats the default look as an edge case loses points). Each example includes an avatar `picture` (a placeholder source is fine); omitting it loses points here."
     },
     {
       "name": "Happy path only",
       "max_score": 15,
-      "description": "The library page has no edge cases: no missing-avatar example, no very long quote, no malformed rows. Leaving the avatar picture out of the examples is not penalized here. Edge-case content, if any is added, lives outside content/docs/library (e.g. content/drafts/) or only in unit tests."
+      "description": "The library page has no edge cases: no missing-avatar example, no very long quote, no malformed rows. Edge-case content, if any is added, lives outside content/docs/library (e.g. content/drafts/) or only in unit tests."
     },
     {
       "name": "Authors told when to use it",

@@ -20,14 +20,14 @@ Don't assume a location or type. Look at what the project has, and ask the user 
 
 ## What an entry contains
 
-- Happy path only: each variant once, with realistic content (a short quote and an image if the block has one). Edge cases (missing cells, long text, no image) never go in the library. Cover them in unit tests or on a drafts page such as `content/drafts/`.
+- Happy path only: each variant once, with realistic content, including an image if the block has one (a placeholder source is fine). Edge cases (missing cells, long text, no image) never go in the library. Cover them in unit tests or on a drafts page such as `content/drafts/`.
 - A `library-metadata` block with a `description` row that says when to use the block.
 - Add only the page and the sheet row. No other files.
 
 ## Experience Workspace (DA)
 
 1. One page per block under the library folder. A visual variant goes in the block's heading row in parentheses (`testimonial (dark)`) and becomes a class. Content variants (same markup, different content) get a heading above the block.
-2. Add a row to the `blocks` sheet: `name`, and `path` as `https://content.da.live/{org}/{site}/{library folder}/{block}`, in the format of the existing rows.
+2. Add a row to the `blocks` sheet: `name`, and `path` as `https://content.da.live/{org}/{site}/{path of the new page}`, in the format of the existing rows (the page is in the folder the existing block pages are in).
 3. The `library` tab of the site config needs a row (`title`, `path` = the sheet's `.json` URL). It exists already if other blocks show up; check and don't duplicate it. It lives outside the repo.
 
 ## Sidekick Library
@@ -39,4 +39,7 @@ Don't assume a location or type. Look at what the project has, and ask the user 
 
 ## Outside the repo
 
-Local `./content/` edits are not visible to authors. Tell the user what remains: push the content (page and sheet), preview and publish for the Sidekick Library, and check the site config `library` tab for Experience Workspace.
+Local `./content/` edits are not visible to authors. Tell the user what remains.
+
+- **Experience Workspace:** push the content (page and sheet), and check the site config `library` tab.
+- **Word and Google Docs:** the local HTML and sheet JSON are only a preview of the entry. The user creates the block document and the `helix-blocks` row in the content source (SharePoint or Google Drive), then previews and publishes both. Follow a project-specific transfer workflow if one exists.

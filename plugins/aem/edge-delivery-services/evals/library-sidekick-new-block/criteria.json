@@ -10,12 +10,12 @@
     {
       "name": "One section per variant",
       "max_score": 18,
-      "description": "The document shows the default look and the `dark` variant, each once, as `<div class=\"testimonial\">` and `<div class=\"testimonial dark\">`, each in its own section (its own top-level `<div>` in `main`, as in the cards document), so the Sidekick Library lists them as separate items. Sample content is realistic. The default look is shown exactly once (a third example that repeats the default look as an edge case loses points)."
+      "description": "The document shows the default look and the `dark` variant, each once, as `<div class=\"testimonial\">` and `<div class=\"testimonial dark\">`, each in its own section (its own top-level `<div>` in `main`, as in the cards document), so the Sidekick Library lists them as separate items. Sample content is realistic. The default look is shown exactly once (a third example that repeats the default look as an edge case loses points). Each example includes an avatar `picture` (a placeholder source is fine); omitting it loses points here."
     },
     {
       "name": "Happy path only",
       "max_score": 15,
-      "description": "The document has no edge cases: no missing-avatar example, no very long quote. Edge-case content, if any, lives outside content/tools/sidekick (e.g. content/drafts/) or only in unit tests. Leaving the avatar picture out of the examples is not penalized here."
+      "description": "The document has no edge cases: no missing-avatar example, no very long quote. Edge-case content, if any, lives outside content/tools/sidekick (e.g. content/drafts/) or only in unit tests."
     },
     {
       "name": "Library metadata used well",
@@ -35,7 +35,7 @@
     {
       "name": "Outside-repo steps in NOTES.md",
       "max_score": 12,
-      "description": "NOTES.md says the new document and the updated library workbook must be pushed to the content source and previewed and published for the library to show the block, and (credit) that example pages under /tools/** should be excluded from indexing with bulk metadata if not already. It doesn't claim the block is already visible to authors."
+      "description": "NOTES.md says that the local HTML and sheet are only a preview: the block document and the `helix-blocks` row must be created in the real content source (SharePoint or Google Drive) and then previewed and published for the library to show the block; credit also for noting `/tools/**` should be excluded from indexing with bulk metadata. It doesn't claim the block is already visible to authors."
     },
     {
       "name": "Scoped and lean",
