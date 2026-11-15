@@ -25,7 +25,6 @@ aio auth ctx --list
 ```
 
 **Prevention:**
-- In CI/CD, `adobe/aio-cli-setup-action` only installs the CLI (`npm install -g @adobe/aio-cli`); it does not authenticate. The credentials come from the repository secrets passed to the workflow steps
 - Ensure all 14 repository secrets are set with correct workspace suffix (`_STAGE` / `_PROD`)
 - Never use the deprecated `auth` command in `aio-apps-action` — it is JWT-based and no longer supported
 
