@@ -95,6 +95,11 @@ Skills run with the user's credentials, on the user's machine. Treat a skill as 
   `hooks/hooks.json`. So a plugin with hooks has both files, with the same content, and
   none inline in a manifest. CI checks that: without its copy, the hook of
   `adobe-for-developers` that asks before a deletion does not run in Copilot CLI.
+- Google Antigravity reads the root `plugin.json` as well (checked with its CLI 1.5.9). It
+  takes hooks only from `hooks.json` at the plugin root and MCP servers only from
+  `mcp_config.json`. The plugins here have neither, so in Antigravity a plugin is its
+  skills, and a hook that guards an action does not run there. It loads the first 24,000
+  bytes of a `SKILL.md` body and drops the rest.
 - A plugin brought in from another repository brings its `plugin.json`, `mcp.json`, skills
   and hooks, not the generated manifests, and has its version from there: the Commerce
   plugins, `adobe-for-creativity` and the skill of `run-workflow`.

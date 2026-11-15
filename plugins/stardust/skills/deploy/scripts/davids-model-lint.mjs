@@ -42,10 +42,20 @@
  * build-harness.mjs) — content pages are machine-generated and regular; this
  * is a structural lint, not a browser-grade parser.
  */
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
 import { pathKey } from './eds-path.mjs';
 import { cssAsText, decodeEntities } from './css-as-text.mjs';
+
+// The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) {
+  console.error('davids-model-lint: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
+  process.exit(1);
+}
+const { KEY_VALUE_BLOCKS } = await import(CONTRACTS.href);
+// KEY_VALUE_BLOCKS (lib/kinds.mjs): metadata, section-metadata, library-metadata — linted as key/value rows, not content
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -56,7 +66,6 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 }
 
 const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
-const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata', 'library-metadata']);
 const EMBED_HOST = /(youtube\.com|youtu\.be|vimeo\.com|player\.|\/embed\/)/i;
 // Default-content-expressible tags: what a prose section can carry natively.
 const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
