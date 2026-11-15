@@ -170,7 +170,7 @@
       "name": "adobe-cja",
       "source": "./plugins/adobe-cja",
       "description": "Practitioner skills for Adobe Customer Journey Analytics via the CJA MCP server",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "analytics",
       "keywords": [
         "adobe",
