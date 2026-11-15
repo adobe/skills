@@ -1,3 +1,10 @@
+# 1.0.0 (2026-11-15)
+
+
+### Features
+
+* **aem-eds-content-ops:** add performance-budget skill ([#659](https://github.com/adobe/skills/issues/659)) ([a352edc](https://github.com/adobe/skills/commit/a352edc0bb226d64851888d2fc26ec1f589ff62d))
+
 # Changelog
 
 ## 1.0.0 (2026-05-14)
