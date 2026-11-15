@@ -220,8 +220,8 @@ not vendored-absolute) — should find none.
 ### 3.8 — DA-source body fragment
 
 Write `output/da/<page-slug>.html` in the canonical `<div class="…">`
-block form (see `da-content` §3.2). Read `da-content` §3, §3.9,
-§5, and §9 before writing this file — block format, cell content
+block form (see `da-content`). Read `da-content` (Blocks, Inline tags,
+Page metadata, Images and links) before writing this file — block format, cell content
 normalization, page metadata, and image URL rules all live there.
 
 Structure:
@@ -283,11 +283,11 @@ grep -REn "=\"assets/" "$PROJ/output/templates" "$PROJ/output/fragments" "$PROJ/
 #  document this gap in the future-validator roadmap)
 
 # 4) DA doc has no <span class> (stripped) and no <table> (Snowflake
-#    uses div form). See da-content §3.9 for full normalization.
+#    uses div form). See da-content (Inline tags) for full normalization.
 grep -cE "<table|<span class" "$PROJ/output/da/"*.html
 # expected: 0 (per file)
 
-# 4a) WARN: <br> is position-dependent (da-content §3.9).
+# 4a) WARN: <br> is position-dependent (da-content, Inline tags).
 grep -nE "<br>" "$PROJ/output/da/"*.html && echo "WARN: <br> found — verify position" || echo "OK"
 
 # 5) DA cell <img> URLs are absolute
@@ -471,7 +471,7 @@ blocks in DA canonical div-class format. See
 ### B.8 — Build the DA-source body fragment
 
 Write `output/da/<page-slug>.html` in the canonical DA body
-fragment format (`da-content` §1, §3.2). Structure:
+fragment format (`da-content`, Page structure and Blocks). Structure:
 
 ```html
 <body>

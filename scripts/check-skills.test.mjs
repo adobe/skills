@@ -21,7 +21,9 @@ function repo(t, files) {
 
 const skill = (name, lines = 3) => `---\nname: ${name}\ndescription: d\n---\n${'line\n'.repeat(lines)}`;
 const manifest = '{"name":"p"}';
-const found = (root) => findViolations(root).map(({ rule, file }) => `${rule} ${file}`);
+// the other rules, without `orphaned`, which has its own tests below
+const found = (root) => findViolations(root).filter(({ rule }) => rule !== 'orphaned').map(({ rule, file }) => `${rule} ${file}`);
+const orphans = (root) => findViolations(root).filter(({ rule }) => rule === 'orphaned').map(({ file }) => file);
 
 test('a tree without violations has none', (t) => {
   const root = repo(t, {
@@ -93,4 +95,64 @@ test('--list with an unknown rule exits 2 and prints no list', (t) => {
   const result = spawnSync('node', [SCRIPT, '--list', 'no-such-rule'], { cwd: root, encoding: 'utf8' });
   assert.equal(result.status, 2);
   assert.equal(result.stdout, '');
+});
+
+test('a skill below another skill is orphaned; the folders directly under skills/ are not', (t) => {
+  const root = repo(t, {
+    'plugins/a/.claude-plugin/plugin.json': manifest,
+    'plugins/a/skills/top/SKILL.md': skill('top'),
+    'plugins/a/skills/top/sub/SKILL.md': skill('sub'),
+    'plugins/a/skills/top/deep/er/SKILL.md': skill('er'),
+  });
+  assert.deepEqual(orphans(root), ['plugins/a/skills/top/deep/er/SKILL.md', 'plugins/a/skills/top/sub/SKILL.md']);
+  const [violation] = findViolations(root).filter(({ file }) => file.endsWith('sub/SKILL.md'));
+  assert.match(violation.detail, /lies below skills\/top\/, where no client looks: move it to skills\/sub\//);
+});
+
+test('a folder the Claude Code manifest lists under "skills" is found, as a skill or as a directory of skills', (t) => {
+  const root = repo(t, {
+    'plugins/a/.claude-plugin/plugin.json': '{"name":"p","skills":["./skills/","./skills/suite/one","./extra"]}',
+    'plugins/a/skills/suite/SKILL.md': skill('suite'),
+    'plugins/a/skills/suite/one/SKILL.md': skill('one'),
+    'plugins/a/skills/suite/two/SKILL.md': skill('two'),
+    'plugins/a/extra/three/SKILL.md': skill('three'),
+    'plugins/b/.claude-plugin/plugin.json': '{"name":"q","skills":"./more"}',
+    'plugins/b/more/four/SKILL.md': skill('four'),
+  });
+  assert.deepEqual(orphans(root), ['plugins/a/skills/suite/two/SKILL.md']);
+});
+
+test('a plugin.json inside a skill folder is a file of that skill, not a plugin of its own', (t) => {
+  const root = repo(t, {
+    'plugins/a/plugin.json': '{"name":"a"}',
+    'plugins/a/skills/authoring/SKILL.md': skill('authoring'),
+    'plugins/a/skills/authoring/assets/example/plugin.json': '{"name":"example"}',
+    'plugins/a/skills/authoring/assets/example/skills/demo/SKILL.md': skill('demo'),
+    'plugins/b/plugin.json': '{"name":"b"}',
+    'plugins/b/skills/demo/SKILL.md': skill('demo'),
+  });
+  // the demo skill below the asset belongs to plugin a: no client finds it, and its name
+  // collides with the one in plugin b across plugins, not inside a plugin called "example"
+  assert.deepEqual(orphans(root), ['plugins/a/skills/authoring/assets/example/skills/demo/SKILL.md']);
+  assert.deepEqual(found(root), [
+    'duplicate-across-plugins plugins/a/skills/authoring/assets/example/skills/demo/SKILL.md',
+    'duplicate-across-plugins plugins/b/skills/demo/SKILL.md',
+  ]);
+});
+
+test('a skill outside every plugin is orphaned', (t) => {
+  const root = repo(t, { 'plugins/loose/skills/one/SKILL.md': skill('one') });
+  const violations = findViolations(root);
+  assert.deepEqual(violations.map(({ rule, file }) => `${rule} ${file}`), ['orphaned plugins/loose/skills/one/SKILL.md']);
+  assert.match(violations[0].detail, /is in no plugin/);
+});
+
+test('a plugin that has only its root plugin.json yet is a plugin; what it lists for Claude Code alone does not count', (t) => {
+  const root = repo(t, {
+    'plugins/new/plugin.json': '{"name":"new","extensions":{"io.github.ai-ecoverse.x927":{"targets":{"claude":{"skills":["./skills/suite/one"]}}}}}',
+    'plugins/new/.claude-plugin/plugin.json': '{"name":"new","skills":["./skills/suite/one"]}',
+    'plugins/new/skills/suite/SKILL.md': skill('suite'),
+    'plugins/new/skills/suite/one/SKILL.md': skill('one'),
+  });
+  assert.deepEqual(orphans(root), ['plugins/new/skills/suite/one/SKILL.md']);
 });

@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.39.0 — one copy of the shared script rules, shipped with the master's scripts
+## Unreleased — one copy of the shared script rules, shipped with the master's scripts
 
 Adding the EDS widget (0.34.0) touched 17 scripts, because every skill's scripts carried their own copy of the path,
 widget, chrome and kind rules. Those copies had drifted (nine path normalisers, five widget-stem helpers, two sets of
