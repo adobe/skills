@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { hasLicense, hookProblems, licenses, uncoveredPlugins, withoutSource } from './check-plugins.mjs';
+import { hasLicense, hookProblems, licenses, uncoveredPlugins, withoutSource, withoutTessl } from './check-plugins.mjs';
 import { run, tree } from './lib/testing.mjs';
 
 const TREE = {
@@ -99,4 +99,22 @@ test('a plugin with a Claude Code manifest and no root plugin.json is found', (t
   const result = run(t, 'check-plugins.mjs', ['source'], { cwd: root });
   assert.equal(result.status, 1);
   assert.match(result.stdout, /::error file=plugins\/product\/b\/\.claude-plugin\/plugin\.json::plugins\/product\/b has no root plugin\.json/);
+});
+
+test('a plugin whose plugin.json has no Tessl target is found: every plugin is published to the Tessl registry', (t) => {
+  const source = (targets) => JSON.stringify({ $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json', name: 'p', extensions: { 'io.github.ai-ecoverse.x927': { targets } } });
+  const root = tree(t, {
+    'plugins/published/plugin.json': source({ claude: {}, tessl: { name: 'adobe/published' } }),
+    'plugins/product/claude-only/plugin.json': source({ claude: {} }),
+    'plugins/nameless/plugin.json': source({ claude: {}, tessl: {} }),
+    // not a plugin's source: a generated manifest, and a plugin.json of another kind
+    'plugins/published/.tessl-plugin/plugin.json': '{}',
+    'plugins/published/skills/s/assets/plugin.json': '{"name":"an asset"}',
+  });
+  assert.deepEqual(withoutTessl(root), ['plugins/nameless', 'plugins/product/claude-only']);
+  const result = run(t, 'check-plugins.mjs', ['source'], { cwd: root });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /::error file=plugins\/product\/claude-only\/plugin\.json::plugins\/product\/claude-only has no Tessl target/);
+  assert.match(result.stdout, /Every plugin has a root plugin\.json\./);
+  assert.match(result.stdout, /2 plugin\(s\) have no Tessl target\./);
 });

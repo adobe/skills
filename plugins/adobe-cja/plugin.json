@@ -19,7 +19,11 @@
   "extensions": {
     "io.github.ai-ecoverse.x927": {
       "targets": {
-        "claude": {}
+        "claude": {},
+        "tessl": {
+          "name": "adobe/adobe-cja",
+          "private": false
+        }
       },
       "marketplace": {
         "description": "Practitioner skills for Adobe Customer Journey Analytics via the CJA MCP server"

@@ -23,6 +23,10 @@
         "claude": {
           "displayName": "Adobe for Developers",
           "privacyPolicyUrl": "https://www.adobe.com/privacy/policy.html"
+        },
+        "tessl": {
+          "name": "adobe/adobe-for-developers",
+          "private": false
         }
       },
       "marketplace": {

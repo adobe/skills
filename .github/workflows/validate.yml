@@ -191,7 +191,7 @@ jobs:
       - name: Check that plugins keep their hooks where each client looks for them
         run: node scripts/check-plugins.mjs hooks
 
-      - name: Check that every plugin has a root plugin.json
+      - name: Check that every plugin has a root plugin.json with a Tessl target
         run: node scripts/check-plugins.mjs source
 
   license-field:

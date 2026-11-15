@@ -29,7 +29,11 @@
   "extensions": {
     "io.github.ai-ecoverse.x927": {
       "targets": {
-        "claude": {}
+        "claude": {},
+        "tessl": {
+          "name": "adobe/aem-6-5-lts",
+          "private": false
+        }
       },
       "marketplace": {
         "description": "All AEM 6.5 LTS and AMS skills: Dispatcher config authoring and hardening, workflow design and debugging, replication agent configuration, content activation, programmatic Replication API, lifecycle orchestration, and troubleshooting, and project bootstrap.",

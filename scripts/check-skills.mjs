@@ -42,14 +42,17 @@ function frontmatterName(text) {
   return name?.replace(/^(['"])(.*)\1$/, '$2');
 }
 
-// The plugin a skill belongs to: the nearest directory above it with a manifest. That is
+// The plugin a skill belongs to: the outermost directory above it with a manifest. That is
 // the Claude Code manifest, or the root plugin.json it is generated from: a new plugin in
-// a pull request has only the second until CI has built the first.
+// a pull request has only the second until CI has built the first. The outermost, because
+// a plugin.json further down is a file of the plugin (a fixture, an asset of a skill), not
+// a plugin of its own, and must not take the skills below it out of their plugin.
 function pluginOf(root, file) {
+  let plugin = null;
   for (let dir = dirname(file); dir.startsWith(root) && dir !== root; dir = dirname(dir)) {
-    if (existsSync(join(dir, '.claude-plugin', 'plugin.json')) || existsSync(join(dir, 'plugin.json'))) return dir;
+    if (existsSync(join(dir, '.claude-plugin', 'plugin.json')) || existsSync(join(dir, 'plugin.json'))) plugin = dir;
   }
-  return null;
+  return plugin;
 }
 
 const posix = (path) => path.split(sep).join('/');

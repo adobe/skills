@@ -67,9 +67,9 @@ Skills run with the user's credentials, on the user's machine. Treat a skill as 
 
 ## Plugins
 
-- A new plugin needs `.claude-plugin/plugin.json`, an entry in `.claude-plugin/marketplace.json`,
+- A new plugin needs a root `plugin.json`, an entry in `.claude-plugin/marketplace.json`,
   an entry in `.github/CODEOWNERS` and a row in the plugin table of `README.md`. CI fails
-  without the CODEOWNERS entry.
+  without the `plugin.json` or the CODEOWNERS entry.
 - A plugin that needs an MCP server says in its row what the server asks of the client, and
   gets a row in the README's table of MCP servers: which clients it works with, and which not.
 - The version of a plugin is the same in every manifest that carries it and in its marketplace
@@ -85,6 +85,10 @@ Skills run with the user's credentials, on the user's machine. Treat a skill as 
   catalog entry ([x927](https://github.com/ai-ecoverse/x927)).
 - A marketplace file is hand-written apart from those two fields. A new plugin gets its
   entry there by hand, with `name`, `source` and `category`; the build fills in the rest.
+- Every plugin is published to the Tessl registry, as `adobe/<plugin name>`, with each of its
+  releases. So every `plugin.json` has a Tessl target:
+  `"tessl": { "name": "adobe/<plugin name>", "private": false }` under
+  `extensions["io.github.ai-ecoverse.x927"].targets`. CI fails without it.
 - Every plugin has a root `plugin.json`. GitHub Copilot CLI reads it in place of the Claude
   Code manifest, and then loads skills only from the folders directly under `skills/`, and
   hooks only from `com.github.copilot/hooks/hooks.json`. Claude Code reads hooks from
@@ -109,7 +113,8 @@ node scripts/check-release-configs.mjs # release configs point at files that exi
 npm test                               # when you touch scripts/: the workflows run these scripts
 npm run plugins:check                  # when you touch a plugin.json, mcp.json or a manifest
 npm run plugins:build                  # to see what CI will build from them; no need to commit it
-npm run lint:stardust                  # when you touch plugins/stardust
+npm run lint:stardust                  # when you touch plugins/stardust; after a change to its
+                                       # plugin.json, run plugins:build first, as CI does
 (cd plugins/web/cli && npm ci && npm run lint && npm test)  # when you touch plugins/web/cli
 ```
 

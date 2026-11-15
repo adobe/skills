@@ -122,6 +122,24 @@ test('a folder the Claude Code manifest lists under "skills" is found, as a skil
   assert.deepEqual(orphans(root), ['plugins/a/skills/suite/two/SKILL.md']);
 });
 
+test('a plugin.json inside a skill folder is a file of that skill, not a plugin of its own', (t) => {
+  const root = repo(t, {
+    'plugins/a/plugin.json': '{"name":"a"}',
+    'plugins/a/skills/authoring/SKILL.md': skill('authoring'),
+    'plugins/a/skills/authoring/assets/example/plugin.json': '{"name":"example"}',
+    'plugins/a/skills/authoring/assets/example/skills/demo/SKILL.md': skill('demo'),
+    'plugins/b/plugin.json': '{"name":"b"}',
+    'plugins/b/skills/demo/SKILL.md': skill('demo'),
+  });
+  // the demo skill below the asset belongs to plugin a: no client finds it, and its name
+  // collides with the one in plugin b across plugins, not inside a plugin called "example"
+  assert.deepEqual(orphans(root), ['plugins/a/skills/authoring/assets/example/skills/demo/SKILL.md']);
+  assert.deepEqual(found(root), [
+    'duplicate-across-plugins plugins/a/skills/authoring/assets/example/skills/demo/SKILL.md',
+    'duplicate-across-plugins plugins/b/skills/demo/SKILL.md',
+  ]);
+});
+
 test('a skill outside every plugin is orphaned', (t) => {
   const root = repo(t, { 'plugins/loose/skills/one/SKILL.md': skill('one') });
   const violations = findViolations(root);

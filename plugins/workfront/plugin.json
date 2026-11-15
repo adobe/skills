@@ -20,6 +20,10 @@
     "io.github.ai-ecoverse.x927": {
       "targets": {
         "claude": {},
+        "tessl": {
+          "name": "adobe/workfront",
+          "private": false
+        },
         "cursor": {
           "displayName": "Adobe Workfront",
           "description": "Adobe Workfront skills for AI agents. Includes Workfront Planning (WFP/Maestro) solution architecture: workspace design, record connections, formula fixes, Select/Prime/Ultimate tier limits, the Planning API, Fusion, and Canvas Dashboards. Also includes a Fusion scenario optimizer for Planning-connected blueprints.",

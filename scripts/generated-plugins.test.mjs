@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { editedFields, planned } from './check-generated.mjs';
@@ -36,6 +36,25 @@ test('in a marketplace file, only a generated field that the pull request change
   assert.deepEqual(editedFields({ plugins: [entry('a', { description: 'old', version: '1.0.0', category: 'y' }), entry('b')] }, built, base), []);
   assert.deepEqual(editedFields({ plugins: [entry('a', { description: 'mine', version: '1.0.0', category: 'y' })] }, built, base), ['the `description` of the `a` entry']);
   assert.deepEqual(editedFields({ plugins: [entry('b')] }, built, null), []);
+});
+
+// Both scripts read what x927 prints. This is the real x927 from node_modules, so that an
+// update of x927 that prints something else fails here, in the pull request that brings it.
+test('the real x927 prints what the scripts read: the files of a dry run, and the files it wrote', (t) => {
+  const root = tree(t, { [SOURCE]: plugin('a'), [MARKET]: catalog(entry('a', { category: 'x' })) });
+  const x927 = (...args) => spawnSync(join(BIN, 'x927'), args, { cwd: root, encoding: 'utf8' });
+  const dry = x927('build', '--all', '--dry-run');
+  assert.equal(dry.status, 0, `the real x927 has to be installed (npm ci): ${dry.stderr || dry.error}`);
+  const files = planned(dry.stdout);
+  assert.deepEqual([...files.keys()].sort(), [MARKET, CLAUDE].sort());
+  assert.equal(JSON.parse(files.get(CLAUDE)).name, 'a');
+  assert.equal(JSON.parse(files.get(MARKET)).plugins[0].version, '1.0.0');
+  const built = x927('build', '--all');
+  assert.equal(built.status, 0, built.stderr);
+  assert.deepEqual(written(built.stdout).sort(), [MARKET, CLAUDE].sort());
+  // what the dry run announced is, byte for byte, what the build wrote
+  for (const [file, content] of files) assert.equal(readFileSync(join(root, file), 'utf8'), content, file);
+  assert.deepEqual(written(x927('build', '--all').stdout), []);
 });
 
 // A repository whose main has one plugin with everything built, and a change on top of it.
@@ -168,6 +187,7 @@ test('the rebuild commits what the build wrote as the bot and pushes it', (t) =>
   assert.equal(git(origin, 'show', `main:${TESSL}`), 'v2');
   assert.deepEqual(git(origin, 'show', '--name-only', '--format=', 'main').split('\n'), [CLAUDE, TESSL]);
   assert.match(result.output, /^rebuilt=true$/m);
+  assert.match(result.output, /^behind=false$/m);
   assert.match(result.summary, /Rebuilt from `plugin\.json` and pushed to `main`/);
   assert.equal(git(root, 'status', '--porcelain'), '');
 });
@@ -183,19 +203,40 @@ test('nothing to rebuild: no commit, no push', (t) => {
   assert.match(result.output, /^rebuilt=false$/m);
 });
 
-test('when the branch moved in the meantime, the rebuild takes the new tip and pushes on top of it', (t) => {
+test('when the branch moved on in the meantime, the run leaves its checkout as it was and says it is behind', (t) => {
   const { root, origin, env } = onMain(t);
+  const start = git(root, 'rev-parse', 'HEAD');
   const other = mkdtempSync(join(tmpdir(), 'skills-other-'));
   t.after(() => rmSync(other, { recursive: true, force: true }));
   git(other, 'clone', '-q', origin, '.');
-  // while the first build runs, someone else pushes: plugin.json moves on to v3
+  // while the build runs, someone else pushes: plugin.json moves on to v3
   const HOOK = `cd "${other}" && echo v3 > ${SOURCE} && git add ${SOURCE} && git commit -q -m "another merge" && git push -q origin main`;
   const result = run(t, 'rebuild-plugins.mjs', [], { cwd: root, env: { ...env, HOOK, HOOK_DONE: join(other, '.git', 'hook-done') } });
   assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /The push was refused \(attempt 1 of 3\)/);
-  assert.deepEqual(log(origin), [`${MESSAGE}|github-actions[bot]`, 'another merge|t', 'merge a pull request|t']);
-  assert.equal(git(origin, 'show', `main:${CLAUDE}`), 'v3');
-  assert.equal(readFileSync(join(root, TESSL), 'utf8'), 'v3\n');
+  assert.match(result.stdout, /::warning::main moved on from [0-9a-f]{8} to [0-9a-f]{8} while this run was building/);
+  assert.match(result.output, /^behind=true$/m);
+  assert.match(result.output, /^rebuilt=false$/m);
+  // nothing of this run reached the branch, and the checkout is the commit it started from
+  assert.deepEqual(log(origin), ['another merge|t', 'merge a pull request|t']);
+  assert.equal(git(root, 'rev-parse', 'HEAD'), start);
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.equal(readFileSync(join(root, TESSL), 'utf8'), 'v1');
+});
+
+test('a branch that refuses the push without having moved fails the rebuild, and says why', (t) => {
+  const { root, origin, env } = onMain(t);
+  const start = git(root, 'rev-parse', 'HEAD');
+  // a ruleset or a branch protection, as a hook of the remote
+  write(origin, { 'hooks/pre-receive': '#!/bin/sh\necho "protected branch hook declined" >&2\nexit 1\n' });
+  chmodSync(join(origin, 'hooks', 'pre-receive'), 0o755);
+  const result = run(t, 'rebuild-plugins.mjs', [], { cwd: root, env });
+  assert.equal(result.status, 1);
+  assert.match(result.stdout, /::error::main did not take the push of the rebuilt plugin manifests, and it has not moved\. The token of this workflow may not push to main/);
+  assert.match(result.stdout, /protected branch hook declined/);
+  assert.match(result.output, /^behind=false$/m);
+  assert.deepEqual(log(origin), ['merge a pull request|t']);
+  assert.equal(git(root, 'rev-parse', 'HEAD'), start);
+  assert.equal(git(root, 'status', '--porcelain'), '');
 });
 
 test('a build that fails stops the rebuild before anything is committed', (t) => {

@@ -134,6 +134,7 @@ if (dupes.length) drift.push(`.tessl-plugin/plugin.json skills listed twice: ${d
 
 if (drift.length) {
   for (const d of drift) console.error(`${basename(dir)}: ${d}`);
+  console.error('The manifests are built from the root plugin.json. If you changed that file, run `npm run plugins:build` first.');
   console.error(`fix: node scripts/plugin-version.mjs ${dirArg} ${plugin.version}`);
   process.exit(1);
 }

@@ -18,7 +18,11 @@
   "extensions": {
     "io.github.ai-ecoverse.x927": {
       "targets": {
-        "claude": {}
+        "claude": {},
+        "tessl": {
+          "name": "adobe/adobe-analytics",
+          "private": false
+        }
       },
       "marketplace": {
         "description": "Practitioner skills for Adobe Analytics via the AA MCP server"

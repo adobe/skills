@@ -20,6 +20,10 @@
         "claude": {
           "privacyPolicyUrl": "https://www.adobe.com/privacy/policy.html",
           "skills": "./skills"
+        },
+        "tessl": {
+          "name": "adobe/adobe-for-creativity",
+          "private": false
         }
       }
     }

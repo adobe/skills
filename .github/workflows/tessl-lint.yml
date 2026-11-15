@@ -1,6 +1,7 @@
 name: Tessl Plugin Lint
 
-# Whether every plugin that has a Tessl manifest is valid. Warnings don't fail here and
+# Whether the Tessl manifest of every plugin is valid. Every plugin has one, because every
+# plugin is published to the Tessl registry. Warnings don't fail here and
 # are not posted on the pull request: the boy-scout job of the Validate workflow holds a
 # pull request to the warnings of the files it changes (scripts/tessl-lint-debt.mjs).
 
@@ -33,7 +34,7 @@ jobs:
       - name: Build the plugin manifests in this checkout
         run: npm ci --ignore-scripts && npm run plugins:build
 
-      - name: Lint every plugin that has a Tessl manifest
+      - name: Lint every plugin
         run: |
           failed=0
           while IFS= read -r manifest; do

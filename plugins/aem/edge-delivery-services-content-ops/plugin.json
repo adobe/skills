@@ -22,7 +22,11 @@
   "extensions": {
     "io.github.ai-ecoverse.x927": {
       "targets": {
-        "claude": {}
+        "claude": {},
+        "tessl": {
+          "name": "adobe/aem-eds-content-ops",
+          "private": false
+        }
       },
       "marketplace": {
         "description": "Content operations skills for AEM Edge Delivery Services: page auditing, SEO optimization, AI search (GEO), WCAG accessibility, bulk metadata, structured data, sitemap validation, and content diffing"

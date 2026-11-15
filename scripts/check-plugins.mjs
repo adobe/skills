@@ -4,7 +4,9 @@
 //   license      every SKILL.md has a license field in its frontmatter
 //   hooks        a plugin with a root plugin.json keeps its hooks in hooks/hooks.json and
 //                in com.github.copilot/hooks/hooks.json, the same in both
-//   source       every plugin has a root plugin.json, from which its manifests are built
+//   source       every plugin has a root plugin.json, from which its manifests are built,
+//                and that file has a Tessl target, so that the plugin is published to the
+//                Tessl registry
 //   node scripts/check-plugins.mjs codeowners|license|hooks|source      (from the repository root)
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -106,6 +108,24 @@ export function withoutSource(root) {
     .filter((dir) => !all.includes(`${dir}/plugin.json`));
 }
 
+// Plugins whose root plugin.json builds no Tessl manifest. Every plugin is published to the
+// Tessl registry, and the publish reads that manifest. x927 writes it for a plugin whose
+// plugin.json has extensions["io.github.ai-ecoverse.x927"].targets.tessl with a name.
+export function withoutTessl(root) {
+  return files(root)
+    .filter((file) => /^plugins\/(?:[^/]+\/)*plugin\.json$/.test(file) && !/\/\.[^/]+\/plugin\.json$/.test(file))
+    .filter((file) => {
+      try {
+        const source = JSON.parse(readFileSync(join(root, file), 'utf8'));
+        if (!/agent-plugins\.org\/schemas\//.test(source.$schema ?? '')) return false;
+        return typeof source.extensions?.['io.github.ai-ecoverse.x927']?.targets?.tessl?.name !== 'string';
+      } catch {
+        return false; // x927 reports a manifest that can't be read
+      }
+    })
+    .map((file) => file.slice(0, -'/plugin.json'.length));
+}
+
 function main() {
   const root = process.cwd();
   const rule = process.argv[2];
@@ -138,7 +158,10 @@ function main() {
     const missing = withoutSource(root);
     for (const dir of missing) console.log(`::error file=${dir}/.claude-plugin/plugin.json::${dir} has no root plugin.json. The manifests are built from that file: add it (npx x927 init ${dir} writes one from the manifests that are there).`);
     console.log(missing.length === 0 ? 'Every plugin has a root plugin.json.' : `${missing.length} plugin(s) have no root plugin.json.`);
-    process.exit(missing.length === 0 ? 0 : 1);
+    const unpublished = withoutTessl(root);
+    for (const dir of unpublished) console.log(`::error file=${dir}/plugin.json::${dir} has no Tessl target. Every plugin is published to the Tessl registry: add "tessl": { "name": "adobe/<plugin name>", "private": false } under extensions["io.github.ai-ecoverse.x927"].targets in its plugin.json.`);
+    console.log(unpublished.length === 0 ? 'Every plugin has a Tessl target.' : `${unpublished.length} plugin(s) have no Tessl target.`);
+    process.exit(missing.length === 0 && unpublished.length === 0 ? 0 : 1);
   }
   console.error('usage: check-plugins.mjs codeowners|license|hooks|source');
   process.exit(2);
