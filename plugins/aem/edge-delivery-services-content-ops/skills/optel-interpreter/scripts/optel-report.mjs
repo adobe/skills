@@ -21,6 +21,9 @@ import { DataChunks, series, facets, stats, utils } from '@adobe/rum-distiller';
 
 // A p75 from fewer values than this is marked lowSample, and nothing is ranked or compared by it.
 const MIN_SAMPLES = 10;
+// Two periods are tested against each other when each has this many values. The test expects
+// a quarter of them above the common p75, and a z-test needs about five in each cell.
+const MIN_TEST_SAMPLES = 20;
 const MAX_DAYS = 92;
 const METRICS = ['lcp', 'cls', 'inp'];
 const SEVERITY = { good: 1, ni: 2, poor: 3 };
@@ -128,6 +131,11 @@ function analyse({ chunks, failedSlots }) {
     const severity = Math.max(0, ...failing.map((name) => SEVERITY[page[name].rating]));
     return { ...page, failing, impact: page.pageViews * severity };
   });
+  // the measurements themselves, for the comparison of two periods; they are not printed
+  const values = {
+    site: Object.fromEntries(METRICS.map((name) => [name, [...totals[name].values]])),
+    pages: new Map(data.facets.url.map((facet) => [facet.value, Object.fromEntries(METRICS.map((name) => [name, [...facet.metrics[name].values]]))])),
+  };
   const unseen = data.estimators.url.chao1;
   const period = {
     slots: chunks.map((chunk) => chunk.date),
@@ -162,21 +170,40 @@ function analyse({ chunks, failedSlots }) {
   // LCP of page views with a click only: a page view that sat idle can report a paint long after the load.
   data.filter = { ...filter, interacted: ['yes'] };
   period.site.lcpInteracted = metric(data.totals.lcp, 'lcp');
-  return { period, pages };
+  return { period, pages, values };
 }
 
-// What differs between the baseline and the period: per metric the p75 and the share of good
-// values, with the p-value of a z-test on that share, and the pages whose rating got worse.
+// Whether the p75 of two sets of measurements differs. The threshold is the p75 of both sets
+// together; the test is whether the two have the same share of values above it (a z-test of
+// two proportions). It is about the p75 itself, so it also sees a change within one rating.
+// Returns nothing when a set is too small for the test.
+function quantileTest(was, is) {
+  if (was.length < MIN_TEST_SAMPLES || is.length < MIN_TEST_SAMPLES) return {};
+  const all = [...was, ...is].sort((a, b) => a - b);
+  const threshold = all[Math.ceil(all.length * 0.75) - 1];
+  const over = (values) => values.filter((value) => value > threshold).length;
+  const reach = (values) => values.filter((value) => value >= threshold).length;
+  // Many values can equal the threshold. Count them as above it when that brings the share
+  // of all values above the threshold closer to a quarter, or when nothing lies over it.
+  const off = (count) => Math.abs(count / all.length - 0.25);
+  const above = over(all) === 0 || off(reach(all)) < off(over(all)) ? reach : over;
+  const pValue = stats.zTestTwoProportions(was.length, above(was), is.length, above(is));
+  return {
+    aboveCommonP75: { baseline: round(above(was) / was.length, 3), now: round(above(is) / is.length, 3) },
+    pValue: round(pValue, 4),
+    significant: pValue < 0.05,
+  };
+}
+
+// What differs between the baseline and the period: per metric the p75 of both with a test
+// of the difference, the pages whose rating got worse, the device mix and new LCP elements.
 function compare(baseline, now) {
   const change = {};
   for (const name of METRICS) {
     const [was, is] = [baseline.period.site[name], now.period.site[name]];
     const pick = ({ p75, samples, rating, goodShare }) => ({ p75, samples, rating, goodShare });
     change[name] = { baseline: pick(was), now: pick(is) };
-    if (usable(was) && usable(is)) {
-      const pValue = stats.zTestTwoProportions(was.samples, Math.round(was.goodShare * was.samples), is.samples, Math.round(is.goodShare * is.samples));
-      Object.assign(change[name], { pValue: round(pValue, 4), significant: pValue < 0.05 });
-    }
+    Object.assign(change[name], quantileTest(baseline.values.site[name], now.values.site[name]));
   }
   const share = ({ period }, name) => {
     const found = period.devices.find((entry) => entry.device === name);
@@ -189,7 +216,8 @@ function compare(baseline, now) {
     if (!was) continue;
     for (const name of METRICS) {
       if (usable(was[name]) && usable(page[name]) && SEVERITY[page[name].rating] > SEVERITY[was[name].rating]) {
-        pagesWorse.push({ url: page.url, metric: name, pageViews: page.pageViews, baseline: { p75: was[name].p75, samples: was[name].samples, rating: was[name].rating }, now: { p75: page[name].p75, samples: page[name].samples, rating: page[name].rating } });
+        const { pValue, significant } = quantileTest(baseline.values.pages.get(page.url)[name], now.values.pages.get(page.url)[name]);
+        pagesWorse.push({ url: page.url, metric: name, pageViews: page.pageViews, baseline: { p75: was[name].p75, samples: was[name].samples, rating: was[name].rating }, now: { p75: page[name].p75, samples: page[name].samples, rating: page[name].rating }, pValue, significant });
       }
     }
   }

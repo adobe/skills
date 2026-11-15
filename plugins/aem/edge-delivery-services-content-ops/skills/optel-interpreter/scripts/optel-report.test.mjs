@@ -184,13 +184,51 @@ test('a baseline period shows what changed: the share of good values with its p-
   const { lcp, cls, deviceShare, lcpElementsNew, pagesWorse, pageViews } = report.change;
   assert.deepEqual(lcp.baseline, { p75: 3000, samples: 30, rating: 'ni', goodShare: 0.667 });
   assert.deepEqual(lcp.now, { p75: 5000, samples: 35, rating: 'poor', goodShare: 0 });
+  // the p75 of both periods together is 5000: none of the baseline reaches it, 25 of 35 now do
+  assert.deepEqual(lcp.aboveCommonP75, { baseline: 0, now: 0.714 });
   assert.equal(lcp.significant, true);
   assert.ok(lcp.pValue < 0.001);
   assert.equal(cls.pValue, undefined); // no samples, nothing to compare
   assert.deepEqual(deviceShare, [{ device: 'mobile', baseline: 1, now: 0.714 }, { device: 'desktop', baseline: 0, now: 0.286 }]);
   assert.deepEqual(lcpElementsNew, ['.carousel img']);
-  assert.deepEqual(pagesWorse.map((page) => [page.url, page.metric, page.baseline.rating, page.now.rating]), [[HOME, 'lcp', 'good', 'poor']]);
+  assert.deepEqual(pagesWorse.map((page) => [page.url, page.metric, page.baseline.rating, page.now.rating, page.significant]), [[HOME, 'lcp', 'good', 'poor', true]]);
+  assert.deepEqual(pagesWorse[0].baseline, { p75: 1000, samples: 20, rating: 'good' });
   assert.deepEqual([pageViews.baseline, pageViews.now], [3000, 3500]);
+});
+
+// LCP values around a centre, the same spread every time
+const spread = (n, url, centre) => Array.from({ length: n }, (_, i) => bundle(url, { lcp: centre + (i % 20) * 10 }));
+const weeks = (baseline, now) => run({ '2026/10/01': baseline, '2026/10/08': now }, 'www.example.com', '--from=2026-10-08', '--to=2026-10-08', '--baseline-from=2026-10-01', '--baseline-to=2026-10-01').report.change.lcp;
+
+test('a p75 that doubles within one rating is a significant change, in either direction', () => {
+  // poor before and after: the share of good values is 0 in both periods and says nothing
+  const worse = weeks(spread(100, HOME, 4500), spread(100, HOME, 9000));
+  assert.deepEqual([worse.baseline.rating, worse.now.rating, worse.baseline.goodShare, worse.now.goodShare], ['poor', 'poor', 0, 0]);
+  assert.deepEqual(worse.aboveCommonP75, { baseline: 0, now: 0.5 });
+  assert.equal(worse.significant, true);
+  const better = weeks(spread(100, HOME, 9000), spread(100, HOME, 4500));
+  assert.deepEqual(better.aboveCommonP75, { baseline: 0.5, now: 0 });
+  assert.equal(better.significant, true);
+  // every value the same in each period: nothing lies over the common p75, so the values
+  // that equal it count as above
+  const flat = weeks(many(100, HOME, { lcp: 4500 }), many(100, HOME, { lcp: 9000 }));
+  assert.deepEqual(flat.aboveCommonP75, { baseline: 0, now: 1 });
+  assert.equal(flat.significant, true);
+});
+
+test('two periods with the same values are not a change; fewer than 20 values in a period are not tested', () => {
+  const same = weeks(spread(100, HOME, 3000), spread(100, HOME, 3000));
+  assert.deepEqual(same.aboveCommonP75, { baseline: 0.25, now: 0.25 });
+  assert.equal(same.pValue, 1);
+  assert.equal(same.significant, false);
+  // values drawn from the same range in another order, and a few more of them
+  const shuffled = weeks(spread(100, HOME, 3000), spread(120, HOME, 3000).reverse());
+  assert.equal(shuffled.significant, false);
+  const few = weeks(spread(19, HOME, 3000), spread(100, HOME, 9000));
+  assert.deepEqual([few.baseline.samples, few.now.samples], [19, 100]);
+  assert.equal(few.pValue, undefined);
+  assert.equal(few.significant, undefined);
+  assert.equal(few.aboveCommonP75, undefined);
 });
 
 test('arguments that make no sense are refused with the usage', () => {

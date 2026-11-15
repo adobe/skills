@@ -76,7 +76,6 @@ data.filter = { userAgent: ['mobile'], url: ['https://www.example.com/', 'https:
 data.filter = {}; // no filter
 ```
 
-- Values of one facet are alternatives. Different facets must all match.
 - `data.addFacet(name, fn, 'every')` makes a filter require all its values on a bundle.
 - A fourth argument adds a negative facet with `!` after its name. Use `'never'`, which leaves out a bundle that has any of the values. `'none'` leaves out only the bundles that have all of them.
 
@@ -114,8 +113,8 @@ data.addHistogramFacet('lcpHistogram', 'lcpValue', { count: 4, steps: 'quantiles
 |---|---|
 | `stats.samplingError(total, samples)` | The 95% margin of a weighted total: `stats.samplingError(pv.sum, pv.count)`. |
 | `stats.roundToConfidenceInterval(total, samples)` | The total as text, rounded to the digits its margin supports: `16k`. |
-| `stats.zTestTwoProportions(n1, hits1, n2, hits2)` | The two-sided p-value for a difference between two shares. Pass bundle counts, not weighted sums. |
-| `stats.tTest(left, right)` | A one-sided p-value: near 0 when the mean of `left` is larger, near 1 when it is smaller, 0.5 when they are equal. It compares means, so it is no test for LCP. |
+| `stats.zTestTwoProportions(n1, hits1, n2, hits2)` | The two-sided p-value for a difference between two shares. |
+| `stats.tTest(left, right)` | A one-sided p-value: near 0 when the mean of `left` is larger, near 1 when it is smaller, 0.5 when they are equal. |
 | `stats.linearRegression(values)` | `slope` and `intercept`, with the array index as x. |
 | `utils.scoreCWV(value, 'lcp')` | `good`, `ni` or `poor`; also for `cls`, `inp` and `ttfb`. `null` without a value. |
 | `utils.scoreBundle(bundle)` | The worst rating among the metrics the bundle has. |
@@ -133,4 +132,6 @@ const { visits, submits } = data.totals;
 const rate = visits.sum ? submits.sum / visits.sum : null;
 ```
 
-For two variants or two periods, test the difference with `stats.zTestTwoProportions`, with the number of bundles on each side.
+For two variants or two periods, test the difference with `stats.zTestTwoProportions(visitsA.count, submitsA.count, visitsB.count, submitsB.count)`.
+
+The library has no test for a percentile. To test whether a p75 differs between two sets of values, take the p75 of both sets together, count the values above it in each set, and pass the four counts to `stats.zTestTwoProportions`. `scripts/optel-report.mjs` does that for two periods.

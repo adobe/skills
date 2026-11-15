@@ -60,7 +60,7 @@ What the report holds:
 
 These are the mistakes an analysis makes without this skill:
 
-- **Page views are the sum of bundle weights.** The data is sampled, one page view in 100 by default, and a site can change that rate. Use the `pageViews` of the report. Never multiply a count by a fixed 100. The true number is within `pageViewsMargin` of it.
+- **Page views are the sum of bundle weights.** The data is sampled, one page view in 100 by default, and a site can change that rate. Use the `pageViews` of the report. Never multiply a count by a fixed 100. The true number is within `pageViewsMargin` of it, at 95% confidence.
 - **A p75 from few samples means nothing.** The script marks a p75 from fewer than 10 values with `lowSample` and doesn't rank by it. Widen the period before you quote such a number. Give the sample count with every p75 you report, and never report a mean.
 - **A p75 counts each sampled page view once,** whatever its weight. The Explorer does the same.
 - **Compare `site.lcp` with `site.lcpInteracted`.** A page view that sits idle can report a paint from long after the load. When the two differ much, report both and trust the second. Leaving out page views that opened in a background tab does not help: those carry almost no LCP value.
@@ -76,12 +76,13 @@ These are the mistakes an analysis makes without this skill:
 
 With a baseline period, the report has `baseline` and `change`:
 
-- **`change.lcp`, `.cls`, `.inp`** hold `p75` and `goodShare` for both periods, and `pValue` with `significant` where both have at least 10 samples. The test is on `goodShare`, the share of page views with a good value. Report a metric as changed only when `significant` is true. A p75 that moved without that is noise.
-- **`change.pagesWorse`** lists the pages whose rating got worse. Start there.
-- **`change.deviceShare` and `change.lcpElementsNew`** explain a changed p75 without a regression in the code: more mobile traffic, or a new element that became the LCP.
+- **`change.lcp`, `.cls`, `.inp`** hold `p75`, `rating` and `goodShare` for both periods, and `pValue` with `significant` where both have at least 20 samples. The test is about the p75 itself: `aboveCommonP75` is the share of each period's values above the p75 of both periods together, and `pValue` says whether those two shares differ. It also finds a change that stays within one rating.
+- Report a metric as changed when `significant` is true, and say by how much with the two p75 values. When it is false, say that the data doesn't show a change. That is not proof that nothing changed. With 100 samples in each period the test finds a p75 that rose by half in four of five cases, and one that rose by a fifth in one of five. Under 20 samples there is no test.
+- **`change.pagesWorse`** lists the pages whose rating got worse, with a `pValue` and `significant` where the page has at least 20 samples in both periods. Start with the significant ones.
+- **`change.deviceShare` and `change.lcpElementsNew`** show a changed device mix or a new LCP element.
 - **`change.pageViews`**: traffic changed only if the two numbers are further apart than their margins.
 
-Use day slots for both periods, so that neither includes the day of the change.
+Use day slots (`--from`, `--to`) for both periods.
 
 ## Step 5: Answer what the report doesn't
 

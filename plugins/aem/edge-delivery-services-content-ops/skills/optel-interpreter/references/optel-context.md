@@ -57,9 +57,9 @@ Domain, period, device filter, page views with their margin, and one sentence on
 
 ### Core Web Vitals
 
-| Metric | p75 | Samples | Rating | Good share | Baseline p75 | Baseline good share | Changed |
+| Metric | p75 | Samples | Rating | Good share | Baseline p75 | Baseline samples | Changed |
 |---|---|---|---|---|---|---|---|
-| LCP | | | | | | | yes or no, with the p-value |
+| LCP | | | | | | | yes or not shown, with the p-value |
 | LCP, page views with a click | | | | | | | |
 | CLS (Chromium only) | | | | | | | |
 | INP | | | | | | | |
