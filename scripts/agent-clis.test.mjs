@@ -5,7 +5,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agyPlatform, agyBehind, installAgy, latestAgy, sha512 } from './setup-agent-clis.mjs';
-import { MODELS, RULES, RUNNERS, changedSince, listFiles } from './skill-eval.mjs';
+import { ENDPOINTS, MODELS, RULES, RUNNERS, changedSince, listFiles } from './skill-eval.mjs';
 import { run, tree } from './lib/testing.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
@@ -105,7 +105,21 @@ test('credentials: each client names the variables it is given, and no others', 
   assert.deepEqual(RUNNERS.grok.credentials({ XAI_API_KEY: 'k' }), ['XAI_API_KEY']);
   assert.deepEqual(RUNNERS.agy.credentials({ GEMINI_API_KEY: 'k' }), ['GEMINI_API_KEY']);
   for (const client of Object.values(RUNNERS)) assert.equal(client.credentials({ GITHUB_TOKEN: 'never' }), null);
-  assert.deepEqual(Object.keys(MODELS), ['claude', 'codex']);
+  // on Bedrock: Grok reads the key from its own name; Antigravity gets it as its gateway's key
+  assert.deepEqual(RUNNERS.grok.credentials(bedrock), ['AWS_BEARER_TOKEN_BEDROCK']);
+  assert.equal(RUNNERS.grok.bedrock({ ...bedrock, XAI_API_KEY: 'k' }), false);
+  assert.deepEqual(RUNNERS.agy.credentials(bedrock), []);
+  assert.equal(RUNNERS.agy.bedrock({ ...bedrock, GEMINI_API_KEY: 'k' }), false);
+  assert.deepEqual(RUNNERS.agy.env('/home', false), {});
+  assert.deepEqual(RUNNERS.agy.env('/home', true, { model: 'global.xai.grok-4.6', baseUrl: ENDPOINTS.agy('us-west-2'), key: 'x' }), {
+    AGY_LLM_GATEWAY_URL: 'https://bedrock-runtime.us-west-2.amazonaws.com/openai', // Antigravity adds /v1/chat/completions
+    AGY_LLM_GATEWAY_API_KEY: 'x',
+    AGY_LLM_GATEWAY_WIRE_PROTOCOL: 'openai',
+    AGY_LLM_GATEWAY_MODELS: 'global.xai.grok-4.6',
+    AGY_CLI_DISABLE_AUTO_UPDATE: '1',
+  });
+  assert.deepEqual(Object.keys(MODELS), ['claude', 'codex', 'grok', 'agy']);
+  assert.equal(ENDPOINTS.grok('eu-west-1'), 'https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1');
 });
 
 test('the commands: claude loads the plugin from its directory only in the run with it', () => {
@@ -128,12 +142,13 @@ const PLUGIN = {
   'plugins/p/evals/case/resources/start.md': 'given',
   'plugins/p/evals/case/setup.sh': 'exit 1',
 };
-function claude(t, script) {
+function cli(t, name, script) {
   const dir = temp(t);
-  writeFileSync(join(dir, 'claude'), `#!/bin/sh\n${script}\n`);
-  chmodSync(join(dir, 'claude'), 0o755);
+  writeFileSync(join(dir, name), `#!/bin/sh\n${script}\n`);
+  chmodSync(join(dir, name), 0o755);
   return dir;
 }
+const claude = (t, script) => cli(t, 'claude', script);
 const ANSWERS = `case "$*" in *--plugin-dir*) with=yes ;; *) with=no ;; esac
 echo "plugin $with" > result.md
 printf '{"result":"plugin %s, key %s, token %s, started with %s","num_turns":2,"total_cost_usd":0.01}' "$with" "\${AWS_BEARER_TOKEN_BEDROCK:-none}" "\${GITHUB_TOKEN:-none}" "$(cat start.md 2>/dev/null)"`;
@@ -172,6 +187,45 @@ test('a run that edits a file without changing its size, or only removes one, is
   assert.equal(existsSync(join(out, 'claude-without', 'workdir', 'old.txt')), false);
   assert.equal(readFileSync(join(out, 'claude-without', 'workdir', 'config.txt'), 'utf8'), 'value=1');
   assert.equal(readFileSync(join(root, 'start/config.txt'), 'utf8'), 'value=1'); // the files the task starts from are not changed
+});
+
+test('grok on Bedrock: a model of its own configuration with the key from the environment; an error it prints is a failed run', (t) => {
+  const root = tree(t, PLUGIN);
+  // prints its configuration and whether it got the key, as grok's JSON result
+  const shows = `case "$1" in plugin) exit 0 ;; esac
+printf '{"text":"key %s, xai %s, args %s, config %s","num_turns":1}' "\${AWS_BEARER_TOKEN_BEDROCK:-none}" "\${XAI_API_KEY:-none}" "$(echo "$*" | grep -o -- '-m [a-z.0-9-]*')" "$(tr '\\n"' '| ' < "$HOME/.grok/config.toml")"`;
+  const result = run(t, 'skill-eval.mjs', ['--client', 'grok', '--plugin', 'plugins/p', '--prompt', 'x', '--arms', 'with', '--bin', cli(t, 'grok', shows), '--out', temp(t)], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'bedrock-key', AWS_REGION: 'eu-west-1' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.deepEqual([report.model, report.endpoint], ['global.xai.grok-4.6', 'https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1']);
+  assert.equal(report.arms.with.answer, 'key bedrock-key, xai none, args -m bedrock, config [model.bedrock]|model =  global.xai.grok-4.6 |base_url =  https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1 |name =  global.xai.grok-4.6 (Amazon Bedrock) |api_backend =  responses |reasoning_summary =  none |env_key =  AWS_BEARER_TOKEN_BEDROCK |');
+
+  // with a key of xAI's, grok runs as it is: no configuration, the model as given
+  const direct = run(t, 'skill-eval.mjs', ['--client', 'grok', '--plugin', 'plugins/p', '--prompt', 'x', '--arms', 'without', '--model', 'grok-4.6', '--bin', cli(t, 'grok', shows), '--out', temp(t)], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'bedrock-key', XAI_API_KEY: 'xai-key' } });
+  assert.equal(JSON.parse(direct.stdout).arms.without.answer, 'key none, xai xai-key, args -m grok-4.6, config ');
+  assert.equal(JSON.parse(direct.stdout).endpoint, undefined);
+
+  // grok exits 0 when the endpoint refuses the request
+  const refused = run(t, 'skill-eval.mjs', ['--client', 'grok', '--plugin', 'plugins/p', '--prompt', 'x', '--arms', 'without', '--bin', cli(t, 'grok', `echo '{"type":"error","message":"model not found"}'`), '--out', temp(t)], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'k' } });
+  assert.equal(refused.status, 1);
+  assert.deepEqual([JSON.parse(refused.stdout).arms.without.failed, JSON.parse(refused.stdout).arms.without.answer], [true, 'model not found']);
+});
+
+test('agy on Bedrock: its gateway mode, with the key as the gateway\'s key and --base-url for another endpoint', (t) => {
+  const root = tree(t, PLUGIN);
+  const shows = `case "$1" in plugin) exit 0 ;; esac
+printf '{"status":"SUCCESS","response":"url %s, key %s, protocol %s, models %s, bedrock %s, args %s","num_turns":1}' "$AGY_LLM_GATEWAY_URL" "$AGY_LLM_GATEWAY_API_KEY" "$AGY_LLM_GATEWAY_WIRE_PROTOCOL" "$AGY_LLM_GATEWAY_MODELS" "\${AWS_BEARER_TOKEN_BEDROCK:-none}" "$(echo "$*" | grep -o -- '--model [a-z.0-9-]*')"`;
+  const base = ['--client', 'agy', '--plugin', 'plugins/p', '--prompt', 'x', '--arms', 'with', '--bin', cli(t, 'agy', shows)];
+  const result = run(t, 'skill-eval.mjs', [...base, '--out', temp(t)], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'bedrock-key' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(JSON.parse(result.stdout).arms.with.answer, 'url https://bedrock-runtime.us-west-2.amazonaws.com/openai, key bedrock-key, protocol openai, models global.xai.grok-4.6, bedrock none, args --model global.xai.grok-4.6');
+
+  const other = run(t, 'skill-eval.mjs', [...base, '--model', 'xai.grok-4.6', '--base-url', 'https://bedrock-mantle.us-west-2.api.aws/openai/v1', '--out', temp(t)], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'bedrock-key' } });
+  assert.match(JSON.parse(other.stdout).arms.with.answer, /^url https:\/\/bedrock-mantle\.us-west-2\.api\.aws\/openai, key bedrock-key, protocol openai, models xai\.grok-4\.6,/);
+
+  const refused = run(t, 'skill-eval.mjs', [...base, '--bin', cli(t, 'agy', `case "$1" in plugin) exit 0 ;; esac; echo '{"status":"ERROR","response":""}'; exit 3`), '--out', temp(t)], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'k' } });
+  assert.equal(refused.status, 1);
+  assert.equal(JSON.parse(refused.stdout).arms.with.failed, true);
 });
 
 test('the task is given with the rule to stay in the work directory', (t) => {
