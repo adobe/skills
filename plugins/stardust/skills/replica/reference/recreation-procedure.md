@@ -33,8 +33,9 @@ class of guesswork before the next begins:
    font, colour and line count; text-style clusters; gutters); read values
    with `view <spec> --section <i>`. Author desktop AND mobile rules from
    the specs in one pass — the 360 spec is the source of the mobile rules.
-   Header and footer are authored from `chrome-parity.mjs <live-url>
-   --live-only --width <w>` (texts by channel, icons, background, position).
+   The same command writes the header and footer inventory
+   (`<slug>-<width>-chrome.json`: texts by channel, icons, background,
+   position): author them from it.
 3. **Lift from the source's CSS what the spec cannot name** (§ CSS lifting).
 4. **Fonts** (§ Fonts policy).
 5. **Compose against the captured screenshot** — the ground truth for
@@ -315,8 +316,9 @@ Deploy § 4 principle 2 (#80) applies from the first archetype on:
   `@font-face` in the shared canon CSS (at delivery `styles/fonts.css`, per deploy § 4).
 - **Brand family FIRST in every stack; a metric-matched substitute only as the fallback entry
   after it** — never a calibrated stand-in (no derived font files, no hand-tuned metrics), so a
-  licensed drop-in later wins without a code change. Declare it: `<brand>=<substitute>` per line
-  in `stardust/replica/font-subst.txt` (the gate reads it).
+  licensed drop-in later wins without a code change. Only a face with NO captured file renders as
+  its substitute: declare that one, `<brand>=<substitute>` per line in
+  `stardust/replica/font-subst.txt` (the gate reads it).
 - **A `local()` source only for a face the gate's browser has.** The gate renders on Linux: a
   fallback face whose `local()` names a macOS or Windows platform font resolves to nothing there,
   the stack falls through to the browser default and every type metric forks. Name the

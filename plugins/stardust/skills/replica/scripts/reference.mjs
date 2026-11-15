@@ -43,7 +43,7 @@
  *   node skills/replica/scripts/reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>]
  *                          were the given capture settings the ones <dir>/baseline.json was frozen with (`flags`)?
  *                          One line: `same` | `changed: consent, locale` | `not recorded` (a baseline from before
- *                          flags were recorded). Compared: consent, dismiss, noDismiss, locale (none = en-US) — what
+ *                          flags were recorded). Compared: the settings this call GIVES (an omitted one inherits the reference's) — what
  *                          changes the captured page; vh and headed are not. Exit 0; 1 no readable baseline.json
  *   node skills/replica/scripts/reference.mjs assess <a.png> <b.png> [<c.png>] [--json] [threshold flags]
  *                          the same decision over EXISTING captures; writes nothing
@@ -160,8 +160,11 @@ export function captureSettings(f = {}) {
 // none (frozen before flags were recorded, or by stitch-shot --freeze-baseline).
 export function settingsChanged(recorded, current) {
   if (!recorded || typeof recorded !== 'object') return null;
+  // Only a setting this call GIVES can differ: a round that omits --consent or --locale inherits the reference's
+  // (a recorded pilot froze 8 references again because one call carried the flags and the next did not).
   const a = captureSettings(recorded); const b = captureSettings(current);
-  return Object.keys(a).filter((k) => a[k] !== b[k]);
+  const given = { consent: b.consent !== null, dismiss: b.dismiss !== null, noDismiss: b.noDismiss === true, locale: String(current?.locale ?? '').trim() !== '' };
+  return Object.keys(a).filter((k) => given[k] && a[k] !== b[k]);
 }
 
 // Several comparisons' bands → one list: per band start, the largest % any pair measured there.

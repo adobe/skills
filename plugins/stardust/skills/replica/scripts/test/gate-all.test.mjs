@@ -1073,7 +1073,7 @@ check('reference settings: a reference frozen under other overlay flags or local
     r = gateAll(['--skip-existing'], { ...REF });
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(frozen(), ['freeze https://origin.example/arch', 'freeze https://origin.example/page'], '--skip-existing does not reuse a pass measured against a reference of other settings');
-    assert.match(r.stdout, /origin arch: reference: re-frozen — capture settings changed \(consent, locale\)$/m);
+    assert.match(r.stdout, /origin arch: reference: re-frozen — capture settings changed \(locale\)$/m);
     assert.equal(rounds(), before + 1, 'the measurement is the round; the freeze adds none');
     assert.equal(tableOf('all-1440').totals.pass, 2);
 
