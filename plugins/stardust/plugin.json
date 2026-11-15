@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "stardust",
-  "version": "0.38.6",
+  "version": "0.39.0",
   "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
   "author": {
     "name": "Adobe"
