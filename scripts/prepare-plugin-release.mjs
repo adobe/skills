@@ -4,9 +4,7 @@
 //
 // 1. Writes the version to the root plugin.json. A version that a target overrides follows,
 //    and so does a Tessl target's list of skills, which has to name the skills that ship.
-// 2. In a CHANGELOG.md that the plugin's owners write by hand, the heading "## Unreleased"
-//    becomes "## <version>".
-// 3. Builds the generated manifests and the marketplace entries (x927 build --all) and
+// 2. Builds the generated manifests and the marketplace entries (x927 build --all) and
 //    stages what changed, so that the release is one commit.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -29,11 +27,6 @@ export function withVersion(manifest, version, skills) {
   return next;
 }
 
-// A hand-written changelog with its first "## Unreleased" heading renamed to the version.
-export function released(changelog, version) {
-  return changelog.replace(/^(## )Unreleased\b/m, `$1${version}`);
-}
-
 function main() {
   const version = process.argv[2];
   if (!isVersion(version)) {
@@ -50,13 +43,6 @@ function main() {
       .sort()
     : [];
   writeFileSync(manifestPath, `${JSON.stringify(withVersion(JSON.parse(readFileSync(manifestPath, 'utf8')), version, skills), null, 2)}\n`);
-
-  const changelogPath = join(dir, 'CHANGELOG.md');
-  if (existsSync(changelogPath)) {
-    const before = readFileSync(changelogPath, 'utf8');
-    const after = released(before, version);
-    if (after !== before) writeFileSync(changelogPath, after);
-  }
 
   const x927 = join(root, 'node_modules', '.bin', 'x927');
   const build = spawnSync(existsSync(x927) ? x927 : 'x927', ['build', '--all'], { cwd: root, encoding: 'utf8' });

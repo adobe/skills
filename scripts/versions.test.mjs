@@ -72,7 +72,7 @@ test('the tag a release counts from: made once, on the commit before the push, a
 });
 
 // A repository on main, and a pull request's change on top of it.
-function branch(t, change) {
+function branch(t, change, more = {}) {
   const root = tree(t, {
     'plugins/a/plugin.json': plugin('a', '1.0.0'),
     'plugins/a/skills/one/SKILL.md': skill('one', '1.2.0'),
@@ -83,6 +83,7 @@ function branch(t, change) {
     'plugins/commerce/c/plugin.json': plugin('c', '4.0.0'),
     'plugins/commerce/c/skills/theirs/SKILL.md': skill('theirs', '4.0.0'),
   });
+  write(root, more);
   const base = commit(root, 'base');
   write(root, change);
   commit(root, 'change');
@@ -102,6 +103,27 @@ test('a plugin version and a skill version changed by hand fail, and are named',
   assert.match(result.stdout, /::error file=plugins\/a\/skills\/one\/SKILL\.md::The version of the skill one .* from 1\.2\.0 to 2\.0\.0/);
   assert.match(result.stdout, /::error file=plugins\/a\/skills\/plain\/SKILL\.md::.* from none to 1\.0\.0/);
   assert.match(result.summary, /`plugins\/a\/plugin\.json`: 1\.0\.0 → 1\.1\.0/);
+});
+
+test('a changelog that a release writes may not be edited; one that comes with a new skill or plugin, or is imported, may', (t) => {
+  const edited = branch(t, { 'plugins/a/CHANGELOG.md': '# Changelog\n\n## Unreleased\n\nmine\n', 'plugins/a/skills/one/CHANGELOG.md': '## 9.9.9\n' }, { 'plugins/a/CHANGELOG.md': '# Changelog\n', 'plugins/a/skills/one/CHANGELOG.md': '## 1.2.0\n' });
+  assert.equal(edited.status, 1);
+  assert.match(edited.stdout, /::error file=plugins\/a\/CHANGELOG\.md::The release writes plugins\/a\/CHANGELOG\.md, from the commit messages\. Take the change to it out/);
+  assert.match(edited.stdout, /::error file=plugins\/a\/skills\/one\/CHANGELOG\.md::/);
+  assert.match(edited.summary, /git checkout origin\/main -- <file>/);
+  assert.match(edited.stdout, /2 changelog\(s\) that a release writes are edited by hand/);
+
+  const allowed = branch(t, {
+    'plugins/a/skills/new/SKILL.md': skill('new'),
+    'plugins/a/skills/new/CHANGELOG.md': '## 0.1.0\n', // comes with the new skill
+    'plugins/commerce/c/CHANGELOG.md': '## 4.1.0\n', // imported: written where it comes from
+    'plugins/a/notes/CHANGELOG.md': 'not in the directory of a skill or plugin\n',
+  }, { 'plugins/commerce/c/CHANGELOG.md': '## 4.0.0\n' });
+  assert.equal(allowed.status, 0, allowed.stdout + allowed.stderr);
+
+  // a pull request that changes how releases write changelogs may bring them in line
+  const migration = branch(t, { 'plugins/a/CHANGELOG.md': '# Changelog\n\n## Earlier\n', 'plugin.release.config.cjs': 'module.exports = {};\n' }, { 'plugins/a/CHANGELOG.md': '# Changelog\n' });
+  assert.equal(migration.status, 0, migration.stdout + migration.stderr);
 });
 
 test('new skills and plugins, imported ones, a hand-written manifest and a folder name taken twice may change their version', (t) => {
