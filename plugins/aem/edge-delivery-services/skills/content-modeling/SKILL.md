@@ -3,7 +3,7 @@ name: content-modeling
 description: "Use this to decide what authors type for an AEM Edge Delivery Services (EDS) block, in any editor (Word, Google Docs, Experience Workspace, Universal Editor): the table layout (rows, cells, columns), variants, per-item options such as featured, lists, tabular data, forms, and whether something should be a block at all. Also use it to review or simplify a block's author-facing structure, before writing block code for a new block or a changed structure. Not for decorate JS or CSS once the model is set."
 license: Apache-2.0
 metadata:
-  version: "3.0.0"
+  version: "2.0.1"
 ---
 
 # Content Modeling for EDS Blocks
