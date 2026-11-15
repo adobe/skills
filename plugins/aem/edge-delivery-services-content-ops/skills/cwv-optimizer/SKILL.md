@@ -8,7 +8,7 @@ metadata:
 
 # CWV Optimizer for AEM Edge Delivery Services
 
-Diagnose and fix Core Web Vitals issues on AEM Edge Delivery Services pages using EDS-specific domain knowledge: the 100KB LCP budget, the Eager-Lazy-Delayed loading phases, block architecture, the `createOptimizedPicture()` function, and the `/scripts/delayed.js` pattern. Produces specific, implementable fixes with estimated impact projections, not generic performance advice.
+Diagnose and fix Core Web Vitals issues on AEM Edge Delivery Services pages using EDS-specific domain knowledge: the 100KB LCP budget, the Eager-Lazy-Delayed loading phases, block architecture, the `createOptimizedPicture()` function, and where the project's delayed phase lives (`consented.js` or `delayed.js`). Produces specific, implementable fixes with estimated impact projections, not generic performance advice.
 
 ## External Content Safety
 
@@ -51,8 +51,10 @@ Before starting, create a checklist of all steps to track progress:
 Fetch the page and collect baseline scores:
 
 ```bash
-curl -s -o /dev/null -w "HTTP %{http_code} - %{size_download} bytes - %{time_total}s" "https://<domain>/<path>"
+curl -s --compressed -o /dev/null -w "HTTP %{http_code} - %{size_download} bytes - %{time_total}s" "https://<domain>/<path>"
 ```
+
+Keep `--compressed` on every curl. Without it `.aem.live` sends the HTML uncompressed, several times what a browser downloads, and the scripts gzipped anyway, so a `grep` on them finds nothing.
 
 Record baseline CWV values, total page weight, request count, and TTFB. A large FCP-to-LCP gap suggests render-blocking resources between first paint and largest paint.
 
@@ -62,7 +64,7 @@ Record baseline CWV values, total page weight, request count, and TTFB. A large 
 
 Identify the LCP element from measured data, not from page structure. Use Chrome DevTools (Performance panel → the LCP marker, or the Lighthouse "Largest Contentful Paint element" audit) or RUM field data. In EDS the LCP element is commonly the first image or a large `<h1>` in the first section, but confirm it rather than assuming. Once confirmed, fetch the HTML and examine that element in the first section (before the first `---` divider).
 
-Inventory every eager-phase resource and measure actual transfer sizes. Build the budget table: HTML document, `/styles/styles.css`, `/scripts/aem.js`, `/scripts/scripts.js`, first-section block CSS/JS, preloaded fonts, and LCP image. Grade the total against the 100KB budget (see `references/cwv-eds-reference.md` for grading scale).
+Inventory every eager-phase resource and measure its compressed transfer size (from a Lighthouse report, or `curl --compressed`). Build the budget table: HTML document, `/styles/styles.css`, `/scripts/aem.js`, `/scripts/scripts.js`, first-section block CSS/JS, and LCP image. Anything else before LCP, a font included, is a finding. Grade the total against the 100KB budget (see `references/cwv-eds-reference.md` for grading scale). For a per-request byte table from Lighthouse and a CI check of the budget, use the `performance-budget` skill.
 
 Use RUM field data to see real-user LCP for the page, and process it with Adobe's official [`@adobe/rum-distiller`](https://github.com/adobe/rum-distiller) library (the same one the OpTel Explorer uses) rather than hand-parsing checkpoint events:
 
@@ -90,11 +92,11 @@ console.log(`p75 LCP: ${dc.totals.lcp.percentile(75)}ms`);
 
 Verify resources load in the correct phase:
 
-**Eager**: Only first-section block CSS/JS. Check that below-fold blocks are not loading eagerly. Images in the first section must have `loading="eager"` with `width` and `height`; below-fold images must have `loading="lazy"`.
+**Eager**: Only first-section block CSS/JS. Check that below-fold blocks are not loading eagerly. Every `<img>` in the delivered HTML has `loading="lazy"`, and that is not a defect: `waitForFirstImage()` in `aem.js` sets the first image of the first section to `eager` at runtime. Report it only if the LCP image is still `lazy` in the rendered DOM (DevTools), for example because a block replaced it.
 
-**Delayed**: Fetch `/scripts/delayed.js` and verify all third-party scripts load there. Common violations: Google Tag Manager in `<head>` (~70KB, blocks render), analytics loaded synchronously, chat widgets loaded eagerly, consent banners in the eager phase.
+**Delayed**: Read `loadDelayed()` in `/scripts/scripts.js` to see which file the project has. Since July 2026 the boilerplate imports `scripts/consent-check.js`, which imports `scripts/consented.js` once the visitor has consented, with no timer. Older projects import `scripts/delayed.js` after a 3-second timer. Verify all third-party scripts load from that file. Common violations: Google Tag Manager in `<head>` (~70KB, blocks render), analytics loaded synchronously, chat widgets loaded eagerly, consent banners in the eager phase.
 
-**Fonts**: Verify `font-display: swap`, maximum 2 preloaded fonts, all WOFF2 format, each under 30KB. Fonts used only below the fold should not be preloaded.
+**Fonts**: The boilerplate loads `styles/fonts.css` only after the first section is shown, and paints first with size-adjusted fallback fonts. A font requested before LCP (an `@font-face` in `styles.css`, or a preload in `head.html`) is a finding: move it to `fonts.css`. Never recommend preloading a font; aem.live calls that counterproductive.
 
 ---
 
@@ -147,14 +149,15 @@ Key fixes: debounce expensive handlers (150ms), batch DOM reads before writes to
 
 ## Step 7: Audit Third-Party Script Loading
 
-Inventory all external scripts from the HTML head and `delayed.js`:
+Inventory all external scripts from the HTML head and the delayed-phase file found in Step 3:
 
 ```bash
-curl -s "https://<domain>/<path>" | grep -oP '<script[^>]*src="[^"]*"' | head -20
-curl -s "https://<domain>/scripts/delayed.js"
+curl -s --compressed "https://<domain>/<path>" | grep -oP '<script[^>]*src="[^"]*"' | head -20
+curl -s --compressed "https://<domain>/scripts/scripts.js" | grep -A4 'function loadDelayed'
+curl -s --compressed "https://<domain>/scripts/consented.js"   # or /scripts/delayed.js on older projects
 ```
 
-Classify each script by current phase vs. correct phase. All third-party scripts must load via `delayed.js` (3+ seconds after page load). Scripts in the eager phase add directly to the 100KB budget. If GTM re-injects scripts dynamically, configure GTM triggers to fire only after a 3-second delay.
+Classify each script by current phase vs. correct phase. All third-party scripts belong in that delayed-phase file. aem.live's guideline is that the delayed phase starts at least three seconds after the LCP event; `consented.js` enforces no delay, so if the project needs one, add it in `consent-check.js` or `consented.js`. Scripts in the eager phase add directly to the 100KB budget. If GTM re-injects scripts dynamically, configure GTM triggers to fire only after a 3-second delay.
 
 ---
 
@@ -165,7 +168,7 @@ For each issue, produce a specific fix with estimated impact:
 | Issue | Metric | Current | Fix | Projected After |
 |-------|--------|---------|-----|-----------------|
 | Hero image 180KB | LCP | 3.2s | Reduce source image dimensions / crop (EDS already serves WebP) | 2.1s |
-| GTM in head | LCP | 3.2s | Move to delayed.js | 2.4s |
+| GTM in head | LCP | 3.2s | Move to consented.js (delayed.js on older projects) | 2.4s |
 | Images missing dimensions | CLS | 0.18 | Add width/height to createOptimizedPicture | 0.03 |
 | Font swap without size-adjust | CLS | 0.18 | Add size-adjust to fallback | 0.08 |
 | Carousel forced reflow | INP | 310ms | Batch DOM reads/writes | 150ms |
@@ -192,8 +195,8 @@ Ranked list: highest-impact fix first, with metric affected, estimated improveme
 - [ ] Monitor OpTel for 7 days to confirm real-user improvements
 
 ### E-L-D Compliance Summary
-- [ ] Above-fold images: `loading="eager"` with `width` and `height`
+- [ ] LCP image: `eager` in the rendered DOM, with `width` and `height` (the delivered HTML says `lazy`)
 - [ ] Below-fold images: `loading="lazy"`
-- [ ] All third-party scripts in `delayed.js`
-- [ ] Max 2 preloaded fonts, WOFF2, under 30KB each
+- [ ] All third-party scripts in `consented.js` (or `delayed.js` on older projects)
+- [ ] No font, preload or second origin before LCP
 - [ ] `font-display: swap` with `size-adjust` fallbacks
