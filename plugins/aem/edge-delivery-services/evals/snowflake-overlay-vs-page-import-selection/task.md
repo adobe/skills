@@ -10,6 +10,8 @@ The repo is an empty `adobe/aem-boilerplate` clone with no prior conversion work
 
 ## Output Specification
 
+Write your response to `ANSWER.md` in the project root.
+
 Respond as the agent would. Your response must:
 
 1. Identify which skill is the correct choice for this request.
@@ -17,4 +19,4 @@ Respond as the agent would. Your response must:
 3. Outline the high-level phases the chosen skill will execute, naming the phases.
 4. State what the user needs to provide before the work can start.
 
-Do NOT execute the conversion. Do NOT write any code. Do NOT modify any files. Produce a planning response only.
+Do NOT execute the conversion. Do NOT write any code. Do NOT modify any file other than `ANSWER.md`. Produce a planning response only.

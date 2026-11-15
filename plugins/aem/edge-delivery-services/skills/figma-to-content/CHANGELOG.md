@@ -1,3 +1,5 @@
+## [1.0.1](https://github.com/adobe/skills/compare/figma-to-content-v1.0.0...figma-to-content-v1.0.1) (2026-11-14)
+
 # 1.0.0 (2026-08-26)
 
 

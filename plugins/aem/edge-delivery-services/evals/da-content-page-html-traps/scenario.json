@@ -1,0 +1,10 @@
+{
+  "description": "Fix a hand-written DA page draft that previews with missing content, section style, metadata and a mangled table",
+  "fixtures": {
+    "draft": {
+      "type": "directory",
+      "path": "./fixtures/draft",
+      "installPath": "draft"
+    }
+  }
+}

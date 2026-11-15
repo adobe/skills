@@ -1,0 +1,33 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "commerce-app-migration",
+  "version": "1.4.0",
+  "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach.",
+  "author": {
+    "name": "Adobe",
+    "email": "commerce-app-management@adobe.com"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "keywords": [
+    "adobe-commerce",
+    "app-builder",
+    "migration",
+    "app-management",
+    "starter-kit"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {},
+        "tessl": {
+          "name": "adobe/commerce-app-migration",
+          "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach. Run from the root of the App Builder project to be migrated. Pass --auto to skip confirmation prompts (suitable for CI or batch use).",
+          "private": false,
+          "skills": [
+            "skills/commerce-app-migrate"
+          ]
+        }
+      }
+    }
+  }
+}
