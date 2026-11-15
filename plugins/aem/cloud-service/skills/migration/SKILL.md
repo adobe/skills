@@ -14,7 +14,7 @@ description: |
   migrated code on a local Cloud SDK (Branch G, beta).
 license: Apache-2.0
 metadata:
-  version: "1.0.1"
+  version: "1.1.0"
 ---
 
 # AEM as a Cloud Service — Code Migration
