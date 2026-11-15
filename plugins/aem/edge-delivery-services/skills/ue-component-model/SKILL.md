@@ -13,7 +13,7 @@ In AEM-authoring projects (aem-boilerplate-xwalk) authors fill properties-panel 
 1. **Get the content model** (rows, cells, variants) from content-modeling. If it does not exist, create it first. Do not derive fields from `decorate()`.
 2. **Map it to properties.** Each row (or group of cells) is one property, in table order. Container blocks (cards, carousel): the container has a `filter`, each item has its own model, one row per item and one column per property.
 3. **Write the partial** `blocks/<name>/_<name>.json` with `definitions`, `models` and `filters`. Register it where authors can add it, or they cannot: a block id goes into the `section` filter in `models/_section.json`; a custom section type (for example a tab panel) goes into the `main` filter in `models/_component-filters.json`. Then run `npm run build:json`: it regenerates the root `component-definition.json`, `component-models.json` and `component-filters.json`, which you never edit by hand (the pre-commit hook also runs it).
-4. **Check** ids match (definition `template.model` or `filter` to the model or filter id), JSON is valid, and `decorate()` keeps `data-aue-*` instrumentation when it moves elements (`moveInstrumentation()`, see building-blocks).
+4. **Check** ids match (definition `template.model` or `filter` to the model or filter id), JSON is valid, and `decorate()` keeps `data-aue-*` instrumentation when it moves elements (`moveInstrumentation()`, defined in `scripts/scripts.js` of aem-boilerplate-xwalk).
 
 ## Rules
 

@@ -70,7 +70,7 @@ or two new blocks).
 | DA IMS token (`DA_TOKEN`) | **da-auth** |
 | DA body-fragment HTML rules, Source API, preview/publish, media | **da-content** |
 | Whether a block exists + its authoring model & examples | **block-collection-and-party** |
-| Surveying the whole available block palette | **block-inventory** |
+| Surveying the whole available block palette | **identify-page-structure** (Step 2.5) |
 | Designing a content model for a **new** block | **content-modeling** |
 | Building a **new** block (full dev workflow) | **content-driven-development** (invokes **building-blocks**, **testing-blocks**) |
 | Rendering a block + **visual comparison to the design** (the reuse gate) | **testing-blocks** (browser/Playwright screenshot + "compare implementation to design") |
@@ -254,7 +254,7 @@ reached depends on whether the section is annotated.
 ### 2.0 — Know the project's block palette (always)
 
 Before resolving anything, enumerate what the project **already has**:
-`ls -d blocks/*/` plus **block-inventory** / **block-collection-and-party** for
+`ls -d blocks/*/` plus **block-collection-and-party** for
 each block's **authoring model** (row/cell structure, variants) **and a
 rendered example** — the block's `liveExampleUrl` when it comes from the Block
 Collection, or the project's own block rendered at `localhost:3000`. That
@@ -390,7 +390,7 @@ token-level differences (palette, fonts, type scale) do **not** break reuse —
 they are absorbed once by retargeting the project's design tokens (see
 Guardrails). **How to run the visual check — reuse testing-blocks, don't invent
 one:** get a rendered example of the candidate block — its `liveExampleUrl`
-(block-collection-and-party / block-inventory) or the project's own block
+(block-collection-and-party) or the project's own block
 rendered at `localhost:3000` with the section's **actual** content — including
 secondary text, captions, and CTAs over whatever background or media the block
 places them on, not just placeholder cells — then follow **testing-blocks**'

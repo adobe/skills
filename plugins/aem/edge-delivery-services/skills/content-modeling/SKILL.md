@@ -8,20 +8,18 @@ metadata:
 
 # Content Modeling for EDS Blocks
 
-A content model is the structure authors see and manage in Word, Google Docs or Experience Workspace. It is also the markup delivered to browsers before decoration, so it matters under WYSIWYG editing too (Universal Editor, Experience Workspace layout view): search engines and AI crawlers read it. Design it for the author first; `decorate()` absorbs the complexity.
+A content model is the structure authors see and manage in Word, Google Docs or Experience Workspace. It is also the markup delivered to browsers before decoration, so it matters under WYSIWYG editing too (Universal Editor, Experience Workspace layout view): search engines and AI crawlers read it.
 
 Skip this skill when the block's structure does not change (CSS or code only).
 
 ## Steps
 
-1. **Requirements.** Write down what the content is, how often it repeats, and which parts are optional. If the author is not available, decide, and list each assumption in the output.
-2. **Default content, widget or block?** Headings, paragraphs, images, lists and links are default content. Never make a `text`, `heading` or `image` block. Forms, search, calculators and similar apps are widgets: authors paste the widget URL alone in a paragraph and author no table. Their editable text (topic lists, messages) lives with the widget, for example in a spreadsheet, so authors can still change it without a developer. A block is for repeating or interactive content that authors fill in. Look for an existing block with the same job first (block-collection-and-party) and reuse its model.
-3. **Pick a shape.**
+1. **Default content, widget or block?** Headings, paragraphs, images, lists and links are default content. Never make a `text`, `heading` or `image` block. Forms, search, calculators and similar apps are widgets: authors paste the widget URL alone in a paragraph and author no table. Their editable text (topic lists, messages) lives with the widget, for example in a spreadsheet, so authors can still change it without a developer. A block is for repeating or interactive content that authors fill in. Look for an existing block with the same job first (block-collection-and-party) and reuse its model.
+2. **Pick a shape.**
    - One-off (hero, quote): rows or columns as the content needs.
-   - Repeating (cards, carousel): one row per item, same columns in every row.
    - Configuration: only for non-displayed settings or API-driven blocks.
-   - Auto-blocked: the author writes plain content (a pasted link, sections with Section Metadata, page metadata) and code creates the block.
-4. **Check the rules below**, then write the output.
+   - Auto-blocked: the author writes plain content and code creates the block. Besides links, sections with Section Metadata and page metadata can trigger it.
+3. **Check the rules below**, then write the output.
 
 ## Rules
 
