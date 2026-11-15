@@ -31,6 +31,17 @@ repository; the pull request review reads them too.
 - Keep `SKILL.md` short: what a capable agent gets wrong without it, not general practice. Put
   detail in `references/` and link it by a path that exists. Don't grow a `SKILL.md` past 500
   lines.
+- A `SKILL.md` has a token limit: 5,000 tokens for a skill with an eval, 1,000 for a skill
+  without one. A token is counted as four characters. An eval of a skill is one of:
+  - `skills/<skill>/evals/evals.json` with at least one entry that has a `prompt` and an
+    `expected_output`, `assertions` or `expectations`;
+  - a scenario of its plugin, `evals/<scenario>/` with `task.md` and `criteria.json`, whose
+    folder is named after the skill: `<skill>` or `<skill>-<what it tests>`;
+  - any scenario of its plugin, when the plugin has no other skill.
+
+  `node scripts/check-skills.mjs --tokens <plugin dir>` prints each skill's tokens, limit and
+  eval. A pull request that changes a `SKILL.md` over its limit has to bring it under: with an
+  eval, or by cutting.
 - The review tests that. It asks a small model without tools, files or web access, which has
   not read the skill, the questions the skill answers. What that model gets right by itself,
   twice, doesn't belong in a skill: the review names each such line and denies the pull
@@ -120,11 +131,16 @@ npm run plugins:check                  # when you touch a plugin.json, mcp.json 
 npm run plugins:build                  # to see what CI will build from them; no need to commit it
 npm run lint:stardust                  # when you touch plugins/stardust; after a change to its
                                        # plugin.json, run plugins:build first, as CI does
+node scripts/setup-agent-clis.mjs && node scripts/test-drive.mjs --build plugins/<plugin>
+                                       # when you add a plugin, a hook or an MCP server: what
+                                       # Claude Code, Codex, Grok and Antigravity load of it
 (cd plugins/web/cli && npm ci && npm run lint && npm test)  # when you touch plugins/web/cli
 ```
 
 CI also runs `tessl plugin lint`, a Tessl skill review of each changed skill (it must score 80%
-or more), and a Claude and Codex review of the pull request. A plugin's own `AGENTS.md` adds
+or more), the test drive of each changed plugin in the four clients, and a Claude and Codex
+review of the pull request. The reviewers run a changed skill in an agent, with the plugin and
+without it (`scripts/skill-eval.mjs`). A plugin's own `AGENTS.md` adds
 rules for that plugin; read it when you work there.
 
 ## Pull requests

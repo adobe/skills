@@ -60,8 +60,9 @@ jobs:
           done
 
   # The boy-scout rule (.boy-scout.json): a pull request that changes a SKILL.md which is too
-  # long, shares its name with another skill, has a Tessl lint warning or is one no client
-  # finds has to fix that in the same pull request.
+  # long, over its token limit (5,000 with an eval, 1,000 without), shares its name with
+  # another skill, has a Tessl lint warning or is one no client finds has to fix that in the
+  # same pull request.
   boy-scout:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
