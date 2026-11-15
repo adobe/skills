@@ -19,7 +19,7 @@ jobs:
           node-version: '20'
 
       - name: Setup AIO CLI
-        uses: adobe/aio-cli-setup-action@3
+        uses: adobe/aio-cli-setup-action@1.3.0
         with:
           os: ubuntu
 
