@@ -48,13 +48,7 @@ Before starting, create a checklist of all steps to track progress:
 
 ## Step 1: Run Lighthouse Audit and Establish Baseline
 
-Fetch the page and collect baseline scores:
-
-```bash
-curl -s --compressed -o /dev/null -w "HTTP %{http_code} - %{size_download} bytes - %{time_total}s" "https://<domain>/<path>"
-```
-
-Keep `--compressed` on every curl. Without it `.aem.live` sends the HTML uncompressed, several times what a browser downloads, and the scripts gzipped anyway, so a `grep` on them finds nothing.
+Fetch the page and collect baseline scores. On every curl, use `--compressed`: `.aem.live` sends scripts gzipped even when the request doesn't ask for it, so a `grep` on them without the flag finds nothing.
 
 Record baseline CWV values, total page weight, request count, and TTFB. A large FCP-to-LCP gap suggests render-blocking resources between first paint and largest paint.
 
@@ -92,7 +86,7 @@ console.log(`p75 LCP: ${dc.totals.lcp.percentile(75)}ms`);
 
 Verify resources load in the correct phase:
 
-**Eager**: Only first-section block CSS/JS. Check that below-fold blocks are not loading eagerly. Every `<img>` in the delivered HTML has `loading="lazy"`, and that is not a defect: `waitForFirstImage()` in `aem.js` sets the first image of the first section to `eager` at runtime. Report it only if the LCP image is still `lazy` in the rendered DOM (DevTools), for example because a block replaced it.
+**Eager**: Only first-section block CSS/JS. Check that below-fold blocks are not loading eagerly. Every `<img>` in the delivered HTML has `loading="lazy"`, and that is not a defect: `waitForFirstImage()` in `aem.js` sets the first image of the first section to `eager` at runtime, unless it has already loaded (from cache). Report it only if the LCP image's request starts late in the waterfall, for example because a block replaced it.
 
 **Delayed**: Read `loadDelayed()` in `/scripts/scripts.js` to see which file the project has. Since July 2026 the boilerplate imports `scripts/consent-check.js`, which imports `scripts/consented.js` once the visitor has consented, with no timer. Older projects import `scripts/delayed.js` after a 3-second timer. Verify all third-party scripts load from that file. Common violations: Google Tag Manager in `<head>` (~70KB, blocks render), analytics loaded synchronously, chat widgets loaded eagerly, consent banners in the eager phase.
 
@@ -157,7 +151,7 @@ curl -s --compressed "https://<domain>/scripts/scripts.js" | grep -A4 'function 
 curl -s --compressed "https://<domain>/scripts/consented.js"   # or /scripts/delayed.js on older projects
 ```
 
-Classify each script by current phase vs. correct phase. All third-party scripts belong in that delayed-phase file. aem.live's guideline is that the delayed phase starts at least three seconds after the LCP event; `consented.js` enforces no delay, so if the project needs one, add it in `consent-check.js` or `consented.js`. Scripts in the eager phase add directly to the 100KB budget. If GTM re-injects scripts dynamically, configure GTM triggers to fire only after a 3-second delay.
+Classify each script by current phase vs. correct phase. All third-party scripts belong in that delayed-phase file. aem.live's guideline is that the delayed phase starts at least three seconds after the LCP event; `consented.js` enforces no delay, so if the project needs one, add it in `consent-check.js` or `consented.js`, and start it from the LCP (a `PerformanceObserver` for `largest-contentful-paint`): a `setTimeout` at module load counts from when the module ran, not from LCP. Scripts in the eager phase add directly to the 100KB budget. If GTM re-injects scripts dynamically, configure GTM triggers to fire only after a 3-second delay.
 
 ---
 
@@ -195,7 +189,7 @@ Ranked list: highest-impact fix first, with metric affected, estimated improveme
 - [ ] Monitor OpTel for 7 days to confirm real-user improvements
 
 ### E-L-D Compliance Summary
-- [ ] LCP image: `eager` in the rendered DOM, with `width` and `height` (the delivered HTML says `lazy`)
+- [ ] LCP image requested early in the waterfall, with `width` and `height` (the delivered HTML says `lazy`)
 - [ ] Below-fold images: `loading="lazy"`
 - [ ] All third-party scripts in `consented.js` (or `delayed.js` on older projects)
 - [ ] No font, preload or second origin before LCP
