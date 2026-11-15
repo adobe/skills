@@ -1,0 +1,213 @@
+{
+  "name": "da-content trigger queries",
+  "description": "Should trigger when generating or fixing HTML for DA upload (block/section/page metadata structure, icons, images, cell content), calling the DA Source API for uploads, uploading media, or diagnosing silent content failures after preview; near misses are token acquisition (da-auth), local dev server and aem content clone/pull (aem-cli), block JS/CSS, content modeling, page import and testing.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  },
+  "queries": [
+    {
+      "id": "y-generate-block-html",
+      "query": "I'm building a new 'testimonials' block. Write the HTML for a sample page with three testimonials that I can upload to our DA site and preview.",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "y-icons-not-showing",
+      "query": "The pages I generate for Experience Workspace use <span class=\"icon icon-arrow\"></span> for icons. Some previewed fine, but after a teammate opened one in the editor the icon was gone. How should icons be written so they survive?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "y-metadata-ignored",
+      "query": "My generated page has a div with class metadata containing title and description rows, but the preview has no <title> or meta description. Why?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "y-content-missing",
+      "query": "I wrote an HTML file for our site with <main><h1>Welcome</h1><p>Intro</p></main> and uploaded it. After preview the page is empty. What's wrong with the markup?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "y-section-style-lost",
+      "query": "I added a div with class 'Section Metadata' and a style row to my page in Experience Workspace to get a dark background, but the section renders without it. What am I doing wrong?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "y-put-200-nothing",
+      "query": "My curl PUT to admin.da.live/source/acme/site/page.html returns 200 and a JSON body, but the file isn't there when I open it in da.live. What is going wrong?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "y-upload-png",
+      "query": "I need to upload a hero PNG and an SVG logo to DA from a script so my pages can reference them. How should I do the upload, and does it need previewing?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "y-img-about-error",
+      "query": "After previewing my page the images show src=\"about:error\". The HTML uses <img src=\"/images/hero.png\">. How do I fix this?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "y-svg-409",
+      "query": "Previewing a DA page that references my logo.svg fails with a 409 error about the SVG. The file is 55 KB. What is the limit and what can I do?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "y-table-turned-block",
+      "query": "I put a plain data table in the HTML I author for Experience Workspace, but after preview it becomes a weird block and the header row is gone. How do I avoid that?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "y-inspect-pipeline",
+      "query": "I uploaded a page to DA and previewed it. I want to see exactly how the pipeline interpreted my HTML (which tags survived) but the aem.page site needs auth. How can I inspect it?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "y-inline-tags-cells",
+      "query": "Inside my block cells I use <span class=\"price\"> and <b> for styling, and after preview the span class is gone and my CSS selectors on <b> don't match. What does the pipeline do to these?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "y-links-rewritten",
+      "query": "In my DA HTML I used absolute links to our aem.page URLs and they come out as relative paths after preview. Is that expected, and what about target=_blank?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "n-get-token",
+      "query": "I need an IMS token for a CI job that calls the DA admin API for our org. How do I get one for a service account?",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "n-start-dev-server",
+      "query": "Get the local dev server running for this repo so I can look at the homepage.",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "n-decorate-js",
+      "query": "Write the JavaScript decorate function for a new accordion block that reads the rows from the authored block and builds details/summary elements.",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "n-import-page",
+      "query": "Import https://example.com/about into our site as an EDS page, matching our existing blocks.",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "n-model-content",
+      "query": "Design the content model for a product-card block: which fields should authors fill in and how should the table be laid out for authoring?",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "n-pull-edit-push",
+      "query": "Pull down /products from da.live, change the prices in a few pages, and push the edits back.",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "n-block-css",
+      "query": "My cards block overflows on mobile and the CSS custom properties from styles.css aren't applied. Fix the CSS.",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "n-test-block",
+      "query": "Add unit tests for my countdown block's decorate function and run them.",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "n-local-test-html",
+      "query": "I want to try my new block locally with a test page. Write the sample page HTML and put it where the dev server will serve it; I don't need to sync anything with our content source.",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "y-inline-tags-generic",
+      "query": "The sample content I generate for blocks loses its <span> classes and <b> tags after the pipeline runs. Which inline tags are safe inside block cells?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "y-ew-upload-script",
+      "query": "Our Experience Workspace site needs a script that uploads generated pages and images. What are the rules for the page HTML and for uploading images so nothing silently breaks?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "y-headings-lists-no-system",
+      "query": "Generate a landing page with a hero block, a three-column cards block and page metadata as authored content HTML for our EDS site.",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "n-word-site",
+      "query": "Our EDS site is authored in Word on SharePoint. How do I add a metadata table with title and description to a document?",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "train"
+    },
+    {
+      "id": "n-aemcs-ue",
+      "query": "We use the Universal Editor on AEM Cloud Service. How do I add a new component model for a teaser?",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "n-ew-login",
+      "query": "I can't log in to Experience Workspace from my script: the API returns 403 for my account. How do I diagnose it?",
+      "should_trigger": false,
+      "skill": "da-content",
+      "split": "test"
+    },
+    {
+      "id": "y-local-test-format",
+      "query": "I'm writing a static test page by hand for my new block so I can view it locally. What HTML structure must it have so the pipeline and decoration treat it like real authored content (sections, block markup, metadata)?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "adobe/adobe-for-creativity",
+  "version": "3.4.0",
+  "description": "Brings together Adobe Creative Cloud tools for images, vectors, design, and video. Edit multiple assets at once, adapt for different platforms, and complete multi-step creative workflows for polished results.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "private": false
+}

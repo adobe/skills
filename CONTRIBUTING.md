@@ -45,7 +45,8 @@ CI runs these on every pull request:
 | Check | What it does |
 |---|---|
 | Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, and runs the tests of the `web` CLI and the lints of `stardust`. |
-| Tessl Plugin Lint | `tessl plugin lint` for plugins that have a `.tessl-plugin/plugin.json`. |
+| Tessl Plugin Lint | `tessl plugin lint` for every plugin. |
+| Validate Skills | `npm run plugins:check`: the pull request leaves alone the files that `x927` generates from each plugin's root `plugin.json` and `mcp.json` (the Claude Code, Tessl and Cursor manifests, `.mcp.json`, and the description and version of marketplace entries). Change `plugin.json`; after the merge, the Release workflow builds the generated files on `main` and pushes them. |
 | Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |
 | AI Review | Claude and Codex review the pull request against [AGENTS.md](AGENTS.md) and leave a verdict, a summary and line comments. Drafts are not reviewed. |
 | Conventional Commits | At least one commit of the pull request follows [Conventional Commits](https://www.conventionalcommits.org). |
@@ -56,7 +57,7 @@ Pull requests from forks: the Tessl review of a pull request whose author has no
 
 ## Requesting Evals
 
-Evals measure whether a skill improves what an agent does: the same task with and without the skill. They run for plugins that have a `.tessl-plugin/plugin.json`, with the scenarios in the plugin's `evals/` directory (`<scenario>/task.md`, `criteria.json`, optional `resources/`).
+Evals measure whether a skill improves what an agent does: the same task with and without the skill. They run for plugins that have scenarios in their `evals/` directory (`<scenario>/task.md`, `criteria.json`, optional `resources/`).
 
 To request a run, push an empty commit whose message starts with `eval:`:
 
@@ -93,6 +94,12 @@ A maintainer will look at a pull request within one week. Feedback is given in w
 
 There is nothing to publish by hand. People install plugins from `main`, so a merged pull request is what they get next.
 
-On every push to `main`, [semantic-release](https://semantic-release.gitbook.io) releases each changed skill that has a `package.json`: it computes the version from the commit messages, writes the skill's `CHANGELOG.md`, and creates a GitHub release with the packaged skill. `feat` is a minor release; `fix`, `perf`, `docs`, `refactor` and `style` are patch releases; a breaking change is a major release.
+On every push to `main`, [semantic-release](https://semantic-release.gitbook.io) computes versions from the commit messages. `feat` is a minor release; `fix`, `perf`, `docs`, `refactor` and `style` are patch releases; a breaking change is a major release. Nobody sets a version by hand, and a pull request that changes one fails.
 
-A plugin with a `.tessl-plugin/plugin.json` is published to the Tessl registry when the `version` in that file changes.
+- **Skills.** Each changed skill is released: its version goes into `metadata.version` of its `SKILL.md`, its `CHANGELOG.md` is written, and a GitHub release with the packaged skill is created, tagged `<skill>-v<version>`. A skill needs no release files of its own.
+- **Plugins.** Each changed plugin that has a root `plugin.json` is released as well, also when only one of its skills changed: its version goes into `plugin.json`, the manifests and the marketplace entry are built from that, and the release is tagged `plugin/<name>/v<version>`. Claude Code keeps an installed plugin at its version until the version changes, so this is what brings a merged change to the people who installed it. In a `CHANGELOG.md` that a plugin's owners write by hand, put the entry under `## Unreleased`; the release renames that heading to the version.
+- **Not released here:** skills and plugins brought in from another repository (the Commerce plugins, `adobe-for-creativity`, the `run-workflow` skill), which keep the versions they have there; and a skill whose folder name another skill has.
+
+Every plugin is published to the Tessl registry, as `adobe/<plugin name>`, when the `version` in its Tessl manifest changes: with every release of the plugin, and when a plugin that is brought in from another repository comes with a new version. That is why every `plugin.json` has a Tessl target; CI fails without it. A publish that times out is tried again, and a version that is already on the registry is not an error, so a failed Release job can be run again. Tessl accepts an upload first and runs its own publication checks afterwards: a version is on the registry only when those pass. The job prints what the registry says about each version at its end.
+
+The Release workflow pushes to `main` with its own token: the rebuilt manifests, and the release commits. A ruleset or a branch protection on `main` has to let GitHub Actions bypass it. Without that, the workflow fails at its first push and says so, and nothing is released or published.

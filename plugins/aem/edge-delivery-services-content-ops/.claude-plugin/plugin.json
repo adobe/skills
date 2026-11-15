@@ -1,11 +1,21 @@
 {
   "name": "aem-eds-content-ops",
+  "version": "1.3.0",
   "description": "Content operations skills for AEM Edge Delivery Services: page auditing, SEO optimization, AI search (GEO), WCAG accessibility, bulk metadata, structured data, sitemap validation, and content diffing. Complements the EDS development skills with operational tooling for content teams.",
-  "version": "1.0.0",
   "author": {
     "name": "FocusGTS"
   },
   "repository": "https://github.com/adobe/skills",
   "license": "Apache-2.0",
-  "keywords": ["aem", "edge-delivery-services", "content-ops", "seo", "geo", "accessibility", "wcag", "metadata", "audit"]
+  "keywords": [
+    "aem",
+    "edge-delivery-services",
+    "content-ops",
+    "seo",
+    "geo",
+    "accessibility",
+    "wcag",
+    "metadata",
+    "audit"
+  ]
 }
