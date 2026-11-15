@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "aem-edge-delivery-services",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Skills for AEM Edge Delivery Services development, including Content Driven Development workflow, block building, testing, content modeling, code review, and page migration.",
   "author": {
     "name": "Adobe"
@@ -21,7 +21,7 @@
         "claude": {},
         "tessl": {
           "name": "adobe/aem-edge-delivery-services",
-          "version": "1.0.2",
+          "version": "1.0.3",
           "description": "Skills for building AEM Edge Delivery Services sites — site creation, block development, content modeling, code review, testing, and page import.",
           "private": false,
           "skills": [
