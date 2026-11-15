@@ -3,7 +3,7 @@ name: cwv-optimizer
 description: Diagnose and fix Core Web Vitals issues on AEM Edge Delivery Services pages. Goes deeper than generic CWV advice by understanding EDS-specific performance patterns including the 100KB LCP budget, E-L-D loading phases, block rendering behavior, and third-party script impact. Produces specific fixes for LCP, CLS, and INP issues with before/after projections. Use when the user asks about Core Web Vitals, page speed, or performance issues on AEM Edge Delivery Services (EDS/Franklin) sites.
 license: Apache-2.0
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # CWV Optimizer for AEM Edge Delivery Services
