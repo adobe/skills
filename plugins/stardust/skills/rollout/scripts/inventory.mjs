@@ -47,9 +47,11 @@
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join, dirname, relative, basename } from 'node:path';
+import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageWidgets, scopeOf, scopeLine } from './lib.mjs';
+// the path rules (sidecar name, a file's key path, a roster URL's key path, the slug) are the shared library's (lib/paths.mjs),
+// each pinned by skills/stardust/scripts/test/contracts-characterize.test.mjs under this script's name
+import { pageWidgets, scopeOf, scopeLine, sidecarName as sidecarFor, treePath as deliveredPath, rosterPath as urlToDeliveredPath, pathSlug as pathToSlug } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -92,38 +94,6 @@ function walkHtml(dir, root = dir, acc = []) {
     }
   }
   return acc;
-}
-
-/** Sidecar path for a migrated HTML rel path (index.html -> _meta.json; x.html -> x._meta.json). */
-function sidecarFor(relHtml) {
-  const dir = dirname(relHtml);
-  const leaf = basename(relHtml);
-  const name = leaf === 'index.html' ? '_meta.json' : `${leaf.replace(/\.html$/, '')}._meta.json`;
-  return dir === '.' ? name : join(dir, name);
-}
-
-/** Delivered (extensionless) path on the EDS site for a migrated HTML rel path. */
-function deliveredPath(relHtml) {
-  const noExt = relHtml.replace(/\.html$/, '');
-  if (noExt === 'index') return '/';
-  if (noExt.endsWith('/index')) return `/${noExt.slice(0, -'/index'.length)}`;
-  return `/${noExt}`;
-}
-
-/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster). */
-function urlToDeliveredPath(url) {
-  let p;
-  try { p = new URL(url).pathname; } catch { p = String(url); }
-  p = p.replace(/\.html$/, '');
-  if (p === '' || p === '/' || p === '/index') return '/';
-  if (p.endsWith('/index')) return p.slice(0, -'/index'.length);
-  return p;
-}
-
-/** Stable slug from a delivered path (de/x/y -> de-x-y; '/' -> home). */
-function pathToSlug(path) {
-  if (path === '/') return 'home';
-  return path.replace(/^\//, '').replace(/\/+$/, '').replace(/\//g, '-');
 }
 
 function readJSON(path, fallback = null) {

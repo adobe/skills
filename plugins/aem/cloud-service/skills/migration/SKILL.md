@@ -14,7 +14,7 @@ description: |
   migrated code on a local Cloud SDK (Branch G, beta).
 license: Apache-2.0
 metadata:
-  version: "1.0.1"
+  version: "1.2.0"
 ---
 
 # AEM as a Cloud Service — Code Migration
@@ -78,6 +78,8 @@ Find the branch for the request and read its file before anything else. Each of 
 3. When code uses SCR, `ResourceResolver`, or console logging, read **`{code-assessment}/references/scr-to-osgi-ds.md`** and **`{code-assessment}/references/resource-resolver-logging.md`** (or the hub **`{code-assessment}/references/aem-cloud-service-pattern-prerequisites.md`**).
 
 Do not transform **Java or HTL** until the pattern guide (or reference) is read (branch B). Branch A does not require `{code-assessment}` pattern guidance.
+
+**Behavior pinning (before-eligible Java patterns).** For `guavaCache`, `scheduler`, `resourceChangeListener`, and `eventListener`/`eventHandler`, **Step 5** pins a one-per-finding characterization test around each edit (green before → transform → green after). Rules and skeletons: [references/characterization-tests.md](references/characterization-tests.md).
 
 **Branch D — Legacy UI Migration** (`legacy-ui/` sub-folders):
 
@@ -159,11 +161,14 @@ Every path serves **five findings per batch**. How to read the cache, the envelo
 For **each finding in the returned batch only** (up to 5):
 
 1. Resolve the target **inside the IDE workspace** (see **Workspace scope (IDE)**).
-2. Read source → classify with the pattern guide (or reference) → apply steps **in order** → check lints → next file.
+2. **Pin behavior first (before-eligible patterns only).** If the active pattern is before-eligible in [references/characterization-tests.md](references/characterization-tests.md) (`guavaCache`, `scheduler`, `resourceChangeListener`, `eventListener`/`eventHandler`), write **one** characterization test for this finding and run it green **before** editing — this pins current behavior. Follow that file's **efficiency contract exactly**: one fill-in skeleton, one attempt, **skip-fast** with `pin-skip: <reason>`. Never debug a test. All other patterns (including `replication`, `assetApi`, and every non-Java pattern) skip this step.
+3. Read source → classify with the pattern guide (or reference) → apply steps **in order** → check lints.
+4. **Re-run the pinned test (only if step 2 pinned one).** Green → behavior preserved, record `pinned`. Red after the edit → a real regression: **revert this finding's edit**, record `pin-fail → reverted`, and move on — do not retry or edit the test.
+5. Next file.
 
 ### Step 6: Report batch and wait
 
-After finishing the batch, summarise **for this batch only**: `paging.returned` of `paging.total` processed (with class names), files touched, and any skips/failures. If `paging.hasMore`, tell the user *"Processed batch of N (offset {offset}–{offset + returned − 1} of {total}). Reply `continue` for the next batch, or name specific classes."*; otherwise say the pattern is done and move to the session report.
+After finishing the batch, summarise **for this batch only**: `paging.returned` of `paging.total` processed (with class names), files touched, and any skips/failures. For before-eligible patterns, add each finding's pin outcome (`pinned` \| `pin-skip: <reason>` \| `pin-fail → reverted`) per [references/characterization-tests.md](references/characterization-tests.md) — omit this line entirely for patterns that are not before-eligible. If `paging.hasMore`, tell the user *"Processed batch of N (offset {offset}–{offset + returned − 1} of {total}). Reply `continue` for the next batch, or name specific classes."*; otherwise say the pattern is done and move to the session report.
 
 Then **stop and wait** — resume only when the user explicitly asks, per the Batched-processing rules.
 

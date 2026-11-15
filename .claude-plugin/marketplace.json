@@ -62,7 +62,7 @@
       "name": "aem-cloud-service",
       "source": "./plugins/aem/cloud-service",
       "description": "All AEM as a Cloud Service skills: component development, Dispatcher config authoring and hardening, workflow design and debugging, code assessment and migration from legacy AEM, content distribution, and Rapid Development Environment (RDE) support.",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "category": "aem",
       "keywords": [
         "adobe",
@@ -170,7 +170,7 @@
       "name": "adobe-cja",
       "source": "./plugins/adobe-cja",
       "description": "Practitioner skills for Adobe Customer Journey Analytics via the CJA MCP server",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "analytics",
       "keywords": [
         "adobe",
