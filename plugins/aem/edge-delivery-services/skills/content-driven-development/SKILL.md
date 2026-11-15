@@ -220,7 +220,6 @@ Expected: `200`
 
 1. Start with the block library page, `/docs/library/blocks/{block-name}`: it is the primary test content. Note which variants it shows.
 2. For variants or cases it lacks, find real pages that use the block as the **find-test-content** skill describes. It has no script: you list the pages (query index, or `aem content clone --path <folder>` and a search of `./content/`) and check their HTML yourself.
-3. Validate each URL loads: `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/path` (expect `200`). Document the URLs and the variants on each. If they cover the change, mark complete.
 
 **If no content found OR insufficient coverage:**
 1. Create additional test content using approaches from Option B
