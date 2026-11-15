@@ -218,22 +218,8 @@ Expected: `200`
 
 **What to do:**
 
-**First: Search for existing content**
-1. Invoke find-test-content skill
-2. Provide: block name, dev server URL (optional, defaults to localhost:3000)
-
-**What find-test-content will do:**
-- Search for existing content pages containing the block
-- Automatically detect and report all variants found
-- Report: URLs with instance counts and variant info
-
-**Then: Assess search results**
-
-**If sufficient content found:**
-1. Document URL(s)
-2. Validate URLs load: `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/path`
-3. Expected: `200` status
-4. Mark complete
+1. Start with the block library page, `/docs/library/blocks/{block-name}`: it is the primary test content. Note which variants it shows.
+2. For variants or cases it lacks, find real pages that use the block as the **find-test-content** skill describes. It has no script: you list the pages (query index, or `aem content clone --path <folder>` and a search of `./content/`) and check their HTML yourself.
 
 **If no content found OR insufficient coverage:**
 1. Create additional test content using approaches from Option B
