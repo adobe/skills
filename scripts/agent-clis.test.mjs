@@ -5,8 +5,8 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agyPlatform, agyBehind, installAgy, latestAgy, sha512 } from './setup-agent-clis.mjs';
-import { ENDPOINTS, MODELS, RULES, RUNNERS, changedSince, listFiles } from './skill-eval.mjs';
-import { run, tree } from './lib/testing.mjs';
+import { ENDPOINTS, MODELS, RULES, RUNNERS, changedSince, keeps, listFiles } from './skill-eval.mjs';
+import { commit, run, tree, write } from './lib/testing.mjs';
 
 const ROOT = join(import.meta.dirname, '..');
 const temp = (t) => {
@@ -140,7 +140,7 @@ const PLUGIN = {
   'plugins/p/evals/case/task.md': 'Do the task of the scenario.',
   'plugins/p/evals/case/criteria.json': JSON.stringify({ checklist: [{ name: 'done', max_score: 10 }] }),
   'plugins/p/evals/case/resources/start.md': 'given',
-  'plugins/p/evals/case/setup.sh': 'exit 1',
+  'plugins/p/evals/case/setup.sh': 'cat resources/start.md > start.md',
 };
 function cli(t, name, script) {
   const dir = temp(t);
@@ -169,9 +169,83 @@ test('an eval runs the task with the plugin and without it, and reports both ans
   assert.deepEqual(report.arms.with.removed, []);
   assert.equal(report.arms.with.turns, 2);
   assert.deepEqual(report.criteria, { checklist: [{ name: 'done', max_score: 10 }] });
-  assert.match(report.notes.join(' '), /setup\.sh, which this runner does not run/);
+  assert.deepEqual(report.notes, []);
   assert.equal(readFileSync(join(out, 'claude-with', 'workdir', 'result.md'), 'utf8'), 'plugin yes\n');
   assert.equal(readFileSync(join(root, 'plugins/p/evals/case/resources/start.md'), 'utf8'), 'given'); // the scenario is not changed
+});
+
+// A stand-in for a client that answers with the files of its work directory and the branch it is on.
+const LISTS = `printf '{"result":"%s on %s"}' "$(find . -type f -not -path './.git/*' | sort | tr '\\n' ' ')" "$( (git branch --show-current; git remote get-url origin) 2>/dev/null | tr '\\n' ' ')"`;
+
+test('a scenario starts from its fixtures, includes and setup scripts, in that order, in each run\'s own directory', (t) => {
+  const upstream = tree(t, { 'README.md': 'upstream', 'docs/guide.md': 'guide', 'src/app.js': 'app', 'src/app.test.js': 'test' });
+  commit(upstream);
+  const root = tree(t, {
+    ...PLUGIN,
+    'plugins/p/evals/case/setup.sh': 'echo "$(ls src | tr "\\n" " ")/ $(cat block/block.js)" > setup.txt; git add -A; git -c user.name=e -c user.email=e@example.com commit -q -m setup',
+    'plugins/p/evals/case/first.sh': 'echo first > first.txt',
+    'plugins/p/evals/case/data/seed.json': '{}',
+    'plugins/p/evals/case/fixtures/block/block.js': 'block',
+    'plugins/p/evals/case/fixtures/block/block.md': 'notes',
+    'plugins/p/evals/case/scenario.json': JSON.stringify({
+      fixture: { repoUrl: upstream, ref: 'HEAD', remote: 'https://github.com/org/site.git', exclude: ['*.md', 'src/*.test.js'] },
+      fixtures: { block: { type: 'directory', path: './fixtures/block', installPath: 'block', include: ['*.js'] } },
+      include: ['./data'],
+      setup: ['./first.sh'],
+    }),
+  });
+  const result = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--bin', claude(t, LISTS), '--out', temp(t)], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const report = JSON.parse(result.stdout);
+  for (const arm of ['with', 'without']) {
+    assert.equal(report.arms[arm].answer, './block/block.js ./data/seed.json ./first.txt ./resources/start.md ./setup.txt ./src/app.js  on main https://github.com/org/site.git ');
+    assert.deepEqual(report.arms[arm].files, []); // what the scenario set up is not what the run wrote
+  }
+  assert.deepEqual(report.notes, []);
+});
+
+test('--no-setup leaves out what needs the network and says so; a step that fails is a failed run', (t) => {
+  const root = tree(t, {
+    ...PLUGIN,
+    'plugins/p/evals/case/fixtures/block/block.js': 'block',
+    'plugins/p/evals/case/scenario.json': JSON.stringify({
+      fixture: { repoUrl: 'https://github.com/org/repo.git', ref: 'abc1234' },
+      fixtures: { block: { type: 'directory', path: './fixtures/block', installPath: 'blocks/block' } },
+    }),
+  });
+  const args = ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--arms', 'without', '--bin', claude(t, LISTS), '--out', temp(t)];
+  const offline = run(t, 'skill-eval.mjs', [...args, '--no-setup'], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(offline.status, 0, offline.stdout + offline.stderr);
+  const report = JSON.parse(offline.stdout);
+  assert.equal(report.arms.without.answer, './blocks/block/block.js ./resources/start.md  on ');
+  assert.deepEqual(report.notes, ['--no-setup: the work directory lacks the fixture codebase, a clone of https://github.com/org/repo.git at abc1234, the setup script ./setup.sh.']);
+
+  write(root, { 'plugins/p/evals/case/scenario.json': '{}', 'plugins/p/evals/case/setup.sh': 'echo "no such ref" >&2; exit 1' });
+  const failing = run(t, 'skill-eval.mjs', args, { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(failing.status, 1);
+  assert.deepEqual(JSON.parse(failing.stdout).arms.without, { error: 'setting up the scenario: the setup script ./setup.sh failed: no such ref' });
+
+  write(root, { 'plugins/p/evals/case/scenario.json': JSON.stringify({ fixtures: { up: { type: 'directory', path: './fixtures/block', installPath: '../outside' } } }) });
+  const outside = run(t, 'skill-eval.mjs', args, { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(outside.status, 1);
+  assert.match(JSON.parse(outside.stdout).arms.without.error, /the fixture up is installed at \.\.\/outside, outside the work directory/);
+
+  // a work directory of one's own is taken as it is
+  write(root, { 'mine/file.txt': 'x' });
+  const given = run(t, 'skill-eval.mjs', [...args, '--workdir', 'mine'], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(given.status, 0, given.stdout + given.stderr);
+  assert.equal(JSON.parse(given.stdout).arms.without.answer, './file.txt  on ');
+  assert.match(JSON.parse(given.stdout).notes[0], /^The work directory is the one of --workdir/);
+});
+
+test('the globs of a fixture match a path, a directory above it, or a file name', () => {
+  assert.equal(keeps('a/b.md', { exclude: ['*.md'] }), false);
+  assert.equal(keeps('.tessl/x/y.json', { exclude: ['.tessl/'] }), false);
+  assert.equal(keeps('src/auth/login.ts', { include: ['src/auth/**'] }), true);
+  assert.equal(keeps('src/other.ts', { include: ['src/auth/**', 'package.json'] }), false);
+  assert.equal(keeps('src/a/b.ts', { include: ['src/**/*.ts'], exclude: ['**/*.test.ts'] }), true);
+  assert.equal(keeps('src/a/b.test.ts', { include: ['src/**/*.ts'], exclude: ['**/*.test.ts'] }), false);
+  assert.equal(keeps('anything'), true);
 });
 
 test('a run that edits a file without changing its size, or only removes one, is reported and its work directory kept', (t) => {

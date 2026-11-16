@@ -11,15 +11,21 @@
 //                      and with /v1 (default: bedrock-runtime in AWS_REGION, or us-west-2)
 //   --arms with,without   which runs to make (default: both)
 //   --workdir <dir>    files the task starts from; copied, never changed
+//   --no-setup         with --scenario: no setup scripts and no commit fixtures, for a run offline
 //   --max-turns <n>    for the clients that take it (default 30)
-//   --timeout <sec>    for each run (default 600)
+//   --timeout <sec>    for each run, and each step of setting up a scenario (default 600)
 //   --out <dir>        where the transcripts go (default: a new temporary directory)
 //   --auth-home <dir>  copy the client's stored sign-in from this home directory, to run with
 //                      your own subscription on your own machine
 //
-// --scenario takes the task from <dir>/task.md, starts from <dir>/resources/ when there is
-// one, and adds <dir>/criteria.json to the result for the judge. It does not run a
-// scenario's setup.sh or fetch the fixtures of a scenario.json: it says so in the result.
+// --scenario sets the work directory up as Tessl does before an eval
+// (https://docs.tessl.io/reference/configuration#scenariojson): it installs the fixtures of
+// <dir>/scenario.json, copies the directories of its include and <dir>/resources/ to the same
+// path, and runs the scripts of its setup and then <dir>/setup.sh in the work directory, once
+// for each run. It takes the task from <dir>/task.md and adds <dir>/criteria.json to the
+// result for the judge. A commit fixture is cloned and a setup script may clone too: both
+// need the network. With --no-setup neither happens, and the result says what was left out.
+// With --workdir, the scenario is not set up: the directory is taken as it is.
 //
 // Each run gets an empty home directory and its own copy of the work directory. Both runs
 // are told to stay in that directory (RULES below); nothing enforces it, so read the
@@ -42,7 +48,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, matchesGlob, relative, resolve, sep } from 'node:path';
 import { CLIENTS, findCli } from './lib/clients.mjs';
 import { isMain } from './lib/is-main.mjs';
 import { describePlugin } from './test-drive.mjs';
@@ -206,8 +212,102 @@ export function changedSince(before, after) {
   };
 }
 
+// A scenario as Tessl reads it: the task, the criteria, and what goes into the work
+// directory, in the order it goes in. A singular "fixture" is the legacy form of a commit
+// fixture named codebase. resources/ and setup.sh are taken without being named.
+export function readScenario(dir) {
+  const at = (path) => resolve(dir, path);
+  const config = existsSync(at('scenario.json')) ? JSON.parse(readFileSync(at('scenario.json'), 'utf8')) : {};
+  const fixtures = Object.entries(config.fixtures ?? {});
+  if (config.fixture) fixtures.push(['codebase', { type: 'commit', ...config.fixture }]);
+  const include = [...(config.include ?? [])];
+  if (existsSync(at('resources')) && !include.some((path) => at(path) === at('resources'))) include.push('./resources');
+  const setup = [...(config.setup ?? [])];
+  if (existsSync(at('setup.sh')) && !setup.some((path) => at(path) === at('setup.sh'))) setup.push('./setup.sh');
+  return {
+    dir,
+    prompt: readFileSync(at('task.md'), 'utf8'),
+    criteria: existsSync(at('criteria.json')) ? JSON.parse(readFileSync(at('criteria.json'), 'utf8')) : undefined,
+    // commit fixtures first, so that a directory installed at the same place lays its files over the clone
+    fixtures: fixtures.sort(([, a], [, b]) => (a.type === 'commit' ? 0 : 1) - (b.type === 'commit' ? 0 : 1)),
+    include,
+    setup,
+  };
+}
+
+// Whether a path, relative to the root of a fixture, is kept by its include and exclude
+// globs. A glob matches the path, a directory above it, or, without a slash, its file name.
+export function keeps(path, { include = [], exclude = [] } = {}) {
+  const parts = path.split(sep).join('/').split('/');
+  const candidates = [...parts.map((_, index) => parts.slice(0, index + 1).join('/')), parts.at(-1)];
+  const matches = (glob) => candidates.some((candidate) => matchesGlob(candidate, glob.replace(/^\.\//, '').replace(/\/$/, '')));
+  return (include.length === 0 || include.some(matches)) && !exclude.some(matches);
+}
+
+// Copies the files of from that the fixture keeps into to, over what is there.
+function install(from, to, fixture) {
+  mkdirSync(to, { recursive: true });
+  cpSync(from, to, {
+    recursive: true,
+    filter: (source) => source === from || statSync(source).isDirectory() || keeps(relative(from, source), fixture),
+  });
+}
+
+// Puts what a scenario sets up into workdir, as Tessl does: the fixtures, the includes, then
+// the setup scripts, run in workdir with env. Returns what was left out; throws when a step fails.
+export function setUpScenario(scenario, workdir, { network = true, env = process.env, timeout = 600 } = {}) {
+  const left = [];
+  const inside = (path, what) => {
+    const target = resolve(workdir, path ?? '.');
+    if (target !== workdir && !target.startsWith(workdir + sep)) throw new Error(`${what} is installed at ${path}, outside the work directory`);
+    return target;
+  };
+  const run = (command, args, cwd, what) => {
+    const ran = spawnSync(command, args, { cwd, env, encoding: 'utf8', timeout: timeout * 1000 });
+    if (ran.status !== 0) {
+      const why = ran.error?.code === 'ETIMEDOUT' ? `timed out after ${timeout} s` : `${ran.stdout}${ran.stderr}${ran.error?.message ?? ''}`.trim().split('\n').pop();
+      throw new Error(`${what} failed: ${why}`);
+    }
+  };
+  for (const [name, fixture] of scenario.fixtures) {
+    const what = `the fixture ${name}`;
+    if (fixture.type === 'directory') {
+      install(resolve(scenario.dir, fixture.path), inside(fixture.installPath, what), fixture);
+    } else if (fixture.type === 'commit') {
+      if (!network) {
+        left.push(`${what}, a clone of ${fixture.repoUrl} at ${fixture.ref}`);
+        continue;
+      }
+      const clone = mkdtempSync(join(tmpdir(), 'skill-eval-fixture-'));
+      try {
+        run('git', ['clone', '--quiet', fixture.repoUrl, clone], workdir, `${what}: git clone ${fixture.repoUrl}`);
+        run('git', ['-c', 'advice.detachedHead=false', 'checkout', '--quiet', fixture.ref], clone, `${what}: git checkout ${fixture.ref}`);
+        rmSync(join(clone, '.git'), { recursive: true, force: true });
+        const target = inside(fixture.installPath, what);
+        install(clone, target, fixture);
+        // a fresh repository with one commit, as Tessl installs it; the legacy form names its remote
+        const git = (...args) => run('git', ['-c', 'user.name=eval', '-c', 'user.email=eval@example.com', ...args], target, `${what}: git ${args[0]}`);
+        git('init', '--quiet', '--initial-branch=main');
+        if (fixture.remote) git('remote', 'add', 'origin', fixture.remote);
+        git('add', '--all');
+        git('commit', '--quiet', '--allow-empty', '-m', `${name} at ${fixture.ref}`);
+      } finally {
+        rmSync(clone, { recursive: true, force: true });
+      }
+    } else {
+      throw new Error(`${what} has the type ${fixture.type}, which this runner does not know`);
+    }
+  }
+  for (const path of scenario.include) install(resolve(scenario.dir, path), inside(path, `the include ${path}`), {});
+  for (const path of scenario.setup) {
+    if (network) run('bash', [resolve(scenario.dir, path)], workdir, `the setup script ${path}`);
+    else left.push(`the setup script ${path}`);
+  }
+  return left;
+}
+
 function parse(argv) {
-  const options = { arms: ['with', 'without'], maxTurns: 30, timeout: 600 };
+  const options = { arms: ['with', 'without'], maxTurns: 30, timeout: 600, setup: true };
   const names = { '--client': 'client', '--plugin': 'plugin', '--task': 'task', '--prompt': 'prompt', '--scenario': 'scenario', '--bin': 'bin', '--model': 'model', '--base-url': 'baseUrl', '--workdir': 'workdir', '--out': 'out', '--auth-home': 'authHome' };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -215,6 +315,7 @@ function parse(argv) {
     else if (arg === '--arms') options.arms = argv[++index].split(',').map((arm) => arm.trim());
     else if (arg === '--max-turns') options.maxTurns = Number(argv[++index]);
     else if (arg === '--timeout') options.timeout = Number(argv[++index]);
+    else if (arg === '--no-setup') options.setup = false;
     else return null;
   }
   const sources = [options.task, options.prompt, options.scenario].filter((value) => value !== undefined).length;
@@ -229,7 +330,7 @@ function main() {
   const options = parse(process.argv.slice(2));
   if (!options) {
     console.error(`usage: skill-eval.mjs --client ${CLIENTS.join('|')} --plugin <plugin dir> (--task <file> | --prompt <text> | --scenario <dir>)
-       [--bin <dir>] [--model <id>] [--base-url <url>] [--arms with,without] [--workdir <dir>] [--max-turns 30] [--timeout 600] [--out <dir>] [--auth-home <dir>]`);
+       [--bin <dir>] [--model <id>] [--base-url <url>] [--arms with,without] [--workdir <dir>] [--no-setup] [--max-turns 30] [--timeout 600] [--out <dir>] [--auth-home <dir>]`);
     process.exit(2);
   }
   const client = RUNNERS[options.client];
@@ -243,14 +344,14 @@ function main() {
   let prompt = options.prompt;
   let start = options.workdir ? resolve(options.workdir) : null;
   let criteria;
+  let scenario;
   if (options.task) prompt = readFileSync(options.task, 'utf8');
   if (options.scenario) {
-    const scenario = resolve(options.scenario);
-    prompt = readFileSync(join(scenario, 'task.md'), 'utf8');
-    if (!start && existsSync(join(scenario, 'resources'))) start = join(scenario, 'resources');
-    if (existsSync(join(scenario, 'criteria.json'))) criteria = JSON.parse(readFileSync(join(scenario, 'criteria.json'), 'utf8'));
-    for (const file of ['setup.sh', 'scenario.json']) {
-      if (existsSync(join(scenario, file))) notes.push(`The scenario has a ${file}, which this runner does not run or read: the work directory lacks what it would have set up.`);
+    scenario = readScenario(resolve(options.scenario));
+    ({ prompt, criteria } = scenario);
+    if (start) {
+      notes.push('The work directory is the one of --workdir: the fixtures, includes and setup scripts of the scenario were not installed or run.');
+      scenario = null;
     }
   }
 
@@ -274,6 +375,9 @@ function main() {
     const withPlugin = arm === 'with';
     const home = mkdtempSync(join(tmpdir(), `skill-eval-${options.client}-home-`));
     const workdir = mkdtempSync(join(tmpdir(), 'skill-eval-work-'));
+    // the temporary directory of the setup scripts: what they leave there, such as the main
+    // checkout of a git worktree, stays for the run and goes with it
+    const scratch = mkdtempSync(join(tmpdir(), 'skill-eval-setup-'));
     const armOut = join(out, `${options.client}-${arm}`);
     mkdirSync(armOut, { recursive: true });
     try {
@@ -283,7 +387,22 @@ function main() {
         cpSync(join(resolve(options.authHome), file), join(home, file));
         chmodSync(join(home, file), 0o600);
       }
-      const env = { PATH: process.env.PATH, HOME: home, TMPDIR: process.env.TMPDIR ?? '/tmp', LANG: 'C.UTF-8', TERM: 'dumb', NO_COLOR: '1', CI: '1', ...(client.env?.(home, bedrock, on) ?? {}) };
+      const plain = { PATH: process.env.PATH, HOME: home, TMPDIR: process.env.TMPDIR ?? '/tmp', LANG: 'C.UTF-8', TERM: 'dumb', NO_COLOR: '1', CI: '1' };
+      const env = { ...plain, ...(client.env?.(home, bedrock, on) ?? {}) };
+      if (scenario) {
+        // in each run's own directory: a script may leave absolute paths, as git worktree does.
+        // Without the credentials or the client's settings: the scripts are not the agent.
+        let left;
+        try {
+          left = setUpScenario(scenario, workdir, { network: options.setup, env: { ...plain, TMPDIR: scratch }, timeout: options.timeout });
+        } catch (error) {
+          result.arms[arm] = { error: `setting up the scenario: ${error.message}` };
+          failed = true;
+          continue;
+        }
+        const note = `--no-setup: the work directory lacks ${left.join(', ')}.`;
+        if (left.length > 0 && !notes.includes(note)) notes.push(note);
+      }
       for (const name of credentials) if (process.env[name] !== undefined) env[name] = process.env[name];
       const run = (args, more = {}) => spawnSync(bin, args, { cwd: workdir, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, ...more });
       const problem = client.prepare?.({ run, home, plugin, withPlugin, repoRoot: root, ...on });
@@ -318,6 +437,7 @@ function main() {
     } finally {
       rmSync(home, { recursive: true, force: true });
       rmSync(workdir, { recursive: true, force: true });
+      rmSync(scratch, { recursive: true, force: true });
     }
   }
   console.log(JSON.stringify(result, null, 2));

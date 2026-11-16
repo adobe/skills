@@ -53,7 +53,7 @@ export function notes({ results, report, bin, setupFailed, driveStatus }) {
   lines.push(
     '',
     'To run it again: `node scripts/test-drive.mjs --build <plugin dir>`.',
-    'To see what a skill changes, run a task with and without its plugin: `node scripts/skill-eval.mjs --client claude --plugin <plugin dir> --prompt "<task>"`, or `--scenario <plugin dir>/evals/<name>` for a scenario the plugin has. It prints both answers and the files each run wrote or removed. All four clients run on the Bedrock key of this review: `claude` and `codex` on their own models, `grok` and `agy` on Grok\'s model, since Bedrock has no Gemini. The script says so (exit 3) when a client has no credentials.',
+    'To see what a skill changes, run a task with and without its plugin: `node scripts/skill-eval.mjs --client claude --plugin <plugin dir> --prompt "<task>"`, or `--scenario <plugin dir>/evals/<name>` for a scenario the plugin has, which sets up the work directory as Tessl does: its fixtures, `resources/` and `setup.sh`. It prints both answers and the files each run wrote or removed. All four clients run on the Bedrock key of this review: `claude` and `codex` on their own models, `grok` and `agy` on Grok\'s model, since Bedrock has no Gemini. The script says so (exit 3) when a client has no credentials.',
   );
   return `${lines.join('\n')}\n`;
 }
