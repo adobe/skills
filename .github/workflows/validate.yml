@@ -29,9 +29,9 @@ jobs:
       - name: Repository scripts pass their tests
         run: npm test
 
-      # facts.yaml and trigger-queries/ of a plugin name skills, references and evals. A
-      # pull request that renames or removes one of those updates them too.
-      - name: Facts and trigger queries name files and skills that exist
+      # facts.yaml of a plugin names skills, references and evals. A pull request that
+      # renames or removes one of those updates it too.
+      - name: Facts name files that exist
         run: node scripts/check-facts.mjs
 
       # Each plugin's root plugin.json (https://agent-plugins.org) is the source. x927 writes

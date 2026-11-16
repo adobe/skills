@@ -1,5 +1,5 @@
-// The two files a plugin may keep next to its skills, to show what they tell an agent that
-// a model doesn't know, and when an agent picks them up:
+// The facts a plugin may keep next to its skills, to show what they tell an agent that a
+// model doesn't know:
 //
 //   <plugin>/facts.yaml                 a list of facts, each with
 //     id        unique in the file
@@ -8,8 +8,6 @@
 //     source    where it can be checked: a page of the product's documentation, its code
 //     used_by   the files, relative to the plugin, that state or test it: a SKILL.md, a
 //               reference, an eval
-//   <plugin>/trigger-queries/<skill>.json   prompts that should load a skill, and near
-//                                            misses that should not
 //
 // facts.yaml is read with a small YAML subset (keys, block scalars, lists of strings), so
 // that this needs no dependency. What the subset doesn't know is an error, not a guess.
@@ -89,25 +87,4 @@ export function parseFacts(text, name = 'facts.yaml') {
     entry.used_by ??= [];
   }
   return facts;
-}
-
-// A set of trigger queries: { name, description?, fixture?: { repoUrl, ref, remote? },
-// queries: [{ id?, query, should_trigger, skill, split? }] }. A fixture is the repository
-// the agent starts in, as a commit fixture of a scenario.
-export function parseTriggerSet(json, name = 'trigger set') {
-  const data = typeof json === 'string' ? JSON.parse(json) : json;
-  if (!Array.isArray(data?.queries) || data.queries.length === 0) throw new Error(`${name}: has no queries`);
-  if (data.fixture && !(data.fixture.repoUrl && data.fixture.ref)) throw new Error(`${name}: a fixture needs a repoUrl and a ref`);
-  const ids = new Set();
-  const queries = data.queries.map((entry, index) => {
-    const id = entry.id ?? `q${index + 1}`;
-    if (ids.has(id)) throw new Error(`${name}: the id ${id} twice`);
-    ids.add(id);
-    if (typeof entry.query !== 'string' || !entry.query.trim()) throw new Error(`${name}: ${id} has no query`);
-    if (typeof entry.should_trigger !== 'boolean') throw new Error(`${name}: ${id}: should_trigger is true or false`);
-    if (typeof entry.skill !== 'string' || !entry.skill) throw new Error(`${name}: ${id} names no skill`);
-    if (entry.split !== undefined && !['train', 'test'].includes(entry.split)) throw new Error(`${name}: ${id}: split is train or test`);
-    return { id, query: entry.query, should_trigger: entry.should_trigger, skill: entry.skill, ...(entry.split ? { split: entry.split } : {}) };
-  });
-  return { name: data.name ?? name, fixture: data.fixture ?? null, queries };
 }

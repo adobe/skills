@@ -65,9 +65,9 @@ node scripts/check-skills.mjs --tokens plugins/<your plugin>   # each skill's to
 
 Many skills are over their limit today. Nobody has to fix a skill they don't touch: the `boy-scout` check fails a pull request only when it changes a `SKILL.md` that is over its limit, also when it adds one. Then the fix comes with the change: an eval, or a shorter `SKILL.md` with the detail in `references/`.
 
-### Facts and trigger queries
+### Facts
 
-A plugin may keep two files that say what its skills know and when an agent should load them. Neither is required. Once a plugin has them, a pull request keeps them true: CI checks them against the tree, and the AI review checks them against the change.
+A plugin may keep a `facts.yaml` that says what its skills know. It is not required. Once a plugin has one, a pull request keeps it true: CI checks it against the tree, and the AI review checks it against the change.
 
 `facts.yaml`, at the plugin's root, lists the facts its skills and evals rely on:
 
@@ -87,10 +87,8 @@ A plugin may keep two files that say what its skills know and when an agent shou
 - `source` is where the claim can be checked: the product's documentation or code, wherever there is one. A fact that no skill states needs a source.
 - `used_by` names the files, relative to the plugin, that state or test the fact: a `SKILL.md`, a reference, an eval. A fact with no file goes. A fact whose line left a skill may stay while an eval tests it, so a later model that gets it wrong shows up.
 
-`trigger-queries/<skill>.json` has prompts that should load a skill and near misses that should not: `{"name", "queries": [{"id", "query", "should_trigger", "skill"}]}`, with an optional `fixture` (`repoUrl`, `ref`) to start the agent in.
-
 ```bash
-node scripts/check-facts.mjs     # facts and trigger queries name files and skills that exist
+node scripts/check-facts.mjs     # facts name files that exist
 node scripts/skill-quiz.mjs plugins/<your plugin> --changed main...HEAD
 ```
 
@@ -120,7 +118,7 @@ npm ci
 npm run validate                       # every SKILL.md against the agentskills.io specification
 node scripts/check-release-configs.mjs # release configs point at files that exist
 npm test                               # when you touch scripts/: the workflows run these scripts
-node scripts/check-facts.mjs           # when you touch facts.yaml, trigger queries, or what they name
+node scripts/check-facts.mjs           # when you touch facts.yaml or a file it names
 npm run plugins:check                  # when you touch a plugin.json, mcp.json or a manifest
 npm run plugins:build                  # to see what CI will build from them; no need to commit it
 npm run lint:stardust                  # when you touch plugins/stardust; after a change to its
@@ -134,7 +132,7 @@ CI runs these on every pull request:
 
 | Check | What it does |
 |---|---|
-| Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, that facts and trigger queries name files and skills that exist (`scripts/check-facts.mjs`), and runs the tests of the `web` CLI and the lints of `stardust`. |
+| Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, that facts name files that exist (`scripts/check-facts.mjs`), and runs the tests of the `web` CLI and the lints of `stardust`. |
 | Tessl Plugin Lint | `tessl plugin lint` for every plugin. |
 | Validate Skills | `npm run plugins:check`: the pull request leaves alone the files that `x927` generates from each plugin's root `plugin.json` and `mcp.json` (the Claude Code, Tessl and Cursor manifests, `.mcp.json`, and the description and version of marketplace entries). Change `plugin.json`; after the merge, the Release workflow builds the generated files on `main` and pushes them. |
 | Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |

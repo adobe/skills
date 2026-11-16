@@ -1,45 +1,28 @@
-// Checks the facts and the trigger queries of every plugin (see lib/facts.mjs) against the
-// tree, so that they stay true to the skills they are about:
+// Checks the facts of every plugin (see lib/facts.mjs) against the tree, so that they stay
+// true to the skills they are about:
 //
-//   unreadable     facts.yaml or a set of trigger queries can't be read
+//   unreadable     facts.yaml can't be read
 //   no-consumer    a fact that no file uses: no skill states it and no eval tests it.
 //                  A fact whose line left the skill may stay, to see whether a later model
 //                  gets it wrong, as long as an eval tests it
 //   missing-file   a file in used_by that isn't in the plugin
 //   no-source      a fact that no skill states, without a source: it can't be checked
-//   unknown-skill  a trigger query about a skill the plugin doesn't have
 //
 // Run from the repository root: node scripts/check-facts.mjs. It exits 1 when something
 // breaks a rule.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
-import { parseFacts, parseTriggerSet } from './lib/facts.mjs';
+import { join, relative } from 'node:path';
+import { parseFacts } from './lib/facts.mjs';
 import { isMain } from './lib/is-main.mjs';
 
 const SKIP = new Set(['node_modules', '.git']);
 
-// The directories below dir that hold a facts.yaml or a trigger-queries/ directory.
+// The directories below dir that hold a facts.yaml.
 function plugins(dir, found = []) {
   const entries = readdirSync(dir, { withFileTypes: true });
-  if (entries.some((entry) => (entry.isFile() && entry.name === 'facts.yaml') || (entry.isDirectory() && entry.name === 'trigger-queries'))) found.push(dir);
-  for (const entry of entries) if (entry.isDirectory() && !SKIP.has(entry.name) && entry.name !== 'trigger-queries') plugins(join(dir, entry.name), found);
+  if (entries.some((entry) => entry.isFile() && entry.name === 'facts.yaml')) found.push(dir);
+  for (const entry of entries) if (entry.isDirectory() && !SKIP.has(entry.name)) plugins(join(dir, entry.name), found);
   return found;
-}
-
-// The names of a plugin's skills: their folders, and the names in their frontmatter.
-export function skillNames(plugin) {
-  const dir = join(plugin, 'skills');
-  if (!existsSync(dir)) return new Set();
-  const names = new Set();
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const file = join(dir, entry.name, 'SKILL.md');
-    if (!entry.isDirectory() || !existsSync(file)) continue;
-    names.add(entry.name);
-    const block = readFileSync(file, 'utf8').match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1];
-    const name = block?.match(/^name:\s*(.+?)\s*$/m)?.[1];
-    if (name) names.add(name.replace(/^['"]|['"]$/g, ''));
-  }
-  return names;
 }
 
 export function checkFacts(plugin, root = plugin) {
@@ -64,34 +47,10 @@ export function checkFacts(plugin, root = plugin) {
   return found;
 }
 
-export function checkTriggerSets(plugin, root = plugin) {
-  const dir = join(plugin, 'trigger-queries');
-  if (!existsSync(dir)) return [];
-  const skills = skillNames(plugin);
-  const found = [];
-  for (const name of readdirSync(dir).filter((entry) => entry.endsWith('.json')).sort()) {
-    const at = relative(root, join(dir, name));
-    let set;
-    try {
-      set = parseTriggerSet(readFileSync(join(dir, name), 'utf8'), at);
-    } catch (error) {
-      found.push({ rule: 'unreadable', file: at, detail: error.message });
-      continue;
-    }
-    for (const skill of new Set(set.queries.map((query) => query.skill))) {
-      if (!skills.has(skill)) found.push({ rule: 'unknown-skill', file: at, detail: `${skill} is not a skill of ${relative(root, plugin).split(sep).join('/')}` });
-    }
-  }
-  return found;
-}
-
 export function findProblems(root) {
   const start = join(root, 'plugins');
   if (!existsSync(start)) return [];
-  return plugins(start).sort().flatMap((plugin) => [
-    ...(existsSync(join(plugin, 'facts.yaml')) ? checkFacts(plugin, root) : []),
-    ...checkTriggerSets(plugin, root),
-  ]);
+  return plugins(start).sort().flatMap((plugin) => checkFacts(plugin, root));
 }
 
 function main() {
@@ -101,7 +60,7 @@ function main() {
     console.log(`\n${problems.length} problem(s). The rules are at the top of scripts/check-facts.mjs.`);
     process.exit(1);
   }
-  console.log('Facts and trigger queries agree with the tree.');
+  console.log('The facts agree with the tree.');
 }
 
 if (isMain(import.meta.url)) main();
