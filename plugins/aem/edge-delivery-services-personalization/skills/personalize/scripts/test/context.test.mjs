@@ -38,7 +38,7 @@ describe('cookies and geo', () => {
   });
 });
 
-describe('visitor and consent (contract sections 2 and 3)', () => {
+describe('visitor and consent', () => {
   it('is unknown without consent and writes nothing: visitor needs consent, no exception', () => {
     const written = [];
     assert.equal(getVisitor({}, false, (c) => written.push(c)), undefined);

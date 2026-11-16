@@ -1,4 +1,4 @@
-# Target Sections (contract sections 6b and 7)
+# Target Sections
 
 `Personalization Source | target` lets Adobe Target choose a section's variant.
 
@@ -96,7 +96,7 @@ loaded and the popup is armed. `pzn:seen` and the `display` notification are sen
 | When | No Web SDK on the page | The page already loads alloy (directly or through Tags) |
 | Request | One Delivery API **prefetch** for every `target` section, each location with `parameters: { device, visitor }` | One `sendEvent` on `window[target.alloyInstance \|\| 'alloy']` with `type: "decisioning.propositionFetch"`, `renderDecisions: false`, `personalization: { decisionScopes, defaultPersonalizationEnabled: false }` |
 | Offer | JSON offer content | JSON content item (`https://ns.adobe.com/personalization/json-content-item`) |
-| Display | `display` notification when **seen** | Proposition display event when **seen** |
+| Display | `display` notification when **seen** (never for a treatment that failed to show, `result: failed`) | Proposition display event when **seen**, same rule |
 | Click | `click` notification on the first link click (`keepalive`) | Proposition interact event on the first click |
 | Visitor id | `tntId` in localStorage `pzn-tnt-id`, with consent only | Owned by the Web SDK and its consent |
 | Status | Built and tested with mocks | **Check it on a live datastream** (Adobe Experience Platform Debugger) before calling it supported |

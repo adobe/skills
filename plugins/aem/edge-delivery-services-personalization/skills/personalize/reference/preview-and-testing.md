@@ -1,4 +1,4 @@
-# Preview and Testing (contract section 11)
+# Preview and Testing
 
 ## Contents
 
@@ -48,10 +48,11 @@ Section Metadata (`authoring-model.md` § Rendering prerequisite) before anythin
 
 | Script | Purpose |
 |---|---|
-| `validate-placeholders.mjs [files\|dirs] --repo . [--mode client\|edge] [--json]` | Checks the sections against `section.schema.json` and the cross-row checks; the site config (`consent`, transport, engine profile, no `providers` or `sendWithoutConsent`); engine limits; no slow engine on a first section in the browser; AEM Experimentation on the section or page; fragments (prefixes, existence, nesting, `TODO:`, H1); audiences; LCP. Exit 1 on errors |
-| `simulate.mjs <page> [--matrix] [--api-decisions] [--target] [--without-consent rules,api] [--engine of1] [--page-url] [--json]` | The expected decision per section and case: variant, outcome, source, assigned and result, plus the `?pzn…` query that reproduces it. Each section gets a no-consent case, a bot case, one case per rule and per engine answer kind, and a forced case per variant |
+| `validate-placeholders.mjs [files\|dirs] --repo . [--mode client\|edge] [--publish] [--json]` | Checks the sections against `section.schema.json` and the cross-row checks; the site config (`consent`, transport, engine profile, no `providers` or `sendWithoutConsent`); engine limits; the page's api request within 256 KiB; no slow engine on a first section in the browser; AEM Experimentation on the section or page; fragments (prefixes, existence, nesting, `TODO:`, H1); audiences; LCP. `--publish` fails `TODO:` copy. Exit 1 on errors, and on INCOMPLETE: a named path that doesn't exist, no `config.js`, or no personalized section found |
+| `install-runtime.mjs <repo> --check-live <origin>` | Before publishing: `main--<repo>--<owner>.aem.live` serves this repo's runtime modules and `config.js` byte for byte, and both `scripts.js` hooks. Exit 1 on any mismatch, missing file or network error |
+| `simulate.mjs <page> [--matrix] [--api-decisions] [--target] [--without-consent rules,api] [--engine of1] [--page-url] [--json]` | The expected decision per section and case: variant, outcome, source, assigned and result, plus the `?pzn…` query that reproduces it. Each section gets a no-consent case, a bot case, one case per rule and per engine answer kind, and a forced case per variant. The slow-engine case uses the site's `budgets` and `api.timeout` from `config.js` |
 | `simulate.mjs <page\|url> --edge [--consent] [--country --region --cookie --ua --api-decisions --fault --repo]` | What the edge does per section (applied, selected or left), with its attributes and headers |
-| `verify-preview.mjs --page <url> …` | Playwright checks (below). Exit 1 on a failure, 2 on bad usage or when Playwright is missing |
+| `verify-preview.mjs --page <url> …` | Playwright checks (below); flags add up. Exit 1 on a failure or a required check not run (INCOMPLETE), 2 on bad usage or when Playwright is missing |
 | `mock-decision-api.mjs [--decisions] [--target] [--latency] [--knob] [--ttl] [--cacheable]` | A local engine (`/decide`, `/feedback`) and Target Delivery API that check requests against the schemas (`decision-api.md`) |
 
 Playwright loads from this skill's folder or from `~/.cache/aem-eds-personalization/playwright`
@@ -125,11 +126,17 @@ Every case opens the page with its query in a fresh browser context, and checks 
   the browser) or the engine route. The attributes and the ordered events must match.
 - **`--perf --baseline <url>`.** A normal visitor with consent and real decisions, for a variant
   case, a default case, a no-consent case and a slow-engine case. It reports LCP, CLS and the time
-  until the section shows. A CLS regression fails, and so does an LCP regression over 500 ms.
+  until the section shows. A CLS regression fails, and so does an LCP regression over 500 ms, or a
+  section with no personalization outcome (runtime or hooks missing). Without `--baseline` the
+  comparison is not run and the result is INCOMPLETE. `--perf` alone skips the per-case runs; with
+  `--faults`, `--refresh`, `--consent-flow`, `--split-runs` or `--scenarios` those run too.
 - **`--perf --edge --uncached --baseline <url>`.** Uncached runs (a unique `utm_content` each) and
   cached runs. It reports added time to first byte (all runs, and successful ones only), LCP and
   CLS at p50 and p75, the success rate, and the timeout, fallback and low-confidence rates. It
   fails over 300 ms added time to first byte at p75, or under 95 % successful decisions.
+  The visitor has the `pzn-consent` cookie and `?pzn-consent=1`, which stands in for the consent
+  tool on preview hosts: the browser honors an edge decision only when the tool says yes. On a
+  live host the tool must already have consent, or no edge decision counts.
 
 Console errors that also appear on the no-consent or baseline run, and aren't about
 personalization, are reported as pre-existing and don't fail. `--revisit` loads the page twice
@@ -168,8 +175,8 @@ and any test-only consent setting.
 
 `npm test` in `skills/personalize` (`node --test scripts/test/*.test.mjs`) runs every suite:
 
-- the grammar, rules, outcomes, sources, contract and context;
-- conformance against the vendored contract schemas, examples and OF1 samples;
+- the grammar, rules, outcomes, sources, decision API and context;
+- conformance against the vendored JSON Schemas, examples and OF1 samples;
 - the pilot scenarios through the edge;
 - the edge worker and every CLI.
 

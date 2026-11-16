@@ -1,4 +1,4 @@
-# Consent (contract section 3)
+# Consent
 
 The default policy is **no consent, no personalization**. Until `hasConsent('personalization')`
 is true, every section shows its default and the skill stores nothing, calls no engine or Target,
@@ -121,5 +121,9 @@ cookie yet, so the edge leaves those sections to the browser.
   - no consent: every section shows its default, nothing is stored and nothing is sent;
   - consent given: the `no-consent` sections are decided again (`#2`, trigger `consent`);
   - consent withdrawn: the defaults are restored and storage is cleared.
+- **Late answers.** An engine or Target answer that arrives after a withdrawal stores nothing.
+- **Edge results.** At startup, an edge decision made with the mirrored cookie is honored only if
+  the consent tool says yes in this page view, or an approved exception covers the section's
+  source; otherwise the section shows its default (`edge-cloudflare.md`).
 - **Edge.** `simulate.mjs --edge` with and without `--consent` checks that sections are left to
   the browser when there is no cookie.

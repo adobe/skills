@@ -1,5 +1,5 @@
 /*
- * Engine transport (contract sections 5 and 10): provider-api.js callEngine
+ * Engine transport: provider-api.js callEngine
  * (shared with the edge) and fetchDecisions (browser session cache).
  */
 import assert from 'node:assert/strict';
@@ -137,6 +137,23 @@ describe('fetchDecisions (browser)', () => {
     });
     assert.equal(calls, 2);
     assert.deepEqual(storage.data, {});
+  });
+
+  it('stores no answer that arrives after consent was withdrawn', async () => {
+    const storage = memory();
+    let release;
+    const fetchImpl = () => new Promise((done) => { release = () => done(Response.json({ decisions: { a: { variant: 'x' } }, ttl: 60 })); });
+    let consent = true;
+    const pending = fetchDecisions({
+      endpoint: '/d', body: { ...BODY, page: { path: '/late' } }, timeout: 500, storage, canStore: () => consent, fetchImpl,
+    });
+    await new Promise((done) => { setImmediate(done); });
+    // Withdrawn (storage cleared) while the request is out, then it answers.
+    consent = false;
+    release();
+    const result = await pending;
+    assert.deepEqual(result.response.decisions, { a: { variant: 'x' } }, 'the answer is still returned (the runtime ignores it)');
+    assert.deepEqual(storage.data, {}, 'but never kept');
   });
 
   it('resolves every failure to an error with its kind', async () => {

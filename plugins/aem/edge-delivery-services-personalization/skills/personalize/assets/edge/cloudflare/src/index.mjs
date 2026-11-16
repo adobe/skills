@@ -16,8 +16,10 @@ import { handleApiRoute, personalizeResponse } from './personalization/personali
 
 export default {
   async fetch(request, env, ctx) {
-    const fetchPlain = (path) => aemWorker.fetch(new Request(new URL(`${path}.plain.html`, request.url), {
+    // signal: personalize.js aborts a fragment that misses its deadline.
+    const fetchPlain = (path, { signal } = {}) => aemWorker.fetch(new Request(new URL(`${path}.plain.html`, request.url), {
       headers: { host: request.headers.get('host') || new URL(request.url).host },
+      signal,
     }), env, ctx);
     const routed = await handleApiRoute(request, env, config, { fetchPlain });
     if (routed) return routed;

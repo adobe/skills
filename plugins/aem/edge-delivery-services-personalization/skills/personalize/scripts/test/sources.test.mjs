@@ -111,6 +111,34 @@ describe('api source', () => {
     assert.deepEqual(window.sessionStorage.keys(), []);
   });
 
+  it('keeps no late answer after consent was withdrawn', async () => {
+    let consent = true;
+    const fetch = async () => {
+      consent = false; // withdrawn while the request is out
+      return Response.json({ decisions: { offer: { variant: 'india' } }, ttl: 60 });
+    };
+    const result = await apiAnswers([spec], context, {
+      config: { api: { endpoint: '/pzn/decide' } }, consent: true, fetch, timeout: 500, canStore: () => consent,
+    });
+    assert.ok(result.response);
+    assert.deepEqual(window.sessionStorage.keys(), []);
+  });
+
+  it('never sends a request over the contract\'s size limit: a fallback instead', async () => {
+    const calls = [];
+    const big = section({
+      '': 'big', source: 'api', variants: `${F}/big/a`, hint: 'x',
+      'description-a': '漢'.repeat(600),
+    });
+    const many = Array.from({ length: 20 }, (unused, i) => ({ ...big, id: `big${i}`, descriptions: Object.fromEntries(Array.from({ length: 21 }, (u, j) => [`v${j}`, '漢'.repeat(600)])) }));
+    const result = await apiAnswers(many, context, {
+      config: { api: { endpoint: '/pzn/decide' } }, consent: true, fetch: engine({ decisions: {} }, calls), timeout: 500,
+    });
+    assert.equal(calls.length, 0);
+    assert.equal(result.kind, 'http');
+    assert.match(result.error, /^request too large \(\d+ bytes > 262144\)$/);
+  });
+
   it('reports failures with their kind: no endpoint, HTTP, timeout', async () => {
     const run = (fetch, config = { api: { endpoint: '/d' } }, timeout = 500) => apiAnswers([spec], {}, {
       config, consent: true, fetch, timeout,
@@ -239,6 +267,18 @@ describe('Target over the Delivery API (7)', () => {
     assert.equal(next.host, 'mboxedge31.tt.omtrdc.net');
     assert.equal(next.searchParams.get('sessionId'), url.searchParams.get('sessionId'));
     assert.deepEqual(calls[1].body.id, { tntId: 'tnt-1' });
+  });
+
+  it('stores no visitor id or edge host from an answer that arrives after consent was withdrawn', async () => {
+    let consent = true;
+    const fetch = async () => {
+      consent = false;
+      return Response.json({ id: { tntId: 'tnt-late' }, edgeHost: 'mboxedge9.tt.omtrdc.net', prefetch: { mboxes: [mbox(0, 'plan-offer', { control: true })] } });
+    };
+    const result = await target.decide([offer], {}, { config, fetch, canStore: () => consent });
+    assert.equal(result.answers['plan-offer'].control, true);
+    assert.equal(window.localStorage.getItem(target.TNT_ID_KEY), null);
+    assert.equal(window.sessionStorage.getItem(target.EDGE_HOST_KEY), null);
   });
 
   it('uses a same-origin proxy when configured, and reports config, HTTP and timeout failures', async () => {

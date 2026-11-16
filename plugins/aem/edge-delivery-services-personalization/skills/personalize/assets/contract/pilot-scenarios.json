@@ -1,5 +1,5 @@
 {
-  "$comment": "Pilot baseline (contract v0.4, pilot.md). Each step lists the OF1 answer for the section, the section attributes after it, and the measurement events expected, in order. Validated by test/pilot.test.mjs.",
+  "$comment": "Pilot baseline. Each step lists the OF1 answer for the section, the section attributes after it, and the measurement events expected, in order. Validated by test/pilot.test.mjs.",
   "section": {
     "id": "home-hero",
     "mode": "edge (OF1 proxy)",

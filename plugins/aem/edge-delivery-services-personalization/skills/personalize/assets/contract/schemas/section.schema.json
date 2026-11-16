@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://adobe.com/aem/eds-personalization/0.1/section.schema.json",
   "title": "Personalized section",
-  "description": "A section's Personalization rows, as read from its DA Section Metadata. The section's own authored content is the default and is not part of this object. Cross-row checks that JSON Schema cannot express (split total <= 100, rule variants must be listed, unique variant names, unique ids per page) are listed in contract.md section 1.",
+  "description": "A section's Personalization rows, as read from its DA Section Metadata. The section's own authored content is the default and is not part of this object. Cross-row checks that JSON Schema cannot express (split total <= 100, rule variants must be listed, unique variant names, unique ids per page) are checked by validate-placeholders.mjs (reference/authoring-model.md).",
   "type": "object",
   "required": [
     "id",

@@ -1,6 +1,6 @@
 /* eslint-disable no-console */
 /*
- * Section personalization runtime (contract sections 4, 8 and 9).
+ * Section personalization runtime.
  *
  * Authors personalize a whole section with Section Metadata (grammar:
  * section-spec.js). The section's authored content is the default: what
@@ -8,8 +8,10 @@
  *
  * 1. personalizeSections(main), from loadEager right after decorateMain,
  *    reads each personalized section. A section the edge decided
- *    (data-pzn-where="edge") is final: `applied` is only measured,
- *    `selected` gets its fragment here. Every other inline section is held
+ *    (data-pzn-where="edge") is final when the consent tool's answer in this
+ *    page view allows it: `applied` is only measured, `selected` gets its
+ *    fragment here. Otherwise the browser decides it (its default, restored
+ *    from the edge's template). Every other inline section is held
  *    hidden (data-section-status="pzn-pending", so aem.js skips it), and the
  *    sections below it wait, so sections appear in page order and nothing
  *    shifts.
@@ -314,9 +316,15 @@ function noted(entry, decision, notification) {
   }
 }
 
+// A treatment that failed to show (result failed) gets no product feedback:
+// the visitor saw the default, not the treatment. A control that kept the
+// default is a success and still counts.
+const shownAsDecided = (decision) => decision.result !== 'failed';
+
 // Target display / click, once per decision, with consent only.
 function notifyTarget(entry, decision, type) {
-  if (decision.source !== 'target' || !decision.tokens?.[type]?.length || !hasConsent()) return;
+  if (decision.source !== 'target' || !decision.tokens?.[type]?.length || !hasConsent()
+    || !shownAsDecided(decision)) return;
   Promise.all([targetTransport(), fetcher()])
     .then(([module, fetch]) => module.notify({ type, spec: entry.spec, decision }, {
       config, fetch,
@@ -329,7 +337,7 @@ function notifyTarget(entry, decision, type) {
 
 // Engine feedback, once per decision, for engine-assigned decisions.
 function notifyEngine(entry, decision, type) {
-  if (decision.source !== 'api' || decision.assigned === undefined) return;
+  if (decision.source !== 'api' || decision.assigned === undefined || !shownAsDecided(decision)) return;
   const ok = feedback(decision, type);
   if (ok !== null) noted(entry, decision, { product: 'api', type, ok: !!ok });
 }
@@ -406,7 +414,7 @@ const rules = (spec, env) => ruleOutcome(spec, env.context, {
 });
 
 /**
- * The decision fields for a section (contract section 4): override, bot,
+ * The decision fields for a section: override, bot,
  * consent, then the source; an api section's Rule rows decide when the
  * engine gives no usable answer.
  */
@@ -479,7 +487,12 @@ async function askApi(batch, context, consent) {
   try {
     const { apiAnswers } = await import('./sources/api.js');
     return await apiAnswers(batch.map((entry) => entry.spec), context, {
-      config, consent, fetch: await fetcher(), timeout: config.api?.timeout || budgets.lazy,
+      config,
+      consent,
+      fetch: await fetcher(),
+      timeout: config.api?.timeout || budgets.lazy,
+      // Asked again when the answer arrives: consent may be gone by then.
+      canStore: hasConsent,
     });
   } catch (error) {
     return { error: error.message, kind: 'error' };
@@ -490,7 +503,7 @@ async function askTarget(batch, context) {
   try {
     const module = await targetTransport();
     return await module.decide(batch.map((entry) => entry.spec), context, {
-      config, fetch: await fetcher(), timeout: config.target?.timeout,
+      config, fetch: await fetcher(), timeout: config.target?.timeout, canStore: hasConsent,
     });
   } catch (error) {
     return { error: error.message, kind: 'error' };
@@ -789,6 +802,19 @@ function readEdge(entry) {
 }
 
 /**
+ * Whether the browser may honor the edge's decision:
+ * with consent in this page view, or without it only what needs no consent
+ * (no-consent, bot) and what the section's approved exception allows.
+ * @param {object} entry
+ * @returns {boolean}
+ */
+function edgeAllowed(entry) {
+  if (lastConsent) return true;
+  if (['no-consent', 'bot'].includes(entry.decision.outcome)) return true;
+  return allowed(entry.spec.source);
+}
+
+/**
  * Call from loadEager right after decorateMain(main), and await it: when the
  * first section (LCP) is personalized, loadEager continues once it shows
  * (within the eager budget). Other sections are decided in the background.
@@ -813,7 +839,19 @@ export async function personalizeSections(main) {
     if (spec.errors.length) {
       console.warn(`⚠️ personalization: section "${spec.id || '?'}" shows its default; fix its Section Metadata:\n- ${spec.errors.join('\n- ')}`);
     }
-    const edge = readEdge(entry);
+    let edge = readEdge(entry);
+    if (edge && !edgeAllowed(entry)) {
+      // The edge followed the mirrored pzn-consent cookie, but the consent
+      // tool hasn't said yes in this page view (pending or no): the browser
+      // decides instead, so the default shows (restored from the edge's
+      // template) and nothing is fetched, stored or sent for the edge's
+      // decision.
+      if (edge.status === 'applied') entry.shown = entry.section.getAttribute('data-pzn-variant') || 'default';
+      Object.assign(entry, {
+        where: 'browser', final: false, decision: null, edgeDecision: null, key: null,
+      });
+      edge = null;
+    }
     if (edge?.status === 'applied') {
       const { decision } = entry;
       entry.shown = entry.shown === 'default' ? decision.variant : entry.shown;
@@ -831,7 +869,9 @@ export async function personalizeSections(main) {
       selected.push(entry);
       return;
     }
-    if (spec.held && !spec.errors.length) hold(entry);
+    // An edge variant still on the page (its result overruled) is held too:
+    // it is swapped back to the default before the section shows.
+    if ((spec.held || entry.shown !== 'default') && !spec.errors.length) hold(entry);
     decide.push(entry);
     if (entry.eager && spec.held && (previewHost || debug)) {
       console.warn(`⚠️ personalization: section "${spec.id}" is the first section (LCP) and stays hidden until decided (up to ${budgets.eager} ms); decide it at the edge or personalize a later section`);

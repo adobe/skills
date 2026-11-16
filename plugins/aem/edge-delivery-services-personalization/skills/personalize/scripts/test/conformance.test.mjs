@@ -1,6 +1,5 @@
 /*
- * Contract conformance (contract v0.5): the contract's own examples
- * (fixtures/contract/examples, copied from the contract repo) against the
+ * Conformance: the schema examples (fixtures/contract/examples) against the
  * vendored schemas and the skill's runtime modules; the OF1 adapter against
  * OF1's live samples (fixtures/contract/of1-native); and the pilot
  * scenarios (assets/contract/pilot-scenarios.json) through the shared

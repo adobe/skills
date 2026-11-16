@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 /*
- * Mock decision engine (v1, contract section 5) and Adobe Target Delivery
- * API (section 7), driven by tables in the authoring grammar. Shared by the
+ * Mock decision engine (decision API v1) and Adobe Target Delivery API,
+ * driven by tables in the authoring grammar. Shared by the
  * in-browser mocks (mocks.js, config.mock) and the skill's local mock server
  * (scripts/mock-decision-api.mjs), so a demo on aem.page and a local test
  * decide alike. Pure ES module. Tests and demos only.

@@ -1,6 +1,6 @@
 /*
- * Decision engine API, version 1 (contract section 5,
- * decision-request.schema.json, decision-response.schema.json).
+ * Decision engine API, version 1 (decision-request.schema.json,
+ * decision-response.schema.json).
  *
  * Shared by the browser runtime and the edge worker. Builds the request body,
  * rebuilds one received by the server route, validates the response and
@@ -15,12 +15,24 @@ export const DEFAULT_TTL_SECONDS = 300;
 export const MAX_PLACEHOLDERS = 20;
 export const DESCRIPTION_MAX = 600;
 export const HINT_MAX = 500;
+// The largest v1 request, in bytes of UTF-8 JSON. The browser doesn't send
+// a larger one (fallback), the server route refuses it (413) and the
+// validator fails a page whose sections would exceed it.
+export const MAX_REQUEST_BYTES = 262144;
+
+/**
+ * @param {object} body v1 request
+ * @returns {number} its size as UTF-8 JSON, in bytes
+ */
+export function requestBytes(body) {
+  return new TextEncoder().encode(JSON.stringify(body)).length;
+}
 
 // Engine profiles only set the limits the validator checks, whether an
 // engine may decide the first section in the browser, and `state`: whether
 // the engine reads context.state, so that setState() re-decides its sections.
 // Unknown engines are assumed to read it (generic). OF1 doesn't: its adapter
-// sends no state; set it to true once OF1 reads state natively. The contract
+// sends no state; set it to true once OF1 reads state natively. The API
 // is the same for every engine.
 export const ENGINE_PROFILES = {
   generic: {

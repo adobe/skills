@@ -3,9 +3,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import {
-  API_FAULTS, TARGET_FAULTS, autoMatrix, buildCases, expectedDecision, fragmentSource, sectionSpecs,
-  simulateEdge, tableEngine, toCase,
+  API_FAULTS, SLOW_MS, TARGET_FAULTS, autoMatrix, buildCases, expectedDecision, fragmentSource,
+  sectionSpecs, simulateEdge, siteTimings, slowEngineFields, tableEngine, toCase,
 } from '../simulate.mjs';
+import { readSiteConfig } from '../validate-placeholders.mjs';
 import { check } from '../schema.mjs';
 import {
   SITE, fixture, runHelp, sectionSpec, tempDir,
@@ -98,7 +99,7 @@ describe('sectionSpecs', () => {
 });
 
 describe('buildCases', () => {
-  it('expects the right decision for every rules case (contract section 4)', async () => {
+  it('expects the right decision for every rules case', async () => {
     const cases = await buildCases(fixture('content/index.html'));
     const byCase = Object.fromEntries(cases.map((entry) => [`${entry.id} · ${entry.name}`, brief(entry)]));
     assert.deepEqual(byCase, {
@@ -123,7 +124,7 @@ describe('buildCases', () => {
     assert.equal(pick(cases, 'home-hero', 'matches "geo: IN"').rule, 'geo: IN');
   });
 
-  it('follows the approved rules exception without consent (contract section 3)', async () => {
+  it('follows the approved rules exception without consent', async () => {
     const cases = await buildCases(fixture('content/index.html'), {
       matrix: [{ name: 'india, no consent', consent: false, geo: 'IN' }, { name: 'returning, no consent', consent: false, visitor: 'returning' }],
       policy: ['rules'],
@@ -180,6 +181,31 @@ describe('buildCases', () => {
     assert.deepEqual(brief(pick(cases, 'offer', 'Target missing')).slice(0, 3), ['default', 'no-match', 'target']);
     assert.deepEqual(brief(pick(cases, 'offer', 'Target fail')).slice(0, 3), ['default', 'fallback', 'target']);
     assert.deepEqual(brief(pick(cases, 'offer', 'no consent')).slice(0, 3), ['default', 'no-consent', 'target']);
+  });
+
+  it('expects the slow engine against the site\'s own budgets and api.timeout', async () => {
+    // api.timeout 5000: the later section's budget (2000 ms) ends first.
+    const longer = await buildCases(PAGE, { engine: ENGINE, activities: ACTIVITIES, apiTimeout: 5000 });
+    const slow = pick(longer, 'plan', 'engine slow');
+    assert.deepEqual([slow.expected, slow.outcome, slow.source, slow.reason], ['default', 'timeout', 'api', 'no decision within 2000 ms']);
+    // A larger budget and timeout: the slow answer arrives, with no decision
+    // for the section, so the Rule rows decide.
+    const patient = await buildCases(PAGE, {
+      engine: ENGINE, activities: ACTIVITIES, apiTimeout: 5000, budgets: { eager: 800, lazy: 4000 },
+    });
+    const answered = pick(patient, 'plan', 'engine slow');
+    assert.deepEqual([answered.outcome, answered.source, answered.reason], ['no-match', 'rules', 'no decision']);
+  });
+
+  it('reads the effective timings from config.js, as the runtime does', () => {
+    assert.deepEqual(siteTimings(), { budgets: { eager: 800, lazy: 2000 }, apiTimeout: 1500 });
+    assert.deepEqual(siteTimings(readSiteConfig("export default { api: { timeout: 5000 } };")), { budgets: { eager: 800, lazy: 2000 }, apiTimeout: 5000 });
+    // No api.timeout: the request gets the lazy budget (sections.js).
+    assert.deepEqual(siteTimings(readSiteConfig('export default { budgets: { eager: 900, lazy: 2500 }, api: {} };')), { budgets: { eager: 900, lazy: 2500 }, apiTimeout: 2500 });
+    const first = { index: 0, variants: [], rules: [] };
+    assert.equal(SLOW_MS, 3500);
+    assert.equal(slowEngineFields(first).reason, 'no decision within 800 ms');
+    assert.equal(slowEngineFields({ ...first, index: 2 }, { budgets: { eager: 800, lazy: 3000 }, apiTimeout: 2000 }).reason, 'timed out after 2000 ms');
   });
 
   it('marks what only the engine or Target can decide as unknown', async () => {
@@ -262,7 +288,7 @@ describe('tableEngine', () => {
 });
 
 describe('simulateEdge', () => {
-  it('applies rules at the edge with consent, keeping the default in a template (contract section 8)', async () => {
+  it('applies rules at the edge with consent, keeping the default in a template', async () => {
     const india = await simulateEdge(fixture('content/index.html'), { country: 'IN', consent: true, repo: SITE });
     const [hero, welcome] = india.sections;
     assert.deepEqual(

@@ -9,8 +9,8 @@ import { parseResponse, sessionKey } from './contract.js';
 export const CACHE_PREFIX = 'pzn-decisions:';
 
 // Answers fetched in this page view. A re-evaluation that reuses one of them
-// from the session cache is the same answer, not a cached one (contract
-// section 9: cached means reused from an earlier page view or the engine's
+// from the session cache is the same answer, not a cached one (cached
+// means reused from an earlier page view or the engine's
 // own cache).
 const fetchedThisView = new Set();
 
@@ -107,13 +107,15 @@ export async function callEngine({
  * @param {Function} [options.mapRequest]
  * @param {Function} [options.mapResponse]
  * @param {Storage} [options.storage] sessionStorage; only passed with consent
+ * @param {Function} [options.canStore] asked again when the answer arrives:
+ *   consent may have been withdrawn (and storage cleared) while it was out
  * @param {Function} [options.fetchImpl]
  * @param {Function} [options.now]
  * @returns {Promise<{response?: object, cached: boolean, ms: number, error?: string,
  *   kind?: string}>}
  */
 export async function fetchDecisions({
-  endpoint, body, timeout, mapRequest, mapResponse, storage,
+  endpoint, body, timeout, mapRequest, mapResponse, storage, canStore = () => true,
   fetchImpl = (...args) => window.fetch(...args), now = Date.now,
 }) {
   const started = now();
@@ -131,8 +133,9 @@ export async function fetchDecisions({
       fetchImpl,
     });
     fetchedThisView.add(key);
-    // A visitor's own cache: `cacheable` (sharing) is not needed here.
-    if (storage && response.ttl > 0) writeCache(storage, key, response, now());
+    // A visitor's own cache: `cacheable` (sharing) is not needed here. Not
+    // kept when consent was withdrawn while the request was out.
+    if (storage && response.ttl > 0 && canStore()) writeCache(storage, key, response, now());
     return { response, cached: false, ms: now() - started };
   } catch (error) {
     return {

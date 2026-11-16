@@ -1,7 +1,7 @@
 /*
  * skills/personalize/scripts/schema.mjs — checks values against the vendored
  * contract schemas (assets/contract/schemas). A small draft 2020-12
- * validator for the keywords those schemas use (the contract's own test
+ * validator for the keywords those schemas use (the schemas' own test
  * validator): it throws on any other keyword, so nothing is silently
  * unchecked. No dependencies.
  */
@@ -113,7 +113,7 @@ const cache = {};
 const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * A vendored contract schema. Fragment path patterns use the default
+ * A vendored JSON Schema (assets/contract/schemas). Fragment path patterns use the default
  * /fragments/ prefix; a site with other fragmentPrefixes checks against those.
  * @param {string} name e.g. 'section', 'measurement-event'
  * @param {{prefixes?: string[]}} [options]
@@ -137,8 +137,8 @@ const RESULTS = {
 
 /**
  * The cross-field rules of a measurement event that JSON Schema can't
- * express (contract section 9): when assigned is present and result isn't
- * failed, variant equals assigned (the contract's own semantics check);
+ * express: when assigned is present and result isn't
+ * failed, variant equals assigned (the schemas' semantics check);
  * plus the allowed outcome / result combinations: assigned is absent for
  * unassigned outcomes, a failed treatment shows the default, kept-default
  * always shows the default.

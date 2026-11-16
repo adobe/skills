@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /*
  * Verifies personalization in a real browser against a running preview
- * (aem up or *.aem.page), contract section 11. For each case from
+ * (aem up or *.aem.page). For each case from
  * simulate.mjs it opens the page with the case's preview query in a fresh
  * browser context and checks: the section's data-pzn-* attributes (variant,
  * outcome, source), its content, that nothing is left hidden, no new console
  * errors, CLS within budget, and the measurement events (pzn:decided and
- * pzn:applied once per decision, valid against the contract schema, with the
+ * pzn:applied once per decision, valid against the measurement-event schema, with the
  * expected assigned, variant, outcome and result; nothing sent without
  * consent unless an exception allows it). Target sections: display once
  * seen, click on click; popups open at their trigger, are modal and close
@@ -23,13 +23,17 @@
  *                    restored (edge sections too), storage cleared
  *   --split-runs N   split stickiness across reloads and tabs, N fresh draws,
  *                    bots and no-consent visitors not assigned
- *   --scenarios F    replays pilot scenarios (contract pilot/scenarios.json):
+ *   --scenarios F    replays pilot scenarios (assets/contract/pilot-scenarios.json):
  *                    each step's engine answer through the edge code and the
  *                    preview's browser runtime; attributes and events must match
  *   --perf --baseline URL          LCP, CLS and time until the section shows
  *                    against the page before the change (variant, default,
  *                    no-consent and slow-engine cases)
  *   --perf --edge --uncached --baseline URL [--runs 30]   edge latency
+ *
+ * Flags add up: --perf alone measures only, --perf with any other check
+ * runs that check too. A page-speed or edge-latency comparison without
+ * --baseline is not run, and the result is INCOMPLETE, never PASS.
  *
  * Usage:
  *   node verify-preview.mjs --page http://localhost:3000/index
@@ -48,7 +52,9 @@ import {
   PLAYWRIGHT_CACHE, PLAYWRIGHT_INSTALL, exitOnHelp, importAsset, isMain, loadPlaywright, parseArgs,
   readJson, readText, sitePrefixes, status,
 } from './lib.mjs';
-import { buildCases, simulateEdge } from './simulate.mjs';
+import {
+  SLOW_MS, buildCases, simulateEdge, siteTimings,
+} from './simulate.mjs';
 import { readSiteConfig } from './validate-placeholders.mjs';
 import { check } from './schema.mjs';
 
@@ -62,9 +68,12 @@ Playwright checks against a running preview (aem up or *.aem.page): each case
 shows its expected variant and outcome, renders content, leaves nothing
 hidden, logs no new console errors, keeps CLS within budget and sends the
 expected pzn:* events once per decision. --faults, --refresh, --consent-flow,
---split-runs, --scenarios and --perf add the contract's other browser checks.
+--split-runs, --scenarios and --perf add the other browser checks;
+they add up (--perf alone measures only). --perf needs --baseline, or the
+comparison is not run and the result is INCOMPLETE.
 Playwright loads from this skill's folder or ~/.cache/aem-eds-personalization/playwright,
-never the site. Exit 1 = a check failed, 2 = usage or Playwright not found.`;
+never the site. Exit 1 = a check failed or didn't run, 2 = usage or Playwright
+not found.`;
 
 const { engineAnswer, targetAnswer, parseKnob } = await importAsset('runtime', 'scripts', 'personalization', 'mock-engine.js');
 
@@ -83,7 +92,6 @@ const LCP_REGRESSION_MS = 500;
 const APPLY_TIMEOUT_MS = 10000;
 // The runtime's safety net with the default budgets (lazy 2000 ms + 2 s).
 const SAFETY_NET_MS = 4500;
-const SLOW_MS = 3500;
 const DELIVERY_URL = /\.tt\.omtrdc\.net\/|\/rest\/v1\/delivery/;
 export const EVENTS = ['pzn:decided', 'pzn:applied', 'pzn:seen', 'pzn:clicked', 'pzn:notified'];
 
@@ -1060,13 +1068,21 @@ async function checkScenarios(browser, pageUrl, file, { site, prefixes }) {
 
 // --- Page speed (--perf) ---
 
-async function loadMetrics(browser, url, {
+async function loadMetrics(browser, pageUrl, {
   id, faultSlow, site, consentCookie = false,
 } = {}) {
+  let url = pageUrl;
   const context = await newContext(browser);
   // The edge decides only for a visitor with the pzn-consent cookie (the
-  // browser runtime mirrors it from the consent tool).
-  if (consentCookie) await context.addCookies([{ name: 'pzn-consent', value: '1', url }]);
+  // browser runtime mirrors it from the consent tool), and the browser
+  // honors that decision only when the consent tool says yes in this page
+  // view: ?pzn-consent=1 stands in for the tool on preview hosts.
+  if (consentCookie) {
+    await context.addCookies([{ name: 'pzn-consent', value: '1', url }]);
+    const withConsent = new URL(url);
+    withConsent.searchParams.set('pzn-consent', '1');
+    url = withConsent.href;
+  }
   try {
     const page = await context.newPage();
     if (faultSlow) {
@@ -1100,6 +1116,41 @@ async function loadMetrics(browser, url, {
 const median = (values) => percentile(values.filter((value) => value !== null), 50);
 
 /**
+ * Which checks a run makes. Flags add up: --perf alone measures only (no
+ * per-case runs); with --faults, --refresh, --consent-flow, --split-runs or
+ * --scenarios the per-case runs and those checks run as well. --perf --edge
+ * measures edge latency instead of client page speed.
+ * @param {object} flags { perf, edge, faults, refresh, consentFlow, splitRuns, scenarios }
+ * @returns {{cases: boolean, perf: boolean, edge: boolean}}
+ */
+export function planChecks({
+  perf = false, edge = false, faults = false, refresh = false, consentFlow = false,
+  splitRuns = 0, scenarios,
+} = {}) {
+  const others = faults || refresh || consentFlow || splitRuns > 0 || !!scenarios;
+  return { cases: !perf || others, perf: !!perf && !edge, edge: !!perf && !!edge };
+}
+
+/**
+ * Problems of one page-speed run. The page must show
+ * a personalization outcome on the section, or the runtime didn't run and
+ * the numbers say nothing about personalization.
+ * @param {object|null} before baseline metrics
+ * @param {{lcp: number, cls: number, shown: number|null, observed: boolean}} after
+ * @returns {string[]}
+ */
+export function perfProblems(before, after) {
+  const problems = [];
+  if (!after.observed) problems.push('no personalization outcome on the section (data-pzn-outcome missing): the runtime or its scripts.js hooks are not on this page');
+  if (after.shown === null || after.shown === undefined) problems.push('the section was never shown');
+  if (before) {
+    if (after.cls > Math.max(CLS_BUDGET, before.cls + CLS_REGRESSION)) problems.push(`CLS ${before.cls} → ${after.cls}`);
+    if (after.lcp - before.lcp > LCP_REGRESSION_MS) problems.push(`LCP +${after.lcp - before.lcp} ms (> ${LCP_REGRESSION_MS})`);
+  }
+  return problems;
+}
+
+/**
  * Page speed against the page before the change: a variant case, a default
  * case, a no-consent case and a slow-engine case, as a normal visitor with
  * consent and real decisions (no ?pzn= override).
@@ -1113,7 +1164,7 @@ async function checkPerf(browser, pageUrl, cases, { baseline, site, repeat = 3 }
     ['no consent', pick((entry) => entry.context?.consent === false)],
     ['slow engine', pick((entry) => entry.fault === 'slow')],
   ].filter(([, entry]) => entry);
-  const measureUrl = async (url, options) => {
+  const measureUrl = async (url, options = {}) => {
     const samples = [];
     for (let i = 0; i < repeat; i += 1) {
       // eslint-disable-next-line no-await-in-loop
@@ -1123,6 +1174,7 @@ async function checkPerf(browser, pageUrl, cases, { baseline, site, repeat = 3 }
       lcp: round(median(samples.map((s) => s.lcp))),
       cls: Number((median(samples.map((s) => s.cls)) || 0).toFixed(3)),
       shown: round(median(samples.map((s) => s.shown))),
+      observed: samples.every((s) => s.sections.some((section) => section.id === options.id && section.outcome)),
     };
   };
   const before = baseline ? await measureUrl(baseline) : null;
@@ -1132,16 +1184,19 @@ async function checkPerf(browser, pageUrl, cases, { baseline, site, repeat = 3 }
     const after = await measureUrl(withQuery(pageUrl, entry.query.replace(/(^|&)pzn=[^&]*/g, '')), {
       id: entry.id, faultSlow: entry.fault === 'slow', site,
     });
-    const problems = [];
-    if (before) {
-      if (after.cls > Math.max(CLS_BUDGET, before.cls + CLS_REGRESSION)) problems.push(`CLS ${before.cls} → ${after.cls}`);
-      if (after.lcp - before.lcp > LCP_REGRESSION_MS) problems.push(`LCP +${after.lcp - before.lcp} ms (> ${LCP_REGRESSION_MS})`);
-    }
+    const problems = perfProblems(before, after);
     results.push({
       case: name, id: entry.id, after, before, ok: !problems.length, problems,
     });
   }
-  return { baseline: !!before, results, ok: results.every((result) => result.ok) };
+  // Without the page before the change there is no comparison: not run.
+  // ok covers the runs made; notRun keeps the whole check from passing.
+  let notRun;
+  if (!runs.length) notRun = 'no variant, default, no-consent or slow-engine case to measure';
+  else if (!before) notRun = 'pass --baseline <the page before the change>';
+  return {
+    baseline: !!before, results, notRun, ok: results.every((result) => result.ok),
+  };
 }
 
 /**
@@ -1191,6 +1246,9 @@ async function checkEdgeLatency(browser, pageUrl, {
   }
   const target = report.uncached || report.cached;
   const problems = [];
+  if (target.success === 0) {
+    problems.push('no edge decision was honored: the edge needs the pzn-consent cookie, and the browser the consent tool\'s yes in this page view (?pzn-consent=1 stands in for it on preview hosts; on a live host the tool must already have consent)');
+  }
   if (target.addedTtfb.p75 > budget) problems.push(`added time to first byte p75 ${target.addedTtfb.p75} ms > ${budget} ms`);
   if (target.success < success) problems.push(`successful decisions ${(target.success * 100).toFixed(0)}% < ${(success * 100).toFixed(0)}%`);
   return {
@@ -1232,21 +1290,22 @@ async function revisit(browser, pageUrl) {
 export async function verify({
   page, cases, baseline, revisit: doRevisit, screenshots, ignoreConsole, site = readSiteConfig(''),
   prefixes, faults = false, refresh = false, consentFlow = false, splitRuns = 0, scenarios, perf = false,
-  edge = false, uncached = false, runs = 30, perfOnly = false,
+  edge = false, uncached = false, runs = 30,
 }) {
+  const plan = planChecks({
+    perf, edge, faults, refresh, consentFlow, splitRuns, scenarios,
+  });
   const { chromium } = requirePlaywright();
   const browser = await chromium.launch({ headless: true });
   try {
     const report = { page, invalid: cases.filter((item) => item.errors && item.outcome !== 'invalid') };
-    if (perf && edge) {
+    if (plan.edge) {
       report.edge = baseline
         ? await checkEdgeLatency(browser, page, { baseline, runs, uncached })
         : { ok: false, notRun: 'needs --baseline <the same page without personalization>', problems: [] };
-      report.ok = report.edge.ok;
-      return report;
     }
     const runsList = [];
-    if (!perfOnly) {
+    if (plan.cases) {
       // Sequential: keeps aem up and CLS measurements stable.
       for (const entry of cases.filter((item) => item.expected !== undefined && (faults || !item.fault))) {
         // eslint-disable-next-line no-await-in-loop
@@ -1282,16 +1341,21 @@ export async function verify({
     }
     const { results, preExisting } = splitConsoleErrors(runsList, baselineErrors);
     Object.assign(report, { results, preExistingErrors: preExisting });
-    report.splits = await checkSplits(browser, page, cases, { runs: splitRuns, site });
+    if (plan.cases) report.splits = await checkSplits(browser, page, cases, { runs: splitRuns, site });
     if (refresh) report.refresh = await checkRefresh(browser, page, cases, { site, prefixes });
     if (consentFlow) report.consentFlow = await checkConsentFlow(browser, page, cases, { site });
     if (scenarios) report.scenarios = await checkScenarios(browser, page, scenarios, { site, prefixes });
-    if (perf) report.perf = await checkPerf(browser, page, cases, { baseline, site });
+    if (plan.perf) report.perf = await checkPerf(browser, page, cases, { baseline, site });
     if (doRevisit) report.revisit = await revisit(browser, page);
     const passed = (list) => (list || []).every((item) => item.ok);
-    report.ok = passed(results) && passed(report.splits) && passed(report.refresh)
-      && passed(report.scenarios) && report.consentFlow?.ok !== false && report.perf?.ok !== false
-      && !report.invalid.length && report.baseline?.ok !== false;
+    // A required check that didn't run is listed, and the run doesn't pass.
+    const checks = [['page speed comparison', report.perf], ['edge latency', report.edge], ['consent flow', report.consentFlow]];
+    report.notRun = checks.filter(([, item]) => item?.notRun).map(([name, item]) => `${name}: ${item.notRun}`);
+    report.failed = !(passed(results) && passed(report.splits) && passed(report.refresh)
+      && passed(report.scenarios) && report.perf?.ok !== false
+      && checks.slice(1).every(([, item]) => !!item?.notRun || item?.ok !== false)
+      && !report.invalid.length && report.baseline?.ok !== false);
+    report.ok = !report.failed && !report.notRun.length;
     return report;
   } finally {
     await browser.close();
@@ -1324,7 +1388,7 @@ function printReport(report) {
   block('consent flow', report.consentFlow);
   (report.scenarios || []).forEach((item) => block(`scenario · ${item.id}${item.pilot ? ` (${item.pilot})` : ''}`, item));
   if (report.perf) {
-    if (!report.perf.baseline) console.log('⚪ NOT RUN page speed comparison: pass --baseline <the page before the change>');
+    if (report.perf.notRun) console.log(`⚪ NOT RUN page speed comparison: ${report.perf.notRun}`);
     report.perf.results.forEach((result) => {
       const was = result.before ? ` (before: LCP ${result.before.lcp} ms, CLS ${result.before.cls})` : '';
       status(result.ok, `page speed · ${result.case} (${result.id}): LCP ${result.after.lcp} ms, CLS ${result.after.cls}, section shown at ${result.after.shown ?? '-'} ms${was}`);
@@ -1350,7 +1414,9 @@ function printReport(report) {
     const show = (visit) => visit.map((section) => `${section.id}=${section.variant}`).join(', ');
     console.log(`ℹ️ revisit: first [${show(report.revisit.first)}], second [${show(report.revisit.second)}], cookies [${report.revisit.cookies.join('; ') || 'none'}]`);
   }
-  console.log(report.ok ? '\n✓ PASS preview verified' : '\n❌ FAIL see problems above');
+  if (report.ok) console.log('\n✓ PASS preview verified');
+  else if (report.failed) console.log('\n❌ FAIL see problems above');
+  else console.log(`\n❌ INCOMPLETE not run: ${report.notRun.join('; ')} (not a pass)`);
 }
 
 if (isMain(import.meta.url)) {
@@ -1383,6 +1449,7 @@ if (isMain(import.meta.url)) {
       prefixes,
       policy,
       engineName: site.engine,
+      ...siteTimings(site),
     });
   }
   if (!Array.isArray(cases) || !cases.length) {
@@ -1408,7 +1475,6 @@ if (isMain(import.meta.url)) {
     edge: !!args.edge,
     uncached: !!args.uncached,
     runs: Number(args.runs || 30),
-    perfOnly: !!args.perf,
     baseline: typeof args.baseline === 'string' ? args.baseline : undefined,
     revisit: !!args.revisit,
     screenshots: typeof args.screenshots === 'string' ? resolve(args.screenshots) : undefined,

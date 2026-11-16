@@ -1,5 +1,5 @@
 /*
- * Visitor context (contract section 2) and what the runtime keeps on the
+ * Visitor context and what the runtime keeps on the
  * device. Functions take their browser dependencies as arguments so they can
  * be unit tested in Node and reused by the edge worker. Nothing here sends
  * data anywhere.

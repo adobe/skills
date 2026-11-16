@@ -705,6 +705,37 @@ describe('section runtime', { skip: browser ? false : 'Playwright Chromium not i
     await session.close();
   });
 
+  it('stores nothing from engine and Target answers that arrive after consent was withdrawn', async () => {
+    engine = async () => ({ body: { decisions: { plan: { variant: 'enterprise' } }, ttl: 300 }, delay: 700 });
+    const context = await newContext({
+      target: async (body) => {
+        await sleep(700);
+        return targetAnswer(ACTIVITIES, body, { clientCode: 'acme' });
+      },
+    });
+    const page = await context.newPage();
+    await page.addInitScript(() => { window.testConsent = true; });
+    await page.goto(`${base}/page.html?utm_campaign=enterprise`);
+    await page.waitForFunction(() => typeof window.hlx?.personalization?.refresh === 'function');
+    await page.waitForFunction(() => document.querySelector('[data-personalization="plan"]')?.dataset.sectionStatus);
+    await sleep(200);
+    assert.equal(engineCalls.length, 1, 'the engine request is out');
+    // Withdrawn while both requests are out; then both answer.
+    await page.evaluate(async () => {
+      window.testConsent = false;
+      await window.hlx.personalization.refresh();
+    });
+    await sleep(1200);
+    await page.evaluate(() => window.testDone);
+    await settled(page);
+    assert.ok(context.targetCalls.some((call) => call.body.prefetch), 'Target was asked before the withdrawal');
+    assert.deepEqual(await stored(page, context), { cookies: [], local: [], session: [] }, 'no answer, tntId or edge host kept');
+    assert.deepEqual(pick(await read(page, 'plan'), ['variant', 'outcome']), { variant: 'default', outcome: 'no-consent' });
+    assert.deepEqual(pick(await read(page, 'inline-offer'), ['variant', 'outcome']), { variant: 'default', outcome: 'no-consent' });
+    await assertShown(page);
+    await context.close();
+  });
+
   // --- Re-evaluation and exposure (section 9) ---
 
   it('re-evaluates on refresh(): same decision sends nothing, a new payload a new decision', async () => {
@@ -851,6 +882,62 @@ describe('section runtime', { skip: browser ? false : 'Playwright Chromium not i
     await close();
   });
 
+  it('does not honor edge results the consent tool has not allowed in this page view (pending, then no)', async () => {
+    const context = await newContext();
+    await context.addCookies([{ name: 'pzn-consent', value: '1', url: base }]);
+    const fragments = [];
+    context.on('request', (request) => {
+      if (/\/fragments\//.test(request.url())) fragments.push(new URL(request.url()).pathname);
+    });
+    // Pending: the consent tool hasn't answered, the cookie from an earlier visit says yes.
+    const { page, close } = await open({ path: '/edge.html', context });
+    const edged = await read(page, 'edged');
+    assert.deepEqual(pick(edged, ['where', 'variant', 'outcome', 'decision', 'text', 'hidden']), {
+      where: 'browser', variant: 'default', outcome: 'no-consent', decision: 'edged#2', text: 'Authored edged more', hidden: false,
+    });
+    assert.equal(await page.getAttribute('[data-personalization="edged"] a', 'data-decorated'), 'true', 'the default comes back decorated, from the template');
+    assert.deepEqual(pick(await read(page, 'sel'), ['where', 'variant', 'outcome', 'decision', 'text']), {
+      where: 'browser', variant: 'default', outcome: 'no-consent', decision: 'sel#2', text: 'Authored sel',
+    });
+    assert.deepEqual(fragments, [], 'the selected variant is not loaded');
+    assert.deepEqual(await events(page), [], 'nothing sent for the edge decisions');
+    assert.deepEqual(engineCalls, []);
+    // The tool says no: still the defaults, and the mirrored cookie follows.
+    await page.evaluate(async () => {
+      window.testConsent = false;
+      await window.hlx.personalization.refresh();
+    });
+    assert.equal((await read(page, 'edged')).outcome, 'no-consent');
+    assert.equal((await context.cookies()).find((cookie) => cookie.name === 'pzn-consent'), undefined, 'the mirrored cookie is deleted');
+    // Given later: the browser decides them like any section without consent.
+    await page.evaluate(async () => {
+      window.testConsent = true;
+      await window.hlx.personalization.refresh();
+    });
+    await waitDecision(page, 'sel', 'sel#3');
+    assert.notEqual((await read(page, 'sel')).outcome, 'no-consent');
+    assert.ok(engineCalls.some((call) => call.placeholders.some((item) => item.id === 'sel')), 'decided in the browser now');
+    await close();
+  });
+
+  it('keeps an edge result an approved exception allows without consent', async () => {
+    const context = await newContext();
+    await context.addCookies([{ name: 'pzn-consent', value: '1', url: base }]);
+    const { page, close } = await open({
+      path: '/edge.html',
+      context,
+      consent: false,
+      config: { consent: { mode: 'cmp', tool: 'custom', withoutConsent: ['rules'], policyRef: 'LEGAL-42' } },
+    });
+    assert.deepEqual(pick(await read(page, 'edged'), ['where', 'variant', 'outcome', 'decision', 'text']), {
+      where: 'edge', variant: 'x', outcome: 'variant', decision: 'edged#1', text: 'Edge X',
+    }, 'rules: allowed by the exception');
+    assert.deepEqual(pick(await read(page, 'sel'), ['where', 'variant', 'outcome', 'text']), {
+      where: 'browser', variant: 'default', outcome: 'no-consent', text: 'Authored sel',
+    }, 'api: no exception');
+    await close();
+  });
+
   // --- Target (section 7) ---
 
   it('renders inline Target offers and notifies display once seen and click on click', async () => {
@@ -900,6 +987,38 @@ describe('section runtime', { skip: browser ? false : 'Playwright Chromium not i
       { product: 'target', type: 'display', ok: false },
     ]);
     await close();
+  });
+
+  it('sends no Target or engine feedback for a treatment that failed to show; the default shows', async () => {
+    const context = await newContext();
+    await context.route('**/fragments/inline-offer/promo.plain.html', (route) => route.fulfill({ status: 404, body: '' }));
+    await context.route('**/fragments/plan/enterprise.plain.html', (route) => route.fulfill({ status: 404, body: '' }));
+    const { page, close } = await open({
+      query: '?utm_campaign=enterprise', consent: true, context, config: { api: { feedback: '/feedback' } },
+    });
+    const inline = await read(page, 'inline-offer');
+    assert.deepEqual(pick(inline, ['variant', 'source', 'outcome', 'reason', 'text']), {
+      variant: 'promo', source: 'target', outcome: 'variant', reason: 'fragment failed: /fragments/inline-offer/promo', text: 'Authored inline offer',
+    });
+    const applied = (await events(page, 'inline-offer', 'pzn:applied'))[0].personalization;
+    assert.deepEqual(pick(applied, ['assigned', 'variant', 'result']), { assigned: 'promo', variant: 'default', result: 'failed' });
+    assert.equal((await events(page, 'plan', 'pzn:applied'))[0].personalization.result, 'failed');
+    // The authored inline offer has no link: give the shown default one to click.
+    await page.evaluate(() => document.querySelector('[data-personalization="inline-offer"]').insertAdjacentHTML('beforeend', '<p><a href="/authored">More</a></p>'));
+    for (const id of ['inline-offer', 'plan']) {
+      // eslint-disable-next-line no-await-in-loop
+      await intoView(page, id);
+      // eslint-disable-next-line no-await-in-loop
+      await clickIn(page, `[data-personalization="${id}"]`);
+    }
+    await waitEvent(page, 'inline-offer', 'pzn:clicked');
+    await sleep(500);
+    assert.equal((await events(page, 'inline-offer', 'pzn:seen')).length, 1, 'exposure of what was shown is still measured');
+    assert.deepEqual(await notified(page, 'inline-offer'), [], 'no Target display or click');
+    assert.deepEqual(context.targetCalls.filter((call) => call.body.notifications), []);
+    assert.deepEqual(await notified(page, 'plan'), [], 'no engine feedback');
+    assert.deepEqual(beacons, []);
+    await close({ allowErrors: true });
   });
 
   it('opens a Target popup past its scroll trigger, once per decision, with notifications', async () => {

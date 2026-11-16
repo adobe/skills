@@ -1,5 +1,5 @@
 /*
- * The decision model (contract sections 4, 8 and 9): outcomes.js. Every
+ * The decision model: outcomes.js. Every
  * event payload built here is checked against measurement-event.schema.json
  * and the event semantics.
  */

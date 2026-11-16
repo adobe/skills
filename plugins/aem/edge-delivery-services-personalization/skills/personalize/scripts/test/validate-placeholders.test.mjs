@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import {
-  checkSiteConfig, detectMode, pageExperimentation, readSiteConfig, validate, validatePage,
+  CONTEXT_ALLOWANCE_BYTES, checkSiteConfig, detectMode, pageExperimentation, readSiteConfig,
+  requestTooLarge, validate, validatePage,
 } from '../validate-placeholders.mjs';
 import { readText } from '../lib.mjs';
 import { SITE, runHelp, tempDir } from './helpers.mjs';
@@ -209,7 +212,7 @@ describe('validate sections', () => {
   });
 });
 
-describe('site config (contract section 3)', () => {
+describe('site config', () => {
   it('reads config.js textually', () => {
     assert.deepEqual(readSiteConfig(`export default {
       consent: { mode: 'cmp', tool: 'onetrust', withoutConsent: ['rules', 'rum'], policyRef: 'LEGAL-12' },
@@ -227,6 +230,8 @@ describe('site config (contract section 3)', () => {
       },
       apiEndpoint: '/pzn/decide',
       engine: 'of1',
+      apiTimeout: undefined,
+      budgets: { eager: undefined, lazy: undefined },
       targetClientCode: 'acme',
       targetTransport: 'websdk',
       targetEndpoint: '',
@@ -237,6 +242,16 @@ describe('site config (contract section 3)', () => {
     assert.equal(readSiteConfig('export default { mock: { api: {} } };').mock, true);
     assert.deepEqual(readSiteConfig('').present, false);
     assert.deepEqual(readSiteConfig("export default { providers: {}, sendWithoutConsent: true };").removed, ['providers', 'sendWithoutConsent']);
+  });
+
+  it('reads the time budgets and api.timeout the runtime uses', () => {
+    const site = readSiteConfig(`export default {
+      budgets: { eager: 900, lazy: 2500 },
+      geo: { endpoint: '', timeout: 500 },
+      api: { endpoint: '/pzn/decide', timeout: 5000, routeTimeout: 9000 },
+    };`);
+    assert.deepEqual([site.budgets, site.apiTimeout], [{ eager: 900, lazy: 2500 }, 5000]);
+    assert.deepEqual(readSiteConfig('export default { api: {} };').budgets, { eager: undefined, lazy: undefined });
   });
 
   const problems = (source) => checkSiteConfig(readSiteConfig(source));
@@ -278,6 +293,93 @@ describe('site config (contract section 3)', () => {
     } finally {
       cleanup();
     }
+  });
+});
+
+describe('nothing checked is not a pass', () => {
+  const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'validate-placeholders.mjs');
+  const cli = (args) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' });
+
+  it('a named path that does not exist is incomplete, not PASS', async () => {
+    const report = await validate(['content/typo.html'], { repo: SITE });
+    assert.equal(report.ok, false);
+    assert.equal(report.errorCount, 0);
+    assert.match(report.incomplete.join(), /content\/typo.html not found/);
+    const run = cli(['content/typo.html', '--repo', SITE]);
+    assert.equal(run.status, 1);
+    assert.match(run.stdout, /NOT RUN content\/typo.html not found/);
+    assert.match(run.stdout, /INCOMPLETE/);
+    assert.doesNotMatch(run.stdout, /✓ PASS all sections/);
+  });
+
+  it('a repo without config.js, or with no personalized section, is incomplete', async () => {
+    const { dir, cleanup } = tempDir();
+    try {
+      mkdirSync(join(dir, 'content'), { recursive: true });
+      writeFileSync(join(dir, 'content', 'index.html'), '<body><main><div><p>Plain</p></div></main></body>');
+      const bare = await validate([], { repo: dir });
+      assert.equal(bare.ok, false);
+      assert.match(bare.incomplete.join('|'), /config.js not found/);
+      assert.match(bare.incomplete.join('|'), /no personalized section found in content/);
+      mkdirSync(join(dir, 'scripts', 'personalization'), { recursive: true });
+      writeFileSync(join(dir, 'scripts', 'personalization', 'config.js'), "export default { consent: { mode: 'deny' } };");
+      const noSections = await validate([], { repo: dir });
+      assert.deepEqual(noSections.incomplete, ['no personalized section found in content']);
+      assert.equal(cli(['--repo', dir]).status, 1);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('the fixture site still passes, and exits 0', () => {
+    const run = cli(['--repo', SITE]);
+    assert.equal(run.status, 0, run.stdout);
+    assert.match(run.stdout, /✓ PASS/);
+  });
+});
+
+describe('--publish', () => {
+  it('fails TODO copy in a variant or the default, which is only a warning otherwise', async () => {
+    const { dir, cleanup } = tempDir();
+    try {
+      const base = join(dir, 'content', 'fragments', 'p');
+      mkdirSync(base, { recursive: true });
+      writeFileSync(join(base, 'in.html'), '<body><main><div><h1>TODO: India hero</h1></div></main></body>');
+      const page = `<div><h1>Title</h1><div class="section-metadata"><div><div>Personalization</div><div>p</div></div>`
+        + '<div><div>Personalization Variants</div><div>/fragments/p/in</div></div><div><div>Personalization Rule In</div><div>geo: IN</div></div></div></div>';
+      const draft = await validatePage(page, { repo: dir, prefixes: ['/fragments/'] });
+      assert.deepEqual(draft.sections[0].errors, []);
+      assert.match(draft.sections[0].warnings.join(), /still has TODO copy/);
+      const publish = await validatePage(page, { repo: dir, prefixes: ['/fragments/'], publish: true });
+      assert.match(publish.sections[0].errors.join(), /fragment "in" still has TODO copy: write the copy before publishing/);
+      const todoDefault = page.replace('<h1>Title</h1>', '<h1>TODO: title</h1>');
+      const both = await validatePage(todoDefault, { repo: dir, prefixes: ['/fragments/'], publish: true });
+      assert.match(both.sections[0].errors.join(), /the default \(authored content\) still has TODO copy/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe('request size', () => {
+  const api = (id, descriptions) => ({
+    id, source: 'api', variants: Object.keys(descriptions).filter((name) => name !== 'default').map((name) => ({ name, path: `/fragments/${id}/${name}` })),
+    rules: [], descriptions, hint: '', errors: [], warnings: [],
+  });
+
+  it('passes a page whose api sections fit with room for the context, fails one that does not', () => {
+    const names = Array.from({ length: 9 }, (unused, i) => `v${i}`);
+    const full = (text) => Object.fromEntries([...names, 'default'].map((name) => [name, text]));
+    // The largest of1 page: 8 sections x 10 candidates x 600 multi-byte characters.
+    const of1 = Array.from({ length: 8 }, (unused, i) => api(`s${i}`, full('漢'.repeat(600))));
+    assert.equal(requestTooLarge(of1), null);
+    // 20 generic sections with 21 candidates each go past it.
+    const many = Array.from({ length: 20 }, (unused, i) => api(`g${i}`, Object.fromEntries(
+      [...Array.from({ length: 20 }, (u, j) => `v${j}`), 'default'].map((name) => [name, '漢'.repeat(600)]),
+    )));
+    assert.match(requestTooLarge(many), /engine request; with room for the visitor context \(32768 bytes\) it must stay within 262144 bytes/);
+    assert.equal(CONTEXT_ALLOWANCE_BYTES, 32768);
+    assert.equal(requestTooLarge([]), null);
   });
 });
 

@@ -22,34 +22,44 @@ One body-fragment document per DA path under `content/` (what `aem up` serves lo
 - Fragments carry no metadata block; `noindex` comes from bulk metadata (below).
 - Run `validate-placeholders.mjs` before any upload.
 
-## Uploading to DA (on by default)
+## Uploading to DA (each step confirmed)
 
-Delivery runs once every validation gate passes (SKILL.md Steps 6–7), after the code branch is pushed; the user can ask for
-`preview only` or `no upload`. **DA content is shared by every branch, and `aem.live` always runs
-`main`'s code**, so the order is: upload and preview, verify on the branch preview, and publish only
-once `main` serves the runtime. Upload only the personalized pages and their fragments.
+Nothing leaves the machine by default. Once every validation gate passes (SKILL.md Steps 6–7),
+the push, the DA upload + preview, and the publish each run only after the user confirms that
+step, every time. A hands-off run, or no answer, stops before the first of them and hands off the
+commands below. **DA content is shared by every branch, and `aem.live` always runs `main`'s
+code**, so the order is: push, upload and preview, verify on the branch preview, and publish only
+once `main` serves this runtime and no copy is still `TODO:`. Upload only the personalized pages
+and their fragments.
 
 **Path 1, `DA_TOKEN`** (the `da-auth` skill obtains one; the Source API contract is in the
 `da-content` skill, aem-edge-delivery-services plugin):
 
 ```bash
+set -e
 PATHS="/fragments/personalization/<id>/<variant> /<page>"
+# after the user confirmed the upload + preview:
 for p in $PATHS; do
   curl -fsS -X PUT -H "Authorization: Bearer $DA_TOKEN" -F "data=@content$p.html;type=text/html" \
     "https://admin.da.live/source/<org>/<repo>$p.html" >/dev/null
   curl -fsS -X POST -H "Authorization: Bearer $DA_TOKEN" \
     "https://admin.hlx.page/preview/<org>/<repo>/<branch>$p" >/dev/null
 done
-# publish only once main serves the runtime (200):
-curl -s -o /dev/null -w '%{http_code}' https://main--<repo>--<owner>.aem.live/scripts/personalization/sections.js
+# publish: both checks must pass (each exits 1 otherwise), then the user confirms.
+node <skill>/scripts/validate-placeholders.mjs content --repo . --publish   # no TODO copy
+node <skill>/scripts/install-runtime.mjs . --check-live https://main--<repo>--<owner>.aem.live
 for p in $PATHS; do
   curl -fsS -X POST -H "Authorization: Bearer $DA_TOKEN" "https://admin.hlx.page/live/<org>/<repo>/main$p" >/dev/null
 done
 ```
 
+`--check-live` compares what `main` serves with this repo: every runtime module and `config.js`
+byte for byte, and both `scripts.js` hooks. A `sections.js` that merely answers 200 can be an older
+install. A mismatch, a missing file or a network error fails it.
+
 **Path 2, a DA MCP server** (no `DA_TOKEN`, an MCP connected): its source-write tool for each path in
 the same list (the same body-fragment documents), then its preview tool, then publish under the
-same `main` rule.
+same rules: each step confirmed, publish only after both checks pass.
 
 - The multipart field must be `data` with type `text/html`; other names fail silently.
 - Every fragment is previewed and published together with its page, or variants 404 and the
@@ -57,7 +67,8 @@ same `main` rule.
 - Verify on `<branch>--<repo>--<owner>.aem.page`, which runs the pushed branch's code. `main--…`
   preview and every `aem.live` page run `main`: before the merge a personalized section shows only
   its authored content (no runtime reads the rows), so do not publish, and say so in the summary (the publish loop is the hand-off).
-- No push, no upload.
+- No push, no upload. A step the user didn't confirm is a hand-off, listed in the summary with its
+  command.
 - Never hardcode, print or ask for a token in chat; on a `401`, stop and hand off the commands
   with a note to refresh the token.
 

@@ -1,6 +1,6 @@
 /*
- * Adapter between the decision API (v1, contract section 5) and OF1's
- * native /api/decide, from the contract's reference adapter
+ * Adapter between the decision API (v1) and OF1's
+ * native /api/decide, from the reference OF1 adapter
  * (adapters/of1.mjs, tested against OF1's live samples). It runs in the
  * server route and the edge (edge-config.js), never in the browser: the
  * tenant id is server configuration.
@@ -9,16 +9,16 @@
  *   const of1 = createOf1Adapter({ tenant: 'owner/site' });
  *   api: { engine: 'of1', mapRequest: of1.mapRequest, mapResponse: of1.mapResponse }
  *
- * OF1 gets only what the contract allows: the page path and title, each
+ * OF1 gets only what the decision API allows: the page path and title, each
  * section's hint and candidate descriptions, and acquisition.source derived
- * from the contract context (campaign, search, referral, direct). No
+ * from the v1 request context (campaign, search, referral, direct). No
  * profile, no audiences.
  */
 
 const SEARCH_HOSTS = /(^|\.)(google|bing|duckduckgo|yahoo|baidu|yandex|ecosia)\.[a-z.]+$/;
 
 /**
- * acquisition.source from the contract's context only (no profile data).
+ * acquisition.source from the v1 request context only (no profile data).
  * @param {object} context v1 context
  * @returns {string} campaign | search | referral | direct
  */

@@ -1,5 +1,5 @@
 /*
- * Section personalization grammar (contract section 1, section.schema.json).
+ * Section personalization grammar (section.schema.json).
  *
  * Authors personalize a section with Section Metadata rows; the pipeline turns
  * them into data-personalization* attributes on the section, in authoring
@@ -346,7 +346,7 @@ export function parseSection(attributes, { prefixes = DEFAULT_FRAGMENT_PREFIXES 
 }
 
 /**
- * A spec as the contract's section object (section.schema.json), for
+ * A spec as a section object (section.schema.json), for
  * validation and reports.
  * @param {object} spec
  * @returns {object}

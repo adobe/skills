@@ -14,8 +14,9 @@ import { edgeBundle, fixture, html } from './helpers.mjs';
 const bundle = edgeBundle();
 const {
   personalizeResponse, handleApiRoute, edgeContext, absolutizeUrls, fragmentMarkup, fillDescriptions,
-  authoredText, approvedExceptions, consentCookie,
+  authoredText, approvedExceptions, consentCookie, plainText,
 } = await bundle.load('personalization/personalize.js');
+const { MAX_REQUEST_BYTES } = await bundle.load('personalization/contract.js');
 const { default: baseConfig } = await bundle.load('personalization/edge-config.js');
 after(bundle.cleanup);
 
@@ -173,7 +174,7 @@ async function run(page, {
   };
 }
 
-describe('consent and exceptions (contract section 3)', () => {
+describe('consent and exceptions', () => {
   it('leaves every section to the browser without the consent cookie: no engine call, no split cookie', async () => {
     const { calls, fetchImpl } = engine({ decisions: { plan: { variant: 'enterprise' } } });
     const { out, text, fetched } = await run(sectionPage('hero', 'plan', 'msg'), {
@@ -264,7 +265,7 @@ describe('consent and exceptions (contract section 3)', () => {
   });
 });
 
-describe('edge results and the handoff (contract section 8)', () => {
+describe('edge results and the handoff', () => {
   it('applied: swaps in the variant, rewrites its URLs and keeps the authored content in a template', async () => {
     const { out, text, fetched } = await run(sectionPage('hero'), { headers: CONSENT });
     const hero = section(text, 'hero');
@@ -323,6 +324,31 @@ describe('edge results and the handoff (contract section 8)', () => {
     untouched(missing.text, 'missing');
     assert.deepEqual(missing.fetched, [`${F}/missing/india`]);
     assert.equal(missing.out.headers.get('x-pzn'), 'deferred');
+  }));
+
+  it('left: a fragment that sends its headers and then stalls its body misses the same deadline', quiet(async () => {
+    let cancelled = false;
+    let signal;
+    const stalledBody = (path, options = {}) => {
+      ({ signal } = options);
+      const body = new ReadableStream({
+        start(controller) { controller.enqueue(new TextEncoder().encode('<div><p>India')); },
+        cancel() { cancelled = true; },
+      });
+      return Promise.resolve(new Response(body, { headers: { 'content-type': 'text/html' } }));
+    };
+    const started = Date.now();
+    const { text } = await run(sectionPage('promo'), {
+      headers: CONSENT, config: { ...baseConfig, fragmentTimeout: 50 }, fetchFragment: stalledBody,
+    });
+    untouched(text, 'promo');
+    assert.ok(Date.now() - started < 1000, 'the page does not wait for the body');
+    assert.equal(signal?.aborted, true, 'the request is aborted');
+    assert.equal(cancelled, true, 'the body is cancelled');
+    // Headers that never come are bounded the same way.
+    await assert.rejects(plainText('/x', () => new Promise(() => {}), 20), /timed out after 20 ms/);
+    await assert.rejects(plainText('/x', async () => new Response('', { status: 404 }), 20), /HTTP 404/);
+    assert.equal(await plainText('/x', async () => new Response('<p>ok</p>'), 50), '<p>ok</p>');
   }));
 
   it('left: target, invalid, duplicate and already marked sections', async () => {
@@ -408,7 +434,7 @@ describe('edge results and the handoff (contract section 8)', () => {
   });
 });
 
-describe('split sections (contract section 6)', () => {
+describe('split sections', () => {
   it('assigns once per browser session, with the weights', async () => {
     const first = await run(sectionPage('msg', 'pick'), { headers: CONSENT });
     const setCookie = first.out.headers.get('set-cookie');
@@ -439,7 +465,7 @@ describe('split sections (contract section 6)', () => {
   });
 });
 
-describe('api sections at the edge (contract sections 4 and 5)', () => {
+describe('api sections at the edge', () => {
   const page = sectionPage('extra', 'plan');
   const answerFor = async (answer, { url = 'https://www.example.com/plans', api, ...rest } = {}) => {
     const { calls, fetchImpl } = engine(answer);
@@ -609,7 +635,7 @@ describe('api sections at the edge (contract sections 4 and 5)', () => {
     assert.equal(generic.calls[0].body.placeholders[0].descriptions, undefined, 'generic engines get only author rows');
   });
 
-  it('shares engine answers only with cacheable, ttl and no visitor data (contract section 10)', async () => {
+  it('shares engine answers only with cacheable, ttl and no visitor data', async () => {
     const answer = { decisions: { extra: { variant: 'x' } }, ttl: 60, cacheable: true };
     const shared = async (headers, config, lastModified) => {
       const cache = shared.cache || memoryCache();
@@ -649,7 +675,29 @@ describe('api sections at the edge (contract sections 4 and 5)', () => {
   });
 });
 
-describe('responses (contract section 10)', () => {
+describe('responses', () => {
+  it('drops the origin validators, so a later visit is decided again instead of revalidated', async () => {
+    const page = sectionPage('promo');
+    const validators = { 'last-modified': 'Wed, 11 Nov 2026 10:00:00 GMT' };
+    const first = await personalizeResponse(request('https://www.example.com/', CONSENT), htmlResponse(page, validators), {
+      config: baseConfig, cf: { country: 'IN' }, cache: null, fetchFragment: fragments().fetchFragment,
+    });
+    assert.equal(first.headers.get('etag'), null);
+    assert.equal(first.headers.get('last-modified'), null);
+    assert.equal(first.headers.get('cache-control'), 'private, no-cache');
+    assert.equal(pzn(await first.text(), 'promo').variant, 'india');
+    // Second navigation, another context: no validator to send, so the page
+    // is fetched and decided again (not a 304 onto the earlier body).
+    const second = await personalizeResponse(request('https://www.example.com/', { cookie: 'pzn-consent=0' }), htmlResponse(page, validators), {
+      config: baseConfig, cf: { country: 'FR' }, cache: null, fetchFragment: fragments().fetchFragment,
+    });
+    assert.equal(second.headers.get('last-modified'), null);
+    untouched(await second.text(), 'promo');
+    // A page left entirely to the browser loses them too.
+    const { out } = await run(PAGE, { headers: CONSENT, cf: { country: 'US' } });
+    assert.equal(out.headers.get('last-modified'), null);
+  });
+
   it('marks pages it cannot decide as deferred, still private', async () => {
     const { out } = await run(PAGE, { headers: CONSENT, cf: { country: 'US' } });
     assert.equal(out.headers.get('x-pzn'), 'deferred');
@@ -725,10 +773,34 @@ describe('handleApiRoute (the server route)', () => {
     assert.equal(await handleApiRoute(post(body()), {}, { ...config, apiRoute: '' }), null);
     assert.equal((await handleApiRoute(new Request('https://www.example.com/pzn/decide'), {}, config)).status, 405);
     assert.equal((await handleApiRoute(post(body()), {}, config)).status, 503);
-    assert.equal((await handleApiRoute(post('x'.repeat(20000)), env, config)).status, 413);
+    assert.equal(MAX_REQUEST_BYTES, 262144);
+    assert.equal((await handleApiRoute(post('x'.repeat(MAX_REQUEST_BYTES + 1)), env, config)).status, 413);
     // Multi-byte characters count as bytes, not characters.
-    assert.equal((await handleApiRoute(post(`"${'é'.repeat(9000)}"`), env, config)).status, 413);
+    assert.equal((await handleApiRoute(post(`"${'é'.repeat(MAX_REQUEST_BYTES / 2)}"`), env, config)).status, 413);
     assert.equal((await handleApiRoute(post('{bad'), env, config)).status, 400);
+  });
+
+  it('accepts the largest batch the of1 profile allows (8 sections x 10 candidates, 600-character descriptions)', async () => {
+    const { calls, fetchImpl } = answering();
+    const names = Array.from({ length: 9 }, (unused, i) => `v${i}`);
+    const text = '漢'.repeat(600); // 3 bytes each in UTF-8
+    const large = body((v) => ({
+      ...v,
+      placeholders: Array.from({ length: 8 }, (unused, s) => ({
+        id: `s${s}`,
+        candidates: [...names, 'default'],
+        fragments: Object.fromEntries(names.map((name) => [name, `${F}/s${s}/${name}`])),
+        hint: '漢'.repeat(500),
+        descriptions: Object.fromEntries([...names, 'default'].map((name) => [name, text])),
+      })),
+    }));
+    const bytes = new TextEncoder().encode(large).length;
+    assert.ok(bytes > 150000 && bytes < MAX_REQUEST_BYTES, `${bytes} bytes`);
+    const out = await handleApiRoute(post(large), env, { ...config, api: { ...config.api, engine: 'of1' } }, { fetchImpl });
+    assert.equal(out.status, 200);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].body.placeholders.length, 8);
+    assert.equal(calls[0].body.placeholders[7].descriptions.default, text);
   });
 
   it('only forwards same-origin v1 requests with consent', async () => {

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /*
- * Local mock of a decision engine (engine API v1, contract section 5) and of
- * the Adobe Target Delivery API (section 7). Requests are checked against
- * the contract schemas; answers come from the same table-driven mock the
+ * Local mock of a decision engine (decision API v1) and of
+ * the Adobe Target Delivery API. Requests are checked against
+ * the vendored JSON Schemas (assets/contract/schemas); answers come from the same table-driven mock the
  * browser uses (mock-engine.js), so local tests and aem.page demos decide
  * alike. For local testing only.
  *
@@ -33,7 +33,7 @@ export const USAGE = `Usage: node mock-decision-api.mjs [--port 4100] [--decisio
          [--target activities.json] [--latency 0] [--knob <knob>] [--ttl 300] [--cacheable]
 Local mock of a v1 decision engine (POST /decide, POST /feedback) and of the
 Adobe Target Delivery API (POST /rest/v1/delivery). Requests are checked
-against the contract schemas (a non-conforming request gets HTTP 400).
+against the decision API JSON Schemas (a non-conforming request gets HTTP 400).
 Knobs: fail (HTTP 500), invalid (not a v1 response), missing (no answer),
 control, default, reason:<code>, variant:<name>; a request header
 x-pzn-mock: <knob> overrides --knob. GET|DELETE /requests, GET /health.`;

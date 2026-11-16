@@ -1,5 +1,5 @@
 /*
- * `split` source: a section A/B test (contract section 6a). The default is
+ * `split` source: a section A/B test. The default is
  * the control. A visitor is drawn on the first view in a browser session and
  * keeps the arm for the session: sessionStorage pzn-split:<id>, mirrored in
  * the pzn-split session cookie the edge reads and writes. The assignment is

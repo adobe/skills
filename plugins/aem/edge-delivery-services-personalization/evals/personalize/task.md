@@ -1,10 +1,11 @@
 # Eval: section personalization on a DA page
 
-Pins the `personalize` skill against the EDS personalization contract (v0.5): preflight before any
+Pins the `personalize` skill's behavior: preflight before any
 change, defaulted choices instead of yes/no gates (the `scripts.js` hooks applied and reported),
 consent recorded and never relaxed on the agent's own (no consent tool in the sandbox → `deny`,
-listed as an assumption; no `withoutConsent` exception added), delivery once the checks pass (push,
-upload, preview; publish waits for `main`) with wrangler off, the authored section content kept as
+listed as an assumption; no `withoutConsent` exception added), delivery that never runs unasked
+(push, DA upload + preview and publish each need the user's confirmation; a hands-off run hands
+off the commands) with wrangler off, the authored section content kept as
 the default, no invented copy, every required check green, A/B tests built as `split` sections,
 and the declines (Target activity or audience creation, AJO journeys, non-DA projects). Seven
 prompts, one session each.
@@ -18,9 +19,10 @@ resolves a persona `cn` or `pc` and a recommendation section below it), and `aem
 16.21+) running on `http://localhost:3000`. Section Metadata reaches the page as section
 attributes (rendering v2, or an `aem.js` that reads it). Playwright is resolvable from the skill
 folder or its cache. Run 7 adds `component-models.json` at the repo root (an xwalk project). The
-sandbox has DA coordinates, a `DA_TOKEN` and a pushable feature branch whose code is not on `main`,
-so delivery (push, DA upload, preview) may run once the gates pass but publishing must wait for
-`main`; no wrangler config and no consent tool are in the repo. The persona answers no questions
+sandbox has DA coordinates, a `DA_TOKEN` and a pushable feature branch whose code is not on `main`;
+no wrangler config and no consent tool are in the repo. Because the persona never confirms, nothing
+is pushed, uploaded, previewed or published in any run: the summary hands off those commands
+(publish after `validate-placeholders.mjs --publish` and `install-runtime.mjs --check-live`). The persona answers no questions
 (hands-off), so every choice takes its default. `wrangler deploy` and `wrangler secret put` may not run
 in any session; the persona never chooses them.
 

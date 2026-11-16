@@ -1,4 +1,4 @@
-# Decision Engine API v1 (contract section 5)
+# Decision Engine API v1
 
 Used by sections with `Personalization Source | api`. The browser sends one batched request per
 evaluation (`sources/api.js`), and the edge sends one per HTML response. The code is in
@@ -141,8 +141,10 @@ The route `handleApiRoute` (in `edge-config.js` `apiRoute`):
 - answers `405` to anything but POST, and `503` when no engine is set;
 - answers `403` to a request that isn't same-origin (`Origin` / `Sec-Fetch-Site`);
 - answers `429` when the optional `PZN_RATE_LIMITER` binding refuses the request;
-- answers `413` to a body over 16 KB, and `400` to anything that isn't a v1 request;
-- rebuilds the request from contract fields only;
+- answers `413` to a body over 256 KiB (`MAX_REQUEST_BYTES`, the limit for a v1 request;
+  the browser never sends a larger one, it falls back with reason `request too large`, and
+  `validate-placeholders.mjs` fails a page whose api sections leave no room for the context), and `400` to anything that isn't a v1 request;
+- rebuilds the request from v1 fields only;
 - forwards the request only with the `pzn-consent` cookie and `consent.personalization: true`.
   With the `api` exception it strips `visitor` and `state`; otherwise it answers `403`;
 - fills missing descriptions for the `of1` profile: a variant without a Description row gets its
@@ -202,7 +204,8 @@ runtime.
 ## Feedback
 
 When `api.feedback` is set (a same-origin URL), the browser sends `seen` and `clicked` for
-engine-assigned decisions with `navigator.sendBeacon`. It sends them with consent only, once per
+engine-assigned decisions with `navigator.sendBeacon`, but not for a treatment that failed to
+show (`result: failed`: the visitor saw the default). It sends them with consent only, once per
 `decisionId`, best effort and with no retries. The body follows
 `decision-feedback.schema.json`: `{ version, page, events: [{ id, decisionId, variant, type, tracking }] }`.
 
@@ -220,7 +223,7 @@ Both mocks use the same tables (`mock-engine.js`):
 node scripts/mock-decision-api.mjs --port 4100 --decisions decisions.json [--latency 3000] [--knob reason:low_confidence] [--ttl 60] [--cacheable]
 ```
 
-The server checks requests against the contract schemas and answers `400` to a non-conforming
+The server checks requests against the decision API schemas and answers `400` to a non-conforming
 one. Its endpoints are:
 
 - `POST /decide`;

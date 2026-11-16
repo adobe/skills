@@ -1,6 +1,6 @@
 /*
- * `target` source over the Target Delivery API (contract section 7,
- * config.target.transport 'delivery-api', the default):
+ * `target` source over the Target Delivery API
+ * (config.target.transport 'delivery-api', the default):
  * https://<clientCode>.tt.omtrdc.net/rest/v1/delivery, or a same-origin
  * proxy in config.target.endpoint.
  *
@@ -237,10 +237,14 @@ async function send(target, body, { fetch, timeout }) {
  * Prefetches the page's target sections.
  * @param {object[]} specs target section specs
  * @param {object} context visitor context
- * @param {object} options { config, fetch, timeout }
+ * @param {object} options { config, fetch, timeout, canStore }; canStore is
+ *   asked when the answer arrives: consent withdrawn meanwhile (storage
+ *   cleared) keeps the tntId and edge host out of storage
  * @returns {Promise<{answers?: object, error?: string, kind?: string}>} answers: id -> answer
  */
-export async function decide(specs, context, { config, fetch, timeout }) {
+export async function decide(specs, context, {
+  config, fetch, timeout, canStore = () => true,
+}) {
   const target = config.target || {};
   if (!target.clientCode) return { error: 'no clientCode (config.target)', kind: 'config' };
   const locations = [...new Set(specs.map(locationOf))];
@@ -251,8 +255,10 @@ export async function decide(specs, context, { config, fetch, timeout }) {
       propertyToken: target.propertyToken,
       page: currentPage(),
     }), { fetch, timeout });
-    storedTntId(json?.id?.tntId);
-    if (json?.edgeHost && !target.endpoint) session(EDGE_HOST_KEY, json.edgeHost);
+    if (canStore()) {
+      storedTntId(json?.id?.tntId);
+      if (json?.edgeHost && !target.endpoint) session(EDGE_HOST_KEY, json.edgeHost);
+    }
     const mboxes = json?.prefetch?.mboxes || [];
     const byLocation = Object.fromEntries(locations.map((name, index) => [
       name,

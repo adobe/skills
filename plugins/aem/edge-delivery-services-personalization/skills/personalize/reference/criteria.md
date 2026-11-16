@@ -1,4 +1,4 @@
-# Criteria and Condition Syntax (contract section 2)
+# Criteria and Condition Syntax
 
 ## Syntax
 
@@ -54,7 +54,7 @@ Notes:
 - `param:` keys are also what an `api` section may send to the engine besides `utm_*`
   (`decision-api.md`).
 - **No personal data** in conditions: no names, emails, ids or profile values. A new signal is a
-  contract change with a privacy review, not a site setting.
+  skill change with a privacy review, not a site setting.
 
 ## Custom audiences (extension point)
 

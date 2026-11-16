@@ -1,5 +1,5 @@
 /*
- * Section grammar (contract section 1), split draws (section 6a) and Rule
+ * Section grammar, split draws (section 6a) and Rule
  * rows: section-spec.js.
  */
 import assert from 'node:assert/strict';

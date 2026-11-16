@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Expected outcomes (contract section 11): runs the runtime's own decision
+ * Expected outcomes: runs the runtime's own decision
  * modules over a case matrix and prints, per personalized section and case,
  * the expected decision (variant shown, outcome, source, assigned, result)
  * and the preview URL query that reproduces it. verify-preview.mjs checks
@@ -50,8 +50,8 @@ export const USAGE = `Usage:
 Expected outcomes: runs the runtime's decision code over a case matrix and
 prints, per personalized section and case, the expected variant, outcome,
 source, assigned and result, and the preview query that reproduces it.
-The consent policy comes from scripts/personalization/config.js (or
---without-consent). --edge prints what the edge worker does per section
+The consent policy and the time budgets (budgets, api.timeout) come from
+scripts/personalization/config.js (or --without-consent). --edge prints what the edge worker does per section
 (applied / selected / left) and its headers. Exit 2 = usage.`;
 
 const runtime = (...parts) => importAsset('runtime', 'scripts', 'personalization', ...parts);
@@ -74,8 +74,26 @@ export const API_FAULTS = ['control', 'default', 'reason:low_confidence', 'reaso
   'variant:not-listed', 'missing', 'fail', 'invalid', 'slow'];
 export const TARGET_FAULTS = ['control', 'missing', 'fail'];
 // The runtime defaults (config.js budgets and api.timeout).
-const BUDGETS = { eager: 800, lazy: 2000 };
-const API_TIMEOUT = 1500;
+export const BUDGETS = { eager: 800, lazy: 2000 };
+export const API_TIMEOUT = 1500;
+// How late a slow engine (the 'slow' fault) answers, in verify-preview too.
+export const SLOW_MS = 3500;
+
+/**
+ * The time budgets the runtime uses for a site (sections.js): config.budgets,
+ * and the engine request's api.timeout, which falls back to the lazy budget.
+ * Without a config.js, the defaults of the installed one.
+ * @param {object} [site] readSiteConfig()
+ * @returns {{budgets: {eager: number, lazy: number}, apiTimeout: number}}
+ */
+export function siteTimings(site = {}) {
+  const budgets = {
+    eager: site.budgets?.eager ?? BUDGETS.eager,
+    lazy: site.budgets?.lazy ?? BUDGETS.lazy,
+  };
+  const apiTimeout = site.apiTimeout ?? (site.present ? budgets.lazy : API_TIMEOUT);
+  return { budgets, apiTimeout };
+}
 
 /**
  * Turns a matrix entry into a rules context plus the preview query that
@@ -184,15 +202,32 @@ export function sectionSpecs(html, prefixes) {
 
 const UNKNOWN = { unknown: true };
 
-async function engineFields(spec, entry, { engine, prefixes, consent, context }) {
-  const knob = parseKnob(entry.fault);
-  if (entry.fault === 'slow') {
-    // The first section's budget (800 ms) runs out before the engine request
-    // (api.timeout, 1500 ms); other sections fall back when the request does.
-    return spec.index === 0
-      ? { outcome: 'timeout', variant: 'default', reason: `no decision within ${BUDGETS.eager} ms` }
-      : { outcome: 'fallback', variant: 'default', reason: `timed out after ${API_TIMEOUT} ms` };
+/**
+ * A slow engine (answers after SLOW_MS) against the section's budget and the
+ * request's api.timeout: whichever ends first decides. The budget ending
+ * first is a timeout (the default shows); the request ending first is a
+ * fallback (the Rule rows may decide); the answer arriving first has no
+ * decision for the section.
+ * @returns {object} decision fields
+ */
+export function slowEngineFields(spec, { budgets = BUDGETS, apiTimeout = API_TIMEOUT, prefixes } = {}) {
+  const budget = spec.index === 0 ? budgets.eager : budgets.lazy;
+  if (budget <= Math.min(apiTimeout, SLOW_MS)) {
+    return { outcome: 'timeout', variant: 'default', reason: `no decision within ${budget} ms` };
   }
+  if (apiTimeout < SLOW_MS) {
+    return { outcome: 'fallback', variant: 'default', reason: `timed out after ${apiTimeout} ms` };
+  }
+  const fields = engineOutcome(spec, undefined, prefixes);
+  delete fields.tracking;
+  return fields;
+}
+
+async function engineFields(spec, entry, {
+  engine, prefixes, consent, context, budgets, apiTimeout,
+}) {
+  const knob = parseKnob(entry.fault);
+  if (entry.fault === 'slow') return slowEngineFields(spec, { budgets, apiTimeout, prefixes });
   if (!engine && !knob) return UNKNOWN;
   const body = buildRequest({
     page: { path: '/' }, specs: [spec], context, consent, mode: 'client',
@@ -214,11 +249,13 @@ async function engineFields(spec, entry, { engine, prefixes, consent, context })
  * The decision the browser runtime (sections.js) makes for one case.
  * @param {object} spec
  * @param {object} entry matrix entry
- * @param {object} options { engine, activities, prefixes, policy, profile }
+ * @param {object} options { engine, activities, prefixes, policy, profile,
+ *   budgets, apiTimeout } (budgets and apiTimeout: siteTimings())
  * @returns {Promise<object>} decision fields, { unknown: true }, or { allowed } for split
  */
 export async function expectedDecision(spec, entry, {
   engine, activities, prefixes, policy = [], profile = engineProfile('generic'),
+  budgets = BUDGETS, apiTimeout = API_TIMEOUT,
 }) {
   const { context, audiences, consent } = toCase(entry);
   const allowed = (exception) => policy.includes(exception);
@@ -263,7 +300,7 @@ export async function expectedDecision(spec, entry, {
   const engined = spec.index === 0 && profile.slow
     ? { outcome: 'fallback', variant: 'default' }
     : await engineFields(spec, entry, {
-      engine, prefixes, consent, context,
+      engine, prefixes, consent, context, budgets, apiTimeout,
     });
   if (engined.unknown) return UNKNOWN;
   if (RULE_FALLBACK.includes(engined.outcome) && spec.rules.length && (consent || allowed('rules'))) {
@@ -285,10 +322,13 @@ export async function expectedDecision(spec, entry, {
  * @param {string[]} [options.prefixes]
  * @param {string[]} [options.policy] approved exceptions (config.consent.withoutConsent)
  * @param {string} [options.engineName] engine profile (config.api.engine)
+ * @param {object} [options.budgets] the site's section budgets (siteTimings())
+ * @param {number} [options.apiTimeout] the site's api.timeout (siteTimings())
  * @returns {Promise<object[]>} cases, by section id
  */
 export async function buildCases(html, {
   matrix, engine, activities, prefixes, policy = [], engineName = 'generic',
+  budgets = BUDGETS, apiTimeout = API_TIMEOUT,
 } = {}) {
   const profile = engineProfile(engineName);
   const cases = await Promise.all(sectionSpecs(html, prefixes).map(async (spec) => {
@@ -314,7 +354,7 @@ export async function buildCases(html, {
     const entries = matrix || autoMatrix(spec, { conditions });
     return Promise.all(entries.map(async (entry) => {
       const fields = await expectedDecision(spec, entry, {
-        engine, activities, prefixes, policy, profile,
+        engine, activities, prefixes, policy, profile, budgets, apiTimeout,
       });
       const { query } = toCase(entry);
       const base = {
@@ -529,7 +569,7 @@ if (isMain(import.meta.url)) {
     const matrix = args.matrix ? readJson(resolve(args.matrix)) : undefined;
     const activities = typeof args.target === 'string' ? readJson(resolve(args.target)) : undefined;
     const cases = await buildCases(html, {
-      matrix, engine, activities, prefixes, policy, engineName,
+      matrix, engine, activities, prefixes, policy, engineName, ...siteTimings(site),
     });
     const pageUrl = typeof args['page-url'] === 'string' ? args['page-url'] : '';
     cases.forEach((entry) => {

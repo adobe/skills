@@ -1,5 +1,5 @@
 /*
- * Engine API v1 (contract section 5) and the cache keys (section 10):
+ * Engine API v1 and the cache keys (section 10):
  * contract.js.
  */
 import assert from 'node:assert/strict';

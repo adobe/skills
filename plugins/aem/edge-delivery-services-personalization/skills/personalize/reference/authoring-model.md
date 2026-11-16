@@ -1,4 +1,4 @@
-# Authoring Model (contract section 1)
+# Authoring Model
 
 ## Contents
 

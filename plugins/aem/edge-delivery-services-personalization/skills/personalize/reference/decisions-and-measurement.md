@@ -1,4 +1,4 @@
-# Decisions and Measurement (contract sections 4 and 9)
+# Decisions and Measurement
 
 ## Contents
 
@@ -21,7 +21,7 @@ Every decision ends with exactly one outcome. It is written on the section as
 | `intentional-default` | The engine chose the authored content as the best fit (`variant: "default"`) | Default (no Rule rows) | `default` |
 | `no-match` | No rule matched; the engine had no candidate, didn't answer for the section, or gave an unlisted reason; Target returned nothing | Rule rows for `api`, else default | Absent, unless Rule rows picked a variant |
 | `low-confidence` | The engine answered `reason: "low_confidence"` | Rule rows for `api`, else default | Same as `no-match` |
-| `no-consent` | No consent and no approved exception; also an `api` section whose Rule rows decided under the `rules` exception (`source: rules`, contract Q14) | Default, or the Rule rows' pick under the `rules` exception | Absent, even when the Rule rows picked a variant |
+| `no-consent` | No consent and no approved exception; also an `api` section whose Rule rows decided under the `rules` exception (`source: rules`) | Default, or the Rule rows' pick under the `rules` exception | Absent, even when the Rule rows picked a variant |
 | `fallback` | The source failed (HTTP error, bad JSON, `provider_error`, `invalid_choice`, request timeout) or answered something not listed | Rule rows for `api`, else default | Same as `no-match` |
 | `timeout` | The section's budget ran out | Default | Absent |
 | `error`, `invalid` | A code error, or invalid rows | Default | Absent |
@@ -47,7 +47,10 @@ Every event has `id`, `decisionId`, `variant` (what is shown), `source`, `where`
 | `pzn:notified` | A Target notification (`display`, `click`) or engine feedback (`seen`, `clicked`) was sent | `notification: { product, type, ok }` |
 
 `seen`, `clicked`, Target display/click and engine feedback go out **at most once per
-`decisionId`**. Some outcome and result combinations are not allowed; `scripts/schema.mjs` checks
+`decisionId`**. Target display/click and engine feedback go only for a successful application: a
+treatment that failed to show (`result: failed`) keeps its `decided` / `applied` records and its
+`seen` / `clicked` (of the default), but tells no product it was shown. A control that kept the
+default is a success and still counts. Some outcome and result combinations are not allowed; `scripts/schema.mjs` checks
 them:
 
 | `outcome` | `result` | `variant` shown |

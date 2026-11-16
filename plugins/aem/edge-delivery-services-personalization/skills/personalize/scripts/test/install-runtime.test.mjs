@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import {
   existsSync, readFileSync, readdirSync, writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import http from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import {
-  LAZY_MARKER, SECTIONS_MARKER, findFunction, installRuntime, planLazyHook, planSectionsHook,
+  LAZY_MARKER, LIVE_FILES, SECTIONS_MARKER, checkLive, findFunction, installRuntime, planLazyHook,
+  planSectionsHook,
 } from '../install-runtime.mjs';
 import { RUNTIME_DIR } from '../lib.mjs';
 import { BOILERPLATE_SCRIPTS, runHelp, siteRepo } from './helpers.mjs';
@@ -107,7 +111,7 @@ describe('installRuntime', () => {
     }
   });
 
-  it('reports what config.js still needs (contract section 3)', () => {
+  it('reports what config.js still needs', () => {
     const { dir, cleanup } = siteRepo();
     try {
       const fresh = installRuntime(dir, { dryRun: true });
@@ -156,6 +160,87 @@ describe('installRuntime', () => {
       assert.equal(readFileSync(join(dir, 'scripts', 'scripts.js'), 'utf8'), BOILERPLATE_SCRIPTS);
       assert.match(report.warnings.join(), /loadFragment/);
       assert.match(report.warnings.join(), /loadSections/);
+    } finally {
+      cleanup();
+    }
+  });
+});
+
+describe('--check-live: main serves this runtime before publishing', () => {
+  // Serves a repo's files as aem.live would, with optional changes.
+  async function live(dir, change = {}) {
+    const server = http.createServer((req, res) => {
+      const path = decodeURIComponent(new URL(req.url, 'http://x').pathname.slice(1));
+      const body = path in change ? change[path] : (existsSync(join(dir, path)) ? readFileSync(join(dir, path), 'utf8') : null);
+      res.statusCode = body === null ? 404 : 200;
+      res.end(body ?? 'Not Found');
+    });
+    await new Promise((done) => { server.listen(0, '127.0.0.1', done); });
+    return { origin: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((done) => { server.close(done); }) };
+  }
+
+  it('passes only when every module, config.js and both hooks match', async () => {
+    const { dir, cleanup } = siteRepo();
+    writeFileSync(join(dir, 'scripts', 'scripts.js'), SCRIPTS);
+    assert.equal(installRuntime(dir, { applyHook: true }).hook, 'applied');
+    const same = await live(dir);
+    const changed = await live(dir, { 'scripts/personalization/sections.js': '// an older runtime' });
+    const unhooked = await live(dir, { 'scripts/scripts.js': SCRIPTS });
+    const gone = await live(dir, { 'scripts/personalization/config.js': null });
+    try {
+      const ok = await checkLive(dir, same.origin);
+      assert.deepEqual([ok.ok, ok.problems], [true, []]);
+      assert.equal(ok.checked.length, LIVE_FILES.length + 1);
+      assert.ok(LIVE_FILES.includes('scripts/personalization/config.js'));
+
+      const older = await checkLive(dir, changed.origin);
+      assert.equal(older.ok, false);
+      assert.match(older.problems.join(), /sections.js: .* serves another version than this repo/);
+      const hooks = await checkLive(dir, unhooked.origin);
+      assert.deepEqual(hooks.problems.map((problem) => problem.replace(unhooked.origin, 'ORIGIN')), [
+        `scripts/scripts.js on ORIGIN has no ${SECTIONS_MARKER} hook`,
+        `scripts/scripts.js on ORIGIN has no ${LAZY_MARKER} hook`,
+      ]);
+      assert.match((await checkLive(dir, gone.origin)).problems.join(), /config.js: HTTP 404/);
+    } finally {
+      await Promise.all([same, changed, unhooked, gone].map((server) => server.close()));
+      cleanup();
+    }
+  });
+
+  it('fails closed: unreachable origin, nothing installed, and the CLI exit codes', async () => {
+    const { dir, cleanup } = siteRepo();
+    try {
+      // Nothing installed locally: nothing to compare.
+      const empty = await checkLive(dir, 'http://127.0.0.1:9');
+      assert.equal(empty.ok, false);
+      assert.match(empty.problems.join(), /is not in the repo: install the runtime first/);
+      writeFileSync(join(dir, 'scripts', 'scripts.js'), SCRIPTS);
+      installRuntime(dir, { applyHook: true });
+      const down = await checkLive(dir, 'http://127.0.0.1:9', { timeout: 2000 });
+      assert.equal(down.ok, false);
+      assert.match(down.problems.join(), /could not be fetched/);
+
+      const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'install-runtime.mjs');
+      // Async spawn: the test's own server must keep answering meanwhile.
+      const cli = (args) => new Promise((done) => {
+        const child = spawn(process.execPath, [SCRIPT, dir, ...args]);
+        let stdout = '';
+        child.stdout.on('data', (chunk) => { stdout += chunk; });
+        child.on('close', (status) => done({ status, stdout }));
+      });
+      const same = await live(dir);
+      try {
+        const pass = await cli(['--check-live', same.origin]);
+        assert.equal(pass.status, 0, pass.stdout);
+        assert.match(pass.stdout, /✓ PASS/);
+      } finally {
+        await same.close();
+      }
+      const fail = await cli(['--check-live', 'http://127.0.0.1:9']);
+      assert.equal(fail.status, 1);
+      assert.match(fail.stdout, /❌ FAIL .* stay at preview/);
+      assert.equal((await cli(['--check-live', 'main--repo--owner'])).status, 2);
     } finally {
       cleanup();
     }

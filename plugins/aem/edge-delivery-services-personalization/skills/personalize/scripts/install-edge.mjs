@@ -94,7 +94,8 @@ const WRAP_INSTRUCTIONS = `Wrap the existing worker's fetch handler:
   // (originFetch stands for that code: same origin, auth and cache settings).
   // The route uses it to fill engine descriptions; without it, sections that
   // would show a variant are only selected (the browser loads the fragment).
-  const fetchFragment = (path) => originFetch(new URL(\`\${path}.plain.html\`, request.url));
+  // signal: the fragment's deadline aborts the request (and its body).
+  const fetchFragment = (path, { signal } = {}) => originFetch(new Request(new URL(\`\${path}.plain.html\`, request.url), { signal }));
   // before the origin fetch:
   const routed = await handleApiRoute(request, env, config, { fetchPlain: fetchFragment });
   if (routed) return routed;

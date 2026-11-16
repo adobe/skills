@@ -1,4 +1,4 @@
-# Cross-Cutting Concerns (contract section 10)
+# Cross-Cutting Concerns
 
 ## Contents
 
@@ -114,6 +114,8 @@ default meaningful: bots and visitors without consent see it too.
 - [ ] `PZN_RATE_LIMITER` is bound when the browser uses `/pzn/decide`; no browser-side adapters
 - [ ] Regions owned by Target, the Web SDK or AEM Experimentation are disjoint from the
       personalized sections
-- [ ] Content previewed and published in DA, including every fragment
+- [ ] Content previewed and published in DA, including every fragment, each step confirmed by the
+      user; published only after `validate-placeholders.mjs --publish` (no `TODO:`) and
+      `install-runtime.mjs --check-live` against `main--<repo>--<owner>.aem.live` passed
 - [ ] Every required `verify-preview.mjs` check passes on `*.aem.page` (none reported as passed
       without running); the edge checked with a browser and with `curl -A Googlebot`

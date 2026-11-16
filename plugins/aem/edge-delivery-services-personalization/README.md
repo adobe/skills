@@ -5,9 +5,9 @@ Section-based personalization for AEM Edge Delivery Services pages authored in D
 Authors personalize a **section** with `Personalization` rows in its Section Metadata. The section's
 authored content is the default (what bots, failures, timeouts and visitors without consent see);
 variants are EDS fragments chosen by rules, a decision engine, an A/B split or Adobe Target.
-It implements the EDS personalization contract (v0.5): consent first (no consent, no
-personalization, exceptions only with privacy/legal approval), one outcome per decision, `pzn:*`
-measurement events per decision, and an edge handoff the browser trusts.
+Consent comes first (no consent, no personalization; exceptions only with privacy/legal
+approval). Each decision has one outcome and its own `pzn:*` measurement events, and the browser
+trusts the edge's decisions only when consent allows them.
 
 ```
 | Section Metadata               |                                                |
@@ -44,7 +44,7 @@ Then, in an EDS project:
 
 | Skill | Description |
 |-------|-------------|
-| `personalize` | Installs the client runtime and `scripts.js` hooks, records and wires consent, authors Section Metadata and variant fragments, validates (contract schemas, simulator, project lint, Playwright checks for outcomes, events, re-evaluation, consent changes, faults, splits, popups, page speed and the pilot scenarios) and delivers to DA. Optional Cloudflare edge worker that decides `rules`, `split` and `api` sections before the HTML leaves the CDN (applied / selected / left, LCP-safe) and hosts the engine's server route. |
+| `personalize` | Installs the client runtime and `scripts.js` hooks, records and wires consent, authors Section Metadata and variant fragments, validates (JSON Schemas, simulator, project lint, Playwright checks for outcomes, events, re-evaluation, consent changes, faults, splits, popups, page speed and the pilot scenarios) and delivers to DA only on confirmation: the push, the DA upload and preview, and the publish each ask first, and publishing waits until no copy is `TODO:` and `main` serves this runtime. Optional Cloudflare edge worker that decides `rules`, `split` and `api` sections before the HTML leaves the CDN (applied / selected / left, LCP-safe) and hosts the engine's server route. |
 
 ## Scope
 
@@ -76,7 +76,7 @@ skills/personalize/
 ├── SKILL.md         workflow (preflight → choices → install → author → configure → validate → edge → deliver)
 ├── reference/       authoring, criteria, consent, decisions and measurement, client and edge modes,
 │                    engine API, split, Target, testing, DA
-├── assets/          contract schemas and pilot scenarios, content templates, client runtime,
+├── assets/          JSON Schemas and pilot scenarios, content templates, client runtime,
 │                    popup styles, Cloudflare worker (with the OF1 adapter)
 └── scripts/         detect, install, validate, simulate, verify, mock API/Target (+ tests)
 evals/personalize/   task.md and criteria.json (seven runs on a DA sandbox)

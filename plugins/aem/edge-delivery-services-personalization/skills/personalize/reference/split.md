@@ -1,4 +1,4 @@
-# Split Sections: Section A/B (contract section 6a)
+# Split Sections: Section A/B
 
 `Personalization Source | split` runs an A/B(/n) test on one section. Each visitor is assigned
 either the authored content, which is the **control**, or one of the variants. The visitor keeps

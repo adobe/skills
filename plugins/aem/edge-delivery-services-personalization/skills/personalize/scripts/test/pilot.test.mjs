@@ -36,7 +36,7 @@ const AUTHORED_HERO = '<h1>Espresso for every kitchen</h1><p>Our flagship range.
 
 // The pilot page (pilot.md, of1-worked-example.md section 1), as DA source.
 // promo's first Rule row needs the device, so the edge leaves it to the
-// browser (contract sections 2 and 8): the browser-decided pilot section.
+// browser: the browser-decided pilot section.
 const PAGE = `<html lang="en-US"><head><title>Espresso machines</title></head><body><header></header><main>
 <div>${AUTHORED_HERO}<div class="section-metadata">
 ${row('Personalization', '<p>home-hero</p>')}

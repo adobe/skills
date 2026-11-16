@@ -1,6 +1,6 @@
 /*
- * `target` source over the Adobe Web SDK (contract section 7,
- * config.target.transport 'websdk'), for pages that already load alloy
+ * `target` source over the Adobe Web SDK
+ * (config.target.transport 'websdk'), for pages that already load alloy
  * (directly or through Tags). Uses the existing instance
  * (config.target.alloyInstance, default `alloy`).
  *

@@ -1,4 +1,4 @@
-# Client Mode (contract sections 4 and 8)
+# Client Mode
 
 The browser runtime is always installed. It decides:
 
@@ -81,7 +81,9 @@ sections have loaded. Show the diff in the summary.
 1. **Read.** `personalizeSections(main)` reads every `.section[data-personalization]`.
    - An invalid section shows its default (outcome `invalid`).
    - A section marked by the edge (`data-pzn-where="edge"`) is final. `applied` is only measured;
-     `selected` gets its fragment here and is not decided again.
+     `selected` gets its fragment here and is not decided again. Unless the consent tool hasn't
+     said yes in this page view and no approved exception covers the section: then the browser
+     decides it (its default, from the edge's template), and loads nothing.
 2. **Hold.** Each section to decide gets `data-section-status="pzn-pending"`, so `aem.js`
    `loadSection` skips it and it stays hidden. Every section below the first held one gets
    `pzn-waiting`. Target popups are not held.
@@ -152,7 +154,9 @@ A block can also import it: `import { setState } from '../../scripts/personaliza
 - `refresh()` evaluates every browser-decided section again. The CMP calls it when consent
   changes. The runtime also listens for a window `consent.update` event.
 - Edge-decided sections are final for the page view. Only a consent withdrawal (back to the
-  default) or a `?pzn=` override changes them.
+  default) or a `?pzn=` override changes them, or, at startup, a consent tool that hasn't said yes.
+- An engine or Target answer that arrives after consent was withdrawn is never stored (no session
+  answer, `tntId` or edge host); the newer decision (the default) wins.
 
 ## Configuration (`config.js`)
 

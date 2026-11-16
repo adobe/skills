@@ -11,7 +11,7 @@ export const CRITERIA = ['geo', 'device', 'visitor', 'param', 'state', 'audience
 // Criteria only the browser can evaluate. The edge defers a section to the
 // browser when it reaches one of these before a rule matches.
 export const CLIENT_ONLY_CRITERIA = ['device', 'state', 'audience'];
-// Criteria the `rules` consent exception allows (contract section 3): geo from
+// Criteria the `rules` consent exception allows: geo from
 // the request, device, URL params and this page view's state. A rule using any
 // other criterion (visitor, audience) never runs without consent.
 export const NO_CONSENT_CRITERIA = ['geo', 'device', 'param', 'state'];

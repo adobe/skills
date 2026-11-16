@@ -1,6 +1,6 @@
 ---
 name: personalize
-description: Personalizes sections of AEM Edge Delivery Services (DA) pages with Section Metadata, following the EDS personalization contract. The authored content is the default; Personalization rows pick an EDS fragment variant per visitor from rules (geo, device, new/returning, URL/UTM param, page state, custom audiences), a decision engine (v1 API, OF1), a section A/B split, or Adobe Target (inline or popup). Consent-first (no consent, no personalization), with measurement events per decision, a client runtime and an optional Cloudflare edge worker, all checked with a simulator and Playwright. Use for "personalize this section", "different hero for visitors from <country>", "returning visitor banner", "connect our decision engine / OF1", "A/B test this section", "let Target pick this offer", "edge personalization", or `/aem-eds-personalization:personalize`. Not for creating Target activities, AJO journeys or text tokens. DA projects only.
+description: Personalizes sections of AEM Edge Delivery Services (DA) pages with Section Metadata. The authored content is the default; Personalization rows pick an EDS fragment variant per visitor from rules (geo, device, new/returning, URL/UTM param, page state, custom audiences), a decision engine (v1 API, OF1), a section A/B split, or Adobe Target (inline or popup). Consent-first (no consent, no personalization), with measurement events per decision, a client runtime and an optional Cloudflare edge worker, all checked with a simulator and Playwright. Use for "personalize this section", "different hero for visitors from <country>", "returning visitor banner", "connect our decision engine / OF1", "A/B test this section", "let Target pick this offer", "edge personalization", or `/aem-eds-personalization:personalize`. Not for creating Target activities, AJO journeys or text tokens. DA projects only.
 license: Apache-2.0
 compatibility: Requires Node 22+, an AEM Edge Delivery Services project authored in DA whose Section Metadata reaches the page as section attributes (rendering v2, or an aem.js that reads it), @adobe/aem-cli 16.21+ for local preview, and Playwright with Chromium in this skill's folder or ~/.cache/aem-eds-personalization/playwright for verify-preview (never installed into the site); wrangler only for edge mode.
 ---
@@ -10,8 +10,7 @@ compatibility: Requires Node 22+, an AEM Edge Delivery Services project authored
 A personalized section is an authored section with `Personalization` rows in its Section
 Metadata. Its content is the **default**. A variant is an EDS fragment that replaces that content
 for the visitors it is chosen for. The browser, the edge and the scripts all run the same grammar
-and decision code. The skill implements the personalization contract v0.5; its schemas and pilot
-scenarios are vendored in `assets/contract/`.
+and decision code. Its JSON Schemas and pilot scenarios are in `assets/contract/`.
 
 ```
 | Section Metadata               |                                                |
@@ -63,9 +62,12 @@ The grammar is in `reference/authoring-model.md`.
   (`reference/consent.md`).
 - **Choices, not gates.** Ask only where there is a real choice (Step 2), always with its default.
   No reply, or a hands-off run (`--hands-off`, "no approval gates", non-interactive): take the
-  defaults and list them as named assumptions in the summary. Never ask a yes/no confirmation.
-- **Delivery is on by default.** Pushing the code branch and the DA upload, preview and publish
-  run once every check passes (Step 8).
+  defaults and list them as named assumptions in the summary. The only yes/no questions are the
+  delivery confirmations below.
+- **Local by default; delivery asks each time.** Pushing the code branch, the DA upload and
+  preview, and publishing are visible outside this machine. Each runs only after the user confirms
+  that step, every time, even when the prompt asked for it. A hands-off run or no reply does none
+  of them: it hands off the commands (Step 8).
 - **Off unless chosen:** `wrangler deploy` and `wrangler secret put` (the site owner runs them),
   overrides on production, a third-party geo endpoint, and `config.mock` outside tests.
 - **Never:**
@@ -108,7 +110,7 @@ No reply, or a hands-off run, takes the defaults.
 | **Regions Target owns** | None of the requested sections |
 | Mode | Client + edge when `edge.cloudflare` is reported or the prompt says so; otherwise client. A first section decided in the browser stays hidden for up to 800 ms, so recommend the edge, a later section or a popup. A slow engine (`of1`) on the first section requires the edge |
 | Geo source | The edge meta tag, or the `pzn-geo` cookie when present; `?pzn-geo=` in preview. No third-party endpoint |
-| DA delivery | On: push, upload, preview, and publish once `main` serves the runtime. `preview only` or `no upload` when asked |
+| DA delivery | Local only. Push, DA upload + preview, and publish are each confirmed before they run (Step 8) |
 
 ## Step 3: Install the Runtime
 
@@ -200,21 +202,25 @@ Or pass `--existing <dir>` and apply the printed wrap. Then follow
 
 Deploying and setting secrets are handed off to the site owner.
 
-## Step 8: Deliver
+## Step 8: Deliver (each step confirmed)
 
-Deliver once every required check passes (`reference/da-content.md`). DA content is shared by
-every branch, and `aem.live` always runs `main`'s code.
+Only once every required check passes (`reference/da-content.md`). DA content is shared by every
+branch, and `aem.live` always runs `main`'s code. Ask before each numbered step, saying what it
+changes and where; no answer means stop there and hand off the rest.
 
-1. Commit the runtime, hooks, config and styles; push the code branch.
-2. Upload and preview only the personalized pages and their variant fragments, through the DA
-   Source API with a `DA_TOKEN`, or with a DA MCP server's source and preview tools.
+1. Commit the runtime, hooks, config and styles. **Confirm**, then push the code branch.
+2. **Confirm**, then upload and preview only the personalized pages and their variant fragments,
+   through the DA Source API with a `DA_TOKEN`, or a DA MCP server's source and preview tools.
 3. Verify on `<branch>--<repo>--<owner>.aem.page` (`verify-preview.mjs`).
-4. Publish only once
-   `https://main--<repo>--<owner>.aem.live/scripts/personalization/sections.js` answers 200.
-   Until then, stay at preview and say why.
+4. **Publish** only when both pass, then confirm:
+   - `node scripts/validate-placeholders.mjs content --repo <project> --publish` (no `TODO:`);
+   - `node scripts/install-runtime.mjs <project> --check-live https://main--<repo>--<owner>.aem.live`
+     (`main` serves this runtime and both hooks).
 
-With no DA access (token or MCP), or when a push fails, deliver nothing and hand off the
-commands.
+   Either one failing: stay at preview and say why.
+
+With no DA access (token or MCP), a failed push, or no confirmation, deliver nothing more and
+hand off the commands.
 
 ## Summary
 
@@ -226,6 +232,7 @@ Report the following:
 - named assumptions: every Step 2 default, and the mode with its reason;
 - every `TODO:`;
 - the check results (PASS, FAIL or not run);
+- the delivery steps confirmed and run, and the ones handed off with their commands;
 - the **launch checklist** (`reference/cross-cutting.md`).
 
 ## Troubleshooting

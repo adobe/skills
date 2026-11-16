@@ -1,8 +1,8 @@
-# EDS personalization contract (vendored)
+# Schemas and pilot scenarios
 
-Copies of the JSON Schemas and the pilot baseline of the **EDS Personalization Contract v0.5**
-(proposal, agreed for a bounded pilot), commit `9d004e2` (2026-11-10). The contract is the spec
-this skill implements; these files are its machine-checkable part.
+The JSON Schemas of the shapes this skill reads and writes (sections, site config, decision API
+requests, responses and feedback, measurement events, Target offers), and the pilot baseline
+scenarios. They are the machine-checkable part of the skill's rules.
 
 | File | Used by |
 |---|---|
@@ -13,5 +13,5 @@ this skill implements; these files are its machine-checkable part.
 | `schemas/target-offer.schema.json` | Tests of the Target sources |
 | `pilot-scenarios.json` | `verify-preview.mjs --scenarios` (default file) and the tests |
 
-Do not edit them here. When the contract changes, copy the new files over, run `npm test`, and
-update the skill where the tests fail.
+Change them only together with the runtime: run `npm test` and update the skill where the tests
+fail.

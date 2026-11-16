@@ -1,5 +1,5 @@
 /*
- * The decision model (contract sections 4, 8 and 9): how a source's answer
+ * The decision model: how a source's answer
  * becomes an outcome, what a decision's identity is, which application
  * result it gets, what the measurement events and the RUM checkpoint carry,
  * and how a decision travels from the edge to the browser in data-pzn-*
@@ -35,7 +35,7 @@ const pick = (variant) => (variant && variant.path ? { variant: variant.name, pa
 
 /**
  * What the deciding source assigned, from the outcome and the variant shown
- * by the decision: absent when nothing was assigned (contract section 9).
+ * by the decision: absent when nothing was assigned.
  * @param {string} outcome
  * @param {string} variant
  * @returns {string|undefined}
@@ -190,7 +190,7 @@ export function makeDecision(fields) {
 }
 
 /**
- * The application result (contract section 9): applied, kept-default,
+ * The application result: applied, kept-default,
  * unchanged (a new decision showing what is already shown) or failed (the
  * assigned variant could not be shown).
  * @param {object} decision

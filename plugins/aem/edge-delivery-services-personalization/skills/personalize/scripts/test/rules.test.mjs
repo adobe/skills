@@ -7,7 +7,7 @@ const {
   CRITERIA, CLIENT_ONLY_CRITERIA, NO_CONSENT_CRITERIA,
 } = rules;
 
-describe('criteria (contract section 2 and 3)', () => {
+describe('criteria', () => {
   it('are exactly the six of the contract', () => {
     assert.deepEqual([...CRITERIA].sort(), ['audience', 'device', 'geo', 'param', 'state', 'visitor']);
   });

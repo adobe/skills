@@ -1,9 +1,8 @@
 /* eslint-disable no-console */
 /*
  * Browser glue for the section runtime (sections.js): preview overrides, the
- * consent policy (contract section 3), the bot check, the visitor context
- * (section 2), page state, measurement delivery (section 9), the debug
- * table and the public API, window.hlx.personalization.
+ * consent policy, the bot check, the visitor context, page state,
+ * measurement delivery, the debug table and the public API, window.hlx.personalization.
  */
 
 import config from './config.js';
@@ -46,7 +45,7 @@ export function log(row) {
   return row;
 }
 
-// --- Consent (contract section 3) ---
+// --- Consent ---
 
 const policy = config.consent || { mode: 'deny' };
 const approved = new Set(policy.mode !== 'allow' && policy.policyRef ? policy.withoutConsent || [] : []);
@@ -145,7 +144,7 @@ export function dropStoredState() {
   storedState = null;
 }
 
-// --- Context (contract section 2) ---
+// --- Context ---
 
 let geoPromise;
 
@@ -208,7 +207,7 @@ export function getAudiences() {
   return audiences;
 }
 
-// --- Measurement delivery (contract section 9) ---
+// --- Measurement delivery ---
 
 /**
  * Sends one measurement event: a CustomEvent on the section (bubbles) and

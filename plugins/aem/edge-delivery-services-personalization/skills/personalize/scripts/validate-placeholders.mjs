@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /*
- * Validates personalized sections (Section Metadata, contract section 1) in
+ * Validates personalized sections (Section Metadata) in
  * local content (.html / .plain.html), and the site config they rely on.
  * Read-only; exits 1 when anything has errors.
  *
  * Source content is read the way the pipeline renders it (Section Metadata
  * rows -> data-* attributes, html.js renderSectionMetadata), then parsed by
  * the runtime's own grammar (section-spec.js) and checked against the
- * contract's section.schema.json, so what passes here is what the browser
+ * vendored section.schema.json, so what passes here is what the browser
  * and the edge worker see.
  *
  * Section checks: grammar and cross-row rules, the section schema, unique
@@ -19,9 +19,16 @@
  * configured sources, the first section (LCP).
  * Config checks: consent recorded (mode, tool, exceptions with their
  * approval), no removed options (providers, sendWithoutConsent), mocks.
+ * Page checks: the page's api request fits the decision API's size limit (256 KiB).
+ *
+ * Nothing checked is not a pass: a named file or directory that doesn't
+ * exist, a missing config.js, or no personalized section found makes the
+ * result INCOMPLETE (exit 1). --publish (before publishing) also fails TODO
+ * copy, which is otherwise a warning.
  *
  * Usage: node validate-placeholders.mjs [files or dirs...] [--repo .]
- *          [--base-url http://localhost:3000] [--mode client|edge] [--json]
+ *          [--base-url http://localhost:3000] [--mode client|edge]
+ *          [--publish] [--json]
  */
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
@@ -32,27 +39,36 @@ import {
 import { check } from './schema.mjs';
 
 export const USAGE = `Usage: node validate-placeholders.mjs [files or dirs...] [--repo .]
-         [--base-url http://localhost:3000] [--mode client|edge] [--json]
+         [--base-url http://localhost:3000] [--mode client|edge] [--publish] [--json]
 Validates personalized sections (Section Metadata) in local content
-(content/<path>.html or .plain.html) against the personalization contract:
+(content/<path>.html or .plain.html):
 grammar and the section schema, unique ids, rows the pipeline mangles, AEM
 Experimentation on the section or page, fragments (prefixes, existence,
 nesting, TODO copy, H1), registered audiences, engine limits, no slow engine
 on the first section in the browser, source and consent config, LCP.
 --mode: client or edge (default: edge when the repo has the skill's worker).
-Read-only. Exit 1 when anything has errors.`;
+--publish: TODO copy is an error (run it before publishing).
+Read-only. Exit 1 when anything has errors, or when nothing could be checked
+(a named path that doesn't exist, no config.js, no personalized section):
+INCOMPLETE is never a pass.`;
 
 const { stateKeysUsed } = await importAsset('runtime', 'scripts', 'personalization', 'rules.js');
 const {
   parseSection, sectionCriteria, sectionObject, ATTRIBUTE, EXPERIMENTATION_META,
 } = await importAsset('runtime', 'scripts', 'personalization', 'section-spec.js');
-const { engineProfile, candidates: candidatesOf } = await importAsset('runtime', 'scripts', 'personalization', 'contract.js');
+const {
+  engineProfile, candidates: candidatesOf, buildRequest, requestBytes, MAX_REQUEST_BYTES,
+} = await importAsset('runtime', 'scripts', 'personalization', 'contract.js');
 const {
   findSections, findBlocks, sections, renderSectionMetadata, textContent,
 } = await importAsset('edge', 'cloudflare', 'src', 'personalization', 'html.js');
 
 const PERSONALIZED = /section-metadata|data-personalization/;
 const EXCEPTIONS = ['rules', 'split', 'api', 'rum', 'data-layer'];
+// Room left in a v1 request for the visitor context (geo, device, params,
+// state, referrer) and the page's path and title, which only the browser
+// knows: the authored part of the request must fit in the rest.
+export const CONTEXT_ALLOWANCE_BYTES = 32768;
 export const WORKER_MARKER = join('src', 'personalization', 'personalize.js');
 
 function htmlFiles(target) {
@@ -100,6 +116,11 @@ const stringValue = (block, key) => {
   return match ? match[1] : '';
 };
 
+const numberValue = (block, key) => {
+  const match = block && new RegExp(`(?:^|[\\s,{])${key}\\s*:\\s*(\\d+(?:\\.\\d+)?)\\b`).exec(block);
+  return match ? Number(match[1]) : undefined;
+};
+
 const listValue = (block, key) => {
   const match = block && new RegExp(`(?:^|[\\s,{])${key}\\s*:\\s*\\[([^\\]]*)\\]`).exec(block);
   return match ? [...match[1].matchAll(/['"`]([^'"`]+)['"`]/g)].map((m) => m[1]) : [];
@@ -116,6 +137,7 @@ export function readSiteConfig(source = '') {
   const consent = configBlock(text, 'consent');
   const api = configBlock(text, 'api');
   const target = configBlock(text, 'target');
+  const budgets = configBlock(text, 'budgets');
   return {
     present: !!text.trim(),
     consent: consent === null ? null : {
@@ -126,6 +148,12 @@ export function readSiteConfig(source = '') {
     },
     apiEndpoint: stringValue(api, 'endpoint'),
     engine: stringValue(api, 'engine') || 'generic',
+    // Time budgets (ms) the runtime uses, when the site sets them.
+    apiTimeout: numberValue(api, 'timeout'),
+    budgets: {
+      eager: numberValue(budgets, 'eager'),
+      lazy: numberValue(budgets, 'lazy'),
+    },
     targetClientCode: stringValue(target, 'clientCode'),
     targetTransport: stringValue(target, 'transport') || 'delivery-api',
     targetEndpoint: stringValue(target, 'endpoint'),
@@ -136,7 +164,7 @@ export function readSiteConfig(source = '') {
 }
 
 /**
- * Problems of the site config (contract section 3 and site-config.schema.json).
+ * Problems of the site config (consent and site-config.schema.json).
  * @param {object} site readSiteConfig()
  * @returns {{errors: string[], warnings: string[], info: string[]}}
  */
@@ -206,7 +234,7 @@ export function pageExperimentation(html) {
  * @returns {Promise<object[]>}
  */
 async function checkFragments(targets, {
-  repo, baseUrl, errors, warnings,
+  repo, baseUrl, errors, warnings, publish,
 }) {
   return Promise.all(targets.map(async ({ variant, path }) => {
     const local = localFragment(repo, path);
@@ -226,7 +254,9 @@ async function checkFragments(targets, {
       .some((section) => section.attributes.some(([name]) => name === ATTRIBUTE))
       || /\sdata-personalization=/.test(content);
     if (nested) errors.push(`fragment "${variant}" has a personalized section (nesting is not supported)`);
-    if (/TODO:/.test(content)) warnings.push(`fragment "${variant}" still has TODO copy`);
+    if (/TODO:/.test(content)) {
+      (publish ? errors : warnings).push(`fragment "${variant}" still has TODO copy${publish ? ': write the copy before publishing' : ''}`);
+    }
     return {
       variant, path, found: true, where, h1: /<h1\b/i.test(content),
     };
@@ -257,7 +287,7 @@ function sourceInfo(spec) {
  * @returns {Promise<object[]>}
  */
 async function validateSections(html, {
-  repo, prefixes, site, baseUrl, mode,
+  repo, prefixes, site, baseUrl, mode, publish,
 }) {
   if (!PERSONALIZED.test(html)) return [];
   const rendered = renderSectionMetadata(html);
@@ -293,7 +323,9 @@ async function validateSections(html, {
     });
     const range = source[index];
     const inner = range ? html.slice(range.openEnd, range.closeStart) : '';
-    if (/TODO:/.test(inner.replace(/<div\b[^>]*class="section-metadata"[\s\S]*$/, ''))) warnings.push('the default (authored content) still has TODO copy');
+    if (/TODO:/.test(inner.replace(/<div\b[^>]*class="section-metadata"[\s\S]*$/, ''))) {
+      (publish ? errors : warnings).push('the default (authored content) still has TODO copy');
+    }
 
     // Links to another site: only their path is used (a same-origin fragment).
     const links = section.attributes.find(([name]) => name === `${ATTRIBUTE}-variants`)?.[1] || '';
@@ -342,7 +374,7 @@ async function validateSections(html, {
     if (keys.length) info.push(`state keys: ${keys.join(', ')} (set with window.hlx.personalization.setState)`);
 
     const fragments = await checkFragments(spec.variants.map(({ name, path }) => ({ variant: name, path })), {
-      repo, baseUrl, errors, warnings,
+      repo, baseUrl, errors, warnings, publish,
     });
     warnings.push(...h1Warnings(fragments, /<h1\b/i.test(inner)));
     return {
@@ -364,8 +396,28 @@ async function validateSections(html, {
     if (apiCount > profile.sections && results.length) {
       results[0].errors.push(`the ${site.engine} engine takes at most ${profile.sections} api sections per page, this page has ${apiCount}`);
     }
+    const tooLarge = requestTooLarge(list.map(({ section }) => parseSection(section.attributes, { prefixes }))
+      .filter((spec) => spec.source === 'api' && !spec.errors.length));
+    const firstApi = results.find((result) => result.source === 'api');
+    if (tooLarge && firstApi) firstApi.errors.push(tooLarge);
     return results;
   });
+}
+
+/**
+ * Whether a page's api sections fit in one v1 request:
+ * the request as the browser builds it from the authored rows, plus room for
+ * the visitor context, must stay within MAX_REQUEST_BYTES.
+ * @param {object[]} specs the page's valid api section specs
+ * @returns {string|null} the problem, or null
+ */
+export function requestTooLarge(specs) {
+  if (!specs.length) return null;
+  const authored = requestBytes(buildRequest({
+    page: { path: '/' }, specs, context: {}, consent: true, mode: 'client',
+  }));
+  if (authored + CONTEXT_ALLOWANCE_BYTES <= MAX_REQUEST_BYTES) return null;
+  return `the page's api sections make a ${authored}-byte engine request; with room for the visitor context (${CONTEXT_ALLOWANCE_BYTES} bytes) it must stay within ${MAX_REQUEST_BYTES} bytes: shorten the Description and Hint rows, or decide fewer sections with api`;
 }
 
 /**
@@ -377,13 +429,14 @@ async function validateSections(html, {
  * @param {string} [options.config] scripts/personalization/config.js source
  * @param {string} [options.baseUrl]
  * @param {'client'|'edge'} [options.mode]
+ * @param {boolean} [options.publish] TODO copy is an error
  * @returns {Promise<{sections: object[]}>}
  */
 export async function validatePage(html, {
-  repo, prefixes, config = '', baseUrl, mode = 'client',
+  repo, prefixes, config = '', baseUrl, mode = 'client', publish = false,
 }) {
   const personalized = await validateSections(html, {
-    repo, prefixes, site: readSiteConfig(config), baseUrl, mode,
+    repo, prefixes, site: readSiteConfig(config), baseUrl, mode, publish,
   });
   return { sections: personalized };
 }
@@ -401,21 +454,30 @@ export function detectMode(repo) {
 
 /**
  * @param {string[]} targets files or directories
- * @param {object} options
- * @returns {Promise<object>} report
+ * @param {object} options { repo, baseUrl, mode, publish }
+ * @returns {Promise<object>} report; ok only when something was checked and
+ *   nothing has errors. incomplete lists what couldn't be checked.
  */
-export async function validate(targets, { repo, baseUrl, mode } = {}) {
+export async function validate(targets, {
+  repo, baseUrl, mode, publish = false,
+} = {}) {
   const root = resolve(repo || process.cwd());
   const prefixes = sitePrefixes(root);
-  const config = readText(join(root, 'scripts', 'personalization', 'config.js')) || '';
+  const configPath = join(root, 'scripts', 'personalization', 'config.js');
+  const config = readText(configPath) || '';
   const resolvedMode = mode || detectMode(root);
-  const list = (targets.length ? targets : ['content']).flatMap((target) => htmlFiles(resolve(root, target)));
+  const incomplete = [];
+  const named = targets.length ? targets : ['content'];
+  named.filter((target) => !existsSync(resolve(root, target)))
+    .forEach((target) => incomplete.push(`${target} not found (from ${root})`));
+  if (!existsSync(configPath)) incomplete.push('scripts/personalization/config.js not found: run install-runtime.mjs (the consent setup is unchecked)');
+  const list = named.flatMap((target) => htmlFiles(resolve(root, target)));
   const pages = [];
   await Promise.all(list.map(async (file) => {
     const html = readText(file);
     if (!PERSONALIZED.test(html)) return;
     const result = await validatePage(html, {
-      repo: root, prefixes, config, baseUrl, mode: resolvedMode,
+      repo: root, prefixes, config, baseUrl, mode: resolvedMode, publish,
     });
     if (result.sections.length) pages.push({ file: relative(root, file), ...result });
   }));
@@ -423,8 +485,15 @@ export async function validate(targets, { repo, baseUrl, mode } = {}) {
   const site = checkSiteConfig(readSiteConfig(config));
   const count = (items) => items.reduce((sum, item) => sum + item.errors.length, 0);
   const errorCount = pages.reduce((sum, page) => sum + count(page.sections), 0) + site.errors.length;
+  if (!pages.length) incomplete.push(`no personalized section found in ${named.join(', ')}`);
   return {
-    prefixes, mode: resolvedMode, config: site, pages, errorCount, ok: errorCount === 0,
+    prefixes,
+    mode: resolvedMode,
+    config: site,
+    pages,
+    errorCount,
+    incomplete,
+    ok: errorCount === 0 && !incomplete.length,
   };
 }
 
@@ -442,16 +511,19 @@ if (isMain(import.meta.url)) {
     repo: args.repo,
     baseUrl: args['base-url'],
     mode: ['client', 'edge'].includes(args.mode) ? args.mode : undefined,
+    publish: !!args.publish,
   });
   if (args.json) {
     console.log(JSON.stringify(report, null, 2));
   } else {
     print(`site config (mode ${report.mode})`, report.config);
-    if (!report.pages.length) console.log('⚠️ no personalized sections found');
+    report.incomplete.forEach((item) => console.log(`⚪ NOT RUN ${item}`));
     report.pages.forEach((page) => {
       page.sections.forEach((section) => print(`${page.file} → section ${section.section + 1} "${section.id ?? '?'}" (${section.source}${section.source === 'target' ? `, ${section.display}` : ''}, ${section.variants.length} variant(s) + default)`, section));
     });
-    console.log(report.ok ? '\n✓ PASS all sections and the config are valid' : `\n❌ FAIL ${report.errorCount} error(s)`);
+    if (report.errorCount) console.log(`\n❌ FAIL ${report.errorCount} error(s)`);
+    else if (report.incomplete.length) console.log('\n❌ INCOMPLETE nothing failed, but not everything was checked (not a pass)');
+    else console.log('\n✓ PASS all sections and the config are valid');
   }
   process.exit(report.ok ? 0 : 1);
 }

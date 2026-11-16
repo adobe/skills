@@ -1,11 +1,12 @@
 /*
- * Site configuration for personalization (contract site-config.schema.json).
+ * Site configuration for personalization (the skill's
+ * assets/contract/schemas/site-config.schema.json).
  * This file belongs to the site: install-runtime never overwrites it once it
  * exists. Never put API keys or personal data here.
  */
 
 export default {
-  // How consent is wired (contract section 3). Recorded at setup.
+  // How consent is wired. Recorded at setup.
   //   mode 'cmp':   hasConsent reads the consent tool named in `tool`.
   //   mode 'allow': the site owner and legal confirmed no consent is needed.
   //   mode 'deny':  off until a consent tool is connected (the default).
@@ -40,9 +41,9 @@ export default {
   // Must answer { "country": "IN", "region": "KA" }.
   geo: { endpoint: '', timeout: 500 },
 
-  // Decision engine for `Personalization Source | api` sections (contract
-  // section 5). A same-origin server route that holds the engine's
-  // credentials (the edge route /pzn/decide, or the engine's proxy).
+  // Decision engine for `Personalization Source | api` sections. A same-origin
+  // server route that holds the engine's credentials (the edge route
+  // /pzn/decide, or the engine's proxy).
   api: {
     endpoint: '',
     // Engine profile: 'generic' or 'of1' (limits the validator checks).
@@ -58,8 +59,8 @@ export default {
     mapResponse: null,
   },
 
-  // Adobe Target for `Personalization Source | target` sections (contract
-  // section 7). Called only with consent.
+  // Adobe Target for `Personalization Source | target` sections. Called only
+  // with consent.
   target: {
     // 'delivery-api' (no Web SDK on the page) or 'websdk' (reuse alloy).
     transport: 'delivery-api',
@@ -85,7 +86,7 @@ export default {
   // Crawlers and performance tools always get the default (no cloaking).
   botsGetDefault: true,
 
-  // Measurement (contract section 9). seenThreshold: share of the section
+  // Measurement. seenThreshold: share of the section
   // that must be visible for pzn:seen.
   analytics: { dataLayer: true, rum: true, seenThreshold: 0.25 },
 

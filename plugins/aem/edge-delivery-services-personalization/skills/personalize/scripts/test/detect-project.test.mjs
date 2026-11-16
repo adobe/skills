@@ -75,7 +75,7 @@ describe('detect', () => {
   });
 });
 
-describe('consent (contract section 3)', () => {
+describe('consent', () => {
   it('names the consent tools the site uses', () => {
     assert.deepEqual(consentTools("window.OptanonWrapper = () => {}; OnetrustActiveGroups.includes(',C0004,')"), ['onetrust']);
     assert.deepEqual(consentTools('if (Cookiebot.consent.marketing) {}'), ['cookiebot']);

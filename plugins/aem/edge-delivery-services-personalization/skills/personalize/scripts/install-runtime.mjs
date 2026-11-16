@@ -13,11 +13,18 @@
  * - loadLazy, right after loadSections(main): personalizeSectionsLazy(main)
  *   arms target popups.
  *
- * The report also lists what config.js still needs (contract section 3: the
+ * The report also lists what config.js still needs (the
  * consent mode, and hasConsent wired to the consent tool), which the skill
  * fills in after asking the user.
  *
+ * --check-live <origin> installs nothing: it checks, before publishing, that
+ * the live site (https://main--<repo>--<owner>.aem.live) serves this repo's
+ * runtime: every skill-owned module and config.js byte for byte, and both
+ * scripts.js hooks. It fails closed: a mismatch, a missing file or a network
+ * error exits 1.
+ *
  * Usage: node install-runtime.mjs [repoDir] [--apply-hook] [--dry-run]
+ *        node install-runtime.mjs [repoDir] --check-live <origin> [--json]
  */
 
 import {
@@ -30,11 +37,16 @@ import {
 import { checkSiteConfig, readSiteConfig } from './validate-placeholders.mjs';
 
 export const USAGE = `Usage: node install-runtime.mjs [repoDir] [--apply-hook] [--dry-run]
+       node install-runtime.mjs [repoDir] --check-live <origin> [--json]
 Installs the personalization runtime into an EDS repo (idempotent). Skill-owned
 files are updated when they differ; site-owned files (config.js,
 styles/target-popup.css, blocks/fragment) are only created when missing.
 scripts/scripts.js changes only with --apply-hook (the skill always passes it):
-the section hooks in loadEager and loadLazy.`;
+the section hooks in loadEager and loadLazy.
+--check-live <origin> (before publishing; origin =
+https://main--<repo>--<owner>.aem.live) installs nothing: PASS only when the
+origin serves this repo's runtime modules and config.js byte for byte and
+scripts.js has both hooks. Any mismatch, missing file or network error exits 1.`;
 
 export const SECTIONS_MARKER = 'personalizeSections(main)';
 export const LAZY_MARKER = 'personalizeSectionsLazy(main)';
@@ -211,10 +223,75 @@ export function installRuntime(repo, { applyHook = false, dryRun = false } = {})
   return report;
 }
 
+// What the live site must serve before a page is published.
+export const LIVE_FILES = [
+  ...RUNTIME_MODULES.map((name) => `scripts/personalization/${name}`),
+  'scripts/personalization/config.js',
+];
+
+/**
+ * Whether an origin serves this repo's runtime: a page is published
+ * only once main serves the code.
+ * @param {string} repo
+ * @param {string} origin e.g. https://main--<repo>--<owner>.aem.live
+ * @param {object} [options]
+ * @param {Function} [options.fetchImpl]
+ * @param {number} [options.timeout] ms per request
+ * @returns {Promise<{origin: string, ok: boolean, checked: string[], problems: string[]}>}
+ */
+export async function checkLive(repo, origin, { fetchImpl = globalThis.fetch, timeout = 10000 } = {}) {
+  const problems = [];
+  const fetchText = async (path) => {
+    try {
+      const response = await fetchImpl(new URL(`/${path}`, origin), { signal: AbortSignal.timeout(timeout) });
+      if (!response.ok) return { problem: `${path}: HTTP ${response.status} from ${origin}` };
+      return { text: await response.text() };
+    } catch (error) {
+      return { problem: `${path}: could not be fetched from ${origin} (${error.message})` };
+    }
+  };
+  await Promise.all(LIVE_FILES.map(async (path) => {
+    const local = readText(join(repo, path));
+    if (local === null) {
+      problems.push(`${path} is not in the repo: install the runtime first`);
+      return;
+    }
+    const live = await fetchText(path);
+    if (live.problem) problems.push(live.problem);
+    else if (live.text !== local) problems.push(`${path}: ${origin} serves another version than this repo (merge and wait for main, or check the branch)`);
+  }));
+  const scripts = await fetchText('scripts/scripts.js');
+  if (scripts.problem) problems.push(scripts.problem);
+  else {
+    [SECTIONS_MARKER, LAZY_MARKER].filter((marker) => !scripts.text.includes(marker))
+      .forEach((marker) => problems.push(`scripts/scripts.js on ${origin} has no ${marker} hook`));
+  }
+  problems.sort();
+  return {
+    origin, ok: !problems.length, checked: [...LIVE_FILES, 'scripts/scripts.js'], problems,
+  };
+}
+
 if (isMain(import.meta.url)) {
   exitOnHelp(USAGE);
   const args = parseArgs(process.argv.slice(2));
   const repo = args._[0] || process.cwd();
+  if (args['check-live'] !== undefined) {
+    const origin = args['check-live'];
+    if (typeof origin !== 'string' || !/^https?:\/\/[^/]+/.test(origin)) {
+      console.error(`❌ --check-live needs the live origin (https://main--<repo>--<owner>.aem.live)\n${USAGE}`);
+      process.exit(2);
+    }
+    const live = await checkLive(repo, origin);
+    if (args.json) console.log(JSON.stringify(live, null, 2));
+    else {
+      live.problems.forEach((problem) => console.log(`   ❌ ${problem}`));
+      console.log(live.ok
+        ? `✓ PASS ${origin} serves this repo's runtime (${live.checked.length} files) and both hooks`
+        : `❌ FAIL ${origin} does not serve this repo's runtime: stay at preview`);
+    }
+    process.exit(live.ok ? 0 : 1);
+  }
   const report = installRuntime(repo, {
     applyHook: !!args['apply-hook'], dryRun: !!args['dry-run'],
   });

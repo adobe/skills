@@ -34,7 +34,7 @@
           "pattern": "^[a-z0-9][a-z0-9_-]*$"
         },
         "decisionId": {
-          "description": "Unique per decision in the page view: <section id>#<n>. n starts at 1 and goes up by one only when a re-evaluation produces a new decision, i.e. when source, assigned, outcome, reason, cached, tracking, test or Target tokens differ (contract section 9). Seen/clicked and notifications are sent at most once per decisionId.",
+          "description": "Unique per decision in the page view: <section id>#<n>. n starts at 1 and goes up by one only when a re-evaluation produces a new decision, i.e. when source, assigned, outcome, reason, cached, tracking, test or Target tokens differ. Seen/clicked and notifications are sent at most once per decisionId.",
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9_-]*#[1-9][0-9]*$"
         },
@@ -66,7 +66,7 @@
           ]
         },
         "outcome": {
-          "description": "Assignment outcome, repeated on every event of the decision. variant: a variant was chosen. control: the control arm of a test (split default arm, engine control: true, Target { control: true }). intentional-default: the engine chose the authored content as the best fit (variant \"default\"). no-match: nothing fitted. low-confidence: engine reason low_confidence. no-consent: no consent and no approved exception (not assigned). fallback: the source failed or answered something not listed. timeout, error, invalid: see contract.md. bot / override: crawler or preview.",
+          "description": "Assignment outcome, repeated on every event of the decision. variant: a variant was chosen. control: the control arm of a test (split default arm, engine control: true, Target { control: true }). intentional-default: the engine chose the authored content as the best fit (variant \"default\"). no-match: nothing fitted. low-confidence: engine reason low_confidence. no-consent: no consent and no approved exception (not assigned). fallback: the source failed or answered something not listed. timeout, error, invalid: see reference/decisions-and-measurement.md. bot / override: crawler or preview.",
           "enum": [
             "variant",
             "control",

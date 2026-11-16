@@ -1,7 +1,7 @@
 /* global globalThis */
 /* eslint-disable no-console */
 /*
- * Edge personalization for the AEM Cloudflare worker (contract sections 4, 8
+ * Edge personalization for the AEM Cloudflare worker (8
  * and 10).
  *
  * Runs after the origin fetch, so the CDN cache key and cached HTML are
@@ -26,6 +26,7 @@ import {
 } from './section-spec.js';
 import {
   buildRequest, sanitizeRequest, sharedKey, referrerHost, engineProfile, DESCRIPTION_MAX,
+  MAX_REQUEST_BYTES,
 } from './contract.js';
 import { callEngine } from './provider-api.js';
 import {
@@ -40,7 +41,6 @@ import {
 } from './html.js';
 import { COOKIE as SPLIT_COOKIE, parseAssignments, formatAssignments } from './sources/split.js';
 
-const MAX_API_BODY_BYTES = 16384;
 const ROUTE_TIMEOUT_MS = 2000;
 const FRAGMENT_TIMEOUT_MS = 1000;
 const ENGINE_TIMEOUT_MS = 300;
@@ -167,13 +167,16 @@ export function fragmentMarkup(text, path) {
   return /<[a-z]/i.test(markup) ? absolutizeUrls(markup, path) : null;
 }
 
-async function withTimeout(promise, timeout) {
+async function withTimeout(promise, timeout, onTimeout) {
   let timer;
   try {
     return await Promise.race([
       promise,
       new Promise((resolve, reject) => {
-        timer = setTimeout(() => reject(new Error(`timed out after ${timeout} ms`)), timeout);
+        timer = setTimeout(() => {
+          onTimeout?.();
+          reject(new Error(`timed out after ${timeout} ms`));
+        }, timeout);
       }),
     ]);
   } finally {
@@ -181,10 +184,45 @@ async function withTimeout(promise, timeout) {
   }
 }
 
-async function plainText(path, fetchPlain, timeout) {
-  const response = await withTimeout(fetchPlain(path), timeout);
-  if (!response || !response.ok) throw new Error(`HTTP ${response?.status}`);
-  return response.text();
+/**
+ * A fragment's (or page's) .plain.html text. One deadline covers the
+ * request, its status and its body: a response that sends headers and then
+ * stalls its body can't hold the page past `timeout`. On expiry the request
+ * is aborted and the body cancelled.
+ * @param {string} path
+ * @param {Function} fetchPlain (path, { signal }) -> Promise<Response>
+ * @param {number} timeout ms
+ * @returns {Promise<string>}
+ */
+export async function plainText(path, fetchPlain, timeout) {
+  const controller = new AbortController();
+  let response;
+  let reader;
+  const read = async () => {
+    response = await fetchPlain(path, { signal: controller.signal });
+    if (!response || !response.ok) {
+      response?.body?.cancel().catch(() => {});
+      throw new Error(`HTTP ${response?.status}`);
+    }
+    if (!response.body) return '';
+    // Read through our own reader, so the body can be cancelled on expiry.
+    reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let text = '';
+    for (;;) {
+      // eslint-disable-next-line no-await-in-loop
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    return text + decoder.decode();
+  };
+  const pending = read();
+  pending.catch(() => {});
+  return withTimeout(pending, timeout, () => {
+    controller.abort();
+    (reader || response?.body)?.cancel().catch(() => {});
+  });
 }
 
 async function loadFragment(path, fetchPlain, timeout) {
@@ -209,8 +247,8 @@ async function cachedText(key, load) {
 }
 
 /**
- * Fills missing descriptions for engines that use them (profile of1,
- * contract section 5): a variant without a Description row gets the text
+ * Fills missing descriptions for engines that use them (profile of1):
+ * a variant without a Description row gets the text
  * of its fragment's .plain.html, the default gets the text of the authored
  * section; cut to 600 characters. Author rows always win; none is sent empty.
  * @param {object} request v1 request (changed in place)
@@ -266,7 +304,7 @@ export function authoredText(html, id) {
 
 /**
  * One engine call for the page's api sections, using the Cache API for
- * answers the engine marks cacheable (shared key, contract section 10).
+ * answers the engine marks cacheable (shared key).
  * @returns {Promise<{response?: object, cached: boolean, error?: string, kind?: string}>}
  */
 async function edgeEngine({
@@ -303,8 +341,8 @@ async function edgeEngine({
 }
 
 /**
- * The edge's decision fields for one section, or LEAVE (contract sections 3,
- * 4 and 8).
+ * The edge's decision fields for one section, or LEAVE: consent
+ * and exceptions, outcomes, the edge handoff.
  * @param {object} entry { spec, first, ruled }
  * @param {object} env { bot, consent, allowed, context, engine, profile, split, random }
  * @returns {Promise<object>} { fields, browserMayNotDecide } or LEAVE
@@ -531,9 +569,14 @@ export async function personalizeResponse(request, response, options) {
 
     const headers = new Headers(response.headers);
     // Personalized output must not be stored by shared caches. no-cache (not
-    // no-store) keeps the page eligible for the back/forward cache.
+    // no-store) keeps the page eligible for the back/forward cache. The
+    // origin's validators go: a conditional request with them would get the
+    // origin's 304 and reuse an older personalized body, even though consent
+    // or the decision context changed. (Last-Modified was already read for
+    // the engine-answer cache key.)
     headers.set('cache-control', 'private, no-cache');
     headers.delete('etag');
+    headers.delete('last-modified');
     headers.delete('content-length');
     headers.set('x-pzn', edits.length ? 'edge' : 'deferred');
     // Split assignments last the browser session, like sessionStorage.
@@ -620,7 +663,7 @@ export async function handleApiRoute(request, env, config, {
     const { success } = await env.PZN_RATE_LIMITER.limit({ key });
     if (!success) return new Response('Too Many Requests', { status: 429 });
   }
-  const text = await readBounded(request, MAX_API_BODY_BYTES);
+  const text = await readBounded(request, MAX_REQUEST_BYTES);
   if (text === null) return new Response('Payload Too Large', { status: 413 });
   let body;
   try {

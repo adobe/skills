@@ -12,7 +12,8 @@ import { createMockServer } from '../mock-decision-api.mjs';
 import { buildCases, simulateEdge } from '../simulate.mjs';
 import { readSiteConfig } from '../validate-placeholders.mjs';
 import {
-  compareEvents, eventProblems, faultAnswer, matches, plainUrl, splitConsoleErrors, verify, withQuery,
+  compareEvents, eventProblems, faultAnswer, matches, perfProblems, planChecks, plainUrl,
+  splitConsoleErrors, verify, withQuery,
 } from '../verify-preview.mjs';
 import { runHelp, tempDir } from './helpers.mjs';
 
@@ -120,6 +121,43 @@ describe('splitConsoleErrors', () => {
     const { results, preExisting } = splitConsoleErrors([run('pzn-geo=IN', [nav])], [nav]);
     assert.equal(results[0].ok, true);
     assert.deepEqual(preExisting, [nav]);
+  });
+});
+
+describe('planChecks: requested checks add up', () => {
+  it('--perf alone measures only; any other check brings the per-case runs back', () => {
+    assert.deepEqual(planChecks({}), { cases: true, perf: false, edge: false });
+    assert.deepEqual(planChecks({ perf: true }), { cases: false, perf: true, edge: false });
+    for (const extra of [{ faults: true }, { refresh: true }, { consentFlow: true }, { splitRuns: 30 }, { scenarios: [] }]) {
+      assert.deepEqual(planChecks({ perf: true, ...extra }), { cases: true, perf: true, edge: false }, JSON.stringify(extra));
+    }
+  });
+
+  it('--perf --edge measures edge latency and keeps the other requested checks', () => {
+    assert.deepEqual(planChecks({ perf: true, edge: true }), { cases: false, perf: false, edge: true });
+    assert.deepEqual(planChecks({ perf: true, edge: true, consentFlow: true }), { cases: true, perf: false, edge: true });
+    assert.deepEqual(planChecks({ edge: true }), { cases: true, perf: false, edge: false }, '--edge alone is not a check');
+  });
+});
+
+describe('perfProblems', () => {
+  const before = { lcp: 1000, cls: 0.01 };
+  const good = {
+    lcp: 1100, cls: 0.01, shown: 900, observed: true,
+  };
+
+  it('passes a personalized page within budget', () => {
+    assert.deepEqual(perfProblems(before, good), []);
+  });
+
+  it('fails a fast page that never ran the runtime (no outcome on the section)', () => {
+    assert.match(perfProblems(before, { ...good, observed: false }).join(), /no personalization outcome on the section .*scripts.js hooks/);
+    assert.match(perfProblems(null, { ...good, shown: null }).join(), /never shown/);
+  });
+
+  it('fails CLS and LCP regressions only against a baseline', () => {
+    assert.deepEqual(perfProblems(before, { ...good, lcp: 1600, cls: 0.2 }), ['CLS 0.01 → 0.2', 'LCP +600 ms (> 500)']);
+    assert.deepEqual(perfProblems(null, { ...good, lcp: 9000 }), []);
   });
 });
 
@@ -333,6 +371,8 @@ async function serveSite(mock, { source = SOURCE, fragments = FRAGMENTS, engine 
       return;
     }
     if (pathname === '/page') body = pageHtml;
+    // The same page without the runtime (no scripts.js): fast, and personalizes nothing.
+    else if (pathname === '/no-runtime') body = pageHtml.replace(/<script\b[^>]*><\/script>/, '');
     else if (pathname === '/page.plain.html') body = plain;
     else if (fragment && fragments[fragment[1]]) body = `<div>${fragments[fragment[1]]}</div>`;
     else if (/\.(js|css)$/.test(pathname)) {
@@ -406,6 +446,27 @@ const failures = (list) => (list || []).filter((item) => !item.ok)
       });
       assert.deepEqual(failures(report.refresh), []);
       assert.equal(report.consentFlow.ok, true, report.consentFlow.notRun || report.consentFlow.problems.join('\n'));
+    });
+
+    it('page speed: needs a baseline and a page that runs the runtime; other flags still run', { skip: (!FULL || !mock) && 'set PZN_E2E=1 (mock mode)' }, async () => {
+      const one = cases.filter((entry) => entry.id === 'hero' && entry.name === 'no consent');
+      const unbased = await verify({
+        page: `${preview.base}/page`, cases: one, site: preview.site, perf: true,
+      });
+      assert.match(unbased.perf.notRun, /--baseline/);
+      assert.deepEqual([unbased.ok, unbased.failed], [false, false], 'not run: incomplete, not a pass');
+      assert.equal(unbased.results.length, 0, '--perf alone measures only');
+      const missing = await verify({
+        page: `${preview.base}/no-runtime`, cases: one, site: preview.site, perf: true, baseline: `${preview.base}/page`,
+      });
+      assert.equal(missing.ok, false);
+      assert.match(missing.perf.results[0].problems.join(), /no personalization outcome on the section/);
+      const combined = await verify({
+        page: `${preview.base}/page`, cases: one, site: preview.site, perf: true, faults: true, baseline: `${preview.base}/page`,
+      });
+      assert.equal(combined.results.length, 1, '--perf --faults still runs the cases');
+      assert.deepEqual(failures(combined.results), []);
+      assert.deepEqual(combined.perf.results.map((result) => result.problems), [[]]);
     });
 
     it('measures edge latency for a visitor with consent', { skip: (!FULL || mock) && 'set PZN_E2E=1 (route mode)' }, async () => {

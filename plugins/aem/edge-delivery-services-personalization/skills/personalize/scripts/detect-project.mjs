@@ -19,14 +19,14 @@ Preflight report (JSON) of what personalize needs to know about an EDS repo:
 project type (da | xwalk | doc), scripts.js hooks, who renders Section Metadata
 (pipeline or aem.js), fragment block, runtime files, integrations (Target at.js /
 Web SDK, Launch, experimentation, martech, consent tool, data layer), the
-recorded consent config (contract section 3), content
+recorded consent config, content
 (personalized sections, experimentation sections), edge worker (edge.cloudflare: a wrangler config or worker in the
 repo), lint. Read-only. Exit 0 = DA project, 3 = unsupported.`;
 
 const { renderSectionMetadata } = await importAsset('edge', 'cloudflare', 'src', 'personalization', 'html.js');
 
 
-// Consent tools the skill can wire hasConsent to (contract section 3), with
+// Consent tools the skill can wire hasConsent to, with
 // the code that shows each one is on the site.
 export const CONSENT_TOOLS = [
   ['onetrust', /OnetrustActiveGroups|OptanonWrapper|optanon|onetrust/i],

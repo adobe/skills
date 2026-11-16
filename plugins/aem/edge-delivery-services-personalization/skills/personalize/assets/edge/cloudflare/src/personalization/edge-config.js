@@ -1,5 +1,5 @@
 /*
- * Edge personalization configuration (contract sections 3, 5 and 8). This
+ * Edge personalization configuration. This
  * file belongs to the site: install-edge never overwrites it once it exists.
  * Keep fragmentPrefixes, consent, botsGetDefault and api.engine aligned with
  * scripts/personalization/config.js. Never put secrets here.

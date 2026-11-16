@@ -4,7 +4,7 @@
  * when config.mock is set (tests and demos only; false at launch): demos then
  * work on aem.page, where a local mock server can't be reached. mockFetch has
  * the signature of window.fetch, so the real transports still run (request
- * building, timeouts, contract validation); only the network hop is
+ * building, timeouts, response validation); only the network hop is
  * simulated. Tables: config.mock.api and config.mock.target (mock-engine.js).
  *
  * Preview knobs (preview hosts only, like the other pzn- overrides):

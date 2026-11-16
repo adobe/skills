@@ -1,4 +1,4 @@
-# Edge Mode: Cloudflare Workers (contract sections 4, 8 and 10)
+# Edge Mode: Cloudflare Workers
 
 ## What edge mode is
 
@@ -36,8 +36,9 @@ It generates these files:
 - `src/aem-worker.mjs`: the official `adobe/aem-cloudflare-prod-worker`, vendored **unchanged**
   (Apache-2.0, `LICENSE_APACHE`). Upgrade it by vendoring it again; never edit it.
 - `src/index.mjs`: the wrapper that adds the decision route and post-processes HTML. It builds
-  `fetchFragment(path)` on the official worker (`<path>.plain.html`, same host), so fragments use
-  the same origin, auth and cache settings as pages.
+  `fetchFragment(path, { signal })` on the official worker (`<path>.plain.html`, same host), so
+  fragments use the same origin, auth and cache settings as pages. One deadline
+  (`fragmentTimeout`, 1000 ms) covers the request and its body; on expiry the signal aborts it.
 - `src/personalization/`:
   - `personalize.js`, `html.js` and `adapters/of1.js` (skill-owned);
   - `rules.js`, `section-spec.js`, `outcomes.js`, `contract.js`, `context.js`, `provider-api.js`
@@ -57,7 +58,7 @@ import config from './personalization/edge-config.js';
 import { handleApiRoute, personalizeResponse } from './personalization/personalize.js';
 
 // inside fetch(request, env, ctx); originFetch = the worker's own origin fetch
-const fetchFragment = (path) => originFetch(new URL(`${path}.plain.html`, request.url));
+const fetchFragment = (path, { signal } = {}) => originFetch(new Request(new URL(`${path}.plain.html`, request.url), { signal }));
 // before the origin fetch:
 const routed = await handleApiRoute(request, env, config, { fetchPlain: fetchFragment });
 if (routed) return routed;
@@ -91,7 +92,9 @@ return personalizeResponse(request, response, { config, env, cf: request.cf, ctx
      `Set-Cookie: pzn-split=…; Path=/; SameSite=Lax; Secure`.
    - **Geo meta.** `<meta name="pzn-geo">` is injected when a rule uses geo, so the browser agrees
      on the sections the edge left.
-   - **Headers.** `Cache-Control: private, no-cache`; `ETag` and `Content-Length` are removed;
+   - **Headers.** `Cache-Control: private, no-cache`; `ETag`, `Last-Modified` and `Content-Length`
+     are removed (no validators, so a conditional request can't revalidate an older personalized
+     page against the origin);
      `x-pzn` is `edge` or `deferred`.
 4. **Bots** (`cf.botManagement.verifiedBot`, or a user-agent match such as Lighthouse or PSI) get
    the default, with no engine call and no split cookie.
@@ -119,7 +122,11 @@ edge doesn't leave the section when it stops waiting. It applies the default wit
 **Final for the page view.** A marked section changes only when:
 
 - consent is withdrawn: the default comes back from the template, with outcome `no-consent`;
-- a preview `?pzn=` override is used.
+- a preview `?pzn=` override is used;
+- at startup, the consent tool hasn't said yes in this page view (it is pending or says no, while the mirrored `pzn-consent` cookie still says yes), and no approved exception for the section's source allows the
+  decision. The browser doesn't honor it: `applied` goes back to the template's default and
+  `selected` keeps the default without loading the fragment, both with outcome `no-consent`, and
+  nothing is sent for the edge's decision. When consent is given later, the browser decides them.
 
 ## Configuration
 
