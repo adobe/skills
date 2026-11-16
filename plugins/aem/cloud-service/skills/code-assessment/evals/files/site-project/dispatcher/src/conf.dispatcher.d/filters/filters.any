@@ -1,0 +1,10 @@
+#
+# This file contains the filter ACL, and can be customized.
+#
+# By default, it includes the default filter ACL.
+#
+
+$include "./default_filters.any"
+
+# Allow the login form to post to the login servlet
+/0100 { /type "allow" /method "POST" /url "/bin/example/login" }

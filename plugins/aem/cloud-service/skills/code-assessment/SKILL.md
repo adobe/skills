@@ -1,14 +1,14 @@
 ---
 name: code-assessment
 description: |
-  Detect, review, and fix code-quality and correctness issues in an AEM as a Cloud Service
-  project — locally, with no external services or network calls. Use whenever a user wants to
-  check, review, assess, audit, scan, modernize, upgrade, or fix AEM Java, Sling Models, OSGi,
-  or Maven code — for example: "check my Sling Models are implemented correctly", "review my
-  @Inject usage", "are my Maven dependencies up to date", "scan this AEM project for issues",
-  "modernize my Sling Models", or "fix code-quality problems". Name the files to assess, or ask
-  it to scan the repo; it detects issues, plans, and — only when you ask — applies surgical
-  edits on a branch or in place, then verifies with mvn compile. It recognises the intent and
+  Detect, review, and fix code-quality, correctness, and security issues in an AEM as a Cloud
+  Service project — locally, with no external services or network calls. Use whenever a user
+  wants to check, review, assess, audit, scan, modernize, upgrade, or fix AEM Java, Sling Models,
+  OSGi, or Maven code — for example: "check my Sling Models are implemented correctly", "review
+  my @Inject usage", "are my Maven dependencies up to date", "scan this AEM project for issues",
+  "can a cookie skip my login captcha", or "fix code-quality problems". Name the files to
+  assess, or ask it to scan the repo; it detects issues, plans, and — only when you ask —
+  applies surgical edits on a branch or in place, then verifies with mvn compile. It recognises the intent and
   handles each issue type itself, reporting anything it cannot yet fix.
 license: Apache-2.0
 metadata:
@@ -58,6 +58,7 @@ Route the request to one expert skill. Two pattern families share this skill:
 | "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/SKILL.md) |
 | "bound my query", "unbounded query", "query causing OOM", `p.limit=-1`, `setLimit(-1)` | [`unbounded-query/`](unbounded-query/SKILL.md) |
 | "query is slow", "traversal warning", "is my query indexed", "tune oak index", index coverage of a JCR/Oak query | [`tuning-oak-query-indexes/`](tuning-oak-query-indexes/SKILL.md) |
+| "can the captcha / login / rate limit be skipped", "test-automation bypass", a cookie, header or parameter named test, debug, bypass or skip read in captcha, auth or rate-limit code | [`request-controlled-security-bypass/`](request-controlled-security-bypass/guide.md) |
 | "remove deprecated API", "fix deprecated imports", "Cloud Manager deprecated API failure", `region-deprecated-api` / `api-regions-check` / `Import-Package not satisfied` pipeline failures, log4j migration, commons-lang/collections upgrades, deprecated Maven deps, unmodifiable OSGi configs | [`remove-deprecated-api/`](remove-deprecated-api/SKILL.md) _(analyzer detector with dynamic rules — preflight runs `aemanalyser-maven-plugin`; hint-driven fixes; see recipe.md)_ |
 
 **Architectural migration patterns** (guided remediation — full before/after, troubleshooting, modern alternatives; invoked directly or via `migration` for BPA/CAM-driven discovery):

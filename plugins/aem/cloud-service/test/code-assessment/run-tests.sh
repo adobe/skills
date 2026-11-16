@@ -162,13 +162,14 @@ assert_absent  "opaque DAO (API in another module) not flagged" "$OUT" 'OpaqueDa
 assert_absent  "clean file not flagged"                 "$OUT" 'Clean.java'
 assert_absent  "near-miss names not flagged"            "$OUT" 'Negatives.java'
 
-echo "[wiring] each registered detector has an expert skill + ready/analyzer catalog row"
+echo "[wiring] each registered detector has a pattern guide + ready/analyzer catalog row"
+# A pattern guide is <slug>/guide.md; patterns added before guide.md keep <slug>/SKILL.md.
 PATTERNS_MD="$SKILL_ROOT/references/patterns.md"
 for slug in $(bash "$ANALYZE" --list-patterns); do
-  if [ -f "$SKILL_ROOT/$slug/SKILL.md" ]; then
-    echo "  PASS: $slug has expert skill dir"; PASS=$((PASS+1))
+  if [ -f "$SKILL_ROOT/$slug/guide.md" ] || [ -f "$SKILL_ROOT/$slug/SKILL.md" ]; then
+    echo "  PASS: $slug has a pattern guide"; PASS=$((PASS+1))
   else
-    echo "  FAIL: $slug missing $SKILL_ROOT/$slug/SKILL.md"; FAIL=$((FAIL+1))
+    echo "  FAIL: $slug missing $SKILL_ROOT/$slug/guide.md"; FAIL=$((FAIL+1))
   fi
   if grep -E "$slug" "$PATTERNS_MD" | grep -qE 'ready.*analyzer'; then
     echo "  PASS: $slug is ready+analyzer in catalog"; PASS=$((PASS+1))
@@ -283,6 +284,20 @@ assert_contains "warning for missing cache"        "$OUT" 'deprecated-api-rules-
 assert_absent   "no findings when cache is missing" "$OUT" '"pattern":"remove-deprecated-api"'
 rm -f "$RULES_TSV"
 
+
+echo "[request-controlled-security-bypass] test/debug/bypass names read in security code flagged; values never emitted"
+OUT="$(run "$FIX/request-controlled-security-bypass")"
+assert_contains "pattern present"                              "$OUT" '"pattern":"request-controlled-security-bypass"'
+assert_contains "cookie via same-file constant flagged"        "$OUT" 'LoginServlet.java'
+assert_contains "constant resolved to the cookie name"         "$OUT" 'cookie \\"qa-automation\\"'
+assert_contains "header in rate-limit filter flagged"          "$OUT" 'X-Skip-Rate-Limit'
+assert_contains "cookie-name comparison flagged"               "$OUT" 'e2e-bypass'
+assert_contains "parameter-map lookup flagged"                 "$OUT" 'debugAuth'
+assert_count   "one finding per site (4)"                      "$OUT" '"pattern":"request-controlled-security-bypass"' 4
+assert_absent  "compared value never emitted"                  "$OUT" 'opensesame'
+assert_absent  "ordinary names in login code not flagged"      "$OUT" 'CleanLoginServlet.java'
+assert_absent  "debug parameter outside security code not flagged" "$OUT" 'ProductListServlet.java'
+assert_absent  "src/test/ not flagged"                         "$OUT" 'LoginServletTest.java'
 
 echo "----"
 echo "PASS=$PASS FAIL=$FAIL"

@@ -8,6 +8,7 @@ import analyzer.detectors.OutboundCallTimeouts;
 import analyzer.detectors.OutdatedDependencies;
 import analyzer.detectors.RemoveDeprecatedApi;
 import analyzer.detectors.Replication;
+import analyzer.detectors.RequestControlledSecurityBypass;
 import analyzer.detectors.ResourceChangeListener;
 import analyzer.detectors.Scheduler;
 import analyzer.detectors.UnboundedQuery;
@@ -30,7 +31,8 @@ public final class Registry {
             new OutboundCallTimeouts(),
             new UnboundedQuery(),
             new OakQueryIndexCoverage(),
-            new RemoveDeprecatedApi()
+            new RemoveDeprecatedApi(),
+            new RequestControlledSecurityBypass()
         ));
     }
 }

@@ -67,4 +67,4 @@ input, the developer can no longer review the diff without auditing the whole pr
 - [`../SKILL.md`](../SKILL.md) — control plane: routing + classification.
 - [`runbook.md`](runbook.md) — the standard run procedure.
 - [`git-workflow.md`](git-workflow.md) — run-log schema, branch / in-place mechanics.
-- `../<pattern>/SKILL.md` + `recipe.md` — per-pattern expert skills.
+- `../<pattern>/guide.md` (older patterns: `SKILL.md`) + `recipe.md` — per-pattern guides.
