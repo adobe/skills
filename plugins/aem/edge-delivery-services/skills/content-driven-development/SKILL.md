@@ -49,6 +49,5 @@ Then use **building-blocks**, and **testing-blocks** to check the result in a br
 Open a PR whose description has:
 
 - **Test URLs**, before and after: `https://main--{repo}--{owner}.aem.page/{path}` and `https://{branch}--{repo}--{owner}.aem.page/{path}` (`.aem.live` also works). A bot runs PageSpeed Insights on them, so they are required. Keep `{branch}--{repo}--{owner}` to 63 characters or fewer.
-- **Next steps for the user**, if any: CMS content to create or publish, library or config changes outside the repo.
 
 Open it as a **draft** while the content it needs exists only locally.
