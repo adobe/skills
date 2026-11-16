@@ -16,6 +16,7 @@ Skills for developing sites on AEM Edge Delivery Services: blocks, content model
 | `analyze-and-plan` | Analyze requirements and define acceptance criteria |
 | `building-blocks` | Implement blocks and core functionality |
 | `testing-blocks` | Browser testing and validation |
+| `aem-layout-view` | Keep blocks editable in Experience Workspace layout view |
 | `content-modeling` | Design author-friendly content models |
 | `code-review` | Self-review and PR review |
 
