@@ -10,23 +10,19 @@ metadata:
 
 **Never write or change code before you have identified or created the test content you will use.**
 
-When nobody is available to answer a question (no user in the loop, no CMS access), decide, write the assumption into the PR description, and carry on.
-
 ## 1. Dev server
 
 Run `aem up --no-open --forward-browser-logs` unless a server runs already. **aem-cli** covers ports (git worktrees), `./content/` and failures.
 
 ## 2. Analyze and plan
 
-Invoke **analyze-and-plan** with the task and any designs or URLs. Write the analysis and the acceptance criteria to a file: step 7 uses them.
+Invoke **analyze-and-plan** with the task and any designs or URLs. Write the analysis and the acceptance criteria to a file: step 6 uses them.
 
 ## 3. Content model
 
 Skip for changes that keep the authored structure. Otherwise invoke **content-modeling**.
 
 ## 4. Test content
-
-End with URLs you can load that cover every variant and edge case.
 
 - **A. The user gave URLs.** Check that they return 200.
 - **B. New block.** Nothing exists to find, so create it:
@@ -44,30 +40,19 @@ If the project's content lives in Experience Workspace (DA), read **aem-layout-v
 
 Then use **building-blocks**, and **testing-blocks** to check the result in a browser and to decide on committed tests.
 
-## 6. Lint and test
+## 6. Done means
 
-Run `npm run lint`, and `npm test` if `package.json` defines it.
-
-## 7. Done means
-
-Check each point against the test content and the acceptance criteria from step 2 before you ship:
-
-- The block is self-contained and mobile first: base styles for small screens, wider layouts in `min-width` queries.
-- It works on the authoring surfaces this project uses (layout view in Experience Workspace, `data-aue-*` and the model file in Universal Editor).
-- It does not slow the page: nothing holds up the first section, heavy code loads late, pictures stay optimized.
+- It is self-contained and works on the authoring surfaces this project uses (layout view in Experience Workspace, `data-aue-*` and the model file in Universal Editor).
 - The content model is semantic and easy for authors, and does not depend on one editor.
 - Logic that is hard to get right (calculations, number or date formatting, state, non-trivial data transforms) has a unit test. Parsing authored cells and querying or changing the DOM usually do not. Say which applies.
 - You checked it in a browser at mobile, tablet and desktop widths, with no console errors, and existing variants still work.
 - The library entry shows the happy path only, and edge cases live on other pages.
 
-## 8. Ship
-
-Branch, commit and push as the project does, and stage only the files you changed.
+## 7. Ship
 
 Open a PR whose description has:
 
 - **Test URLs**, before and after: `https://main--{repo}--{owner}.aem.page/{path}` and `https://{branch}--{repo}--{owner}.aem.page/{path}` (`.aem.live` also works). A bot runs PageSpeed Insights on them, so they are required. Keep `{branch}--{repo}--{owner}` to 63 characters or fewer.
-- **Assumptions** you made without anyone to ask.
 - **Next steps for the user**, if any: CMS content to create or publish, library or config changes outside the repo.
 
 Open it as a **draft** while the content it needs exists only locally.
