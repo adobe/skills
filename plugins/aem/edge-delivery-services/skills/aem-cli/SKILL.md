@@ -61,6 +61,7 @@ aem content push
   move existing local pages aside and copy them back in.
 - Org and site come from the git remote; override with `--org` / `--site`.
 - Pages you add or edit must be in DA's HTML format; see da-content.
+- It talks to `admin.da.live` only (`AEM_DA_ADMIN` overrides the host, 16.22.18). A site whose content is in Source Bus (`api.aem.live`) cannot be cloned or pushed this way; use the API in da-content.
 - Sign-in token: `.hlx/.da-token.json` (git-ignored). Don't ask for a token by hand.
 - `push` writes the DA source only. Preview the page (Sidekick, or
   `POST https://admin.hlx.page/preview/<org>/<site>/main/<path>` with an IMS
