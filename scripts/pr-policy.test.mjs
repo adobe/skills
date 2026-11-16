@@ -157,8 +157,10 @@ test('a pull request that changes what is brought in is closed at once, unless i
   assert.deepEqual(actions.map(({ type }) => type), ['close-imported']);
 
   assert.equal(importedChange(change, ['README.md'], { importers: [] }), null);
-  // a team that can't be read closes nothing
-  assert.equal(importedChange(change, [CREATIVITY], { importers: [], anyone: true }).own, true);
+  // a team that can't be read: not closed as an import, and still held to the AI review
+  const unknown = importedChange(pr({ author: user('someone'), statuses: denial }), [CREATIVITY], { importers: [], anyone: true });
+  assert.deepEqual([unknown.own, unknown.unknown], [false, true]);
+  assert.deepEqual(decide(pr({ author: user('someone'), statuses: denial }), { ...opts, imported: unknown }).actions.map(({ type }) => type), ['close']);
 });
 
 test('an import by its code owners is not closed for the AI review: a maintainer merges it', () => {

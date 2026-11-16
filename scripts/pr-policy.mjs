@@ -134,12 +134,15 @@ export function waitingSince(pr, { owners, anyone = false, start = POLICY_START,
 }
 
 // What a pull request does to what is brought in from another repository: null for nothing,
-// or { entries, own } with the imports it changes and whether their code owners opened it.
-// `importers` are the logins of those owners; `anyone` when a team of them can't be read.
+// or { entries, own, unknown } with the imports it changes, whether one of their code owners
+// opened it, and whether that can't be told. `importers` are the logins of those owners;
+// `anyone` when a team of them can't be read. Then the pull request is not closed as an
+// import, which may be its owners', and not let off the AI review, which may not be.
 export function importedChange(pr, files, { importers = [], anyone = false }) {
   const entries = IMPORTED.filter((entry) => files.some((file) => file.startsWith(entry.path)));
   if (entries.length === 0) return null;
-  return { entries, own: anyone || importers.includes(pr.author.login.toLowerCase()) };
+  const own = importers.includes(pr.author.login.toLowerCase());
+  return { entries, own, unknown: !own && anyone };
 }
 
 // Whether the policy already said something on a pull request or an issue, by its marker.
@@ -151,7 +154,9 @@ export function decide(pr, { now, owners, anyone = false, start = POLICY_START, 
   const actions = [];
   if (pr.isDraft || isBot(pr.author)) return { actions, notes: [pr.isDraft ? 'draft' : 'opened by a bot'] };
   const notes = [];
-  if (imported && !imported.own) {
+  if (imported?.unknown) {
+    notes.push(`changes ${imported.entries.map(({ name }) => name).join(', ')}: its code owners could not be read, so it is not closed for that`);
+  } else if (imported && !imported.own) {
     const comments = pr.timelineItems.nodes.filter(({ __typename }) => __typename === 'IssueComment');
     if (new Date(pr.createdAt).getTime() >= start && !marked(comments, MARKER.imported)) {
       actions.push({ type: 'close-imported', entries: imported.entries });
