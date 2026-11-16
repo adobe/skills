@@ -75,10 +75,33 @@ export function judgePrompt({ question, claim, answer }) {
   ].join('\n');
 }
 
+// The JSON objects in a text, outermost first: braces inside strings, such as a path
+// `{block}` in the reason, don't end an object.
+function jsonObjects(text) {
+  const found = [];
+  for (let start = text.indexOf('{'); start !== -1; start = text.indexOf('{', start + 1)) {
+    let depth = 0;
+    let quoted = false;
+    for (let index = start; index < text.length; index += 1) {
+      const char = text[index];
+      if (quoted) {
+        if (char === '\\') index += 1;
+        else if (char === '"') quoted = false;
+      } else if (char === '"') quoted = true;
+      else if (char === '{') depth += 1;
+      else if (char === '}' && --depth === 0) {
+        found.push(text.slice(start, index + 1));
+        start = index;
+        break;
+      }
+    }
+  }
+  return found;
+}
+
 // The last JSON object in a text that has a grade.
 export function parseGrade(text) {
-  const found = String(text ?? '').match(/\{[^{}]*\}/g) ?? [];
-  for (const candidate of found.reverse()) {
+  for (const candidate of jsonObjects(String(text ?? '')).reverse()) {
     try {
       const value = JSON.parse(candidate);
       const grade = String(value.grade ?? '').trim().toLowerCase();

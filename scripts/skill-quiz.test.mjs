@@ -12,6 +12,8 @@ test('the grade is the last JSON object in the answer that has one', () => {
   assert.deepEqual(parseGrade('thinking {"x":1} then {"grade":"Known","why":"w"}'), { grade: 'known', why: 'w' });
   assert.equal(parseGrade('{"grade":"maybe"}'), null);
   assert.equal(parseGrade('no json'), null);
+  assert.deepEqual(parseGrade('{"grade":"partial","why":"omits the `/block-collection/{block}` path and the \\"}\\" case"}'), { grade: 'partial', why: 'omits the `/block-collection/{block}` path and the "}" case' });
+  assert.deepEqual(parseGrade('Sure. {"grade":"unknown","why":"{nested} {braces}"} done'), { grade: 'unknown', why: '{nested} {braces}' });
 });
 
 test('a model knew a line when every answer knew it, as the review counts it', () => {
