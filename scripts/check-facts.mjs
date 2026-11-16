@@ -5,13 +5,13 @@
 //   no-consumer    a fact that no file uses: no skill states it and no eval tests it.
 //                  A fact whose line left the skill may stay, to see whether a later model
 //                  gets it wrong, as long as an eval tests it
-//   missing-file   a file in used_by that isn't in the plugin
+//   missing-file   a file in used_by that isn't in the plugin, or a path that leads out of it
 //   no-source      a fact that no skill states, without a source: it can't be checked
 //
 // Run from the repository root: node scripts/check-facts.mjs. It exits 1 when something
 // breaks a rule.
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { isAbsolute, join, normalize, relative } from 'node:path';
 import { parseFacts } from './lib/facts.mjs';
 import { isMain } from './lib/is-main.mjs';
 
@@ -38,10 +38,14 @@ export function checkFacts(plugin, root = plugin) {
   for (const fact of facts) {
     const where = { file: at, id: fact.id };
     if (fact.used_by.length === 0) found.push({ rule: 'no-consumer', ...where, detail: `${fact.id}: no skill states it and no eval tests it` });
+    const paths = [];
     for (const path of fact.used_by) {
-      if (!existsSync(join(plugin, path))) found.push({ rule: 'missing-file', ...where, detail: `${fact.id}: ${path} is not in the plugin` });
+      const inside = normalize(path).split('\\').join('/');
+      if (!path || isAbsolute(path) || inside === '..' || inside.startsWith('../')) found.push({ rule: 'missing-file', ...where, detail: `${fact.id}: ${path} leads out of the plugin` });
+      else if (!existsSync(join(plugin, inside))) found.push({ rule: 'missing-file', ...where, detail: `${fact.id}: ${path} is not in the plugin` });
+      else paths.push(inside);
     }
-    const inSkill = fact.used_by.some((path) => path.split(/[\\/]/)[0] === 'skills');
+    const inSkill = paths.some((path) => path.startsWith('skills/'));
     if (!inSkill && !fact.source?.trim()) found.push({ rule: 'no-source', ...where, detail: `${fact.id}: no skill states it, and it has no source` });
   }
   return found;

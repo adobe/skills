@@ -41,6 +41,16 @@ test('the reader refuses what it does not know, rather than guess', () => {
   assert.throws(() => parseFacts('id: f\n'), /syntax/);
 });
 
+test('quoted values are decoded, and YAML this reader does not know is refused', () => {
+  const one = (line) => parseFacts(`- id: f\n  claim: c\n  question: q\n  ${line}\n`)[0];
+  assert.equal(one(`source: 'it''s here'`).source, "it's here");
+  assert.equal(one('source: "a \\"b\\""').source, 'a "b"');
+  for (const line of ['source: *alias', 'source: &anchor text', 'source: !tag x', 'source: "open', "source: 'open", "source: 'a'b'", 'source: text # comment', 'source: a: b']) {
+    assert.throws(() => one(line), /quote it|does not end|escape/, line);
+  }
+  assert.throws(() => parseFacts('- id: f\n  claim: c\n  question: q\n  used_by:\n    - *alias\n'), /quote it/);
+});
+
 test('facts that a skill states, or that an eval tests and a source backs, pass', (t) => {
   const root = tree(t, plugin({
     'plugins/p/facts.yaml': `${fact()}\n${fact({ id: 'g', usedBy: ['evals/one-case/task.md'] })}\n${fact({ id: 'h', source: '' })}\n`,
@@ -60,6 +70,17 @@ test('a fact without a consumer, with a missing file, or outside the skills with
     'no-consumer orphan',
     'missing-file gone',
     'no-source unsourced',
+  ]);
+});
+
+test('a path in used_by that leads out of the plugin is refused, and counts for nothing', (t) => {
+  const root = tree(t, plugin({
+    'CONTRIBUTING.md': 'x',
+    'plugins/p/facts.yaml': fact({ id: 'out', source: '', usedBy: ['skills/../../../CONTRIBUTING.md'] }),
+  }));
+  assert.deepEqual(checkFacts(`${root}/plugins/p`, root).map(({ rule, detail }) => `${rule} ${detail}`), [
+    'missing-file out: skills/../../../CONTRIBUTING.md leads out of the plugin',
+    'no-source out: no skill states it, and it has no source',
   ]);
 });
 

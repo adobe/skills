@@ -15,9 +15,24 @@ export const FACT_KEYS = ['id', 'claim', 'question', 'source', 'used_by'];
 const REQUIRED = ['id', 'claim', 'question'];
 const KEY = /^( {2}|- )([A-Za-z_][\w-]*):(?:\s+(.*))?$/;
 
-function unquote(value) {
+// A scalar on one line: plain, 'single-quoted' or "double-quoted". What else YAML allows
+// there (anchors, aliases, tags, a comment after the value) is refused.
+function scalar(value, fail) {
   const v = value.trim();
-  if (v.length >= 2 && ((v[0] === '"' && v.at(-1) === '"') || (v[0] === "'" && v.at(-1) === "'"))) return v.slice(1, -1);
+  if (v.startsWith('"')) {
+    if (v.length < 2 || !v.endsWith('"')) fail('a double-quoted value that does not end with "');
+    try {
+      return JSON.parse(v);
+    } catch {
+      fail('a double-quoted value with an escape this reader does not know');
+    }
+  }
+  if (v.startsWith("'")) {
+    if (v.length < 2 || !v.endsWith("'") || v.slice(1, -1).replace(/''/g, '').includes("'")) fail("a single-quoted value that does not end with '");
+    return v.slice(1, -1).replace(/''/g, "'");
+  }
+  if (/^[&*!%@`|>]/.test(v)) fail(`a value that starts with ${v[0]}: quote it`);
+  if (/ #|: /.test(v)) fail('a value with ": " or " #" in it: quote it');
   return v;
 }
 
@@ -65,14 +80,17 @@ export function parseFacts(text, name = 'facts.yaml') {
       fact[key] = blockScalar(raw, block);
     } else if (raw === '') {
       const items = [];
-      while (index + 1 < lines.length && /^ {4}- /.test(lines[index + 1])) items.push(unquote(lines[++index].replace(/^ {4}- /, '')));
+      while (index + 1 < lines.length && /^ {4}- /.test(lines[index + 1])) {
+        index += 1;
+        items.push(scalar(lines[index].replace(/^ {4}- /, ''), (message) => fail(index, message)));
+      }
       fact[key] = items;
     } else if (raw === '[]') {
       fact[key] = [];
     } else if (/^[[{]/.test(raw)) {
       fail(index, 'a list is written one item per line; only [] is understood inline');
     } else {
-      fact[key] = unquote(raw);
+      fact[key] = scalar(raw, (message) => fail(index, message));
     }
   }
   const ids = new Set();

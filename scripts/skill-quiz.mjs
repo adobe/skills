@@ -20,7 +20,8 @@
 // The AI review (.github/workflows/ai-review.yml, item 8) asks a small model without tools
 // what a skill says, twice, and denies a line that model knows both times. This asks the
 // same models, with the same system prompt, the questions of facts.yaml (lib/facts.mjs). A
-// fact known in every answer of one model is what the review denies: cut the line. Known
+// fact known in every answer of one model is what the review denies: cut the line, unless
+// it guards an action (AGENTS.md, Security), which stays whatever a model knows. Known
 // in some answers or in part: keep what was missed. Missed: the line earns its place.
 //
 // With AWS_BEARER_TOKEN_BEDROCK (as in CI), the models are called on Bedrock directly, as
@@ -106,7 +107,7 @@ export function factVerdict(byModel) {
   return verdicts.length > 0 && verdicts.every((value) => value === 'missed') ? 'missed' : 'failed';
 }
 
-const ADVICE = { redundant: 'cut the line', 'partly known': 'keep what was missed; the review may say what was known', missed: 'keep', failed: 'ask again' };
+const ADVICE = { redundant: 'cut the line, unless it guards an action', 'partly known': 'keep what was missed; the review may say what was known', missed: 'keep', failed: 'ask again' };
 
 // ---- the two ways to ask ----
 
@@ -221,7 +222,7 @@ export function markdown({ rows, models, uncovered = [], notes = [] }) {
   const line = (cells) => `| ${cells.join(' | ')} |`;
   const out = [line(['Fact', ...models, 'Verdict']), line(['---', ...models.map(() => '---'), '---'])];
   for (const row of rows) out.push(line([`\`${row.fact}\``, ...models.map((model) => row.marks[model] || '—'), `${row.verdict}: ${row.advice}`]));
-  out.push('', '✓ known, ~ partly known, ✗ missed, ! failed. A fact one model knew every time is what the AI review denies.');
+  out.push('', '✓ known, ~ partly known, ✗ missed, ! failed. A fact one model knew every time is what the AI review denies, unless its line guards an action (AGENTS.md, Security): such a line stays, whatever a model knows.');
   if (uncovered.length > 0) out.push('', 'Changed, and named by no fact (ask about these lines with --ask):', ...uncovered.map((file) => `- ${file}`));
   for (const note of notes) out.push('', note);
   return out.join('\n');

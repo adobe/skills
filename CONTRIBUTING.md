@@ -92,7 +92,7 @@ node scripts/check-facts.mjs     # facts name files that exist
 node scripts/skill-quiz.mjs plugins/<your plugin> --changed main...HEAD
 ```
 
-`skill-quiz.mjs` asks the models and the system prompt of the AI review's baseline the questions of the facts your change touches, twice, and has a model of another vendor grade the answers. A fact one model knew both times is a line the review denies. It also lists the changed skill files that no fact names: ask about a line with `--ask "<question>"`. It runs on `AWS_BEARER_TOKEN_BEDROCK`, or with Claude Code signed in (`--auth-home "$HOME"`), where only Claude models answer.
+`skill-quiz.mjs` asks the models and the system prompt of the AI review's baseline the questions of the facts your change touches, twice, and has a model of another vendor grade the answers. A fact one model knew both times is a line the review denies, unless the line guards an action: that stays. It also lists the changed skill files that no fact names: ask about a line with `--ask "<question>"`. It runs on `AWS_BEARER_TOKEN_BEDROCK`, or with Claude Code signed in (`--auth-home "$HOME"`), where only Claude models answer.
 
 ## Plugins
 

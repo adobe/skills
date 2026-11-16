@@ -49,7 +49,7 @@ test('each answer is graded by a model of another vendor, and the table says wha
   assert.ok(asked.filter((entry) => entry.system === SYSTEM).every((entry) => entry.prompt === 'question a?'));
   assert.equal(rows[0].verdict, 'redundant');
   assert.deepEqual(rows[0].marks, { 'global.anthropic.claude-haiku-5-5': '✓✓', 'global.openai.gpt-5.6-luna': '✗✗' });
-  assert.match(markdown({ rows, models: BEDROCK.models }), /\| `a` \| ✓✓ \| ✗✗ \| redundant: cut the line \|/);
+  assert.match(markdown({ rows, models: BEDROCK.models }), /\| `a` \| ✓✓ \| ✗✗ \| redundant: cut the line, unless it guards an action \|/);
 });
 
 test('a judge without a grade is asked once more, then the ask counts as failed', async () => {
