@@ -1,0 +1,35 @@
+.testimonial {
+  display: grid;
+  gap: 16px;
+  padding: 24px;
+  border-left: 4px solid var(--link-color);
+}
+
+.testimonial .testimonial-quote {
+  font-size: var(--body-font-size-m);
+  overflow-wrap: anywhere;
+}
+
+.testimonial .testimonial-person {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.testimonial .testimonial-avatar img {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.testimonial.dark {
+  background: var(--dark-color);
+  color: var(--background-color);
+}
+
+@media (width >= 900px) {
+  .testimonial {
+    padding: 40px;
+  }
+}
