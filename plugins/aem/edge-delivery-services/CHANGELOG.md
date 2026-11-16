@@ -1,5 +1,12 @@
 # Changelog
 
+# [1.3.0](https://github.com/adobe/skills/compare/plugin/aem-edge-delivery-services/v1.2.0...plugin/aem-edge-delivery-services/v1.3.0) (2026-11-16)
+
+
+### Features
+
+* **aem-edge-delivery-services:** make create-site work for Source Bus sites ([#708](https://github.com/adobe/skills/issues/708)) ([dfe6c51](https://github.com/adobe/skills/commit/dfe6c51163a549729d0b69433be21521fb8c7528))
+
 # [1.2.0](https://github.com/adobe/skills/compare/plugin/aem-edge-delivery-services/v1.1.0...plugin/aem-edge-delivery-services/v1.2.0) (2026-11-16)
 
 
