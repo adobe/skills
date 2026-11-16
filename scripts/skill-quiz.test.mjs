@@ -100,13 +100,15 @@ test('without credentials the script says what it needs and exits 3', (t) => {
 test('--ask goes through Claude Code with no tools and the review\'s system prompt', (t) => {
   const root = tree(t, { 'plugins/p/plugin.json': '{}' });
   const log = join(root, 'args.txt');
-  const path = fakeBin(t, { claude: `for a in "$@"; do printf '%s\\n' "$a"; done >> "${log}"; echo '{"result":"use node -v","is_error":false}'` });
-  const result = run(t, 'skill-quiz.mjs', ['plugins/p', '--ask', 'Which Node is active?', '-n', '1'], { cwd: root, env: { PATH: path, ANTHROPIC_API_KEY: 'key-for-tests' } });
+  const asked = join(root, 'stdin.txt');
+  const path = fakeBin(t, { claude: `for a in "$@"; do printf '%s\\n' "$a"; done >> "${log}"; cat >> "${asked}"; echo '{"result":"use node -v","is_error":false}'` });
+  const result = run(t, 'skill-quiz.mjs', ['plugins/p', '--ask=-h Which Node is active?', '-n', '1'], { cwd: root, env: { PATH: path, ANTHROPIC_API_KEY: 'key-for-tests' } });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /## haiku #1\n\nuse node -v/);
   const args = readFileSync(log, 'utf8').split('\n');
   assert.equal(args[args.indexOf('--tools') + 1], '');
   assert.equal(args[args.indexOf('--system-prompt') + 1], SYSTEM);
-  assert.equal(args[args.indexOf('-p') + 1], 'Which Node is active?');
+  assert.ok(!args.some((arg) => arg.includes('Which Node')), 'the question is not an argument');
+  assert.match(readFileSync(asked, 'utf8'), /^-h Which Node is active\?/);
   assert.doesNotMatch(result.stdout + result.stderr, /key-for-tests/);
 });

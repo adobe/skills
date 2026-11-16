@@ -165,8 +165,9 @@ export function claudeAsker({ bin, authHome, env = process.env }) {
       }
       const childEnv = { PATH: env.PATH, HOME: home, TMPDIR: env.TMPDIR ?? '/tmp', LANG: 'C.UTF-8', TERM: 'dumb', NO_COLOR: '1', CI: '1' };
       if (env.ANTHROPIC_API_KEY) childEnv.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY;
-      const ran = spawnSync(bin, ['-p', prompt, '--tools', '', '--system-prompt', system, '--model', model, '--output-format', 'json', '--max-turns', '1'], {
-        cwd: work, env: childEnv, encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
+      // the question on stdin: as an argument, one that starts with - would be read as a flag
+      const ran = spawnSync(bin, ['-p', '--tools', '', '--system-prompt', system, '--model', model, '--output-format', 'json', '--max-turns', '1'], {
+        cwd: work, env: childEnv, input: prompt, encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
       });
       let result;
       try {
