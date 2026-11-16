@@ -76,9 +76,18 @@ function runOnce({ bin, args, cwd, env, timeout, watch, transcript }) {
       }
     });
     child.stderr.on('data', (chunk) => { stderr += chunk; });
+    // when Claude Code exits, whatever it started and left behind (a dev server, a watcher)
+    // goes with it; such a process may hold the pipes, so they are closed after a moment
+    child.on('exit', () => {
+      clearTimeout(timer);
+      signal('SIGKILL');
+      setTimeout(() => {
+        child.stdout.destroy();
+        child.stderr.destroy();
+      }, 1000).unref();
+    });
     child.on('close', (status) => {
       clearTimeout(timer);
-      // whatever the run started and left behind (a dev server, a watcher) goes with it
       signal('SIGKILL');
       writeFileSync(transcript, stdout);
       done({ status, stopped, stderr });

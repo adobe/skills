@@ -34,7 +34,8 @@ function read(input, skills) {
 
 // A watcher to feed the stream to as it comes. feed() returns why the run can stop, or null.
 // Claude Code may send one message of the agent as several events, one per block, with the
-// same message id: a turn is a message, not an event. A subagent's messages are not turns.
+// same message id: a turn is a message, not an event. A subagent's messages are not turns
+// of the agent, but what the subagent loads or writes counts as the run's.
 export function watcher(skillNames, { keepGoing = false } = {}) {
   const skills = new Set(skillNames);
   const loaded = [];
@@ -43,8 +44,8 @@ export function watcher(skillNames, { keepGoing = false } = {}) {
   let buffer = '';
   let reason = null;
   const handle = (event) => {
-    if (event?.type !== 'assistant' || event.parent_tool_use_id) return;
-    messages.add(event.message?.id ?? `event-${messages.size}`);
+    if (event?.type !== 'assistant') return;
+    if (!event.parent_tool_use_id) messages.add(event.message?.id ?? `event-${messages.size}`);
     const turns = messages.size;
     for (const block of event.message?.content ?? []) {
       if (block?.type !== 'tool_use') continue;

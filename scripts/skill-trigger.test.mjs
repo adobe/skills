@@ -65,7 +65,7 @@ test('a watcher stops at the first skill or the first write, unless told to keep
   assert.deepEqual(going.result().loaded, ['one']);
 });
 
-test('a turn is a message of the agent, sent in one event or several; a subagent\'s messages are not turns', () => {
+test('a turn is a message of the agent, sent in one event or several; a subagent\'s loads count, its messages are not turns', () => {
   const block = (id, ...content) => JSON.stringify({ type: 'assistant', message: { id, content } });
   const watch = watcher(SKILLS, { keepGoing: true });
   watch.feed([
@@ -76,7 +76,7 @@ test('a turn is a message of the agent, sent in one event or several; a subagent
     block('m2', tool('Grep', { path: '/repo/plugins/p/skills/two/SKILL.md' })),
     '',
   ].join('\n'));
-  assert.deepEqual(watch.result(), { loaded: ['one'], order: [{ skill: 'one', turn: 1 }], turns: 2, stopped: 'finished' });
+  assert.deepEqual(watch.result(), { loaded: ['one', 'two'], order: [{ skill: 'one', turn: 1 }, { skill: 'two', turn: 1 }], turns: 2, stopped: 'finished' });
 });
 
 test('a scenario tests the skill with the longest name it starts with', () => {
@@ -158,4 +158,18 @@ test('the runner says what it needs without credentials, and exits 3', (t) => {
   const result = run(t, 'skill-trigger.mjs', ['--plugin', 'plugins/p', '--queries', 'plugins/p/trigger-queries/one.json', '--bin', bin], { cwd: root });
   assert.equal(result.status, 3);
   assert.match(result.stderr, /AWS_BEARER_TOKEN_BEDROCK/);
+});
+
+test('a run that leaves a process behind holding the pipes ends when Claude Code exits', (t) => {
+  const root = tree(t, {
+    'plugins/p/plugin.json': JSON.stringify({ name: 'p', version: '1.0.0' }),
+    'plugins/p/skills/one/SKILL.md': '---\nname: one\ndescription: d\n---\n',
+    'plugins/p/trigger-queries/one.json': JSON.stringify({ queries: [{ id: 'q', query: 'q', should_trigger: false, skill: 'one' }] }),
+  });
+  const bin = fakeBin(t, { claude: `(trap '' TERM; sleep 30) &\necho '{"type":"result","result":"done","num_turns":1}'\nexit 0` }).split(delimiter)[0];
+  const started = Date.now();
+  const result = run(t, 'skill-trigger.mjs', ['--plugin', 'plugins/p', '--queries', 'plugins/p/trigger-queries/one.json', '-n', '1', '--timeout', '20', '--bin', bin], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(Date.now() - started < 10000, 'the run did not wait for the process it left behind');
+  assert.match(result.stderr, /q #1: none \(finished\)/);
 });
