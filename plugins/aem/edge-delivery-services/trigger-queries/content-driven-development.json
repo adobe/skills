@@ -1,6 +1,6 @@
 {
   "name": "content-driven-development trigger queries",
-  "description": "Should trigger for any EDS code change (blocks, CSS, core scripts); near misses are authoring, import, review, docs, setup and config.",
+  "description": "Should trigger when building a new block or changing what authors put into an existing block (rows, cells, variants, table structure); near misses are code-only changes that keep the authored structure (building-blocks), authoring, import, review, docs, setup and config.",
   "fixture": {
     "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
     "ref": "5cea543707db900c92014b0bba93564fe325b9e4",
