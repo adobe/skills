@@ -1,3 +1,5 @@
+## [2.0.5](https://github.com/adobe/skills/compare/content-driven-development-v2.0.4...content-driven-development-v2.0.5) (2026-11-16)
+
 ## [2.0.4](https://github.com/adobe/skills/compare/content-driven-development-v2.0.3...content-driven-development-v2.0.4) (2026-11-15)
 
 
