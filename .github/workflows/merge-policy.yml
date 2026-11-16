@@ -2,7 +2,7 @@ name: Merge Policy
 
 # Applies the merge policy of CONTRIBUTING.md to the open pull requests, every hour:
 # - an agent's pull request (without the `human` label) that left a finding of the AI review
-#   unanswered for 24 hours is turned into a draft;
+#   unanswered for 24 hours is closed;
 # - a pull request that waited a week for its code owners gets the `takeover` label, and
 #   loses it when an owner acts.
 # It reads the pull requests and runs nothing from them: the script comes from main.
@@ -21,9 +21,7 @@ on:
         default: true
 
 permissions:
-  # convertPullRequestToDraft is refused to a token without contents: write
-  # (https://github.com/cli/cli/issues/8910). The job runs only the script from main.
-  contents: write
+  contents: read
   issues: write
   pull-requests: write
   statuses: read

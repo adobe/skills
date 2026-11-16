@@ -24,11 +24,23 @@ Don't open a public issue for a vulnerability. See [SECURITY.md](SECURITY.md).
 
 - Check the [open issues](https://github.com/adobe/skills/issues) and [pull requests](https://github.com/adobe/skills/pulls) for work that overlaps with yours.
 - For a new plugin, or a change that spans plugins, open an issue first and describe what you plan. The owners of the area are in [CODEOWNERS](.github/CODEOWNERS).
-- Read [AGENTS.md](AGENTS.md). It holds the rules for skills, plugins and pull requests, for people and for coding agents alike.
+- Read [AGENTS.md](AGENTS.md): the rules that catch people and agents out, in short. This file has them in full.
 
 ## Writing Skills
 
-A skill follows the [Agent Skills specification](https://agentskills.io): a folder with a `SKILL.md` whose frontmatter has `name`, `description` and `license: Apache-2.0`. It lives in a plugin, at `plugins/<plugin>/skills/<skill>/` (AEM, Commerce and Creative Cloud plugins are one level deeper). [AGENTS.md](AGENTS.md) says what makes a skill good and what a new plugin needs.
+A skill follows the [Agent Skills specification](https://agentskills.io): a folder with a `SKILL.md` whose frontmatter has `name`, `description` and `license: Apache-2.0`. It lives in a plugin, at `plugins/<plugin>/skills/<skill>/` (AEM, Commerce and Creative Cloud plugins are one level deeper), with optional `references/`, `scripts/` and `assets/` next to it.
+
+### What goes in a skill
+
+- `name` is the directory name. Don't reuse a skill name that another plugin already has: GitHub Copilot CLI exposes skills under their bare name, so two installed plugins with a same-named skill are ambiguous.
+- The `description` is what an agent reads to decide whether to load the skill. Say what the skill does and when to use it, in words a user would use. Don't describe a skill so broadly that it loads for tasks it adds nothing to.
+- Keep `SKILL.md` short: what a capable agent gets wrong without it, not general practice. Put detail in `references/` and link it by a path that exists. Don't grow a `SKILL.md` past 500 lines.
+- The AI review tests that. It asks a small model without tools, files or web access, which has not read the skill, the questions the skill answers. What that model gets right by itself, twice, doesn't belong in a skill: the review names each such line and denies the pull request until the line is gone or cut down to what the model missed. A line that guards an action (see [Security in AGENTS.md](AGENTS.md#security)) is not redundant, whatever the small model knows: it stays.
+- Every path, command, flag, tool name and other skill that a skill names must exist. A skill that routes to something that isn't there fails at the worst moment.
+- Write for any agent harness unless the plugin says it needs one. Don't name a harness's tools or slash commands where a plain instruction does.
+- State facts about Adobe products that you checked against the product or its documentation. Version-specific behaviour says which version.
+- A version number in a skill goes stale. Renovate keeps these current in skills and their assets: GitHub Actions written as `owner/repo@version`, jsDelivr and cdnjs URLs, and `npx pkg@1.2.3` or `npm install pkg@1.2.3`. For any other version, put a comment with `renovate: datasource=<datasource> depName=<name>` on the line above it. If a version is pinned on purpose, say why next to it and disable it in `renovate.json`.
+- A plugin that has `evals/` gets a scenario for behaviour you add or change. A claim that a skill helps is a claim an eval can check.
 
 ### How long a skill may be
 
@@ -53,15 +65,38 @@ node scripts/check-skills.mjs --tokens plugins/<your plugin>   # each skill's to
 
 Many skills are over their limit today. Nobody has to fix a skill they don't touch: the `boy-scout` check fails a pull request only when it changes a `SKILL.md` that is over its limit, also when it adds one. Then the fix comes with the change: an eval, or a shorter `SKILL.md` with the detail in `references/`.
 
+## Plugins
+
+`plugins/<plugin>/`, or `plugins/<product>/<plugin>/` for AEM, Commerce and Creative Cloud, is one installable plugin. Its manifest is the root `plugin.json` of [Agent Plugins](https://agent-plugins.org), with `mcp.json` next to it for MCP servers. [x927](https://github.com/ai-ecoverse/x927) generates `.claude-plugin/plugin.json`, `.tessl-plugin/plugin.json`, `.cursor-plugin/plugin.json` and `.mcp.json` from those two. A plugin may also have `hooks/` and `evals/`. `.claude-plugin/marketplace.json` lists the plugins people can install; `README.md` has one row per plugin, and does not list skills.
+
+- A new plugin needs a root `plugin.json`, an entry in `.claude-plugin/marketplace.json`, an entry in `.github/CODEOWNERS` and a row in the plugin table of `README.md`. CI fails without the `plugin.json` or the CODEOWNERS entry.
+- A plugin that needs an MCP server says in its row what the server asks of the client, and gets a row in the README's table of MCP servers: which clients it works with, and which not.
+- The version of a plugin is the same in every manifest that carries it and in its marketplace entry.
+- Edit `plugin.json` and `mcp.json`, not the manifests generated from them, and not the description or version of a marketplace entry. Leave the generated files out of your pull request: after the merge, CI builds them on `main` and pushes them. A pull request that changes a generated file to anything but what the build writes fails. What one client needs beyond the portable fields goes under `extensions["io.github.ai-ecoverse.x927"]` in `plugin.json`: `targets.<client>` for that client's manifest, `marketplace` for the catalog entry.
+- A marketplace file is hand-written apart from those two fields. A new plugin gets its entry there by hand, with `name`, `source` and `category`; the build fills in the rest.
+- Every plugin is published to the Tessl registry as `adobe/<plugin name>`, so every `plugin.json` has `"tessl": { "name": "adobe/<plugin name>", "private": false }` under `extensions["io.github.ai-ecoverse.x927"].targets`. CI fails without it.
+- GitHub Copilot CLI reads the root `plugin.json` in place of the Claude Code manifest, and then loads skills only from the folders directly under `skills/`, and hooks only from `com.github.copilot/hooks/hooks.json`. Claude Code reads hooks from `hooks/hooks.json`. So a plugin with hooks has both files, with the same content, and none inline in a manifest. CI checks that: without its copy, the hook of `adobe-for-developers` that asks before a deletion does not run in Copilot CLI.
+- Google Antigravity reads the root `plugin.json` as well (checked with its CLI 1.5.9). It takes hooks only from `hooks.json` at the plugin root and MCP servers only from `mcp_config.json`. The plugins here have neither, so in Antigravity a plugin is its skills, and a hook that guards an action does not run there. It loads the first 24,000 bytes of a `SKILL.md` body and drops the rest.
+- A plugin's skills are the folders directly under `skills/`. No client looks below them, so a `SKILL.md` deeper down is a skill nobody can load. Move it up, or make it a reference that its parent skill links.
+- A plugin brought in from another repository brings its `plugin.json`, `mcp.json`, skills and hooks, not the generated manifests, and has its version from there: the Commerce plugins (from `adobe/aio-commerce-sdk`), `adobe-for-creativity` and the skill of `run-workflow`. Change those in their own repository, not here.
+
 ## Quality Checks
 
 Run the local checks before you open a pull request:
 
 ```bash
 npm ci
-npm run validate
-node scripts/check-release-configs.mjs
+npm run validate                       # every SKILL.md against the agentskills.io specification
+node scripts/check-release-configs.mjs # release configs point at files that exist
+npm test                               # when you touch scripts/: the workflows run these scripts
+npm run plugins:check                  # when you touch a plugin.json, mcp.json or a manifest
+npm run plugins:build                  # to see what CI will build from them; no need to commit it
+npm run lint:stardust                  # when you touch plugins/stardust; after a change to its
+                                       # plugin.json, run plugins:build first, as CI does
+(cd plugins/web/cli && npm ci && npm run lint && npm test)  # when you touch plugins/web/cli
 ```
+
+When you add a plugin, a hook or an MCP server, test-drive it as well (below).
 
 CI runs these on every pull request:
 
@@ -72,7 +107,7 @@ CI runs these on every pull request:
 | Validate Skills | `npm run plugins:check`: the pull request leaves alone the files that `x927` generates from each plugin's root `plugin.json` and `mcp.json` (the Claude Code, Tessl and Cursor manifests, `.mcp.json`, and the description and version of marketplace entries). Change `plugin.json`; after the merge, the Release workflow builds the generated files on `main` and pushes them. |
 | Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |
 | Plugin Test Drive | Installs each changed plugin into Claude Code, Codex, Grok and Google Antigravity, each with an empty home directory, and reports the skills, MCP servers and hooks the client then lists. It fails when a client can't install the plugin or loads fewer skills than the plugin has. No sign-in and no model is involved. |
-| AI Review | Claude and Codex review the pull request against [AGENTS.md](AGENTS.md) and leave a verdict, a summary and line comments. They get the result of the test drive, and can run a task in an agent with the plugin and without it to see what a changed skill does. Drafts are not reviewed. |
+| AI Review | Claude and Codex review the pull request against [AGENTS.md](AGENTS.md) and this file, and leave a verdict, a summary and line comments. They get the result of the test drive, and can run a task in an agent with the plugin and without it to see what a changed skill does. Drafts are not reviewed. |
 | Conventional Commits | At least one commit of the pull request follows [Conventional Commits](https://www.conventionalcommits.org). |
 | Adobe CLA | You have signed the CLA. |
 | Tessl Skill Eval | Only on request, see below. |
@@ -129,19 +164,19 @@ It prints both answers and the files each run wrote or removed. `--scenario plug
 
 This project uses a **commit then review** process: the code owners of a plugin can merge changes to it once the checks pass, and others review afterwards. For other contributors, a code owner of the plugin has to approve the pull request. The code owners of each path are in [CODEOWNERS](.github/CODEOWNERS); the maintainers are the owners of `/.github/` there.
 
-- **Drafts are not merged.** Not by a code owner, not by a maintainer. A draft is yours to work on: mark it ready for review when it is.
+- **Drafts are not merged.** Not by a code owner, not by a maintainer. A draft is yours to work on, and the AI review skips it: mark it ready for review when it is.
 - **Contributions are written by agents, unless they say otherwise.** A pull request is taken to be an agent's unless it has the `human` label. Set it when a person wrote the change. If you can't set labels, say so in the description and a maintainer will add it.
-- **An agent answers its review within 24 hours.** The AI review leaves a verdict for each reviewer and comments on lines. On an agent's pull request, each denial and each line comment is answered within 24 hours of the review: push a fix, or reply where you disagree. After that the pull request is turned into a draft. Push the fix and mark it ready for review: that runs the review again, and starts the 24 hours again.
-- **Code owners act within a week.** Within a week of a pull request being opened or marked ready for review, one of its code owners reviews it, comments on it, pushes to it, merges it or closes it, and again within a week of the last time one did. Otherwise the pull request gets the `takeover` label.
+- **An agent answers its review within 24 hours.** The AI review leaves a verdict for each reviewer and comments on lines. On an agent's pull request, each denial and each line comment is answered within 24 hours of the review: push a fix, or reply where you disagree. After that the pull request is closed. Push the fix and reopen it, or open a new one: that runs the review again, and starts the 24 hours again. Marking a draft ready for review starts them again too.
+- **Code owners act within a week.** Within a week of a pull request being opened, reopened or marked ready for review, one of its code owners reviews it, comments on it, pushes to it, merges it or closes it, and again within a week of the last time one did. Otherwise the pull request gets the `takeover` label.
 - **Then maintainers take over.** A maintainer may close, merge or change a pull request with the `takeover` label, without waiting for its code owners. The label goes when a code owner acts on it again.
 
-The [Merge Policy workflow](.github/workflows/merge-policy.yml) applies the last three rules every hour: it turns overdue pull requests into drafts and sets the `takeover` label, each with a comment that says why, and removes the label when an owner acts. It leaves drafts and the pull requests of bots (Renovate, the release) alone. For pull requests that were open when the policy started, the 24 hours and the week count from 17 November 2026. To see what it would do:
+The [Merge Policy workflow](.github/workflows/merge-policy.yml) applies the last three rules every hour: it closes overdue pull requests and sets the `takeover` label, each with a comment that says why, and removes the label when an owner acts. It leaves drafts and the pull requests of bots (Renovate, the release) alone. For pull requests that were open when the policy started, the 24 hours and the week count from 17 November 2026. To see what it would do:
 
 ```bash
 GH_TOKEN=… node scripts/pr-policy.mjs    # --pr <number> for one pull request, --now <date> for later, --apply to act
 ```
 
-A line comment counts as answered when it is resolved, when a change to its line made it outdated, or when a person replied to it. Feedback is given in writing, on GitHub.
+A line comment counts as answered when it is resolved, when a change to its line made it outdated, or when a person replied to it. An owner's push counts when GitHub saw it, a force push included. Feedback is given in writing, on GitHub.
 
 ## Releases
 

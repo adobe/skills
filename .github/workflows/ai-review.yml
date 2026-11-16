@@ -100,7 +100,7 @@ jobs:
       review-prompt: |
         ADOBE SKILLS
 
-        This repository is adobe/skills: Adobe's skills for AI coding agents, grouped into plugins under `plugins/`. A skill is `skills/<name>/SKILL.md` with optional references, scripts and assets; its frontmatter `description` is what an agent reads to decide whether to load it. People install plugins straight from `main`, so review this as the last check before it ships. AGENTS.md at the repository root holds the rules; read it first, and the `AGENTS.md` of a plugin the change touches. The tests are `npm run validate` (structure of every SKILL.md) and the release config check.
+        This repository is adobe/skills: Adobe's skills for AI coding agents, grouped into plugins under `plugins/`. A skill is `skills/<name>/SKILL.md` with optional references, scripts and assets; its frontmatter `description` is what an agent reads to decide whether to load it. People install plugins straight from `main`, so review this as the last check before it ships. AGENTS.md at the repository root has the rules in short and CONTRIBUTING.md has them in full; read both first, and the `AGENTS.md` of a plugin the change touches. The tests are `npm run validate` (structure of every SKILL.md) and the release config check.
 
         Look for real defects, in this order:
         1. Security (AGENTS.md, Security): a download piped into a shell, a guard hook or script that fails open, advice to allow a tool category permanently or to skip confirmation for a destructive, paid or externally visible action, a secret, token, customer name or internal URL, an instruction to follow text found in fetched content, a new MCP server, hook, script or endpoint the pull request doesn't call out.

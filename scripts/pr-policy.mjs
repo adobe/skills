@@ -2,7 +2,7 @@
 //
 // - An agent's pull request (any without the `human` label) whose head commit the AI review
 //   denied, or that has a line comment of the AI review nobody answered, more than 24 hours
-//   ago, is turned into a draft, with a comment that says why. Drafts are not merged.
+//   ago, is closed, with a comment that says why. Its author can fix it and reopen it.
 // - A pull request that is ready for review and that none of its code owners has reviewed,
 //   commented on or pushed to for a week gets the `takeover` label: a maintainer may now
 //   close, merge or change it. The label goes once an owner acts again.
@@ -63,16 +63,19 @@ export function ownersOf(rules, paths) {
   return [...owners];
 }
 
+// events that put a pull request back in front of its reviewers and start the clocks again
+const RESTART = ['ReadyForReviewEvent', 'ReopenedEvent'];
 const isBot = (actor) => !actor || actor.__typename === 'Bot' || /\[bot\]$/.test(actor.login);
 const latest = (dates) => dates.filter(Boolean).map((date) => new Date(date).getTime()).reduce((a, b) => Math.max(a, b), -Infinity);
 
 // What the AI review left unanswered on a pull request, and since when. A denial counts
 // for the head commit only: a push gets a new review. A line comment counts until it is
 // resolved, outdated by a change to its line, or answered by a person. The clock starts
-// again when the pull request is marked ready for review, which also runs the review again.
+// again when the pull request is reopened or marked ready for review, which also runs the
+// review again.
 export function openFindings(pr, { start = POLICY_START } = {}) {
   const found = [];
-  const ready = latest(pr.timelineItems.nodes.filter(({ __typename }) => __typename === 'ReadyForReviewEvent').map(({ createdAt }) => createdAt));
+  const ready = latest(pr.timelineItems.nodes.filter(({ __typename }) => RESTART.includes(__typename)).map(({ createdAt }) => createdAt));
   const since = (date) => Math.max(new Date(date).getTime(), ready, start);
   const contexts = pr.commits.nodes[0]?.commit.status?.contexts ?? [];
   for (const reviewer of REVIEWERS) {
@@ -91,18 +94,20 @@ export function openFindings(pr, { start = POLICY_START } = {}) {
   return found;
 }
 
-// Since when a pull request has waited for its code owners: when it was opened or last
-// marked ready for review, or when an owner last reviewed, commented or pushed, whichever
-// is latest. `owners` are logins; a team that could not be resolved is `anyone`, and then
+// Since when a pull request has waited for its code owners: when it was opened, reopened or
+// last marked ready for review, or when an owner last reviewed, commented or pushed,
+// whichever is latest. A commit carries the date its committer gave it, so one from the
+// future counts as now; a force push counts when GitHub saw it. `owners` are logins; a team that could not be resolved is `anyone`, and then
 // any person but the author counts.
-export function waitingSince(pr, { owners, anyone = false, start = POLICY_START }) {
+export function waitingSince(pr, { owners, anyone = false, start = POLICY_START, now = Date.now() }) {
   const owner = (actor) => !isBot(actor) && (owners.includes(actor.login.toLowerCase()) || (anyone && actor.login !== pr.author.login));
   const times = [pr.createdAt, start];
   for (const item of pr.timelineItems.nodes) {
-    if (item.__typename === 'ReadyForReviewEvent') times.push(item.createdAt);
+    if (RESTART.includes(item.__typename)) times.push(item.createdAt);
+    if (item.__typename === 'HeadRefForcePushedEvent' && owner(item.actor)) times.push(item.createdAt);
     if (item.__typename === 'IssueComment' && owner(item.author)) times.push(item.createdAt);
     if (item.__typename === 'PullRequestReview' && owner(item.author)) times.push(item.submittedAt);
-    if (item.__typename === 'PullRequestCommit' && owner(item.commit.author?.user)) times.push(item.commit.committedDate);
+    if (item.__typename === 'PullRequestCommit' && owner(item.commit.author?.user)) times.push(Math.min(new Date(item.commit.committedDate).getTime(), now));
   }
   for (const thread of pr.reviewThreads.nodes) {
     for (const comment of thread.comments.nodes) if (owner(comment.author)) times.push(comment.createdAt);
@@ -119,11 +124,11 @@ export function decide(pr, { now, owners, anyone = false, start = POLICY_START }
   if (!labels.includes(HUMAN)) {
     const overdue = openFindings(pr, { start }).filter(({ since }) => now - since > REVIEW_DEADLINE);
     if (overdue.length) {
-      actions.push({ type: 'draft', findings: overdue });
+      actions.push({ type: 'close', findings: overdue });
       return { actions, notes: [`${overdue.length} review finding(s) open for more than 24 hours`] };
     }
   }
-  const since = waitingSince(pr, { owners, anyone, start });
+  const since = waitingSince(pr, { owners, anyone, start, now });
   const waited = now - since;
   if (waited > OWNER_DEADLINE && !labels.includes(TAKEOVER)) actions.push({ type: 'label', since });
   if (waited <= OWNER_DEADLINE && labels.includes(TAKEOVER)) actions.push({ type: 'unlabel' });
@@ -133,14 +138,14 @@ export function decide(pr, { now, owners, anyone = false, start = POLICY_START }
 
 const policy = (repo) => `${process.env.GITHUB_SERVER_URL || 'https://github.com'}/${repo}/blob/main/CONTRIBUTING.md#merge-policy`;
 
-export function draftComment(findings, repo) {
+export function closeComment(findings, repo) {
   return [
     MARKER.review,
-    `This pull request is now a draft: the AI review raised ${findings.length === 1 ? 'a finding' : 'findings'} more than 24 hours ago that nobody has answered.`,
+    `Closed: the AI review raised ${findings.length === 1 ? 'a finding' : 'findings'} more than 24 hours ago that nobody has answered.`,
     '',
     ...findings.map(({ what }) => `- ${what}`),
     '',
-    `Push a fix, or reply to a line comment where you disagree, then mark the pull request ready for review: that runs the review again. A pull request written by a person rather than an agent gets the \`${HUMAN}\` label, and this rule does not apply to it. See [the merge policy](${policy(repo)}).`,
+    `Push a fix, or reply to a line comment where you disagree, then reopen the pull request, or open a new one: that runs the review again. A pull request written by a person rather than an agent gets the \`${HUMAN}\` label, and this rule does not apply to it. See [the merge policy](${policy(repo)}).`,
   ].join('\n');
 }
 
@@ -154,7 +159,7 @@ export function takeoverComment(owners, repo) {
 
 // --- GitHub ---
 
-const QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+export const QUERY = `query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
       id number title url isDraft createdAt headRefOid
@@ -164,10 +169,12 @@ const QUERY = `query($owner: String!, $name: String!, $number: Int!) {
       reviewThreads(first: 100) {
         nodes { isResolved isOutdated comments(first: 30) { nodes { author { __typename login } body path line originalLine createdAt } } }
       }
-      timelineItems(last: 200, itemTypes: [READY_FOR_REVIEW_EVENT, ISSUE_COMMENT, PULL_REQUEST_REVIEW, PULL_REQUEST_COMMIT]) {
+      timelineItems(last: 100, itemTypes: [READY_FOR_REVIEW_EVENT, REOPENED_EVENT, HEAD_REF_FORCE_PUSHED_EVENT, ISSUE_COMMENT, PULL_REQUEST_REVIEW, PULL_REQUEST_COMMIT]) {
         nodes {
           __typename
           ... on ReadyForReviewEvent { createdAt }
+          ... on ReopenedEvent { createdAt }
+          ... on HeadRefForcePushedEvent { createdAt actor { __typename login } }
           ... on IssueComment { createdAt author { __typename login } }
           ... on PullRequestReview { submittedAt author { __typename login } }
           ... on PullRequestCommit { commit { committedDate author { user { __typename login } } } }
@@ -279,11 +286,11 @@ async function main() {
       const { actions, notes } = decide(pr, { now, owners, anyone });
       const did = [];
       for (const action of actions) {
-        if (action.type === 'draft') {
-          did.push('turned into a draft');
+        if (action.type === 'close') {
+          did.push('closed');
           if (!apply) continue;
-          await gh.graphql('mutation($id: ID!) { convertPullRequestToDraft(input: { pullRequestId: $id }) { clientMutationId } }', { id: pr.id });
-          await gh.call('POST', `repos/${repo}/issues/${number}/comments`, { body: draftComment(action.findings, repo) });
+          await gh.call('POST', `repos/${repo}/issues/${number}/comments`, { body: closeComment(action.findings, repo) });
+          await gh.call('PATCH', `repos/${repo}/pulls/${number}`, { state: 'closed' });
         }
         if (action.type === 'label') {
           did.push(`labelled \`${TAKEOVER}\``);
