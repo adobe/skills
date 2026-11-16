@@ -14,15 +14,11 @@ metadata:
 
 Run `aem up --no-open --forward-browser-logs` unless a server runs already. **aem-cli** covers ports (git worktrees), `./content/` and failures.
 
-## 2. Analyze and plan
-
-Invoke **analyze-and-plan** with the task and any designs or URLs. Write the analysis and the acceptance criteria to a file: step 6 uses them.
-
-## 3. Content model
+## 2. Content model
 
 Skip for changes that keep the authored structure. Otherwise invoke **content-modeling**.
 
-## 4. Test content
+## 3. Test content
 
 - **A. The user gave URLs.** Check that they return 200.
 - **B. New block.** Nothing exists to find, so create it:
@@ -34,13 +30,13 @@ Skip for changes that keep the authored structure. Otherwise invoke **content-mo
   2. For variants or cases it lacks, find real pages that use the block as the **find-test-content** skill describes. It has no script: you list the pages (query index, or `aem content clone --path <folder>` and a search of `./content/`) and check their HTML yourself.
   3. If coverage is still missing, add pages as in B.
 
-## 5. Implement
+## 4. Implement
 
 If the project's content lives in Experience Workspace (DA), read **aem-layout-view** before you write `decorate()`: layout view reruns block code and rebuilds text elements, and a block written without that breaks there.
 
 Then use **building-blocks**, and **testing-blocks** to check the result in a browser and to decide on committed tests.
 
-## 6. Done means
+## 5. Done means
 
 - It is self-contained and works on the authoring surfaces this project uses (layout view in Experience Workspace, `data-aue-*` and the model file in Universal Editor).
 - The content model is semantic and easy for authors, and does not depend on one editor.
@@ -48,7 +44,7 @@ Then use **building-blocks**, and **testing-blocks** to check the result in a br
 - You checked it in a browser at mobile, tablet and desktop widths, with no console errors, and existing variants still work.
 - The library entry shows the happy path only, and edge cases live on other pages.
 
-## 7. Ship
+## 6. Ship
 
 Open a PR whose description has:
 
