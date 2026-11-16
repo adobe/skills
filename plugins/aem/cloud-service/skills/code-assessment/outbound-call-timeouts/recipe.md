@@ -1,6 +1,6 @@
 # Recipe — outbound HTTP calls without a timeout
 
-> Read this fully before editing. Control plane: [SKILL.md](SKILL.md).
+> Read this fully before editing. Control plane: [guide.md](guide.md).
 
 ## Input contract
 
@@ -22,7 +22,7 @@ Per invocation, a deduplicated list of findings — each a client-construction s
 Sources:
 
 1. **User-named** — the user names the Java file(s) directly.
-2. **Discover** — the file/line list is the output of the **Discovery** scan in [`SKILL.md`](SKILL.md).
+2. **Discover** — the file/line list is the output of the **Discovery** scan in [`guide.md`](guide.md).
 
 The per-library recipe and skip policy apply identically in both sources. The `line` + `snippet`
 locate the construction; remediation edits the surrounding builder/configuration, which may span more
@@ -74,6 +74,11 @@ CloseableHttpClient client = HttpClientBuilder.create()
 `HttpClients.createDefault()` has no hook for config — replace it with the `HttpClientBuilder.create()…build()`
 form above. Imports to add: `org.apache.http.client.config.RequestConfig`,
 `org.apache.http.impl.client.HttpClientBuilder` (drop `HttpClients` import if now unused).
+
+`HttpClients.createSystem()` (4.x and 5.x) is `HttpClientBuilder.create().useSystemProperties().build()`.
+Replace it with the builder form above and keep `.useSystemProperties()` in the chain: it carries the
+Java system proxy properties through which AEM as a Cloud Service advanced networking routes HTTP(S)
+traffic (dedicated egress IP). Without it the client bypasses that proxy.
 
 `HttpClients.createMinimal()` (4.x and 5.x) builds a minimal client that has no default `RequestConfig`; it
 only reads the config set on each request. Do not swap it for the builder, which adds
@@ -165,7 +170,7 @@ For each finding (grouped by file):
 2. Identify the library from imports/snippet; pick the matching template.
 3. If a skip condition applies, record the skip and move on — do not partially edit.
 4. Otherwise rewrite the construction surgically: introduce/extend the timeout configuration,
-   switching a config-less factory call (`createDefault()` / `newHttpClient()` / `new OkHttpClient()`)
+   switching a config-less factory call (`createDefault()` / `createSystem()` / `newHttpClient()` / `new OkHttpClient()`)
    to the builder form when needed. Preserve surrounding formatting and comments.
 5. Update imports — add only what the edit uses; drop a factory import only if now unused.
 6. Write the file back.

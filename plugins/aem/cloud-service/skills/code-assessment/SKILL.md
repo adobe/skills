@@ -55,7 +55,7 @@ Route the request to one expert skill. Two pattern families share this skill:
 |---|---|
 | "update aem sdk", "upgrade mockito", stale `<version>` or `${property}` in pom | [`outdated-dependencies/`](outdated-dependencies/SKILL.md) |
 | "fix @Inject", "modernize Sling Models", `javax.inject.Inject` on `@Model` fields | [`inject-in-sling-model/`](inject-in-sling-model/SKILL.md) |
-| "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/SKILL.md) |
+| "add HTTP timeouts", "outbound/external call has no timeout", `HttpClient` / `HttpClients` / `OkHttpClient` built without a timeout | [`outbound-call-timeouts/`](outbound-call-timeouts/guide.md) |
 | "bound my query", "unbounded query", "query causing OOM", `p.limit=-1`, `setLimit(-1)` | [`unbounded-query/`](unbounded-query/SKILL.md) |
 | "query is slow", "traversal warning", "is my query indexed", "tune oak index", index coverage of a JCR/Oak query | [`tuning-oak-query-indexes/`](tuning-oak-query-indexes/SKILL.md) |
 | "can the captcha / login / rate limit be skipped", "test-automation bypass", a cookie, header or parameter named test, debug, bypass or skip read in captcha, auth or rate-limit code | [`request-controlled-security-bypass/`](request-controlled-security-bypass/guide.md) |
