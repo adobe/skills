@@ -26,13 +26,15 @@ test('a model knew a line when every answer knew it, as the review counts it', (
   assert.equal(factVerdict({ a: 'missed', b: 'failed' }), 'failed');
 });
 
-test('--changed keeps the facts about changed files, and names changed skill Markdown no fact covers', () => {
+test('--changed keeps the facts about changed files and directories, and names changed skill Markdown no fact covers', () => {
   const facts = [fact('a'), fact('b', ['skills/two/SKILL.md']), fact('c', ['evals/x/task.md'])];
   const changed = ['plugins/p/skills/one/SKILL.md', 'plugins/p/skills/one/references/new.md', 'plugins/q/skills/two/SKILL.md', 'README.md'];
   const { selected, uncovered } = selectFacts(facts, { changed, pluginPath: 'plugins/p' });
   assert.deepEqual(selected.map((entry) => entry.id), ['a']);
   assert.deepEqual(uncovered, ['skills/one/references/new.md']);
   assert.deepEqual(selectFacts(facts, { patterns: ['b*', 'c'] }).selected.map((entry) => entry.id), ['b', 'c']);
+  const byDir = selectFacts([fact('d', ['evals/x']), fact('e', ['evals/xy/'])], { changed: ['plugins/p/evals/x/task.md'], pluginPath: 'plugins/p' });
+  assert.deepEqual(byDir.selected.map((entry) => entry.id), ['d']);
 });
 
 test('each answer is graded by a model of another vendor, and the table says what to do', async () => {

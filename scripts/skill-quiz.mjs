@@ -169,10 +169,14 @@ export function selectFacts(facts, { patterns = [], changed = null, pluginPath =
   const prefix = pluginPath ? `${pluginPath.replace(/\/$/, '')}/` : '';
   const inPlugin = changed?.filter((file) => file.startsWith(prefix)).map((file) => file.slice(prefix.length));
   const wanted = patterns.map(glob);
+  const names = (path, file) => {
+    const entry = path.replace(/\/+$/, '');
+    return file === entry || file.startsWith(`${entry}/`);
+  };
   const selected = facts.filter((fact) => (wanted.length === 0 || wanted.some((pattern) => pattern.test(fact.id)))
-    && (!inPlugin || fact.used_by.some((path) => inPlugin.includes(path))));
-  const named = new Set(facts.flatMap((fact) => fact.used_by));
-  const uncovered = (inPlugin ?? []).filter((file) => /^skills\/.+\.md$/.test(file) && !named.has(file));
+    && (!inPlugin || fact.used_by.some((path) => inPlugin.some((file) => names(path, file)))));
+  const named = facts.flatMap((fact) => fact.used_by);
+  const uncovered = (inPlugin ?? []).filter((file) => /^skills\/.+\.md$/.test(file) && !named.some((path) => names(path, file)));
   return { selected, uncovered };
 }
 
