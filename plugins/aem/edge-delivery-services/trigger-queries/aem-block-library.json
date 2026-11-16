@@ -1,0 +1,136 @@
+{
+  "name": "aem-block-library trigger queries",
+  "description": "Should trigger when a finished EDS block needs an entry in the author-facing block library (Experience Workspace / DA library or Sidekick Library): finding the library, page, variants, sheet row, library metadata. Near misses are tests against the library page (testing-blocks), finding real pages (find-test-content), building a block (content-driven-development), content models (content-modeling), authoring page HTML (da-content), local draft pages (aem-cli), the Block Collection, and Universal Editor models (ue-component-model).",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  },
+  "queries": [
+    {
+      "id": "y-add-to-da-library",
+      "query": "The `testimonial` block is done. Our authors use Experience Workspace; make sure they can find it and insert it from the editor.",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "y-sidekick-library",
+      "query": "We author in Word with the AEM Sidekick. How do I get the new `accordion` block to show up in the Sidekick Library for authors?",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "y-library-page-variants",
+      "query": "Add the `hero` block with its `dark` and `centered` variants to the block library so authors can see how each looks.",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "y-blocks-sheet-row",
+      "query": "I wrote the library page for `quote` but it doesn't appear in the Blocks panel in the editor. What else do I have to add?",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "y-where-library",
+      "query": "Where does the block library for this project live, and what do I need to create when I ship a new block?",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "y-library-metadata",
+      "query": "Add a short description to each block in our DA block library so authors know when to use it.",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "y-which-library-unknown",
+      "query": "I built a `pricing-table` block. Authors should be able to copy it into a page. Not sure if this project uses the Sidekick Library or the DA library.",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "test"
+    },
+    {
+      "id": "y-library-config-tab",
+      "query": "What goes in the library tab of the site config so that the Blocks entry shows in Experience Workspace?",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "test"
+    },
+    {
+      "id": "y-update-library-after-change",
+      "query": "I added a `compact` variant to the `cards` block. Update the library so authors can pick it.",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "test"
+    },
+    {
+      "id": "y-autoblock-library",
+      "query": "Our `tabs` block is built by auto-blocking from sections. How do I show it in the Sidekick Library so authors can copy it?",
+      "should_trigger": true,
+      "skill": "aem-block-library",
+      "split": "test"
+    },
+    {
+      "id": "n-e2e-against-library",
+      "query": "Write Playwright E2E tests for the `tabs` block that run against its library page.",
+      "should_trigger": false,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "n-find-pages",
+      "query": "Which real pages on the site use the `cards` block? I want to audit usage before restyling it.",
+      "should_trigger": false,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "n-new-block",
+      "query": "Build a new `timeline` block with a variant for compact layout. Follow our normal workflow.",
+      "should_trigger": false,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "n-content-model",
+      "query": "Design the content model for a pricing table block that authors edit in Experience Workspace.",
+      "should_trigger": false,
+      "skill": "aem-block-library",
+      "split": "train"
+    },
+    {
+      "id": "n-author-page-html",
+      "query": "Write the HTML for a DA page with a hero, three cards and a footer fragment link.",
+      "should_trigger": false,
+      "skill": "aem-block-library",
+      "split": "test"
+    },
+    {
+      "id": "n-local-draft",
+      "query": "Make a draft page under ./content/drafts so I can preview my new block on `aem up`.",
+      "should_trigger": false,
+      "skill": "aem-block-library",
+      "split": "test"
+    },
+    {
+      "id": "n-block-collection",
+      "query": "Is there a ready-made accordion block in the Block Collection I can start from?",
+      "should_trigger": false,
+      "skill": "aem-block-library",
+      "split": "test"
+    },
+    {
+      "id": "n-ue-model",
+      "query": "Add the Universal Editor component model for the new `promo` block in our xwalk project.",
+      "should_trigger": false,
+      "skill": "aem-block-library",
+      "split": "test"
+    }
+  ]
+}
