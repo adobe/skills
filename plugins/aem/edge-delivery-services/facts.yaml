@@ -1470,6 +1470,7 @@
   used_by:
     - skills/ue-component-model/SKILL.md
 
+<<<<<<< HEAD
 - id: da-library-setup
   claim: >-
     A DA / Experience Workspace block library is: one document per block under
@@ -1571,3 +1572,186 @@
   source: https://www.aem.live/docs/sidekick-library
   used_by:
     - skills/aem-block-library/SKILL.md
+=======
+- id: lv-bootstrap-requirements
+  claim: >-
+    Experience Workspace layout view renders the page with the site's own
+    code and injects a bootstrap into the first `<script src="/scripts/scripts.js">`
+    in `head.html`; `scripts.js` must define a top-level `loadPage` function
+    (as the boilerplate does). A site that loads its entry script under another
+    name or path, or wraps loadPage, gets no layout view.
+  question: >-
+    A site's head.html loads its entry script as `/scripts/main.js` and
+    Experience Workspace layout view never shows the page. What does layout
+    view need from the site's entry script and head.html?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+
+- id: lv-cors-origin
+  claim: >-
+    Layout view renders on `https://{BRANCH}--{SITE}--{ORG}.preview.da.live`.
+    Off-origin requests the site makes (APIs, fragments from other sites, fonts)
+    must allow that origin in their CORS settings, or they fail in layout view
+    while working on aem.page.
+  question: >-
+    A block fetches JSON from a separate API host and loads a font from another
+    domain. Both work on the .aem.page preview but fail when authors open the
+    page in Experience Workspace layout view. What do you check on those hosts?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/layout-view-broken-block
+
+- id: lv-keep-block-element
+  claim: >-
+    In layout view the block's outer element carries `data-block-index` and its
+    first class is the block name; selection, the block label, the outline and
+    moving or deleting blocks depend on both. decorate() may change the block's
+    children and add classes, but must not replace the block element
+    (`replaceWith`, a new wrapper) or overwrite its classes.
+  question: >-
+    An EDS block's decorate() builds a `<section class="cards">` wrapper and
+    calls `block.replaceWith(wrapper)`. The published page looks right, but in
+    Experience Workspace layout view authors can't select, move or delete the
+    block. Why, and what is the fix?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/layout-view-broken-block
+
+- id: lv-move-dont-copy-text
+  claim: >-
+    Text is editable in layout view only while the original element, with its
+    `data-prose-index`, is still in the page. Copying text into a new element
+    (`textContent`) or unwrapping it from its `<p>` or heading looks the same to
+    readers but can't be edited. Move the authored elements and style them with
+    classes on a wrapper; if an element must be replaced, copy
+    `data-prose-index` onto the replacement.
+  question: >-
+    A cards block's decorate() reads each cell's `h2` text and creates a new
+    `h3` with that text. It renders correctly, yet authors can't edit the card
+    titles inline in Experience Workspace. Why, and how do you keep the titles
+    editable?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/layout-view-broken-block
+
+- id: lv-no-decoration-in-text
+  claim: >-
+    When an author clicks a text element in layout view, the inline editor
+    rebuilds it from the document, so icons, spans or classes that code added
+    inside or on it (list items included) disappear. Decorate a wrapper outside
+    the text element, or use CSS (`::before` on an ancestor's list items).
+  question: >-
+    A block prepends an icon `<span>` into each `h3` and adds a `check` class
+    to every `li`. In Experience Workspace layout view, the icons and classes
+    vanish as soon as an author clicks into the text. Why, and what should the
+    block do instead?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/layout-view-broken-block
+
+- id: lv-no-combinators-on-text
+  claim: >-
+    While an author edits a text element in layout view, it is wrapped in extra
+    `div` elements, so selectors that depend on its parent or siblings (`>`,
+    `+`, `~`, `:first-child` on text) stop matching and the layout shifts while
+    typing. Use descendant selectors (`.hero p`) and mark specific cells with a
+    class from JavaScript.
+  question: >-
+    Block CSS uses `.hero > div > p { font-size: ... }` and `.cards h3 + p {
+    margin-top: 0 }`. In Experience Workspace layout view, the spacing and font
+    size jump while an author types in these paragraphs. What causes it, and
+    how should the selectors be written?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/layout-view-broken-block
+
+- id: lv-image-attributes
+  claim: >-
+    Layout view selects images by click and replaces them by drag and drop using
+    the `data-image-index` and `data-image-version` attributes on the `img`;
+    replacing works only for an `img` inside a `picture`. A block that rebuilds
+    pictures (`createOptimizedPicture`) must copy the `data-image-*` attributes
+    to the new `img`. Don't turn authored images into CSS backgrounds, and have
+    all images in the page when `loadPage()` finishes (not added later from a
+    timer or IntersectionObserver).
+  question: >-
+    A hero block replaces each authored picture with
+    `createOptimizedPicture(img.src, img.alt, false, [{ width: '750' }])` and
+    another block sets the authored image as a CSS background. In Experience
+    Workspace layout view, authors can't click or drag-replace those images.
+    What does the block need to preserve?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/layout-view-broken-block
+
+- id: lv-safe-rerun
+  claim: >-
+    After structural edits (adding or moving a block) layout view replaces the
+    page body and runs `loadPage()` again, so block code and `scripts.js` run
+    again on fresh DOM while global listeners, timers and module-level state
+    from the previous run remain. Scope state to the block, tie listeners to an
+    AbortController and clean up when `block.isConnected` is false, and guard
+    anything in loadEager/loadLazy that adds listeners or elements to
+    `document`, `window` or `head`.
+  question: >-
+    A carousel block starts `setInterval` and a `window` resize listener in
+    decorate() and keeps an `initialized` flag at module level. After authors
+    add or move blocks in Experience Workspace layout view, the page shows
+    duplicate slide advances and stale handlers. Why, and how should the block
+    be written?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/layout-view-broken-block
+
+- id: lv-idempotent-autoblocking
+  claim: >-
+    Auto-blocking (`buildAutoBlocks` or similar in `scripts.js`) runs again on
+    every layout-view re-render, and authors can add the same block by hand, so
+    it must check for an existing block (`main.querySelector('.my-block')`)
+    before adding one; otherwise the page ends up with duplicates.
+  question: >-
+    `buildAutoBlocks` prepends a `lifecycle-badge` block to every page. In
+    Experience Workspace layout view, the page shows two badges after an
+    author edits the page. Why, and what is the fix?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/layout-view-broken-block
+
+- id: lv-test-from-branch
+  claim: >-
+    Layout view loads code from the site's `main` branch. To try a block from
+    another branch before merging, use the developer plugin
+    (https://www.aem.live/docs/ew/developing/developer-plugin), then type into
+    each text field, click and replace each image, and move the block.
+  question: >-
+    You changed a block on a feature branch and want to check it in Experience
+    Workspace layout view before merging. Layout view still shows the old
+    block. Why, and how do you test the branch?
+  source: https://www.aem.live/docs/ew/developing/layout-view
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+    - evals/layout-view-broken-block
+
+- id: ew-formerly-da
+  claim: >-
+    Experience Workspace (EW) is the new name of Document Authoring (DA):
+    the same product (da.live), authoring EDS content as documents. The old
+    name remains in hosts, APIs and tooling (`da.live`, `admin.da.live`,
+    `content.da.live`, `DA_TOKEN`), so the two names are interchangeable.
+  question: >-
+    A site's authors use "Experience Workspace" and the repo's docs mention
+    "DA" and `da.live`. Are these two different authoring products, and how
+    do they relate?
+  source: https://www.aem.live/docs/ew/about
+  used_by:
+    - skills/aem-layout-view/SKILL.md
+>>>>>>> origin/cdd-gap-lv
