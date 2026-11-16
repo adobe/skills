@@ -343,12 +343,11 @@ runs over the same stitched PNGs — no live hit):**
 ## Iteration discipline
 
 **Hard cap: 3 rounds per page, breakpoint and stage** (prototype, published):
-the first round and two fix rounds. A round is a `gate.sh` run that ends in a
-verdict; a PASS right after a PASS (the confirmation) is free. `rounds.mjs`
-keeps the count and `gate.sh` exits 6 on the next round until `rounds.mjs
-decide` records `accept-residual`, `re-prototype` or — a round spent on a
-named instrument defect — `extend`. More loops mean the inputs were wrong
-(values eyeballed instead of lifted, capture unhardened); the fix is upstream.
+the first and two fix rounds. A round is a `gate.sh` run ending in a verdict;
+a PASS right after a PASS is free. `rounds.mjs` counts, and `gate.sh` exits 6
+until `rounds.mjs decide` records `accept-residual`, `re-prototype` or
+`extend` (a round lost to a named instrument defect). More loops mean wrong
+inputs (eyeballed values, unhardened capture); the fix is upstream.
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
 - **Chrome: parity probe first, pixels second.** Before a chrome band's first
@@ -358,21 +357,19 @@ named instrument defect — `extend`. More loops mean the inputs were wrong
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
   no-op (recorded: a padding whose value the EDS section wrapper already
-  carried — the round measured nothing and was burned). The check is free —
-  the count is already on the verdict line; if it didn't move at all, find
-  out why the rule never applied (specificity, wrong selector, value already
-  in effect) before spending another round.
+  carried — the round measured nothing). The count is on the verdict line:
+  if it did not move, find why the rule never applied (specificity, wrong
+  selector, value already in effect) before another round.
 - **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
   One field "parity verified" claim was wrong three ways at once: the probe
   matched a heuristic element ("white column wider than 400px") that wasn't
   the box carrying the lifted rule — always pair the same semantic element
   on both sides (the element the fixed rule targets on the build; the
   element whose source rule was lifted on live); the re-check ran through a
-  CACHED stylesheet (DevTools showed the old rule at its old line number
-  while both hosts already served the fix) — verify serving out-of-band
-  (`curl --compressed <css-url> | grep '<new-rule>'`; the CSS is
-  gzip-encoded, a bare `curl | grep` scans binary and silently matches
-  nothing) and re-render in a fresh headless context; and a reviewer's
+  CACHED stylesheet (DevTools showed the old rule while both hosts
+  served the fix) — verify serving out-of-band
+  (`curl --compressed <css-url> | grep '<new-rule>'`; gzip-encoded: a bare
+  `curl | grep` scans binary and matches nothing) and re-render in a fresh headless context; and a reviewer's
   screenshot encodes their zoom — back-compute their CSS viewport from any
   element with a known percentage rule (a card at 851px under `width: 50%`
   → viewport 1702px) and reproduce THAT viewport headlessly before letting
