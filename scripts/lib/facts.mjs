@@ -31,8 +31,8 @@ function scalar(value, fail) {
     if (v.length < 2 || !v.endsWith("'") || v.slice(1, -1).replace(/''/g, '').includes("'")) fail("a single-quoted value that does not end with '");
     return v.slice(1, -1).replace(/''/g, "'");
   }
-  if (/^[&*!%@`|>]/.test(v)) fail(`a value that starts with ${v[0]}: quote it`);
-  if (/ #|: /.test(v)) fail('a value with ": " or " #" in it: quote it');
+  if (/^[&*!%@`|>#]/.test(v)) fail(`a value that starts with ${v[0]}: quote it`);
+  if (/\s#|:\s/.test(v)) fail('a value with ": " or " #" in it: quote it');
   return v;
 }
 

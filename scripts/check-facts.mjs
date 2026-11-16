@@ -40,8 +40,8 @@ export function checkFacts(plugin, root = plugin) {
     if (fact.used_by.length === 0) found.push({ rule: 'no-consumer', ...where, detail: `${fact.id}: no skill states it and no eval tests it` });
     const paths = [];
     for (const path of fact.used_by) {
-      const inside = normalize(path).split('\\').join('/');
-      if (!path || isAbsolute(path) || inside === '..' || inside.startsWith('../')) found.push({ rule: 'missing-file', ...where, detail: `${fact.id}: ${path} leads out of the plugin` });
+      const inside = normalize(String(path).split('\\').join('/'));
+      if (!path || isAbsolute(inside) || inside === '..' || inside.startsWith('../')) found.push({ rule: 'missing-file', ...where, detail: `${fact.id}: ${path} leads out of the plugin` });
       else if (!existsSync(join(plugin, inside))) found.push({ rule: 'missing-file', ...where, detail: `${fact.id}: ${path} is not in the plugin` });
       else paths.push(inside);
     }
