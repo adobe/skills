@@ -78,7 +78,24 @@ Many skills are over their limit today. Nobody has to fix a skill they don't tou
 - GitHub Copilot CLI reads the root `plugin.json` in place of the Claude Code manifest, and then loads skills only from the folders directly under `skills/`, and hooks only from `com.github.copilot/hooks/hooks.json`. Claude Code reads hooks from `hooks/hooks.json`. So a plugin with hooks has both files, with the same content, and none inline in a manifest. CI checks that: without its copy, the hook of `adobe-for-developers` that asks before a deletion does not run in Copilot CLI.
 - Google Antigravity reads the root `plugin.json` as well (checked with its CLI 1.5.9). It takes hooks only from `hooks.json` at the plugin root and MCP servers only from `mcp_config.json`. The plugins here have neither, so in Antigravity a plugin is its skills, and a hook that guards an action does not run there. It loads the first 24,000 bytes of a `SKILL.md` body and drops the rest.
 - A plugin's skills are the folders directly under `skills/`. No client looks below them, so a `SKILL.md` deeper down is a skill nobody can load. Move it up, or make it a reference that its parent skill links.
-- A plugin brought in from another repository brings its `plugin.json`, `mcp.json`, skills and hooks, not the generated manifests, and has its version from there: the Commerce plugins (from `adobe/aio-commerce-sdk`), `adobe-for-creativity` and the skill of `run-workflow`. Change those in their own repository, not here.
+- Some plugins are brought in from another repository, and these rules are not met there. See the next section.
+
+## Brought in from another repository
+
+Three things here are copies of what their code owners write elsewhere, listed in [`scripts/lib/imported.mjs`](scripts/lib/imported.mjs):
+
+| What | Comes from | Code owners |
+|---|---|---|
+| The Commerce plugins (`plugins/commerce/`) | [`adobe/aio-commerce-sdk`](https://github.com/adobe/aio-commerce-sdk) | in [CODEOWNERS](.github/CODEOWNERS) |
+| `adobe-for-creativity` (`plugins/creative-cloud/adobe-for-creativity/`) | a repository of its owners; the plugin directory of the Claude apps installs it from here | in [CODEOWNERS](.github/CODEOWNERS) |
+| The skill of `run-workflow` (`plugins/creative-cloud/run-workflow/skills/`); the plugin around it is ours | a repository of its owners | in [CODEOWNERS](.github/CODEOWNERS) |
+
+They do not meet the rules of this repository, and that is deliberate: their owners decide what is in them, and they coordinate their releases with others. So the rules are pointed out, not enforced:
+
+- **They come as they are.** Each keeps the files its owners bring: a hand-written `.claude-plugin/plugin.json` with its own version, and a Tessl manifest only if they bring one. CI does not build their manifests, set their versions, write their changelogs or publish them to the Tessl registry.
+- **The checks of the whole tree leave them out.** A rule they break does not fail anyone else's pull request: the root `plugin.json`, the Tessl target, hooks, `license`, the token and line limits, names and the Tessl lint warnings.
+- **The pull request that brings them in fails.** The `imported` check of Validate Skills lists every rule they break, file by file, and fails. A maintainer merges the pull request with that check red. The list is what their owners would have to change where the copy comes from. Everything else still applies: the specification (`npm run validate`), `claude plugin validate`, and the security rules of [AGENTS.md](AGENTS.md).
+- **Only their code owners change them here.** A change made here is overwritten by the next import. A pull request that changes them, opened by anyone else, is closed at once, with a pointer to their owners; so is an issue whose form names one of these plugins. Each is closed once: a maintainer who reopens it has decided to keep it. A pull request that their code owners open is not closed for an unanswered AI review either.
 
 ## Quality Checks
 
@@ -104,6 +121,7 @@ CI runs these on every pull request:
 |---|---|
 | Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, and runs the tests of the `web` CLI and the lints of `stardust`. |
 | Tessl Plugin Lint | `tessl plugin lint` for every plugin. |
+| Validate Skills | `imported`: a pull request that changes what is [brought in from another repository](#brought-in-from-another-repository) fails with the list of rules it breaks. A maintainer merges it anyway. |
 | Validate Skills | `npm run plugins:check`: the pull request leaves alone the files that `x927` generates from each plugin's root `plugin.json` and `mcp.json` (the Claude Code, Tessl and Cursor manifests, `.mcp.json`, and the description and version of marketplace entries). Change `plugin.json`; after the merge, the Release workflow builds the generated files on `main` and pushes them. |
 | Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |
 | Plugin Test Drive | Installs each changed plugin into Claude Code, Codex, Grok and Google Antigravity, each with an empty home directory, and reports the skills, MCP servers and hooks the client then lists. It fails when a client can't install the plugin or loads fewer skills than the plugin has. No sign-in and no model is involved. |
@@ -170,7 +188,7 @@ This project uses a **commit then review** process: the code owners of a plugin 
 - **Code owners act within a week.** Within a week of a pull request being opened, reopened or marked ready for review, one of its code owners reviews it, comments on it, pushes to it, merges it or closes it, and again within a week of the last time one did. Otherwise the pull request gets the `takeover` label.
 - **Then maintainers take over.** A maintainer may close, merge or change a pull request with the `takeover` label, without waiting for its code owners. The label goes when a code owner acts on it again.
 
-The [Merge Policy workflow](.github/workflows/merge-policy.yml) applies the last three rules every hour: it closes overdue pull requests and sets the `takeover` label, each with a comment that says why, and removes the label when an owner acts. It leaves drafts and the pull requests of bots (Renovate, the release) alone. For pull requests that were open when the policy started, the 24 hours and the week count from 17 November 2026. To see what it would do:
+The [Merge Policy workflow](.github/workflows/merge-policy.yml) applies the last three rules every hour: it closes overdue pull requests and sets the `takeover` label, each with a comment that says why, and removes the label when an owner acts. It also closes pull requests and issues about what is [brought in from another repository](#brought-in-from-another-repository) that are not its code owners'. It leaves drafts and the pull requests of bots (Renovate, the release) alone. For pull requests that were open when the policy started, the 24 hours and the week count from 17 November 2026. To see what it would do:
 
 ```bash
 GH_TOKEN=… node scripts/pr-policy.mjs    # --pr <number> for one pull request, --now <date> for later, --apply to act
@@ -186,8 +204,8 @@ On every push to `main`, [semantic-release](https://semantic-release.gitbook.io)
 
 - **Skills.** Each changed skill is released: its version goes into `metadata.version` of its `SKILL.md`, its `CHANGELOG.md` is written, and a GitHub release with the packaged skill is created, tagged `<skill>-v<version>`. A skill needs no release files of its own.
 - **Plugins.** Each changed plugin that has a root `plugin.json` is released as well, also when only one of its skills changed: its version goes into `plugin.json`, the manifests and the marketplace entry are built from that, and the release is tagged `plugin/<name>/v<version>`. Claude Code keeps an installed plugin at its version until the version changes, so this is what brings a merged change to the people who installed it. Its `CHANGELOG.md` is written as well, with one line for each pull request since the last release: the title, linked. Don't edit a `CHANGELOG.md` in a pull request; the check that guards the versions fails that too.
-- **Not released here:** skills and plugins brought in from another repository (the Commerce plugins, `adobe-for-creativity`, the `run-workflow` skill), which keep the versions they have there; and a skill whose folder name another skill has.
+- **Not released here:** what is [brought in from another repository](#brought-in-from-another-repository), which keeps the versions it has there; and a skill whose folder name another skill has.
 
-Every plugin is published to the Tessl registry, as `adobe/<plugin name>`, when the `version` in its Tessl manifest changes: with every release of the plugin, and when a plugin that is brought in from another repository comes with a new version. That is why every `plugin.json` has a Tessl target; CI fails without it. A publish that times out is tried again, and a version that is already on the registry is not an error, so a failed Release job can be run again. Tessl accepts an upload first and runs its own publication checks afterwards: a version is on the registry only when those pass. The job prints what the registry says about each version at its end.
+Every plugin of ours is published to the Tessl registry, as `adobe/<plugin name>`, when the `version` in its Tessl manifest changes: with every release of the plugin. That is why every `plugin.json` has a Tessl target; CI fails without it. A plugin brought in from another repository is published only when it brings a Tessl manifest of its own, when that manifest's version changes. A publish that times out is tried again, and a version that is already on the registry is not an error, so a failed Release job can be run again. Tessl accepts an upload first and runs its own publication checks afterwards: a version is on the registry only when those pass. The job prints what the registry says about each version at its end.
 
 The Release workflow pushes to `main` with its own token: the rebuilt manifests, and the release commits. A ruleset or a branch protection on `main` has to let GitHub Actions bypass it. Without that, the workflow fails at its first push and says so, and nothing is released or published.
