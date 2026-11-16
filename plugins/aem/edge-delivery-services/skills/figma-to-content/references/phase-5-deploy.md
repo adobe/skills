@@ -31,7 +31,7 @@ BRANCH_HOST=${BRANCH//\//-}   # host label: slashes → dashes ('feature/x' → 
                               # forms are identical, so $BRANCH_HOST is always the safe choice
                               # for admin.hlx.page.
 P=<path-without-extension>
-TOKEN="$DA_TOKEN"      # from da-auth; 401 w/ empty body ⇒ expired, re-auth
+TOKEN="$DA_TOKEN"      # from da-auth; 401 ⇒ missing/invalid/expired, re-auth
 
 # Fail fast if the branch host would be unresolvable (>63 chars won't resolve).
 host="$BRANCH_HOST--$GH_REPO--$GH_OWNER"
@@ -52,7 +52,7 @@ req() {
     case ",$expect," in *",$code,"*) printf '%s' "$body"; return 0;; esac
     case "$code" in
       000|429|5??) sleep $((attempt * 2)); continue;;   # transient — bounded retry
-      401)         echo "❌ 401 (empty body ⇒ token expired) — re-auth (da-auth) and retry" >&2; return 1;;
+      401)         echo "❌ 401 (token missing, invalid or expired) — re-auth (da-auth) and retry" >&2; return 1;;
       *)           echo "❌ HTTP $code (expected $expect) — $*" >&2; return 1;;   # 4xx: do not retry
     esac
   done
@@ -101,8 +101,8 @@ req 200,201 -X PUT -H "Authorization: Bearer $TOKEN" \
 #      PLANNED_STATE = new | exists   — what the 2.2 existence check saw
 #      OVERWRITE_OK  = yes            — set ONLY when the user confirmed overwriting
 #                                       an existing page; unset/no otherwise
-#    Re-GET now (auth is checked BEFORE existence, so a 401 empty body = expired
-#    token, NOT "new"). Refuse to write if the state changed since planning or the
+#    Re-GET now (auth is checked BEFORE existence, so a 401 = token problem
+#    (missing, invalid or expired), NOT "new"). Refuse to write if the state changed since planning or the
 #    overwrite was never confirmed — a page can be created in the gap between
 #    planning and this write.
 exists=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" \
@@ -121,7 +121,7 @@ case "$exists" in
     fi
     echo "→ overwriting $P.html (existing page, confirmed in the plan)"
     ;;
-  401) echo "❌ 401 on existence check — token expired; re-auth (da-auth) and retry"; exit 1;;
+  401) echo "❌ 401 on existence check — token missing, invalid or expired; re-auth (da-auth) and retry"; exit 1;;
   *)   echo "❌ unexpected $exists on existence check — resolve before writing"; exit 1;;
 esac
 
@@ -199,8 +199,8 @@ Non-obvious rules *(da-content / EDS)*:
 
 For many pages, drive `PUT → preview` (publish stays a gated, post-verify step —
 see below) with a concurrency pool + retry (`429`/`5xx`) rather than a
-hand-rolled loop. An unattended multi-page run can outlast a single ~1h token, so
-**refresh the token before long batches and on any `401`-with-empty-body**, then
+hand-rolled loop. An unattended multi-page run can outlast a token (`expires_at` is cached; lifetime varies), so
+**check expiry before long batches and refresh on any `401`**, then
 resume — don't abort the whole run. Each page still clears the pre-publish gate
 before it is eligible to publish; a gate failure on one page blocks that page's
 publish, not the batch.

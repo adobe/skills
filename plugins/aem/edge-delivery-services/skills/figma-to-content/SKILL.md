@@ -96,10 +96,11 @@ The DA-write contract in Phase 5 is the same one **da-content** documents
   standard EDS+DA setup `daOrg`/`daRepo` **equal** the GitHub `{owner}`/`{repo}`;
   confirm, because Phase 5 writes to `daOrg`/`daRepo` but previews/renders on
   the GitHub `{owner}`/`{repo}`/`{branch}`.
-- **`DA_TOKEN`** — via **da-auth**, which exports `$DA_TOKEN` and caches it at
-  `~/.aem/da-token.json` (valid ~1h). Prefer the `$DA_TOKEN` da-auth already set
-  in this session; read the cache file only if that's unset. Two distinct
-  failures: a `401` with an empty body means the token **expired** → re-auth; a
+- **`DA_TOKEN`** — via **da-auth**, whose helper caches it at
+  `~/.aem/da-token.json` (`expires_at` in epoch ms; lifetime varies). Prefer a
+  `$DA_TOKEN` already set in this session; read the cache file only if that's
+  unset. Two distinct failures: a `401` means the token is missing, invalid or
+  **expired** → re-auth (da-auth); a
   cache file that **can't be read because the execution sandbox has no `$HOME`
   access** means the token is *unreachable*, not expired (see Phase 0 step 3) —
   don't conflate them.
