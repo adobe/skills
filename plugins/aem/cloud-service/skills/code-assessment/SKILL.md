@@ -12,7 +12,7 @@ description: |
   handles each issue type itself, reporting anything it cannot yet fix.
 license: Apache-2.0
 metadata:
-  version: "1.0.1"
+  version: "1.1.0"
 ---
 
 # AEM as a Cloud Service — Code Assessment
