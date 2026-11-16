@@ -114,8 +114,9 @@ test('--ask goes through Claude Code with no tools and the review\'s system prom
 test('--pi asks through pi with nothing but the model and the review\'s system prompt', (t) => {
   const root = tree(t, { 'plugins/p/plugin.json': '{}' });
   const log = join(root, 'args.txt');
-  const path = fakeBin(t, { pi: `for a in "$@"; do printf '%s\\n' "$a"; done >> "${log}"; echo 'use node -v'` });
-  const result = run(t, 'skill-quiz.mjs', ['plugins/p', '--pi', '--ask', 'Which Node is active?', '-n', '1'], { cwd: root, env: { PATH: path } });
+  const asked = join(root, 'stdin.txt');
+  const path = fakeBin(t, { pi: `for a in "$@"; do printf '%s\\n' "$a"; done >> "${log}"; cat >> "${asked}"; echo 'use node -v'` });
+  const result = run(t, 'skill-quiz.mjs', ['plugins/p', '--pi', '--ask=-h @file Which Node is active?', '-n', '1'], { cwd: root, env: { PATH: path } });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /## github-copilot\/claude-haiku-5\.5 #1\n\nuse node -v/);
   assert.match(result.stdout, /## github-copilot\/gpt-5\.6-luna #1/);
@@ -123,7 +124,8 @@ test('--pi asks through pi with nothing but the model and the review\'s system p
   for (const flag of ['-p', '--no-session', '-ne', '-ns', '--no-mcp', '-nt', '-nc']) assert.ok(args.includes(flag), flag);
   assert.equal(args[args.indexOf('--system-prompt') + 1], SYSTEM);
   assert.equal(args[args.indexOf('--model') + 1], 'github-copilot/claude-haiku-5.5');
-  assert.ok(args.includes('Which Node is active?'));
+  assert.ok(!args.some((arg) => arg.includes('Which Node')), 'the question is not an argument');
+  assert.match(readFileSync(asked, 'utf8'), /^-h @file Which Node is active\?/);
 });
 
 test('with pi, each answer is graded by a model of the other vendor', () => {

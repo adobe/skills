@@ -195,8 +195,10 @@ export function piAsker({ bin = 'pi', env = process.env } = {}) {
   return async ({ model, system, prompt }) => {
     const work = mkdtempSync(join(tmpdir(), 'skill-quiz-pi-'));
     try {
-      const ran = spawnSync(bin, ['-p', '--no-session', '-ne', '-ns', '--no-mcp', '-nt', '-nc', '--system-prompt', system, '--model', model, prompt], {
-        cwd: work, env, encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
+      // the question on stdin: as an argument, one that starts with - or @ would be read as
+      // a flag or a file to attach
+      const ran = spawnSync(bin, ['-p', '--no-session', '-ne', '-ns', '--no-mcp', '-nt', '-nc', '--system-prompt', system, '--model', model], {
+        cwd: work, env, input: prompt, encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
       });
       if (ran.error?.code === 'ENOENT') throw new Error('pi is not installed or not on the PATH');
       const text = String(ran.stdout ?? '').trim();
