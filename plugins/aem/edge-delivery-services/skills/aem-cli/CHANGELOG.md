@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/adobe/skills/compare/aem-cli-v1.0.2...aem-cli-v1.1.0) (2026-11-16)
+
+
+### Features
+
+* **aem-edge-delivery-services:** make create-site work for Source Bus sites ([#708](https://github.com/adobe/skills/issues/708)) ([dfe6c51](https://github.com/adobe/skills/commit/dfe6c51163a549729d0b69433be21521fb8c7528))
+
 ## [1.0.2](https://github.com/adobe/skills/compare/aem-cli-v1.0.1...aem-cli-v1.0.2) (2026-11-15)
 
 ## [1.0.1](https://github.com/adobe/skills/compare/aem-cli-v1.0.0...aem-cli-v1.0.1) (2026-11-14)
