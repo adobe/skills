@@ -25,7 +25,7 @@ Not for: generic Edge Delivery Services blocks (use the `building-blocks` skill 
 | `references/form-field-types.md` | Step 4 — the base HTML the `element` parameter already contains |
 | `references/authoring-field-types.md` | Step 3 — widgets for the properties dialog (`text`, `select`, `container`, …) |
 | `references/subscribe-api.md` | Step 4 — `subscribe()` patterns: own value, child fields, custom events |
-| `references/form-styling.md` | Step 4: writing `<name>.css` (CSS styling patterns: component wrappers, field targeting, state styling) |
+| `references/styling.md` | Step 4: writing `<name>.css` (CSS styling patterns: component wrappers, field targeting, state styling) |
 | `scripts/validate-component.mjs` | Step 7 — static validator (Node 18+, no dependencies) |
 | `scripts/create-e2e-test.mjs` | Step 7 — generates the component's Playwright e2e test + form JSON |
 | `scripts/run-e2e-test.mjs` | Step 7 — runs those tests with the project's own Playwright setup (Chromium, no retries) |
@@ -90,7 +90,7 @@ Implementation rules:
 - Enhance the existing OOTB markup in `fieldDiv`; scope DOM queries to it.
 - When writing the value from custom UI, either set `model.value` or dispatch `new Event('change', { bubbles: true })` on the underlying input.
 - Know when the value is committed. Out of the box, the form block writes `model.value` only from the input's native `change` event (`blocks/form/rules/index.js`), which text-like inputs fire on blur/commit, not on each keystroke. So rules on the field's change event run once per edit, when the user leaves the field. If the component must commit on every keystroke (live counters, search-as-you-type, values derived while typing), handle the `input` event in the component and set `model.value` there, comparing with the current value first. When reformatting the display while typing (masks, grouping), don't dispatch `change` on each keystroke, or you turn the blur commit into a per-keystroke one.
-- Style the component in `<name>.css` following the CSS styling patterns in `references/form-styling.md`:
+- Style the component in `<name>.css` following the CSS styling patterns in `references/styling.md`:
   - scope selectors under `.form` and the component's own classes (prefixed with the component name);
   - use the documented patterns for validation and focus states.
 

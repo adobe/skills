@@ -184,7 +184,7 @@ export default function decorate(fieldDiv, fieldJson, container, formId) {
 
 ## Best Practices
 - **Use authorable properties**: Expose configurable options via the JSON schema.
-- **Namespace your CSS**: Avoid style collisions by using unique class names, scoped under the `.form` block. See the CSS styling patterns in [form-styling.md](./form-styling.md).
+- **Namespace your CSS**: Avoid style collisions by using unique class names, scoped under the `.form` block. See the CSS styling patterns in [styling.md](./styling.md).
 
 ---
 

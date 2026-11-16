@@ -2,7 +2,7 @@
 
 Source: [Customize the look of your forms — CSS Styling Patterns and Best Practices](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/edge-delivery/build-forms/universal-editor/style-theme-forms#comprehensive-form-styling-with-css-custom-properties) (Experience League).
 
-The Adaptive Forms Block follows specific CSS patterns that keep styling maintainable, performant, and consistent across components. Follow them when writing `<name>.css` for a custom component. The `var(--…)` values are the form's CSS custom properties, defined at `:root` in `/blocks/form/form.css`.
+The Adaptive Forms Block follows specific CSS patterns that keep styling maintainable, performant, and consistent across components. Follow them when writing `<name>.css` for a custom component.
 
 ---
 
