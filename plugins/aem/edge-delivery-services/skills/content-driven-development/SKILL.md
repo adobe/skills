@@ -44,7 +44,9 @@ End with URLs you can load that cover every variant and edge case.
 
 ## 5. Implement
 
-Use **building-blocks**, and **testing-blocks** to check the result in a browser and to decide on committed tests. For a project authored in Experience Workspace (DA), also use **aem-layout-view**.
+If the project's content lives in Experience Workspace (DA), read **aem-layout-view** before you write `decorate()`: layout view reruns block code and rebuilds text elements, and a block written without that breaks there.
+
+Then use **building-blocks**, and **testing-blocks** to check the result in a browser and to decide on committed tests.
 
 ## 6. Lint and test
 
