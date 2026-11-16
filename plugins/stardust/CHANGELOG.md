@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.3...plugin/stardust/v0.39.4) (2026-11-16)
+
+
+### Bug Fixes
+
+* **stardust:** a gate override waives only the criteria it names, and the unit cache knows its width ([#704](https://github.com/adobe/skills/issues/704)) ([aac23ef](https://github.com/adobe/skills/commit/aac23ef68e050294d8fa035c7b3c4a444af2cb19))
+
 ## [0.39.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.2...plugin/stardust/v0.39.3) (2026-11-15)
 
 
