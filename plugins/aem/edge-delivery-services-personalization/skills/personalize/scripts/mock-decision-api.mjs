@@ -180,9 +180,10 @@ if (isMain(import.meta.url)) {
     ttl: args.ttl !== undefined ? Number(args.ttl) : undefined,
     cacheable: args.cacheable ? true : undefined,
   });
-  server.listen(port, () => {
-    console.log(`✓ mock decision engine on http://localhost:${port}${DECIDE_PATH} (feedback ${FEEDBACK_PATH})`);
-    console.log(`✓ mock Target Delivery API on http://localhost:${port}${DELIVERY_PATH}`);
+  // Loopback only: the mock is for local tests, not the network.
+  server.listen(port, '127.0.0.1', () => {
+    console.log(`✓ mock decision engine on http://127.0.0.1:${port}${DECIDE_PATH} (feedback ${FEEDBACK_PATH})`);
+    console.log(`✓ mock Target Delivery API on http://127.0.0.1:${port}${DELIVERY_PATH}`);
     console.log('  for local tests only: point config.api.endpoint / config.target.endpoint at these URLs');
   });
 }

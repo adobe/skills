@@ -25,7 +25,7 @@ describe('lib', () => {
       writeFileSync(join(dir, 'node_modules', 'playwright', 'package.json'), '{"name":"playwright","main":"index.js"}');
       writeFileSync(join(dir, 'node_modules', 'playwright', 'index.js'), 'module.exports = { fake: true };');
       assert.deepEqual(loadPlaywright([dir]), { fake: true });
-      assert.match(PLAYWRIGHT_INSTALL, /^npm i --prefix \S+ playwright && npx --prefix \S+ playwright install chromium$/);
+      assert.match(PLAYWRIGHT_INSTALL, /^npm i --prefix \S+ playwright@\d+\.\d+\.\d+ && npx --prefix \S+ playwright install chromium$/);
       assert.doesNotMatch(PLAYWRIGHT_INSTALL, /-D|--no-save/);
     } finally {
       cleanup();

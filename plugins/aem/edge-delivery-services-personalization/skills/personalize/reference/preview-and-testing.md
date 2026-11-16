@@ -154,7 +154,7 @@ node scripts/simulate.mjs content/home.html --api-decisions decisions.json --tar
 node scripts/verify-preview.mjs --page http://localhost:3000/home --file content/home.html \
   --api-decisions decisions.json --target activities.json --faults --refresh --ignore-console "status of 5\\d\\d|ERR_"
 
-# api with the mock server instead (api.endpoint = http://localhost:4100/decide for the test only)
+# api with the mock server instead (api.endpoint = http://127.0.0.1:4100/decide for the test only)
 node scripts/mock-decision-api.mjs --decisions decisions.json &
 node scripts/verify-preview.mjs --page http://localhost:3000/home --file content/home.html --api-decisions decisions.json --faults
 

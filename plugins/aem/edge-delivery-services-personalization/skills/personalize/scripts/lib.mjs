@@ -35,7 +35,10 @@ export const EDGE_MODULES = ['personalize.js', 'html.js', 'adapters/of1.js'];
 // loading). It resolves from this skill's folder, else from a shared cache.
 export const PLAYWRIGHT_CACHE = process.env.PZN_PLAYWRIGHT_DIR
   || join(homedir(), '.cache', 'aem-eds-personalization', 'playwright');
-export const PLAYWRIGHT_INSTALL = `npm i --prefix ${PLAYWRIGHT_CACHE} playwright`
+// The version the checks were run against; Renovate moves it.
+// renovate: datasource=npm depName=playwright
+export const PLAYWRIGHT_VERSION = '1.65.0';
+export const PLAYWRIGHT_INSTALL = `npm i --prefix ${PLAYWRIGHT_CACHE} playwright@${PLAYWRIGHT_VERSION}`
   + ` && npx --prefix ${PLAYWRIGHT_CACHE} playwright install chromium`;
 
 /**

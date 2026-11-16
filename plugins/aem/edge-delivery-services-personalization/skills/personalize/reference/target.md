@@ -150,7 +150,7 @@ a new decision (`decisions-and-measurement.md`).
   - set `config.mock = { target: <activities> }`. It answers in the browser, which is needed on
     aem.page and for `--faults`;
   - run `node scripts/mock-decision-api.mjs --target activities.json` and point
-    `config.target.endpoint` at `http://localhost:4100/rest/v1/delivery`, for the test only.
+    `config.target.endpoint` at `http://127.0.0.1:4100/rest/v1/delivery`, for the test only.
 - **Browser checks.** `verify-preview.mjs --target activities.json` checks the following:
   - inline offers: the variant, its content, one `display` once seen, and `click` on click;
   - popups: closed before the trigger and open past it; modal and labelled; `display` notified;
