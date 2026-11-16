@@ -1,0 +1,136 @@
+{
+  "name": "aem-layout-view trigger queries",
+  "description": "Should trigger when EDS block or site code must stay editable in Experience Workspace layout view (WYSIWYG): uneditable text or images, duplicates after edits, CORS failures only in layout view, branch testing there, requirements. Near misses are Universal Editor models (ue-component-model), generic block building, library entries (aem-block-library), content models, tests, performance, DA page HTML and code review.",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  },
+  "queries": [
+    {
+      "id": "y-cant-edit-text",
+      "query": "Authors say they can't edit the card titles of our `cards` block in Experience Workspace layout view, although the page looks right. Fix the block.",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "y-images-replace",
+      "query": "In layout view of Experience Workspace, authors can't click or drag-replace the images in our `hero` block. What's wrong?",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "y-duplicate-after-edit",
+      "query": "After an author adds a block in the Experience Workspace page editor, our page shows two lifecycle badges and the carousel autoplay runs twice.",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "y-cors-layout-view",
+      "query": "Our block's API call works on .aem.page but fails inside the Experience Workspace WYSIWYG editor with a CORS error. What do we change?",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "y-test-branch-layout",
+      "query": "I changed the `tabs` block on a branch. How do I check it in Experience Workspace layout view before merging?",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "y-make-block-ew-editable",
+      "query": "Make the `testimonial` block work in layout view so authors can edit it in place.",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "y-selectors-jump",
+      "query": "Spacing jumps while authors type in the paragraphs of our `hero` block in the Experience Workspace editor. Our CSS uses `.hero > div > p`.",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "test"
+    },
+    {
+      "id": "y-layout-view-requirements",
+      "query": "What does our site's head.html and scripts.js need so layout view works in Experience Workspace?",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "test"
+    },
+    {
+      "id": "y-icons-vanish",
+      "query": "The icons our block adds into the headings disappear when authors click into the text in the EW layout editor.",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "test"
+    },
+    {
+      "id": "y-audit-block-layout",
+      "query": "Review our `feature-list` block for anything that would break layout view editing in Experience Workspace.",
+      "should_trigger": true,
+      "skill": "aem-layout-view",
+      "split": "test"
+    },
+    {
+      "id": "n-ue-editable",
+      "query": "Our xwalk project's `hero` block isn't editable in the Universal Editor. Fix the component model.",
+      "should_trigger": false,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "n-new-block",
+      "query": "Build a new `timeline` block with a compact variant. Follow our normal workflow.",
+      "should_trigger": false,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "n-library",
+      "query": "Add the finished `testimonial` block to the block library so authors can insert it.",
+      "should_trigger": false,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "n-content-model",
+      "query": "Design the content model for a pricing table block that authors edit in Experience Workspace.",
+      "should_trigger": false,
+      "skill": "aem-layout-view",
+      "split": "train"
+    },
+    {
+      "id": "n-e2e",
+      "query": "Write Playwright E2E tests for the `tabs` block against its library page.",
+      "should_trigger": false,
+      "skill": "aem-layout-view",
+      "split": "test"
+    },
+    {
+      "id": "n-perf",
+      "query": "The hero block's LCP is slow in PageSpeed Insights. Improve it.",
+      "should_trigger": false,
+      "skill": "aem-layout-view",
+      "split": "test"
+    },
+    {
+      "id": "n-da-html",
+      "query": "Write the HTML for a DA page with a hero and three cards and push it with the CLI.",
+      "should_trigger": false,
+      "skill": "aem-layout-view",
+      "split": "test"
+    },
+    {
+      "id": "n-pr-review",
+      "query": "Review this pull request that changes the `accordion` block's CSS and JS.",
+      "should_trigger": false,
+      "skill": "aem-layout-view",
+      "split": "test"
+    }
+  ]
+}

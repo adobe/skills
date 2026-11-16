@@ -1,0 +1,8 @@
+.lifecycle-badge .lifecycle-badge-label {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--link-color);
+  color: var(--background-color);
+  font-size: var(--body-font-size-xs);
+}

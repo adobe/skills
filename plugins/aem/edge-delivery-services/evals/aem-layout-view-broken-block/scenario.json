@@ -1,0 +1,10 @@
+{
+  "description": "Fix a block and auto-block that break editing in Experience Workspace layout view, in aem-boilerplate 5cea543 (cloned by setup.sh; setup.sh adds a lifecycle-badge auto-block to scripts.js)",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixtures/project",
+      "installPath": "."
+    }
+  }
+}
