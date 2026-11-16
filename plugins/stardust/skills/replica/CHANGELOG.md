@@ -1,3 +1,12 @@
+## [1.1.2](https://github.com/adobe/skills/compare/replica-v1.1.1...replica-v1.1.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* **stardust:** a gate override waives only the criteria it names, and the unit cache knows its width ([#704](https://github.com/adobe/skills/issues/704)) ([aac23ef](https://github.com/adobe/skills/commit/aac23ef68e050294d8fa035c7b3c4a444af2cb19))
+* **stardust:** measure the page before a screenshot; a layout overflow is a WARN, not a crash ([#687](https://github.com/adobe/skills/issues/687)) ([75e1d21](https://github.com/adobe/skills/commit/75e1d21458839d10312cec1370b54c1e48f99428))
+* **stardust:** mobile-first checks take a project's own breakpoint steps ([#682](https://github.com/adobe/skills/issues/682)) ([b761eee](https://github.com/adobe/skills/commit/b761eee55d938ae54610296359ec32f4a0cd356d))
+
 ## [1.1.1](https://github.com/adobe/skills/compare/replica-v1.1.0...replica-v1.1.1) (2026-11-15)
 
 
