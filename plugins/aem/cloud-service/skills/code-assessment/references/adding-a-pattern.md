@@ -1,6 +1,6 @@
 # Adding a pattern (end-to-end)
 
-The single, authoritative procedure for adding a new code-assessment pattern (a new expert skill).
+The single, authoritative procedure for adding a new code-assessment pattern (a new pattern guide).
 Follow it top to bottom; every step is concrete. The parent [`../SKILL.md`](../SKILL.md) and
 [`../scripts/README.md`](../scripts/README.md) point here — this file is the source of truth.
 
@@ -10,7 +10,7 @@ A detectable code issue with a deterministic detector and a remediation recipe. 
 bound together by **one kebab-case slug** used identically in four places:
 
 1. the detector's `pattern()` return value (registered in `scripts/analyzer/Registry.all()`)
-2. the expert-skill directory name (`<slug>/`)
+2. the pattern directory name (`<slug>/`), which holds the pattern guide `<slug>/guide.md`
 3. its row in [`patterns.md`](patterns.md)
 4. its row in **Manual Pattern Hints** (`../SKILL.md`)
 
@@ -99,19 +99,24 @@ assert_absent  "clean file not flagged"    "$OUT" 'Clean.java'
 - **`references/patterns.md`:** flip the `planned` row (or add a new one) to:
 
   ```
-  | [`<slug>`](../<slug>/SKILL.md) | <one-line description> | high|medium|low | ready | analyzer | mechanical|guided |
+  | [`<slug>`](../<slug>/guide.md) | <one-line description> | high|medium|low | ready | analyzer | mechanical|guided |
   ```
 
-- **`../SKILL.md` Manual Pattern Hints:** add a row mapping user phrasings → `<slug>/SKILL.md`.
+- **`../SKILL.md` Manual Pattern Hints:** add a row mapping user phrasings → `<slug>/guide.md`.
 - **Description:** leave the parent `description` alone **unless** the pattern introduces a domain
   keyword it does not already cover (see the note in `../SKILL.md` "Adding a new pattern"). Triggering
   scales via Hints + catalog rows, not description edits.
 
-## Step 5 — expert skill (`<slug>/SKILL.md` + `recipe.md`)
+## Step 5 — pattern guide (`<slug>/guide.md`, optional `recipe.md`)
+
+Name the guide `guide.md`, not `SKILL.md`: clients load only the folders directly under
+`skills/`, so a `SKILL.md` one level deeper is never loaded as a skill, and CI fails a pull request
+that adds one (orphaned skill). The parent skill links the guide from Manual Pattern Hints. Patterns
+added before this rule keep `<slug>/SKILL.md`; rename one to `guide.md` when you change it.
 
 Author from [`_template.md`](_template.md):
 
-- **`<slug>/SKILL.md`** — Overview; Classification (confirm it applies); Discovery (state the analyzer
+- **`<slug>/guide.md`** — Overview; Classification (confirm it applies); Discovery (state the analyzer
   command + the detector's match criteria); Resolution contract (`self-evident` | `user-supplied` |
   `guided`); Review checklist; Recipe pointer; Handoff (runbook reference).
 - **`<slug>/recipe.md`** — locator from the finding; the edit(s); `mechanical` = one deterministic
@@ -125,7 +130,7 @@ bash plugins/aem/cloud-service/test/code-assessment/run-tests.sh   # your block 
 npm run validate                         # exit 0
 ```
 
-`[wiring]` confirms detector ↔ expert dir ↔ `ready`+`analyzer` catalog row are all in sync.
+`[wiring]` confirms detector ↔ `<slug>/guide.md` (or a legacy `<slug>/SKILL.md`) ↔ `ready`+`analyzer` catalog row are all in sync.
 
 ## The wiring invariant
 

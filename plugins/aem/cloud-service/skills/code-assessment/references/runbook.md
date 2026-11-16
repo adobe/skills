@@ -10,7 +10,7 @@ For design *why*, see [`shared-principles.md`](shared-principles.md). For git br
 |---|---|---|---|
 | **with_findings** | User named paths or coordinates | Provided — use only these paths | User-supplied target versions before planning. |
 | **with_findings (pre-resolved)** | An upstream caller already supplies a finding list in the canonical `{pattern, file, line, snippet}` shape | Provided directly — see **Step 3, with_findings (pre-resolved)** below | Same as with_findings — ask if missing |
-| **discover** | User asks to scan/fix project without a file list | Empty — run **Discovery** in the active expert skill's `SKILL.md` + recipe under `../<pattern-name>/` (e.g. `../inject-in-sling-model/`, `../outdated-dependencies/`) inside workspace roots | Ask user for coordinates + target versions before building dep plans |
+| **discover** | User asks to scan/fix project without a file list | Empty — run **Discovery** in the active pattern guide (`guide.md`, or `SKILL.md` for older patterns) + recipe under `../<pattern-name>/` (e.g. `../inject-in-sling-model/`, `../outdated-dependencies/`) inside workspace roots | Ask user for coordinates + target versions before building dep plans |
 
 ## Git vs in-place
 
@@ -44,7 +44,7 @@ Run in order. **Hard stops** are limited to: unsupported pattern, user declined 
 
 **Per-pattern fault isolation:** if detecting or fixing one pattern fails unexpectedly, isolate it — record the failure (a `skipped` entry with the reason) and continue with the remaining patterns; the report lists it. One pattern's failure never aborts the whole run.
 
-Do not edit the developer's code until the active expert skill's `SKILL.md` and recipe have been read in full.
+Do not edit the developer's code until the active pattern guide (`guide.md`, or `SKILL.md` for older patterns) and recipe have been read in full.
 
 ### 1. Classify
 
@@ -52,7 +52,7 @@ Match the request to one expert skill under `code-assessment/<pattern>/` using t
 
 ### 2. Read reference module
 
-Read the chosen expert skill's `SKILL.md` in full, then its `recipe.md` / `path-*.md` if present (guided patterns may carry the migration steps inline instead) — **Discovery**, **Resolution contract**, input contract, recipe/steps, Unlocatable, editing strategy.
+Read the chosen pattern's `guide.md` (or `SKILL.md` for older patterns) in full, then its `recipe.md` / `path-*.md` if present (guided patterns may carry the migration steps inline instead) — **Discovery**, **Resolution contract**, input contract, recipe/steps, Unlocatable, editing strategy.
 
 ### 3. Resolve findings (with_findings or discover)
 
