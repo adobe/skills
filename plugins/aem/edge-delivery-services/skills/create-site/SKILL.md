@@ -1,6 +1,6 @@
 ---
 name: create-site
-description: Use this when a user wants to create a brand-new AEM Edge Delivery site from scratch and no GitHub repository or DA content exists yet — triggers include 'set up a new site', 'create a new EDS project', or 'onboard a new site'. Covers creating the GitHub repo from the boilerplate, installing aem-code-sync, seeding initial DA content (nav, footer, homepage), and returning a live preview URL. For importing or migrating existing pages use page-import; for building blocks on an existing site use content-driven-development.
+description: "Use this when a user wants to create a brand-new AEM Edge Delivery site from scratch: no GitHub repository or content exists yet, or a repo made from the boilerplate template is not connected to content yet. Triggers include 'set up a new site', 'create a new EDS project', 'onboard a new site'. Covers creating the repo from the boilerplate, installing aem-code-sync, choosing the content store (DA at admin.da.live or Source Bus at api.aem.live), seeding nav, footer and homepage, and returning a live preview URL. For importing existing pages use page-import; for blocks on an existing site use content-driven-development."
 license: Apache-2.0
 metadata:
   version: "1.2.0"
@@ -8,300 +8,61 @@ metadata:
 
 # Create a New AEM Edge Delivery Site
 
-This skill walks through the full onboarding flow for a new AEM Edge Delivery site. It handles everything that can be automated and clearly signals the steps that require human action.
-
-## When to Use This Skill
-
-Use this skill when:
-- A user wants to create a brand-new AEM Edge Delivery site from scratch
-- A user asks to "set up a new site", "create a new EDS project", or "onboard a new site"
-- No GitHub repository or DA content exists yet for the project
-
-**Do NOT use this skill for:**
-- Importing or migrating existing pages (use **page-import** skill)
-- Building or modifying blocks on an existing site (use **content-driven-development** skill)
+**Do NOT use for:** importing or migrating pages (**page-import**), applying a brand to a fresh project (**brand-setup**), or blocks on an existing site (**content-driven-development**).
 
 ## Prerequisites
 
-- A GitHub account with permission to create repositories in the target org
-- An Adobe IMS account with access to DA (da.live)
-- `gh` CLI authenticated (`gh auth status`) or a GitHub personal access token with `repo` scope
-- Node.js (for DA token management via da-auth-helper)
+- A GitHub account that can create repositories in the target org, and `gh` authenticated (`gh auth status`) or a token with `repo` scope.
+- An Adobe IMS account with access to the content store (see **da-auth**).
 
-## Related Skills
+## Step 1: Gather inputs
 
-- **page-import** — Import existing pages into the newly created site
-- **brand-setup** — When migrating an existing site, apply its colors, fonts, favicon and logo to the fresh project
-- **content-driven-development** — Build and modify blocks once the site exists
-- **building-blocks** — Implement new block code
+Ask for the GitHub org (`{{ORG}}`), repository name (`{{REPO}}`, also the site name), and a display name (`{{SITE_NAME}}`, derived from the repo name if not given). Ask which **content store** (`{{STORE}}`) the site uses, DA or Source Bus; do not guess. Org, repo and branch cannot contain `--`, and `main--{{REPO}}--{{ORG}}` must stay within 63 characters.
 
----
+## Step 2: Create the repository
 
-## Step 0: Create TodoList
+If the user already made a repository from the boilerplate, confirm which one and go to Step 3.
 
-Create a checklist to track progress (use your agent's task-tracking tool if available):
-
-1. **Gather inputs** — org, repo name, site name collected
-2. **Create GitHub repository** — repo created from boilerplate template
-3. **Install aem-code-sync** *(human action)* — GitHub App installed on repo
-4. **Authenticate with DA** — valid IMS token obtained
-5. **Create initial content in DA** — nav, footer, index created
-6. **Trigger preview** — all three paths return 200/201
-7. **Hand off** — preview URL and DA links delivered to user
-
----
-
-## Step 1: Gather Inputs
-
-Ask the user for the following. Do not proceed until all required inputs are provided.
-
-1. **GitHub org** — the GitHub organization or username where the repo will be created (e.g. `my-org`)
-2. **Project name** — the repository name, lowercase, hyphens only (e.g. `my-site`)
-3. **Site name** — the human-readable name used in content (e.g. `My Site`). If not provided, derive it from the project name.
-
-Store as: `{{ORG}}`, `{{REPO}}`, `{{SITE_NAME}}`
-
----
-
-## Step 2: Create GitHub Repository
-
-Create a new repository using the `adobe/aem-boilerplate` template.
-
-**Option A — GitHub CLI (preferred, handles auth automatically):**
-```bash
-gh repo create {{ORG}}/{{REPO}} \
-  --template adobe/aem-boilerplate \
-  --description "{{SITE_NAME}} — AEM Edge Delivery site" \
-  --public
-```
-
-Check if `gh` is available with `gh auth status`. If not authenticated, run `gh auth login` first.
-
-**Option B — GitHub API (if `gh` CLI is not available):**
-```
-POST https://api.github.com/repos/adobe/aem-boilerplate/generate
-Authorization: Bearer {{GITHUB_TOKEN}}
-Content-Type: application/json
-
-{
-  "owner": "{{ORG}}",
-  "name": "{{REPO}}",
-  "description": "{{SITE_NAME}} — AEM Edge Delivery site",
-  "private": false,
-  "include_all_branches": false
-}
-```
-
-To obtain a token: https://github.com/settings/tokens/new — scope: `repo`.
-
-**Success:** HTTP 201 (API) or exit code 0 (CLI). The repo is now live at `https://github.com/{{ORG}}/{{REPO}}`.
-
----
-
-## Step 3: Install aem-code-sync *(human action required)*
-
-The aem-code-sync GitHub App connects the repository to AEM's content delivery pipeline. This step cannot be automated — the user must complete it in the browser.
+## Step 3: Install aem-code-sync and pick the content store *(user action)*
 
 Tell the user:
 
-> **Action required:** Install the AEM Code Sync app on your new repository.
->
-> 1. Open this URL: https://github.com/apps/aem-code-sync/installations/new
-> 2. Under "Repository access", select **Only select repositories**
-> 3. Choose **{{ORG}}/{{REPO}}** from the list
-> 4. Click **Save**
+> 1. Open https://github.com/apps/aem-code-sync/installations/new
+> 2. Choose **Only select repositories**, select **{{ORG}}/{{REPO}}**, and save.
+> 3. In the setup wizard on tools.aem.live that follows, choose the content source: **{{STORE}}**. (If the wizard is skipped, a script can set it in Step 4.)
 >
 > Reply "done" when complete.
 
-Wait for confirmation before proceeding.
+Wait for confirmation. Then check, without credentials, that the site exists: `curl -s -o /dev/null -w '%{http_code}' https://admin.hlx.page/ping/{{ORG}}/{{REPO}}` returns 200 (404 means not set up). Do not use `/status/` for this: it returns 401 without a token.
 
-**Verify:** After confirmation, check that `https://admin.hlx.page/status/{{ORG}}/{{REPO}}/main/` returns a valid JSON response (not 404). If it does, the app is correctly installed.
+## Step 4: Confirm or switch the content store
 
----
+A site's store is `content.source` in its site config; `fstab.yaml` is deprecated and ignored once the config service holds the site. Read the config with the IMS token from **da-auth** (`GET https://admin.hlx.page/config/{{ORG}}/sites/{{REPO}}.json`):
 
-## Step 4: Authenticate with DA
+| Store | `content.source` |
+|---|---|
+| DA | `{"type": "markup", "url": "https://content.da.live/{{ORG}}/{{REPO}}"}` |
+| Source Bus | `{"type": "sourcebus"}` |
 
-DA requires Adobe IMS authentication. Choose the appropriate path:
+To change it (admin or site config permission needed): `POST https://admin.hlx.page/config/{{ORG}}/sites/{{REPO}}/content.json` ([Update Content Location](https://www.aem.live/docs/config-service-setup)). Send back the full `content` object you read, with only `source` changed (`{"type": "sourcebus"}`, or the DA values above to go back). A changed store gets a new Content Bus ID: nothing previewed or published before is carried over, and index and sitemap config must be recreated. How content moves between stores is not documented: assume it does not move and copy it by hand. Switch before seeding content, not after.
 
-**Option A — da-auth-helper (preferred)**
+## Step 5: Seed the content
 
-`da-auth-helper` (https://github.com/adobe-rnd/da-auth-helper) caches IMS tokens at `~/.aem/da-token.json`. Always check the cache first before triggering a new OAuth flow.
+Get a token with **da-auth** for the chosen API. Create `nav`, `footer` and `index` pages with **da-content**, which has the write call and HTML rules for each store (DA and Source Bus differ). The homepage needs an `<h1>`.
 
-1. Check for a valid cached token:
-```bash
-node -e "
-  const fs = require('fs');
-  const p = process.env.HOME + '/.aem/da-token.json';
-  if (!fs.existsSync(p)) { console.log('No cache'); process.exit(1); }
-  const t = JSON.parse(fs.readFileSync(p));
-  console.log('Valid:', t.expires_at > Date.now());
-  console.log('Expires:', new Date(t.expires_at).toISOString());
-"
-```
+`aem content` only talks to DA: for a Source Bus site write pages through the API.
 
-2. If valid, capture the token and skip to Step 5:
-```bash
-DA_TOKEN=$(node -e "const t = require(process.env.HOME + '/.aem/da-token.json'); process.stdout.write(t.access_token);")
-```
+## Step 6: Preview and hand off
 
-3. If missing or expired, install da-auth-helper from GitHub (it is not published to npm) and refresh:
-```bash
-npm install -g github:adobe-rnd/da-auth-helper
-da-auth-helper token
-```
-This opens a browser for Adobe IMS login and writes the new token to `~/.aem/da-token.json`. Then capture it as in step 2.
+Preview each page (`/nav`, `/footer`, `/`) with the preview call for the store; see **da-content**. Expect 200 or 201, then open the site's `.aem.page` preview.
 
-**Option B — DA MCP is configured**
-
-If the DA MCP server is available, trigger the authentication tool to start the OAuth flow and share the authorization URL with the user.
-
-**Option C — Manual token**
-
-Ask the user to obtain an IMS token from their browser (e.g. from the DA network tab or an existing session) and paste it. Store as `{{DA_TOKEN}}`.
-
----
-
-## Step 5: Create Initial Content in DA
-
-Create the three mandatory pages every EDS site requires. Use the templates below exactly — they are pre-validated for EDS compliance.
-
-**Option A — DA MCP:**
-Call the DA create source tool three times with the content below.
-
-**Option B — DA API:**
-
-Write each file to a temp file first, then POST using `@` syntax. Inline multiline content with `-F 'data=...'` causes curl to fail (exit 26). Use `/usr/bin/curl` explicitly to avoid PATH resolution issues in subshells.
-
-```bash
-cat > /tmp/nav.html << 'EOF'
-<nav content>
-EOF
-/usr/bin/curl -s -o /dev/null -w "%{http_code}" -X POST "https://admin.da.live/source/{{ORG}}/{{REPO}}/nav.html" \
-  -H "Authorization: Bearer {{DA_TOKEN}}" \
-  -F "data=@/tmp/nav.html;type=text/html"
-```
-
-Repeat for `footer.html` and `index.html`.
-
-**Verify:** After each POST, expect HTTP 201. If you get 401, the token has expired — return to Step 4.
-
----
-
-### nav.html
-
-```html
-<main>
-  <div>
-    <p><a href="/">{{SITE_NAME}}</a></p>
-  </div>
-  <div>
-    <ul>
-      <li><a href="/">Home</a></li>
-    </ul>
-  </div>
-  <div></div>
-</main>
-```
-
-### footer.html
-
-```html
-<main>
-  <div>
-    <p>© 2024 {{SITE_NAME}}. All rights reserved.</p>
-  </div>
-</main>
-```
-
-### index.html
-
-```html
-<main>
-  <div>
-    <h1>Welcome to {{SITE_NAME}}</h1>
-    <p>Your new site is ready. Start editing this page in DA.</p>
-  </div>
-</main>
-```
-
----
-
-## Step 6: Trigger Preview
-
-Preview pulls the DA content into the AEM delivery pipeline and makes it accessible on the `.aem.page` domain.
-
-DA-sourced content requires the Bearer token on preview requests — even for public repos. Use `/usr/bin/curl` explicitly.
-
-```bash
-/usr/bin/curl -s -o /dev/null -w "%{http_code}" -X POST "https://admin.hlx.page/preview/{{ORG}}/{{REPO}}/main/nav" \
-  -H "Authorization: Bearer {{DA_TOKEN}}"
-/usr/bin/curl -s -o /dev/null -w "%{http_code}" -X POST "https://admin.hlx.page/preview/{{ORG}}/{{REPO}}/main/footer" \
-  -H "Authorization: Bearer {{DA_TOKEN}}"
-/usr/bin/curl -s -o /dev/null -w "%{http_code}" -X POST "https://admin.hlx.page/preview/{{ORG}}/{{REPO}}/main/" \
-  -H "Authorization: Bearer {{DA_TOKEN}}"
-```
-
-**Success:** HTTP 200 or 201 for each. The homepage is now live at:
-```
-https://main--{{REPO}}--{{ORG}}.aem.page/
-```
-
----
-
-## Step 7: Confirm and Hand Off
-
-Tell the user:
-
-> **Your site is ready!**
->
-> - **Preview:** `https://main--{{REPO}}--{{ORG}}.aem.page/`
-> - **Browse content in DA:** `https://da.live/#/{{ORG}}/{{REPO}}/`
-> - **Edit homepage:** `https://da.live/edit#/{{ORG}}/{{REPO}}/index`
-> - **Edit nav:** `https://da.live/edit#/{{ORG}}/{{REPO}}/nav`
-> - **Edit footer:** `https://da.live/edit#/{{ORG}}/{{REPO}}/footer`
-> - **GitHub repo:** `https://github.com/{{ORG}}/{{REPO}}`
->
-> To start developing locally:
-> ```bash
-> git clone https://github.com/{{ORG}}/{{REPO}}.git
-> cd {{REPO}}
-> npm install
-> aem up
-> ```
->
-> What would you like to do next — add more pages, customize a block, or set up a custom domain?
-
----
+Hand the user the preview URL, the repo URL and the editing links for the store, and offer next steps: more pages, **brand-setup**, **content-driven-development**.
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| Step 2 returns 422 | Repo name already exists | Ask user for a different name |
-| Step 3 verify returns 404 | aem-code-sync not installed | Re-send the installation URL |
-| Step 4 cached token missing/expired | No prior DA session on this machine | Install da-auth-helper from GitHub (`npm install -g github:adobe-rnd/da-auth-helper`) and run `da-auth-helper token` |
-| Step 5 curl exits with code 26 | Inline multiline content in `-F` flag | Write content to a temp file and use `@/tmp/file.html` syntax |
-| Step 5 returns 401 | Expired or missing IMS token | Re-check `~/.aem/da-token.json` expiry; ask user for a fresh token |
-| Step 5 returns 403 | Token lacks permission for this org/repo | Confirm the user has write access to `{{ORG}}/{{REPO}}` in DA |
-| Step 6 returns 401 | DA-sourced content requires auth on preview | Add `-H "Authorization: Bearer {{DA_TOKEN}}"` to preview requests |
-| Step 6 returns 404 | aem-code-sync not installed correctly | Verify Step 3, then retry |
-| `curl: command not found` in scripts | PATH not resolved in subshell | Use `/usr/bin/curl` explicitly |
-| Preview URL shows blank page | nav or index not previewed | Re-run Step 6 for the failing path |
-
----
-
-## Reference
-
-- Boilerplate: https://github.com/adobe/aem-boilerplate
-- aem-code-sync app: https://github.com/apps/aem-code-sync
-- DA docs: https://da.live/docs
-- DA Admin API: https://opensource.adobe.com/da-admin/
-- DA Auth (IMS token helper): https://github.com/adobe-rnd/da-auth-helper
-- AEM Admin API: https://www.aem.live/docs/admin.html
-- Full onboarding guide: https://www.aem.live/developer/create-site.md
-
-### DA URL patterns
-
-- Browse folder: `https://da.live/#/{{org}}/{{repo}}{{folder-path}}`
-- Edit HTML document: `https://da.live/edit#/{{org}}/{{repo}}{{path-without-extension}}`
-- Edit JSON/sheet: `https://da.live/sheet#/{{org}}/{{repo}}{{path-without-extension}}`
+| Symptom | Fix |
+|---|---|
+| Step 3 ping returns 404 | Code Sync not installed on this repo; resend the link |
+| Preview is 404 right after setup | Nothing previewed yet; run Step 6 |
+| 401 or 403 on content calls | See **da-auth**; check the API matches the store |
+| Content calls find nothing in a site that has content | Wrong store; read `content.source` (Step 4) |

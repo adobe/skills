@@ -208,6 +208,13 @@
       "should_trigger": true,
       "skill": "da-content",
       "split": "test"
+    },
+    {
+      "id": "y-sourcebus-write",
+      "query": "Our site acme/docs keeps its content in Source Bus (api.aem.live). I have a token. How do I write a new about page there and get it onto the preview?",
+      "should_trigger": true,
+      "skill": "da-content",
+      "split": "test"
     }
   ]
 }
