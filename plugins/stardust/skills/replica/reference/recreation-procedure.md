@@ -32,7 +32,7 @@ class of guesswork before the next begins:
    writes one spec per width (bands; every text node and image box with
    font, colour and line count; text-style clusters; gutters); read values
    with `view <spec> --section <i>`. Author desktop AND mobile rules from
-   the specs in one pass — the 360 spec is the source of the mobile rules.
+   them in one pass.
    The same command writes the header and footer inventory
    (`<slug>-<width>-chrome.json`: texts by channel, icons, background,
    position): author them from it.
@@ -44,7 +44,7 @@ class of guesswork before the next begins:
 6. **Serve locally, then `source-spec.mjs compare <spec> <prototype-url>`
    per width; clear its table top-down (the FIRST CAUSE section first) to
    exit 0 BEFORE the first gate round** — no eyeball-polish: the compare
-   table is the map of what's wrong, the first gate round
+   table is the map, the first gate round
    (`source-fidelity-gate.md`) confirms it.
 
 Keep the markup clean: semantic elements, BEM-ish classes, CSS custom
