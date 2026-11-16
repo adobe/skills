@@ -94,6 +94,5 @@ The Adaptive Forms Block follows specific CSS patterns that keep styling maintai
 ## Applying this to a custom component's stylesheet
 
 - Start every selector with `.form` and the component's own wrapper or class, e.g. `.form .<name>-…`, the same way the patterns above target `.form .{Type}-wrapper`.
-- Use the form's CSS custom properties (as in the patterns above) for colors, typography, spacing and borders, not hard-coded values. The component then follows the site's theme.
 - Use field-name targeting (`.form .field-{name}`) only for one-off, form-specific styling, never in a reusable component's stylesheet.
 - Style validation and interaction states with the state patterns above (validation, `:focus`).

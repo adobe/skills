@@ -92,7 +92,6 @@ Implementation rules:
 - Know when the value is committed. Out of the box, the form block writes `model.value` only from the input's native `change` event (`blocks/form/rules/index.js`), which text-like inputs fire on blur/commit, not on each keystroke. So rules on the field's change event run once per edit, when the user leaves the field. If the component must commit on every keystroke (live counters, search-as-you-type, values derived while typing), handle the `input` event in the component and set `model.value` there, comparing with the current value first. When reformatting the display while typing (masks, grouping), don't dispatch `change` on each keystroke, or you turn the blur commit into a per-keystroke one.
 - Style the component in `<name>.css` following the CSS styling patterns in `references/form-styling.md`:
   - scope selectors under `.form` and the component's own classes (prefixed with the component name);
-  - use the form's CSS custom properties (`var(--form-…)`) instead of hard-coded values;
   - use the documented patterns for validation and focus states.
 
 ### Step 5: Register
