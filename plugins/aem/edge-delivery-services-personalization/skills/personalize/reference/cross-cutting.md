@@ -33,8 +33,6 @@ default meaningful: bots and visitors without consent see it too.
   (`botsGetDefault: true`): no engine or Target call, no split assignment, no popup.
   Lighthouse and PSI scores therefore say nothing about personalization; measure that with
   `verify-preview.mjs --perf`.
-- **Variants must be semantically equivalent** to the default: different emphasis or locale, not
-  different claims. Otherwise it is cloaking.
 - **Fragments are `noindex`** (bulk metadata `/fragments/**`, see `da-content.md`).
 - **Keep the H1** in the default and every variant. The validator warns when a variant's H1
   differs.

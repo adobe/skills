@@ -27,8 +27,7 @@ One body-fragment document per DA path under `content/` (what `aem up` serves lo
 Nothing leaves the machine by default. Once every validation gate passes (SKILL.md Steps 6–7),
 the push, the DA upload + preview, and the publish each run only after the user confirms that
 step, every time. A hands-off run, or no answer, stops before the first of them and hands off the
-commands below. **DA content is shared by every branch, and `aem.live` always runs `main`'s
-code**, so the order is: push, upload and preview, verify on the branch preview, and publish only
+commands below. The order is: push, upload and preview, verify on the branch preview, and publish only
 once `main` serves this runtime and no copy is still `TODO:`. Upload only the personalized pages
 and their fragments.
 

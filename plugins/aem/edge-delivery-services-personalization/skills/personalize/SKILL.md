@@ -45,7 +45,7 @@ The grammar is in `reference/authoring-model.md`.
 
 - Creating Target activities, audiences or offers, or AJO journeys: decline. The skill only wires
   sections to activities the Target user creates.
-- Text tokens such as `{name}`: use the placeholders sheet.
+- Text tokens such as `{name}`: not this skill.
 - Page-level experiments run with AEM Experimentation: keep them there. A page that runs one gets
   no personalized sections.
 
@@ -174,12 +174,15 @@ npm run lint
 node scripts/verify-preview.mjs --page http://localhost:3000/<page> --file content/<page>.html --consent-flow
 ```
 
-Per source, add these to `simulate` and `verify-preview`:
+Per source, add these (`simulate` takes only `--api-decisions` and `--target`; it ignores the
+other flags, so pass them to `verify-preview` alone):
 
-- `api`: `--api-decisions decisions.json` (mock table), `--faults` and `--refresh`.
-- `target`: `--target activities.json`, plus `--faults`.
-- `split`: `--split-runs 30`.
-- A personalized first section, or layout changes: `--perf --baseline <url before>`.
+- `api`: `--api-decisions decisions.json` (mock table) to both; `--faults` and `--refresh` to
+  `verify-preview`.
+- `target`: `--target activities.json` to both; `--faults` to `verify-preview`.
+- `split`: `--split-runs 30` to `verify-preview`.
+- A personalized first section, or layout changes: `--perf --baseline <url before>` to
+  `verify-preview`.
 - The OF1 pilot page: `--scenarios assets/contract/pilot-scenarios.json`.
 
 If verify-preview reports `section not found`, the hooks are missing or Section Metadata isn't
@@ -204,8 +207,7 @@ Deploying and setting secrets are handed off to the site owner.
 
 ## Step 8: Deliver (each step confirmed)
 
-Only once every required check passes (`reference/da-content.md`). DA content is shared by every
-branch, and `aem.live` always runs `main`'s code. Ask before each numbered step, saying what it
+Only once every required check passes (`reference/da-content.md`). Ask before each numbered step, saying what it
 changes and where; no answer means stop there and hand off the rest.
 
 1. Commit the runtime, hooks, config and styles. **Confirm**, then push the code branch.
