@@ -15,6 +15,7 @@
 //   -n <n>             asks per fact and model (default 2: the review asks twice)
 //   --judge <id>       the grading model (default: one of another vendor than the answer's)
 //   --auth-home <dir>  without a Bedrock key: ask through Claude Code, signed in as in <dir>
+//   --pi               ask through pi (https://pi.dev), with the models you are signed in to
 //   --json <file>      the questions, the answers and the grades
 //
 // The AI review (.github/workflows/ai-review.yml, item 8) asks a small model without tools
@@ -27,7 +28,9 @@
 // With AWS_BEARER_TOKEN_BEDROCK (as in CI), the models are called on Bedrock directly, as
 // the review's baseline is: no agent, no tools. With --auth-home or ANTHROPIC_API_KEY, they
 // are asked through Claude Code with no tools and the same system prompt; then only Claude
-// models answer and grade, and the result says so. Credentials are handed to the client
+// models answer and grade, and the result says so. With --pi, pi asks with no tools,
+// extensions, skills, MCP servers or context files, and the same system prompt; its default
+// models are the review's, through GitHub Copilot. Credentials are handed to the client
 // only, never printed. Exit 3 without credentials, 2 for wrong arguments, 1 when an ask failed.
 import { spawnSync } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -49,6 +52,10 @@ export const BEDROCK = {
   judge: (model) => (model.includes('anthropic') ? 'global.openai.gpt-6.1-sol' : 'global.anthropic.claude-opus-5-5'),
 };
 export const CLAUDE = { models: ['haiku'], judge: () => 'opus' };
+export const PI = {
+  models: ['github-copilot/claude-haiku-5.5', 'github-copilot/gpt-5.6-luna'],
+  judge: (model) => (model.includes('claude') ? 'github-copilot/gpt-6.1-sol' : 'github-copilot/claude-opus-5.5'),
+};
 
 export const GRADES = { known: '✓', partial: '~', unknown: '✗' };
 
@@ -184,6 +191,26 @@ export function claudeAsker({ bin, authHome, env = process.env }) {
   };
 }
 
+// pi in print mode with nothing but the model and the system prompt, signed in as you are.
+export function piAsker({ bin = 'pi', env = process.env } = {}) {
+  return async ({ model, system, prompt }) => {
+    const work = mkdtempSync(join(tmpdir(), 'skill-quiz-pi-'));
+    try {
+      // the question on stdin: as an argument, one that starts with - or @ would be read as
+      // a flag or a file to attach
+      const ran = spawnSync(bin, ['-p', '--no-session', '-ne', '-ns', '--no-mcp', '-nt', '-nc', '--system-prompt', system, '--model', model], {
+        cwd: work, env, input: prompt, encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
+      });
+      if (ran.error?.code === 'ENOENT') throw new Error('pi is not installed or not on the PATH');
+      const text = String(ran.stdout ?? '').trim();
+      if (ran.status !== 0 || !text) throw new Error(`pi exited ${ran.status}: ${String(ran.stderr ?? '').trim().split('\n').pop() ?? ''}`);
+      return text;
+    } finally {
+      rmSync(work, { recursive: true, force: true });
+    }
+  };
+}
+
 // ---- which facts ----
 
 const glob = (pattern) => new RegExp(`^${pattern.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*')}$`);
@@ -276,6 +303,7 @@ async function main() {
         n: { type: 'string', short: 'n', default: '2' },
         judge: { type: 'string' },
         'auth-home': { type: 'string' },
+        pi: { type: 'boolean', default: false },
         json: { type: 'string' },
       },
     });
@@ -285,7 +313,7 @@ async function main() {
   const { values, positionals } = parsed;
   const runs = Number(values.n);
   if (positionals.length !== 1 || !(Number.isInteger(runs) && runs > 0)) {
-    fail('usage: skill-quiz.mjs <plugin dir> [--fact <id>]… [--changed <git diff args>] [--ask "<question>"] [--model <id>]… [-n 2] [--judge <id>] [--auth-home <dir>] [--json <file>]');
+    fail('usage: skill-quiz.mjs <plugin dir> [--fact <id>]… [--changed <git diff args>] [--ask "<question>"] [--model <id>]… [-n 2] [--judge <id>] [--auth-home <dir>] [--pi] [--json <file>]');
   }
   const root = process.cwd();
   const pluginDir = resolve(positionals[0]);
@@ -293,7 +321,10 @@ async function main() {
   const notes = [];
   let ask;
   let defaults;
-  if (process.env.AWS_BEARER_TOKEN_BEDROCK) {
+  if (values.pi) {
+    ask = piAsker();
+    defaults = PI;
+  } else if (process.env.AWS_BEARER_TOKEN_BEDROCK) {
     ask = bedrockAsker({ key: process.env.AWS_BEARER_TOKEN_BEDROCK, region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-west-2' });
     defaults = BEDROCK;
   } else if (process.env.ANTHROPIC_API_KEY || (values['auth-home'] && existsSync(join(resolve(values['auth-home']), '.claude', '.credentials.json')))) {
@@ -303,7 +334,7 @@ async function main() {
     defaults = CLAUDE;
     notes.push('Asked through Claude Code: Claude models answered and graded. The review also asks a model of another vendor.');
   } else {
-    fail('No credentials. Set AWS_BEARER_TOKEN_BEDROCK, or ANTHROPIC_API_KEY, or pass --auth-home with a home directory that is signed in to Claude Code.', 3);
+    fail('No credentials. Set AWS_BEARER_TOKEN_BEDROCK, or ANTHROPIC_API_KEY, or pass --auth-home with a home directory that is signed in to Claude Code, or --pi to ask through pi.', 3);
   }
   const models = values.model.length > 0 ? values.model : defaults.models;
   const judgeOf = values.judge ? () => values.judge : defaults.judge;
