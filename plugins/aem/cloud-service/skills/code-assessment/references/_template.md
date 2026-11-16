@@ -1,20 +1,12 @@
 # Expert-skill template — `<pattern-name>`
 
-> Copy this directory shape to add a pattern. Each pattern is a **nested skill**:
-> `code-assessment/<pattern-name>/SKILL.md` (control plane) + one or more detail files.
-> The directory name MUST equal the `name` in the SKILL.md frontmatter (validator rule).
+> Copy this directory shape to add a pattern: `code-assessment/<pattern-name>/guide.md`
+> (control plane) + optional detail files. A new pattern gets a `guide.md`, not a `SKILL.md`:
+> clients never load a `SKILL.md` below `skills/<skill>/`, and CI fails a pull request that adds
+> one. Patterns added before this rule keep their nested `SKILL.md` (with frontmatter) until
+> they are changed. A `guide.md` has no frontmatter.
 
-## SKILL.md (control plane) — required frontmatter
-
-```yaml
----
-name: <pattern-name>            # lowercase, hyphens, == directory basename, ≤64 chars
-description: <one line>         # ≤1024 chars; what it fixes, when it triggers, what it routes to
-license: Apache-2.0
----
-```
-
-## SKILL.md body sections (lean control plane)
+## guide.md body sections (lean control plane)
 
 - **Runbook pointer** (blockquote right under the H1) — "This pattern is executed by the
   code-assessment runbook — follow [`../references/runbook.md`](../references/runbook.md) for
@@ -43,7 +35,7 @@ without touching its recipe.
 ## Catalog metadata
 
 Every pattern declares one row in [`patterns.md`](patterns.md) — the single source of truth (do
-**not** duplicate these into the pattern's `SKILL.md`):
+**not** duplicate these into the pattern's guide):
 
 - `pattern` (slug, = directory name) · `description` (one line) · `severity` (`high|medium|low`)
 - `status` (`ready|planned`) · `detection` (`scan|analyzer`) · `fix` (`mechanical|guided`, or `-` while `planned`)
@@ -57,7 +49,7 @@ Every pattern declares one row in [`patterns.md`](patterns.md) — the single so
 ## Wiring a new pattern in
 
 1. Add a row to [`patterns.md`](patterns.md) (`status: planned` until built).
-2. Create the directory + `SKILL.md` + detail file(s) using this shape; flip the row to `status: ready`.
+2. Create the directory + `guide.md` + detail file(s) using this shape; flip the row to `status: ready`.
 3. Add a row to the **Manual Pattern Hints** table in [`../SKILL.md`](../SKILL.md).
 4. Run `npm run validate` from the repo root — must pass.
 
