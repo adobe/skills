@@ -18,7 +18,7 @@
 //
 // Each run starts in a copy of the set's fixture (cloned once), with an empty home and the
 // rules of skill-eval.mjs in front of the query. It stops at the first skill the agent
-// loads, at its first write, or at --max-turns, so most runs are short. What it loaded is
+// loads, at its first write, or at --max-turns (Claude Code's own limit), so most runs are short. What it loaded is
 // read from the stream of the run by plain code (lib/skill-loads.mjs); no model grades it.
 // As with skill-eval.mjs, the agent may do anything the runner may: run it for plugins from
 // a branch of this repository, on a machine that holds nothing the agent must not see.
@@ -50,13 +50,17 @@ function runOnce({ bin, args, cwd, env, timeout, watch, transcript }) {
   return new Promise((done) => {
     // its own process group, so that stopping it also stops what it started (a shell, a server)
     const child = spawn(bin, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
-    const stop = (signal) => {
+    const signal = (name) => {
       try {
-        process.kill(-child.pid, signal);
+        process.kill(-child.pid, name);
       } catch {
-        child.kill(signal);
+        // the group is gone
       }
-      // a process that left the group may still hold the pipes: the run is over either way
+    };
+    const stop = (name) => {
+      signal(name);
+      // a process of the group that ignores the signal may still hold the pipes: the run is
+      // over either way, and the group is killed when it closes
       child.stdout.destroy();
       child.stderr.destroy();
     };
@@ -74,6 +78,8 @@ function runOnce({ bin, args, cwd, env, timeout, watch, transcript }) {
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     child.on('close', (status) => {
       clearTimeout(timer);
+      // whatever the run started and left behind (a dev server, a watcher) goes with it
+      signal('SIGKILL');
       writeFileSync(transcript, stdout);
       done({ status, stopped, stderr });
     });
@@ -170,7 +176,7 @@ async function main() {
         }
         const env = { ...plain, HOME: home, ...client.env(home, bedrock) };
         for (const name of credentials) if (process.env[name] !== undefined) env[name] = process.env[name];
-        const watch = watcher(plugin.skills, { maxTurns, keepGoing: values['keep-going'] });
+        const watch = watcher(plugin.skills, { keepGoing: values['keep-going'] });
         const transcript = join(out, `trigger-${query.id}-${run}.jsonl`);
         const ran = await runOnce({ bin, args: claudeArgs({ prompt: `${RULES}\n\n${query.query}`, model, maxTurns, pluginDir: plugin.dir }), cwd: work, env, timeout, watch, transcript });
         Object.assign(entry, watch.result(), { transcript });

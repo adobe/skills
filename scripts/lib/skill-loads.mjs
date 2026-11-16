@@ -2,9 +2,10 @@
 // output, one JSON event per line. Plain code, no model: the transcript is not sent anywhere.
 //
 // A skill counts as loaded when the agent calls the Skill tool with its name (a plugin's
-// skill is named "<plugin>:<skill>"), or reads its SKILL.md with a tool that takes a path.
-// The run stops being of interest when it loads a skill, writes a file, or uses up its turns.
+// skill is named "<plugin>:<skill>"), or reads its SKILL.md with the Read tool. The run stops
+// being of interest when it loads a skill or writes a file; Claude Code ends it at --max-turns.
 export const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
+export const READ_TOOLS = new Set(['Read']);
 
 function events(text) {
   const found = [];
@@ -26,25 +27,30 @@ function named(input, skills) {
 }
 
 function read(input, skills) {
-  const path = String(input?.file_path ?? input?.path ?? input?.notebook_path ?? '');
+  const path = String(input?.file_path ?? input?.path ?? '');
   const name = path.split('\\').join('/').match(/\/skills\/([^/]+)\/SKILL\.md$/)?.[1];
   return name && skills.has(name) ? name : null;
 }
 
 // A watcher to feed the stream to as it comes. feed() returns why the run can stop, or null.
-export function watcher(skillNames, { maxTurns = Infinity, keepGoing = false } = {}) {
+// Claude Code may send one message of the agent as several events, one per block, with the
+// same message id: a turn is a message, not an event. A subagent's messages are not turns.
+export function watcher(skillNames, { keepGoing = false } = {}) {
   const skills = new Set(skillNames);
   const loaded = [];
-  let turns = 0;
+  const messages = new Set();
   let wrote = false;
   let buffer = '';
   let reason = null;
   const handle = (event) => {
-    if (event?.type !== 'assistant') return;
-    turns += 1;
+    if (event?.type !== 'assistant' || event.parent_tool_use_id) return;
+    messages.add(event.message?.id ?? `event-${messages.size}`);
+    const turns = messages.size;
     for (const block of event.message?.content ?? []) {
       if (block?.type !== 'tool_use') continue;
-      const skill = block.name === 'Skill' ? named(block.input, skills) : read(block.input, skills);
+      let skill = null;
+      if (block.name === 'Skill') skill = named(block.input, skills);
+      else if (READ_TOOLS.has(block.name)) skill = read(block.input, skills);
       if (skill && !loaded.some((entry) => entry.skill === skill)) loaded.push({ skill, turn: turns });
       if (WRITE_TOOLS.has(block.name)) wrote = true;
     }
@@ -57,13 +63,12 @@ export function watcher(skillNames, { maxTurns = Infinity, keepGoing = false } =
       for (const event of events(lines.join('\n'))) handle(event);
       if (!reason && !keepGoing && loaded.length > 0) reason = 'skill';
       if (!reason && !keepGoing && wrote) reason = 'write';
-      if (!reason && turns >= maxTurns) reason = 'max-turns';
       return reason;
     },
     result() {
       if (buffer.trim()) for (const event of events(buffer)) handle(event);
       buffer = '';
-      return { loaded: loaded.map((entry) => entry.skill), order: [...loaded], turns, stopped: reason ?? 'finished' };
+      return { loaded: loaded.map((entry) => entry.skill), order: [...loaded], turns: messages.size, stopped: reason ?? 'finished' };
     },
   };
 }

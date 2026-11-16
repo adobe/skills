@@ -50,21 +50,33 @@ test('a skill counts as loaded through the Skill tool, with or without its plugi
   assert.equal(streamResult('not a stream'), null);
 });
 
-test('a watcher stops at the first skill, the first write, or the last turn, unless told to keep going', () => {
+test('a watcher stops at the first skill or the first write, unless told to keep going', () => {
   const skill = watcher(SKILLS);
   assert.equal(skill.feed(`${assistant(tool('Bash', { command: 'ls' }))}\n`), null);
   assert.equal(skill.feed(`${assistant(tool('Skill', { skill: 'one' }))}\n`), 'skill');
   assert.deepEqual(skill.result(), { loaded: ['one'], order: [{ skill: 'one', turn: 2 }], turns: 2, stopped: 'skill' });
   const write = watcher(SKILLS);
-  assert.equal(write.feed(`${assistant(tool('Write', { file_path: 'x.js' }))}\n`), 'write');
-  const turns = watcher(SKILLS, { maxTurns: 2 });
-  turns.feed(`${assistant()}\n`);
-  assert.equal(turns.feed(`${assistant()}\n`), 'max-turns');
-  const going = watcher(SKILLS, { keepGoing: true, maxTurns: 9 });
+  assert.equal(write.feed(`${assistant(tool('Write', { file_path: '/repo/.claude/skills/one/SKILL.md' }))}\n`), 'write');
+  assert.deepEqual(write.result().loaded, [], 'writing a SKILL.md is not loading it');
+  const going = watcher(SKILLS, { keepGoing: true });
   const half = assistant(tool('Skill', { skill: 'one' }));
   assert.equal(going.feed(half.slice(0, 10)), null);
   assert.equal(going.feed(`${half.slice(10)}\n${assistant(tool('Write', {}))}\n`), null);
   assert.deepEqual(going.result().loaded, ['one']);
+});
+
+test('a turn is a message of the agent, sent in one event or several; a subagent\'s messages are not turns', () => {
+  const block = (id, ...content) => JSON.stringify({ type: 'assistant', message: { id, content } });
+  const watch = watcher(SKILLS, { keepGoing: true });
+  watch.feed([
+    block('m1', { type: 'thinking', thinking: '…' }),
+    block('m1', { type: 'text', text: 'Let me look.' }),
+    block('m1', tool('Skill', { skill: 'p:one' })),
+    JSON.stringify({ type: 'assistant', parent_tool_use_id: 't1', message: { id: 's1', content: [tool('Skill', { skill: 'two' })] } }),
+    block('m2', tool('Grep', { path: '/repo/plugins/p/skills/two/SKILL.md' })),
+    '',
+  ].join('\n'));
+  assert.deepEqual(watch.result(), { loaded: ['one'], order: [{ skill: 'one', turn: 1 }], turns: 2, stopped: 'finished' });
 });
 
 test('a scenario tests the skill with the longest name it starts with', () => {
