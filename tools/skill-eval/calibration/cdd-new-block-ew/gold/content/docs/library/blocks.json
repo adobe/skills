@@ -1,0 +1,20 @@
+{
+  "total": 3,
+  "limit": 3,
+  "offset": 0,
+  "data": [
+    {
+      "name": "Cards",
+      "path": "https://content.da.live/acme/acme-site/docs/library/blocks/cards"
+    },
+    {
+      "name": "Columns",
+      "path": "https://content.da.live/acme/acme-site/docs/library/blocks/columns"
+    },
+    {
+      "name": "Plans",
+      "path": "https://content.da.live/acme/acme-site/docs/library/blocks/plans"
+    }
+  ],
+  ":type": "sheet"
+}

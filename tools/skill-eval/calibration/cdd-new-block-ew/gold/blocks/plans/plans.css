@@ -1,0 +1,55 @@
+.plans .plans-toggle {
+  display: flex;
+  gap: 8px;
+  margin-block-end: 16px;
+}
+
+.plans .plans-toggle button {
+  padding: 8px 16px;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.plans .plans-toggle button[aria-pressed='true'] {
+  background: var(--link-color);
+  border-color: var(--link-color);
+  color: var(--background-color);
+}
+
+.plans .plans-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plans .plans-card {
+  padding: 16px;
+  border: 1px solid var(--light-color);
+  border-radius: 8px;
+}
+
+.plans .plans-card h3 {
+  margin-top: 0;
+}
+
+.plans .plans-saving {
+  font-weight: 600;
+}
+
+@media (width >= 600px) {
+  .plans .plans-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (width >= 900px) {
+  .plans .plans-list {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}

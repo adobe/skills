@@ -20,7 +20,7 @@
     {
       "name": "Mobile first",
       "max_score": 10,
-      "description": "In blocks/plans/plans.css the base rules are the small-screen layout and wider layouts are added in `min-width` media queries. No `max-width` media queries override a desktop layout. Full credit needs both; 5 if mixed."
+      "description": "In blocks/plans/plans.css the base rules are the small-screen layout and wider layouts are added in `min-width` (or range `width >=`) media queries. No `max-width` (or `width <=`) media queries override a desktop layout. Full credit needs both; 5 if mixed."
     },
     {
       "name": "Saving calculation tested or justified",

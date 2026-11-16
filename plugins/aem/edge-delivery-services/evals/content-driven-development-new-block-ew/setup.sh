@@ -9,3 +9,7 @@ cp -R ./. "$overlay"
 cp -R "$tmp"/. .
 cp -R "$overlay"/. .
 rm -rf "$tmp" "$overlay"
+git init --quiet --initial-branch=main
+git add --all
+git -c user.name=eval -c user.email=eval@example.com commit --quiet -m "project at start"
+git tag eval-base

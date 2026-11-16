@@ -1,0 +1,29 @@
+.plans .plans-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plans .plans-card {
+  padding: 16px;
+  background-image: url('/icons/card.svg');
+}
+
+.plans .plans-card > h3 + p {
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .plans .plans-list {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .plans .plans-list {
+    grid-template-columns: 1fr;
+  }
+}
