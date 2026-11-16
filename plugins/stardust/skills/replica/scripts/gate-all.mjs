@@ -39,7 +39,8 @@
  * to check. totals.fontsNotLoaded / fontChecksSkipped count the rows; the calibration line names the faces.
  *
  * Sidecars in <out>/, each entry documented: masks.json (printed on the verdict), overrides.json
- * (shown BESIDE the number, never replacing it), clip-allow.json, presence.json (session-variable
+ * (shown BESIDE the number, never replacing it; `{"<slug>": {verdict, reason, waives: [criteria]}}`, a row passes
+ * with it only when every failing criterion is waived — overrideScope), clip-allow.json, presence.json (session-variable
  * regions); repeated units come from stardust/replica/units.json (unit-geometry.mjs header; a legacy
  * <out>/units.json per page still reads). Origin fallback: live stitch → previous origin
  * (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`, asymmetric, flagged). A cached live.png or a
@@ -101,6 +102,8 @@ Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND cl
   A dead font face on either side (the capture record's fontsFailed, <slug>/<side>.capture.json) fails the row:
   font-not-loaded:<family>; so does a font check that could not run (fontsFailed null, or no record): font-check-skipped:<origin|build>.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header).
+  overrides.json: {"<slug>": {"verdict", "reason", "waives": [capture|pixel|height|clip|content|units|fonts, …]}}
+  waives only what it names; no "waives" = capture, pixel, height, fonts; clip, content and units only by name.
 A page that passes keeps its records, not its PNGs (#156): --recapture-eds / --recapture-origin, or a run
 without --skip-existing, shoots it again. Pages go through in batches of ${BATCH}: a passed batch's PNGs are deleted
 before the next batch is captured.
@@ -157,6 +160,20 @@ export function fontChecksSkipped(originMeta, edsMeta) {
 
 // ---- pure: the verdict --------------------------------------------------------------------------------
 /**
+ * Override scope. An overrides.json entry waives the criteria it names in `waives`; a row passes with it only when
+ * every failing criterion is waived. An entry without `waives` keeps the documented scope (a tier-shift, a capture
+ * that could not be retaken, an origin-only dead face): capture, pixel, height and fonts. The element criteria
+ * (clip, content, units) are waived only by name, so a font reason never delivers a row that fails on its elements.
+ */
+export const WAIVABLE = ['capture', 'pixel', 'height', 'clip', 'content', 'units', 'fonts'];
+export const LEGACY_WAIVES = ['capture', 'pixel', 'height', 'fonts'];
+export function overrideScope(override) {
+  if (!override) return { waives: [], legacy: false, unknown: [] };
+  if (!Array.isArray(override.waives)) return { waives: LEGACY_WAIVES, legacy: true, unknown: [] };
+  return { waives: override.waives.filter((c) => WAIVABLE.includes(c)), legacy: false, unknown: override.waives.filter((c) => !WAIVABLE.includes(c)) };
+}
+
+/**
  * verdict({ pixel, clip, content, units, override, allowance, capture }, opts) → row fields. `pixel` = pixel.json,
  * `clip` = { counts } (served side) or null, `content` = { totals } | { error } | null, `units` = { verdict } | null,
  * `capture` = { fonts: fontsNotLoaded(…), fontsSkipped: fontChecksSkipped(…) } — a dead face fails the row with one
@@ -186,7 +203,10 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   reasons.push(...fontReasons);
   const pixelOnlyPass = !!(pixelPass && heightPass);
   const pass = pixelOnlyPass && clipPass !== false && contentPass !== false && unitPass !== false && !fontReasons.length;
-  return { originH, edsH, pixelPass: !!pixelPass, heightPass: !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || !!override, fontsNotLoaded: fonts, fontChecksSkipped: skipped, reasons };
+  const failing = [[!compared, 'capture'], [compared && !pixelPass, 'pixel'], [compared && !heightPass, 'height'], [clipPass === false, 'clip'], [contentPass === false, 'content'], [unitPass === false, 'units'], [fontReasons.length > 0, 'fonts']].filter(([f]) => f).map(([, c]) => c);
+  const { waives } = overrideScope(override);
+  const unwaived = override ? failing.filter((c) => !waives.includes(c)) : failing;
+  return { originH, edsH, pixelPass: !!pixelPass, heightPass: !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, failing, unwaived, passWithOverride: pass || (!!override && !unwaived.length), fontsNotLoaded: fonts, fontChecksSkipped: skipped, reasons };
 }
 
 const cell = (v, suffix = '') => (v == null ? 'n/a' : `${v}${suffix}`);
@@ -201,7 +221,7 @@ export function formatSummary(summary) {
     const units = r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}` : '-';
     const fontsOnly = r.pixelOnlyPass && Array.isArray(r.reasons) && r.reasons.length > 0 && r.reasons.every((x) => /^font-(not-loaded|check-skipped):/.test(x));
     const verdictCell = r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : fontsOnly ? 'FAIL (fonts)' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
-    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${cell(r.pct)}${r.textPct != null ? ` (${r.textPct})` : ''} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? ` → ${r.override.verdict}: ${r.override.reason}` : ''} | ${r.reasons.join('; ') || '-'} |`);
+    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${cell(r.pct)}${r.textPct != null ? ` (${r.textPct})` : ''} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? (r.passWithOverride === false ? ` → NOT WAIVED: ${(r.unwaived || []).join(', ')} (override waives ${overrideScope(r.override).waives.join(', ')}): ${r.override.reason}` : ` → ${r.override.verdict}: ${r.override.reason}`) : ''} | ${r.reasons.join('; ') || '-'} |`);
   }
   return `${head.join('\n')}${rows.join('\n')}\n`;
 }
@@ -282,6 +302,11 @@ async function main() {
   if (!pages.length) { console.error('gate-all: no deployed pages selected'); process.exit(1); }
   mkdirSync(opts.out, { recursive: true });
   const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
+  for (const [slug, o] of Object.entries(OVERRIDES)) {
+    const s = overrideScope(o);
+    if (s.unknown.length) console.error(`gate-all: overrides.json ${slug}: unknown criteria in waives (${s.unknown.join(', ')}); known: ${WAIVABLE.join(', ')}`);
+    if (s.legacy) console.error(`gate-all: overrides.json ${slug} names no "waives" — it waives ${LEGACY_WAIVES.join(', ')}; a clip, content or units failure must be named`);
+  }
   const CLIP_ALLOW = readJson(join(opts.out, 'clip-allow.json'), {}); const PRESENCE = readJson(join(opts.out, 'presence.json'), {});
   const FAMILIES = readJson('stardust/replica/units.json', null);
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
@@ -438,7 +463,7 @@ async function main() {
   if (dropped) log(`dropped ${dropped} PNG(s) of passed pages — their records stay (#156)`);
   const rows = pages.map(rowOf);
   const n = (f) => rows.filter(f).length;
-  const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.override), fail: n((r) => !r.pass && r.pct != null), error: n((r) => r.pct == null),
+  const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.passWithOverride), fail: n((r) => !r.pass && r.pct != null), error: n((r) => r.pct == null),
     failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), fontsNotLoaded: n((r) => r.fontsNotLoaded && r.fontsNotLoaded.length > 0), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome') };
   totals.passWithOverrides = totals.pass + totals.overridePass;
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();

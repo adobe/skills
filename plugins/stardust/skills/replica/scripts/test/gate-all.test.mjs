@@ -21,7 +21,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, captureRecordOf, dropPassedCaptures, droppedPass, fontChecksSkipped, fontsNotLoaded, formatSummary, parseArgs, shotFonts, staleCapture, verdict } from '../gate-all.mjs';
+import { BATCH, captureRecordOf, dropPassedCaptures, droppedPass, fontChecksSkipped, fontsNotLoaded, formatSummary, LEGACY_WAIVES, overrideScope, parseArgs, shotFonts, staleCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -72,6 +72,41 @@ check('units: required units fail the page, advisory ones do not', () => {
 check('missing capture / pixel error → not compared, reasons say so; override shows beside, never replaces', () => {
   const v = verdict({ pixel: { error: 'missing capture' }, override: { verdict: 'PASS (source capture)', reason: 'live drifted' } });
   assert.equal(v.pass, false); assert.equal(v.passWithOverride, true); assert.match(v.reasons[0], /missing capture/);
+});
+check('override scope: a fonts override on a row that also fails units is NOT delivered (the 2026-11 field case); naming units delivers it', () => {
+  const units = { verdict: { off: 18, hidden: 0, missing: 0, errors: 0 }, required: true };
+  const row = { pixel: px(0, 0), clip: clip(0), content: content(0, 0), units, capture: { fonts: ['Satoshi Fallback'], fontsSkipped: [] } };
+  const legacy = verdict({ ...row, override: { verdict: 'PASS (instrument override)', reason: 'origin-only dead faces' } });
+  assert.deepEqual([legacy.pass, legacy.failing, legacy.unwaived, legacy.passWithOverride], [false, ['units', 'fonts'], ['units'], false]);
+  const named = verdict({ ...row, override: { verdict: 'PASS', reason: 'R-02', waives: ['fonts'] } });
+  assert.deepEqual([named.unwaived, named.passWithOverride], [['units'], false], 'waives fonts only: units still fail the row');
+  const both = verdict({ ...row, override: { verdict: 'PASS', reason: 'R-02', waives: ['fonts', 'units'] } });
+  assert.deepEqual([both.unwaived, both.passWithOverride], [[], true]);
+});
+check('override scope: an entry without waives keeps the documented scope (tier-shift pixel/height, capture, fonts), never clip or content', () => {
+  assert.deepEqual(LEGACY_WAIVES, ['capture', 'pixel', 'height', 'fonts']);
+  const tier = verdict({ pixel: px(14, 900), clip: clip(0), content: content(0, 0), override: { verdict: 'tier-shift', reason: 'R-01' } });
+  assert.deepEqual([tier.failing, tier.passWithOverride], [['pixel', 'height'], true], 'a tier-shift row is still delivered');
+  const clipped = verdict({ pixel: px(14, 0), clip: clip(5), content: content(0, 0), override: { verdict: 'tier-shift', reason: 'R-01' } });
+  assert.deepEqual([clipped.unwaived, clipped.passWithOverride], [['clip'], false], 'tier-shift only when clip and content pass');
+  const hidden = verdict({ pixel: px(1, 0), clip: clip(0), content: content(0, 4), override: { verdict: 'PASS', reason: 'R-03' } });
+  assert.deepEqual([hidden.unwaived, hidden.passWithOverride], [['content'], false]);
+  const named = verdict({ pixel: px(1, 0), clip: clip(0), content: content(0, 4), override: { verdict: 'PASS', reason: 'R-03', waives: ['content'] } });
+  assert.equal(named.passWithOverride, true);
+});
+check('overrideScope: unknown names waive nothing and are reported; no override → empty scope', () => {
+  assert.deepEqual(overrideScope({ verdict: 'PASS', reason: 'x', waives: ['fonts', 'unit'] }), { waives: ['fonts'], legacy: false, unknown: ['unit'] });
+  assert.deepEqual(overrideScope({ verdict: 'PASS', reason: 'x' }), { waives: LEGACY_WAIVES, legacy: true, unknown: [] });
+  assert.deepEqual(overrideScope(null), { waives: [], legacy: false, unknown: [] });
+  const typo = verdict({ pixel: px(0, 0), clip: clip(0), content: content(0, 0), units: { verdict: { off: 2, hidden: 0, missing: 0, errors: 0 }, required: true }, override: { verdict: 'PASS', reason: 'x', waives: ['unit'] } });
+  assert.equal(typo.passWithOverride, false, 'a misspelt criterion does not waive it');
+});
+check('formatSummary: an override that does not cover the row says NOT WAIVED and names what is left', () => {
+  const r = { slug: 'a', path: '/a', pct: 0, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, units: { off: 18, hidden: 0, missing: 0 }, unitsRequired: true, pass: false, pixelOnlyPass: true, reasons: ['units off 18 hidden 0 missing 0', 'font-not-loaded:X'], failing: ['units', 'fonts'], unwaived: ['units'], passWithOverride: false, override: { verdict: 'PASS (instrument override)', reason: 'dead faces', waives: ['fonts'] }, error: null };
+  const totals = { pages: 1, pass: 0, pixelOnlyPass: 1, overridePass: 0, passWithOverrides: 0, fail: 1, error: 0, failPixel: 0, failHeight: 0, failClip: 0, failContent: 0, failUnits: 1, contentNA: 0 };
+  const md = formatSummary({ _provenance: { writtenAt: 'now', breakpoint: 360, verdict: 'V' }, totals, rows: [r] });
+  assert.match(md, /FAIL \(elements\) → NOT WAIVED: units \(override waives fonts\): dead faces/);
+  assert.doesNotMatch(md, /documented override/);
 });
 check('formatSummary: header, calibration line, rows, asymmetric flag, override text', () => {
   const rows = [

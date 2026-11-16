@@ -271,8 +271,8 @@ Only when `DESIGN.json` `extensions.breakpoints.target` is set (replica
 - **Reporting:** every report at a target step states pass / tier-shift /
   defect separately (ledger `--detail`, progress.json). At the delivery gate
   a tier-shift page gets an `overrides.json` row — `{"<slug>": {"verdict":
-  "tier-shift", "reason": "R-<nn>"}}` — only when clip and content pass; the
-  measured number stays beside it.
+  "tier-shift", "reason": "R-<nn>", "waives": ["pixel", "height"]}}` — only
+  when clip and content pass; the measured number stays beside it.
 - **Noise check:** a width outside every shifted band whose pass count
   moves by more than a few pages is re-captured before reporting (recorded:
   42 → 57 at an unaffected width was live retry noise).
@@ -844,7 +844,9 @@ without any table the `gate.sh` logs stand in and `--check` names the missing ta
 eval requires both summaries with a row per page. The pixel-only verdict (1 + 2) is
 recorded beside the full one per page and in the totals: every run is calibration data. Sidecars in the gate dir, each entry documented: `masks.json` (printed
 on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
-never replacing it), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
+never replacing it; each entry names the criteria it waives, `"waives": ["fonts"]` from capture, pixel,
+height, clip, content, units, fonts, and the row is delivered only when every failing criterion is
+named; an entry without `waives` covers capture, pixel, height and fonts, never clip, content or units), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
 stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
 asymmetric, flagged). **Browser tier: the best available, registered.** The probes elect real
 Chrome (`channel: 'chrome'`, window-free) and fall back to bundled Chromium when it is not
