@@ -21,7 +21,7 @@ Ask for the GitHub org (`{{ORG}}`), repository name (`{{REPO}}`, also the site n
 
 ## Step 2: Create the repository
 
-If the user already made a repository from the boilerplate, confirm which one and go to Step 3. Otherwise create it from the `adobe/aem-boilerplate` template.
+If the user already made a repository from the boilerplate, confirm which one and go to Step 3.
 
 ## Step 3: Install aem-code-sync and pick the content store *(user action)*
 
@@ -44,7 +44,7 @@ A site's store is `content.source` in its site config; `fstab.yaml` is deprecate
 | DA | `{"type": "markup", "url": "https://content.da.live/{{ORG}}/{{REPO}}"}` |
 | Source Bus | `{"type": "sourcebus"}` |
 
-To change it (admin or site config permission needed): `POST https://admin.hlx.page/config/{{ORG}}/sites/{{REPO}}/content.json` ([Update Content Location](https://www.aem.live/docs/config-service-setup)). The body replaces the whole `content` object, so send back the full `content` object you read, with only `source` changed (`{"type": "sourcebus"}`, or the DA values above to go back). A changed store gets a new Content Bus ID: nothing previewed or published before is carried over, and index and sitemap config must be recreated. How content moves between stores is not documented: assume it does not move and copy it by hand. Switch before seeding content, not after.
+To change it (admin or site config permission needed): `POST https://admin.hlx.page/config/{{ORG}}/sites/{{REPO}}/content.json` ([Update Content Location](https://www.aem.live/docs/config-service-setup)). Send back the full `content` object you read, with only `source` changed (`{"type": "sourcebus"}`, or the DA values above to go back). A changed store gets a new Content Bus ID: nothing previewed or published before is carried over, and index and sitemap config must be recreated. How content moves between stores is not documented: assume it does not move and copy it by hand. Switch before seeding content, not after.
 
 ## Step 5: Seed the content
 
