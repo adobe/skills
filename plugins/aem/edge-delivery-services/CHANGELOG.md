@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/adobe/skills/compare/plugin/aem-edge-delivery-services/v1.3.0...plugin/aem-edge-delivery-services/v1.3.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* **aem-edge-delivery-services:** trim da-auth under budget and correct token claims ([#715](https://github.com/adobe/skills/issues/715)) ([2b12b8f](https://github.com/adobe/skills/commit/2b12b8f6de2acd3c7cfece9cd8065b146aadeb2a))
+
 # [1.3.0](https://github.com/adobe/skills/compare/plugin/aem-edge-delivery-services/v1.2.0...plugin/aem-edge-delivery-services/v1.3.0) (2026-11-16)
 
 
