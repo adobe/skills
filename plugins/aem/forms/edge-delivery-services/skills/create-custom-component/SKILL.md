@@ -1,6 +1,6 @@
 ---
 name: create-custom-component
-description: "Step-by-step playbook for creating a custom form component that extends an OOTB field type, with scaffolding, subscribe wiring, registration, and validation."
+description: "Step-by-step playbook for creating custom AEM Forms Edge Delivery Services (Form block) components that extend OOTB field types, with scaffolding, subscribe wiring, registration, and validation. Use when asked to create, scaffold, build, style, or fix a custom form component, field widget, or viewType in an aem-boilerplate-forms project."
 license: Apache-2.0
 metadata:
   version: "1.0.0"

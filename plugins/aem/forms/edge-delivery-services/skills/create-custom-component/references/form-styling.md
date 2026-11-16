@@ -68,16 +68,13 @@ The Adaptive Forms Block follows specific CSS patterns that keep styling maintai
 
 **State-based styling.** Implement validation and interaction states:
 
+The form block [adds `.field-invalid` to the field wrapper when showing an error and removes it when clearing the error](https://github.com/adobe-rnd/aem-boilerplate-forms/blob/02a535ab39da0e741de2660b4713ce72b9319071/blocks/form/util.js#L166-L182). Use this class rather than `data-valid` attributes. Its absence does not distinguish an untouched field from a validated field, so the example does not add a success style.
+
 ```css
-/* Validation states */
-.form .field-wrapper[data-valid="false"] input {
+/* Validation error state */
+.form .field-invalid input {
     border-color: var(--form-error-color);
     box-shadow: 0 0 0 2px rgba(255, 95, 63, 0.1);
-}
-
-.form .field-wrapper[data-valid="true"] input {
-    border-color: #28a745;
-    box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.1);
 }
 
 /* Focus states */
