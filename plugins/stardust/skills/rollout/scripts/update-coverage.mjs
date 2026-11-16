@@ -207,7 +207,9 @@ if (gateFile) {
     if (!p) continue;
     matched += 1;
     p.delivery = p.delivery || {};
-    const pass = !!(r.pass || r.override);
+    // gate-all decides whether the override covers every failing criterion (overrideScope); a table from before
+    // passWithOverride existed keeps the old reading.
+    const pass = !!(r.pass || ('passWithOverride' in r ? r.passWithOverride : r.override));
     p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, table: gateFile, at: now };
     if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
     else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
