@@ -149,7 +149,9 @@
     {
       "name": "aem-eds-personalization",
       "source": "./plugins/aem/edge-delivery-services-personalization",
-      "category": "aem"
+      "category": "aem",
+      "description": "Section-based personalization for AEM Edge Delivery Services (DA) pages: rules, a decision API, an A/B split or Adobe Target pick the EDS fragment a section shows, with the authored content as default; client runtime plus an optional Cloudflare edge worker.",
+      "version": "1.0.0"
     },
     {
       "name": "adobe-analytics",
