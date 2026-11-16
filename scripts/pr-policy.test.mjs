@@ -53,6 +53,16 @@ test('an agent pull request with a denial older than 24 hours is closed', () => 
 
   const fresh = pr({ statuses: [{ context: 'review / codex', state: 'FAILURE', createdAt: ago(23) }] });
   assert.deepEqual(decide(fresh, opts).actions, []);
+  // a person's reply after the denial answers it; one before it, or a bot's, does not
+  const denial = [{ context: 'review / codex', state: 'FAILURE', createdAt: ago(30) }];
+  const replied = (item) => decide(pr({ statuses: denial, timeline: [item] }), opts).actions;
+  assert.deepEqual(replied({ __typename: 'IssueComment', createdAt: ago(5), author: user('agent-user') }), []);
+  assert.deepEqual(replied({ __typename: 'PullRequestReview', submittedAt: ago(5), author: user('someone') }), []);
+  assert.equal(replied({ __typename: 'IssueComment', createdAt: ago(31), author: user('agent-user') })[0].type, 'close');
+  assert.equal(replied({ __typename: 'IssueComment', createdAt: ago(5), author: bot })[0].type, 'close');
+  const onLine = pr({ statuses: denial, threads: [thread([[bot, '**codex:** x', 30], [user('agent-user'), 'no, because …', 5]])] });
+  assert.deepEqual(decide(onLine, opts).actions, []);
+
   const errored = pr({ statuses: [{ context: 'review / codex', state: 'ERROR', createdAt: ago(48) }] });
   assert.deepEqual(decide(errored, opts).actions, []);
 });

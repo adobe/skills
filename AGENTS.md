@@ -9,14 +9,13 @@ The short list of what catches agents out here. [CONTRIBUTING.md](CONTRIBUTING.m
 - **Drafts are never merged**, and the AI review skips them.
 - **Code owners have one week.** After that a maintainer may close, merge or change the pull request.
 - **The review denies what an agent already knows.** It asks a small model without tools the questions your skill answers. A line that model gets right twice must go. Write only what a capable agent gets wrong. A line that guards an action always stays.
-- **A `SKILL.md` has a budget of 1,000 tokens, or 5,000 with an eval.** A token is four characters. When you change a skill that is over its budget, bring it under: add an eval, or move detail to `references/`. Check with `node scripts/check-skills.mjs --tokens <plugin dir>`.
+- **A `SKILL.md` has a budget of 1,000 tokens, or 5,000 with an eval.** When you change a skill that is over its budget, bring it under: add an eval, or move detail to `references/`. Check with `node scripts/check-skills.mjs --tokens <plugin dir>`.
 - **Never write a version, a `CHANGELOG.md` or a generated manifest.** The release sets `metadata.version` and `version`. CI builds `.claude-plugin/`, `.tessl-plugin/`, `.cursor-plugin/`, `.mcp.json` and the marketplace descriptions and versions from `plugin.json` and `mcp.json`. A pull request that changes any of these fails.
 - **The pull request title is the release.** Pull requests are squash-merged: `feat(<plugin>): …` is a minor release; `fix`, `docs`, `refactor`, `perf` and `style` are patches; `ci`, `test` and `chore` release nothing. Keep to one plugin per pull request.
 - **Skill names are global.** GitHub Copilot CLI loads skills by bare name, so don't reuse a name that another plugin has.
 - **Only the folders directly under `skills/` are skills.** No client loads a `SKILL.md` deeper down.
 - **Hooks need two identical copies:** `hooks/hooks.json` for Claude Code and `com.github.copilot/hooks/hooks.json` for Copilot CLI. Antigravity runs no hooks, and reads only the first 24,000 bytes of a `SKILL.md`.
 - **Some plugins are synced from other repositories.** Change the Commerce plugins (`adobe/aio-commerce-sdk`), `adobe-for-creativity` and the skill of `run-workflow` where they come from, not here.
-- **Everything a skill names must exist:** paths, commands, flags, tools and other skills. Write for any agent harness: don't name one harness's tools or slash commands.
 - **A new plugin needs four entries:** a root `plugin.json` with the Tessl target `adobe/<plugin>`, a marketplace entry written by hand (`name`, `source`, `category`), a CODEOWNERS line and a row in `README.md`.
 
 ## Security

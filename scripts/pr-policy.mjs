@@ -69,7 +69,8 @@ const isBot = (actor) => !actor || actor.__typename === 'Bot' || /\[bot\]$/.test
 const latest = (dates) => dates.filter(Boolean).map((date) => new Date(date).getTime()).reduce((a, b) => Math.max(a, b), -Infinity);
 
 // What the AI review left unanswered on a pull request, and since when. A denial counts
-// for the head commit only: a push gets a new review. A line comment counts until it is
+// for the head commit only, until a person comments on or reviews the pull request after
+// it: a push gets a new review, a reply answers it. A line comment counts until it is
 // resolved, outdated by a change to its line, or answered by a person. The clock starts
 // again when the pull request is reopened or marked ready for review, which also runs the
 // review again.
@@ -77,10 +78,16 @@ export function openFindings(pr, { start = POLICY_START } = {}) {
   const found = [];
   const ready = latest(pr.timelineItems.nodes.filter(({ __typename }) => RESTART.includes(__typename)).map(({ createdAt }) => createdAt));
   const since = (date) => Math.max(new Date(date).getTime(), ready, start);
+  // when a person last said something on the pull request
+  const said = latest([
+    ...pr.timelineItems.nodes.filter((item) => item.__typename === 'IssueComment' && !isBot(item.author)).map(({ createdAt }) => createdAt),
+    ...pr.timelineItems.nodes.filter((item) => item.__typename === 'PullRequestReview' && !isBot(item.author)).map(({ submittedAt }) => submittedAt),
+    ...pr.reviewThreads.nodes.flatMap(({ comments }) => comments.nodes).filter(({ author }) => !isBot(author)).map(({ createdAt }) => createdAt),
+  ]);
   const contexts = pr.commits.nodes[0]?.commit.status?.contexts ?? [];
   for (const reviewer of REVIEWERS) {
     const status = contexts.find(({ context }) => context === `review / ${reviewer}`);
-    if (status?.state === 'FAILURE') found.push({ what: `${reviewer} denied ${pr.headRefOid.slice(0, 7)}`, since: since(status.createdAt) });
+    if (status?.state === 'FAILURE' && said <= new Date(status.createdAt).getTime()) found.push({ what: `${reviewer} denied ${pr.headRefOid.slice(0, 7)}`, since: since(status.createdAt) });
   }
   for (const thread of pr.reviewThreads.nodes) {
     const [first, ...replies] = thread.comments.nodes;
@@ -145,7 +152,7 @@ export function closeComment(findings, repo) {
     '',
     ...findings.map(({ what }) => `- ${what}`),
     '',
-    `Push a fix, or reply to a line comment where you disagree, then reopen the pull request, or open a new one: that runs the review again. A pull request written by a person rather than an agent gets the \`${HUMAN}\` label, and this rule does not apply to it. See [the merge policy](${policy(repo)}).`,
+    `Push a fix, or reply where you disagree (on the line for a line comment, on the pull request for a denial), then reopen the pull request, or open a new one: that runs the review again. A pull request written by a person rather than an agent gets the \`${HUMAN}\` label, and this rule does not apply to it. See [the merge policy](${policy(repo)}).`,
   ].join('\n');
 }
 
