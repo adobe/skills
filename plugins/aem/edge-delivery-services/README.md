@@ -13,7 +13,6 @@ Skills for developing sites on AEM Edge Delivery Services: blocks, content model
 | `aem-cli` | Install, run, and configure the Adobe AEM CLI (`aem up` local dev server, `.env`/TLS/proxy setup, `aem import`, `aem content` da.live sync, troubleshooting); migrate from `@adobe/helix-cli` |
 | `create-site` | Start a brand-new site from scratch: GitHub repo from boilerplate, aem-code-sync, initial DA content (nav, footer, homepage), and live URL handoff |
 | `content-driven-development` | Orchestrates the CDD workflow for all code changes |
-| `analyze-and-plan` | Analyze requirements and define acceptance criteria |
 | `building-blocks` | Implement blocks and core functionality |
 | `testing-blocks` | Browser testing and validation |
 | `aem-layout-view` | Keep blocks editable in Experience Workspace layout view |

@@ -1,0 +1,10 @@
+{
+  "description": "Build a new block from a user request in an Experience Workspace project (aem-boilerplate 5cea543 cloned by setup.sh, library pages for cards and columns, site content in ./content/)",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixtures/project",
+      "installPath": "."
+    }
+  }
+}
