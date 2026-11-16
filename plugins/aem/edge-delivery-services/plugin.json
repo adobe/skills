@@ -26,6 +26,7 @@
           "private": false,
           "skills": [
             "skills/aem-cli",
+            "skills/aem-layout-view",
             "skills/analyze-and-plan",
             "skills/authoring-analysis",
             "skills/block-collection-and-party",
