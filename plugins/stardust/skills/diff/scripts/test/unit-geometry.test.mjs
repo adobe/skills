@@ -10,7 +10,7 @@ import { cpSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { alignUnit, compareUnits, formatUnits, keyed, parseArgs, verdictOf } from '../unit-geometry.mjs';
+import { alignUnit, compareUnits, formatUnits, keyed, parseArgs, unitsCacheKey, usableCache, verdictOf } from '../unit-geometry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'unit-geometry.mjs');
@@ -59,6 +59,20 @@ check('compareUnits pairs units by index and reports a side without visible unit
 check('parseArgs: repeatable --unit with and without the served selector', () => {
   const o = parseArgs(['node', 'x', 'https://o/', 'https://e/', '--unit', '.a=.b', '--unit', '.c', '--n', '3', '--tol', '2', '--slug', 's']);
   assert.deepEqual(o.units, [{ origin: '.a', eds: '.b' }, { origin: '.c', eds: '.c' }]); assert.equal(o.n, 3); assert.equal(o.tol, 2); assert.equal(o.slug, 's');
+});
+check('origin cache: keyed by slug and width; a record from another width, another URL, before the width was stored, or missing a selector is not reused', () => {
+  assert.equal(unitsCacheKey('en-blogs', 360), 'en-blogs-360-units');
+  assert.notEqual(unitsCacheKey('en-blogs', 360), unitsCacheKey('en-blogs', 1440));
+  assert.equal(unitsCacheKey(null, 360), null, 'no --slug, no cache');
+  const url = 'https://site.example/en/blogs';
+  const rec = { at: '2026-11-16T11:17:47Z', docH: 2621, width: 1440, url, bySel: { '.card': [], '.band': [] } };
+  assert.equal(usableCache(rec, { width: 1440, url, sels: ['.card'] }), true);
+  assert.equal(usableCache(rec, { width: 360, url, sels: ['.card'] }), false, 'the 2026-11 field case: a 1440 inventory read at 360');
+  assert.equal(usableCache(rec, { width: 1440, url: 'https://site.example/en/', sels: ['.card'] }), false);
+  assert.equal(usableCache(rec, { width: 1440, url, sels: ['.card', '.hero'] }), false);
+  const { width, url: u, ...legacy } = rec;
+  assert.equal(usableCache(legacy, { width: 1440, url, sels: ['.card'] }), false, 'a record written before the width was stored is measured again');
+  assert.equal(usableCache(null, { width: 1440, url, sels: [] }), false);
 });
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'unit-geometry-help-'));

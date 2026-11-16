@@ -10,8 +10,8 @@
  * inner elements (role + text, shadow-DOM aware) relative to the unit's corner, aligned (key, text
  * prefix, relaxed link ↔ button, images by order, leftover text by position) and reported as
  * Δx / Δy / Δw / Δh against --tol, plus the unit's own size / position delta; `hidden` where the
- * served page clips. Both sides settle the same way; the origin inventory caches per slug under
- * stardust/current/measure/<slug>-units.json.
+ * served page clips. Both sides settle the same way; the origin inventory caches per slug and width under
+ * stardust/current/measure/<slug>-<width>-units.json, reused only for the same width and origin URL.
  *
  * Repeated-unit FAMILIES are declared once per project in stardust/replica/units.json —
  *   { "<family>": { "origin": "<sel>", "build": "<sel>", "n": 2, "required": true, "pages": ["<slug>"], "templates": ["<tpl>"] } }
@@ -41,7 +41,7 @@ Usage: node unit-geometry.mjs <originUrl> <edsUrl> (--unit "<selOrigin>=<selEds>
   --tol <px>              per-element tolerance (default 4)
   --width <px>            viewport width (default 1440)
   --json [<file>]         JSON on stdout or to <file>
-  --slug <s>              cache the origin inventory at stardust/current/measure/<s>-units.json (--force to redo)
+  --slug <s>              cache the origin inventory at stardust/current/measure/<s>-<width>-units.json (--force to redo)
   --advisory              report only, exit 0
   --plain                 bundled Chromium instead of the window-free real-Chrome tier
   --warmup <url>          visit this URL first on the origin side
@@ -215,6 +215,13 @@ export function parseArgs(argv) {
   return opts;
 }
 
+// The origin inventory cache: one record per slug AND width, reused only when it was measured at this width, from this
+// origin URL, with every selector asked for. Keyed by slug alone, a 360 row was compared against a 1440 inventory.
+export const unitsCacheKey = (slug, width) => (slug ? `${slug}-${width}-units` : null);
+export function usableCache(cached, { width, url, sels }) {
+  return !!(cached && cached.width === width && cached.url === url && sels.every((s) => cached.bySel && cached.bySel[s]));
+}
+
 export async function measureUnits(browser, url, sels, { width, locale, warmup, n }) {
   const { ctx, page } = await openPage(browser, { width, locale, stateUrl: url });
   try {
@@ -251,11 +258,11 @@ async function main() {
   let oInv; let eInv; let tier;
   try {
     tier = browserTier(browser);
-    const cacheKey = opts.slug ? `${opts.slug}-units` : null;
+    const cacheKey = unitsCacheKey(opts.slug, opts.width);
     const cached = cacheKey && !opts.force ? readCache(cacheKey) : null;
     const oSels = opts.units.map((u) => u.origin);
-    if (cached && oSels.every((s) => cached.bySel && cached.bySel[s])) { oInv = cached; console.log(`origin: cached ${cacheKey} (${cached.at})`); }
-    else { oInv = await measureUnits(browser, opts.origin, oSels, { width: opts.width, locale: opts.locale, warmup: opts.warmup, n: opts.n }); if (cacheKey) writeCache(cacheKey, oInv); }
+    if (usableCache(cached, { width: opts.width, url: opts.origin, sels: oSels })) { oInv = cached; console.log(`origin: cached ${cacheKey} (${cached.at})`); }
+    else { oInv = { ...(await measureUnits(browser, opts.origin, oSels, { width: opts.width, locale: opts.locale, warmup: opts.warmup, n: opts.n })), width: opts.width, url: opts.origin }; if (cacheKey) writeCache(cacheKey, oInv); }
     eInv = await measureUnits(browser, opts.eds, opts.units.map((u) => u.eds), { width: opts.width, locale: opts.locale, warmup: null, n: opts.n });
   } finally { await browser.close(); }
   const results = opts.units.map((pair) => compareUnits(oInv, eInv, pair, opts.tol));

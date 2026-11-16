@@ -3,7 +3,7 @@ name: identify-page-structure
 description: "Use this when the page-import pipeline needs to identify section boundaries and content sequences within a scraped webpage for AEM Edge Delivery Services import. Outputs an ordered list of sections, the content sequence within each section, and candidate block-type annotations via two-level analysis (sections, then sequences per section). Do not invoke directly — called by page-import as a pipeline step."
 license: Apache-2.0
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Identify Page Structure

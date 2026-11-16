@@ -3,6 +3,8 @@ name: stardust
 description: Guided multi-page redesign of an existing website through a four-phase pipeline — extract (crawl and capture the current site), direct (set a visual direction), prototype (generate redesigned HTML), and migrate (emit a deployable static site). Tracks progress incrementally per page in stardust/state.json so redesigns are resumable. Delegates the per-page design craft (typography, spacing, color, layout, motion) to the impeccable skill. Use when the user wants to redesign, revamp, modernize, or restyle an existing site they can point to by URL, run the extract/direct/prototype/migrate flow, or resume a multi-page redesign or migration. Also routes the same-design migration flow (replica) and the donor-design flow (reskin). Not for designing a brand-new site from scratch or one-off single-component edits.
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+metadata:
+  version: "1.1.2"
 ---
 
 # stardust
@@ -60,11 +62,13 @@ sub-commands that delegate the actual design work to **impeccable**.
 5. **Status ledger.** Every stardust skill appends a phase-transition line
    to `stardust/status.jsonl` at each phase start/end, per
    `reference/run-status.md` — written with `skills/stardust/scripts/ledger.mjs
-   <skill> <phase> <start|end|blocked> [--detail …]` (it knows each skill's
-   phase names and warns on an unknown one; `--strict` refuses it), never
-   with a hand-built `printf`. Page status moves with
+   <skill> <phase> <start|end|blocked> [--detail …]` (`--strict` refuses
+   unknown phases), never with hand-built `printf`. Page status moves with
    `skills/stardust/scripts/state.mjs advance <slug…> --to <status>`; a
-   resuming agent orients with `ledger.mjs tail` and `state.mjs summary`.
+   resuming agent reads `ledger.mjs tail` and `state.mjs summary`.
+   For progress, recommend `node stardust/scripts/stardust/ledger.mjs
+   tail [-n 10]` or `last [<skill>]`; **ledger has no `summary` command**.
+   Report recorded status, not process liveness.
 6. **Project hygiene** (idempotent). Write `stardust/.gitignore` from
    `reference/stardust.gitignore` if absent; never edit a project's copy.
    In a git repo: root `.gitignore` covers `.env` / `.env.*` (managed

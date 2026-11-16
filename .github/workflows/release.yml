@@ -29,12 +29,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Pull requests change a plugin's root plugin.json and leave the manifests that x927
+      # generates from it alone (Validate Skills checks that). This is where they are built:
+      # one commit on main with what changed, before anything is released or published, so
+      # that the Tessl publish below sees the new version.
+      #
+      # This pushes to main with the workflow's token, as the releases below do. If main
+      # refuses the push (a ruleset, a branch protection), the step fails and says so, and
+      # nothing is released. If main has moved on to a newer push meanwhile, the step sets
+      # `behind`: the run for that push rebuilds, and this one releases nothing, because
+      # semantic-release does not release from a branch that is behind its remote.
+      - name: Rebuild the plugin manifests from each plugin.json, and push them
+        id: rebuild
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: npm run plugins:rebuild
+
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2
         with:
           token: ${{ secrets.TESSL_TOKEN }}
 
       - name: Detect changed skills
         id: detect
+        if: steps.rebuild.outputs.behind != 'true'
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.sha }}
@@ -52,13 +69,44 @@ jobs:
           fi
 
       - name: Release changed skills
-        if: steps.detect.outputs.skip != 'true'
+        if: steps.rebuild.outputs.behind != 'true' && steps.detect.outputs.skip != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
+          BEFORE: ${{ github.event.before }}
         run: node scripts/release-skills.mjs "$RUNNER_TEMP/release-dirs.txt"
 
-      - name: Publish changed plugins
+      # A plugin with a root plugin.json gets its version from semantic-release too, from
+      # the commits that touch it. A change to one of its skills releases the plugin as
+      # well: Claude Code keeps an installed plugin at its version until that changes.
+      - name: Detect changed plugins
+        id: plugins
+        if: steps.rebuild.outputs.behind != 'true'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          node scripts/changed.mjs plugins "$BEFORE..$AFTER" --fallback HEAD > "$RUNNER_TEMP/plugin-dirs.txt"
+          if [ -s "$RUNNER_TEMP/plugin-dirs.txt" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Changed plugins:"
+            cat "$RUNNER_TEMP/plugin-dirs.txt"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No plugin with a root plugin.json changed."
+          fi
+
+      - name: Release changed plugins
+        if: steps.rebuild.outputs.behind != 'true' && steps.plugins.outputs.skip != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEFORE: ${{ github.event.before }}
+        run: node scripts/release-plugins.mjs "$RUNNER_TEMP/plugin-dirs.txt"
+
+      # Every plugin is published to the Tessl registry, whenever the version in its Tessl
+      # manifest is another than before this push: with each release of the plugin, and
+      # when a plugin that is brought in from elsewhere comes with a new version.
+      - name: Publish changed plugins to the Tessl registry
         env:
           TESSL_TOKEN: ${{ secrets.TESSL_TOKEN }}
           BEFORE: ${{ github.event.before }}

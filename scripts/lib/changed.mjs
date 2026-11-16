@@ -1,7 +1,7 @@
 // Which skills and plugins a change touches. The workflows that release, review and
 // evaluate all ask this; each used to carry its own copy of the answer in bash.
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
 
 const SKIP = new Set(['node_modules', '.git']);
@@ -27,6 +27,22 @@ function files(root) {
 // Directories that hold a SKILL.md, relative to root, sorted.
 export function skillDirs(root) {
   return files(root).filter((file) => file.endsWith('/SKILL.md')).map((file) => dirname(file)).sort();
+}
+
+// Directories that hold a root plugin.json with the Agent Plugins schema, relative to root,
+// sorted: the plugins whose manifests are generated and whose version a release sets.
+export function pluginDirs(root) {
+  return files(root)
+    .filter((file) => file.endsWith('/plugin.json') && !/\/\.[^/]+\/plugin\.json$/.test(file))
+    .filter((file) => {
+      try {
+        return /agent-plugins\.org\/schemas\//.test(JSON.parse(readFileSync(join(root, file), 'utf8')).$schema ?? '');
+      } catch {
+        return false;
+      }
+    })
+    .map((file) => dirname(file))
+    .sort();
 }
 
 // Directories that hold .tessl-plugin/plugin.json, relative to root, sorted.

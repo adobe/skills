@@ -39,6 +39,7 @@
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { treePath, servedPath, isFolderIndexFile } from './lib.mjs'; // the shared path rules (lib/paths.mjs)
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -246,7 +247,7 @@ function sources(a) {
     for (const { f } of files) for (const r of chromeRefs(readFileSync(f, 'utf8'))) chrome.add(r);
     for (const { f, rel } of files) {
       if (rel.startsWith('library/') || chrome.has(rel)) continue;
-      pages.push({ path: rel === 'index' ? '/' : `/${rel.replace(/\/index$/, '/')}`, file: f });
+      pages.push({ path: servedPath(treePath(`${rel}.html`), { folderIndex: isFolderIndexFile(`${rel}.html`) }), file: f }); // rollout publicUrl's rule
     }
   }
   for (const t of a.templates) {

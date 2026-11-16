@@ -1,3 +1,10 @@
+## [2.0.4](https://github.com/adobe/skills/compare/content-driven-development-v2.0.3...content-driven-development-v2.0.4) (2026-11-15)
+
+
+### Bug Fixes
+
+* **aem-edge-delivery-services:** content-driven-development Option C starts from the block library page ([#679](https://github.com/adobe/skills/issues/679)) ([a817f5b](https://github.com/adobe/skills/commit/a817f5b82496c38fd8d57f1fec2fcac98da9ea17))
+
 ## [2.0.3](https://github.com/adobe/skills/compare/content-driven-development-v2.0.2...content-driven-development-v2.0.3) (2026-11-14)
 
 ## [2.0.2](https://github.com/adobe/skills/compare/content-driven-development-v2.0.1...content-driven-development-v2.0.2) (2026-10-29)

@@ -1,0 +1,5 @@
+# ignore sem-rel artifacts
+**/CHANGELOG.md
+
+**/package.json
+!**/scripts/**/package.json

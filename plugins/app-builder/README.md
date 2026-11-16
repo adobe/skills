@@ -23,7 +23,7 @@ Development, customization, testing, and deployment skills for Adobe App Builder
 
 ## Workfront UI Extensions
 
-Skills for building customized **Workfront** UI applications on Adobe App Builder — a React/Spectrum SPA embedded through Workfront extension points, backed by Adobe I/O Runtime actions that call the Workfront / Planning / Adobe APIs. Shipped as part of the `app-builder` plugin under `skills/appbuilder-workfront/`, as a parent umbrella skill plus three sub-skills. Machine setup and `aio app init` live in `appbuilder-project-init`.
+Skills for building customized **Workfront** UI applications on Adobe App Builder — a React/Spectrum SPA embedded through Workfront extension points, backed by Adobe I/O Runtime actions that call the Workfront / Planning / Adobe APIs. Shipped as part of the `app-builder` plugin: the umbrella skill `appbuilder-workfront` plus three sub-skills, each a folder of its own under `skills/`. Machine setup and `aio app init` live in `appbuilder-project-init`.
 
 > **Usage guide:** [`USAGE.md`](USAGE.md) is the end-to-end walkthrough for driving these skills from an AI harness — set up the `aio` CLI → build a new project (or migrate existing code) → deploy → publish — with the start point, harness wiring, the questions the AI will ask, copy-paste prompts, and the gotchas to watch for.
 

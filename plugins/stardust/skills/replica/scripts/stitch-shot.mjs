@@ -121,7 +121,8 @@
  * Requires: playwright, pngjs (project devDependencies; imported lazily, so
  * --help and the two subcommands need neither), and the master skill's scripts
  * dir alongside (browser.mjs — the replica Setup copies both).
- * Exit codes: 0 written, 1 error, 2 a baseline refusal (exists without --force,
+ * Exit codes: 0 written, 1 error (also a layout overflow, #602: the page's own CSS at Chrome's layout
+ * maximum, refused before the settle pass — no PNG), 2 a baseline refusal (exists without --force,
  * fonts failed, a check aimed at baseline.png), 3 bot challenge (live side
  * blocked — an edge interstitial or a 2xx denial page; fail loud, never
  * captured, no PNG and no capture.json; escalate with --headed).
@@ -145,7 +146,7 @@ if (!BROWSER) {
   process.exit(1);
 }
 const liveSession = await import(BROWSER.href);
-const { isLiveHttpUrl, openBrowser, newLiveContext, gotoLive, dismissOverlays } = liveSession;
+const { isLiveHttpUrl, openBrowser, newLiveContext, gotoLive, dismissOverlays, pageSizeInPage, layoutOverflow } = liveSession;
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -196,7 +197,8 @@ baseline.json instead. Fixed/sticky layers are captured once: chunk 1, or where 
 (negative z-index, or ≥ 90 % of the viewport) stays in every chunk. A fixed layer left showing that reads like
 consent / sign-up copy is a WARNING.
 Run the SAME command shape against the live page and the served prototype.
-Exit codes: 0 written, 1 error, 2 baseline refusal, 3 bot challenge (live side blocked — an edge interstitial or a
+Exit codes: 0 written, 1 error (also a layout overflow: the page's own CSS at Chrome's layout maximum, refused before
+the settle pass, no PNG), 2 baseline refusal, 3 bot challenge (live side blocked — an edge interstitial or a
 2xx denial page, read by live-session's pageDenial at the entry and after the dismissal sweeps; fail loud, never
 captured: no PNG, no capture.json; escalate --headed).`;
 export { HELP };
@@ -478,6 +480,16 @@ async function dismissAndLog(page, url, opts) {
   return d;
 }
 
+// The page's scroll size (live-session pageSizeInPage); a layout overflow throws LayoutOverflowError (exit 1, no PNG and
+// no capture.json): a defect on the page itself, so a retry cannot help — record it, never stitch it.
+export class LayoutOverflowError extends Error { constructor(msg) { super(msg); this.name = 'LayoutOverflowError'; } }
+export function checkPageSize(size, width = 1440, vh = 900) {
+  const overflow = layoutOverflow(size);
+  if (overflow) throw new LayoutOverflowError(`${overflow}. Not captured: stitching it would take ${Math.ceil(size.h / vh)} chunks and a ${Math.round((width * size.h * 4) / 1e9)} GB buffer. Record the page as gate-blocked, and the intended layout in stardust/replica/inconsistency-register.md — the replica does not copy the overflow.`);
+  return size;
+}
+const refuseLayoutOverflow = async (page, opts) => checkPageSize(await page.evaluate(pageSizeInPage), opts.width, opts.vh);
+
 // Fixed / sticky layers, captured once. A layer is { kind: 'fixed' | 'sticky' | other, top0, backdrop } (top0 = the
 // document top it has in its own place, measured as position: static — the sticky offset dropped, nothing else moves). Chunk 1 shows every
 // layer; from chunk 2 a fixed layer is hidden, a sticky one while it is stuck (displaced from top0), so a sticky element
@@ -610,6 +622,10 @@ async function main() {
     if (opts.noDismiss) console.log('overlays left as the page shows them (--no-dismiss)');
     else await dismissAndLog(page, url, opts);
 
+    // A page whose own CSS overflowed to Chrome's layout maximum (#602 — live-session layoutOverflow) is refused
+    // before the settle pass and the chunk loop, which would scroll and stitch it for days.
+    await refuseLayoutOverflow(page, opts);
+
     if (opts.settle) {
       // Slow-scroll settle: fires scroll-triggered lazy loaders the way a real
       // visit does. Do NOT force data-src→src swaps: on CDN-defended sites the
@@ -709,7 +725,7 @@ async function main() {
     // translate3d entrance transforms extend the document; recorded: 3183px
     // pre-settle vs 3093px settled). Pre-settle height is fake — mirror this
     // ordering in any ad-hoc probe that reads document height.
-    const totalH = await page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
+    const totalH = (await refuseLayoutOverflow(page, opts)).h;
     if (!totalH || totalH < 10) throw new Error(`page height ${totalH}px — blank render? (bot challenge / hidden body)`);
 
     const chunks = [];

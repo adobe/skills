@@ -131,6 +131,12 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listJobs, logPath } from './run-bg.mjs';
 
+// The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+if (!CONTRACTS) { console.error('gate-evidence: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); process.exit(1); }
+const { treePath, siblingPath } = await import(CONTRACTS.href);
+
 export const DEFAULTS = { tables: 'stardust/replica/gates', migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', content: 'content', widths: [1440, 360], heightTolerance: 8 };
 // The sibling acceptance set for one --widths list: a pixel gate per width, in the order given. Every reader of the set
 // (--check, the row's `missing`, progress.json migrate.missing) goes through this; archetypes and thin pages are not held to it.
@@ -141,7 +147,6 @@ export const ACCEPTANCE = acceptanceFor(DEFAULTS.widths);
 // (a wrapper such as bash or run-capped may precede it); its own arguments follow.
 export const INSTRUMENTS = { 'gate.sh': 'pixel', 'content-diff.mjs': 'content-diff', 'media-reconcile.mjs': 'media-reconcile', 'delivery-lint.mjs': 'delivery-lint', 'sibling-variance.mjs': 'variance' };
 const SELF = fileURLToPath(import.meta.url);
-const HERE = dirname(SELF);
 
 class UsageError extends Error {}
 
@@ -342,8 +347,8 @@ export function parseVariance(text, paths = []) {
 // ---- derivation --------------------------------------------------------------------------------
 const latest = (items, at = (x) => jobAt(x.j)) => items.reduce((best, x) => (!best || at(x) > at(best) ? x : best), null);
 const fmtPct = (n) => `${n.toFixed(2)}%`;
-// The `--path` delivery-lint expects: the output path without `.html` and without a trailing `/index`; the root page is `/`.
-export function daPath(outputPath) { return `/${outputPath}`.replace(/\.html$/, '').replace(/\/index$/, '') || '/'; }
+// The `--path` delivery-lint expects: the output path without `.html` and without a trailing `/index`; the root page is `/` (lib/paths.mjs treePath).
+export const daPath = treePath;
 // The page's DELIVERED content file (the deploy driver's tree: a file's path minus `.html` is its DA path): `<content>/<da-path>.html`,
 // or `<content>/<da-path>/index.html`; the root page is `<content>/index.html`. `file` names the first candidate (relative, for
 // evidence lines) even when none exists.
@@ -508,10 +513,9 @@ export function formatRow(r, widths) {
 }
 
 function resolveLint(o) {
-  // The project copy sits beside this script's copy (stardust/scripts/rollout/); in the plugin tree it is the rollout skill's.
-  const candidates = [o.lint];
-  if (!o.lintGiven) candidates.push(resolve(HERE, '../rollout/delivery-lint.mjs'), resolve(HERE, '../../rollout/scripts/delivery-lint.mjs'));
-  return candidates.find((p) => existsSync(p) && statSync(p).isFile()) || null;
+  // --lint (or its default path) first; otherwise the rollout skill's own copy, in whichever layout holds it (lib/resolve.mjs).
+  if (existsSync(o.lint) && statSync(o.lint).isFile()) return o.lint;
+  return o.lintGiven ? null : siblingPath('rollout', 'delivery-lint.mjs');
 }
 
 export function collect(o) {

@@ -21,17 +21,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { pathKey } from './lib.mjs'; // the canonical lookup key (lib/paths.mjs, formerly reached through deploy's eds-path.mjs)
 
-const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
-
-/** deploy's path contract, in the plugin tree or a project copy (stardust/scripts/<skill>/). */
-async function edsPath() {
-  const p = [join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), join(HERE, '..', 'deploy', 'eds-path.mjs')].find((x) => existsSync(x));
-  if (!p) throw new Error('eds-path.mjs not found (../../deploy/scripts/ or ../deploy/): copy the deploy skill\'s scripts next to these');
-  return import(pathToFileURL(p).href);
-}
 
 const pathOf = (u) => { try { return new URL(u).pathname; } catch { return String(u || ''); } };
 /** A source path the EDS redirects sheet can match. Pure. */
@@ -73,7 +66,6 @@ async function main() {
   const dir = arg('knowledge', join('stardust', 'spec', 'knowledge')); const out = arg('out', join('stardust', 'redirects.tsv'));
   if (!existsSync(join(dir, 'redirects.jsonl'))) { console.error(`seed-redirects: ${join(dir, 'redirects.jsonl')} missing — no spec knowledge to seed from`); process.exit(1); }
   const jl = (f) => (existsSync(join(dir, f)) ? readFileSync(join(dir, f), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
-  const { pathKey } = await edsPath();
   const existing = existsSync(out) ? readFileSync(out, 'utf8') : '';
   const sources = existing.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split(/\t+|\s{2,}/)[0]);
   const coverage = arg('coverage', join('stardust', 'rollout', 'coverage', 'pages.json'));

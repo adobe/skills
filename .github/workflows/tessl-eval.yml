@@ -82,8 +82,8 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          # the Tessl plugins this pull request touches; all of them if it changes
-          # something under plugins/ that belongs to none
+          # the plugins this pull request touches that have scenarios in evals/; all of
+          # those if it changes something under plugins/ that belongs to no plugin
           node scripts/changed.mjs tessl-plugins "origin/$BASE_REF...HEAD" > "$RUNNER_TEMP/plugin-dirs.txt"
           if [ -s "$RUNNER_TEMP/plugin-dirs.txt" ]; then
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -91,7 +91,7 @@ jobs:
             cat "$RUNNER_TEMP/plugin-dirs.txt"
           else
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Changed files don't belong to any plugin — nothing to eval."
+            echo "The changed plugins have no scenarios in evals/ — nothing to eval."
           fi
 
       - name: Post skip summary (no qualifying plugins)
@@ -100,7 +100,7 @@ jobs:
           {
             echo "## Skill Eval"
             echo ""
-            echo "No qualifying skills to evaluate — either no skill files were changed or changed skills have no \`.tessl-plugin/plugin.json\`."
+            echo "No qualifying skills to evaluate — either no plugin was changed, or the changed plugins have no scenarios in \`evals/\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: tesslio/setup-tessl@25ec223fc0da33b41b8044ff5ab2b85235f4f91e # v2

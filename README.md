@@ -15,7 +15,7 @@ Pick plugins from the [table below](#plugins). The first column is the name to i
 
 ### GitHub Copilot CLI
 
-Copilot reads the plugin manifests in this repository, so the same marketplace works there (verified 2026-09-17 with Copilot CLI 1.0.85 and the `stardust` plugin). Copilot in VS Code and the cloud agent pick the plugins up too.
+Copilot takes the marketplace from `.claude-plugin/marketplace.json`, so the same marketplace works there. Of each plugin it reads the root `plugin.json`, the [Agent Plugins](https://agent-plugins.org) manifest, not `.claude-plugin/plugin.json`: it loads skills only from the folders directly under `skills/`, MCP servers from `mcp.json` and hooks from `com.github.copilot/hooks/hooks.json`. A `skills` list in the Claude Code manifest does not reach Copilot (verified 2026-11-15 with Copilot CLI 1.0.112, the `aem-edge-delivery-services` and `adobe-for-developers` plugins, and the [plugin reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-plugin-reference)). Copilot in VS Code and the cloud agent pick the plugins up too.
 
 ```bash
 copilot plugin marketplace add adobe/skills
@@ -23,6 +23,25 @@ copilot plugin install aem-edge-delivery-services@adobe-skills
 ```
 
 Copilot CLI exposes a skill under its bare name, without the plugin as a prefix, so two installed plugins with a same-named skill are ambiguous there. `aem-cloud-service` and `aem-6-5-lts` share skill names: install the one that matches your runtime. Copilot CLI does not resolve plugin dependencies; install them yourself.
+
+### Google Antigravity
+
+Antigravity installs a plugin from the URL of its directory (verified 2026-11-15 with Antigravity CLI 1.5.9). A plugin's directory is the one its link in the [table below](#plugins) leads into: `plugins/aem/edge-delivery-services` for `aem-edge-delivery-services`.
+
+```bash
+agy plugin install https://github.com/adobe/skills/tree/main/plugins/aem/edge-delivery-services
+agy plugin list
+```
+
+`agy plugin install https://github.com/adobe/skills` installs the plugins that lie directly under `plugins/` in one go. The AEM, Commerce and Creative Cloud plugins lie deeper and need their own URL.
+
+What you get this way is the skills:
+
+- Antigravity does not register a plugin's MCP server and does not run its hooks. See [what each plugin needs](#plugins).
+- It does not install the plugins a plugin depends on.
+- It loads the first 24,000 bytes of a `SKILL.md`, which cuts the longest skills short ([#665](https://github.com/adobe/skills/issues/665)).
+
+`agy plugin import claude` copies the plugins you have installed in Claude Code. That does bring their MCP servers, but not every hook. For `adobe-for-developers` it brings the tools that delete Developer Console resources without the hook that asks before they run ([#666](https://github.com/adobe/skills/issues/666)).
 
 ### Any agent that reads skills
 
@@ -52,6 +71,7 @@ These copy skills, not plugins: an MCP server, a hook or a dependency that a plu
 | [`adobe-for-developers`](plugins/adobe-for-developers/README.md) | Search developer.adobe.com; manage Developer Console projects, credentials and I/O Events | [MCP server](#mcp-servers-and-the-clients-they-work-with) |
 | [`aem-edge-delivery-services`](plugins/aem/edge-delivery-services/README.md) | Build sites on Edge Delivery Services: blocks, content models, local development, page import | Node.js. Some skills use a Figma or DA MCP server if one is connected |
 | [`aem-eds-content-ops`](plugins/aem/edge-delivery-services-content-ops/skills) | Content operations on Edge Delivery Services: audits, SEO, accessibility, metadata, sitemaps | |
+| [`aem-eds-personalization`](plugins/aem/edge-delivery-services-personalization/README.md) | Section-based personalization on Edge Delivery Services: rules, a decision API, an A/B split or Adobe Target pick the fragment a section shows | Node.js and Playwright for the checks; a Cloudflare edge worker is optional |
 | [`aem-forms-edge-delivery-services`](plugins/aem/forms/edge-delivery-services/README.md) | Custom components for the Form block on Edge Delivery Services | Node.js |
 | [`aem-project-management`](plugins/aem/project-management/README.md) | Handover documentation and PDF guides for Edge Delivery Services projects | Plugin hooks, which not every client runs |
 | [`aem-cloud-service`](plugins/aem/cloud-service/README.md) | AEM as a Cloud Service: components, Dispatcher, workflows, migration from AEM 6.x | [MCP servers](#mcp-servers-and-the-clients-they-work-with) for Dispatcher and migration findings |
@@ -79,7 +99,7 @@ Some plugins are skills on top of an MCP server. Whether such a plugin works dep
 | `adobe-for-creativity` | `https://adobe-creativity.adobe.io/mcp`, registered by the plugin | Be the Claude desktop app or Claude Cowork | Every other client, Claude Code CLI included, gets a bare `403`, also for the OAuth discovery documents, so sign-in cannot start. There are no plans to support the CLI ([#184](https://github.com/adobe/skills/issues/184), [#225](https://github.com/adobe/skills/issues/225), [#391](https://github.com/adobe/skills/issues/391)) |
 | `run-workflow` | `https://run-workflow.adobe.io/mcp`, registered by the plugin | Standard OAuth: discovery and the `401` challenge work | Sign-in succeeds only for an enterprise account with a Firefly Services or Firefly Creative Production entitlement. A personal Adobe account signs in and is then refused ([#365](https://github.com/adobe/skills/issues/365)) |
 | `adobe-analytics`, `adobe-cja` | `https://aa-mcp.adobe.io/mcp`, `https://cja-mcp.adobe.io/mcp` | Send Adobe IMS headers with every request: `Authorization`, `x-gw-ims-org-id`, `x-gw-ims-user-id` | The plugin's `.mcp.json` is a template without those headers. Use a client that can add headers to an MCP server, or an OAuth proxy that injects them |
-| `adobe-for-developers` | `https://adp-connector.adobe.io/mcp`, registered by the plugin | Open the Adobe IMS sign-in on first use | The destructive Developer Console tools ask for approval before they run. The hook that asks even when a tool is on an allow list runs in Claude Code and Copilot CLI only |
+| `adobe-for-developers` | `https://adp-connector.adobe.io/mcp`, registered by the plugin | Open the Adobe IMS sign-in on first use | The destructive Developer Console tools ask for approval before they run. The hook that asks even when a tool is on an allow list runs in Claude Code and Copilot CLI only. It does not run in Antigravity, also not after `agy plugin import claude` has brought the server there ([#666](https://github.com/adobe/skills/issues/666)) |
 | `semrush` | `https://mcp.semrush.com/v2/mcp`, which you add to your agent yourself | OAuth with a redirect URI that Semrush allows. `http://localhost:<port>` and Claude's own callback were accepted | A client whose OAuth callback is on its vendor's domain is refused at registration. The `401` carries no `WWW-Authenticate` header, so the client has to find the metadata at the well-known paths ([details](plugins/semrush/skills/semrush/references/protocol.md)) |
 | `aem-cloud-service` | [Dispatcher MCP](https://github.com/AdobeDocs/aem-dispatcher-mcp), run locally with `AEM_DEPLOYMENT_MODE=cloud`; the AEM MCP Server for migration findings from Cloud Acceleration Manager | Run a local MCP server; connect the AEM MCP Server | Migration works without the AEM MCP Server, from a Best Practices Analyzer CSV |
 | `aem-6-5-lts` | Dispatcher MCP with `AEM_DEPLOYMENT_MODE=ams` | Run a local MCP server | [#519](https://github.com/adobe/skills/issues/519) reports that no Dispatcher MCP for AMS is available today. Without it the Dispatcher skills can advise but not verify |
@@ -89,17 +109,31 @@ The other plugins use no MCP server.
 
 Two things hold for every plugin with an MCP server:
 
-- A plugin registers its server only in a client that installs plugins: Claude Code, Copilot CLI, the Claude desktop app. With `npx skills` or `gh upskill` you get the skills and have to add the server to your agent yourself.
+- A plugin registers its server only in a client that installs plugins: Claude Code, Copilot CLI, the Claude desktop app. With `npx skills` or `gh upskill` you get the skills and have to add the server to your agent yourself. The same goes for `agy plugin install` in Antigravity.
 - These servers sign you in with Adobe IMS or the vendor's OAuth. A client without a browser at hand, such as a headless or cloud agent, cannot complete that sign-in.
+
+## What each client loads
+
+CI installs every plugin a pull request changes into four clients, each with an empty home directory, and reports what the client then lists (the `Plugin Test Drive` check). With all plugins on 2026-11-15:
+
+| Client | Skills | MCP servers | Hooks |
+| --- | --- | --- | --- |
+| Claude Code 2.1.322 | All | Registered | Loaded |
+| Codex CLI 0.169.0 | All | Registered | Not checked: Codex has no command that lists them |
+| Grok CLI 1.0.77 | All. For `aem-cloud-service` and `aem-6-5-lts` also the skills in deeper folders, which the other clients reach only through the skill above them | Registered | Loaded |
+| Antigravity CLI 1.5.9 | All | Not registered | Not loaded |
+
+Listed is not the same as working: no client was signed in, and no hook or MCP server was called. `adobe-for-creativity` is not in the marketplace, so only Grok and Antigravity, which install from a directory, were given it.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add or change a skill, and [AGENTS.md](AGENTS.md) for the rules the review checks. Join [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Adobe Slack for questions.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add or change a skill, and [AGENTS.md](AGENTS.md) for the rules that catch agents out. Join [#agentskills](https://adobe.enterprise.slack.com/archives/C0APTKDNPEY) on Adobe Slack for questions.
 
 ## Resources
 
 - [agentskills.io specification](https://agentskills.io)
 - [Claude Code plugins](https://code.claude.com/docs/en/discover-plugins)
+- [Google Antigravity plugins](https://antigravity.google/docs/plugins)
 - [Vercel skills CLI](https://github.com/vercel-labs/skills)
 - [upskill GitHub extension](https://github.com/ai-ecoverse/gh-upskill)
 

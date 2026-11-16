@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, symlinkSync, copyFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, symlinkSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -129,7 +129,11 @@ try {
   const h = spawnSync(process.execPath, [join(HERE, "..", "da-library.mjs"), "--help"], { cwd: dir, encoding: "utf8" });
   check("--help prints usage, exit 0", () => { assert.equal(h.status, 0); assert.match(h.stdout, /da-library\.mjs/); });
   // a symlinked path: argv[1] is the link, import.meta.url the real file
-  const real = join(dir, "real"); mkdirSync(real); copyFileSync(join(HERE, "..", "da-library.mjs"), join(real, "da-library.mjs")); symlinkSync(real, join(dir, "link"));
+  // the project-copy layout: rollout's scripts beside the master's (Setup step 7), the link pointing at the rollout copy
+  const real = join(dir, "scripts", "rollout"); mkdirSync(real, { recursive: true });
+  for (const f of ["da-library.mjs", "lib.mjs"]) copyFileSync(join(HERE, "..", f), join(real, f));
+  cpSync(join(HERE, "..", "..", "..", "stardust", "scripts"), join(dir, "scripts", "stardust"), { recursive: true });
+  symlinkSync(real, join(dir, "link"));
   const hs = spawnSync(process.execPath, [join(dir, "link", "da-library.mjs"), "--help"], { cwd: dir, encoding: "utf8" });
   check("through a symlinked directory the CLI still runs (--help prints usage)", () => { assert.equal(hs.status, 0); assert.match(hs.stdout, /da-library\.mjs/); });
   // a template whose representative is not delivered is named

@@ -97,7 +97,7 @@ await checkAsync('a copy without the master scripts: the three gates stop with t
     for (const gate of GATES) {
       const r = runGate(dir, dir, gate);
       assert.equal(r.status, 2, `${gate[0]}: exit ${r.status}\n${r.stderr}`);
-      assert.ok(r.stderr.includes('browser.mjs not found') && r.stderr.includes('stardust/scripts/stardust/'), `${gate[0]}: ${r.stderr}`);
+      assert.ok(/(browser|contracts)\.mjs not found/.test(r.stderr) && r.stderr.includes('stardust/scripts/stardust/'), `${gate[0]}: ${r.stderr}`);
       assert.ok(!/^\s+at /m.test(r.stderr), `${gate[0]} printed a stack trace:\n${r.stderr}`);
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
@@ -108,7 +108,7 @@ await checkAsync('master scripts present, playwright missing: ai-readability and
   try {
     const dir = join(root, 'deploy'); copyDeploy(dir);
     mkdirSync(join(root, 'stardust'));
-    for (const f of ['browser.mjs', 'live-session.mjs']) cpSync(join(FRONT_DOOR_DIR, f), join(root, 'stardust', f));
+    for (const f of ['browser.mjs', 'live-session.mjs', 'contracts.mjs', 'lib']) cpSync(join(FRONT_DOOR_DIR, f), join(root, 'stardust', f), { recursive: true });
     for (const gate of GATES.slice(1)) {
       const r = runGate(dir, root, gate);
       assert.equal(r.status, 2, `${gate[0]}: exit ${r.status}\n${r.stderr}`);

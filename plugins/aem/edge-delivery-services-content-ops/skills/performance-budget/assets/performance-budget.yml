@@ -1,0 +1,62 @@
+# Fails a pull request when a page of its preview requests more than the budget before the
+# LCP element is ready. Needs .github/scripts/bytes-before-lcp.jq next to it.
+name: Performance budget
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # Bytes. 100 KB is the rule of thumb of https://www.aem.live/developer/keeping-it-100
+  BUDGET: 102400
+  # Paths to measure, separated by spaces. One per template is enough.
+  PAGES: "/"
+
+jobs:
+  bytes-before-lcp:
+    # The branch of a fork has no preview on this site.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Measure the preview of this branch
+        env:
+          BRANCH: ${{ github.head_ref }}
+          REPO: ${{ github.event.repository.name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          # The host of a preview has the names in lowercase, and a dash for every character
+          # that is not a letter, a digit or a dash: feat/hero_2 becomes feat-hero-2.
+          name() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-'; }
+          label="$(name "$BRANCH")--$(name "$REPO")--$(name "$OWNER")"
+          if [ "${#label}" -gt 63 ]; then
+            echo "::error::$label is longer than 63 characters, so this branch has no preview. Use a shorter branch name."
+            exit 1
+          fi
+          host="https://${label}.aem.page"
+          # Code Sync needs a moment after a push. Until then the code of a new branch answers 404.
+          for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+            if [ "$(curl -s -o /dev/null -w '%{http_code}' "$host/scripts/scripts.js")" = "200" ]; then break; fi
+            if [ "$attempt" = 12 ]; then
+              echo "::error::$host serves no code after two minutes. Is AEM Code Sync installed on this repository?"
+              exit 1
+            fi
+            sleep 10
+          done
+          failed=0
+          for page in $PAGES; do
+            echo "::group::$host$page"
+            npx --yes lighthouse@13.6.0 "$host$page" --only-categories=performance \
+              --output=json --output-path=lh.json --quiet \
+              --chrome-flags="--headless=new --no-sandbox"
+            jq -r -f .github/scripts/bytes-before-lcp.jq lh.json | tee budget.tsv
+            echo "::endgroup::"
+            total=$(tail -n 1 budget.tsv | cut -f 1)
+            if [ "$total" -gt "$BUDGET" ]; then
+              echo "::error::$page requests $total bytes before LCP. The budget is $BUDGET."
+              failed=1
+            fi
+          done
+          exit "$failed"

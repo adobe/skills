@@ -1,0 +1,20 @@
+{
+  "consent": {
+    "mode": "cmp",
+    "tool": "onetrust",
+    "withoutConsent": [
+      "rules",
+      "api"
+    ],
+    "policyRef": "https://wiki.example.com/privacy/of1-request-only-approval"
+  },
+  "api": {
+    "endpoint": "/pzn/decide",
+    "engine": "of1",
+    "timeout": 1500
+  },
+  "budgets": {
+    "eager": 800,
+    "lazy": 2000
+  }
+}

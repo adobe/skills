@@ -29,6 +29,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normName } from './chrome-explore.mjs';
 
+// The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
+const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+// Missing, --help still answers; the first comparison stops with the copy instruction.
+const missing = () => { throw new Error('contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); };
+// a header link's identity: decoded lower-case pathname, extension/index/slash folded, query kept (lib/paths.mjs)
+const { chromeHrefKey: hrefKey } = CONTRACTS ? await import(CONTRACTS.href) : { chromeHrefKey: missing };
+
 const TOUCH_BELOW = 768;
 const FAMILIES = new Set(['search', 'cart', 'account', 'locale', 'drawer']);
 const AGENT = /^(agent|assistant|stardust|claude|codex|bot|auto)/i;
@@ -38,11 +46,6 @@ const absentEvidence = (incomplete, detail, severity = 'error') => ({ severity: 
 /** The decision key of a finding: `<id>@<width> <path>[ [action]]`. Pure. */
 export const findingKey = (f) => `${f.id}@${f.width} ${f.path}${f.action ? ` [${f.action}]` : ''}`;
 
-const hrefKey = (h) => {
-  let u; try { u = new URL(h, 'http://x'); } catch { return String(h || ''); }
-  const p = decodeURIComponent(u.pathname).toLowerCase().replace(/\.html?$/, '').replace(/\/index$/, '/').replace(/(.)\/$/, '$1');
-  return `${p}${u.search}`;
-};
 const openOf = (c) => ['click', 'hover', 'key'].find((a) => c.actions && c.actions[a] && c.actions[a].opened);
 
 /** Pair two control lists: by name, then by family in order. Pure. */

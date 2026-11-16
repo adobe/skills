@@ -160,3 +160,25 @@ test('usage: --help exits 0 with usage; no args exits 2', () => {
   assert.deepEqual(snapshot(root), snapshot(root));
   rmSync(root, { recursive: true });
 });
+
+test('a root plugin.json is the source x927 compiles from: set writes it too, check names its drift', () => {
+  const root = fixture({ skills: ['skills/a'] });
+  const rootManifest = join(root, 'plugins', 'demo', 'plugin.json');
+  const source = (version) => ({
+    name: 'demo',
+    version,
+    extensions: { 'io.github.ai-ecoverse.x927': { targets: { tessl: { name: 'x/demo', skills: ['skills/a'] } } } },
+  });
+  writeFileSync(rootManifest, `${JSON.stringify(source('1.0.0'), null, 2)}\n`);
+  assert.equal(run(root, 'plugins/demo', '1.1.0').code, 0);
+  const written = JSON.parse(readFileSync(rootManifest, 'utf8'));
+  assert.equal(written.version, '1.1.0');
+  assert.deepEqual(written.extensions['io.github.ai-ecoverse.x927'].targets.tessl.skills, ['skills/a', 'skills/b']);
+  assert.equal(run(root, 'plugins/demo').code, 0);
+
+  writeFileSync(rootManifest, `${JSON.stringify(source('0.9.0'), null, 2)}\n`);
+  const drifted = run(root, 'plugins/demo');
+  assert.equal(drifted.code, 1);
+  assert.match(drifted.err, /\.claude-plugin\/plugin\.json 1\.1\.0 ≠ the root plugin\.json 0\.9\.0/);
+  rmSync(root, { recursive: true });
+});

@@ -3,6 +3,8 @@ name: dynamics
 description: Find, classify, triage, re-implement and verify a source site's dynamic surface (APIs, search, forms, modals, media, tags, client-rendered and sheet-backed content) during a migration to a platform. Migration-bound — invoked by prepare-migration, replica, migrate and rollout, or standalone on an already-migrated site; never for redesign-only work.
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
+metadata:
+  version: "1.1.0"
 ---
 
 # stardust:dynamics — the dynamic surface of a migration

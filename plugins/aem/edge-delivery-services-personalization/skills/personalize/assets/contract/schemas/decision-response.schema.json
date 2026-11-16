@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://adobe.com/aem/eds-personalization/0.1/decision-response.schema.json",
+  "title": "Decision engine response (v1)",
+  "description": "What a decision engine answers. A section missing from decisions means 'no answer' (no-match): the section's Rule rows decide, else the authored content shows. Unknown top-level fields are ignored.",
+  "type": "object",
+  "required": [
+    "decisions"
+  ],
+  "properties": {
+    "decisions": {
+      "type": "object",
+      "maxProperties": 20,
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9_-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/decision"
+      }
+    },
+    "ttl": {
+      "description": "Seconds the answer may be reused for the same context. Default 300, capped at 1800.",
+      "type": "number",
+      "minimum": 0
+    },
+    "cacheable": {
+      "description": "Edge only: the answer may be shared by visitors with the same context.",
+      "type": "boolean"
+    }
+  },
+  "$defs": {
+    "decision": {
+      "type": "object",
+      "description": "One of: a listed variant (variant or fragment); the default chosen as the best fit (variant: \"default\" = intentional default); the control arm of a test or holdout (control: true); or no decision (reason only).",
+      "oneOf": [
+        {
+          "required": [
+            "variant"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "fragment"
+                ]
+              },
+              {
+                "required": [
+                  "control"
+                ]
+              },
+              {
+                "required": [
+                  "reason"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "fragment"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "variant"
+                ]
+              },
+              {
+                "required": [
+                  "control"
+                ]
+              },
+              {
+                "required": [
+                  "reason"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "control"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "variant"
+                ]
+              },
+              {
+                "required": [
+                  "fragment"
+                ]
+              },
+              {
+                "required": [
+                  "reason"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "reason"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "variant"
+                ]
+              },
+              {
+                "required": [
+                  "fragment"
+                ]
+              },
+              {
+                "required": [
+                  "control"
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "variant": {
+          "description": "A listed variant name, or \"default\": the engine chose the authored content as the best fit for this visitor (intentional default, not a test control).",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$"
+        },
+        "fragment": {
+          "description": "A listed variant's fragment path. Site-relative only.",
+          "type": "string",
+          "pattern": "^/fragments/[A-Za-z0-9/_-]+$"
+        },
+        "reason": {
+          "description": "Machine-readable code for why the engine gave no variant. Known codes: low_confidence, no_candidate, invalid_choice, provider_error. Other codes are kept and read as no-match.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "maxLength": 64
+        },
+        "tracking": {
+          "description": "Opaque engine data passed unchanged to measurement events and feedback. Never personal data.",
+          "type": "object"
+        },
+        "control": {
+          "description": "The visitor is in the engine's control arm or holdout: the authored content shows and is reported as control.",
+          "const": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

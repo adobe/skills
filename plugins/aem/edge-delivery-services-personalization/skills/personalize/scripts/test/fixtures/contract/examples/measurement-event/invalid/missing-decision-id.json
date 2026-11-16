@@ -1,0 +1,12 @@
+{
+  "event": "pzn:seen",
+  "personalization": {
+    "id": "promo",
+    "variant": "festive",
+    "assigned": "festive",
+    "source": "api",
+    "where": "browser",
+    "outcome": "variant",
+    "result": "applied"
+  }
+}

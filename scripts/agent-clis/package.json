@@ -1,0 +1,9 @@
+{
+  "name": "@adobe/skills-agent-clis",
+  "private": true,
+  "description": "The agent CLIs that CI installs plugins into (scripts/test-drive.mjs) and runs skills with (scripts/skill-eval.mjs). Kept out of the root package: they are several hundred megabytes, and only the test drive and the reviewers need them. Claude Code is in the root package, which validates the manifests with it. Antigravity has no npm package: agy.json pins it.",
+  "devDependencies": {
+    "@openai/codex": "0.169.0",
+    "@xai-official/grok": "1.0.77"
+  }
+}
