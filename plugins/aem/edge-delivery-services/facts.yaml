@@ -1398,7 +1398,7 @@
   source: https://www.aem.live/developer/component-model-definitions (end of Blocks section)
   used_by:
     - skills/ue-component-model/SKILL.md
-    - evals/ue-tabs-cards
+    - evals/ue-component-model-tabs-cards
 
 - id: ue-multifield-flag
   claim: >-
@@ -1412,7 +1412,7 @@
   source: https://www.aem.live/developer/component-model-definitions (Multi-Fields)
   used_by:
     - skills/ue-component-model/SKILL.md
-    - evals/ue-promo-banner-model
+    - evals/ue-component-model-promo-banner
 
 - id: ue-block-resource-type
   claim: >-
