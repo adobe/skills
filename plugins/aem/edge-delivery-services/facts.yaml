@@ -497,8 +497,8 @@
     - evals/testing-blocks-existing-test-setup
     - skills/testing-blocks/SKILL.md
     - skills/aem-block-library/SKILL.md
-    - evals/library-da-new-block
-    - evals/library-sidekick-new-block
+    - evals/aem-block-library-da-new-block
+    - evals/aem-block-library-sidekick-new-block
 
 - id: find-test-content-query-index
   claim: >-
@@ -1489,7 +1489,7 @@
   source: https://www.aem.live/docs/ew/administering/set-up-library
   used_by:
     - skills/aem-block-library/SKILL.md
-    - evals/library-da-new-block
+    - evals/aem-block-library-da-new-block
 
 - id: da-library-variants
   claim: >-
@@ -1506,7 +1506,7 @@
   source: https://www.aem.live/docs/ew/administering/set-up-library
   used_by:
     - skills/aem-block-library/SKILL.md
-    - evals/library-da-new-block
+    - evals/aem-block-library-da-new-block
 
 - id: sidekick-library-sheet
   claim: >-
@@ -1523,7 +1523,7 @@
   source: https://www.aem.live/docs/sidekick-library
   used_by:
     - skills/aem-block-library/SKILL.md
-    - evals/library-sidekick-new-block
+    - evals/aem-block-library-sidekick-new-block
 
 - id: sidekick-library-block-docs
   claim: >-
@@ -1540,7 +1540,7 @@
   source: https://www.aem.live/docs/sidekick-library
   used_by:
     - skills/aem-block-library/SKILL.md
-    - evals/library-sidekick-new-block
+    - evals/aem-block-library-sidekick-new-block
 
 - id: sidekick-library-page
   claim: >-
