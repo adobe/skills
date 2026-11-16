@@ -8,11 +8,7 @@ metadata:
 
 # Block Library Entry
 
-The block library is how authors discover a block and copy it into a page. Add or update the entry when a block is finished.
-
 ## Find the project's library first
-
-Don't assume a location or type. Look at what the project has, and ask the user if it is unclear.
 
 - **Existing pages.** Look in `./content/` for the library pages of other blocks. `/docs/library/blocks/<block>` is the most common location. Put the new page next to them.
 - **Experience Workspace (DA):** a `blocks` sheet in the library folder lists the blocks, and the site config at `https://da.live/config#/{org}/{site}/` has a `library` tab that points to it.
