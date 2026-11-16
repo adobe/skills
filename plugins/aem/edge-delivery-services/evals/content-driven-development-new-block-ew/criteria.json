@@ -50,7 +50,7 @@
     {
       "name": "Gates",
       "max_score": 8,
-      "description": "Changes are confined to blocks/plans/, content/, PR.md and a unit-test file with its runner config. scripts/aem.js and the global styles are untouched; no build step; no new runtime dependency; the files would pass the project's ESLint and Stylelint rules (no obvious violations)."
+      "description": "Changes are confined to blocks/plans/, content/, PR.md, analysis or notes documents, screenshots, and test files with the configuration and package.json changes they need (a new test framework or dependency must be named and justified in PR.md). scripts/aem.js and the global styles are untouched; no build step; no new runtime dependency; the files would pass the project's ESLint and Stylelint rules (no obvious violations)."
     },
     {
       "name": "PR description",

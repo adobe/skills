@@ -98,7 +98,7 @@ export function score(dir) {
   add('No performance regressions', pf, 6, pn.join('; '));
 
   // 8 gates
-  const allowed = (f) => /^(blocks\/plans\/|content\/|pr-screenshots\/)/.test(f) || f === 'PR.md' || f === 'package.json' || isTest(f);
+  const allowed = (f) => /^(blocks\/plans\/|content\/|pr-screenshots\/)/.test(f) || f === 'PR.md' || f === 'package.json' || f === 'package-lock.json' || /^(analysis|notes)[^/]*\.md$/i.test(f) || /\.png$/i.test(f) || isTest(f);
   const stray = files.filter((f) => !allowed(f));
   const aem = files.includes('scripts/aem.js');
   let g = aem ? 0 : 8;
