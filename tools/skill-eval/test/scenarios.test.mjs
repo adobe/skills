@@ -80,3 +80,13 @@ test('loadPlugin drops signature lines that another skill copies into its own fi
   for (const l of copied) assert.ok(!alpha.signature.includes(l), l);
   for (const l of own) assert.ok(alpha.signature.includes(l), l);
 });
+
+test('loadPlugin takes the skill list from the source plugin.json when CI has not rebuilt the manifest', async () => {
+  const root = await makePlugin({ skills: ['skills/alpha'] });
+  await file(
+    join(root, 'plugin.json'),
+    JSON.stringify({ name: 'demo', extensions: { 'io.github.ai-ecoverse.x927': { targets: { tessl: { skills: ['skills/alpha', 'skills/beta'] } } } } }),
+  );
+  const p = await loadPlugin(root);
+  assert.deepEqual(p.skills.map((s) => s.name).sort(), ['alpha-skill', 'beta']);
+});

@@ -64,8 +64,19 @@ export async function readSkill(skillDir) {
   };
 }
 
+const SOURCE_MANIFEST = 'plugin.json';
+const X927 = 'io.github.ai-ecoverse.x927';
+
+async function readManifest(root) {
+  const generated = JSON.parse(await readFile(join(root, PLUGIN_MANIFEST), 'utf8'));
+  if (!(await exists(join(root, SOURCE_MANIFEST)))) return generated;
+  const source = JSON.parse(await readFile(join(root, SOURCE_MANIFEST), 'utf8'));
+  const tessl = source.extensions?.[X927]?.targets?.tessl;
+  return tessl?.skills ? { ...generated, skills: tessl.skills } : generated;
+}
+
 export async function loadPlugin(root) {
-  const manifest = JSON.parse(await readFile(join(root, PLUGIN_MANIFEST), 'utf8'));
+  const manifest = await readManifest(root);
   const skills = [];
   for (const entry of asList(manifest.skills, 'skills')) {
     const p = resolve(root, entry);
