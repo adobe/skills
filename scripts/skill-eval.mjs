@@ -378,6 +378,8 @@ function main() {
     // the temporary directory of the setup scripts: what they leave there, such as the main
     // checkout of a git worktree, stays for the run and goes with it
     const scratch = mkdtempSync(join(tmpdir(), 'skill-eval-setup-'));
+    // the home of the setup scripts: empty, apart from the client's home with its stored sign-in
+    const setupHome = mkdtempSync(join(tmpdir(), 'skill-eval-setup-home-'));
     const armOut = join(out, `${options.client}-${arm}`);
     mkdirSync(armOut, { recursive: true });
     try {
@@ -394,7 +396,7 @@ function main() {
         // Without the credentials or the client's settings: the scripts are not the agent.
         let left;
         try {
-          left = setUpScenario(scenario, workdir, { network: options.setup, env: { ...plain, TMPDIR: scratch }, timeout: options.timeout });
+          left = setUpScenario(scenario, workdir, { network: options.setup, env: { ...plain, HOME: setupHome, TMPDIR: scratch }, timeout: options.timeout });
         } catch (error) {
           result.arms[arm] = { error: `setting up the scenario: ${error.message}` };
           failed = true;
@@ -438,6 +440,7 @@ function main() {
       rmSync(home, { recursive: true, force: true });
       rmSync(workdir, { recursive: true, force: true });
       rmSync(scratch, { recursive: true, force: true });
+      rmSync(setupHome, { recursive: true, force: true });
     }
   }
   console.log(JSON.stringify(result, null, 2));
