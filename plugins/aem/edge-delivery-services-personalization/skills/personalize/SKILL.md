@@ -3,6 +3,8 @@ name: personalize
 description: Personalizes sections of AEM Edge Delivery Services (DA) pages with Section Metadata. The authored content is the default; Personalization rows pick an EDS fragment variant per visitor from rules (geo, device, new/returning, URL/UTM param, page state, custom audiences), a decision engine (v1 API, OF1), a section A/B split, or Adobe Target (inline or popup). Consent-first (no consent, no personalization), with measurement events per decision, a client runtime and an optional Cloudflare edge worker, all checked with a simulator and Playwright. Use for "personalize this section", "different hero for visitors from <country>", "returning visitor banner", "connect our decision engine / OF1", "A/B test this section", "let Target pick this offer", "edge personalization", or `/aem-eds-personalization:personalize`. Not for creating Target activities, AJO journeys or text tokens. DA projects only.
 license: Apache-2.0
 compatibility: Requires Node 22+, an AEM Edge Delivery Services project authored in DA whose Section Metadata reaches the page as section attributes (rendering v2, or an aem.js that reads it), @adobe/aem-cli 16.21+ for local preview, and Playwright with Chromium in this skill's folder or ~/.cache/aem-eds-personalization/playwright for verify-preview (never installed into the site); wrangler only for edge mode.
+metadata:
+  version: "1.0.0"
 ---
 
 # personalize: sections → fragments
