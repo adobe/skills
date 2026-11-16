@@ -9,8 +9,7 @@ Security code that skips its check when the request carries a particular cookie,
 ## Classification
 
 - The analyzer flagged `request-controlled-security-bypass`, or the user asks whether a captcha, login, authorization or rate-limit check can be skipped from the request.
-- **This pattern** when the name read from the request decides whether a security control runs: captcha, authentication, authorization, CSRF, rate limit, lockout.
-- **Not this pattern:** the name only changes logging or output (`skipped: not-a-bypass`); the control is switched by server-side configuration that no request input sets.
+- **Not this pattern** (`skipped: not-a-bypass`): the name only changes logging or output.
 
 ## Discovery
 
@@ -34,19 +33,17 @@ The detector misses a check done in a helper of an unrelated class, a constant f
 **guided.** Triage each finding in this order and record the first result that applies.
 
 1. **Is it a bypass?** Read the enclosing method: the name has to decide whether the control runs or what it concludes. If not → `skipped: not-a-bypass: <what the read does instead>`.
-2. **Find the entry point.** The servlet registration (`sling.servlet.paths`, or `sling.servlet.resourceTypes` with `selectors`, `extensions` and `methods`), the filter's `sling.filter.pattern` or scope, or the authentication handler's `path`.
-3. **Is it reachable through the deployed Dispatcher?** The Dispatcher configuration of the project governs the publish tier: `dispatcher/src/conf.dispatcher.d/`.
+2. **Is its servlet, filter or authentication handler reachable through the deployed Dispatcher?** The Dispatcher configuration of the project governs the publish tier: `dispatcher/src/conf.dispatcher.d/`.
    - **Filters** (`filters/*.any`): `default_filters.any` starts with a deny of everything (`/aem0001`) and cannot be changed on AEMaaCS; the last rule that matches wins. Check that an allow rule matches the method, path, selectors and extension of the entry point. The default filters deny `GET` requests with a `debug=*` query (`/aem0018`), not `POST` bodies.
    - **Headers** (`clientheaders/*.any`): Dispatcher passes only the headers listed there to AEM. `default_clientheaders.any` lists `cookie` and `Authorization` but no custom `X-…` header, so a header bypass is reachable only when the project adds that header or passes all of them (`"*"`).
-   - Cookies and query or form parameters pass when the filters allow the request.
-4. **Result.**
+3. **Result.**
    - Reachable → **finding, severity high**, with the filter rule (and for a header, the `clientheaders` entry) that lets it through.
    - Not reachable → `skipped: not-reachable: <the deny rule, or the header missing from clientheaders>`. Say in the report that a later filter or header change would expose it.
    - No Dispatcher module, or code that also runs on author → **finding, reach unknown**. Never call it unreachable without the rule that blocks it.
 
 ## Fix (apply intent only)
 
-Remove the request-controlled branch, so the control always runs. If test automation needs the captcha to pass, use the captcha vendor's test keys in the configuration of the non-production environments: an OSGi configuration in `config.dev` / `config.stage`, or a value from `$[env:NAME]` / `$[secret:NAME]` set per environment in Cloud Manager. A request input alone must never switch a control off.
+Remove the request-controlled branch. Do not replace it with another request input, not even a secret header or token: no request input may switch a control off. Captcha test keys for non-production go in OSGi configuration as `$[env:NAME]` / `$[secret:NAME]`, set per environment in Cloud Manager.
 
 Before editing, tell the user which test runs rely on the bypass and will fail once it is gone, and ask. The edit changes who can log in or how often: never apply it unasked.
 
