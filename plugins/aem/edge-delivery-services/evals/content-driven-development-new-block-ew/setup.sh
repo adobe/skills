@@ -10,6 +10,7 @@ cp -R "$tmp"/. .
 cp -R "$overlay"/. .
 rm -rf "$tmp" "$overlay"
 git init --quiet --initial-branch=main
+git remote add origin https://github.com/acme/acme-site.git
 git add --all
 git -c user.name=eval -c user.email=eval@example.com commit --quiet -m "project at start"
 git tag eval-base

@@ -52,8 +52,9 @@ export function score(dir) {
   add('Blocks sheet row', (hasRow ? 4 : 0) + (kept ? 2 : 0), 6);
 
   // 3 edge cases off the library
-  const others = files.filter((f) => f.startsWith('content/') && f.endsWith('.html') && f !== libPath);
-  const testFile = files.find((f) => /^blocks\/plans\/.*\.(test|spec)\.js$/.test(f));
+  const others = files.filter((f) => f.endsWith('.html') && f !== libPath && (f.startsWith('content/') || /(^|\/)(test|tests|drafts)\//.test(f)));
+  const isTest = (f) => /\.(test|spec)\.[cm]?[jt]s$/.test(f);
+  const testFile = files.find(isTest);
   const edgeElsewhere = others.length > 0 || Boolean(testFile);
   const libRows = (lib.match(/<div class="plans[^"]*">([\s\S]*?)<\/div>\s*<div class="library-metadata|<div class="plans[^"]*">([\s\S]*)$/) ?? [''])[0];
   const emptyCell = /<div>\s*(<p>\s*<\/p>)?\s*<\/div>/.test(libRows);
@@ -65,7 +66,7 @@ export function score(dir) {
   const media = [...css.matchAll(/@media\s*([^{]+)\{/g)].map((m) => m[1]);
   const up = media.some((m) => /min-width|width\s*>=/.test(m));
   const down = media.some((m) => /max-width|width\s*<=/.test(m));
-  add('Mobile first', (up ? 5 : 0) + (down ? 0 : 5), 10, `up=${up} down=${down}`);
+  add('Mobile first', (up || media.length === 0 ? 5 : 0) + (down ? 0 : 5), 10, `up=${up} down=${down} queries=${media.length}`);
 
   // 5 tested or justified
   const frameworks = /"(vitest|jest|mocha|ava|@playwright\/test|jasmine)"/.exec(pkg)?.[1];
@@ -97,8 +98,8 @@ export function score(dir) {
   add('No performance regressions', pf, 6, pn.join('; '));
 
   // 8 gates
-  const allowed = (f) => /^(blocks\/plans\/|content\/|pr-screenshots\/)/.test(f) || f === 'PR.md' || f === 'package.json';
-  const stray = files.filter((f) => !allowed(f) && !(testFile && f === testFile));
+  const allowed = (f) => /^(blocks\/plans\/|content\/|pr-screenshots\/)/.test(f) || f === 'PR.md' || f === 'package.json' || isTest(f);
+  const stray = files.filter((f) => !allowed(f));
   const aem = files.includes('scripts/aem.js');
   let g = aem ? 0 : 8;
   g -= Math.min(8, stray.length * 2);
