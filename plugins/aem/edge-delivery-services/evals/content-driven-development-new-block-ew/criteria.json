@@ -1,0 +1,66 @@
+{
+  "context": "aem-boilerplate 5cea543 with an Experience Workspace (DA) block library: pages for cards and columns under content/docs/library/blocks/ (cards has a `library-metadata` description and a `featured` visual variant) and a `blocks` sheet at content/docs/library/blocks.json with `name` and `path` rows (`https://content.da.live/acme/acme-site/docs/library/blocks/<block>`). The `library` tab of the site config (da.live/config) is outside the repo. The project has no test framework (the boilerplate ships none). The user is not available; the agent must decide and record assumptions. Sources, none of them the skills under test: the user's stated goals for blocks (self-contained, mobile first, usable across authoring surfaces, no performance regression, semantic content model, unit tests for complex logic, browser-tested across viewports, a happy-path library page, edge cases on other pages), https://www.aem.live/docs/ew/administering/set-up-library, https://www.aem.live/docs/ew/developing/layout-view, https://www.aem.live/developer/keeping-it-100. The judge sees the changed and added files.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Library page next to the others",
+      "max_score": 12,
+      "description": "A library page for the block exists at content/docs/library/blocks/plans.html (next to cards and columns; no new library location). It shows the block's variants or states once each with realistic content and has a `library-metadata` block with a description that says when to use the block. Zero if no page."
+    },
+    {
+      "name": "Blocks sheet row",
+      "max_score": 6,
+      "description": "content/docs/library/blocks.json has a new row with a name and a path in the format of the existing rows (https://content.da.live/acme/acme-site/docs/library/blocks/plans). Existing rows are unchanged."
+    },
+    {
+      "name": "Edge cases off the library",
+      "max_score": 10,
+      "description": "Edge cases (for example a missing price, a very long plan name, no features, many plans, one plan) are covered somewhere other than the library page: a drafts page under content/ or unit-test fixtures. The library page holds only the happy path. Zero if edge cases are in the library page; 5 if no edge cases are covered anywhere."
+    },
+    {
+      "name": "Mobile first",
+      "max_score": 10,
+      "description": "In blocks/plans/plans.css the base rules are the small-screen layout and wider layouts are added in `min-width` media queries. No `max-width` media queries override a desktop layout. Full credit needs both; 5 if mixed."
+    },
+    {
+      "name": "Saving calculation tested or justified",
+      "max_score": 10,
+      "description": "The saving percentage is computed by a pure function that a unit test covers (a test file exists and its cases include rounding and a zero or equal price), OR PR.md states why no unit test was added (for example, the project has no test framework and the agent chose not to add one without asking). A new test framework added silently, with no word in PR.md, gets 4. Neither a test nor a reason: 0."
+    },
+    {
+      "name": "Behavior as asked",
+      "max_score": 8,
+      "description": "decorate() builds one card per row. The toggle switches every card between monthly and annual prices, and annual mode shows the saving as a whole percentage computed from the two prices (for example 20 and 16 per month gives 20%). The toggle is a real control with an accessible name."
+    },
+    {
+      "name": "Layout view safe",
+      "max_score": 8,
+      "description": "The authored text and picture elements are moved, not copied or replaced; no spans, icons or classes are added inside or onto authored h1-h6, p, ul, li; no `>`, `+` or `~` selectors on those elements in the CSS; the toggle's listeners belong to the block and do not add document-level handlers without cleanup. Subtract about 2 per violation."
+    },
+    {
+      "name": "No performance regressions",
+      "max_score": 6,
+      "description": "decorate() does not await a fetch or a large import; no preload, preconnect or fetchpriority hints are added; authored images stay in their picture elements (no CSS background images from authored content); no extra runtime dependency."
+    },
+    {
+      "name": "Semantic content model",
+      "max_score": 8,
+      "description": "One row per plan, at most four columns, no nested blocks, no key/value rows for content, headings and lists used as semantic content in the cells, no editor-specific structure, optional parts may be left empty. The model is described in the library page or PR.md."
+    },
+    {
+      "name": "Gates",
+      "max_score": 8,
+      "description": "Changes are confined to blocks/plans/, content/, PR.md and a unit-test file with its runner config. scripts/aem.js and the global styles are untouched; no build step; no new runtime dependency; the files would pass the project's ESLint and Stylelint rules (no obvious violations)."
+    },
+    {
+      "name": "PR description",
+      "max_score": 8,
+      "description": "PR.md lists before and after test URLs on aem.page (https://main--acme-site--acme.aem.page/... and https://{branch}--acme-site--acme.aem.page/...), names a branch whose `{branch}--acme-site--acme` label is 63 characters or fewer, lists the assumptions made without the user, and says what the user must do outside the repo (the `library` tab row of the site config, pushing or previewing the content)."
+    },
+    {
+      "name": "Evidence of a browser check",
+      "max_score": 6,
+      "description": "PR.md or files next to it show the block was checked in a browser at a mobile, a tablet and a desktop width: screenshots (files that exist and are referenced) or a specific description of what was seen at each width. Screenshots for all three widths: full credit; a specific description only: 3; a bare claim such as 'tested on all viewports': 1; nothing: 0."
+    }
+  ]
+}
