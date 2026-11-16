@@ -1,6 +1,6 @@
 ---
 name: da-content
-description: "Use before writing, fixing or answering questions about the HTML of pages that authors edit in Experience Workspace / DA (da.live), including hand-written sample pages for local testing. The pipeline silently drops or rewrites markup in ways that are not guessable, so check here first when a generated page previews empty, loses its metadata, icons, Section Metadata style or block, shows about:error images, turns a table into a block, loses span classes or bold in block cells, or has its links rewritten; when uploading pages or media to the DA source API (200 but nothing written, SVG over 40 KB returns 409); or when you need to see how the pipeline read a page. Not for block JS/CSS (building-blocks), tokens (da-auth) or the aem CLI (aem-cli)."
+description: "Use before writing, fixing or answering questions about the HTML of pages that authors edit in Experience Workspace / DA (da.live), including hand-written sample pages for local testing. The pipeline silently drops or rewrites markup in ways that are not guessable, so check here first when a generated page previews empty, loses its metadata, icons, Section Metadata style or block, shows about:error images, turns a table into a block, loses span classes or bold in block cells, or has its links rewritten; when uploading pages or media to the DA source API or the Source Bus API at api.aem.live (200 but nothing written, SVG over 40 KB returns 409); or when you need to see how the pipeline read a page. Not for block JS/CSS (building-blocks), tokens (da-auth) or the aem CLI (aem-cli)."
 license: Apache-2.0
 metadata:
   version: "1.0.2"
@@ -14,11 +14,13 @@ Edge Delivery pipeline turns into a page. They apply whatever the API backend
 `aem up` (see **aem-cli**). Everything below was checked against a live
 preview; wrong markup fails silently, with no error.
 
-The upload rules below are for the DA source API (`admin.da.live`). Some sites
-keep their authored content in Source Bus (`api.aem.live`) instead. If you do not
-know which one a site uses, ask the user. If `admin.da.live` calls fail or find
-nothing in a site the user says has content, it may be on Source Bus; see
-**da-auth** for credentials and choosing the API.
+The upload and preview rules below are for the DA source API (`admin.da.live`).
+Some sites keep their authored content in Source Bus (`api.aem.live`); see
+[Source Bus](#source-bus-apilive). Find the store in the site config
+(`content.source.type`: `markup` is DA, `sourcebus` is Source Bus) or ask the
+user; `fstab.yaml` is deprecated. If `admin.da.live` calls fail or find nothing
+in a site the user says has content, it may be on Source Bus. See **da-auth**
+for credentials.
 
 ## Page structure
 
@@ -119,6 +121,23 @@ position. Style with classes on the block, not on inline tags.
   content push` reports ✓ for PNG/SVG but writes nothing**; upload binaries
   with the PUT. Pages pushed by the CLI do arrive.
 - SVG over 40 KB fails preview with 409 `AEM_BACKEND_SVG_TOO_BIG`.
+
+## Source Bus (api.aem.live)
+
+Same HTML rules as above; different calls, all with the **da-auth** Bearer token:
+
+- Write: `PUT https://api.aem.live/{org}/sites/{site}/source/{path}.html` with
+  the raw body and `Content-Type: text/html` (`--data-binary @file`), not DA's
+  multipart form. A page with external images returns 400: `POST` it instead so
+  the images are interned. `GET` reads it; a trailing `/` lists a folder.
+- Preview and publish: `POST https://api.aem.live/{org}/sites/{site}/preview/{path}`
+  and `.../live/{path}` (path without `.html`, no `main` segment). The legacy
+  `POST admin.hlx.page/preview/{org}/{site}/main/{path}` fails on these sites
+  (404 `No handler found for document`).
+  `GET .../status/{path}` shows the state.
+- A DA site answers a Source Bus listing with 200 and `[]`, and a Source Bus
+  site can keep stale pages in `admin.da.live`: an empty or populated listing
+  does not identify the store; the site config does.
 
 ## Seeing what the pipeline did
 

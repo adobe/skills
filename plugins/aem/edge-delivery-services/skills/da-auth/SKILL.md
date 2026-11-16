@@ -10,8 +10,8 @@ metadata:
 
 Get an Adobe IMS token for the Experience Workspace (formerly DA) content APIs: the DA
 API or the Source Bus API. Callers can keep the name `DA_TOKEN`.
-Reuse credentials already accepted by the target API. If **create-site** owns the
-login, or an authenticated MCP/backend already handles it, use that flow instead.
+Reuse credentials already accepted by the target API. If an authenticated
+MCP/backend already handles login, use that flow instead.
 Inspect the configured backend's tools; do not assume it exposes a login tool.
 
 ## Choose the API
