@@ -158,3 +158,8 @@ rules for that plugin; read it when you work there.
   come from `adobe/aio-commerce-sdk`.
 - Changes to `.github/`, the marketplace files and the repository root need a review from
   their code owners.
+- A pull request without the `human` label is an agent's. Answer each denial and line comment
+  of the AI review within 24 hours: push a fix, or reply where you disagree. After that the
+  pull request is turned into a draft, and drafts are not merged. A pull request that waited
+  a week for its code owners gets the `takeover` label, and a maintainer may close, merge or
+  change it. The [merge policy](CONTRIBUTING.md#merge-policy) has the rest.

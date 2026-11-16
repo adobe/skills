@@ -114,10 +114,6 @@ The title of the pull request is a conventional commit with the plugin as its sc
 
 Keep a pull request to one plugin where you can. It is reviewed by the owners of that plugin.
 
-### AI-Generated Contributions
-
-If your pull request contains code or text that was generated or co-authored by AI tools (such as GitHub Copilot, ChatGPT, Claude, or similar), apply the `ai-generated` label to it. If you can't set labels, say so in the description and a maintainer will add it.
-
 ### Without scenarios
 
 A plugin without scenarios is still run. The AI reviewers write a task of their own, aimed at what the pull request changes in a skill, and run it in an agent with the plugin and without it. The summary of the review says which task they ran and what the two runs did. You can do the same with the client you are signed in to:
@@ -129,11 +125,23 @@ node scripts/skill-eval.mjs --client claude --plugin plugins/<your plugin> \
 
 It prints both answers and the files each run wrote or removed. `--scenario plugins/<your plugin>/evals/<name>` takes the task of a scenario and adds its criteria to the result. The agent of such a run may do whatever you may do on that machine: run it for plugins you trust.
 
-## How Contributions Get Reviewed
+## Merge Policy
 
-This project uses a **commit then review** process: approved maintainers can merge changes to the plugins they own once the checks pass, and others review afterwards. For other contributors, a maintainer of the plugin has to approve the pull request.
+This project uses a **commit then review** process: the code owners of a plugin can merge changes to it once the checks pass, and others review afterwards. For other contributors, a code owner of the plugin has to approve the pull request. The code owners of each path are in [CODEOWNERS](.github/CODEOWNERS); the maintainers are the owners of `/.github/` there.
 
-A maintainer will look at a pull request within one week. Feedback is given in writing, on GitHub.
+- **Drafts are not merged.** Not by a code owner, not by a maintainer. A draft is yours to work on: mark it ready for review when it is.
+- **Contributions are written by agents, unless they say otherwise.** A pull request is taken to be an agent's unless it has the `human` label. Set it when a person wrote the change. If you can't set labels, say so in the description and a maintainer will add it.
+- **An agent answers its review within 24 hours.** The AI review leaves a verdict for each reviewer and comments on lines. On an agent's pull request, each denial and each line comment is answered within 24 hours of the review: push a fix, or reply where you disagree. After that the pull request is turned into a draft. Push the fix and mark it ready for review: that runs the review again, and starts the 24 hours again.
+- **Code owners act within a week.** Within a week of a pull request being opened or marked ready for review, one of its code owners reviews it, comments on it, pushes to it, merges it or closes it, and again within a week of the last time one did. Otherwise the pull request gets the `takeover` label.
+- **Then maintainers take over.** A maintainer may close, merge or change a pull request with the `takeover` label, without waiting for its code owners. The label goes when a code owner acts on it again.
+
+The [Merge Policy workflow](.github/workflows/merge-policy.yml) applies the last three rules every hour: it turns overdue pull requests into drafts and sets the `takeover` label, each with a comment that says why, and removes the label when an owner acts. It leaves drafts and the pull requests of bots (Renovate, the release) alone. For pull requests that were open when the policy started, the 24 hours and the week count from 17 November 2026. To see what it would do:
+
+```bash
+GH_TOKEN=… node scripts/pr-policy.mjs    # --pr <number> for one pull request, --now <date> for later, --apply to act
+```
+
+A line comment counts as answered when it is resolved, when a change to its line made it outdated, or when a person replied to it. Feedback is given in writing, on GitHub.
 
 ## Releases
 
