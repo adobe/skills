@@ -1,0 +1,46 @@
+{
+  "context": "The working directory is aem-boilerplate 5cea543 (setup.sh clones it) with site content in ./content/, which `aem up` serves at the file's path without `content/` and `.html`; for any other path it proxies to the site's preview, which does not answer (the git remote myorg/mysite is not a real site). The task is content-driven development, Step 4 Option C (existing block): choose test content for styling the `cards horizontal` variant, recorded in TEST-CONTENT.md, then change blocks/cards/cards.css. Ground truth for ./content/ (28 pages): there is no block library page, so /docs/library/blocks/cards is not on disk and does not load; nothing in the task or the content names it, so only the convention leads an agent to it. Real pages with the variant: content/products/overview.html (/products/overview, two `cards horizontal` blocks) and content/solutions/retail.html (/solutions/retail, `cards horizontal dark`). Default `cards` is on many pages (index, blog, events, products/widgets, ...); content/solutions/finance.html has `cards dark`. Decoys: content/blog/launch.html (/blog/launch) and content/blog.html (/blog) mention horizontal cards in their text but their blocks are default `cards`; content/partners/directory.html (/partners/directory) has `cards-compact horizontal` and content/partners.html has `cards-compact`, a different block. The judge sees the agent's shell commands.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Starts from the block library page",
+      "max_score": 20,
+      "description": "The agent looked for the block library page /docs/library/blocks/cards before choosing real pages: the commands show it (a request to the dev server for that path, a search of content/docs/, or `aem content clone --path /docs/library`), and TEST-CONTENT.md notes that the site has no library page for cards, or that it could not be loaded, so real pages are the test content. Recommending a library page with a `horizontal` example is a plus, not required. Zero if the library page is never mentioned, or if TEST-CONTENT.md claims it exists or lists it as tested."
+    },
+    {
+      "name": "Finds the real pages with the variant",
+      "max_score": 20,
+      "description": "TEST-CONTENT.md lists /products/overview and /solutions/retail as pages with `cards horizontal`. Both: full credit. One: 10. None: 0. The commands show the agent searched the content (e.g. grep over ./content/ or fetching pages), not that it guessed."
+    },
+    {
+      "name": "No false pages",
+      "max_score": 15,
+      "description": "No entry claims the `horizontal` variant of `cards` on /blog/launch or /blog (text mentions only) or on /partners/directory (`cards-compact`, another block), and no invented URL, including /docs/library/blocks/cards listed as a page that was tested. Listing pages with default `cards` or `cards dark` as regression coverage is fine. Each false entry costs 8 points down to 0."
+    },
+    {
+      "name": "Variants reported correctly",
+      "max_score": 10,
+      "description": "The variant classes in TEST-CONTENT.md match the ground truth: `cards horizontal` on /products/overview (two instances is a plus, not required), `cards horizontal dark` on /solutions/retail, and the right classes on any regression page it lists (e.g. `cards dark` on /solutions/finance, default `cards` elsewhere)."
+    },
+    {
+      "name": "No new test page when real pages cover it",
+      "max_score": 15,
+      "description": "Because real pages already use `cards horizontal`, the agent does not create a new test page for it (e.g. content/drafts/cards-horizontal.html or a .plain.html file). Recommending a library page with a `horizontal` example is fine. Fail if a new standalone test page is created and listed as test content."
+    },
+    {
+      "name": "Local URLs match the files",
+      "max_score": 10,
+      "description": "Each local URL is the file's path under content/ without `content/` and `.html` (content/products/overview.html → http://localhost:3000/products/overview; another port is fine). Fail if a URL contains /content/ or .html."
+    },
+    {
+      "name": "Scoped CSS change",
+      "max_score": 5,
+      "description": "blocks/cards/cards.css gets rules for `.cards.horizontal` that put the image beside the text on wider viewports (a min-width media query), leaving the default cards unchanged. No other block files are added."
+    },
+    {
+      "name": "Unattended, assumptions recorded",
+      "max_score": 5,
+      "description": "No questions to the user; TEST-CONTENT.md has an assumptions or coverage note."
+    }
+  ]
+}

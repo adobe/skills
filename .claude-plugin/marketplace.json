@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.39.0",
+      "version": "0.39.3",
       "category": "design",
       "keywords": [
         "design",
@@ -56,13 +56,13 @@
       "name": "aem-edge-delivery-services",
       "source": "./plugins/aem/edge-delivery-services",
       "description": "Skills for AEM Edge Delivery Services development",
-      "version": "1.0.1"
+      "version": "1.0.3"
     },
     {
       "name": "aem-cloud-service",
       "source": "./plugins/aem/cloud-service",
       "description": "All AEM as a Cloud Service skills: component development, Dispatcher config authoring and hardening, workflow design and debugging, code assessment and migration from legacy AEM, content distribution, and Rapid Development Environment (RDE) support.",
-      "version": "1.2.0",
+      "version": "1.3.1",
       "category": "aem",
       "keywords": [
         "adobe",
@@ -111,7 +111,7 @@
       "name": "aem-forms-edge-delivery-services",
       "source": "./plugins/aem/forms/edge-delivery-services",
       "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "aem",
       "keywords": [
         "adobe",
@@ -144,7 +144,7 @@
       "name": "aem-eds-content-ops",
       "source": "./plugins/aem/edge-delivery-services-content-ops",
       "description": "Content operations skills for AEM Edge Delivery Services: page auditing, SEO optimization, AI search (GEO), WCAG accessibility, bulk metadata, structured data, sitemap validation, and content diffing",
-      "version": "1.3.0"
+      "version": "1.3.1"
     },
     {
       "name": "aem-eds-personalization",

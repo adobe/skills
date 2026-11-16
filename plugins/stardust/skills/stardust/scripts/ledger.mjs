@@ -10,6 +10,9 @@
 //   node ledger.mjs tail [-n 5] [--dir <stardust dir>]
 //   node ledger.mjs last [<skill>] [--track <name>] [--dir <stardust dir>]
 //
+// There is no other reader: a guessed verb (`summary`, `status`, `show` — anything that is not
+// `tail`, `last` or a known skill, with fewer than three arguments) exits 2 with one line naming
+// `tail`, `last` and `state.mjs summary`.
 // `--next` (what the next phase or the human does now) and `--owner` (who does it) are optional
 // and land in the line as `next` / `owner` when given — an `end` line without `--next` is still
 // accepted. A value flag (`--detail`, `--artifact`, `--next`, `--owner`, `--track`, `--dir`, `-n`) followed
@@ -176,7 +179,7 @@ const HELP = `Usage:
   node ledger.mjs tail [-n ${DEFAULT_TAIL}] [--dir <d>]
   node ledger.mjs last [<skill>] [--track <name>] [--dir <d>]
   (--dir defaults to ${DEFAULT_DIR}; the ledger is <dir>/${FILE_NAME}, created on first write;
-   an explicit --dir must already exist)
+   an explicit --dir must already exist; there is no other reader — page states: state.mjs summary)
 
 Appends one run-status.md line { ts, skill, phase, event, track?, detail?, artifact?, next?, owner? }
 and prints it. --track tags the line with the run track that wrote it (two tracks running one
@@ -400,6 +403,10 @@ export function main(argv) {
   if (pos.length === 0) throw new UsageError(HELP);
   if (opts.dirGiven && !(existsSync(opts.dir) && statSync(opts.dir).isDirectory())) throw new UsageError(`--dir ${opts.dir} is not an existing directory (a mistyped --dir must not start a second ledger; omit it for ${DEFAULT_DIR}/)`);
   const [cmd] = pos;
+  // A guessed reader verb (`summary`, `status`, `show`) gets the readers that exist, not the writer's usage.
+  if (pos.length < 3 && cmd !== 'tail' && cmd !== 'last' && !Object.hasOwn(PHASES, bareSkill(cmd.toLowerCase()))) {
+    throw new UsageError(`no \`${cmd}\` command — use \`tail [-n ${DEFAULT_TAIL}]\` or \`last [<skill>]\`; page states: \`state.mjs summary\``);
+  }
 
   if (cmd === 'tail') {
     const { lines, malformed, file } = readLines(opts.dir);

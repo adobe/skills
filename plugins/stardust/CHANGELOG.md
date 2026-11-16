@@ -1,8 +1,38 @@
 # Changelog
 
-This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
+## [0.39.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.2...plugin/stardust/v0.39.3) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** ledger.mjs names the readers for a guessed verb such as summary ([#681](https://github.com/adobe/skills/issues/681)) ([facbc0b](https://github.com/adobe/skills/commit/facbc0b30c63229a252e9d7878896ccec7b647b8))
+* **stardust:** measure the page before a screenshot; a layout overflow is a WARN, not a crash ([#687](https://github.com/adobe/skills/issues/687)) ([75e1d21](https://github.com/adobe/skills/commit/75e1d21458839d10312cec1370b54c1e48f99428))
+* **stardust:** mobile-first checks take a project's own breakpoint steps ([#682](https://github.com/adobe/skills/issues/682)) ([b761eee](https://github.com/adobe/skills/commit/b761eee55d938ae54610296359ec32f4a0cd356d))
+
+## [0.39.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.1...plugin/stardust/v0.39.2) (2026-11-15)
+
+
+### Bug Fixes
+
+* **stardust:** breakpoint-lint fails a missing --dirs file and negated desktop-first queries ([#677](https://github.com/adobe/skills/issues/677)) ([8dda267](https://github.com/adobe/skills/commit/8dda26746899a082dad4cfa3acf1736335064a8c))
+
+## 0.14.0 to 0.39.1: entries written by hand
+
+From here down, each entry was written with its pull request. The entries above are
+written by the release, from the titles of the pull requests; a pull request's description
+has what its change is about.
+
+This part starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
+
+## 0.39.1
+
+- **Progress-reader guidance (#132).** A progress reply suggested `ledger.mjs summary`,
+  but the reader supports only `tail` and `last`. Skill instructions and the run-status
+  reference now give existing commands: ledger transitions via `tail` / `last [<skill>]`,
+  page states via `state.mjs summary`. No CLI change; recorded status is not process liveness.
+  Touches the ledger writer/start-guard guidance in 0.25.0 and 0.25.1.
 
 ## 0.39.0 — delivered CSS is mobile-first (#162)
 
@@ -38,7 +68,7 @@ nothing enforced it.
   `skills/deploy/` for it. `player-before-paint-browser.test.mjs` reads the `#157` snippet from
   `deploy/reference/step-3-foundation.md`.
 
-## Unreleased — one copy of the shared script rules, shipped with the master's scripts
+## 0.39.0 — one copy of the shared script rules, shipped with the master's scripts
 
 Adding the EDS widget (0.34.0) touched 17 scripts, because every skill's scripts carried their own copy of the path,
 widget, chrome and kind rules. Those copies had drifted (nine path normalisers, five widget-stem helpers, two sets of

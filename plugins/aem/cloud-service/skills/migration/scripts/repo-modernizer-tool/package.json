@@ -1,0 +1,8 @@
+{
+  "name": "migration-repo-modernizer-tool",
+  "private": true,
+  "description": "Isolated install of Adobe's Repository Modernizer (auto-installed on first use). The version is exact: scripts/repo-modernizer-run.js checks the output of this version.",
+  "dependencies": {
+    "@adobe/aem-cs-source-migration-repository-modernizer": "1.2.3"
+  }
+}

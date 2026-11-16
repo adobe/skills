@@ -30,7 +30,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   BASELINE_JSON, BASELINE_PNG, BASELINE_SCHEMA, BASELINE_WRITER, HELP, LIVE_RECORD_WRITER, UsageError,
-  baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, deadFontFaces, exitCodeFor, faceKey,
+  LayoutOverflowError, checkPageSize, baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, deadFontFaces, exitCodeFor, faceKey,
   fontCheckLines, fontCheckOutcome, fontFamilies, isBackdrop, layerAction, layerPassScript, liveRecord, overlayExtras, overlaySuspects,
   parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
 } from '../stitch-shot.mjs';
@@ -658,6 +658,15 @@ if (pwProbe.status !== 0) {
     rmSync(work, { recursive: true, force: true });
   }
 }
+
+await check('checkPageSize (#602): a page at Chrome\'s layout maximum is refused with a LayoutOverflowError (exit 1) naming the defect, the chunks and the buffer it would take; an ordinary page passes', () => {
+  assert.deepEqual(checkPageSize({ w: 1440, h: 12074 }), { w: 1440, h: 12074 });
+  assert.throws(() => checkPageSize({ w: 33554432, h: 33554432 }, 1440, 900), (e) => e instanceof LayoutOverflowError
+    && /^layout overflow: the page lays out at 33554432x33554432px/.test(e.message) && /37283 chunks and a 193 GB buffer/.test(e.message)
+    && /inconsistency-register\.md/.test(e.message));
+  assert.throws(() => checkPageSize({ w: 1440, h: 33554432 }), LayoutOverflowError);
+  assert.equal(exitCodeFor(new LayoutOverflowError('x')), 1);
+});
 
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nstitch-shot: all ${checks} checks passed`);
 process.exit(failed ? 1 : 0);
