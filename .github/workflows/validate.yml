@@ -63,8 +63,10 @@ jobs:
   # long, over its token limit (5,000 with an eval, 1,000 without), shares its name with
   # another skill, has a Tessl lint warning or is one no client finds has to fix that in the
   # same pull request.
+  # Renovate can't shorten a skill, so its version updates are left out; they don't make a
+  # SKILL.md longer, and a failed check here would keep them from merging by themselves.
   boy-scout:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login != 'renovate[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read

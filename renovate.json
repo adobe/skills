@@ -28,24 +28,29 @@
   },
   "packageRules": [
     {
-      "description": "Tooling updates within a major version merge by themselves once the checks are green and the release is a week old. Major versions and runtime dependencies wait for the plugin's owner.",
-      "matchDepTypes": ["devDependencies"],
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
-      "automerge": true
-    },
-    {
-      "description": "The same for GitHub Actions, which are pinned to commits.",
-      "matchManagers": ["github-actions"],
+      "description": "Updates within a major version merge by themselves once every check is green and the release is a week old: tooling, GitHub Actions, the dependencies of the scripts in plugins, and the versions that skills hand to users. Major versions wait for the plugin's owner.",
       "matchUpdateTypes": ["minor", "patch", "pin", "digest", "pinDigest"],
       "automerge": true
     },
     {
-      "description": "A version in a skill is what an agent will tell a user to run. Updates are never merged automatically, come as one pull request per dependency for the plugin's owner, and are fix commits so the skill is released.",
+      "description": "A version in a skill is what an agent will tell a user to run. Its updates are fix commits, so the skill is released with them.",
       "matchManagers": ["custom.regex"],
       "matchFileNames": ["plugins/**"],
-      "automerge": false,
       "semanticCommitType": "fix",
       "semanticCommitScope": "deps"
+    },
+    {
+      "description": "Below 1.0, a minor version may break. What a plugin runs or hands to users waits for the plugin's owner then; its tooling (devDependencies, next rule) does not.",
+      "matchFileNames": ["plugins/**"],
+      "matchCurrentVersion": "/^[\\^~]?v?0\\./",
+      "matchUpdateTypes": ["minor"],
+      "automerge": false
+    },
+    {
+      "description": "Tooling updates within a major version merge by themselves, also below 1.0.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "automerge": true
     },
     {
       "description": "appbuilder-project-init pins this plugin to 2.1.0 on purpose: 2.2.0 is ESM and breaks the aio CLI. The owner moves it by hand.",
