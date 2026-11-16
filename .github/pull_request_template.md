@@ -14,4 +14,4 @@
 - [ ] `npm run validate` passes
 - [ ] Paths, commands and skills that the change names exist
 - [ ] New scripts, hooks, MCP servers or network endpoints are called out above
-- [ ] The `ai-generated` label is set, if AI tools wrote or co-wrote this
+- [ ] The `human` label is set, if a person and not an agent wrote this
