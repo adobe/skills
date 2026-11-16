@@ -8,13 +8,9 @@ metadata:
 
 # Content Driven Development (CDD)
 
-Build against real content, with a content model that authors can use.
-
 **Never write or change code before you have identified or created the test content you will use.**
 
 When nobody is available to answer a question (no user in the loop, no CMS access), decide, write the assumption into the PR description, and carry on.
-
-Work through the steps in order. Keep a checklist with your harness's todo tool if it has one.
 
 ## 1. Dev server
 
@@ -54,9 +50,8 @@ Run `npm run lint`, and `npm test` if `package.json` defines it.
 
 ## 7. Done means
 
-Check each point against the test content before you ship:
+Check each point against the test content and the acceptance criteria from step 2 before you ship:
 
-- Every acceptance criterion from step 2 is met.
 - The block is self-contained and mobile first: base styles for small screens, wider layouts in `min-width` queries.
 - It works on the authoring surfaces this project uses (layout view in Experience Workspace, `data-aue-*` and the model file in Universal Editor).
 - It does not slow the page: nothing holds up the first section, heavy code loads late, pictures stay optimized.
