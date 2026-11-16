@@ -174,6 +174,27 @@ test('an eval runs the task with the plugin and without it, and reports both ans
   assert.equal(readFileSync(join(root, 'plugins/p/evals/case/resources/start.md'), 'utf8'), 'given'); // the scenario is not changed
 });
 
+// A stand-in for Claude Code that streams events: it loads the skill `one` when the plugin is there.
+const STREAMS = `case "$*" in *--plugin-dir*) echo '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"p:one"}}]}}' ;; esac
+echo '{"type":"result","result":"streamed","num_turns":3,"total_cost_usd":0.01,"is_error":false}'`;
+
+test('for claude, each run says which skills it loaded, and a scenario which skill it tests', (t) => {
+  const root = tree(t, {
+    ...PLUGIN,
+    'plugins/p/evals/one-case/task.md': 'Do it.',
+    'plugins/p/evals/one-case/criteria.json': JSON.stringify({ checklist: [{ name: 'done', max_score: 10 }] }),
+  });
+  const result = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/one-case', '--bin', claude(t, STREAMS), '--out', temp(t)], { cwd: root, env: { ANTHROPIC_API_KEY: 'k' } });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  const report = JSON.parse(result.stdout);
+  assert.equal(report.expected, 'one');
+  assert.deepEqual(report.arms.with.skillsLoaded, ['one']);
+  assert.deepEqual(report.arms.without.skillsLoaded, []);
+  assert.equal(report.arms.with.answer, 'streamed');
+  assert.equal(report.arms.with.turns, 3);
+  assert.deepEqual(RUNNERS.claude.command({ prompt: 'task', maxTurns: 5, plugin: { dir: '/p' }, withPlugin: false }).slice(2, 5), ['--output-format', 'stream-json', '--verbose']);
+});
+
 // A stand-in for a client that answers with the files of its work directory and the branch it is on.
 const LISTS = `printf '{"result":"%s on %s"}' "$(find . -type f -not -path './.git/*' | sort | tr '\\n' ' ')" "$( (git branch --show-current; git remote get-url origin) 2>/dev/null | tr '\\n' ' ')"`;
 

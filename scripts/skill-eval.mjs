@@ -43,14 +43,18 @@
 // enterprise gateway mode (AGY_LLM_GATEWAY_*). Bedrock has no Gemini, so Antigravity runs on
 // another vendor's model there: such a run tests what Antigravity does with a skill, not
 // what Gemini does with it.
+// For claude, each run also says which of the plugin's skills it loaded (skillsLoaded), read
+// from its stream by plain code (lib/skill-loads.mjs), and a scenario says which skill it
+// tests (expected): <skill> or <skill>-<what>, as check-skills.mjs counts an eval.
 // Exit 3 when the client has no credentials here, 2 for wrong arguments, 1 when a run failed.
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, matchesGlob, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, matchesGlob, relative, resolve, sep } from 'node:path';
 import { CLIENTS, findCli } from './lib/clients.mjs';
 import { isMain } from './lib/is-main.mjs';
+import { expectedSkill, skillsLoaded, streamResult } from './lib/skill-loads.mjs';
 import { describePlugin } from './test-drive.mjs';
 
 // Put in front of the task in both runs. Without it, the run without the plugin goes looking:
@@ -84,10 +88,13 @@ export const RUNNERS = {
     env: (home, bedrock) => (bedrock ? { CLAUDE_CODE_USE_BEDROCK: '1' } : {}),
     // the plugin is loaded from its directory for this run: nothing to install
     command: ({ prompt, model, maxTurns, plugin, withPlugin }) => [
-      '-p', prompt, '--output-format', 'json', '--permission-mode', 'bypassPermissions', '--max-turns', String(maxTurns),
+      '-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'bypassPermissions', '--max-turns', String(maxTurns),
       ...(model ? ['--model', model] : []), ...(withPlugin ? ['--plugin-dir', plugin.dir] : []),
     ],
+    // the last result event of the stream; a single JSON object is read as one, too
     answer: ({ stdout }) => {
+      const streamed = streamResult(stdout);
+      if (streamed) return streamed;
       try {
         const result = JSON.parse(stdout);
         return { text: result.result ?? '', turns: result.num_turns, costUsd: result.total_cost_usd, failed: Boolean(result.is_error) };
@@ -95,6 +102,7 @@ export const RUNNERS = {
         return { text: stdout };
       }
     },
+    loaded: ({ stdout, skills }) => skillsLoaded(stdout, skills),
   },
   codex: {
     credentials: (env) => (env.OPENAI_API_KEY ? ['OPENAI_API_KEY'] : env.AWS_BEARER_TOKEN_BEDROCK ? BEDROCK : null),
@@ -369,6 +377,7 @@ function main() {
   const out = resolve(options.out ?? mkdtempSync(join(tmpdir(), 'skill-eval-')));
   const result = { client: options.client, model: model ?? 'the client\'s default', ...(baseUrl ? { endpoint: baseUrl } : {}), plugin: plugin.name, arms: {}, notes, transcripts: out };
   if (criteria) result.criteria = criteria;
+  if (options.scenario && client.loaded) result.expected = expectedSkill(basename(resolve(options.scenario)), plugin.skills);
   let failed = false;
 
   for (const arm of options.arms) {
@@ -431,6 +440,7 @@ function main() {
         ...(answer.turns !== undefined ? { turns: answer.turns } : {}),
         ...(answer.costUsd !== undefined ? { costUsd: answer.costUsd } : {}),
         ...(answer.failed ? { failed: true } : {}),
+        ...(client.loaded ? { skillsLoaded: client.loaded({ stdout: ran.stdout ?? '', skills: plugin.skills }) } : {}),
         answer: String(answer.text ?? '').slice(0, 8000),
         files: written,
         removed,
