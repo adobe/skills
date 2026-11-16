@@ -75,11 +75,6 @@ CloseableHttpClient client = HttpClientBuilder.create()
 form above. Imports to add: `org.apache.http.client.config.RequestConfig`,
 `org.apache.http.impl.client.HttpClientBuilder` (drop `HttpClients` import if now unused).
 
-Replace `HttpClients.createSystem()` (4.x and 5.x) with the builder form above and keep
-`.useSystemProperties()` in the chain: AEM as a Cloud Service advanced networking routes HTTP(S)
-traffic (dedicated egress IP) through the Java system proxy properties, and without them the client
-bypasses that proxy.
-
 `HttpClients.createMinimal()` (4.x and 5.x) builds a minimal client that has no default `RequestConfig`; it
 only reads the config set on each request. Do not swap it for the builder, which adds
 redirect, retry, cookie and auth handling. Set `request.setConfig(config)` on every request it
@@ -170,7 +165,7 @@ For each finding (grouped by file):
 2. Identify the library from imports/snippet; pick the matching template.
 3. If a skip condition applies, record the skip and move on — do not partially edit.
 4. Otherwise rewrite the construction surgically: introduce/extend the timeout configuration,
-   switching a config-less factory call (`createDefault()` / `createSystem()` / `newHttpClient()` / `new OkHttpClient()`)
+   switching a config-less factory call (`createDefault()` / `newHttpClient()` / `new OkHttpClient()`)
    to the builder form when needed. Preserve surrounding formatting and comments.
 5. Update imports — add only what the edit uses; drop a factory import only if now unused.
 6. Write the file back.
