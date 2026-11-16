@@ -29,6 +29,11 @@ jobs:
       - name: Repository scripts pass their tests
         run: npm test
 
+      # facts.yaml and trigger-queries/ of a plugin name skills, references and evals. A
+      # pull request that renames or removes one of those updates them too.
+      - name: Facts and trigger queries name files and skills that exist
+        run: node scripts/check-facts.mjs
+
       # Each plugin's root plugin.json (https://agent-plugins.org) is the source. x927 writes
       # the Claude Code, Tessl and Cursor manifests and the marketplace entries from it.
       # Nobody edits those: after the merge, the Release workflow rebuilds them on main and

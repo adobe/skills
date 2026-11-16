@@ -65,6 +65,37 @@ node scripts/check-skills.mjs --tokens plugins/<your plugin>   # each skill's to
 
 Many skills are over their limit today. Nobody has to fix a skill they don't touch: the `boy-scout` check fails a pull request only when it changes a `SKILL.md` that is over its limit, also when it adds one. Then the fix comes with the change: an eval, or a shorter `SKILL.md` with the detail in `references/`.
 
+### Facts and trigger queries
+
+A plugin may keep two files that say what its skills know and when an agent should load them. Neither is required. Once a plugin has them, a pull request keeps them true: CI checks them against the tree, and the AI review checks them against the change.
+
+`facts.yaml`, at the plugin's root, lists the facts its skills and evals rely on:
+
+```yaml
+- id: block-collection
+  claim: >-
+    The Block Collection (github.com/adobe/aem-block-collection, blocks/) is
+    Adobe's reference set of common blocks.
+  question: Where are Adobe's reference implementations of common blocks?
+  source: https://www.aem.live/developer/block-collection
+  used_by:
+    - skills/block-collection-and-party/SKILL.md
+```
+
+- `claim` is a fact that can be checked, not advice. What an agent should do stays in the skill.
+- `question` is how a user who never saw the skill would ask for it, without the answer in it. The AI review asks it in place of a question of its own.
+- `source` is where the claim can be checked: the product's documentation or code, wherever there is one. A fact that no skill states needs a source.
+- `used_by` names the files, relative to the plugin, that state or test the fact: a `SKILL.md`, a reference, an eval. A fact with no file goes. A fact whose line left a skill may stay while an eval tests it, so a later model that gets it wrong shows up.
+
+`trigger-queries/<skill>.json` has prompts that should load a skill and near misses that should not: `{"name", "queries": [{"id", "query", "should_trigger", "skill"}]}`, with an optional `fixture` (`repoUrl`, `ref`) to start the agent in.
+
+```bash
+node scripts/check-facts.mjs     # facts and trigger queries name files and skills that exist
+node scripts/skill-quiz.mjs plugins/<your plugin> --changed main...HEAD
+```
+
+`skill-quiz.mjs` asks the models and the system prompt of the AI review's baseline the questions of the facts your change touches, twice, and has a model of another vendor grade the answers. A fact one model knew both times is a line the review denies. It also lists the changed skill files that no fact names: ask about a line with `--ask "<question>"`. It runs on `AWS_BEARER_TOKEN_BEDROCK`, or with Claude Code signed in (`--auth-home "$HOME"`), where only Claude models answer.
+
 ## Plugins
 
 `plugins/<plugin>/`, or `plugins/<product>/<plugin>/` for AEM, Commerce and Creative Cloud, is one installable plugin. Its manifest is the root `plugin.json` of [Agent Plugins](https://agent-plugins.org), with `mcp.json` next to it for MCP servers. [x927](https://github.com/ai-ecoverse/x927) generates `.claude-plugin/plugin.json`, `.tessl-plugin/plugin.json`, `.cursor-plugin/plugin.json` and `.mcp.json` from those two. A plugin may also have `hooks/` and `evals/`. `.claude-plugin/marketplace.json` lists the plugins people can install; `README.md` has one row per plugin, and does not list skills.
@@ -89,6 +120,7 @@ npm ci
 npm run validate                       # every SKILL.md against the agentskills.io specification
 node scripts/check-release-configs.mjs # release configs point at files that exist
 npm test                               # when you touch scripts/: the workflows run these scripts
+node scripts/check-facts.mjs           # when you touch facts.yaml, trigger queries, or what they name
 npm run plugins:check                  # when you touch a plugin.json, mcp.json or a manifest
 npm run plugins:build                  # to see what CI will build from them; no need to commit it
 npm run lint:stardust                  # when you touch plugins/stardust; after a change to its
@@ -102,7 +134,7 @@ CI runs these on every pull request:
 
 | Check | What it does |
 |---|---|
-| Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, and runs the tests of the `web` CLI and the lints of `stardust`. |
+| Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, that facts and trigger queries name files and skills that exist (`scripts/check-facts.mjs`), and runs the tests of the `web` CLI and the lints of `stardust`. |
 | Tessl Plugin Lint | `tessl plugin lint` for every plugin. |
 | Validate Skills | `npm run plugins:check`: the pull request leaves alone the files that `x927` generates from each plugin's root `plugin.json` and `mcp.json` (the Claude Code, Tessl and Cursor manifests, `.mcp.json`, and the description and version of marketplace entries). Change `plugin.json`; after the merge, the Release workflow builds the generated files on `main` and pushes them. |
 | Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |
