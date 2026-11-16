@@ -1,0 +1,7 @@
+{
+  "description": "create-site checkpoint on aem-boilerplate 5cea543: Source Bus onboarding, answers written to files (no network, no GitHub or IMS access needed)",
+  "fixture": {
+    "repoUrl": "https://github.com/adobe/aem-boilerplate.git",
+    "ref": "5cea543707db900c92014b0bba93564fe325b9e4"
+  }
+}

@@ -1466,3 +1466,136 @@
   source: aem-boilerplate-xwalk 6210531 package.json (build:json) and .husky/pre-commit.mjs
   used_by:
     - skills/ue-component-model/SKILL.md
+
+- id: content-source-config
+  claim: >-
+    A site's content store is `content.source` in its site config, read with
+    `GET https://admin.hlx.page/config/{org}/sites/{site}.json` or
+    `GET https://api.aem.live/{org}/sites/{site}/config.json` (IMS token).
+    `type: markup` with `url: https://content.da.live/{org}/{site}/` is DA;
+    `type: sourcebus` (optional `url: https://api.aem.live/{org}/sites/{site}/source`)
+    is Source Bus. `fstab.yaml` is deprecated.
+  question: >-
+    A user asks you to add a page to their existing Edge Delivery site. How do
+    you find out which system stores the site's authored content?
+  source: >-
+    https://www.aem.live/docs/api.html (schemas content, content-source-sourcebus);
+    https://www.aem.live/docs/config-service-setup
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: sourcebus-source-api
+  claim: >-
+    On Source Bus the content API is
+    `https://api.aem.live/{org}/sites/{site}/source/{path}`. `PUT` creates or
+    replaces a document and takes the raw body with a `Content-Type` header
+    (`text/html`), not DA's multipart form. It rejects external images with
+    400; use `POST` to have images interned. A trailing slash lists a folder.
+  question: >-
+    You have a valid IMS token and want to create `/nav.html` for a site whose
+    content is stored in Source Bus. What request do you send, and what changes
+    when the page contains images hosted elsewhere?
+  source: >-
+    https://www.aem.live/docs/api.html (putSourceDocument, createSourceDocument)
+  used_by:
+    - skills/da-content/SKILL.md
+    - skills/create-site/SKILL.md
+
+- id: sourcebus-preview-publish
+  claim: >-
+    On Source Bus, preview and publish are
+    `POST https://api.aem.live/{org}/sites/{site}/preview/{path}` and
+    `.../live/{path}`, with no `main` ref segment (the legacy call is
+    `POST admin.hlx.page/preview/{org}/{repo}/main/{path}`). Status:
+    `GET https://api.aem.live/{org}/sites/{site}/status/{path}`. The legacy
+    `POST admin.hlx.page/preview/{org}/{site}/main/{path}` returns 404 (`No
+    handler found for document`) on a Source Bus site.
+  question: >-
+    Content for a new site is stored in Source Bus and you need it on the
+    .aem.page preview. Which API call previews /nav, and how does it differ from
+    the call for a site on the legacy admin API?
+  source: >-
+    https://www.aem.live/docs/api.html; https://www.aem.live/docs/ew/developing/structured-content-api
+    ("admin.hlx.page for DA, or api.aem.live for helix6")
+  used_by:
+    - skills/da-content/SKILL.md
+    - skills/create-site/SKILL.md
+
+- id: ping-site-exists
+  claim: >-
+    `GET https://admin.hlx.page/ping/{org}/{site}` needs no credentials: 200
+    (empty body) when the site config exists, 404 (`config for site not found`)
+    when it does not. `/status/...` returns 401 without credentials.
+  question: >-
+    A user installed the AEM Code Sync GitHub app on a new repo. How can a script
+    confirm, without any credentials, that Edge Delivery now knows the site?
+  source: live probe 2026-11-14 (adobe/aem-boilerplate 200, nosuchorg/x 404, status 401)
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: content-source-change-resets
+  claim: >-
+    Changing `content` of an existing site gives a new Content Bus ID: all
+    previously previewed and published content must be previewed and published
+    again, and index and sitemap config recreated. For production, create a new
+    site with the new content config and switch the CDN origin.
+  question: >-
+    A site's content was previewed and published from one content store. You
+    update the site config to point at a different store. What happens to the
+    live pages, and what must you redo?
+  source: https://www.aem.live/docs/config-service-setup (Update Content Location)
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: sourcebus-site-setup
+  claim: >-
+    A new site can use Source Bus by choosing it in the AEM Code Sync setup
+    wizard on tools.aem.live, or by changing `content.source` in the site config
+    to `type: sourcebus` with the config API or the site admin tool. The skill
+    does not know how content moves between stores; copy it by hand.
+  question: >-
+    You created a repo from aem-boilerplate and installed the Code Sync app. How
+    does the site get connected to a content store, and how would you make it use
+    Source Bus instead of DA?
+  source: user (AEM Edge Delivery maintainer), 2026-11-14; https://www.aem.live/docs/config-service-setup
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: aem-content-da-only
+  claim: >-
+    `aem content clone` and `aem content push` (aem-cli 16.22.18) talk to
+    `admin.da.live` only (`AEM_DA_ADMIN` overrides the host). They do not read or
+    write Source Bus.
+  question: >-
+    A site's content is stored in Source Bus (api.aem.live). Can you use
+    `aem content clone` to edit it locally?
+  source: aem-cli 16.22.18 src/content/da-api.js
+  used_by:
+    - skills/aem-cli/SKILL.md
+    - skills/create-site/SKILL.md
+
+- id: boilerplate-nav-footer-fragments
+  claim: >-
+    In aem-boilerplate the header block loads the `/nav` document and gives its
+    first three sections the classes `nav-brand`, `nav-sections` and `nav-tools`
+    (brand link, a list of links, tools); the footer block loads `/footer` and
+    uses all of it. Both are plain pages (no blocks needed) that must be
+    previewed before they render.
+  question: >-
+    You start a site from aem-boilerplate and author a nav document. What
+    structure must it have for the default header to render it, and where does
+    the footer come from?
+  source: aem-boilerplate 5cea543, blocks/header/header.js and blocks/footer/footer.js
+  used_by:
+    - skills/create-site/SKILL.md
+
+- id: site-name-limits
+  claim: >-
+    The host `<branch>--<site>--<org>` must not exceed 63 characters, and
+    branch, repo (site) and org cannot contain `--`.
+  question: >-
+    What limits apply to the org, repository and branch names of an Edge
+    Delivery site because of the preview URL?
+  source: https://www.aem.live/developer/anatomy-of-a-project
+  used_by:
+    - skills/create-site/SKILL.md
