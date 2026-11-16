@@ -1495,7 +1495,7 @@
   source: https://www.aem.live/docs/ew/developing/layout-view
   used_by:
     - skills/aem-layout-view/SKILL.md
-    - evals/layout-view-broken-block
+    - evals/aem-layout-view-broken-block
 
 - id: lv-keep-block-element
   claim: >-
@@ -1512,7 +1512,7 @@
   source: https://www.aem.live/docs/ew/developing/layout-view
   used_by:
     - skills/aem-layout-view/SKILL.md
-    - evals/layout-view-broken-block
+    - evals/aem-layout-view-broken-block
 
 - id: lv-move-dont-copy-text
   claim: >-
@@ -1530,7 +1530,7 @@
   source: https://www.aem.live/docs/ew/developing/layout-view
   used_by:
     - skills/aem-layout-view/SKILL.md
-    - evals/layout-view-broken-block
+    - evals/aem-layout-view-broken-block
 
 - id: lv-no-decoration-in-text
   claim: >-
@@ -1546,7 +1546,7 @@
   source: https://www.aem.live/docs/ew/developing/layout-view
   used_by:
     - skills/aem-layout-view/SKILL.md
-    - evals/layout-view-broken-block
+    - evals/aem-layout-view-broken-block
 
 - id: lv-no-combinators-on-text
   claim: >-
@@ -1563,7 +1563,7 @@
   source: https://www.aem.live/docs/ew/developing/layout-view
   used_by:
     - skills/aem-layout-view/SKILL.md
-    - evals/layout-view-broken-block
+    - evals/aem-layout-view-broken-block
 
 - id: lv-image-attributes
   claim: >-
@@ -1583,7 +1583,7 @@
   source: https://www.aem.live/docs/ew/developing/layout-view
   used_by:
     - skills/aem-layout-view/SKILL.md
-    - evals/layout-view-broken-block
+    - evals/aem-layout-view-broken-block
 
 - id: lv-safe-rerun
   claim: >-
@@ -1603,7 +1603,7 @@
   source: https://www.aem.live/docs/ew/developing/layout-view
   used_by:
     - skills/aem-layout-view/SKILL.md
-    - evals/layout-view-broken-block
+    - evals/aem-layout-view-broken-block
 
 - id: lv-idempotent-autoblocking
   claim: >-
@@ -1618,7 +1618,7 @@
   source: https://www.aem.live/docs/ew/developing/layout-view
   used_by:
     - skills/aem-layout-view/SKILL.md
-    - evals/layout-view-broken-block
+    - evals/aem-layout-view-broken-block
 
 - id: lv-test-from-branch
   claim: >-
@@ -1633,7 +1633,7 @@
   source: https://www.aem.live/docs/ew/developing/layout-view
   used_by:
     - skills/aem-layout-view/SKILL.md
-    - evals/layout-view-broken-block
+    - evals/aem-layout-view-broken-block
 
 - id: ew-formerly-da
   claim: >-
