@@ -199,8 +199,7 @@ Non-obvious rules *(da-content / EDS)*:
 
 For many pages, drive `PUT → preview` (publish stays a gated, post-verify step —
 see below) with a concurrency pool + retry (`429`/`5xx`) rather than a
-hand-rolled loop. On a `401`, re-auth (da-auth) and resume; don't abort the
-whole run. Each page still clears the pre-publish gate
+hand-rolled loop. Each page still clears the pre-publish gate
 before it is eligible to publish; a gate failure on one page blocks that page's
 publish, not the batch.
 
