@@ -356,24 +356,22 @@ inputs (eyeballed values, unhardened capture); the fix is upstream.
 - Every fix cites the instrument line that demanded it.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
-  no-op (recorded: a padding whose value the EDS section wrapper already
-  carried — the round measured nothing). The count is on the verdict line:
+  no-op (recorded: a padding the EDS section wrapper already carried). The count is on the verdict line:
   if it did not move, find why the rule never applied (specificity, wrong
   selector, value already in effect) before another round.
 - **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
-  One field "parity verified" claim was wrong three ways at once: the probe
-  matched a heuristic element ("white column wider than 400px") that wasn't
-  the box carrying the lifted rule — always pair the same semantic element
-  on both sides (the element the fixed rule targets on the build; the
-  element whose source rule was lifted on live); the re-check ran through a
+  One "parity verified" claim was wrong three ways: the probe matched a
+  heuristic element ("white column wider than 400px"), not the box carrying
+  the lifted rule — pair the same semantic element on both sides (the one
+  the fixed rule targets on the build; the one whose source rule was lifted
+  on live); the re-check ran through a
   CACHED stylesheet (DevTools showed the old rule while both hosts
-  served the fix) — verify serving out-of-band
+  served the fix) — verify serving
   (`curl --compressed <css-url> | grep '<new-rule>'`; gzip-encoded: a bare
-  `curl | grep` scans binary and matches nothing) and re-render in a fresh headless context; and a reviewer's
-  screenshot encodes their zoom — back-compute their CSS viewport from any
+  `curl | grep` scans binary and matches nothing) and re-render in a fresh context; and a reviewer's
+  screenshot encodes their zoom — back-compute their CSS viewport from an
   element with a known percentage rule (a card at 851px under `width: 50%`
-  → viewport 1702px) and reproduce THAT viewport headlessly before letting
-  their numbers overturn a fix.
+  → 1702px) and reproduce it headlessly before their numbers overturn a fix.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
   content or markup (not pure CSS values), and once at final. Across ~25
