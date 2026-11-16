@@ -258,7 +258,7 @@ node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
 # A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
 # round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
-node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, height delta, hot bands, structural 🔴, flags, chrome deltas
+node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, offsets, height delta, hot bands, structural 🔴, flags, chrome deltas
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
 G=stardust/replica/gates/<slug>-1440
@@ -285,9 +285,8 @@ a verdict; 0 only when all four ran and passed).
 **Pass bar (all four per breakpoint, plus the content-cap row):**
 - content-diff: **0 🔴 and 0 nothing-lost 🟡** on the main and chrome roots (gate doc § Pass bar item 1);
 - visual-diff: flags none or justified;
-- pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
-  (the band breakdown is the navigation instrument — fix the first hot band,
-  top-down; everything below it is offset-contaminated);
+- pixel: aligned **≤ 10%** and offsets within the bound, no per-500px band unexplained
+  (the offset steps are the fix list; bands are read after alignment);
 - height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar);
 - **content-cap row: `cap-probe.mjs … --against` prints `cap-probe: PASS`**
   (gate doc § Pass bar item 6 — every live cap held within ±20 px by kind,
@@ -314,10 +313,8 @@ prototype --proto-base "$PROTO_BASE" --width 1440` (then 360) through `run-bg.mj
 it reuses each archetype's cached `live.png`. `gate-evidence.mjs` reads it as the
 source of record: a prototype without a row is ungated.
 
-**Iteration discipline: hard cap 3 iterations per breakpoint.** Each
-iteration's fixes come off the instruments, never off eyeballing. After 3,
-log the residuals in the ledger and move on — a documented 2% residual beats
-an undocumented fourth loop. **No single step waits longer than the context
+**Iteration discipline: the round cap — `gate.sh` exits 6 at it.** Each
+iteration's fixes come off the instruments, never off eyeballing. **No single step waits longer than the context
 cache lives:** long instruments go through `run-bg.mjs` (`start`, then `wait`
 in ≤ 100-second slices), main agent and subagents alike — a long instrument
 in the foreground, or two as parallel tool calls in one turn, is the same
@@ -433,7 +430,7 @@ had one section for the whole run).
   header contract included (`chrome-compare` exit 0, `../diff/SKILL.md`
   § The header contract), then `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
-  (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
+  (within the round cap, gate doc § Iteration discipline) BEFORE its siblings
   render; C1…Cn — one subagent per template
   cluster runs the whole chain, PUT → preview → published-origin gates
   included, with its own batch ledger (`deploy-batch.mjs --ledger …`,
