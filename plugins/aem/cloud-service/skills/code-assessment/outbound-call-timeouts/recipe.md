@@ -75,10 +75,10 @@ CloseableHttpClient client = HttpClientBuilder.create()
 form above. Imports to add: `org.apache.http.client.config.RequestConfig`,
 `org.apache.http.impl.client.HttpClientBuilder` (drop `HttpClients` import if now unused).
 
-`HttpClients.createSystem()` (4.x and 5.x) is `HttpClientBuilder.create().useSystemProperties().build()`.
-Replace it with the builder form above and keep `.useSystemProperties()` in the chain: it carries the
-Java system proxy properties through which AEM as a Cloud Service advanced networking routes HTTP(S)
-traffic (dedicated egress IP). Without it the client bypasses that proxy.
+Replace `HttpClients.createSystem()` (4.x and 5.x) with the builder form above and keep
+`.useSystemProperties()` in the chain: AEM as a Cloud Service advanced networking routes HTTP(S)
+traffic (dedicated egress IP) through the Java system proxy properties, and without them the client
+bypasses that proxy.
 
 `HttpClients.createMinimal()` (4.x and 5.x) builds a minimal client that has no default `RequestConfig`; it
 only reads the config set on each request. Do not swap it for the builder, which adds
