@@ -29,6 +29,11 @@ jobs:
       - name: Repository scripts pass their tests
         run: npm test
 
+      # facts.yaml of a plugin names skills, references and evals. A pull request that
+      # renames or removes one of those updates it too.
+      - name: Facts name files that exist
+        run: node scripts/check-facts.mjs
+
       # trigger-queries/ of a plugin names its skills. A pull request that renames or
       # removes a skill updates the queries about it too.
       - name: Trigger queries name skills that exist
