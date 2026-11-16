@@ -33,22 +33,19 @@ test('a fact is read with its block scalars and lists', () => {
   });
 });
 
-test('the reader refuses what it does not know, rather than guess', () => {
+test('the reader takes YAML and refuses facts of the wrong shape', () => {
+  assert.deepEqual(parseFacts('- id: f\n  claim: c\n  question: q\n  used_by: [a, b]\n')[0].used_by, ['a', 'b']);
+  assert.equal(parseFacts(`- id: f\n  claim: c\n  question: q\n  source: 'it''s here' # a comment\n`)[0].source, "it's here");
+  assert.equal(parseFacts('- id: f\n  claim: c\n  question: q\n  source: # later\n')[0].source, undefined);
+  assert.deepEqual(parseFacts(''), []);
   assert.throws(() => parseFacts(`${fact()}\n  opinion: yes\n`), /unknown key opinion/);
-  assert.throws(() => parseFacts('- id: f\n  claim: c\n  question: q\n  used_by: [a, b]\n'), /one item per line/);
   assert.throws(() => parseFacts('- id: f\n  claim: c\n'), /has no question/);
+  assert.throws(() => parseFacts('- id: 7\n  claim: c\n  question: q\n'), /has no id/);
+  assert.throws(() => parseFacts('- id: f\n  claim: c\n  question: q\n  used_by: skills/one/SKILL.md\n'), /used_by is a list of paths/);
+  assert.throws(() => parseFacts('- id: f\n  claim: c\n  question: q\n  source: [a]\n'), /source is text/);
   assert.throws(() => parseFacts(`${fact()}\n${fact()}\n`), /the id f twice/);
-  assert.throws(() => parseFacts('id: f\n'), /syntax/);
-});
-
-test('quoted values are decoded, and YAML this reader does not know is refused', () => {
-  const one = (line) => parseFacts(`- id: f\n  claim: c\n  question: q\n  ${line}\n`)[0];
-  assert.equal(one(`source: 'it''s here'`).source, "it's here");
-  assert.equal(one('source: "a \\"b\\""').source, 'a "b"');
-  for (const line of ['source: *alias', 'source: &anchor text', 'source: !tag x', 'source: "open', "source: 'open", "source: 'a'b'", 'source: text # comment', 'source: text\t# comment', 'source: # later', 'source: a: b']) {
-    assert.throws(() => one(line), /quote it|does not end|escape/, line);
-  }
-  assert.throws(() => parseFacts('- id: f\n  claim: c\n  question: q\n  used_by:\n    - *alias\n'), /quote it/);
+  assert.throws(() => parseFacts('id: f\n'), /a list of facts/);
+  assert.throws(() => parseFacts('- id: f\n  claim: "open\n'), /facts.yaml: /);
 });
 
 test('facts that a skill states, or that an eval tests and a source backs, pass', (t) => {

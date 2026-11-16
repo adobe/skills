@@ -9,100 +9,39 @@
 //     used_by   the files, relative to the plugin, that state or test it: a SKILL.md, a
 //               reference, an eval
 //
-// facts.yaml is read with a small YAML subset (keys, block scalars, lists of strings), so
-// that this needs no dependency. What the subset doesn't know is an error, not a guess.
+// The file is YAML, read with js-yaml; what it holds is checked here, so a key or a value
+// of the wrong kind is an error, not a guess.
+import yaml from 'js-yaml';
+
 export const FACT_KEYS = ['id', 'claim', 'question', 'source', 'used_by'];
 const REQUIRED = ['id', 'claim', 'question'];
-const KEY = /^( {2}|- )([A-Za-z_][\w-]*):(?:\s+(.*))?$/;
-
-// A scalar on one line: plain, 'single-quoted' or "double-quoted". What else YAML allows
-// there (anchors, aliases, tags, a comment after the value) is refused.
-function scalar(value, fail) {
-  const v = value.trim();
-  if (v.startsWith('"')) {
-    if (v.length < 2 || !v.endsWith('"')) fail('a double-quoted value that does not end with "');
-    try {
-      return JSON.parse(v);
-    } catch {
-      fail('a double-quoted value with an escape this reader does not know');
-    }
-  }
-  if (v.startsWith("'")) {
-    if (v.length < 2 || !v.endsWith("'") || v.slice(1, -1).replace(/''/g, '').includes("'")) fail("a single-quoted value that does not end with '");
-    return v.slice(1, -1).replace(/''/g, "'");
-  }
-  if (/^[&*!%@`|>#]/.test(v)) fail(`a value that starts with ${v[0]}: quote it`);
-  if (/\s#|:\s/.test(v)) fail('a value with ": " or " #" in it: quote it');
-  return v;
-}
-
-// A block scalar: `|` keeps the lines, `>` folds them into one, with blank lines as breaks.
-function blockScalar(style, lines) {
-  const body = lines.map((line) => line.replace(/^ {4}/, ''));
-  while (body.length > 0 && !body.at(-1).trim()) body.pop();
-  if (style[0] !== '>') return body.join('\n');
-  const paragraphs = [];
-  let current = [];
-  for (const line of body) {
-    if (line.trim()) current.push(line.trim());
-    else if (current.length > 0) {
-      paragraphs.push(current.join(' '));
-      current = [];
-    }
-  }
-  if (current.length > 0) paragraphs.push(current.join(' '));
-  return paragraphs.join('\n');
-}
 
 export function parseFacts(text, name = 'facts.yaml') {
-  const lines = text.split(/\r?\n/);
-  const facts = [];
-  let fact = null;
-  const fail = (index, message) => {
-    throw new Error(`${name}:${index + 1}: ${message}`);
-  };
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (!line.trim() || line.startsWith('#')) continue;
-    const match = KEY.exec(line);
-    if (!match) fail(index, `this reader doesn't know the syntax of "${line.trim()}"`);
-    if (match[1] === '- ') {
-      fact = {};
-      facts.push(fact);
-    } else if (!fact) fail(index, 'a fact starts with "- id:"');
-    const [, , key, rest = ''] = match;
-    const raw = rest.trim();
-    if (!FACT_KEYS.includes(key)) fail(index, `unknown key ${key}; a fact has ${FACT_KEYS.join(', ')}`);
-    if (key in fact) fail(index, `${key} twice`);
-    if (/^[>|][+-]?$/.test(raw)) {
-      const block = [];
-      while (index + 1 < lines.length && (!lines[index + 1].trim() || lines[index + 1].startsWith('    '))) block.push(lines[++index]);
-      fact[key] = blockScalar(raw, block);
-    } else if (raw === '') {
-      const items = [];
-      while (index + 1 < lines.length && /^ {4}- /.test(lines[index + 1])) {
-        index += 1;
-        items.push(scalar(lines[index].replace(/^ {4}- /, ''), (message) => fail(index, message)));
-      }
-      fact[key] = items;
-    } else if (raw === '[]') {
-      fact[key] = [];
-    } else if (/^[[{]/.test(raw)) {
-      fail(index, 'a list is written one item per line; only [] is understood inline');
-    } else {
-      fact[key] = scalar(raw, (message) => fail(index, message));
-    }
+  let data;
+  try {
+    data = yaml.load(text, { filename: name, schema: yaml.CORE_SCHEMA });
+  } catch (error) {
+    throw new Error(`${name}: ${error.message}`);
   }
+  if (data === undefined || data === null) return [];
+  if (!Array.isArray(data)) throw new Error(`${name}: a list of facts, each starting with "- id:"`);
   const ids = new Set();
-  for (const [index, entry] of facts.entries()) {
-    for (const key of REQUIRED) {
-      if (typeof entry[key] !== 'string' || !entry[key].trim()) throw new Error(`${name}: fact ${index + 1} (${entry.id ?? 'no id'}) has no ${key}`);
-    }
-    if (entry.used_by !== undefined && !Array.isArray(entry.used_by)) throw new Error(`${name}: ${entry.id}: used_by is a list`);
-    if (entry.source !== undefined && typeof entry.source !== 'string') throw new Error(`${name}: ${entry.id}: source is text`);
+  return data.map((entry, index) => {
+    const at = `${name}: fact ${index + 1} (${entry?.id ?? 'no id'})`;
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error(`${at}: not a mapping of keys`);
+    for (const key of Object.keys(entry)) if (!FACT_KEYS.includes(key)) throw new Error(`${at}: unknown key ${key}; a fact has ${FACT_KEYS.join(', ')}`);
+    for (const key of REQUIRED) if (typeof entry[key] !== 'string' || !entry[key].trim()) throw new Error(`${at}: has no ${key}`);
+    if (entry.source !== undefined && entry.source !== null && typeof entry.source !== 'string') throw new Error(`${at}: source is text`);
+    const usedBy = entry.used_by ?? [];
+    if (!Array.isArray(usedBy) || usedBy.some((path) => typeof path !== 'string')) throw new Error(`${at}: used_by is a list of paths`);
     if (ids.has(entry.id)) throw new Error(`${name}: the id ${entry.id} twice`);
     ids.add(entry.id);
-    entry.used_by ??= [];
-  }
-  return facts;
+    return {
+      id: entry.id,
+      claim: entry.claim,
+      question: entry.question,
+      ...(typeof entry.source === 'string' ? { source: entry.source } : {}),
+      used_by: usedBy,
+    };
+  });
 }
