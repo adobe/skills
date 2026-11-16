@@ -1,5 +1,5 @@
 {
-  "context": "The working directory is aem-boilerplate with an unstyled testimonial-carousel block (JS only). Tests whether the agent finds where block CSS goes and writes CSS that fits the project: scoped to the block, targeting the DOM decorate() produces, reusing the :root custom properties in styles/styles.css instead of duplicating their values, leaving page layout to section styles, and responsive mobile-first. Backing facts: facts.yaml (block-css-scoping, block-css-location, platform-wrapper-classes, css-targets-decorated-dom, root-custom-properties, block-layout-scope, mobile-first-breakpoints, block-variant-classes, flex-grid-gap).",
+  "context": "The working directory is aem-boilerplate with an unstyled testimonial-carousel block (JS only). Tests whether the agent finds where block CSS goes and writes CSS that fits the project: scoped to the block, targeting the DOM decorate() produces, reusing the :root custom properties in styles/styles.css instead of duplicating their values, leaving page layout to section styles, and responsive mobile-first. Backing facts: facts.yaml (block-css-scoping, block-css-location, platform-wrapper-classes, css-targets-decorated-dom, root-custom-properties, block-layout-scope, mobile-first-breakpoints, block-variant-classes).",
   "type": "weighted_checklist",
   "checklist": [
     {
