@@ -1,0 +1,10 @@
+{
+  "id": "hero",
+  "source": "optimizely",
+  "variants": [
+    {
+      "name": "a",
+      "fragment": "/fragments/personalization/hero/a"
+    }
+  ]
+}

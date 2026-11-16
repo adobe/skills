@@ -1,0 +1,11 @@
+{
+  "decisions": {
+    "home-hero": {
+      "reason": "provider_error",
+      "tracking": {
+        "engine": "of1",
+        "requestId": "r-93"
+      }
+    }
+  }
+}

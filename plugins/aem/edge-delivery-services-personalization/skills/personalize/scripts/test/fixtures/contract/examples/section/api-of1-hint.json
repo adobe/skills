@@ -1,0 +1,25 @@
+{
+  "id": "home-hero",
+  "source": "api",
+  "variants": [
+    {
+      "name": "pro",
+      "fragment": "/fragments/personalization/home-hero/pro"
+    },
+    {
+      "name": "deals",
+      "fragment": "/fragments/personalization/home-hero/deals"
+    }
+  ],
+  "rules": [
+    {
+      "variant": "deals",
+      "condition": "param: utm_campaign=black-friday"
+    }
+  ],
+  "hint": "Show the hero that best matches why the visitor came: a professional buyer looking for espresso performance, or a price-conscious buyer looking for a deal.",
+  "descriptions": {
+    "pro": "Pro espresso machines: dual boilers, PID control, barista-grade results.",
+    "default": "Our flagship espresso machine range for every kitchen."
+  }
+}

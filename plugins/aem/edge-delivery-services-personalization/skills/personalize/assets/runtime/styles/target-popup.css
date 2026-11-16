@@ -1,0 +1,96 @@
+/*
+ * Offer popup of `target` sections (scripts/personalization/popup.js).
+ * Site-owned: restyle freely, the skill never overwrites this file.
+ */
+.target-popup {
+  box-sizing: border-box;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  border: 0;
+  border-radius: 16px;
+  padding: 0;
+  background-color: var(--background-color, #fff);
+  color: var(--text-color, #131313);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 35%);
+  overflow: auto;
+}
+
+.target-popup[open] {
+  animation: target-popup-in 0.25s ease-out;
+}
+
+.target-popup::backdrop {
+  background-color: rgb(0 0 0 / 55%);
+}
+
+.target-popup-content {
+  padding: 48px 40px 40px;
+}
+
+.target-popup-content > div > :first-child {
+  margin-top: 0;
+}
+
+.target-popup-content > div > :last-child {
+  margin-bottom: 0;
+}
+
+.target-popup-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border: 1px solid currentcolor;
+  border-radius: 50%;
+  padding: 0;
+  background-color: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.target-popup-close::before,
+.target-popup-close::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 1.5px;
+  background-color: currentcolor;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.target-popup-close::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.target-popup-close:focus-visible {
+  outline: 2px solid currentcolor;
+  outline-offset: 2px;
+}
+
+@keyframes target-popup-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .target-popup[open] {
+    animation: none;
+  }
+}
+
+@media (width < 600px) {
+  .target-popup-content {
+    padding: 56px 24px 32px;
+  }
+}

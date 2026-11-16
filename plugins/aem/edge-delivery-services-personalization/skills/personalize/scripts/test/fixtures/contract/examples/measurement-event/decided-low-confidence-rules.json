@@ -1,0 +1,19 @@
+{
+  "event": "pzn:decided",
+  "personalization": {
+    "id": "home-hero",
+    "decisionId": "home-hero#1",
+    "variant": "deals",
+    "assigned": "deals",
+    "source": "rules",
+    "where": "edge",
+    "outcome": "low-confidence",
+    "reason": "low_confidence",
+    "trigger": "initial",
+    "tracking": {
+      "engine": "of1",
+      "requestId": "r-92",
+      "confidence": 0.41
+    }
+  }
+}

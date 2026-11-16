@@ -1,0 +1,42 @@
+{
+  "fragmentPrefixes": [
+    "/fragments/"
+  ],
+  "budgets": {
+    "eager": 800,
+    "lazy": 2000
+  },
+  "devices": {
+    "mobile": "(max-width: 599px)",
+    "tablet": "(min-width: 600px) and (max-width: 899px)",
+    "desktop": "(min-width: 900px)"
+  },
+  "consent": {
+    "mode": "cmp",
+    "tool": "onetrust",
+    "withoutConsent": [
+      "rules",
+      "rum"
+    ],
+    "policyRef": "https://wiki.example.com/privacy/personalization-approval"
+  },
+  "api": {
+    "endpoint": "/pzn/decide",
+    "feedback": ""
+  },
+  "target": {
+    "transport": "delivery-api",
+    "clientCode": "acme",
+    "propertyToken": "",
+    "endpoint": "",
+    "timeout": 3000
+  },
+  "overrides": "preview",
+  "botsGetDefault": true,
+  "analytics": {
+    "dataLayer": true,
+    "rum": true,
+    "seenThreshold": 0.25
+  },
+  "mock": false
+}

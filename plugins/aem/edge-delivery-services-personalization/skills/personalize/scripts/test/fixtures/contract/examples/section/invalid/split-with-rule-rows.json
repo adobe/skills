@@ -1,0 +1,16 @@
+{
+  "id": "hero",
+  "source": "split",
+  "variants": [
+    {
+      "name": "a",
+      "fragment": "/fragments/personalization/hero/a"
+    }
+  ],
+  "rules": [
+    {
+      "variant": "a",
+      "condition": "geo: US"
+    }
+  ]
+}
