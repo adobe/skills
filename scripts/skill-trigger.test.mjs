@@ -173,3 +173,71 @@ test('a run that leaves a process behind holding the pipes ends when Claude Code
   assert.ok(Date.now() - started < 10000, 'the run did not wait for the process it left behind');
   assert.match(result.stderr, /q #1: none \(finished\)/);
 });
+
+// ---- pi ----
+
+const piEnd = (...content) => JSON.stringify({ type: 'message_end', message: { role: 'assistant', content, usage: { cost: { total: 0.01 } } } });
+
+test('in a pi stream, a skill is loaded by reading its SKILL.md, and the answer is the last text', () => {
+  const stream = [
+    JSON.stringify({ type: 'session', version: 3 }),
+    JSON.stringify({ type: 'message_update', message: { role: 'assistant' } }),
+    piEnd({ type: 'toolCall', name: 'read', arguments: { path: '/repo/plugins/p/skills/two/SKILL.md' } }),
+    JSON.stringify({ type: 'message_end', message: { role: 'toolResult', content: [{ type: 'text', text: 'skill text' }] } }),
+    piEnd({ type: 'toolCall', name: 'write', arguments: { path: '/repo/skills/one/SKILL.md' } }),
+    piEnd({ type: 'text', text: 'All done.' }),
+  ].join('\n');
+  assert.deepEqual(skillsLoaded(stream, SKILLS), ['two']);
+  assert.deepEqual(streamResult(stream), { text: 'All done.', turns: 3, costUsd: 0.03, failed: false });
+  const shell = (command) => skillsLoaded(piEnd({ type: 'toolCall', name: 'bash', arguments: { command } }), SKILLS);
+  assert.deepEqual(shell('sed -n 1,40p /repo/plugins/p/skills/one/SKILL.md; grep -n x /repo/plugins/p/skills/two/SKILL.md 2>&1 | head'), ['one', 'two']);
+  assert.deepEqual(shell('grep -n x /repo/plugins/p/skills/two/SKILL.md 2>&1 | head'), ['two']);
+  assert.deepEqual(shell('echo hi > /repo/plugins/p/skills/one/SKILL.md'), []);
+  assert.deepEqual(shell("sed -i '' s/a/b/ /repo/plugins/p/skills/one/SKILL.md"), []);
+  assert.deepEqual(shell('ls /repo/plugins/p/skills/'), []);
+  const watch = watcher(SKILLS, { maxTurns: 2 });
+  assert.equal(watch.feed(`${piEnd({ type: 'text', text: 'thinking' })}\n`), null);
+  assert.equal(watch.feed(`${piEnd({ type: 'toolCall', name: 'bash', arguments: { command: 'ls' } })}\n`), 'max-turns');
+});
+
+const PI_PLUGIN = {
+  'plugins/p/plugin.json': JSON.stringify({ name: 'p', version: '1.0.0' }),
+  'plugins/p/skills/one/SKILL.md': '---\nname: one\ndescription: d\n---\n',
+  'plugins/p/trigger-queries/one.json': JSON.stringify({ queries: [{ id: 'y1', query: 'please load one', should_trigger: true, skill: 'one' }] }),
+  'home/.pi/agent/auth.json': '{"github-copilot":{"token":"secret-for-tests"}}',
+};
+// A stand-in for pi that reads the skill it was given when the prompt asks for it.
+const piScript = (log) => `printf '%s\\n' "$@" >> "${log}"; printf 'agent dir %s, auth %s\\n' "$PI_CODING_AGENT_DIR" "$(cat "$PI_CODING_AGENT_DIR/auth.json" | wc -c | tr -d ' ')" >> "${log}"
+skill=""; prev=""; for a in "$@"; do [ "$prev" = "--skill" ] && skill="$a"; prev="$a"; done
+case "$*" in *"load one"*) [ -n "$skill" ] && printf '{"type":"message_end","message":{"role":"assistant","content":[{"type":"toolCall","name":"read","arguments":{"path":"%s/SKILL.md"}}]}}\\n' "$skill" ;; esac
+echo '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"answered"}]}}'`;
+
+test('skill-eval and skill-trigger run pi with the plugin\'s skills and the stored pi sign-in', (t) => {
+  const root = tree(t, { ...PI_PLUGIN, 'plugins/p/evals/one-case/task.md': 'Please load one and do it.', 'plugins/p/evals/one-case/criteria.json': '{"checklist":[{"name":"d","max_score":1}]}' });
+  const log = join(root, 'args.log');
+  const bin = fakeBin(t, { pi: piScript(log) }).split(delimiter)[0];
+  const evaled = run(t, 'skill-eval.mjs', ['--client', 'pi', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/one-case', '--bin', bin, '--auth-home', join(root, 'home')], { cwd: root });
+  assert.equal(evaled.status, 0, evaled.stdout + evaled.stderr);
+  const report = JSON.parse(evaled.stdout);
+  assert.equal(report.model, 'github-copilot/claude-opus-5.5');
+  assert.equal(report.expected, 'one');
+  assert.deepEqual(report.arms.with.skillsLoaded, ['one']);
+  assert.deepEqual(report.arms.without.skillsLoaded, []);
+  assert.equal(report.arms.with.answer, 'answered');
+  const args = readFileSync(log, 'utf8');
+  assert.match(args, /--mode\njson\n--no-session\n-ne\n-ns\n--no-mcp\n-na\n-np\n--no-themes\n--model\ngithub-copilot\/claude-opus-5\.5\n--skill\n\S+\/plugins\/p\/skills\/one\n/);
+  assert.match(args, /agent dir \S+\/\.pi\/agent, auth 47/);
+
+  const triggered = run(t, 'skill-trigger.mjs', ['--client', 'pi', '--plugin', 'plugins/p', '--queries', 'plugins/p/trigger-queries/one.json', '-n', '1', '--bin', bin, '--auth-home', join(root, 'home')], { cwd: root });
+  assert.equal(triggered.status, 0, triggered.stderr);
+  assert.match(triggered.stderr, /y1 #1: one/);
+  assert.doesNotMatch(evaled.stdout + evaled.stderr + triggered.stdout + triggered.stderr, /secret-for-tests/);
+});
+
+test('pi needs a signed-in home directory', (t) => {
+  const root = tree(t, PI_PLUGIN);
+  const bin = fakeBin(t, { pi: 'exit 0' }).split(delimiter)[0];
+  const result = run(t, 'skill-trigger.mjs', ['--client', 'pi', '--plugin', 'plugins/p', '--queries', 'plugins/p/trigger-queries/one.json', '--bin', bin], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'k' } });
+  assert.equal(result.status, 3);
+  assert.match(result.stderr, /signed in to pi, given with --auth-home/);
+});

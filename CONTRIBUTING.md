@@ -118,7 +118,7 @@ node scripts/check-trigger-queries.mjs     # the queries name skills that exist
 node scripts/skill-trigger.mjs --plugin plugins/<your plugin> --queries plugins/<your plugin>/trigger-queries/<skill>.json --auth-home "$HOME"
 ```
 
-`skill-trigger.mjs` runs each query a few times in Claude Code with the plugin installed, stops each run at the first skill it loads or the first file it writes, and reports which skill loaded. It runs agents and costs what they cost, so run it for the skill whose description you changed. Pickup varies from run to run: compare the old description and the new one on the same queries before you call a change better. CI doesn't run it. Like `skill-eval.mjs`, it lets the agent do whatever you may do on that machine.
+`skill-trigger.mjs` runs each query a few times in Claude Code, or in pi with `--client pi`, with the plugin installed, stops each run at the first skill it loads or the first file it writes, and reports which skill loaded. It runs agents and costs what they cost, so run it for the skill whose description you changed. Pickup varies from run to run: compare the old description and the new one on the same queries before you call a change better. CI doesn't run it. Like `skill-eval.mjs`, it lets the agent do whatever you may do on that machine.
 
 ## Plugins
 
@@ -215,7 +215,7 @@ node scripts/skill-eval.mjs --client claude --plugin plugins/<your plugin> \
   --prompt "<a task, as a user would put it>" --auth-home "$HOME"
 ```
 
-It prints both answers and the files each run wrote or removed. `--scenario plugins/<your plugin>/evals/<name>` takes the task of a scenario and adds its criteria to the result. The agent of such a run may do whatever you may do on that machine: run it for plugins you trust.
+It prints both answers and the files each run wrote or removed. `--scenario plugins/<your plugin>/evals/<name>` takes the task of a scenario and adds its criteria to the result. With [pi](https://pi.dev) signed in, `--client pi --auth-home "$HOME"` runs the same with the providers you have there (default model `github-copilot/claude-opus-5.5`; pick another with `--model`). For `claude` and `pi`, the result also names the skills each run loaded. The agent of such a run may do whatever you may do on that machine: run it for plugins you trust.
 
 ## Merge Policy
 
