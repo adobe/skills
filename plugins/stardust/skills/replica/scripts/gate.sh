@@ -369,9 +369,10 @@ else
   fi
 fi
 
-# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same overlay flags as
-# the live side — a symmetric instrument (the build has nothing to dismiss, so the flags are no-ops there).
-capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
+# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same --settle pass and
+# overlay flags as the live side — a symmetric instrument, as gate-all's (the build has nothing to dismiss, so those
+# flags are no-ops there; an unsettled build against a settled origin measured 6 points apart on one deployed page).
+capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
 retry_once "build capture" capture_build
 rc=$?
 [ $rc -ne 0 ] && capture_failed build "$rc"

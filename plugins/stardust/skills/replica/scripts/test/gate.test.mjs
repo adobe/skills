@@ -222,8 +222,8 @@ const gdir = (slug) => `stardust/replica/gates/${slug}-1440`;
 r = await gate(['fonts1', 'https://live.example/fonts1', buildUrl, '1440', 'f1', '--marker', 'home-proposed']);
 check('both captures leave their capture record (<side>.capture.json in the evidence dir)', r.status === 0
   && existsSync(join(root, gdir('fonts1'), 'live.capture.json')) && existsSync(join(root, gdir('fonts1'), 'build.capture.json')), `status ${r.status} ${r.stderr.slice(0, 300)}`);
-check('the live record was written by a --settle capture, the build record by a plain one', JSON.parse(readFileSync(join(root, gdir('fonts1'), 'live.capture.json'), 'utf8')).settle === true
-  && JSON.parse(readFileSync(join(root, gdir('fonts1'), 'build.capture.json'), 'utf8')).settle === false);
+check('both records were written by a --settle capture (a symmetric instrument)', JSON.parse(readFileSync(join(root, gdir('fonts1'), 'live.capture.json'), 'utf8')).settle === true
+  && JSON.parse(readFileSync(join(root, gdir('fonts1'), 'build.capture.json'), 'utf8')).settle === true);
 check('a clean round prints "every declared face loaded" for both sides, after the overflow line', fontsLine('live', 'every declared face loaded').test(r.stdout) && fontsLine('build', 'every declared face loaded').test(r.stdout)
   && /overflow assert[^\n]*\n[^]*fonts on the live capture[^\n]*\n[^]*fonts on the build capture/.test(r.stdout), r.stdout);
 r = await gate(['fonts1', 'https://live.example/fonts1', buildUrl, '1440', 'f2', '--marker', 'home-proposed'], { STUB_FONTS_BUILD: 'Brand Sans,Brand Serif Fallback' });
@@ -320,7 +320,7 @@ resetArgs();
 r = await gate(['consent1', 'https://live.example/consent1', buildUrl, '1440', 'c1', '--full', '--marker', 'home-proposed', '--consent', CONSENT, '--dismiss', EXTRA], { STUB_STITCH_ARGS: argsFile });
 check('--consent / --dismiss reach the live capture (after --settle) and the build capture alike, values intact', r.status === 0 && stitchArgs().length === 2
   && stitchArgs()[0] === `LIVE https://live.example/consent1 stardust/replica/gates/consent1-1440/live.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA}`
-  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --consent ${CONSENT} --dismiss ${EXTRA}`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
+  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA}`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
 check('the diff probes get the same selectors joined into one --dismiss list', new RegExp(`--main main --dismiss ${CONSENT},${EXTRA}$`, 'm').test(evidence('consent1', 'content-diff-c1.txt')) && new RegExp(`--main main --dismiss ${CONSENT},${EXTRA} --out `).test(evidence('consent1', 'visual-diff-c1.txt')), evidence('consent1', 'content-diff-c1.txt') + evidence('consent1', 'visual-diff-c1.txt'));
 check('chrome-parity gets --consent and --dismiss', new RegExp(`--live-cache \\S+ --consent ${CONSENT} --dismiss ${EXTRA}$`, 'm').test(evidence('consent1', 'chrome-parity-c1.txt')), evidence('consent1', 'chrome-parity-c1.txt'));
 resetArgs();

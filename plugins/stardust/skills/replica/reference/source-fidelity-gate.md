@@ -54,7 +54,7 @@ node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic --
 # 3. pixel — stitched captures on BOTH sides (never fullPage:true); a consent manager the
 #    built-in candidates miss: the same --consent "<accept selector>" on both (rule 6)
 node stardust/scripts/replica/stitch-shot.mjs "$LIVE"  "$GATE/live.png"  --width $W --settle
-node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W
+node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W --settle
 node stardust/scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
   --out "$GATE/diff-iter<N>.png" --threshold 10
 ```
