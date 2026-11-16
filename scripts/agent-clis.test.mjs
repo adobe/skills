@@ -238,11 +238,12 @@ test('--no-setup leaves out what needs the network and says so; a step that fail
   assert.match(JSON.parse(given.stdout).notes[0], /^The work directory is the one of --workdir/);
 });
 
-test('the setup scripts get a home of their own, without the sign-in that --auth-home gives the client', (t) => {
+test('the setup scripts get a home of their own, and the sign-in that --auth-home gives the client is not on disk while they run', (t) => {
   const signedIn = tree(t, { '.claude/.credentials.json': '{"token":"secret"}' });
   const root = tree(t, {
     ...PLUGIN,
-    'plugins/p/evals/case/setup.sh': 'if [ -e "$HOME/.claude/.credentials.json" ]; then echo read > setup.txt; else echo none > setup.txt; fi',
+    // in its home, and in the client's, at a path that is easy to guess
+    'plugins/p/evals/case/setup.sh': 'if [ -e "$HOME/.claude/.credentials.json" ] || ls "$(dirname "$TMPDIR")"/skill-eval-claude-home-*/.claude/.credentials.json >/dev/null 2>&1; then echo read > setup.txt; else echo none > setup.txt; fi',
   });
   const reads = `printf '{"result":"setup %s, client %s"}' "$(cat setup.txt)" "$(grep -q secret "$HOME/.claude/.credentials.json" && echo read || echo none)"`;
   const result = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--arms', 'without', '--auth-home', signedIn, '--bin', claude(t, reads), '--out', temp(t)], { cwd: root });

@@ -378,17 +378,12 @@ function main() {
     // the temporary directory of the setup scripts: what they leave there, such as the main
     // checkout of a git worktree, stays for the run and goes with it
     const scratch = mkdtempSync(join(tmpdir(), 'skill-eval-setup-'));
-    // the home of the setup scripts: empty, apart from the client's home with its stored sign-in
+    // the home of the setup scripts: empty, and not the client's home with its stored sign-in
     const setupHome = mkdtempSync(join(tmpdir(), 'skill-eval-setup-home-'));
     const armOut = join(out, `${options.client}-${arm}`);
     mkdirSync(armOut, { recursive: true });
     try {
       if (start) cpSync(start, workdir, { recursive: true });
-      for (const file of stored) {
-        mkdirSync(dirname(join(home, file)), { recursive: true });
-        cpSync(join(resolve(options.authHome), file), join(home, file));
-        chmodSync(join(home, file), 0o600);
-      }
       const plain = { PATH: process.env.PATH, HOME: home, TMPDIR: process.env.TMPDIR ?? '/tmp', LANG: 'C.UTF-8', TERM: 'dumb', NO_COLOR: '1', CI: '1' };
       const env = { ...plain, ...(client.env?.(home, bedrock, on) ?? {}) };
       if (scenario) {
@@ -404,6 +399,12 @@ function main() {
         }
         const note = `--no-setup: the work directory lacks ${left.join(', ')}.`;
         if (left.length > 0 && !notes.includes(note)) notes.push(note);
+      }
+      // the stored sign-in, after the setup scripts: it is not on disk while they run
+      for (const file of stored) {
+        mkdirSync(dirname(join(home, file)), { recursive: true });
+        cpSync(join(resolve(options.authHome), file), join(home, file));
+        chmodSync(join(home, file), 0o600);
       }
       for (const name of credentials) if (process.env[name] !== undefined) env[name] = process.env[name];
       const run = (args, more = {}) => spawnSync(bin, args, { cwd: workdir, env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, ...more });
