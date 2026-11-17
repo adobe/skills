@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/adobe/skills/compare/code-assessment-v1.1.1...code-assessment-v1.1.2) (2026-11-17)
+
+
+### Bug Fixes
+
+* **aem:** code-assessment waits for confirmation before any edit ([#730](https://github.com/adobe/skills/issues/730)) ([f09da6e](https://github.com/adobe/skills/commit/f09da6e84b476e95a7e14a8b3af059b3a8028ea8))
+
 ## [1.1.1](https://github.com/adobe/skills/compare/code-assessment-v1.1.0...code-assessment-v1.1.1) (2026-11-17)
 
 
