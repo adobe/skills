@@ -1,6 +1,6 @@
 # Recipe — outbound HTTP calls without a timeout
 
-> Read this fully before editing. Control plane: [SKILL.md](SKILL.md).
+> Read this fully before editing. Control plane: [guide.md](guide.md).
 
 ## Input contract
 
@@ -22,7 +22,7 @@ Per invocation, a deduplicated list of findings — each a client-construction s
 Sources:
 
 1. **User-named** — the user names the Java file(s) directly.
-2. **Discover** — the file/line list is the output of the **Discovery** scan in [`SKILL.md`](SKILL.md).
+2. **Discover** — the file/line list is the output of the **Discovery** scan in [`guide.md`](guide.md).
 
 The per-library recipe and skip policy apply identically in both sources. The `line` + `snippet`
 locate the construction; remediation edits the surrounding builder/configuration, which may span more
