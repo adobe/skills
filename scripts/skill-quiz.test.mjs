@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { BEDROCK, PI, SYSTEM, bedrockAsker, factVerdict, markdown, parseGrade, quiz, selectFacts, verdict } from './skill-quiz.mjs';
-import { fakeBin, run, tree } from './lib/testing.mjs';
+import { fakeBin, run, tree, write } from './lib/testing.mjs';
 
 const fact = (id, usedBy = ['skills/one/SKILL.md']) => ({ id, claim: `claim ${id}`, question: `question ${id}?`, used_by: usedBy });
 
@@ -117,8 +117,9 @@ test('--pi asks through pi with nothing but the model and the review\'s system p
   const root = tree(t, { 'plugins/p/plugin.json': '{}' });
   const log = join(root, 'args.txt');
   const asked = join(root, 'stdin.txt');
-  const path = fakeBin(t, { pi: `for a in "$@"; do printf '%s\\n' "$a"; done >> "${log}"; cat >> "${asked}"; echo 'use node -v'` });
-  const result = run(t, 'skill-quiz.mjs', ['plugins/p', '--pi', '--ask=-h @file Which Node is active?', '-n', '1'], { cwd: root, env: { PATH: path } });
+  const path = fakeBin(t, { pi: `for a in "$@"; do printf '%s\\n' "$a"; done >> "${log}"; ls "$PI_CODING_AGENT_DIR" >> "${log}"; cat >> "${asked}"; echo 'use node -v'` });
+  write(root, { 'home/.pi/agent/auth.json': '{}', 'home/.pi/agent/APPEND_SYSTEM.md': 'personal' });
+  const result = run(t, 'skill-quiz.mjs', ['plugins/p', '--pi', '--ask=-h @file Which Node is active?', '-n', '1'], { cwd: root, env: { PATH: path, HOME: join(root, 'home') } });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /## github-copilot\/claude-haiku-5\.5 #1\n\nuse node -v/);
   assert.match(result.stdout, /## github-copilot\/gpt-5\.6-luna #1/);
@@ -126,6 +127,7 @@ test('--pi asks through pi with nothing but the model and the review\'s system p
   for (const flag of ['-p', '--no-session', '-ne', '-ns', '--no-mcp', '-nt', '-nc']) assert.ok(args.includes(flag), flag);
   assert.equal(args[args.indexOf('--system-prompt') + 1], SYSTEM);
   assert.equal(args[args.indexOf('--model') + 1], 'github-copilot/claude-haiku-5.5');
+  assert.ok(args.includes('auth.json') && !args.includes('APPEND_SYSTEM.md'), 'pi sees only the sign-in of its agent directory');
   assert.ok(!args.some((arg) => arg.includes('Which Node')), 'the question is not an argument');
   assert.match(readFileSync(asked, 'utf8'), /^-h @file Which Node is active\?/);
 });

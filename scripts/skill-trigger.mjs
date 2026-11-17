@@ -87,7 +87,7 @@ function runOnce({ bin, args, cwd, env, timeout, watch, transcript }) {
       clearTimeout(timer);
       signal('SIGKILL');
       writeFileSync(transcript, stdout);
-      done({ status, stopped, stderr });
+      done({ status, stopped, stderr, stdout });
     });
     child.on('error', (error) => {
       clearTimeout(timer);
@@ -189,7 +189,9 @@ async function main() {
         const ran = await runOnce({ bin, args, cwd: work, env, timeout, watch, transcript });
         Object.assign(entry, watch.result(), { transcript });
         if (ran.stopped === 'timeout') entry.error = `timed out after ${timeout} s`;
-        else if (ran.stopped !== 'enough' && ran.status !== 0) entry.error = `claude exited ${ran.status}: ${ran.stderr.trim().split('\n').pop() ?? ''}`;
+        else if (ran.stopped !== 'enough' && ran.status !== 0) entry.error = `${values.client} exited ${ran.status}: ${ran.stderr.trim().split('\n').pop() ?? ''}`;
+        // an agent that failed (a provider error) may still exit 0: such a run is not a "none"
+        else if (ran.stopped !== 'enough' && client.answer({ stdout: ran.stdout, lastMessage: '' }).failed) entry.error = `${values.client} reported an error`;
       } catch (error) {
         entry.error = error.message;
       } finally {

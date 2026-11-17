@@ -195,6 +195,13 @@ test('in a pi stream, a skill is loaded by reading its SKILL.md, and the answer 
   assert.deepEqual(shell('echo hi > /repo/plugins/p/skills/one/SKILL.md'), []);
   assert.deepEqual(shell("sed -i '' s/a/b/ /repo/plugins/p/skills/one/SKILL.md"), []);
   assert.deepEqual(shell('ls /repo/plugins/p/skills/'), []);
+  for (const command of ['ls -l /repo/plugins/p/skills/one/SKILL.md', 'test -f /repo/plugins/p/skills/one/SKILL.md && echo yes', 'echo /repo/plugins/p/skills/one/SKILL.md', 'cat /repo/plugins/p/skills/one/SKILL.md.bak', 'cat notes.md > /repo/plugins/p/skills/one/SKILL.md']) {
+    assert.deepEqual(shell(command), [], command);
+  }
+  assert.deepEqual(shell('cd /repo && cat /repo/plugins/p/skills/one/SKILL.md'), ['one']);
+  const end = (stopReason, text) => JSON.stringify({ type: 'message_end', message: { role: 'assistant', stopReason, content: [{ type: 'text', text }], ...(stopReason === 'error' ? { errorMessage: '503' } : {}) } });
+  assert.equal(streamResult([end('error', ''), end('stop', 'recovered')].join('\n')).failed, false, 'a retried error is not a failure');
+  assert.equal(streamResult([end('stop', 'x'), end('error', '')].join('\n')).failed, true);
   const watch = watcher(SKILLS, { maxTurns: 2 });
   assert.equal(watch.feed(`${piEnd({ type: 'text', text: 'thinking' })}\n`), null);
   assert.equal(watch.feed(`${piEnd({ type: 'toolCall', name: 'bash', arguments: { command: 'ls' } })}\n`), 'max-turns');
@@ -240,4 +247,12 @@ test('pi needs a signed-in home directory', (t) => {
   const result = run(t, 'skill-trigger.mjs', ['--client', 'pi', '--plugin', 'plugins/p', '--queries', 'plugins/p/trigger-queries/one.json', '--bin', bin], { cwd: root, env: { AWS_BEARER_TOKEN_BEDROCK: 'k' } });
   assert.equal(result.status, 3);
   assert.match(result.stderr, /signed in to pi, given with --auth-home/);
+});
+
+test('a pi run that ends in an error is a failed run, not a "none"', (t) => {
+  const root = tree(t, PI_PLUGIN);
+  const bin = fakeBin(t, { pi: `echo '{"type":"message_end","message":{"role":"assistant","stopReason":"error","errorMessage":"503","content":[]}}'` }).split(delimiter)[0];
+  const result = run(t, 'skill-trigger.mjs', ['--client', 'pi', '--plugin', 'plugins/p', '--queries', 'plugins/p/trigger-queries/one.json', '-n', '1', '--bin', bin, '--auth-home', join(root, 'home')], { cwd: root });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /y1 #1: failed \(pi reported an error\)/);
 });

@@ -191,15 +191,24 @@ export function claudeAsker({ bin, authHome, env = process.env }) {
   };
 }
 
-// pi in print mode with nothing but the model and the system prompt, signed in as you are.
+// pi in print mode with nothing but the model and the system prompt, signed in as you are:
+// an agent directory of its own holds only your sign-in, so no settings, AGENTS.md or
+// APPEND_SYSTEM.md of yours reach the model.
 export function piAsker({ bin = 'pi', env = process.env } = {}) {
+  const auth = join(env.PI_CODING_AGENT_DIR ?? join(env.HOME ?? '', '.pi', 'agent'), 'auth.json');
   return async ({ model, system, prompt }) => {
     const work = mkdtempSync(join(tmpdir(), 'skill-quiz-pi-'));
+    const agentDir = join(work, 'agent');
     try {
+      mkdirSync(agentDir, { recursive: true });
+      if (existsSync(auth)) {
+        cpSync(auth, join(agentDir, 'auth.json'));
+        chmodSync(join(agentDir, 'auth.json'), 0o600);
+      }
       // the question on stdin: as an argument, one that starts with - or @ would be read as
       // a flag or a file to attach
       const ran = spawnSync(bin, ['-p', '--no-session', '-ne', '-ns', '--no-mcp', '-nt', '-nc', '--system-prompt', system, '--model', model], {
-        cwd: work, env, input: prompt, encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
+        cwd: work, env: { ...env, PI_CODING_AGENT_DIR: agentDir }, input: prompt, encoding: 'utf8', timeout: 180000, maxBuffer: 16 * 1024 * 1024,
       });
       if (ran.error?.code === 'ENOENT') throw new Error('pi is not installed or not on the PATH');
       const text = String(ran.stdout ?? '').trim();

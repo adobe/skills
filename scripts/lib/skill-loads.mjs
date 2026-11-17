@@ -30,13 +30,20 @@ function named(input, skills) {
   return skills.has(name) ? name : null;
 }
 
-// The skills whose SKILL.md a shell command names and doesn't write to.
+// Commands that print a file's content, and so read a skill when given its SKILL.md.
+const READERS = new Set(['cat', 'sed', 'head', 'tail', 'grep', 'rg', 'awk', 'less', 'more', 'bat', 'nl']);
+
+// The skills whose SKILL.md a shell command prints: in a part of the command (between |, ;
+// and &&) that starts with a reader, and not one that writes to the file (>, tee, sed -i).
 function shellReads(input, skills) {
   const found = [];
   const command = String(input?.command ?? '').split('\\').join('/');
-  for (const match of command.matchAll(/\/skills\/([^/\s'"]+)\/SKILL\.md/g)) {
-    const writes = new RegExp(`(>|\\btee\\b|\\bsed\\s+-i)[^|;&]*${match[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(command);
-    if (skills.has(match[1]) && !writes && !found.includes(match[1])) found.push(match[1]);
+  for (const part of command.split(/\|\||&&|[|;]/)) {
+    const words = part.trim().split(/\s+/);
+    if (!READERS.has(words[0]?.split('/').pop()) || /(^|\s)(>|>>|tee)(\s|$)|>\s*\S|sed\s+-i/.test(part.replace(/\d?>&\d/g, ''))) continue;
+    for (const match of part.matchAll(/\/skills\/([^/\s'"]+)\/SKILL\.md(?![\w.-])/g)) {
+      if (skills.has(match[1]) && !found.includes(match[1])) found.push(match[1]);
+    }
   }
   return found;
 }
@@ -130,11 +137,13 @@ export function streamResult(text) {
   const textOf = (content) => (typeof content === 'string' ? content : (content ?? []).filter((block) => block?.type === 'text').map((block) => block.text).join(''));
   const answer = [...said].reverse().find((entry) => textOf(entry.content).trim());
   const cost = said.reduce((sum, entry) => sum + (entry.usage?.cost?.total ?? 0), 0);
+  // pi keeps a failed attempt in the stream when it retries: only the last message tells
+  const last = said.at(-1);
   return {
     text: answer ? textOf(answer.content) : '',
     turns: said.length,
     ...(cost > 0 ? { costUsd: cost } : {}),
-    failed: said.some((entry) => entry.stopReason === 'error' || entry.errorMessage),
+    failed: last.stopReason === 'error' || Boolean(last.errorMessage),
   };
 }
 
