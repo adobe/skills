@@ -86,7 +86,7 @@ Each expert skill under `code-assessment/<pattern>/` documents its own suggested
 
 ## Run log: `.autofix/last-run.json`
 
-The skill writes a single JSON record to `.autofix/last-run.json` at the working-directory root after each run (success, revert, report, or abort). On first use it also writes `.autofix/.gitignore` containing `*`, so the directory self-ignores in the developer's repo (the skill cannot edit the developer's root `.gitignore`). The file is the authoritative record of what the skill did or attempted. A new run overwrites it; historical runs are not retained. **During an apply it is updated after each file** (not only at the end) so an interrupted or context-compacted session can resume from it without losing or repeating work — see "Resuming a large apply".
+The skill writes a single JSON record to `.autofix/last-run.json` at the working-directory root once the user has said yes to an apply plan (runbook Step 8), and keeps it current until the run ends. A report-only run, a declined plan and a run that stops before the yes write nothing to the project: their record is the report in the chat. On first use it also writes `.autofix/.gitignore` containing `*`, so the directory self-ignores in the developer's repo (the skill cannot edit the developer's root `.gitignore`). The file is the authoritative record of what the skill did or attempted. A new run overwrites it; historical runs are not retained. **During an apply it is updated after each file** (not only at the end) so an interrupted or context-compacted session can resume from it without losing or repeating work — see "Resuming a large apply".
 
 ### Schema
 
@@ -96,8 +96,8 @@ The skill writes a single JSON record to `.autofix/last-run.json` at the working
   "run_id": "<uuid-v4>",
   "started_at": "<ISO-8601 UTC timestamp>",
   "finished_at": "<ISO-8601 UTC timestamp>",
-  "status": "success | reverted | aborted | reported | applied-partial | applied-unverified",
-  "intent": "report | apply",
+  "status": "success | reverted | aborted | applied-partial | applied-unverified",
+  "intent": "apply",
   "preflight": {
     "git_status": "clean | dirty | n/a",
     "branch": "<branch name or null>",
@@ -157,10 +157,10 @@ The skill writes a single JSON record to `.autofix/last-run.json` at the working
 
 ### Field rules
 
-- **`status`** — `success` = edits applied and verification compile passed. `reported` = report/plan delivered, no edits (`intent=report` or user did not confirm apply). `reverted` = edits applied but verification failed; rollback ran. `aborted` = stopped before useful output (unsupported pattern, user declined, blocked `autofix/*` without consent). `applied-partial` = a batch of files was applied and **more remain** (apply paused at `apply_progress.batch_cap`; resume to continue — see "Resuming a large apply"). `applied-unverified` = edits applied but post-apply compile could not confirm them because the **baseline build does not compile** for a toolchain/repo reason (`compile.baseline_reason` ∈ `toolchain-jdk-lombok | missing-private-repo`); not a rollback. **Not** used for dirty git or baseline compile failure alone.
+- **`status`** — `success` = edits applied and verification compile passed. `reverted` = edits applied but verification failed; rollback ran. `aborted` = stopped after the user's yes, before any edit was made. `applied-partial` = a batch of files was applied and **more remain** (apply paused at `apply_progress.batch_cap`; resume to continue — see "Resuming a large apply"). `applied-unverified` = edits applied but post-apply compile could not confirm them because the **baseline build does not compile** for a toolchain/repo reason (`compile.baseline_reason` ∈ `toolchain-jdk-lombok | missing-private-repo`); not a rollback. **Not** used for dirty git or baseline compile failure alone.
 - **`compile.baseline_reason`** — when `compile.baseline=fail`, the classified cause (`toolchain-jdk-lombok | missing-private-repo | other`); `no-maven-project` when no pom; `null` when baseline passed.
 - **`apply_progress`** — present only for `intent=apply`. `total` = applicable findings/files for the pattern; `applied`/`skipped` = processed so far; `remaining[]` = files not yet processed; `batch_cap` = max files per pass (default 40). Updated **after each file** so progress survives an interrupted/compacted session.
-- **`intent`** — `report` or `apply` for this run.
+- **`intent`** — always `apply`: a report-only run writes no log.
 - **`preflight`** — advisory git snapshot; dirty tree is a warning, not a failure status.
 - **`discovery_warnings[]`** — strings from Step 3 discover-time checks (e.g. duplicate pom locator). Mirror the **Discover warnings** section of the Step 7 report template in `runbook.md`.
 - **`pattern`** — the expert skill (pattern slug) fixed this session.
@@ -168,7 +168,7 @@ The skill writes a single JSON record to `.autofix/last-run.json` at the working
 - **`invocation`** — `with_findings` (paths/coordinates supplied by the user), `with_findings_preresolved` (an upstream caller supplied a complete `{pattern, file, line, snippet}` finding list; see [`runbook.md`](runbook.md) "with_findings (pre-resolved)"), or `discover` (repo scan).
 - **`branch`** — `null` when `edit_mode=in_place`, or `status=aborted` before branch creation.
 - **`base_branch` / `base_sha`** — `null` when `edit_mode=in_place`.
-- **`compile.baseline`** — `skipped` only when `status=aborted` before reaching baseline (e.g. unsupported pattern, user declined) or when no Maven project is present.
+- **`compile.baseline`** — `skipped` only when no Maven project is present.
 - **`compile.verification`** — `skipped` when `status=aborted` (no edits applied) or when zero findings were applicable.
 - **`applied[].finding`** — human-readable identifier for the finding. For `outdated-dependencies` use `<groupId>:<artifactId>@<currentVersion> -> <targetVersion>`. For `inject-in-sling-model` use the file path.
 - **`skipped[].reason`** — must be one of the exact strings the active expert skill defines under "Unlocatable" (`literal-not-found: …`, `property-missing: …`, `inject-ambiguous-field: …`, `ambiguous-locator: …`, `discovery-no-match: …`), or `stale-finding: snippet at <file>:<line> no longer matches — re-scan recommended` for `with_findings_preresolved` runs where a cached finding's `(file, line)` no longer matches the live file. No free-form text.

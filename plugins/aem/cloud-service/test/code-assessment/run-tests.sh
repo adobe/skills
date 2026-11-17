@@ -213,21 +213,14 @@ bash "$ANALYZE" "$FIX/mixed" --pattern does-not-exist >/dev/null 2>&1; rc=$?
 if [ "$rc" -ne 0 ]; then echo "  PASS: unknown --pattern non-zero exit ($rc)"; PASS=$((PASS+1));
 else echo "  FAIL: unknown --pattern exited 0"; FAIL=$((FAIL+1)); fi
 
-echo "[dump] analyzer also writes <root>/.autofix/analyzer-output.json"
+echo "[no-write] analyzer writes nothing to the project"
 run "$FIX/inject" >/dev/null 2>&1
-if [ -f "$FIX/inject/.autofix/analyzer-output.json" ] && grep -q 'inject-in-sling-model' "$FIX/inject/.autofix/analyzer-output.json"; then
-  echo "  PASS: dump file written with findings"; PASS=$((PASS+1))
+if [ ! -e "$FIX/inject/.autofix" ]; then
+  echo "  PASS: no .autofix/ written"; PASS=$((PASS+1))
 else
-  echo "  FAIL: dump file missing or empty"; FAIL=$((FAIL+1))
+  echo "  FAIL: analyzer wrote $FIX/inject/.autofix"; FAIL=$((FAIL+1))
+  rm -rf "$FIX/inject/.autofix"
 fi
-if [ -f "$FIX/inject/.autofix/.gitignore" ] && grep -q '\*' "$FIX/inject/.autofix/.gitignore"; then
-  echo "  PASS: self-ignore (.autofix/.gitignore) written"; PASS=$((PASS+1))
-else
-  echo "  FAIL: .autofix/.gitignore missing"; FAIL=$((FAIL+1))
-fi
-
-# the analyzer writes <root>/.autofix when run; clean the copies left in fixtures by this run
-find "$FIX" -type d -name .autofix -prune -exec rm -rf {} + 2>/dev/null || true
 
 echo "[allowlist] only allowlisted deps by default; --all shows everything"
 OUT="$(run "$FIX/allowlist")"

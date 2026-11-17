@@ -23,7 +23,7 @@ Detect once: `git rev-parse --is-inside-work-tree` (exit 0 → git available).
 | Rollback on verify fail | `git restore .`, delete branch | Revert each touched file from editor/local history; list paths in summary — skill does not auto-backup |
 | Handoff | `git diff <base>...HEAD` | List modified paths; user reviews in IDE |
 
-Record `edit_mode: "git" | "in_place"` in `.autofix/last-run.json` (see git-workflow schema).
+Record `edit_mode: "git" | "in_place"` in `.autofix/last-run.json` once it is written (Step 8; see git-workflow schema).
 
 ## User intent: report vs apply
 
@@ -32,7 +32,11 @@ Many real runs should end with a **useful report**, not blocked pre-checks. Clas
 | Intent | User signals | Deliverable |
 |---|---|---|
 | **report** | "scan", "assess", "what needs fixing", "show findings", "analyze" (without "apply"/"fix") | Discovery + detailed plan + skip/defer reasons — **no file edits** unless the user then explicitly asks to apply |
-| **apply** | "fix", "upgrade", "remediate", "apply", "make the changes" | Plan → confirm → edits → verify |
+| **apply** | "fix", "upgrade", "remediate", "apply", "make the changes" | Plan → **stop and ask** → the user's yes → edits → verify |
+
+Apply intent is not consent: the words that made the intent apply are not the confirmation. The confirmation is the user's reply to the plan of Step 7.
+
+**Nothing is written to the project before that yes**, in either intent: no source edit, no branch, no `.autofix/` file (keep the run log in memory until Step 8), and no bootstrap `AGENTS.md`/`CLAUDE.md`. A run that can't ask the user (headless, non-interactive) stops after the Step 7 report, with *Next step* saying that no file was changed and what reply applies the plan.
 
 Default for ambiguous discover prompts: **report first**, then ask: *"Apply these changes? (yes/no)"* — do not treat silence as consent.
 
@@ -151,11 +155,11 @@ When more than one pattern is in play, order them in the plan and report by thei
 
 ### 7. Plan and confirm (report deliverable)
 
-Present the report using the **template below** (fill every section; use `—` or `None` when empty). Write the same content to `.autofix/last-run.json` fields where applicable (on first write, also create `.autofix/.gitignore` containing `*` so the log self-ignores — see [`git-workflow.md`](git-workflow.md)), then show the markdown to the user.
+Present the report using the **template below** (fill every section; use `—` or `None` when empty), then show the markdown to the user. Keep the run-log fields in memory: `.autofix/` is written from Step 8 on, never before the user's yes.
 
-**report intent:** Stop here with `status=reported` in the run log (no branch, no edits). Offer apply as a follow-up.
+**report intent:** Stop here (no branch, no edits, no files written). Offer apply as a follow-up.
 
-**apply intent:** Require explicit `yes` (or stronger: "apply", "proceed", "fix it") before Step 8. If declined → `status=aborted`.
+**apply intent:** End the turn with the report and the question *"Apply this plan? (yes/no)"*. Go on to Step 8 only on the user's reply: `yes`, "apply", "proceed" or the like, given **after** they saw this plan. The original request ("fix it") does not count. If declined, stop; nothing was written. If the run can't ask (non-interactive), stop here the same way.
 
 #### Report template (Step 7)
 
@@ -213,7 +217,7 @@ bare file list.
 
 ## Next step
 <For report intent: "Reply **apply** to make edits, or name files/versions to narrow scope.">
-<For apply intent: awaiting user confirmation — do not edit until yes>
+<For apply intent: "No file has been changed. Reply **yes** to apply this plan." — then stop; do not edit until the user replies>
 <When Compile (baseline) ≠ pass: "⚠ Baseline build does not compile (<cause>) — any apply will be UNVERIFIED until you build in a working environment / CI.">
 ```
 
@@ -223,7 +227,9 @@ bare file list.
 
 **Runtime caveat** (include when `@Inject` migration is in scope): compile does not exercise Sling Model adaptation — deploy to dev before merge.
 
-### 8. Apply edits (apply intent only)
+### 8. Apply edits (apply intent only, after the user's yes)
+
+First write the run log: `.autofix/.gitignore` containing `*` (so the log self-ignores) and `.autofix/last-run.json` with the Step 7 plan — see [`git-workflow.md`](git-workflow.md).
 
 **git:** Create branch per [`git-workflow.md`](git-workflow.md), then surgical edits.
 
