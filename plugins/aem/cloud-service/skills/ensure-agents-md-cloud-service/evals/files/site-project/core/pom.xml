@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.example</groupId>
+    <artifactId>example-site</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>example-site.core</artifactId>
+  <packaging>bundle</packaging>
+  <dependencies>
+    <dependency>
+      <groupId>com.adobe.aem</groupId>
+      <artifactId>aem-sdk-api</artifactId>
+      <version>2023.1.10912.20230130T173736Z-230100</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <version>4.4.0</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+</project>

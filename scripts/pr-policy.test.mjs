@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HOUR, HUMAN, QUERY, TAKEOVER, closeComment, decide, openFindings, ownersOf, parseCodeowners, takeoverComment, waitingSince,
+  HOUR, HUMAN, QUERY, TAKEOVER, closeComment, decide, formPlugin, importOfPlugin, importedChange, importedComment, importedIssueComment,
+  openFindings, ownersOf, parseCodeowners, takeoverComment, waitingSince,
 } from './pr-policy.mjs';
 
 const CODEOWNERS = `# comment
@@ -142,4 +143,55 @@ test('the query asks GitHub for no more than 100 items of a connection', () => {
   const sizes = [...QUERY.matchAll(/\b(?:first|last):\s*(\d+)/g)].map(([, size]) => Number(size));
   assert.ok(sizes.length > 0);
   for (const size of sizes) assert.ok(size >= 1 && size <= 100, `${size}`);
+});
+
+const CREATIVITY = 'plugins/creative-cloud/adobe-for-creativity/skills/configure/SKILL.md';
+const denial = [{ context: 'review / claude', state: 'FAILURE', createdAt: ago(30) }];
+
+test('a pull request that changes what is brought in is closed at once, unless its code owners opened it', () => {
+  const change = pr({ author: user('someone') });
+  const imported = importedChange(change, [CREATIVITY, 'README.md'], { importers: ['solimant'] });
+  assert.equal(imported.own, false);
+  assert.equal(imported.entries[0].name, 'adobe-for-creativity');
+  const { actions } = decide(change, { ...opts, imported });
+  assert.deepEqual(actions.map(({ type }) => type), ['close-imported']);
+
+  assert.equal(importedChange(change, ['README.md'], { importers: [] }), null);
+  // a team that can't be read: not closed as an import, and still held to the AI review
+  const unknown = importedChange(pr({ author: user('someone'), statuses: denial }), [CREATIVITY], { importers: [], anyone: true });
+  assert.deepEqual([unknown.own, unknown.unknown], [false, true]);
+  assert.deepEqual(decide(pr({ author: user('someone'), statuses: denial }), { ...opts, imported: unknown }).actions.map(({ type }) => type), ['close']);
+});
+
+test('an import by its code owners is not closed for the AI review: a maintainer merges it', () => {
+  const sync = pr({ author: user('Solimant'), statuses: denial });
+  const imported = importedChange(sync, [CREATIVITY], { importers: ['solimant'] });
+  const { actions, notes } = decide(sync, { ...opts, imported });
+  assert.deepEqual(actions, []);
+  assert.match(notes[0], /a maintainer merges it/);
+});
+
+test('a change to an import is closed once, and not if it was opened before the policy', () => {
+  const reopened = pr({ author: user('someone'), timeline: [{ __typename: 'IssueComment', createdAt: ago(1), author: bot, body: '<!-- pr-policy:imported -->\nClosed' }] });
+  const imported = importedChange(reopened, [CREATIVITY], { importers: ['solimant'] });
+  assert.deepEqual(decide(reopened, { ...opts, imported }).actions, []);
+  const old = pr({ author: user('someone'), created: ago(48) });
+  assert.deepEqual(decide(old, { ...opts, imported, start: NOW - HOUR }).actions, []);
+  assert.deepEqual(decide(pr({ author: user('someone'), draft: true }), { ...opts, imported }).actions, []);
+});
+
+test('an issue form names its plugin, and the comments name the import and its owners', () => {
+  const body = '### Plugin\n\ncommerce-app-review\n\n### Skill\n\n_No response_\n';
+  assert.equal(formPlugin(body), 'commerce-app-review');
+  assert.equal(formPlugin('no form'), null);
+  const entry = importOfPlugin('commerce-app-review');
+  assert.equal(entry.from, 'adobe/aio-commerce-sdk');
+  assert.equal(importOfPlugin('stardust'), null);
+  assert.equal(importOfPlugin(null), null);
+  const issue = importedIssueComment(entry, 'commerce-app-review', ['adobe/commerce-team'], 'adobe/skills');
+  assert.match(issue, /^<!-- pr-policy:imported -->/);
+  assert.match(issue, /@adobe\/commerce-team: this issue is about `commerce-app-review`/);
+  const close = importedComment([importOfPlugin('adobe-for-creativity')], ['solimant'], 'adobe/skills');
+  assert.match(close, /changes adobe-for-creativity, which is brought in from another repository/);
+  assert.match(close, /CONTRIBUTING\.md#brought-in-from-another-repository/);
 });

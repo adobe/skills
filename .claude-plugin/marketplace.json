@@ -56,13 +56,13 @@
       "name": "aem-edge-delivery-services",
       "source": "./plugins/aem/edge-delivery-services",
       "description": "Skills for AEM Edge Delivery Services development",
-      "version": "1.3.1"
+      "version": "1.3.2"
     },
     {
       "name": "aem-cloud-service",
       "source": "./plugins/aem/cloud-service",
       "description": "All AEM as a Cloud Service skills: component development, Dispatcher config authoring and hardening, workflow design and debugging, code assessment and migration from legacy AEM, content distribution, and Rapid Development Environment (RDE) support.",
-      "version": "1.4.0",
+      "version": "1.4.4",
       "category": "aem",
       "keywords": [
         "adobe",
@@ -218,20 +218,17 @@
     {
       "name": "commerce-app-management",
       "source": "./plugins/commerce/app-management",
-      "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk.",
-      "version": "1.6.0"
+      "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk."
     },
     {
       "name": "commerce-app-migration",
       "source": "./plugins/commerce/app-migration",
-      "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach.",
-      "version": "1.4.0"
+      "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach."
     },
     {
       "name": "commerce-app-review",
       "source": "./plugins/commerce/app-review",
-      "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange.",
-      "version": "1.0.0"
+      "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange."
     },
     {
       "name": "run-workflow",

@@ -33,11 +33,10 @@ On first run, `analyze.sh` compiles `analyzer/` to a temp cache (`$TMPDIR/aem-co
 runbook consumes (see [`../references/runbook.md`](../references/runbook.md)). The analyzer does
 **detection only** — remediation stays recipe-driven and reads the live file at apply time.
 
-Findings JSON is printed to **stdout** and also written to `<root>/.autofix/analyzer-output.json`.
-On first write, the analyzer creates `<root>/.autofix/.gitignore` containing `*` so the dump
-self-ignores and never enters the developer's commits. The analyzer skips its own `.autofix/` dir
-when scanning. The compile cache lives in system temp. The only project-area write is the
-self-ignored `.autofix/` dump — nothing git-tracked is touched.
+Findings JSON is printed to **stdout** only. The analyzer writes nothing to the project: detection
+runs before the user has confirmed a plan, and the runbook writes nothing before that (see
+[`../references/runbook.md`](../references/runbook.md) Step 7). It skips `.autofix/`, where an
+apply keeps its run log, when scanning. The compile cache lives in system temp.
 
 ## Exit codes
 

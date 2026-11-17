@@ -1,12 +1,6 @@
----
-name: outbound-call-timeouts
-description: "AEM Cloud Service expert skill — add explicit connect/read/socket timeouts to outbound HTTP clients constructed without one (Apache HttpClient 4.x/5.x, OkHttp, JDK java.net.http.HttpClient), including the JDK per-request read timeout on HttpRequest. Use for \"add HTTP timeouts\", \"this external/outbound call has no timeout\", or a scan that flags a timeout-less client. Highest-frequency CSO outage cause: a client on default (effectively infinite) timeouts holds request threads on a slow upstream until the Jetty pool saturates and the site goes down. The analyzer locates timeout-less construction sites; mechanical per-library remediation applies CSO-backed default timeouts (recipe.md)."
-license: Apache-2.0
----
-
 # Outbound HTTP calls without a timeout — AEM as a Cloud Service
 
-> This pattern is executed by the code-assessment runbook — follow [`../references/runbook.md`](../references/runbook.md) for the full flow (preflight → plan → apply → verify, run log). This skill supplies the detection + recipe the runbook applies.
+> This pattern is executed by the code-assessment runbook — follow [`../references/runbook.md`](../references/runbook.md) for the full flow (preflight → plan → apply → verify, run log). This guide supplies the detection + recipe the runbook applies.
 
 ## Overview
 
@@ -14,7 +8,7 @@ An HTTP client built without an explicit timeout inherits effectively-infinite c
 
 ## Classification — confirm this pattern applies
 
-- An HTTP client is **constructed** in application code — Apache `HttpClients.createDefault()` / `HttpClientBuilder.create()…build()`, OkHttp `new OkHttpClient()` / `…newBuilder()…build()`, or JDK `HttpClient.newHttpClient()` / `HttpClient.newBuilder()…build()` — with no timeout configured in the same scope.
+- An HTTP client is **constructed** in application code — Apache `HttpClients.createDefault()` / `.createSystem()` / `.createMinimal()` / `HttpClientBuilder.create()…build()`, OkHttp `new OkHttpClient()` / `…newBuilder()…build()`, or JDK `HttpClient.newHttpClient()` / `HttpClient.newBuilder()…build()` — with no timeout configured in the same scope.
 - The user asks to "add HTTP/outbound/external-call timeouts", or a scan flagged `outbound-call-timeouts`.
 - **Not** this pattern: a client that already sets a timeout (any of `RequestConfig`, `setConnectTimeout`, `connectTimeout`, `Timeout.of…`, `Duration.of…` in scope); per-request timeouts only is a partial case the recipe handles.
 
@@ -28,7 +22,7 @@ bash ../scripts/analyze.sh <workspace-root> --pattern outbound-call-timeouts
 
 **Match criteria (what the detector flags):**
 
-- **Client construction** — text containing a known client type (`HttpClientBuilder`, `HttpClients`, `OkHttpClient`, `HttpClient`) **and** a construction marker (`.createDefault`, `.newBuilder`, `.newHttpClient`, `.build(`, `new HttpClientBuilder`, `new OkHttpClient`), emitted at the outermost fluent-chain link. **Suppressed** when the enclosing method (or, for a field initializer, the enclosing class) contains any client timeout token (`setConnectTimeout`, `setSocketTimeout`, `setConnectionRequestTimeout`, `setResponseTimeout`, `connectTimeout`, `readTimeout`, `writeTimeout`, `callTimeout`, `RequestConfig`, `Timeout.of`, `Duration.of`).
+- **Client construction** — text containing a known client type (`HttpClientBuilder`, `HttpClients`, `OkHttpClient`, `HttpClient`) **and** a construction marker (`.createDefault`, `.createSystem`, `.createMinimal`, `.newBuilder`, `.newHttpClient`, `.build(`, `new HttpClientBuilder`, `new OkHttpClient`), emitted at the outermost fluent-chain link. **Suppressed** when the enclosing method (or, for a field initializer, the enclosing class) contains any client timeout token (`setConnectTimeout`, `setSocketTimeout`, `setConnectionRequestTimeout`, `setResponseTimeout`, `connectTimeout`, `readTimeout`, `writeTimeout`, `callTimeout`, `RequestConfig`, `Timeout.of`, `Duration.of`).
 - **JDK request builder** — a `HttpRequest.newBuilder()…build()` chain (gated to `java.net.http.HttpRequest` by import/FQN so other libraries' `HttpRequest` is not matched). **Suppressed** when the chain itself sets `.timeout(...)`. This is the per-request read timeout the JDK has no client-level setter for.
 
 Parse-level only — no type resolution, so matching is textual.

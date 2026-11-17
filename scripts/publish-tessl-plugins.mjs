@@ -1,5 +1,6 @@
-// Publishes plugins to the Tessl registry. Every plugin has a Tessl manifest, built from its
-// root plugin.json (check-plugins.mjs source holds a pull request to that), and each is
+// Publishes plugins to the Tessl registry. Every plugin of ours has a Tessl manifest, built
+// from its root plugin.json (check-plugins.mjs source holds a pull request to that); one
+// brought in from another repository has one only if it brings it (lib/imported.mjs). Each is
 // published when the version in that manifest differs from the one before this push: with
 // every release of the plugin, and the first time it has a manifest at all. Without a usable
 // "before" (a first push, a force push), a plugin is published only if its manifest is among

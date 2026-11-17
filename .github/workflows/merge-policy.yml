@@ -4,7 +4,9 @@ name: Merge Policy
 # - an agent's pull request (without the `human` label) that left a finding of the AI review
 #   unanswered for 24 hours is closed;
 # - a pull request that waited a week for its code owners gets the `takeover` label, and
-#   loses it when an owner acts.
+#   loses it when an owner acts;
+# - a pull request or an issue about a plugin brought in from another repository, opened by
+#   anyone but its code owners, is closed once, with a pointer to where it comes from.
 # It reads the pull requests and runs nothing from them: the script comes from main.
 
 on:

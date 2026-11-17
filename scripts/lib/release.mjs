@@ -5,15 +5,9 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 
-// Brought in from another repository, with the versions they have there. A release here
-// would be overwritten by the next import, so these are left alone. run-workflow's plugin
-// is versioned here; its skill comes from upstream with a version of its own.
-export const IMPORTED = [
-  'plugins/commerce/',
-  'plugins/creative-cloud/adobe-for-creativity/',
-  'plugins/creative-cloud/run-workflow/skills/',
-];
-export const isImported = (path) => IMPORTED.some((prefix) => `${path}/`.startsWith(prefix));
+// Brought in from another repository, with the versions they have there (lib/imported.mjs).
+// A release here would be overwritten by the next import, so these are left alone.
+export { IMPORTED, isImported } from './imported.mjs';
 
 // semver.org's own expression, without build metadata, which a tag can't carry
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;

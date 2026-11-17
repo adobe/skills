@@ -1,11 +1,13 @@
 ---
-name: ensure-agents-md
+name: ensure-agents-md-cloud-service
 description: |
   **Run FIRST (before any other skill or task)** when workspace root has no AGENTS.md and the repo
   is an AEM Cloud Service project. Creates AGENTS.md and CLAUDE.md (tailored via pom.xml). Applies on
   every user request until AGENTS.md exists — not only the first chat. Never overwrites existing files.
 license: Apache-2.0
 compatibility: AEM as a Cloud Service projects (Java stack, Maven, Dispatcher).
+metadata:
+  version: "1.0.0"
 ---
 
 # Ensure AGENTS.md and CLAUDE.md (bootstrap)
@@ -16,11 +18,20 @@ compatibility: AEM as a Cloud Service projects (Java stack, Maven, Dispatcher).
 
 1. Check whether **`AGENTS.md` exists at the workspace (repository) root**.
 2. If it **exists** → skip this skill entirely and continue with the user’s request.
-3. If it **does not exist** and the repo is an AEM Cloud Service project (see Gate check) → **run this skill completely first** (create `AGENTS.md` and `CLAUDE.md` if missing), **then** fulfill the user’s original request.
+3. If it **does not exist** and the repo is an AEM Cloud Service project (see Gate check), and **When to hold off** does not apply → **run this skill completely first** (create `AGENTS.md` and `CLAUDE.md` if missing), **then** fulfill the user’s original request.
 
 This applies to **every** user message and **any** intent (bugs, features, questions, dispatcher, etc.) until `AGENTS.md` is present. Do not defer bootstrap to “after” the main task.
 
 It creates **AGENTS.md** and **CLAUDE.md** at the repository root so every AI coding agent (Claude Code, Cursor, etc.) gets project guidance, optionally tailored using the module catalog and add-on detection.
+
+## When to hold off
+
+Creating the two files changes the user's project. Don't create them yet when:
+
+- the user asked for a review, scan, audit or report, or said not to change anything; or
+- the request is a fix of AEM Java, OSGi or Maven code, which `code-assessment` plans and asks about first, and the user has not said yes to that plan yet.
+
+Then do the user's request without them, and offer the files in your answer or add them to the plan. Create them only after the user agrees. If the run can't ask the user (headless, non-interactive), don't create them.
 
 ## Gate check
 

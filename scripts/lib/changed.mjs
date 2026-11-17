@@ -45,6 +45,15 @@ export function pluginDirs(root) {
     .sort();
 }
 
+// Every directory a client installs as a plugin, relative to root, sorted: the plugins with a
+// root plugin.json, and those with only a Claude Code manifest, which is how a plugin brought
+// in from another repository comes (lib/imported.mjs).
+export function installableDirs(root) {
+  const suffix = '/.claude-plugin/plugin.json';
+  const manifests = files(root).filter((file) => file.endsWith(suffix)).map((file) => file.slice(0, -suffix.length));
+  return [...new Set([...pluginDirs(root), ...manifests])].sort();
+}
+
 // Directories that hold .tessl-plugin/plugin.json, relative to root, sorted.
 export function tesslPluginDirs(root) {
   const suffix = '/.tessl-plugin/plugin.json';

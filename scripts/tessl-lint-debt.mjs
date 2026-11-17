@@ -3,7 +3,9 @@
 //
 // A warning about a skill ("⚠ Skill 'name': …") is charged to that skill's SKILL.md. Any
 // other warning is charged to the plugin's .tessl-plugin/plugin.json. Whether a plugin is
-// valid at all is not decided here: the Tessl Plugin Lint workflow fails on that.
+// valid at all is not decided here: the Tessl Plugin Lint workflow fails on that. A plugin
+// brought in from another repository (lib/imported.mjs) is left out: scripts/check-imported.mjs
+// lists its warnings when a pull request changes it.
 //
 // Run from the repository root, with the tessl CLI on the PATH:
 //   node scripts/tessl-lint-debt.mjs             the files with a warning
@@ -11,6 +13,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
+import { isImported } from './lib/imported.mjs';
 import { isMain } from './lib/is-main.mjs';
 
 const SKIP = new Set(['node_modules', '.git']);
@@ -25,6 +28,17 @@ function walk(dir, name, found = []) {
     }
   }
   return found;
+}
+
+// The warnings of `tessl plugin lint` for one plugin, each with the file it is charged to.
+// Exits when the tessl CLI can't be run.
+export function lintWarnings(root, pluginDir) {
+  const result = spawnSync('tessl', ['plugin', 'lint', pluginDir], { encoding: 'utf8' });
+  if (result.error) {
+    console.error(`tessl-lint-debt: can't run the tessl CLI (${result.error.message}). Install it: https://docs.tessl.io`);
+    process.exit(2);
+  }
+  return chargeWarnings(root, pluginDir, parseWarnings(`${result.stdout}\n${result.stderr}`));
 }
 
 // Directories under root/plugins that have a Tessl manifest, sorted.
@@ -70,12 +84,8 @@ function main() {
   const root = process.cwd();
   const charged = [];
   for (const pluginDir of tesslPlugins(root)) {
-    const result = spawnSync('tessl', ['plugin', 'lint', pluginDir], { encoding: 'utf8' });
-    if (result.error) {
-      console.error(`tessl-lint-debt: can't run the tessl CLI (${result.error.message}). Install it: https://docs.tessl.io`);
-      process.exit(2);
-    }
-    charged.push(...chargeWarnings(root, pluginDir, parseWarnings(`${result.stdout}\n${result.stderr}`)));
+    if (isImported(posix(relative(root, pluginDir)))) continue;
+    charged.push(...lintWarnings(root, pluginDir));
   }
   const files = [...new Set(charged.map(({ file }) => file))].sort();
   for (const file of files) {

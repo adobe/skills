@@ -3,7 +3,7 @@ name: migrate-header
 description: Use this when rebuilding an existing website's header as the header block of an AEM Edge Delivery Services project so that it matches the source 1:1 — closed at every width, with every menu open, with the mobile menu open, and while scrolling. Captures the source header with the web CLI (`web header capture`), installs a configurable header block and its nav document, then runs a ladder of `web header check` commands against the live source until nothing differs. Triggers include "migrate the header of <site>", "rebuild this header in EDS", "header 1:1 with the source". For whole pages use page-import; to keep the source DOM as it is use snowflake; for other blocks use content-driven-development.
 license: Apache-2.0
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Migrate a header 1:1
@@ -46,7 +46,7 @@ the test below skips it.
 ```bash
 DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-0242a4a"
 [ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&
-  npx -y pnpm@12.18.0 add --dir "$DIR" "github:adobe/skills#0242a4adf5a0a8f75331e862655ab0a3559d4358&path:/plugins/web/cli"; }
+  npx -y pnpm@12.19.0 add --dir "$DIR" "github:adobe/skills#0242a4adf5a0a8f75331e862655ab0a3559d4358&path:/plugins/web/cli"; }
 WEB="$DIR/node_modules/.bin/web"
 "$WEB" header --help
 ```

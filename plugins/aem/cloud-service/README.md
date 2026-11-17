@@ -21,7 +21,7 @@ Skills for developing, assessing, migrating, and operating AEM as a Cloud Servic
 
 | Skill | Description | Try it |
 |-------|-------------|--------|
-| [ensure-agents-md](skills/ensure-agents-md/SKILL.md) | Auto-generates `AGENTS.md` and `CLAUDE.md` from `pom.xml` when missing — tailored to the project's modules and add-ons (CIF, Forms, SPA, precompiled scripts). Runs first, before any other work. | `Set up my AEM project for AI agents` |
+| [ensure-agents-md-cloud-service](skills/ensure-agents-md-cloud-service/SKILL.md) | Auto-generates `AGENTS.md` and `CLAUDE.md` from `pom.xml` when missing — tailored to the project's modules and add-ons (CIF, Forms, SPA, precompiled scripts). Runs first, before any other work. | `Set up my AEM project for AI agents` |
 | [create-component](skills/create-component/SKILL.md) | Create complete AEM components following Adobe best practices: component definition, dialog XML, HTL template, Sling Model, unit tests, clientlibs (component and dialog), and optional Sling Servlet for dynamic content. | `Create a hero banner component with title, description, and CTA` |
 
 ### Dispatcher
