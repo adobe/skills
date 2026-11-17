@@ -158,7 +158,7 @@ selects the flow; the downstream chain is shared.
   replaces `prototype --prep`. **Never run `prepare-migration` before or
   after `replica`**; there is no separate prep step in this flow.
 - **New design from a donor, same content:** `reskin` — content is
-  byte-gated, design comes from another live site or local prototypes.
+  byte-gated, design comes from another live site, local prototypes or a Figma file.
 - **Both migration flows carry the dynamic surface by default.** The
   pre-import gate (`prepare-migration` 4.5 / `replica` Phase 2, with
   `migrate` as the safety net) runs the stardust `dynamics` skill Phases 1–3 so
