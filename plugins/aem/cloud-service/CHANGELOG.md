@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.4](https://github.com/adobe/skills/compare/plugin/aem-cloud-service/v1.4.3...plugin/aem-cloud-service/v1.4.4) (2026-11-17)
+
+
+### Bug Fixes
+
+* **aem:** code-assessment redacts compared values in every report ([#733](https://github.com/adobe/skills/issues/733)) ([e40ac25](https://github.com/adobe/skills/commit/e40ac25fb4b32e84270656bc2c65d992bc268be2))
+
 ## [1.4.3](https://github.com/adobe/skills/compare/plugin/aem-cloud-service/v1.4.2...plugin/aem-cloud-service/v1.4.3) (2026-11-17)
 
 
