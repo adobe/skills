@@ -46,7 +46,11 @@ downstream sub-commands.
 
 1. Run the master skill's setup
    (`skills/stardust/SKILL.md` § Setup) — hard impeccable dep check,
-   context loader, state read.
+   context loader, state read. **Flow guard.** If `state.json.flow` is
+   `reskin`, refuse: the direction under reskin is the donor's, written by
+   `reskin/scripts/canon-from-reskin.mjs`; a `direct` run would overwrite
+   the donor-sourced DESIGN.* (`skills/reskin/reference/handoff.md`). Print
+   the switch command (`$stardust prepare-migration --switch-flow`) instead.
 2. Verify `stardust/state.json` exists and contains at least one
    `extracted` page. If not, stop and recommend
    `$stardust extract <url>` first.

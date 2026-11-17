@@ -113,6 +113,15 @@ export const PHASES = {
     'first-page': [], // reference/first-page-first.md § Track A
     'reconcile-first-page': ['reconcile'], // reference/first-page-first.md § RECONCILE
   },
+  // skills/reskin/SKILL.md (headings are upper-case; the ledger form is lower-case kebab)
+  reskin: {
+    'ingest-donor': ['donor'], // ### Phase 1 — INGEST DONOR
+    'content-model-capture': ['capture'], // ### Phase 2 — CONTENT-MODEL CAPTURE
+    'mapping-brief': ['mapping'], // ### Phase 3 — MAPPING BRIEF
+    'programmatic-render': ['render'], // ### Phase 4 — PROGRAMMATIC RENDER
+    gates: ['gate'], // ### Phase 5 — GATES
+    handoff: ['bridge'], // ### Phase 6 — HANDOFF
+  },
   // skills/dynamics/SKILL.md
   dynamics: {
     detect: [], // ## Phase 1 — Detect

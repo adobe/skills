@@ -20,7 +20,9 @@ One table row per slot, for **every** slot in the content model — no
 slot may be absent from the brief. For a Figma donor the table form is
 required: the section join reads the first table whose header has
 `Donor module` and `Status`, slot ids (`s01`, `s07-news`) in the first
-column:
+column. A multi-page brief (every page in one table) leads with a `Page`
+column holding each page's slug; `figma-gate --page <slug>` reads that
+page's rows:
 
 | Field | Contract |
 |---|---|
@@ -101,6 +103,31 @@ it into sub-slots in the brief (`s07-news`, `s07-events`) so each
 mapping decision is atomic. The split is a brief-level construct —
 the content model is not edited — and slot-coverage still asserts the
 parent slot's full text, so a split can't shed content.
+
+## Composition variants
+
+Canon keeps one composition per module. When two slots use the same
+donor module composed differently (a hero side by side on one page and
+stacked on another), give the second its own id (`M1b`) and register
+it in `curation-rules.json` `modules[]` as
+`{ "id": "M1b", "variantOf": "M1", "frame": "<M1's frame>", "status": "include", … }`
+so the Figma section join accepts it. Its checks file may `skip` a
+section whose composition has no frame of its own, with the reason.
+
+## Frame fit in mapping.json
+
+When figma-gate geometry or ramp fails because the frame uses the
+donor vocabulary differently from the default render, set the slot's
+option in `mapping.json`. Never edit the renderer for one site:
+
+| Option | Use when |
+|---|---|
+| `heading: display\|h2\|h3\|h4` | the frame sets the slot's title in a type role other than its tag's (a hero `h2` at display size, a CTA `h2` at h3). The h2 role also takes the accent label (`radii.label`). |
+| `inset: "<n>px\|rem\|%"` | the frame is padded from the viewport edge, not centred |
+| `split: "<track> <track>"` | a split's text column is not half the row (`531px 1fr`) |
+| `columns: <n>` | the card count per row differs from the default |
+
+Card titles always take the h3 role, whatever their tag.
 
 ## Casing / text-transform policy
 
