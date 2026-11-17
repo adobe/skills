@@ -218,20 +218,17 @@
     {
       "name": "commerce-app-management",
       "source": "./plugins/commerce/app-management",
-      "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk.",
-      "version": "1.6.0"
+      "description": "Skills for Adobe Commerce App Management — scaffold and configure Commerce apps using the aio-commerce-sdk."
     },
     {
       "name": "commerce-app-migration",
       "source": "./plugins/commerce/app-migration",
-      "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach.",
-      "version": "1.4.0"
+      "description": "Migrate an Adobe Commerce App Builder project from the Integration Starter Kit or Checkout Starter Kit to the new App Management approach."
     },
     {
       "name": "commerce-app-review",
       "source": "./plugins/commerce/app-review",
-      "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange.",
-      "version": "1.0.0"
+      "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange."
     },
     {
       "name": "run-workflow",

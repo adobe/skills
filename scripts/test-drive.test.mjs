@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { agyWarnings, findCli, parseClaudeDetails, parseCodexSkills, parseGrokInspect } from './lib/clients.mjs';
 import { baseCommit, notes } from './review-env.mjs';
 import { buildManifests, describePlugin, pluginsToDrive, problems, report } from './test-drive.mjs';
+import { installableDirs } from './lib/changed.mjs';
 import { commit, git, run, tree, write } from './lib/testing.mjs';
 
 // ---- what the clients print, as captured from claude 2.1.322, codex 0.169.0, grok 1.0.77, agy 1.5.9 ----
@@ -101,6 +102,20 @@ test('a plugin is described from its files: the skills directly under skills/, M
   assert.deepEqual([plugin.name, plugin.version, plugin.path, plugin.skills, plugin.hasMcp, plugin.hasHooks, plugin.marketplace], ['p', '1.2.0', 'plugins/p', ['one', 'two'], true, true, 'market']);
   const unlisted = describePlugin(root, 'plugins/unlisted');
   assert.deepEqual([unlisted.skills, unlisted.hasMcp, unlisted.hasHooks, unlisted.marketplace], [[], false, false, null]);
+});
+
+test('a plugin with only a Claude Code manifest, as an import comes, is described and found as changed', (t) => {
+  const root = tree(t, {
+    ...PLUGIN,
+    'plugins/imported/.claude-plugin/plugin.json': JSON.stringify({ name: 'imported', version: '3.4.0' }),
+    'plugins/imported/.mcp.json': '{}',
+    'plugins/imported/skills/one/SKILL.md': skill('one'),
+  });
+  const plugin = describePlugin(root, 'plugins/imported');
+  assert.deepEqual([plugin.name, plugin.version, plugin.skills, plugin.hasMcp], ['imported', '3.4.0', ['one'], true]);
+  assert.ok(installableDirs(root).includes('plugins/imported'));
+  assert.deepEqual(pluginsToDrive(['plugins/imported/skills/one/SKILL.md'], installableDirs(root)), ['plugins/imported']);
+  assert.throws(() => describePlugin(root, 'plugins'), /neither plugin\.json nor \.claude-plugin\/plugin\.json/);
 });
 
 test('a client that can not install, or loads fewer skills than the plugin has, is a problem; more skills are not', () => {

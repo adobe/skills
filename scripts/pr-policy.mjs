@@ -6,7 +6,16 @@
 // - A pull request that is ready for review and that none of its code owners has reviewed,
 //   commented on or pushed to for a week gets the `takeover` label: a maintainer may now
 //   close, merge or change it. The label goes once an owner acts again.
+// - A pull request that changes what is brought in from another repository (lib/imported.mjs),
+//   opened by anyone but its code owners, is closed at once: a change made here is
+//   overwritten by the next import, so it belongs where the copy comes from. It is closed
+//   once; a maintainer who reopens it has decided otherwise. One that its code owners
+//   opened is not closed for the AI review: it brings what was decided elsewhere, and a
+//   maintainer merges it (scripts/check-imported.mjs).
+// - An issue whose form names a plugin brought in from another repository is closed the
+//   same way, once, with its code owners mentioned, unless one of them opened it.
 //
+// Nothing that was opened before the policy started is closed for being brought in.
 // Pull requests opened by a bot (Renovate, the release) are left alone.
 //   node scripts/pr-policy.mjs [--apply] [--repo owner/name] [--pr <number>] [--now <date>]
 // Without --apply it only says what it would do; --now says what it would do then.
@@ -14,6 +23,7 @@
 import { readFileSync } from 'node:fs';
 import { isMain } from './lib/is-main.mjs';
 import { summary, table, warning } from './lib/actions.mjs';
+import { IMPORTED, origin } from './lib/imported.mjs';
 
 export const HOUR = 60 * 60 * 1000;
 export const REVIEW_DEADLINE = 24 * HOUR;
@@ -27,6 +37,7 @@ export const POLICY_START = Date.parse('2026-11-17T00:00:00Z');
 const MARKER = {
   review: '<!-- pr-policy:review-overdue -->',
   takeover: '<!-- pr-policy:takeover -->',
+  imported: '<!-- pr-policy:imported -->',
 };
 
 // CODEOWNERS: the last rule that matches a path names its owners. Patterns follow
@@ -122,13 +133,40 @@ export function waitingSince(pr, { owners, anyone = false, start = POLICY_START,
   return latest(times);
 }
 
-// What the policy does with one pull request.
-export function decide(pr, { now, owners, anyone = false, start = POLICY_START }) {
+// What a pull request does to what is brought in from another repository: null for nothing,
+// or { entries, own, unknown } with the imports it changes, whether one of their code owners
+// opened it, and whether that can't be told. `importers` are the logins of those owners;
+// `anyone` when a team of them can't be read. Then the pull request is not closed as an
+// import, which may be its owners', and not let off the AI review, which may not be.
+export function importedChange(pr, files, { importers = [], anyone = false }) {
+  const entries = IMPORTED.filter((entry) => files.some((file) => file.startsWith(entry.path)));
+  if (entries.length === 0) return null;
+  const own = importers.includes(pr.author.login.toLowerCase());
+  return { entries, own, unknown: !own && anyone };
+}
+
+// Whether the policy already said something on a pull request or an issue, by its marker.
+const marked = (comments, marker) => comments.some(({ body }) => body?.includes(marker));
+
+// What the policy does with one pull request. `imported` is what importedChange says.
+export function decide(pr, { now, owners, anyone = false, start = POLICY_START, imported = null }) {
   const labels = pr.labels.nodes.map(({ name }) => name);
   const actions = [];
   if (pr.isDraft || isBot(pr.author)) return { actions, notes: [pr.isDraft ? 'draft' : 'opened by a bot'] };
   const notes = [];
-  if (!labels.includes(HUMAN)) {
+  if (imported?.unknown) {
+    notes.push(`changes ${imported.entries.map(({ name }) => name).join(', ')}: its code owners could not be read, so it is not closed for that`);
+  } else if (imported && !imported.own) {
+    const comments = pr.timelineItems.nodes.filter(({ __typename }) => __typename === 'IssueComment');
+    if (new Date(pr.createdAt).getTime() >= start && !marked(comments, MARKER.imported)) {
+      actions.push({ type: 'close-imported', entries: imported.entries });
+      return { actions, notes: [`changes ${imported.entries.map(({ name }) => name).join(', ')}, not opened by its code owners`] };
+    }
+    notes.push(`changes ${imported.entries.map(({ name }) => name).join(', ')}: opened before the policy, or reopened`);
+  } else if (imported) {
+    notes.push(`brings in ${imported.entries.map(({ name }) => name).join(', ')}: a maintainer merges it`);
+  }
+  if (!labels.includes(HUMAN) && !imported?.own) {
     const overdue = openFindings(pr, { start }).filter(({ since }) => now - since > REVIEW_DEADLINE);
     if (overdue.length) {
       actions.push({ type: 'close', findings: overdue });
@@ -156,6 +194,35 @@ export function closeComment(findings, repo) {
   ].join('\n');
 }
 
+const importedSection = (repo) => `${process.env.GITHUB_SERVER_URL || 'https://github.com'}/${repo}/blob/main/CONTRIBUTING.md#brought-in-from-another-repository`;
+const mentions = (owners) => owners.map((owner) => `@${owner}`).join(' ');
+
+export function importedComment(entries, owners, repo) {
+  const names = entries.map(({ name }) => name).join(' and ');
+  const from = entries.map(origin).join(' and ');
+  return [
+    MARKER.imported,
+    `Closed: this pull request changes ${names}, which ${entries.length === 1 ? 'is' : 'are'} brought in from ${from}. ${owners.length ? `Its code owners (${mentions(owners)})` : 'Its code owners'} write it there, and the next import overwrites a change made here.`,
+    '',
+    `Take the change to them, or to ${from}. If they want it here after all, a maintainer reopens this pull request, and it is not closed again. See [Brought in from another repository](${importedSection(repo)}).`,
+  ].join('\n');
+}
+
+export function importedIssueComment(entry, plugin, owners, repo) {
+  return [
+    MARKER.imported,
+    `${owners.length ? `${mentions(owners)}: this` : 'This'} issue is about \`${plugin}\`, which is brought in from ${origin(entry)}. It is written and fixed there, by its code owners, so this issue is closed here. They have been told; one of them reopens it to keep it here. See [Brought in from another repository](${importedSection(repo)}).`,
+  ].join('\n');
+}
+
+// The plugin an issue form names under "Plugin", or null.
+export function formPlugin(body) {
+  return body?.match(/^###\s+Plugin\s*\r?\n+\s*(\S[^\r\n]*?)\s*$/m)?.[1] ?? null;
+}
+
+// The import an issue is about, from its form, or null.
+export const importOfPlugin = (plugin) => IMPORTED.find((entry) => Object.hasOwn(entry.plugins, plugin ?? '')) ?? null;
+
 export function takeoverComment(owners, repo) {
   const mention = owners.length ? `${owners.map((owner) => `@${owner}`).join(' ')}: this` : 'This';
   return [
@@ -182,7 +249,7 @@ export const QUERY = `query($owner: String!, $name: String!, $number: Int!) {
           ... on ReadyForReviewEvent { createdAt }
           ... on ReopenedEvent { createdAt }
           ... on HeadRefForcePushedEvent { createdAt actor { __typename login } }
-          ... on IssueComment { createdAt author { __typename login } }
+          ... on IssueComment { createdAt body author { __typename login } }
           ... on PullRequestReview { submittedAt author { __typename login } }
           ... on PullRequestCommit { commit { committedDate author { user { __typename login } } } }
         }
@@ -255,6 +322,20 @@ async function ensureLabels(gh, repo) {
   }
 }
 
+// Whether an issue is to be closed for being about an import: { entry, plugin, importers },
+// or null. Not when one of its code owners opened it, or the policy said so before.
+async function decideIssue(gh, repo, issue, rules, teams) {
+  const plugin = formPlugin(issue.body);
+  const entry = importOfPlugin(plugin);
+  if (!entry || /\[bot\]$/.test(issue.user.login)) return null;
+  const importers = ownersOf(rules, [entry.plugins[plugin]]);
+  const { owners, anyone } = await resolveOwners(gh, importers, teams);
+  if (anyone || owners.includes(issue.user.login.toLowerCase())) return null;
+  const comments = await gh.pages(`repos/${repo}/issues/${issue.number}/comments`);
+  if (marked(comments, MARKER.imported)) return null;
+  return { entry, plugin, importers };
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const option = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined);
@@ -290,9 +371,19 @@ async function main() {
       const files = (await gh.pages(`repos/${repo}/pulls/${number}/files`)).map(({ filename }) => filename);
       const named = ownersOf(rules, files);
       const { owners, anyone } = await resolveOwners(gh, named, teams);
-      const { actions, notes } = decide(pr, { now, owners, anyone });
+      const importedFiles = files.filter((file) => IMPORTED.some((entry) => file.startsWith(entry.path)));
+      const importers = ownersOf(rules, importedFiles);
+      const resolved = importedFiles.length ? await resolveOwners(gh, importers, teams) : { owners: [], anyone: false };
+      const imported = importedChange(pr, files, { importers: resolved.owners, anyone: resolved.anyone });
+      const { actions, notes } = decide(pr, { now, owners, anyone, imported });
       const did = [];
       for (const action of actions) {
+        if (action.type === 'close-imported') {
+          did.push('closed');
+          if (!apply) continue;
+          await gh.call('POST', `repos/${repo}/issues/${number}/comments`, { body: importedComment(action.entries, importers, repo) });
+          await gh.call('PATCH', `repos/${repo}/pulls/${number}`, { state: 'closed' });
+        }
         if (action.type === 'close') {
           did.push('closed');
           if (!apply) continue;
@@ -319,7 +410,34 @@ async function main() {
       rows.push([`#${number}`, error.message.split('\n')[0], 'failed']);
     }
   }
-  summary([`## Merge policy${apply ? '' : ' (dry run)'}`, '', ...table(['Pull request', 'State', 'Action'], rows)]);
+  // Issues about a plugin that is brought in from another repository. Only the ones opened
+  // since the policy started, and only when a whole run is asked for.
+  const issueRows = [];
+  const issues = only ? [] : (await gh.pages(`repos/${repo}/issues?state=open&since=${new Date(POLICY_START).toISOString()}`))
+    .filter((issue) => !issue.pull_request && Date.parse(issue.created_at) >= POLICY_START);
+  for (const issue of issues) {
+    try {
+      const decision = await decideIssue(gh, repo, issue, rules, teams);
+      if (!decision) continue;
+      const { entry, plugin, importers } = decision;
+      if (apply) {
+        await gh.call('POST', `repos/${repo}/issues/${issue.number}/comments`, { body: importedIssueComment(entry, plugin, importers, repo) });
+        await gh.call('PATCH', `repos/${repo}/issues/${issue.number}`, { state: 'closed', state_reason: 'not_planned' });
+      }
+      console.log(`issue #${issue.number} ${issue.title}: about ${plugin} → closed${apply ? '' : ' (dry run)'}`);
+      issueRows.push([`[#${issue.number}](${issue.html_url})`, `about \`${plugin}\``, 'closed']);
+    } catch (error) {
+      failed = true;
+      console.log(`::error::issue #${issue.number}: ${error.message}`);
+      issueRows.push([`#${issue.number}`, error.message.split('\n')[0], 'failed']);
+    }
+  }
+  summary([
+    `## Merge policy${apply ? '' : ' (dry run)'}`,
+    '',
+    ...table(['Pull request', 'State', 'Action'], rows),
+    ...(issueRows.length ? ['', ...table(['Issue', 'State', 'Action'], issueRows)] : []),
+  ]);
   process.exit(failed ? 1 : 0);
 }
 
