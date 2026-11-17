@@ -6,7 +6,7 @@ description: |
   wants to check, review, assess, audit, scan, modernize, upgrade, or fix AEM Java, Sling Models,
   OSGi, or Maven code — for example: "check my Sling Models are implemented correctly", "review
   my @Inject usage", "are my Maven dependencies up to date", "scan this AEM project for issues",
-  "can a cookie skip my login captcha", or "fix code-quality problems". Name the files to
+  "can a cookie skip my login captcha", "calls to an external API hang", or "fix code-quality problems". Name the files to
   assess, or ask it to scan the repo; it detects issues, plans, and — only when you ask —
   applies surgical edits on a branch or in place, then verifies with mvn compile. It recognises the intent and
   handles each issue type itself, reporting anything it cannot yet fix.
@@ -103,6 +103,12 @@ single-story diff). Refuse "fix everything" for the apply phase. Rationale:
 
 ## Critical rules
 
+- **Confirm before any write.** For apply intent, the request that asked for the fix ("fix it",
+  "apply") is not the confirmation. Show the Step 7 plan and wait for the user's yes to that plan
+  before you write anything in the project: source edits, the `autofix/*` branch, `.autofix/`, and
+  a bootstrap `AGENTS.md`/`CLAUDE.md`. If you can't ask (a headless or non-interactive run),
+  stop after the plan and say that nothing was changed. When `migration` hands off a
+  `(pattern, file)`, its batch flow decides when to edit.
 - **Local only** — no network calls or external services; operate solely on the workspace.
   **Documented exception:** `remove-deprecated-api` is plugin-driven and needs Maven Central
   (to resolve `aemanalyser-maven-plugin` and, transitively, the AEM SDK's api-regions data) plus
