@@ -65,6 +65,32 @@ node scripts/check-skills.mjs --tokens plugins/<your plugin>   # each skill's to
 
 Many skills are over their limit today. Nobody has to fix a skill they don't touch: the `boy-scout` check fails a pull request only when it changes a `SKILL.md` that is over its limit, also when it adds one. Then the fix comes with the change: an eval, or a shorter `SKILL.md` with the detail in `references/`.
 
+### Trigger queries
+
+A plugin may keep a set of trigger queries for a skill, `trigger-queries/<skill>.json`: requests a user would write, each saying whether it should make an agent load the skill. It is not required. Once a skill has one, a pull request that changes the skill's `description` keeps the set true, and the AI review reads the two together.
+
+```json
+{
+  "name": "aem-cli trigger queries",
+  "fixture": { "repoUrl": "https://github.com/adobe/aem-boilerplate.git", "ref": "<commit>" },
+  "queries": [
+    { "id": "y-port-in-use", "query": "aem up says the port is in use. What now?", "should_trigger": true, "skill": "aem-cli" },
+    { "id": "n-block-css", "query": "The cards block looks wrong on mobile.", "should_trigger": false, "skill": "aem-cli" }
+  ]
+}
+```
+
+- `should_trigger: true`: the request is what the description says the skill is for. `false`: a near miss, close to it but owned by another skill or by none.
+- A query is written as a user would, without the skill's name or the words of its description.
+- `fixture` is the repository the agent starts in, as a commit fixture of a scenario.
+
+```bash
+node scripts/check-trigger-queries.mjs     # the queries name skills that exist
+node scripts/skill-trigger.mjs --plugin plugins/<your plugin> --queries plugins/<your plugin>/trigger-queries/<skill>.json --auth-home "$HOME"
+```
+
+`skill-trigger.mjs` runs each query a few times in Claude Code with the plugin installed, stops each run at the first skill it loads or the first file it writes, and reports which skill loaded. It runs agents and costs what they cost, so run it for the skill whose description you changed. Pickup varies from run to run: compare the old description and the new one on the same queries before you call a change better. CI doesn't run it. Like `skill-eval.mjs`, it lets the agent do whatever you may do on that machine.
+
 ## Plugins
 
 `plugins/<plugin>/`, or `plugins/<product>/<plugin>/` for AEM, Commerce and Creative Cloud, is one installable plugin. Its manifest is the root `plugin.json` of [Agent Plugins](https://agent-plugins.org), with `mcp.json` next to it for MCP servers. [x927](https://github.com/ai-ecoverse/x927) generates `.claude-plugin/plugin.json`, `.tessl-plugin/plugin.json`, `.cursor-plugin/plugin.json` and `.mcp.json` from those two. A plugin may also have `hooks/` and `evals/`. `.claude-plugin/marketplace.json` lists the plugins people can install; `README.md` has one row per plugin, and does not list skills.
@@ -89,6 +115,7 @@ npm ci
 npm run validate                       # every SKILL.md against the agentskills.io specification
 node scripts/check-release-configs.mjs # release configs point at files that exist
 npm test                               # when you touch scripts/: the workflows run these scripts
+node scripts/check-trigger-queries.mjs # when you touch trigger-queries/ or rename a skill
 npm run plugins:check                  # when you touch a plugin.json, mcp.json or a manifest
 npm run plugins:build                  # to see what CI will build from them; no need to commit it
 npm run lint:stardust                  # when you touch plugins/stardust; after a change to its
@@ -102,7 +129,7 @@ CI runs these on every pull request:
 
 | Check | What it does |
 |---|---|
-| Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, and runs the tests of the `web` CLI and the lints of `stardust`. |
+| Validate Skills | `npm run validate` checks every `SKILL.md` against the specification. The same workflow checks that every skill has a `license` field, that every plugin has a CODEOWNERS entry, that trigger queries name skills that exist (`scripts/check-trigger-queries.mjs`), and runs the tests of the `web` CLI and the lints of `stardust`. |
 | Tessl Plugin Lint | `tessl plugin lint` for every plugin. |
 | Validate Skills | `npm run plugins:check`: the pull request leaves alone the files that `x927` generates from each plugin's root `plugin.json` and `mcp.json` (the Claude Code, Tessl and Cursor manifests, `.mcp.json`, and the description and version of marketplace entries). Change `plugin.json`; after the merge, the Release workflow builds the generated files on `main` and pushes them. |
 | Tessl Skill Review | An LLM review of each changed skill's content, activation and security. A skill must score at least 80%. |
