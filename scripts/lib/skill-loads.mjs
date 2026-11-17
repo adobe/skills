@@ -32,7 +32,7 @@ function named(input, skills) {
 
 // Commands that print a file's content, and so read a skill when given its SKILL.md.
 const READERS = new Set(['cat', 'sed', 'head', 'tail', 'grep', 'rg', 'awk', 'less', 'more', 'bat', 'nl']);
-const WRAPPERS = new Set(['env', 'sudo', 'xargs', 'command', 'nice', 'time']);
+const WRAPPERS = new Set(['env', 'sudo', 'xargs', 'nice', 'time']);
 
 // The skills whose SKILL.md a shell command prints: in a part of the command (between |, ;
 // and &&) that starts with a reader, and not one that writes to the file (>, tee, sed -i).
@@ -41,7 +41,7 @@ function shellReads(input, skills) {
   const command = String(input?.command ?? '').split('\\').join('/');
   for (const part of command.split(/\|\||&&|[|;]/)) {
     const words = part.trim().split(/\s+/);
-    // past assignments (LC_ALL=C) and wrappers (env, sudo, xargs, command) with their options
+    // past assignments (LC_ALL=C) and wrappers (env, sudo, xargs, nice, time) with their options
     while (words.length > 1 && (/^[A-Za-z_]\w*=/.test(words[0]) || WRAPPERS.has(words[0].split('/').pop()) || (words[0].startsWith('-') && words.length > 1))) words.shift();
     if (!READERS.has(words[0]?.split('/').pop()) || /(^|\s)(>|>>|tee)(\s|$)|>\s*\S|sed\s+-i/.test(part.replace(/\d?>&\d/g, ''))) continue;
     for (const match of part.matchAll(/\/skills\/([^/\s'"]+)\/SKILL\.md(?![\w.-])/g)) {

@@ -195,7 +195,7 @@ test('in a pi stream, a skill is loaded by reading its SKILL.md, and the answer 
   assert.deepEqual(shell('echo hi > /repo/plugins/p/skills/one/SKILL.md'), []);
   assert.deepEqual(shell("sed -i '' s/a/b/ /repo/plugins/p/skills/one/SKILL.md"), []);
   assert.deepEqual(shell('ls /repo/plugins/p/skills/'), []);
-  for (const command of ['ls -l /repo/plugins/p/skills/one/SKILL.md', 'test -f /repo/plugins/p/skills/one/SKILL.md && echo yes', 'echo /repo/plugins/p/skills/one/SKILL.md', 'cat /repo/plugins/p/skills/one/SKILL.md.bak', 'cat notes.md > /repo/plugins/p/skills/one/SKILL.md']) {
+  for (const command of ['ls -l /repo/plugins/p/skills/one/SKILL.md', 'test -f /repo/plugins/p/skills/one/SKILL.md && echo yes', 'echo /repo/plugins/p/skills/one/SKILL.md', 'cat /repo/plugins/p/skills/one/SKILL.md.bak', 'cat notes.md > /repo/plugins/p/skills/one/SKILL.md', 'command -v cat /repo/plugins/p/skills/one/SKILL.md', 'type cat /repo/plugins/p/skills/one/SKILL.md']) {
     assert.deepEqual(shell(command), [], command);
   }
   assert.deepEqual(shell('cd /repo && cat /repo/plugins/p/skills/one/SKILL.md'), ['one']);
