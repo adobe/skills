@@ -39,7 +39,7 @@ The non-interactive Console + app init commands (`project create`, `workspace cr
 
 ## `aio app *` fails with config validation errors right after init
 
-Recent `aio app *` versions validate `app.config.yaml` by default against an OpenWhisk-aligned schema for actions and packages.
+Recent `aio app *` versions validate `app.config.yaml` by default against an OpenWhisk-aligned schema for actions and packages. The check runs on every `aio app *` command that reads or writes the manifest: `init`, `add …`, `delete …`, `build`, `deploy`, `undeploy`, `run`, `dev`, `use` and `info`. All of them take the same `--no-config-validation` flag. Don't bake it into scripts: the validator is there to catch drift between the local config and what gets deployed.
 
 | Cause | Fix |
 | --- | --- |
@@ -83,9 +83,9 @@ The interactive login launches a local server on a random port and waits for the
 
 | Cause | Fix |
 | --- | --- |
-| Node < 18 installed | App Builder requires Node 18+. Run `node -v` to check, then `nvm use 18` or `nvm use 20` |
+| Node older than 20.17 active (`npm warn EBADENGINE` on `npm install -g @adobe/aio-cli`) | `@adobe/aio-cli` 11 requires Node `>=20.17.0`. Run `node -v` to check, then `nvm install 20 && nvm use 20` and reinstall the CLI on that Node |
 | Template requires specific version | Check `engines` field in the generated `package.json` after init |
-| Multiple Node versions conflict | Use `nvm` or `volta` to pin the version per project: `nvm use 18 && node -v` |
+| Multiple Node versions conflict | Use `nvm` or `volta` to pin the version per project: `nvm use 20 && node -v` |
 
 Tip: run `node -v && npm -v` before every init to confirm versions.
 

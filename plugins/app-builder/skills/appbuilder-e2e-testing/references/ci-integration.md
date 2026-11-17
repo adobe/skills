@@ -54,7 +54,7 @@ steps:
   - uses: actions/checkout@v7
   - uses: actions/setup-node@v7
     with:
-      node-version: '18'
+      node-version: '20'
       cache: 'npm'
   - run: npm ci
   - run: npx playwright install --with-deps chromium
@@ -148,7 +148,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
-        with: { node-version: '18', cache: 'npm' }
+        with: { node-version: '20', cache: 'npm' }
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test

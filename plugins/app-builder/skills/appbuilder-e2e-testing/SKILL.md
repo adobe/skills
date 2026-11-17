@@ -11,7 +11,7 @@ description: >-
 metadata:
   category: e2e-testing
 license: Apache-2.0
-compatibility: Requires Node.js 18+, Playwright
+compatibility: Requires Node.js 20.17+ (`@playwright/test` requires 20+; `aio app dev` needs `@adobe/aio-cli` 11, which requires 20.17+), Playwright
 allowed-tools: Bash(npx:*) Bash(npm:*) Bash(node:*) Bash(aio:*) Read Write Edit
 ---
 # App Builder E2E Testing

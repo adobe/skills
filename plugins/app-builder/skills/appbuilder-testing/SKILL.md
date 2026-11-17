@@ -14,7 +14,7 @@ description: >-
 metadata:
   category: testing
 license: Apache-2.0
-compatibility: Requires aio CLI, Node.js 18+, and Jest
+compatibility: Requires aio CLI, Node.js 20.17+ (required by `@adobe/aio-cli` 11), and Jest
 allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Bash(npx:*) Read Write Edit
 ---
 # App Builder Testing
