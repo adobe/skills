@@ -7,8 +7,9 @@
 //   every other pull request. scripts/check-imported.mjs instead fails the pull request
 //   that brings a new copy, with the list of what it would have to change. A maintainer
 //   merges it anyway, with that check red.
-// - CI doesn't rewrite them: no generated manifest, no version, no changelog, no publish to
-//   the Tessl registry that their own files don't ask for.
+// - CI doesn't set their version or write their changelog. It builds manifests only from a
+//   root plugin.json that they bring, and publishes to the Tessl registry only what their
+//   own files ask for.
 // - A pull request that changes them, by anyone but their code owners, is closed, and so is
 //   an issue about them (scripts/pr-policy.mjs): the change belongs where they come from.
 //
