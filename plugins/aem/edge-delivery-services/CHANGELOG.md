@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/adobe/skills/compare/plugin/aem-edge-delivery-services/v1.3.1...plugin/aem-edge-delivery-services/v1.3.2) (2026-11-17)
+
+
+### Bug Fixes
+
+* **deps:** update dependency pnpm to v12.19.0 ([#727](https://github.com/adobe/skills/issues/727)) ([deda26d](https://github.com/adobe/skills/commit/deda26dc8589a8dbaeb7ab48047eb608091488eb))
+
 ## [1.3.1](https://github.com/adobe/skills/compare/plugin/aem-edge-delivery-services/v1.3.0...plugin/aem-edge-delivery-services/v1.3.1) (2026-11-16)
 
 
