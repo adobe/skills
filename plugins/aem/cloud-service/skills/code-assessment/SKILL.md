@@ -127,6 +127,8 @@ single-story diff). Refuse "fix everything" for the apply phase. Rationale:
   shared analyzer.
 - **Never commit, push, or open a PR** — branch (git) or in-place edits only; the developer reviews and commits.
 - **Surgical edits** — no reformatting / re-serialization.
+- **No secrets in a report** — name a cookie, header or parameter, never the value it is compared
+  against, nor a token or password from the project: write `<redacted>`. This holds in every report, a full scan included.
 - **Skip with a reason** — record un-applicable findings as `skipped` with an exact reason; never silently drop.
 - **One pattern per session** for apply.
 
