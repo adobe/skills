@@ -101,19 +101,17 @@ values.
 
 ### Screenshot trap: inner-scroll / fake-viewport donors
 
-Some donors scroll an **inner container**, not the body — app-shell
-sites, and at the extreme a whole "desktop OS" chrome where the page
-is a window inside a fake viewport (the smoke's donor did exactly
-this). `fullPage: true` sizes the shot from `body.scrollHeight`, so
-it silently collapses to one viewport and your module-evidence
-screenshots cover only the fold. Check before trusting any donor
-shot: if `document.body.scrollHeight` ≈ the viewport height while
-the page obviously continues, find the inner scroll container
-(`overflow-y: auto|scroll` with `scrollHeight > clientHeight`) and
-either scroll *it* while capturing stitched viewport slices, or
-expand its height to `scrollHeight` before a single shot. A
-fold-only screenshot poisons `donor-modules.md` — modules below the
-fold never enter the vocabulary and the mapping ratio starves.
+Some donors scroll an **inner container**, not the body (app shells,
+a whole "desktop OS" chrome). `fullPage: true` sizes the shot from
+`body.scrollHeight`, so it silently collapses to one viewport and the
+module-evidence screenshots cover only the fold, which poisons
+`donor-modules.md`: modules below it never enter the vocabulary. Check
+before trusting a donor shot: if `document.body.scrollHeight` ≈ the
+viewport height while the page obviously continues, find the inner
+scroll container (`overflow-y: auto|scroll` with `scrollHeight >
+clientHeight`) and either scroll *it* while capturing stitched
+viewport slices, or expand its height to `scrollHeight` before a single
+shot.
 
 ## 2. Local static prototypes (`--donor-dir <path>`)
 
@@ -175,21 +173,33 @@ environment only. Recipe:
    never stop; a frame Figma cannot render is recorded as not
    renderable. `--list` prints every page's top-level nodes;
    `--frames <id,…>` narrows; `--max-frames <n>` caps and lists the cut.
-   A frame or section holding only childless instances (components from
-   a remote library the REST payload did not expand) is marked
+   Changing the selection of an existing capture needs `--refresh`, a
+   second full nodes fetch. Read the source page's module markers
+   (`data-component` names) when mapping its sections onto the captured
+   frames. A frame or section holding only childless instances
+   (components from a remote library the REST payload did not expand)
+   is marked
    `hollow: true` and warned: nothing inside it is measured, and
    `curate` lists every included module on one in
    `donor-tokens.json#coverage.hollow` and flags its row; read its
    anatomy from the screenshot, or capture the library file itself.
 3. Author `reskin/curation-rules.json`, the only non-mechanical
-   input: reference pins (one frame, variable mode and breakpoint per
-   module family; § Pin one reference page), roles, normalizations,
-   curations with their proving rule, suspects, section-level modules
-   and the DESIGN prose.
+   input, from `role-candidates.json`, `module-candidates.json` and the
+   frame screenshots: reference pins (one frame, variable mode and breakpoint per
+   module family; § Pin one reference page), roles (each of the 13 probe paths
+   mapped, or marked absent with a why), normalizations,
+   curations with their proving rule, suspects, section-level modules, not
+   atoms (an included module's `id` matches `^M\d+$`: a kit whose codes are not
+   M-numbers is renumbered, its own code kept in the `name`) and the DESIGN
+   prose.
 4. `figma-donor.mjs curate` — deterministic: `donor-tokens.json`,
    `donor-modules.md`, `canon-source/DESIGN.{md,json}` and
    `_brand-extraction.json`. Re-run after any rules change.
 5. `figma-donor.mjs stamp` — `state.json.designSource`, nothing else.
+6. After Phase 4, `figma-gate.mjs` checks the page against this capture
+   (`reference/gates.md` § (d)); it reads `.work/reskin/figma/`, so
+   keep it, and the rules' `weightMap` and `familyEquivalence` apply to
+   the Figma side of its type ramp.
 
 Seven recommended role paths are optional:
 `cards.primary.background|borderRadius|padding|titleColor`,
@@ -312,9 +322,10 @@ the flattened values. The probe asserts the flattened spec on
 maps onto. One row per module:
 
 ```markdown
-| # | Module | EDS block | Where seen | Description |
-|---|--------|-----------|-----------|-------------|
-| M1 | Gradient hero | hero (gradient) | home top (screenshot slice ref) | anatomy: display headline + lede + primary/secondary CTA + media object right… |
+| # | Module | EDS block | Disposition | Where seen | Description |
+|---|--------|-----------|-------------|-----------|-------------|
+| M1 | Gradient hero | hero (gradient) | variant | home top (screenshot slice ref) | anatomy: display headline + lede + primary/secondary CTA + media object right… |
+| M2 | Back to top | default content | feature: back-to-top button, scripts/ | kit page (screenshot ref) | anatomy: … |
 ```
 
 Rules:
@@ -325,17 +336,22 @@ Rules:
   (D1: default content when there is no repeating unit or bespoke
   interactive structure; D11: a Block Collection pattern keeps that
   block's name). A Figma donor applies it mechanically
-  (`scripts/figma/eds-map.mjs`; a module's `eds` in
-  `curation-rules.json` overrides): Q&A → `accordion`, Teaser →
-  `cards (teaser)`, Button → default content, Chips → `chips` (no EDS
-  match keeps the donor name); a pattern word anywhere in the name
-  counts (Accordion Item / FAQ Section → `accordion`, Table – Striped →
-  `table (striped)`, Image Top Columns → `columns (image-top)`,
-  3 Columns → `columns`), Input / Dropdown / Toggle → `form` (field
-  type rows of the Block Collection form, `Label | value | type | state`,
-  not variants; only a layout such as Login stays a class, `form (login)`).
-  Other modules sharing an EDS block are its variants, never a second
-  block.
+  (`scripts/figma/eds-map.mjs`, whose header lists the spellings it
+  maps: Q&A → `accordion`, Button → default content, Input / Dropdown /
+  Toggle → field rows of `form`, no EDS match keeps the donor name); a
+  module's `eds` in `curation-rules.json` overrides. Other modules
+  sharing an EDS block are its variants, never a second block.
+- **Disposition — the whole vocabulary is handed to deploy**: every
+  included module, used by a page or not, is one of `block`, `variant`
+  (an authored block option — preferred over a new block: chips on a
+  links block), `chrome`, `section-style (<name>)`, `style`,
+  `convention`, `feature` or `default-content`, with a why after a
+  colon (required for every blockless kind). Blocks are derived from
+  the EDS block; a Figma donor names a blockless kind in `eds.as`
+  (`eds.name` for a section-style's Style value) and the reason in
+  `edsWhy`. Deploy Step 2c builds every row;
+  `scripts/vocabulary-check.mjs` checks the project against it. A table
+  without the column is read from its EDS block column.
 
 - **Evidence-bound**: every module cites the donor screenshot
   (`canon-source/assets/screenshots/…`) it was observed in. No module
