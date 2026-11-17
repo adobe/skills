@@ -199,6 +199,9 @@ test('in a pi stream, a skill is loaded by reading its SKILL.md, and the answer 
     assert.deepEqual(shell(command), [], command);
   }
   assert.deepEqual(shell('cd /repo && cat /repo/plugins/p/skills/one/SKILL.md'), ['one']);
+  for (const command of ['LC_ALL=C grep -n . /repo/plugins/p/skills/one/SKILL.md', 'env LANG=C sed -n 1,9p /repo/plugins/p/skills/one/SKILL.md', 'sudo -n cat /repo/plugins/p/skills/one/SKILL.md', 'echo /repo/plugins/p/skills/one/SKILL.md | xargs -0 cat']) {
+    assert.deepEqual(shell(command), command.includes('echo') ? [] : ['one'], command);
+  }
   const end = (stopReason, text) => JSON.stringify({ type: 'message_end', message: { role: 'assistant', stopReason, content: [{ type: 'text', text }], ...(stopReason === 'error' ? { errorMessage: '503' } : {}) } });
   assert.equal(streamResult([end('error', ''), end('stop', 'recovered')].join('\n')).failed, false, 'a retried error is not a failure');
   assert.equal(streamResult([end('stop', 'x'), end('error', '')].join('\n')).failed, true);
