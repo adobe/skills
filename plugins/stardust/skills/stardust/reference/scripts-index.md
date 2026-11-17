@@ -22,7 +22,7 @@ Copies: `stardust/scripts/<skill>/`; see `--help`. `lib` = no CLI; `<d>` = direc
 - `deploy/section-schema.mjs` — roles: `<protoURL> [--out <f>] [--profile eds|generic]`
 - `deploy/style-fingerprint.mjs` — variation groups: `file:///abs/<proto>.html`
 - `diff/chrome-compare.mjs` — header parity: `<contract> <build> [--profile replica|functional] [--json f]`; 2 = undecided
-- `diff/chrome-explore.mjs` — header states/motion/scroll: `<u> <out.json> [--width 1440,390] [--max-requests 600]`
+- `diff/chrome-explore.mjs` — header states: `<u> <out.json> [--width 1440,390] [--max-requests 600]`
 - `diff/clip-probe.mjs` — text/controls overflow: `<u> [--width 1440] [--json [f]] [--advisory]`; 2 = clipped > 0
 - `diff/content-diff.mjs` — structure, attributes/icons, all roots: `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json]`
 - `diff/content-presence.mjs` — band content/controls: `<origin> <served> [--variable <selO=selE,…>] [--json [f]]`; 2 = MISSING/HIDDEN link/heading
@@ -41,7 +41,7 @@ Copies: `stardust/scripts/<skill>/`; see `--help`. `lib` = no CLI; `<d>` = direc
 - `dynamics/snapshot-api.mjs` — record same-origin APIs: `--origin <h> --calls calls.json [--out <d>]`
 - `dynamics/snapshot-forms.mjs` — record forms: `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview: `--source <o> --org --repo --paths a.json,b.json`
-- `extract/crawl.mjs` — crawl → pages, shots, `captureGaps`: `--url <u> [--pages a,b] [--max 25] [--link-first] [--out <d>] [--dynamics] [--page-timeout 60]`
+- `extract/crawl.mjs` — pages, shots, gaps: `--url <u> [--pages a,b] [--max 25] [--link-first] [--out <d>] [--dynamics] [--page-timeout 60]`
 - `extract/style-census.mjs` — computed styles: `[--pages <d>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails: `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — render + sidecar: `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
@@ -65,7 +65,7 @@ Copies: `stardust/scripts/<skill>/`; see `--help`. `lib` = no CLI; `<d>` = direc
 - `replica/measure.mjs` — rects/styles/scrollWidth/renditions: `<u> --selectors "a,b" [--against <u>] [--width 1440,360] [--all-matches]`
 - `replica/motion-compare.mjs` — live vs build motion, advisory (exit 0): `<live.json> <build.json> [--tolerance-ms]`
 - `replica/motion-observe.mjs` — motion: `<u> <out.json> [--click <sel>]… [--hover <sel>]…`
-- `replica/pixel-compare.mjs` — pixel diff + bands: `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]` (text % auxiliary)
+- `replica/pixel-compare.mjs` — pixel diff + bands: `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]` (text % aux)
 - `replica/row-profile.mjs` — row luminance: `<a.png> [<b.png>] [--color #rrggbb]`
 - `replica/run-bg.mjs` — background jobs: `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124: `--timeout <s> -- <cmd>`
