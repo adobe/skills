@@ -48,7 +48,7 @@ the archetype (`ledger.handoff.<type>.archetype`, else the type's first
 | the side-by-side eyeball recorded and `pass` | `pages[a].eyeball` |
 | the prototype on disk is the one that was gated | `pages[a].prototypeSha` vs the file |
 | Figma donors: `figma.join`, `figma.geometry`, `figma.ramp` PASS (M2b B0/B1/B3; B2 pixel is advisory, B4 register informational) | `pages[a].gates.figma` |
-| when a preview deploy was gated (M2a): `deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited` PASS, and the Figma re-run `deployed.figma.*` | `pages[a].gates.deployed` |
+| when a preview deploy was gated (M2a): `deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited`, `.coverage` PASS, and the Figma re-run `deployed.figma.*` | `pages[a].gates.deployed` |
 | the preview evidence still describes the EDS code: its `codeStamp` equals the project's now (`deployed-gate stamp`); a block, CSS or script change after the run fails it until `deployed-gate all` and `record` re-run | `pages[a].gates.deployed.codeStamp` |
 
 `reskin-ledger.mjs record <a>` reads the M2 evidence itself:
@@ -68,7 +68,7 @@ residual` refuses it.
 
 Plus the project-level checks (flow, canon `:root`, donor `DESIGN.json`, canon
 record drift, active direction, dynamics dispositions, canon skeleton per
-mapped module, approval honesty). A failing predicate blocks the type in
+mapped module, approval honesty, an uncapped inventory: § Full inventory). A failing predicate blocks the type in
 `migrate` (sibling tier) and `rollout`; hands-off is not a bypass.
 
 Coverage of the deployed leg is a warning, not yet a condition: per type,
@@ -117,6 +117,15 @@ junk-filtered page of the content site in `state.json`, each typed by reskin
 (SKILL.md § Phase 1). Never extract's capped discovery mode, never only the
 pages the user named; `--pages` narrows the archetype capture, not the
 inventory, and a capped crawl is a setup error (SKILL.md § Setup step 5).
+A Figma-only project's inventory is every page `figma-donor.mjs pages`
+finds.
+
+`reskin-preflight` checks it as `inventory`: FAIL when the crawl was capped
+(`state.json` `site.pageCap` a positive number with `site.totalDiscovered`
+above the inventory's page count, or a `below cap` row in
+`stardust/current/_crawl-log.json#discovery.cut`), a WARN instead under a
+user-requested archetypes-only delivery (below); `untyped` warns for every
+inventory page without a `type`.
 
 Reskin does not run `extract --prep --dynamics`: `dynamic-features.md` is
 derived by the bridge from the content models — **form controls only**. That
@@ -145,8 +154,10 @@ sibling tier.
 
 The archetype gate proves the prototype; migrate re-renders siblings from the
 canon, so each migrated page is gated again on migrate's output — the same
-three gates against the source URL, reports in
+three gates against the source URL, plus gate (a′) (`source-coverage.mjs`,
+whose S4 holds a source rail beside the content), reports in
 `stardust/reskin/gates/<slug>/migrated/{dom-equality,slot-coverage,donor-probe}.md`
+and `…/migrated/source-coverage.json`
 — and recorded with `reskin-ledger.mjs record <slug> --stage migrated`
 (`pages[slug].migratedStatus`, `handoff.<type>.siblings`). Preflight warns
 (`sibling-gates`) on migrated pages without a passing one; rollout does not

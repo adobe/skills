@@ -34,10 +34,11 @@ other key not listed below is an error for `--check` (the renderer ignores it, s
 | key | type | values / default | effect |
 |---|---|---|---|
 | `model` | string | directory (project-relative) holding a `content-model.json` | the chrome capture `header` / `footer` read; required when either is set |
-| `header` | string[] | chrome-model slot ids | each renders as a header row in `<header data-canon="header">`; a row with a logo and list items is zoned brand / menu / actions |
-| `footer` | string[] | chrome-model slot ids | each renders in `<footer data-canon="footer">`; zoned (brand, titled columns, social row) when its stream has headings and list items |
+| `header` | string[] | chrome-model slot ids | each renders as a header row in `<header data-canon="header">`; a row with a logo and list items (or buttons) is zoned brand / menu / actions: its plain texts ahead of the primary links (site name, motto) join the logo as `.brand-text` and a link with only screen-reader text goes to the utility bar. A zoned row with no primary links of its own takes a logo-less link row's links into its menu when the header is one row (`navAlign` set, or the donor's `layout.navAlign`), else that row stays below and the zoned row's toggle opens it |
+| `footer` | string[] | chrome-model slot ids | each renders in `<footer data-canon="footer">`; zoned (brand, titled columns, social row) when its stream has headings and list items. Several slots with one zoned among them are one zoned footer: a leading single-text slot is the footer name, every slot's logos and prose join the brand column (logo ≥ 48px: `footer.logoHeight`, else `header.logoHeight`, else 48px), its links one column. A link whose text names a social network (Facebook, Instagram, X/Twitter, LinkedIn, YouTube, TikTok) is an icon in the social row, its text kept as `.sr-only`; no empty list is printed |
 | `footerTone` | string | `dark` \| `light` \| `accent`; default none | paints the footer from the palette |
 | `navAlign` | string | `start` \| `center` \| `end`; default the donor's `layout.navAlign`, else `end` | where a zoned header puts its menu |
+| `kit` | object | from `mapping.seed.json`: chrome slot → `{ module, block, variant }` | none (a copied seed passes `--check`; the renderer does not read it) |
 
 ## `blocks` (optional)
 
@@ -56,6 +57,7 @@ read by the renderer.
 |---|---|---|---|
 | `template` | string | the archetype slug; default `<slug>` | `main[data-template]` and the provenance `template` |
 | `slots` | object | `{ "<slot id>": { … } }`, ids from the page's `content-model.json` `sections[].slot` | per-slot decisions; a model slot with no entry renders as `stack` / `narrow` with no `data-module` |
+| `defaultContent` | object | from `mapping.seed.json`: slot → `{ module, figma }` for slots that are no block | none (kept for review; the renderer does not read it) |
 
 `stream-render <slug>` refuses a page with no `pages.<slug>` entry (exit 2).
 
@@ -71,9 +73,42 @@ read by the renderer.
 | `heading` | string | `display` \| `h2` \| `h3` \| `h4`; default `display` | the type role of the slot's `.heading` (`display` when the donor lacks `type.<role>`) |
 | `inset` | string | a length `<n>px` \| `rem` \| `%` | full-width container with that side gutter |
 | `split` | string | two tracks, each `<n>px` \| `fr` \| `%` (`531px 1fr`); default `1fr 1fr` | the `split` layout's columns |
+| `bleed` | boolean | default `false` | with `tone`: paint the whole full-width band, not the panel |
+| `align` | string | `center` | centre the stream (cards keep start alignment) |
+| `cardTone` | string | `dark` \| `light` \| `accent` | the `cards` layout's card colours |
+| `block` | string | an EDS block name (Figma-only sites, seeded by `figma-donor.mjs content --all`) | `section[data-block]` |
+| `variant` | string[] | class tokens | `section[data-block-variant]` (with `block`) |
+| `instance` | string | the Figma kit instance node id (`12:34`) | `section[data-kit-instance]` (with `block`) |
+| `rail` | string | `start` \| `end` \| `top` \| `none` | `start` / `end`: the slot renders in a side column beside the content; `top`: a band above the content, after the leading bands (§ rail); `none` keeps stream order. `top` and `none` need a coverage `placement` declaration |
+| `railWidth` | string | a length; default the captured width (`rect.w`), else `320px` | the rail column's width |
+| `railMobile` | string | `hidden` \| `top` \| `bottom`; default `hidden` when the source hides it on a phone (`placement.hiddenMobile`), else `top` | the rail at ≤ 900px |
+| `band` | boolean | default `true` for a slot captured `placement.region: band` | on a rail page, the slot spans the content and the rail (a breadcrumb) |
 
 The renderer warns and ignores a bad `tone`, `heading`, `inset` or `split`, falls back for `columns`, and
 emits an unknown `layout` word as a class with no style; `--check` reports all of them.
+
+## rail
+
+A section sidebar, local nav or related-links rail sits BESIDE the content on the source, and is often
+after `<main>` in the DOM, moved there by CSS. The capture classifies it (`content-model.md` § Placement:
+`sections[].placement.region` `rail-start` | `rail-end`); stacking slots in stream order would render it after
+the content, above the footer. `"rail": "start"` (or `"end"`) on that slot makes `main` a grid at > 900px:
+the rail in its own column (`railWidth`), every other slot on an explicit grid row in stream order, band slots
+(`placement.region: band`, or `"band": true`) across both columns. The DOM keeps stream order, so the content
+gate's text order is unchanged. At ≤ 900px the page is one column in normal flow and the rail follows `railMobile`
+(a flex column only when it moves, `top` / `bottom`: flex items stop the sections' margins collapsing).
+
+`--check` with the page's content model is a problem for every slot the source places as a rail whose mapping
+has no `rail`: decide it like a dark band — `start`/`end`, `top`, or `none`, the last two with a `placement` entry in
+`coverage/<slug>.json` (`to: "top"` for `top`; `--check` reads the file; `gates.md` § (a′) S4).
+
+`"rail": "top"` is the choice when the donor has no side column (its section nav is a tab row or a band): the
+rail renders full width directly above the content — after the leading bands such as the breadcrumb, before the
+first content slot — at every width (`railMobile` still hides or moves it on a phone). `main` is a flex column and
+each slot gets its `order`; the DOM keeps the source's stream order, as on the source, where the sidebar follows
+the content in the DOM. A source rail's reading position is the start of the content, so carried as a band it goes
+above the content, never after it. On EDS the rail is the section's style (a `section-nav` /
+`rail` section-metadata value) and the template CSS lays it out the same way (`deployed-leg.md` § Rails).
 
 ## Readers
 

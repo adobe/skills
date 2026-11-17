@@ -66,7 +66,20 @@ executed identically by `capture-content.mjs` and this gate: hidden
 by style → out; rendered above 1×1px → in (tracking pixels are not
 content); `loading="lazy"` and still zero-size → in. One definition,
 two callers — capture and gate cannot drift on image counts.
-(3) **image crop** (§ Image crop below): every rendered image shows
+(3) **disclosure rest state**: the collapsed and open disclosures in
+scope (`aria-expanded`, `<details>`, `hidden="until-found"`, the shared
+`DISCLOSURE_STATE` in `source-normalize.mjs`) are counted on both sides
+**before** the ledger runs. A source that starts any collapsed against a
+render that starts none collapsed FAILS: a ledger entry that expands
+accordions is capture-only and never makes the delivered block start
+open. The rendered side then runs `REVEAL_DISCLOSURES` (opens `<details>`,
+unhides `hidden="until-found"`) before its text is read, so a correctly
+collapsed panel is still measured; a panel hidden any other way
+(`display:none` on a class) stays unread and fails (1). `slot-coverage`
+and `figma-text-gate` run the same reveal. A page whose redesign starts
+every disclosure open says so in its deltas file:
+`"disclosures": { "restState": "open", "why": "…" }`.
+(4) **image crop** (§ Image crop below): every rendered image shows
 the area of it the source shows: at most `--crop-tolerance` (default
 10%) of what it shows lies outside the source's region, and an
 off-centre anchor the source sets is kept.
@@ -235,6 +248,78 @@ Defenses, in order:
   broken *now*, in the gated artifact (see § Failure modes,
   Hotlinked source images).
 
+### figma-text-gate.mjs — content gate for Figma-sourced pages
+
+A Figma-sourced page has no source DOM, so `dom-equality` cannot run. The Figma text gate replaces it:
+
+```bash
+node stardust/scripts/reskin/figma-text-gate.mjs \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --rendered stardust/reskin/pages/<slug>.html \
+  --report stardust/reskin/gates/<slug>/figma-text.json
+```
+
+`--rendered` is the page `stream-render` wrote; `--report` is the JSON `reskin-ledger.mjs record` reads
+as the page's content gate (`verdict` PASS | FAIL) when no `dom-equality` report exists — do not write it
+to `reports/<slug>-content-gate.md`, the dom-equality path `record` reads first.
+
+The reference is every effectively-visible TEXT node of the frame's body sections, in reading order and
+rendered case, re-read from the cached nodes response — never from the model it checks. Each string must
+appear exactly once, in order, in `<main>` innerText; drawn-field placeholders must appear as
+`placeholder` attributes. Findings: missing, order, case (TITLE is caseless: CSS `capitalize` is not
+Figma TITLE), duplicate, extra. `text-ops.json` beside the model declares what not to expect. PASS only
+with zero findings; exit 0 / 1 / 2 (setup). Run `slot-coverage.mjs --deltas reskin/deltas/<slug>.json`
+beside it: `figma-donor.mjs content` seeds that file (the deployed leg's schema, `deployed/deltas.mjs`)
+with `metadata.absent: [description, canonical]`, asserted not carried; the model's empty OG/Twitter
+maps and JSON-LD list make the gate expect none, and images keep the host+path comparison.
+
+## (a′) Source coverage
+
+Every gate above compares the target with the captured model, so what the
+capture did not observe is invisible to all of them and its loss passes.
+`source-coverage.mjs` gates the three blind spots — space, time, attribute —
+against the local reskin page (Phase 5) and again on the aem.page preview
+(after (e)'s `preview`), where page chrome and client-rendered blocks exist.
+
+| Check | Reads | Bar |
+|---|---|---|
+| S1 residue carried | `residue[]` (not `chrome`) | each region ≥ `--min-chars` (20): one target element outside header/footer, ≤ 3× its text, holds ≥ 60% of its text lines — else declared, else **FAIL**; shorter regions are `info` |
+| S2 settled | `_provenance.settle` | missing (pre-0.40 model) or `stable: false` is **WARN**: re-capture; never fails; `n/a` on a Figma-sourced model (`_provenance.source.kind: figma`: no settle step) |
+| S3 tone carried | `sections[].tone` | a `dark` slot's first heading (else text) sits on a dark background in the target — else declared, else **FAIL** (also when the probe text is gone); `tinted` → other is WARN; `page` is not checked |
+| S4 placement carried | `sections[].placement`, `residue[].placement` | every slot or carried residue region the source sets as a rail (`rail-start` / `rail-end`, `placement.mjs`) sits beside the target's content column on the same side at 1440 — the content is the bigger sibling branch the rail's host climbs to (main's other sections, or the content wrapper beside an aside) — else declared (`placement`), else **FAIL**; a rail declared `to: "top"` (mapping `"rail": "top"`) is measured: its box must end above the block holding the h1, else **FAIL** (`below content`) — declared or not, a rail never lands after the content; a residue region S1 did not find is S1's, not S4's |
+
+The target is settled the same way as the source (scroll, then text stable
+3 × 500 ms, ≤ 15 s) before it is measured. Declared drops,
+`stardust/reskin/coverage/<slug>.json`:
+
+```json
+{ "version": 1,
+  "residue": [ { "match": "<substring of the sel or the first line>", "why": "…" } ],
+  "tones":   [ { "slot": "s01", "to": "tinted", "why": "donor hero module is a light band" } ],
+  "placement": [ { "slot": "s09", "to": "main", "why": "…" } ],
+  "blocking": true }
+```
+
+The report (`--out reports/<slug>-source-coverage.json`, or
+`gates/<slug>/migrated/source-coverage.json` for a sibling) is one of the gate
+reports `reskin-ledger.mjs record` requires: a page without it is refused, a
+FAIL records the page `failing`.
+
+Every entry needs a `why`; an unknown key, a bad slot id or tone is exit 2,
+every problem listed. `"blocking": false` reports FAILs as ADVISORY (exit 0).
+Exit 0 PASS, 1 FAIL, 2 setup (a protected preview, 401 or 403, is out of scope).
+
+**Why it exists.** A 52-page school-site migration passed every content gate
+while the deployed pages had no breadcrumb or section sidebar (outside
+`main`, so never in the model), no Facebook posts on the home page (rendered
+by XHR after the capture read the page) and light bands where the source's
+callouts were dark (tone was a mapping judgment nothing measured). (a′)
+FAILs all three on the original render, PASSes the fixed preview, and PASSes
+a declared hero change. S4 came from two later migrations whose section sidebars
+all carried (S1 green) and all rendered after the content, above the footer:
+the source set the sidebar left of the content by CSS while it followed `<main>`
+in the DOM, and every stage before S4 read DOM order only.
+
 ## (b) Design-adoption gate
 
 ### donor-probe.mjs — computed-style token assertions
@@ -378,7 +463,7 @@ raises the share; `summary.json` and the fragment record it.
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
 | B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading; a `chrome` row whose Donor module is an included module joins the page's header or footer as section `header` / `footer` | exact; drift names the slot |
-| B1 geometry | blocks | width, height, left, right, top, gaps, paddings of page boxes against Figma nodes (relative to the module root) or a token | ±1px (Figma has half pixels, `measure-live` rounds) unless an entry says why |
+| B1 geometry | blocks | width, height, left, right, top, gaps, paddings of page boxes against Figma nodes (relative to the module root) or a token; a root width entry of a section in a rail page's grid column (narrower than main by mapping `rail`) is UNASSERTED with the reason, out of n — S4 holds the placement, and the rail is never dropped to make the module full width | ±1px (Figma has half pixels, `measure-live` rounds) unless an entry says why |
 | B3 ramp | blocks | the `:root` block `donor-tokens.json` yields, and per type entry fontSize, fontWeight, lineHeight, letterSpacing, first fontFamily, color against the Figma text node | exact; lineHeight and letterSpacing ±0.1px |
 | B2 pixel | advisory | the section's slice of the frame image against the section's screenshot | none: orientation only; reference classes (light text 3%, inverted 3.5%, raster ground 4%) are uncalibrated |
 | B4 register | informational | `mandated` (passes on results of this checks file, every text style covered, no waiver; results of an older file give a `stale` row: re-run `all`), `waived` (one row per waiver), `unmandated`, `out-of-kit`, `conflict` and `pre-existing`, with Figma node links | none |
@@ -400,8 +485,7 @@ raises the share; `summary.json` and the fragment record it.
   family, or a generic one). A declared family rendered from a fallback is
   `UNSERVED` (`declared Inter, served fallback`): no PASS, no FAIL, left
   out of `ramp PASS n/n` and counted as `(j unserved)`; log each as a
-  `font.unserved` residual (`accepted` when the donor supplies no font
-  files, `needs-owner` when the licensed font is meant to be served).
+  `font.unserved` residual (§ Unserved donor font).
 - **Conflicts.** `conflict` is a Figma text colour below WCAG contrast (4.5, 3
   for large text) in a root the section's checks name, its alpha composited over
   the solid ground behind it; gradient and image grounds are skipped. A
@@ -421,7 +505,7 @@ raises the share; `summary.json` and the fragment record it.
 page and the donor, on `https://<branch>--<repo>--<org>.aem.page`.
 Recipe, delta file, ledger, fix budget: `deployed-leg.md`; command
 lines: SKILL.md Phase 5 (e); flags, evidence, exit codes:
-`deployed-gate.mjs --help`. `content`, `tokens`, `sanity` and `figma` first
+`deployed-gate.mjs --help`. `content`, `tokens`, `sanity`, `chrome` and `figma` first
 settle the EDS decoration (`body.appear`, every section and block `loaded`,
 within 20 s) and name a stall; in `all` a stall is that step's FAIL and the
 run goes on. `parity`'s captures wait a fixed 3 s instead, and `inherited`
@@ -429,11 +513,12 @@ fetches `.plain.html` without a browser.
 
 | Step | Class | Asserts | Bar |
 |---|---|---|---|
-| `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas` | both exit 0; unused deltas warn |
+| `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas`; a Figma-sourced model runs `figma-text-gate` in place of `dom-equality` | both exit 0; unused deltas warn |
 | `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom; with the page's Figma checks file a kit pads per module, so those rows are a SKIP and the `figma` step's geometry holds each section to its module), every `:root` token verbatim, with the optional `--card-bg`, `--card-radius`, `--card-padding`, `--card-title-color`, `--button-height`, `--section-padding-mobile`, `--gutter-mobile` when the sheet carries `cards.primary.*`, `buttons.primary.height`, `layout.mobile.*` (the probe runs at 1440 only: the mobile ones are asserted as `:root` values) | exact, first font family only (a font declared but not served is an `ADVISORY tokens font.unserved` line, left out of n, never a FAIL); sections ±16px; container width is `parity`'s cap row |
 | `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height; per section (`section[data-slot]` paired in order with non-empty `main > .section`) the worst Δh ≤ 10% of its height, n/a when the counts differ; a header or footer the reskin page lacks left out of the preview's capture; on a `--sandbox` preview a header or footer `mapping.md` maps no chrome row to is the boilerplate's own: hidden on both sides, its crop n/a and recorded (`parity.json` `ignored`); header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
 | `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a page answering HTTP 400 or more is no verdict (exit 124), never a pass |
-| `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0 on the inputs there are, a missing one (`eds-schema/<slug>.json`, `design.json`) being a FAIL row `incomplete: no …`, never `n/a`. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
+| `inherited` A5 | blocks | `.plain.html`, `internal links`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `internal links`: no `<a href>` to the live source for a page the migration captured, in the page's `.plain.html` and the `nav` / `footer` documents its chrome loads (`/<ns>/nav`), else FAIL listing them (`n/a` without a live source) — a recorded migration shipped 998 such links, the header nav included, because the content gate accepted them; `ai-readability` ≥ 98; `qa-gate` exit 0 on the inputs there are, a missing one (`eds-schema/<slug>.json`, `design.json`) being a FAIL row `incomplete: no …`, never `n/a`. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
+| `chrome` A6 | **hard**, as `sanity`; a header/footer residual (`step10.header`, …) is accepted only `--by` the site owner | at 1440 and 360 the `<header>` and `<footer>` against `mapping.json` `chrome` and its model (ctas, `iconLinks`, images, footer text) | present and decorated; a logo ≥ 16px when mapped; header ≤ 240px closed, covering main ≤ 4px, band above it ≤ 48px; every mapped link rendered and visible (at 360 a toggle shows the hidden ones); no icon-font ligature word as text; every mapped footer text. No chrome in the mapping: those rows `n/a`; a mapped slot empty in the model is exit 2 |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
 - **Protected preview.** Out of scope: the preview must be reachable without
@@ -456,6 +541,61 @@ fetches `.plain.html` without a browser.
   FAIL. Evidence goes to `gates/<slug>/figma-preview/`, so a local run's
   `figma/` survives it.
 - **No verdict, exit 3.** As (d); the budget is in `deployed-leg.md`.
+
+## (f) Exact fidelity (Figma-only sites)
+
+On a Figma-only site the design *is* the page: content and layout come from the same frames, so the
+measure is the frame itself, not a donor's look. B2 stays advisory for donor reskins; (f) is the
+blocking pixel gate for `flowSource: "figma-only"`, run after (d) and before (e).
+
+`figma-donor.mjs renders <url>` fetches the references once (Figma's own PNG render of every page
+breakpoint frame and of every variant of every kit block, used or not) into
+`reskin/figma-renders.json`; both steps then run offline.
+
+| Step | Unit | Asserts | Bar (default) |
+|---|---|---|---|
+| `figma-gate.mjs exact --page <slug> --url <page>` | page × breakpoint frame | full-height screenshot in a viewport of the frame's width × height (a frame is a screen: 100vh layouts and frames shorter than a laptop screen measure true) against the frame PNG | differing-pixel share ≤ `--bar` 3 %, \|height Δ\| ≤ `--height-tol` 8 px |
+| `figma-gate.mjs library --url-pattern <…/{page}>` | block × variant | `[data-kit-component="<variant id>"]` on the block's library page (its `.<EDS block>`; the whole element for default content) against the variant PNG | share ≤ `--bar` 3 %, \|width Δ\|, \|height Δ\| ≤ `--size-tol` 2 px |
+
+- **The library is the whole kit.** Every block in `figma-pages.json` `kit.blocks` has a library page
+  (deploy's `/library/<page>`: `figma-renders.json` `library.<key>.eds.page`, the EDS block
+  [`deploy` Step 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code) names it — Teaser → `/library/cards`;
+  `{block}` in `--url-pattern` is the kit key; `--out` moves the report) showing every variant of every public set, with the variant's copy
+  (`figma-renders.json` `texts`), one section per variant carrying `data-kit-component`. A missing
+  variant, or a library page that does not load, is FAIL, so an unused block cannot be skipped.
+- **Transparent reference pixels** (a frame or variant with no fill) are composited onto white before
+  comparing, as the browser paints them; alpha is never a difference.
+- **Similarity** is 100 − the mean differing-pixel share over the compared rows, per page, per block
+  and overall; the report quotes it beside the PASS/FAIL count, never instead of it.
+- **Residuals.** Font rasterisation and anti-aliasing differ between Figma's renderer and Chromium;
+  the default bar leaves room for that and nothing more. A row over the bar is one fix iteration
+  (§ below), then a residual with its diff PNG under `.work/reskin/gates/<slug>/exact/` or
+  `.work/reskin/gates/_library/`. Raising `--bar` is recorded in `direction.md` as a named deviation.
+- **Unserved donor font.** `exact` also probes whether the donor's families (`donor-tokens.json`
+  `type.family`, `type.*.fontFamily`) render on the page; a FAIL while one does not is `font.unserved`
+  (below).
+
+### Unserved donor font (`font.unserved`)
+
+One cause name for a font the donor declares and the page renders from a fallback (no loaded
+`@font-face` covering the weight and style, not installed, not generic). Every gate that sees it says
+so instead of passing silently:
+
+| Gate | Shows it as | Verdict effect |
+|---|---|---|
+| `donor-probe` / deployed `tokens` (A2) | status `UNSERVED`, `ADVISORY tokens font.unserved: …` | none: left out of n, never a FAIL |
+| figma `ramp` (B3) | `UNSERVED` (`declared Inter, served fallback`), `(j unserved)` | none: neither PASS nor FAIL |
+| figma `pixel` (B2) | `served: false` per font | advisory |
+| `figma-gate exact` (f) | the row's `why`, `summary.json` `fonts.unserved`, `ledgerFragment.cause` | a FAIL stays blocking (`gates.exact`) until the residual is accepted: Figma rasterises the licensed font, the page a fallback, and heading glyphs alone exceed 3 % |
+
+Record it once per gate: `reskin-ledger.mjs residual <slug> --gate <exact | figma.ramp | figma.pixel |
+deployed.tokens> --cause font.unserved --verdict accepted|needs-owner` — `accepted` when the donor
+supplies no font files (an agent may accept it: it is not chrome), `needs-owner` when the licensed font
+is meant to be served. On `exact` the ledger refuses `accepted` unless the recorded `gates.exact`
+evidence names `font.unserved`; check the diff PNG shows glyph shapes, not layout. Serving the font
+clears it.
+- Exit codes are figma-gate's: 1 a FAIL row, 2 usage (no `figma-renders.json`), 124 a comparison
+  past its deadline (re-run once).
 
 ## One fix iteration per gate family, then residuals
 
@@ -494,11 +634,16 @@ budget would push independent cheap fixes into residuals.
 ```
 
 A Figma residual also carries `class` (`figma.join` | `figma.geometry` |
-`figma.ramp` | `font.unserved`, an UNSERVED ramp result or tokens line); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
+`figma.ramp`); an unserved font is the cause `font.unserved` on its gate (§ Unserved donor font); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
 each names the gate, the check, and a human-readable verdict (`accepted` | `needs-owner` |
 `blocked`). The Phase 6 handoff report lists every residual and flag.
 
 ## Failure modes
+
+- **The reference was smaller than the page.** A region beside the scope
+  (sidebar, breadcrumb), a block rendered after the capture read the page,
+  or a band tone the mapping recoloured — no byte gate can see these,
+  because they compare against the model. (a′) `source-coverage.mjs`.
 
 - **Content-root drop (the top one).** Byte equality "passes" against
   an incomplete reference because the scope missed content (the 30%

@@ -156,7 +156,9 @@ API: no browser, no crawl, no MCP server. The token is `FIGMA_TOKEN`
 environment only. Recipe:
 
 1. `$stardust extract <content-url> --all` — the whole content site,
-   uncapped, as for the other donors (it creates `state.json`).
+   uncapped, as for the other donors (it creates `state.json`). A
+   Figma-only project has no content site: `figma-donor.mjs init <url>`,
+   then `pages` (SKILL.md § Phase 2′).
 2. `figma-donor.mjs capture <figma-url>` — one file version (every
    call pinned with `version=`), raw responses cached under
    `.work/reskin/figma/` (swapped in whole: a failed `--refresh` keeps the

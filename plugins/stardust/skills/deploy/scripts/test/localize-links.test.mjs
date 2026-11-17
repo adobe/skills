@@ -45,5 +45,24 @@ check("a content tree: links to a folder index get /x/, links to a leaf lose .ht
   assert.equal(readFileSync(join(c, "story.html"), "utf8"), '<a href="/en/news/">n</a> <a href="/en/news/">n2</a>');
   rmSync(root, { recursive: true });
 });
+check("--prefix: a namespaced tree localizes the source's /x onto /<ns>/x; ahead of a root page the repo also has at /x; no prefix leaves them all", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-p-")); const c = join(root, "content"); mkdirSync(join(c, "ns", "about"), { recursive: true });
+  writeFileSync(join(c, "ns", "index.html"), "<p>home</p>");
+  writeFileSync(join(c, "ns", "about.html"), "<p>about</p>");
+  writeFileSync(join(c, "ns", "about", "team.html"), "<p>team</p>");
+  writeFileSync(join(c, "contact.html"), "<p>root page</p>");
+  mkdirSync(join(c, "ns", "contact"), { recursive: true }); writeFileSync(join(c, "ns", "contact.html"), "<p>ns contact</p>");
+  const nav = '<a href="https://example.com/">h</a> <a href="https://www.example.com/about/">a</a> <a href="https://example.com/about/team.html">t</a> <a href="https://example.com/contact">c</a> <a href="https://example.com/gone">g</a>';
+  writeFileSync(join(c, "ns", "nav.html"), nav);
+  const cli = (extra) => spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", c, ...extra], { encoding: "utf8" });
+  const none = cli(["--check"]);
+  assert.equal(none.status, 2, "without --prefix only the root page is localizable");
+  const r = cli(["--prefix", "/ns"]);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /under --prefix \/ns/);
+  assert.equal(readFileSync(join(c, "ns", "nav.html"), "utf8"), '<a href="/ns/">h</a> <a href="/ns/about">a</a> <a href="/ns/about/team">t</a> <a href="/ns/contact">c</a> <a href="https://example.com/gone">g</a>');
+  assert.equal(cli(["--prefix", "/ns", "--check"]).status, 0, "idempotent");
+  assert.equal(cli(["--prefix", "ns/"]).status, 1, "a malformed prefix is a usage error");
+  rmSync(root, { recursive: true });
+});
 check("--help prints usage", () => { const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--help"], { encoding: "utf8" }); assert.equal(r.status, 0); assert.match(r.stdout + r.stderr, /localize-links/); });
 process.exit(failed ? 1 : 0);

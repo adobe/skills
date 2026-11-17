@@ -176,7 +176,11 @@ predicate (each type's archetype gated, residuals accepted, eyeball
 recorded, prototype unchanged; `../reskin/reference/handoff.md`). Exit 1
 blocks every `sibling`-tier render; print its FAIL lines. migrate merges
 the ledger's `handoff.<type>.gates` into each first sidecar
-(`gatesPassed` / `gateEvidence`). After rendering, gate the output
+(`gatesPassed` / `gateEvidence`). Every sibling is captured with the
+archetype's scope, so its `residue[]` and dark `tone`s are its own: run
+`source-coverage.mjs` (reskin `gates.md` § (a′)) per sibling — an
+archetype that declared nothing can still have a sibling with a
+sidebar. After rendering, gate the output
 (`reskin/gates/<slug>/migrated/`) and record it with
 `reskin-ledger.mjs record <slug> --stage migrated`.
 
