@@ -130,7 +130,7 @@ const RUN = { slug: 'home', width: 1440, origin: 'https://o/', n: 2, locale: 'en
 const invFor = (id) => ({ url: id.url, at: 't', bySel: Object.fromEntries(id.selectors.map((s) => [s, { matches: 1, units: [] }])), _cache: id });
 check('cache: identity = slug + width + URL + n + locale + selector set; two widths are two identities and two files', () => {
   const wide = cacheIdentity(RUN); const narrow = cacheIdentity({ ...RUN, width: 390 });
-  assert.deepEqual(wide, { v: 2, slug: 'home', width: 1440, url: 'https://o/', n: 2, locale: 'en-US', selectors: ['.a', '.b'] });
+  assert.deepEqual(wide, { v: 2, slug: 'home', width: 1440, url: 'https://o/', n: 2, locale: 'en-US', page: '{"consent":null,"dismiss":[],"noDismiss":false,"warmup":null}', selectors: ['.a', '.b'] });
   assert.notDeepEqual(wide, narrow);
   assert.equal(cacheKeyOf(wide), 'home-1440-units'); assert.equal(cacheKeyOf(narrow), 'home-390-units');
   assert.notEqual(cachePath(cacheKeyOf(wide)), cachePath(cacheKeyOf(narrow)));
@@ -148,6 +148,9 @@ check('cache: a changed URL, n, locale, slug or selector set is a miss', () => {
   assert.equal(hit({ origin: 'https://o/?v=2' }), false, 'query string');
   assert.equal(hit({ n: 3 }), false, 'n'); assert.equal(hit({ n: 1 }), false, 'a smaller n is still another measurement');
   assert.equal(hit({ locale: 'de-DE' }), false, 'locale');
+  assert.equal(hit({ consent: '#accept' }), false, 'a consent selector added after a round behind the wall');
+  assert.equal(hit({ dismiss: ['.x'] }), false, 'dismiss'); assert.equal(hit({ noDismiss: true }), false, '--no-dismiss'); assert.equal(hit({ warmup: 'https://o/warm' }), false, 'warm-up');
+  assert.equal(cacheHit(invFor(cacheIdentity({ ...RUN, dismiss: ['.b', '.a'] })), cacheIdentity({ ...RUN, dismiss: ['.a', '.b'] })), true, 'dismiss order does not matter');
   assert.equal(hit({ slug: 'home-2' }), false, 'slug');
   assert.equal(hit({ units: [{ origin: '.a' }] }), false, 'a subset of the selectors');
   assert.equal(hit({ units: [...RUN.units, { origin: '.c' }] }), false, 'an added selector');

@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BASELINE_JSON, BASELINE_PNG, BASELINE_SCHEMA, BASELINE_WRITER, FREEZE_CSS, HELP, LIVE_RECORD_WRITER, UsageError,
   applyFreeze, freezeLines, heightCap, heightChangeOf, heightNow, nextChunkStart, planCapture,
-  LayoutOverflowError, checkPageSize, baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, deadFontFaces, exitCodeFor, faceKey,
+  LayoutOverflowError, checkPageSize, baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, deadFaceKeys, deadFontFaces, exitCodeFor, faceKey,
   fontCheckLines, fontCheckOutcome, fontFamilies, isBackdrop, layerAction, layerPassScript, liveRecord, overlayExtras, overlaySuspects,
   parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
 } from '../stitch-shot.mjs';
@@ -458,6 +458,10 @@ await check('deadFontFaces: keyed by family, weight and style — a 404 bold bes
   assert.deepEqual(deadFontFaces([face('Brand Sans', 'loaded'), face('Brand Sans', 'error', 'normal', 'italic')]), ['Brand Sans'], 'another style loaded: the italic is dead');
   assert.deepEqual(deadFontFaces([face('Brand Sans', 'error'), face('Brand Sans', 'error', '700'), face('Other', 'error')]), ['Brand Sans', 'Other'], 'a family is named once, sorted');
 });
+await check('deadFaceKeys: the dead faces themselves (family|weight|style), for a per-face comparison of the two sides; fontCheckOutcome records them', () => {
+  assert.deepEqual(deadFaceKeys([face('Brand Sans', 'loaded'), face('Brand Sans', 'error', '700'), face('Brand Sans', 'error', 'bold')]), ['brand sans|700|normal']);
+  assert.deepEqual(fontCheckOutcome([face('Brand Sans', 'error', 'normal', 'italic')]), { fontsFailed: ['Brand Sans'], deadFaces: ['brand sans|400|italic'] });
+});
 await check('deadFontFaces: an unresolved local() source is dead like a failed fetch — status error, no URL anywhere; an unloaded face (never needed) is not; every face loaded → []; no faces → []', () => {
   // the recorded shape: metric fallback faces declared with local() platform fonts the gate's browser does not have
   const fallback = [face('Brand Sans', 'error'), face('Brand Sans Fallback', 'error'), face('Brand Serif Fallback', 'error', '400', 'normal')];
@@ -468,9 +472,9 @@ await check('deadFontFaces: an unresolved local() source is dead like a failed f
 });
 await check('fontCheckOutcome: a face list → { fontsFailed } (checked, no fontCheck key); an error or no list → { fontsFailed: null, fontCheck: "failed: <first line>" } — never []', () => {
   const ok = fontCheckOutcome([face('Brand Sans', 'error'), face('Other', 'loaded')], null);
-  assert.deepEqual(ok, { fontsFailed: ['Brand Sans'] });
+  assert.deepEqual(ok, { fontsFailed: ['Brand Sans'], deadFaces: ['brand sans|400|normal'] });
   assert.ok(!('fontCheck' in ok), 'fontCheck only when the check failed');
-  assert.deepEqual(fontCheckOutcome([face('Other', 'loaded')], null), { fontsFailed: [] });
+  assert.deepEqual(fontCheckOutcome([face('Other', 'loaded')], null), { fontsFailed: [], deadFaces: [] });
   const bad = fontCheckOutcome(null, new Error('page.evaluate: Execution context was destroyed\n    at main'));
   assert.deepEqual(bad, { fontsFailed: null, fontCheck: 'failed: page.evaluate: Execution context was destroyed' });
   assert.deepEqual(Object.keys(bad), ['fontsFailed', 'fontCheck'], 'fontCheck right after fontsFailed');

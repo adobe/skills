@@ -862,8 +862,8 @@ ENCODER and re-render the affected siblings; MISSING h1–h3 bands, hot bands ov
 page or |Δh| far beyond 5 % (a banded layout flattened) → RE-PROTOTYPE: the page leaves the
 template — the variance probe across the template's other pages decides a new archetype (two or
 more share the composition: craft, gate, deploy, migrate its siblings) or a standalone prototype
-(an archetype of one); tier and template change in `state.json`, the redirect row stays. Cap: 3
-fix rounds per page at the published origin, then this decision — never a fourth round.
+(an archetype of one); tier and template change in `state.json`, the redirect row stays. Cap:
+§ Iteration discipline (`rounds.mjs decide … --stage all-pages`), then this decision.
 Calibration on the recorded roster (96 pages): pixel-only 66 PASS → full 28 PASS; failing by
 criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-blocked origins).
 

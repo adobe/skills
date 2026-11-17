@@ -200,7 +200,7 @@ bookkeeping — no browser, no network:
                     A round without the flag retakes a live.png whose record says "baseline". Exit 0; 1 usage.
 
 Writes <out.png> and <stem>.capture.json beside it (live.png → live.capture.json; removed when a capture starts, so a
-failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, freeze, fontsFailed, fixedLayers,
+failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, freeze, fontsFailed, deadFaces (family|weight|style of each), fixedLayers,
 [heightChange,] at } — denialCheck = 'ok' | 'skipped: <reason>' (the denial-page read after the dismissal sweeps); freeze =
 'applied' | 'failed: <msg>' (the animation / transition freeze, a constructed stylesheet so a strict style-src CSP cannot
 reject it; a failure is a WARNING, never an exit); heightChange = { initial, final[, capped] }, present only when the
@@ -509,6 +509,11 @@ export function faceKey(f) {
  * a loaded twin is not dead (the text in that weight and style renders in the family); an 'unloaded' face was never
  * needed by any text and is not dead either. → the dead faces' families: unquoted, unique, sorted (fontFamilies).
  */
+export function deadFaceKeys(faces) {
+  const list = Array.isArray(faces) ? faces.filter((f) => f && typeof f === 'object') : [];
+  const loaded = new Set(list.filter((f) => f.status === 'loaded').map(faceKey));
+  return [...new Set(list.filter((f) => f.status === 'error' && !loaded.has(faceKey(f))).map(faceKey))].sort();
+}
 export function deadFontFaces(faces) {
   const list = Array.isArray(faces) ? faces.filter((f) => f && typeof f === 'object') : [];
   const loaded = new Set(list.filter((f) => f.status === 'loaded').map(faceKey));
@@ -521,7 +526,7 @@ export function deadFontFaces(faces) {
  * — a check that could not run is recorded as not checked, never as [].
  */
 export function fontCheckOutcome(faces, error) {
-  if (error == null && Array.isArray(faces)) return { fontsFailed: deadFontFaces(faces) };
+  if (error == null && Array.isArray(faces)) return { fontsFailed: deadFontFaces(faces), deadFaces: deadFaceKeys(faces) };
   const why = error != null ? String((error && error.message) || error).split('\n')[0] : 'no face list returned';
   return { fontsFailed: null, fontCheck: `failed: ${why}` };
 }

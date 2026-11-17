@@ -130,6 +130,7 @@
 #   decision closed the triple, the round ends with rounds.mjs's one line on stderr (it names
 #   the `rounds.mjs decide` command) and exit 6 — no curl, no capture. A round that ends with
 #   a verdict (exit 0 or 2) is recorded by `rounds.mjs record`; 1, 3, 4, 124 and 125 never are.
+#   A round that failed the overflow assert is recorded with --overflow: its re-run is not refused.
 #   STARDUST_ROUND_CAP=0 turns the refusal off (rounds are still recorded) — for a project
 #   mid-run when this check arrives. Without rounds.mjs beside this script: one stdout line,
 #   the round runs uncounted (re-copy the replica scripts dir).
@@ -228,7 +229,7 @@ if [ -f "$HERE/rounds.mjs" ]; then
   round_record() {
     [ "$ROUND_VERDICT" = 1 ] || return 0
     case "$1" in 0) v=pass ;; 2) v=fail ;; *) return 0 ;; esac
-    node "$HERE/rounds.mjs" record "$DIR" --stage "$REGIME" --label "$LBL" --verdict "$v" || echo "gate.sh: rounds.mjs record failed — this round is not in $DIR/rounds.json" >&2
+    node "$HERE/rounds.mjs" record "$DIR" --stage "$REGIME" --label "$LBL" --verdict "$v" ${ROUND_OVERFLOW:+--overflow} || echo "gate.sh: rounds.mjs record failed — this round is not in $DIR/rounds.json" >&2
   }
   trap 'round_record $?' EXIT
 else
@@ -409,6 +410,7 @@ PIXEL_RC=$?
 if [ -n "$OVER" ] && [ "$OVER" -gt "$OVF_TOL" ]; then
   echo "gate.sh: OVERFLOW at $W — build scrollWidth $SW > viewport $VP (+${OVER}px) → FAIL (hard assert: no iteration cap waives horizontal overflow; evidence $OVF)"
   [ "$PIXEL_RC" = 0 ] && PIXEL_RC=2
+  ROUND_OVERFLOW=1
 elif [ -n "$OVER" ]; then
   echo "gate.sh: overflow assert at $W — build scrollWidth $SW vs viewport $VP (+${OVER}px, within the ${OVF_TOL}px rounding tolerance) → ok"
 else

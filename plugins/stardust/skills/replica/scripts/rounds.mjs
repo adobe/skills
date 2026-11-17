@@ -20,20 +20,24 @@
  *           round would be its confirmation) or a decision is recorded:
  *           accept-residual                  closes the triple — every later round exits 6
  *           re-prototype                     once per gate dir: both stages start again (spent rounds kept in `history`)
- *           extend                           ONE more counted round; only at the cap, and the
- *                                            reason must name an evidence file in the gate dir
- *                                            (the instrument defect that spent a round)
+ *           extend                           ONE more counted round from where the triple stands
+ *                                            (also when it is already over the cap); only at the
+ *                                            cap, and the reason must name an evidence file in the
+ *                                            gate dir (the instrument defect that spent a round)
+ *   overflow  a round whose horizontal-overflow assert failed (`record --overflow`) is not a
+ *           residual: its re-run is never refused, and accept-residual is refused after it.
  *
  * Usage:
  *   node stardust/scripts/replica/rounds.mjs check  <gate-dir> --stage <s> --label <l>
- *   node stardust/scripts/replica/rounds.mjs record <gate-dir> --stage <s> --label <l> --verdict pass|fail
+ *   node stardust/scripts/replica/rounds.mjs record <gate-dir> --stage <s> --label <l> --verdict pass|fail [--overflow]
  *   node stardust/scripts/replica/rounds.mjs decide <gate-dir> --stage <s>
  *        --decision accept-residual|re-prototype|extend --reason "<text>"
  *   node stardust/scripts/replica/rounds.mjs status <gate-dir> [--json]
  *   node stardust/scripts/replica/rounds.mjs count  <gates-root> [--json]
  *
  *   <gate-dir>    stardust/replica/gates/<slug>-<width>   <gates-root>  stardust/replica/gates
- *   --stage       prototype | published
+ *   --stage       prototype | published; decide also takes all-pages (gate-all's roster rounds:
+ *                 counted and decided, never refused — gate-all does not call check)
  *   check   exit 0 and one line when the round may run; exit 6 and one line on stderr naming the
  *           count and the two ways forward when it may not. Writes the ledger when there is none.
  *   record  appends { label, at, verdict, kind } for the stage; prints the new count.
@@ -94,7 +98,9 @@ export function tally(ledger, stage) {
   const fix = rounds.filter((r) => r.kind === 'fix').length;
   const extensions = decisions.filter((d) => d.decision === 'extend').length;
   const closed = decisions.find((d) => CLOSING.includes(d.decision)) || null;
-  const allowance = CAP + extensions;
+  // An extension is one more counted round from where the stage stood when it was granted — a stage already over
+  // the cap (a failed confirmation, a reconstructed ledger) would otherwise get nothing from it.
+  const allowance = decisions.filter((d) => d.decision === 'extend').reduce((a, d) => Math.max(a, Number(d.counted) || 0) + 1, CAP);
   const last = rounds[rounds.length - 1] || null;
   return { rounds: rounds.length, counted, fix, confirm: rounds.length - counted, extensions, allowance, closed, last, over: Math.max(0, counted - allowance) };
 }
@@ -105,6 +111,7 @@ export function mayRun(ledger, stage) {
   if (t.closed) return { ok: false, why: 'closed', t };
   if (t.counted < t.allowance) return { ok: true, why: 'budget', t };
   if (t.last && t.last.verdict === 'pass') return { ok: true, why: 'confirmation', t };
+  if (t.last && t.last.overflow) return { ok: true, why: 'overflow', t };
   return { ok: false, why: 'cap', t };
 }
 
@@ -179,9 +186,9 @@ export function save(dir, ledger) {
   }
 }
 
-export function record(ledger, stage, label, verdict, at = new Date().toISOString()) {
+export function record(ledger, stage, label, verdict, at = new Date().toISOString(), { overflow = false } = {}) {
   const s = (ledger.stages[stage] ||= emptyStage());
-  const round = { label, at, verdict, kind: kindOf(s.rounds, verdict) };
+  const round = { label, at, verdict, kind: kindOf(s.rounds, verdict), ...(overflow && verdict === 'fail' ? { overflow: true } : {}) };
   s.rounds.push(round);
   return round;
 }
@@ -199,6 +206,7 @@ export function decide(ledger, stage, decision, reason, files = [], at = new Dat
     ledger.stages = {};
     return { entry };
   }
+  if (decision === 'accept-residual' && check.t.last && check.t.last.overflow) return { error: 'the last round failed the horizontal-overflow assert — overflow is not a residual; fix it and re-run (that round is not refused)' };
   if (decision === 'extend') {
     if (check.t.extensions) return { error: 'the one extension of this page, width and stage is spent — decide accept-residual or re-prototype' };
     if (check.why !== 'cap') return { error: `extend applies only when the cap is reached (${check.t.counted} of ${check.t.allowance} counted rounds spent${check.why === 'confirmation' ? '; the last round passed — a confirmation is free' : ''})` };
@@ -248,6 +256,7 @@ function parse(argv) {
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a === '--json') { flags.json = true; continue; }
+    if (a === '--overflow') { flags.overflow = true; continue; }
     if (!['--stage', '--label', '--verdict', '--decision', '--reason'].includes(a)) usage(`unknown argument ${a}`);
     if (rest[i + 1] === undefined) usage(`${a} needs a value`);
     flags[a.slice(2)] = rest[++i];
@@ -287,7 +296,7 @@ export function main(argv, env = process.env) {
     return 0;
   }
 
-  const stage = need('stage', STAGES);
+  const stage = need('stage', cmd === 'decide' ? [...STAGES, ROSTER_STAGE] : STAGES);
 
   if (cmd === 'check') {
     const label = need('label');
@@ -299,7 +308,7 @@ export function main(argv, env = process.env) {
       return 0;
     }
     if (ok) {
-      console.log(`rounds: ${name} ${stage} — round "${label}" may run: ${t.rounds ? describe(t) : 'the first round (the map)'}${why === 'confirmation' ? '; the last round passed, so a PASS here is its confirmation (a FAIL counts)' : ''}`);
+      console.log(`rounds: ${name} ${stage} — round "${label}" may run: ${t.rounds ? describe(t) : 'the first round (the map)'}${why === 'confirmation' ? '; the last round passed, so a PASS here is its confirmation (a FAIL counts)' : why === 'overflow' ? '; the last round failed the horizontal-overflow assert, which no cap waives' : ''}`);
       return 0;
     }
     const decideCmd = `node ${process.argv[1] && existsSync(process.argv[1]) ? process.argv[1] : 'stardust/scripts/replica/rounds.mjs'} decide ${target} --stage ${stage}`;
@@ -312,7 +321,7 @@ export function main(argv, env = process.env) {
     const label = need('label');
     const verdict = need('verdict', ['pass', 'fail']);
     const { ledger } = load(target, { skipLabel: label });
-    const round = record(ledger, stage, label, verdict);
+    const round = record(ledger, stage, label, verdict, undefined, { overflow: Boolean(flags.overflow) });
     save(target, ledger);
     const t = tally(ledger, stage);
     console.log(`rounds: ${name} ${stage} — recorded "${label}" ${verdict} as ${round.kind}: ${describe(t)}${t.over ? ` — OVER the cap by ${t.over}` : !t.closed && t.counted >= t.allowance && verdict === 'fail' ? ' — cap reached: the next round needs a decision (rounds.mjs decide)' : ''}`);

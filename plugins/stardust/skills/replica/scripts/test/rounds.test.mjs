@@ -40,6 +40,28 @@ let m = mayRun(L, 'prototype');
 check('first + two fix rounds, the last a FAIL: the next round is refused (cap)', !m.ok && m.why === 'cap' && m.t.counted === 3 && m.t.fix === 2);
 check('the other stage of the same gate dir is untouched', mayRun(L, 'published').ok && tally(L, 'published').counted === 0);
 
+// An extension is one more counted round from where the stage stands — also when it is already over the cap.
+L = emptyLedger();
+for (const [l, v] of [['iter1', 'fail'], ['iter2', 'fail'], ['iter3', 'pass'], ['confirm', 'fail']]) record(L, 'prototype', l, v);
+check('a failed confirmation: 4 counted of 3, the next round refused', tally(L, 'prototype').counted === 4 && !mayRun(L, 'prototype').ok);
+check('extend over the cap grants the one round it promises', !decide(L, 'prototype', 'extend', 'live.capture.json: fonts failed', ['live.capture.json']).error && mayRun(L, 'prototype').ok && tally(L, 'prototype').allowance === 5);
+record(L, 'prototype', 'iter5', 'fail');
+check('… and only one: the round after it is refused, a second extension too', !mayRun(L, 'prototype').ok && /spent/.test(decide(L, 'prototype', 'extend', 'live.capture.json again', ['live.capture.json']).error || ''));
+// Horizontal overflow is not a residual: its re-run is never refused, accept-residual is refused after it.
+L = emptyLedger();
+for (const l of ['iter1', 'iter2']) record(L, 'prototype', l, 'fail');
+record(L, 'prototype', 'iter3', 'fail', undefined, { overflow: true });
+m = mayRun(L, 'prototype');
+check('at the cap after an overflow round: the re-run may run', m.ok && m.why === 'overflow');
+check('accept-residual is refused after an overflow round', /overflow is not a residual/.test(decide(L, 'prototype', 'accept-residual', 'done').error || ''));
+record(L, 'prototype', 'iter4', 'fail');
+check('a later round without overflow is capped again', !mayRun(L, 'prototype').ok && mayRun(L, 'prototype').why === 'cap');
+check('a passing round never carries the overflow mark', record(emptyLedger(), 'prototype', 'x', 'pass', undefined, { overflow: true }).overflow === undefined);
+// gate-all's roster stage can be decided (never checked): a closed page is not named again.
+L = emptyLedger();
+for (const l of ['a1', 'a2', 'a3']) record(L, 'all-pages', l, 'fail');
+check('decide takes the roster stage', !decide(L, 'all-pages', 'accept-residual', 'template gap, registered').error && tally(L, 'all-pages').closed.decision === 'accept-residual');
+
 L = emptyLedger();
 for (const [l, v] of [['iter1', 'fail'], ['iter2', 'fail'], ['iter3', 'pass']]) record(L, 'prototype', l, v);
 m = mayRun(L, 'prototype');
@@ -178,7 +200,7 @@ const calls = join(root, 'calls.txt');
 const stub = (name, body) => writeFileSync(join(replica, name), `#!/usr/bin/env node\nimport { appendFileSync, writeFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(calls)}, '${name}\\n');\n${body}\n`);
 stub('stitch-shot.mjs', `const rc = Number(process.env.STUB_STITCH_RC || 0); if (rc) process.exit(rc);
   writeFileSync(process.argv[3], 'png'); writeFileSync(process.argv[3].replace(/\\.png$/, '.capture.json'), JSON.stringify({ fontsFailed: [], fixedLayers: {} }));`);
-stub('measure.mjs', `console.log('  root  scrollWidth 1440  viewport 1440  scrollHeight 5410');`);
+stub('measure.mjs', `const o = Number(process.env.STUB_OVERFLOW || 0); console.log('  root  scrollWidth ' + (1440 + o) + '  viewport 1440  scrollHeight 5410' + (o ? '  ◄◄ OVERFLOW +' + o + 'px' : ''));`);
 stub('pixel-compare.mjs', `console.log('differing 1.20%'); process.exit(Number(process.env.STUB_PIXEL_RC || 0));`);
 let hits = 0;
 const server = createServer((_req, res) => { hits++; res.end('<html><body>wired-proposed</body></html>'); });
@@ -220,7 +242,21 @@ r = await gate('iter4', { STUB_PIXEL_RC: '0', STARDUST_ROUND_CAP: '0' });
 check('gate.sh: STARDUST_ROUND_CAP=0 runs the round and still records it', r.status === 0 && stageRounds().length === 4 && /cap check off/.test(r.stdout), `status ${r.status} ${r.stderr}`);
 r = await gate('confirm', { STUB_PIXEL_RC: '0' });
 check('gate.sh: after a PASS the confirmation runs at the cap and is recorded as confirm', r.status === 0 && stageRounds().at(-1).kind === 'confirm');
+r = await gate('ovf', { STUB_PIXEL_RC: '0', STUB_OVERFLOW: '13' });
+check('gate.sh: a round that fails the overflow assert is recorded with the overflow mark', r.status === 2 && stageRounds().at(-1).overflow === true && stageRounds().at(-1).verdict === 'fail', `status ${r.status} ${r.stderr}`);
+r = await gate('ovf2', { STUB_PIXEL_RC: '0' });
+check('gate.sh: its re-run is not refused although the stage is over the cap', r.status === 0 && /overflow assert, which no cap waives/.test(r.stdout), `status ${r.status} ${r.stdout} ${r.stderr}`);
 
+{
+  const d = gateDir('roster-1440');
+  writeFileSync(join(d, 'rounds.json'), JSON.stringify({ version: 1, stages: { 'all-pages': { rounds: ['a', 'b', 'c'].map((label) => ({ label, at: '2026-01-01T00:00:00Z', verdict: 'fail', kind: label === 'a' ? 'first' : 'fix' })), decisions: [] } } }));
+  const r = cli(['decide', d, '--stage', 'all-pages', '--decision', 'accept-residual', '--reason', 'registered']);
+  check('CLI: decide --stage all-pages records the decision; check and record still refuse that stage', r.status === 0 && read(d).stages['all-pages'].decisions.length === 1
+    && cli(['check', d, '--stage', 'all-pages', '--label', 'x']).status === 125, `${r.status} ${r.stderr}`);
+  const o = gateDir('ovf-1440');
+  const rec = cli(['record', o, '--stage', 'prototype', '--label', 'iter1', '--verdict', 'fail', '--overflow']);
+  check('CLI: record --overflow marks the round', rec.status === 0 && read(o).stages.prototype.rounds[0].overflow === true, rec.stderr);
+}
 server.close();
 if (process.env.ROUNDS_TEST_KEEP) console.log(`sandbox kept at ${root}`);
 else rmSync(root, { recursive: true, force: true });

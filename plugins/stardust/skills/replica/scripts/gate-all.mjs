@@ -178,7 +178,7 @@ export function parseArgs(argv) {
  */
 export function shotFonts(record, { missing = 'no readable capture record (stitch-shot wrote no capture record — re-copy stitch-shot.mjs)' } = {}) {
   if (!record || typeof record !== 'object') return { fontsFailed: null, fontCheck: `failed: ${missing}` };
-  if (Array.isArray(record.fontsFailed)) return { fontsFailed: record.fontsFailed.filter((f) => typeof f === 'string' && f) };
+  if (Array.isArray(record.fontsFailed)) return { fontsFailed: record.fontsFailed.filter((f) => typeof f === 'string' && f), ...(Array.isArray(record.deadFaces) ? { deadFaces: record.deadFaces } : {}) };
   if (!('fontsFailed' in record)) return { fontsFailed: null, fontCheck: 'failed: the capture record predates the font check — re-copy stitch-shot.mjs' };
   return { fontsFailed: null, fontCheck: typeof record.fontCheck === 'string' ? record.fontCheck : 'failed: the check could not run' };
 }
@@ -191,8 +191,15 @@ const familyKey = (f) => f.trim().replace(/^["']+|["']+$/g, '').toLowerCase();
 export function fontsNotLoaded(originMeta, edsMeta) {
   const list = (m) => (m && Array.isArray(m.fontsFailed) ? m.fontsFailed : []).filter((f) => typeof f === 'string' && f.trim());
   const faces = new Map();
+  // 'both' only when the SOURCE lists the family (a family the build lists twice is still dead on the build alone),
+  // and — when both records carry the dead faces themselves (`deadFaces`: family|weight|style) — only when every face
+  // dead on the build is dead on the source too: a source-dead italic does not waive a build-dead regular.
+  const keys = (m) => (m && Array.isArray(m.deadFaces) ? m.deadFaces.filter((k) => typeof k === 'string') : null);
+  const oFaces = keys(originMeta); const eFaces = keys(edsMeta);
+  const onOrigin = new Set(list(originMeta).map(familyKey));
+  const covered = (fam) => !oFaces || !eFaces || eFaces.filter((k) => k.split('|')[0] === fam).every((k) => oFaces.includes(k));
   for (const f of list(originMeta)) faces.set(familyKey(f), { family: f, side: 'origin' });
-  for (const f of list(edsMeta)) faces.set(familyKey(f), { family: f, side: faces.has(familyKey(f)) ? 'both' : 'eds' });
+  for (const f of list(edsMeta)) { const k = familyKey(f); faces.set(k, { family: f, side: onOrigin.has(k) && covered(k) ? 'both' : 'eds' }); }
   return [...faces.values()].sort((a, b) => (a.family < b.family ? -1 : a.family > b.family ? 1 : 0));
 }
 /**
@@ -278,6 +285,8 @@ export function selectPages({ state = null, coverage = null, stage = 'published'
   }
   return { pages: [...fromState, ...fromCoverage, ...fromNamed].filter(keep), skipped: skipped.filter(keep), from: { state: fromState.filter(keep).length, coverage: fromCoverage.filter(keep).length, ...(fromNamed.length ? { named: fromNamed.length } : {}) } };
 }
+/** The --only slugs that selection neither kept nor listed as skipped: each gets its own NOT gated line. */
+export const unselected = (only, pages, skipped) => (only || []).filter((s) => !pages.some((p) => p.slug === s) && !skipped.some((x) => x.slug === s));
 /** stardust/migrated/<a>/<b>/index.html → /a/b ; …/x.html → /x ; the root index → / ; anything else → null. */
 export function migratedPathOf(file) {
   const m = /(?:^|\/)stardust\/migrated\/(.+)$/.exec(String(file || '')); if (!m) return null;
@@ -496,6 +505,7 @@ async function main() {
   const { pages, skipped, from } = selectPages({ state, coverage, stage: opts.stage, protoBase: opts.protoBase, edsHost: opts.edsHost, only: opts.only, protoExists: (f) => existsSync(f) });
   if (opts.stage === 'prototype' && !opts.protoBase) console.error('gate-all: --stage prototype without --proto-base — assuming http://localhost:8791 (serve the prototypes dir there, replica SKILL.md § Phase 4)');
   for (const s of skipped) console.error(`gate-all: ${s.slug} NOT gated — ${s.why}`);
+  for (const slug of unselected(opts.only, pages, skipped)) console.error(`gate-all: ${slug} NOT gated — named with --only, but neither ${opts.state} nor ${opts.coverage} has a row for that slug`);
   if (!pages.length) {
     console.error(opts.stage === 'prototype'
       ? `gate-all: no prototype pages selected — ${opts.state} has no row with a prototypePath and a url${opts.only ? ` among --only ${opts.only.join(',')}` : ''}`
@@ -695,7 +705,7 @@ async function main() {
   const rows = pages.map(rowOf);
   const n = (f) => rows.filter(f).length;
   const overCap = await recordRounds(measured.map((p) => rowOf(p)), opts);
-  if (overCap.length) log(`round cap (source-fidelity-gate.md § Iteration discipline) reached or passed on ${overCap.length} page(s): ${overCap.slice(0, 8).join(', ')}${overCap.length > 8 ? ', …' : ''} — rounds.mjs status <gate-dir>, then decide`);
+  if (overCap.length) log(`round cap (source-fidelity-gate.md § Iteration discipline) reached or passed on ${overCap.length} page(s): ${overCap.slice(0, 8).join(', ')}${overCap.length > 8 ? ', …' : ''} — fix per § What a failing row means, or record the decision: rounds.mjs decide ${join(dirname(opts.out), `<slug>-${opts.width}`)} --stage all-pages --decision accept-residual|re-prototype --reason "<why>" (a closed page is not listed again)`);
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.passWithOverride), fail: n((r) => !r.pass && !isErrorRow(r)), error: n(isErrorRow), probeErrors: n((r) => r.probeErrors.length > 0),
     failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), fontsNotLoaded: n((r) => r.fontsNotLoaded.some(fontFails)), fontsDeadOnSource: n((r) => r.fontsNotLoaded.some((f) => !fontFails(f))), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome') };
   totals.passWithOverrides = totals.pass + totals.overridePass;
@@ -712,7 +722,8 @@ async function main() {
  * A published-stage measurement that ended in a verdict is recorded beside gate.sh's rounds
  * (`gates/<slug>-<width>/rounds.json`), under its OWN stage: this verdict does not run gate.sh's probes,
  * so its pass must never read as gate.sh's pass or free a confirmation there. Recorded, never refused: the
- * roster run must not stop on one page's budget. → the slugs at or over the cap. Never throws.
+ * roster run must not stop on one page's budget. → the slugs at or over the cap with no closing decision
+ * (`rounds.mjs decide … --stage all-pages`). Never throws.
  */
 export async function recordRounds(rows, opts, { rounds = null, now = () => new Date().toISOString() } = {}) {
   if (opts.stage !== 'published' || !rows.length) return [];
@@ -727,7 +738,7 @@ export async function recordRounds(rows, opts, { rounds = null, now = () => new 
       R.record(ledger, R.ROSTER_STAGE, label, r.pass ? 'pass' : 'fail');
       R.save(d, ledger);
       const t = R.tally(ledger, R.ROSTER_STAGE);
-      if (!r.pass && t.counted >= t.allowance) over.push(r.slug);
+      if (!r.pass && !t.closed && t.counted >= t.allowance) over.push(r.slug);
     }
   } catch (e) { console.error(`gate-all: rounds not recorded — ${String(e && e.message ? e.message : e).split('\n')[0]}`); }
   return over;

@@ -27,7 +27,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, CHILD_FLAGS, DELIVERED, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -183,6 +183,11 @@ check('shotFonts: a record with a list is checked (strings only); null, an absen
 check('fontsNotLoaded: the metas\' fontsFailed of both sides with the side each face is dead on — sorted, one entry per family; a meta without a list (null, absent, a crawl shot, a failed capture) adds none', () => {
   assert.deepEqual(fontsNotLoaded(live(['B', 'A']), live(['A', 'C'])), [{ family: 'A', side: 'both' }, { family: 'B', side: 'origin' }, { family: 'C', side: 'eds' }]);
   assert.deepEqual(fontsNotLoaded(live(['"brand sans"']), live(['Brand Sans'])), [{ family: 'Brand Sans', side: 'both' }], 'one family whatever the quoting and case');
+  assert.deepEqual(fontsNotLoaded(live([]), live(['Brand Sans', 'brand sans'])), [{ family: 'brand sans', side: 'eds' }], 'a family the build lists twice is dead on the build alone');
+  const faces = (fontsFailed, deadFaces) => ({ ...live(fontsFailed), deadFaces });
+  assert.deepEqual(fontsNotLoaded(faces(['Brand'], ['brand|400|italic']), faces(['Brand'], ['brand|400|normal'])), [{ family: 'Brand', side: 'eds' }], 'a source-dead italic does not waive a build-dead regular');
+  assert.deepEqual(fontsNotLoaded(faces(['Brand'], ['brand|400|italic', 'brand|700|normal']), faces(['Brand'], ['brand|400|italic'])), [{ family: 'Brand', side: 'both' }], 'every build-dead face is dead on the source');
+  assert.deepEqual(fontsNotLoaded(live(['Brand']), faces(['Brand'], ['brand|400|normal'])), [{ family: 'Brand', side: 'both' }], 'a record without the faces (an older capture): by family, as before');
   assert.deepEqual(fontsNotLoaded({ instrument: 'crawl-fullpage' }, live(['Brand Sans'])), [{ family: 'Brand Sans', side: 'eds' }], 'a source with no check: not known dead there');
   assert.deepEqual(fontsNotLoaded(live(null), live(['A'])), [{ family: 'A', side: 'eds' }], 'null is not a family list');
   assert.deepEqual([{ family: 'A', side: 'origin' }, { family: 'A', side: 'both' }, { family: 'A', side: 'eds' }, 'A'].map(fontFails), [false, false, true, true], 'a bare family (no recorded side) fails as before');
@@ -775,9 +780,16 @@ await checkAsync('recordRounds: a published measurement with a verdict is a roun
     assert.deepEqual(await recordRounds([row('a', false)], opts, { now }), []);
     assert.deepEqual(await recordRounds([row('a', false), row('b', true)], opts, { now }), ['a'], 'three counted rounds, the last a FAIL: at the cap');
     assert.deepEqual([led('a').length, led('b').map((r) => r.kind)], [3, ['first', 'confirm']]);
+    const R = await import('../rounds.mjs'); const da = join(root, 'gates', 'a-1440'); const la = R.load(da).ledger;
+    assert.equal(R.decide(la, 'all-pages', 'accept-residual', 'registered').error, undefined); R.save(da, la);
+    assert.deepEqual(await recordRounds([row('a', false)], opts, { now }), [], 'a page closed by a decision on the roster stage is not named again');
     assert.equal(JSON.parse(readFileSync(join(root, 'gates', 'b-1440', 'rounds.json'), 'utf8')).stages.published, undefined, 'a pass here is never a gate.sh published round: it cannot free a confirmation there');
     assert.deepEqual(await recordRounds([row('a', false)], opts, { rounds: { load() { throw new Error('boom'); } } }), []);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('unselected: an --only slug that selection neither kept nor skipped gets its own NOT gated line', () => {
+  assert.deepEqual(unselected(['a', 'b', 'c'], [{ slug: 'a' }], [{ slug: 'b', why: 'x' }]), ['c']);
+  assert.deepEqual(unselected(null, [], []), []);
 });
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-all-help-'));

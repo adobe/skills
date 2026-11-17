@@ -305,9 +305,11 @@ export function unitsFor(families, slug, template = null, stage = null) {
 // ---- pure: origin cache identity -----------------------------------------------------------------------
 const CACHE_V = 2;
 /** What an origin inventory is a measurement OF; null without a slug (no cache). */
-export function cacheIdentity({ slug, width, origin, n, locale = 'en-US', units = [] } = {}) {
+export function cacheIdentity({ slug, width, origin, n, locale = 'en-US', units = [], warmup = null, consent = null, dismiss = [], noDismiss = false } = {}) {
   if (!slug) return null;
-  return { v: CACHE_V, slug: String(slug), width: Number(width), url: String(origin), n: Number(n), locale: String(locale), selectors: [...new Set(units.map((u) => u.origin))].sort() };
+  // `page`: what else decides the page that was measured — the overlay flags and the warm-up visit.
+  const page = JSON.stringify({ consent: consent || null, dismiss: [...(dismiss || [])].sort(), noDismiss: Boolean(noDismiss), warmup: warmup || null });
+  return { v: CACHE_V, slug: String(slug), width: Number(width), url: String(origin), n: Number(n), locale: String(locale), page, selectors: [...new Set(units.map((u) => u.origin))].sort() };
 }
 /** readCache / writeCache key: one file per slug and width (the pre-identity key was `<slug>-units`). */
 export const cacheKeyOf = (id) => (id ? `${id.slug}-${id.width}-units` : null);
@@ -315,7 +317,7 @@ export const cacheKeyOf = (id) => (id ? `${id.slug}-${id.width}-units` : null);
 export function cacheHit(cached, id) {
   if (!id || !cached || !cached._cache || !cached.bySel) return false;
   const c = cached._cache;
-  return c.v === id.v && c.slug === id.slug && c.width === id.width && c.url === id.url && c.n === id.n && c.locale === id.locale
+  return c.v === id.v && c.slug === id.slug && c.width === id.width && c.url === id.url && c.n === id.n && c.locale === id.locale && c.page === id.page
     && Array.isArray(c.selectors) && c.selectors.length === id.selectors.length && id.selectors.every((s, i) => c.selectors[i] === s && cached.bySel[s]);
 }
 

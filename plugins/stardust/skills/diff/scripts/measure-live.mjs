@@ -90,7 +90,7 @@ export async function visit(page, url, { warmup = null, settle: settleOpts = {},
   await page.waitForTimeout(2500);
   if (dismiss) { try { await dismissOverlays(page, { extra, lateWindowMs: isLiveHttpUrl(url) ? 4000 : 0 }); } catch { /* none */ } }
   const s = await settle(page, settleOpts);
-  if (dismiss) { try { await dismissOverlays(page, { lateWindowMs: 0 }); } catch { /* none */ } }
+  if (dismiss) { try { await dismissOverlays(page, { extra, lateWindowMs: 0 }); } catch { /* none */ } } // a modal that opened during the settle
   return { status: resp ? resp.status() : null, ...s };
 }
 
