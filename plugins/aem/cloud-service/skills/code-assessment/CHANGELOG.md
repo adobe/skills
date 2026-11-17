@@ -1,3 +1,10 @@
+## [1.1.3](https://github.com/adobe/skills/compare/code-assessment-v1.1.2...code-assessment-v1.1.3) (2026-11-17)
+
+
+### Bug Fixes
+
+* **aem:** code-assessment redacts compared values in every report ([#733](https://github.com/adobe/skills/issues/733)) ([e40ac25](https://github.com/adobe/skills/commit/e40ac25fb4b32e84270656bc2c65d992bc268be2))
+
 ## [1.1.2](https://github.com/adobe/skills/compare/code-assessment-v1.1.1...code-assessment-v1.1.2) (2026-11-17)
 
 
