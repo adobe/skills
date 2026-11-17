@@ -6,6 +6,8 @@ description: |
   every user request until AGENTS.md exists — not only the first chat. Never overwrites existing files.
 license: Apache-2.0
 compatibility: AEM as a Cloud Service projects (Java stack, Maven, Dispatcher).
+metadata:
+  version: "1.0.0"
 ---
 
 # Ensure AGENTS.md and CLAUDE.md (bootstrap)
