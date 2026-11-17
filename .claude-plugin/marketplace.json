@@ -228,7 +228,8 @@
     {
       "name": "commerce-app-review",
       "source": "./plugins/commerce/app-review",
-      "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange."
+      "description": "Self-review skill for Adobe Commerce App Builder apps before submitting to Adobe Exchange.",
+      "version": "1.0.0"
     },
     {
       "name": "run-workflow",
