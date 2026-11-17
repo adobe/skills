@@ -417,7 +417,8 @@ if [ "$BASELINE" = 1 ] && [ "$HAVE_BASE" = 0 ]; then
   case "$rc" in
     0) echo "gate.sh: ${WHY:-reference: frozen}" ;;
     2) echo "gate.sh: ${WHY:-reference: UNSTABLE; not frozen}" >&2
-       echo "gate.sh: REFERENCE UNSTABLE (exit 5) — the live page is not one page from capture to capture, so no build could meet it: NO VERDICT, the round is not counted. Pin the page's state and re-run — overlay flags (--consent <sel> / --dismiss <sel,…>), --locale <tag> — or read $DIR/reference-unstable.json (+ ref-*.png) and, when the variation is the page's own, freeze it anyway: node $HERE/reference.mjs freeze \"$LIVE_URL\" $DIR --width $W --force" >&2
+       FLAGS="${STITCH_OPTS[*]-}" # the round's overlay and locale flags: the forced freeze must capture the same page
+       echo "gate.sh: REFERENCE UNSTABLE (exit 5) — the live page is not one page from capture to capture, so no build could meet it: NO VERDICT, the round is not counted. Pin the page's state and re-run — overlay flags (--consent <sel> / --dismiss <sel,…>), --locale <tag> — or read $DIR/reference-unstable.json (+ ref-*.png) and, when the variation is the page's own, freeze it anyway: node $HERE/reference.mjs freeze \"$LIVE_URL\" $DIR --width $W${FLAGS:+ $FLAGS} --force" >&2
        exit 5 ;;
     3) [ -n "$WHY" ] && echo "gate.sh: $WHY" >&2; capture_failed reference 3 ;;
     124) echo "gate.sh: reference freeze hit its deadline (exit 124) — no verdict, re-run the round${WHY:+: $WHY}" >&2; exit 124 ;;
@@ -542,7 +543,7 @@ case "$PIXEL_RC" in 0|2) ROUND_VERDICT=1 ;; esac
 # Written for every round that reached a pixel verdict (0 or 2); a --full round writes it again with its probes.
 write_verdict() { # $@: probe triples (name rc evidence-file; an empty file = the probe did not run)
   [ "$ROUND_VERDICT" = 1 ] || return 0
-  G_PIXEL_RC="$PIXEL_RC" G_DIFF="$DIR/diff-$LBL.png" G_PXJ="$PXJ" G_BASE="$DIR/baseline.json" G_ORIGIN="$ORIGIN" G_STAGE="$REGIME" G_STRUCTURAL="${STRUCTURAL:-0}" G_LOST="${LOST:-0}" \
+  G_PENDING="${VERDICT_PENDING:-}" G_PIXEL_RC="$PIXEL_RC" G_DIFF="$DIR/diff-$LBL.png" G_PXJ="$PXJ" G_BASE="$DIR/baseline.json" G_ORIGIN="$ORIGIN" G_STAGE="$REGIME" G_STRUCTURAL="${STRUCTURAL:-0}" G_LOST="${LOST:-0}" \
   node -e 'const [out, round, width, ...a] = process.argv.slice(1); const fs = require("fs"); const e = process.env; const n = (k) => Number(e[k] || 0);
     const read = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
     const probes = {}; for (let i = 0; i + 2 < a.length; i += 3) if (a[i + 2]) probes[a[i]] = { rc: Number(a[i + 1]), evidence: a[i + 2] };
@@ -550,10 +551,14 @@ write_verdict() { # $@: probe triples (name rc evidence-file; an empty file = th
     const pixel = { rc: n("G_PIXEL_RC"), diff: e.G_DIFF, json: read(e.G_PXJ) ? e.G_PXJ : null, pct: j.pct ?? null, alignedPct: al ? al.pct : j.pct ?? null, alignedUsed: !!al, totalShift: al ? al.totalShift : 0,
       steps: al ? al.steps.slice(0, 12) : [], offsetBound: j.offsets ? j.offsets.bound : null, maskedRows: j.maskedRows ?? 0, noiseFloor: b && typeof b.noiseFloor === "number" ? b.noiseFloor : null, reason: j.reason ?? null };
     const reference = b ? { origin: "frozen", capturedAt: b.capturedAt ?? null, primed: b.primed === true, stable: b.stable !== false, maskArg: b.maskArg || "" } : { origin: "live" };
-    fs.writeFileSync(out, JSON.stringify({ round, width: Number(width), stage: e.G_STAGE, pixel, reference, probes, structural: n("G_STRUCTURAL"), nothingLost: n("G_LOST"), at: new Date().toISOString() }, null, 2) + "\n");' \
+    fs.writeFileSync(out, JSON.stringify({ round, width: Number(width), stage: e.G_STAGE, pixel, reference, probes, ...(e.G_PENDING ? { pending: "probes" } : {}), structural: n("G_STRUCTURAL"), nothingLost: n("G_LOST"), at: new Date().toISOString() }, null, 2) + "\n");' \
     "$DIR/verdict-$LBL.json" "$LBL" "$W" "$@" 2>/dev/null || true
 }
+# Under --full the probes have not run yet: the record says so (pending), and nothing reads it as a verdict —
+# a round killed in the probe phase leaves no pass on disk. The write after the probes drops the mark.
+[ "$FULL" = 1 ] && VERDICT_PENDING=1
 write_verdict
+VERDICT_PENDING=
 fonts_line live "$DIR/live.capture.json" "$([ "$ORIGIN" = frozen ] && echo "$DIR/baseline.json")"
 fonts_line build "$DIR/build.capture.json" ""
 [ "$FULL" = 1 ] || exit $PIXEL_RC

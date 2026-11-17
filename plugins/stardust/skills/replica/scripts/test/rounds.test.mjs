@@ -28,6 +28,7 @@ const read = (d) => JSON.parse(readFileSync(join(d, 'rounds.json'), 'utf8'));
 
 // ── pure ──────────────────────────────────────────────────────────────────────────────────────────────────────
 check('the cap is 3 counted rounds', CAP === 3);
+check('verdictOf: a --full record whose probes never finished (pending) is no verdict', verdictOf({ pixel: { rc: 0 }, pending: 'probes' }) === null && verdictOf({ pixel: { rc: 0 } }) === 'pass');
 let L = emptyLedger();
 check('an empty triple may run (the map)', mayRun(L, 'prototype').ok);
 check('kinds: first, then fix; a PASS after a PASS is confirm, a FAIL after a PASS is fix',

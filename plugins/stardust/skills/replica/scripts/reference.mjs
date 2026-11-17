@@ -19,7 +19,8 @@
  *      largest value per band over all pairs, each padded by --pad rows, touching ranges merged — and re-compares
  *      each pair with those rows masked: `outside` = the largest % left outside them;
  *   5. decides: STABLE when the heights agree within --height-max px, `outside` is at most --floor-max %, the
- *      variable regions cover at most --variable-max % of the rows and every font face loaded. Then baseline.png =
+ *      variable regions cover at most --variable-max % of the rows and the kept captures agree on their dead font faces (a face dead on the
+ *      source is recorded in fontsFailed for the gates' font rule, not a reason to refuse). Then baseline.png =
  *      ref-1 and baseline.json are written (both atomic) in the shape stitch-shot's `baseline <dir>` check accepts,
  *      extended (below). UNSTABLE (two different pages, not one noisy page): exit 2, one line, NO baseline — the
  *      captures and reference-unstable.json stay for inspection — unless --force.
@@ -81,7 +82,7 @@ freeze: one PRIMING capture is discarded (the shared live session reaches its st
 accepted), then N captures with identical flags (ref-1.png …) are compared pairwise. noiseFloor = the largest
 full-page %; variable regions = the rows where the page differs from itself (pixel-compare bands of --band rows above
 --band-min %, padded, merged; the diff image is not read); outside = the largest % with those rows masked. Stable
-(heights within --height-max, outside ≤ --floor-max, regions ≤ --variable-max % of the rows, fonts loaded) →
+(heights within --height-max, outside ≤ --floor-max, regions ≤ --variable-max % of the rows, the same dead font faces on every capture) →
 baseline.png (= ref-1) + baseline.json in <dir>, atomic: stitch-shot's baseline record plus primed, prime { height,
 pct, heightDelta }, captures, heights, noiseFloor, heightSpread, outside, variable [{ y, h, pct }], variableShare,
 maskArg, stable, reason, frozenAt, flags, thresholds. Unstable → nothing frozen; ref-*.png and
@@ -170,18 +171,20 @@ export function variableRegions(bands, { min = DEFAULTS.bandMin, pad = DEFAULTS.
 export const maskArg = (regions) => (regions || []).map((r) => `${r.y}:${r.h}`).join(',');
 
 // The decision. → { stable, reason } — reason is the one-line why when unstable, null otherwise.
-export function decide({ heights, outside, variableShare = 0, fontsFailed = [] }, { heightMax = DEFAULTS.heightMax, floorMax = DEFAULTS.floorMax, variableMax = DEFAULTS.variableMax } = {}) {
+export function decide({ heights, outside, variableShare = 0, fontsDiffer = null }, { heightMax = DEFAULTS.heightMax, floorMax = DEFAULTS.floorMax, variableMax = DEFAULTS.variableMax } = {}) {
   const spread = Math.max(...heights) - Math.min(...heights);
   if (spread > heightMax) return { stable: false, reason: `heights ${heights.join(' vs ')}` };
   if (variableShare > variableMax) return { stable: false, reason: `${round2(variableShare)}% of the rows differ between captures (bar ${variableMax}%)` };
   if (outside > floorMax) return { stable: false, reason: `${round2(outside)}% still differs outside the variable regions (bar ${floorMax}%)` };
-  if (fontsFailed === null || (Array.isArray(fontsFailed) && fontsFailed.length)) return { stable: false, reason: fontsFailed === null ? 'the font check could not run' : `fonts failed (${fontsFailed.join(', ')})` };
+  // A face dead on the source is what the source serves: it is recorded (fontsFailed) and the gates' font rule reads
+  // it. Only captures that DISAGREE on their dead faces are not one page.
+  if (fontsDiffer) return { stable: false, reason: `the captures' dead font faces differ (${fontsDiffer})` };
   return { stable: true, reason: null };
 }
 
 // Compare the captures pairwise and decide. deps.size(png) → { width, height }; deps.compare(a, b, { band, mask, out })
 // → { pct, heightDelta, bands }. Deterministic for the same captures.
-export function assess(pngs, o, deps, { diffDir, fontsFailed = [] } = {}) {
+export function assess(pngs, o, deps, { diffDir, fontsDiffer = null } = {}) {
   const sizes = pngs.map((p) => deps.size(p));
   const heights = sizes.map((s) => s.height);
   const pairs = [];
@@ -194,7 +197,7 @@ export function assess(pngs, o, deps, { diffDir, fontsFailed = [] } = {}) {
   const mask = maskArg(variable);
   const outside = mask ? Math.max(...pairs.map(([i, j]) => deps.compare(pngs[i], pngs[j], { band: o.band, mask, out: out(i, j, '-masked') }).pct)) : noiseFloor;
   const variableShare = overlap > 0 ? round2((100 * variable.reduce((n, r) => n + r.h, 0)) / overlap) : 0;
-  const verdict = decide({ heights, outside, variableShare, fontsFailed }, o);
+  const verdict = decide({ heights, outside, variableShare, fontsDiffer }, o);
   return { width: sizes[0].width, height: heights[0], captures: pngs.length, heights, noiseFloor, heightSpread: Math.max(...heights) - Math.min(...heights), outside, variable, variableShare, maskArg: mask, ...verdict,
     thresholds: { floorMax: o.floorMax, heightMax: o.heightMax, variableMax: o.variableMax, band: o.band, bandMin: o.bandMin, pad: o.pad } };
 }
@@ -204,7 +207,8 @@ export function verdictLine(r, how = 'frozen') {
   if (!r.stable && !r.forced) return `reference: UNSTABLE — ${r.reason}${r.primed ? ' after priming' : ''}; not frozen`;
   const size = `${r.width}×${r.height}`;
   const primed = r.primed ? ', primed' : '';
-  const forced = r.stable ? '' : ` (FORCED, unstable: ${r.reason})`;
+  const fonts = Array.isArray(r.fontsFailed) && r.fontsFailed.length ? `; dead on the source: ${r.fontsFailed.join(', ')}` : r.fontsFailed === null ? '; fonts not checked' : '';
+  const forced = `${fonts}${r.stable ? '' : ` (FORCED, unstable: ${r.reason})`}`;
   if (typeof r.noiseFloor !== 'number') return `reference: ${how} ${size}${primed}, noise floor not measured (frozen by stitch-shot --freeze-baseline; freeze --force measures it)`;
   const floor = `noise floor ${r.noiseFloor.toFixed(2)}%`;
   if (!r.variable.length) return `reference: ${how} ${size}${primed}, ${floor}, no variable region${forced}`;
@@ -216,6 +220,17 @@ const recordOf = (png) => `${png.replace(/\.png$/i, '')}.capture.json`;
 function writeJsonAtomic(file, obj) { const tmp = `${file}.${process.pid}.tmp`; writeFileSync(tmp, `${JSON.stringify(obj, null, 2)}\n`); renameSync(tmp, file); }
 const OURS = /^(prime|ref-\d|ref-diff-.*)\.(png|capture\.json)$|^reference-unstable\.json$/;
 
+// The font check of the first kept capture, as its record has it: the dead faces (families, and the faces themselves
+// when recorded), or null + fontCheck when the check could not run — never [] for a check that did not run.
+export function fontsOfRecord(rec) {
+  if (rec && Array.isArray(rec.fontsFailed)) return { fontsFailed: rec.fontsFailed, ...(Array.isArray(rec.deadFaces) ? { deadFaces: rec.deadFaces } : {}) };
+  return { fontsFailed: null, fontCheck: rec && typeof rec.fontCheck === 'string' ? rec.fontCheck : 'failed: the capture record has no font check' };
+}
+// → null when every kept capture reports the same dead faces (or none could be checked), else "a vs b".
+export function fontsDiffer(records) {
+  const keys = records.map((r) => (r && Array.isArray(r.fontsFailed) ? [...r.fontsFailed].sort().join(', ') || 'none' : 'not checked'));
+  return new Set(keys).size > 1 ? keys.join(' vs ') : null;
+}
 // → { code, line, result }.
 export function freeze(o, deps) {
   const have = deps.baselineCheck(o.dir, { url: o.url, width: o.width });
@@ -235,11 +250,11 @@ export function freeze(o, deps) {
   const prime = { height: deps.size(primePng).height, pct: first.pct, heightDelta: first.heightDelta };
   for (const f of [primePng, recordOf(primePng), join(o.dir, 'ref-diff-prime.png')]) rmSync(f, { force: true });
   const rec = deps.readJson(recordOf(refs[0])) || {};
-  const a = assess(refs, o, deps, { diffDir: o.dir, fontsFailed: 'fontsFailed' in rec ? rec.fontsFailed : [] });
+  const a = assess(refs, o, deps, { diffDir: o.dir, fontsDiffer: fontsDiffer(refs.map((p) => deps.readJson(recordOf(p)))) });
   const frozenAt = deps.now();
   const result = {
     writtenBy: WRITER, schema: 1, capturedAt: rec.at ?? frozenAt, url: o.url, width: o.width, vh: rec.vh ?? o.vh ?? null, height: a.height, settle: true,
-    chunks: rec.chunks ?? null, fontsFailed: Array.isArray(rec.fontsFailed) ? rec.fontsFailed : [], fixedLayers: rec.fixedLayers ?? null,
+    chunks: rec.chunks ?? null, ...fontsOfRecord(rec), fixedLayers: rec.fixedLayers ?? null,
     primed: true, prime, captures: a.captures, heights: a.heights, noiseFloor: a.noiseFloor, heightSpread: a.heightSpread, outside: a.outside,
     variable: a.variable, variableShare: a.variableShare, maskArg: a.maskArg, stable: a.stable, reason: a.reason, frozenAt,
     flags: { consent: o.consent, dismiss: o.dismiss, noDismiss: o.noDismiss, locale: o.locale, vh: o.vh, headed: o.headed }, thresholds: a.thresholds,

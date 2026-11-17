@@ -459,6 +459,7 @@ appendFileSync(process.env.STUB_LOG, cmd + ' ' + url + '\\n');
 if (process.env.STUB_ARGV) appendFileSync(process.env.STUB_ARGV, JSON.stringify(['reference', ...process.argv.slice(2)]) + '\\n');
 mkdirSync(dir, { recursive: true });
 for (const f of ['ref-1.png', 'ref-2.png', 'ref-diff-1-2.png', 'ref-1.capture.json']) writeFileSync(join(dir, f), 'x');
+if (url === process.env.STUB_REF_FAIL) { console.log('reference: not frozen — the capture met a bot challenge (stitch-shot exit 3)'); process.exit(3); }
 if (url === process.env.STUB_REF_UNSTABLE) { writeFileSync(join(dir, 'reference-unstable.json'), '{}'); console.log('reference: UNSTABLE — heights 5000 vs 5640 after priming; not frozen'); process.exit(2); }
 const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(',').filter(Boolean).map((m) => ({ y: Number(m.split(':')[0]), h: Number(m.split(':')[1]), pct: 9 }));
 writeFileSync(join(dir, 'baseline.png'), 'frozen');
@@ -983,6 +984,9 @@ check('reference: an UNSTABLE reference is an error row — reason reference-uns
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(shots().filter((x) => x.startsWith('freeze')), ['freeze https://origin.example/good', 'freeze https://origin.example/wobbly'], '--recapture-origin freezes every page again');
     assert.ok(spawned().filter((a) => a[0] === 'reference').every((a) => !a.includes('--force') && a.includes('--headed') && a[a.indexOf('--locale') + 1] === 'en-US'), 'never --force; the capture flags ride');
+    r = gateAll(['--recapture-origin'], { ...REF, STUB_REF_FAIL: 'https://origin.example/good' });
+    assert.deepEqual([r.status, rows().good.pass, existsSync(join(out, 'good/baseline.png')), existsSync(join(out, 'good/baseline.png.prev'))], [0, true, true, false], 'a re-freeze that ends without an answer (a challenge) keeps the previous reference and gates against it');
+    assert.match(r.stdout + r.stderr, /re-freeze exit 3 .* the previous frozen reference is kept/);
     r = gateAll(['--recapture-origin'], { ...REF, STUB_REF_UNSTABLE: 'https://origin.example/good' });
     assert.equal(r.status, 2);
     assert.deepEqual([rows().good.pct, totals().error, existsSync(join(out, 'good/baseline.png'))], [null, 1, false], 'a re-freeze that finds the page unstable leaves an error row and no reference');

@@ -103,7 +103,7 @@
  * are exported.
  */
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OFFSETS, pixelVerdict } from './pixel-compare.mjs';
@@ -630,7 +630,7 @@ async function main() {
   const fromReference = (refDir, out, how) => {
     const base = readJsonSafe(join(refDir, 'baseline.json')) || {};
     copyFileSync(join(refDir, 'baseline.png'), out);
-    const src = { writtenBy: 'gate-all.mjs', copiedFrom: join(refDir, 'baseline.png'), fixedLayers: base.fixedLayers, ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed } : {}) };
+    const src = { writtenBy: 'gate-all.mjs', copiedFrom: join(refDir, 'baseline.png'), fixedLayers: base.fixedLayers, ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
     writeFileSync(captureRecordOf(out), `${JSON.stringify(src, null, 2)}\n`);
     return { instrument: 'stitch-live', url: base.url, reference: referenceOf(base, refDir), note: `${how} ${join(refDir, 'baseline.png')} (the page's frozen reference — primed, not re-captured)`, ...shotFonts(src) };
   };
@@ -646,11 +646,12 @@ async function main() {
     // Where the origin comes from: a usable frozen reference (the archetype gate dir's, else the page dir's), the
     // prototype stage's cached live.png, or a reference frozen now (freezeInto). --recapture-origin deletes the
     // reference where it lives and freezes there again; --live-origin skips the reference altogether.
-    let refDir = null; let freezeInto = null;
+    let refDir = null; let freezeInto = null; const setAside = [];
     if (!opts.liveOrigin && !blocked) {
       if (opts.recaptureOrigin) {
         freezeInto = existsSync(join(gateDir, 'baseline.json')) || existsSync(join(gateDir, 'baseline.png')) ? gateDir : d;
-        for (const where of new Set([freezeInto, d])) for (const f of ['baseline.png', 'baseline.json']) rmSync(join(where, f), { force: true });
+        // set aside, not deleted: a freeze that ends without an answer (challenge, deadline, error) puts it back
+        for (const where of new Set([freezeInto, d])) for (const f of ['baseline.png', 'baseline.json']) { const from = join(where, f); if (existsSync(from)) { renameSync(from, `${from}.prev`); setAside.push(from); } }
       } else if (await usable(gateDir, p)) refDir = gateDir;
     }
     let useCached = !refDir && !freezeInto && opts.stage === 'prototype' && existsSync(cachedLive);
@@ -660,7 +661,10 @@ async function main() {
     if (freezeInto) {
       const s = await run('node', [REFERENCE, 'freeze', p.url, freezeInto, '--width', String(opts.width), ...passThrough('stitch-shot', opts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), '--headed'], { timeoutMs: 3 * 480000 });
       const line = lastLine(s.out).replace(/^reference: /, '');
-      if (s.code === 0) {
+      // frozen (0) or measured unstable (2): the old reference is superseded; anything else answered nothing
+      for (const from of setAside) { if (s.code === 0 || s.code === 2) rmSync(`${from}.prev`, { force: true }); else renameSync(`${from}.prev`, from); }
+      if (s.code !== 0 && s.code !== 2 && setAside.length && await usable(freezeInto, p)) { refDir = freezeInto; log(`origin ${p.slug}: re-freeze exit ${s.code} (${line || lastLine(s.err)}) — the previous frozen reference is kept`); }
+      else if (s.code === 0) {
         refDir = freezeInto;
         // the page dir keeps the frozen reference only: reference.mjs's kept captures and their diffs go (#156, disk)
         if (freezeInto === d) for (const f of readdirSync(d)) if (/^ref-(\d|diff-).*\.(png|capture\.json)$/.test(f)) rmSync(join(d, f), { force: true });
@@ -675,7 +679,7 @@ async function main() {
       // its record goes with it (a frozen-baseline copy has none: baseline.json's fixedLayers and fontsFailed stand in),
       // so a later --skip-existing round reads the same rule, and the font check (shotFonts) reads the record that went
       const base = readJsonSafe(join(dirname(cachedLive), 'baseline.json')) || {};
-      const src = readJsonSafe(captureRecordOf(cachedLive)) || { writtenBy: 'gate-all.mjs', copiedFrom: cachedLive, fixedLayers: base.fixedLayers, ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed } : {}) };
+      const src = readJsonSafe(captureRecordOf(cachedLive)) || { writtenBy: 'gate-all.mjs', copiedFrom: cachedLive, fixedLayers: base.fixedLayers, ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
       writeFileSync(captureRecordOf(out), `${JSON.stringify(src, null, 2)}\n`);
       r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...shotFonts(src) };
     }

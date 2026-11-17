@@ -117,7 +117,7 @@ export function mayRun(ledger, stage) {
 
 /** gate.sh's exit rule over one verdict-<label>.json → 'pass' | 'fail' | null (no verdict). */
 export function verdictOf(v) {
-  if (!v || typeof v !== 'object' || !v.pixel) return null;
+  if (!v || typeof v !== 'object' || !v.pixel || v.pending) return null; // pending: a --full round whose probes never finished
   const probes = v.probes && typeof v.probes === 'object' ? v.probes : {};
   const rcs = Object.values(probes).map((p) => Number(p && p.rc));
   const pixel = Number(v.pixel.rc);

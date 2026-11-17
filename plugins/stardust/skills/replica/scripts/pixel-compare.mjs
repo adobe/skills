@@ -134,7 +134,7 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 // pngjs and pixelmatch load inside main(): the aligner below is pure and its test imports this module without them.
-import { readFileSync, writeFileSync, mkdirSync, realpathSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, realpathSync, rmSync } from 'fs';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { runCapped, DEADLINE_EXIT } from './run-capped.mjs';
@@ -245,6 +245,10 @@ function cropWidth(img, w) {
   return { width: w, height: img.height, data };
 }
 
+// The aligned diff picture beside <out>: <out stem>-aligned.png (diff-report's pickDiff skips it).
+export const alignedPathOf = (stem) => `${stem}-aligned.png`;
+// A mean colour difference (−255..255) as one signature byte: 128 ± half, clamped — 128 + 128 would wrap to 0.
+export const chroma = (mean) => Math.max(0, Math.min(255, 128 + Math.round(mean / 2)));
 // Per-row signature of an RGBA buffer: K luminance means, then C (R−G) and C (B−G) means; `flat` marks uniform rows.
 export function rowSignatures(data, w, h) {
   const K = Math.max(1, Math.min(ALIGN.buckets, w >> 2)); const C = Math.max(1, K >> 2); const S = K + 2 * C;
@@ -263,7 +267,7 @@ export function rowSignatures(data, w, h) {
     }
     const o = y * S;
     for (let k = 0; k < K; k += 1) sig[o + k] = Math.round(lum[k] / kN[k]);
-    for (let c = 0; c < C; c += 1) { sig[o + K + c] = 128 + Math.round(cr[c] / cN[c] / 2); sig[o + K + C + c] = 128 + Math.round(cb[c] / cN[c] / 2); }
+    for (let c = 0; c < C; c += 1) { sig[o + K + c] = chroma(cr[c] / cN[c]); sig[o + K + C + c] = chroma(cb[c] / cN[c]); }
     flat[y] = hi - lo <= ALIGN.flatRange ? 1 : 0;
   }
   return { sig, S, flat, rows: h };
@@ -675,9 +679,10 @@ async function main() {
     const reason = alignVerdict(cand, pct, b.height - a.height);
     const r1 = (x) => Number(x.toFixed(1));
     if (reason) {
+      rmSync(alignedPathOf(stem), { force: true }); // an earlier run's aligned picture is not this run's
       aligned = { used: false, pct: Number(pct.toFixed(2)), differingPixels: n, compared: { width: w, height: h, mode: 'overlap' }, steps: [], maxOffset: 0, totalShift: 0, insertedRows: 0, deletedRows: 0, bands: bands.map((x) => ({ y0: x.y0, y1: x.y1, pct: r1(x.pct), unaligned: r1(x.pct) })), diff: null, reason, candidate: { pct: Number(cand.pct.toFixed(2)), steps: cand.steps.length, totalShift: cand.totalShift } };
     } else {
-      const alignedOut = `${stem}-aligned.png`;
+      const alignedOut = alignedPathOf(stem);
       writeFileSync(alignedOut, PNG.sync.write({ width: w, height: a.height, data: cand.diff }));
       aligned = { used: true, pct: Number(cand.pct.toFixed(2)), differingPixels: cand.differing, compared: { width: w, height: cand.rows, mode: 'aligned' }, steps: cand.steps, maxOffset: cand.maxOffset, totalShift: cand.totalShift, insertedRows: cand.insertedRows, deletedRows: cand.deletedRows, bands: cand.bands.map((x, i) => ({ y0: x.y0, y1: x.y1, pct: r1(x.pct), unaligned: bands[i] && bands[i].y1 === x.y1 ? r1(bands[i].pct) : null })), diff: alignedOut, reason: null };
     }

@@ -21,7 +21,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  ALIGN, alignVerdict, alignedCompare, alignedLine, offsetBound, offsetBreakpoints, offsetMap, offsetsText, pixelVerdict, rowSignatures, stepsOf,
+  ALIGN, alignVerdict, alignedCompare, alignedPathOf, chroma, alignedLine, offsetBound, offsetBreakpoints, offsetMap, offsetsText, pixelVerdict, rowSignatures, stepsOf,
 } from '../pixel-compare.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -224,6 +224,14 @@ function suite(label, countDiff) {
 }
 
 // ── unit pieces ──────────────────────────────────────────────────────────────
+check('chroma: a signature byte is clamped — pure red (R−G = 255) is 255, never 256 wrapped to 0', () => {
+  assert.deepEqual([chroma(255), chroma(-255), chroma(0), chroma(254)], [255, 1, 128, 255]);
+  const red = Buffer.alloc(16 * 4); for (let i = 0; i < 16; i += 1) { red[i * 4] = 255; red[i * 4 + 3] = 255; }
+  const near = Buffer.from(red); for (let i = 0; i < 16; i += 1) near[i * 4] = 250;
+  const { sig: a } = rowSignatures(red, 16, 1); const { sig: b } = rowSignatures(near, 16, 1);
+  assert.ok(Math.max(...[...a].map((v, i) => Math.abs(v - b[i]))) <= 4, 'a saturated row and a near-identical one stay close');
+  assert.equal(alignedPathOf('d/diff-iter1'), 'd/diff-iter1-aligned.png');
+});
 check('rowSignatures: one signature per row, uniform rows flagged, equal rows equal', () => {
   const rows = [blank(), blocks(0, 1), blocks(1, 1), blocks(6, 1)];
   const s = rowSignatures(buf(rows), W, rows.length);

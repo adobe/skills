@@ -552,7 +552,10 @@ r = await refRound('ref1', 'r3', ['--full']);
 check('a --full round on the default origin: the probes run against the live URL, the verdict file keeps the pixel numbers beside the probes', r.status === 0 && attempts().join(',') === 'BUILD' && /^content-diff: none/m.test(r.stdout)
   && readFileSync(join(root, gdir('ref1'), 'content-diff-r3.txt'), 'utf8').length > 0 && verdictJson('ref1', 'r3').pixel.noiseFloor === 2.31 && verdictJson('ref1', 'r3').probes['content-diff'].rc === 0 && verdictJson('ref1', 'r3').pixel.rc === 0, `status ${r.status} ${r.stdout}`);
 
+check('a finished --full round leaves no pending mark in its verdict file', verdictJson('ref1', 'r3').pending === undefined);
 // An unstable reference: no verdict, a distinct exit, nothing recorded.
+r = await refRound('refunl', 'u0', ['--locale', 'de-DE'], { STUB_REF_RC: '2' });
+check('the forced-freeze command of the exit-5 message carries the round\'s locale and overlay flags', r.status === 5 && /--width 1440 --locale de-DE --force$/m.test(r.stderr), r.stderr);
 resetCount(); resetRefArgs();
 r = await refRound('refun', 'u1', ['--full'], { STUB_REF_RC: '2' });
 check('an UNSTABLE reference ends the round with exit 5 after ONE freeze: no retry, no build capture, no pixel line, no probe', r.status === 5 && attempts().join(',') === 'REF' && !/differing|overflow assert|content-diff/.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')} ${r.stdout}`);

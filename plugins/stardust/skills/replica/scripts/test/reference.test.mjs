@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, decide, freeze, main, maskArg, mergeBands, parseArgs, variableRegions, verdictLine } from '../reference.mjs';
+import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, decide, fontsDiffer, fontsOfRecord, freeze, main, maskArg, mergeBands, parseArgs, variableRegions, verdictLine } from '../reference.mjs';
 import { baselineStatus } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -77,8 +77,15 @@ await check('decide: the table', () => {
   assert.equal(decide({ heights: [3000, 3000], outside: 1.4 }, { floorMax: 2 }).stable, true);
   assert.equal(decide({ heights: [3000, 3000], outside: 0.02, variableShare: 12 }).stable, true, 'noisy only inside the regions');
   assert.match(decide({ heights: [3000, 3000], outside: 0, variableShare: 80 }).reason, /80% of the rows differ/);
-  assert.match(decide({ heights: [3000, 3000], outside: 0, fontsFailed: ['Brand Sans'] }).reason, /fonts failed \(Brand Sans\)/);
-  assert.match(decide({ heights: [3000, 3000], outside: 0, fontsFailed: null }).reason, /font check could not run/);
+  assert.match(decide({ heights: [3000, 3000], outside: 0, fontsDiffer: 'Brand Sans vs none' }).reason, /dead font faces differ \(Brand Sans vs none\)/);
+  // a face dead on the source is what the source serves: the same on every capture, it is recorded, not unstable
+  assert.equal(fontsDiffer([{ fontsFailed: ['B', 'A'] }, { fontsFailed: ['A', 'B'] }]), null);
+  assert.equal(fontsDiffer([{ fontsFailed: [] }, { fontsFailed: [] }]), null); assert.equal(fontsDiffer([{ fontsFailed: null }, {}]), null);
+  assert.equal(fontsDiffer([{ fontsFailed: ['A'] }, { fontsFailed: [] }]), 'A vs none'); assert.equal(fontsDiffer([{ fontsFailed: [] }, { fontsFailed: null }]), 'none vs not checked');
+  assert.deepEqual(fontsOfRecord({ fontsFailed: ['A'], deadFaces: ['a|400|normal'] }), { fontsFailed: ['A'], deadFaces: ['a|400|normal'] });
+  assert.deepEqual(fontsOfRecord({ fontsFailed: null, fontCheck: 'failed: timeout' }), { fontsFailed: null, fontCheck: 'failed: timeout' }, 'a check that did not run is never []');
+  assert.equal(fontsOfRecord({}).fontsFailed, null);
+  assert.match(verdictLine({ stable: true, width: 1440, height: 3000, primed: true, noiseFloor: 0, variable: [], fontsFailed: ['Brand Sans'] }, 'frozen'), /dead on the source: Brand Sans/);
   assert.equal(decide({ heights: [3000, 3000, 3020], outside: 0 }).stable, false, 'three captures: the spread');
 });
 
