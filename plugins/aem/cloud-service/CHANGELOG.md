@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3](https://github.com/adobe/skills/compare/plugin/aem-cloud-service/v1.4.2...plugin/aem-cloud-service/v1.4.3) (2026-11-17)
+
+
+### Bug Fixes
+
+* **aem:** ensure-agents-md-cloud-service holds off until changes are agreed ([#731](https://github.com/adobe/skills/issues/731)) ([6bf8667](https://github.com/adobe/skills/commit/6bf86677348528795672cfea04b52e9fcd064200))
+
 ## [1.4.2](https://github.com/adobe/skills/compare/plugin/aem-cloud-service/v1.4.1...plugin/aem-cloud-service/v1.4.2) (2026-11-17)
 
 
