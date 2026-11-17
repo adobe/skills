@@ -195,9 +195,14 @@ Copy this structure; keep section headings so runs are comparable across session
 |------|---------|----------------|----------------|
 | <path>:<line> | <snippet> | apply \| skipped \| apply (guided) | <before → after, skip reason, or guide to open> |
 
+**Redact secrets everywhere in the report.** Name the cookie, header or parameter, never the value
+it is compared against, nor a token, password or other secret from the code, configuration or
+environment: write `<redacted>` in its place, in every cell and in the text around the table. This
+holds in a multi-pattern scan as much as in a single-pattern run.
+
 **Same columns for every pattern — mechanical *and* guided.** `Finding` is the analyzer `snippet`
-(present for every pattern). `Planned action` is the **per-site disposition from that pattern's own
-Resolution contract** — `apply`, `apply → N`, `skipped — <reason>` (e.g. `needs-pagination`,
+(present for every pattern), as the analyzer gave it: don't add values to it from the file.
+`Planned action` is the **per-site disposition from that pattern's own Resolution contract** — `apply`, `apply → N`, `skipped — <reason>` (e.g. `needs-pagination`,
 `test-scope`, `already-compliant`), or `apply (guided)` for architectural patterns whose
 Resolution contract has no finer per-site action (remediation opens the expert guide — name it in
 *Target / notes*). **Do not collapse a pattern to one blanket action from its `fix` kind:** a
