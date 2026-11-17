@@ -15,7 +15,7 @@ The short list of what catches agents out here. [CONTRIBUTING.md](CONTRIBUTING.m
 - **Skill names are global.** GitHub Copilot CLI loads skills by bare name, so don't reuse a name that another plugin has.
 - **Only the folders directly under `skills/` are skills.** No client loads a `SKILL.md` deeper down.
 - **Hooks need two identical copies:** `hooks/hooks.json` for Claude Code and `com.github.copilot/hooks/hooks.json` for Copilot CLI. Antigravity runs no hooks, and reads only the first 24,000 bytes of a `SKILL.md`.
-- **Some plugins are synced from other repositories.** Change the Commerce plugins (`adobe/aio-commerce-sdk`), `adobe-for-creativity` and the skill of `run-workflow` where they come from, not here.
+- **Don't touch what is brought in from another repository.** The Commerce plugins (`adobe/aio-commerce-sdk`), `adobe-for-creativity` and the skill of `run-workflow` are copies, and don't meet the rules here on purpose. Leave them out of a change to other plugins, a refactoring or a cleanup: a pull request that changes them, by anyone but their code owners, is closed. See [CONTRIBUTING.md](CONTRIBUTING.md#brought-in-from-another-repository).
 - **A new plugin needs four entries:** a root `plugin.json` with the Tessl target `adobe/<plugin>`, a marketplace entry written by hand (`name`, `source`, `category`), a CODEOWNERS line and a row in `README.md`.
 
 ## Security

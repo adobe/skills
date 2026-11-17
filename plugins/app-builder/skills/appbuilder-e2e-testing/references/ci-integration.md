@@ -47,26 +47,7 @@ Use `assets/e2e-ci-workflow.yml` as the base template. Key steps:
 
 ### Simplified workflow (without dev server)
 
-If tests stub all action responses with `page.route()`, you may not need a dev server:
-
-```yaml
-steps:
-  - uses: actions/checkout@v7
-  - uses: actions/setup-node@v7
-    with:
-      node-version: '18'
-      cache: 'npm'
-  - run: npm ci
-  - run: npx playwright install --with-deps chromium
-  - run: npx playwright test
-    env:
-      CI: true
-  - uses: actions/upload-artifact@v7
-    if: always()
-    with:
-      name: playwright-report
-      path: playwright-report/
-```
+If tests stub all action responses with `page.route()`, you don't need a dev server: `assets/e2e-ci-workflow.yml` is that workflow. Its Node.js 20 meets `@playwright/test` (`>=20`); if a job also runs `aio app dev`, the runner needs Node.js 20.17 or later for `@adobe/aio-cli` 11.
 
 ## Headless Configuration
 
@@ -146,16 +127,7 @@ jobs:
     needs: unit-tests  # run after unit tests pass
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with: { node-version: '18', cache: 'npm' }
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npx playwright test
-        env: { CI: true }
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with: { name: playwright-report, path: playwright-report/ }
+      # ... the steps of assets/e2e-ci-workflow.yml ...
 ```
 
 ### Gate pattern

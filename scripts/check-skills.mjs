@@ -24,6 +24,10 @@
 //                              counts only for a plugin without a root plugin.json: with
 //                              one, GitHub Copilot CLI reads that and not the manifest.
 //
+// What is brought in from another repository (lib/imported.mjs) is left out of the lists:
+// scripts/check-imported.mjs holds a pull request that changes it to these rules. Its skills
+// still count as names another skill may not have.
+//
 // main has skills that break them, so the rules are enforced the boy-scout way
 // (.boy-scout.json): a pull request that changes a SKILL.md which breaks a rule has to fix
 // it, and nobody has to fix a file they didn't touch. Run from the repository root:
@@ -33,6 +37,7 @@
 //                                                 limit and its eval
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
+import { isImported } from './lib/imported.mjs';
 import { isMain } from './lib/is-main.mjs';
 
 export const MAX_LINES = 500;
@@ -177,7 +182,8 @@ export function readSkills(root) {
 const thousands = (number) => number.toLocaleString('en-US');
 
 // Every violation under root/plugins, as { rule, file, detail }, sorted. file is the SKILL.md.
-export function findViolations(root) {
+// `only` picks the files to report on; by default all but those brought in from elsewhere.
+export function findViolations(root, only = (file) => !isImported(file)) {
   const skills = readSkills(root);
   const violations = [];
   for (const skill of skills) {
@@ -213,7 +219,7 @@ export function findViolations(root) {
       });
     }
   }
-  return violations.sort((a, b) => `${a.rule} ${a.file}`.localeCompare(`${b.rule} ${b.file}`));
+  return violations.filter(({ file }) => only(file)).sort((a, b) => `${a.rule} ${a.file}`.localeCompare(`${b.rule} ${b.file}`));
 }
 
 function main() {
