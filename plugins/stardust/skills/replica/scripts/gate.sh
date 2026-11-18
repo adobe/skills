@@ -122,7 +122,20 @@
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 124 instrument deadline exceeded (not a measurement — see below),
 # 125 unknown argument (usage) or --gate-against-baseline without a usable
-# frozen baseline (freeze one, or drop the flag).
+# frozen baseline (freeze one, or drop the flag), 6 round refused by the cap.
+#
+# Round cap (source-fidelity-gate.md § Iteration discipline): before any other work
+#   `rounds.mjs check` reads <evidence dir>/rounds.json for this stage (prototype | published
+#   — the regime rule under --full, GATE_REGIME overrides); at the cap, or after a recorded
+#   decision closed the triple, the round ends with rounds.mjs's one line on stderr (it names
+#   the `rounds.mjs decide` command) and exit 6 — no curl, no capture. A round that ends with
+#   a verdict (exit 0 or 2) is recorded by `rounds.mjs record`; 1, 3, 4, 124 and 125 never are.
+#   A round that failed the overflow assert is recorded with --overflow: its re-run is not refused.
+#   STARDUST_ROUND_CAP=0 turns the refusal off (rounds are still recorded) — for a project
+#   mid-run when this check arrives. The guard fails closed: without rounds.mjs beside this
+#   script, or when its check ends with any code other than 0 or 6, the round does not run
+#   (exit 1, before any curl or capture) — re-copy the replica scripts dir, or repair
+#   <evidence dir>/rounds.json. Only STARDUST_ROUND_CAP=0 runs a round the guard could not check.
 #
 # Instrument deadlines + stale reap: every node step runs under
 # run-capped.mjs (macOS has no `timeout`). Three field migrations (2026-08/09)
@@ -203,6 +216,32 @@ PROBE_TIMEOUT=${GATE_PROBE_TIMEOUT:-300}
 OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
 case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
+# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
+case "${GATE_REGIME:-auto}" in
+  prototype|published) REGIME=$GATE_REGIME ;;
+  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
+esac
+# Round cap (header § Round cap): check before anything is reaped, fetched or captured, so a refused round costs
+# one node start; record on exit, only for a round that reached a verdict (ROUND_VERDICT) and exits 0 or 2.
+ROUND_VERDICT=0
+if [ -f "$HERE/rounds.mjs" ]; then
+  node "$HERE/rounds.mjs" check "$DIR" --stage "$REGIME" --label "$LBL"; rc=$?
+  [ "$rc" -eq 6 ] && exit 6
+  if [ "$rc" -ne 0 ]; then
+    if [ "${STARDUST_ROUND_CAP:-}" = 0 ]; then echo "gate.sh: rounds.mjs check exited $rc — the round runs unchecked (STARDUST_ROUND_CAP=0)" >&2
+    else echo "gate.sh: rounds.mjs check exited $rc — the cap could not be checked, so the round does not run (repair $DIR/rounds.json, or STARDUST_ROUND_CAP=0 to run without the cap)" >&2; exit 1; fi
+  fi
+  round_record() {
+    [ "$ROUND_VERDICT" = 1 ] || return 0
+    case "$1" in 0) v=pass ;; 2) v=fail ;; *) return 0 ;; esac
+    node "$HERE/rounds.mjs" record "$DIR" --stage "$REGIME" --label "$LBL" --verdict "$v" ${ROUND_OVERFLOW:+--overflow} || echo "gate.sh: rounds.mjs record failed — this round is not in $DIR/rounds.json" >&2
+  }
+  trap 'round_record $?' EXIT
+elif [ "${STARDUST_ROUND_CAP:-}" = 0 ]; then
+  echo "gate.sh: $HERE/rounds.mjs missing — the round runs uncounted (STARDUST_ROUND_CAP=0); re-copy the replica scripts dir (replica SKILL.md § Setup)"
+else
+  echo "gate.sh: $HERE/rounds.mjs missing — the cap cannot be checked, so the round does not run; re-copy the replica scripts dir (replica SKILL.md § Setup), or STARDUST_ROUND_CAP=0 to run without the cap" >&2; exit 1
+fi
 # --gate-against-baseline (header § flags; default OFF): the flag's precondition is settled before any process is
 # reaped or any capture spent. `stitch-shot.mjs baseline <dir> --url --width` answers with the frozen baseline's
 # capturedAt (exit 0) or the one-line reason it is unusable (exit 1) — then the round ends with that line: the flag
@@ -338,9 +377,10 @@ else
   fi
 fi
 
-# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same overlay flags as
-# the live side — a symmetric instrument (the build has nothing to dismiss, so the flags are no-ops there).
-capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
+# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same --settle pass and
+# overlay flags as the live side — a symmetric instrument, as gate-all's (the build has nothing to dismiss, so those
+# flags are no-ops there; an unsettled build against a settled origin measured 6 points apart on one deployed page).
+capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
 retry_once "build capture" capture_build
 rc=$?
 [ $rc -ne 0 ] && capture_failed build "$rc"
@@ -377,6 +417,7 @@ PIXEL_RC=$?
 if [ -n "$OVER" ] && [ "$OVER" -gt "$OVF_TOL" ]; then
   echo "gate.sh: OVERFLOW at $W — build scrollWidth $SW > viewport $VP (+${OVER}px) → FAIL (hard assert: no iteration cap waives horizontal overflow; evidence $OVF)"
   [ "$PIXEL_RC" = 0 ] && PIXEL_RC=2
+  ROUND_OVERFLOW=1
 elif [ -n "$OVER" ]; then
   echo "gate.sh: overflow assert at $W — build scrollWidth $SW vs viewport $VP (+${OVER}px, within the ${OVF_TOL}px rounding tolerance) → ok"
 else
@@ -396,6 +437,7 @@ fonts_line() { # $1 side, $2 record, $3 the frozen baseline's record (live side 
     else if (j.fontsFailed.length) console.log(`gate.sh: fonts on the ${side} capture — DEAD FACE(S) ${j.fontsFailed.join(", ")}: the capture renders fallback type for them (a file that failed to fetch, or a local() source this browser cannot resolve — recreation-procedure.md § Fonts policy)${from}`);
     else console.log(`gate.sh: fonts on the ${side} capture — every declared face loaded${from}`);' "$1" "$2" "$3"
 }
+case "$PIXEL_RC" in 0|2) ROUND_VERDICT=1 ;; esac
 fonts_line live "$DIR/live.capture.json" "$([ "$BASELINE" = 1 ] && echo "$DIR/baseline.json")"
 fonts_line build "$DIR/build.capture.json" ""
 [ "$FULL" = 1 ] || exit $PIXEL_RC
@@ -417,11 +459,6 @@ if [ ! -f "$DIFF/content-diff.mjs" ] || [ ! -f "$DIFF/visual-diff.mjs" ]; then
 fi
 CD="$DIR/content-diff-$LBL.txt"; VD="$DIR/visual-diff-$LBL.txt"; CP="$DIR/chrome-parity-$LBL.txt"
 CL="$DIR/clip-$LBL.txt"; PR="$DIR/content-presence-$LBL.txt"; UG="$DIR/units-$LBL.txt"
-# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
-case "${GATE_REGIME:-auto}" in
-  prototype|published) REGIME=$GATE_REGIME ;;
-  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
-esac
 UNITS_FILE="stardust/replica/units.json"
 capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
   --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} > "$CD" 2>&1 &
@@ -434,15 +471,15 @@ capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" 
 P_CP=$!
 # clip-probe on the BUILD side (every regime, no live hit); content-presence live vs build in the published regime;
 # unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0).
-capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUILD_URL" --width "$W" --json "$DIR/clip-$LBL.json" > "$CL" 2>&1 &
+capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUILD_URL" --width "$W" --json "$DIR/clip-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$CL" 2>&1 &
 P_CL=$!
 P_PR=""; P_UG=""
 if [ "$REGIME" = published ]; then
-  capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" > "$PR" 2>&1 &
+  capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$PR" 2>&1 &
   P_PR=$!
 fi
 if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
-  capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" > "$UG" 2>&1 &
+  capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --stage "$REGIME" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$UG" 2>&1 &
   P_UG=$!
 fi
 wait $P_CD; RC_CD=$?

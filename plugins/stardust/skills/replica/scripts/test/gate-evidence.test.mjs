@@ -353,6 +353,13 @@ check('a pixel round whose exit is not 0/2 (bot challenge 3, error 1, identity 4
   job('home-1440-iter4', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'iter4'], { start: 95, end: 96, exit: 1, log: 'stitch-shot: ECONNREFUSED' });
   run('--slug', 'home'); assert.equal(json(side.home).gateEvidence['pixel-gate-1440'], 'OPEN: no verdict (exit 1) (home-1440-iter4.log)');
 });
+check('a round refused at the cap (exit 6) measured nothing: the last measured round stands', () => {
+  job('home-1440-iter5', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'iter5'], { start: 96.2, end: 96.4, exit: 2, log: pixelLog(0, 900000, 5313600, '16.94', 'FAIL') });
+  run('--slug', 'home'); const measured = json(side.home).gateEvidence['pixel-gate-1440'];
+  assert.match(measured, /home-1440-iter5\.log/);
+  job('home-1440-iter6', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'iter6'], { start: 96.6, end: 96.8, exit: 6, log: 'rounds: home-1440 prototype — round "iter6" refused' });
+  run('--slug', 'home'); assert.equal(json(side.home).gateEvidence['pixel-gate-1440'], measured);
+});
 check('--check exits 2 on a stale gate (in gatesPassed, latest evidence FAIL/OPEN) and names it — for an archetype too', () => {
   const r = run('--check', '--slug', 'home', '--dry-run'); assert.equal(r.code, 2, r.err);
   assert.match(r.out, /^home: stale pixel-gate-1440 — in gatesPassed, but the latest evidence reads FAIL\/OPEN/m);

@@ -21,7 +21,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `diff/clip-probe.mjs` — text/controls clipped by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped > 0
 - `diff/content-diff.mjs` — structural + attribute/icon diff, all roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json]`
 - `diff/content-presence.mjs` — content per band + controls — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = MISSING/HIDDEN
-- `diff/unit-geometry.mjs` — repeated-unit Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>) [--n 1] [--tol 4]`; exit 2 = unit off
+- `diff/unit-geometry.mjs` — repeated-unit Δ — `<origin> <served> (--unit-pair <selO> <selE> | --families <units.json> --slug <s> [--stage <s>])`; exit 2 = unit off
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>]`
 - `dynamics/dynamics-check.mjs` — replay parity (search-query count, top titles) — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
@@ -53,6 +53,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/motion-compare.mjs` — live vs build motion, advisory — `<live.json> <build.json> [--tolerance-ms]`
 - `replica/motion-observe.mjs` — observe motion — `<url> <out.json> [--click <sel>]… [--hover <sel>]…`
 - `replica/pixel-compare.mjs` — pixel diff + bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]` (text % auxiliary)
+- `replica/rounds.mjs` — round cap ledger, exit 6 — `check|record|decide|status <dir> --stage <s>`; `count <root>`
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
 - `replica/run-bg.mjs` — background jobs, bounded wait — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`

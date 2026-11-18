@@ -54,7 +54,7 @@ node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic --
 # 3. pixel — stitched captures on BOTH sides (never fullPage:true); a consent manager the
 #    built-in candidates miss: the same --consent "<accept selector>" on both (rule 6)
 node stardust/scripts/replica/stitch-shot.mjs "$LIVE"  "$GATE/live.png"  --width $W --settle
-node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W
+node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W --settle
 node stardust/scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
   --out "$GATE/diff-iter<N>.png" --threshold 10
 ```
@@ -342,10 +342,11 @@ runs over the same stitched PNGs — no live hit):**
 
 ## Iteration discipline
 
-**Hard cap: 3 iterations per breakpoint.** Matching the validated run's
-discipline — convergence happened within 3 with the recreation procedure
-followed; more loops mean the inputs were wrong (values eyeballed instead of
-lifted, capture unhardened), and the fix is upstream, not a fourth loop.
+**Hard cap: 3 rounds per page, breakpoint and stage** (prototype, published):
+the first and two fix rounds. A round is a `gate.sh` run ending in a verdict;
+a PASS right after a PASS is free. `rounds.mjs` counts, and `gate.sh` exits 6
+until `rounds.mjs decide` records `accept-residual`, `re-prototype` or
+`extend` (a round lost to a named instrument defect).
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
 - **Chrome: parity probe first, pixels second.** Before a chrome band's first
@@ -354,26 +355,19 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
 - Every fix cites the instrument line that demanded it.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
-  no-op (recorded: a padding whose value the EDS section wrapper already
-  carried — the round measured nothing and was burned). The check is free —
-  the count is already on the verdict line; if it didn't move at all, find
-  out why the rule never applied (specificity, wrong selector, value already
-  in effect) before spending another round.
+  no-op (recorded: a padding the EDS section wrapper already carried). The
+  count is on the verdict line.
 - **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
-  One field "parity verified" claim was wrong three ways at once: the probe
-  matched a heuristic element ("white column wider than 400px") that wasn't
-  the box carrying the lifted rule — always pair the same semantic element
-  on both sides (the element the fixed rule targets on the build; the
-  element whose source rule was lifted on live); the re-check ran through a
-  CACHED stylesheet (DevTools showed the old rule at its old line number
-  while both hosts already served the fix) — verify serving out-of-band
-  (`curl --compressed <css-url> | grep '<new-rule>'`; the CSS is
-  gzip-encoded, a bare `curl | grep` scans binary and silently matches
-  nothing) and re-render in a fresh headless context; and a reviewer's
-  screenshot encodes their zoom — back-compute their CSS viewport from any
+  One "parity verified" claim was wrong three ways: the probe matched a
+  heuristic element ("white column wider than 400px"), not the box carrying
+  the lifted rule — pair the same semantic element on both sides (the one
+  the fixed rule targets on the build; the one whose source rule was lifted
+  on live); the re-check ran through a
+  CACHED stylesheet (DevTools showed the old rule while both hosts
+  served the fix) — verify serving and re-render in a fresh context; and a reviewer's
+  screenshot encodes their zoom — back-compute their CSS viewport from an
   element with a known percentage rule (a card at 851px under `width: 50%`
-  → viewport 1702px) and reproduce THAT viewport headlessly before letting
-  their numbers overturn a fix.
+  → 1702px) and reproduce it headlessly before their numbers overturn a fix.
 - Probe schedule per fix round: **pixels every round; content-diff +
   visual-diff at milestones** — iteration 1, after any fix that touched
   content or markup (not pure CSS values), and once at final. Across ~25
@@ -386,9 +380,8 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   top-down, re-run pixels. Build-side anchor/computed-style passes never
   navigate the live origin and are FREE — the cap governs live-gate cycles,
   not measurement.
-- After iteration 3: log residuals (§ Residual logging) and move on. A
-  documented residual is a pass with an asterisk; an undocumented fourth
-  loop is scope creep.
+- At the cap: log residuals (§ Residual logging) — a documented residual is
+  a pass with an asterisk.
 - **HARD assert, not subject to the cap: `document.documentElement.scrollWidth`
   no more than 4 px over the viewport width at every gate breakpoint,
   evaluated on the published origin** (`GATE_OVERFLOW_TOLERANCE`, default 4:
@@ -666,7 +659,8 @@ rather than erroring.
     capture. The capture record carries the dead faces as `fontsFailed`
     (`null` = the check could not run — never a pass; stitch-shot's
     `deadFontFaces` owns the rule, `recreation-procedure.md` § Fonts policy
-    the fix); gate.sh prints it per side, gate-all fails the row. On the
+    the fix); gate.sh prints it per side; gate-all fails the row for a face
+    dead on the build only, and reports one dead on the source. On the
     warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
     capture defect: fix the instrument, and the poisoned runs don't consume
@@ -847,8 +841,7 @@ on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the mea
 never replacing it; each entry names the criteria it waives, `"waives": ["fonts"]` from capture, pixel,
 height, clip, content, units, fonts, and the row is delivered only when every failing criterion is
 named; an entry without `waives` covers capture, pixel, height and fonts, never clip, content or units), `clip-allow.json`, `presence.json`, `units.json`. Origin fallback: live
-stitch → previous origin (`--recapture-origin`) → crawl fullPage screenshot (`crawl-fullpage`,
-asymmetric, flagged). **Browser tier: the best available, registered.** The probes elect real
+stitch → crawl fullPage screenshot (`crawl-fullpage`, asymmetric, flagged). **Browser tier: the best available, registered.** The probes elect real
 Chrome (`channel: 'chrome'`, window-free) and fall back to bundled Chromium when it is not
 installed; every probe writes the tier it actually ran (`chrome` | `chromium-fallback` |
 `chromium`) into its JSON, `summary.md` carries a `browser` column and the calibration line
@@ -865,8 +858,8 @@ ENCODER and re-render the affected siblings; MISSING h1–h3 bands, hot bands ov
 page or |Δh| far beyond 5 % (a banded layout flattened) → RE-PROTOTYPE: the page leaves the
 template — the variance probe across the template's other pages decides a new archetype (two or
 more share the composition: craft, gate, deploy, migrate its siblings) or a standalone prototype
-(an archetype of one); tier and template change in `state.json`, the redirect row stays. Cap: 3
-fix rounds per page at the published origin, then this decision — never a fourth round.
+(an archetype of one); tier and template change in `state.json`, the redirect row stays. Cap:
+§ Iteration discipline (`rounds.mjs decide … --stage all-pages`), then this decision.
 Calibration on the recorded roster (96 pages): pixel-only 66 PASS → full 28 PASS; failing by
 criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-blocked origins).
 

@@ -68,6 +68,7 @@
  *     `OPEN: deadline (<job>.log) — re-run` for that gate; an older pass is not resurrected.
  *   • a pixel round whose exit is not 0 or 2 (gate.sh: 1 = capture/compare error, 3 = bot
  *     challenge, 4 = build-side identity failed) → `OPEN: no verdict (exit N) (<job>.log)`.
+ *     Exit 6 (a round refused at the cap) measured nothing and is skipped: the last measured round stands.
  *   • a sibling-variance probe with an exit other than 0 or 2 → the same `OPEN: no verdict`.
  *
  * Attribution: gate.sh by its slug argument; other instruments by an argument that names the page
@@ -379,7 +380,9 @@ export function derive(page, jobs, o, ctx) {
   // The newest job of a set decides the gate: on a deadline, or (when `verdictExits` is given) an exit that is not a
   // verdict, the gate is recorded OPEN and null is returned — an older pass never stands in. Otherwise the latest job
   // with a parsable verdict line among the jobs that could carry one.
-  const pick = (list, parse, gate, verdictExits = null) => {
+  const pick = (all, parse, gate, verdictExits = null) => {
+    // gate.sh exit 6 = the round was refused at the cap: nothing was measured, so it is not the newest round.
+    const list = verdictExits ? all.filter((j) => j.exit !== 6) : all;
     const newest = latest(list.map((j) => ({ j })));
     if (!newest) return null;
     if (deadline(newest.j)) { open(gate, `deadline ${cite(newest.j)} — re-run`); return null; }
