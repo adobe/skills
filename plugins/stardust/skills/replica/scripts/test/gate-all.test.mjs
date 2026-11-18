@@ -27,7 +27,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, referenceIgnoreNote, REFERENCE_IGNORES, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -823,6 +823,13 @@ await checkAsync('recordRounds: a published measurement with a verdict is a roun
     assert.equal(JSON.parse(readFileSync(join(root, 'gates', 'b-1440', 'rounds.json'), 'utf8')).stages.published, undefined, 'a pass here is never a gate.sh published round: it cannot free a confirmation there');
     assert.deepEqual(await recordRounds([row('a', false)], opts, { rounds: { load() { throw new Error('boom'); } } }), []);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('referenceIgnoreNote: a project .gitignore from before the per-page references were left untracked gets one note naming the missing lines; the current template, a project without the tracking line, or no file gets none', () => {
+  const tpl = readFileSync(join(HERE, '../../../stardust/reference/stardust.gitignore'), 'utf8');
+  assert.equal(referenceIgnoreNote(tpl), null); assert.equal(referenceIgnoreNote(null), null); assert.equal(referenceIgnoreNote('**/gates/**/*.png\n'), null);
+  const old = '**/gates/**/*.png\n!**/gates/**/baseline.png\n**/gates/all-*/**/baseline.png\n';
+  assert.match(referenceIgnoreNote(old), /add below .*: \*\*\/gates\/prototypes-\*\/\*\*\/baseline\.png {2}\*\*\/gates\/wide-\*\/\*\*\/baseline\.png$/);
+  for (const l of REFERENCE_IGNORES) assert.ok(tpl.includes(l), l);
 });
 check('unselected: an --only slug that selection neither kept nor skipped gets its own NOT gated line', () => {
   assert.deepEqual(unselected(['a', 'b', 'c'], [{ slug: 'a' }], [{ slug: 'b', why: 'x' }]), ['c']);

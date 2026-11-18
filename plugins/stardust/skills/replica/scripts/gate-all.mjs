@@ -342,6 +342,18 @@ export function selectPages({ state = null, coverage = null, stage = 'published'
   }
   return { pages: [...fromState, ...fromCoverage, ...fromNamed].filter(keep), skipped: skipped.filter(keep), from: { state: fromState.filter(keep).length, coverage: fromCoverage.filter(keep).length, ...(fromNamed.length ? { named: fromNamed.length } : {}) } };
 }
+/**
+ * A project's stardust/.gitignore is its own copy (never rewritten): one set up before the per-page references were
+ * left untracked still has the line that tracks every gates/ baseline.png. → the note to print, or null.
+ */
+export const REFERENCE_IGNORES = ['**/gates/all-*/**/baseline.png', '**/gates/prototypes-*/**/baseline.png', '**/gates/wide-*/**/baseline.png'];
+export function referenceIgnoreNote(text) {
+  if (typeof text !== 'string' || !text.includes('!**/gates/**/baseline.png')) return null;
+  const lines = new Set(text.split('\n').map((l) => l.trim()));
+  const missing = REFERENCE_IGNORES.filter((l) => !lines.has(l));
+  return missing.length ? `stardust/.gitignore tracks every page's frozen reference (baseline.png under the all-pages, prototype and wide tables) — add below its "!**/gates/**/baseline.png" line: ${missing.join('  ')}` : null;
+}
+const readTextSafe = (f) => { try { return readFileSync(f, 'utf8'); } catch { return null; } };
 /** The --only slugs that selection neither kept nor listed as skipped: each gets its own NOT gated line. */
 export const unselected = (only, pages, skipped) => (only || []).filter((s) => !pages.some((p) => p.slug === s) && !skipped.some((x) => x.slug === s));
 /** stardust/migrated/<a>/<b>/index.html → /a/b ; …/x.html → /x ; the root index → / ; anything else → null. */
@@ -566,6 +578,8 @@ const lastLine = (s) => (s || '').trim().split('\n').filter(Boolean).pop() || ''
 
 async function main() {
   const opts = parseArgs(process.argv);
+  const ignoreNote = referenceIgnoreNote(readTextSafe('stardust/.gitignore'));
+  if (ignoreNote) console.error(`gate-all: ${ignoreNote}`);
   if (!existsSync(opts.state)) { console.error(`gate-all: ${opts.state} not found — run from the project root or pass --state`); process.exit(1); }
   if ((opts.clip || opts.content) && !DIFF_DIR) { console.error('gate-all: the diff skill\'s scripts dir was not found next to this one (../../diff/scripts or ../diff) — copy it (replica SKILL.md § Setup) or pass --no-probes'); process.exit(1); }
   const state = readJson(opts.state);

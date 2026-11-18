@@ -287,8 +287,7 @@ steps and per-500px bands (`--band` to change):
 - **The offset steps are the fix list** — each a section's height or gap wrong
   at that y (usually a margin/padding/height value — re-lift it from the
   source CSS rather than nudging): fix every one in ONE round.
-- **Bands are read after alignment** (`aligned N%`): a band still hot there
-  differs in itself, not by an offset above it.
+- **Bands are read after alignment** (`aligned N%`).
 - A page with height Δ 0 and uniformly warm bands (no single hot band) has a
   global fault — wrong base font metric, wrong container width, a missing
   background — not a per-section one.

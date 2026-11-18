@@ -10,8 +10,10 @@
 # JSON and text (a resumed run reads them) and a frozen origin baseline.
 **/gates/**/*.png
 !**/gates/**/baseline.png
-# … an archetype's (gates/<slug>-<width>/). The all-pages and wide tables freeze one per page: not tracked.
+# … an archetype's (gates/<slug>-<width>/). The all-pages, prototype and wide tables freeze one per page: not
+# tracked. (A project set up before these lines lacks them: gate-all says so once per run.)
 **/gates/all-*/**/baseline.png
+**/gates/prototypes-*/**/baseline.png
 **/gates/wide-*/**/baseline.png
 migrated/assets/
 rollout/qa/
