@@ -3,7 +3,7 @@ name: create-custom-component
 description: "Step-by-step playbook for creating custom AEM Forms Edge Delivery Services (Form block) components that extend OOTB field types, with scaffolding, subscribe wiring, registration, and validation. Use when asked to create, scaffold, build, style, or fix a custom form component, field widget, or viewType in an aem-boilerplate-forms project."
 license: Apache-2.0
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # Create Custom Form Component
@@ -90,9 +90,7 @@ Implementation rules:
 - Enhance the existing OOTB markup in `fieldDiv`; scope DOM queries to it.
 - When writing the value from custom UI, either set `model.value` or dispatch `new Event('change', { bubbles: true })` on the underlying input.
 - Know when the value is committed. Out of the box, the form block writes `model.value` only from the input's native `change` event (`blocks/form/rules/index.js`), which text-like inputs fire on blur/commit, not on each keystroke. So rules on the field's change event run once per edit, when the user leaves the field. If the component must commit on every keystroke (live counters, search-as-you-type, values derived while typing), handle the `input` event in the component and set `model.value` there, comparing with the current value first. When reformatting the display while typing (masks, grouping), don't dispatch `change` on each keystroke, or you turn the blur commit into a per-keystroke one.
-- Style the component in `<name>.css` following the CSS styling patterns in `references/styling.md`:
-  - scope selectors under `.form` and the component's own classes (prefixed with the component name);
-  - use the documented patterns for validation and focus states.
+- Style the component in `<name>.css` following `references/styling.md`: selector scoping, and validation and focus states.
 
 ### Step 5: Register
 

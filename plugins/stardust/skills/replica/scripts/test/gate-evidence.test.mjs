@@ -90,6 +90,11 @@ check('parsers read the instruments\' verdict lines and nothing else', () => {
   assert.deepEqual(parseVerdict(`${pixelLog(-9, 12, 100, '12.00', 'FAIL')}\n`), { px: 12, total: 100, pct: 12, threshold: 10, verdict: 'FAIL', heightDelta: -9 });
   assert.equal(parseVerdict('differing pixels: 1 / 100 = 1.00%  (threshold 10%) → PASS  [MASKED 40 rows: 0:40 — authored-volatile, excluded]').verdict, 'PASS');
   assert.equal(parseVerdict('run-bg: x launched: gate.sh a b c 1440'), null);
+  // an aligned round: the differing line keeps the unaligned %, its PASS|FAIL is the pixel criterion's; the pixel: line adds the aligned % and the offsets
+  const alignedLog = (verdict, tail) => `${pixelLog(-5, 1662, 10000, '16.62', verdict)}\naligned: 1.23% (unaligned 16.62%) — 1 offset step: −5px at y=103  [verdict on the aligned number]\npixel: aligned 1.23% (unaligned 16.62%) → ${verdict} — ${tail}\ndiff image: d.png\n`;
+  assert.deepEqual(parseVerdict(alignedLog('PASS', 'offsets: 1 step(s), 5px total — −5px at y=103 (bound 8px)')), { px: 1662, total: 10000, pct: 16.62, threshold: 10, verdict: 'PASS', heightDelta: -5, alignedPct: 1.23, offsets: 'offsets: 1 step(s), 5px total — −5px at y=103 (bound 8px)' });
+  assert.equal(parseVerdict(alignedLog('FAIL', 'offsets: 3 step(s), 37px total — −5px at y=103, −20px at y=2125, −12px at y=3300 (bound 8px)')).verdict, 'FAIL', 'offsets over the bound: the round is a FAIL although the aligned % is low');
+  assert.equal(parseVerdict(`${pixelLog(0, 12, 1000, '1.20', 'PASS')}\npixel: 1.20% (alignment not used — the unaligned number rules) → PASS\n`).alignedPct, undefined, 'alignment not used: no aligned number');
   assert.deepEqual(parseFindings('x\nFindings: none — content + roles match\n'), { total: 0, structural: 0, lost: 0, text: 'none — content + roles match' });
   assert.deepEqual(parseFindings('Findings: 3 (1 structural 🔴)\n  🔴 MISSING'), { total: 3, structural: 1, lost: 0, text: '3 (1 structural 🔴)' });
   assert.deepEqual(parseFindings('Findings: 4 (0 structural 🔴)\nTiers: looks-same 🔴 0 · nothing-lost 🟡 2 · accepted 🟢 5 · advisory 2\n'), { total: 4, structural: 0, lost: 2, text: '4 (0 structural 🔴)' }, 'the probe\'s own Tiers line');
@@ -352,6 +357,13 @@ check('a pixel round whose exit is not 0/2 (bot challenge 3, error 1, identity 4
   run('--slug', 'home'); assert.equal(json(side.home).gateEvidence['pixel-gate-1440'], 'OPEN: no verdict (exit 4) (home-1440-iter3.log)');
   job('home-1440-iter4', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'iter4'], { start: 95, end: 96, exit: 1, log: 'stitch-shot: ECONNREFUSED' });
   run('--slug', 'home'); assert.equal(json(side.home).gateEvidence['pixel-gate-1440'], 'OPEN: no verdict (exit 1) (home-1440-iter4.log)');
+});
+check('a round refused at the cap (exit 6) measured nothing: the last measured round stands', () => {
+  job('home-1440-iter5', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'iter5'], { start: 96.2, end: 96.4, exit: 2, log: pixelLog(0, 900000, 5313600, '16.94', 'FAIL') });
+  run('--slug', 'home'); const measured = json(side.home).gateEvidence['pixel-gate-1440'];
+  assert.match(measured, /home-1440-iter5\.log/);
+  job('home-1440-iter6', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440', 'iter6'], { start: 96.6, end: 96.8, exit: 6, log: 'rounds: home-1440 prototype — round "iter6" refused' });
+  run('--slug', 'home'); assert.equal(json(side.home).gateEvidence['pixel-gate-1440'], measured);
 });
 check('--check exits 2 on a stale gate (in gatesPassed, latest evidence FAIL/OPEN) and names it — for an archetype too', () => {
   const r = run('--check', '--slug', 'home', '--dry-run'); assert.equal(r.code, 2, r.err);

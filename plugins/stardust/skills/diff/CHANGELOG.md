@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/adobe/skills/compare/diff-v1.1.1...diff-v1.2.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate measures the page, width and stage it was asked for, and stops at three rounds ([#699](https://github.com/adobe/skills/issues/699)) ([84eb7c1](https://github.com/adobe/skills/commit/84eb7c1d1e1f791853ac1ec93ef2fc9664c08abc))
+
 ## [1.1.1](https://github.com/adobe/skills/compare/diff-v1.1.0...diff-v1.1.1) (2026-11-16)
 
 

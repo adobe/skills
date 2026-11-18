@@ -4,7 +4,7 @@ description: Same-design migration — re-platform a site to AEM Edge Delivery (
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 metadata:
-  version: "1.1.2"
+  version: "1.3.0"
 ---
 
 # stardust:replica — same-design migration

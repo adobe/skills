@@ -1,3 +1,17 @@
+# [1.3.0](https://github.com/adobe/skills/compare/replica-v1.2.0...replica-v1.3.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate compares against a frozen reference and counts after aligning ([#700](https://github.com/adobe/skills/issues/700)) ([a8f69e3](https://github.com/adobe/skills/commit/a8f69e3086a20b949f7c8352d3bd6bd7505c4968))
+
+# [1.2.0](https://github.com/adobe/skills/compare/replica-v1.1.2...replica-v1.2.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate measures the page, width and stage it was asked for, and stops at three rounds ([#699](https://github.com/adobe/skills/issues/699)) ([84eb7c1](https://github.com/adobe/skills/commit/84eb7c1d1e1f791853ac1ec93ef2fc9664c08abc))
+
 ## [1.1.2](https://github.com/adobe/skills/compare/replica-v1.1.1...replica-v1.1.2) (2026-11-16)
 
 
