@@ -90,8 +90,8 @@ Implementation rules:
 - Enhance the existing OOTB markup in `fieldDiv`; scope DOM queries to it.
 - When writing the value from custom UI, either set `model.value` or dispatch `new Event('change', { bubbles: true })` on the underlying input.
 - Know when the value is committed. Out of the box, the form block writes `model.value` only from the input's native `change` event (`blocks/form/rules/index.js`), which text-like inputs fire on blur/commit, not on each keystroke. So rules on the field's change event run once per edit, when the user leaves the field. If the component must commit on every keystroke (live counters, search-as-you-type, values derived while typing), handle the `input` event in the component and set `model.value` there, comparing with the current value first. When reformatting the display while typing (masks, grouping), don't dispatch `change` on each keystroke, or you turn the blur commit into a per-keystroke one.
-- Style the component in `<name>.css` following the CSS styling patterns in `references/styling.md`:
-  - scope selectors under `.form` and the component's own classes (prefixed with the component name);
+- Style the component in `<name>.css` following `references/styling.md`:
+  - scope selectors under `.form` and classes `decorate()` adds. The field wrapper is `<base>-wrapper` (e.g. `number-wrapper`); `<name>-wrapper` doesn't exist;
   - use the documented patterns for validation and focus states.
 
 ### Step 5: Register
@@ -127,7 +127,7 @@ Do not report the component as done until gates A–D pass. Fix and re-run on fa
 node <skill-dir>/scripts/validate-component.mjs <name>
 ```
 
-Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = name, `fieldType`/`resourceType`, resolvable `"..."` includes, unique field names, ES-module syntax, default export, `subscribe` import path and `{ listenChanges: true }`, `.js` import extensions, legacy/anti-patterns (`fieldModel.subscribe(…, 'change')`, non-bubbling `change`, `#id` child selectors), README sections, registration in `mappings.js` / `_form.json` / `_component-definition.json`, whether the build output contains the component, and, when the ESLint config sets `xwalk/max-cells`, whether the built model's cell count fits its limit (it prints the entry to add). Exit `0` = no errors; `1` = errors (must fix); warnings must be fixed or explicitly justified in the report. Use `--json` for machine-readable output.
+Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = name, `fieldType`/`resourceType`, resolvable `"..."` includes, unique field names, ES-module syntax, default export, `subscribe` import path and `{ listenChanges: true }`, `.js` import extensions, legacy/anti-patterns (`fieldModel.subscribe(…, 'change')`, non-bubbling `change`, `#id` child selectors), README sections, `<name>-*` CSS classes the JS never adds, registration in `mappings.js` / `_form.json` / `_component-definition.json`, whether the build output contains the component, and, when the ESLint config sets `xwalk/max-cells`, whether the built model's cell count fits its limit (it prints the entry to add). Exit `0` = no errors; `1` = errors (must fix); warnings must be fixed or explicitly justified in the report. Use `--json` for machine-readable output.
 
 **B. Lint** — if `package.json` has a `lint` script, run `npm run lint` and fix every issue in the new/changed files.
 

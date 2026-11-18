@@ -3,7 +3,8 @@
  * Static validator for an AEM Forms (Edge Delivery Services) custom form component.
  *
  * Checks the files the create-custom-component skill generates — folder layout, the
- * `_<name>.json` authoring schema, the `<name>.js` decorator, registration in
+ * `_<name>.json` authoring schema, the `<name>.js` decorator, whether `<name>.css` styles
+ * only classes the decorator adds, registration in
  * `blocks/form/mappings.js` / `_form.json` / `models/_component-definition.json`, and
  * whether `npm run build:json` output includes the component. No dependencies; Node 18+.
  *
@@ -117,6 +118,15 @@ export function countCells(model) {
     return !(suffix && names.includes(n.slice(0, -suffix.length)));
   });
   return new Set(collapsed.map((n) => String(n).match(/^([^_]+)(_.+)?$/)?.[1]).filter(Boolean)).size;
+}
+
+// Class names starting with the component name that appear in the stylesheet's selectors.
+export function cssComponentClasses(css, name) {
+  const selectors = css.replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{};]+(?=\{)/g) || [];
+  const classes = selectors
+    .filter((s) => !s.trim().startsWith('@'))
+    .flatMap((s) => [...s.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1]));
+  return [...new Set(classes)].filter((c) => c === name || c.startsWith(`${name}-`));
 }
 
 export function validateComponent(name, rootDir) {
@@ -323,6 +333,34 @@ export function validateComponent(name, rootDir) {
 
     if (/\bdocument\.querySelector(All)?\(/.test(js)) {
       warn('js.scope', 'Uses document.querySelector — scope DOM queries to the component element where possible');
+    }
+  }
+
+  // ---- CSS selectors match classes the decorator adds --------------------------------
+  const css = hasCss ? readText(cssFile) : null;
+  if (css !== null && js !== null) {
+    const missing = cssComponentClasses(css, name).filter((cls) => !js.includes(cls));
+    // A class built at runtime (`${prefix}-tick`, prefix + '-tick', `${name}-${state}`) can't be
+    // confirmed statically: report it as a warning, not an error.
+    const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const builtAtRuntime = (cls) => {
+      const suffix = cls.slice(name.length);
+      return (suffix && (js.includes(`}${suffix}`) || new RegExp(`\\+\\s*['"\`]${esc(suffix)}['"\`]`).test(js)))
+        || js.includes(`${name}-\${`) || new RegExp(`['"\`]${esc(name)}-['"\`]\\s*\\+`).test(js);
+    };
+    const definite = missing.filter((cls) => !builtAtRuntime(cls));
+    if (!missing.length) {
+      pass('css.classes', `Every ${name}-* class in ${name}.css is added by ${name}.js`);
+    } else {
+      const describe = (list) => {
+        const wrapperHint = list.includes(`${name}-wrapper`)
+          ? ` The form block names the field wrapper after the base fieldType (e.g. number-wrapper), not "${name}-wrapper".`
+          : '';
+        return `${name}.css styles classes that ${name}.js never adds, so those rules never apply: ${list.map((c) => `.${c}`).join(', ')}.${wrapperHint} Target classes decorate() adds, or add them with fieldDiv.classList.add().`;
+      };
+      if (definite.length) error('css.classes', describe(definite));
+      const unsure = missing.filter((cls) => !definite.includes(cls));
+      if (unsure.length) warn('css.classes', `${describe(unsure)} (${name}.js builds class names at runtime; confirm these are among them)`);
     }
   }
 
