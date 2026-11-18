@@ -1,5 +1,12 @@
 # Changelog
 
+# [0.41.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.40.0...plugin/stardust/v0.41.0) (2026-11-18)
+
+
+### Features
+
+* **stardust:** the replica gate compares against a frozen reference and counts after aligning ([#700](https://github.com/adobe/skills/issues/700)) ([a8f69e3](https://github.com/adobe/skills/commit/a8f69e3086a20b949f7c8352d3bd6bd7505c4968))
+
 # [0.40.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.39.4...plugin/stardust/v0.40.0) (2026-11-18)
 
 
