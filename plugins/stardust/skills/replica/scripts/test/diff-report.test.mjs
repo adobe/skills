@@ -64,6 +64,8 @@ await check('pickDiff: the newest diff-*.png (gate.sh\'s diff-<label>.png); --di
   writeFileSync(join(d, 'diff-iter1.png'), 'x'); writeFileSync(join(d, 'diff-iter2.png'), 'x');
   utimesSync(join(d, 'diff-iter1.png'), new Date(1e12), new Date(1e12));
   assert.equal(pickDiff(d), join(d, 'diff-iter2.png'));
+  writeFileSync(join(d, 'diff-iter2-aligned.png'), 'x'); utimesSync(join(d, 'diff-iter2-aligned.png'), new Date(Date.now() + 5000), new Date(Date.now() + 5000));
+  assert.equal(pickDiff(d), join(d, 'diff-iter2.png'), 'pixel-compare\'s aligned picture is in the live side\'s coordinates: never picked');
   assert.equal(pickDiff(d, 'diff-iter1.png'), join(d, 'diff-iter1.png'));
   const abs = join(tmpdir(), 'elsewhere', 'diff-x.png'); assert.equal(pickDiff(d, abs), abs);
   const e = mkdtempSync(join(tmpdir(), 'dr-none-')); assert.throws(() => pickDiff(e), /no diff-\*\.png in/);
