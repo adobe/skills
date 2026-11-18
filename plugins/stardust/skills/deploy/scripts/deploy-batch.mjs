@@ -44,7 +44,8 @@
  *
  * Token: from the environment variable named by --token-env (default DA_TOKEN),
  * or from --token-file <path> (read once at start, trimmed; never both flags — the
- * same two sources as da-media-upload.mjs). Never printed, never part of the
+ * same two sources as da-media-upload.mjs). With neither flag and DA_TOKEN unset,
+ * the file named by ADOBE_IMS_TOKEN_FILE is the --token-file. Never printed, never part of the
  * re-run command, never written to the ledger or the log; the expiry and HALT
  * lines name the variable or the file, never the value.
  *
@@ -84,7 +85,7 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { mergeLedger } from './file-lock.mjs';
 // The sibling uploader guards its CLI behind a main-module check, so the import runs nothing.
-import { jwtExpiry } from './da-media-upload.mjs';
+import { jwtExpiry, tokenFileFallback } from './da-media-upload.mjs';
 
 // The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
@@ -134,6 +135,7 @@ function parseArgs(argv) {
   // file is read here, once, before anything else runs; the value lives on `token` only and every message
   // names the source (tokenLabel), never the value.
   if (a.tokenEnv && a.tokenFile) throw new Error('give at most one of --token-env / --token-file');
+  a.tokenFile ||= tokenFileFallback(a.tokenEnv, process.env);
   a.tokenEnv ||= 'DA_TOKEN';
   if (a.tokenFile) {
     let raw;

@@ -26,17 +26,18 @@
  *              Templates row only when this run has templates, are replaced; every other row and every other tab is
  *              kept (a single-sheet config becomes a multi-sheet one with its sheet intact).
  * Writes <out>/{blocks/*.html, templates/*.html, blocks.json, templates.json, library-rows.json} always; without
- * --dry-run also PUTs the documents and sheets (templates.json only when this run has templates), previews the
+ * --dry-run also <out>/published.json once every DA write succeeded (done-check's library_missing gap reads it), and PUTs the documents and sheets (templates.json only when this run has templates), previews the
  * template documents (the panel reads every document from content.da.live; only a template's preview button needs
  * the preview; nothing is published) and writes the merged config. No authored block found → exit 1 and no DA
  * write. Idempotent: every write replaces the previous one.
  *
- * Token: the variable named by --token-env (default DA_TOKEN) or --token-file; never printed. An expired JWT exits 3
+ * Token: the variable named by --token-env (default DA_TOKEN) or --token-file; with neither and DA_TOKEN unset, the
+ * file named by ADOBE_IMS_TOKEN_FILE (deploy-batch's rule); never printed. An expired JWT exits 3
  * before any request; a 401 is retried like a 429 and exits 3 when it persists. Exit 0 done; 1 no block found, a write
  * failed (network included) or the config was not readable/writable (the rows to add by hand are printed); 2 usage.
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { treePath, servedPath, isFolderIndexFile } from './lib.mjs'; // the shared path rules (lib/paths.mjs)
@@ -301,12 +302,14 @@ async function main() {
 
   // token (same sources and expiry preflight as deploy-batch / da-media-upload)
   if (a.tokenEnv && a.tokenFile) { console.error('da-library: give at most one of --token-env / --token-file'); return 2; }
+  const up = [join(HERE, '..', '..', 'deploy', 'scripts', 'da-media-upload.mjs'), join(HERE, '..', 'deploy', 'da-media-upload.mjs')].find((p) => existsSync(p));
+  const uploader = up ? await import(pathToFileURL(up).href) : null;
+  if (uploader && uploader.tokenFileFallback) a.tokenFile ||= uploader.tokenFileFallback(a.tokenEnv, process.env);
   const label = a.tokenFile || a.tokenEnv || 'DA_TOKEN';
   const token = a.tokenFile ? (existsSync(a.tokenFile) ? readFileSync(a.tokenFile, 'utf8').trim() : '') : (process.env[label] || '').trim();
   if (!token) { console.error(`da-library: no token in ${label}`); return 2; }
-  const up = [join(HERE, '..', '..', 'deploy', 'scripts', 'da-media-upload.mjs'), join(HERE, '..', 'deploy', 'da-media-upload.mjs')].find((p) => existsSync(p));
-  if (up) {
-    const { jwtExpiry } = await import(pathToFileURL(up).href);
+  if (uploader) {
+    const { jwtExpiry } = uploader;
     const exp = jwtExpiry(token);
     if (exp && exp * 1000 < Date.now()) { console.error(`da-library: the token in ${label} expired at ${new Date(exp * 1000).toISOString()} — refresh it and re-run`); return 3; }
   }
@@ -330,6 +333,10 @@ async function main() {
     }
   };
   const put = (path, text, type) => { const fd = new FormData(); fd.append('data', new Blob([text], { type }), path.split('/').pop()); return call(`${SRC}/${a.org}/${a.site}/${path}`, { method: 'PUT', body: fd }); };
+  // published.json is the proof the library reached DA (library-rows.json is written by --dry-run too): removed
+  // before the first write, written only when every write below succeeded. rollout's done-check reads it.
+  const marker = join(a.out, 'published.json');
+  rmSync(marker, { force: true });
   let failed = 0;
   for (const d of docs) {
     const r = await put(`${d.path}.html`, d.html, 'text/html');
@@ -356,6 +363,7 @@ async function main() {
   const w = await call(confUrl, { method: 'POST', body: fd });
   console.log(`${w.ok ? 'OK  ' : 'FAIL'} config library tab (${rows.map((r) => r.title).join(', ')}) · post ${w.status}`);
   if (!w.ok) { failed += 1; console.error(`rows to add by hand:\n${JSON.stringify(rows, null, 2)}`); }
+  if (!failed) write(marker, `${JSON.stringify({ org: a.org, site: a.site, blocks: blocks.length, variants, templates: tplRows.length, rows, at: new Date().toISOString() }, null, 2)}\n`);
   return failed ? 1 : 0;
 }
 

@@ -22,6 +22,8 @@
  *                                  chrome/header-parity.json (chrome-compare) is missing, older than the contract,
  *                                  of the wrong profile (replica flow: replica; redesign, reskin: functional),
  *                                  short of a contract width, not run on the live host, or has undecided errors
+ *   library_missing                pages were delivered but <out>/library/published.json is absent: da-library.mjs
+ *                                  has not written the site's block library to DA (or its last run failed)
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline).
@@ -75,7 +77,7 @@ export function headerGap({ flow = null, contract = null, parity = null, liveHos
   return open.length ? `header_parity:${open.length}: ${listed(open.map((f) => f.key))}` : null;
 }
 
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, libraryPublished = true }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -85,6 +87,7 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   const p1 = openP1(findings);
   if (p1.length) gaps.push(`open_p1:${p1.length}`);
   if (header) gaps.push(header);
+  if (!libraryPublished && deliveredPaths(pages).length) gaps.push('library_missing');
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null };
 }
@@ -137,7 +140,8 @@ async function main() {
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
   const chrome = arg('chrome', 'stardust/chrome');
   const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
-  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header });
+  const libraryPublished = existsSync(join(OUT, 'library', 'published.json'));
+  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header, libraryPublished });
 
   if (JSON_OUT) console.log(JSON.stringify(config.scope ? { ...verdict, scope: config.scope } : verdict));
   else {

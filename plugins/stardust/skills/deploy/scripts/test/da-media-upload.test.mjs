@@ -20,7 +20,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { VIDEO_MAX_BYTES, classify, jwtExpiry, readManifest, webPath } from '../da-media-upload.mjs';
+import { VIDEO_MAX_BYTES, classify, jwtExpiry, parseArgs, readManifest, tokenFileFallback, webPath } from '../da-media-upload.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'da-media-upload.mjs');
@@ -118,7 +118,7 @@ const LEDGER = join(proj, 'stardust', 'deploy', 'media-ledger.json');
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const run = (args, { token = TOKEN, extraEnv = {} } = {}) => new Promise((resolve) => {
-  const env = { ...process.env, ...extraEnv }; delete env.DA_TOKEN; if (token) env.DA_TOKEN = token;
+  const env = { ...process.env, ...extraEnv }; delete env.DA_TOKEN; if (!('ADOBE_IMS_TOKEN_FILE' in extraEnv)) delete env.ADOBE_IMS_TOKEN_FILE; if (token) env.DA_TOKEN = token;
   const p = spawn(process.execPath, [SCRIPT, '--org', ORG, '--repo', REPO, '--admin-url', BASE, '--content-url', `${BASE}/content`, '--hlx-url', `${BASE}/hlx`, '--backoff-ms', '5', ...args], { cwd: proj, env });
   let out = ''; let err = '';
   p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
@@ -128,6 +128,16 @@ const ledger = () => JSON.parse(readFileSync(LEDGER, 'utf8'));
 const contentUrl = (name) => `${BASE}/content/${ORG}/${REPO}/media/brand/${name}`;
 
 // ---- unit ---------------------------------------------------------------------------------------------
+await check('token source: no flag and no DA_TOKEN falls back to ADOBE_IMS_TOKEN_FILE; DA_TOKEN, --token-env and --token-file win', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dmu-tok-')); const f = join(dir, 'ims'); writeFileSync(f, 'filetok\n');
+  const argv = ['node', 'x', '--org', 'o', '--repo', 'r', '--scope', 's', '--dir', dir];
+  const a = parseArgs(argv, { ADOBE_IMS_TOKEN_FILE: f }); assert.equal(a.tokenFile, f); assert.equal(a.token, 'filetok');
+  assert.equal(parseArgs(argv, { DA_TOKEN: 'envtok', ADOBE_IMS_TOKEN_FILE: f }).token, 'envtok');
+  assert.equal(parseArgs([...argv, '--token-env', 'X'], { X: 'xtok', ADOBE_IMS_TOKEN_FILE: f }).token, 'xtok');
+  assert.equal(tokenFileFallback('X', { ADOBE_IMS_TOKEN_FILE: f }), undefined);
+  assert.equal(tokenFileFallback(undefined, {}), undefined);
+  rmSync(dir, { recursive: true, force: true });
+});
 await check('classify: image types by extension, non-images skipped, unsafe svg refused', () => {
   assert.equal(classify('x.JPG').type, 'image/jpeg'); assert.equal(classify('x.webp').type, 'image/webp'); assert.equal(classify('x.avif').type, 'image/avif');
   assert.equal(classify('x.webm').skip, 'not-an-image'); assert.equal(classify('x.pdf').skip, 'not-an-image'); assert.equal(classify('x.mp3').skip, 'not-an-image'); assert.equal(classify('x').skip, 'not-an-image');

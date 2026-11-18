@@ -62,7 +62,8 @@
  * Token: from the environment variable named by --token-env (default DA_TOKEN),
  * or from --token-file <path> (read once at start; one of the two — a hands-off
  * harness hands the token over as a file, and a recorded run's uploader read
- * DA_TOKEN only). The value is never printed, never part of the re-run command
+ * DA_TOKEN only). With neither flag and DA_TOKEN unset, the file named by
+ * ADOBE_IMS_TOKEN_FILE is the --token-file. The value is never printed, never part of the re-run command
  * and never written to the ledger or anywhere else.
  *
  * Usage:
@@ -134,7 +135,8 @@ Usage: DA_TOKEN=… node da-media-upload.mjs --org <org> --repo <repo> --scope <
   --token-file <path>   read the token from this file instead (one of the two, never both)
   --help                this text
 
-Token: from the variable named by --token-env, or from --token-file (read once at start); never printed,
+Token: from the variable named by --token-env, or from --token-file (read once at start; with neither and
+DA_TOKEN unset, the file named by ADOBE_IMS_TOKEN_FILE); never printed,
 never in the re-run command, never written to the ledger.
 Video (#161): an mp4 up to 36 MB is uploaded, then previewed and published itself; author the printed
 root-relative /media/<scope>/<file>, never its content.da.live URL. Two files with one stored name: the
@@ -207,6 +209,7 @@ export function parseArgs(argv, env = process.env) {
   // once, before anything else runs; a dry run uses no token and so reads none. The value is kept on
   // `token` only — every message names the source (`tokenLabel`), never the value.
   if (o.tokenEnv && o.tokenFile) usage('give at most one of --token-env / --token-file');
+  o.tokenFile ||= tokenFileFallback(o.tokenEnv, env);
   o.tokenEnv ||= 'DA_TOKEN';
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(o.tokenEnv)) usage('--token-env needs an environment variable name (letters, digits, underscore)');
   if (o.tokenFile) {
@@ -218,6 +221,10 @@ export function parseArgs(argv, env = process.env) {
   if (!o.dryRun && !o.token) usage(`${o.tokenEnv} is not set in the environment (the token is read from there — or from --token-file — only)`);
   return o;
 }
+
+// No flag and no DA_TOKEN: the harness's token file (ADOBE_IMS_TOKEN_FILE, rewritten on refresh) stands in for
+// --token-file — the same rule in deploy-batch and rollout's da-library. An explicit --token-env never falls back.
+export const tokenFileFallback = (tokenEnv, env) => (!tokenEnv && !env.DA_TOKEN && env.ADOBE_IMS_TOKEN_FILE) || undefined;
 
 // How the messages name the token and say how to refresh it — the variable or the file, never the value.
 const tokenLabel = (o) => (o.tokenFile ? `the token in ${o.tokenFile}` : o.tokenEnv);

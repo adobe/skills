@@ -2,7 +2,7 @@
 // skills/rollout/scripts/test/done-check.test.mjs — the completion verdict of done-check.mjs: each gap fires
 // on its own condition and only then (unfinished rows, failed rows and failed gate rows, delivered rows the
 // live host does not serve, open P1 findings the optimize gate would count, a rollout whose last I-dashboard
-// line is not an `end`); a clean run is complete; the live probe keeps input order and treats non-200 and
+// line is not an `end`, delivered pages without a published DA library); a clean run is complete; the live probe keeps input order and treats non-200 and
 // network errors as not live; a migration project's header must be proven (header_parity: contract, comparison,
 // profile by flow, widths, live host, undecided errors); the CLI exits 0 / 1 / 2 and --offline says the probe was skipped. Offline: the
 // probe runs against a stub fetch. --help writes nothing.
@@ -84,10 +84,16 @@ check('the rollout is ended only when its LAST I-dashboard line is an end', () =
   assert.ok(doneGaps({ pages: CLEAN_PAGES, ledgerLines: [], notLive: [] }).gaps.includes('rollout_incomplete'));
 });
 
+check('library_missing fires only when a page was delivered and the library is not published', () => {
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], libraryPublished: false }).gaps, ['library_missing']);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], libraryPublished: true }).gaps, []);
+  assert.deepEqual(doneGaps({ pages: [row('a', '/a', 'pending')], ledgerLines: ENDED, notLive: [], libraryPublished: false }).gaps, ['pages_unfinished:1']);
+});
+
 check('gaps come in a fixed order and long path lists are capped', () => {
   const many = Array.from({ length: 25 }, (_, i) => row(`f${i}`, `/f${i}`, 'failed'));
-  const v = doneGaps({ pages: [row('u', '/u', 'pending'), ...many], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'] });
-  assert.deepEqual(v.gaps.map((g) => g.split(':')[0]), ['pages_unfinished', 'pages_failed', 'pages_not_live', 'open_p1', 'rollout_incomplete']);
+  const v = doneGaps({ pages: [row('u', '/u', 'pending'), row('d', '/d', 'deployed'), ...many], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'], libraryPublished: false });
+  assert.deepEqual(v.gaps.map((g) => g.split(':')[0]), ['pages_unfinished', 'pages_failed', 'pages_not_live', 'open_p1', 'library_missing', 'rollout_incomplete']);
   assert.match(v.gaps[1], /, … \(\+5\)$/);
 });
 
@@ -111,10 +117,11 @@ check('the probe HEADs each path on the host, keeps input order, and counts non-
 });
 
 // --- CLI ------------------------------------------------------------------------------------------
-function project({ pages = CLEAN_PAGES, ledger = ENDED, liveHost } = {}) {
+function project({ pages = CLEAN_PAGES, ledger = ENDED, liveHost, library = true } = {}) {
   const proj = mkdtempSync(join(tmpdir(), 'done-check-'));
   const out = join(proj, 'stardust', 'rollout');
   mkdirSync(join(out, 'coverage'), { recursive: true });
+  if (library) { mkdirSync(join(out, 'library'), { recursive: true }); writeFileSync(join(out, 'library', 'published.json'), '{}'); }
   if (pages) writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages }));
   writeFileSync(join(out, 'rollout.json'), JSON.stringify(liveHost ? { site: { liveHost } } : {}));
   writeFileSync(join(proj, 'stardust', 'status.jsonl'), ledger.map((l) => JSON.stringify(l)).join('\n'));
@@ -137,6 +144,16 @@ check('CLI: a clean offline run exits 0 and the JSON says the probe was skipped'
   const r = run(proj, ['--offline', '--json']);
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(r.stdout), { complete: true, gaps: [], liveChecked: false });
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: delivered pages without library/published.json are not complete (library-rows.json alone is a dry run)', () => {
+  const proj = project({ library: false });
+  mkdirSync(join(proj, 'stardust', 'rollout', 'library'), { recursive: true });
+  writeFileSync(join(proj, 'stardust', 'rollout', 'library', 'library-rows.json'), '[]');
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 1);
+  assert.deepEqual(r.stdout.trim().split('\n'), ['library_missing', '✗ 1 gap(s) (live probe skipped: --offline)']);
   rmSync(proj, { recursive: true, force: true });
 });
 

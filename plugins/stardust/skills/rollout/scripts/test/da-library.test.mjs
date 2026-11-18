@@ -125,6 +125,7 @@ try {
     assert.deepEqual(JSON.parse(readFileSync(join(out, "templates.json"), "utf8")).data, [{ key: "Index", value: "https://content.da.live/o/s/library/templates/index" }]);
     assert.deepEqual(JSON.parse(readFileSync(join(out, "blocks.json"), "utf8")).data.map((x) => x.path), ["https://content.da.live/o/s/library/blocks/cards", "https://content.da.live/o/s/library/blocks/hero"]);
     assert.deepEqual(JSON.parse(readFileSync(join(out, "library-rows.json"), "utf8")).map((x) => x.title), ["Blocks", "Templates"]);
+    assert.ok(!existsSync(join(out, "published.json")), "a dry run never claims the library is on DA");
   });
   const h = spawnSync(process.execPath, [join(HERE, "..", "da-library.mjs"), "--help"], { cwd: dir, encoding: "utf8" });
   check("--help prints usage, exit 0", () => { assert.equal(h.status, 0); assert.match(h.stdout, /da-library\.mjs/); });
@@ -168,13 +169,14 @@ try {
 } finally { rmSync(tree, { recursive: true, force: true }); }
 
 // against a local fake of admin.da.live + admin.hlx.page
-const reqs = []; let mode = "ok"; const hits = {};
+const reqs = []; let mode = "ok"; const hits = {}; const auths = [];
 const server = createServer((req, res) => {
   const chunks = []; req.on("data", (c) => chunks.push(c));
   req.on("end", () => {
-    reqs.push(`${req.method} ${req.url}`);
+    reqs.push(`${req.method} ${req.url}`); auths.push(req.headers.authorization);
     hits[req.url] = (hits[req.url] || 0) + 1;
     if (mode === "dead401" || (mode === "burst" && hits[req.url] <= 2)) { res.writeHead(401); res.end(); return; }
+    if (mode === "config500" && req.method === "POST" && req.url.startsWith("/config/")) { res.writeHead(500); res.end(); return; }
     if (req.method === "GET" && req.url.startsWith("/config/")) { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ":type": "multi-sheet", ":names": ["library"], library: { data: [{ title: "Templates", path: "https://x/templates.json" }] } })); return; }
     res.writeHead(req.method === "PUT" || req.method === "POST" ? 201 : 200); res.end("{}");
   });
@@ -182,8 +184,9 @@ const server = createServer((req, res) => {
 await new Promise((r) => { server.listen(0, "127.0.0.1", r); });
 const B = `http://127.0.0.1:${server.address().port}`;
 const site = mkdtempSync(join(tmpdir(), "da-library-net-"));
-const runNet = () => new Promise((resolve) => {
-  const p = spawn(process.execPath, [join(HERE, "..", "da-library.mjs"), "--org", "o", "--site", "s"], { cwd: site, env: { ...process.env, DA_TOKEN: "tok", DA_SOURCE_BASE: `${B}/source`, DA_CONFIG_BASE: `${B}/config`, AEM_ADMIN_BASE: `${B}/admin`, DA_LIBRARY_BACKOFF_MS: "5" } });
+const runNet = (envOver = { DA_TOKEN: "tok" }) => new Promise((resolve) => {
+  const env = { ...process.env }; delete env.DA_TOKEN; delete env.ADOBE_IMS_TOKEN_FILE;
+  const p = spawn(process.execPath, [join(HERE, "..", "da-library.mjs"), "--org", "o", "--site", "s"], { cwd: site, env: { ...env, ...envOver, DA_SOURCE_BASE: `${B}/source`, DA_CONFIG_BASE: `${B}/config`, AEM_ADMIN_BASE: `${B}/admin`, DA_LIBRARY_BACKOFF_MS: "5" } });
   let out = ""; let err = ""; p.stdout.on("data", (d) => { out += d; }); p.stderr.on("data", (d) => { err += d; });
   p.on("close", (code) => resolve({ code, out, err }));
 });
@@ -196,6 +199,8 @@ try {
     assert.ok(reqs.includes("PUT /source/o/s/library/blocks/hero.html")); assert.ok(reqs.includes("PUT /source/o/s/library/blocks.json"));
     assert.ok(!reqs.some((q) => q.includes("templates.json")), reqs.join("\n")); assert.ok(!reqs.some((q) => q.startsWith("POST /admin/preview")));
     assert.match(r1.out, /config library tab \(Blocks\)/);
+    const pub = JSON.parse(readFileSync(join(site, "stardust", "rollout", "library", "published.json"), "utf8"));
+    assert.equal(pub.blocks, 1); assert.equal(pub.org, "o"); assert.deepEqual(pub.rows.map((r) => r.title), ["Blocks"]);
   });
   reqs.length = 0; mode = "burst"; Object.keys(hits).forEach((k) => { delete hits[k]; });
   writeFileSync(join(site, "content", "about.html"), `<body><main><div><div class="hero"><div><div>A</div></div></div></div></main></body>`);
@@ -203,7 +208,19 @@ try {
   check("a 401 burst on a valid token is retried and the run completes", () => { assert.equal(r2.code, 0, r2.err + r2.out); assert.match(r2.out, /OK +library\/blocks\/hero/); assert.equal(reqs.filter((q) => q === "PUT /source/o/s/library/blocks/hero.html").length, 3, "401, 401, then 201"); });
   mode = "dead401";
   const r3 = await runNet();
-  check("a 401 that persists through the retries exits 3 with the refresh hint", () => { assert.equal(r3.code, 3); assert.match(r3.err, /401 .* after retries — refresh DA_TOKEN/); });
+  check("a 401 that persists through the retries exits 3 with the refresh hint, and the previous published.json is gone", () => { assert.equal(r3.code, 3); assert.match(r3.err, /401 .* after retries — refresh DA_TOKEN/); assert.ok(!existsSync(join(site, "stardust", "rollout", "library", "published.json"))); });
+  mode = "ok"; auths.length = 0;
+  const tokFile = join(site, "ims-token"); writeFileSync(tokFile, "filetok\n");
+  const r4 = await runNet({ ADOBE_IMS_TOKEN_FILE: tokFile });
+  check("no flag and no DA_TOKEN: the token comes from ADOBE_IMS_TOKEN_FILE; published.json is written again", () => {
+    assert.equal(r4.code, 0, r4.err + r4.out); assert.ok(auths.length && auths.every((h) => h === "Bearer filetok"), auths.join(","));
+    assert.ok(existsSync(join(site, "stardust", "rollout", "library", "published.json")));
+  });
+  const r5 = await runNet({ DA_TOKEN: "tok", ADOBE_IMS_TOKEN_FILE: tokFile });
+  check("DA_TOKEN set: it wins over ADOBE_IMS_TOKEN_FILE", () => { assert.equal(r5.code, 0, r5.err); assert.equal(auths.at(-1), "Bearer tok"); });
+  mode = "config500";
+  const r6 = await runNet();
+  check("a config write that fails exits 1 and leaves no published.json", () => { assert.equal(r6.code, 1, r6.out); assert.ok(!existsSync(join(site, "stardust", "rollout", "library", "published.json"))); });
 } finally { server.close(); rmSync(site, { recursive: true, force: true }); }
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
