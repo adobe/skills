@@ -10,7 +10,8 @@
  * Reads the authored DA bodies under --content (the files deploy PUT). With rollout's coverage, only delivered pages
  * (status deployed | verified), each template's representative page first (a template whose representative is not
  * delivered yet is named and skipped); without it, every content file except library/, the root nav / footer and the
- * documents a page names in its nav / footer metadata. --org / --site default to stardust/rollout/rollout.json `site.da`.
+ * documents a page names in its nav / footer metadata. --org / --site default to rollout.json `site.da` (in the rollout
+ * dir, dirname(--coverage): stardust/rollout).
  *   blocks     one document per block (library/blocks/<name>): the first authored instance of every class
  *              combination (`cards dark` → the variant "cards (dark)"), one section each, followed by a
  *              library-metadata block (description = where it is used). Skipped: metadata, section-metadata,
@@ -25,24 +26,27 @@
  *   config     the `library` tab of the site config (admin.da.live/config/<org>/<site>/): the Blocks row, and the
  *              Templates row only when this run has templates, are replaced; every other row and every other tab is
  *              kept (a single-sheet config becomes a multi-sheet one with its sheet intact).
- * Writes <out>/{blocks/*.html, templates/*.html, blocks.json, templates.json, library-rows.json} always; without
- * --dry-run also <out>/published.json once every DA write succeeded (done-check's library_missing gap reads it), and PUTs the documents and sheets (templates.json only when this run has templates), previews the
- * template documents (the panel reads every document from content.da.live; only a template's preview button needs
- * the preview; nothing is published) and writes the merged config. No authored block found → exit 1 and no DA
- * write. Idempotent: every write replaces the previous one.
+ * Writes <out>/{blocks/*.html, templates/*.html, blocks.json, templates.json, library-rows.json} always. Without
+ * --dry-run it PUTs the documents and sheets (templates.json only when this run has templates), previews the template
+ * documents (the panel reads every document from content.da.live; only a template's preview button needs the preview;
+ * nothing is published) and writes the merged config; and it owns the proof of publication, <rollout dir>/library/
+ * published.json (rollout lib.mjs libraryMarkerPath; done-check's library_missing gap reads it): removed first, before
+ * any check can end the run, and written only when every DA write and template preview succeeded, recording org, site,
+ * the block names and the delivered pages read — so a later delivered page or another site.da makes it stale.
+ * No authored block found → exit 1 and no DA write. Idempotent: every write replaces the previous one.
  *
- * Token: the variable named by --token-env (default DA_TOKEN) or --token-file; with neither and DA_TOKEN unset, the
- * file named by ADOBE_IMS_TOKEN_FILE (deploy-batch's rule); never printed. An expired JWT exits 3
+ * Token: --token-file, --token-env, else DA_TOKEN, else the file named by ADOBE_IMS_TOKEN_FILE (daTokenSource, the
+ * shared rule in skills/stardust/scripts/lib/da-token.mjs); never printed. An expired JWT exits 3
  * before any request; a 401 is retried like a 429 and exits 3 when it persists. Exit 0 done; 1 no block found, a write
- * failed (network included) or the config was not readable/writable (the rows to add by hand are printed); 2 usage.
+ * or template preview failed (network included) or the config was not readable/writable (the rows to add by hand are
+ * printed); 2 usage (no token included).
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { treePath, servedPath, isFolderIndexFile } from './lib.mjs'; // the shared path rules (lib/paths.mjs)
-
-const HERE = dirname(fileURLToPath(import.meta.url));
+import { daTokenSource, readDaToken, jwtExpiry, libraryMarkerPath } from './lib.mjs'; // lib/da-token.mjs; the marker path
 
 // ---- pure part ------------------------------------------------------------------------------------------------
 
@@ -226,13 +230,16 @@ function walk(dir) {
   return out;
 }
 
-/** Pages in priority order and the templates, from coverage when present, else from the content tree. */
+/**
+ * Pages in priority order, the templates, and the delivered paths this run reads (published.json records them, a
+ * delivered page without a content file included), from coverage when present, else from the content tree.
+ */
 function sources(a) {
   const pagesDoc = readJSON(join(a.coverage, 'pages.json'));
   const tplDoc = readJSON(join(a.coverage, 'templates.json'));
-  const pages = []; const templates = [];
+  const pages = []; const templates = []; let delivered = null;
   if (pagesDoc && Array.isArray(pagesDoc.pages)) {
-    const delivered = pagesDoc.pages.filter((p) => p.path && p.delivery && ['deployed', 'verified'].includes(p.delivery.status));
+    delivered = pagesDoc.pages.filter((p) => p.path && p.delivery && ['deployed', 'verified'].includes(p.delivery.status));
     const bySlug = new Map(delivered.map((p) => [p.slug, p]));
     const all = ((tplDoc && tplDoc.templates) || []).map((t) => ({ t, page: bySlug.get(t.representativeSlug) }));
     for (const x of all) if (!x.page) console.error(`da-library: template ${templateName(x.t)}: representative ${x.t.representativeSlug || '(none)'} not delivered yet — skipped; re-run after it is`);
@@ -255,7 +262,7 @@ function sources(a) {
     const i = templates.findIndex((x) => docName(x.name) === docName(t.name));
     if (i >= 0) templates[i] = t; else templates.push(t);
   }
-  return { pages, templates };
+  return { pages, templates, delivered: delivered ? delivered.map((p) => p.path) : pages.map((p) => p.path) };
 }
 
 async function main() {
@@ -267,13 +274,19 @@ async function main() {
   }
   let a;
   try { a = parseArgs(argv); } catch (e) { console.error(`da-library: ${e.message} (--help for usage)`); return 2; }
-  const cfg = readJSON(join('stardust', 'rollout', 'rollout.json'));
+  const rolloutDir = dirname(a.coverage);
+  // The proof of publication goes first, before any check below can end the run: a run that stops early (usage, no
+  // block, no or expired token) must not leave an earlier run's marker standing. A dry run writes nothing to DA and
+  // so neither removes nor writes it.
+  const marker = libraryMarkerPath(rolloutDir);
+  if (!a.dryRun) rmSync(marker, { force: true });
+  const cfg = readJSON(join(rolloutDir, 'rollout.json'));
   const da = (cfg && cfg.site && cfg.site.da) || {};
   a.org ||= da.org; a.site ||= da.site; if (!argv.includes('--ref') && da.ref) a.ref = da.ref;
-  if (!a.org || !a.site) { console.error('da-library: --org and --site are required (or site.da in stardust/rollout/rollout.json)'); return 2; }
+  if (!a.org || !a.site) { console.error(`da-library: --org and --site are required (or site.da in ${join(rolloutDir, 'rollout.json')})`); return 2; }
   if (!existsSync(a.content)) { console.error(`da-library: content dir ${a.content} missing — run after deploy has authored the pages`); return 2; }
 
-  const { pages, templates } = sources(a);
+  const { pages, templates, delivered } = sources(a);
   const known = existsSync(a.blocksDir) ? new Set(readdirSync(a.blocksDir).filter((n) => statSync(join(a.blocksDir, n)).isDirectory())) : null;
   const authored = collectBlocks(pages.map((p) => ({ path: p.path, html: readFileSync(p.file, 'utf8') })));
   const blocks = known ? authored.filter((b) => known.has(b.name)) : authored;
@@ -300,19 +313,13 @@ async function main() {
   if (!blocks.length) { console.error(`da-library: no authored block found in ${a.content} (${pages.length} pages) — is --content the deployed DA bodies? Nothing written to DA`); return 1; }
   if (a.dryRun) { console.log('da-library: --dry-run — nothing written to DA'); return 0; }
 
-  // token (same sources and expiry preflight as deploy-batch / da-media-upload)
-  if (a.tokenEnv && a.tokenFile) { console.error('da-library: give at most one of --token-env / --token-file'); return 2; }
-  const up = [join(HERE, '..', '..', 'deploy', 'scripts', 'da-media-upload.mjs'), join(HERE, '..', 'deploy', 'da-media-upload.mjs')].find((p) => existsSync(p));
-  const uploader = up ? await import(pathToFileURL(up).href) : null;
-  if (uploader && uploader.tokenFileFallback) a.tokenFile ||= uploader.tokenFileFallback(a.tokenEnv, process.env);
-  const label = a.tokenFile || a.tokenEnv || 'DA_TOKEN';
-  const token = a.tokenFile ? (existsSync(a.tokenFile) ? readFileSync(a.tokenFile, 'utf8').trim() : '') : (process.env[label] || '').trim();
+  // token: the shared source rule and expiry preflight (lib/da-token.mjs, as deploy-batch / da-media-upload)
+  let src; let token;
+  try { src = daTokenSource(a, process.env); token = readDaToken(src, process.env); } catch (e) { console.error(`da-library: ${e.message}`); return 2; }
+  const label = src.tokenFile ? `${src.tokenFile}${src.via === 'ADOBE_IMS_TOKEN_FILE' ? ' (ADOBE_IMS_TOKEN_FILE)' : ''}` : src.tokenEnv;
   if (!token) { console.error(`da-library: no token in ${label}`); return 2; }
-  if (uploader) {
-    const { jwtExpiry } = uploader;
-    const exp = jwtExpiry(token);
-    if (exp && exp * 1000 < Date.now()) { console.error(`da-library: the token in ${label} expired at ${new Date(exp * 1000).toISOString()} — refresh it and re-run`); return 3; }
-  }
+  const exp = jwtExpiry(token);
+  if (exp && exp * 1000 < Date.now()) { console.error(`da-library: the token in ${label} expired at ${new Date(exp * 1000).toISOString()} — refresh it and re-run`); return 3; }
   const SRC = process.env.DA_SOURCE_BASE || 'https://admin.da.live/source';
   const CONF = process.env.DA_CONFIG_BASE || 'https://admin.da.live/config';
   const ADMIN = process.env.AEM_ADMIN_BASE || 'https://admin.hlx.page';
@@ -333,18 +340,19 @@ async function main() {
     }
   };
   const put = (path, text, type) => { const fd = new FormData(); fd.append('data', new Blob([text], { type }), path.split('/').pop()); return call(`${SRC}/${a.org}/${a.site}/${path}`, { method: 'PUT', body: fd }); };
-  // published.json is the proof the library reached DA (library-rows.json is written by --dry-run too): removed
-  // before the first write, written only when every write below succeeded. rollout's done-check reads it.
-  const marker = join(a.out, 'published.json');
-  rmSync(marker, { force: true });
+  // published.json (the marker, removed above) is the proof the library reached DA — library-rows.json is written by
+  // --dry-run too; it is written only when every write below succeeded.
   let failed = 0;
   for (const d of docs) {
     const r = await put(`${d.path}.html`, d.html, 'text/html');
-    let pv = '';
+    let pv = ''; let ok = r.ok;
     // only a template needs its preview (the panel's preview button); block documents are read from content.da.live
-    if (r.ok && a.preview && d.path.startsWith('library/templates/')) pv = ` · preview ${(await call(`${ADMIN}/preview/${a.org}/${a.site}/${a.ref}/${d.path}`, { method: 'POST' })).status}`;
-    if (!r.ok) failed += 1;
-    console.log(`${r.ok ? 'OK  ' : 'FAIL'} ${d.path} · put ${r.status}${pv}`);
+    if (r.ok && a.preview && d.path.startsWith('library/templates/')) {
+      const p = await call(`${ADMIN}/preview/${a.org}/${a.site}/${a.ref}/${d.path}`, { method: 'POST' });
+      pv = ` · preview ${p.status}`; ok = p.ok;
+    }
+    if (!ok) failed += 1;
+    console.log(`${ok ? 'OK  ' : 'FAIL'} ${d.path} · put ${r.status}${pv}`);
   }
   // templates.json only when this run has templates: a run without them must not wipe a published registration
   for (const [name, rowsOf] of [['blocks', blockRows], ...(tplRows.length ? [['templates', tplRows]] : [])]) {
@@ -363,7 +371,7 @@ async function main() {
   const w = await call(confUrl, { method: 'POST', body: fd });
   console.log(`${w.ok ? 'OK  ' : 'FAIL'} config library tab (${rows.map((r) => r.title).join(', ')}) · post ${w.status}`);
   if (!w.ok) { failed += 1; console.error(`rows to add by hand:\n${JSON.stringify(rows, null, 2)}`); }
-  if (!failed) write(marker, `${JSON.stringify({ org: a.org, site: a.site, blocks: blocks.length, variants, templates: tplRows.length, rows, at: new Date().toISOString() }, null, 2)}\n`);
+  if (!failed) write(marker, `${JSON.stringify({ org: a.org, site: a.site, blocks: blocks.map((b) => b.name), variants, templates: tplRows.map((t) => t.key), pages: delivered, rows, at: new Date().toISOString() }, null, 2)}\n`);
   return failed ? 1 : 0;
 }
 

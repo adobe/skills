@@ -1,7 +1,7 @@
 # Shared script library
 
 One copy of every rule more than one stardust skill's scripts apply: EDS paths, names and the widget contract, kinds,
-the dynamics taxonomy, and the resolver that finds a sibling skill's script in either layout. Pure ESM, no I/O at import.
+the dynamics taxonomy, the DA token source, and the resolver that finds a sibling skill's script in either layout. Pure ESM, no I/O at import.
 Consumers import it through `../contracts.mjs`, which re-exports every file here.
 Each file's header says what it owns and which consumers it replaced; the characterization test
 (`../test/contracts-characterize.test.mjs`) pins every variant's output and the golden chain (`evals/golden/`) pins the
@@ -14,6 +14,7 @@ pipeline's bytes, so a change here is visible before it ships.
 | `kinds.mjs` | `CODED`, `CHROME_IDS`, `kindOf`, `isChromeName`, `QA_CHROME_PATHS`, `documentKind`, `META_BLOCKS`/`KEY_VALUE_BLOCKS`, `DEFAULT_CONTENT`, the kind enums (`SPEC_MAP_KINDS`, `SPEC_CATALOG_KINDS`, `ROLLOUT_KINDS`, `DYNAMICS_TARGETS`), `AI_EXCLUDE_DEFAULT` |
 | `taxonomy.mjs` | dynamics `TAXONOMY` and the single `CLASS_NAMES` |
 | `resolve.mjs` | `layout`, `siblingCandidates`, `sibling`/`siblingPath`/`loadSibling` |
+| `da-token.mjs` | where a DA/admin script finds its IMS token (`daTokenSource`: `--token-file`, `--token-env`, `DA_TOKEN`, then `ADOBE_IMS_TOKEN_FILE`), `readDaToken`, `jwtExpiry`; used by deploy's `da-media-upload`/`deploy-batch`, rollout's `da-library`, dynamics' `sync-sheets` |
 
 Centralise first, converge later: a variant keeps its consumer's current output until a deliberate commit removes its
 `KNOWN_DIVERGENCE` rows from the characterization test and says why.

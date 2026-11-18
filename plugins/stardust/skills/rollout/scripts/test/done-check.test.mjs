@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { doneGaps, deliveredPaths, headerGap, openP1, probeLive, rolloutEnded } from '../done-check.mjs';
-import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
+import { SOURCE_PARITY_PREFIX, libraryGap, publicUrl } from '../lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'done-check.mjs');
@@ -85,14 +85,25 @@ check('the rollout is ended only when its LAST I-dashboard line is an end', () =
 });
 
 check('library_missing fires only when a page was delivered and the library is not published', () => {
-  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], libraryPublished: false }).gaps, ['library_missing']);
-  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], libraryPublished: true }).gaps, []);
-  assert.deepEqual(doneGaps({ pages: [row('a', '/a', 'pending')], ledgerLines: ENDED, notLive: [], libraryPublished: false }).gaps, ['pages_unfinished:1']);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], library: 'library_missing' }).gaps, ['library_missing']);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], library: null }).gaps, []);
+  assert.deepEqual(doneGaps({ pages: [row('a', '/a', 'pending')], ledgerLines: ENDED, notLive: [], library: 'library_missing' }).gaps, ['pages_unfinished:1']);
+});
+
+check('libraryGap: absent marker, another DA site, and delivered pages the library never read', () => {
+  const da = { org: 'o', site: 's' };
+  assert.equal(libraryGap(null, { da, delivered: ['/'] }), 'library_missing');
+  assert.equal(libraryGap({ org: 'o', site: 's', pages: ['/', '/about'] }, { da, delivered: ['/', '/about'] }), null);
+  assert.match(libraryGap({ org: 'o', site: 'old', pages: ['/'] }, { da, delivered: ['/'] }), /^library_missing:published to o\/old, site\.da is o\/s/);
+  assert.match(libraryGap({ org: 'o', site: 's', pages: ['/'] }, { da, delivered: ['/', '/about'] }), /^library_missing:stale: 1 delivered page\(s\) not in the library: \/about — re-run da-library\.mjs$/);
+  assert.equal(libraryGap({ pages: ['/'] }, { delivered: ['/'] }), null, 'no site.da: only staleness is checked');
+  const many = Array.from({ length: 23 }, (_, i) => `/p${i}`);
+  assert.match(libraryGap({ org: 'o', site: 's', pages: [] }, { da, delivered: many }), /stale: 23 .*, … \(\+3\) — re-run/);
 });
 
 check('gaps come in a fixed order and long path lists are capped', () => {
   const many = Array.from({ length: 25 }, (_, i) => row(`f${i}`, `/f${i}`, 'failed'));
-  const v = doneGaps({ pages: [row('u', '/u', 'pending'), row('d', '/d', 'deployed'), ...many], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'], libraryPublished: false });
+  const v = doneGaps({ pages: [row('u', '/u', 'pending'), row('d', '/d', 'deployed'), ...many], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'], library: 'library_missing' });
   assert.deepEqual(v.gaps.map((g) => g.split(':')[0]), ['pages_unfinished', 'pages_failed', 'pages_not_live', 'open_p1', 'library_missing', 'rollout_incomplete']);
   assert.match(v.gaps[1], /, … \(\+5\)$/);
 });
@@ -121,7 +132,7 @@ function project({ pages = CLEAN_PAGES, ledger = ENDED, liveHost, library = true
   const proj = mkdtempSync(join(tmpdir(), 'done-check-'));
   const out = join(proj, 'stardust', 'rollout');
   mkdirSync(join(out, 'coverage'), { recursive: true });
-  if (library) { mkdirSync(join(out, 'library'), { recursive: true }); writeFileSync(join(out, 'library', 'published.json'), '{}'); }
+  if (library) { mkdirSync(join(out, 'library'), { recursive: true }); writeFileSync(join(out, 'library', 'published.json'), JSON.stringify({ pages: (pages || []).map((p) => p.path) })); }
   if (pages) writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages }));
   writeFileSync(join(out, 'rollout.json'), JSON.stringify(liveHost ? { site: { liveHost } } : {}));
   writeFileSync(join(proj, 'stardust', 'status.jsonl'), ledger.map((l) => JSON.stringify(l)).join('\n'));

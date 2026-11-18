@@ -20,7 +20,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { VIDEO_MAX_BYTES, classify, jwtExpiry, parseArgs, readManifest, tokenFileFallback, webPath } from '../da-media-upload.mjs';
+import { VIDEO_MAX_BYTES, classify, jwtExpiry, parseArgs, readManifest, webPath } from '../da-media-upload.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'da-media-upload.mjs');
@@ -134,8 +134,10 @@ await check('token source: no flag and no DA_TOKEN falls back to ADOBE_IMS_TOKEN
   const a = parseArgs(argv, { ADOBE_IMS_TOKEN_FILE: f }); assert.equal(a.tokenFile, f); assert.equal(a.token, 'filetok');
   assert.equal(parseArgs(argv, { DA_TOKEN: 'envtok', ADOBE_IMS_TOKEN_FILE: f }).token, 'envtok');
   assert.equal(parseArgs([...argv, '--token-env', 'X'], { X: 'xtok', ADOBE_IMS_TOKEN_FILE: f }).token, 'xtok');
-  assert.equal(tokenFileFallback('X', { ADOBE_IMS_TOKEN_FILE: f }), undefined);
-  assert.equal(tokenFileFallback(undefined, {}), undefined);
+  assert.equal(a.tokenVia, 'ADOBE_IMS_TOKEN_FILE');
+  const x = parseArgs([...argv, '--token-env', 'X'], { X: 'xtok', ADOBE_IMS_TOKEN_FILE: f });
+  assert.equal(x.tokenFile, undefined, 'an explicit --token-env never falls back to the file'); assert.equal(x.tokenEnv, 'X');
+  assert.equal(parseArgs([...argv, '--dry-run'], {}).tokenEnv, 'DA_TOKEN');
   rmSync(dir, { recursive: true, force: true });
 });
 await check('classify: image types by extension, non-images skipped, unsafe svg refused', () => {

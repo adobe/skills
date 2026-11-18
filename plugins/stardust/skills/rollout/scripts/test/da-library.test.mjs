@@ -177,6 +177,7 @@ const server = createServer((req, res) => {
     hits[req.url] = (hits[req.url] || 0) + 1;
     if (mode === "dead401" || (mode === "burst" && hits[req.url] <= 2)) { res.writeHead(401); res.end(); return; }
     if (mode === "config500" && req.method === "POST" && req.url.startsWith("/config/")) { res.writeHead(500); res.end(); return; }
+    if (mode === "preview500" && req.method === "POST" && req.url.startsWith("/admin/preview/")) { res.writeHead(500); res.end(); return; }
     if (req.method === "GET" && req.url.startsWith("/config/")) { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ":type": "multi-sheet", ":names": ["library"], library: { data: [{ title: "Templates", path: "https://x/templates.json" }] } })); return; }
     res.writeHead(req.method === "PUT" || req.method === "POST" ? 201 : 200); res.end("{}");
   });
@@ -184,9 +185,9 @@ const server = createServer((req, res) => {
 await new Promise((r) => { server.listen(0, "127.0.0.1", r); });
 const B = `http://127.0.0.1:${server.address().port}`;
 const site = mkdtempSync(join(tmpdir(), "da-library-net-"));
-const runNet = (envOver = { DA_TOKEN: "tok" }) => new Promise((resolve) => {
+const runNet = (envOver = { DA_TOKEN: "tok" }, extra = []) => new Promise((resolve) => {
   const env = { ...process.env }; delete env.DA_TOKEN; delete env.ADOBE_IMS_TOKEN_FILE;
-  const p = spawn(process.execPath, [join(HERE, "..", "da-library.mjs"), "--org", "o", "--site", "s"], { cwd: site, env: { ...env, ...envOver, DA_SOURCE_BASE: `${B}/source`, DA_CONFIG_BASE: `${B}/config`, AEM_ADMIN_BASE: `${B}/admin`, DA_LIBRARY_BACKOFF_MS: "5" } });
+  const p = spawn(process.execPath, [join(HERE, "..", "da-library.mjs"), "--org", "o", "--site", "s", ...extra], { cwd: site, env: { ...env, ...envOver, DA_SOURCE_BASE: `${B}/source`, DA_CONFIG_BASE: `${B}/config`, AEM_ADMIN_BASE: `${B}/admin`, DA_LIBRARY_BACKOFF_MS: "5" } });
   let out = ""; let err = ""; p.stdout.on("data", (d) => { out += d; }); p.stderr.on("data", (d) => { err += d; });
   p.on("close", (code) => resolve({ code, out, err }));
 });
@@ -200,7 +201,7 @@ try {
     assert.ok(!reqs.some((q) => q.includes("templates.json")), reqs.join("\n")); assert.ok(!reqs.some((q) => q.startsWith("POST /admin/preview")));
     assert.match(r1.out, /config library tab \(Blocks\)/);
     const pub = JSON.parse(readFileSync(join(site, "stardust", "rollout", "library", "published.json"), "utf8"));
-    assert.equal(pub.blocks, 1); assert.equal(pub.org, "o"); assert.deepEqual(pub.rows.map((r) => r.title), ["Blocks"]);
+    assert.deepEqual(pub.blocks, ["hero"]); assert.deepEqual(pub.pages, ["/"]); assert.equal(pub.org, "o"); assert.deepEqual(pub.rows.map((r) => r.title), ["Blocks"]);
   });
   reqs.length = 0; mode = "burst"; Object.keys(hits).forEach((k) => { delete hits[k]; });
   writeFileSync(join(site, "content", "about.html"), `<body><main><div><div class="hero"><div><div>A</div></div></div></div></main></body>`);
@@ -221,6 +222,23 @@ try {
   mode = "config500";
   const r6 = await runNet();
   check("a config write that fails exits 1 and leaves no published.json", () => { assert.equal(r6.code, 1, r6.out); assert.ok(!existsSync(join(site, "stardust", "rollout", "library", "published.json"))); });
+  mode = "ok";
+  const r7 = await runNet();
+  mode = "preview500";
+  const r8 = await runNet(undefined, ["--template", "Home=/"]);
+  check("a template preview that fails is a FAIL: exit 1 and the published.json of the previous run is gone", () => {
+    assert.equal(r7.code, 0, r7.err + r7.out);
+    assert.equal(r8.code, 1, r8.err + r8.out); assert.match(r8.out, /FAIL library\/templates\/home .*preview 500/);
+    assert.ok(!existsSync(join(site, "stardust", "rollout", "library", "published.json")));
+  });
+  mode = "ok";
+  const r9 = await runNet();
+  const r10 = await runNet({});
+  check("an early exit (no token) still removes the previous published.json", () => {
+    assert.equal(r9.code, 0, r9.err + r9.out);
+    assert.equal(r10.code, 2, r10.err + r10.out); assert.match(r10.err, /DA_TOKEN/);
+    assert.ok(!existsSync(join(site, "stardust", "rollout", "library", "published.json")));
+  });
 } finally { server.close(); rmSync(site, { recursive: true, force: true }); }
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }

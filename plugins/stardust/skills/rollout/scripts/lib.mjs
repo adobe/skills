@@ -15,6 +15,31 @@ if (!CONTRACTS) throw Object.assign(new Error('rollout/lib.mjs: contracts.mjs no
 const C = await import(CONTRACTS.href);
 export const { RESERVED, edsName, reservedStem, widgetCodePath, pageWidgets, widgetStem, CHROME_IDS, kindOf, DEFAULT_CONTENT, documentKind } = C;
 export const { pathKey, safePath, sidecarName, treePath, rosterPath, pathSlug, sitemapKey, servedPath, isFolderIndexFile } = C;
+export const { daTokenSource, readDaToken, jwtExpiry } = C;
+
+/**
+ * The block library's proof of publication (#160): da-library.mjs writes it once every DA write of a run succeeded and
+ * removes it at the start of every run that is not a dry run; done-check's library_missing gap reads it. One path for
+ * both: `<rollout dir>/library/published.json` (da-library's rollout dir is dirname(--coverage), done-check's --out).
+ */
+export const libraryMarkerPath = (rolloutDir = join('stardust', 'rollout')) => join(rolloutDir, 'library', 'published.json');
+
+/**
+ * done-check's library gap, or null. `marker` is published.json (null when absent); `da` is rollout.json site.da;
+ * `delivered` the delivered coverage paths. Missing → `library_missing`; published to another DA site →
+ * `library_missing:published to <org>/<site>, site.da is …`; delivered pages it never read (siblings delivered after
+ * it ran, archetypes-only mode) → `library_missing:stale: N delivered page(s) not in the library: …`. Pure.
+ */
+export function libraryGap(marker, { da = {}, delivered = [] } = {}) {
+  if (!marker || typeof marker !== 'object') return 'library_missing';
+  const want = `${da.org || ''}/${da.site || ''}`;
+  if (da.org && da.site && `${marker.org}/${marker.site}` !== want) return `library_missing:published to ${marker.org}/${marker.site}, site.da is ${want} — re-run da-library.mjs`;
+  const read = new Set((Array.isArray(marker.pages) ? marker.pages : []).map(pathKey));
+  const stale = delivered.filter((p) => !read.has(pathKey(p)));
+  if (!stale.length) return null;
+  const shown = stale.length > 20 ? `${stale.slice(0, 20).join(', ')}, … (+${stale.length - 20})` : stale.join(', ');
+  return `library_missing:stale: ${stale.length} delivered page(s) not in the library: ${shown} — re-run da-library.mjs`;
+}
 
 export function readJSON(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }

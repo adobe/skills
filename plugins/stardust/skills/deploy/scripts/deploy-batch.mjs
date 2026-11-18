@@ -42,12 +42,11 @@
  *   (expired JWT before any request, or a 401 that persisted through its
  *   retries — refresh the token and re-run the same command).
  *
- * Token: from the environment variable named by --token-env (default DA_TOKEN),
- * or from --token-file <path> (read once at start, trimmed; never both flags — the
- * same two sources as da-media-upload.mjs). With neither flag and DA_TOKEN unset,
- * the file named by ADOBE_IMS_TOKEN_FILE is the --token-file. Never printed, never part of the
- * re-run command, never written to the ledger or the log; the expiry and HALT
- * lines name the variable or the file, never the value.
+ * Token: --token-file <path>, --token-env <NAME>, else DA_TOKEN, else the file named
+ * by ADOBE_IMS_TOKEN_FILE (read once at start, trimmed) — the shared rule, daTokenSource
+ * in skills/stardust/scripts/lib/da-token.mjs. Never printed, never part of the
+ * re-run command, never written to the ledger or the log; the read errors, expiry and
+ * HALT lines name the source (variable or file), never the value.
  *
  * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
  *
@@ -84,8 +83,6 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { mergeLedger } from './file-lock.mjs';
-// The sibling uploader guards its CLI behind a main-module check, so the import runs nothing.
-import { jwtExpiry, tokenFileFallback } from './da-media-upload.mjs';
 
 // The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
@@ -94,7 +91,7 @@ if (!CONTRACTS) {
   console.error('deploy-batch: contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).');
   process.exit(1);
 }
-const { documentPath } = await import(CONTRACTS.href);
+const { documentPath, daTokenSource, readDaToken, jwtExpiry } = await import(CONTRACTS.href);
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -131,28 +128,20 @@ function parseArgs(argv) {
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
-  // The token source: one variable (default DA_TOKEN) or one file, never both — the uploader's rule. The
-  // file is read here, once, before anything else runs; the value lives on `token` only and every message
-  // names the source (tokenLabel), never the value.
-  if (a.tokenEnv && a.tokenFile) throw new Error('give at most one of --token-env / --token-file');
-  a.tokenFile ||= tokenFileFallback(a.tokenEnv, process.env);
-  a.tokenEnv ||= 'DA_TOKEN';
-  if (a.tokenFile) {
-    let raw;
-    try { raw = readFileSync(a.tokenFile, 'utf8'); } catch (e) { throw new Error(`cannot read --token-file ${a.tokenFile}: ${e.message}`); }
-    a.token = raw.trim();
-    if (!a.token) throw new Error(`--token-file ${a.tokenFile} is empty`);
-  } else {
-    a.token = process.env[a.tokenEnv];
-    if (!a.token) throw new Error(`missing token in env ${a.tokenEnv}`);
-  }
+  // The token source (daTokenSource, lib/da-token.mjs — the uploader's rule): one file or one variable, never
+  // both. The file is read here, once, before anything else runs; the value lives on `token` only and every
+  // message names the source (tokenLabel, and readDaToken's errors), never the value.
+  const src = daTokenSource(a, process.env);
+  Object.assign(a, { tokenFile: src.tokenFile, tokenEnv: src.tokenEnv, tokenVia: src.via });
+  a.token = readDaToken(src, process.env);
+  if (!a.token) throw new Error(`missing token in env ${a.tokenEnv}`);
   a.ledger ||= path.join(a.content, '.deploy-ledger.json');
   a.log ||= path.join(a.content, '.deploy-log.jsonl');
   return a;
 }
 
 // How the messages name the token and say how to refresh it — the variable or the file, never the value.
-const tokenLabel = (a) => (a.tokenFile ? `the token in ${a.tokenFile}` : a.tokenEnv);
+const tokenLabel = (a) => (a.tokenFile ? `the token in ${a.tokenFile}${a.tokenVia === 'ADOBE_IMS_TOKEN_FILE' ? ' (ADOBE_IMS_TOKEN_FILE)' : ''}` : a.tokenEnv);
 const refreshHint = (a) => (a.tokenFile ? `write a fresh token to ${a.tokenFile}` : `refresh ${a.tokenEnv}`);
 // The exact command to re-run once the token is fresh: same script, same arguments (the token itself is
 // never on the command line — it comes from the environment variable, or from the --token-file path).
