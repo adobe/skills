@@ -96,4 +96,3 @@ The `.{Type}-wrapper` class comes from the field's base `fieldType`, not from th
 - To style the field wrapper itself, add the class in `decorate()` (`fieldDiv.classList.add('<name>')`) and target that. Don't style `.{base type}-wrapper` in a component stylesheet: it also matches every other field of the same base type.
 - Use field-name targeting (`.form .field-{name}`) only for one-off, form-specific styling, never in a reusable component's stylesheet.
 - Style validation and interaction states with the state patterns above (validation, `:focus`).
-- The validator (`scripts/validate-component.mjs`, check `css.classes`) reports every `<name>-*` class in the stylesheet that the component's JS never adds.

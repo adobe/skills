@@ -55,7 +55,7 @@
     {
       "name": "CSS targets rendered classes",
       "max_score": 6,
-      "description": "Every `loan-slider-*` class used in a selector of `loan-slider.css` is added by `loan-slider.js` (e.g. a container created in `decorate()` or `fieldDiv.classList.add(...)`). Selectors do not rely on a `.loan-slider-wrapper` class that the form block never renders: a `number-input` field's wrapper is `number-wrapper`"
+      "description": "`loan-slider.css` scopes its rules to classes that are actually rendered: classes `decorate()` adds (e.g. on a container it creates, or with `fieldDiv.classList.add(...)`) or that the form block renders. Selectors do not rely on a `.loan-slider-wrapper` class that nothing adds: the form block names a `number-input` field's wrapper `number-wrapper`"
     },
     {
       "name": "Component README",
