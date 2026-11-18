@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// skills/rollout/scripts/test/da-library.test.mjs — the DA library (#160): authored blocks and their class variants lifted from DA bodies, block and template documents in the shape the DA library reads (a kept metadata value with a `$` pattern survives), sheets, chrome references, and a config merge that only replaces the rows this run writes; the CLI --dry-run writes the files from coverage or the content tree and touches no network; zero blocks exits 1; a symlinked path still runs; against a local fake DA: only templates are previewed, templates.json is left alone without templates, a 401 burst is retried and a persistent 401 exits 3.
+// skills/rollout/scripts/test/da-library.test.mjs — the DA library (#160): authored blocks and their class variants lifted from DA bodies, block and template documents in the shape the DA library reads (a kept metadata value with a `$` pattern survives), sheets, chrome references, and a config merge that only replaces the rows this run writes; the CLI --dry-run writes the files from coverage or the content tree and touches no network; zero blocks exits 1; a symlinked path still runs; against a local fake DA: only templates are previewed, templates.json is left alone without templates, a 401 burst is retried and a persistent 401 exits 3; a delivered page without a content file exits 1 before any DA write; overlapping runs are serialized by the publication lock (a stale one is taken over).
 // Run: node plugins/stardust/skills/rollout/scripts/test/da-library.test.mjs
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, symlinkSync, copyFileSync } from "node:fs";
+import { cpSync, utimesSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync, symlinkSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -170,24 +170,29 @@ try {
 
 // against a local fake of admin.da.live + admin.hlx.page
 const reqs = []; let mode = "ok"; const hits = {}; const auths = [];
-const server = createServer((req, res) => {
+const serverHandler = (req, res) => {
   const chunks = []; req.on("data", (c) => chunks.push(c));
   req.on("end", () => {
     reqs.push(`${req.method} ${req.url}`); auths.push(req.headers.authorization);
     hits[req.url] = (hits[req.url] || 0) + 1;
+    const auth = req.headers.authorization || "";
+    if (auth.endsWith(" slow")) { setTimeout(() => { res.writeHead(req.method === "GET" && req.url.startsWith("/config/") ? 404 : 201); res.end("{}"); }, 60); return; }
+    if (auth.endsWith(" failcfg") && req.method === "POST" && req.url.startsWith("/config/")) { res.writeHead(500); res.end(); return; }
     if (mode === "dead401" || (mode === "burst" && hits[req.url] <= 2)) { res.writeHead(401); res.end(); return; }
     if (mode === "config500" && req.method === "POST" && req.url.startsWith("/config/")) { res.writeHead(500); res.end(); return; }
     if (mode === "preview500" && req.method === "POST" && req.url.startsWith("/admin/preview/")) { res.writeHead(500); res.end(); return; }
     if (req.method === "GET" && req.url.startsWith("/config/")) { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ":type": "multi-sheet", ":names": ["library"], library: { data: [{ title: "Templates", path: "https://x/templates.json" }] } })); return; }
     res.writeHead(req.method === "PUT" || req.method === "POST" ? 201 : 200); res.end("{}");
   });
-});
+};
+const server = createServer(serverHandler);
 await new Promise((r) => { server.listen(0, "127.0.0.1", r); });
 const B = `http://127.0.0.1:${server.address().port}`;
 const site = mkdtempSync(join(tmpdir(), "da-library-net-"));
-const runNet = (envOver = { DA_TOKEN: "tok" }, extra = []) => new Promise((resolve) => {
+const runNet = (envOver = { DA_TOKEN: "tok" }, extra = [], onSpawn = null) => new Promise((resolve) => {
   const env = { ...process.env }; delete env.DA_TOKEN; delete env.ADOBE_IMS_TOKEN_FILE;
   const p = spawn(process.execPath, [join(HERE, "..", "da-library.mjs"), "--org", "o", "--site", "s", ...extra], { cwd: site, env: { ...env, ...envOver, DA_SOURCE_BASE: `${B}/source`, DA_CONFIG_BASE: `${B}/config`, AEM_ADMIN_BASE: `${B}/admin`, DA_LIBRARY_BACKOFF_MS: "5" } });
+  if (onSpawn) onSpawn(p);
   let out = ""; let err = ""; p.stdout.on("data", (d) => { out += d; }); p.stderr.on("data", (d) => { err += d; });
   p.on("close", (code) => resolve({ code, out, err }));
 });
@@ -238,6 +243,61 @@ try {
     assert.equal(r9.code, 0, r9.err + r9.out);
     assert.equal(r10.code, 2, r10.err + r10.out); assert.match(r10.err, /DA_TOKEN/);
     assert.ok(!existsSync(join(site, "stardust", "rollout", "library", "published.json")));
+  });
+
+  // a delivered page whose content file is gone: refuse before any DA write rather than record a library that skips it
+  const cov = join(site, "stardust", "rollout", "coverage"); mkdirSync(cov, { recursive: true });
+  writeFileSync(join(cov, "pages.json"), JSON.stringify({ pages: [
+    { slug: "index", path: "/", templateId: "index", delivery: { status: "verified" } },
+    { slug: "gone", path: "/gone", templateId: "index", delivery: { status: "deployed" } }] }));
+  reqs.length = 0;
+  const m1 = await runNet();
+  check("a delivered page with no content file: exit 1 naming it, no DA request, no published.json", () => {
+    assert.equal(m1.code, 1, m1.err + m1.out); assert.match(m1.err, /1 delivered page\(s\) have no content file .*\/gone/);
+    assert.equal(reqs.length, 0, reqs.join("\n")); assert.ok(!existsSync(join(site, "stardust", "rollout", "library", "published.json")));
+  });
+  writeFileSync(join(cov, "pages.json"), JSON.stringify({ pages: [{ slug: "index", path: "/", templateId: "index", delivery: { status: "verified" } }] }));
+  const m2 = await runNet();
+  check("published.json records the delivered pages actually read", () => {
+    assert.equal(m2.code, 0, m2.err + m2.out);
+    assert.deepEqual(JSON.parse(readFileSync(join(site, "stardust", "rollout", "library", "published.json"), "utf8")).pages, ["/"]);
+  });
+  rmSync(cov, { recursive: true, force: true });
+
+  // two overlapping runs: B waits for A's lock, so B's failure removes A's marker and nothing re-creates it
+  const marker = join(site, "stardust", "rollout", "library", "published.json"); const lock = join(site, "stardust", "rollout", "library", ".publish.lock");
+  const order = []; const seen = (q) => { order.push(q); };
+  const tap = (req) => seen((req.headers.authorization || "").split(" ").pop()); server.on("request", tap);
+  let startB; const bDone = new Promise((r) => { startB = r; });
+  const lockEnv = { DA_LIBRARY_LOCK_POLL_MS: "20" };
+  const aRun = runNet({ DA_TOKEN: "slow", ...lockEnv }, [], () => {
+    const t = setInterval(() => { if (order.includes("slow")) { clearInterval(t); startB(runNet({ DA_TOKEN: "failcfg", ...lockEnv })); } }, 5);
+  });
+  const [ra, rb] = await Promise.all([aRun, bDone.then((p) => p)]);
+  check("overlapping runs are serialized: B waits, starts after A finished, and its failure leaves no published.json", () => {
+    assert.equal(ra.code, 0, ra.err + ra.out); assert.equal(rb.code, 1, rb.err + rb.out);
+    assert.match(rb.err, /waiting for another da-library run \(pid \d+\)/);
+    const firstB = order.indexOf("failcfg"); assert.ok(firstB > order.lastIndexOf("slow"), order.join(","));
+    assert.ok(!existsSync(marker)); assert.ok(!existsSync(lock), "the lock is released on exit");
+  });
+  server.off("request", tap);
+
+  mkdirSync(dirname(lock), { recursive: true });
+  writeFileSync(lock, `${JSON.stringify({ pid: 2 ** 22 + 12345, at: new Date().toISOString() })}\n`);
+  const s1 = await runNet({ DA_TOKEN: "tok", ...lockEnv });
+  check("a lock whose pid is gone is taken over and the run completes", () => {
+    assert.equal(s1.code, 0, s1.err + s1.out); assert.match(s1.err, /took over a stale publication lock/); assert.ok(existsSync(marker)); assert.ok(!existsSync(lock));
+  });
+  writeFileSync(lock, `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`);
+  const s2 = await runNet({ DA_TOKEN: "tok", ...lockEnv, DA_LIBRARY_LOCK_WAIT_MS: "100" });
+  check("a lock held by a live run: wait, then exit 1 naming it; the lock and that run's published.json are left alone", () => {
+    assert.equal(s2.code, 1, s2.err + s2.out); assert.match(s2.err, new RegExp(`another da-library run \\(pid ${process.pid}\\) is still publishing`));
+    assert.ok(existsSync(lock)); assert.ok(existsSync(marker));
+  });
+  writeFileSync(lock, `${JSON.stringify({ pid: process.pid, at: "2020-01-01T00:00:00Z" })}\n`); utimesSync(lock, new Date(0), new Date(0));
+  const s3 = await runNet({ DA_TOKEN: "tok", ...lockEnv });
+  check("a lock older than DA_LIBRARY_LOCK_STALE_MS is taken over even if its pid is alive (a reused pid)", () => {
+    assert.equal(s3.code, 0, s3.err + s3.out); assert.match(s3.err, /took over a stale/); assert.ok(!existsSync(lock));
   });
 } finally { server.close(); rmSync(site, { recursive: true, force: true }); }
 

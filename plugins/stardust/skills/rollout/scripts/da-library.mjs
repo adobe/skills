@@ -33,16 +33,22 @@
  * published.json (rollout lib.mjs libraryMarkerPath; done-check's library_missing gap reads it): removed first, before
  * any check can end the run, and written only when every DA write and template preview succeeded, recording org, site,
  * the block names and the delivered pages read — so a later delivered page or another site.da makes it stale.
- * No authored block found → exit 1 and no DA write. Idempotent: every write replaces the previous one.
+ * Publications of one checkout are serialized by <rollout dir>/library/.publish.lock (O_EXCL; held from before the
+ * marker is removed until the process exits, so a run that fails cannot leave an earlier run's marker over documents it
+ * replaced): a second run waits (DA_LIBRARY_LOCK_WAIT_MS, default 15 min, then exit 1); a lock whose pid is gone or
+ * older than DA_LIBRARY_LOCK_STALE_MS (default 1 h) is taken over. A dry run takes no lock.
+ * No authored block found, or a delivered page with no content file under --content → exit 1 and no DA write.
+ * Idempotent: every write replaces the previous one.
  *
  * Token: --token-file, --token-env, else DA_TOKEN, else the file named by ADOBE_IMS_TOKEN_FILE (daTokenSource, the
  * shared rule in skills/stardust/scripts/lib/da-token.mjs); never printed. An expired JWT exits 3
- * before any request; a 401 is retried like a 429 and exits 3 when it persists. Exit 0 done; 1 no block found, a write
+ * before any request; a 401 is retried like a 429 and exits 3 when it persists. Exit 0 done; 1 no block found, a delivered page
+ * without content, the lock still held by another run, a write
  * or template preview failed (network included) or the config was not readable/writable (the rows to add by hand are
  * printed); 2 usage (no token included).
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSync, writeFileSync, rmSync, openSync, closeSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { treePath, servedPath, isFolderIndexFile } from './lib.mjs'; // the shared path rules (lib/paths.mjs)
@@ -231,21 +237,22 @@ function walk(dir) {
 }
 
 /**
- * Pages in priority order, the templates, and the delivered paths this run reads (published.json records them, a
- * delivered page without a content file included), from coverage when present, else from the content tree.
+ * Pages in priority order, the templates, and the delivered paths that have no content file under --content (`missing`:
+ * the run refuses them — a library read from fewer pages than were delivered must not be recorded as covering them),
+ * from coverage when present, else from the content tree.
  */
 function sources(a) {
   const pagesDoc = readJSON(join(a.coverage, 'pages.json'));
   const tplDoc = readJSON(join(a.coverage, 'templates.json'));
-  const pages = []; const templates = []; let delivered = null;
+  const pages = []; const templates = []; const missing = [];
   if (pagesDoc && Array.isArray(pagesDoc.pages)) {
-    delivered = pagesDoc.pages.filter((p) => p.path && p.delivery && ['deployed', 'verified'].includes(p.delivery.status));
+    const delivered = pagesDoc.pages.filter((p) => p.path && p.delivery && ['deployed', 'verified'].includes(p.delivery.status));
     const bySlug = new Map(delivered.map((p) => [p.slug, p]));
     const all = ((tplDoc && tplDoc.templates) || []).map((t) => ({ t, page: bySlug.get(t.representativeSlug) }));
     for (const x of all) if (!x.page) console.error(`da-library: template ${templateName(x.t)}: representative ${x.t.representativeSlug || '(none)'} not delivered yet — skipped; re-run after it is`);
     const reps = all.filter((x) => x.page);
     const order = [...reps.map((x) => x.page), ...delivered.filter((p) => !reps.some((x) => x.page === p))];
-    for (const p of order) { const f = contentFile(a.content, p.path); if (f) pages.push({ path: p.path, file: f }); }
+    for (const p of order) { const f = contentFile(a.content, p.path); if (f) pages.push({ path: p.path, file: f }); else missing.push(p.path); }
     for (const { t, page } of reps) templates.push({ name: templateName(t), path: page.path });
   } else if (existsSync(a.content)) {
     const files = walk(a.content).sort().map((f) => ({ f, rel: relative(a.content, f).replace(/\\/g, '/').replace(/\.html$/, '') }));
@@ -262,7 +269,52 @@ function sources(a) {
     const i = templates.findIndex((x) => docName(x.name) === docName(t.name));
     if (i >= 0) templates[i] = t; else templates.push(t);
   }
-  return { pages, templates, delivered: delivered ? delivered.map((p) => p.path) : pages.map((p) => p.path) };
+  return { pages, templates, missing };
+}
+
+/** The publication lock of a rollout dir, beside the marker. */
+export const publishLockPath = (rolloutDir) => join(dirname(libraryMarkerPath(rolloutDir)), '.publish.lock');
+
+const pidAlive = (pid) => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+
+/**
+ * Take the cross-process publication lock (O_EXCL create), waiting while another live run holds it. A lock whose pid
+ * is gone, or older than DA_LIBRARY_LOCK_STALE_MS (default 1 h; a container restart can reuse the pid), is taken
+ * over — through a second O_EXCL file so two waiters cannot both take it. Released on process exit (only if still
+ * ours). Returns null when held, else the reason it could not be taken (waited DA_LIBRARY_LOCK_WAIT_MS, default 15 min).
+ */
+async function acquirePublishLock(path) {
+  const waitMs = Number(process.env.DA_LIBRARY_LOCK_WAIT_MS || 15 * 60e3);
+  const staleMs = Number(process.env.DA_LIBRARY_LOCK_STALE_MS || 60 * 60e3);
+  const pollMs = Number(process.env.DA_LIBRARY_LOCK_POLL_MS || 1000);
+  const mine = `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`;
+  const create = (p, text) => { try { const fd = openSync(p, 'wx'); writeFileSync(fd, text); closeSync(fd); return true; } catch (e) { if (e.code === 'EEXIST') return false; throw e; } };
+  mkdirSync(dirname(path), { recursive: true });
+  const deadline = Date.now() + waitMs; let said = false;
+  for (;;) {
+    if (create(path, mine)) break;
+    let raw = null; let holder = null; let age = 0;
+    try { age = Date.now() - statSync(path).mtimeMs; raw = readFileSync(path, 'utf8'); holder = JSON.parse(raw); } catch { /* mid-write or just released */ }
+    if (raw === null && age === 0) continue; // released between the create and the read
+    const stale = holder ? (!pidAlive(holder.pid) || age > staleMs) : age > 5000;
+    if (stale) {
+      const take = `${path}.takeover`;
+      try { if (Date.now() - statSync(take).mtimeMs > 30e3) rmSync(take, { force: true }); } catch { /* none */ }
+      if (create(take, mine)) {
+        // remove only the lock judged stale — a waiter that took over first has already replaced it
+        try { if (readFileSync(path, 'utf8') === raw) rmSync(path, { force: true }); } catch { /* gone already */ } finally { rmSync(take, { force: true }); }
+        console.error(`da-library: took over a stale publication lock${holder ? ` (pid ${holder.pid})` : ''}`);
+      }
+      await new Promise((r) => { setTimeout(r, Math.min(pollMs, 50)); });
+      continue;
+    }
+    if (Date.now() >= deadline) return `another da-library run (pid ${holder ? holder.pid : '?'}) is still publishing — gave up after ${Math.round(waitMs / 1000)} s; re-run when it has finished (lock: ${path})`;
+    if (!said) { console.error(`da-library: waiting for another da-library run (pid ${holder ? holder.pid : '?'}) to finish publishing`); said = true; }
+    await new Promise((r) => { setTimeout(r, pollMs); });
+  }
+  process.on('exit', () => { try { if (readFileSync(path, 'utf8') === mine) rmSync(path, { force: true }); } catch { /* gone */ } });
+  for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => process.exit(sig === 'SIGINT' ? 130 : 143));
+  return null;
 }
 
 async function main() {
@@ -279,14 +331,25 @@ async function main() {
   // block, no or expired token) must not leave an earlier run's marker standing. A dry run writes nothing to DA and
   // so neither removes nor writes it.
   const marker = libraryMarkerPath(rolloutDir);
-  if (!a.dryRun) rmSync(marker, { force: true });
+  if (!a.dryRun) {
+    // Serialize publications of this checkout: the lock is held from before the marker goes through the last DA write
+    // and the marker write (released on exit), so a run that fails after another one succeeded cannot leave that
+    // run's marker standing over DA documents it has since replaced.
+    const held = await acquirePublishLock(publishLockPath(rolloutDir));
+    if (held) { console.error(`da-library: ${held}`); return 1; }
+    rmSync(marker, { force: true });
+  }
   const cfg = readJSON(join(rolloutDir, 'rollout.json'));
   const da = (cfg && cfg.site && cfg.site.da) || {};
   a.org ||= da.org; a.site ||= da.site; if (!argv.includes('--ref') && da.ref) a.ref = da.ref;
   if (!a.org || !a.site) { console.error(`da-library: --org and --site are required (or site.da in ${join(rolloutDir, 'rollout.json')})`); return 2; }
   if (!existsSync(a.content)) { console.error(`da-library: content dir ${a.content} missing — run after deploy has authored the pages`); return 2; }
 
-  const { pages, templates, delivered } = sources(a);
+  const { pages, templates, missing } = sources(a);
+  if (missing.length) {
+    console.error(`da-library: ${missing.length} delivered page(s) have no content file under ${a.content}/ — the library would not cover them: ${missing.join(', ')}. Restore the deployed DA bodies (or re-run deploy for them) and re-run. Nothing written to DA`);
+    return 1;
+  }
   const known = existsSync(a.blocksDir) ? new Set(readdirSync(a.blocksDir).filter((n) => statSync(join(a.blocksDir, n)).isDirectory())) : null;
   const authored = collectBlocks(pages.map((p) => ({ path: p.path, html: readFileSync(p.file, 'utf8') })));
   const blocks = known ? authored.filter((b) => known.has(b.name)) : authored;
@@ -371,7 +434,7 @@ async function main() {
   const w = await call(confUrl, { method: 'POST', body: fd });
   console.log(`${w.ok ? 'OK  ' : 'FAIL'} config library tab (${rows.map((r) => r.title).join(', ')}) · post ${w.status}`);
   if (!w.ok) { failed += 1; console.error(`rows to add by hand:\n${JSON.stringify(rows, null, 2)}`); }
-  if (!failed) write(marker, `${JSON.stringify({ org: a.org, site: a.site, blocks: blocks.map((b) => b.name), variants, templates: tplRows.map((t) => t.key), pages: delivered, rows, at: new Date().toISOString() }, null, 2)}\n`);
+  if (!failed) write(marker, `${JSON.stringify({ org: a.org, site: a.site, blocks: blocks.map((b) => b.name), variants, templates: tplRows.map((t) => t.key), pages: pages.map((p) => p.path), rows, at: new Date().toISOString() }, null, 2)}\n`);
   return failed ? 1 : 0;
 }
 
