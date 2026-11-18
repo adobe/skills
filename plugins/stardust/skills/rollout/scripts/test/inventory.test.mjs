@@ -166,9 +166,12 @@ check('archetypes-only mode: a content-pending sibling inherits the archetype\'s
   assert.match(r.stdout, /^Widgets {5}1 distinct \(tour-finder\) on 2 pages/m, r.stdout);
 });
 
-check('archetypes-only mode: a roster URL with a trailing slash is the migrated archetype, not a second sibling row', () => {
-  const slugs = JSON.parse(readFileSync(join(root, 'rollout-state', 'coverage', 'pages.json'), 'utf8')).pages.map((p) => p.slug);
+check('archetypes-only mode: a roster URL with a trailing slash is the migrated archetype, not a second sibling row; a sibling keeps its roster path', () => {
+  const pages = JSON.parse(readFileSync(join(root, 'rollout-state', 'coverage', 'pages.json'), 'utf8')).pages;
+  const slugs = pages.map((p) => p.slug);
   assert.equal(slugs.filter((s) => s.startsWith('tours-bali')).length, 1, slugs.join(','));
+  // the folder-index slash survives on the sibling row, so publicUrl still serves /tours/fiji/
+  assert.equal(pages.find((p) => p.slug === 'tours-fiji').path, '/tours/fiji/');
 });
 
 check('archetypes-only mode: a content-pending sibling that gains its own migrated document becomes pending on the next run', () => {

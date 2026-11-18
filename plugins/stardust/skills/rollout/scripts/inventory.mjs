@@ -184,9 +184,11 @@ if (STATE) {
   const state = readJSON(STATE, { pages: [] });
   for (const sp of (state.pages || [])) {
     if (!sp || !sp.url) continue;
-    // the roster keeps a URL's trailing slash; a migrated tree path never has one (`/a/` is `/a`)
-    const path = urlToDeliveredPath(sp.url).replace(/\/+$/, '') || '/';
-    if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
+    const path = urlToDeliveredPath(sp.url);
+    // the roster keeps a URL's trailing slash; a migrated tree path never has one (`/a/` is `/a`).
+    // Match on the bare form only; the row keeps the roster path so publicUrl still serves `/a/`.
+    const key = path.replace(/\/+$/, '') || '/';
+    if (coveredPaths.has(key)) continue; // the archetype itself — already inventoried
     // A roster sibling names the archetype it clones via `representative` (preferred)
     // or its `type`; that archetype supplies the template grouping + block set.
     const rep = archetypeBySlug.get(sp.representative) || archetypeBySlug.get(sp.type) || null;
@@ -210,7 +212,7 @@ if (STATE) {
       widgets: rep ? rep.widgets.map((w) => ({ ...w })) : [],
       delivery,
     });
-    coveredPaths.add(path);
+    coveredPaths.add(key);
   }
 }
 
