@@ -11,7 +11,7 @@
 //
 // The file is YAML, read with js-yaml; what it holds is checked here, so a key or a value
 // of the wrong kind is an error, not a guess.
-import yaml from 'js-yaml';
+import { CORE_SCHEMA, loadAll } from 'js-yaml';
 
 export const FACT_KEYS = ['id', 'claim', 'question', 'source', 'used_by'];
 const REQUIRED = ['id', 'claim', 'question'];
@@ -19,7 +19,11 @@ const REQUIRED = ['id', 'claim', 'question'];
 export function parseFacts(text, name = 'facts.yaml') {
   let data;
   try {
-    data = yaml.load(text, { filename: name, schema: yaml.CORE_SCHEMA });
+    // loadAll, not load: since js-yaml 5, load throws on a file with no document, such as
+    // one that is empty or only comments, and that file has no facts.
+    const documents = loadAll(text, { filename: name, schema: CORE_SCHEMA });
+    if (documents.length > 1) throw new Error('one document, not several');
+    [data] = documents;
   } catch (error) {
     throw new Error(`${name}: ${error.message}`);
   }

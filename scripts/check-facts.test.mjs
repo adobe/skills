@@ -38,6 +38,8 @@ test('the reader takes YAML and refuses facts of the wrong shape', () => {
   assert.equal(parseFacts(`- id: f\n  claim: c\n  question: q\n  source: 'it''s here' # a comment\n`)[0].source, "it's here");
   assert.equal(parseFacts('- id: f\n  claim: c\n  question: q\n  source: # later\n')[0].source, undefined);
   assert.deepEqual(parseFacts(''), []);
+  assert.deepEqual(parseFacts('# no facts yet\n'), []);
+  assert.throws(() => parseFacts(`${fact()}\n---\n${fact({ id: 'g' })}\n`), /facts.yaml: one document/);
   assert.throws(() => parseFacts(`${fact()}\n  opinion: yes\n`), /unknown key opinion/);
   assert.throws(() => parseFacts('- id: f\n  claim: c\n'), /has no question/);
   assert.throws(() => parseFacts('- id: 7\n  claim: c\n  question: q\n'), /has no id/);
