@@ -4,7 +4,7 @@ Reference for the headless deploy sequence: write the sanitised **body-fragment*
 
 ## Deploy (DA Source API + curl)
 
-Needs an IMS token (`DA_TOKEN`; see the `da-content` / `da-auth` skills — may live in the repo `.env`, which MUST be gitignored). Also **push the code branch to GitHub first** so AEM Code Sync builds it and the branch preview renders your blocks.
+Needs an IMS token. Resolve it in this order: `DA_TOKEN` in the environment; else the file named by `ADOBE_IMS_TOKEN_FILE` (a hands-off harness such as the OF1 Replica runner provides only this — `oauth-token adobe` prints it when that helper is installed); else, locally, the repo `.env` (which MUST be gitignored; see the `da-content` / `da-auth` skills). A missing `.env` is not a missing token — check `ADOBE_IMS_TOKEN_FILE` before stopping. Every hand-written `curl` to `admin.da.live` / `admin.hlx.page` (nav/footer PUT, preview, publish) needs `Authorization: Bearer <token>`; an unauthenticated call answers `401`, which is not proof that no token exists. Also **push the code branch to GitHub first** so AEM Code Sync builds it and the branch preview renders your blocks.
 
 **Two preconditions bite (both cost real debugging):**
 - **Branch-host length ≤ 63 chars.** The host label `<branch>--<repo>--<owner>` must fit the DNS 63-char limit. Over it, the host does not resolve at all (curl `000`, "label too long") — nothing renders. The page PATH is independent of the host, so keep the path descriptive and **shorten the BRANCH** (e.g. `velocity-refined-content-2`, not `velocity-global-refined-content-2`).
@@ -12,7 +12,7 @@ Needs an IMS token (`DA_TOKEN`; see the `da-content` / `da-auth` skills — may 
 
 ```bash
 ORG=<daOrg>; REPO=<daRepo>; BRANCH=<branch>; P=<path-without-extension>   # e.g. snowflake-blocks/test-1
-TOKEN="$DA_TOKEN"
+TOKEN="${DA_TOKEN:-$( [ -r "$ADOBE_IMS_TOKEN_FILE" ] && tr -d '[:space:]' < "$ADOBE_IMS_TOKEN_FILE" )}"   # never echo it
 
 # 0. force Code Sync (webhook may not fire for a scripted push) — then wait for
 #    your edited blocks to be live before previewing. Assets gzip → curl --compressed.
