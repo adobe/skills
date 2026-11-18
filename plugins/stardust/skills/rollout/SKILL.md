@@ -309,10 +309,10 @@ ledger `end` line names the SERVED count, never the assembled one — e.g.
 
 **DA library (#160).** Without a `library` tab in its site config, a migrated
 site shows authors an inherited or empty block library, never the blocks it
-shipped. Run `node skills/rollout/scripts/da-library.mjs` whenever a block,
-variant or template ships (archetypes-only: once delivered); `done-check` reports
-`library_missing` until a run writes `library/published.json`. Without `DA_TOKEN`
-the DA scripts read the `ADOBE_IMS_TOKEN_FILE` file.
+shipped. Run `node skills/rollout/scripts/da-library.mjs` (one document per block
+variant and per template, the sheets, and only the Blocks / Templates config rows)
+whenever a block, variant or template ships — in archetypes-only mode once the
+archetypes are delivered.
 
 **D-site checklist** (all before the `D-site end` line): `assemble.mjs
 --verify-origin` exits 0 · every chrome document carries `Robots | noindex` and is
