@@ -132,8 +132,10 @@
 #   a verdict (exit 0 or 2) is recorded by `rounds.mjs record`; 1, 3, 4, 124 and 125 never are.
 #   A round that failed the overflow assert is recorded with --overflow: its re-run is not refused.
 #   STARDUST_ROUND_CAP=0 turns the refusal off (rounds are still recorded) — for a project
-#   mid-run when this check arrives. Without rounds.mjs beside this script: one stdout line,
-#   the round runs uncounted (re-copy the replica scripts dir).
+#   mid-run when this check arrives. The guard fails closed: without rounds.mjs beside this
+#   script, or when its check ends with any code other than 0 or 6, the round does not run
+#   (exit 1, before any curl or capture) — re-copy the replica scripts dir, or repair
+#   <evidence dir>/rounds.json. Only STARDUST_ROUND_CAP=0 runs a round the guard could not check.
 #
 # Instrument deadlines + stale reap: every node step runs under
 # run-capped.mjs (macOS has no `timeout`). Three field migrations (2026-08/09)
@@ -225,15 +227,20 @@ ROUND_VERDICT=0
 if [ -f "$HERE/rounds.mjs" ]; then
   node "$HERE/rounds.mjs" check "$DIR" --stage "$REGIME" --label "$LBL"; rc=$?
   [ "$rc" -eq 6 ] && exit 6
-  [ "$rc" -ne 0 ] && echo "gate.sh: rounds.mjs check exited $rc — the round runs, the cap was not checked" >&2
+  if [ "$rc" -ne 0 ]; then
+    if [ "${STARDUST_ROUND_CAP:-}" = 0 ]; then echo "gate.sh: rounds.mjs check exited $rc — the round runs unchecked (STARDUST_ROUND_CAP=0)" >&2
+    else echo "gate.sh: rounds.mjs check exited $rc — the cap could not be checked, so the round does not run (repair $DIR/rounds.json, or STARDUST_ROUND_CAP=0 to run without the cap)" >&2; exit 1; fi
+  fi
   round_record() {
     [ "$ROUND_VERDICT" = 1 ] || return 0
     case "$1" in 0) v=pass ;; 2) v=fail ;; *) return 0 ;; esac
     node "$HERE/rounds.mjs" record "$DIR" --stage "$REGIME" --label "$LBL" --verdict "$v" ${ROUND_OVERFLOW:+--overflow} || echo "gate.sh: rounds.mjs record failed — this round is not in $DIR/rounds.json" >&2
   }
   trap 'round_record $?' EXIT
+elif [ "${STARDUST_ROUND_CAP:-}" = 0 ]; then
+  echo "gate.sh: $HERE/rounds.mjs missing — the round runs uncounted (STARDUST_ROUND_CAP=0); re-copy the replica scripts dir (replica SKILL.md § Setup)"
 else
-  echo "gate.sh: $HERE/rounds.mjs missing — the round runs uncounted; re-copy the replica scripts dir (replica SKILL.md § Setup)"
+  echo "gate.sh: $HERE/rounds.mjs missing — the cap cannot be checked, so the round does not run; re-copy the replica scripts dir (replica SKILL.md § Setup), or STARDUST_ROUND_CAP=0 to run without the cap" >&2; exit 1
 fi
 # --gate-against-baseline (header § flags; default OFF): the flag's precondition is settled before any process is
 # reaped or any capture spent. `stitch-shot.mjs baseline <dir> --url --width` answers with the frozen baseline's

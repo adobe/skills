@@ -124,7 +124,7 @@ function gate(args, env = {}) {
   return new Promise((resolve) => {
     const child = spawn('bash', [join(replica, 'gate.sh'), ...args], {
       cwd: root,
-      env: { ...process.env, GATE_REAP_MIN: '0', ...env },
+      env: { ...process.env, GATE_REAP_MIN: '0', STARDUST_ROUND_CAP: '0', ...env }, // this sandbox has no rounds.mjs: the cap is rounds.test.mjs's subject
     });
     let stdout = '';
     let stderr = '';

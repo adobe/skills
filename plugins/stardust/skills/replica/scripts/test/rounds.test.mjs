@@ -6,7 +6,7 @@
 // verdict round is recorded, a no-verdict round is not, STARDUST_ROUND_CAP=0 turns the refusal off. No browser.
 // Run: node skills/replica/scripts/test/rounds.test.mjs
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -247,6 +247,30 @@ check('gate.sh: a round that fails the overflow assert is recorded with the over
 r = await gate('ovf2', { STUB_PIXEL_RC: '0' });
 check('gate.sh: its re-run is not refused although the stage is over the cap', r.status === 0 && /overflow assert, which no cap waives/.test(r.stdout), `status ${r.status} ${r.stdout} ${r.stderr}`);
 
+// The guard fails closed: a check that cannot answer, or no rounds.mjs at all, stops the round before any work.
+{
+  const run = (slug, label, env = {}) => new Promise((resolve) => {
+    const child = spawn('bash', [join(replica, 'gate.sh'), slug, 'https://live.example/', buildUrl, '1440', label, '--marker', 'wired-proposed'], { cwd: root, env: { ...process.env, GATE_REAP_MIN: '0', STARDUST_ROUND_CAP: '', GATE_REGIME: '', ...env } });
+    let stdout = ''; let stderr = '';
+    child.stdout.on('data', (x) => (stdout += x)); child.stderr.on('data', (x) => (stderr += x));
+    child.on('close', (status) => resolve({ status, stdout, stderr }));
+  });
+  const bdir = join(root, 'stardust/replica/gates/broken-1440');
+  mkdirSync(join(bdir, 'rounds.json'), { recursive: true }); // a ledger that can be neither read nor written
+  let before = { calls: callCount(), hits };
+  let g = await run('broken', 'iter1');
+  check('gate.sh: a cap check that errors stops the round (exit 1) before any instrument or fetch, and says why', g.status === 1 && callCount() === before.calls && hits === before.hits && /the cap could not be checked, so the round does not run/.test(g.stderr), `status ${g.status} ${g.stderr}`);
+  g = await run('broken', 'iter1', { STARDUST_ROUND_CAP: '0', STUB_PIXEL_RC: '0' });
+  check('… STARDUST_ROUND_CAP=0 is the one way to run it unchecked', g.status === 0 && /runs unchecked \(STARDUST_ROUND_CAP=0\)/.test(g.stderr), `status ${g.status} ${g.stderr}`);
+  renameSync(join(replica, 'rounds.mjs'), join(replica, 'rounds.mjs.away'));
+  try {
+    before = { calls: callCount(), hits };
+    g = await run('norounds', 'iter1');
+    check('gate.sh: without rounds.mjs the round does not run (exit 1), before any instrument or fetch', g.status === 1 && callCount() === before.calls && hits === before.hits && /rounds\.mjs missing — the cap cannot be checked/.test(g.stderr), `status ${g.status} ${g.stderr}`);
+    g = await run('norounds', 'iter1', { STARDUST_ROUND_CAP: '0', STUB_PIXEL_RC: '0' });
+    check('… and runs uncounted only under STARDUST_ROUND_CAP=0', g.status === 0 && /runs uncounted \(STARDUST_ROUND_CAP=0\)/.test(g.stdout), `status ${g.status} ${g.stdout}`);
+  } finally { renameSync(join(replica, 'rounds.mjs.away'), join(replica, 'rounds.mjs')); }
+}
 {
   const d = gateDir('roster-1440');
   writeFileSync(join(d, 'rounds.json'), JSON.stringify({ version: 1, stages: { 'all-pages': { rounds: ['a', 'b', 'c'].map((label) => ({ label, at: '2026-01-01T00:00:00Z', verdict: 'fail', kind: label === 'a' ? 'first' : 'fix' })), decisions: [] } } }));

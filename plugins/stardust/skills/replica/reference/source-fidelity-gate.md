@@ -346,8 +346,7 @@ runs over the same stitched PNGs — no live hit):**
 the first and two fix rounds. A round is a `gate.sh` run ending in a verdict;
 a PASS right after a PASS is free. `rounds.mjs` counts, and `gate.sh` exits 6
 until `rounds.mjs decide` records `accept-residual`, `re-prototype` or
-`extend` (a round lost to a named instrument defect). More loops mean wrong
-inputs (eyeballed values, unhardened capture); the fix is upstream.
+`extend` (a round lost to a named instrument defect).
 
 - Measure first (iteration 1 IS the map — do not pre-polish).
 - **Chrome: parity probe first, pixels second.** Before a chrome band's first
@@ -356,9 +355,8 @@ inputs (eyeballed values, unhardened capture); the fix is upstream.
 - Every fix cites the instrument line that demanded it.
 - **Before counting an iteration, verify the fix changed the render.** A
   byte-identical differing-pixel count after a "fix" means the rule was a
-  no-op (recorded: a padding the EDS section wrapper already carried). The count is on the verdict line:
-  if it did not move, find why the rule never applied (specificity, wrong
-  selector, value already in effect) before another round.
+  no-op (recorded: a padding the EDS section wrapper already carried). The
+  count is on the verdict line.
 - **Verify geometry fixes on the RULE-BEARING element, cache-free (#117).**
   One "parity verified" claim was wrong three ways: the probe matched a
   heuristic element ("white column wider than 400px"), not the box carrying
@@ -366,9 +364,7 @@ inputs (eyeballed values, unhardened capture); the fix is upstream.
   the fixed rule targets on the build; the one whose source rule was lifted
   on live); the re-check ran through a
   CACHED stylesheet (DevTools showed the old rule while both hosts
-  served the fix) — verify serving
-  (`curl --compressed <css-url> | grep '<new-rule>'`; gzip-encoded: a bare
-  `curl | grep` scans binary and matches nothing) and re-render in a fresh context; and a reviewer's
+  served the fix) — verify serving and re-render in a fresh context; and a reviewer's
   screenshot encodes their zoom — back-compute their CSS viewport from an
   element with a known percentage rule (a card at 851px under `width: 50%`
   → 1702px) and reproduce it headlessly before their numbers overturn a fix.
