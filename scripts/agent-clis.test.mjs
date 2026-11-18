@@ -118,7 +118,7 @@ test('credentials: each client names the variables it is given, and no others', 
     AGY_LLM_GATEWAY_MODELS: 'global.xai.grok-4.6',
     AGY_CLI_DISABLE_AUTO_UPDATE: '1',
   });
-  assert.deepEqual(Object.keys(MODELS), ['claude', 'codex', 'grok', 'agy']);
+  assert.deepEqual(Object.keys(MODELS), ['claude', 'codex', 'grok', 'agy', 'pi']);
   assert.equal(ENDPOINTS.grok('eu-west-1'), 'https://bedrock-runtime.eu-west-1.amazonaws.com/openai/v1');
 });
 

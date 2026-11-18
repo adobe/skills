@@ -1,19 +1,21 @@
-// Runs the trigger queries of a skill in Claude Code with its plugin installed, and reports
+// Runs the trigger queries of a skill in an agent with its plugin installed, and reports
 // which skill each run loaded: does the skill's description make an agent pick it up for
 // the requests it is for, and leave it for the near misses?
 //
 //   node scripts/skill-trigger.mjs --plugin <plugin dir> --queries <set.json> [options]
 //
+//   --client <name>    claude (default) or pi, as skill-eval.mjs runs them
 //   --query <id>       only this query; may be repeated
 //   -n <n>             runs per query (default 3: pickup varies from run to run)
-//   --model <id>       the model, as Claude Code names it (default: as skill-eval.mjs)
-//   --max-turns <n>    stop a run after n turns of the agent (default 6)
+//   --model <id>       the model, as the client names it (default: as skill-eval.mjs)
+//   --max-turns <n>    stop a run after n turns of the agent (default 6): Claude Code's own
+//                      limit; for pi, which has none, the watcher's
 //   --keep-going       don't stop at the first skill or the first write; record every skill
 //                      loaded within --max-turns
 //   --timeout <sec>    for each run (default 300)
 //   --concurrency <n>  runs at the same time (default 3)
-//   --bin <dir>        where claude is (default: where setup-agent-clis.mjs put it, or the PATH)
-//   --auth-home <dir>  copy Claude Code's stored sign-in from this home directory
+//   --bin <dir>        where the client is (default: where setup-agent-clis.mjs put it, or the PATH)
+//   --auth-home <dir>  copy the client's stored sign-in from this home directory (pi needs it)
 //   --json <file>      every run, and the summary
 //
 // Each run starts in a copy of the set's fixture (cloned once), with an empty home and the
@@ -24,8 +26,8 @@
 // a branch of this repository, on a machine that holds nothing the agent must not see.
 //
 // This runs agents, and costs what they cost: run it for the set of the skill you changed,
-// not for every set. CI doesn't run it. Credentials as skill-eval.mjs: AWS_BEARER_TOKEN_BEDROCK,
-// ANTHROPIC_API_KEY, or --auth-home. Exit 3 without credentials, 2 for wrong arguments, 1
+// not for every set. CI doesn't run it. Credentials as skill-eval.mjs: for claude
+// AWS_BEARER_TOKEN_BEDROCK, ANTHROPIC_API_KEY, or --auth-home; for pi, --auth-home. Exit 3 without credentials, 2 for wrong arguments, 1
 // when a run failed.
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -38,11 +40,6 @@ import { watcher } from './lib/skill-loads.mjs';
 import { markdown, parseTriggerSet, summarize } from './lib/triggers.mjs';
 import { MODELS, RULES, RUNNERS, setUpScenario } from './skill-eval.mjs';
 import { describePlugin } from './test-drive.mjs';
-
-export function claudeArgs({ prompt, model, maxTurns, pluginDir }) {
-  return ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--permission-mode', 'bypassPermissions', '--max-turns', String(maxTurns),
-    ...(model ? ['--model', model] : []), '--plugin-dir', pluginDir];
-}
 
 // One run: the stream goes to the watcher as it comes, and the run is stopped as soon as
 // the watcher has seen enough.
@@ -90,7 +87,7 @@ function runOnce({ bin, args, cwd, env, timeout, watch, transcript }) {
       clearTimeout(timer);
       signal('SIGKILL');
       writeFileSync(transcript, stdout);
-      done({ status, stopped, stderr });
+      done({ status, stopped, stderr, stdout });
     });
     child.on('error', (error) => {
       clearTimeout(timer);
@@ -117,6 +114,7 @@ async function main() {
     parsed = parseArgs({
       options: {
         plugin: { type: 'string' },
+        client: { type: 'string', default: 'claude' },
         queries: { type: 'string' },
         query: { type: 'string', multiple: true, default: [] },
         n: { type: 'string', short: 'n', default: '3' },
@@ -135,8 +133,8 @@ async function main() {
   }
   const { values } = parsed;
   const [runs, maxTurns, timeout, concurrency] = ['n', 'max-turns', 'timeout', 'concurrency'].map((key) => Number(values[key]));
-  if (!values.plugin || !values.queries || ![runs, maxTurns, timeout, concurrency].every((value) => Number.isInteger(value) && value > 0)) {
-    fail('usage: skill-trigger.mjs --plugin <plugin dir> --queries <set.json> [--query <id>]… [-n 3] [--model <id>] [--max-turns 6] [--keep-going] [--timeout 300] [--concurrency 3] [--bin <dir>] [--auth-home <dir>] [--json <file>]');
+  if (!['claude', 'pi'].includes(values.client) || !values.plugin || !values.queries || ![runs, maxTurns, timeout, concurrency].every((value) => Number.isInteger(value) && value > 0)) {
+    fail('usage: skill-trigger.mjs [--client claude|pi] --plugin <plugin dir> --queries <set.json> [--query <id>]… [-n 3] [--model <id>] [--max-turns 6] [--keep-going] [--timeout 300] [--concurrency 3] [--bin <dir>] [--auth-home <dir>] [--json <file>]');
   }
   const root = process.cwd();
   const plugin = describePlugin(root, values.plugin);
@@ -147,15 +145,15 @@ async function main() {
   const queries = set.queries.filter((query) => values.query.length === 0 || values.query.includes(query.id));
   if (queries.length === 0) fail('No query matches.');
 
-  const client = RUNNERS.claude;
-  const bin = findCli('claude', { bin: values.bin, root });
-  if (!bin) fail('claude is not installed. Run node scripts/setup-agent-clis.mjs first.');
+  const client = RUNNERS[values.client];
+  const bin = findCli(values.client, { bin: values.bin, root });
+  if (!bin) fail(`${values.client} is not installed.${values.client === 'claude' ? ' Run node scripts/setup-agent-clis.mjs first.' : ''}`);
   const authHome = values['auth-home'] && resolve(values['auth-home']);
   const stored = authHome ? client.stored.filter((file) => existsSync(join(authHome, file))) : [];
   const credentials = client.credentials(process.env) ?? (stored.length > 0 ? [] : null);
-  if (!credentials) fail(`No credentials for claude here. It needs ${client.needs}, or --auth-home with a home directory that is signed in.`, 3);
+  if (!credentials) fail(`No credentials for ${values.client} here. It needs ${client.needs}${client.stored.length > 0 && values.client === 'claude' ? ', or --auth-home with a home directory that is signed in' : ''}.`, 3);
   const bedrock = Boolean(client.bedrock(process.env)) && stored.length === 0;
-  const model = values.model ?? (bedrock ? MODELS.claude : undefined);
+  const model = values.model ?? (bedrock || values.client === 'pi' ? MODELS[values.client] : undefined);
 
   const scratch = mkdtempSync(join(tmpdir(), 'skill-trigger-'));
   const out = values.json ? dirname(resolve(values.json)) : scratch;
@@ -185,12 +183,15 @@ async function main() {
         }
         const env = { ...plain, HOME: home, ...client.env(home, bedrock) };
         for (const name of credentials) if (process.env[name] !== undefined) env[name] = process.env[name];
-        const watch = watcher(plugin.skills, { keepGoing: values['keep-going'] });
+        const watch = watcher(plugin.skills, { keepGoing: values['keep-going'], ...(values.client === 'pi' ? { maxTurns } : {}) });
         const transcript = join(out, `trigger-${query.id}-${run}.jsonl`);
-        const ran = await runOnce({ bin, args: claudeArgs({ prompt: `${RULES}\n\n${query.query}`, model, maxTurns, pluginDir: plugin.dir }), cwd: work, env, timeout, watch, transcript });
+        const args = client.command({ prompt: `${RULES}\n\n${query.query}`, model, maxTurns, plugin, withPlugin: true, workdir: work, bedrock });
+        const ran = await runOnce({ bin, args, cwd: work, env, timeout, watch, transcript });
         Object.assign(entry, watch.result(), { transcript });
         if (ran.stopped === 'timeout') entry.error = `timed out after ${timeout} s`;
-        else if (ran.stopped !== 'enough' && ran.status !== 0) entry.error = `claude exited ${ran.status}: ${ran.stderr.trim().split('\n').pop() ?? ''}`;
+        else if (ran.stopped !== 'enough' && ran.status !== 0) entry.error = `${values.client} exited ${ran.status}: ${ran.stderr.trim().split('\n').pop() ?? ''}`;
+        // an agent that failed (a provider error) may still exit 0: such a run is not a "none"
+        else if (ran.stopped !== 'enough' && client.answer({ stdout: ran.stdout, lastMessage: '' }).failed) entry.error = `${values.client} reported an error`;
       } catch (error) {
         entry.error = error.message;
       } finally {
