@@ -218,6 +218,22 @@ check('no probe evidence without --full', !existsSync(join(root, 'stardust/repli
 check('a clean root prints the overflow assert as ok, after the pixel lines', /differing[^\n]*\n[^]*^gate\.sh: overflow assert at 1440 — build scrollWidth 1440 = viewport → ok$/m.test(r.stdout), r.stdout);
 check('the overflow probe leaves its evidence file', /scrollWidth/.test(readFileSync(join(root, 'stardust/replica/gates/home-1440/overflow-iter1.txt'), 'utf8')));
 
+// Measure first: a prototype round with no source spec says so (advisory); with the spec on disk it is silent.
+{
+  const specLine = /^gate\.sh: no source spec for home at 1440 \(stardust\/replica\/spec\/home-1440\.json\) — measure before gating: node .*source-spec\.mjs capture "https:\/\/live\.example\/" --slug home --widths 1440/m;
+  const hasSpecScript = existsSync(join(replica, 'source-spec.mjs'));
+  if (!hasSpecScript) writeFileSync(join(replica, 'source-spec.mjs'), '');
+  let s = await gate(['home', 'https://live.example/', buildUrl, '1440', 'spec1']);
+  check('a prototype round with no source spec prints the measure-first line and still runs', s.status === 0 && specLine.test(s.stdout), `status ${s.status} ${s.stdout}`);
+  mkdirSync(join(root, 'stardust/replica/spec'), { recursive: true }); writeFileSync(join(root, 'stardust/replica/spec/home-1440.json'), '{}');
+  s = await gate(['home', 'https://live.example/', buildUrl, '1440', 'spec2']);
+  check('with the spec on disk the line is not printed', s.status === 0 && !/no source spec/.test(s.stdout), s.stdout);
+  s = await gate(['home', 'https://live.example/', 'https://preview.example/home', '1440', 'spec3'], { GATE_REGIME: 'published' });
+  check('never at the published stage', !/no source spec/.test(s.stdout), s.stdout);
+  rmSync(join(root, 'stardust/replica/spec'), { recursive: true, force: true });
+  if (!hasSpecScript) unlinkSync(join(replica, 'source-spec.mjs'));
+}
+
 // Horizontal-overflow assert: the build document is wider than its viewport → FAIL (exit 2) over a PASS pixel line.
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'ovf1'], { STUB_OVERFLOW: '13' });
 check('a build scrollWidth over the viewport fails the round (exit 2) although pixels passed', r.status === 2, `status ${r.status} ${r.stderr.slice(0, 300)}`);

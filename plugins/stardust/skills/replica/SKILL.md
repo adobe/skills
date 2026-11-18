@@ -130,7 +130,9 @@ to a full migration — invoke `$stardust extract <URL> --single --dynamics`
 (or `--pages <slug,...> --dynamics` for a short list) instead. This is a first-class entry,
 not an improvisation: the recreation phase needs, per page, the captured
 page JSON (verbatim content), the per-page screenshot (ground truth), and
-the captured fonts — all of which a bounded extract provides. What a bounded run skips is the prep-only inventory (page
+the captured fonts — all of which a bounded extract provides; the source-CSS
+harvest and per-breakpoint computed styles come from Phase 3's CSS lifting
+either way. What a bounded run skips is the prep-only inventory (page
 typing, module detection), which is only needed when Phase 5 fans out to
 siblings, and the descriptive synthesis (Phase 2 takes the bounded
 promotion branch, `reference/preserve-direction.md` § 1a).
@@ -192,18 +194,18 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     alt text, metadata from `current/pages/<slug>.json`. The migrate
     content-preservation rules (`../migrate/reference/content-preservation.md`)
     apply from the first line: no rewording, no fabrication.
-(b) **Measured values first, the source's CSS second.** `source-spec.mjs
-    capture` measures every band, text node and image box at every gate width
-    before any CSS, and `source-spec.mjs compare` clears the prototype against
-    it before the first gate round (`reference/recreation-procedure.md`
-    § Authoring order). Lift from the live stylesheets what the spec cannot
-    name: hover/focus states, media-query structure, variables, radii, shadows.
-    The container model is measured too — DESIGN.json `extensions.breakpoints`
-    (extract's `cap-probe.mjs` run; a bounded entry runs `cap-probe.mjs
-    <live-url> --write-design stardust/current/DESIGN.json` first).
-    **Fidelity values come from measurement, not the eye.** Any other
-    box-by-box check of the live page against the served prototype goes
-    through `measure.mjs --against`, never an authored probe.
+(b) **Exact values lifted from the source site's own CSS.** Fetch the live
+    stylesheets; lift the type ramp, button specs, section paddings, radii,
+    shadows, hero heights. The container model is measured, not lifted —
+    DESIGN.json `extensions.breakpoints` (extract's `cap-probe.mjs` run; a bounded
+    entry runs `cap-probe.mjs <live-url> --write-design stardust/current/DESIGN.json` first).
+    **Fidelity values come from the original site's CSS, not the eye** — this
+    converts 3–4 guess-and-screenshot loops into one. Box-by-box comparison of
+    the live page against the served prototype goes through the shipped
+    `measure.mjs` (`node stardust/scripts/replica/measure.mjs <live-url>
+    --against <prototype-url> --selectors "<css>,…"` — rect + computed values
+    per selector per width, one delta line each), never through an authored
+    probe.
 (c) **The captured screenshot as ground truth** for everything CSS doesn't
     name (composition, image crops, paint effects).
 
@@ -225,9 +227,11 @@ Impeccable's redesign gates (critique, anti-template, divergence) do not
 apply; the source-fidelity gate (Phase 4) replaces them entirely. A
 "tastefully improved" section is a failing section.
 
-**Fonts:** `reference/recreation-procedure.md` § Fonts policy — the source's
-captured faces are self-hosted as-is, proprietary ones included, with
-deploy's licensing alert; never a substitute for a face that was captured.
+**Fonts:** use the same public source when available (extract's intercepted
+woff2 for open/self-hostable faces). For licensed commercial kits: never
+rehost on the new domain — pick a metric-matched substitute, keep the brand
+family name first in the font stack so a licensed drop-in later wins, and
+surface the substitution to the user. (Prior art: an earlier airport-site migration's improvement notes, §3.7.)
 
 **CSS-portation is the per-section fallback only** — paint-level effects not
 recoverable from computed styles, JS-hydrated commerce widgets, video or
@@ -258,7 +262,7 @@ node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
 # A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
 # round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
-node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, offsets, height delta, hot bands, structural 🔴, flags, chrome deltas
+node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, height delta, hot bands, structural 🔴, flags, chrome deltas
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
 G=stardust/replica/gates/<slug>-1440
@@ -285,8 +289,9 @@ a verdict; 0 only when all four ran and passed).
 **Pass bar (all four per breakpoint, plus the content-cap row):**
 - content-diff: **0 🔴 and 0 nothing-lost 🟡** on the main and chrome roots (gate doc § Pass bar item 1);
 - visual-diff: flags none or justified;
-- pixel: aligned **≤ 10%** and offsets within the bound, no per-500px band unexplained
-  (the offset steps are the fix list; bands are read after alignment);
+- pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
+  (the band breakdown is the navigation instrument — fix the first hot band,
+  top-down; everything below it is offset-contaminated);
 - height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar);
 - **content-cap row: `cap-probe.mjs … --against` prints `cap-probe: PASS`**
   (gate doc § Pass bar item 6 — every live cap held within ±20 px by kind,
@@ -313,8 +318,10 @@ prototype --proto-base "$PROTO_BASE" --width 1440` (then 360) through `run-bg.mj
 it reuses each archetype's cached `live.png`. `gate-evidence.mjs` reads it as the
 source of record: a prototype without a row is ungated.
 
-**Iteration discipline: the round cap — `gate.sh` exits 6 at it.** Each
-iteration's fixes come off the instruments, never off eyeballing. **No single step waits longer than the context
+**Iteration discipline: hard cap 3 iterations per breakpoint.** Each
+iteration's fixes come off the instruments, never off eyeballing. After 3,
+log the residuals in the ledger and move on — a documented 2% residual beats
+an undocumented fourth loop. **No single step waits longer than the context
 cache lives:** long instruments go through `run-bg.mjs` (`start`, then `wait`
 in ≤ 100-second slices), main agent and subagents alike — a long instrument
 in the foreground, or two as parallel tool calls in one turn, is the same
@@ -430,7 +437,7 @@ had one section for the whole run).
   header contract included (`chrome-compare` exit 0, `../diff/SKILL.md`
   § The header contract), then `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
-  (within the round cap, gate doc § Iteration discipline) BEFORE its siblings
+  (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
   render; C1…Cn — one subagent per template
   cluster runs the whole chain, PUT → preview → published-origin gates
   included, with its own batch ledger (`deploy-batch.mjs --ledger …`,

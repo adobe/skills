@@ -191,6 +191,10 @@
 #   (exit 1, before any curl or capture) — re-copy the replica scripts dir, or repair
 #   <evidence dir>/rounds.json. Only STARDUST_ROUND_CAP=0 runs a round the guard could not check.
 #
+# Measure first: a prototype-stage round for a page and width with no source spec
+#   (stardust/replica/spec/<slug>-<width>.json) prints one advisory line naming the
+#   `source-spec.mjs capture` and `compare` commands; the round still runs.
+#
 # Instrument deadlines + stale reap: every node step runs under
 # run-capped.mjs (macOS has no `timeout`). Three field migrations (2026-08/09)
 # recorded stitch-shot / pixel-compare sitting at 0 % CPU for 10+ minutes;
@@ -330,6 +334,12 @@ elif [ "${STARDUST_ROUND_CAP:-}" = 0 ]; then
   echo "gate.sh: $HERE/rounds.mjs missing — the round runs uncounted (STARDUST_ROUND_CAP=0); re-copy the replica scripts dir (replica SKILL.md § Setup)"
 else
   echo "gate.sh: $HERE/rounds.mjs missing — the cap cannot be checked, so the round does not run; re-copy the replica scripts dir (replica SKILL.md § Setup), or STARDUST_ROUND_CAP=0 to run without the cap" >&2; exit 1
+fi
+# Measure first (recreation-procedure.md § Authoring order): a prototype round with no source spec for this page
+# and width says so, once per round — advisory, the round runs. The spec is what the prototype is authored from
+# and cleared against (`source-spec.mjs compare` exit 0) BEFORE the first gate round.
+if [ "$REGIME" = prototype ] && [ -f "$HERE/source-spec.mjs" ] && [ ! -f "stardust/replica/spec/$SLUG-$W.json" ]; then
+  echo "gate.sh: no source spec for $SLUG at $W (stardust/replica/spec/$SLUG-$W.json) — measure before gating: node $HERE/source-spec.mjs capture \"$LIVE_URL\" --slug $SLUG --widths $W, author from it, then source-spec.mjs compare <spec> \"$BUILD_URL\" to exit 0 (recreation-procedure.md § Authoring order)"
 fi
 # Origin reference (header § Origin reference): `stitch-shot.mjs baseline <dir> --url --width` answers with the frozen
 # baseline's capturedAt (exit 0) or the one-line reason it is unusable (exit 1) — then one is frozen below, after the

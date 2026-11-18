@@ -29,13 +29,10 @@ class of guesswork before the next begins:
    missing one.
 2. **Measure the source at EVERY gate width before the first line of CSS:**
    `source-spec.mjs capture <live-url> --slug <slug> --widths 1440,360`
-   writes one spec per width (bands; every text node and image box with
-   font, colour and line count; text-style clusters; gutters); read values
-   with `view <spec> --section <i>`. Author desktop AND mobile rules from
-   them in one pass.
-   The same command writes the header and footer inventory
-   (`<slug>-<width>-chrome.json`: texts by channel, icons, background,
-   position): author them from it.
+   writes one spec per width; read values with `view <spec> --section <i>`.
+   Author desktop AND mobile rules from them in one pass. The same command
+   writes the header and footer inventory (`<slug>-<width>-chrome.json`):
+   author them from it.
 3. **Lift from the source's CSS what the spec cannot name** (§ CSS lifting).
 4. **Fonts** (§ Fonts policy).
 5. **Compose against the captured screenshot** — the ground truth for
@@ -43,9 +40,8 @@ class of guesswork before the next begins:
    effects.
 6. **Serve locally, then `source-spec.mjs compare <spec> <prototype-url>`
    per width; clear its table top-down (the FIRST CAUSE section first) to
-   exit 0 BEFORE the first gate round** — no eyeball-polish: the compare
-   table is the map, the first gate round
-   (`source-fidelity-gate.md`) confirms it.
+   exit 0 BEFORE the first gate round** (`source-fidelity-gate.md`),
+   which confirms it.
 
 Keep the markup clean: semantic elements, BEM-ish classes, CSS custom
 properties for the lifted tokens, no JS unless a section's initial state
@@ -125,8 +121,7 @@ Before any screenshot-eyeball tuning:
    per container).
 5. **Repeat 2–3 at EVERY gate breakpoint — the 360 layout is NOT derivable
    from the 1440 recreation.** The 360 spec gives the values; the source's
-   mobile `@media` geometry (container model, hidden/restacked blocks,
-   mobile nav, grid collapse rules) gives the structure — lift it up front.
+   mobile `@media` rules give the structure.
    Recorded twice: a 1440-lifted prototype converged desktop in one
    iteration and opened mobile at 26.8% (every cause sat in the source CSS);
    an unbuilt 360 layout measured −1600px at 360 vs −169px at 1440.

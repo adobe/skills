@@ -19,8 +19,13 @@
     },
     {
       "name": "clean_reauthoring",
-      "max_score": 15,
-      "description": "Archetype prototypes are clean re-authored HTML/CSS: semantic structure, tokenized CSS with values traceable to the source site's own stylesheets, no copied DOM/class-soup/framework artifacts, content verbatim from the captured page JSON."
+      "max_score": 10,
+      "description": "Archetype prototypes are clean re-authored HTML/CSS: semantic structure, tokenized CSS with values traceable to the measured source spec (stardust/replica/spec/<slug>-<width>.json) or to the source site's own stylesheets, no copied DOM/class-soup/framework artifacts, content verbatim from the captured page JSON."
+    },
+    {
+      "name": "measured_before_authoring",
+      "max_score": 5,
+      "description": "source-spec.mjs capture wrote a spec per gate width (1440 and 360) before the archetype's CSS was authored, and source-spec.mjs compare exited 0 against the served prototype before the first gate round of that page and width."
     },
     {
       "name": "source_fidelity_gate_runs",
@@ -40,12 +45,12 @@
     {
       "name": "iteration_discipline",
       "max_score": 5,
-      "description": "At most 3 measured iterations per breakpoint; unresolved deltas are logged as residuals rather than silently accepted or endlessly iterated."
+      "description": "At most 3 counted rounds per page, breakpoint and stage (rounds.json in the gate dir; a round past the cap only after a recorded rounds.mjs decision); unresolved deltas are logged as residuals rather than silently accepted or endlessly iterated."
     },
     {
       "name": "font_policy",
       "max_score": 5,
-      "description": "Fonts are loaded from the same public source or substituted with a metric-matched free face; no commercial/licensed kit is rehosted; the brand family stays first in the font stack."
+      "description": "The source's captured font files are self-hosted as-is with the brand family first in every stack; proprietary faces carry deploy's licensing alert (fonts/LICENSING.md) and one inconsistency-register entry; a substitute renders only a face with no captured file and is declared in stardust/replica/font-subst.txt."
     },
     {
       "name": "standard_handoff",
