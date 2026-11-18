@@ -472,13 +472,17 @@ const FONT_TOL = 0.5;
 const numDiff = (a, b, tol) => (typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) > tol : a !== b);
 
 /** One pair → box deltas (Δy relative to each side's section top), font deltas, line counts, and whether it is off. */
-export function nodeDelta(l, b, lSec, bSec, tol = DEFAULT_TOL) {
+export function nodeDelta(l, b, lSec, bSec, tol = DEFAULT_TOL, subst = []) {
   const d = { dx: b.x - l.x, dy: (b.y - (bSec ? bSec.y : 0)) - (l.y - (lSec ? lSec.y : 0)), dw: b.w - l.w, dh: b.h - l.h, font: {}, lines: null };
   if (isText(l)) {
     if (numDiff(l.fontSize, b.fontSize, FONT_TOL)) d.font.size = [l.fontSize, b.fontSize];
     if (numDiff(l.lineHeight, b.lineHeight, FONT_TOL)) d.font['line-height'] = [l.lineHeight, b.lineHeight];
     if (String(l.fontWeight) !== String(b.fontWeight)) d.font.weight = [l.fontWeight, b.fontWeight];
-    if (String(l.fontFamily || '').toLowerCase() !== String(b.fontFamily || '').toLowerCase()) d.font.family = [l.fontFamily, b.fontFamily];
+    const [lf, bf] = [String(l.fontFamily || '').toLowerCase(), String(b.fontFamily || '').toLowerCase()];
+    // a DECLARED substitution (stardust/replica/font-subst.txt): the family is not a delta, and the glyph-width
+    // difference it brings is bounded (chrome-parity's rule: 6 % of the live width, at least 2 px) instead of `tol`
+    d.subst = lf !== bf && subst.some((s) => s.live === lf && s.build === bf);
+    if (lf !== bf && !d.subst) d.font.family = [l.fontFamily, b.fontFamily];
     if (l.color !== b.color) d.font.colour = [l.color, b.color];
     if ((l.textTransform || 'none') !== (b.textTransform || 'none')) d.font.transform = [l.textTransform, b.textTransform];
     if (numDiff(l.letterSpacing, b.letterSpacing, 0.1)) d.font['letter-spacing'] = [l.letterSpacing, b.letterSpacing];
@@ -486,7 +490,8 @@ export function nodeDelta(l, b, lSec, bSec, tol = DEFAULT_TOL) {
     if (normText(l.text) !== normText(b.text)) d.text = [l.text, b.text];
   } else if ((l.fit || '') !== (b.fit || '')) d.font.fit = [l.fit, b.fit];
   const styleOff = Object.keys(d.font).length > 0 || !!d.lines || !!d.text;
-  const boxOff = Math.abs(d.dx) > tol || Math.abs(d.dw) > tol || Math.abs(d.dh) > tol;
+  const wTol = d.subst ? Math.max(tol, 2, 0.06 * l.w) : tol;
+  const boxOff = Math.abs(d.dx) > wTol || Math.abs(d.dw) > wTol || Math.abs(d.dh) > tol;
   d.onlyDy = !styleOff && !boxOff && Math.abs(d.dy) > tol;
   d.off = styleOff || boxOff || d.onlyDy;
   return d;
@@ -522,13 +527,23 @@ export function sectionTable(live, build, pairing, tol = DEFAULT_TOL) {
     rows.push(row); prev = row; pending = 0;
   });
   flushExtras(Infinity);
-  const first = rows.find((r) => r.status !== 'ok' && r.status !== 'displaced');
+  let first = rows.find((r) => r.status !== 'ok' && r.status !== 'displaced');
+  // No single row over the tolerance, but their steps add up past it (five sections each 1 px taller): the first
+  // row that adds anything is the cause to start from — a failing table always names one.
+  const total = rows.reduce((s, r) => s + Math.abs(r.step || 0), 0);
+  if (!first && total > tol) { first = rows.find((r) => Math.abs(r.step || 0) > 0); first.status = 'cause'; (first.notes ||= []).push(`accumulated: steps within the ${tol}px tolerance add up to ${total}px`); }
   if (first) first.first = true;
   return rows;
 }
 
 /** The whole comparison: section rows, per-section node deltas, missing / extra, counts, the verdict line, pass. */
-export function compareSpecs(live, build, { tol = DEFAULT_TOL } = {}) {
+export function compareSpecs(live, build0, { tol = DEFAULT_TOL, subst = [] } = {}) {
+  // A region the source spec does not have (its header is not a <header> / banner landmark) cannot be paired: the
+  // build's section of that region is left to chrome-parity, which resolves both sides — never an EXTRA to clear.
+  const has = (spec, region) => spec.sections.some((s) => s.region === region);
+  const skip = ['header', 'footer'].filter((r) => !has(live, r) && has(build0, r));
+  const gone = new Set(build0.sections.filter((s) => skip.includes(s.region)).map((s) => s.i));
+  const build = skip.length ? { ...build0, sections: build0.sections.filter((s) => !gone.has(s.i)), nodes: build0.nodes.filter((n) => !gone.has(n.section)) } : build0;
   const pairing = pairSections(live.sections, build.sections);
   const rows = sectionTable(live.sections, build.sections, pairing, tol);
   const inSec = (spec, i) => spec.nodes.filter((n) => n.section === i);
@@ -538,7 +553,7 @@ export function compareSpecs(live, build, { tol = DEFAULT_TOL } = {}) {
     if (!r.live) { out.extra.push(...inSec(build, r.build.i)); continue; }
     const p = pairNodes(inSec(live, r.live.i), inSec(build, r.build.i));
     out.missing.push(...p.missing); out.extra.push(...p.extra);
-    const ds = p.pairs.map((q) => ({ section: r.live.i, live: q.live, build: q.build, how: q.how, ...nodeDelta(q.live, q.build, r.live, r.build, tol) })).sort((a, b) => a.live.y - b.live.y || a.live.x - b.live.x);
+    const ds = p.pairs.map((q) => ({ section: r.live.i, live: q.live, build: q.build, how: q.how, ...nodeDelta(q.live, q.build, r.live, r.build, tol, subst) })).sort((a, b) => a.live.y - b.live.y || a.live.x - b.live.x);
     // a node whose only delta is Δy, sitting below an off node of its section, is displaced by it — counted, not listed
     let firstOffBottom = Infinity;
     for (const d of ds) {
@@ -554,6 +569,7 @@ export function compareSpecs(live, build, { tol = DEFAULT_TOL } = {}) {
   out.verdict = `source-spec: ${causes} section(s) with a height delta, total offset ${totalOffset}px, ${off} node(s) off, ${out.missing.length} missing, ${out.extra.length} extra`;
   out.pass = causes === 0 && totalOffset <= tol && off === 0 && out.missing.length === 0 && out.extra.length === 0; // an extra node is a difference too
   out.liveSections = live.sections; out.buildSections = build.sections;
+  if (skip.length) { out.chromeSkipped = skip; out.verdict += ` (build ${skip.join(' and ')} not compared: the source spec has none — chrome-parity gates it)`; }
   return out;
 }
 
@@ -711,11 +727,18 @@ function chromeInventory(o, url, width) {
   const args = [script, url, '--live-only', '--width', String(width), '--live-cache', join(gateDir, 'chrome-live.json'), '--json', join(o.out, `${o.slug}-${width}-chrome.json`)];
   if (o.noDismiss) args.push('--no-dismiss'); else { if (o.consent) args.push('--consent', o.consent); if (o.dismiss && o.dismiss.length) args.push('--dismiss', [].concat(o.dismiss).join(',')); }
   if (o.locale) args.push('--locale', o.locale);
+  if (o.headed) args.push('--headed'); // the sites --headed exists for block the headless probe too
   const r = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 240000 });
   console.log(`${(r.stdout || '').trimEnd()}\n`);
   if (r.status !== 0) console.error(`source-spec: header and footer inventory at ${width} ended with exit ${r.status} — ${((r.stderr || '').trim().split('\n').pop() || 'see above').slice(0, 200)}`);
 }
 
+/** stardust/replica/font-subst.txt (`<brand>=<substitute>` per line, # comments) → [{ live, build }], lower-cased. */
+export function parseFontSubstFile(text) {
+  return String(text || '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => l.split('=').map((f) => f.replace(/["']/g, '').trim().toLowerCase()))
+    .filter((p) => p.length === 2 && p[0] && p[1]).map(([live, build]) => ({ live, build }));
+}
+function readFontSubst(file = join('stardust', 'replica', 'font-subst.txt')) { try { return parseFontSubstFile(readFileSync(file, 'utf8')); } catch { return []; } }
 async function compare(o) {
   const [specPath, buildUrl] = o.pos;
   const live = readSpec(specPath);
@@ -725,7 +748,7 @@ async function compare(o) {
   try { raw = await measure(session, browser, buildUrl, { width: live.page.width, main: o.main || (live._provenance && live._provenance.main) || 'main', locale: live._provenance && live._provenance.locale, overlay: { dismiss: false } }); }
   finally { await browser.close().catch(() => {}); }
   const build = buildSpec(raw, { url: buildUrl, width: live.page.width });
-  const res = compareSpecs(live, build, { tol: o.tol });
+  const res = compareSpecs(live, build, { tol: o.tol, subst: readFontSubst() });
   if (build.page.rootFallback) console.error(`source-spec: the build has no element matching the content root — measured ${build.page.root}; pass --main`);
   if (o.json) { mkdirSync(dirname(o.json), { recursive: true }); writeFileSync(o.json, JSON.stringify({ spec: specPath, build: buildUrl, ...res, buildPage: build.page }, null, 1)); }
   console.log(formatCompare(res, { specPath, buildUrl }));

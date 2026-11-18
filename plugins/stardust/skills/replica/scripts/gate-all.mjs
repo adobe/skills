@@ -220,7 +220,7 @@ export function parseArgs(argv) {
     else if (a === '--coverage') o.coverage = need(a, v());
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
-    else if (a === '--consent') o.consent = need(a, v()); else if (a === '--dismiss') o.dismiss = need(a, v()); else if (a === '--no-dismiss') o.noDismiss = true; else if (a === '--locale') o.locale = need(a, v());
+    else if (a === '--consent') o.consent = need(a, v()); else if (a === '--dismiss') o.dismiss = need(a, v()); else if (a === '--no-dismiss') o.noDismiss = true; else if (a === '--locale') { o.locale = need(a, v()); o.localeGiven = true; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
   if (o.noDismiss && (o.consent || o.dismiss)) { console.error('gate-all: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)'); process.exit(1); }
@@ -406,6 +406,24 @@ export function passThrough(child, opts = {}) {
   if (opts.consent && takes('--consent')) a.push('--consent', opts.consent);
   if (opts.dismiss && takes('--dismiss')) a.push('--dismiss', opts.dismiss);
   return a;
+}
+/** The settings this run GIVES, for `reference.mjs settings`: passThrough's, without the --locale default it adds — a
+ * default is not a setting the run asked for, and a reference frozen under another locale is not "changed" by it. */
+export const givenFlags = (opts = {}) => { const a = passThrough('stitch-shot', opts); const i = a.indexOf('--locale'); if (i >= 0 && !opts.localeGiven) a.splice(i, 2); return a; };
+/** The run's options with the settings it omits taken from the page's frozen reference (baseline.json `flags`). */
+export function inheritedOpts(opts, flags) {
+  if (!flags || typeof flags !== 'object') return opts;
+  const text = (v) => (Array.isArray(v) ? v.join(',') : String(v ?? '')).trim() || null;
+  // a setting the run gives that differs from the recorded one: the reference is frozen again under the run's
+  // settings (reference.mjs settings), so nothing of the old one is inherited
+  const differs = (opts.noDismiss === true) !== (flags.noDismiss === true) && (opts.noDismiss || text(opts.consent) || text(opts.dismiss))
+    || ['consent', 'dismiss', 'locale'].some((k) => (k === 'locale' ? opts.localeGiven : true) && text(opts[k]) && text(opts[k]) !== (text(flags[k]) || (k === 'locale' ? 'en-US' : null)));
+  if (differs) return opts;
+  const gave = opts.noDismiss || text(opts.consent) || text(opts.dismiss); const o = { ...opts };
+  if (flags.noDismiss === true && !gave) o.noDismiss = true;
+  if (!opts.noDismiss && !o.noDismiss) for (const k of ['consent', 'dismiss']) if (!text(opts[k]) && text(flags[k])) o[k] = text(flags[k]);
+  if (!opts.localeGiven && text(flags.locale)) o.locale = text(flags.locale);
+  return o;
 }
 /** A capture, either side: stitch-shot <url> <out> --width --settle + the overlay / locale flags [+ --vh] [+ tail]. */
 export const stitchArgs = (script, url, out, opts, tail = []) => [script, url, out, '--width', String(opts.width), '--settle', ...passThrough('stitch-shot', opts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), ...tail];
@@ -647,7 +665,7 @@ async function main() {
   // without the subcommand answers nothing: reused as before.
   const settingsSeen = new Map();
   const settingsOf = (refDir) => {
-    if (!settingsSeen.has(refDir)) settingsSeen.set(refDir, run('node', [REFERENCE, 'settings', refDir, ...passThrough('stitch-shot', opts)]).then((s) => { const line = lastLine(s.out); return { changed: s.code === 0 && line.startsWith('changed: ') ? line.slice(9) : null, unrecorded: s.code === 0 && line === 'not recorded' }; }));
+    if (!settingsSeen.has(refDir)) settingsSeen.set(refDir, run('node', [REFERENCE, 'settings', refDir, ...givenFlags(opts)]).then((s) => { const line = lastLine(s.out); return { changed: s.code === 0 && line.startsWith('changed: ') ? line.slice(9) : null, unrecorded: s.code === 0 && line === 'not recorded' }; }));
     return settingsSeen.get(refDir);
   };
   // a reused origin or recorded pass (--skip-existing / --compare-only) stands only while its reference's settings do
@@ -672,7 +690,18 @@ async function main() {
   // stitch-shot's capture record (captureRecordOf: <side>.capture.json beside the PNG; stitch-shot removes it when a
   // capture starts, and so does this — a stitch that never started leaves no stale one) → the meta's fontsFailed
   // (+ fontCheck when it says why): shotFonts — no readable record is unchecked (null), never "all loaded".
-  const stitch = (url, out, tail = []) => { rmSync(captureRecordOf(out), { force: true }); return run('node', stitchArgs(STITCH, url, out, opts, tail)); };
+  // A page's build capture and probes run under its frozen reference's settings where the run omits them (the
+  // archetype gate dir's reference, else the page dir's; read before any capture, so the two pools need no order).
+  const optsOf = new Map();
+  const optsFor = (p) => {
+    if (opts.liveOrigin) return opts;
+    if (!optsOf.has(p.slug)) {
+      const base = [join('stardust/replica/gates', `${p.slug}-${opts.width}`), dir(p)].map((d) => readJsonSafe(join(d, 'baseline.json'))).find((b) => b && b.flags);
+      optsOf.set(p.slug, inheritedOpts(opts, base && base.flags));
+    }
+    return optsOf.get(p.slug);
+  };
+  const stitch = (url, out, tail = [], o = opts) => { rmSync(captureRecordOf(out), { force: true }); return run('node', stitchArgs(STITCH, url, out, o, tail)); };
   // Before a side is captured again its previous PNG, record and diff go: a capture that fails leaves no picture, so
   // the row is a missing capture (an error, no percentage) — never a diff of the old PNG against the other side.
   const forgetCapture = (d, out) => { for (const f of [out, captureRecordOf(out), join(d, 'diff.png')]) rmSync(f, { force: true }); };
@@ -764,7 +793,7 @@ async function main() {
     const out = join(d, 'eds.png'); const meta = join(d, 'eds.json');
     if (opts.skip && !opts.recaptureEds && reusable(p, 'eds', out, meta)) { rec(p, 'eds', readJson(meta)); return; }
     forgetCapture(d, out);
-    const s = await stitch(edsUrl(p), out);
+    const s = await stitch(edsUrl(p), out, [], optsFor(p));
     if (s.code !== 0) rmSync(out, { force: true }); // a stitch that died mid-write leaves no partial PNG to diff
     const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...shotFonts(readJsonSafe(captureRecordOf(out))) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
@@ -782,7 +811,7 @@ async function main() {
     for (const k of ['content', 'clip', 'units']) rec(p, k, undefined);
     if (opts.content) {
       for (const f of ['content.json', 'clip.json']) rmSync(join(d, f), { force: true });
-      const s = await run('node', contentArgs(join(DIFF_DIR, 'content-presence.mjs'), p.url, edsUrl(p), join(d, 'content.json'), opts, pr));
+      const s = await run('node', contentArgs(join(DIFF_DIR, 'content-presence.mjs'), p.url, edsUrl(p), join(d, 'content.json'), optsFor(p), pr));
       const content = readJsonSafe(join(d, 'content.json'));
       let ok = false;
       if (content && (s.code === 0 || s.code === 2)) {
@@ -806,7 +835,7 @@ async function main() {
     }
     if (opts.clip && !got.clip) {
       rmSync(join(d, 'clip.json'), { force: true });
-      const s = await run('node', clipArgs(join(DIFF_DIR, 'clip-probe.mjs'), edsUrl(p), join(d, 'clip.json'), opts));
+      const s = await run('node', clipArgs(join(DIFF_DIR, 'clip-probe.mjs'), edsUrl(p), join(d, 'clip.json'), optsFor(p)));
       const clip = readJsonSafe(join(d, 'clip.json'));
       if (clip && clip.counts && (s.code === 0 || s.code === 2)) { put('clip', clipResult(clip)); log(`clip ${p.slug} → ${clip.counts.total}`); }
       else { put('clip', { error: `clip-probe exit ${s.code}: ${lastLine(s.err)}` }); log(`clip ${p.slug} → ERROR ${lastLine(s.err)}`); }
@@ -814,7 +843,7 @@ async function main() {
     const units = unitsOf(p);
     if (units.length) {
       rmSync(join(d, 'units.json'), { force: true });
-      const s = await run('node', unitArgs(join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), join(d, 'units.json'), p.slug, units, opts));
+      const s = await run('node', unitArgs(join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), join(d, 'units.json'), p.slug, units, optsFor(p)));
       const res = readJsonSafe(join(d, 'units.json'));
       const required = units.some((x) => x.required);
       if (res && res.verdict && (s.code === 0 || s.code === 2)) { put('units', { verdict: res.verdict, required }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }

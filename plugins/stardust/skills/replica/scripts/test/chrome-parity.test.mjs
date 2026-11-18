@@ -51,6 +51,15 @@ await check('chooseRegion (header): a pre-header promo bar and a card <header> n
   assert.equal(chooseRegion('header', [promo, site, card, banner], VP).chosen.ref, 'header-3');
   assert.match(chooseRegion('header', [promo, site, card, banner], VP).how, /^\[role=banner\] landmark/);
 });
+await check('chooseRegion: "outermost" never crosses tiers upward — a banner landmark inside an auto-detected full-width wrapper is still the landmark; a <header> inside the banner is not chosen', () => {
+  const wrap = cand('header-0', { source: 'auto', hint: 'div.wrap', rect: { x: 0, y: 0, w: 1440, h: 120 } });
+  const banner = cand('header-1', { source: 'role', hint: 'header[role=banner]', rect: { x: 0, y: 0, w: 1440, h: 96 }, ancestors: ['header-0'] });
+  const pick = chooseRegion('header', [wrap, banner], VP);
+  assert.equal(pick.chosen.ref, 'header-1'); assert.match(pick.how, /^\[role=banner\] landmark/);
+  const inner = cand('header-2', { source: 'tag', hint: 'header.inner', ancestors: ['header-1'] });
+  assert.equal(chooseRegion('header', [banner, inner], VP).chosen.ref, 'header-1');
+  assert.match(chooseRegion('header', [banner, inner], VP).rejected.find((r) => r.hint === 'header.inner').why, /not the outermost/);
+});
 await check('chooseRegion: only a nested card <header>, a 240 px wide <header>, a hidden one or one far from the top → unresolved with the reasons (the auto-detected bar is the last resort); the inner of two nested <header>s is not the outermost', () => {
   const card = cand('header-0', { nestedIn: 'main', rect: { x: 0, y: 300, w: 1440, h: 60 } });
   const narrow = cand('header-1', { rect: { x: 0, y: 0, w: 240, h: 900 } });
@@ -292,7 +301,8 @@ function fixturePages() {
   // named by aria-label, a closed mega-menu panel, a licensed face. The build: no promo bar, the name as hidden text,
   // the panel closed another way, the substitute face (4 % wider glyphs), 20 px more main content.
   const faces = 'local("Arial"), local("Liberation Sans"), local("Helvetica"), local("DejaVu Sans")';
-  const chrome = (o = {}) => `<!doctype html><html><head><meta charset="utf-8"><style>
+  const chrome = (o = {}) => chromeHtml(o).split(glass).join(o.aria ? glass.replace('<svg ', '<svg aria-hidden="true" ') : glass);
+  const chromeHtml = (o = {}) => `<!doctype html><html><head><meta charset="utf-8"><style>
 @font-face{font-family:"Brand Sans";src:${faces}${o.build ? ';size-adjust:104%' : ''}}
 body{margin:0;font:16px/24px "Brand Sans",sans-serif;color:#123}a{color:#123;text-decoration:none;display:block;line-height:24px}
 .promo{background:#123;height:40px}.promo p{margin:0;color:#fff;line-height:40px;text-align:center}
@@ -305,7 +315,7 @@ main{padding:24px}.card{width:320px;border:1px solid #ccc}.fill{height:${o.build
 </style></head><body>
 ${o.build ? '' : '<header class="promo"><p>Free delivery this week</p></header>'}
 <header class="site"><a href="/">Brand</a><nav><a href="/products">Products</a><a href="/pricing">Pricing</a>${o.dropLink ? '' : '<a href="/docs">Docs</a>'}</nav><span></span>
-${o.build ? `<a href="/search"><span class="sr-only">Search</span>${glass}</a>` : `<a href="/search" aria-label="Search">${glass}</a>`}
+${o.build ? `<a href="/search"><span class="sr-only">Search</span>${o.dropIcon ? '' : glass}</a>` : `<a href="/search" aria-label="Search">${glass}</a>`}
 <div class="mega"${o.build ? ' hidden' : ''}><a href="/m1">Mega one</a><a href="/m2">Mega two</a></div></header>
 <main><article class="card"><header><h3>Card title</h3><a href="/c">Read more</a></header></article><div class="fill"></div></main>
 ${o.noFooter ? '' : `<footer class="foot"><a href="/about">About</a><a href="/careers">Careers</a><a href="/contact">Contact</a><span></span>
@@ -313,6 +323,9 @@ ${o.build ? `<a href="/fb" aria-label="Facebook">${glass}</a><a href="/ig" title
 </body></html>`;
   pages['/chrome-live.html'] = chrome();
   pages['/chrome-build.html'] = chrome({ build: true });
+  pages['/chrome-live-aria.html'] = chrome({ aria: true });
+  pages['/chrome-build-aria.html'] = chrome({ build: true, aria: true });
+  pages['/chrome-build-aria-no-icon.html'] = chrome({ build: true, aria: true, dropIcon: true });
   pages['/chrome-build-missing-link.html'] = chrome({ build: true, dropLink: true });
   pages['/chrome-build-header-bg.html'] = chrome({ build: true, headerBg: '#f4f4f4' });
   pages['/chrome-build-nav-size.html'] = chrome({ build: true, navSize: '14px' });
@@ -411,6 +424,17 @@ if (playwrightOk) {
     assert.equal(noFooter.status, 2, noFooter.stdout + noFooter.stderr);
     assert.match(noFooter.stdout, /MISSING +REGION footer: on the live page .*not on the build — no footer resolved/, noFooter.stdout);
     assert.doesNotMatch(noFooter.stdout, /input error/);
+  });
+  const ariaOk = await run([`${base}/chrome-live-aria.html`, `${base}/chrome-build-aria.html`, ...W, ...SUBST]);
+  const ariaGone = await run([`${base}/chrome-live-aria.html`, `${base}/chrome-build-aria-no-icon.html`, ...W, ...SUBST]);
+  await check('e2e: a decorative icon marked aria-hidden is still an icon — kept on both sides it pairs (exit 0), dropped on the build it is an ICONS delta (exit 2)', () => {
+    assert.equal(ariaOk.status, 0, ariaOk.stdout + ariaOk.stderr);
+    assert.equal(ariaGone.status, 2, ariaGone.stdout + ariaGone.stderr);
+    assert.match(ariaGone.stdout, /ICONS .*1 live vs 0 build/, ariaGone.stdout);
+  });
+  const liveOnlyBad = await run([`${base}/chrome-build-no-footer.html`, '--live-only', ...W]);
+  await check('e2e: --live-only with an unresolved region exits 4, so the caller\'s warning fires', () => {
+    assert.equal(liveOnlyBad.status, 4, liveOnlyBad.stdout + liveOnlyBad.stderr); assert.match(liveOnlyBad.stdout, /input error \(exit 4\) — unresolved: footer/);
   });
   const cache = join(dir, 'gates', 'chrome-live.json'); const invFile = join(dir, 'gates', 'chrome-inventory.json');
   const only = await run([live, '--live-only', ...W, '--live-cache', cache, '--json', invFile]);

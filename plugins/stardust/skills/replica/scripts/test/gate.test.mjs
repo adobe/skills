@@ -355,6 +355,8 @@ check('the deadline is named on the verdict line', /^chrome-parity: DEADLINE \(e
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter6b', '--full'], { STUB_CD_RC: '1' });
 check('an errored probe makes the round exit 1, not 0', r.status === 1, `status ${r.status}`);
 check('the error is named on the verdict line', /^content-diff: ERROR \(exit 1\) — content-diff error: build side answered HTTP 502/m.test(r.stdout), r.stdout);
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter6b4', '--full'], { STUB_CD_RC: '4' });
+check('exit 4 from a probe other than chrome-parity is that probe\'s own error, never the region hint', /^content-diff: ERROR \(exit 4\) — content-diff error: build side answered HTTP 502/m.test(r.stdout) && !/GATE_CHROME_REGION names it/.test(r.stdout), r.stdout);
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter6c', '--full'], { STUB_CD_RC: '3' });
 check('a bot challenge on a probe passes through as exit 3', r.status === 3, `status ${r.status}`);
 
@@ -736,9 +738,13 @@ check('… the freeze gets the new flags and never --force (an unstable page sta
 check('… the new baseline records them, the round gates against it, and the chrome live cache of the old settings is gone', (() => { const b = JSON.parse(readFileSync(join(root, gdir('set'), 'baseline.json'), 'utf8')); return b.flags.consent === '#ok' && b.flags.locale === 'de-DE' && livePng('set') === 'frozen-reference-bytes' && !existsSync(join(root, gdir('set'), 'chrome-live.json')); })());
 resetRefArgs(); r = await refRound('set', 's4', ['--consent', '#ok', '--locale', 'de-DE']);
 check('settings: the same flags again → reused', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout));
-check('a re-freeze is not a round: four invocations with a verdict, four recorded rounds (first + confirmations), 1 counted', roundsOf('set').map((x) => `${x.label}:${x.kind}`).join() === 's1:first,s2:confirm,s2b:confirm,s3:confirm,s4:confirm', JSON.stringify(roundsOf('set')));
+resetRefArgs(); resetCount(); r = await refRound('set', 's4b');
+check('settings: a round that omits the reference\'s flags reuses it AND runs its build capture under them, said in one line', r.status === 0 && freezes() === 0
+  && /^gate\.sh: reference: settings this round omits are the frozen reference's — --consent #ok --locale de-DE /m.test(r.stdout)
+  && lines(stitchArgsFile).some((l) => /build\.png .*--consent #ok --locale de-DE$/.test(l)), `${r.stdout}\n${lines(stitchArgsFile).join(' | ')}`);
+check('a re-freeze is not a round: four invocations with a verdict, four recorded rounds (first + confirmations), 1 counted', roundsOf('set').map((x) => `${x.label}:${x.kind}`).join() === 's1:first,s2:confirm,s2b:confirm,s3:confirm,s4:confirm,s4b:confirm', JSON.stringify(roundsOf('set')));
 resetRefArgs(); r = await refRound('set', 's5', ['--no-dismiss'], { STUB_REF_RC: '2' });
-check('settings: a re-freeze that finds the page unstable ends the round with exit 5 — no verdict, no round, and no reference of the old settings left to gate against', r.status === 5 && freezes() === 1 && !existsSync(join(root, gdir('set'), 'baseline.json')) && !existsSync(join(root, gdir('set'), 'baseline.png')) && verdictJson('set', 's5') === null && roundsOf('set').length === 5 && !/re-frozen/.test(r.stdout), `status ${r.status} ${r.stdout}`);
+check('settings: a re-freeze that finds the page unstable ends the round with exit 5 — no verdict, no round, and no reference of the old settings left to gate against', r.status === 5 && freezes() === 1 && !existsSync(join(root, gdir('set'), 'baseline.json')) && !existsSync(join(root, gdir('set'), 'baseline.png')) && verdictJson('set', 's5') === null && roundsOf('set').length === 6 && !/re-frozen/.test(r.stdout), `status ${r.status} ${r.stdout}`);
 resetRefArgs(); r = await refRound('set', 's6', ['--dismiss', '.promo-close']);
 check('settings: with no reference left the next round freezes one as a first freeze (no re-frozen line)', r.status === 0 && freezes() === 1 && !/capture settings changed/.test(r.stdout) && /no usable frozen reference/.test(r.stdout), r.stdout);
 resetRefArgs(); r = await refRound('set', 's7', ['--dismiss', '.other-close']);

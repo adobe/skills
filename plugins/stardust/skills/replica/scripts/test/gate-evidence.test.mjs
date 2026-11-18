@@ -117,6 +117,10 @@ check('parsers read the instruments\' verdict lines and nothing else', () => {
   const vn = parseVariance(log, pagePaths('other.html')); assert.equal(vn.deltas, null); assert.match(vn.line, /^✗ 1 of 2/); assert.equal(vn.own, false); assert.equal(vl.own, true);
   assert.equal(parseVariance('sibling-variance error: boom'), null);
 });
+check('regimeOf: the stage the round itself printed wins — a local build on localhost is local-build, not prototype', () => {
+  const j = { instArgs: ['home', 'https://live.example/', 'http://localhost:3000/', '1440', 'lb1'], log: 'rounds: home-1440 local-build — round "lb1" may run: the first round (the map)\ndiffering 1.20%' };
+  assert.equal(regimeOf(j), 'local-build'); assert.equal(regimeOf({ ...j, log: 'differing 1.20%' }), 'prototype');
+});
 check('regimeOf: localhost / 127.0.0.1 / file: build URLs are the prototype regime, anything else published; deadline() reads run-bg state', () => {
   const px = (build) => ({ instArgs: ['home', `${LIVE}/`, build, '1440'] });
   for (const u of [`${PROTO}/home-proposed.html`, 'http://127.0.0.1:8080/x.html', 'http://localhost/x', 'file:///tmp/home-proposed.html', 'HTTP://LOCALHOST:1/x']) assert.equal(regimeOf(px(u)), 'prototype', u);

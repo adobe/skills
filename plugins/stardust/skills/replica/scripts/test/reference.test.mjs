@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, captureSettings, decide, fontsDiffer, fontsOfRecord, freeze, main, maskArg, mergeBands, parseArgs, settingsChanged, variableRegions, verdictLine } from '../reference.mjs';
+import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, captureSettings, decide, inheritSettings, inheritedArgs, fontsDiffer, fontsOfRecord, freeze, main, maskArg, mergeBands, parseArgs, settingsChanged, variableRegions, verdictLine } from '../reference.mjs';
 import { baselineStatus } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -217,6 +217,17 @@ await check('freeze: floor above the bar outside the regions → unstable; --flo
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+await check('inheritSettings: a setting the round omits is the reference\'s; a given one is never replaced; --no-dismiss is inherited only when the round gives no overlay flag', () => {
+  const rec = { consent: '#ok', dismiss: '.x', noDismiss: false, locale: 'de-DE' };
+  const all = inheritSettings(rec, {});
+  assert.deepEqual([all.consent, all.dismiss, all.locale, all.inherited], ['#ok', '.x', 'de-DE', ['consent', 'dismiss', 'locale']]);
+  assert.deepEqual(inheritedArgs(all), ['--consent', '#ok', '--dismiss', '.x', '--locale', 'de-DE']);
+  assert.deepEqual(inheritSettings(rec, { consent: '#ok', locale: 'de-DE' }).inherited, ['dismiss']);
+  assert.deepEqual(inheritedArgs(inheritSettings({ noDismiss: true, locale: 'de-DE' }, {})), ['--no-dismiss', '--locale', 'de-DE']);
+  assert.deepEqual(inheritSettings({ noDismiss: true }, { consent: '#a' }).inherited, [], 'the round gave an overlay flag: nothing inherited (settingsChanged re-freezes)');
+  assert.deepEqual(inheritSettings({ locale: 'en-US' }, {}).inherited, [], 'the default locale is not a setting');
+  assert.deepEqual(inheritSettings(null, { locale: 'fr-FR' }).inherited, []);
+});
 await check('freeze: a bot challenge passes through as 3, a capture deadline as 124, another capture failure is 1 — nothing frozen, no compare', () => {
   const dir = tmp();
   try {

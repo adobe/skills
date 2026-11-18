@@ -41,7 +41,8 @@
  *   A usable baseline for this URL and width (stitch-shot's `baseline <dir>` check) is reused: no capture, exit 0.
  *   node skills/replica/scripts/reference.mjs status <dir> [--json] [--url <u>] [--width <px>]
  *   node skills/replica/scripts/reference.mjs mask <dir>      only the --mask argument for pixel-compare ('' = none)
- *   node skills/replica/scripts/reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>]
+ *   node skills/replica/scripts/reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>] [--inherit]
+ *       (--inherit: instead of the comparison, the settings this call omits and the reference recorded, one argument per line)
  *                          were the given capture settings the ones <dir>/baseline.json was frozen with (`flags`)?
  *                          One line: `same` | `changed: consent, locale` | `not recorded` (a baseline from before
  *                          flags were recorded). Compared: the settings this call GIVES (an omitted one inherits the reference's) — what
@@ -110,7 +111,7 @@ const round2 = (n) => Number(Number(n).toFixed(2));
 // ── pure ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 const NUM = { '--width': 'width', '--vh': 'vh', '--captures': 'captures', '--floor-max': 'floorMax', '--height-max': 'heightMax', '--variable-max': 'variableMax', '--band': 'band', '--band-min': 'bandMin', '--pad': 'pad', '--timeout': 'timeout' };
 const STR = { '--consent': 'consent', '--dismiss': 'dismiss', '--locale': 'locale', '--url': 'url' };
-const BOOL = { '--no-dismiss': 'noDismiss', '--headed': 'headed', '--force': 'force', '--json': 'json' };
+const BOOL = { '--no-dismiss': 'noDismiss', '--headed': 'headed', '--force': 'force', '--json': 'json', '--inherit': 'inherit' };
 export function parseArgs(argv) {
   const [cmd, ...rest] = argv;
   const o = { cmd, pos: [], width: null, vh: null, consent: null, dismiss: null, noDismiss: false, locale: null, headed: false, force: false, json: false, url: null, ...DEFAULTS };
@@ -167,6 +168,20 @@ export function settingsChanged(recorded, current) {
   const given = { consent: b.consent !== null, dismiss: b.dismiss !== null, noDismiss: b.noDismiss === true, locale: String(current?.locale ?? '').trim() !== '' };
   return Object.keys(a).filter((k) => given[k] && a[k] !== b[k]);
 }
+
+// A round that omits a setting inherits the reference's — and must then USE it: the build capture and the probes run
+// under the settings the reference was frozen with, or the two sides are not the same page. → the round's settings
+// with the omitted ones filled from baseline.json `flags`, and `inherited` naming them (a given setting is never replaced).
+export function inheritSettings(recorded, current = {}) {
+  const out = { consent: current.consent ?? null, dismiss: current.dismiss ?? null, noDismiss: current.noDismiss === true, locale: current.locale ?? null, inherited: [] };
+  if (!recorded || typeof recorded !== 'object') return out;
+  const r = captureSettings(recorded); const b = captureSettings(current);
+  if (r.noDismiss && !b.noDismiss && b.consent === null && b.dismiss === null) { out.noDismiss = true; out.inherited.push('noDismiss'); }
+  if (!b.noDismiss && !out.noDismiss) for (const k of ['consent', 'dismiss']) if (b[k] === null && r[k] !== null) { out[k] = r[k]; out.inherited.push(k); }
+  if (String(current.locale ?? '').trim() === '' && r.locale !== DEFAULT_LOCALE) { out.locale = r.locale; out.inherited.push('locale'); }
+  return out;
+}
+export const inheritedArgs = (s) => s.inherited.flatMap((k) => (k === 'noDismiss' ? ['--no-dismiss'] : [`--${k}`, String(s[k])]));
 
 // Several comparisons' bands → one list: per band start, the largest % any pair measured there.
 export function mergeBands(lists) {
@@ -345,6 +360,7 @@ export function main(argv, deps = realDeps) {
   if (o.cmd === 'settings') {
     const base = deps.readJson(join(o.dir, 'baseline.json'));
     if (!base) { console.log(`reference: none — no readable ${join(o.dir, 'baseline.json')}`); return 1; }
+    if (o.inherit) { const args = inheritedArgs(inheritSettings(base.flags, o)); if (args.length) console.log(args.join('\n')); return 0; } // one argument per line
     const changed = settingsChanged(base.flags, o);
     console.log(changed === null ? 'not recorded' : changed.length ? `changed: ${changed.join(', ')}` : 'same');
     return 0;

@@ -266,17 +266,20 @@ fi
 # --dismiss <sel,…> and --no-dismiss; the diff probes take one --dismiss [sel,…] (bare = the built-in candidates only), so the site's
 # selectors are joined for them. Arrays expand as ${a[@]+"${a[@]}"}: macOS /bin/bash is 3.2, where an empty array
 # under set -u is an unbound variable.
-STITCH_OPTS=(); PROBE_OPTS=(); CHROME_OPTS=()
-if [ "$DISMISS" = 1 ]; then
-  [ -n "$CONSENT" ] && { STITCH_OPTS+=(--consent "$CONSENT"); CHROME_OPTS+=(--consent "$CONSENT"); }
-  [ -n "$DISMISS_EXTRA" ] && { STITCH_OPTS+=(--dismiss "$DISMISS_EXTRA"); CHROME_OPTS+=(--dismiss "$DISMISS_EXTRA"); }
-  EXTRA="${CONSENT:+$CONSENT,}$DISMISS_EXTRA"; EXTRA=${EXTRA%,}
-  if [ -n "$EXTRA" ]; then PROBE_OPTS=(--dismiss "$EXTRA"); else PROBE_OPTS=(--dismiss); fi
-else
-  STITCH_OPTS=(--no-dismiss); CHROME_OPTS=(--no-dismiss)
-fi
-# --locale reaches the reference, both captures and every probe (they all take the flag).
-if [ -n "$LOCALE" ]; then STITCH_OPTS+=(--locale "$LOCALE"); PROBE_OPTS+=(--locale "$LOCALE"); CHROME_OPTS+=(--locale "$LOCALE"); fi
+build_opts() {
+  STITCH_OPTS=(); PROBE_OPTS=(); CHROME_OPTS=()
+  if [ "$DISMISS" = 1 ]; then
+    [ -n "$CONSENT" ] && { STITCH_OPTS+=(--consent "$CONSENT"); CHROME_OPTS+=(--consent "$CONSENT"); }
+    [ -n "$DISMISS_EXTRA" ] && { STITCH_OPTS+=(--dismiss "$DISMISS_EXTRA"); CHROME_OPTS+=(--dismiss "$DISMISS_EXTRA"); }
+    EXTRA="${CONSENT:+$CONSENT,}$DISMISS_EXTRA"; EXTRA=${EXTRA%,}
+    if [ -n "$EXTRA" ]; then PROBE_OPTS=(--dismiss "$EXTRA"); else PROBE_OPTS=(--dismiss); fi
+  else
+    STITCH_OPTS=(--no-dismiss); CHROME_OPTS=(--no-dismiss)
+  fi
+  # --locale reaches the reference, both captures and every probe (they all take the flag).
+  if [ -n "$LOCALE" ]; then STITCH_OPTS+=(--locale "$LOCALE"); PROBE_OPTS+=(--locale "$LOCALE"); CHROME_OPTS+=(--locale "$LOCALE"); fi
+}
+build_opts
 # chrome-parity only: the declared font substitutions (one <brand>=<substitute> per line) and region overrides.
 PARITY_OPTS=()
 FONT_SUBST=${GATE_FONT_SUBST:-$( [ -f stardust/replica/font-subst.txt ] && grep -vE '^[[:space:]]*(#|$)' stardust/replica/font-subst.txt | paste -sd, - )}
@@ -350,6 +353,20 @@ if [ "$HAVE_BASE" = 1 ]; then
     "changed: "*) REFREEZE=${SETTINGS#changed: }; HAVE_BASE=0 ;;
     "not recorded") echo "gate.sh: reference: reused — settings not recorded (frozen by an older version: delete $DIR/baseline.json to freeze it under this round's flags)" ;;
   esac
+fi
+# A reused reference's settings that this round omits are taken from it (reference.mjs settings --inherit, one
+# argument per line): the build capture and the probes then see the page the reference was frozen from.
+if [ "$HAVE_BASE" = 1 ]; then
+  INHERITED=""
+  while IFS= read -r a; do
+    case "$a" in
+      --consent) IFS= read -r CONSENT; INHERITED="$INHERITED --consent $CONSENT" ;;
+      --dismiss) IFS= read -r DISMISS_EXTRA; INHERITED="$INHERITED --dismiss $DISMISS_EXTRA" ;;
+      --no-dismiss) DISMISS=0; INHERITED="$INHERITED --no-dismiss" ;;
+      --locale) IFS= read -r LOCALE; INHERITED="$INHERITED --locale $LOCALE" ;;
+    esac
+  done < <(node "$HERE/reference.mjs" settings "$DIR" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} --inherit 2>/dev/null)
+  if [ -n "$INHERITED" ]; then build_opts; echo "gate.sh: reference: settings this round omits are the frozen reference's —$INHERITED (the build capture and the probes run under them)"; fi
 fi
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 # One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
@@ -660,7 +677,10 @@ verdict() { # $1 rc, $2 label, $3 line
   case "$1" in
     0|2) echo "$2: $3" ;;
     124) echo "$2: DEADLINE (exit 124) — re-run, not a verdict" ;;
-    4) echo "$2: NO VERDICT (exit 4) — $3 (GATE_CHROME_REGION names it)" ;;
+    4) case "$2" in
+         chrome-parity) echo "$2: NO VERDICT (exit 4) — $3 (GATE_CHROME_REGION names it)" ;;
+         *) echo "$2: ERROR (exit 4) — $(grep -iE 'error|HTTP [45][0-9][0-9]' "$4" | head -1 | cut -c1-160)" ;;
+       esac ;;
     3) echo "$2: BLOCKED (exit 3) — bot challenge or 2xx denial page on the live side, escalate --headed" ;;
     *) echo "$2: ERROR (exit $1) — $(grep -iE 'error' "$4" | head -1 | cut -c1-160)" ;;
   esac

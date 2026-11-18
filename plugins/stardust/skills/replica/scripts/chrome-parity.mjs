@@ -338,11 +338,11 @@ export function probeRegion(args) {
   // at rest (a closed drawer / mega-menu panel); `hidden` = inside visually-hidden text meant for assistive tech.
   const CONTROLS = 'a[href], button, input, select, textarea';
   const memo = new Map([[root, { rest: null, hidden: false }]]);
-  const own = (el) => {
+  const own = (el, aria = true) => {
     const cs = getComputedStyle(el);
     if (el.hasAttribute('hidden') && cs.display === 'none') return { rest: '[hidden]' };
     if (cs.display === 'none') return { rest: 'display:none' };
-    if (el.getAttribute('aria-hidden') === 'true') return { rest: 'aria-hidden' };
+    if (aria && el.getAttribute('aria-hidden') === 'true') return { rest: 'aria-hidden' };
     if (parseFloat(cs.opacity) === 0) return { rest: 'opacity:0' };
     if (cs.display === 'contents') return {};
     const r = el.getBoundingClientRect();
@@ -355,14 +355,18 @@ export function probeRegion(args) {
     if (away) return cs.transform !== 'none' || el.querySelectorAll(CONTROLS).length >= 2 ? { rest: 'off-canvas' } : { hidden: true };
     return {};
   };
-  const state = (el) => {
-    if (memo.has(el)) return memo.get(el);
-    const up = el.parentElement && root.contains(el.parentElement) ? state(el.parentElement) : { rest: null, hidden: false };
-    const o = up.rest ? {} : own(el);
-    const st = { rest: up.rest || o.rest || null, hidden: up.hidden || Boolean(o.hidden) };
-    memo.set(el, st);
-    return st;
+  const stateIn = (m, aria) => function st(el) {
+    if (m.has(el)) return m.get(el);
+    const up = el.parentElement && root.contains(el.parentElement) ? st(el.parentElement) : { rest: null, hidden: false };
+    const o = up.rest ? {} : own(el, aria);
+    const s = { rest: up.rest || o.rest || null, hidden: up.hidden || Boolean(o.hidden) };
+    m.set(el, s);
+    return s;
   };
+  const state = stateIn(memo, true);
+  // An icon is drawn whatever aria-hidden says (it marks a decorative icon inside a labelled control): for icons the
+  // attribute is not a rest state — on the icon or on any ancestor. Every other reason still applies.
+  const drawn = stateIn(new Map([[root, { rest: null, hidden: false }]]), false);
   // atoms = elements carrying their OWN text (direct text nodes) that have a box; each with its channel (visible |
   // hidden-name) and, inside a panel not shown at rest, the reason (`rest`). Texts with no box at all are only counted.
   const atoms = []; const notShown = {};
@@ -393,7 +397,7 @@ export function probeRegion(args) {
     ref: `${regionName}-${i}`,
     tag: el.tagName.toLowerCase(),
     kind: el.tagName.toLowerCase() === 'svg' ? 'inline svg' : 'img',
-    ...(state(el).rest ? { rest: state(el).rest } : {}),
+    ...(drawn(el).rest ? { rest: drawn(el).rest } : {}),
     rect: rect(el),
     sig: el.tagName.toLowerCase() === 'svg'
       ? `viewBox=${el.getAttribute('viewBox') || '-'} paths=${el.querySelectorAll('path,circle,rect,polygon,line').length}`
@@ -456,8 +460,11 @@ export function chooseRegion(name, cands, viewport) {
     return null;
   };
   const judged = (cands || []).map((c) => ({ c, why: why(c) }));
-  const ok = new Set(judged.filter((j) => !j.why).map((j) => j.c.ref));
-  for (const j of judged) if (!j.why && (j.c.ancestors || []).some((a) => ok.has(a))) j.why = 'inside another candidate (not the outermost)';
+  // "outermost" holds within a tier and against a stronger one: a landmark inside an auto-detected wrapper stays the
+  // landmark (role → tag → auto is the documented order), a <header> inside the banner does not.
+  const TIER = { role: 0, tag: 1, auto: 2 };
+  const ok = new Map(judged.filter((j) => !j.why).map((j) => [j.c.ref, TIER[j.c.source] ?? 2]));
+  for (const j of judged) if (!j.why && (j.c.ancestors || []).some((a) => ok.has(a) && ok.get(a) <= (TIER[j.c.source] ?? 2))) j.why = 'inside another candidate (not the outermost)';
   const rank = (a, b) => (isFooter
     ? (b.links - a.links) || (b.order - a.order)
     : (Number(b.hasNav) - Number(a.hasNav)) || (b.links - a.links) || (a.order - b.order));
@@ -820,6 +827,7 @@ async function main() {
         console.log(unresolved.length ? `⚠ input error (exit ${EXIT_INPUT}) — unresolved: ${unresolved.join('; ')} — pass --region <name>=<liveSel>` : '✓ live chrome inventory taken — author the header and footer from it, then compare.');
       }
       exit = unresolved.length ? EXIT_INPUT : 0;
+      process.exitCode = exit; // the return below skips the process.exit after the finally
       return;
     }
     const B = await probeSide(browser, build, opts, false);

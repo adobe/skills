@@ -15,7 +15,7 @@ import { createServer } from 'node:http';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_OUT, HELP, TEXT_CAP, UsageError, buildSpec, clusterStyles, compareSpecs, containerOf, formatBrief, formatCompare, formatNodes, nodeDelta, normText, pairList, pairNodes, pairSections, parseArgs, queryNodes, sectionTable, serialiseSpec, tokensOf } from '../source-spec.mjs';
+import { DEFAULT_OUT, HELP, TEXT_CAP, UsageError, buildSpec, clusterStyles, compareSpecs, containerOf, formatBrief, formatCompare, formatNodes, nodeDelta, normText, parseFontSubstFile, pairList, pairNodes, pairSections, parseArgs, queryNodes, sectionTable, serialiseSpec, tokensOf } from '../source-spec.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'source-spec.mjs');
@@ -173,6 +173,25 @@ await check('sectionTable: the first section whose own height differs is the FIR
   assert.deepEqual(rows.map((r) => [r.dy, r.dh, r.cum, r.step]), [[0, 0, 0, 0], [0, 24, 24, 24], [24, 0, 24, 0], [24, 0, 24, 0]]);
   assert.deepEqual(rows[1].notes, ['own height']);
 });
+await check('sectionTable: steps that are each within the tolerance but add up past it name a FIRST CAUSE — a failing table always has one', () => {
+  const live = [0, 1, 2, 3, 4].map((i) => S(i, i * 100, 100, `Band ${i}`));
+  const build = [0, 1, 2, 3, 4].map((i) => S(i, i * 101, 101, `Band ${i}`));
+  const rows = sectionTable(live, build, pairSections(live, build), 2);
+  assert.equal(rows.filter((r) => r.first).length, 1); assert.equal(rows[0].first, true); assert.equal(rows[0].status, 'cause');
+  assert.match(rows[0].notes.join(' '), /accumulated: steps within the 2px tolerance add up to 5px/);
+  const within = [0, 1].map((i) => S(i, i * 101, 101, `Band ${i}`));
+  assert.equal(sectionTable(live.slice(0, 2), within, pairSections(live.slice(0, 2), within), 2).some((r) => r.first), false, '2 px in total is within the tolerance');
+});
+await check('parseFontSubstFile + nodeDelta: a declared substitution is not a family delta and its glyph-width difference is bounded at 6 % (min 2 px); undeclared, both are off', () => {
+  assert.deepEqual(parseFontSubstFile('# brand faces\n"Brand Sans" = Arimo\n\nbad line\n'), [{ live: 'brand sans', build: 'arimo' }]);
+  const t = (o) => ({ kind: 'text', tag: 'p', text: 'Hello world', x: 0, y: 0, w: 200, h: 24, fontFamily: 'Brand Sans', fontSize: 16, lineHeight: 24, fontWeight: '400', letterSpacing: 0, color: 'rgb(0, 0, 0)', lines: 1, ...o });
+  const b = t({ fontFamily: 'Arimo', w: 208 });
+  const plain = nodeDelta(t({}), b, null, null, 2);
+  assert.equal(plain.off, true); assert.deepEqual(plain.font.family, ['Brand Sans', 'Arimo']);
+  const declared = nodeDelta(t({}), b, null, null, 2, [{ live: 'brand sans', build: 'arimo' }]);
+  assert.deepEqual([declared.off, declared.font.family, declared.subst], [false, undefined, true]);
+  assert.equal(nodeDelta(t({}), t({ fontFamily: 'Arimo', w: 230 }), null, null, 2, [{ live: 'brand sans', build: 'arimo' }]).off, true, '15 % wider is past the bound');
+});
 await check('sectionTable: a second cause further down is a cause, not the first; a changed gap above a section is a cause too', () => {
   const live = [S(0, 0, 400, 'Hero'), S(1, 400, 300, 'Cards'), S(2, 700, 200, 'Story')];
   const build = [S(0, 0, 395, 'Hero'), S(1, 395, 300, 'Cards'), S(2, 715, 224, 'Story')];
@@ -262,10 +281,20 @@ await check('compareSpecs: sub-tolerance steps that add up over the tolerance fa
   const b = clone(liveSpec()); b.sections[0].h += 2; b.sections[1].y += 2; b.sections[1].h += 2; b.sections[2].y += 4;
   for (const n of b.nodes) n.y += [0, 2, 4][n.section];
   const r = compareSpecs(liveSpec(), b);
-  assert.equal(r.counts.sections, 0); assert.equal(r.counts.totalOffset, 4); assert.equal(r.pass, false);
+  assert.equal(r.counts.sections, 1, 'the first row that adds to the total is named as the cause'); assert.equal(r.sections.filter((x) => x.first).length, 1);
+  assert.equal(r.counts.totalOffset, 4); assert.equal(r.pass, false);
 });
 
 // ---- tokens, brief, view ----------------------------------------------------------------------------------------
+await check('compareSpecs: a build header / footer the source spec has no section for is not an EXTRA to clear — left to chrome-parity, and said on the verdict line', () => {
+  const live = liveSpec(); const b = clone(live);
+  const i = Math.max(...b.sections.map((x) => x.i)) + 1; const last = b.sections[b.sections.length - 1];
+  if (live.sections.some((x) => x.region === 'footer')) return; // the fixture has its own footer: nothing to show
+  b.sections.push({ ...last, i, region: 'footer', y: last.y + last.h, h: 120, firstText: 'Footer' });
+  b.nodes.push({ ...b.nodes[0], section: i, text: 'Footer link', y: last.y + last.h + 10 });
+  const r = compareSpecs(live, b);
+  assert.deepEqual([r.pass, r.extra.length, r.chromeSkipped], [true, 0, ['footer']]); assert.match(r.verdict, /build footer not compared: the source spec has none/);
+});
 await check('clusterStyles: distinct size / line-height / weight / family [transform] with counts, most used first, roles and a sample', () => {
   const s = liveSpec(); const c = clusterStyles(s.nodes);
   assert.deepEqual(c.map((x) => [x.key, x.n]), [['16/24 400 Arial', 6], ['32/35.2 400 Arial', 1]]);
@@ -312,7 +341,7 @@ if (playwrightOk) {
   const { server, base } = await startFixtures();
   const out = mkdtempSync(join(tmpdir(), 'source-spec-e2e-'));
   const run = (args) => new Promise((resolve) => {
-    const p = spawn(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' }); let stdout = ''; let stderr = '';
+    const p = spawn(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', cwd: out }); let stdout = ''; let stderr = ''; // capture writes the gate's live cache under ./stardust — never in the caller's directory
     p.stdout.on('data', (d) => { stdout += d; }); p.stderr.on('data', (d) => { stderr += d; });
     p.on('close', (status) => resolve({ status, stdout, stderr }));
   });

@@ -27,7 +27,7 @@ import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, re
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
+import { BATCH, CHILD_FLAGS, DELIVERED, UNSTABLE, WIDE_DEFAULT, referenceOf, wideFlagged, wideLine, wideWidth, captureRecordOf, clipArgs, contentArgs, dropPassedCaptures, droppedPass, fontChecksSkipped, fontFails, fontsNotLoaded, unselected, givenFlags, inheritedOpts, formatSummary, isErrorRow, LEGACY_WAIVES, overrideScope, parseArgs, passThrough, hostOrigin, migratedPathOf, recordedProbes, recordRounds, selectPages, shotFonts, staleCapture, stitchArgs, unitArgs, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -835,6 +835,17 @@ check('referenceIgnoreNote: a project .gitignore from before the per-page refere
   assert.match(referenceIgnoreNote(old), /add below .*: \*\*\/gates\/prototypes-\*\/\*\*\/baseline\.png {2}\*\*\/gates\/wide-\*\/\*\*\/baseline\.png$/);
   for (const l of REFERENCE_IGNORES) assert.ok(tpl.includes(l), l);
 });
+check('givenFlags / inheritedOpts: the locale default is not a given setting; a page\'s build capture and probes take the settings the run omits from its frozen reference, never over a given one', () => {
+  assert.deepEqual(givenFlags(parseArgs(['node', 'x'])), []);
+  assert.deepEqual(givenFlags(parseArgs(['node', 'x', '--locale', 'de-DE', '--consent', '#a'])), ['--locale', 'de-DE', '--consent', '#a']);
+  const run = parseArgs(['node', 'x']);
+  const o = inheritedOpts(run, { consent: '#ok', dismiss: null, noDismiss: false, locale: 'de-DE' });
+  assert.deepEqual([o.consent, o.locale, passThrough('stitch-shot', o)], ['#ok', 'de-DE', ['--locale', 'de-DE', '--consent', '#ok']]);
+  assert.deepEqual(passThrough('stitch-shot', inheritedOpts(run, { noDismiss: true, locale: null })), ['--locale', 'en-US', '--no-dismiss']);
+  const given = parseArgs(['node', 'x', '--locale', 'fr-FR']);
+  assert.equal(inheritedOpts(given, { consent: '#ok', locale: 'de-DE' }), given, 'a given setting that differs: the reference is frozen again, nothing inherited');
+  assert.equal(inheritedOpts(run, null), run);
+});
 check('unselected: an --only slug that selection neither kept nor skipped gets its own NOT gated line', () => {
   assert.deepEqual(unselected(['a', 'b', 'c'], [{ slug: 'a' }], [{ slug: 'b', why: 'x' }]), ['c']);
   assert.deepEqual(unselected(null, [], []), []);
@@ -1131,6 +1142,9 @@ check('reference settings: a reference frozen under other overlay flags or local
     assert.equal(r.status, 0, r.stderr); assert.deepEqual(shots(), [], 'same settings + --skip-existing: the recorded passes stand');
     const before = rounds();
     r = gateAll(['--skip-existing'], { ...REF });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(frozen(), [], 'a run that omits the reference\'s locale and consent inherits them: the default locale is not a changed setting, nothing is frozen again');
+    r = gateAll(['--skip-existing', '--locale', 'en-US'], { ...REF });
     assert.equal(r.status, 0, r.stderr);
     assert.deepEqual(frozen(), ['freeze https://origin.example/arch', 'freeze https://origin.example/page'], '--skip-existing does not reuse a pass measured against a reference of other settings');
     assert.match(r.stdout, /origin arch: reference: re-frozen — capture settings changed \(locale\)$/m);
