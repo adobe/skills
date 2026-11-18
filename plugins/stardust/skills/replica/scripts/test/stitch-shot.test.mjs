@@ -715,7 +715,7 @@ if (pwProbe.status !== 0) {
       assert.equal(ok.status, 0, ok.stderr);
       assert.ok(existsSync(ok.out), 'the PNG');
       assert.ok(ok.cap, 'the sidecar');
-      assert.deepEqual(Object.keys(ok.cap), ['writtenBy', 'url', 'width', 'vh', 'height', 'chunks', 'denialCheck', 'freeze', 'fontsFailed', 'fixedLayers', 'at']);
+      assert.deepEqual(Object.keys(ok.cap), ['writtenBy', 'url', 'width', 'vh', 'height', 'chunks', 'denialCheck', 'freeze', 'fontsFailed', 'deadFaces', 'fixedLayers', 'at']);
       assert.equal(ok.cap.freeze, 'applied');
       assert.deepEqual(ok.cap.fontsFailed, [], 'a page with no @font-face: every declared face loaded');
       assert.deepEqual(ok.cap.fixedLayers, { capture: 'once', count: 0, late: 0 });
