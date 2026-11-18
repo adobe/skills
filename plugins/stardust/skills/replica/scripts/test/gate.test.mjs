@@ -662,7 +662,7 @@ check('… and keeps everything else: this round\'s diff and vdiff dir, captures
 cpSync(join(scripts, 'rounds.mjs'), join(replica, 'rounds.mjs'));
 const base = buildUrl.replace(/\/home-proposed\.html$/, '');
 writeFileSync(join(root, 'file-proposed.html'), 'home-proposed'); writeFileSync(join(root, 'index.html'), 'home-proposed');
-const stageOfRun = (out) => (/^rounds: \S+ (\S+) — round /m.exec(out) || [])[1];
+const stageOfRun = (out) => (/^rounds: \S+ (\S+) — /m.exec(out) || [])[1]; // "round … may run", or "cap check off" in this sandbox
 const STAGE_TABLE = [
   [`${base}/home-proposed.html`, {}, 'prototype'],
   [`${base}/home-proposed.html?v=2#top`, {}, 'prototype'],
@@ -693,7 +693,7 @@ check('--help documents the three stages, the -proposed.html rule and GATE_REGIM
 
 // local-build rounds: their own budget in the same gate dir, the prototype stage's offset bound, stage in the verdict file.
 const stageRounds = (slug, stage) => { try { return JSON.parse(readFileSync(join(root, gdir(slug), 'rounds.json'), 'utf8')).stages[stage]?.rounds || []; } catch { return []; } };
-const lbRound = (label, url, env = {}, extra = []) => gate(['lb', 'https://live.example/lb', url, '1440', label, '--marker', 'home-proposed', ...extra], { GATE_REGIME: '', STUB_PIXEL_ARGS: pixelArgsFile, ...env });
+const lbRound = (label, url, env = {}, extra = []) => gate(['lb', 'https://live.example/lb', url, '1440', label, '--marker', 'home-proposed', ...extra], { GATE_REGIME: '', STARDUST_ROUND_CAP: '', STUB_PIXEL_ARGS: pixelArgsFile, ...env }); // the cap is on here: rounds.mjs is in the sandbox
 const FAIL = { STUB_PIXEL_RC: '2' };
 for (const l of ['iter1', 'iter2', 'iter3']) await lbRound(l, buildUrl, FAIL);
 r = await lbRound('iter4', buildUrl, FAIL);
