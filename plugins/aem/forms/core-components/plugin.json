@@ -1,0 +1,41 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "aem-forms-core-components",
+  "description": "Skills for AEM Adaptive Forms Core Components: building server-side form components in adobe/aem-core-forms-components.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "keywords": [
+    "aem",
+    "aem-forms",
+    "adaptive-forms",
+    "core-components",
+    "sling-model",
+    "adobe"
+  ],
+  "extensions": {
+    "io.github.ai-ecoverse.x927": {
+      "targets": {
+        "claude": {},
+        "tessl": {
+          "name": "adobe/aem-forms-core-components",
+          "private": false,
+          "skills": [
+            "skills/create-core-component"
+          ]
+        }
+      },
+      "marketplace": {
+        "keywords": [
+          "adobe",
+          "aem",
+          "aem-forms",
+          "adaptive-forms",
+          "core-components"
+        ]
+      }
+    }
+  }
+}

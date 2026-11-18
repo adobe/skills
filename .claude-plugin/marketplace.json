@@ -108,6 +108,11 @@
       "license": "Apache-2.0"
     },
     {
+      "name": "aem-forms-core-components",
+      "source": "./plugins/aem/forms/core-components",
+      "category": "aem"
+    },
+    {
       "name": "aem-forms-edge-delivery-services",
       "source": "./plugins/aem/forms/edge-delivery-services",
       "description": "Skills for AEM Forms on Edge Delivery Services: building forms with the Form block.",

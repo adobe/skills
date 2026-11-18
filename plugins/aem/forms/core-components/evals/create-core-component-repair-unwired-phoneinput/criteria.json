@@ -1,0 +1,36 @@
+{
+  "context": "Tests whether the agent diagnoses the two wiring gaps, uses the exact category string from the component's own clientlib, and leaves the rest alone.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Finds defects with the validator",
+      "max_score": 10,
+      "description": "Runs `validate-component.mjs phoneinput --root .` (or inspects the files) to locate the wiring failures, and treats the Java, test, example and Cypress failures as out of scope"
+    },
+    {
+      "name": "pom.xml replace line",
+      "max_score": 25,
+      "description": "Adds a `<replace>` line for `form/phoneinput/v1/phoneinput/.content.xml` with token `.core-adaptiveform` and value `Core Adaptive Form` to `ui.af.apps/pom.xml`"
+    },
+    {
+      "name": "Runtime embed with exact category",
+      "max_score": 25,
+      "description": "Adds `core.forms.components.phoneInput.v1.runtime` (capital I, as in the component's own `clientlibs/site/.content.xml`) to the runtime-all `embed`, not a lowercased guess"
+    },
+    {
+      "name": "IT embed untouched",
+      "max_score": 10,
+      "description": "Does not add the category to the `it` `custom-forms-components-runtime-all` embed"
+    },
+    {
+      "name": "No rewrite or version bump",
+      "max_score": 10,
+      "description": "Does not rewrite the component or create a `v2` folder"
+    },
+    {
+      "name": "Fix report with verification",
+      "max_score": 20,
+      "description": "`FIX-REPORT.md` lists both defects with file and cause, and states for each how it was verified, or that a check could not be run, without claiming a build or runtime check that was not performed"
+    }
+  ]
+}

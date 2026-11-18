@@ -1,0 +1,31 @@
+{
+  "context": "Tests whether the agent applies the versioning rule: accessibility and bug fixes go into the existing version, a new version is only for breaking changes.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Reads the versioning doc",
+      "max_score": 15,
+      "description": "Reads `docs/architecture/component-versioning.md` before deciding"
+    },
+    {
+      "name": "Fixes in place",
+      "max_score": 30,
+      "description": "The fix is made inside `textinput/v1` and no `textinput/v2` folder is created"
+    },
+    {
+      "name": "States the rule",
+      "max_score": 20,
+      "description": "`DECISION.md` says a bug or accessibility fix goes into the existing version and a bump is only for breaking DOM, JS contract or authored properties"
+    },
+    {
+      "name": "Checks the markup",
+      "max_score": 15,
+      "description": "The fix keeps the existing DOM and JS contract, for example an `aria-live` or `role` attribute on the error element, and does not rename classes or data attributes"
+    },
+    {
+      "name": "Honest verification",
+      "max_score": 20,
+      "description": "`DECISION.md` lists the checks run (static validator, accessibility checklist) and names any that could not run, such as Cypress"
+    }
+  ]
+}
