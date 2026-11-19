@@ -27,10 +27,8 @@ const MAX_BYTES = 256 * 1024;
 const RICHTEXT_RT = /cq\/gui\/components\/authoring\/dialog\/richtext|granite\/ui\/components\/[^"']*\/richtext/;
 const RTE_CONFIG = /rtePlugins|uiSettings|htmlRules/;
 
-const ACTIONS = {
-  'richtext-overlay': 'extend-rte-config-in-place',
-  'custom-parsys': 'proxy-container-component',
-};
+// Only actions backed by an apply function (applyRichTextConversion / applyParsysConversion).
+const APPLY_BACKED_ACTIONS = new Set(['convert-richtext-xtype', 'convert-parsys-supertype']);
 
 /** JCR component path → workspace-relative filesystem path (same mapping as dialog/context.md). */
 function jcrToFs(jcrPath) {
@@ -121,21 +119,11 @@ function buildEntry(jcrPath, workspaceRoot, evidenceSource, opts = {}) {
     const ps = inspectParsysCandidate(absDir, opts.parsysIndex || buildComponentIndex(workspaceRoot));
     if (ps.candidate) return parsysEntry(jcrPath, workspaceRoot, evidenceSource, ps, opts);
   }
-  const files = info.files.map(f => path.relative(workspaceRoot, f)).filter(f => /\.(xml|html)$/.test(f));
-  // Customised scripts (own logic) cannot be converted mechanically.
-  const customScript = classification === 'custom-parsys' && /<%|data-sly-use/.test(info.text);
-  if (customScript) {
-    return { ...base, classification, evidence, action: 'manual-review', risk: 'custom rendering logic', blockedReason: 'component has custom scripts; review manually', destructive: false, filesToChange: files };
-  }
+  // The coarse signal was not confirmed by structural inspection: plan only, never convert.
   return {
-    ...base,
-    classification,
-    evidence,
-    action: ACTIONS[classification],
-    risk: classification === 'custom-parsys' ? 'replaces component supertype; content under it must be re-verified' : 'overrides foundation RTE config; behaviour changes if plugins are dropped',
-    blockedReason: null,
-    destructive: classification === 'custom-parsys',
-    filesToChange: files,
+    ...base, classification, evidence, action: 'needs-user-confirm', destructive: false,
+    risk: 'coarse signal only; structure not confirmed',
+    blockedReason: `structural inspection did not confirm a supported ${classification} case`,
   };
 }
 
@@ -199,9 +187,9 @@ async function planLegacyComponents(workspaceRoot, options = {}) {
 function canApply(entry, userConfirmed) {
   return Boolean(userConfirmed)
     && (entry.classification === 'richtext-overlay' || entry.classification === 'custom-parsys')
+    && APPLY_BACKED_ACTIONS.has(entry.action)
     && entry.contentCompatibility !== 'needs-content-validation'
-    && !entry.blockedReason
-    && !['needs-user-confirm', 'manual-review', 'no-change', 'needs-content-validation'].includes(entry.action);
+    && !entry.blockedReason;
 }
 
 function renderDryRun(plan) {

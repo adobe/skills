@@ -23,6 +23,10 @@ const RT_REF = /sling:resource(?:Super)?Type="[^"]*richtext"/;
 const RT_XTYPE = /xtype="(?:richtext|htmleditor)"/;
 const RTE_CONFIG = /rtePlugins|uiSettings|htmlRules/;
 
+function isComponentDir(dir) {
+  return /jcr:primaryType="cq:Component"/.test(readText(path.join(dir, '.content.xml')) || '');
+}
+
 function readText(file) {
   try {
     if (fs.statSync(file).size > MAX_BYTES) return null;
@@ -30,13 +34,14 @@ function readText(file) {
   } catch { return null; }
 }
 
+/** Files owned by one component: never descends into a nested cq:Component folder. */
 function listFiles(dir, depth = 0, acc = []) {
   let es;
   try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
   for (const e of es) {
     const full = path.join(dir, e.name);
     if (e.isFile()) acc.push(full);
-    else if (e.isDirectory() && depth < 3 && !SKIP.has(e.name)) listFiles(full, depth + 1, acc);
+    else if (e.isDirectory() && depth < 3 && !SKIP.has(e.name) && !isComponentDir(full)) listFiles(full, depth + 1, acc);
   }
   return acc;
 }
@@ -86,6 +91,7 @@ function inspectRichTextCandidate(absDir) {
   if (jspFile) evidence.push('render.jsp present (supporting only)');
 
   const convertible = rtXml.filter(x => xtypeConversions(x.text).length).map(x => x.file);
+  const toolbarConflictFiles = rtXml.filter(x => toolbarConflicts(x.text).length).map(x => rel(x.file));
   const customizations = {
     richTextTypes: [...new Set(rtXml.flatMap(x => [...x.text.matchAll(/sling:resource(?:Super)?Type="([^"]*richtext)"/g)].map(m => m[1])))],
     jsp: Boolean(jspFile), rteConfigFiles: config, toolbarFeatures: toolbar, clientlibs: [...new Set(clientlibs)], jspAnalysis: jsp,
@@ -98,7 +104,7 @@ function inspectRichTextCandidate(absDir) {
     else if (jsp.dynamic.length) classification = 'unknown';
     else classification = 'custom-jsp-ui';
   }
-  return { candidate: true, evidence, classification, customizations, convertibleFiles: convertible, jspFile: jspFile || null };
+  return { candidate: true, evidence, classification, customizations, convertibleFiles: convertible, toolbarConflictFiles, jspFile: jspFile || null };
 }
 
 /** Elements with an exact-mapping xtype and no resourceType of their own. */
@@ -106,11 +112,19 @@ function xtypeConversions(text) {
   return [...text.matchAll(/<[\w:.-]+\s[^>]*?xtype="(?:richtext|htmleditor)"[^>]*>/g)].filter(m => !/sling:resourceType=/.test(m[0]));
 }
 
+/** Elements that already set useFixedInlineToolbar: adding it again would duplicate the attribute. */
+function toolbarConflicts(text) {
+  return xtypeConversions(text).filter(m => /\buseFixedInlineToolbar=/.test(m[0]));
+}
+
 function planRichText(info) {
   const base = { richtext: { classification: info.classification, customizations: info.customizations } };
   const cust = info.customizations;
   if (info.classification === 'configuration-only') {
     const blockedByLibs = cust.clientlibs.length > 0;
+    if (info.toolbarConflictFiles && info.toolbarConflictFiles.length) {
+      return { ...base, action: 'needs-user-confirm', blockedReason: `useFixedInlineToolbar already set in ${info.toolbarConflictFiles.join(', ')}; the supported mapping would overwrite an explicit value`, risk: 'explicit toolbar setting conflicts with the mapping', filesToChange: [] };
+    }
     if (info.convertibleFiles.length && !blockedByLibs) {
       return { ...base, action: 'convert-richtext-xtype', blockedReason: null, risk: 'rewrites xtype to the supported Coral 3 richtext resourceType; RTE child nodes preserved', filesToChange: info.convertibleFiles };
     }
@@ -153,7 +167,7 @@ function applyRichTextConversion(entry, workspaceRoot, userConfirmed) {
     const abs = path.join(workspaceRoot, file);
     const text = fs.readFileSync(abs, 'utf8');
     const next = text.replace(/(<[\w:.-]+\s[^>]*?)xtype="(?:richtext|htmleditor)"([^>]*>)/g, (all, a, b) =>
-      /sling:resourceType=/.test(all) ? all : `${a}sling:resourceType="${RT_RESOURCE_TYPE}" useFixedInlineToolbar="{Boolean}true"${b}`);
+      /sling:resourceType=|\buseFixedInlineToolbar=/.test(all) ? all : `${a}sling:resourceType="${RT_RESOURCE_TYPE}" useFixedInlineToolbar="{Boolean}true"${b}`);
     if (next !== text) { fs.writeFileSync(abs, next); applied.push(file); }
   }
   return { applied, skipped: null };

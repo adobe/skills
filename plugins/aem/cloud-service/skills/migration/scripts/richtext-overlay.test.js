@@ -83,3 +83,40 @@ test('dry-run changes nothing; guarded apply converts only confirmed configurati
   assert.match(after[changed[0]], /<rtePlugins\/>/);
   assert.ok(Object.keys(after).filter(f => f.endsWith('.jsp')).every(f => after[f] === before[f]));
 });
+
+test('existing useFixedInlineToolbar blocks conversion; apply never duplicates the attribute', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rt-tb-'));
+  const dir = path.join(root, 'pkg/jcr_root/apps/sample/c/tb');
+  fs.mkdirSync(path.join(dir, 'dialog'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.content.xml'), COMP);
+  const dialog = path.join(dir, 'dialog/.content.xml');
+  fs.writeFileSync(dialog, '<root><text xtype="richtext" useFixedInlineToolbar="{Boolean}false"><rtePlugins/></text></root>');
+  const before = snapshot(root);
+
+  const plan = await planLegacyComponents(root, { scanWorkspace: true });
+  const e = plan.entries[0];
+  assert.strictEqual(e.richtext.classification, 'configuration-only');
+  assert.strictEqual(e.action, 'needs-user-confirm');
+  assert.match(e.blockedReason, /useFixedInlineToolbar already set/);
+  assert.deepStrictEqual(e.filesToChange, []);
+  assert.strictEqual(canApply(e, true), false);
+
+  // Even a forged convertible entry must not produce a duplicate attribute.
+  const forged = { ...e, action: 'convert-richtext-xtype', blockedReason: null, filesToChange: [path.relative(root, dialog)] };
+  assert.strictEqual(applyRichTextConversion(forged, root, true).applied.length, 0);
+  assert.deepStrictEqual(snapshot(root), before);
+});
+
+test('a parent component never absorbs a nested child component\'s Rich Text evidence', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rt-nest-'));
+  const parent = path.join(root, 'pkg/jcr_root/apps/sample/c/outer');
+  const child = path.join(parent, 'inner');
+  fs.mkdirSync(path.join(child, 'dialog'), { recursive: true });
+  fs.writeFileSync(path.join(parent, '.content.xml'), COMP);
+  fs.writeFileSync(path.join(child, '.content.xml'), COMP);
+  fs.writeFileSync(path.join(child, 'dialog/.content.xml'), '<root><b xtype="richtext"><rtePlugins/></b></root>');
+
+  const plan = await planLegacyComponents(root, { scanWorkspace: true });
+  assert.deepStrictEqual(plan.entries.map(e => e.componentPath.split('/').pop()), ['inner']);
+  for (const f of plan.entries[0].filesToChange) assert.ok(f.includes(`${path.sep}inner${path.sep}`));
+});

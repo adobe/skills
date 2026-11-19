@@ -24,7 +24,8 @@ const SUPERTYPE_ATTR = new RegExp(`sling:resourceSuperType="${PARSYS_RT}"`);
 const SIGNALS = {
   columnControl: /parsys\/colctrl|resource(?:Super)?Type="[^"]*\/colctrl[^"]*"/,
   layout: /\b(?:cq:)?layout(?:Type|Path)?="|cq:childEditConfig/,
-  selectorsOrOverrides: /\b(?:addSelectors|replaceSelectors|removeSelectors|getSelectors|getSuffix|suffix)\b|@\s*(?:selectors|suffix|resourceType)\s*=|resourceType="(?!(?:wcm\/)?foundation\/components\/parsys")[^"]+"/,
+  // Rendering/include contexts only; plain sling:resourceType on dialog nodes is not an override.
+  selectorsOrOverrides: /\b(?:addSelectors|replaceSelectors|removeSelectors|getSelectors|getSuffix)\b|@\s*(?:selectors|addSelectors|replaceSelectors|suffix|resourceType)\s*=|<(?:cq|sling):include\b[^>]*\b(?:resourceType|replaceSelectors|addSelectors|selectors)="(?!(?:wcm\/)?foundation\/components\/parsys")[^"]+"/,
   virtual: /SyntheticResource|ResourceWrapper|ValueMapDecorator|createResource|getOrCreate|resolver\.create\s*\(|addChild\s*\(/,
   dynamicPath: /@\s*path\s*=\s*['"]?\$\{|path="<%=|path='<%=/,
   customLogic: /<%(?![@\-])|data-sly-(?:use|test|list|call|repeat)/,
@@ -32,17 +33,20 @@ const SIGNALS = {
   authoredChild: /getChildren\s*\(|listChildren\s*\(|getChild\s*\(|data-sly-list|childResources/,
 };
 
+const SCRIPT_ONLY = new Set(['selectorsOrOverrides', 'customLogic', 'virtual', 'dynamicPath', 'authoredChild']);
+
 function readText(file) {
   try { return fs.statSync(file).size > MAX_BYTES ? null : fs.readFileSync(file, 'utf8'); } catch { return null; }
 }
 
+/** Files owned by one component: never descends into a nested cq:Component folder. */
 function listFiles(dir, depth = 0, acc = []) {
   let es;
   try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
   for (const e of es) {
     const full = path.join(dir, e.name);
     if (e.isFile()) acc.push(full);
-    else if (e.isDirectory() && depth < 3 && !SKIP.has(e.name)) listFiles(full, depth + 1, acc);
+    else if (e.isDirectory() && depth < 3 && !SKIP.has(e.name) && !isComponentDir(full)) listFiles(full, depth + 1, acc);
   }
   return acc;
 }
@@ -104,7 +108,8 @@ function inspectParsysCandidate(absDir, index) {
 
   const inv = {};
   for (const [k, re] of Object.entries(SIGNALS)) {
-    inv[k] = texts.filter(x => x.t && re.test(x.t)).map(x => path.relative(absDir, x.f) || path.basename(x.f));
+    const pool = SCRIPT_ONLY.has(k) ? texts.filter(x => /\.(jsp|html|js)$/.test(x.f)) : texts;
+    inv[k] = pool.filter(x => x.t && re.test(x.t)).map(x => path.relative(absDir, x.f) || path.basename(x.f));
   }
   const parsysIncludes = own.filter(x => x.t && /\.(jsp|html)$/.test(x.f))
     .reduce((n, x) => n + (x.t.match(new RegExp(`resourceType\\s*=\\s*['"]${PARSYS_RT}['"]`, 'g')) || []).length, 0);

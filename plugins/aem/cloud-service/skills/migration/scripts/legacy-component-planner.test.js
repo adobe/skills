@@ -116,3 +116,17 @@ test('end-to-end gates: git-proven immutability, no false findings, unknown cann
   assert.ok(!/template-scan-runner|template-modernization|runTemplate/.test(src.replace(/\/\*[\s\S]*?\*\//g, '')));
   assert.ok(!/unlink|rmSync|rmdirSync/.test(src));
 });
+
+test('a coarse signal not confirmed by structural inspection cannot apply', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lcp-coarse-'));
+  const dir = path.join(root, 'ui.apps/src/main/content/jcr_root/apps/demo/components/lookalike');
+  fs.mkdirSync(dir, { recursive: true });
+  // Supertype name ends in "parsys" but does not resolve to the legacy parsys.
+  fs.writeFileSync(path.join(dir, '.content.xml'), '<jcr:root jcr:primaryType="cq:Component" sling:resourceSuperType="other/components/myparsys"/>');
+  const plan = await planLegacyComponents(root, { extraPaths: ['/apps/demo/components/lookalike'] });
+  const e = plan.entries[0];
+  assert.strictEqual(e.action, 'needs-user-confirm');
+  assert.match(e.blockedReason, /structural inspection did not confirm/);
+  assert.deepStrictEqual(e.filesToChange, []);
+  assert.strictEqual(canApply(e, true), false);
+});

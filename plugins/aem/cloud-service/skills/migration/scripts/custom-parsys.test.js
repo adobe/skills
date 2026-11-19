@@ -92,3 +92,16 @@ test('no target is guessed; content validation gates apply; dry-run writes nothi
   assert.strictEqual(changed.length, 1);
   assert.match(after[changed[0]], new RegExp(`sling:resourceSuperType="${TARGET}"`));
 });
+
+test('ordinary dialog sling:resourceType does not turn a plain parsys into custom-layout', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ps-dlg-'));
+  const dir = path.join(root, 'pkg/jcr_root/apps/sample/c/withdialog');
+  fs.mkdirSync(path.join(dir, '_cq_dialog'), { recursive: true });
+  fs.writeFileSync(path.join(dir, '.content.xml'), comp(PARSYS));
+  fs.writeFileSync(path.join(dir, '_cq_dialog/.content.xml'),
+    '<jcr:root sling:resourceType="cq/gui/components/authoring/dialog"><f sling:resourceType="granite/ui/components/coral/foundation/form/textfield"/></jcr:root>');
+  const plan = await planLegacyComponents(root, { scanParsys: true });
+  assert.strictEqual(plan.entries.length, 1);
+  assert.strictEqual(plan.entries[0].parsys.classification, 'plain-legacy-parsys');
+  assert.deepStrictEqual(plan.entries[0].parsys.inventory.selectorsOrOverrides, []);
+});

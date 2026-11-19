@@ -6,11 +6,11 @@ Handles BPA `lui` findings with sub-type `legacy.custom.component`. Routed throu
 
 | Classification | Signals | Proposed action |
 |---|---|---|
-| `richtext-overlay` | path overlays a foundation `richtext` node, or a dialog uses a richtext resourceType with `rtePlugins`/`uiSettings`/`htmlRules` | `extend-rte-config-in-place` |
-| `custom-parsys` | `sling:resourceSuperType` ends in `parsys`, or component is a parsys reimplementation | `proxy-container-component` (destructive: replaces supertype) |
+| `richtext-overlay` | path overlays a foundation `richtext` node, or a dialog uses a richtext resourceType with `rtePlugins`/`uiSettings`/`htmlRules` | classify and plan; guarded xtype conversion only for confirmed `configuration-only` cases (see Rich Text section) |
+| `custom-parsys` | `sling:resourceSuperType` resolves to the legacy parsys, or a script includes it | classify and plan; guarded supertype conversion only for a validated plain Parsys with an explicitly supplied target (see Custom Parsys section) |
 | `unknown` | none, ambiguous, or conflicting signals | `needs-user-confirm` |
 
-Custom scripts (`<%`, `data-sly-use`) on a parsys, missing folders → `manual-review`.
+If structural inspection does not confirm the coarse signal, the entry is `needs-user-confirm` and never converts. Missing folders → `manual-review`. Only `convert-richtext-xtype` and `convert-parsys-supertype` can ever be applied.
 
 ## Discovery
 
@@ -36,12 +36,12 @@ Detection is structural (`scripts/richtext-overlay.js`): a `cq:Component` folder
 
 | Classification | Meaning | Action |
 |---|---|---|
-| `configuration-only` | no JSP; declarative config | `convert-richtext-xtype` (only the mapping in [extjs-to-coral3.md](../dialog/extjs-to-coral3.md): `xtype` richtext/htmleditor → `cq/gui/components/authoring/dialog/richtext` + `useFixedInlineToolbar`, RTE children preserved), `no-change` if already declarative, or `needs-user-confirm` if clientlibs are referenced |
+| `configuration-only` | no JSP; declarative config | `convert-richtext-xtype` (only the mapping in [extjs-to-coral3.md](../dialog/extjs-to-coral3.md): `xtype` richtext/htmleditor → `cq/gui/components/authoring/dialog/richtext` + `useFixedInlineToolbar`, RTE children preserved), `no-change` if already declarative, or `needs-user-confirm` if clientlibs are referenced or `useFixedInlineToolbar` is already set (the mapping would overwrite an explicit value) |
 | `custom-jsp-ui` | JSP is static markup only | `needs-user-confirm` (proposal only) |
 | `custom-jsp-behavioral` | JSP has imports, scriptlets, conditions, request/session/service access | `manual-review` |
 | `unknown` | dynamic expressions, unresolved includes, unreadable JSP | `manual-review` |
 
-`render.jsp` is never rewritten or deleted; removal needs a proven replacement for every detected behavior plus the confirmation and validation gates, and no code path performs it. `applyRichTextConversion(entry, root, userConfirmed)` edits only the XML files listed in the plan.
+Inspection of a component never descends into a nested `cq:Component` folder, so evidence and `filesToChange` always belong to the reported component. `render.jsp` is never rewritten or deleted; removal needs a proven replacement for every detected behavior plus the confirmation and validation gates, and no code path performs it. `applyRichTextConversion(entry, root, userConfirmed)` edits only the XML files listed in the plan.
 
 ## Custom Parsys (component level)
 
