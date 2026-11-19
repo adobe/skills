@@ -4,7 +4,7 @@ Reference for the headless deploy sequence: write the sanitised **body-fragment*
 
 ## Deploy (DA Source API + curl)
 
-Needs an IMS token (`DA_TOKEN`, else `ADOBE_IMS_TOKEN_FILE` — order: `stardust/scripts/lib/da-token.mjs`; see the `da-content` / `da-auth` skills — may live in the repo `.env`, which MUST be gitignored). Also **push the code branch to GitHub first** so AEM Code Sync builds it and the branch preview renders your blocks.
+Needs an IMS token (`DA_TOKEN`, else `ADOBE_IMS_TOKEN_FILE` — order: `skills/stardust/scripts/lib/da-token.mjs`; see the `da-content` / `da-auth` skills — may live in the repo `.env`, which MUST be gitignored). Also **push the code branch to GitHub first** so AEM Code Sync builds it and the branch preview renders your blocks.
 
 **Two preconditions bite (both cost real debugging):**
 - **Branch-host length ≤ 63 chars.** The host label `<branch>--<repo>--<owner>` must fit the DNS 63-char limit. Over it, the host does not resolve at all (curl `000`, "label too long") — nothing renders. The page PATH is independent of the host, so keep the path descriptive and **shorten the BRANCH** (e.g. `velocity-refined-content-2`, not `velocity-global-refined-content-2`).
