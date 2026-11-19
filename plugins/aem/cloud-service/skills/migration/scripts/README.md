@@ -109,6 +109,10 @@ node input-stream-runner.js <workspaceRoot> --files a/Foo.java,b/Bar.java --json
 
 The `config-scan` strategy for `osgiConfig`. Scans OSGi config files (`.cfg.json`, legacy `.cfg`/`.config`) under `config*` folders for secret-looking keys and `$[secret:]`/`$[env:]` placeholders, per `{migration}/references/osgi-cfg-json-cloud-manager.md`. **Reports key names + locations only — never secret values** (the runbook is written to disk / often committed). Heuristic and review-only: classification (real secret? Adobe-owned PID?) is deferred to apply time.
 
+### `legacy-component-planner.js`, `richtext-overlay.js`, `custom-parsys.js`
+
+Read-only classification and dry-run for component-level Rich Text overlays and custom legacy Parsys (Branch D, `legacy-ui/foundation-component/`; never Branch C). `planLegacyComponents(root, { bpaOptions, scanWorkspace, scanParsys, supportedTarget, contentValidated })` reuses `getBpaFindings('lui')` and adds bounded local inspection (evidence labelled `heuristic/local-inspection`). Applying is separate (`applyRichTextConversion`, `applyParsysConversion`) and requires user confirmation; custom/unknown cases are never converted and `render.jsp` is never deleted. Tests use synthetic fixtures only (no customer codebase was available); real content compatibility must be validated in the customer's own workspace.
+
 ### `integration-scanner.js`
 
 The `integration-scan` strategy for `integrationDiscovery` — a read-only inventory of external integrations (Adobe Target, CIF, reCAPTCHA, S3, Jira Cloud, NetStorage, Workday, external CDNs, PIM, and unknown REST/SOAP APIs). Signatures live in `../references/integrations/catalog.json`; behaviour, confidence and privacy rules in `../references/integrations/discovery.md`. Invoked by `runbook-generator.js`; standalone: `node integration-scanner.js <workspaceRoot>` (prints JSON).

@@ -44,7 +44,7 @@ Only process from LUI findings:
 - `legacy.dialog.coral2` → `action: upgrade-coral2`
 
 Skip with user note (do not process in this sub-folder):
-- `legacy.custom.component` → "use create-component skill; future legacy-ui/foundation-component/"
+- `legacy.custom.component` → "use [../foundation-component/context.md](../foundation-component/context.md) (Rich Text overlay / custom parsys)"
 - `legacy.static.template` → "use migration Branch C"
 - `content.fragment.template` → "out of scope"
 - `translation.dictionary` → "out of scope"
