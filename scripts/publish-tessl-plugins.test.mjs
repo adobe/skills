@@ -17,6 +17,7 @@ name=$(basename "$3")
 tries=$(grep -c "^plugin publish $3\$" "$CALLS")
 case "$name" in
   broken) echo "✘ Something went wrong"; exit 1 ;;
+  poor) echo "✘ Out of credits. Upgrade at https://tessl.io/pricing"; exit 1 ;;
   slow) [ "$tries" -lt 3 ] && { ${TIMEOUT}; } ;;
   ghost) [ "$tries" -lt 2 ] && { ${TIMEOUT}; }; ${EXISTS} ;;
   stuck) ${TIMEOUT} ;;
@@ -74,7 +75,7 @@ test('a failed publish fails the step, after the other plugins were published', 
   const result = run(t, 'publish-tessl-plugins.mjs', [before, after], { cwd: root, env });
   assert.equal(result.status, 1);
   assert.equal(calls(root), 'plugin publish plugins/broken\nplugin publish plugins/bumped\n');
-  assert.match(result.summary, /\*\*1 published, 1 failed\*\*/);
+  assert.match(result.summary, /\*\*1 published, 1 failed, 0 skipped\*\*/);
 });
 
 test('without a commit before the push, nothing is published from a clean tree', (t) => {
@@ -115,7 +116,7 @@ test('a publish that times out is tried again, and the others go on', (t) => {
   assert.equal(calls(root), 'plugin publish plugins/fine\nplugin publish plugins/slow\nplugin publish plugins/slow\nplugin publish plugins/slow\n');
   assert.match(result.stdout, /::warning::The publish of slow timed out\. Trying again in 0 seconds\./);
   assert.match(result.summary, /\| slow \| published, at attempt 3 \| ✅ \|/);
-  assert.match(result.summary, /\*\*2 published, 0 failed\*\*/);
+  assert.match(result.summary, /\*\*2 published, 0 failed, 0 skipped\*\*/);
 });
 
 test('a timeout whose upload went through counts as published: the next attempt finds the version on the registry', (t) => {
@@ -155,3 +156,22 @@ test('at the end the registry is asked about every version that may be on it, no
   assert.ok(lines.findLastIndex((line) => line.startsWith('plugin publish')) < lines.findIndex((line) => line.startsWith('plugin info')));
 });
 
+
+test('an organization out of credits is skipped, not failed, and the plugins after it are not published', (t) => {
+  const { root, result } = publishOf(t, ['fine', 'poor', 'tail']);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.equal(calls(root), 'plugin publish plugins/fine\nplugin publish plugins/poor\n');
+  assert.deepEqual(infos(root), ['x/fine@1.1.0']);
+  assert.match(result.summary, /\| fine \| published \| ✅ \|/);
+  assert.match(result.summary, /\| poor \| not published \| ⏭️ no credits \|/);
+  assert.match(result.summary, /\| tail \| not published \| ⏭️ no credits \|/);
+  assert.match(result.summary, /\*\*1 published, 0 failed, 2 skipped\*\*/);
+  assert.match(result.stdout, /::warning::2 plugin\(s\) were not published to Tessl: the Tessl organization has run out of credits/);
+  assert.doesNotMatch(result.stdout, /::error::/);
+});
+
+test('a failed publish before the credits run out still fails the step', (t) => {
+  const { result } = publishOf(t, ['broken', 'poor']);
+  assert.equal(result.status, 1);
+  assert.match(result.summary, /\*\*0 published, 1 failed, 1 skipped\*\*/);
+});
