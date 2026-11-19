@@ -581,9 +581,14 @@ re-run pixel-compare per touched archetype at the gate breakpoints; the
 number must return to (± noise of) the gated value (recorded: 1.01% gated
 → 1.06% with invented motion → 1.01% exact after the evidence-only
 rewrite). The drift itself is the smell test: motion code that changes t=0
-is wrong. (2) **behavior match** — a headless run against the PROTOTYPE
-asserting, per page: tagged-element count == live fired count; zero
-pageerrors; the header's scroll states are chrome-compare's.
+is wrong. (2) **behavior match** — observe the served PROTOTYPE with
+the same `--click` / `--hover` pokes in the same order
+(→ `stardust/replica/motion/<slug>-build.json`) and compare the two files
+with `motion-compare.mjs`, a reporter, not a gate: a MISSING or EXTRA line
+is confirmed on the class lines (the sampler misses class-toggled and
+pseudo-element mechanics), then resolved in the prototype or recorded as
+dead. Tagged-element count == live fired count; zero pageerrors; the
+header's scroll states are chrome-compare's.
 
 Pitfalls (each field-recorded):
 
