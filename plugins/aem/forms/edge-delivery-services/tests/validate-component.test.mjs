@@ -193,6 +193,15 @@ test('CSS check ignores classes a selector may lack and finds class names the JS
   assert.equal(level(other), 'error');
 });
 
+test('CSS check sees rules after statement at-rules and declarations', () => {
+  const css = (text) => ({ [`blocks/form/components/${NAME}/${NAME}.css`]: text });
+  const level = (result) => result.checks.find((c) => c.id === 'css.selectors')?.level;
+
+  assert.equal(level(run(css(`@charset "UTF-8";\n@import url("x.css");\n.form .${NAME}-wrapper { color: red; }\n`))), 'error');
+  assert.equal(level(run(css(`.form .${NAME} {\n  color: red;\n  .${NAME}-wrapper & { color: blue; }\n}\n`))), 'error');
+  assert.equal(level(run(css(`@charset "UTF-8";\n.form .${NAME} { color: red; }\n`))), 'pass');
+});
+
 test('CLI: exit codes, --json output and --help writes nothing', () => {
   const root = makeProject({ 'blocks/form/mappings.js': 'let customComponents = [];\n' });
   try {
