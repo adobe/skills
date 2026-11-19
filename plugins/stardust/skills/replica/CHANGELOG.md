@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/adobe/skills/compare/replica-v1.3.0...replica-v1.4.0) (2026-11-19)
+
+
+### Features
+
+* **stardust:** replica measures the source before authoring and checks header and footer by landmark ([#701](https://github.com/adobe/skills/issues/701)) ([0df3597](https://github.com/adobe/skills/commit/0df3597c097a425a8192249fc239c9369f3e48f8))
+
 # [1.3.0](https://github.com/adobe/skills/compare/replica-v1.2.0...replica-v1.3.0) (2026-11-18)
 
 
