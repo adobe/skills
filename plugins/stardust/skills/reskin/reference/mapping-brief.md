@@ -23,7 +23,7 @@ model — no slot may be absent from the brief:
 |---|---|
 | `#` / slot id | The content-model slot (`s01`), or split sub-slot (`s07-news`, `s07-events`) |
 | Content | One-line anatomy: what the slot carries (eyebrow / h-level / body / CTAs / media) |
-| Donor module | A module id from `donor-modules.md` (`M4`), or `—` for new-module |
+| Donor module | A module id from `donor-modules.md` (`M4`, or `M4b` for a composition variant of `M4`), or `—` for new-module |
 | Rationale | One line grounding the assignment: slot anatomy vs module anatomy |
 | Status | `mapped` \| `new-module` \| `chrome` \| `carried-invisible` |
 
