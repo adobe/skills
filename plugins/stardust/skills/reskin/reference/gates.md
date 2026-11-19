@@ -40,14 +40,17 @@ siblings of `../reskin/`.
 
 - `skills/reskin/scripts/` → `reskin/`, recursively except `test/` (`deployed/`, `figma/`, `figma-gate/` and `render/`
   travel with it).
-- `skills/stardust/scripts/` → `stardust/` (`browser.mjs`, `live-session.mjs`; `figma-donor.mjs stamp` writes through
-  `state.mjs`).
+- `skills/stardust/scripts/` → `stardust/` (`browser.mjs`, `live-session.mjs`; `figma-donor.mjs stamp`,
+  `stream-render --register` and the canon bridge write through `state.mjs`).
 - `skills/diff/scripts/` → `diff/`, all of it (`figma-gate` and `deployed-gate` measure through `measure-live.mjs`).
 - `skills/replica/scripts/` → `replica/`: `pixel-compare.mjs`, `run-capped.mjs`, `run-bg.mjs`, `stitch-shot.mjs`,
   `crop-compare.mjs`, `chrome-parity.mjs`, `cap-probe.mjs` (`pixel-compare` and `run-bg` import `run-capped`;
   `stitch-shot`, `chrome-parity` and `cap-probe` need `stardust/browser.mjs`).
 - `skills/deploy/scripts/` → `deploy/`: `eds-path.mjs`, `qa-gate.mjs` (finds `replica/cap-probe.mjs`),
   `ai-readability.mjs`: what `deployed-gate.mjs` resolves.
+- `skills/prototype/fixtures/mobile-nav-audit.mjs` → `prototype/`: `reskin-ledger.mjs record` runs it as the runtime
+  mobile-adapt check; without it that check is `NOT-RUN`, which blocks the archetype until a residual is accepted.
+  (`canon-from-reskin.mjs`'s visual record uses `replica/stitch-shot.mjs` and `pixel-compare.mjs`, listed above.)
 
 Every gate script (`capture-content`, `dom-equality`, `donor-probe`, `slot-coverage`) needs `stardust/browser.mjs`
 and exits 2 without it, even for a local file; only `capture-content` also fails `--help`.
@@ -279,14 +282,23 @@ trimmed padding overrides and would fail the button spec spuriously).
 A renderer that breaks a convention fails the probe with
 `selector matched nothing` — a missing selector is a **FAIL, not a
 skip**, because silent skips fake passes. A token path absent from
-`donor-tokens.json` is a reported SKIP.
+`donor-tokens.json` is a reported SKIP. The one content-aware
+exception: with `--model <content-model.json>`, spec entries marked
+`"needs": "button"` (the default `main .btn` entries) are a reported
+SKIP when the page's content has nothing the renderer turns into a
+button (`stream-render.mjs` `rendersButton`: a cta with a button class
+or captured `buttonLike`,
+a submit/button control, text inside a `<button>`). The decision reads
+the source content, not the rendered page, so a renderer that drops a
+real button still fails.
 
-One default-spec blind spot: when the source's only h1 is visually
-hidden (an sr-only landmark), the `main h1` display-weight assertion
-holds a token on an **invisible** element and says nothing about the
-page's display face. Add a `--spec` entry asserting the display tokens
-on the element that renders as the display headline (the hero h2,
-typically).
+One default-spec blind spot: when the source's only heading is visually
+hidden (an sr-only landmark), the display-weight assertion (the first
+`h1`–`h3` in `main`; the heading colour takes the first heading of any
+level, since form pages often carry no h1/h2) holds a token on an
+**invisible** element and says nothing about the page's display face.
+Add a `--spec` entry asserting the display tokens on the element that
+renders as the display headline (the hero h2, typically).
 
 #### Tolerances
 
@@ -502,7 +514,25 @@ budget would push independent cheap fixes into residuals.
 
 ### Residual logging
 
-`stardust/reskin/ledger.json`, per page:
+The ledger is written by script, never by hand:
+
+```bash
+node stardust/scripts/reskin/reskin-ledger.mjs record <slug> [--stage migrated]
+node stardust/scripts/reskin/reskin-ledger.mjs eyeball <slug> --verdict pass --note "…"
+node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked
+node stardust/scripts/reskin/reskin-ledger.mjs step10 <slug> --eyeball pass --cls 0.04 --header "n/a: <why>" --by user   # (e) only
+```
+
+`record` reads the three gate reports (`reports/<slug>-{content-gate,slot-coverage,donor-probe}.md` or
+`gates/<slug>/{dom-equality,slot-coverage,donor-probe}.md`, `**Overall: PASS|FAIL**`), runs the prototype's
+mobile-adapt audit (static rules + `mobile-nav-audit.mjs`), reads (d)'s `.work/reskin/gates/<slug>/figma/summary.json`
+into `gates.figma` and (e)'s `…/deployed/summary.json` into `gates.deployed`, and sets the page `gated` or `failing`.
+A Figma donor with no figma fragment records `figma.*` NOT-RUN. A Figma residual's `--gate` is its class
+(`figma.geometry`, …). On an approved page `record` fills `handoff.<type>` (the archetype, its prototype sha and the
+tier record), which `reskin-preflight` and `migrate` read (`handoff.md`). Re-run `record` after the approval and after
+every fix; it keeps the `gates.step10` receipts `step10` wrote.
+
+The resulting `stardust/reskin/ledger.json`, per page:
 
 ```json
 {

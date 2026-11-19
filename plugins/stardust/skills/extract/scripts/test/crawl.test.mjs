@@ -117,6 +117,11 @@ check('parseArgs: only --link-first turns link-first on; --max alone (a default 
   assert.equal(parse('--link-first', '--max', '30').linkFirst, true);
   assert.equal(parse('--link-first', '--max', '30').max, 30);
 });
+check('parseArgs: the cookie/consent overlay heuristic is off unless --consent-overlays', () => {
+  const parse = (...rest) => parseArgs(['node', 'crawl.mjs', '--url', 'https://ex.test/', ...rest]);
+  assert.equal(parse().consentOverlays, false);
+  assert.equal(parse('--consent-overlays').consentOverlays, true);
+});
 check('selectPages: link-first takes the entry, then its same-origin page links in document order, then discovered pages; without it, entry then discovered', () => {
   const entry = 'https://ex.test/';
   const linked = ['https://ex.test/', 'https://ex.test/#top', '/about', '/about/', '/about#team', 'https://other.test/x',

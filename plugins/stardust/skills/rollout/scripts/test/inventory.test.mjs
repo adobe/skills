@@ -166,6 +166,31 @@ check('archetypes-only mode: a content-pending sibling inherits the archetype\'s
   assert.match(r.stdout, /^Widgets {5}1 distinct \(tour-finder\) on 2 pages/m, r.stdout);
 });
 
+check('archetypes-only mode resolves roster types through reskin ledger handoff archetypes', () => {
+  const migratedHandoff = join(root, 'migrated-handoff');
+  const outHandoff = join(root, 'rollout-handoff');
+  const stateHandoff = join(root, 'roster-handoff.json');
+  mkdirSync(migratedHandoff, { recursive: true });
+  mkdirSync(join(root, 'stardust', 'reskin'), { recursive: true });
+  writeFileSync(join(migratedHandoff, 'index.html'), '<html><body>landing archetype</body></html>');
+  writeFileSync(join(migratedHandoff, '_meta.json'), JSON.stringify({ slug: 'index', type: 'landing', fidelityTier: 'archetype', renderBranch: 'A', modules: ['landing-hero'] }));
+  writeFileSync(join(root, 'stardust', 'reskin', 'ledger.json'), JSON.stringify({ handoff: { landing: { archetype: 'index' } } }));
+  writeFileSync(stateHandoff, JSON.stringify({ flow: 'reskin', pages: [{ slug: 'about', url: 'https://example.com/about/', type: 'landing' }] }));
+
+  const r = spawnSync(process.execPath, [SCRIPT, '--migrated', migratedHandoff, '--out', outHandoff, '--state', stateHandoff], { encoding: 'utf8', cwd: root });
+  assert.equal(r.status, 0, r.stderr);
+  const about = JSON.parse(readFileSync(join(outHandoff, 'coverage', 'pages.json'), 'utf8')).pages.find((p) => p.slug === 'about');
+  assert.equal(about.templateId, 'index');
+  assert.equal(about.representative, 'index');
+  assert.deepEqual(about.blocks, ['landing-hero']);
+
+  writeFileSync(stateHandoff, JSON.stringify({ flow: 'replica', pages: [{ slug: 'about', url: 'https://example.com/about/', type: 'landing' }] }));
+  const other = spawnSync(process.execPath, [SCRIPT, '--migrated', migratedHandoff, '--out', join(root, 'rollout-handoff-replica'), '--state', stateHandoff], { encoding: 'utf8', cwd: root });
+  assert.equal(other.status, 0, other.stderr);
+  const plain = JSON.parse(readFileSync(join(root, 'rollout-handoff-replica', 'coverage', 'pages.json'), 'utf8')).pages.find((p) => p.slug === 'about');
+  assert.notEqual(plain?.representative, 'index', 'another flow ignores the reskin ledger');
+});
+
 check('archetypes-only mode: a roster URL with a trailing slash is the migrated archetype, not a second sibling row; a sibling keeps its roster path', () => {
   const pages = JSON.parse(readFileSync(join(root, 'rollout-state', 'coverage', 'pages.json'), 'utf8')).pages;
   const slugs = pages.map((p) => p.slug);

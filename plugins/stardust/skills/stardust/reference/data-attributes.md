@@ -147,6 +147,9 @@ HTML mechanically rather than re-deriving structure.
   target slug is not in the migrated inventory. Surfaced in
   `migrate`'s run summary; user resolves by extracting the
   missing page and re-migrating, or accepts the broken link.
+- **`data-source-href`** — `flow: reskin` only: on a link `migrate`
+  rewrote, the original absolute source URL
+  (`skills/reskin/reference/handoff.md`).
 
 ### Mobile-collapse marker
 

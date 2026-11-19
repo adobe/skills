@@ -1,9 +1,34 @@
 # Programmatic render — renderer rules
 
 The page is **generated** from `content-model.json`, never retyped by
-hand. Write a renderer script per archetype
-(`stardust/reskin/renderers/<archetype>.mjs`, modeled on the
-experiment's `render-reskin.mjs`) that:
+hand. The generic renderer covers any donor and site:
+
+```bash
+node stardust/scripts/reskin/stream-render.mjs --check <slug…>        # mapping.json valid; exit 0 before rendering
+node stardust/scripts/reskin/stream-render.mjs <slug> --register --type <page type> [--localize-images]
+```
+
+- `--localize-images` downloads each image to `stardust/prototypes/assets/img/`
+  (migrate's root) and mirrors it beside the page as `src="assets/img/…"`, so the
+  page shows it from `stardust/reskin/pages/` and `migrate` bundles it with
+  default flags.
+- `--register` (flow `reskin` only) records the page in `state.json` through
+  `state.mjs`: `prototypePath` set to the rendered file and the page advanced to
+  `prototyped`, or only to `directed` for a same-type sibling of an approved
+  archetype (the status `migrate` renders at the sibling tier).
+- `--type <page type>` (with `--register`) writes the page's `type`, the
+  archetype name its pages share and the key preflight's `archetypes` check and
+  migrate's sibling tier group by. Pass it on every render of a page that has
+  none, or preflight fails "no page has a type" and no sibling migrates.
+
+Render the archetype candidates in Phase 4 and the siblings after the archetype
+is approved (Phase 6), so they register as `directed`. Every later per-section
+decision (a gate fix, a review note, an EDS preview finding) is made in
+`mapping.json` or `donor-tokens.json`, re-rendered and re-gated, never in the page
+or the EDS blocks alone.
+
+Write a per-archetype renderer (`stardust/reskin/renderers/<archetype>.mjs`) only
+where `stream-render` falls short. Either way the renderer:
 
 - reads the page's `content-model.json` and interpolates **every**
   visible string, href, and image URL from the model (HTML-escaped) —

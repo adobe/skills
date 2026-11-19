@@ -61,7 +61,7 @@
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] [--link-first] \
  *     [--out stardust/current] [--wait medium] [--no-consent-dismiss] \
- *     [--concurrency 4] [--dynamics] [--page-timeout 60]
+ *     [--concurrency 4] [--dynamics] [--page-timeout 60] [--consent-overlays]
  *     --url <url>             required; the entry page — its origin scopes discovery
  *     --pages a,b,c           crawl exactly these paths/URLs (resolved against --url; the entry
  *                             is added) instead of discovering via sitemap / same-origin nav links
@@ -71,6 +71,8 @@
  *     --out <dir>             output root (default stardust/current)
  *     --wait fast|medium|slow settle after load: 1200 / 2500 / 5000 ms (default medium)
  *     --no-consent-dismiss    do not auto-dismiss consent overlays before capture
+ *     --consent-overlays      also remove any element named cookie/consent/gdpr inside a fixed,
+ *                             sticky or z-index >= 100 overlay (opt-in; reskin passes it)
  *     --concurrency <n>       parallel browser contexts (default 4)
  *     --dynamics              also record each page's dynamic surface (network endpoints, forms,
  *                             hydration hints) — set by the calling skill, off by default
@@ -203,7 +205,7 @@ export function pageTimeoutMs(v) {
 }
 
 export function parseArgs(argv) {
-  const a = { out: 'stardust/current', max: 25, linkFirst: false, wait: 'medium', consent: true, concurrency: 4, dynamics: false, pageTimeoutMs: PAGE_TIMEOUT_MS_DEFAULT };
+  const a = { out: 'stardust/current', max: 25, linkFirst: false, wait: 'medium', consent: true, consentOverlays: false, concurrency: 4, dynamics: false, pageTimeoutMs: PAGE_TIMEOUT_MS_DEFAULT };
   for (let i = 2; i < argv.length; i += 1) {
     const k = argv[i];
     if (k === '--url') a.url = argv[(i += 1)];
@@ -213,6 +215,7 @@ export function parseArgs(argv) {
     else if (k === '--link-first') a.linkFirst = true;
     else if (k === '--wait') a.wait = argv[(i += 1)];
     else if (k === '--no-consent-dismiss') a.consent = false;
+    else if (k === '--consent-overlays') a.consentOverlays = true;
     else if (k === '--concurrency') a.concurrency = Math.max(1, +argv[(i += 1)] || 4);
     else if (k === '--dynamics') a.dynamics = true; // migration-bound: set by prepare-migration / replica / migrate, never by default
     else if (k === '--page-timeout') a.pageTimeoutMs = pageTimeoutMs(argv[(i += 1)]);
@@ -659,7 +662,7 @@ async function recordSharedSuccess(url) {
 
 // The shared consent pass (stardust/scripts/browser.mjs acceptConsent — the vendor list every
 // gate instrument uses) runs first (liveSession above); the passes below stay the fallback when it misses.
-async function dismissConsent(page) {
+async function dismissConsent(page, { overlays = false } = {}) {
   const { acceptConsent } = await liveSession();
   const shared = await acceptConsent(page).catch(() => null);
   if (shared) console.error(`[crawl] consent dismissed via ${shared}`);
@@ -716,10 +719,28 @@ async function dismissConsent(page) {
   }
   await page.waitForTimeout(300);
   // assert: prune any consent container still present (don't leave it for capture).
-  await page.evaluate(() => {
+  await page.evaluate((overlays) => {
     document.querySelectorAll('#onetrust-banner-sdk, #truste-consent-track, #usercentrics-root, [class*="cookie" i][class*="banner" i], [id*="consent" i]')
       .forEach((n) => n.remove());
-  });
+    // --consent-overlays only (a CMP panel id'd like '#CookieReportsPanel' slips the names above):
+    // an element named cookie/consent/gdpr inside a fixed/sticky or high-z overlay is removed.
+    if (overlays) {
+      const NAME = /cookie|consent|gdpr/i;
+      const overlay = (el) => {
+        for (let n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          if (cs.position === 'fixed' || cs.position === 'sticky') return true;
+          if (cs.position !== 'static' && +cs.zIndex >= 100) return true;
+        }
+        return false;
+      };
+      for (const el of [...document.querySelectorAll('[id], [class]')]) {
+        if (!el.isConnected || el.closest('main article')) continue;
+        const name = (el.id || '') + ' ' + (typeof el.className === 'string' ? el.className : '');
+        if (NAME.test(name) && overlay(el)) el.remove();
+      }
+    }
+  }, overlays);
 }
 
 // Favicon — captured on the ENTRY page in ALL modes (healthcare-site harvest, 2026-08:
@@ -1210,7 +1231,7 @@ async function captureOnPage(page, url, slug, args, sharedBindings = null, conte
   const ct = resp.headers()['content-type'] || '';
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
 
-  if (args.consent) await dismissConsent(page);
+  if (args.consent) await dismissConsent(page, { overlays: args.consentOverlays });
   await recordSuccess(resolvedUrl).catch(() => {});
   await persistState(page, resolvedUrl).catch(() => {});
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);

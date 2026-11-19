@@ -7,7 +7,8 @@ means, not the delivery.
 
 Run it on resume, and again after Phase 1's crawl, before Phase 2.
 
-The content crawl is always `--all`, the full junk-filtered inventory.
+The content crawl is always `--all`, the full junk-filtered inventory,
+with `crawl.mjs --consent-overlays` when a cookie panel survives capture.
 Extract's discovery cap (5; `crawl.mjs --max` 25) never applies to the
 content site. Not `--prep`: that is `prepare-migration`'s cascade, and
 reskin never runs `direct --prep` or `prepare-migration`. `--all`

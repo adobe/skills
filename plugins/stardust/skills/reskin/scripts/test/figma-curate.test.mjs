@@ -160,6 +160,36 @@ check('normalizations: familyEquivalence, weightMap, lineHeightUnitless, letterS
   rulesError(() => curate(inputs(rules((r) => { r.normalizations.push({ id: 'x', kind: 'kerning', params: {} }); return r; }))), /kerning/);
   rulesError(() => curate(inputs(rules((r) => { r.normalizations.push({ id: 'y', kind: 'weightMap', params: {} }); return r; }))), /weightMap.*map/);
 });
+check('type.display.textAlign: majority textAlignHorizontal (by characters) of the display record; absent when Figma gives none; an explicit role wins', () => {
+  assert.equal(t.type.display.textAlign, 'left');
+  const strip = (n) => { if (n.style) delete n.style.textAlignHorizontal; (n.children || []).forEach(strip); };
+  const bare = read('nodes.json'); Object.values(bare.nodes || bare).forEach((v) => v?.document && strip(v.document));
+  const f0 = buildFoundation({ file: read('file.json'), nodes: bare, frameIds: ['1:2', '1:9'] });
+  assert.equal(curate({ ...inputs(), ...f0 }).donorTokens.type.display.textAlign, undefined);
+  const file = read('file.json'); let tagged = 0;
+  const walk = (n) => { if (n.type === 'TEXT' && n.style) { n.style.textAlignHorizontal = tagged++ % 3 ? 'CENTER' : 'LEFT'; } (n.children || []).forEach(walk); };
+  walk(file.document);
+  const nodes = read('nodes.json'); Object.values(nodes.nodes || nodes).forEach((v) => v?.document && walk(v.document));
+  const f2 = buildFoundation({ file, nodes, frameIds: ['1:2', '1:9'] });
+  const t2 = curate({ ...inputs(), foundation: f2.foundation, moduleCandidates: f2.moduleCandidates }).donorTokens;
+  const rec = Object.values(f2.foundation.typography).find((r) => r.node === t2.nodeRefs['type.display.textAlign']?.node);
+  assert.ok(rec?.align, 'display record carries an align tally');
+  const [want] = Object.entries(rec.align).sort(([, a], [, b]) => b - a)[0];
+  assert.equal(t2.type.display.textAlign, want);
+  assert.equal(t2.nodeRefs['type.display.textAlign'].derived, 'majority by characters');
+  const t3 = curate({ ...inputs(rules((r) => { r.roles['type.display.textAlign'] = { absent: 'kit sets no alignment' }; return r; })), foundation: f2.foundation, moduleCandidates: f2.moduleCandidates }).donorTokens;
+  assert.equal(t3.type.display.textAlign, undefined);
+});
+check('layout.navAlign: majority of the frames\' measured header rows, with evidence; none without rows; absent wins', () => {
+  const withRows = (aligns) => ({ ...moduleCandidates, frames: moduleCandidates.frames.map((f, i) => ({ ...f, headerRows: aligns[i] ? [{ node: `H${i}`, menu: `M${i}`, align: aligns[i], offset: 0, width: 1180 }] : [] })) });
+  const t1 = curate({ ...inputs(), moduleCandidates: withRows(['center', 'center']) }).donorTokens;
+  assert.equal(t1.layout.navAlign, 'center');
+  assert.equal(t1.nodeRefs['layout.navAlign'].node, 'H0');
+  assert.equal(t1.nodeRefs['layout.navAlign'].derived, 'majority of desktop header rows');
+  assert.equal(curate({ ...inputs(), moduleCandidates: withRows([null, null]) }).donorTokens.layout.navAlign, undefined);
+  const t3 = curate({ ...inputs(rules((r) => { r.roles['layout.navAlign'] = { absent: 'no header in the kit' }; return r; })), moduleCandidates: withRows(['end', 'end']) }).donorTokens;
+  assert.equal(t3.layout.navAlign, undefined);
+});
 check('nodeRefs cite the node that paints each value', () => {
   assert.deepEqual(t.nodeRefs['palette.pageBg'], { node: '1:2', figma: { color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1 }, via: 'rest' });
   assert.equal(t.nodeRefs['buttons.primary.color'].node, 'I1:20;3:5');

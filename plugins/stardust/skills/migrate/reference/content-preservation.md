@@ -120,6 +120,8 @@ For every `<a href>`:
      on scoped runs.
 4. **Preserve** any href fragment (`#section-3`) and query string
    (`?ref=foo`) exactly when rewriting.
+5. Under `flow: reskin` only, a rewritten link also keeps its source in
+   `data-source-href` (`skills/reskin/reference/handoff.md`).
 
 ## Media references
 
