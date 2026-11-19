@@ -52,10 +52,19 @@
  * lives: the archetype gate dir when that holds one, else the page dir) and freezes again in the same place — never
  * --force: an unstable page stays an error. --live-origin (or GATE_REFERENCE=live in the environment, gate.sh's
  * opt-out) is the origin as it was: the prototype stage's cached live.png, else a fresh stitch on every run.
+ * SETTINGS: a usable reference frozen under other capture settings than this run's (`reference.mjs settings`: consent,
+ * dismiss, noDismiss, locale against baseline.json `flags`) is deleted and frozen again where it lives, one log line
+ * `reference: re-frozen — capture settings changed (consent, locale)` (gate.sh's rule and wording; an unstable
+ * re-freeze is the error row above); a --skip-existing origin or recorded pass that came from it is not reused. One
+ * frozen without recorded flags is reused: `reference: reused — settings not recorded`. No round is recorded for a freeze.
  * WIDE (--wide): the same rows at a wide width — DESIGN.json's extensions.breakpoints.probeWidth (--design, default
  * DESIGN.json), else 2560 — written to `gates/wide-<w>/summary.{json,md}`: a REPORT, exit 0 whatever the rows say,
  * its calibration line counting the pages over the threshold; no round is recorded, no content probe runs, and no
- * reader takes it for a delivery table.
+ * reader takes it for a delivery table. It composes with --skip-existing, --only, --eds-host and the overlay flags
+ * (its own page dirs and references, at the wide width). When a page is over the threshold (aligned %) or off in
+ * height (|Δh| over --height-tol) one line follows the table (`wideLine`):
+ * `wide <w>px: N page(s) over <t>% or off in height — <slug> <pct>% Δh <px>px, …`; summary.json carries
+ * totals.overThreshold, totals.heightOff and `wide` { line, pages: [{ slug, pct, heightDelta, overThreshold, heightOff }] }.
  * FONTS (source-fidelity-gate.md § Hardening rule 14): every stitch writes its capture record
  * (<slug>/<side>.capture.json beside the PNG) and the origin / eds meta carries its `fontsFailed` —
  * the dead faces (a declared face with no loaded face of its family, weight and style: a file that failed to
@@ -97,7 +106,7 @@
  *        [--compare-only] [--warmup <url>] [--vh <px>]
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, reference.mjs and
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `referenceOf`, `wideWidth`, `selectPages`, `fontsNotLoaded`, `fontFails`,
+ * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
  * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `dropPassedCaptures`, `droppedPass`
  * are exported.
@@ -131,7 +140,10 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --wide                    REPORT at a wide width (DESIGN.json's extensions.breakpoints.probeWidth, else 2560; an
                             explicit --width wins) → gates/wide-<w>/summary.{json,md}: same rows, exit 0 whatever
                             they say, the pages over the threshold counted; no content probe, no round recorded —
-                            a report, not a delivery criterion
+                            a report, not a delivery criterion. Composes with --skip-existing, --only, --eds-host and
+                            the overlay flags. Pages over the threshold or off in height (--height-tol) are named on
+                            one line after the table — "wide <w>px: N page(s) over <t>% or off in height — <slug>
+                            <pct>% Δh <px>px, …" — and in summary.json (totals.overThreshold, totals.heightOff, wide)
   --design <file>           DESIGN.json (--wide reads its probeWidth)
   --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched)
   --skip-existing           reuse captures in the page dir (a stitch with no fixedLayers in its capture record —
@@ -170,6 +182,9 @@ Verdict = pixel criterion AND |Δh| ≤ height-tol × origin height AND clipped 
   (gates/<slug>-<width>/), else one frozen once into the page's dir and reused; its self-varying rows are masked and
   the row records noiseFloor and variableRows. An UNSTABLE reference is an error row — reference-unstable: <line> —
   never a FAIL or a pass: pin the page's state (--consent / --dismiss / --locale), or freeze it by hand with --force.
+  A reference frozen under other --consent / --dismiss / --no-dismiss / --locale than this run's is frozen again
+  ("reference: re-frozen — capture settings changed (consent, locale)"; not a round); one whose settings were not
+  recorded is reused, and said so.
   A font face that loads on the source and is dead on the build (the capture records' fontsFailed,
   <slug>/<side>.capture.json) fails the row: font-not-loaded:<family>; one dead on the source is reported, not failed;
   a font check that could not run (fontsFailed null, or no record) fails it: font-check-skipped:<origin|build>.
@@ -205,7 +220,7 @@ export function parseArgs(argv) {
     else if (a === '--coverage') o.coverage = need(a, v());
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
-    else if (a === '--consent') o.consent = need(a, v()); else if (a === '--dismiss') o.dismiss = need(a, v()); else if (a === '--no-dismiss') o.noDismiss = true; else if (a === '--locale') o.locale = need(a, v());
+    else if (a === '--consent') o.consent = need(a, v()); else if (a === '--dismiss') o.dismiss = need(a, v()); else if (a === '--no-dismiss') o.noDismiss = true; else if (a === '--locale') { o.locale = need(a, v()); o.localeGiven = true; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
   if (o.noDismiss && (o.consent || o.dismiss)) { console.error('gate-all: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)'); process.exit(1); }
@@ -219,6 +234,21 @@ export function parseArgs(argv) {
 export const WIDE_DEFAULT = 2560;
 export function wideWidth(designFile = 'DESIGN.json') {
   try { const w = JSON.parse(readFileSync(designFile, 'utf8')).extensions.breakpoints.probeWidth; return Number.isInteger(w) && w > 0 ? w : WIDE_DEFAULT; } catch { return WIDE_DEFAULT; }
+}
+/**
+ * The wide report's flagged rows: over the threshold (aligned %, the report's own count) or off in height (measured,
+ * |Δh| over the height tolerance) → [{ slug, pct, heightDelta, overThreshold, heightOff }], worst first.
+ */
+export function wideFlagged(rows, { threshold = 10 } = {}) {
+  return rows.map((r) => ({ slug: r.slug, pct: r.alignedPct ?? r.pct ?? null, heightDelta: r.heightDelta ?? null, overThreshold: r.alignedPct != null && r.alignedPct > threshold, heightOff: r.pct != null && !r.heightPass }))
+    .filter((r) => r.overThreshold || r.heightOff)
+    .sort((a, b) => Math.abs(b.heightDelta || 0) - Math.abs(a.heightDelta || 0) || (b.pct || 0) - (a.pct || 0));
+}
+/** The one line under the wide table, or null when no page is flagged (at most `max` pages named, then `… N more`). */
+export function wideLine(flagged, { width, threshold = 10, max = 12 } = {}) {
+  if (!flagged.length) return null;
+  const named = flagged.slice(0, max).map((r) => `${r.slug} ${r.pct}% Δh ${r.heightDelta}px`);
+  return `wide ${width}px: ${flagged.length} page(s) over ${threshold}% or off in height — ${named.join(', ')}${flagged.length > max ? `, … ${flagged.length - max} more` : ''}`;
 }
 /** baseline.json (reference.mjs's, or stitch-shot's older freeze) → what the origin meta and the row keep of the page's frozen reference. */
 export function referenceOf(b, dir) {
@@ -376,6 +406,24 @@ export function passThrough(child, opts = {}) {
   if (opts.consent && takes('--consent')) a.push('--consent', opts.consent);
   if (opts.dismiss && takes('--dismiss')) a.push('--dismiss', opts.dismiss);
   return a;
+}
+/** The settings this run GIVES, for `reference.mjs settings`: passThrough's, without the --locale default it adds — a
+ * default is not a setting the run asked for, and a reference frozen under another locale is not "changed" by it. */
+export const givenFlags = (opts = {}) => { const a = passThrough('stitch-shot', opts); const i = a.indexOf('--locale'); if (i >= 0 && !opts.localeGiven) a.splice(i, 2); return a; };
+/** The run's options with the settings it omits taken from the page's frozen reference (baseline.json `flags`). */
+export function inheritedOpts(opts, flags) {
+  if (!flags || typeof flags !== 'object') return opts;
+  const text = (v) => (Array.isArray(v) ? v.join(',') : String(v ?? '')).trim() || null;
+  // a setting the run gives that differs from the recorded one: the reference is frozen again under the run's
+  // settings (reference.mjs settings), so nothing of the old one is inherited
+  const differs = (opts.noDismiss === true) !== (flags.noDismiss === true) && (opts.noDismiss || text(opts.consent) || text(opts.dismiss))
+    || ['consent', 'dismiss', 'locale'].some((k) => (k === 'locale' ? opts.localeGiven : true) && text(opts[k]) && text(opts[k]) !== (text(flags[k]) || (k === 'locale' ? 'en-US' : null)));
+  if (differs) return opts;
+  const gave = opts.noDismiss || text(opts.consent) || text(opts.dismiss); const o = { ...opts };
+  if (flags.noDismiss === true && !gave) o.noDismiss = true;
+  if (!opts.noDismiss && !o.noDismiss) for (const k of ['consent', 'dismiss']) if (!text(opts[k]) && text(flags[k])) o[k] = text(flags[k]);
+  if (!opts.localeGiven && text(flags.locale)) o.locale = text(flags.locale);
+  return o;
 }
 /** A capture, either side: stitch-shot <url> <out> --width --settle + the overlay / locale flags [+ --vh] [+ tail]. */
 export const stitchArgs = (script, url, out, opts, tail = []) => [script, url, out, '--width', String(opts.width), '--settle', ...passThrough('stitch-shot', opts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), ...tail];
@@ -612,11 +660,21 @@ async function main() {
   const measuredWith = (p) => ({ masks: (MASKS[p.slug] && MASKS[p.slug].masks) || [], edsUrl: edsUrl(p) });
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
+  // The capture settings a usable reference was frozen with against this run's (header § SETTINGS): reference.mjs's
+  // own comparison, once per reference dir → { changed: 'consent, locale' | null, unrecorded }. A reference.mjs
+  // without the subcommand answers nothing: reused as before.
+  const settingsSeen = new Map();
+  const settingsOf = (refDir) => {
+    if (!settingsSeen.has(refDir)) settingsSeen.set(refDir, run('node', [REFERENCE, 'settings', refDir, ...givenFlags(opts)]).then((s) => { const line = lastLine(s.out); return { changed: s.code === 0 && line.startsWith('changed: ') ? line.slice(9) : null, unrecorded: s.code === 0 && line === 'not recorded' }; }));
+    return settingsSeen.get(refDir);
+  };
+  // a reused origin or recorded pass (--skip-existing / --compare-only) stands only while its reference's settings do
+  const referenceMoved = async (meta) => !opts.liveOrigin && !opts.compareOnly && !!(meta && meta.reference && meta.reference.dir) && existsSync(join(meta.reference.dir, 'baseline.json')) && !!(await settingsOf(meta.reference.dir)).changed;
   const reused = new Set();
   if ((opts.skip || opts.compareOnly) && !opts.recaptureEds && !opts.recaptureOrigin) {
     for (const p of pages) {
       const kept = droppedPass(dir(p), measuredWith(p));
-      if (!kept) continue;
+      if (!kept || await referenceMoved(kept.origin)) continue;
       reused.add(p.slug); for (const [k, v] of Object.entries(kept)) rec(p, k, v);
       log(`${p.slug} → recorded pass reused (its captures were dropped on the pass)`);
     }
@@ -632,7 +690,18 @@ async function main() {
   // stitch-shot's capture record (captureRecordOf: <side>.capture.json beside the PNG; stitch-shot removes it when a
   // capture starts, and so does this — a stitch that never started leaves no stale one) → the meta's fontsFailed
   // (+ fontCheck when it says why): shotFonts — no readable record is unchecked (null), never "all loaded".
-  const stitch = (url, out, tail = []) => { rmSync(captureRecordOf(out), { force: true }); return run('node', stitchArgs(STITCH, url, out, opts, tail)); };
+  // A page's build capture and probes run under its frozen reference's settings where the run omits them (the
+  // archetype gate dir's reference, else the page dir's; read before any capture, so the two pools need no order).
+  const optsOf = new Map();
+  const optsFor = (p) => {
+    if (opts.liveOrigin) return opts;
+    if (!optsOf.has(p.slug)) {
+      const base = [join('stardust/replica/gates', `${p.slug}-${opts.width}`), dir(p)].map((d) => readJsonSafe(join(d, 'baseline.json'))).find((b) => b && b.flags);
+      optsOf.set(p.slug, inheritedOpts(opts, base && base.flags));
+    }
+    return optsOf.get(p.slug);
+  };
+  const stitch = (url, out, tail = [], o = opts) => { rmSync(captureRecordOf(out), { force: true }); return run('node', stitchArgs(STITCH, url, out, o, tail)); };
   // Before a side is captured again its previous PNG, record and diff go: a capture that fails leaves no picture, so
   // the row is a missing capture (an error, no percentage) — never a diff of the old PNG against the other side.
   const forgetCapture = (d, out) => { for (const f of [out, captureRecordOf(out), join(d, 'diff.png')]) rmSync(f, { force: true }); };
@@ -651,7 +720,7 @@ async function main() {
   async function captureOrigin(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'origin.png'); const meta = join(d, 'origin.json');
-    if (opts.skip && !opts.recaptureOrigin && reusable(p, 'origin', out, meta)) { rec(p, 'origin', readJson(meta)); return; }
+    if (opts.skip && !opts.recaptureOrigin && reusable(p, 'origin', out, meta) && !(await referenceMoved(readJsonSafe(meta)))) { rec(p, 'origin', readJson(meta)); return; }
     forgetCapture(d, out); // and a copied origin carries its source's record, or none
     const crawlShot = join(opts.crawlShots, `${p.slug}.png`);
     const gateDir = join('stardust/replica/gates', `${p.slug}-${opts.width}`);
@@ -671,6 +740,14 @@ async function main() {
     let useCached = !refDir && !freezeInto && opts.stage === 'prototype' && existsSync(cachedLive);
     if (useCached && staleCapture(cachedLive)) { useCached = false; log(`origin ${p.slug}: ${cachedLive} predates the fixed-layer capture (no fixedLayers in its record) — not reused, capturing the origin`); }
     if (!opts.liveOrigin && !blocked && !refDir && !freezeInto && !useCached) { if (await usable(d, p)) refDir = d; else freezeInto = d; }
+    let refrozen = null;
+    if (refDir) {
+      const st = await settingsOf(refDir);
+      if (st.changed) {
+        refrozen = st.changed; freezeInto = refDir; refDir = null; settingsSeen.delete(freezeInto);
+        for (const f of ['baseline.png', 'baseline.json']) rmSync(join(freezeInto, f), { force: true });
+      } else if (st.unrecorded) log(`origin ${p.slug}: reference: reused — settings not recorded (${join(refDir, 'baseline.json')} was frozen by an older version)`);
+    }
     let r;
     if (freezeInto) {
       const s = await run('node', [REFERENCE, 'freeze', p.url, freezeInto, '--width', String(opts.width), ...passThrough('stitch-shot', opts), ...(opts.vh ? ['--vh', String(opts.vh)] : []), '--headed'], { timeoutMs: 3 * 480000 });
@@ -680,6 +757,7 @@ async function main() {
       if (s.code !== 0 && s.code !== 2 && setAside.length && await usable(freezeInto, p)) { refDir = freezeInto; log(`origin ${p.slug}: re-freeze exit ${s.code} (${line || lastLine(s.err)}) — the previous frozen reference is kept`); }
       else if (s.code === 0) {
         refDir = freezeInto;
+        if (refrozen) log(`origin ${p.slug}: reference: re-frozen — capture settings changed (${refrozen})`);
         // the page dir keeps the frozen reference only: reference.mjs's kept captures and their diffs go (#156, disk)
         if (freezeInto === d) for (const f of readdirSync(d)) if (/^ref-(\d|diff-).*\.(png|capture\.json)$/.test(f)) rmSync(join(d, f), { force: true });
       } else if (s.code === 2) r = { instrument: 'none', error: `reference-unstable: ${line.replace(/^UNSTABLE — /, '')} (${join(freezeInto, 'reference-unstable.json')})` };
@@ -715,7 +793,7 @@ async function main() {
     const out = join(d, 'eds.png'); const meta = join(d, 'eds.json');
     if (opts.skip && !opts.recaptureEds && reusable(p, 'eds', out, meta)) { rec(p, 'eds', readJson(meta)); return; }
     forgetCapture(d, out);
-    const s = await stitch(edsUrl(p), out);
+    const s = await stitch(edsUrl(p), out, [], optsFor(p));
     if (s.code !== 0) rmSync(out, { force: true }); // a stitch that died mid-write leaves no partial PNG to diff
     const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...shotFonts(readJsonSafe(captureRecordOf(out))) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
@@ -733,7 +811,7 @@ async function main() {
     for (const k of ['content', 'clip', 'units']) rec(p, k, undefined);
     if (opts.content) {
       for (const f of ['content.json', 'clip.json']) rmSync(join(d, f), { force: true });
-      const s = await run('node', contentArgs(join(DIFF_DIR, 'content-presence.mjs'), p.url, edsUrl(p), join(d, 'content.json'), opts, pr));
+      const s = await run('node', contentArgs(join(DIFF_DIR, 'content-presence.mjs'), p.url, edsUrl(p), join(d, 'content.json'), optsFor(p), pr));
       const content = readJsonSafe(join(d, 'content.json'));
       let ok = false;
       if (content && (s.code === 0 || s.code === 2)) {
@@ -757,7 +835,7 @@ async function main() {
     }
     if (opts.clip && !got.clip) {
       rmSync(join(d, 'clip.json'), { force: true });
-      const s = await run('node', clipArgs(join(DIFF_DIR, 'clip-probe.mjs'), edsUrl(p), join(d, 'clip.json'), opts));
+      const s = await run('node', clipArgs(join(DIFF_DIR, 'clip-probe.mjs'), edsUrl(p), join(d, 'clip.json'), optsFor(p)));
       const clip = readJsonSafe(join(d, 'clip.json'));
       if (clip && clip.counts && (s.code === 0 || s.code === 2)) { put('clip', clipResult(clip)); log(`clip ${p.slug} → ${clip.counts.total}`); }
       else { put('clip', { error: `clip-probe exit ${s.code}: ${lastLine(s.err)}` }); log(`clip ${p.slug} → ERROR ${lastLine(s.err)}`); }
@@ -765,7 +843,7 @@ async function main() {
     const units = unitsOf(p);
     if (units.length) {
       rmSync(join(d, 'units.json'), { force: true });
-      const s = await run('node', unitArgs(join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), join(d, 'units.json'), p.slug, units, opts));
+      const s = await run('node', unitArgs(join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), join(d, 'units.json'), p.slug, units, optsFor(p)));
       const res = readJsonSafe(join(d, 'units.json'));
       const required = units.some((x) => x.required);
       if (res && res.verdict && (s.code === 0 || s.code === 2)) { put('units', { verdict: res.verdict, required }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
@@ -837,14 +915,16 @@ async function main() {
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.passWithOverride), fail: n((r) => !r.pass && !isErrorRow(r)), error: n(isErrorRow), probeErrors: n((r) => r.probeErrors.length > 0),
     failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), fontsNotLoaded: n((r) => r.fontsNotLoaded.some(fontFails)), fontsDeadOnSource: n((r) => r.fontsNotLoaded.some((f) => !fontFails(f))), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
     alignedOnlyPass: n((r) => r.pixelPass && r.pct > opts.threshold), failOffsets: n((r) => r.pct != null && !r.pixelPass && r.alignedPct <= opts.threshold), referenceUnstable: n((r) => UNSTABLE.test(r.error || '')),
-    ...(opts.wide ? { overThreshold: n((r) => r.alignedPct != null && r.alignedPct > opts.threshold) } : {}) };
+    ...(opts.wide ? { overThreshold: n((r) => r.alignedPct != null && r.alignedPct > opts.threshold), heightOff: n((r) => r.pct != null && !r.heightPass) } : {}) };
+  const flagged = opts.wide ? wideFlagged(rows, opts) : []; const flaggedLine = wideLine(flagged, opts);
   totals.passWithOverrides = totals.pass + totals.overridePass;
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
-  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, ...(opts.wide ? { wide: true, report: 'not a delivery criterion — exit 0 whatever the rows say' } : {}), threshold: opts.threshold, offsetMax: opts.offsetMax ?? (opts.stage === 'prototype' ? `${OFFSETS.px}px` : `the larger of ${OFFSETS.px}px and ${OFFSETS.share * 100}% of the origin height`), originReference: opts.liveOrigin ? 'live' : 'frozen', heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `pixel criterion (aligned % ≤ ${opts.threshold} AND total offset ≤ the bound; alignment not used: unaligned % ≤ ${opts.threshold}) AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only }, totals, rows };
+  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, ...(opts.wide ? { wide: true, report: 'not a delivery criterion — exit 0 whatever the rows say' } : {}), threshold: opts.threshold, offsetMax: opts.offsetMax ?? (opts.stage === 'prototype' ? `${OFFSETS.px}px` : `the larger of ${OFFSETS.px}px and ${OFFSETS.share * 100}% of the origin height`), originReference: opts.liveOrigin ? 'live' : 'frozen', heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `pixel criterion (aligned % ≤ ${opts.threshold} AND total offset ≤ the bound; alignment not used: unaligned % ≤ ${opts.threshold}) AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only }, totals, ...(opts.wide ? { wide: { line: flaggedLine, pages: flagged } } : {}), rows };
   const md = formatSummary(summary);
   if (opts.only) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${opts.only[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
   else { writeFileSync(join(opts.out, 'summary.json'), JSON.stringify(summary, null, 2)); writeFileSync(join(opts.out, 'summary.md'), md); console.log(md.split('\n').slice(0, 7).join('\n')); console.log(`summary → ${join(opts.out, 'summary.md')}`); }
   console.log(JSON.stringify(totals));
+  if (flaggedLine) console.log(flaggedLine); // last, where a log tail is read
   process.exitCode = opts.wide || totals.pass + totals.overridePass === totals.pages ? 0 : 2;
 }
 
