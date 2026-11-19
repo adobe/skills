@@ -15,6 +15,7 @@ const NAME = 'star-rating';
 const goodJs = `import { subscribe } from '../../rules/index.js';
 
 export default function decorate(fieldDiv, fd, container, formId) {
+  fieldDiv.classList.add('star-rating');
   const input = fieldDiv.querySelector('input');
   subscribe(fieldDiv, formId, (_el, model, eventType, payload) => {
     if (eventType === 'register') {
@@ -155,6 +156,41 @@ test('stale build output, missing README sections and missing filter are warned'
   assert.equal(result.status, 'pass');
   const warnings = ids(result, 'warn');
   ['build.json', 'files.readme', 'register.form-filter'].forEach((id) => assert.ok(warnings.includes(id), id));
+});
+
+test('CSS rules that need a class the component never adds are reported', () => {
+  const css = (text) => ({ [`blocks/form/components/${NAME}/${NAME}.css`]: text });
+
+  const dead = run(css(`.form .${NAME}-wrapper .${NAME}-stars { display: flex; }\n`));
+  assert.equal(dead.status, 'fail');
+  const err = dead.checks.find((c) => c.id === 'css.selectors');
+  assert.equal(err?.level, 'error');
+  assert.match(err.message, new RegExp(`\\.${NAME}-wrapper`));
+  assert.match(err.message, /base fieldType/);
+
+  const fallback = run(css(`.form .${NAME}-wrapper .x,\n.form .number-wrapper .${NAME} { color: red; }\n`));
+  assert.equal(fallback.checks.find((c) => c.id === 'css.selectors')?.level, 'warn');
+
+  const added = run(css(`.form .${NAME} { display: flex; }\n@media (width >= 600px) {\n  .form .${NAME} { gap: 8px; }\n}\n`));
+  assert.equal(added.checks.find((c) => c.id === 'css.selectors')?.level, 'pass');
+});
+
+test('CSS check ignores classes a selector may lack and finds class names the JS builds', () => {
+  const css = (text) => ({ [`blocks/form/components/${NAME}/${NAME}.css`]: text });
+  const level = (result) => result.checks.find((c) => c.id === 'css.selectors')?.level;
+
+  const negated = run(css(`.form .${NAME}:not(.${NAME}-disabled, :has(.${NAME}-x)) { color: red; }\n.form .${NAME}[data-x=".${NAME}-y"] { color: blue; }\n`));
+  assert.equal(level(negated), 'pass', JSON.stringify(negated.checks.filter((c) => c.id === 'css.selectors')));
+
+  const builtJs = (expr) => goodJs.replace("fieldDiv.classList.add('star-rating');", `fieldDiv.classList.add('star-rating');\n  const prefix = 'star-rating';\n  const el = document.createElement('span');\n  el.className = ${expr};`);
+  const widgetCss = css(`.form .${NAME}-widget { display: flex; }\n`);
+  for (const expr of ['`${prefix}-widget`', "prefix + '-widget'"]) {
+    const built = run({ ...widgetCss, [`blocks/form/components/${NAME}/${NAME}.js`]: builtJs(expr) });
+    assert.equal(level(built), 'pass', expr);
+  }
+
+  const other = run({ ...widgetCss, [`blocks/form/components/${NAME}/${NAME}.js`]: builtJs('`${prefix}-gadget`') });
+  assert.equal(level(other), 'error');
 });
 
 test('CLI: exit codes, --json output and --help writes nothing', () => {

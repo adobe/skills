@@ -326,6 +326,60 @@ export function validateComponent(name, rootDir) {
     }
   }
 
+  // ---- stylesheet selectors --------------------------------------------------------
+  // The form block names the field wrapper after the base fieldType (`.number-wrapper`), never
+  // after the component, so a `.<name>-wrapper` (or any `<name>`-prefixed) class only exists if
+  // the component's own JavaScript adds it. Otherwise the selector matches nothing.
+  if (hasCss && js !== null) {
+    const css = readText(cssFile).replace(/\/\*[\s\S]*?\*\//g, '');
+    const scripts = readdirSync(compDir).filter((f) => /\.m?js$/.test(f)).map((f) => readText(join(compDir, f))).join('\n');
+    const splitList = (prelude) => {
+      const out = [''];
+      let depth = 0;
+      for (const ch of prelude) {
+        if ('(['.includes(ch)) depth += 1;
+        if (')]'.includes(ch)) depth -= 1;
+        if (ch === ',' && depth === 0) out.push(''); else out[out.length - 1] += ch;
+      }
+      return out.map((sel) => sel.trim()).filter(Boolean);
+    };
+    const rules = [];
+    for (const [, prelude] of css.matchAll(/([^{}]+)\{/g)) {
+      if (!prelude.trim().startsWith('@')) rules.push(splitList(prelude));
+    }
+    // Only classes a selector needs: drop attribute selectors and functional pseudo-classes
+    // (:not(), :is(), :where(), :has(), …), whose classes may be absent while the selector matches.
+    const required = (sel) => {
+      let s = sel.replace(/\[[^\]]*\]/g, '');
+      for (let prev; prev !== s;) { prev = s; s = s.replace(/:[\w-]+\([^()]*\)/g, ''); }
+      return [...s.matchAll(/\.(-?[A-Za-z_][\w-]*)/g)].map((m) => m[1]);
+    };
+    // A class counts as added if its name is in the JS, or if the JS can build it from the part
+    // after the component name: `${prefix}-star`, prefix + '-star', ['-star'].
+    const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const added = (c) => {
+      if (scripts.includes(c)) return true;
+      const rest = c.slice(name.length);
+      return rest.length > 1 && new RegExp(`(\\}|['"\`])${esc(rest)}\\b`).test(scripts);
+    };
+    const own = [...new Set(rules.flat().flatMap(required))].filter((c) => c === name || c.startsWith(`${name}-`));
+    const missing = new Set(own.filter((c) => !added(c)));
+    const dead = (sel) => required(sel).some((c) => missing.has(c));
+    const deadRules = rules.filter((sels) => sels.every(dead));
+    const deadSelectors = rules.flat().filter(dead);
+    if (deadRules.length) {
+      const wrapper = `${name}-wrapper`;
+      const hint = missing.has(wrapper)
+        ? ` The form block never adds .${wrapper}: field wrappers are named after the base fieldType (e.g. .number-wrapper). Target a class that decorate() adds, or add it with fieldDiv.classList.add('${wrapper}') (references/styling.md).`
+        : '';
+      error('css.selectors', `${deadRules.length} rule(s) in ${name}.css can never apply: they need ${[...missing].map((c) => `.${c}`).join(', ')}, which ${name}.js never adds, literally or as \`\${…}-suffix\` (e.g. "${deadRules[0][0]}").${hint}`);
+    } else if (deadSelectors.length) {
+      warn('css.selectors', `${deadSelectors.length} selector(s) in ${name}.css never match, because ${name}.js never adds ${[...missing].map((c) => `.${c}`).join(', ')} (e.g. "${deadSelectors[0]}"); another selector in the same rule still applies`);
+    } else if (own.length) {
+      pass('css.selectors', `Every ${name}-prefixed class in ${name}.css is added by the component's JavaScript`);
+    }
+  }
+
   // ---- registration ----------------------------------------------------------------
   const mappingsFile = join(formDir, 'mappings.js');
   const mappings = readText(mappingsFile);
