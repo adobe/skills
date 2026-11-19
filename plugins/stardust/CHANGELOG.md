@@ -1,5 +1,12 @@
 # Changelog
 
+# [0.42.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.41.0...plugin/stardust/v0.42.0) (2026-11-19)
+
+
+### Features
+
+* **stardust:** replica measures the source before authoring and checks header and footer by landmark ([#701](https://github.com/adobe/skills/issues/701)) ([0df3597](https://github.com/adobe/skills/commit/0df3597c097a425a8192249fc239c9369f3e48f8))
+
 # [0.41.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.40.0...plugin/stardust/v0.41.0) (2026-11-18)
 
 
