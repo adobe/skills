@@ -36,7 +36,8 @@
  * Publications of one checkout are serialized by <rollout dir>/library/.publish.lock (O_EXCL; held from before the
  * marker is removed until the process exits, so a run that fails cannot leave an earlier run's marker over documents it
  * replaced): a second run waits (DA_LIBRARY_LOCK_WAIT_MS, default 15 min, then exit 1); a lock whose pid is gone or
- * older than DA_LIBRARY_LOCK_STALE_MS (default 1 h) is taken over. A dry run takes no lock.
+ * not refreshed (the holder touches it every few minutes) for DA_LIBRARY_LOCK_STALE_MS (default 1 h) is taken over. A
+ * dry run takes no lock.
  * No authored block found, or a delivered page with no content file under --content → exit 1 and no DA write.
  * Idempotent: every write replaces the previous one.
  *
@@ -48,7 +49,7 @@
  * printed); 2 usage (no token included).
  */
 /* eslint-disable no-await-in-loop, no-restricted-syntax, max-len */
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSync, writeFileSync, rmSync, openSync, closeSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, mkdirSync, writeFileSync, rmSync, openSync, closeSync, utimesSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { treePath, servedPath, isFolderIndexFile } from './lib.mjs'; // the shared path rules (lib/paths.mjs)
@@ -278,9 +279,9 @@ export const publishLockPath = (rolloutDir) => join(dirname(libraryMarkerPath(ro
 const pidAlive = (pid) => { if (!Number.isInteger(pid) || pid <= 0) return false; try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 
 /**
- * Take the cross-process publication lock (O_EXCL create), waiting while another live run holds it. A lock whose pid
- * is gone, or older than DA_LIBRARY_LOCK_STALE_MS (default 1 h; a container restart can reuse the pid), is taken
- * over — through a second O_EXCL file so two waiters cannot both take it. Released on process exit (only if still
+ * Take the cross-process publication lock (O_EXCL create), waiting while another live run holds it. The holder
+ * refreshes the lock's mtime every staleMs/4 (at most 1 min). A lock whose pid is gone, or not refreshed for
+ * DA_LIBRARY_LOCK_STALE_MS (default 1 h; a container restart can reuse the pid), is taken over — through a second O_EXCL file so two waiters cannot both take it. Released on process exit (only if still
  * ours). Returns null when held, else the reason it could not be taken (waited DA_LIBRARY_LOCK_WAIT_MS, default 15 min).
  */
 async function acquirePublishLock(path) {
@@ -312,7 +313,10 @@ async function acquirePublishLock(path) {
     if (!said) { console.error(`da-library: waiting for another da-library run (pid ${holder ? holder.pid : '?'}) to finish publishing`); said = true; }
     await new Promise((r) => { setTimeout(r, pollMs); });
   }
-  process.on('exit', () => { try { if (readFileSync(path, 'utf8') === mine) rmSync(path, { force: true }); } catch { /* gone */ } });
+  // heartbeat: keep the mtime fresh while ours, so a run longer than staleMs is not taken over while its pid lives
+  const beat = setInterval(() => { try { if (readFileSync(path, 'utf8') === mine) { const now = new Date(); utimesSync(path, now, now); } } catch { /* gone */ } }, Math.max(10, Math.min(staleMs / 4, 60e3)));
+  beat.unref();
+  process.on('exit', () => { clearInterval(beat); try { if (readFileSync(path, 'utf8') === mine) rmSync(path, { force: true }); } catch { /* gone */ } });
   for (const sig of ['SIGINT', 'SIGTERM']) process.once(sig, () => process.exit(sig === 'SIGINT' ? 130 : 143));
   return null;
 }

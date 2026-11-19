@@ -8,6 +8,9 @@
  *   --token-env <NAME>         that variable; an explicit name never falls back
  *   neither flag               DA_TOKEN; when DA_TOKEN is unset and ADOBE_IMS_TOKEN_FILE names a file (a hands-off
  *                              harness rewrites it on refresh), that file
+ * This is the one statement of that order; the deploy, rollout and replica docs point here. A hand-written admin request
+ * follows it in shell, expanded per request (the harness rewrites the file in place):
+ *   ${DA_TOKEN:-$(tr -d '[:space:]' < "$ADOBE_IMS_TOKEN_FILE")}
  * Every message names the source (`via` and the file or variable), never the value. Nothing runs on import; the file
  * is read only by readDaToken.
  */

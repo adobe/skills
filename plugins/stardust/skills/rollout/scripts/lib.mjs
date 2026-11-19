@@ -26,19 +26,28 @@ export const libraryMarkerPath = (rolloutDir = join('stardust', 'rollout')) => j
 
 /**
  * done-check's library gap, or null. `marker` is published.json (null when absent); `da` is rollout.json site.da;
- * `delivered` the delivered coverage paths. Missing → `library_missing`; published to another DA site →
- * `library_missing:published to <org>/<site>, site.da is …`; delivered pages it never read (siblings delivered after
- * it ran, archetypes-only mode) → `library_missing:stale: N delivered page(s) not in the library: …`. Pure.
+ * `delivered` the delivered coverage rows as `{ path, deployedAt }` (a bare path string has no deployedAt). Missing →
+ * `library_missing`; published to another DA site → `library_missing:published to <org>/<site>, site.da is …`;
+ * otherwise `library_missing:stale: …` naming delivered pages it never read (siblings delivered after it ran,
+ * archetypes-only mode) and pages re-delivered after it ran (`deployedAt` later than the marker's `at`: a fix round
+ * may have added a block or variant). Pure.
  */
 export function libraryGap(marker, { da = {}, delivered = [] } = {}) {
   if (!marker || typeof marker !== 'object') return 'library_missing';
   const want = `${da.org || ''}/${da.site || ''}`;
   if (da.org && da.site && `${marker.org}/${marker.site}` !== want) return `library_missing:published to ${marker.org}/${marker.site}, site.da is ${want} — re-run da-library.mjs`;
   const read = new Set((Array.isArray(marker.pages) ? marker.pages : []).map(pathKey));
-  const stale = delivered.filter((p) => !read.has(pathKey(p)));
-  if (!stale.length) return null;
-  const shown = stale.length > 20 ? `${stale.slice(0, 20).join(', ')}, … (+${stale.length - 20})` : stale.join(', ');
-  return `library_missing:stale: ${stale.length} delivered page(s) not in the library: ${shown} — re-run da-library.mjs`;
+  const ranAt = Date.parse(marker.at);
+  const rows = delivered.map((d) => (typeof d === 'string' ? { path: d } : d));
+  const unread = rows.filter((d) => !read.has(pathKey(d.path))).map((d) => d.path);
+  const newer = rows.filter((d) => read.has(pathKey(d.path)) && Date.parse(d.deployedAt) > ranAt).map((d) => d.path);
+  if (!unread.length && !newer.length) return null;
+  const list = (ps) => (ps.length > 20 ? `${ps.slice(0, 20).join(', ')}, … (+${ps.length - 20})` : ps.join(', '));
+  const why = [
+    unread.length && `${unread.length} delivered page(s) not in the library: ${list(unread)}`,
+    newer.length && `${newer.length} page(s) re-delivered after it ran: ${list(newer)}`,
+  ].filter(Boolean).join('; ');
+  return `library_missing:stale: ${why} — re-run da-library.mjs`;
 }
 
 export function readJSON(path, fallback = null) {

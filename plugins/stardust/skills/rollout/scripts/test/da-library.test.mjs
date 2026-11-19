@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// skills/rollout/scripts/test/da-library.test.mjs — the DA library (#160): authored blocks and their class variants lifted from DA bodies, block and template documents in the shape the DA library reads (a kept metadata value with a `$` pattern survives), sheets, chrome references, and a config merge that only replaces the rows this run writes; the CLI --dry-run writes the files from coverage or the content tree and touches no network; zero blocks exits 1; a symlinked path still runs; against a local fake DA: only templates are previewed, templates.json is left alone without templates, a 401 burst is retried and a persistent 401 exits 3; a delivered page without a content file exits 1 before any DA write; overlapping runs are serialized by the publication lock (a stale one is taken over).
+// skills/rollout/scripts/test/da-library.test.mjs — the DA library (#160): authored blocks and their class variants lifted from DA bodies, block and template documents in the shape the DA library reads (a kept metadata value with a `$` pattern survives), sheets, chrome references, and a config merge that only replaces the rows this run writes; the CLI --dry-run writes the files from coverage or the content tree and touches no network; zero blocks exits 1; a symlinked path still runs; against a local fake DA: only templates are previewed, templates.json is left alone without templates, a 401 burst is retried and a persistent 401 exits 3; a delivered page without a content file exits 1 before any DA write; overlapping runs are serialized by the publication lock (refreshed while held; a stale one is taken over).
 // Run: node plugins/stardust/skills/rollout/scripts/test/da-library.test.mjs
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -270,13 +270,15 @@ try {
   const tap = (req) => seen((req.headers.authorization || "").split(" ").pop()); server.on("request", tap);
   let startB; const bDone = new Promise((r) => { startB = r; });
   const lockEnv = { DA_LIBRARY_LOCK_POLL_MS: "20" };
-  const aRun = runNet({ DA_TOKEN: "slow", ...lockEnv }, [], () => {
-    const t = setInterval(() => { if (order.includes("slow")) { clearInterval(t); startB(runNet({ DA_TOKEN: "failcfg", ...lockEnv })); } }, 5);
+  // A outlives a 200 ms stale age; its heartbeat keeps the lock fresh, so B waits instead of taking it over
+  const shortStale = { ...lockEnv, DA_LIBRARY_LOCK_STALE_MS: "200" };
+  const aRun = runNet({ DA_TOKEN: "slow", ...shortStale }, [], () => {
+    const t = setInterval(() => { if (order.includes("slow")) { clearInterval(t); startB(runNet({ DA_TOKEN: "failcfg", ...shortStale })); } }, 5);
   });
   const [ra, rb] = await Promise.all([aRun, bDone.then((p) => p)]);
   check("overlapping runs are serialized: B waits, starts after A finished, and its failure leaves no published.json", () => {
     assert.equal(ra.code, 0, ra.err + ra.out); assert.equal(rb.code, 1, rb.err + rb.out);
-    assert.match(rb.err, /waiting for another da-library run \(pid \d+\)/);
+    assert.match(rb.err, /waiting for another da-library run \(pid \d+\)/); assert.doesNotMatch(rb.err, /took over/);
     const firstB = order.indexOf("failcfg"); assert.ok(firstB > order.lastIndexOf("slow"), order.join(","));
     assert.ok(!existsSync(marker)); assert.ok(!existsSync(lock), "the lock is released on exit");
   });

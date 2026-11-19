@@ -101,6 +101,16 @@ check('libraryGap: absent marker, another DA site, and delivered pages the libra
   assert.match(libraryGap({ org: 'o', site: 's', pages: [] }, { da, delivered: many }), /stale: 23 .*, … \(\+3\) — re-run/);
 });
 
+check('libraryGap: a page re-delivered after the library ran is stale even though the library read it', () => {
+  const marker = { org: 'o', site: 's', pages: ['/', '/about'], at: '2026-05-01T10:00:00.000Z' };
+  const da = { org: 'o', site: 's' };
+  const at = (path, deployedAt) => ({ path, deployedAt });
+  assert.equal(libraryGap(marker, { da, delivered: [at('/', '2026-05-01T09:00:00.000Z'), at('/about', null)] }), null, 'delivered before the run, or no deployedAt');
+  assert.match(libraryGap(marker, { da, delivered: [at('/', '2026-05-01T09:00:00.000Z'), at('/about', '2026-05-01T11:00:00.000Z')] }), /^library_missing:stale: 1 page\(s\) re-delivered after it ran: \/about — re-run da-library\.mjs$/);
+  assert.match(libraryGap(marker, { da, delivered: [at('/about', '2026-05-01T11:00:00.000Z'), at('/new', null)] }), /^library_missing:stale: 1 delivered page\(s\) not in the library: \/new; 1 page\(s\) re-delivered after it ran: \/about — re-run/);
+  assert.equal(libraryGap({ pages: ['/'] }, { delivered: [at('/', '2026-05-01T11:00:00.000Z')] }), null, 'a marker without `at` cannot be dated');
+});
+
 check('gaps come in a fixed order and long path lists are capped', () => {
   const many = Array.from({ length: 25 }, (_, i) => row(`f${i}`, `/f${i}`, 'failed'));
   const v = doneGaps({ pages: [row('u', '/u', 'pending'), row('d', '/d', 'deployed'), ...many], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'], library: 'library_missing' });
@@ -128,11 +138,11 @@ check('the probe HEADs each path on the host, keeps input order, and counts non-
 });
 
 // --- CLI ------------------------------------------------------------------------------------------
-function project({ pages = CLEAN_PAGES, ledger = ENDED, liveHost, library = true } = {}) {
+function project({ pages = CLEAN_PAGES, ledger = ENDED, liveHost, library = true, libraryAt } = {}) {
   const proj = mkdtempSync(join(tmpdir(), 'done-check-'));
   const out = join(proj, 'stardust', 'rollout');
   mkdirSync(join(out, 'coverage'), { recursive: true });
-  if (library) { mkdirSync(join(out, 'library'), { recursive: true }); writeFileSync(join(out, 'library', 'published.json'), JSON.stringify({ pages: (pages || []).map((p) => p.path) })); }
+  if (library) { mkdirSync(join(out, 'library'), { recursive: true }); writeFileSync(join(out, 'library', 'published.json'), JSON.stringify({ pages: (pages || []).map((p) => p.path), at: libraryAt })); }
   if (pages) writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages }));
   writeFileSync(join(out, 'rollout.json'), JSON.stringify(liveHost ? { site: { liveHost } } : {}));
   writeFileSync(join(proj, 'stardust', 'status.jsonl'), ledger.map((l) => JSON.stringify(l)).join('\n'));
@@ -165,6 +175,15 @@ check('CLI: delivered pages without library/published.json are not complete (lib
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 1);
   assert.deepEqual(r.stdout.trim().split('\n'), ['library_missing', '✗ 1 gap(s) (live probe skipped: --offline)']);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: a page re-delivered (coverage deployedAt) after the library ran is a library gap', () => {
+  const pages = [{ ...row('a', '/a', 'deployed'), delivery: { status: 'deployed', deployedAt: '2026-05-01T11:00:00.000Z' } }];
+  const proj = project({ pages, libraryAt: '2026-05-01T10:00:00.000Z' });
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^library_missing:stale: 1 page\(s\) re-delivered after it ran: \/a — re-run da-library\.mjs$/m);
   rmSync(proj, { recursive: true, force: true });
 });
 

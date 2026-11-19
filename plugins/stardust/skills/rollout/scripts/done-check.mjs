@@ -25,7 +25,8 @@
  *   library_missing[:<why>]        pages were delivered but da-library.mjs has not written the site's block library to
  *                                  DA for them: <out>/library/published.json is absent (never run, or its last run
  *                                  stopped or failed), was published to another org/site than rollout.json site.da,
- *                                  or is stale — delivered pages it never read (lib.mjs libraryGap)
+ *                                  or is stale — delivered pages it never read, or pages re-delivered (deployedAt)
+ *                                  after it ran (lib.mjs libraryGap)
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline).
@@ -143,8 +144,8 @@ async function main() {
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
   const chrome = arg('chrome', 'stardust/chrome');
   const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
-  // the coverage `path`s da-library recorded (it reads the same rows), not the probed public URLs
-  const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => p.path);
+  // the coverage `path`s da-library recorded (it reads the same rows), not the probed public URLs, with when each was delivered
+  const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => ({ path: p.path, deployedAt: p.delivery && p.delivery.deployedAt }));
   const library = libraryGap(readJSON(libraryMarkerPath(OUT)), { da: (config.site && config.site.da) || {}, delivered });
   const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header, library });
 
