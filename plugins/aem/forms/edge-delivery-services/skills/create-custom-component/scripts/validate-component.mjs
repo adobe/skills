@@ -344,8 +344,10 @@ export function validateComponent(name, rootDir) {
       return out.map((sel) => sel.trim()).filter(Boolean);
     };
     const rules = [];
-    for (const [, prelude] of css.matchAll(/([^{}]+)\{/g)) {
-      if (!prelude.trim().startsWith('@')) rules.push(splitList(prelude));
+    for (const [, text] of css.matchAll(/([^{}]+)\{/g)) {
+      // drop statement at-rules (@charset …; @import …;) and declarations before a nested rule
+      const prelude = text.split(';').pop().trim();
+      if (prelude && !prelude.startsWith('@')) rules.push(splitList(prelude));
     }
     // Only classes a selector needs: drop attribute selectors and functional pseudo-classes
     // (:not(), :is(), :where(), :has(), …), whose classes may be absent while the selector matches.
