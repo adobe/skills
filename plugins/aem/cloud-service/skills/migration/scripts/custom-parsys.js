@@ -30,9 +30,14 @@ const SIGNALS = {
   dynamicPath: /@\s*path\s*=\s*['"]?\$\{|path="<%=|path='<%=/,
   customLogic: /<%(?![@\-])|data-sly-(?:use|test|list|call|repeat)/,
   clientlib: /clientlib|categories=|extraClientlibs/i,
+  // Legacy parsys allowed components / styles come from designs; containers use /conf policies.
+  designDependencies: /cq:designPath|\/etc\/designs|\bcurrentDesign\b|\bcurrentStyle\b|\bgetStyle\s*\(|\bDesigner\b/,
+  editConfig: /cq:EditConfig|cq:editConfig|cq:isContainer|cq:dropTargets/,
   authoredChild: /getChildren\s*\(|listChildren\s*\(|getChild\s*\(|data-sly-list|childResources/,
 };
 
+const DIALOG_DIRS = new Set(['_cq_dialog', '_cq_design_dialog', 'dialog', 'design_dialog', 'cq:dialog', 'cq:design_dialog']);
+const PAGE_CONTAINER_RT = /sling:resourceType="(?:\/libs\/)?(?:(?:wcm\/)?foundation\/components\/(?:i?parsys|responsivegrid)|core\/wcm\/components\/container\/[^"]*|[^"]*\/parsys)"/;
 const SCRIPT_ONLY = new Set(['selectorsOrOverrides', 'customLogic', 'virtual', 'dynamicPath', 'authoredChild']);
 
 function readText(file) {
@@ -84,7 +89,7 @@ function resolveChain(absDir, index) {
   for (let i = 0; i < MAX_CHAIN; i++) {
     const st = superTypeOf(cur);
     if (!st) return { dirs, reachesParsys: false, unresolved: null };
-    if (PARSYS_EXACT.test(st)) return { dirs, reachesParsys: true, direct: i === 0, unresolved: null };
+    if (PARSYS_EXACT.test(st.replace(/^\/libs\//, ''))) return { dirs, reachesParsys: true, direct: i === 0, unresolved: null };
     const next = index.get(st.replace(/^\/?(?:apps|libs)\//, ''));
     if (!next || dirs.includes(next)) return { dirs, reachesParsys: false, unresolved: st };
     dirs.push(next);
@@ -113,8 +118,11 @@ function inspectParsysCandidate(absDir, index) {
   }
   const parsysIncludes = own.filter(x => x.t && /\.(jsp|html)$/.test(x.f))
     .reduce((n, x) => n + (x.t.match(new RegExp(`resourceType\\s*=\\s*['"]${PARSYS_RT}['"]`, 'g')) || []).length, 0);
-  inv.nestedContainers = parsysIncludes > 1 || own.some(x => x.t && /sling:resourceType="[^"]*(?:parsys|responsivegrid|container)[^"]*"/.test(x.t) && x.f.endsWith('.content.xml') && path.dirname(x.f) !== absDir)
-    ? ['multiple container includes/child containers'] : [];
+  // Page containers only; dialog folders hold Granite UI layout containers, not content.
+  const isDialogFile = f => path.relative(absDir, f).split(path.sep).some(seg => DIALOG_DIRS.has(seg));
+  const childContainer = own.some(x => x.t && x.f.endsWith('.content.xml') && path.dirname(x.f) !== absDir && !isDialogFile(x.f)
+    && PAGE_CONTAINER_RT.test(x.t));
+  inv.nestedContainers = parsysIncludes > 1 || childContainer ? ['multiple container includes/child containers'] : [];
   inv.jsClientFiles = files.filter(f => f.endsWith('.js'));
   inv.jsClientFiles = inv.jsClientFiles.map(f => path.relative(absDir, f));
   inv.unreadable = texts.some(x => x.t === null);
@@ -124,6 +132,7 @@ function inspectParsysCandidate(absDir, index) {
   const layoutish = inv.layout.length || inv.selectorsOrOverrides.length || inv.nestedContainers.length;
   const kinds = [Boolean(inv.columnControl.length), Boolean(layoutish), Boolean(virtual)].filter(Boolean).length;
   const otherCustom = inv.customLogic.length || inv.clientlib.length || inv.jsClientFiles.length || inv.authoredChild.length;
+  inv.editConfigFiles = files.filter(f => path.basename(f) === '_cq_editConfig.xml').map(f => path.relative(absDir, f));
 
   let classification;
   if (inv.unreadable || inv.unresolvedSupertype) classification = 'unknown';
@@ -143,18 +152,26 @@ function inspectParsysCandidate(absDir, index) {
 /**
  * options.supportedTarget — exact target resourceType from project guidance (never guessed).
  * options.contentValidated — explicit attestation that authored children were validated.
+ * options.policiesMapped — explicit attestation that allowed components / styles (legacy
+ *   designs, cq:editConfig) are mapped to the target's /conf policies. Source alone can
+ *   never prove this: designs live in content, so the gate is always required.
  */
 function planParsys(info, options = {}) {
-  const { supportedTarget = null, contentValidated = false } = options;
+  const { supportedTarget = null, contentValidated = false, policiesMapped = false } = options;
   const base = { parsys: { classification: info.classification, inventory: info.inventory }, proposedTarget: supportedTarget, filesToChange: [] };
   const contentCompatibility = contentValidated && !info.authoredChildAssumptions ? 'established' : 'needs-content-validation';
-  const withCompat = { ...base, contentCompatibility };
+  const policyCompatibility = policiesMapped ? 'established' : 'needs-policy-mapping';
+  const withCompat = { ...base, contentCompatibility, policyCompatibility };
 
   if (info.classification === 'plain-legacy-parsys') {
     if (!supportedTarget) return { ...withCompat, action: 'needs-user-confirm', blockedReason: 'no supported target resource type defined; none is guessed', risk: 'target unknown' };
     if (!info.direct) return { ...withCompat, action: 'needs-user-confirm', blockedReason: 'parsys is inherited or included, not a direct supertype; automatic conversion not supported', risk: 'inheritance chain change' };
     if (contentCompatibility !== 'established') return { ...withCompat, action: 'needs-content-validation', blockedReason: 'authored child-node compatibility not established from source', risk: 'existing authored content may not render' };
-    return { ...withCompat, action: 'convert-parsys-supertype', blockedReason: null, risk: 'supertype swap to the supplied supported target', filesToChange: [info.supertypeFile] };
+    if (policyCompatibility !== 'established') {
+      const deps = [...info.inventory.designDependencies, ...info.inventory.editConfig, ...info.inventory.editConfigFiles];
+      return { ...withCompat, action: 'needs-policy-mapping', blockedReason: `allowed components/styles must be mapped to /conf policies for the target${deps.length ? ` (source dependencies: ${[...new Set(deps)].join(', ')})` : ''}`, risk: 'pages may lose their insertable components after the swap' };
+    }
+    return { ...withCompat, action: 'convert-parsys-supertype', blockedReason: null, risk: 'supertype swap to the supplied supported target (code only; existing page content is converted separately, e.g. with AEM Modernize Tools)', filesToChange: [info.supertypeFile] };
   }
   const plan = ['inventory custom behavior (see detected inventory)', 'identify an explicit supported equivalent for each behavior', 'validate authored content against the target', 'preserve custom behavior until then'];
   if (info.classification === 'custom-layout' || info.classification === 'custom-column-control') {
@@ -175,11 +192,13 @@ function discoverParsysCandidates(workspaceRoot, index = buildComponentIndex(wor
 /** Guarded: only plain, direct, content-validated, user-confirmed entries with an explicit target. */
 function applyParsysConversion(entry, workspaceRoot, userConfirmed) {
   const ok = userConfirmed && entry.parsys?.classification === 'plain-legacy-parsys' && entry.action === 'convert-parsys-supertype'
-    && entry.contentCompatibility === 'established' && entry.proposedTarget && !entry.blockedReason;
-  if (!ok) return { applied: [], skipped: 'not confirmed, not plain, target unknown, or content validation pending' };
+    && entry.contentCompatibility === 'established' && entry.policyCompatibility === 'established'
+    && entry.proposedTarget && !entry.blockedReason;
+  if (!ok) return { applied: [], skipped: 'not confirmed, not plain, target unknown, or content/policy validation pending' };
   const applied = [];
   for (const rel of entry.filesToChange) {
-    const abs = path.join(workspaceRoot, rel);
+    const abs = path.resolve(workspaceRoot, rel);
+    if (path.relative(path.resolve(workspaceRoot), abs).startsWith('..') || path.basename(abs) !== '.content.xml') continue;
     const text = fs.readFileSync(abs, 'utf8');
     const next = text.replace(SUPERTYPE_ATTR, () => `sling:resourceSuperType="${entry.proposedTarget}"`);
     if (next !== text) { fs.writeFileSync(abs, next); applied.push(rel); }

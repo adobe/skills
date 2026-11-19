@@ -1,12 +1,17 @@
 /**
- * Rich Text overlay inspection (component level, read-only unless applyRichTextConversion).
+ * Rich Text authoring overlay/customization inspection (component level, read-only).
  *
- * Structural detection only: a candidate is a `cq:Component` folder whose XML shows
- * Rich Text evidence. A render.jsp alone is never evidence. The single supported
- * mapping comes from references/legacy-ui/dialog/extjs-to-coral3.md:
- *   xtype htmleditor|richtext -> cq/gui/components/authoring/dialog/richtext
- *   + useFixedInlineToolbar="{Boolean}true", RTE plugin child nodes preserved.
- * Nothing else is converted; the JSP is never rewritten or deleted here.
+ * This flow never edits project files. Legacy Rich Text dialogs are handed off to the
+ * existing Branch D dialog converter (references/legacy-ui/dialog/): a Classic
+ * `dialog/` → `convert-extjs`, a Coral 2 `_cq_dialog/` → `upgrade-coral2`. The
+ * htmleditor/richtext → `cq/gui/components/authoring/dialog/richtext` mapping in
+ * extjs-to-coral3.md only applies inside that whole-dialog conversion; AEM as a Cloud
+ * Service has no Classic UI and reads only `cq:dialog`.
+ *
+ * A candidate needs legacy evidence: a Classic or Coral 2 Rich Text dialog, a product
+ * overlay (`/apps/cq|granite/**` mirroring `/libs`), or a Rich Text dialog rendered by
+ * a JSP or another non-HTL script. A Coral 3 Rich Text dialog rendered by HTL is
+ * already supported and is not reported. Scripts are never rewritten or deleted.
  */
 
 'use strict';
@@ -14,24 +19,27 @@
 const fs = require('fs');
 const path = require('path');
 
-const RT_RESOURCE_TYPE = 'cq/gui/components/authoring/dialog/richtext';
 const MAX_BYTES = 256 * 1024;
-const MAX_DEPTH = 6;
+const MAX_WALK_DEPTH = 24;
 const SKIP = new Set(['node_modules', '.git', 'target', 'dist']);
 
-const RT_REF = /sling:resource(?:Super)?Type="[^"]*richtext"/;
 const RT_XTYPE = /xtype="(?:richtext|htmleditor)"/;
+const RT_RESOURCE = /sling:resourceType="cq\/gui\/components\/authoring\/dialog\/richtext"/;
 const RTE_CONFIG = /rtePlugins|uiSettings|htmlRules/;
+const CORAL2 = /granite\/ui\/components\/foundation\//;
+const CORAL3 = /granite\/ui\/components\/coral\//;
+// Product-owned namespaces: anything here overlays the matching /libs path.
+const PRODUCT_OVERLAY = /^\/apps\/(?:cq|granite)\/(?:[^/]+\/)*[^/]*(?:richtext|rte)[^/]*$/i;
+// Classic (CQ.form.rte) and Touch UI (CUI.rte) RTE plugin APIs: custom plugin code.
+const RTE_PLUGIN_JS = /\b(?:CQ\.form\.rte|CUI\.rte)\b/;
+const OTHER_SCRIPT = /\.(?:esp|ecma|groovy|jst)$/;
+
+function readText(file) {
+  try { return fs.statSync(file).size > MAX_BYTES ? null : fs.readFileSync(file, 'utf8'); } catch { return null; }
+}
 
 function isComponentDir(dir) {
   return /jcr:primaryType="cq:Component"/.test(readText(path.join(dir, '.content.xml')) || '');
-}
-
-function readText(file) {
-  try {
-    if (fs.statSync(file).size > MAX_BYTES) return null;
-    return fs.readFileSync(file, 'utf8');
-  } catch { return null; }
 }
 
 /** Files owned by one component: never descends into a nested cq:Component folder. */
@@ -44,6 +52,13 @@ function listFiles(dir, depth = 0, acc = []) {
     else if (e.isDirectory() && depth < 3 && !SKIP.has(e.name) && !isComponentDir(full)) listFiles(full, depth + 1, acc);
   }
   return acc;
+}
+
+/** Workspace dir → JCR path when it sits under a FileVault jcr_root, else null. */
+function jcrPathOf(workspaceRoot, absDir) {
+  const parts = path.relative(workspaceRoot, absDir).split(path.sep);
+  const i = parts.indexOf('jcr_root');
+  return i >= 0 ? `/${parts.slice(i + 1).join('/')}` : null;
 }
 
 /** Inventory customizations found in a JSP (pure). */
@@ -65,112 +80,141 @@ function analyzeJsp(text, resolveInclude) {
   return found;
 }
 
-function inspectRichTextCandidate(absDir) {
+function mergeJsp(analyses) {
+  const out = { imports: [], scriptlets: 0, conditions: [], serverAccess: [], dynamic: [], unresolvedIncludes: [] };
+  for (const a of analyses) {
+    out.scriptlets += a.scriptlets;
+    for (const k of ['imports', 'conditions', 'serverAccess', 'dynamic', 'unresolvedIncludes']) {
+      for (const v of a[k]) if (!out[k].includes(v)) out[k].push(v);
+    }
+  }
+  return out;
+}
+
+/** classic (dialog/, cq:Dialog) | coral2 | coral3 */
+function dialogKind(file, text) {
+  const dir = path.basename(path.dirname(file));
+  if (dir === 'dialog' || dir === 'design_dialog' || /jcr:primaryType="cq:Dialog"/.test(text)) return 'classic';
+  if (CORAL2.test(text) && !CORAL3.test(text)) return 'coral2';
+  return 'coral3';
+}
+
+/**
+ * @param {string} absDir  component or overlay folder
+ * @param {{ jcrPath?: string }} [opts]
+ */
+function inspectRichTextCandidate(absDir, opts = {}) {
   const files = listFiles(absDir);
-  const xmlFiles = files.filter(f => f.endsWith('.xml'));
-  const xmls = xmlFiles.map(f => ({ file: f, text: readText(f) })).filter(x => x.text !== null);
-  const rtXml = xmls.filter(x => RT_REF.test(x.text) || RT_XTYPE.test(x.text) || (RTE_CONFIG.test(x.text) && /richtext|htmleditor/.test(x.text)));
-  const evidence = [];
-  if (!rtXml.length) return { candidate: false, evidence };
-
   const rel = f => path.relative(absDir, f);
-  const jspFile = files.find(f => path.basename(f) === 'render.jsp');
-  const config = rtXml.filter(x => RTE_CONFIG.test(x.text)).map(x => rel(x.file));
-  const toolbar = [...new Set(rtXml.flatMap(x => [...x.text.matchAll(/<(\w+)\s[^>]*?(?:features|toolbar)="([^"]*)"/g)].map(m => `${m[1]}:${m[2]}`)))];
-  const clientlibs = [];
-  for (const x of xmls) if (/extraClientlibs|clientlib|categories=/.test(x.text)) clientlibs.push(rel(x.file));
-  if (files.some(f => path.basename(f) === '.content.xml' && /cq:ClientLibraryFolder/.test(readText(f) || ''))) clientlibs.push('adjacent clientlib folder');
-  const jspText = jspFile ? readText(jspFile) : undefined;
-  if (jspText && /clientlib/i.test(jspText)) clientlibs.push('render.jsp');
-  const jsp = jspFile
-    ? analyzeJsp(jspText, inc => fs.existsSync(path.resolve(path.dirname(jspFile), inc)))
+  const xmls = files.filter(f => f.endsWith('.xml')).map(f => ({ file: f, text: readText(f) })).filter(x => x.text !== null);
+  const rtDialogs = xmls
+    .filter(x => RT_XTYPE.test(x.text) || RT_RESOURCE.test(x.text) || (RTE_CONFIG.test(x.text) && /richtext|htmleditor/.test(x.text)))
+    .map(x => ({ file: x.file, text: x.text, kind: dialogKind(x.file, x.text) }));
+  const overlay = opts.jcrPath && PRODUCT_OVERLAY.test(opts.jcrPath)
+    ? { libsPath: opts.jcrPath.replace(/^\/apps\//, '/libs/') } : null;
+  const jspFiles = files.filter(f => f.endsWith('.jsp'));
+  const otherScripts = files.filter(f => OTHER_SCRIPT.test(f));
+  const legacyDialogs = rtDialogs.filter(d => d.kind !== 'coral3');
+  const scriptRendered = rtDialogs.length > 0 && (jspFiles.length > 0 || otherScripts.length > 0);
+  if (!overlay && !legacyDialogs.length && !scriptRendered) return { candidate: false, evidence: [] };
+
+  const evidence = [];
+  if (overlay) evidence.push(`overlays product path ${overlay.libsPath}`);
+  for (const d of legacyDialogs) evidence.push(`${d.kind} Rich Text dialog ${rel(d.file)}`);
+  if (scriptRendered) evidence.push(`Rich Text dialog rendered by ${[...jspFiles, ...otherScripts].map(rel).join(', ')}`);
+
+  const jsp = jspFiles.length
+    ? mergeJsp(jspFiles.map(f => analyzeJsp(readText(f), inc => fs.existsSync(path.resolve(path.dirname(f), inc)))))
     : null;
+  const clientlibs = [];
+  for (const x of xmls) if (/extraClientlibs|categories=|cq:ClientLibraryFolder/.test(x.text)) clientlibs.push(rel(x.file));
+  for (const f of jspFiles) if (/clientlib/i.test(readText(f) || '')) clientlibs.push(rel(f));
+  const customRtePlugins = files.filter(f => f.endsWith('.js') && RTE_PLUGIN_JS.test(readText(f) || '')).map(rel);
 
-  evidence.push(`rich text reference/xtype in ${rtXml.map(x => rel(x.file)).join(', ')}`);
-  if (config.length) evidence.push('declarative RTE configuration');
-  if (jspFile) evidence.push('render.jsp present (supporting only)');
-
-  const convertible = rtXml.filter(x => xtypeConversions(x.text).length).map(x => x.file);
-  const toolbarConflictFiles = rtXml.filter(x => toolbarConflicts(x.text).length).map(x => rel(x.file));
   const customizations = {
-    richTextTypes: [...new Set(rtXml.flatMap(x => [...x.text.matchAll(/sling:resource(?:Super)?Type="([^"]*richtext)"/g)].map(m => m[1])))],
-    jsp: Boolean(jspFile), rteConfigFiles: config, toolbarFeatures: toolbar, clientlibs: [...new Set(clientlibs)], jspAnalysis: jsp,
+    richTextTypes: [...new Set(rtDialogs.flatMap(d => [...d.text.matchAll(/sling:resource(?:Super)?Type="([^"]*richtext)"/g)].map(m => m[1])))],
+    dialogs: rtDialogs.map(d => ({ file: rel(d.file), kind: d.kind })),
+    jspFiles: jspFiles.map(rel),
+    otherScripts: otherScripts.map(rel),
+    htlScripts: files.filter(f => f.endsWith('.html')).map(rel),
+    rteConfigFiles: rtDialogs.filter(d => RTE_CONFIG.test(d.text)).map(d => rel(d.file)),
+    toolbarFeatures: [...new Set(rtDialogs.flatMap(d => [...d.text.matchAll(/<(\w+)\s[^>]*?(?:features|toolbar)="([^"]*)"/g)].map(m => `${m[1]}:${m[2]}`)))],
+    clientlibs: [...new Set(clientlibs)],
+    customRtePlugins,
+    jspAnalysis: jsp,
+    overlay,
   };
 
   let classification = 'configuration-only';
-  if (jsp) {
+  if (otherScripts.length) classification = 'unknown';
+  else if (jsp) {
     const behavioral = jsp.imports.length || jsp.scriptlets || jsp.conditions.length || jsp.serverAccess.length;
     if (behavioral) classification = 'custom-jsp-behavioral';
     else if (jsp.dynamic.length) classification = 'unknown';
     else classification = 'custom-jsp-ui';
   }
-  return { candidate: true, evidence, classification, customizations, convertibleFiles: convertible, toolbarConflictFiles, jspFile: jspFile || null };
+  return { candidate: true, evidence, classification, customizations, legacyDialogs: legacyDialogs.map(d => ({ file: d.file, kind: d.kind })) };
 }
 
-/** Elements with an exact-mapping xtype and no resourceType of their own. */
-function xtypeConversions(text) {
-  return [...text.matchAll(/<[\w:.-]+\s[^>]*?xtype="(?:richtext|htmleditor)"[^>]*>/g)].filter(m => !/sling:resourceType=/.test(m[0]));
-}
-
-/** Elements that already set useFixedInlineToolbar: adding it again would duplicate the attribute. */
-function toolbarConflicts(text) {
-  return xtypeConversions(text).filter(m => /\buseFixedInlineToolbar=/.test(m[0]));
-}
-
-function planRichText(info) {
-  const base = { richtext: { classification: info.classification, customizations: info.customizations } };
+/** Plan only. `filesToChange` is always empty: this flow never edits files. */
+function planRichText(info, workspaceRoot) {
   const cust = info.customizations;
-  if (info.classification === 'configuration-only') {
-    const blockedByLibs = cust.clientlibs.length > 0;
-    if (info.toolbarConflictFiles && info.toolbarConflictFiles.length) {
-      return { ...base, action: 'needs-user-confirm', blockedReason: `useFixedInlineToolbar already set in ${info.toolbarConflictFiles.join(', ')}; the supported mapping would overwrite an explicit value`, risk: 'explicit toolbar setting conflicts with the mapping', filesToChange: [] };
+  const base = { richtext: { classification: info.classification, customizations: cust }, filesToChange: [] };
+  const relWs = f => path.relative(workspaceRoot, f);
+
+  if (cust.overlay) {
+    const proposed = 'replace the /libs overlay with per-component Rich Text configuration (rtePlugins / uiSettings / htmlRules) in each affected cq:dialog; keep the overlay until every affected dialog is migrated and validated';
+    const risk = `overlays ${cust.overlay.libsPath}; /libs is immutable in AEM as a Cloud Service and changes with product updates`;
+    if (info.classification === 'custom-jsp-behavioral' || info.classification === 'unknown') {
+      return { ...base, action: 'manual-review', proposed, risk, blockedReason: `${info.classification}: overlay script behavior has no proven supported replacement` };
     }
-    if (info.convertibleFiles.length && !blockedByLibs) {
-      return { ...base, action: 'convert-richtext-xtype', blockedReason: null, risk: 'rewrites xtype to the supported Coral 3 richtext resourceType; RTE child nodes preserved', filesToChange: info.convertibleFiles };
-    }
-    if (!info.convertibleFiles.length && !blockedByLibs) {
-      return { ...base, action: 'no-change', blockedReason: null, risk: 'already declarative; nothing to convert', filesToChange: [] };
-    }
-    return { ...base, action: 'needs-user-confirm', blockedReason: 'custom clientlib references need review', risk: 'clientlib behavior is not covered by a supported mapping', filesToChange: [] };
+    return { ...base, action: 'needs-user-confirm', proposed, risk, blockedReason: 'affected components and the per-dialog equivalent must be confirmed before the overlay can be retired' };
   }
   if (info.classification === 'custom-jsp-ui') {
-    return { ...base, action: 'needs-user-confirm', proposed: 'replace JSP-rendered markup with the declarative richtext dialog mapping; keep render.jsp until confirmed and validated', blockedReason: 'equivalence of JSP markup to a supported mapping is not proven', risk: 'UI change', filesToChange: [] };
+    return { ...base, action: 'needs-user-confirm', proposed: 'port the static JSP markup to HTL; keep the JSP until confirmed and validated', blockedReason: 'equivalence of JSP markup to a supported mapping is not proven', risk: 'rendering change' };
   }
-  return { ...base, action: 'manual-review', blockedReason: `${info.classification}: JSP behavior has no proven supported replacement`, risk: 'behavior loss if rewritten', filesToChange: [] };
+  if (info.classification !== 'configuration-only') {
+    return { ...base, action: 'manual-review', blockedReason: `${info.classification}: script behavior has no proven supported replacement`, risk: 'behavior loss if rewritten' };
+  }
+  if (cust.customRtePlugins.length || cust.clientlibs.length) {
+    return { ...base, action: 'needs-user-confirm', blockedReason: 'custom RTE plugin or clientlib code has no supported mapping', risk: 'authoring behavior provided by custom code' };
+  }
+  const CONVERTER = { classic: 'convert-extjs', coral2: 'upgrade-coral2' };
+  const handoff = info.legacyDialogs.map(d => ({ dialog: relWs(d.file), action: CONVERTER[d.kind] }));
+  return {
+    ...base,
+    action: handoff.some(h => h.action === 'convert-extjs') ? 'handoff-convert-extjs' : 'handoff-upgrade-coral2',
+    blockedReason: null,
+    risk: 'Rich Text plugin configuration must survive the dialog conversion; re-check rtePlugins/uiSettings afterwards',
+    handoff: {
+      flow: 'references/legacy-ui/dialog/context.md',
+      dialogs: handoff,
+      note: 'the dialog converter owns the edit and its own confirmation; this flow changes nothing',
+    },
+  };
 }
 
-/** Find cq:Component folders (any depth, any app path) that carry Rich Text evidence. */
+/** Component folders and product overlays with legacy Rich Text evidence (any app path). */
 function discoverRichTextCandidates(workspaceRoot) {
-  const out = [];
+  const candidates = [];
+  const warnings = [];
   (function walk(dir, depth) {
-    if (depth > MAX_DEPTH + 6) return;
+    if (depth > MAX_WALK_DEPTH) { warnings.push(`depth limit reached at ${path.relative(workspaceRoot, dir)}; deeper folders not scanned`); return; }
     let es;
     try { es = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    const cx = path.join(dir, '.content.xml');
-    if (es.some(e => e.name === '.content.xml') && /jcr:primaryType="cq:Component"/.test(readText(cx) || '')) {
-      const info = inspectRichTextCandidate(dir);
-      if (info.candidate) out.push({ absDir: dir, info });
+    const jcrPath = jcrPathOf(workspaceRoot, dir);
+    if (jcrPath && PRODUCT_OVERLAY.test(jcrPath)) {
+      const info = inspectRichTextCandidate(dir, { jcrPath });
+      if (info.candidate) candidates.push({ absDir: dir, jcrPath, info });
+      return;
+    }
+    if (es.some(e => e.name === '.content.xml') && isComponentDir(dir)) {
+      const info = inspectRichTextCandidate(dir, { jcrPath });
+      if (info.candidate) candidates.push({ absDir: dir, jcrPath, info });
     }
     for (const e of es) if (e.isDirectory() && !SKIP.has(e.name)) walk(path.join(dir, e.name), depth + 1);
   })(workspaceRoot, 0);
-  return out;
+  return { candidates, warnings };
 }
 
-/** Guarded conversion: exact mapping only, confirmed, files from the plan only; never touches JSP. */
-function applyRichTextConversion(entry, workspaceRoot, userConfirmed) {
-  if (!userConfirmed || entry.richtext?.classification !== 'configuration-only' || entry.action !== 'convert-richtext-xtype' || entry.blockedReason) {
-    return { applied: [], skipped: 'not confirmed or not an automatic configuration-only conversion' };
-  }
-  const applied = [];
-  for (const file of entry.filesToChange) {
-    if (!file.endsWith('.xml')) continue;
-    const abs = path.join(workspaceRoot, file);
-    const text = fs.readFileSync(abs, 'utf8');
-    const next = text.replace(/(<[\w:.-]+\s[^>]*?)xtype="(?:richtext|htmleditor)"([^>]*>)/g, (all, a, b) =>
-      /sling:resourceType=|\buseFixedInlineToolbar=/.test(all) ? all : `${a}sling:resourceType="${RT_RESOURCE_TYPE}" useFixedInlineToolbar="{Boolean}true"${b}`);
-    if (next !== text) { fs.writeFileSync(abs, next); applied.push(file); }
-  }
-  return { applied, skipped: null };
-}
-
-module.exports = { inspectRichTextCandidate, planRichText, discoverRichTextCandidates, applyRichTextConversion, analyzeJsp, RT_RESOURCE_TYPE };
+module.exports = { inspectRichTextCandidate, planRichText, discoverRichTextCandidates, analyzeJsp, jcrPathOf, PRODUCT_OVERLAY };
