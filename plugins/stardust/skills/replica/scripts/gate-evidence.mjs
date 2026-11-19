@@ -275,6 +275,10 @@ export function attribute(job, page, ctx = {}) {
 // The regime a gate.sh round ran in, from its build URL argument (gate.sh <slug> <live> <build> <width>): a served
 // prototype (localhost / 127.0.0.1 / file:) is `prototype`, anything else — the preview or live origin — `published`.
 export function regimeOf(job) {
+  // the round says its own stage (gate.sh's `rounds: <dir> <stage> — …` line): a local AEM build is served from
+  // localhost and is not a prototype. Without that line (an older gate.sh), the build URL decides as before.
+  const said = /^rounds: \S+ (prototype|local-build|published) — /m.exec(String(job.log || ''));
+  if (said) return said[1];
   const u = String(job.instArgs[2] || '');
   return /^file:/i.test(u) || /^https?:\/\/(localhost|127\.0\.0\.1)(?=[:/?#]|$)/i.test(u) ? 'prototype' : 'published';
 }

@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, decide, fontsDiffer, fontsOfRecord, freeze, main, maskArg, mergeBands, parseArgs, variableRegions, verdictLine } from '../reference.mjs';
+import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, captureSettings, decide, inheritSettings, inheritedArgs, fontsDiffer, fontsOfRecord, freeze, main, maskArg, mergeBands, parseArgs, settingsChanged, variableRegions, verdictLine } from '../reference.mjs';
 import { baselineStatus } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -30,6 +30,34 @@ const tmp = () => mkdtempSync(join(tmpdir(), 'reference-test-'));
 const band = (y0, pct, h = 20) => ({ y0, y1: y0 + h, pct });
 
 // ---- arguments ------------------------------------------------------------------------------------------------------
+await check('settings: the recorded capture flags against the current call — consent, dismiss, noDismiss, locale; vh and headed ignored; no flags recorded → null', () => {
+  const rec = { consent: null, dismiss: null, noDismiss: false, locale: null, vh: null, headed: false };
+  assert.deepEqual(captureSettings(rec), { consent: null, dismiss: null, noDismiss: false, locale: 'en-US' });
+  assert.deepEqual(settingsChanged(rec, {}), []);
+  assert.deepEqual(settingsChanged(rec, { consent: '', dismiss: ' ', locale: 'en-US', vh: 1200, headed: true }), [], 'empty = none, en-US = no locale, vh / headed do not change the page');
+  assert.deepEqual(settingsChanged(rec, { consent: '#ok', locale: 'de-DE' }), ['consent', 'locale']);
+  assert.deepEqual(settingsChanged({ ...rec, dismiss: '.a,.b' }, { dismiss: ['.a', '.b'] }), [], 'a selector list as an array or a string');
+  assert.deepEqual(settingsChanged({ ...rec, dismiss: '.a' }, { dismiss: '.b' }), ['dismiss']);
+  assert.deepEqual(settingsChanged({ ...rec, consent: '#ok' }, { noDismiss: true }), ['noDismiss']);
+  assert.deepEqual(settingsChanged({ ...rec, locale: 'en-GB', consent: '#ok' }, {}), [], 'a call that omits a setting inherits the reference\'s: no re-freeze');
+  assert.deepEqual(settingsChanged({ ...rec, locale: 'en-GB' }, { locale: 'en-US' }), ['locale'], 'a locale the call gives is compared');
+  for (const none of [undefined, null, 'x']) assert.equal(settingsChanged(none, { consent: '#ok' }), null);
+  // the subcommand: one line, no browser, no baseline-check child (deps.readJson only)
+  const dir = mkdtempSync(join(tmpdir(), 'reference-settings-'));
+  try {
+    const readJson = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
+    const settings = (args) => { const out = []; const log = console.log; console.log = (l) => out.push(l); try { return { code: main(['settings', dir, ...args], { readJson }), out: out.join('\n') }; } finally { console.log = log; } };
+    assert.deepEqual(settings([]), { code: 1, out: `reference: none — no readable ${join(dir, 'baseline.json')}` });
+    writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ url: 'https://x.test/', flags: { ...rec, consent: '#ok' } }));
+    assert.deepEqual(settings(['--consent', '#ok']), { code: 0, out: 'same' });
+    assert.deepEqual(settings(['--consent', '#ok', '--locale', 'en-US']), { code: 0, out: 'same' });
+    assert.deepEqual(settings(['--locale', 'fr-FR']), { code: 0, out: 'changed: locale' });
+    assert.deepEqual(settings(['--no-dismiss']), { code: 0, out: 'changed: noDismiss' });
+    writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ url: 'https://x.test/' }));
+    assert.deepEqual(settings(['--consent', '#ok']), { code: 0, out: 'not recorded' });
+    assert.match(HELP, /reference\.mjs settings <dir>/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 await check('parseArgs: freeze defaults, overlay flags, thresholds; usage errors', () => {
   const o = parseArgs(['freeze', 'https://x.test/', 'gates/home-1440', '--width', '1440']);
   assert.deepEqual([o.url, o.dir, o.width, o.captures, o.floorMax, o.heightMax, o.variableMax, o.band, o.bandMin, o.pad, o.force], ['https://x.test/', 'gates/home-1440', 1440, 2, 1, 8, 50, 20, 0.5, 8, false]);
@@ -189,6 +217,17 @@ await check('freeze: floor above the bar outside the regions → unstable; --flo
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+await check('inheritSettings: a setting the round omits is the reference\'s; a given one is never replaced; --no-dismiss is inherited only when the round gives no overlay flag', () => {
+  const rec = { consent: '#ok', dismiss: '.x', noDismiss: false, locale: 'de-DE' };
+  const all = inheritSettings(rec, {});
+  assert.deepEqual([all.consent, all.dismiss, all.locale, all.inherited], ['#ok', '.x', 'de-DE', ['consent', 'dismiss', 'locale']]);
+  assert.deepEqual(inheritedArgs(all), ['--consent', '#ok', '--dismiss', '.x', '--locale', 'de-DE']);
+  assert.deepEqual(inheritSettings(rec, { consent: '#ok', locale: 'de-DE' }).inherited, ['dismiss']);
+  assert.deepEqual(inheritedArgs(inheritSettings({ noDismiss: true, locale: 'de-DE' }, {})), ['--no-dismiss', '--locale', 'de-DE']);
+  assert.deepEqual(inheritSettings({ noDismiss: true }, { consent: '#a' }).inherited, [], 'the round gave an overlay flag: nothing inherited (settingsChanged re-freezes)');
+  assert.deepEqual(inheritSettings({ locale: 'en-US' }, {}).inherited, [], 'the default locale is not a setting');
+  assert.deepEqual(inheritSettings(null, { locale: 'fr-FR' }).inherited, []);
+});
 await check('freeze: a bot challenge passes through as 3, a capture deadline as 124, another capture failure is 1 — nothing frozen, no compare', () => {
   const dir = tmp();
   try {

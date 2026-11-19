@@ -41,6 +41,12 @@
  *   A usable baseline for this URL and width (stitch-shot's `baseline <dir>` check) is reused: no capture, exit 0.
  *   node skills/replica/scripts/reference.mjs status <dir> [--json] [--url <u>] [--width <px>]
  *   node skills/replica/scripts/reference.mjs mask <dir>      only the --mask argument for pixel-compare ('' = none)
+ *   node skills/replica/scripts/reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>] [--inherit]
+ *       (--inherit: instead of the comparison, the settings this call omits and the reference recorded, one argument per line)
+ *                          were the given capture settings the ones <dir>/baseline.json was frozen with (`flags`)?
+ *                          One line: `same` | `changed: consent, locale` | `not recorded` (a baseline from before
+ *                          flags were recorded). Compared: the settings this call GIVES (an omitted one inherits the reference's) — what
+ *                          changes the captured page; vh and headed are not. Exit 0; 1 no readable baseline.json
  *   node skills/replica/scripts/reference.mjs assess <a.png> <b.png> [<c.png>] [--json] [threshold flags]
  *                          the same decision over EXISTING captures; writes nothing
  *
@@ -76,6 +82,9 @@ Usage: node reference.mjs freeze <url> <dir> --width <px> [options]
   --force              re-freeze over an existing baseline; freeze an unstable reference too (stable: false)
        node reference.mjs status <dir> [--json] [--url <u>] [--width <px>]   the stored reference on one line
        node reference.mjs mask <dir>                                         only the pixel-compare --mask argument
+       node reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>]
+                            the given capture settings vs the ones the baseline was frozen with (baseline.json flags):
+                            "same" | "changed: consent, locale" | "not recorded"; locale none = en-US; exit 1 no baseline.json
        node reference.mjs assess <a.png> <b.png> [<c.png>] [--json]          the decision over existing captures; writes nothing
 
 freeze: one PRIMING capture is discarded (the shared live session reaches its steady state: cookies set, consent
@@ -102,11 +111,11 @@ const round2 = (n) => Number(Number(n).toFixed(2));
 // ── pure ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 const NUM = { '--width': 'width', '--vh': 'vh', '--captures': 'captures', '--floor-max': 'floorMax', '--height-max': 'heightMax', '--variable-max': 'variableMax', '--band': 'band', '--band-min': 'bandMin', '--pad': 'pad', '--timeout': 'timeout' };
 const STR = { '--consent': 'consent', '--dismiss': 'dismiss', '--locale': 'locale', '--url': 'url' };
-const BOOL = { '--no-dismiss': 'noDismiss', '--headed': 'headed', '--force': 'force', '--json': 'json' };
+const BOOL = { '--no-dismiss': 'noDismiss', '--headed': 'headed', '--force': 'force', '--json': 'json', '--inherit': 'inherit' };
 export function parseArgs(argv) {
   const [cmd, ...rest] = argv;
   const o = { cmd, pos: [], width: null, vh: null, consent: null, dismiss: null, noDismiss: false, locale: null, headed: false, force: false, json: false, url: null, ...DEFAULTS };
-  if (!['freeze', 'status', 'mask', 'assess'].includes(cmd)) throw new UsageError(`unknown command ${cmd ?? '(none)'} — freeze | status | mask | assess`);
+  if (!['freeze', 'status', 'mask', 'settings', 'assess'].includes(cmd)) throw new UsageError(`unknown command ${cmd ?? '(none)'} — freeze | status | mask | settings | assess`);
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (BOOL[a]) { o[BOOL[a]] = true; continue; }
@@ -141,6 +150,38 @@ export function captureArgs(o) {
   return ['--width', String(o.width), '--settle', ...(o.vh ? ['--vh', String(o.vh)] : []), ...(o.consent ? ['--consent', o.consent] : []),
     ...(o.dismiss ? ['--dismiss', o.dismiss] : []), ...(o.noDismiss ? ['--no-dismiss'] : []), ...(o.locale ? ['--locale', o.locale] : []), ...(o.headed ? ['--headed'] : [])];
 }
+
+// The settings that change what a capture shows, normalised: '' = null, no locale = en-US (the browser's default and
+// gate-all's), --no-dismiss drops the selectors it contradicts. vh and headed do not change the page.
+export const DEFAULT_LOCALE = 'en-US';
+export function captureSettings(f = {}) {
+  const noDismiss = f.noDismiss === true; const text = (v) => (Array.isArray(v) ? v.join(',') : String(v ?? '')).trim() || null;
+  return { consent: noDismiss ? null : text(f.consent), dismiss: noDismiss ? null : text(f.dismiss), noDismiss, locale: text(f.locale) || DEFAULT_LOCALE };
+}
+// baseline.json `flags` vs the current call's → the names that differ ([] = same), or null when the baseline recorded
+// none (frozen before flags were recorded, or by stitch-shot --freeze-baseline).
+export function settingsChanged(recorded, current) {
+  if (!recorded || typeof recorded !== 'object') return null;
+  // Only a setting this call GIVES can differ: a round that omits --consent or --locale inherits the reference's
+  // (a recorded pilot froze 8 references again because one call carried the flags and the next did not).
+  const a = captureSettings(recorded); const b = captureSettings(current);
+  const given = { consent: b.consent !== null, dismiss: b.dismiss !== null, noDismiss: b.noDismiss === true, locale: String(current?.locale ?? '').trim() !== '' };
+  return Object.keys(a).filter((k) => given[k] && a[k] !== b[k]);
+}
+
+// A round that omits a setting inherits the reference's — and must then USE it: the build capture and the probes run
+// under the settings the reference was frozen with, or the two sides are not the same page. → the round's settings
+// with the omitted ones filled from baseline.json `flags`, and `inherited` naming them (a given setting is never replaced).
+export function inheritSettings(recorded, current = {}) {
+  const out = { consent: current.consent ?? null, dismiss: current.dismiss ?? null, noDismiss: current.noDismiss === true, locale: current.locale ?? null, inherited: [] };
+  if (!recorded || typeof recorded !== 'object') return out;
+  const r = captureSettings(recorded); const b = captureSettings(current);
+  if (r.noDismiss && !b.noDismiss && b.consent === null && b.dismiss === null) { out.noDismiss = true; out.inherited.push('noDismiss'); }
+  if (!b.noDismiss && !out.noDismiss) for (const k of ['consent', 'dismiss']) if (b[k] === null && r[k] !== null) { out[k] = r[k]; out.inherited.push(k); }
+  if (String(current.locale ?? '').trim() === '' && r.locale !== DEFAULT_LOCALE) { out.locale = r.locale; out.inherited.push('locale'); }
+  return out;
+}
+export const inheritedArgs = (s) => s.inherited.flatMap((k) => (k === 'noDismiss' ? ['--no-dismiss'] : [`--${k}`, String(s[k])]));
 
 // Several comparisons' bands → one list: per band start, the largest % any pair measured there.
 export function mergeBands(lists) {
@@ -315,6 +356,14 @@ export function main(argv, deps = realDeps) {
       console.log(o.json ? JSON.stringify(r) : verdictLine({ ...r, forced: false }, 'stable'));
       return r.stable ? 0 : 2;
     } finally { rmSync(diffDir, { recursive: true, force: true }); }
+  }
+  if (o.cmd === 'settings') {
+    const base = deps.readJson(join(o.dir, 'baseline.json'));
+    if (!base) { console.log(`reference: none — no readable ${join(o.dir, 'baseline.json')}`); return 1; }
+    if (o.inherit) { const args = inheritedArgs(inheritSettings(base.flags, o)); if (args.length) console.log(args.join('\n')); return 0; } // one argument per line
+    const changed = settingsChanged(base.flags, o);
+    console.log(changed === null ? 'not recorded' : changed.length ? `changed: ${changed.join(', ')}` : 'same');
+    return 0;
   }
   const have = deps.baselineCheck(o.dir, { url: o.url, width: o.width });
   const b = have.ok ? deps.readJson(join(o.dir, 'baseline.json')) || {} : null;
