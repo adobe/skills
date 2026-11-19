@@ -1,3 +1,10 @@
+## [1.0.4](https://github.com/adobe/skills/compare/create-custom-component-v1.0.3...create-custom-component-v1.0.4) (2026-11-19)
+
+
+### Bug Fixes
+
+* **aem-forms:** check CSS rules that follow at-rules or declarations ([#749](https://github.com/adobe/skills/issues/749)) ([b661afd](https://github.com/adobe/skills/commit/b661afd293e5786bbd92f85b00b059ac314868fa))
+
 ## [1.0.3](https://github.com/adobe/skills/compare/create-custom-component-v1.0.2...create-custom-component-v1.0.3) (2026-11-19)
 
 
