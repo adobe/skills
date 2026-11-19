@@ -24,6 +24,9 @@ export const TEXT_CAP = 1500; // text + control nodes kept per width
 export const IMAGE_CAP = 600; // image boxes kept per width
 export const TEXT_MAX = 80; // characters of a node's text kept
 export const DEFAULT_TOL = 2;
+// The bound on the SUM of the offset steps: the gate's own prototype bound (pixel-compare OFFSETS.px). Each section
+// is held to --tol; a long page whose sections are each within it may still add up to a few px, which the gate accepts.
+export const TOTAL_OFFSET_MAX = 8;
 export const DEFAULT_OUT = 'stardust/replica/spec';
 const VIEW_MAX = 60;
 const NODE_ROWS = 12; // off-node rows printed per section by compare (the rest are in --json)
@@ -56,7 +59,8 @@ Usage:
           by an off node above them in the section are counted, not listed;
         missing nodes (in the spec, not on the build) and extra nodes (on the build, not in the spec);
         the verdict line: source-spec: N section(s) with a height delta, total offset Xpx, M node(s) off,
-          K missing, J extra      (total offset = the sum of the |steps|, what pixel-compare --offset-max bounds)
+          K missing, J extra      (total offset = the sum of the |steps|, bounded at ${TOTAL_OFFSET_MAX} px as
+          pixel-compare --offset-max prototype bounds it; each section's own step at --tol)
     --main <sel>        content root on the build (default: the one the spec was captured with)
     --tol <px>          tolerance for boxes and offsets (default ${DEFAULT_TOL}); font size / line-height use 0.5
     --json <file>       also write the full comparison (every pair, every delta)
@@ -531,7 +535,7 @@ export function sectionTable(live, build, pairing, tol = DEFAULT_TOL) {
   // No single row over the tolerance, but their steps add up past it (five sections each 1 px taller): the first
   // row that adds anything is the cause to start from — a failing table always names one.
   const total = rows.reduce((s, r) => s + Math.abs(r.step || 0), 0);
-  if (!first && total > tol) { first = rows.find((r) => Math.abs(r.step || 0) > 0); first.status = 'cause'; (first.notes ||= []).push(`accumulated: steps within the ${tol}px tolerance add up to ${total}px`); }
+  if (!first && total > Math.max(tol, TOTAL_OFFSET_MAX)) { first = rows.find((r) => Math.abs(r.step || 0) > 0); first.status = 'cause'; (first.notes ||= []).push(`accumulated: steps within the ${tol}px tolerance add up to ${total}px (bound ${Math.max(tol, TOTAL_OFFSET_MAX)}px)`); }
   if (first) first.first = true;
   return rows;
 }
@@ -567,7 +571,7 @@ export function compareSpecs(live, build0, { tol = DEFAULT_TOL, subst = [] } = {
   const off = out.nodes.filter((d) => d.status === 'off').length;
   out.counts = { sections: causes, totalOffset, off, displaced: out.nodes.filter((d) => d.status === 'displaced').length, missing: out.missing.length, extra: out.extra.length, paired: out.nodes.length };
   out.verdict = `source-spec: ${causes} section(s) with a height delta, total offset ${totalOffset}px, ${off} node(s) off, ${out.missing.length} missing, ${out.extra.length} extra`;
-  out.pass = causes === 0 && totalOffset <= tol && off === 0 && out.missing.length === 0 && out.extra.length === 0; // an extra node is a difference too
+  out.pass = causes === 0 && totalOffset <= Math.max(tol, TOTAL_OFFSET_MAX) && off === 0 && out.missing.length === 0 && out.extra.length === 0; // an extra node is a difference too
   out.liveSections = live.sections; out.buildSections = build.sections;
   if (skip.length) { out.chromeSkipped = skip; out.verdict += ` (build ${skip.join(' and ')} not compared: the source spec has none — chrome-parity gates it)`; }
   return out;

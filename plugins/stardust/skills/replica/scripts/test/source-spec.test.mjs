@@ -15,7 +15,7 @@ import { createServer } from 'node:http';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_OUT, HELP, TEXT_CAP, UsageError, buildSpec, clusterStyles, compareSpecs, containerOf, formatBrief, formatCompare, formatNodes, nodeDelta, normText, parseFontSubstFile, pairList, pairNodes, pairSections, parseArgs, queryNodes, sectionTable, serialiseSpec, tokensOf } from '../source-spec.mjs';
+import { DEFAULT_OUT, HELP, TEXT_CAP, TOTAL_OFFSET_MAX, UsageError, buildSpec, clusterStyles, compareSpecs, containerOf, formatBrief, formatCompare, formatNodes, nodeDelta, normText, parseFontSubstFile, pairList, pairNodes, pairSections, parseArgs, queryNodes, sectionTable, serialiseSpec, tokensOf } from '../source-spec.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'source-spec.mjs');
@@ -173,14 +173,15 @@ await check('sectionTable: the first section whose own height differs is the FIR
   assert.deepEqual(rows.map((r) => [r.dy, r.dh, r.cum, r.step]), [[0, 0, 0, 0], [0, 24, 24, 24], [24, 0, 24, 0], [24, 0, 24, 0]]);
   assert.deepEqual(rows[1].notes, ['own height']);
 });
-await check('sectionTable: steps that are each within the tolerance but add up past it name a FIRST CAUSE — a failing table always has one', () => {
-  const live = [0, 1, 2, 3, 4].map((i) => S(i, i * 100, 100, `Band ${i}`));
-  const build = [0, 1, 2, 3, 4].map((i) => S(i, i * 101, 101, `Band ${i}`));
-  const rows = sectionTable(live, build, pairSections(live, build), 2);
+await check('sectionTable: steps each within the tolerance are no cause while their sum stays within the gate\'s prototype offset bound (8 px); past it the first row that adds anything is the FIRST CAUSE', () => {
+  const page = (n, grow) => [Array.from({ length: n }, (_, i) => S(i, i * 100, 100, `Band ${i}`)), Array.from({ length: n }, (_, i) => S(i, i * (100 + grow), 100 + grow, `Band ${i}`))];
+  const [l5, b5] = page(5, 1);
+  assert.equal(sectionTable(l5, b5, pairSections(l5, b5), 2).some((r) => r.first), false, 'five sections each 1 px taller: 5 px in total, within the bound');
+  const [l9, b9] = page(9, 1);
+  const rows = sectionTable(l9, b9, pairSections(l9, b9), 2);
   assert.equal(rows.filter((r) => r.first).length, 1); assert.equal(rows[0].first, true); assert.equal(rows[0].status, 'cause');
-  assert.match(rows[0].notes.join(' '), /accumulated: steps within the 2px tolerance add up to 5px/);
-  const within = [0, 1].map((i) => S(i, i * 101, 101, `Band ${i}`));
-  assert.equal(sectionTable(live.slice(0, 2), within, pairSections(live.slice(0, 2), within), 2).some((r) => r.first), false, '2 px in total is within the tolerance');
+  assert.match(rows[0].notes.join(' '), /accumulated: steps within the 2px tolerance add up to 9px \(bound 8px\)/);
+  assert.equal(TOTAL_OFFSET_MAX, 8);
 });
 await check('parseFontSubstFile + nodeDelta: a declared substitution is not a family delta and its glyph-width difference is bounded at 6 % (min 2 px); undeclared, both are off', () => {
   assert.deepEqual(parseFontSubstFile('# brand faces\n"Brand Sans" = Arimo\n\nbad line\n'), [{ live: 'brand sans', build: 'arimo' }]);
@@ -277,12 +278,12 @@ await check('compareSpecs: missing and extra nodes are listed by section; missin
   const onlyExtra = clone(liveSpec()); onlyExtra.nodes.push(T(2, 'Read the whole story', 16, 884, 160, 12, { kind: 'control', tag: 'a', role: 'link' }));
   const e = compareSpecs(liveSpec(), onlyExtra); assert.equal(e.pass, false); assert.match(e.verdict, /0 missing, 1 extra$/);
 });
-await check('compareSpecs: sub-tolerance steps that add up over the tolerance fail on the total offset', () => {
+await check('compareSpecs: sub-tolerance steps whose sum stays within the gate\'s prototype offset bound pass — the total is still reported', () => {
   const b = clone(liveSpec()); b.sections[0].h += 2; b.sections[1].y += 2; b.sections[1].h += 2; b.sections[2].y += 4;
   for (const n of b.nodes) n.y += [0, 2, 4][n.section];
   const r = compareSpecs(liveSpec(), b);
-  assert.equal(r.counts.sections, 1, 'the first row that adds to the total is named as the cause'); assert.equal(r.sections.filter((x) => x.first).length, 1);
-  assert.equal(r.counts.totalOffset, 4); assert.equal(r.pass, false);
+  assert.equal(r.counts.sections, 0); assert.equal(r.sections.some((x) => x.first), false);
+  assert.equal(r.counts.totalOffset, 4); assert.equal(r.pass, true, '4 px over three sections: each within 2 px, the sum within 8 px');
 });
 
 // ---- tokens, brief, view ----------------------------------------------------------------------------------------
