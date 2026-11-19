@@ -15,6 +15,7 @@ const NAME = 'star-rating';
 const goodJs = `import { subscribe } from '../../rules/index.js';
 
 export default function decorate(fieldDiv, fd, container, formId) {
+  fieldDiv.classList.add('star-rating');
   const input = fieldDiv.querySelector('input');
   subscribe(fieldDiv, formId, (_el, model, eventType, payload) => {
     if (eventType === 'register') {
@@ -155,6 +156,23 @@ test('stale build output, missing README sections and missing filter are warned'
   assert.equal(result.status, 'pass');
   const warnings = ids(result, 'warn');
   ['build.json', 'files.readme', 'register.form-filter'].forEach((id) => assert.ok(warnings.includes(id), id));
+});
+
+test('CSS rules that need a class the component never adds are reported', () => {
+  const css = (text) => ({ [`blocks/form/components/${NAME}/${NAME}.css`]: text });
+
+  const dead = run(css(`.form .${NAME}-wrapper .${NAME}-stars { display: flex; }\n`));
+  assert.equal(dead.status, 'fail');
+  const err = dead.checks.find((c) => c.id === 'css.selectors');
+  assert.equal(err?.level, 'error');
+  assert.match(err.message, new RegExp(`\\.${NAME}-wrapper`));
+  assert.match(err.message, /base fieldType/);
+
+  const fallback = run(css(`.form .${NAME}-wrapper .x,\n.form .number-wrapper .${NAME} { color: red; }\n`));
+  assert.equal(fallback.checks.find((c) => c.id === 'css.selectors')?.level, 'warn');
+
+  const added = run(css(`.form .${NAME} { display: flex; }\n@media (width >= 600px) {\n  .form .${NAME} { gap: 8px; }\n}\n`));
+  assert.equal(added.checks.find((c) => c.id === 'css.selectors')?.level, 'pass');
 });
 
 test('CLI: exit codes, --json output and --help writes nothing', () => {

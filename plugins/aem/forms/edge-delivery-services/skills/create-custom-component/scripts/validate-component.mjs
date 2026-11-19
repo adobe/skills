@@ -326,6 +326,36 @@ export function validateComponent(name, rootDir) {
     }
   }
 
+  // ---- stylesheet selectors --------------------------------------------------------
+  // The form block names the field wrapper after the base fieldType (`.number-wrapper`), never
+  // after the component, so a `.<name>-wrapper` (or any `<name>`-prefixed) class only exists if
+  // the component's own JavaScript adds it. Otherwise the selector matches nothing.
+  if (hasCss && js !== null) {
+    const css = readText(cssFile).replace(/\/\*[\s\S]*?\*\//g, '');
+    const scripts = readdirSync(compDir).filter((f) => /\.m?js$/.test(f)).map((f) => readText(join(compDir, f))).join('\n');
+    const rules = [];
+    for (const [, prelude] of css.matchAll(/([^{}]+)\{/g)) {
+      if (!prelude.trim().startsWith('@')) rules.push(prelude.split(',').map((sel) => sel.trim()).filter(Boolean));
+    }
+    const classesOf = (sel) => [...sel.matchAll(/\.(-?[A-Za-z_][\w-]*)/g)].map((m) => m[1]);
+    const own = [...new Set(rules.flat().flatMap(classesOf))].filter((c) => c === name || c.startsWith(`${name}-`));
+    const missing = new Set(own.filter((c) => !scripts.includes(c)));
+    const dead = (sel) => classesOf(sel).some((c) => missing.has(c));
+    const deadRules = rules.filter((sels) => sels.every(dead));
+    const deadSelectors = rules.flat().filter(dead);
+    if (deadRules.length) {
+      const wrapper = `${name}-wrapper`;
+      const hint = missing.has(wrapper)
+        ? ` The form block never adds .${wrapper}: field wrappers are named after the base fieldType (e.g. .number-wrapper). Target a class that decorate() adds, or add it with fieldDiv.classList.add('${wrapper}') (references/styling.md).`
+        : '';
+      error('css.selectors', `${deadRules.length} rule(s) in ${name}.css can never apply: they need ${[...missing].map((c) => `.${c}`).join(', ')}, which ${name}.js never adds (e.g. "${deadRules[0][0]}").${hint}`);
+    } else if (deadSelectors.length) {
+      warn('css.selectors', `${deadSelectors.length} selector(s) in ${name}.css never match, because ${name}.js never adds ${[...missing].map((c) => `.${c}`).join(', ')} (e.g. "${deadSelectors[0]}"); another selector in the same rule still applies`);
+    } else if (own.length) {
+      pass('css.selectors', `Every ${name}-prefixed class in ${name}.css is added by the component's JavaScript`);
+    }
+  }
+
   // ---- registration ----------------------------------------------------------------
   const mappingsFile = join(formDir, 'mappings.js');
   const mappings = readText(mappingsFile);
