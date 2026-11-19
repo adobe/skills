@@ -92,7 +92,7 @@ node scripts/check-facts.mjs     # facts name files that exist
 node scripts/skill-quiz.mjs plugins/<your plugin> --changed main...HEAD
 ```
 
-`skill-quiz.mjs` asks the models and the system prompt of the AI review's baseline the questions of the facts your change touches, twice, and has a model of another vendor grade the answers. A fact one model knew both times is a line the review denies, unless the line guards an action: that stays. It also lists the changed skill files that no fact names: ask about a line with `--ask "<question>"`. It runs on `AWS_BEARER_TOKEN_BEDROCK`, or with Claude Code signed in (`--auth-home "$HOME"`), where only Claude models answer.
+`skill-quiz.mjs` asks the models and the system prompt of the AI review's baseline the questions of the facts your change touches, twice, and has a model of another vendor grade the answers. A fact one model knew both times is a line the review denies, unless the line guards an action: that stays. It also lists the changed skill files that no fact names: ask about a line with `--ask "<question>"`. It runs on `AWS_BEARER_TOKEN_BEDROCK`, with Claude Code signed in (`--auth-home "$HOME"`), where only Claude models answer, or through [pi](https://pi.dev) with `--pi`, which asks the review's models through GitHub Copilot unless you name others with `--model` and `--judge`.
 
 ### Trigger queries
 
@@ -118,7 +118,7 @@ node scripts/check-trigger-queries.mjs     # the queries name skills that exist
 node scripts/skill-trigger.mjs --plugin plugins/<your plugin> --queries plugins/<your plugin>/trigger-queries/<skill>.json --auth-home "$HOME"
 ```
 
-`skill-trigger.mjs` runs each query a few times in Claude Code with the plugin installed, stops each run at the first skill it loads or the first file it writes, and reports which skill loaded. It runs agents and costs what they cost, so run it for the skill whose description you changed. Pickup varies from run to run: compare the old description and the new one on the same queries before you call a change better. CI doesn't run it. Like `skill-eval.mjs`, it lets the agent do whatever you may do on that machine.
+`skill-trigger.mjs` runs each query a few times in Claude Code, or in pi with `--client pi`, with the plugin installed, stops each run at the first skill it loads or the first file it writes, and reports which skill loaded. It runs agents and costs what they cost, so run it for the skill whose description you changed. Pickup varies from run to run: compare the old description and the new one on the same queries before you call a change better. CI doesn't run it. Like `skill-eval.mjs`, it lets the agent do whatever you may do on that machine.
 
 ## Plugins
 
@@ -233,7 +233,7 @@ node scripts/skill-eval.mjs --client claude --plugin plugins/<your plugin> \
   --prompt "<a task, as a user would put it>" --auth-home "$HOME"
 ```
 
-It prints both answers and the files each run wrote or removed. `--scenario plugins/<your plugin>/evals/<name>` takes the task of a scenario and adds its criteria to the result. The agent of such a run may do whatever you may do on that machine: run it for plugins you trust.
+It prints both answers and the files each run wrote or removed. `--scenario plugins/<your plugin>/evals/<name>` takes the task of a scenario and adds its criteria to the result. With [pi](https://pi.dev) signed in, `--client pi --auth-home "$HOME"` runs the same with the providers you have there (default model `github-copilot/claude-opus-5.5`; pick another with `--model`). For `claude` and `pi`, the result also names the skills each run loaded. The agent of such a run may do whatever you may do on that machine: run it for plugins you trust.
 
 ## Merge Policy
 
@@ -263,6 +263,6 @@ On every push to `main`, [semantic-release](https://semantic-release.gitbook.io)
 - **Plugins.** Each changed plugin that has a root `plugin.json` is released as well, also when only one of its skills changed: its version goes into `plugin.json`, the manifests and the marketplace entry are built from that, and the release is tagged `plugin/<name>/v<version>`. Claude Code keeps an installed plugin at its version until the version changes, so this is what brings a merged change to the people who installed it. Its `CHANGELOG.md` is written as well, with one line for each pull request since the last release: the title, linked. Don't edit a `CHANGELOG.md` in a pull request; the check that guards the versions fails that too.
 - **Not released here:** what is [brought in from another repository](#brought-in-from-another-repository), which keeps the versions it has there; and a skill whose folder name another skill has.
 
-Every plugin of ours is published to the Tessl registry, as `adobe/<plugin name>`, when the `version` in its Tessl manifest changes: with every release of the plugin. That is why every `plugin.json` has a Tessl target; CI fails without it. A plugin brought in from another repository is published only when it brings a Tessl manifest of its own, when that manifest's version changes. A publish that times out is tried again, and a version that is already on the registry is not an error, so a failed Release job can be run again. Tessl accepts an upload first and runs its own publication checks afterwards: a version is on the registry only when those pass. The job prints what the registry says about each version at its end.
+Every plugin of ours is published to the Tessl registry, as `adobe/<plugin name>`, when the `version` in its Tessl manifest changes: with every release of the plugin. That is why every `plugin.json` has a Tessl target; CI fails without it. A plugin brought in from another repository is published only when it brings a Tessl manifest of its own, when that manifest's version changes. A publish that times out is tried again, and a version that is already on the registry is not an error, so a failed Release job can be run again. When the Tessl organization has run out of credits, the publish is skipped with a warning, not failed: the release on GitHub stands, and running the job again once there are credits publishes what was skipped. Tessl accepts an upload first and runs its own publication checks afterwards: a version is on the registry only when those pass. The job prints what the registry says about each version at its end.
 
 The Release workflow pushes to `main` with its own token: the rebuilt manifests, and the release commits. A ruleset or a branch protection on `main` has to let GitHub Actions bypass it. Without that, the workflow fails at its first push and says so, and nothing is released or published.

@@ -2,7 +2,7 @@
 // what each run answered and which files it wrote or removed. For a reviewer who wants to see what a
 // skill changes: the comparison is the eval, and the reviewer is the judge.
 //
-//   node scripts/skill-eval.mjs --client claude|codex|grok|agy --plugin <plugin dir>
+//   node scripts/skill-eval.mjs --client claude|codex|grok|agy|pi --plugin <plugin dir>
 //        (--task <file> | --prompt <text> | --scenario <plugin>/evals/<name>) [options]
 //
 //   --bin <dir>        where the CLIs are (default: where setup-agent-clis.mjs put them, or the PATH)
@@ -37,7 +37,9 @@
 //   codex   AWS_BEARER_TOKEN_BEDROCK (as in CI), or OPENAI_API_KEY
 //   grok    AWS_BEARER_TOKEN_BEDROCK (as in CI), or XAI_API_KEY
 //   agy     AWS_BEARER_TOKEN_BEDROCK (as in CI), or GEMINI_API_KEY
-// All four run on the one Bedrock key. Claude Code and Codex know Bedrock themselves. Grok
+// pi (https://pi.dev) is for a local run only, not in CI: it runs with the providers a home
+// directory signed in to pi has (--auth-home), and its default model is MODELS.pi.
+// All four others run on the one Bedrock key. Claude Code and Codex know Bedrock themselves. Grok
 // and Antigravity are pointed at Bedrock's OpenAI-compatible endpoints, where the key is a
 // bearer token: Grok with a model of its own in ~/.grok/config.toml, Antigravity through its
 // enterprise gateway mode (AGY_LLM_GATEWAY_*). Bedrock has no Gemini, so Antigravity runs on
@@ -52,7 +54,7 @@ import { createHash } from 'node:crypto';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, matchesGlob, relative, resolve, sep } from 'node:path';
-import { CLIENTS, findCli } from './lib/clients.mjs';
+import { findCli } from './lib/clients.mjs';
 import { isMain } from './lib/is-main.mjs';
 import { expectedSkill, skillsLoaded, streamResult } from './lib/skill-loads.mjs';
 import { describePlugin } from './test-drive.mjs';
@@ -64,7 +66,7 @@ export const RULES = 'Rules for this run: work in the current directory, with th
 
 // The models CI's Bedrock key can reach, as the review workflow names them. Used when the
 // run is on Bedrock and no --model is given.
-export const MODELS = { claude: 'global.anthropic.claude-opus-5-5', codex: 'global.openai.gpt-6.1-sol', grok: 'global.xai.grok-4.6', agy: 'global.xai.grok-4.6' };
+export const MODELS = { claude: 'global.anthropic.claude-opus-5-5', codex: 'global.openai.gpt-6.1-sol', grok: 'global.xai.grok-4.6', agy: 'global.xai.grok-4.6', pi: 'github-copilot/claude-opus-5.5' };
 
 // Bedrock's OpenAI-compatible endpoint, for the two clients that need to be told where it
 // is. bedrock-runtime serves global.xai.grok-4.6 as the Responses API (what Grok speaks) and
@@ -198,6 +200,30 @@ export const RUNNERS = {
   },
 };
 
+// The skill folders of a plugin, for a client that is given its skills one by one.
+function skillDirs(plugin) {
+  const dir = join(plugin.dir, 'skills');
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { withFileTypes: true }).filter((entry) => entry.isDirectory() && existsSync(join(dir, entry.name, 'SKILL.md'))).map((entry) => join(dir, entry.name)).sort();
+}
+
+// pi: no sandbox and no permission prompts in print mode, like the others here. Without the
+// user's extensions, MCP servers, prompt templates, themes or project-local settings; with
+// the work directory's AGENTS.md, as the other clients read theirs.
+RUNNERS.pi = {
+  credentials: () => null,
+  needs: 'a home directory that is signed in to pi, given with --auth-home',
+  stored: ['.pi/agent/auth.json'],
+  bedrock: () => false,
+  env: (home) => ({ PI_CODING_AGENT_DIR: join(home, '.pi', 'agent') }),
+  command: ({ prompt, model, plugin, withPlugin }) => [
+    '-p', '--mode', 'json', '--no-session', '-ne', '-ns', '--no-mcp', '-na', '-np', '--no-themes',
+    ...(model ? ['--model', model] : []), ...(withPlugin ? skillDirs(plugin).flatMap((dir) => ['--skill', dir]) : []), prompt,
+  ],
+  answer: ({ stdout }) => streamResult(stdout) ?? { text: stdout },
+  loaded: ({ stdout, skills }) => skillsLoaded(stdout, skills),
+};
+
 // The files below dir, as { path, bytes, hash }, without what a client keeps for itself.
 export function listFiles(dir, base = dir, found = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -327,7 +353,7 @@ function parse(argv) {
     else return null;
   }
   const sources = [options.task, options.prompt, options.scenario].filter((value) => value !== undefined).length;
-  if (!CLIENTS.includes(options.client) || !options.plugin || sources !== 1) return null;
+  if (!RUNNERS[options.client] || !options.plugin || sources !== 1) return null;
   if (options.arms.length === 0 || options.arms.some((arm) => !['with', 'without'].includes(arm))) return null;
   if (!(options.maxTurns > 0) || !(options.timeout > 0)) return null;
   return options;
@@ -337,7 +363,7 @@ function main() {
   const root = process.cwd();
   const options = parse(process.argv.slice(2));
   if (!options) {
-    console.error(`usage: skill-eval.mjs --client ${CLIENTS.join('|')} --plugin <plugin dir> (--task <file> | --prompt <text> | --scenario <dir>)
+    console.error(`usage: skill-eval.mjs --client ${Object.keys(RUNNERS).join('|')} --plugin <plugin dir> (--task <file> | --prompt <text> | --scenario <dir>)
        [--bin <dir>] [--model <id>] [--base-url <url>] [--arms with,without] [--workdir <dir>] [--no-setup] [--max-turns 30] [--timeout 600] [--out <dir>] [--auth-home <dir>]`);
     process.exit(2);
   }
@@ -370,7 +396,7 @@ function main() {
     process.exit(3);
   }
   const bedrock = Boolean(client.bedrock?.(process.env)) && stored.length === 0;
-  const model = options.model ?? (bedrock ? MODELS[options.client] : undefined);
+  const model = options.model ?? (bedrock || options.client === 'pi' ? MODELS[options.client] : undefined);
   const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-west-2';
   const baseUrl = bedrock ? options.baseUrl ?? ENDPOINTS[options.client]?.(region) : undefined;
   const on = { bedrock, model, baseUrl, key: bedrock ? process.env.AWS_BEARER_TOKEN_BEDROCK : undefined };

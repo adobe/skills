@@ -8,7 +8,9 @@ The Adaptive Forms Block follows specific CSS patterns that keep styling maintai
 
 ## Primary styling patterns
 
-**Component wrapper patterns.** Target field types through their consistent wrapper classes:
+> **In a custom component's stylesheet, start every selector with `.form` and a class that `decorate()` adds.** The `.{type}-wrapper` classes below come from the field's base `fieldType` (a `number-input` field renders as `.number-wrapper`), not from the component name. A `.<name>-wrapper` selector matches nothing unless `decorate()` adds that class. See [Applying this to a custom component's stylesheet](#applying-this-to-a-custom-components-stylesheet).
+
+**Field-type wrapper classes.** The form block puts each field in a wrapper whose class is derived from its base field type. Use these for form-wide theming, not in a component stylesheet:
 
 ```css
 /* Text input fields */

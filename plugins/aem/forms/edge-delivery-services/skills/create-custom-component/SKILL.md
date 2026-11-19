@@ -3,7 +3,7 @@ name: create-custom-component
 description: "Step-by-step playbook for creating custom AEM Forms Edge Delivery Services (Form block) components that extend OOTB field types, with scaffolding, subscribe wiring, registration, and validation. Use when asked to create, scaffold, build, style, or fix a custom form component, field widget, or viewType in an aem-boilerplate-forms project."
 license: Apache-2.0
 metadata:
-  version: "1.0.2"
+  version: "1.0.4"
 ---
 
 # Create Custom Form Component
@@ -25,7 +25,7 @@ Not for: generic Edge Delivery Services blocks (use the `building-blocks` skill 
 | `references/form-field-types.md` | Step 4 — the base HTML the `element` parameter already contains |
 | `references/authoring-field-types.md` | Step 3 — widgets for the properties dialog (`text`, `select`, `container`, …) |
 | `references/subscribe-api.md` | Step 4 — `subscribe()` patterns: own value, child fields, custom events |
-| `references/styling.md` | Step 4: writing `<name>.css` (CSS styling patterns: component wrappers, field targeting, state styling) |
+| `references/styling.md` | Step 4: writing `<name>.css` (selector scoping, field-type wrapper classes, state styling) |
 | `scripts/validate-component.mjs` | Step 7 — static validator (Node 18+, no dependencies) |
 | `scripts/create-e2e-test.mjs` | Step 7 — generates the component's Playwright e2e test + form JSON |
 | `scripts/run-e2e-test.mjs` | Step 7 — runs those tests with the project's own Playwright setup (Chromium, no retries) |
@@ -90,7 +90,7 @@ Implementation rules:
 - Enhance the existing OOTB markup in `fieldDiv`; scope DOM queries to it.
 - When writing the value from custom UI, either set `model.value` or dispatch `new Event('change', { bubbles: true })` on the underlying input.
 - Know when the value is committed. Out of the box, the form block writes `model.value` only from the input's native `change` event (`blocks/form/rules/index.js`), which text-like inputs fire on blur/commit, not on each keystroke. So rules on the field's change event run once per edit, when the user leaves the field. If the component must commit on every keystroke (live counters, search-as-you-type, values derived while typing), handle the `input` event in the component and set `model.value` there, comparing with the current value first. When reformatting the display while typing (masks, grouping), don't dispatch `change` on each keystroke, or you turn the blur commit into a per-keystroke one.
-- Style the component in `<name>.css` following `references/styling.md`: selector scoping, and validation and focus states.
+- Style the component in `<name>.css` following `references/styling.md`: selector scoping, and validation and focus states. Start selectors with `.form` and a class `decorate()` adds: wrappers are named after the base field type (`.number-wrapper`), so `.<name>-wrapper` matches nothing.
 
 ### Step 5: Register
 
@@ -125,7 +125,7 @@ Do not report the component as done until gates A–D pass. Fix and re-run on fa
 node <skill-dir>/scripts/validate-component.mjs <name>
 ```
 
-Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = name, `fieldType`/`resourceType`, resolvable `"..."` includes, unique field names, ES-module syntax, default export, `subscribe` import path and `{ listenChanges: true }`, `.js` import extensions, legacy/anti-patterns (`fieldModel.subscribe(…, 'change')`, non-bubbling `change`, `#id` child selectors), README sections, registration in `mappings.js` / `_form.json` / `_component-definition.json`, whether the build output contains the component, and, when the ESLint config sets `xwalk/max-cells`, whether the built model's cell count fits its limit (it prints the entry to add). Exit `0` = no errors; `1` = errors (must fix); warnings must be fixed or explicitly justified in the report. Use `--json` for machine-readable output.
+Checks folder/file naming, valid JSON, definition/model ids, `fd:viewType` = name, `fieldType`/`resourceType`, resolvable `"..."` includes, unique field names, ES-module syntax, default export, `subscribe` import path and `{ listenChanges: true }`, `.js` import extensions, legacy/anti-patterns (`fieldModel.subscribe(…, 'change')`, non-bubbling `change`, `#id` child selectors), dead CSS selectors, README sections, registration in `mappings.js` / `_form.json` / `_component-definition.json`, whether the build output contains the component, and, when the ESLint config sets `xwalk/max-cells`, whether the built model's cell count fits its limit (it prints the entry to add). Exit `0` = no errors; `1` = errors (must fix); warnings must be fixed or explicitly justified in the report. Use `--json` for machine-readable output.
 
 **B. Lint** — if `package.json` has a `lint` script, run `npm run lint` and fix every issue in the new/changed files.
 
@@ -207,6 +207,7 @@ Finish with: files created/changed, the validator summary (errors/warnings), lin
 | No `xwalk/max-cells` entry for the new model | `npm run lint` fails with "Avoid using more than 4 cells"; add `'<name>': <cells>` to the ESLint config. Validator `lint.max-cells` gives the number |
 | Reporting done without running Step 7 | Always run gates A–D; report any gate that could not run |
 | Leaving the preview server running | Stop the background preview process once the user approves or the step is skipped |
+| CSS under `.<name>-wrapper` | Never applies; use classes `decorate()` adds — validator `css.selectors` |
 | Trusting `data-component-status="loaded"` alone | It is set even when `decorate()` throws — the e2e harness checks the console |
 
 ## Example
