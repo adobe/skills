@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sample kit home</title>
+<meta name="description" content="A calm, readable starting point for every page in the sample kit.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="nav" content="/ns/nav">
+<meta name="footer" content="/ns/footer">
+<link rel="canonical" href="__ORIGIN__/ns/home">
+<meta property="og:title" content="Sample kit home">
+<meta property="og:description" content="A calm, readable starting point for every page in the sample kit.">
+<meta property="og:url" content="__ORIGIN__/ns/home">
+<meta property="og:image" content="__ORIGIN__/ns/media_5f2c0a9d4b7e1a63.png?width=1200&amp;format=pjpg&amp;optimize=medium">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Sample kit home">
+<meta name="twitter:image" content="__ORIGIN__/ns/media_5f2c0a9d4b7e1a63.png?width=1200&amp;format=pjpg&amp;optimize=medium">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebPage","name":"Sample kit home","url":"__ORIGIN__/ns/home"}</script>
+<style>
+:root {
+  --heading-font-family: Inter;
+  --body-font-family: Inter;
+  --heading-xxl: 56px;
+  --heading-xl: 40px;
+  --body: 18px;
+  --line-height-heading: 1.143;
+  --line-height-body: 28px;
+  --color-bg: rgb(255, 255, 255);
+  --color-fg: rgb(26, 26, 26);
+  --color-accent: rgb(31, 58, 95);
+  --section-padding: 80px;
+  --max-width: 1200px;
+  --radius: 8px;
+  --type-display-size: 56px;
+  --type-display-line-height: 1.143;
+  --type-display-weight: 700;
+  --type-display-letter-spacing: -0.02em;
+  --type-h2-size: 40px;
+  --type-h2-line-height: 1.2;
+  --type-h2-weight: 700;
+  --type-h2-letter-spacing: -0.02em;
+  --type-body-size: 18px;
+  --type-body-line-height: 28px;
+  --type-body-weight: 400;
+  --type-body-letter-spacing: normal;
+  /* absent in donor-tokens.json: --heading-lg, --heading-md, --body-sm, --spacing-xs, --spacing-sm, --spacing-md, --spacing-lg, --spacing-xl, --spacing-2xl */
+}
+
+* { box-sizing: border-box; }
+body { display: none; margin: 0; font-family: Inter, "Inter-fallback", sans-serif; font-size: 18px; color: rgb(26, 26, 26); background: rgb(255, 255, 255); }
+body.appear { display: block; }
+h1, h2, p { margin: 0; }
+header { height: 64px; padding: 0 120px; font: 500 16px/24px Inter, "Inter-fallback", sans-serif; }
+header .header.block, header nav { display: flex; align-items: center; height: 100%; }
+header .brand { display: inline-flex; align-items: center; gap: 12px; color: rgb(26, 26, 26); text-decoration: none; }
+.icon { display: inline-block; width: 24px; height: 24px; }
+.icon svg { display: block; width: 100%; height: 100%; }
+footer { padding: 40px 120px; font: 400 14px/20px Inter, "Inter-fallback", sans-serif; color: rgb(107, 107, 107); }
+main .section { padding: 96px 120px; }
+main .section:empty { display: none; }
+main .section.cards-container { padding: 80px 120px; background: rgb(247, 247, 245); }
+
+.default-content-wrapper { display: flex; flex-wrap: wrap; gap: 24px; max-width: 1200px; }
+.default-content-wrapper > h1, .default-content-wrapper > p:not(.button-wrapper) { flex: 0 0 100%; }
+h1 { font: 700 56px/64px Inter, "Inter-fallback", sans-serif; letter-spacing: -1.12px; color: rgb(31, 58, 95); }
+.default-content-wrapper > p:nth-of-type(1) { padding-right: calc(100% - 760px); font: 400 18px/28px Inter, "Inter-fallback", sans-serif; }
+p.button-wrapper { margin: 0; }
+a.button { display: flex; align-items: center; justify-content: center; width: 140px; height: 48px; padding: 12px 24px; border-radius: 8px; text-decoration: none; font: 500 16px/24px Inter, "Inter-fallback", sans-serif; letter-spacing: 0; }
+a.button.primary { background: rgb(31, 58, 95); color: rgb(255, 255, 255); }
+a.button.secondary { border: 1px solid rgb(31, 58, 95); color: rgb(31, 58, 95); }
+picture, picture img { display: block; }
+picture img { width: 320px; max-width: 100%; height: auto; }
+
+/* the block's own CSS arrives with its decoration: until data-block-status is "loaded" it is a plain block */
+.cards.block[data-block-status="loaded"] { display: grid; grid-template-columns: 560px 560px; column-gap: 80px; row-gap: 32px; max-width: 1200px; }
+.cards h2 { grid-column: 1 / -1; font: 700 40px/48px Inter, "Inter-fallback", sans-serif; letter-spacing: -0.8px; color: rgb(31, 58, 95); }
+.cards > p { font: 400 18px/28px Inter, "Inter-fallback", sans-serif; color: rgb(26, 26, 26); }
+.cards > div { grid-column: 1; width: 560px; height: 240px; margin-top: 12px; padding: 24px; display: flex; flex-direction: column; gap: 12px; background: rgb(255, 255, 255); border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12); }
+.cards .badge { font: 500 14px/20px Inter, "Inter-fallback", sans-serif; letter-spacing: 0.28px; color: rgb(107, 107, 107); }
+.cards .try { display: flex; align-items: center; justify-content: center; width: 120px; height: 48px; margin-top: auto; padding: 12px 24px; border-radius: 8px; background: rgb(31, 58, 95); color: rgb(255, 212, 0); text-decoration: none; font: 500 16px/24px Inter, "Inter-fallback", sans-serif; }
+
+@media (max-width: 800px) {
+  header, footer { padding-left: 16px; padding-right: 16px; }
+  main .section, main .section.cards-container { padding: 48px 16px; }
+  h1 { font: 700 36px/44px Inter, "Inter-fallback", sans-serif; letter-spacing: -0.72px; }
+  .cards.block[data-block-status="loaded"] { grid-template-columns: 1fr; }
+  .cards > div { width: 100%; height: auto; min-height: 240px; }
+}
+</style>
+</head>
+<body>
+<header><div class="header block" data-block-name="header" data-block-status="initialized"><nav><a class="brand" href="/ns/home"><span class="icon icon-logo"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="rgb(31, 58, 95)"/></svg></span>Sample kit</a></nav></div></header>
+<main>
+<div class="section" data-section-status="initialized"></div>
+<div class="section" data-section-status="initialized"><div class="default-content-wrapper">
+<h1 id="welcome-to-the-kit">Welcome to the kit</h1>
+<p>A calm, readable starting point for every page in the sample kit, built from a small set of tokens.</p>
+<p class="button-wrapper"><a href="/start" title="Get started" class="button primary">Get started</a></p>
+<p class="button-wrapper"><a href="/about/" title="Learn more" class="button secondary">Learn more</a></p>
+<p><picture><img alt="A calm board of three planned tasks" src="./media_5f2c0a9d4b7e1a63.png?width=750&amp;format=png&amp;optimize=medium" width="320" height="180"></picture></p>
+</div></div>
+<div class="section cards-container" data-section-status="initialized"><div class="cards-wrapper"><div class="cards block" data-block-name="cards" data-block-status="initialized"><h2 id="everything-in-one-place">Everything in one place</h2><p>Plan the work with a shared board that everyone on the team can read.</p><p>Ship each change behind a review &amp; keep the history of every decision.</p><div><span class="badge">New</span><a class="try" href="https://example.test/try">Try it</a></div></div></div></div>
+</main>
+<footer><div class="footer block" data-block-name="footer" data-block-status="initialized"><p>Sample kit, all rights reserved.</p></div></footer>
+</body>
+</html>

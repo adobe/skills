@@ -1,0 +1,224 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:reskin/capture-content.mjs",
+    "capturedAt": "2026-10-15T00:00:00.000Z",
+    "url": "https://src.test/",
+    "viewport": "1440x900",
+    "scope": "main",
+    "normalize": {
+      "source": "default",
+      "ledger": [
+        {
+          "id": "N-D1",
+          "what": "remove cookie/consent chrome (OneTrust, Cookiebot, Usercentrics, generic cookie-banner ids/classes)",
+          "why": "overlay chrome injected by a CMP, not page content; re-added at deploy time"
+        },
+        {
+          "id": "N-D2",
+          "what": "de-carousel slick/swiper/splide/glide: remove clone slides, force real slides visible+static, drop dots/arrows",
+          "why": "hidden slides are absent from innerText and clones duplicate it — rotating carousels break byte determinism; the reskin renders all slides statically in DOM order"
+        }
+      ]
+    },
+    "nav": {
+      "live": false,
+      "waitUntil": "networkidle",
+      "headed": false
+    }
+  },
+  "metadata": {
+    "title": "Sample kit home",
+    "description": "A calm, readable starting point for every page in the sample kit.",
+    "canonical": "https://src.test/",
+    "ogTags": {
+      "og:title": "Sample kit home",
+      "og:description": "A calm, readable starting point for every page in the sample kit.",
+      "og:url": "https://src.test/",
+      "og:image": "https://src.test/images/hero.png",
+      "og:type": "website"
+    },
+    "twitterTags": {
+      "twitter:card": "summary_large_image",
+      "twitter:title": "Sample kit home",
+      "twitter:image": "https://src.test/images/hero.png"
+    },
+    "jsonLd": [
+      {
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "Sample kit home",
+        "url": "https://src.test/"
+      }
+    ],
+    "lang": "en",
+    "favicon": null
+  },
+  "scope": [
+    {
+      "sel": "main",
+      "whole": false
+    }
+  ],
+  "visibleTextNormalized": "Welcome to the kit A calm, readable starting point for every page in the sample kit, built from a small set of tokens. Get started Learn more Everything in one place Plan the work with a shared board that everyone on the team can read. Ship each change behind a review &amp; keep the history of every decision. New Try it",
+  "coverage": {
+    "bodyTextLen": 365,
+    "scopeTextLen": 321,
+    "ratio": 0.879,
+    "h1Text": "Welcome to the kit",
+    "h1InScope": true
+  },
+  "sections": [
+    {
+      "slot": "s01",
+      "rootTag": "section",
+      "rootClass": "hero",
+      "visibleText": "Welcome to the kit A calm, readable starting point for every page in the sample kit, built from a small set of tokens. Get started Learn more",
+      "headings": [
+        {
+          "level": "h1",
+          "text": "Welcome to the kit"
+        }
+      ],
+      "paragraphs": [
+        "A calm, readable starting point for every page in the sample kit, built from a small set of tokens."
+      ],
+      "listItems": [],
+      "ctas": [
+        {
+          "text": "Get started",
+          "href": "https://src.test/start",
+          "absHref": "https://src.test/start",
+          "classes": "btn primary"
+        },
+        {
+          "text": "Learn more",
+          "href": "https://src.test/about/",
+          "absHref": "https://src.test/about/",
+          "classes": "btn secondary"
+        }
+      ],
+      "images": [
+        {
+          "currentSrc": "https://src.test/images/hero.png",
+          "alt": "A calm board of three planned tasks",
+          "w": 320,
+          "h": 180
+        }
+      ],
+      "formControls": [],
+      "leftovers": [],
+      "ordered": [
+        {
+          "kind": "heading",
+          "text": "Welcome to the kit",
+          "display": "block",
+          "level": "h1",
+          "sep": ""
+        },
+        {
+          "kind": "paragraph",
+          "text": "A calm, readable starting point for every page in the sample kit, built from a small set of tokens.",
+          "display": "block",
+          "sep": " "
+        },
+        {
+          "kind": "cta",
+          "text": "Get started",
+          "display": "block",
+          "href": "https://src.test/start",
+          "absHref": "https://src.test/start",
+          "classes": "btn primary",
+          "sep": " "
+        },
+        {
+          "kind": "cta",
+          "text": "Learn more",
+          "display": "block",
+          "href": "https://src.test/about/",
+          "absHref": "https://src.test/about/",
+          "classes": "btn secondary",
+          "sep": " "
+        },
+        {
+          "kind": "image",
+          "currentSrc": "https://src.test/images/hero.png",
+          "alt": "A calm board of three planned tasks",
+          "sep": ""
+        }
+      ],
+      "orderedVerified": true
+    },
+    {
+      "slot": "s02",
+      "rootTag": "section",
+      "rootClass": "features",
+      "visibleText": "Everything in one place Plan the work with a shared board that everyone on the team can read. Ship each change behind a review &amp; keep the history of every decision. New Try it",
+      "headings": [
+        {
+          "level": "h2",
+          "text": "Everything in one place"
+        }
+      ],
+      "paragraphs": [
+        "Plan the work with a shared board that everyone on the team can read.",
+        "Ship each change behind a review &amp; keep the history of every decision."
+      ],
+      "listItems": [],
+      "ctas": [
+        {
+          "text": "Try it",
+          "href": "https://example.test/try",
+          "absHref": "https://example.test/try",
+          "classes": "try"
+        }
+      ],
+      "images": [],
+      "formControls": [],
+      "leftovers": [
+        {
+          "text": "New",
+          "parentTag": "span",
+          "parentClass": "label"
+        }
+      ],
+      "ordered": [
+        {
+          "kind": "heading",
+          "text": "Everything in one place",
+          "display": "block",
+          "level": "h2",
+          "sep": ""
+        },
+        {
+          "kind": "paragraph",
+          "text": "Plan the work with a shared board that everyone on the team can read.",
+          "display": "block",
+          "sep": " "
+        },
+        {
+          "kind": "paragraph",
+          "text": "Ship each change behind a review &amp; keep the history of every decision.",
+          "display": "block",
+          "sep": " "
+        },
+        {
+          "kind": "text",
+          "text": "New",
+          "parentTag": "span",
+          "parentClass": "label",
+          "sep": " "
+        },
+        {
+          "kind": "cta",
+          "text": "Try it",
+          "display": "inline",
+          "href": "https://example.test/try",
+          "absHref": "https://example.test/try",
+          "classes": "try",
+          "sep": " "
+        }
+      ],
+      "orderedVerified": true
+    }
+  ]
+}

@@ -1,0 +1,327 @@
+#!/usr/bin/env node
+// skills/reskin/scripts/test/figma-gate-ramp.test.mjs — B3, the :root tokens and the per-module type ramp:
+// textExpect, rampSpecs and tokenLiterals (pure, over the synthetic kit), then runRamp and the CLI `ramp`
+// against fixtures/figma-gate/page.html through donor-probe in plain Chromium (needs playwright; prints a
+// skip line otherwise). Run: node <this file>.
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { parseNormalizations } from '../figma/rules.mjs';
+import { buildBoxes, findBox } from '../figma-gate/boxes.mjs';
+import { prepare } from '../figma-gate/prepare.mjs';
+import { rampSpecs, runRamp, textExpect, tokenLiterals } from '../figma-gate/ramp.mjs';
+import { stampsOf } from '../figma-gate/stamp.mjs';
+import { rootTokens } from '../render/root-tokens.mjs';
+import { makeProject } from './fixtures/figma-gate/setup.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SCRIPT = join(HERE, '..', 'figma-gate.mjs');
+const FIX = join(HERE, 'fixtures');
+const read = (...p) => JSON.parse(readFileSync(join(FIX, ...p), 'utf8'));
+const nodes = read('figma-kit', 'nodes.json');
+const rules = read('figma-kit', 'curation-rules.json');
+const donorTokens = read('figma-gate', 'donor-tokens.json');
+const boxes = buildBoxes({ nodes, roots: ['1:3', '1:7'] });
+const scratch = mkdtempSync(join(tmpdir(), 'figma-gate-ramp-'));
+let failed = 0;
+const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+
+const norm = parseNormalizations(rules.normalizations, []);
+const rootEntries = rootTokens(donorTokens).entries;
+const root = boxes.roots['1:7'].box;
+const join_ = { sections: [{ slot: 's01', module: 'M1', node: '1:3', selector: 'main section[data-slot="s01"]', index: 0 }, { slot: 's02', module: 'M2', node: '1:7', selector: 'main section[data-slot="s02"]', index: 1 }] };
+const section = (rootId, type) => ({ root: rootId, width: 1440, roots: { 1440: rootId }, geometry: [], type: type.map((t) => ({ ...t, width: 1440 })), pixel: { mode: 'auto' } });
+const checks = {
+  s01: section('1:3', [{ id: 't1', selector: 'h1', node: '1:5' }, { id: 't2', selector: '.btn', node: 'I1:20;3:5' }]),
+  s02: section('1:7', [{ id: 't1', selector: 'h2', node: 'I1:7;5:2' }, { id: 't2', selector: '.card-label', node: 'I1:7;5:8' }]),
+};
+
+await check('textExpect: M1 normalizers in px, then weightMap and familyEquivalence, color from the box', () => {
+  assert.deepEqual(textExpect(findBox(root, 'I1:7;5:2').text, norm), { fontSize: '40px', fontWeight: '700', lineHeight: '48px', letterSpacing: '-0.8px', fontFamily: 'Inter', color: 'rgb(31, 58, 95)' });
+  assert.equal(textExpect(findBox(boxes.roots['1:3'].box, 'I1:20;3:5').text, norm).fontWeight, '500');
+  assert.equal(textExpect(findBox(boxes.roots['1:3'].box, 'I1:20;3:5').text, norm).letterSpacing, 'normal');
+});
+
+await check('rampSpecs: six entries per type entry, :root once at the first section width', () => {
+  const specs = rampSpecs({ join: join_, checks, boxes, rootEntries, norm });
+  assert.deepEqual([...specs.keys()], [1440]);
+  const at = specs.get(1440);
+  assert.ok(at.some((e) => e.selector === 'main section[data-slot="s02"] h2' && e.property === 'fontSize' && e.value === '40px'));
+  assert.ok(at.some((e) => e.selector === ':root' && e.property === '--max-width' && e.value === '1200px'));
+  assert.equal(at.find((e) => e.label.startsWith('s02 t1 lineHeight')).tolerancePx, 0.1);
+  assert.equal(at.find((e) => e.label.startsWith('s02 t1 letterSpacing')).tolerancePx, 0.1);
+  assert.equal(at.find((e) => e.label.startsWith('s02 t1 fontFamily')).compare, 'firstFamily');
+  assert.equal(at.find((e) => e.label.startsWith('s02 t1 fontSize')).tolerancePx, undefined);
+  assert.equal(at.filter((e) => e.selector === ':root').length, rootEntries.length);
+  assert.equal(at.filter((e) => e.selector !== ':root').length, 4 * 6);
+  assert.equal(at.find((e) => e.label === 's02 t2 fontSize (I1:7;5:8)').value, '14px');
+  assert.ok(at.some((e) => e.label === ':root --max-width'));
+});
+
+await check('rampSpecs: an entry at another width goes to that width; :root stays at the first section width', () => {
+  const wide = { ...checks, s02: { ...checks.s02, roots: { 1440: '1:7', 390: '1:7' }, type: [{ id: 't1', selector: 'h2', node: 'I1:7;5:2', width: 390 }] } };
+  const specs = rampSpecs({ join: join_, checks: wide, boxes, rootEntries, norm });
+  assert.deepEqual([...specs.keys()], [1440, 390]);
+  assert.equal(specs.get(390).length, 6);
+  assert.ok(specs.get(1440).some((e) => e.selector === ':root'));
+});
+
+await check('rampSpecs: a Figma value that is absent is reported as an unasserted property, not dropped', () => {
+  const bare = structuredClone(boxes);
+  Object.assign(findBox(bare.roots['1:7'].box, 'I1:7;5:2').text, { color: null, fontSize: null });
+  const unasserted = [];
+  const at = rampSpecs({ join: join_, checks, boxes: bare, rootEntries, norm, unasserted }).get(1440);
+  assert.equal(at.filter((e) => e.selector !== ':root').length, 4 * 6 - 2);
+  assert.deepEqual(unasserted, [
+    { slot: 's02', id: 't1', node: 'I1:7;5:2', root: '1:7', property: 'fontSize', status: 'UNASSERTED', detail: 'Figma has no font size' },
+    { slot: 's02', id: 't1', node: 'I1:7;5:2', root: '1:7', property: 'color', status: 'UNASSERTED', detail: 'Figma has no solid color' },
+  ]);
+});
+
+await check('tokenLiterals: a color literal outside :root that equals a root value; px lengths only on request', () => {
+  const html = '<style>:root{--color-accent: rgb(31, 58, 95)}\n.card{color:#1f3a5f; margin: 80px}</style>';
+  const entries = [{ name: '--color-accent', value: 'rgb(31, 58, 95)' }, { name: '--section-padding', value: '80px' }];
+  const lit = tokenLiterals(html, entries);
+  assert.deepEqual(lit.map((l) => [l.literal, l.token]), [['#1f3a5f', '--color-accent']]);
+  assert.equal(lit[0].line, 2);
+  assert.deepEqual(tokenLiterals(html, entries, { lengths: true }).map((l) => [l.literal, l.token]), [['#1f3a5f', '--color-accent'], ['80px', '--section-padding']]);
+});
+
+await check('tokenLiterals: rgb(), rgba() with alpha 1 and 3-digit hex normalize; translucent, other colors and body text do not match', () => {
+  const html = [
+    '<p style="color:#fff">#fff in a body attribute</p>',
+    '<style>',
+    'a { color: rgb(31,58,95); }',
+    'b { color: rgba(31, 58, 95, 1); }',
+    'i { color: rgba(31, 58, 95, 0.5); }',
+    'u { color: #FFF; }',
+    's { color: #123456; }',
+    '#abc { margin: 0 }',
+    '</style>',
+  ].join('\n');
+  const entries = [{ name: '--color-accent', value: 'rgb(31, 58, 95)' }, { name: '--color-bg', value: 'rgb(255, 255, 255)' }];
+  assert.deepEqual(tokenLiterals(html, entries).map((l) => [l.line, l.literal, l.token]), [
+    [3, 'rgb(31,58,95)', '--color-accent'],
+    [4, 'rgba(31, 58, 95, 1)', '--color-accent'],
+    [6, '#FFF', '--color-bg'],
+  ]);
+});
+
+await check('rampSpecs: an entry\'s selector is scoped inside its section: :scope, :scope > …, a comma list branch by branch, a plain descendant, previewSelector on a preview', () => {
+  const S02 = 'main section[data-slot="s02"]';
+  const selectorsOf = (selector, extra = {}, regime = 'local') => {
+    const one = { ...checks, s02: section('1:7', [{ id: 't1', selector, node: 'I1:7;5:2', ...extra }]) };
+    return [...new Set(rampSpecs({ join: join_, checks: one, boxes, rootEntries, norm, regime }).get(1440).filter((e) => e.label.startsWith('s02 ')).map((e) => e.selector))];
+  };
+  assert.deepEqual(selectorsOf('h2'), [`${S02} h2`]);
+  assert.deepEqual(selectorsOf(':scope'), [S02]);
+  assert.deepEqual(selectorsOf(':scope > h2'), [`${S02} > h2`]);
+  assert.deepEqual(selectorsOf(':scope > .a .b'), [`${S02} > .a .b`]);
+  assert.deepEqual(selectorsOf('h2, .lead'), [`${S02} h2, ${S02} .lead`]);
+  assert.deepEqual(selectorsOf(':is(h2, h3) > b, :scope'), [`${S02} :is(h2, h3) > b, ${S02}`]);
+  assert.deepEqual(selectorsOf('h2', { previewSelector: ':scope > div > h2, .x' }, 'preview'), [`${S02} > div > h2, ${S02} .x`]);
+});
+
+let playwrightOk = false;
+try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  runRamp and the ramp CLI against page.html (playwright not importable here; run this test in an environment that has it)'); }
+
+if (playwrightOk) {
+  // The fixture page declares Inter; a face of it that never loads makes "not served" the same on every machine (an
+  // installed Inter would otherwise serve it). served(p) gives it a face that loads instead.
+  const project = (n) => {
+    const p = makeProject(join(scratch, n));
+    writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('<style>', '<style>\n@font-face { font-family: Inter; src: url("no-such-inter.woff2"); font-weight: 100 900; }'));
+    return p;
+  };
+  const FONT = join(HERE, '..', '..', '..', '..', '..', 'aem', 'project-management', 'fonts', 'SourceSans3-Regular.otf');
+  const served = (p) => {
+    copyFileSync(FONT, join(p.root, 'face.otf'));
+    writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('url("no-such-inter.woff2")', 'url("face.otf")'));
+    return p;
+  };
+  const UNSERVED = 8;
+  const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+  const rampOf = (p) => JSON.parse(readFileSync(join(p.dir, '.work', 'reskin', 'gates', p.slug, 'figma', 'ramp.json'), 'utf8'));
+  const urlOf = (p) => pathToFileURL(p.page).href;
+  const gate = async (p, extra = {}) => {
+    const ready = await prepare({ dir: p.dir, slug: p.slug, url: urlOf(p) });
+    assert.equal(ready.drift, false);
+    return runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out, ...extra });
+  };
+  const total = 8 * 6 + rootEntries.length;
+
+  await check('every :root entry and type entry of the fixture passes on page.html; ramp.json and the probe files are written', async () => {
+    const p = served(project('pass'));
+    const r = await gate(p);
+    assert.equal(r.results.length, total);
+    assert.deepEqual(r.results.filter((x) => x.status !== 'PASS'), [], JSON.stringify(r.results.filter((x) => x.status !== 'PASS')));
+    assert.equal(r.pass, true);
+    assert.deepEqual(r.perWidth.map((w) => [w.width, w.exit]), [[1440, 0]]);
+    assert.deepEqual(r.results.find((x) => x.slot === 's02' && x.id === 't1' && x.property === 'fontSize'), { slot: 's02', id: 't1', node: 'I1:7;5:2', root: '1:7', property: 'fontSize', status: 'PASS', detail: '40px vs 40px' });
+    assert.deepEqual(r.results.find((x) => x.property === '--max-width'), { slot: null, id: '--max-width', node: null, root: null, property: '--max-width', status: 'PASS', detail: '1200px vs 1200px' });
+    const work = join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma');
+    for (const f of ['ramp-spec.1440.json', 'ramp.1440.md', 'ramp.1440.json', 'ramp.json']) assert.ok(existsSync(join(work, f)), f);
+    assert.deepEqual(Object.keys(rampOf(p)), ['url', 'regime', 'checksStamp', 'pass', 'results', 'perWidth', 'literals']);
+    assert.deepEqual([rampOf(p).url, rampOf(p).regime], [urlOf(p), 'local']);
+    assert.deepEqual(rampOf(p).checksStamp, stampsOf((await prepare({ dir: p.dir, slug: p.slug, url: urlOf(p) })).checks), 'ramp.json records the stamp of each section of the checks it measured');
+    assert.deepEqual(rampOf(p).results, r.results);
+    assert.ok(r.literals.length > 0);
+  });
+
+  await check('declared but not served: each type entry\'s fontFamily is UNSERVED "declared Inter, served fallback", neither PASS nor FAIL; the CLI says "(8 unserved)" with a font.unserved line each, exit 0', async () => {
+    const p = project('unserved');
+    const r = await gate(p);
+    const unserved = r.results.filter((x) => x.status === 'UNSERVED');
+    assert.equal(unserved.length, UNSERVED);
+    assert.ok(unserved.every((x) => x.property === 'fontFamily' && x.detail === 'declared Inter, served fallback'), JSON.stringify(unserved));
+    assert.deepEqual(r.results.filter((x) => x.status === 'FAIL'), []);
+    assert.equal(r.pass, true);
+    const cli = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
+    assert.equal(cli.status, 0, cli.stdout + cli.stderr);
+    assert.match(cli.stdout, new RegExp(`^ramp PASS ${total - UNSERVED}/${total - UNSERVED} \\(${UNSERVED} unserved\\)$`, 'm'));
+    assert.match(cli.stdout, /^ {2}s01 t1 fontFamily \(node 1:5\): font.unserved, declared Inter, served fallback$/m);
+    const wrong = project('unserved-wrong');
+    writeFileSync(wrong.page, readFileSync(wrong.page, 'utf8').replace('</style>', 'h1 { font-family: Georgia, serif }\n</style>'));
+    const w = await gate(wrong);
+    assert.equal(w.results.find((x) => x.slot === 's01' && x.id === 't1' && x.property === 'fontFamily').status, 'FAIL', 'a declared family other than Figma\'s is a FAIL, served or not');
+  });
+
+  await check('.card-label { font-size: 16px } fails s02 t2 fontSize; the CLI exits 1 with one indented line', () => {
+    const p = served(project('card-label'));
+    writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('</style>', '.card-label { font-size: 16px }\n</style>'));
+    const r = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, new RegExp(`^ramp FAIL 1/${total}$`, 'm'));
+    assert.match(r.stdout, /^ {2}s02 t2 fontSize \(node I1:7;5:8\): 16px vs 14px$/m);
+    const j = rampOf(p);
+    assert.equal(j.pass, false);
+    assert.deepEqual(j.results.filter((x) => x.status === 'FAIL').map((x) => `${x.slot} ${x.id} ${x.property} (${x.node})`), ['s02 t2 fontSize (I1:7;5:8)']);
+  });
+
+  await check(':scope > …, a comma list and a descendant selector resolve inside the section on a real page; a branch cannot reach another section', async () => {
+    const p = served(project('scoped'));
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checks = JSON.parse(readFileSync(file, 'utf8'));
+    checks.sections.s02.type[0].selector = ':scope > h2';
+    checks.sections.s02.type[1].selector = '.nope, :scope > .card .card-label';
+    writeFileSync(file, JSON.stringify(checks));
+    const ok = await gate(p);
+    assert.deepEqual(ok.results.filter((x) => x.status !== 'PASS'), []);
+    checks.sections.s01.type[0].selector = '.nope, h2';
+    writeFileSync(file, JSON.stringify(checks));
+    const escaped = await gate(p);
+    assert.deepEqual(escaped.results.filter((x) => x.status === 'FAIL').map((x) => [x.slot, x.id]), Array(6).fill(['s01', 't1']), 'h2 is in s02, not s01: no property is measured');
+    assert.match(escaped.results.find((x) => x.slot === 's01' && x.id === 't1').detail, /^selector ".*" matched nothing$/);
+  });
+
+  await check('a :root value that drifted fails as ":root --max-width"', async () => {
+    const p = project('root-drift');
+    writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('--max-width: 1200px', '--max-width: 1100px'));
+    const r = await gate(p);
+    const bad = r.results.filter((x) => x.status === 'FAIL');
+    assert.deepEqual(bad.map((x) => [x.slot, x.id, x.detail]), [[null, '--max-width', '1100px vs 1200px']]);
+  });
+
+  await check('CLI ramp on page.html: PASS line, an advisory line for token literals, exit 0', () => {
+    const p = served(project('cli-pass'));
+    const r = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, new RegExp(`^ramp PASS ${total}/${total}$`, 'm'));
+    assert.match(r.stdout, /^advisory ramp: \d+ token literal\(s\) outside :root/m);
+  });
+
+  await check('CLI ramp stops at join drift: FAIL join line, exit 1, no ramp.json', () => {
+    const p = project('cli-drift');
+    writeFileSync(p.page, readFileSync(p.page, 'utf8').replace('data-slot="s02"', 'data-slot="s09"'));
+    const r = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /FAIL join/);
+    assert.ok(!/ramp (PASS|FAIL)/.test(r.stdout));
+    assert.ok(!existsSync(join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma', 'ramp.json')));
+  });
+
+  await check('a probe that exits 2 is a setup error: runRamp throws a UsageError with its stderr and writes no ramp.json', async () => {
+    const p = project('crash');
+    const stub = join(p.root, 'probe-stub.mjs');
+    writeFileSync(stub, 'console.error("stub probe: no playwright"); process.exit(2);\n');
+    await assert.rejects(gate(p, { donorProbe: stub }), (e) => e.name === 'UsageError' && e.code === 2 && /stub probe: no playwright/.test(e.message));
+    assert.ok(!existsSync(join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma', 'ramp.json')));
+  });
+
+  await check('a probe that exits 3 (bot challenge) makes runRamp throw an error with code 3', async () => {
+    const p = project('challenge');
+    const stub = join(p.root, 'probe-stub.mjs');
+    writeFileSync(stub, 'console.error("stub probe: bot challenge"); process.exit(3);\n');
+    await assert.rejects(gate(p, { donorProbe: stub }), (e) => e.code === 3 && e.name !== 'UsageError' && /stub probe: bot challenge/.test(e.message));
+  });
+
+  const nonSolid = (p) => {
+    const dir = join(p.dir, '.work', 'reskin', 'figma');
+    const file = readdirSync(dir, { recursive: true }).find((f) => f.endsWith('nodes.json'));
+    const doc = JSON.parse(readFileSync(join(dir, file), 'utf8'));
+    const walk = (n) => {
+      if (n.id === 'I1:7;5:2') n.fills = [{ type: 'GRADIENT_LINEAR', blendMode: 'NORMAL', gradientStops: [] }];
+      (n.children || []).forEach(walk);
+    };
+    Object.values(doc.nodes).forEach((f) => walk(f.document ?? f));
+    writeFileSync(join(dir, file), JSON.stringify(doc));
+  };
+
+  await check('a TEXT node without a single solid fill: the color is UNASSERTED, not dropped; ramp.json lists it; pass stays true', async () => {
+    const p = project('unasserted');
+    nonSolid(p);
+    const r = await gate(p);
+    const skipped = r.results.filter((x) => x.status === 'UNASSERTED');
+    assert.deepEqual(skipped, [{ slot: 's02', id: 't1', node: 'I1:7;5:2', root: '1:7', property: 'color', status: 'UNASSERTED', detail: 'Figma has no solid color' }]);
+    assert.equal(r.results.length, total);
+    assert.equal(r.pass, true);
+    assert.deepEqual(rampOf(p).results.filter((x) => x.status === 'UNASSERTED'), skipped);
+  });
+
+  await check('CLI ramp: "ramp PASS n/n (1 unasserted)" and an indented advisory line, exit 0', () => {
+    const p = served(project('cli-unasserted'));
+    nonSolid(p);
+    const r = run(['ramp', '--page', p.slug, '--url', p.page, '--dir', p.dir], p.root);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, new RegExp(`^ramp PASS ${total - 1}/${total - 1} \\(1 unasserted\\)$`, 'm'));
+    assert.match(r.stdout, /^ {2}s02 t1 color \(node I1:7;5:2\): advisory, Figma has no solid color$/m);
+  });
+
+  await check('a probe that exits 1 without a fresh JSON is a crash; a ramp.<w>.json left by an earlier run is not read', async () => {
+    const p = project('stale');
+    const stub = join(p.root, 'probe-stub.mjs');
+    writeFileSync(stub, 'console.error("stub probe: bad selector"); process.exit(1);\n');
+    const figma = join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma');
+    const ok = await gate(p);
+    assert.equal(ok.pass, true);
+    assert.ok(existsSync(join(figma, 'ramp.1440.json')));
+    await assert.rejects(gate(p, { donorProbe: stub }), /stub probe: bad selector/);
+    assert.ok(!existsSync(join(figma, 'ramp.1440.json')));
+  });
+
+  await check('a probe that exits with any code other than 0 or 1 is a crash even when a JSON is present', async () => {
+    const p = project('odd-exit');
+    const stub = join(p.root, 'probe-stub.mjs');
+    writeFileSync(stub, 'import { writeFileSync } from "node:fs"; writeFileSync(process.argv[process.argv.indexOf("--json") + 1], JSON.stringify({ results: [] })); console.error("stub probe: odd exit"); process.exit(4);\n');
+    await assert.rejects(gate(p, { donorProbe: stub }), /stub probe: odd exit/);
+  });
+
+  await check('CLI ramp: missing --page or --url exits 2', () => {
+    const p = project('cli-usage');
+    assert.equal(run(['ramp', '--url', p.page, '--dir', p.dir], p.root).status, 2);
+    assert.equal(run(['ramp', '--page', p.slug, '--dir', p.dir], p.root).status, 2);
+  });
+}
+
+await check('--help lists ramp and its flags', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd: scratch });
+  assert.equal(r.status, 0, r.stderr);
+  for (const s of ['ramp', 'ramp.json', 'advisory', ':root']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+});
+
+rmSync(scratch, { recursive: true, force: true });
+console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
+process.exit(failed ? 1 : 0);

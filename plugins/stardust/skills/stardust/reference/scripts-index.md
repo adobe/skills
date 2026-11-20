@@ -61,13 +61,16 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
 - `replica/source-spec.mjs` — source box + font spec — `capture <live> --slug <s> [--widths 1440,360]`; `compare <spec> <build> [--tol 2]`; `view <spec> [--section <i>]`; exit 2 = off
-- `replica/stitch-shot.mjs` — stitched capture — `<url> <out.png> [--width] [--vh] [--settle] [--consent] [--[no-]dismiss] [--freeze-baseline] [--check-baseline]`
-- `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
-- `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
-- `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>]`
-- `reskin/figma-donor.mjs` — Figma capture/curate/stamp — `capture <url> [--list] [--frames a,b] [--refresh] | curate | stamp [--confidential]`; exit 3 = blocked
-- `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
-- `reskin/source-normalize.mjs` — default normalize ledger — no flags
+- `replica/stitch-shot.mjs` — stitched capture — `<url> <out.png> [--width] [--vh] [--settle] [--consent] [--[no-]dismiss] [--hide <sel,…>] [--freeze-baseline] [--check-baseline]`
+- `reskin/capture-content.mjs` — content model — `--url <u> --out <d>`
+- `reskin/deployed-gate.mjs` — preview gates — `preview|all --page <s>`; 124 = none
+- `reskin/dom-equality.mjs` — content gate — `--source --rendered --report`
+- `reskin/donor-probe.mjs` — adoption gate — `--tokens <f> --rendered <u|f>`
+- `reskin/figma-donor.mjs` — Figma donor — `capture <u> | curate | stamp`; 3 = blocked
+- `reskin/figma-gate.mjs` — Figma gates — `boxes | all --page <s> --url <u|f>`; 124 = none
+- `reskin/slot-coverage.mjs` — slot gate — `--model <f> --rendered <u|f>`
+- `reskin/source-normalize.mjs` — normalize — no flags
+- `reskin/vocabulary-check.mjs` — vocabulary — `[--modules <f> --json]`
 - `rollout/assemble.mjs` — sitemap, robots, manifest; served-sitemap check — `[--canon <dir>] [--verify-origin <origin>]`
 - `rollout/autofix-aem.mjs` — fix findings in the project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
@@ -89,14 +92,14 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `spec/spec-inventory.mjs` — S1 robots + sitemaps, else crawl — `[--max <n>] [--headed|--archive <date>]`; exit 3 = blocked
 - `spec/spec-links.mjs` — S4 link check — `[--max 20000]`
 - `spec/spec-knowledge.mjs` — S10 → knowledge/
-- `spec/spec-map.mjs` — S7 mapping → page blocks — `[--rules <json>]`
-- `spec/spec-martech.mjs` — S9 martech — `[--no-custom-code] [--urls a,b --out <dir>]`
-- `spec/spec-parse.mjs` — S3 trees + signals — `[--fetch <jsonl>] [--out <dir>]`
-- `spec/spec-pick.mjs` — capture list — `[--components-only]`
-- `spec/spec-profile.mjs` — component stats — `[--json <out>]`
-- `spec/spec-rum.mjs` — S5 Optel — `[--days 90] [--key-env <NAME>]`
-- `spec/spec-sheet.mjs` — contact sheet — `<component|row-shape>`
-- `spec/spec-variants.mjs` — S8 variants — `[--cut 0.5]`
-- `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
-- `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--track <t>] [--strict]`; `tail`; `last`
-- `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`
+- `spec/spec-map.mjs` — S7 mapping → page blocks: `[--rules <json>]`
+- `spec/spec-martech.mjs` — S9 martech: `[--no-custom-code] [--urls a,b --out <dir>]`
+- `spec/spec-parse.mjs` — S3 trees + signals: `[--fetch <jsonl>] [--out <dir>]`
+- `spec/spec-pick.mjs` — capture list: `[--components-only]`
+- `spec/spec-profile.mjs` — component stats: `[--json <out>]`
+- `spec/spec-rum.mjs` — S5 Optel: `[--days 90] [--key-env <NAME>]`
+- `spec/spec-sheet.mjs` — contact sheet: `<component|row-shape>`
+- `spec/spec-variants.mjs` — S8 variants: `[--cut 0.5]`
+- `stardust/impeccable-version-check.mjs` — newer impeccable?: `[--offline] [--json]`; `--where`
+- `stardust/ledger.mjs` — status.jsonl writer: `<skill> <phase> start|end|blocked [--detail] [--track <t>] [--strict]`; `tail`; `last`
+- `stardust/state.mjs` — page status writer: `advance <slug…> --to <status> [--by]`; `summary [--slugs]`
