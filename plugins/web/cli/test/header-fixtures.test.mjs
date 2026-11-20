@@ -227,7 +227,7 @@ test('menus: a click menu covered by another element is not clean', { skip }, as
 });
 
 test(
-  'menus: a click menu that closes with a transition is waited for; one that stays open is not clean',
+  'menus: a menu that closes with a transition is waited for; one that stays open, opens again or closes late is not clean',
   { skip },
   async () => {
     const doc = await clean(
@@ -241,6 +241,8 @@ test(
       [
         ['Tools', true, []],
         ['Help', false, ['stays open when its label is clicked again']],
+        ['Flicker', false, ['stays open when its label is clicked again']],
+        ['Linger', false, ['stays open when the pointer leaves']],
       ],
       doc.text,
     );

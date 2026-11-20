@@ -5,7 +5,8 @@
  * links that appear in the viewport (anywhere: a panel can live outside the header; counted by
  * `bundles/header-toggles.js`, as the capture counts them) against the capture's, then close it the way the
  * source does (pointer away for hover, the label clicked again for click) and check it closes,
- * once a closing transition has ended (up to 3 s).
+ * once the close holds for 0.5 s (from 0.5 s after the close, up to 3 s: a closing transition
+ * ends, a panel that opens again right away stays open).
  * `web header check menus <page url> <open.json>`: one line per menu, and whether all are ok.
  */
 import { readFileSync } from 'node:fs';
@@ -49,9 +50,13 @@ const PROBE = `async (page, url, menus) => {
   // opacity, so a closed dropdown is not shown); the difference with every menu closed is what a
   // menu shows
   const shown = () => page.evaluate(() => window.__plgVisibleLinks());
-  const away = async () => {
+  const leave = async () => {
     const vh = await page.evaluate(() => innerHeight);
     await page.mouse.move(5, vh - 5);
+  };
+  // before each menu: the pointer away and the page settled, every menu closed
+  const away = async () => {
+    await leave();
     await page.waitForTimeout(800);
   };
   const out = [];
@@ -70,8 +75,9 @@ const PROBE = `async (page, url, menus) => {
       opened = (await shown()) - closed;
       // a click menu closes as on the source: its label clicked again (an SEO blog's panel fills
       // the viewport, so an outside click lands in it)
-      if (m.trigger === 'click') await label.click({ timeout: 4000 }); else await away();
-      // a panel that closes with a transition keeps its links visible until it ends: wait for it
+      if (m.trigger === 'click') await label.click({ timeout: 4000 }); else await leave();
+      // the same budget for both triggers, from the close: a panel that closes with a transition
+      // keeps its links visible until it ends; one that opens again right away is still open
       left = (await page.evaluate((n) => window.__plgWaitHidden(n), closed)) - closed;
     } catch { /* opening failed: opened stays null; closing failed: left stays null */ }
     out.push({ label: m.label, trigger: m.trigger, expected: m.newLinks, opened, left });

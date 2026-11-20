@@ -1,4 +1,6 @@
 <!doctype html><html><head><style>
+/* Tools closes with a slow transition (clean); Help never closes, Flicker hides and opens again
+   150 ms later, Linger (hover) closes 3.5 s after the pointer leaves (each not clean) */
 header nav > ul { display: flex; gap: 40px; list-style: none; margin: 0; padding: 20px; }
 /* closes with a 1.2 s clip-path transition, as an EDS site's panels do in 0.5 s: its links stay
    visible until the transition ends */
@@ -6,9 +8,18 @@ header nav > ul { display: flex; gap: 40px; list-style: none; margin: 0; padding
   clip-path: inset(0 0 100% 0); visibility: hidden;
   transition: clip-path 1.2s ease, visibility 0s linear 1.2s; }
 .open .panel { clip-path: inset(0); visibility: visible; transition: clip-path 1.2s ease; }
+/* no transition: shown or not */
+.plain { display: none; position: absolute; left: 0; right: 0; top: 60px; background: #ddd; padding: 20px; }
+.open .plain { display: block; }
 </style></head><body><header><nav><ul>
 <li><button type="button" onclick="this.parentElement.classList.toggle('open')">Tools</button>
 <div class="panel"><a href="/t1">T1</a> <a href="/t2">T2</a></div></li>
 <li><button type="button" onclick="this.parentElement.classList.add('open')">Help</button>
 <div class="panel"><a href="/h1">H1</a> <a href="/h2">H2</a></div></li>
+<li><button type="button" onclick="const li = this.parentElement; if (li.classList.contains('open')) {
+  li.classList.remove('open'); setTimeout(() => li.classList.add('open'), 150); } else li.classList.add('open')">Flicker</button>
+<div class="plain"><a href="/f1">F1</a> <a href="/f2">F2</a></div></li>
+<li onmouseenter="clearTimeout(this.t); this.classList.add('open')"
+  onmouseleave="this.t = setTimeout(() => this.classList.remove('open'), 3500)"><a href="#linger">Linger</a>
+<div class="plain"><a href="/l1">L1</a> <a href="/l2">L2</a></div></li>
 </ul></nav></header><main style="height:1200px"></main></body></html>
