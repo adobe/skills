@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // skills/diff/scripts/test/chrome-compare.test.mjs — the header-parity verdict from two chrome-explore records (no browser):
-// pairing by name then family, a hover menu rebuilt as click-only, missing panel links, keyboard and close paths,
+// pairing by name then family, a hover menu rebuilt as click-only, missing panel links (a link with text on one side
+// only pairs by its address), keyboard and close paths,
 // motion and scroll states under `replica` only, search typeahead, and site-owner decisions (agents cannot sign).
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-compare.test.mjs
 import assert from 'node:assert/strict';
@@ -43,6 +44,27 @@ check('a stock header (click-only, fewer links, no motion, no Escape, no typeahe
   const content = compareDocs(source, build).findings.find((f) => f.id === 'panel-content');
   assert.match(content.detail, /2 of 4 links missing \(Kids, Sale\)/);
   assert.ok(ids.includes('control-missing:Shop > Women'), 'a level inside an open panel (the Women tab) is compared too');
+});
+check('a link with text on one side only pairs by its address: one link-text warning, no missing link', () => {
+  const panel = (links) => doc([ctl('Help', 'menu', { click: { ...st([]), panel: { ...st([]).panel, links } } })]);
+  const texts = [{ text: 'Feedback', href: 'https://example.com/feedback' }, { text: 'Contact', href: '/contact.html' }];
+  const bare = texts.map((l) => ({ ...l, text: '' }));
+  // the source recorded no link text (a recorder that could not read it), the build has it
+  const f = compareDocs(panel(bare), panel(texts)).findings;
+  assert.deepEqual(f.map((x) => [x.id, x.severity]), [['link-text', 'warn']]);
+  assert.match(f[0].detail, /^2 link\(s\) paired by address, with text on one side only: \/feedback \("Feedback" on the build only\); \/contact /);
+  // the build lost a label (an icon-only link): still the same link, and still said
+  assert.deepEqual(compareDocs(panel(texts), panel(bare)).findings.map((x) => [x.id, x.severity]), [['link-text', 'warn']]);
+  assert.deepEqual(compareDocs(panel(bare), panel(bare)).findings, [], 'no text on either side: paired by address, nothing to say');
+  // an address the build does not have is a missing link, with or without text on the source
+  const gone = compareDocs(panel(bare), panel(texts.slice(0, 1))).findings.find((x) => x.id === 'panel-content');
+  assert.deepEqual([gone.severity, gone.detail], ['error', '1 of 2 links missing (/contact.html)']);
+  assert.match(compareDocs(panel(texts), panel(texts.slice(0, 1))).findings.find((x) => x.id === 'panel-content').detail, /1 of 2 links missing \(Contact\)/);
+  // two different texts at one address are not a pair: a renamed link is missing, as before
+  const renamed = compareDocs(panel(texts), panel([texts[0], { text: 'Get in touch', href: '/contact.html' }])).findings;
+  assert.deepEqual(renamed.map((x) => [x.id, x.severity]), [['panel-content', 'error']]);
+  // text still pairs first: the same label at another address is a moved link
+  assert.deepEqual(compareDocs(panel(texts), panel([texts[0], { text: 'Contact', href: '/help/contact' }])).findings.map((x) => x.id), ['link-href']);
 });
 check('functional profile: behaviour and content gate, motion and crops do not, scroll states only warn', () => {
   const build = structuredClone(source);

@@ -157,13 +157,15 @@ function installInPage({ rootSel }) {
   const atoms = () => [...document.querySelectorAll(ATOMS)].filter((el) => !skip(el));
   // visible text minus icons (svg, aria-hidden, icon-font ligatures): what pairs a control across source and build
   const ICON_FONT = /icon|symbol|awesome|glyph|ligature/i;
+  const shown = (el) => { for (let e = el; e; e = e.parentElement) if (getComputedStyle(e).display === 'none') return false; return true; };
   const text = (el) => {
     const parts = []; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     for (let n = w.nextNode(); n; n = w.nextNode()) {
       const p = n.parentElement;
       const cs = p && getComputedStyle(p);
       if (!p || p.closest('svg,[aria-hidden=true],script,style') || ICON_FONT.test(cs.fontFamily) || /transparent/.test(cs.fontFamily) || cs.color === 'rgba(0, 0, 0, 0)') continue;
-      if (p.closest('[hidden]') || getComputedStyle(p).display === 'none') continue;
+      // hidden is what the style computes to, up the ancestors: a `hidden` attribute on a displayed element hides nothing
+      if (cs.visibility !== 'visible' || !shown(p)) continue;
       parts.push(n.nodeValue);
     }
     return parts.join(' ').replace(/\s+/g, ' ').trim();
