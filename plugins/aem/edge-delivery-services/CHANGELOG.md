@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.4](https://github.com/adobe/skills/compare/plugin/aem-edge-delivery-services/v1.3.3...plugin/aem-edge-delivery-services/v1.3.4) (2026-11-20)
+
+
+### Bug Fixes
+
+* **aem-edge-delivery-services:** migrate-header installs the web CLI from a release commit on main ([#768](https://github.com/adobe/skills/issues/768)) ([31043e4](https://github.com/adobe/skills/commit/31043e4ee57885d2aa2687885f6149323f528570))
+
 ## [1.3.3](https://github.com/adobe/skills/compare/plugin/aem-edge-delivery-services/v1.3.2...plugin/aem-edge-delivery-services/v1.3.3) (2026-11-19)
 
 
