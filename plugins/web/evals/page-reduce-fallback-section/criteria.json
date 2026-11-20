@@ -18,7 +18,7 @@
       "name": "no_invented_sections",
       "max_score": 20,
       "category": "MUST_NOT",
-      "description": "skeleton.html and manifest.json keep the single Phase 1 section (index 0, xpath /html[1]/body[1]). They do not present new sections with indexes or xpaths that Phase 1 did not return. Naming the blocks inside the section in answer.md, or as manifest notes, is fine."
+      "description": "skeleton.html and manifest.json keep the single Phase 1 section: index 0, with its xpath (`/html[1]/body[1]`, or `/html/body` from `xpathWithDetails`). They do not present new sections with indexes or xpaths that Phase 1 did not return. Naming the blocks inside the section in answer.md, or as manifest notes, is fine."
     },
     {
       "name": "rules_applied_inside",
@@ -30,7 +30,7 @@
       "name": "outputs_written",
       "max_score": 10,
       "category": "INTEGRATION",
-      "description": "skeleton.html (with a `<!-- section:0 type:… xpath:/html[1]/body[1] -->` comment) and manifest.json are written to the working directory, and answer.md names both files."
+      "description": "skeleton.html (with a `<!-- section:0 type:\u2026 xpath:\u2026 -->` comment for that section) and manifest.json are written to the working directory, and answer.md names both files."
     }
   ]
 }
