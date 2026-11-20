@@ -66,12 +66,22 @@ function compareState(ss, bs, base, { profile, add, visual }, full) {
   // content, motion and crops once per control (the first action both sides open on); keyboard facts per action
   if (ss.tabReachesPanel && bs.tabReachesPanel === false) add({ ...base, id: 'keyboard', severity: 'error', detail: 'Tab moves into the panel on the source, not on the build' });
   if (!full) return;
-  const bl = new Map(bs.panel.links.map((l) => [normName(l.text) || hrefKey(l.href), l]));
-  const missing = []; const moved = [];
+  // a link pairs by its text; failing that by its address when one side recorded no text (an icon link, a label the
+  // recorder could not read): that pair is one warning, not a missing link. Two different texts at one address stay missing.
+  const byText = new Map(bs.panel.links.filter((l) => normName(l.text)).map((l) => [normName(l.text), l]));
+  const byHref = new Map(); for (const l of bs.panel.links) { const k = hrefKey(l.href); if (!byHref.has(k) || !normName(l.text)) byHref.set(k, l); }
+  const missing = []; const moved = []; const untexted = [];
   for (const l of ss.panel.links) {
-    const k = normName(l.text) || hrefKey(l.href); const m = bl.get(k);
-    if (!m) missing.push(l.text || l.href); else if (hrefKey(m.href) !== hrefKey(l.href)) moved.push(`${l.text}: ${hrefKey(l.href)} → ${hrefKey(m.href)}`);
+    const t = normName(l.text); const k = hrefKey(l.href);
+    let m = t ? byText.get(t) : null;
+    if (!m) {
+      // a source link without text takes any build link at its address; one with text only a build link without
+      m = t ? [byHref.get(k)].find((x) => x && !normName(x.text)) : bs.panel.links.find((x) => hrefKey(x.href) === k && normName(x.text)) || byHref.get(k);
+      if (m && !!t !== !!normName(m.text)) untexted.push(`${k} (${t ? `"${l.text}" on the source` : `"${m.text}" on the build`} only)`);
+    }
+    if (!m) missing.push(l.text || l.href); else if (hrefKey(m.href) !== k) moved.push(`${l.text}: ${k} → ${hrefKey(m.href)}`);
   }
+  if (untexted.length) add({ ...base, id: 'link-text', severity: 'warn', detail: `${untexted.length} link(s) paired by address, with text on one side only: ${untexted.slice(0, 4).join('; ')}${untexted.length > 4 ? '; …' : ''}` });
   const bh = new Set(bs.panel.headings.map(normName));
   const hMissing = ss.panel.headings.filter((h) => !bh.has(normName(h)));
   const iMissing = ss.panel.inputs.length && !bs.panel.inputs.length;
