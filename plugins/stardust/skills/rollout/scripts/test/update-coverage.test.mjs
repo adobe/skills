@@ -138,6 +138,19 @@ await check('a blocks.mjs re-run keeps a default-content mapping recorded pendin
   assert.deepEqual(blockRollup(out), { total: 2, converted: 1, pending: 1 });
 });
 
+await check('a widget whose id is literally default-content is a widget to build: pending in the roll-up, its class its stem on a blocks.mjs re-run', async () => {
+  const widget = { ...row('default-content', 'pending', 'default-content'), kind: 'widget' };
+  assert.deepEqual(blockCounts([widget, row('title', 'pending', 'default-content')]), { total: 2, converted: 1, pending: 1 });
+  const { proj, out } = fixture();
+  writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages: [{ slug: 'home', templateId: 'detail', blocks: [], widgets: [{ id: 'default-content', href: '/widgets/tools/default-content.html' }], delivery: { status: 'pending' } }] }, null, 2));
+  writeBlocks(out, [{ ...widget, delivery: { ...widget.delivery, edsBlockName: 'stale-name' } }]);
+  const r = await runScript(BLOCKS_SCRIPT, ['--out', out], proj);
+  assert.equal(r.code, 0, r.err);
+  const [b] = readBlocks(out);
+  assert.equal(b.kind, 'widget'); assert.equal(b.delivery.edsBlockName, 'default-content'); assert.equal(b.delivery.blockPath, 'widgets/tools/default-content.html');
+  assert.deepEqual(blockRollup(out), { total: 1, converted: 0, pending: 1 });
+});
+
 // --- --new: a page built outside the migrated tree enters coverage --------------------------------
 const readPages = (out) => JSON.parse(readFileSync(join(out, 'coverage', 'pages.json'), 'utf8')).pages;
 const readTemplates = (out) => JSON.parse(readFileSync(join(out, 'coverage', 'templates.json'), 'utf8')).templates;

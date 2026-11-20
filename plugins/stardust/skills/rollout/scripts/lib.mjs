@@ -89,8 +89,9 @@ export function pageCounts(pages) {
  * button, separator — deploy's D1): the mapping is the resolved decision and there is no block to
  * build, so such a row is never pending whatever its status. A recorded hands-off run left four of
  * them at `status: pending` and the block roll-up read a finished, verified site as unfinished.
+ * A widget whose file stem is literally `default-content` is still a widget to build, not such a mapping.
  */
-export const isDefaultContent = (b) => !!(b && b.delivery && b.delivery.edsBlockName === DEFAULT_CONTENT);
+export const isDefaultContent = (b) => !!(b && b.kind !== 'widget' && b.delivery && b.delivery.edsBlockName === DEFAULT_CONTENT);
 
 /** Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted. */
 export function blockCounts(blocks) {
