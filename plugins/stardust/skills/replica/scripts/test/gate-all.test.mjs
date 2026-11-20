@@ -651,6 +651,14 @@ check('CHILD_FLAGS is what each child\'s own parseArgs accepts — a flag listed
 });
 
 // ---- verdict integrity: a probe error is an error row -------------------------------------------------------------------
+check('verdict: a unit selector error is named in the reason, with the selector and what to fix — "off 0 hidden 0 missing 0" alone said nothing', () => {
+  const ok = { pixel: px(1.5, 0), clip: clip(0), content: content(0, 0) };
+  const v = verdict({ ...ok, units: { verdict: { off: 0, hidden: 0, missing: 0, errors: 1 }, required: true, errors: ['.cards > li=.cards > div — no visible unit on the served side (3 / 0 DOM matches)'] } });
+  assert.equal(v.pass, false);
+  assert.deepEqual(v.reasons, ['units off 0 hidden 0 missing 0 — 1 selector error(s): .cards > li=.cards > div — no visible unit on the served side (3 / 0 DOM matches) (fix the family\'s selector in stardust/replica/units.json)']);
+  assert.deepEqual(verdict({ ...ok, units: { verdict: { off: 2, hidden: 0, missing: 0, errors: 0 }, required: true } }).reasons, ['units off 2 hidden 0 missing 0']);
+  assert.match(verdict({ ...ok, units: { verdict: { off: 0, hidden: 0, missing: 0, errors: 2 }, required: true } }).reasons[0], /2 selector error\(s\) \(fix the family/);
+});
 check('verdict: a probe that errored is never a pass — probeErrors + one probe-error:<probe> reason each; not applicable (origin not probed, no units, a criterion switched off) stays as it was', () => {
   const ok = { pixel: px(1.5, 0), clip: clip(0), content: content(0, 0) };
   const c = verdict({ ...ok, content: { error: 'content-presence exit 1: boom', probeError: true } });
