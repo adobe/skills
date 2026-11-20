@@ -1,0 +1,26 @@
+{
+  "url": "https://www.northwind-gardens.example/",
+  "title": "Northwind Gardens: houseplants delivered",
+  "viewport": {
+    "width": 1440
+  },
+  "templateHash": "0",
+  "sections": [
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]",
+      "xpathWithDetails": "/html/body",
+      "tokenizedHtml": "<body><header class=\"site-header\"><a href=\"/\" class=\"logo\">{ICON}</a><nav class=\"main-nav\"><ul><li><a href=\"/shop\">{LINK:Shop}</a></li><li><a href=\"/care\">{LINK:Plant care}</a></li><li><a href=\"/workshops\">{LINK:Workshops}</a></li><li><a href=\"/delivery\">{LINK:Delivery}</a></li><li><a href=\"/about\">{LINK:About us}</a></li><li><a href=\"/contact\">{LINK:Contact}</a></li></ul></nav></header><main><section class=\"hero\"><h1>{HEADING:1}</h1><p>{TEXT}</p>{IMAGE:1440x600}<a href=\"/shop\" class=\"button\">{CTA:Shop plants}</a></section><section class=\"featured\"><h2>{HEADING:2}</h2><div class=\"product-grid\"><div class=\"product-card\">{IMAGE:320x240}<h3>{HEADING:3}</h3><p>{TEXT}</p><a href=\"/shop/fern\">{LINK:View plant}</a></div><div class=\"product-card\">{IMAGE:320x240}<h3>{HEADING:3}</h3><p>{TEXT}</p><a href=\"/shop/ivy\">{LINK:View plant}</a></div><div class=\"product-card\">{IMAGE:320x240}<h3>{HEADING:3}</h3><p>{TEXT}</p><a href=\"/shop/palm\">{LINK:View plant}</a></div></div></section><section class=\"newsletter\"><h2>{HEADING:2}</h2><p>{TEXT}</p><form action=\"/subscribe\" method=\"post\">{INPUT:email}<button>{CTA:Subscribe}</button></form></section></main><footer class=\"site-footer\"><p>{TEXT}</p><a href=\"/privacy\">{LINK:Privacy}</a><a href=\"/terms\">{LINK:Terms}</a></footer></body>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [],
+      "section": null,
+      "fallback": true,
+      "index": 0
+    }
+  ],
+  "session": "s-1",
+  "durationMs": 21400
+}

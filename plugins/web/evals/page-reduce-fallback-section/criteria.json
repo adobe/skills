@@ -1,0 +1,36 @@
+{
+  "context": "The agent runs the structural-reasoning half of a page reduction on Phase 1 output for an invented garden shop (https://www.northwind-gardens.example/). The detector found no section, so Phase 1 returned the whole body as one section with \"fallback\": true (index 0, xpath /html[1]/body[1]). That body holds a header with a six-link nav, a hero, a featured grid of three identical product cards, a newsletter form and a footer. Judge skeleton.html, manifest.json and answer.md.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "fallback_reported",
+      "max_score": 30,
+      "category": "INTENT",
+      "description": "answer.md tells the user that section detection found no section: the output is the whole body (or main) returned as one fallback section, not a page that was split into sections."
+    },
+    {
+      "name": "retry_advised",
+      "max_score": 25,
+      "category": "INTENT",
+      "description": "Because the page clearly has several blocks, answer.md recommends running Phase 1 again with `--retries 4 --settle-ms 4000`, or once with `--headed`, before planning blocks from this result."
+    },
+    {
+      "name": "no_invented_sections",
+      "max_score": 20,
+      "category": "MUST_NOT",
+      "description": "skeleton.html and manifest.json keep the single Phase 1 section (index 0, xpath /html[1]/body[1]). They do not present new sections with indexes or xpaths that Phase 1 did not return. Naming the blocks inside the section in answer.md, or as manifest notes, is fine."
+    },
+    {
+      "name": "rules_applied_inside",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "The Phase 2 rules are still applied inside the section. The three identical product cards become two cards followed by `{REPEAT:1}`, and the Phase 1 tokens are kept as tokens with no page copy invented."
+    },
+    {
+      "name": "outputs_written",
+      "max_score": 10,
+      "category": "INTEGRATION",
+      "description": "skeleton.html (with a `<!-- section:0 type:… xpath:/html[1]/body[1] -->` comment) and manifest.json are written to the working directory, and answer.md names both files."
+    }
+  ]
+}
