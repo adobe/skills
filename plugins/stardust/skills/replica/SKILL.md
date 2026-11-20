@@ -145,9 +145,7 @@ CSS):
    `cap-probe.mjs <live-url> --write-design stardust/current/DESIGN.json`
    first). Any other live-vs-prototype box check goes through
    `measure.mjs --against`, never an authored probe.
-4. **The captured screenshot** for what CSS does not name: composition,
-   image crops, paint effects.
-5. **`source-spec.mjs compare <spec> <prototype-url>` exits 0 at every
+4. **`source-spec.mjs compare <spec> <prototype-url>` exits 0 at every
    width BEFORE the first gate round.**
 
 **Fonts** (§ Fonts policy): the captured faces are self-hosted as-is,
