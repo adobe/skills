@@ -1,3 +1,10 @@
+## [1.5.2](https://github.com/adobe/skills/compare/replica-v1.5.1...replica-v1.5.2) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** source-spec sees what holds its place while scrolling and how images are cut ([#757](https://github.com/adobe/skills/issues/757)) ([0fbd108](https://github.com/adobe/skills/commit/0fbd108db57259d2c8da0cbb81763f26739c92a8))
+
 ## [1.5.1](https://github.com/adobe/skills/compare/replica-v1.5.0...replica-v1.5.1) (2026-11-20)
 
 # [1.5.0](https://github.com/adobe/skills/compare/replica-v1.4.1...replica-v1.5.0) (2026-11-20)
