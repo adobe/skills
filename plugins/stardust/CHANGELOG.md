@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.42.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.1...plugin/stardust/v0.42.2) (2026-11-20)
+
 ## [0.42.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.0...plugin/stardust/v0.42.1) (2026-11-20)
 
 
