@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agyPlatform, agyBehind, installAgy, latestAgy, sha512 } from './setup-agent-clis.mjs';
@@ -191,6 +191,13 @@ test('for claude, a plugin that depends on another one is loaded from a copy wit
   assert.equal(report.notes.length, 1);
   assert.match(report.notes[0], /^The plugin depends on other@elsewhere, which the home of a run does not have\. It was loaded from a copy without that dependency/);
   assert.deepEqual(JSON.parse(readFileSync(join(root, 'plugins/p/.claude-plugin/plugin.json'), 'utf8')), manifest); // the plugin itself is not changed
+
+  // the copy is removed on every way out: after a run, and when there are no credentials (exit 3)
+  const copies = () => readdirSync(tmpdir()).filter((name) => name.startsWith('skill-eval-plugin-')).length;
+  const before = copies();
+  const refused = run(t, 'skill-eval.mjs', ['--client', 'claude', '--plugin', 'plugins/p', '--scenario', 'plugins/p/evals/case', '--bin', claude(t, MANIFEST), '--out', temp(t)], { cwd: root, env: {} });
+  assert.equal(refused.status, 3, refused.stdout + refused.stderr);
+  assert.equal(copies(), before);
 
   const staged = withoutDependencies(join(root, 'plugins/p'));
   assert.notEqual(staged.dir, join(root, 'plugins/p'));
