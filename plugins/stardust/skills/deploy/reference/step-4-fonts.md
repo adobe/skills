@@ -79,7 +79,7 @@ The brand font must NOT render at first paint — and under vanilla EDS it can't
    (the stock convention — see roboto-fallback in the boilerplate). */
 @font-face {
   font-family: "<brand>-fallback";
-  src: local("Arial"), local("Liberation Sans"), local("Arimo"); /* serif: Times New Roman, Liberation Serif, Tinos */
+  src: <local() sources>;  /* the gate's browser has no Arial or Times New Roman: replica/reference/recreation-procedure.md § Fonts policy */
   size-adjust: <X>%;
   ascent-override: <Y>%;
   descent-override: <Z>%;
@@ -113,8 +113,8 @@ The CLS chain that results:
 
 **4. Match the fallback family to the brand font's classification.**
 Use the SAME class of typeface for the fallback so visual rhythm is preserved during the load:
-- Sans-serif brand → the Arial-class sources above; stack ends `sans-serif`.
-- Serif brand → the Times-class sources; stack ends `serif`.
+- Sans-serif brand → `<brand>-fallback` sources `local("Arial")`; stack ends `sans-serif`.
+- Serif brand → `<brand>-fallback` sources `local("Times New Roman")`; stack ends `serif`.
 - Monospace brand → `<brand>-fallback` sources `local("Courier New")`; stack ends `monospace`. (Note: skipping monospace metric-matching is acceptable when the mono font is only used in small eyebrows/labels — CLS impact is negligible. Document the choice in the conversion log.)
 
 Never substitute classifications (don't match a serif brand to Arial; don't match a sans brand to Times). Even with metric overrides, character widths and rhythm differ enough that the visible shift is jarring.
