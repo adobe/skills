@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/adobe/skills/compare/deploy-v1.3.0...deploy-v1.3.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** the fallback font face names sources the gate's browser has ([#779](https://github.com/adobe/skills/issues/779)) ([d141fdf](https://github.com/adobe/skills/commit/d141fdfcf151097c5b9c3e96de780af7ee3a3704))
+
 # [1.3.0](https://github.com/adobe/skills/compare/deploy-v1.2.1...deploy-v1.3.0) (2026-11-20)
 
 
