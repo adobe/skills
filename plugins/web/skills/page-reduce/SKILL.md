@@ -25,8 +25,10 @@ Node 22+ and `playwright-cli` >= 0.1.20 on PATH (`playwright-cli --version`).
 Locate the `web` CLI once:
 
 ```bash
-# <skill-dir> is the directory containing this SKILL.md
-WEB=$(command -v web || echo "node <skill-dir>/../../cli/dist/web.mjs")
+# <skill-dir> is the directory containing this SKILL.md. The bundled CLI comes
+# first: an older `web` on PATH tokenizes differently from these rules.
+WEB="node <skill-dir>/../../cli/dist/web.mjs"
+[ -f "<skill-dir>/../../cli/dist/web.mjs" ] || WEB=$(command -v web)
 ```
 
 then run `$WEB …`; it prints exactly one JSON document on stdout,
@@ -92,11 +94,11 @@ If `--phase1-only` was requested, stop here.
 Read [the Phase 2 rules](references/PHASE2-RULES.md) and apply them to each
 section's `tokenizedHtml`. They collapse repeated patterns into `{REPEAT:N}`,
 remove decorative wrappers and utility/tracking attributes, collapse complex
-forms and navs, strip overlay panels, and re-type sections.
+forms and navs, strip overlay panels, drop empty sections and re-type sections.
 
 ## Output files
 
-**skeleton.html**: all sections with comment separators, pretty-printed with
+**skeleton.html**: the retained sections with comment separators, pretty-printed with
 2-space indentation:
 
 ```html
@@ -114,7 +116,13 @@ forms and navs, strip overlay panels, and re-type sections.
     {IMAGE:400x300}
     <h3>{HEADING:3}</h3>
     <p>{TEXT}</p>
-    <a>{LINK:Read more}</a>
+    {LINK:Read more}
+  </div>
+  <div class="card">
+    {IMAGE:400x300}
+    <h3>{HEADING:3}</h3>
+    <p>{TEXT}</p>
+    {LINK:Read more}
   </div>
   {REPEAT:4}
 </div>
