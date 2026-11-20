@@ -25,6 +25,25 @@ check('keyed: role:text keys, selector#ordinal for text-less, #2 for duplicates'
   const k = keyed([el('text', 'Expires', 0, 0, 10, 10), el('image', '', 0, 0, 10, 10), el('image', '', 0, 0, 10, 10), el('text', 'Expires', 0, 0, 10, 10)]);
   assert.deepEqual(k.map((x) => x.key), ['text:expires', 'image:img#1', 'image:img#2', 'text:expires #2']);
 });
+check('alignUnit: clipped on both sides (an off-screen carousel slide) is parity, not hidden; clipped on the served side alone is hidden', () => {
+  const box = { x: 344, y: 2082, w: 328, h: 233 };
+  const o = { rect: box, elements: [{ ...el('heading', 'Service centers', 16, 74, 296, 20), hidden: true }, { ...el('link', 'Find one', 16, 110, 174, 22), hidden: false }] };
+  const e = { rect: box, elements: [{ ...el('heading', 'Service centers', 16, 74, 296, 20), hidden: true }, { ...el('link', 'Find one', 16, 110, 174, 22), hidden: true }] };
+  const r = alignUnit(o, e, 4); const by = Object.fromEntries(r.rows.map((x) => [x.key, x]));
+  assert.deepEqual([by['heading:service centers'].hidden, by['heading:service centers'].hiddenBoth, by['link:find one'].hidden], [false, true, true]);
+  assert.deepEqual([r.summary.hidden, r.summary.within], [1, 1]);
+});
+check('alignUnit: a row pushed down by an off row above it is displaced and counted once with its cause', () => {
+  const rect = { x: 0, y: 0, w: 300, h: 400 };
+  const o = { rect, elements: [el('text', 'A paragraph that wraps to four lines on the source', 0, 0, 300, 96), el('link', 'Read more', 0, 110, 90, 20), el('text', 'A closing line', 0, 140, 300, 24), el('image', '', 200, 0, 80, 80)] };
+  const e = { rect, elements: [el('text', 'A paragraph that wraps to four lines on the source', 0, 0, 300, 72), el('link', 'Read more', 0, 86, 90, 20), el('text', 'A closing line', 0, 116, 300, 24), el('image', '', 200, 0, 80, 80)] };
+  const r = alignUnit(o, e, 4); const by = Object.fromEntries(r.rows.map((x) => [x.role + ':' + x.dy, x]));
+  assert.deepEqual([r.summary.off, r.summary.displaced, r.summary.within], [1, 2, 1], JSON.stringify(r.summary));
+  assert.equal(by['link:-24'].displaced, true); assert.equal(by['link:-24'].off, false);
+  // an independent offset is still off: not what the cause above it adds
+  const e2 = { rect, elements: [el('text', 'A paragraph that wraps to four lines on the source', 0, 0, 300, 72), el('link', 'Read more', 0, 60, 90, 20), el('text', 'A closing line', 0, 116, 300, 24), el('image', '', 200, 0, 80, 80)] };
+  assert.equal(alignUnit(o, e2, 4).summary.off, 2);
+});
 check('alignUnit: the recorded card — body 28 px low, details link hidden, badge paired by position, image by order', () => {
   const o = { rect: { x: 165, y: 500, w: 350, h: 260 }, elements: [el('text', '1 day left', -10, -10, 70, 70), el('image', '', 17, 76, 70, 70), el('text', 'Expires 09/26/26', 112, 12, 202, 15), el('text', 'Earn $5 W Cash rewards when you spend', 112, 27, 202, 54), el('link', 'View details', 112, 176, 91, 24), el('button', 'Clip', 12, 204, 326, 44)] };
   const e = { rect: { x: 165, y: 522, w: 355, h: 238 }, elements: [el('text', '2 days left', -27, -30, 64, 64), el('image', 'coupon', 11, 46, 65, 65), el('text', 'Expires 09/26/26', 101, 16, 242, 20), el('text', 'Earn $5 W Cash rewards when yo…', 101, 55, 215, 48), el('link', 'View details', 101, 204, 91, 20, { hidden: true }), el('link', 'Clip', 12, 182, 331, 44)] };

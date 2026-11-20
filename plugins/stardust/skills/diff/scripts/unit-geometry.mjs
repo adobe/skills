@@ -10,7 +10,8 @@
  * inner elements (role + text, shadow-DOM aware) relative to the unit's corner, aligned (key, text
  * prefix, relaxed link ↔ button, images by order, leftover text by position) and reported as
  * Δx / Δy / Δw / Δh against --tol, plus the unit's own size / position delta; `hidden` where the
- * served page clips. Both sides settle the same way; the origin inventory caches under
+ * served page clips what the origin shows (clipped on both sides, an off-screen slide, is parity); a row
+ * pushed down by an off row above it is `displaced`, reported with its cause, not counted. Both sides settle the same way; the origin inventory caches under
  * stardust/current/measure/<slug>-<width>-units.json and is reused only when its recorded identity
  * (slug, width, origin URL, n, locale, selector set) equals the run's — rects of another width, URL, n
  * or selector set are a miss, and the pre-identity <slug>-units.json is never read.
@@ -167,16 +168,24 @@ export function alignUnit(o, e, tol = 4) {
     usedE.add(idx); rows.push(rowFor(oe, E[idx], tol, true));
   }
   rows.sort((a, b) => a.origin.y - b.origin.y || a.origin.x - b.origin.x);
+  // One cause, counted once: a row that is off only by Δy, by what an off row above it adds (its Δy + Δh), was pushed
+  // by that row — `displaced`, reported, not counted as off (one paragraph wrapping a line short read as five rows off).
+  const pushes = [];
+  for (const r of rows) {
+    const onlyDy = Math.abs(r.dx) <= tol && Math.abs(r.dw) <= tol && Math.abs(r.dh) <= tol;
+    if (r.off && onlyDy && pushes.some((push) => Math.abs(r.dy - push) <= tol)) { r.off = false; r.displaced = true; continue; }
+    if (r.off && Math.abs(r.dy + r.dh) > tol) pushes.push(r.dy + r.dh);
+  }
   const extra = E.filter((_, i) => !usedE.has(i));
   const unit = { origin: o.rect, eds: e.rect, dx: e.rect.x - o.rect.x, dy: e.rect.y - o.rect.y, dw: e.rect.w - o.rect.w, dh: e.rect.h - o.rect.h };
-  const summary = { elements: O.length, within: rows.filter((r) => !r.off && !r.hidden).length, off: rows.filter((r) => r.off).length, hidden: rows.filter((r) => r.hidden).length, missing: missing.length, extra: extra.length, unitOff: Math.abs(unit.dw) > tol || Math.abs(unit.dh) > tol };
+  const summary = { elements: O.length, within: rows.filter((r) => !r.off && !r.hidden && !r.displaced).length, off: rows.filter((r) => r.off).length, displaced: rows.filter((r) => r.displaced).length, hidden: rows.filter((r) => r.hidden).length, missing: missing.length, extra: extra.length, unitOff: Math.abs(unit.dw) > tol || Math.abs(unit.dh) > tol };
   return { rows, missing, extra, unit, summary };
 }
 
 function rowFor(oe, ee, tol, byPosition) {
   const d = { dx: ee.x - oe.x, dy: ee.y - oe.y, dw: ee.w - oe.w, dh: ee.h - oe.h };
   const off = Math.abs(d.dx) > tol || Math.abs(d.dy) > tol || Math.abs(d.dw) > tol || Math.abs(d.dh) > tol;
-  return { key: oe.key, role: oe.role, text: oe.text, edsText: ee.text, byPosition, origin: { x: oe.x, y: oe.y, w: oe.w, h: oe.h }, eds: { x: ee.x, y: ee.y, w: ee.w, h: ee.h, sel: ee.sel, role: ee.role }, ...d, off, hidden: !!ee.hidden, type: { origin: `${oe.fs}/${oe.lh}/${oe.fw}`, eds: `${ee.fs}/${ee.lh}/${ee.fw}` } };
+  return { key: oe.key, role: oe.role, text: oe.text, edsText: ee.text, byPosition, origin: { x: oe.x, y: oe.y, w: oe.w, h: oe.h }, eds: { x: ee.x, y: ee.y, w: ee.w, h: ee.h, sel: ee.sel, role: ee.role }, ...d, off, hidden: !!ee.hidden && !oe.hidden, ...(ee.hidden && oe.hidden ? { hiddenBoth: true } : {}), type: { origin: `${oe.fs}/${oe.lh}/${oe.fw}`, eds: `${ee.fs}/${ee.lh}/${ee.fw}` } };
 }
 
 const fmt = (r) => `${r.x},${r.y} ${r.w}×${r.h}`;
