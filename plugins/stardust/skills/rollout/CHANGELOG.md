@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/adobe/skills/compare/rollout-v1.2.1...rollout-v1.3.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
 ## [1.2.1](https://github.com/adobe/skills/compare/rollout-v1.2.0...rollout-v1.2.1) (2026-11-20)
 
 
