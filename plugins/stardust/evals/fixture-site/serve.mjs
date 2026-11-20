@@ -66,7 +66,10 @@ const server = createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const send = (code, type, body) => { res.writeHead(code, { 'content-type': type, 'cache-control': 'no-store' }); res.end(body); };
   if (url.pathname === '/__fixture') return send(200, 'application/json', JSON.stringify({ fixture: 'stardust-evals-store', loads, pid: process.pid }));
-  let rel = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, '');
+  // a malformed percent-encoding is a bad request, not a reason to stop serving: decodeURIComponent throws on it
+  let path;
+  try { path = decodeURIComponent(url.pathname); } catch { return send(400, 'text/plain; charset=utf-8', 'Bad request\n'); }
+  let rel = normalize(path).replace(/^([/\\])+/, '');
   if (rel === '' || rel.endsWith(sep)) rel += 'index.html';
   const file = join(SITE, rel);
   const type = TYPES[extname(file)];

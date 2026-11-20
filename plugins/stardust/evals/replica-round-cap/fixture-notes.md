@@ -39,3 +39,13 @@ The decision is not prescribed. With the defect this small, `re-prototype`
 followed by a passing round is as good an outcome as `accept-residual` with
 the residual logged; a run that takes it needs the gate's dependencies and
 Chromium, which it installs itself (the skill's Setup, step 2).
+
+## What this scenario measures
+
+The cap lives in the scripts on purpose: `gate.sh` refuses the round and names
+the `rounds.mjs decide` command. `setup.sh` copies those scripts into the work
+directory for both arms, so the scenario checks that the mechanism holds end
+to end (no round past the cap, a recorded decision, an honest report), not
+that the skill text adds to it. Its first run with `scripts/skill-eval.mjs`
+passed all six criteria with the plugin and without it. Evidence that the
+skill text helps needs a criterion only that text carries.
