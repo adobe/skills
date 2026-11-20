@@ -45,8 +45,8 @@ export function reducePage(driver, session, { retries = 2, settleMs } = {}) {
     phase1 = detect(driver, session);
   }
   if (!phase1.sections?.length) {
-    throw new CliError('EMPTY_RESULT', `no sections detected after ${retries} retries`, {
-      hint: 'page did not finish rendering; retry with --headed or a longer --settle-ms',
+    throw new CliError('EMPTY_RESULT', `no content tokens left after ${retries} retries`, {
+      hint: 'if the page should have content, retry with --headed or a longer --settle-ms',
     });
   }
   return phase1;

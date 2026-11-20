@@ -2947,19 +2947,21 @@
     if (!el) return null;
     const clone = el.cloneNode(true);
     const live = liveLookup(clone, el);
-    cleanupAll(clone, win, live);
-    const shadowRoots = findShadowRoots(clone);
+    const wrapper = doc.createElement("div");
+    wrapper.append(clone);
+    cleanupAll(wrapper, win, live);
+    const shadowRoots = findShadowRoots(wrapper);
     for (const sroot of shadowRoots) {
       cleanupAll(sroot, win);
       tokenizeAll(sroot, win);
     }
-    tokenizeAll(clone, win, live);
-    if (!CONTENT_TOKEN.test(clone.textContent)) return null;
+    tokenizeAll(wrapper, win, live);
+    if (!CONTENT_TOKEN.test(wrapper.textContent)) return null;
     return {
       sectionType: box.prediction?.sectionType || "unknown",
       xpath: box.xpath || DOM.getXPath(el, doc),
       xpathWithDetails: box.xpathWithDetails || XPath.getRelativeXPath(el, true),
-      tokenizedHtml: clone.outerHTML,
+      tokenizedHtml: wrapper.innerHTML,
       layout: box.layout || { numCols: 0, numRows: 0 },
       features: box.prediction?.sectionFeatures || [],
       section: box.section ? {
