@@ -10,8 +10,8 @@ Phase 1 already replaced content with tokens (`{TEXT}`, `{HEADING:n}`,
 - Token Vocabulary
 - Rules: 1 repeated patterns, 2 decorative wrappers, 3 layout containers,
   4 utility classes, 5 tracking attributes, 6 forms, 7 navigation, 8 tables,
-  9 cookie/overlay panels, 10 re-typing sections
-- Output Format: skeleton.html, manifest.json schema
+  9 cookie/overlay panels, 10 re-typing sections, 11 empty sections
+- Output Format: skeleton.html (size limit), manifest.json schema
 
 ## Token Vocabulary
 
@@ -35,7 +35,7 @@ Tokens you produce in Phase 2:
 |-------|---------|
 | `{REPEAT:N}` | N more items identical to the pattern above |
 | `{FORM:N-fields}` | Entire form collapsed (when > 3 fields) |
-| `{NAV:N-items}` | Navigation collapsed (when > 5 links) |
+| `{NAV:N-items}` | N more links in a list of links (when > 5 links) |
 
 ## Rules
 
@@ -92,10 +92,14 @@ Remove classes matching these patterns:
 - Grid columns: `col-*`
 - Display: `d-*`, `flex`, `block`, `inline`
 - Color: `bg-*`, `text-*` when followed by a color name
-- Animation: `fade-*`, `slide-*`, `inview-*`, `js-*`, `is-*`
+- Animation: `fade-*`, `slide-*`, `inview-*`, `js-*`
 
-Keep all semantic classes (`hero`, `card`, `carousel-slide`, `nav-item`,
-`footer`, `testimonial`, etc.).
+A class is semantic when it names what the element is: `hero`, `card`,
+`nav-item`, `footer`, `testimonial`, a block name. Keep it. Strip classes that
+only say how the element looks or which state it is in: the patterns above,
+state classes (`is-*`, `has-*`, `active`, `open`, `selected`) and
+design-system modifiers (a prefix plus a size, colour or variant, such as
+`hds-button--primary` or `btn-lg`). When unsure, keep the class.
 
 ### 5. Strip tracking data attributes
 
@@ -113,8 +117,10 @@ count. Keep the `<form>` tag with its `action` and `method` attributes.
 ### 7. Collapse complex navigation
 
 If a `<nav>` or navigation-like list has more than 5 `{LINK:*}` or
-`{CTA:*}` items, keep 2 representative items and replace the rest with
-`{NAV:N-items}`.
+`{CTA:*}` items, keep the first 2 and replace the rest with `{NAV:N-items}`,
+where N is the number of items replaced, as for `{REPEAT:N}`: 7 links become
+2 links and `{NAV:5-items}`. Use `{NAV}` only for lists of links. Repeated
+content items (cards, teasers) follow rule 1.
 
 ### 8. Preserve table structure
 
@@ -123,9 +129,10 @@ Show `<thead>` rows fully. Show 2 `<tbody>` rows. If more exist, add
 
 ### 9. Strip cookie consent / overlay panels
 
-Cookie consent panels, GDPR modals, and similar overlays should be collapsed
-to a single line: `<div id="cookie-panel">{FORM:N-fields}</div>` or removed
-entirely. These are not part of the page structure.
+Cookie consent panels, GDPR modals and similar overlays are not part of the
+page structure. Remove an overlay that has no `{INPUT}` or `{SELECT}` tokens;
+collapse one that has them to `<div id="cookie-panel">{FORM:N-fields}</div>`.
+Never write `{FORM:0-fields}`.
 
 ### 10. Re-type sections
 
@@ -143,6 +150,15 @@ manifest. Common re-typings:
 | columns | `class="footer"`, `<footer>` | footer-nav |
 | carousel | tab-pane structure | tabs |
 
+### 11. Drop empty sections
+
+Drop a section left with no content token after the other rules (no token
+but `{ICON}`): only wrappers, carousel arrows or dots, a background, a lone
+`{ICON}`. This holds whether Phase 1 returned it empty or the rules emptied
+it. List the index of each section you drop, by this rule
+or rule 9, under `droppedSections` in manifest.json. The other sections keep
+their Phase 1 index; don't renumber.
+
 ## Output Format
 
 ### skeleton.html
@@ -154,6 +170,10 @@ TOKENIZED_HTML
 ```
 
 Pretty-print with 2-space indentation.
+
+`skeleton.html` is never larger than the Phase 1 `tokenizedHtml` it came from
+(all sections together). If it is, collapse more (rules 1, 7 and 8) before
+writing.
 
 ### manifest.json
 
@@ -184,7 +204,8 @@ Pretty-print with 2-space indentation.
       },
       "styledSection": null
     }
-  ]
+  ],
+  "droppedSections": [5, 12]
 }
 ```
 

@@ -1,0 +1,54 @@
+{
+  "context": "The agent runs the structural-reasoning half of a page reduction on a synthetic Phase 1 output for a fictional coffee shop (9 sections, index 0 to 8). The tokenizedHtml of all sections totals 7,719 bytes. Sections 5 (carousel arrows and dots, only {ICON} tokens) and 6 (an empty counter) have no content tokens; section 8 is a cookie consent dialog with no {INPUT} or {SELECT}. Judge skeleton.html and manifest.json.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "two_siblings_kept",
+      "max_score": 15,
+      "category": "MUST_NOT",
+      "description": "Section 2 (promo-pair) keeps both promo tiles written out. Two identical siblings are not collapsed: no `{REPEAT:1}` or other `{REPEAT}` token in this section."
+    },
+    {
+      "name": "different_cards_not_merged",
+      "max_score": 15,
+      "category": "MUST_NOT",
+      "description": "Section 3 keeps all three feature cards, which differ in their tokens (image and CTA; video and two texts; icon, list and link). They are not merged into one card with a `{REPEAT}` token."
+    },
+    {
+      "name": "identical_cards_collapsed",
+      "max_score": 10,
+      "category": "INTENT",
+      "description": "Section 4 (product carousel, six identical product cards) keeps two cards followed by `{REPEAT:4}`."
+    },
+    {
+      "name": "nav_count_is_items_replaced",
+      "max_score": 10,
+      "category": "INTENT",
+      "description": "The header navigation (section 0, eight links) keeps its first two links (Coffee, Equipment) and then `{NAV:6-items}`; the footer Shop list (section 7, nine links) keeps two links and then `{NAV:7-items}`. N counts the links replaced, not the total. The four-link Company list is left whole."
+    },
+    {
+      "name": "consent_overlay_removed",
+      "max_score": 15,
+      "category": "MUST_NOT",
+      "description": "The cookie consent dialog (section 8) does not appear in skeleton.html, and no `{FORM:0-fields}` token appears anywhere."
+    },
+    {
+      "name": "empty_sections_dropped",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "skeleton.html has no section for indexes 5 and 6. manifest.json lists `droppedSections` with 5, 6 and 8 and no other index; its `sections` and the skeleton's section comments are 0, 1, 2, 3, 4 and 7, with their Phase 1 indexes (not renumbered)."
+    },
+    {
+      "name": "modifier_classes_stripped",
+      "max_score": 10,
+      "category": "DESIGN",
+      "description": "State classes (`is-active`, `is-visible`, `is-sticky`) and design-system modifiers (`ui-button--primary`, `ui-card--elevated`, `hero--dark`) are removed, while classes that name the element (hero, promo-tile, feature-card, product-card, footer-nav…) are kept."
+    },
+    {
+      "name": "skeleton_not_larger",
+      "max_score": 10,
+      "category": "INTENT",
+      "description": "skeleton.html is no larger than the Phase 1 tokenizedHtml it came from: at most 7,719 bytes."
+    }
+  ]
+}

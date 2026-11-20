@@ -13,6 +13,7 @@ So scenarios give the agent browser output captured from live pages in
 | browser-probe-recipe-from-report | browser-probe | `web probe` report (CloudFront UA block) |
 | browser-probe-all-blocked | browser-probe | `web probe` report, every step blocked (Akamai Bot Manager; exit 3) |
 | page-reduce-skeleton-from-phase1 | page-reduce | `web page reduce` output from https://www.aem.live/ |
+| page-reduce-repeats-and-empty-sections | page-reduce | `web page reduce` output for an invented coffee shop (repeats, carousel controls, a cookie dialog) |
 | page-langs-audit-from-capture | page-langs | browser-step output of `web page langs` (signals and text) from a local en/es/de test page, URL rewritten |
 | page-prep-throwaway-session-cleanup | page-prep | `web page overlays` detection report from https://www.20minutes.fr/ |
 | site-scan-report-from-scan | site-scan | `web site scan` output for an invented store (3 languages, an archive, two failed sitemaps) |

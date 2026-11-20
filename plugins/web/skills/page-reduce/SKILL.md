@@ -85,7 +85,7 @@ If `--phase1-only` was requested, stop here.
 Read [the Phase 2 rules](references/PHASE2-RULES.md) and apply them to each
 section's `tokenizedHtml`. They collapse repeated patterns into `{REPEAT:N}`,
 remove decorative wrappers and utility/tracking attributes, collapse complex
-forms and navs, strip overlay panels, and re-type sections.
+forms and navs, strip overlay panels, drop empty sections and re-type sections.
 
 ## Output files
 
@@ -103,6 +103,12 @@ forms and navs, strip overlay panels, and re-type sections.
 
 <!-- section:1 type:cards xpath:/html/body/main/div[2] -->
 <div class="cards-container">
+  <div class="card">
+    {IMAGE:400x300}
+    <h3>{HEADING:3}</h3>
+    <p>{TEXT}</p>
+    <a>{LINK:Read more}</a>
+  </div>
   <div class="card">
     {IMAGE:400x300}
     <h3>{HEADING:3}</h3>
