@@ -25,7 +25,7 @@
 /plugins/aem/forms/edge-delivery-services/             @ravise5
 
 # AEM Forms Core Components
-/plugins/aem/forms/core-components/                   @armaang_adobe
+/plugins/aem/forms/core-components/                   @armaang1729 @sakshi-arora1
 
 # AEM EDS Personalization
 /plugins/aem/edge-delivery-services-personalization/   @srshrm
