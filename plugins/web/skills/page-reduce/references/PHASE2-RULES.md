@@ -179,8 +179,7 @@ Pretty-print with 2-space indentation.
 Without its `<!-- section:… -->` lines and with whitespace removed,
 `skeleton.html` is never larger than the Phase 1 `tokenizedHtml` it came from
 (all sections, whitespace removed). If it is, collapse more (rules 1, 7 and 8)
-before writing. Where a rule's rewrite is longer than what it replaces
-(`{SELECT:2}` becoming `{FORM:1-fields}`), keep the original for that part.
+before writing.
 
 ### manifest.json
 
