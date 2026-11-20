@@ -241,8 +241,9 @@ stardust/scripts/stardust/ledger.mjs replica source-fidelity-gate end
 
 **Read the contract card first: `reference/handoff-contract.md`** — the
 migrate, deploy and rollout rules this phase needs, the rollout ledger phase
-strings, one usage line per script. Never read the sibling SKILL.md files
-whole; fetch a cited section with `section.mjs` when a step needs depth.
+strings, one usage line per script. Read it by section (`section.mjs
+<doc> --list`, then the section a step needs), never whole, and never the
+sibling SKILL.md files whole.
 
 - **Pages beyond the archetypes** go through `migrate` at sibling tier
   (`../migrate/reference/fidelity-tiers.md`), only AFTER their archetype is
