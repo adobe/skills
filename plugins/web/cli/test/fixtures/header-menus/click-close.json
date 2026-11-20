@@ -1,0 +1,4 @@
+{ "states": [
+  { "label": "Tools", "trigger": "click", "newLinks": 2, "file": "0.png" },
+  { "label": "Help", "trigger": "click", "newLinks": 2, "file": "1.png" }
+] }

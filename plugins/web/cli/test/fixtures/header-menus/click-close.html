@@ -1,0 +1,14 @@
+<!doctype html><html><head><style>
+header nav > ul { display: flex; gap: 40px; list-style: none; margin: 0; padding: 20px; }
+/* closes with a 1.2 s clip-path transition, as an EDS site's panels do in 0.5 s: its links stay
+   visible until the transition ends */
+.panel { position: absolute; left: 0; right: 0; top: 60px; background: #eee; padding: 20px;
+  clip-path: inset(0 0 100% 0); visibility: hidden;
+  transition: clip-path 1.2s ease, visibility 0s linear 1.2s; }
+.open .panel { clip-path: inset(0); visibility: visible; transition: clip-path 1.2s ease; }
+</style></head><body><header><nav><ul>
+<li><button type="button" onclick="this.parentElement.classList.toggle('open')">Tools</button>
+<div class="panel"><a href="/t1">T1</a> <a href="/t2">T2</a></div></li>
+<li><button type="button" onclick="this.parentElement.classList.add('open')">Help</button>
+<div class="panel"><a href="/h1">H1</a> <a href="/h2">H2</a></div></li>
+</ul></nav></header><main style="height:1200px"></main></body></html>

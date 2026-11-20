@@ -4,7 +4,8 @@
  * or click its label in the page's header: `body > header`, else the first `header`), count the
  * links that appear in the viewport (anywhere: a panel can live outside the header; counted by
  * `bundles/header-toggles.js`, as the capture counts them) against the capture's, then close it the way the
- * source does (pointer away for hover, the label clicked again for click) and check it closes.
+ * source does (pointer away for hover, the label clicked again for click) and check it closes,
+ * once a closing transition has ended (up to 3 s).
  * `web header check menus <page url> <open.json>`: one line per menu, and whether all are ok.
  */
 import { readFileSync } from 'node:fs';
@@ -15,16 +16,23 @@ import { loadBundle } from '#src/bundles/index.mjs';
 
 /**
  * Problems of one menu: too few links (under 80 % of the capture's), not closing, not opening.
- * `left` is null when the close step itself failed (the open panel covers its label).
+ * `left` is null when the close step itself failed (the open panel covers its label); the close
+ * step is the one of `trigger` (click: the label again; else the pointer away).
  */
-export function verdict({ expected, opened, left }) {
+export function verdict({ trigger, expected, opened, left }) {
   if (opened == null) {
     return { ok: false, problems: ['could not be opened (label not found or covered)'] };
   }
   const problems = [];
   if (opened < Math.ceil(expected * 0.8)) problems.push(`opens ${opened} of ${expected} links`);
   if (left == null) problems.push('could not be closed (label covered or not clickable once open)');
-  else if (left > 0) problems.push('stays open when the pointer leaves');
+  else if (left > 0) {
+    problems.push(
+      trigger === 'click'
+        ? 'stays open when its label is clicked again'
+        : 'stays open when the pointer leaves',
+    );
+  }
   return { ok: !problems.length, problems };
 }
 
@@ -63,8 +71,8 @@ const PROBE = `async (page, url, menus) => {
       // a click menu closes as on the source: its label clicked again (an SEO blog's panel fills
       // the viewport, so an outside click lands in it)
       if (m.trigger === 'click') await label.click({ timeout: 4000 }); else await away();
-      await page.waitForTimeout(500);
-      left = (await shown()) - closed;
+      // a panel that closes with a transition keeps its links visible until it ends: wait for it
+      left = (await page.evaluate((n) => window.__plgWaitHidden(n), closed)) - closed;
     } catch { /* opening failed: opened stays null; closing failed: left stays null */ }
     out.push({ label: m.label, trigger: m.trigger, expected: m.newLinks, opened, left });
   }

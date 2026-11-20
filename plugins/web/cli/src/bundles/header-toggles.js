@@ -41,6 +41,16 @@
     }
     return false;
   };
+  // the other way: waits (up to `ms`) until no more links are visible than `closed`, and returns
+  // the count. A panel that closes with a transition (a clip-path over 0.5 s on an EDS site) keeps
+  // its links visible until the transition ends.
+  window.__plgWaitHidden = async (closed, ms = 3000) => {
+    for (let t = 0; ; t += 100) {
+      const n = window.__plgVisibleLinks();
+      if (n <= closed || t >= ms) return n;
+      await new Promise((r) => { setTimeout(r, 100); });
+    }
+  };
 
   // remember the links visible with every menu closed, to find what an opened menu revealed
   window.__plgMarkVisibleLinks = () => {
