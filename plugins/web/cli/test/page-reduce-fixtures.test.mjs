@@ -26,6 +26,9 @@ let hiddenMain;
 let hiddenOnly;
 let ancestorHidden;
 let overflowBody;
+let zeroWrapper;
+let offpageMain;
+let clippedMain;
 
 // Async spawn: spawnSync blocks the event loop that serves the in-process fixture.
 function web(...args) {
@@ -59,6 +62,9 @@ before(async () => {
   hiddenOnly = await reduceFixture('hidden-only', '--retries', '0');
   ancestorHidden = await reduceFixture('ancestor-hidden');
   overflowBody = await reduceFixture('overflow-body');
+  zeroWrapper = await reduceFixture('zero-wrapper');
+  offpageMain = await reduceFixture('offpage-main');
+  clippedMain = await reduceFixture('clipped-main');
 });
 
 after(async () => {
@@ -163,4 +169,41 @@ fixtureTest('a body with no height keeps its absolutely positioned content', () 
 fixtureTest('brace text that is not a token is ordinary text', () => {
   const [section] = oneBlock.doc.sections;
   assert.doesNotMatch(section.tokenizedHtml, /\{TEXTURE\}/);
+});
+
+// One fallback section from `body`: the visible content won and nothing from main survived.
+function bodyFallback(result) {
+  assert.equal(result.status, 0, JSON.stringify(result.doc));
+  const [section, ...rest] = result.doc.sections;
+  assert.equal(rest.length, 0);
+  assert.equal(section.fallback, true);
+  assert.match(section.xpath, /body(\[1\])?$/);
+  return section.tokenizedHtml;
+}
+
+fixtureTest('a zero-height wrapper keeps its positioned link', () => {
+  assert.match(bodyFallback(zeroWrapper), /\{(?:LINK|CTA):Positioned link\}/);
+});
+
+fixtureTest('an off-page main that clips its text does not win the fallback', () => {
+  const html = bodyFallback(offpageMain);
+  assert.match(html, /\{LINK:Visible link\}/);
+  assert.doesNotMatch(html, /<main/);
+});
+
+fixtureTest('a main clipped out of view by its wrapper does not win the fallback', () => {
+  const html = bodyFallback(clippedMain);
+  assert.match(html, /\{LINK:Visible link\}/);
+  assert.doesNotMatch(html, /\{HEADING:1\}/);
+});
+
+fixtureTest('token-like page text is ordinary text', () => {
+  const [section] = oneBlock.doc.sections;
+  assert.match(section.tokenizedHtml, /<p>\{TEXT\}<\/p>/);
+  assert.doesNotMatch(section.tokenizedHtml, /actual page copy|\{LINK:x\}/);
+});
+
+fixtureTest('a link label with braces keeps its text', () => {
+  const [section] = oneBlock.doc.sections;
+  assert.match(section.tokenizedHtml, /<p>\{LINK:TEXTURE\}<\/p>/);
 });
