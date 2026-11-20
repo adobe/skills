@@ -28,7 +28,9 @@
  * A panel is what the control reveals, not what the page does meanwhile. The first time content appears outside the
  * header root, the page is watched for 8 s with no control in play; a region that changes in that time (a hero carousel
  * changing slide) is left out of every state from then on, and the control is acted on again. A panel rendered outside
- * the header element stays: it does not change by itself.
+ * the header element stays: it does not change by itself. Each width records it as `watch` and prints one line: `ran`
+ * (ms, samples, excluded, the first 8 regions' selector and box), `not-triggered` (nothing appeared outside the header:
+ * the page was not watched) or `failed` (it was to be watched and no sample could be read: nothing was excluded).
  *
  * Usage: node skills/diff/scripts/chrome-explore.mjs <url> <out.json> [options]
  *   --width <w,…>        viewport widths (default 1440,390; below 768 is touch: no hover)
@@ -43,7 +45,7 @@
  *   --max-requests <n>   requests to the site's host per width — documents and subresources alike (images,
  *                        CSS, scripts, fonts, XHR), first load included (default 600; 0 = unlimited)
  *   --max-typeahead <n>  inputs probed per width (default 2); the rest are listed, not typed into
- * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlKind`, `normName`, `parseArgs`,
+ * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `watchLine`, `controlKind`, `normName`, `parseArgs`,
  * `requestBudget`, `sameSite`, `siteHost` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -62,6 +64,7 @@ const frontDoor = () => {
 const TOUCH_BELOW = 768;
 // the control-free watch: longer than the autoplay interval carousels ship with (3 to 5 s by default, heroes up to about 8)
 const WATCH_MS = 8000;
+const WATCH_LIST = 8; // regions listed in the record and on the line; `excluded` is the full count
 
 /** Lower-case, collapse whitespace, strip punctuation: the pairing key of a control. Pure. */
 export const normName = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/g, ' ').trim();
@@ -103,6 +106,17 @@ export function summarize(doc) {
     const capped = d.inputsSkipped ? `, ${d.inputsSkipped} input(s) past --max-typeahead` : '';
     return `${w}: ${(d.controls || []).filter(opens).length} controls (${k || 'none'}), ${states} states, ${links.size} links, depth ${depth}${spent}${capped}${d.truncated ? `, TRUNCATED at ${d.truncated}` : ''}`;
   });
+}
+
+/** The at-rest watch of one width's record, in words: how long, how many self-changing regions were excluded and which.
+ * A record without one, and a watch that could not run, say so: neither reads as "nothing excluded". Pure. */
+export function watchLine(d) {
+  const w = d && d.watch;
+  if (!w) return 'at-rest watch: not recorded (a chrome-explore without it)';
+  if (w.status === 'not-triggered') return 'at-rest watch: not run (no action revealed content outside the header)';
+  if (w.status !== 'ran') return `at-rest watch: COULD NOT RUN (${w.reason || `status ${w.status}`}), no self-changing region was excluded`;
+  const shown = (w.regions || []).map((r) => `${r.sel}${r.rect ? ` [${r.rect.join(',')}]` : ''}`);
+  return `at-rest watch: ${(w.ms / 1000).toFixed(1)} s, ${w.excluded} self-changing region(s) excluded${w.excluded ? `: ${shown.join('; ')}${w.excluded > shown.length ? '; …' : ''}` : ''}`;
 }
 
 const DEFAULTS = { width: '1440,390', 'max-states': 400, 'max-depth': 4, 'pace-ms': 400, 'reload-pause-ms': 1500, 'max-requests': 600, 'max-typeahead': 2, locale: 'en-US' };
@@ -243,6 +257,7 @@ function installInPage({ rootSel, ambient = [] }) {
       lib.snapshot();
       return out;
     },
+    boxes({ sels }) { return sels.map((sel) => { const el = document.querySelector(sel); const r = el && el.getBoundingClientRect(); return { sel, rect: r ? [r.x, r.y, r.width, r.height].map(Math.round) : null }; }); },
     controls({ scope }) {
       const rt = root();
       const pool = scope === 'root' ? (rt ? [...rt.querySelectorAll(CTRL)] : []) : lib.diff().appeared.flatMap((el) => [el, ...el.querySelectorAll(CTRL)]).filter((el) => el.matches(CTRL));
@@ -350,7 +365,7 @@ function installInPage({ rootSel, ambient = [] }) {
 const call = async (page, fn, arg = {}) => { try { return await page.evaluate(async ({ f, a }) => (window.__sdtc ? { v: await window.__sdtc[f](a) } : null), { f: fn, a: arg }); } catch { return null; } };
 
 /** Explore one width. `probe` is the term or an async (page) => term resolved on first use (saves a load).
- * Returns { root, controls[], scroll[], truncated, states, loads, requests, maxRequests, inputsSkipped, probe }. */
+ * Returns { root, controls[], scroll[], truncated, states, loads, requests, maxRequests, inputsSkipped, watch, probe }. */
 export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDepth, probe, shotsDir, settleMs = 250, visitOpts = {}, gotoFn, paceMs = DEFAULTS['pace-ms'], reloadPauseMs = DEFAULTS['reload-pause-ms'], maxRequests = DEFAULTS['max-requests'], maxTypeahead = DEFAULTS['max-typeahead'], watchMs = WATCH_MS }) {
   const { goto } = await frontDoor();
   const touch = width < TOUCH_BELOW;
@@ -376,6 +391,7 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
   let at = url; let loads = 0;
   const trail = []; // the controls acted on since the header was last at rest, in order: what reset re-acts to close them
   const ambient = []; let watched = false; // paths of the regions that change by themselves; the watch runs once per width
+  let watchRec = { status: 'not-triggered' }; // what the watch did, for the record
   // the first visit settles the page; later ones only restore the closed header (same URL, overlays already answered)
   // navigations are answered 204 throughout (the page never leaves), except our own reloads
   const load = async () => {
@@ -440,9 +456,15 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
   const watch = async () => {
     watched = true;
     await reset();
-    const moved = new Set();
-    for (const t0 = Date.now(); Date.now() - t0 < watchMs;) { await page.waitForTimeout(Math.min(400, watchMs)); for (const p of await C('selfChanged') || []) moved.add(p); }
-    if (moved.size) ambient.push(...(await C('region', { paths: [...moved] }) || [...moved]));
+    const moved = new Set(); let samples = 0; const t0 = Date.now();
+    while (Date.now() - t0 < watchMs) { await page.waitForTimeout(Math.min(400, watchMs)); const m = await C('selfChanged'); if (m) { samples += 1; for (const p of m) moved.add(p); } }
+    const ms = Date.now() - t0;
+    // no sample read: the page was never seen at rest, so nothing is known to change by itself
+    if (!samples) { watchRec = { status: 'failed', ms, reason: `no sample of the page at rest in ${ms} ms` }; return; }
+    const sels = moved.size ? (await C('region', { paths: [...moved] }) || [...moved]) : [];
+    ambient.push(...sels);
+    const listed = sels.slice(0, WATCH_LIST);
+    watchRec = { status: 'ran', ms, samples, excluded: sels.length, regions: await C('boxes', { sels: listed }) || listed.map((sel) => ({ sel, rect: null })) };
   };
   const observe = async (c, action, path) => {
     let s; let motion;
@@ -555,7 +577,7 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
     }
   }
   await page.unroute('**/*');
-  return { root: rootPath, controls, scroll, states, truncated, loads, requests: budget.count, maxRequests, inputsSkipped, probe: typeof probe === 'function' ? null : probe };
+  return { root: rootPath, controls, scroll, states, truncated, loads, requests: budget.count, maxRequests, inputsSkipped, watch: watchRec, probe: typeof probe === 'function' ? null : probe };
 }
 
 async function main() {
@@ -596,6 +618,7 @@ async function main() {
   await browser.close();
   writeFileSync(out, `${JSON.stringify(doc, null, 1)}\n`);
   for (const line of summarize(doc)) console.log(`chrome-explore ${line}`);
+  for (const [w, d] of Object.entries(doc.widths)) console.log(`chrome-explore ${w}: ${watchLine(d)}`);
   console.log(`→ ${out} (crops in ${shotsDir})`);
 }
 

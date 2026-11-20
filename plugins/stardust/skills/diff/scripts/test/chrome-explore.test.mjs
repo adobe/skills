@@ -17,7 +17,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { controlKind, exploreWidth, normName, parseArgs, requestBudget, sameSite, summarize } from '../chrome-explore.mjs';
+import { controlKind, exploreWidth, normName, parseArgs, requestBudget, sameSite, summarize, watchLine } from '../chrome-explore.mjs';
 import { compareDocs, visualFindings } from '../chrome-compare.mjs';
 import { serve } from './chrome-fixtures.mjs';
 
@@ -94,6 +94,16 @@ await check('sameSite / requestBudget: the site and its subdomains count, www. a
   const moved = requestBudget('https://source.test/', 5); moved.spend('https://source.test/'); moved.rebase('https://moved.test/home'); moved.spend('https://moved.test/a.js');
   assert.deepEqual([moved.host, moved.count], ['moved.test', 2]);
   const same = requestBudget('https://source.test/', 5); same.rebase('https://www.source.test/en/'); assert.equal(same.host, 'source.test');
+});
+
+await check('watchLine: how long, how many regions and which (capped); not run, not recorded and could-not-run each say so', () => {
+  const regions = Array.from({ length: 8 }, (_, i) => ({ sel: `main>div:nth-of-type(${i + 1})`, rect: [0, 100 * i, 1440, 100] }));
+  assert.equal(watchLine({ watch: { status: 'ran', ms: 8043, samples: 20, excluded: 1, regions: regions.slice(0, 1) } }), 'at-rest watch: 8.0 s, 1 self-changing region(s) excluded: main>div:nth-of-type(1) [0,0,1440,100]');
+  assert.match(watchLine({ watch: { status: 'ran', ms: 8043, samples: 20, excluded: 11, regions } }), /, 11 self-changing region\(s\) excluded: .*nth-of-type\(8\) \[0,700,1440,100\]; …$/);
+  assert.equal(watchLine({ watch: { status: 'ran', ms: 8000, samples: 20, excluded: 0, regions: [] } }), 'at-rest watch: 8.0 s, 0 self-changing region(s) excluded');
+  assert.match(watchLine({ watch: { status: 'not-triggered' } }), /^at-rest watch: not run /);
+  assert.match(watchLine({}), /^at-rest watch: not recorded /);
+  assert.match(watchLine({ watch: { status: 'failed', ms: 0, reason: 'no sample of the page at rest in 0 ms' } }), /COULD NOT RUN \(no sample of the page at rest in 0 ms\), no self-changing region was excluded$/);
 });
 
 let pw = null;
@@ -211,6 +221,17 @@ else {
     // once the carousel is known, the header is at rest whatever slide shows: the explorer that took each slide change for an
     // open panel reloaded 28 times here
     assert.ok(r.loads <= 4, `${r.loads} loads`);
+    // the record says the watch ran and what it left out: the carousel, one region with its box
+    const w = r.watch;
+    assert.deepEqual([w.status, w.excluded, w.regions.length, w.ms >= 8000, w.samples > 1], ['ran', 1, 1, true, true], JSON.stringify(w));
+    assert.ok(w.regions[0].sel && w.regions[0].rect[2] > 0 && w.regions[0].rect[1] > 0, 'the region below the header, with its box');
+    assert.match(watchLine(r), /^at-rest watch: 8\.\d s, 1 self-changing region\(s\) excluded: \S+ \[\d+,\d+,\d+,\d+\]$/);
+    assert.deepEqual(rich.widths[1440].watch, { status: 'not-triggered' }, 'a header whose panels stay inside it is never watched, and says so');
+    // a watch that reads no sample is recorded as failed, and the comparison stops on it
+    const blind = await withPage(1440, (page) => explore(page, `${srv.origin}/carousel`, 1440, { maxRequests: 0, watchMs: 0, maxStates: 1 }));
+    assert.deepEqual([blind.watch.status, blind.watch.excluded], ['failed', undefined]);
+    const at = (x) => ({ widths: { 1440: x } });
+    assert.deepEqual(compareDocs(at(r), at(blind)).findings.filter((f) => f.id === 'at-rest-watch').map((f) => [f.path, f.severity]), [['(build)', 'error']]);
   });
   await check('identical copy compares clean, crops included; the stock header fails on behaviour, content, motion, crops', async () => {
     const same = compareDocs(rich, rich2);

@@ -3,13 +3,16 @@
 /**
  * skills/diff/scripts/chrome-compare.mjs — the header-parity gate: a build's chrome-explore record
  * against the source's (the header contract). Controls pair by name, then by family (search, cart,
- * account, locale, drawer); every state the source opens must open the same way on the build, with
+ * account, locale, drawer); a link, in the header or in a panel, with text on one side only pairs by
+ * its address (`link-text`, a warning). Every state the source opens must open the same way on the build, with
  * its links and headings, its keyboard behaviour (Enter opens, Escape closes and returns focus, Tab
  * reaches the panel, aria-expanded follows) and its close paths. Profile `replica` (keep-design flow)
  * also gates the open-state crops (pixelmatch 0.1, --bar), motion (property set; duration within
  * max(80 ms, 25 %)) and the header's scroll states; `functional` (redesign, reskin) checks behaviour
  * and content only. Build evidence not observed because its request budget stopped the record warns
- * instead of failing parity; observed failures remain errors.
+ * instead of failing parity; observed failures remain errors. `at-rest-watch`: the two records differ in
+ * the self-changing regions chrome-explore left out (a warning), or a side's watch could not run (an error:
+ * explore that side again).
  *
  * A finding clears only by a fix or by a site-owner decision in --decisions
  * ({ decisions: [{ finding: "<key or prefix*>", decision, reason, by, at }] }); entries without
@@ -21,13 +24,14 @@
  *   --decisions <file>             default stardust/chrome/header-decisions.json
  *   --json <file>                  write the verdict (stardust/chrome/header-parity.json is what done-check reads)
  *   --src-shots <dir> / --build-shots <dir>   crop folders when not where the records say
- * Exit: 0 no undecided error · 2 errors · 1 usage. `compareDocs`, `applyDecisions`, `findingKey` are exported.
+ * Exit: 0 no undecided error · 2 errors · 1 usage. `compareDocs`, `applyDecisions`, `findingKey`, `pairControls`,
+ * `pairLinks` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { normName } from './chrome-explore.mjs';
+import { normName, watchLine } from './chrome-explore.mjs';
 
 // The shared rules (contracts.mjs) live beside browser.mjs in the master skill's scripts dir: the plugin tree or the Setup step 7 copy.
 const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contracts.mjs']
@@ -48,16 +52,42 @@ export const findingKey = (f) => `${f.id}@${f.width} ${f.path}${f.action ? ` [${
 
 const openOf = (c) => ['click', 'hover', 'key'].find((a) => c.actions && c.actions[a] && c.actions[a].opened);
 
-/** Pair two control lists: by name, then by family in order. Pure. */
-export function pairControls(src, bld) {
-  const used = new Set(); const pairs = [];
-  for (const s of src) {
-    let b = s.key ? bld.find((x) => !used.has(x) && x.key === s.key) : null;
-    if (!b && FAMILIES.has(s.kind)) b = bld.find((x) => !used.has(x) && x.kind === s.kind);
-    if (b) used.add(b);
-    pairs.push([s, b || null]);
+/** Pair the links of the two sides — the one rule wherever a source link meets a build link (header controls, panel
+ * links): by name when both have one; failing that by address when a side has no name (an icon link, a label the recorder
+ * could not read). Two different names at one address are two links. `once`: a build item pairs with one source item.
+ * Returns [{ s, b, by: 'name' | 'address' | null }] in source order. Pure. */
+export function pairLinks(src, bld, { name, addr, once = false }) {
+  const used = new Set(); const pairs = src.map((s) => ({ s, b: null, by: null }));
+  // an unpaired build item first; a list that is a set (panel links) may pair one twice
+  const pick = (p, cands, by) => { const b = cands.find((x) => !used.has(x)) || (once ? null : cands[0]); if (b) { used.add(b); p.b = b; p.by = by; } };
+  for (const p of pairs) {
+    const n = name(p.s); if (!n) continue;
+    const named = bld.filter((x) => name(x) === n); const k = addr(p.s);
+    pick(p, [...named.filter((x) => addr(x) === k), ...named], 'name');
+  }
+  for (const p of pairs) {
+    const n = name(p.s); const k = addr(p.s); if (p.b || k == null) continue;
+    const at = bld.filter((x) => addr(x) === k && !(n && name(x)));
+    pick(p, [...at.filter((x) => !name(x)), ...at], 'address');
   }
   return pairs;
+}
+// a pair made by address is worth a line when one side only has a name
+const oneSided = (k, sName, bName) => `${k} (${sName ? `"${sName}" on the source` : `"${bName}" on the build`} only)`;
+const linkText = (base, list) => ({ ...base, id: 'link-text', severity: 'warn', detail: `${list.length} link(s) paired by address, with text on one side only: ${list.slice(0, 4).join('; ')}${list.length > 4 ? '; …' : ''}` });
+const controlAddr = (c) => (c.role === 'link' && c.href ? hrefKey(c.href) : null);
+
+/** Pair two control lists: by name, a link without a name on one side by its address (pairLinks), then by family in
+ * order. Returns [source, build | null, 'name' | 'address' | 'family' | null]. Pure. */
+export function pairControls(src, bld) {
+  const pairs = pairLinks(src, bld, { name: (c) => c.key, addr: controlAddr, once: true });
+  const used = new Set(pairs.map((p) => p.b));
+  for (const p of pairs) {
+    if (p.b || !FAMILIES.has(p.s.kind)) continue;
+    const b = bld.find((x) => !used.has(x) && x.kind === p.s.kind);
+    if (b) { used.add(b); p.b = b; p.by = 'family'; }
+  }
+  return pairs.map((p) => [p.s, p.b, p.by]);
 }
 
 const searchControls = (cs, out = []) => { for (const c of cs || []) { if (c.role === 'input' && c.kind === 'search') out.push(c); searchControls(c.children, out); } return out; };
@@ -66,22 +96,14 @@ function compareState(ss, bs, base, { profile, add, visual }, full) {
   // content, motion and crops once per control (the first action both sides open on); keyboard facts per action
   if (ss.tabReachesPanel && bs.tabReachesPanel === false) add({ ...base, id: 'keyboard', severity: 'error', detail: 'Tab moves into the panel on the source, not on the build' });
   if (!full) return;
-  // a link pairs by its text; failing that by its address when one side recorded no text (an icon link, a label the
-  // recorder could not read): that pair is one warning, not a missing link. Two different texts at one address stay missing.
-  const byText = new Map(bs.panel.links.filter((l) => normName(l.text)).map((l) => [normName(l.text), l]));
-  const byHref = new Map(); for (const l of bs.panel.links) { const k = hrefKey(l.href); if (!byHref.has(k) || !normName(l.text)) byHref.set(k, l); }
+  const text = (l) => normName(l.text); const addr = (l) => hrefKey(l.href);
   const missing = []; const moved = []; const untexted = [];
-  for (const l of ss.panel.links) {
-    const t = normName(l.text); const k = hrefKey(l.href);
-    let m = t ? byText.get(t) : null;
-    if (!m) {
-      // a source link without text takes any build link at its address; one with text only a build link without
-      m = t ? [byHref.get(k)].find((x) => x && !normName(x.text)) : bs.panel.links.find((x) => hrefKey(x.href) === k && normName(x.text)) || byHref.get(k);
-      if (m && !!t !== !!normName(m.text)) untexted.push(`${k} (${t ? `"${l.text}" on the source` : `"${m.text}" on the build`} only)`);
-    }
-    if (!m) missing.push(l.text || l.href); else if (hrefKey(m.href) !== k) moved.push(`${l.text}: ${k} → ${hrefKey(m.href)}`);
+  for (const { s: l, b: m, by } of pairLinks(ss.panel.links, bs.panel.links, { name: text, addr })) {
+    if (!m) missing.push(l.text || l.href);
+    else if (by === 'name') { if (addr(m) !== addr(l)) moved.push(`${l.text}: ${addr(l)} → ${addr(m)}`); }
+    else if (!!text(l) !== !!text(m)) untexted.push(oneSided(addr(l), l.text, m.text));
   }
-  if (untexted.length) add({ ...base, id: 'link-text', severity: 'warn', detail: `${untexted.length} link(s) paired by address, with text on one side only: ${untexted.slice(0, 4).join('; ')}${untexted.length > 4 ? '; …' : ''}` });
+  if (untexted.length) add(linkText(base, untexted));
   const bh = new Set(bs.panel.headings.map(normName));
   const hMissing = ss.panel.headings.filter((h) => !bh.has(normName(h)));
   const iMissing = ss.panel.inputs.length && !bs.panel.inputs.length;
@@ -112,8 +134,8 @@ function compareState(ss, bs, base, { profile, add, visual }, full) {
 
 function walk(src, bld, ctx, path) {
   const { width, add, budgetIncomplete = false } = ctx;
-  const touch = width < TOUCH_BELOW;
-  for (const [s, b] of pairControls(src.filter((c) => c.role !== 'input'), bld.filter((c) => c.role !== 'input'))) {
+  const touch = width < TOUCH_BELOW; const untexted = [];
+  for (const [s, b, by] of pairControls(src.filter((c) => c.role !== 'input'), bld.filter((c) => c.role !== 'input'))) {
     const p = path ? `${path} > ${s.name || s.kind}` : (s.name || s.kind);
     const base = { width, path: p };
     const sOpen = openOf(s);
@@ -122,6 +144,7 @@ function walk(src, bld, ctx, path) {
       else if (!path && s.role === 'link') add({ ...base, id: 'link-missing', ...absentEvidence(budgetIncomplete, `top-level link ${s.href ? hrefKey(s.href) : ''} not in the build header`, 'warn') });
       continue;
     }
+    if (by === 'address' && !!s.key !== !!b.key) untexted.push(oneSided(controlAddr(s), s.name, b.name));
     const incomplete = budgetIncomplete || b.partial === 'request-budget';
     let full = true;
     for (const a of touch ? ['click', 'key'] : ['hover', 'click', 'key']) {
@@ -139,6 +162,18 @@ function walk(src, bld, ctx, path) {
     }
     if (sOpen && openOf(b) && !s.returns) walk(s.children || [], b.children || [], { ...ctx, budgetIncomplete: incomplete }, p);
   }
+  if (untexted.length) add(linkText({ width, path: path || '(header)' }, untexted));
+}
+
+// The at-rest watch of the two records: a side whose watch could not run excluded nothing it should have (its states may
+// hold the page's own content), so that is an error; a difference in what was excluded is said, as is a side without the record.
+function compareWatch(sw, bw, width, add) {
+  const sides = [['source', sw.watch], ['build', bw.watch]];
+  const ok = (w) => w.status === 'ran' || w.status === 'not-triggered';
+  for (const [side, w] of sides) if (w && !ok(w)) add({ width, path: `(${side})`, id: 'at-rest-watch', severity: 'error', detail: `${watchLine({ watch: w })}: explore the ${side} again` });
+  if (sides.some(([, w]) => w && !ok(w)) || (!sw.watch && !bw.watch)) return;
+  const n = (w) => (w && w.status === 'ran' ? w.excluded || 0 : 0);
+  if (!sw.watch || !bw.watch || n(sw.watch) !== n(bw.watch)) add({ width, path: '(page)', id: 'at-rest-watch', severity: 'warn', detail: sides.map(([side, w]) => `${side} ${watchLine({ watch: w })}`).join(' | ') });
 }
 
 /** All findings except the crop pixels (returned as `visual` pairs for the image pass). Pure. */
@@ -153,6 +188,7 @@ export function compareDocs(src, bld, { profile = 'replica' } = {}) {
     const addBuildTruncation = () => { if (bw.truncated) add({ width, path: '(build)', id: 'budget-truncated', severity: 'warn', detail: `the build record stopped at ${bw.truncated}${budgetIncomplete ? ': run the build side with --max-requests 0' : ''}` }); };
     if (!bw.root && sw.root) { add({ width, path: '(page)', id: 'control-missing', ...absentEvidence(budgetIncomplete, 'no header root on the build') }); addBuildTruncation(); continue; }
     walk(sw.controls || [], bw.controls || [], { width, add, profile, visual, budgetIncomplete }, '');
+    compareWatch(sw, bw, width, add);
     const ssr = searchControls(sw.controls); const bsr = searchControls(bw.controls);
     if (ssr.length && !bsr.length) add({ width, path: 'search', id: 'control-missing', ...absentEvidence(budgetIncomplete, 'the source header has a search input; the build none') });
     else if (ssr.length) {

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // skills/diff/scripts/test/chrome-compare.test.mjs — the header-parity verdict from two chrome-explore records (no browser):
 // pairing by name then family, a hover menu rebuilt as click-only, missing panel links (a link with text on one side
-// only pairs by its address), keyboard and close paths,
+// only pairs by its address, in the header as in a panel), the at-rest watch of the two records, keyboard and close paths,
 // motion and scroll states under `replica` only, search typeahead, and site-owner decisions (agents cannot sign).
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-compare.test.mjs
 import assert from 'node:assert/strict';
@@ -10,7 +10,7 @@ import { cpSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyDecisions, compareDocs, findingKey, pairControls } from '../chrome-compare.mjs';
+import { applyDecisions, compareDocs, findingKey, pairControls, pairLinks } from '../chrome-compare.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
@@ -65,6 +65,47 @@ check('a link with text on one side only pairs by its address: one link-text war
   assert.deepEqual(renamed.map((x) => [x.id, x.severity]), [['panel-content', 'error']]);
   // text still pairs first: the same label at another address is a moved link
   assert.deepEqual(compareDocs(panel(texts), panel([texts[0], { text: 'Contact', href: '/help/contact' }])).findings.map((x) => x.id), ['link-href']);
+});
+check('pairLinks: name first, then address when a side has no name; a build item pairs once when asked', () => {
+  const L = (text, href) => ({ text, href }); const o = { name: (l) => l.text, addr: (l) => l.href };
+  const by = (src, bld, more = {}) => pairLinks(src, bld, { ...o, ...more }).map((p) => [p.b && bld.indexOf(p.b), p.by]);
+  // the unnamed source link does not take the build link another source link pairs with by name
+  assert.deepEqual(by([L('', '/'), L('Home', '/')], [L('Home', '/'), L('', '/')]), [[1, 'address'], [0, 'name']]);
+  assert.deepEqual(by([L('', '/'), L('', '/')], [L('Logo', '/'), L('Home', '/')]), [[0, 'address'], [1, 'address']]);
+  assert.deepEqual(by([L('A', '/a'), L('A', '/b')], [L('A', '/a'), L('A', '/b')]), [[0, 'name'], [1, 'name']], 'the same name twice: each at its own address');
+  assert.deepEqual(by([L('A', '/a')], [L('B', '/a')]), [[null, null]], 'two names at one address are two links');
+  assert.deepEqual(by([L('A', '/a'), L('A', '/a')], [L('A', '/a')]), [[0, 'name'], [0, 'name']], 'a set: the one build link answers both');
+  assert.deepEqual(by([L('A', '/a'), L('A', '/a')], [L('A', '/a')], { once: true }), [[0, 'name'], [null, null]]);
+});
+check('a header link with a name on one side only (a logo) pairs by its address: link-text, never link-missing', () => {
+  const link = (name, href, more = {}) => ({ name, key: name.toLowerCase(), role: 'link', kind: 'link', href, actions: {}, ...more });
+  const src = doc([link('', 'https://example.com/'), link('Government', 'https://example.com/'), link('', '/about')]);
+  const build = doc([link('Home', 'https://build.test/index.html'), link('Government', '/'), link('About us', '/about/')]);
+  const f = compareDocs(src, build).findings;
+  assert.deepEqual(f.map((x) => [findingKey(x), x.severity]), [['link-text@1440 (header)', 'warn']]);
+  assert.equal(f[0].detail, '2 link(s) paired by address, with text on one side only: / ("Home" on the build only); /about ("About us" on the build only)');
+  assert.deepEqual(compareDocs(build, src).findings.map((x) => x.id), ['link-text'], 'the build lost the names: the same pairs');
+  assert.deepEqual(compareDocs(src, structuredClone(src)).findings, [], 'no name on either side: nothing to say');
+  // an address the build header lacks, and a link named differently on both sides, are still missing links
+  const gone = compareDocs(src, doc([link('Home', '/'), link('Government', '/')])).findings;
+  assert.deepEqual(gone.map((x) => [x.id, x.path, x.detail]), [['link-missing', 'link', 'top-level link /about not in the build header'], ['link-text', '(header)', '1 link(s) paired by address, with text on one side only: / ("Home" on the build only)']]);
+  assert.deepEqual(compareDocs(doc([link('Contact', '/contact')]), doc([link('Get in touch', '/contact')])).findings.map((x) => x.id), ['link-missing']);
+  // a control that is not a link has no address: an unnamed toggle still pairs by family only
+  const toggle = ctl('', 'search', { click: st(['Help']) });
+  assert.deepEqual(compareDocs(doc([toggle]), doc([{ ...toggle, name: 'Search', key: 'search' }])).findings, []);
+});
+check('at-rest watch: a difference in what the two records excluded warns; a watch that could not run is an error; no record on one side is said', () => {
+  const ran = (excluded) => ({ status: 'ran', ms: 8012, samples: 20, excluded, regions: excluded ? [{ sel: 'main>div', rect: [0, 96, 1440, 500] }] : [] });
+  const pair = (sw, bw) => { const a = doc([]); const b = doc([]); if (sw) a.widths[1440].watch = sw; if (bw) b.widths[1440].watch = bw; return compareDocs(a, b).findings.map((x) => [findingKey(x), x.severity, x.detail]); };
+  assert.deepEqual(pair(ran(1), ran(1)), []);
+  assert.deepEqual(pair(ran(0), { status: 'not-triggered' }), [], 'neither side excluded anything');
+  assert.deepEqual(pair(undefined, undefined), [], 'two records without it: nothing to compare');
+  assert.deepEqual(pair(ran(1), { status: 'not-triggered' }), [['at-rest-watch@1440 (page)', 'warn', 'source at-rest watch: 8.0 s, 1 self-changing region(s) excluded: main>div [0,96,1440,500] | build at-rest watch: not run (no action revealed content outside the header)']]);
+  assert.match(pair(ran(1), undefined)[0][2], /\| build at-rest watch: not recorded/);
+  assert.deepEqual(pair(undefined, ran(0)).map((x) => x.slice(0, 2)), [['at-rest-watch@1440 (page)', 'warn']], 'not recorded is not "nothing excluded"');
+  const failed = pair(ran(0), { status: 'failed', ms: 0, reason: 'no sample of the page at rest in 0 ms' });
+  assert.deepEqual(failed, [['at-rest-watch@1440 (build)', 'error', 'at-rest watch: COULD NOT RUN (no sample of the page at rest in 0 ms), no self-changing region was excluded: explore the build again']]);
+  assert.deepEqual(pair({ status: 'later' }, undefined).map((x) => x.slice(0, 2)), [['at-rest-watch@1440 (source)', 'error']], 'a status this version does not know is not read as a watch that ran');
 });
 check('functional profile: behaviour and content gate, motion and crops do not, scroll states only warn', () => {
   const build = structuredClone(source);
