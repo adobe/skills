@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/adobe/skills/compare/plugin/web/v1.0.2...plugin/web/v1.0.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **web:** tighten page-reduce Phase 2 rules (NAV count, empty sections, classes, size) ([#764](https://github.com/adobe/skills/issues/764)) ([b4fb575](https://github.com/adobe/skills/commit/b4fb5756528031b2bf971e979c92b06799f72010)), closes [#762](https://github.com/adobe/skills/issues/762) [#762](https://github.com/adobe/skills/issues/762)
+
 ## [1.0.2](https://github.com/adobe/skills/compare/plugin/web/v1.0.1...plugin/web/v1.0.2) (2026-11-20)
 
 
