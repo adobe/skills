@@ -89,7 +89,7 @@ forms and navs, strip overlay panels, drop empty sections and re-type sections.
 
 ## Output files
 
-**skeleton.html**: all sections with comment separators, pretty-printed with
+**skeleton.html**: the retained sections with comment separators, pretty-printed with
 2-space indentation:
 
 ```html

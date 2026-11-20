@@ -120,10 +120,10 @@ count. Keep the `<form>` tag with its `action` and `method` attributes.
 
 ### 7. Collapse complex navigation
 
-If a `<nav>` or navigation-like list has more than 5 `{LINK:*}` or
-`{CTA:*}` items, keep the first 2 and replace the rest with `{NAV:N-items}`.
-Use `{NAV}` only for lists of links. Repeated content items (cards, teasers)
-follow rule 1.
+Lists of links follow this rule, not rule 1. A `<nav>` or navigation-like
+list of 5 or fewer `{LINK:*}` or `{CTA:*}` items stays whole; a longer one
+keeps its first 2 and replaces the rest with `{NAV:N-items}`. Repeated content
+items (cards, teasers) follow rule 1, never `{NAV}`.
 
 ### 8. Preserve table structure
 
@@ -133,8 +133,9 @@ Show `<thead>` rows fully. Show 2 `<tbody>` rows. If more exist, add
 ### 9. Strip cookie consent / overlay panels
 
 Cookie consent panels, GDPR modals and similar overlays are not part of the
-page structure. Remove an overlay that has no `{INPUT}` or `{SELECT}` tokens;
-collapse one that has them to `<div id="cookie-panel">{FORM:N-fields}</div>`.
+page structure. Decide on the fields the overlay has in Phase 1, before
+rule 6: collapse one with `{INPUT}` or `{SELECT}` tokens to
+`<div id="cookie-panel">{FORM:N-fields}</div>`, and remove one without.
 Never write `{FORM:0-fields}`.
 
 ### 10. Re-type sections
@@ -157,16 +158,17 @@ manifest. Common re-typings:
 
 Drop a section left with no content token after the other rules (no token
 but `{ICON}`): only wrappers, carousel arrows or dots, a background, a lone
-`{ICON}`. This holds whether Phase 1 returned it empty or the rules emptied
-it. List the index of each section you drop, by this rule
-or rule 9, under `droppedSections` in manifest.json. The other sections keep
-their Phase 1 index; don't renumber.
+`{ICON}`. `{REPEAT:N}` and `{NAV:N-items}` are not content: judge the items
+kept (2 carousel dots and `{REPEAT:4}` are still empty). This holds whether
+Phase 1 returned it empty or the rules emptied it. List the index of each
+section you drop, by this rule or rule 9, under `droppedSections` in
+manifest.json. The other sections keep their Phase 1 index; don't renumber.
 
 ## Output Format
 
 ### skeleton.html
 
-Concatenate all sections with comment separators:
+Concatenate the retained sections with comment separators:
 ```html
 <!-- section:INDEX type:TYPE xpath:XPATH -->
 TOKENIZED_HTML
@@ -177,7 +179,8 @@ Pretty-print with 2-space indentation.
 Without its `<!-- section:… -->` lines and with whitespace removed,
 `skeleton.html` is never larger than the Phase 1 `tokenizedHtml` it came from
 (all sections, whitespace removed). If it is, collapse more (rules 1, 7 and 8)
-before writing.
+before writing. Where a rule's rewrite is longer than what it replaces
+(`{SELECT:2}` becoming `{FORM:1-fields}`), keep the original for that part.
 
 ### manifest.json
 

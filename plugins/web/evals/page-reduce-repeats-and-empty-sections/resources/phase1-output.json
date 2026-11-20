@@ -190,6 +190,26 @@
         "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
       },
       "index": 8
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/div[4]",
+      "xpathWithDetails": "//*[@id=\"consent-preferences\"]",
+      "tokenizedHtml": "<div id=\"consent-preferences\" class=\"consent-modal consent-modal--wide is-open\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Cookie preferences\"><h2 class=\"consent-modal__title\">{HEADING:2}</h2><form class=\"consent-modal__form\" method=\"post\"><label class=\"consent-toggle\">{INPUT:checkbox}{TEXT}</label><label class=\"consent-toggle\">{INPUT:checkbox}{TEXT}</label><label class=\"consent-toggle\">{INPUT:checkbox}{TEXT}</label><label class=\"consent-toggle\">{INPUT:checkbox}{TEXT}</label><button type=\"submit\" class=\"ui-button ui-button--primary\">{TEXT}</button></form></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasBackground"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/div[4]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 9
     }
   ]
 }
