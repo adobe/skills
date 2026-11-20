@@ -248,7 +248,7 @@ DISMISS_EXTRA=""
 LOCALE=""
 MASK=""
 HOLD="" # the timer hold's threshold in ms; empty = off
-case "${GATE_HOLD_TIMERS:-}" in ''|0) ;; 1) HOLD=2000 ;; *) HOLD=$GATE_HOLD_TIMERS ;; esac
+case "${GATE_HOLD_TIMERS:-1}" in ''|0) ;; 1) HOLD=2000 ;; *) HOLD=$GATE_HOLD_TIMERS ;; esac # PILOT: on by default
 case "${GATE_REFERENCE:-frozen}" in
   frozen) BASELINE=1 ;;
   live) BASELINE=0 ;;

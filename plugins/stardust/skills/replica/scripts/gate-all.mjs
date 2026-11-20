@@ -205,7 +205,7 @@ Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error; --wide: 0.
 /** --eds-host as an origin: a bare host (`main--site--org.aem.page`) gets https://, a trailing slash goes. */
 export const hostOrigin = (h) => { const x = String(h || '').trim().replace(/\/+$/, ''); return x && !/^[a-z][a-z0-9+.-]*:\/\//i.test(x) ? `https://${x}` : x; };
 /** GATE_HOLD_TIMERS → the timer hold's threshold in ms: unset, '' or 0 = null (off), 1 = 2000, else the number. */
-export const envHold = (v) => (v == null || v === '' || v === '0' ? null : v === '1' ? 2000 : Number(v));
+export const envHold = (v) => (v === '0' ? null : v == null || v === '' || v === '1' ? 2000 : Number(v)); // PILOT: on by default
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
