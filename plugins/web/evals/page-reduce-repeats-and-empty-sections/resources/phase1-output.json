@@ -10,7 +10,7 @@
       "sectionType": "unknown",
       "xpath": "/html[1]/body[1]/header[1]",
       "xpathWithDetails": "//*[@data-testid=\"site-header\"]",
-      "tokenizedHtml": "<header class=\"site-header is-sticky\" data-testid=\"site-header\"><div class=\"site-header__inner container\"><a class=\"site-header__logo\" aria-label=\"Harbor Lane Coffee\">{ICON}</a><nav class=\"main-nav\" aria-label=\"Main\"><ul class=\"main-nav__list d-flex\"><li class=\"nav-item nav-item--top\">{LINK:Coffee}</li><li class=\"nav-item nav-item--top\">{LINK:Equipment}</li><li class=\"nav-item nav-item--top\">{LINK:Subscriptions}</li><li class=\"nav-item nav-item--top\">{LINK:Cafés}</li><li class=\"nav-item nav-item--top\">{LINK:Wholesale}</li><li class=\"nav-item nav-item--top\">{LINK:Journal}</li><li class=\"nav-item nav-item--top\">{LINK:About us}</li><li class=\"nav-item nav-item--top\">{LINK:Contact}</li></ul></nav><div class=\"site-header__actions\">{CTA:Sign in}<a class=\"cart-link\" aria-label=\"Cart\">{ICON}</a></div></div></header>",
+      "tokenizedHtml": "<header class=\"site-header is-sticky\" data-testid=\"site-header\"><div class=\"site-header__inner container\">{ICON}<nav class=\"main-nav\" aria-label=\"Main\"><ul class=\"main-nav__list d-flex\"><li class=\"nav-item nav-item--top\">{LINK:Coffee}</li><li class=\"nav-item nav-item--top\">{LINK:Equipment}</li><li class=\"nav-item nav-item--top\">{LINK:Subscriptions}</li><li class=\"nav-item nav-item--top\">{LINK:Cafés}</li><li class=\"nav-item nav-item--top\">{LINK:Wholesale}</li><li class=\"nav-item nav-item--top\">{LINK:Journal}</li><li class=\"nav-item nav-item--top\">{LINK:About us}</li><li class=\"nav-item nav-item--top\">{LINK:Contact}</li></ul></nav><div class=\"site-header__actions\">{CTA:Sign in}{ICON}</div></div></header>",
       "layout": {
         "numCols": 0,
         "numRows": 0
@@ -30,7 +30,7 @@
       "sectionType": "hero",
       "xpath": "/html[1]/body[1]/main[1]/section[1]",
       "xpathWithDetails": "//*[@data-testid=\"hero\"]",
-      "tokenizedHtml": "<section class=\"hero hero--dark is-visible mt-8 pb-12 fade-in\" data-testid=\"hero\"><div class=\"hero__content container\"><h1 class=\"hero__title text-white\">{HEADING:1}</h1><p class=\"hero__lede mb-6\">{TEXT}</p><a class=\"btn btn-lg\">{CTA:Shop the spring roast}</a></div><div class=\"hero__media\"><picture class=\"hero__picture\">{IMAGE:1440x640}</picture></div></section>",
+      "tokenizedHtml": "<section class=\"hero hero--dark is-visible mt-8 pb-12 fade-in\" data-testid=\"hero\"><div class=\"hero__content container\"><h1 class=\"hero__title text-white\">{HEADING:1}</h1><p class=\"hero__lede mb-6\">{TEXT}</p><button type=\"button\" class=\"btn btn-lg\">{CTA:Shop the spring roast}</button></div><div class=\"hero__media\"><picture class=\"hero__picture\">{IMAGE:1440x640}</picture></div></section>",
       "layout": {
         "numCols": 2,
         "numRows": 1
@@ -52,7 +52,7 @@
       "sectionType": "columns",
       "xpath": "/html[1]/body[1]/main[1]/div[1]",
       "xpathWithDetails": "//*[@data-testid=\"promo-pair\"]",
-      "tokenizedHtml": "<div class=\"promo-pair row\" data-testid=\"promo-pair\"><div class=\"promo-tile ui-card ui-card--flat\"><div class=\"promo-tile__media\">{IMAGE:620x420}</div><div class=\"promo-tile__body p-6\"><h3 class=\"promo-tile__title\">{HEADING:3}</h3><p>{TEXT}</p><a class=\"ui-button ui-button--secondary\">{CTA:Browse beans}</a></div></div><div class=\"promo-tile ui-card ui-card--flat\"><div class=\"promo-tile__media\">{IMAGE:620x420}</div><div class=\"promo-tile__body p-6\"><h3 class=\"promo-tile__title\">{HEADING:3}</h3><p>{TEXT}</p><a class=\"ui-button ui-button--secondary\">{CTA:Find a café}</a></div></div></div>",
+      "tokenizedHtml": "<div class=\"promo-pair row\" data-testid=\"promo-pair\"><div class=\"promo-tile ui-card ui-card--flat\"><div class=\"promo-tile__media\">{IMAGE:620x420}</div><div class=\"promo-tile__body p-6\"><h3 class=\"promo-tile__title\">{HEADING:3}</h3><p>{TEXT}</p>{CTA:Browse beans}</div></div><div class=\"promo-tile ui-card ui-card--flat\"><div class=\"promo-tile__media\">{IMAGE:620x420}</div><div class=\"promo-tile__body p-6\"><h3 class=\"promo-tile__title\">{HEADING:3}</h3><p>{TEXT}</p>{CTA:Find a café}</div></div></div>",
       "layout": {
         "numCols": 2,
         "numRows": 1
@@ -265,6 +265,44 @@
         "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
       },
       "index": 12
+    },
+    {
+      "sectionType": "default-content",
+      "xpath": "/html[1]/body[1]/main[1]/p[1]",
+      "xpathWithDetails": "/html/body/main/p[1]",
+      "tokenizedHtml": "<p>{TEXT}<br><br><br>{TEXT}</p>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/p[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 13
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/div[6]",
+      "xpathWithDetails": "//*[@id=\"topics-dialog\"]",
+      "tokenizedHtml": "<div id=\"topics-dialog\" class=\"topics-modal is-open\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Email topics\"><h2 class=\"topics-modal__title\">{HEADING:2}</h2><label class=\"topic-option\">{INPUT:checkbox}{TEXT}</label><label class=\"topic-option\">{INPUT:checkbox}{TEXT}</label><label class=\"topic-option\">{INPUT:checkbox}{TEXT}</label></div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasTexts",
+        "hasHeading",
+        "hasBackground"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/div[6]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 14
     }
   ]
 }

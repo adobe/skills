@@ -41,11 +41,12 @@ Tokens you produce in Phase 2:
 
 ### 1. Identify repeated patterns
 
-Find groups of 3+ structurally identical siblings — same tag, same token
-pattern inside, same nesting depth. "Structurally identical" means the
-token sequence matches (e.g., `{IMAGE:WxH} {HEADING:3} {TEXT} {LINK:*}`
-in the same wrapper structure). Keep 2 representative items, then add
-`{REPEAT:N}` where N is the remaining count.
+Find groups of 3+ structurally identical siblings that each contain at least
+one token — same tag, same token pattern inside, same nesting depth. Siblings
+without a token (`<br>`, empty dots) stay as they are. "Structurally
+identical" means the token sequence matches (e.g., `{IMAGE:WxH} {HEADING:3}
+{TEXT} {LINK:*}` in the same wrapper structure). Keep 2 representative items,
+then add `{REPEAT:N}` where N is the remaining count.
 
 Example — 6 identical card divs become:
 ```html
@@ -129,17 +130,17 @@ rule 1, never `{NAV}`.
 
 ### 8. Preserve table structure
 
-Show `<thead>` rows fully. Show 2 `<tbody>` rows. If more exist, add
-`{REPEAT:N}` after the second row.
+Show `<thead>` rows fully. Show 2 `<tbody>` rows. If more rows that contain
+a token exist, replace them with `{REPEAT:N}` after the second row.
 
 ### 9. Strip cookie consent / overlay panels
 
 Cookie consent panels, GDPR modals and similar overlays are not part of the
 page structure. Count the overlay's `{INPUT}` and `{SELECT}` tokens in
 Phase 1, before rule 6. With more than 3, collapse it to
-`<div id="cookie-panel">{FORM:N-fields}</div>`; with 1 to 3, keep it with its
-field tokens and no `{FORM}`; with none, remove it. Never write
-`{FORM:0-fields}`.
+`<div id="cookie-panel">{FORM:N-fields}</div>`; with 1 to 3, keep it and
+every field token, even repeated ones (rule 1 doesn't collapse them), with no
+`{FORM}`; with none, remove it. Never write `{FORM:0-fields}`.
 
 ### 10. Re-type sections
 

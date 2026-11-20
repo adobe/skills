@@ -23,8 +23,10 @@ Node 22+ and `playwright-cli` >= 0.1.20 on PATH (`playwright-cli --version`).
 Locate the `web` CLI once:
 
 ```bash
-# <skill-dir> is the directory containing this SKILL.md
-WEB=$(command -v web || echo "node <skill-dir>/../../cli/dist/web.mjs")
+# <skill-dir> is the directory containing this SKILL.md. The bundled CLI comes
+# first: an older `web` on PATH tokenizes differently from these rules.
+WEB="node <skill-dir>/../../cli/dist/web.mjs"
+[ -f "<skill-dir>/../../cli/dist/web.mjs" ] || WEB=$(command -v web)
 ```
 
 then run `$WEB …`; it prints exactly one JSON document on stdout,
