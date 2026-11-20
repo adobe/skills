@@ -13,7 +13,7 @@ const install = (ref, folder = ref.slice(0, 7)) => [
 ].join('\n');
 
 // A repository with a tagged release on main, an untagged commit after it, and a commit
-// on a branch that a squash merge would leave behind.
+// on a branch that a squash merge would leave behind, tagged web-cli-v9.0.0.
 function repository(t) {
   const root = tree(t, { 'plugins/web/cli/package.json': '{}' });
   commit(root, 'chore: base');
@@ -25,6 +25,7 @@ function repository(t) {
   git(root, 'checkout', '-q', '-b', 'feature');
   write(root, { 'plugins/web/cli/dist.mjs': '3' });
   const branch = commit(root, 'feat(web): on a branch');
+  git(root, 'tag', 'web-cli-v9.0.0');
   git(root, 'checkout', '-q', 'main');
   return { root, release, untagged, branch };
 }
@@ -57,6 +58,13 @@ test('a short commit and a branch fail, an existing tag passes', (t) => {
   assert.match(check(root, install(release.slice(0, 7)))[0].message, /a short commit/);
   assert.match(check(root, install('main', 'x'))[0].message, /not a tag of this repository/);
   assert.deepEqual(check(root, install('web-cli-v1.0.0', 'v1.0.0')), []);
+});
+
+test('a tag whose commit is not on main fails, as that commit would', (t) => {
+  const { root, branch } = repository(t);
+  const found = check(root, install('web-cli-v9.0.0', 'v9.0.0'));
+  assert.equal(found.length, 1);
+  assert.match(found[0].message, new RegExp(`the tag web-cli-v9.0.0, whose commit ${branch.slice(0, 7)} is not on main`));
 });
 
 test('a cache folder named after another commit fails: it would keep the old install', (t) => {

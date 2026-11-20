@@ -7,7 +7,8 @@
 // Only its branch and the pull request's ref keep it, and the install breaks once those go
 // (migrate-header 1.0.0 shipped pinned to such a commit). Such a pin also needs a person to
 // move it: no Renovate manager reads it. So this fails when a pin in plugins/:
-//   - is a commit that is not on the base branch, or that no release tag points at;
+//   - is a commit that is not on the base branch, or that no release tag points at, or a tag
+//     whose commit is not on the base branch;
 //   - is a short commit, a branch or a tag that does not exist (a pin is a full commit or a tag);
 //   - sits in a file that names another commit as a cache folder (`web-cli-<sha7>`): the install
 //     line skips the install when that folder holds one, so users would keep the old one.
@@ -73,8 +74,14 @@ export function problems(root, base, files = pinningFiles(root)) {
         }
       } else if (/^[0-9a-f]{7,39}$/.test(ref)) {
         at(`pins ${ref}, a short commit. Pin the full commit of a release.`);
-      } else if (git(root, 'rev-parse', '-q', '--verify', `refs/tags/${ref}^{commit}`) === null) {
-        at(`pins ${ref}, which is not a tag of this repository: a branch moves. Pin the full commit of a release.`);
+      } else {
+        // a tag: the same rule for the commit it names
+        const sha = git(root, 'rev-parse', '-q', '--verify', `refs/tags/${ref}^{commit}`);
+        if (sha === null) {
+          at(`pins ${ref}, which is not a tag of this repository: a branch moves. Pin the full commit of a release.`);
+        } else if (git(root, 'merge-base', '--is-ancestor', sha, base) === null) {
+          at(`pins the tag ${ref}, whose commit ${sha.slice(0, 7)} is not on ${base}. Pin a release commit of ${base}.`);
+        }
       }
     }
     if (commits.length === 0) continue;
