@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.42.0...plugin/stardust/v0.42.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** qa-gate units by order, build-harness creates out dir, rollout inventory and widget fixes ([#744](https://github.com/adobe/skills/issues/744)) ([e3752d1](https://github.com/adobe/skills/commit/e3752d1ca6a900ed15d41fe34ec92d8065aa90a8)), closes [#464](https://github.com/adobe/skills/issues/464) [#531](https://github.com/adobe/skills/issues/531) [#464](https://github.com/adobe/skills/issues/464)
+
 # [0.42.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.41.0...plugin/stardust/v0.42.0) (2026-11-19)
 
 
