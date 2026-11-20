@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, captureSettings, decide, inheritSettings, inheritedArgs, fontsDiffer, fontsOfRecord, freeze, main, maskArg, mergeBands, parseArgs, settingsChanged, variableRegions, verdictLine } from '../reference.mjs';
+import { DEFAULTS, HELP, UsageError, WRITER, assess, captureArgs, captureSettings, decide, inheritSettings, inheritedArgs, holdOf, recordedHold, fontsDiffer, fontsOfRecord, freeze, main, maskArg, mergeBands, parseArgs, settingsChanged, variableRegions, verdictLine } from '../reference.mjs';
 import { baselineStatus } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -30,9 +30,45 @@ const tmp = () => mkdtempSync(join(tmpdir(), 'reference-test-'));
 const band = (y0, pct, h = 20) => ({ y0, y1: y0 + h, pct });
 
 // ---- arguments ------------------------------------------------------------------------------------------------------
+await check('timer hold (--hold-timers, default OFF): parsed to one threshold, passed to every capture, recorded in flags + timers; a reference frozen without it (or with another threshold, or with no recorded flags) is `changed: holdTimers`, never reused; a call that omits it inherits', () => {
+  const p = (...a) => parseArgs(['freeze', 'https://x.test/', 'd', '--width', '1440', ...a]);
+  assert.equal(p().holdTimers, null); assert.equal(captureArgs(p()).join(' ').includes('hold'), false, 'off: the capture command is what it was');
+  assert.equal(p('--hold-timers').holdTimers, 2000); assert.equal(p('--hold-min', '3000').holdTimers, 3000); assert.equal(p('--hold-timers', '--hold-min', '3000').holdTimers, 3000);
+  assert.deepEqual(captureArgs(p('--hold-timers')).slice(-3), ['--hold-timers', '--hold-min', '2000']);
+  assert.throws(() => p('--hold-min'), UsageError); assert.throws(() => p('--hold-min', '1999'), /--hold-min needs at least 2000 ms/);
+  assert.deepEqual([holdOf({}), holdOf({ holdTimers: 2000 }), holdOf({ holdTimers: true }), holdOf(null)], [null, 2000, 2000, null]);
+  assert.deepEqual([recordedHold({ flags: { holdTimers: 3000 } }), recordedHold({ timers: { hold: 2000, held: 1 } }), recordedHold({ flags: {} }), recordedHold(null)], [3000, 2000, null, null]);
+  const unheld = { consent: null, dismiss: null, noDismiss: false, locale: null, vh: null, headed: false };
+  assert.deepEqual(settingsChanged(unheld, { holdTimers: 2000 }), ['holdTimers'], 'frozen without the hold');
+  assert.deepEqual(settingsChanged({ ...unheld, holdTimers: 2000 }, { holdTimers: 3000 }), ['holdTimers'], 'another threshold');
+  assert.deepEqual(settingsChanged({ ...unheld, holdTimers: 2000 }, { holdTimers: 2000 }), []);
+  assert.deepEqual(settingsChanged({ ...unheld, holdTimers: 2000 }, {}), [], 'omitted: the reference\'s is inherited');
+  for (const none of [undefined, null]) assert.deepEqual(settingsChanged(none, { holdTimers: 2000 }), ['holdTimers'], 'no recorded flags: never "not recorded" under the hold');
+  assert.deepEqual(inheritedArgs(inheritSettings({ ...unheld, holdTimers: 3000 }, {})), ['--hold-min', '3000']);
+  assert.deepEqual(inheritSettings({ ...unheld, holdTimers: 3000 }, { holdTimers: 2000 }).inherited, [], 'a given hold is never replaced');
+  assert.deepEqual(inheritSettings(unheld, {}).inherited, []);
+  // the subcommand, and a baseline frozen by stitch-shot --freeze-baseline --hold-timers (timers, no flags)
+  const dir = mkdtempSync(join(tmpdir(), 'reference-hold-'));
+  try {
+    const readJson = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch { return null; } };
+    const settings = (args) => { const out = []; const log = console.log; console.log = (l) => out.push(l); try { return { code: main(['settings', dir, ...args], { readJson }), out: out.join('\n') }; } finally { console.log = log; } };
+    writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ url: 'https://x.test/', flags: unheld }));
+    assert.deepEqual(settings(['--hold-timers']), { code: 0, out: 'changed: holdTimers' });
+    assert.deepEqual(settings(['--inherit']), { code: 0, out: '' });
+    writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ url: 'https://x.test/' }));
+    assert.deepEqual(settings(['--hold-timers']), { code: 0, out: 'changed: holdTimers' });
+    assert.deepEqual(settings([]), { code: 0, out: 'not recorded' });
+    writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ url: 'https://x.test/', flags: { ...unheld, holdTimers: 2000 } }));
+    assert.deepEqual(settings(['--hold-timers']), { code: 0, out: 'same' }); assert.deepEqual(settings(['--hold-min', '2500']), { code: 0, out: 'changed: holdTimers' });
+    assert.deepEqual(settings(['--inherit']), { code: 0, out: '--hold-min\n2000' });
+    writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ url: 'https://x.test/', timers: { hold: 2000, held: 1 } }));
+    assert.deepEqual(settings(['--hold-timers']), { code: 0, out: 'same' }); assert.deepEqual(settings(['--inherit']), { code: 0, out: '--hold-min\n2000' });
+    assert.match(HELP, /--hold-timers \| --hold-min <ms>/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 await check('settings: the recorded capture flags against the current call — consent, dismiss, noDismiss, locale; vh and headed ignored; no flags recorded → null', () => {
   const rec = { consent: null, dismiss: null, noDismiss: false, locale: null, vh: null, headed: false };
-  assert.deepEqual(captureSettings(rec), { consent: null, dismiss: null, noDismiss: false, locale: 'en-US' });
+  assert.deepEqual(captureSettings(rec), { consent: null, dismiss: null, noDismiss: false, locale: 'en-US', holdTimers: null });
   assert.deepEqual(settingsChanged(rec, {}), []);
   assert.deepEqual(settingsChanged(rec, { consent: '', dismiss: ' ', locale: 'en-US', vh: 1200, headed: true }), [], 'empty = none, en-US = no locale, vh / headed do not change the page');
   assert.deepEqual(settingsChanged(rec, { consent: '#ok', locale: 'de-DE' }), ['consent', 'locale']);
@@ -142,7 +178,7 @@ function stubs({ heights, compares, capture = () => 0, baseline = null }) {
       if (code !== 0) return code;
       const h = heights[n]; n += 1; sizes.set(stem(png), h);
       writeFileSync(png, `png ${stem(png)}`);
-      writeFileSync(png.replace('.png', '.capture.json'), JSON.stringify({ url, width: o.width, vh: 900, height: h, chunks: 4, fontsFailed: [], fixedLayers: { capture: 'once', count: 0, late: 0 }, at: '2026-01-01T00:00:00.000Z' }));
+      writeFileSync(png.replace('.png', '.capture.json'), JSON.stringify({ url, width: o.width, vh: 900, height: h, chunks: 4, fontsFailed: [], fixedLayers: { capture: 'once', count: 0, late: 0 }, ...(o.holdTimers ? { timers: { hold: o.holdTimers, held: 1, intervals: 1, chains: 0, delays: [5000] } } : {}), at: '2026-01-01T00:00:00.000Z' }));
       return 0;
     },
     compare(a, b, { mask }) {
@@ -185,6 +221,28 @@ await check('freeze: primes, discards the prime, freezes ref-1 with a mask; stit
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+await check('freeze --hold-timers: every capture gets the hold; baseline.json records flags.holdTimers and the first kept capture\'s timers, the line says how many were held; an unheld reference is never reused by a freeze that asks for the hold, a held one is reused by a freeze that omits it', () => {
+  const dir = tmp();
+  try {
+    const same = { 'prime|ref-1|': { pct: 0 }, 'ref-1|ref-2|': { pct: 0 } };
+    const plain = stubs({ heights: [3000, 3000, 3000], compares: same });
+    assert.equal(freeze(opts(dir), plain).code, 0);
+    const b0 = JSON.parse(readFileSync(join(dir, 'baseline.json'), 'utf8'));
+    assert.equal('timers' in b0, false); assert.equal('holdTimers' in b0.flags, false, 'off: the record is what it was');
+    const held = stubs({ heights: [3000, 3000, 3000], compares: same });
+    const r = freeze(opts(dir, '--hold-timers'), held);
+    assert.equal(r.code, 0); assert.notEqual(r.reused, true, 'the unheld reference is not reused');
+    assert.deepEqual(held.log.slice(0, 3), ['prime', 'ref-1', 'ref-2'].map((n) => `capture ${n} --width 1440 --settle --hold-timers --hold-min 2000`));
+    assert.equal(r.line, 'reference: frozen 1440×3000, primed, noise floor 0.00%, no variable region; timers held: 1');
+    const b = JSON.parse(readFileSync(join(dir, 'baseline.json'), 'utf8'));
+    assert.equal(b.flags.holdTimers, 2000); assert.deepEqual(b.timers, { hold: 2000, held: 1, intervals: 1, chains: 0, delays: [5000] });
+    assert.equal(baselineStatus(dir, { url: 'https://x.test', width: 1440 }).ok, true);
+    for (const extra of [[], ['--hold-timers']]) { const again = stubs({ heights: [], compares: {} }); const r2 = freeze(opts(dir, ...extra), again); assert.equal(r2.reused, true, extra.join(' ')); assert.deepEqual(again.log, []); }
+    const other = stubs({ heights: [3000, 3000, 3000], compares: same });
+    assert.notEqual(freeze(opts(dir, '--hold-min', '4000'), other).reused, true, 'another threshold: frozen again');
+    assert.equal(JSON.parse(readFileSync(join(dir, 'baseline.json'), 'utf8')).flags.holdTimers, 4000);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 await check('freeze: heights differ → exit 2, no baseline, captures and reference-unstable.json stay; --force freezes it as stable: false', () => {
   const dir = tmp();
   try {

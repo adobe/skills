@@ -568,9 +568,9 @@ rather than erroring.
    captureBeyondViewport renders lazy-decoded images as gray placeholders
    even when the DOM says loaded. Stitch on BOTH sides — the instrument
    must be symmetric.
-5. **Freeze animations for capture, injected AFTER lazyload settle.**
-   Injection before the settle breaks some lazy loaders' swaps (recorded
-   failure mode). stitch-shot.mjs orders this correctly.
+5. **Freeze animations AFTER lazyload settle** (stitch-shot.mjs does;
+   earlier breaks lazy loaders' swaps). Self-advancing carousel:
+   `gate.sh --hold-timers` (default off) captures both sides in one state.
 6. **Overlays dismissed — BOTH classes, by clicking, not DOM removal** (so
    layout settles as a real visit does). Two classes, one shared
    `dismissOverlays` (stitch-shot and the diff probes alike; `gate.sh`

@@ -77,8 +77,9 @@ stub(replica, 'stitch-shot.mjs', `
   const json = out.replace(/\\.png$/i, '') + '.capture.json';
   const fonts = process.env['STUB_FONTS_NULL_' + side] ? { fontsFailed: null, fontCheck: 'failed: Execution context was destroyed' }
     : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
+  const hold = process.argv.includes('--hold-min') && !process.env['STUB_NO_HOLD_' + side] ? Number(process.argv[process.argv.indexOf('--hold-min') + 1]) : null; // the timer hold, as stitch-shot records it
   if (json && process.env['STUB_BAD_JSON_' + side]) writeFileSync(json, '{ "url": ');
-  else if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: process.argv.includes('--settle'), ...fonts, fixedLayers: { capture: 'once', count: 0, late: 0 }, height: 2000 }, null, 2) + '\\n');
+  else if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: process.argv.includes('--settle'), ...fonts, fixedLayers: { capture: 'once', count: 0, late: 0 }, ...(hold ? { timers: { hold, held: 1, intervals: 1, chains: 0, delays: [5000] } } : {}), height: 2000 }, null, 2) + '\\n');
   console.log('stitched ' + out);`);
 stub(replica, 'measure.mjs', `
   import { appendFileSync } from 'node:fs';
@@ -143,11 +144,12 @@ stub(replica, 'reference.mjs', `
   if (rc) { console.log('reference: not frozen — the capture failed (stitch-shot exit ' + rc + ')'); process.exit(rc); }
   const maskArg = process.env.STUB_REF_MASK || ''; const variable = maskArg.split(',').filter(Boolean).map((m) => ({ y: Number(m.split(':')[0]), h: Number(m.split(':')[1]), pct: 12 }));
   const noiseFloor = Number(process.env.STUB_REF_FLOOR || 0);
+  const hold = rest.includes('--hold-min') ? Number(flag('--hold-min')) : null; // the timer hold, as reference.mjs records it
   writeFileSync(join(dir, 'baseline.png'), 'frozen-reference-bytes');
   writeFileSync(join(dir, 'baseline.json'), JSON.stringify({ writtenBy: 'skills/replica/scripts/reference.mjs freeze', schema: 1, capturedAt: '2026-11-01T09:00:00.000Z', url, width, vh: 900, height: 2000, settle: true, chunks: 3,
-    fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, primed: true, prime: { height: 2100, pct: 31.4, heightDelta: 100 }, captures: 2, heights: [2000, 2000], noiseFloor, heightSpread: 0, outside: 0,
+    fontsFailed: [], fixedLayers: { capture: 'once', count: 0 }, ...(hold ? { timers: { hold, held: 2, intervals: 2, chains: 0, delays: [5000, 86400000] } } : {}), primed: true, prime: { height: 2100, pct: 31.4, heightDelta: 100 }, captures: 2, heights: [2000, 2000], noiseFloor, heightSpread: 0, outside: 0,
     variable, variableShare: 0, maskArg, stable: true, reason: null, frozenAt: '2026-11-01T09:00:05.000Z',
-    flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: false } }, null, 2) + '\\n');
+    flags: { consent: flag('--consent'), dismiss: flag('--dismiss'), noDismiss: rest.includes('--no-dismiss'), locale: flag('--locale'), vh: null, headed: false, ...(hold ? { holdTimers: hold } : {}) } }, null, 2) + '\\n');
   console.log('reference: frozen ' + width + '×2000, primed, noise floor ' + noiseFloor.toFixed(2) + '%' + (maskArg ? ' in ' + variable.length + ' variable region(s) → mask ' + maskArg : ', no variable region'));`);
 stub(replica, 'chrome-parity.mjs', `
   console.log('argv ' + process.argv.slice(2).join(' '));
@@ -769,6 +771,31 @@ check('… a changed --dismiss list alone', r.status === 0 && freezes() === 1 &&
 freezeBaseline('old', { ...PROV, url: 'https://live.example/old' });
 resetRefArgs(); r = await refRound('old', 'o1', ['--consent', '#ok', '--locale', 'de-DE']);
 check('settings not recorded: the reference is reused as before, with one line saying so', r.status === 0 && freezes() === 0 && (r.stdout.match(/^gate\.sh: reference: reused — settings not recorded \(/gm) || []).length === 1 && livePng('old') === 'baseline-png-bytes', `status ${r.status} ${r.stdout}`);
+
+// ── Timer hold (--hold-timers): the reference and both captures under one hold, or nothing is compared ──
+const HELD = /^gate\.sh: timers held \(≥ 2000 ms\) — live 2 \(5000, 86400000 ms\), build 1 \(5000 ms\)$/m;
+resetRefArgs(); r = await refRound('hold', 'h1', ['--hold-timers']);
+check('hold: --hold-timers reaches the reference freeze and the build capture (--hold-timers --hold-min 2000); one line says what each side held', r.status === 0 && freezes() === 1
+  && / --hold-timers --hold-min 2000$/.test(lines(refArgsFile)[0] || '') && lines(stitchArgsFile).some((l) => /build\.png .*--hold-timers --hold-min 2000$/.test(l)) && HELD.test(r.stdout), `status ${r.status} ${r.stdout}\n${r.stderr}`);
+resetRefArgs(); r = await refRound('hold', 'h2');
+check('hold: a round that omits the flag inherits the held reference\'s — no freeze, the build captured under it, said in one line', r.status === 0 && freezes() === 0
+  && /^gate\.sh: reference: settings this round omits are the frozen reference's — --hold-timers --hold-min 2000 /m.test(r.stdout)
+  && lines(stitchArgsFile).some((l) => /build\.png .*--hold-timers --hold-min 2000$/.test(l)) && HELD.test(r.stdout), `${r.stdout}\n${lines(stitchArgsFile).join(' | ')}`);
+resetRefArgs(); r = await refRound('hold', 'h3', [], { GATE_HOLD_TIMERS: '1' });
+check('hold: GATE_HOLD_TIMERS=1 is the flag — the same hold as the reference\'s: reused', r.status === 0 && freezes() === 0 && !/re-frozen/.test(r.stdout) && HELD.test(r.stdout), r.stdout);
+resetRefArgs(); r = await refRound('hold', 'h4', ['--hold-min', '3000']);
+check('hold: another threshold → the reference is frozen again (holdTimers)', r.status === 0 && freezes() === 1 && /^gate\.sh: reference: re-frozen — capture settings changed \(holdTimers\)$/m.test(r.stdout) && / --hold-timers --hold-min 3000$/.test(lines(refArgsFile)[0] || ''), r.stdout);
+resetRefArgs(); r = await refRound('hold', 'h5', ['--hold-min', '3000'], { STUB_NO_HOLD_BUILD: '1' });
+check('hold: a build captured without the hold against a held reference is never compared — exit 1, one line, no verdict', r.status === 1 && /^gate\.sh: timer hold differs — origin '3000' \(.*baseline\.json\), build '', this round '3000'/m.test(r.stderr) && verdictJson('hold', 'h5') === null && lines(pixelArgsFile).length === 0, `status ${r.status} ${r.stderr}`);
+resetRefArgs(); r = await refRound('set', 's8', ['--dismiss', '.other-close', '--hold-timers']);
+check('hold: a reference frozen WITHOUT the hold (flags recorded) is frozen again when the round asks for it', r.status === 0 && freezes() === 1 && /^gate\.sh: reference: re-frozen — capture settings changed \(holdTimers\)$/m.test(r.stdout), r.stdout);
+resetRefArgs(); r = await refRound('old', 'o2', ['--hold-timers']);
+check('hold: a reference with NO recorded settings is not reused under the hold — frozen again, never "settings not recorded"', r.status === 0 && freezes() === 1 && /re-frozen — capture settings changed \(holdTimers\)/.test(r.stdout) && !/settings not recorded/.test(r.stdout) && livePng('old') === 'frozen-reference-bytes', `status ${r.status} ${r.stdout}`);
+resetRefArgs(); r = await refRound('plain', 'n1');
+check('hold: OFF by default — no hold flag on the freeze or the captures, no timers line', r.status === 0 && !/hold/.test(lines(refArgsFile).join(' ')) && !/hold/.test(lines(stitchArgsFile).join(' ')) && !/timer/.test(r.stdout + r.stderr), r.stdout);
+for (const bad of [['--hold-min', '1999'], ['--hold-min', 'soon']]) { r = await refRound('plain', 'n2', bad); check(`hold: ${bad.join(' ')} is a usage error (exit 125)`, r.status === 125 && /at least 2000/.test(r.stderr), r.stderr); }
+r = await gate(['--help']);
+check('--help names --hold-timers, --hold-min and GATE_HOLD_TIMERS', r.status === 0 && /--hold-timers /.test(r.stdout) && /--hold-min <ms>/.test(r.stdout) && /GATE_HOLD_TIMERS/.test(r.stdout));
 unlinkSync(join(replica, 'rounds.mjs'));
 
 server.close();
