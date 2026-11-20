@@ -30,7 +30,7 @@
       "sectionType": "hero",
       "xpath": "/html[1]/body[1]/main[1]/section[1]",
       "xpathWithDetails": "//*[@data-testid=\"hero\"]",
-      "tokenizedHtml": "<section class=\"hero hero--dark is-visible mt-8 pb-12 fade-in\" data-testid=\"hero\"><div class=\"hero__content container\"><h1 class=\"hero__title text-white\">{HEADING:1}</h1><p class=\"hero__lede mb-6\">{TEXT}</p><a class=\"ui-button ui-button--primary ui-button--lg\">{CTA:Shop the spring roast}</a></div><div class=\"hero__media\"><picture class=\"hero__picture\">{IMAGE:1440x640}</picture></div></section>",
+      "tokenizedHtml": "<section class=\"hero hero--dark is-visible mt-8 pb-12 fade-in\" data-testid=\"hero\"><div class=\"hero__content container\"><h1 class=\"hero__title text-white\">{HEADING:1}</h1><p class=\"hero__lede mb-6\">{TEXT}</p><a class=\"btn btn-lg\">{CTA:Shop the spring roast}</a></div><div class=\"hero__media\"><picture class=\"hero__picture\">{IMAGE:1440x640}</picture></div></section>",
       "layout": {
         "numCols": 2,
         "numRows": 1
@@ -210,6 +210,61 @@
         "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
       },
       "index": 9
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/div[5]",
+      "xpathWithDetails": "//*[@id=\"region-dialog\"]",
+      "tokenizedHtml": "<div id=\"region-dialog\" class=\"region-modal is-open\" role=\"dialog\" aria-modal=\"true\" aria-label=\"Choose your region\">{SELECT:2}</div>",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasBackground"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/div[5]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 10
+    },
+    {
+      "sectionType": "hero",
+      "xpath": "/html[1]/body[1]/main[1]/img[1]",
+      "xpathWithDetails": "/html/body/main/img[1]",
+      "tokenizedHtml": "{IMAGE:1440x480}",
+      "layout": {
+        "numCols": 0,
+        "numRows": 0
+      },
+      "features": [
+        "hasImages"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/img[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 11
+    },
+    {
+      "sectionType": "unknown",
+      "xpath": "/html[1]/body[1]/main[1]/header[1]",
+      "xpathWithDetails": "/html/body/main/header[1]",
+      "tokenizedHtml": "<header class=\"shop-subheader\"><nav class=\"shop-subnav\" aria-label=\"Shop\"><ul class=\"shop-subnav__group\"><li class=\"shop-subnav__item\">{LINK:Whole bean}</li><li class=\"shop-subnav__item\">{LINK:Ground}</li><li class=\"shop-subnav__item\">{LINK:Pods}</li><li class=\"shop-subnav__item\">{LINK:Samplers}</li></ul><ul class=\"shop-subnav__group\"><li class=\"shop-subnav__item\">{LINK:Pour-over}</li><li class=\"shop-subnav__item\">{LINK:Espresso machines}</li><li class=\"shop-subnav__item\">{LINK:Kettles}</li><li class=\"shop-subnav__item\">{LINK:Filters}</li></ul></nav></header>",
+      "layout": {
+        "numCols": 2,
+        "numRows": 1
+      },
+      "features": [
+        "hasTexts",
+        "hasMultipleColumns"
+      ],
+      "section": {
+        "xpath": "/html[1]/body[1]/main[1]/header[1]",
+        "background": "rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box"
+      },
+      "index": 12
     }
   ]
 }

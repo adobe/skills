@@ -1,5 +1,5 @@
 {
-  "context": "The agent runs the structural-reasoning half of a page reduction on a synthetic Phase 1 output for a fictional coffee shop (10 sections, index 0 to 9). The tokenizedHtml of all sections totals 8,016 bytes with whitespace removed. Sections 5 (carousel arrows and dots, only {ICON} tokens) and 6 (an empty counter) have no content tokens; section 8 is a cookie consent dialog with no {INPUT} or {SELECT}; section 9 is a cookie preferences dialog whose form has four {INPUT:checkbox} fields. Judge skeleton.html and manifest.json.",
+  "context": "The agent runs the structural-reasoning half of a page reduction on a synthetic Phase 1 output for a fictional coffee shop (13 sections, index 0 to 12). The tokenizedHtml of all sections totals 8,676 bytes with whitespace removed. Sections 5 (carousel arrows and dots, only {ICON} tokens) and 6 (an empty counter) have no content tokens; section 8 is a cookie consent dialog with no {INPUT} or {SELECT}; section 9 is a cookie preferences dialog whose form has four {INPUT:checkbox} fields; section 10 is a region dialog holding only {SELECT:2}; section 11 is just {IMAGE:1440x480}; section 12 is a <nav> with two lists of four links. Judge skeleton.html and manifest.json.",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -10,7 +10,7 @@
     },
     {
       "name": "different_cards_not_merged",
-      "max_score": 15,
+      "max_score": 10,
       "category": "MUST_NOT",
       "description": "Section 3 keeps all three feature cards, which differ in their tokens (image and CTA; video and two texts; icon, list and link). They are not merged into one card with a `{REPEAT}` token."
     },
@@ -27,6 +27,12 @@
       "description": "The header navigation (section 0, eight links) keeps its first two links (Coffee, Equipment) and then `{NAV:6-items}`; the footer Shop list (section 7, nine links) keeps two links and then `{NAV:7-items}`. N counts the links replaced, not the total. The four-link Company list is left whole."
     },
     {
+      "name": "grouped_nav_lists_whole",
+      "max_score": 5,
+      "category": "INTENT",
+      "description": "Section 12 (one `<nav>` holding two lists of four links) keeps both lists whole, all eight links, with no `{NAV}` token: each list is counted on its own."
+    },
+    {
       "name": "consent_overlay_removed",
       "max_score": 10,
       "category": "MUST_NOT",
@@ -39,22 +45,34 @@
       "description": "The cookie preferences dialog (section 9, four checkbox inputs) is kept, collapsed to a single element holding `{FORM:4-fields}` (for example `<div id=\"cookie-panel\">{FORM:4-fields}</div>`); it is not removed and not listed in `droppedSections`."
     },
     {
+      "name": "small_overlay_keeps_fields",
+      "max_score": 5,
+      "category": "MUST_NOT",
+      "description": "Section 10 (region dialog with one `{SELECT:2}`) is kept with its `{SELECT:2}` token; no `{FORM:1-fields}` (or other `{FORM}` token) replaces it, and index 10 is not in `droppedSections`."
+    },
+    {
       "name": "empty_sections_dropped",
-      "max_score": 15,
+      "max_score": 10,
       "category": "INTENT",
-      "description": "skeleton.html has no section for indexes 5 and 6. manifest.json lists `droppedSections` with 5, 6 and 8 and no other index; its `sections` and the skeleton's section comments are 0, 1, 2, 3, 4, 7 and 9, with their Phase 1 indexes (not renumbered)."
+      "description": "skeleton.html has no section for indexes 5 and 6. manifest.json lists `droppedSections` with 5, 6 and 8 and no other index; its `sections` and the skeleton's section comments are 0, 1, 2, 3, 4, 7, 9, 10, 11 and 12, with their Phase 1 indexes (not renumbered)."
+    },
+    {
+      "name": "media_root_kept",
+      "max_score": 5,
+      "category": "INTENT",
+      "description": "Section 11, whose Phase 1 tokenizedHtml is only `{IMAGE:1440x480}`, is kept under index 11 with that token (skeleton comment and manifest entry), not dropped as empty."
     },
     {
       "name": "modifier_classes_stripped",
       "max_score": 10,
       "category": "DESIGN",
-      "description": "State classes (`is-active`, `is-visible`, `is-sticky`), design-system modifiers (`ui-button--primary`, `ui-card--elevated`, `hero--dark`) and the generated class `_track_3fa9c_21` are removed, while classes that name the element (hero, promo-tile, feature-card, product-card, footer-nav…) and the options `three-up` and `compact` on the feature-cards block (section 3, `data-block-name=\"feature-cards\"`) are kept."
+      "description": "State classes (`is-active`, `is-visible`, `is-sticky`), design-system modifiers (`ui-button--primary`, `ui-card--elevated`, `hero--dark`, and `btn-lg` on the hero CTA in section 1) and the generated class `_track_3fa9c_21` are removed, while classes that name the element (hero, promo-tile, feature-card, product-card, footer-nav…) and the options `three-up` and `compact` on the feature-cards block (section 3, `data-block-name=\"feature-cards\"`) are kept."
     },
     {
       "name": "skeleton_not_larger",
-      "max_score": 10,
+      "max_score": 5,
       "category": "INTENT",
-      "description": "Without its `<!-- section:… -->` comment lines and with all whitespace removed, skeleton.html is no larger than the Phase 1 tokenizedHtml it came from with whitespace removed: at most 8,016 bytes."
+      "description": "Without its `<!-- section:… -->` comment lines and with all whitespace removed, skeleton.html is no larger than the Phase 1 tokenizedHtml it came from with whitespace removed: at most 8,676 bytes."
     }
   ]
 }

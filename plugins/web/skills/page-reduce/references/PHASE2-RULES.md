@@ -122,8 +122,10 @@ count. Keep the `<form>` tag with its `action` and `method` attributes.
 
 Lists of links follow this rule, not rule 1. A `<nav>` or navigation-like
 list of 5 or fewer `{LINK:*}` or `{CTA:*}` items stays whole; a longer one
-keeps its first 2 and replaces the rest with `{NAV:N-items}`. Repeated content
-items (cards, teasers) follow rule 1, never `{NAV}`.
+keeps its first 2 and replaces the rest with `{NAV:N-items}`. Count each list
+of peer links on its own: a `<nav>` holding several lists is one list only
+when its links aren't grouped. Repeated content items (cards, teasers) follow
+rule 1, never `{NAV}`.
 
 ### 8. Preserve table structure
 
@@ -133,10 +135,11 @@ Show `<thead>` rows fully. Show 2 `<tbody>` rows. If more exist, add
 ### 9. Strip cookie consent / overlay panels
 
 Cookie consent panels, GDPR modals and similar overlays are not part of the
-page structure. Decide on the fields the overlay has in Phase 1, before
-rule 6: collapse one with `{INPUT}` or `{SELECT}` tokens to
-`<div id="cookie-panel">{FORM:N-fields}</div>`, and remove one without.
-Never write `{FORM:0-fields}`.
+page structure. Count the overlay's `{INPUT}` and `{SELECT}` tokens in
+Phase 1, before rule 6. With more than 3, collapse it to
+`<div id="cookie-panel">{FORM:N-fields}</div>`; with 1 to 3, keep it with its
+field tokens and no `{FORM}`; with none, remove it. Never write
+`{FORM:0-fields}`.
 
 ### 10. Re-type sections
 
