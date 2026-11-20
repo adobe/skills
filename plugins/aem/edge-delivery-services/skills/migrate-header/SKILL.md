@@ -46,7 +46,7 @@ the test below skips it.
 ```bash
 DIR="${CLAUDE_PLUGIN_DATA:-$HOME/.cache/adobe-skills/migrate-header}/web-cli-de2dbf3"
 [ -x "$DIR/node_modules/.bin/web" ] || { mkdir -p "$DIR" &&
-  npx -y pnpm@12.20.0 add --dir "$DIR" "github:adobe/skills#de2dbf391f54192a37fc66ba5f195fc575c637d1&path:/plugins/web/cli"; }
+  npx -y pnpm@12.21.0 add --dir "$DIR" "github:adobe/skills#de2dbf391f54192a37fc66ba5f195fc575c637d1&path:/plugins/web/cli"; }
 WEB="$DIR/node_modules/.bin/web"
 "$WEB" header --help
 ```
