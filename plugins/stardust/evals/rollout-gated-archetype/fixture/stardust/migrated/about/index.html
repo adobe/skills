@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About the Fixture Store</title>
+  <meta name="description" content="How the store began.">
+  <style>
+    :root { --ink: #1d2a24; --paper: #f7f4ec; --leaf: #2f6b4f; --line: #d9d3c3; }
+    body { margin: 0; font: 16px/1.5 system-ui, sans-serif; color: var(--ink); background: var(--paper); }
+    header, footer, main > section { padding: 24px max(24px, calc((100vw - 1100px) / 2)); }
+    header { display: flex; justify-content: space-between; border-bottom: 1px solid var(--line); }
+    header nav a { margin-left: 24px; color: inherit; }
+    h1 { font-size: 44px; line-height: 1.1; margin: 0 0 12px; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+    .cards article { border: 1px solid var(--line); padding: 16px; }
+    .today { background: var(--leaf); color: #fff; }
+    table { border-collapse: collapse; width: 100%; } td, th { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; }
+    a.cta { display: inline-block; padding: 10px 20px; background: var(--leaf); color: #fff; text-decoration: none; }
+    footer { border-top: 1px solid var(--line); font-size: 14px; }
+    @media (width < 700px) { .cards { grid-template-columns: 1fr; } h1 { font-size: 32px; } }
+  </style>
+</head>
+<body>
+  <header data-module="header">
+    <a href="/">Fixture Store</a>
+    <nav><a href="/products/mug/">Products</a><a href="/visit/">Visit</a><a href="/about/">About</a></nav>
+  </header>
+  <main>
+    <section data-module="page-intro">
+      <h1>About the store</h1>
+      <p>Two people, one kettle, and a shelf that kept growing.</p>
+    </section>
+    <section data-module="body-text">
+      <h2>How it began</h2>
+      <p>We started with a market stall and a box of mugs. The stall became a room, and the room became the store on Sample Lane.</p>
+      <p>Every piece is chosen by hand, and nothing is on the shelf that we would not use at home.</p>
+      <hr>
+      <p>Questions? Come by and ask.</p>
+    </section>
+    <section class="today" data-module="today-band">
+      <h2>Today in the store</h2>
+      <p>Fresh stock on the front table, and the kettle is on.</p>
+    </section>
+  </main>
+  <footer data-module="footer">
+    <p>Fixture Store, 1 Sample Lane. <a href="/visit/">Opening hours</a> · <a href="/about/">About us</a></p>
+  </footer>
+</body>
+</html>

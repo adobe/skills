@@ -1,0 +1,112 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:replica",
+    "writtenAt": "2026-11-20T08:55:00Z"
+  },
+  "types": {
+    "home": {
+      "pageType": "home",
+      "archetype": "home",
+      "breakpoints": {
+        "360": {
+          "iterations": 1,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 1.12,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [],
+          "residuals": [],
+          "captureState": []
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0.84,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [],
+          "residuals": [],
+          "captureState": []
+        }
+      }
+    },
+    "products-mug": {
+      "pageType": "product",
+      "archetype": "products-mug",
+      "breakpoints": {
+        "360": {
+          "iterations": 3,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 4.9,
+            "heightDelta": 0,
+            "pass": false
+          },
+          "justified": [],
+          "residuals": [
+            {
+              "band": "y 180–420",
+              "pct": 4.9,
+              "cause": "glyph-antialiasing: the system font of the capture machine draws the product title and the table text with other edges; same boxes, same line breaks",
+              "parity": "gates/products-mug-360/pixel-iter3.json",
+              "flaggedFor": "user"
+            }
+          ],
+          "captureState": []
+        },
+        "1440": {
+          "iterations": 1,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0.61,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [],
+          "residuals": [],
+          "captureState": []
+        }
+      }
+    },
+    "visit": {
+      "pageType": "info",
+      "archetype": "visit",
+      "breakpoints": {
+        "360": {
+          "iterations": 3,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 9.8,
+            "heightDelta": 24,
+            "pass": false
+          },
+          "justified": [],
+          "residuals": [],
+          "captureState": []
+        },
+        "1440": {
+          "iterations": 2,
+          "result": {
+            "structuralRed": 0,
+            "visualFlags": "none",
+            "pixelPct": 0.97,
+            "heightDelta": 0,
+            "pass": true
+          },
+          "justified": [],
+          "residuals": [],
+          "captureState": []
+        }
+      }
+    }
+  }
+}

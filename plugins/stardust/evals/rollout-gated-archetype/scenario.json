@@ -1,0 +1,10 @@
+{
+  "description": "A replica-flow project of six migrated pages in three page types, ready for rollout with no AEM target on the machine (fixture/): one archetype passes its gate, one is over the bar with a documented residual, one is over the bar with none (setup.sh copies the plugin scripts)",
+  "fixtures": {
+    "project": {
+      "type": "directory",
+      "path": "./fixture",
+      "installPath": "."
+    }
+  }
+}
