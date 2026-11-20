@@ -123,6 +123,9 @@ Always emit when page-type is known. Composition rules:
 | `form`    | `Action` (optional)    | Form schema                                                                  |
 | `unique`  | None (or fallback)     | Skip JSON-LD by default                                                      |
 
+Under `flow: reskin` only, an inserted block carries
+`data-migrate-default` (`skills/reskin/reference/handoff.md`).
+
 Each page-type's emission rule lives here; future expansion
 (FAQPage, Event, BreadcrumbList, HowTo) is additive.
 

@@ -29,7 +29,8 @@
  * Archetypes-only mode (`--state <state.json>`): the migrated tree holds only the
  * template archetypes (one per template); the full page roster lives in state.json.
  * Pages present only in state.json (not yet individually migrated) are merged in as
- * `content-pending` siblings — keyed to the archetype their `type` names, inheriting
+ * `content-pending` siblings — keyed to the archetype recorded in reskin's handoff
+ * ledger for their type (falling back to `representative` or the type slug), inheriting
  * that archetype's blocks, pushing no document. Block code ships from the archetypes;
  * sibling content is populated later by a separate content track.
  *
@@ -173,8 +174,8 @@ for (const relHtml of htmlFiles) {
 // --- Archetypes-only mode: merge content-pending siblings from state.json -------
 // In --state mode each migrated archetype is keyed by its own fine slug (the
 // archetypes are genuinely distinct templates that share only chrome). A roster
-// page's `type` names the archetype slug it clones; it joins that archetype's
-// template group as a `content-pending` sibling, inheriting the archetype's blocks
+// page (under flow: reskin, through its type's handoff archetype) joins
+// that archetype's template group as a `content-pending` sibling, inheriting blocks
 // and pushing no document of its own.
 if (STATE) {
   for (const p of pages) p.templateId = p.slug;
@@ -182,6 +183,7 @@ if (STATE) {
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
   const state = readJSON(STATE, { pages: [] });
+  const handoff = state.flow === 'reskin' ? (readJSON('stardust/reskin/ledger.json', { handoff: {} }).handoff || {}) : {};
   for (const sp of (state.pages || [])) {
     if (!sp || !sp.url) continue;
     const path = urlToDeliveredPath(sp.url);
@@ -191,7 +193,11 @@ if (STATE) {
     if (coveredPaths.has(key)) continue; // the archetype itself — already inventoried
     // A roster sibling names the archetype it clones via `representative` (preferred)
     // or its `type`; that archetype supplies the template grouping + block set.
-    const rep = archetypeBySlug.get(sp.representative) || archetypeBySlug.get(sp.type) || null;
+    // Under flow: reskin the type's handoff archetype (reskin/ledger.json) wins.
+    const rep = archetypeBySlug.get(handoff[sp.type]?.archetype)
+      || archetypeBySlug.get(sp.representative)
+      || archetypeBySlug.get(sp.type)
+      || null;
     let slug = sp.slug && !usedSlugs.has(sp.slug) ? sp.slug : pathToSlug(path);
     while (usedSlugs.has(slug)) slug = `${slug}-x`;
     usedSlugs.add(slug);

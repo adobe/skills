@@ -1,0 +1,51 @@
+{
+  "context": "reskin with a Figma donor and a live content site, the path Auto runs. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "figma_capture_headless",
+      "max_score": 10,
+      "description": "The donor is captured with figma-donor.mjs capture over the REST API (no browser, crawl or MCP server); the raw responses are under .work/reskin/figma/, canon-source/foundation values cite their Figma node, and _crawl-log.json records fetchTechnique \"figma-rest\". FIGMA_TOKEN is read from the environment and appears in no file, log, state.json or transcript output."
+    },
+    {
+      "name": "curation_rules_and_tokens",
+      "max_score": 10,
+      "description": "reskin/curation-rules.json pins one reference frame per module family, maps each of the 13 probe paths or marks it absent with a why, and names included modules M<n>; figma-donor.mjs curate produces donor-tokens.json (with nodeRefs) and donor-modules.md, and figma-donor.mjs stamp writes only state.json.designSource."
+    },
+    {
+      "name": "content_from_live_site",
+      "max_score": 15,
+      "description": "The content model is captured from the live content page with capture-content.mjs and its scope-coverage check; every text, CTA href, image and SEO metadata value in the output traces to that page. No Figma sample text, placeholder copy or Figma sample image dimensions appear in the output."
+    },
+    {
+      "name": "design_from_figma",
+      "max_score": 10,
+      "description": "Colours, type ramp, spacing and buttons on the rendered page come from donor-tokens.json (the Figma kit), not from the content site's CSS; mapping.md maps every content slot to a Figma module id with rationale and status, at least 80% mapped, new modules composed from Figma tokens."
+    },
+    {
+      "name": "content_and_design_gates",
+      "max_score": 10,
+      "description": "dom-equality and slot-coverage pass with results recorded; donor-probe token assertions pass and overflow holds at 1440 and 360; any delta is a documented ledger normalization or chrome swap."
+    },
+    {
+      "name": "figma_gate_passes",
+      "max_score": 15,
+      "description": "stardust/reskin/figma-checks/<slug>.json is authored from figma-gate boxes, with a mobile root for every module whose kit has a mobile frame; figma-gate all reports join, geometry and ramp PASS (B0/B1/B3) within the waiver budget, and no mobile root required by the floor is waived."
+    },
+    {
+      "name": "waivers_and_residuals_recorded",
+      "max_score": 10,
+      "description": "Every figma-gate waiver and skip names its node or width and why (B4 register and summary.json), every remaining delta is a residual in ledger.json with its cause and gate class, and none is accepted silently. A hands-off approval is recorded only with handsOff true, --by hands-off, after every gate is PASS or accepted."
+    },
+    {
+      "name": "migrate_handoff",
+      "max_score": 10,
+      "description": "The page reaches migrate through the documented bridge: canon-from-reskin.mjs, ledger.json written by reskin-ledger.mjs, and reskin-preflight.mjs exit 0 (figma.join, figma.geometry and figma.ramp PASS) before any sibling page renders; the run edits no skill file and writes core state only through the documented fields."
+    },
+    {
+      "name": "eds_blocks_complete",
+      "max_score": 10,
+      "description": "In the deployed EDS project every block the pages use has blocks/<name>/<name>.js (a default-export decorate) and <name>.css; block names follow the EDS map (scripts/figma/eds-map.mjs); none is CSS-only."
+    }
+  ]
+}

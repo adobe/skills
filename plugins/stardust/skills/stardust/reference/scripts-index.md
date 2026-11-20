@@ -62,14 +62,18 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
 - `replica/source-spec.mjs` — source box + font spec — `capture <live> --slug <s> [--widths 1440,360]`; `compare <spec> <build> [--tol 2]`; `view <spec> [--section <i>]`; exit 2 = off
 - `replica/stitch-shot.mjs` — stitched capture — `<url> <out.png> [--width] [--vh] [--settle] [--consent] [--[no-]dismiss] [--hide <sel,…>] [--freeze-baseline] [--check-baseline]`
+- `reskin/canon-from-reskin.mjs` — migrate bridge — `<s> [--force]`
 - `reskin/capture-content.mjs` — content model — `--url <u> --out <d>`
 - `reskin/deployed-gate.mjs` — preview gates — `preview|all --page <s>`; 124 = none
 - `reskin/dom-equality.mjs` — content gate — `--source --rendered --report`
 - `reskin/donor-probe.mjs` — adoption gate — `--tokens <f> --rendered <u|f>`
 - `reskin/figma-donor.mjs` — Figma donor — `capture <u> | curate | stamp`; 3 = blocked
 - `reskin/figma-gate.mjs` — Figma gates — `boxes | all --page <s> --url <u|f>`; 124 = none
+- `reskin/reskin-ledger.mjs` — gate ledger — `record <s> | eyeball | residual | show`
+- `reskin/reskin-preflight.mjs` — migrate ready? 0 = yes — `[--json]`
 - `reskin/slot-coverage.mjs` — slot gate — `--model <f> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — normalize — no flags
+- `reskin/stream-render.mjs` — renderer — `<s> | --check | --deploy-map`
 - `reskin/vocabulary-check.mjs` — vocabulary — `[--modules <f> --json]`
 - `rollout/assemble.mjs` — sitemap, robots, manifest; served-sitemap check — `[--canon <dir>] [--verify-origin <origin>]`
 - `rollout/autofix-aem.mjs` — fix findings in the project — `--project <root> [--dry-run]`

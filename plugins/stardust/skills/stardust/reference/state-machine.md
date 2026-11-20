@@ -312,7 +312,9 @@ recommendation (§ Flow keys). Under `flow: replica` the redesign heuristics
 below do not apply: recommend from `stardust/replica/progress.json` — an
 ungated archetype → `$stardust replica <archetype>`, all archetypes gated →
 `$stardust migrate` / `rollout` — and print the last gate numbers per
-archetype so a resumed session restarts without re-diagnosis.
+archetype so a resumed session restarts without re-diagnosis. Under
+`flow: reskin` the guards, the archetype predicate and the resume
+recommendation are in `skills/reskin/reference/handoff.md`.
 
 The recommended next step uses these heuristics, in order:
 

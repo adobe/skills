@@ -58,11 +58,22 @@ rescoping before the suite is run against 0.14.0:
   A Figma-donor run would be scored on `figma-donor.mjs capture` and
   node-id provenance instead (`donor-tokens.json#nodeRefs`,
   `fetchTechnique: "figma-rest"` in `canon-source/_crawl-log.json`).
-- **`reskin-figma-full-site` scores the Figma-donor path** against the
-  real Figma API, with `FIGMA_TOKEN` and a file the runner pins: skill
-  activation, `--confidential`, the `--all` re-crawl and full-site
-  delivery. The script's own tests use a synthetic server instead
+- **Two evals score the Figma-donor path** against the real Figma API,
+  with `FIGMA_TOKEN` and a file the runner pins:
+  `reskin-figma-full-site` (skill activation, `--confidential`, the
+  `--all` re-crawl and full-site delivery) and `reskin-figma-live-site`
+  (the path Auto runs, through the gates and the migrate handoff). The
+  script's own tests use a synthetic server instead
   (`skills/reskin/scripts/test/fixtures/figma-kit/fake-figma.mjs`).
+
+### Reskin handoff (M3) notes
+
+- **`standard_handoff_no_core_changes` is scoped to the documented writes.**
+  The reskin → migrate bridge legitimately writes `approved`, `flow`,
+  `designSource` and stale flags in `state.json`, and migrate / rollout
+  read reskin's ledger under `flow: reskin` only. The criterion scores
+  whether the *run* stays inside those writes (and `reskin-preflight`
+  gates the siblings), not whether core files are untouched.
 
 Evaluation suite for the four-phase redesign pipeline plus the
 "open and reasoned" intent-reasoning principle that governs the
@@ -104,6 +115,7 @@ v2 evals without modification.
 | `replica-source-fidelity/`   | Entry point (`replica`)   | Mechanical preserve direction (no `direct`) + inconsistency register + clean re-authoring + the measured source-fidelity gate at both breakpoints + standard handoff. |
 | `reskin-content-fidelity/`   | Entry point (`reskin`)    | Donor via `--design-source` + content-model capture with scope guard + mapping-brief contract (≥80% mapped) + programmatic render + dual content/design-adoption gates. |
 | `reskin-figma-full-site/`    | Entry point (`reskin`)    | A whole live site on a confidential Figma file: the reskin Figma path loads (`figma-donor` capture → curation rules → curate → stamp), a capped earlier crawl is redone with `--all`, pages typed, nothing Figma-derived tracked by git, the token in no file, `ledger.json#delivery` full-site unless the user opts out. |
+| `reskin-figma-live-site/`    | Entry point (`reskin`)    | The path Auto runs: live-site content on a Figma kit — headless `figma-donor` capture with the token kept out of every file, content traced to the live page, `figma-gate` join/geometry/ramp PASS with mobile roots, waivers and residuals recorded, `reskin-preflight` before siblings, a `.js` for every EDS block. |
 | `ew-editability/`            | Entry point (`deploy`)    | Experience Workspace editability contract (EW1–EW10): node-slotting not value-slotting, authored elements moved into wrappers, wrapper-descendant selectors, `block-roundtrip --ew` + probe evidence, exemptions declared, fidelity not traded. |
 | `ai-readability/`            | Entry point (`deploy`)    | AI readability (#100): presentational carousel clones, document-first index-backed listing, explicit fragment decision, no generated visible text, gate run and reported, correct checker facts (no hidden-text or chrome work for the score). |
 | `routing-migration-flow/`    | Master skill routing      | § Two migration flows enforced: keep-design phrases → `replica` without a question, plain asks → `replica` by default, redesign phrases → redesign flow; `flow` recorded in state.json; `prepare-migration` never loaded for keep-design; `migrate` never first; no hand-built pipeline. |
