@@ -1,0 +1,43 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:replica",
+    "writtenAt": "2026-11-20T07:56:00Z",
+    "stardustVersion": "0.42.2"
+  },
+  "site": {
+    "originUrl": "http://localhost:8780",
+    "deployUrl": null,
+    "extractedAt": "2026-11-20T07:48:01Z",
+    "pageCap": 1,
+    "totalDiscovered": 1,
+    "crawled": 1
+  },
+  "direction": {
+    "phrase": "preserve",
+    "resolvedAt": "2026-11-20T07:50:00Z"
+  },
+  "handsOff": true,
+  "flow": "replica",
+  "flowChosenAt": "2026-11-20T07:47:00Z",
+  "flowSource": "user-phrase",
+  "pages": [
+    {
+      "slug": "visit",
+      "url": "http://localhost:8780/visit/",
+      "title": "Visit the Fixture Store",
+      "type": null,
+      "status": "extracted",
+      "history": [
+        {
+          "status": "extracted",
+          "at": "2026-11-20T07:48:01Z"
+        }
+      ],
+      "stale": false,
+      "staleReason": null,
+      "currentStatePath": "stardust/current/pages/visit.json",
+      "prototypePath": null,
+      "migratedPath": null
+    }
+  ]
+}
