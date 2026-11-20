@@ -98,8 +98,15 @@ A class is semantic when it names what the element is: `hero`, `card`,
 `nav-item`, `footer`, `testimonial`, a block name. Keep it. Strip classes that
 only say how the element looks or which state it is in: the patterns above,
 state classes (`is-*`, `has-*`, `active`, `open`, `selected`) and
-design-system modifiers (a prefix plus a size, colour or variant, such as
-`hds-button--primary` or `btn-lg`). When unsure, keep the class.
+design-system modifiers (a design-system prefix or a BEM `--` modifier plus a
+size, colour or variant, such as `hds-button--primary` or `btn-lg`). Strip
+generated names (`_grid_1ahgq_13`, `lkxsBq`): they name nothing. When unsure,
+keep the class.
+
+Block options are the exception: the skeleton is for block planning, so on
+the element that carries a block name keep its other classes (`columns four
+icon-sm text-sm`), except the patterns above, state classes and generated
+names.
 
 ### 5. Strip tracking data attributes
 
@@ -171,9 +178,9 @@ TOKENIZED_HTML
 
 Pretty-print with 2-space indentation.
 
-`skeleton.html` is never larger than the Phase 1 `tokenizedHtml` it came from
-(all sections together). If it is, collapse more (rules 1, 7 and 8) before
-writing.
+Without its `<!-- section:… -->` lines, `skeleton.html` is never larger than
+the Phase 1 `tokenizedHtml` it came from (all sections together). If it is,
+collapse more (rules 1, 7 and 8) before writing.
 
 ### manifest.json
 

@@ -48,7 +48,7 @@
       "name": "skeleton_not_larger",
       "max_score": 10,
       "category": "INTENT",
-      "description": "skeleton.html is no larger than the Phase 1 tokenizedHtml it came from: at most 9,707 bytes."
+      "description": "Without its `<!-- section:\u2026 -->` comment lines, skeleton.html is no larger than the Phase 1 tokenizedHtml it came from: at most 9,707 bytes."
     },
     {
       "name": "summary",

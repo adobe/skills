@@ -1,5 +1,5 @@
 {
-  "context": "The agent runs the structural-reasoning half of a page reduction on a synthetic Phase 1 output for a fictional coffee shop (9 sections, index 0 to 8). The tokenizedHtml of all sections totals 7,719 bytes. Sections 5 (carousel arrows and dots, only {ICON} tokens) and 6 (an empty counter) have no content tokens; section 8 is a cookie consent dialog with no {INPUT} or {SELECT}. Judge skeleton.html and manifest.json.",
+  "context": "The agent runs the structural-reasoning half of a page reduction on a synthetic Phase 1 output for a fictional coffee shop (9 sections, index 0 to 8). The tokenizedHtml of all sections totals 7,774 bytes. Sections 5 (carousel arrows and dots, only {ICON} tokens) and 6 (an empty counter) have no content tokens; section 8 is a cookie consent dialog with no {INPUT} or {SELECT}. Judge skeleton.html and manifest.json.",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -42,13 +42,13 @@
       "name": "modifier_classes_stripped",
       "max_score": 10,
       "category": "DESIGN",
-      "description": "State classes (`is-active`, `is-visible`, `is-sticky`) and design-system modifiers (`ui-button--primary`, `ui-card--elevated`, `hero--dark`) are removed, while classes that name the element (hero, promo-tile, feature-card, product-card, footer-nav…) are kept."
+      "description": "State classes (`is-active`, `is-visible`, `is-sticky`), design-system modifiers (`ui-button--primary`, `ui-card--elevated`, `hero--dark`) and the generated class `_track_3fa9c_21` are removed, while classes that name the element (hero, promo-tile, feature-card, product-card, footer-nav…) and the options `three-up` and `compact` on the feature-cards block (section 3, `data-block-name=\"feature-cards\"`) are kept."
     },
     {
       "name": "skeleton_not_larger",
       "max_score": 10,
       "category": "INTENT",
-      "description": "skeleton.html is no larger than the Phase 1 tokenizedHtml it came from: at most 7,719 bytes."
+      "description": "Without its `<!-- section:… -->` comment lines, skeleton.html is no larger than the Phase 1 tokenizedHtml it came from: at most 7,774 bytes."
     }
   ]
 }
