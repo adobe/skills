@@ -7,7 +7,8 @@
 // clean, the stock header fails. Between controls the header is closed in place (the stock drawer ignores Escape and still
 // costs no reload; the stubborn header's dropdowns close on nothing and reload every time); a GET search submit is recorded
 // without leaving the page, a POST one is followed; a width whose request budget is spent is cut short and says so; an
-// input past the typeahead cap is listed, not typed into.
+// input past the typeahead cap is listed, not typed into. A header carrying `hidden` but displayed keeps its link texts;
+// a carousel that changes slide by itself is no control's panel, a panel rendered outside the header element is.
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-explore.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -190,6 +191,26 @@ else {
     assert.deepEqual([input.search, input.skipped, r.inputsSkipped, r.truncated], [null, 'typeahead-cap', 1, null]);
     assert.deepEqual([r.requests, r.upstream], [r.loads, r.loads], 'nothing was typed or submitted: every upstream request is a page load');
     assert.match(summarize({ widths: { 1440: r } })[0], /, 1 input\(s\) past --max-typeahead$/);
+  });
+  await check('a header with the `hidden` attribute that its CSS displays: link texts are recorded; text under visibility:hidden is not', async () => {
+    const r = await withPage(1440, (page) => explore(page, `${srv.origin}/hidden`, 1440));
+    const services = r.controls.find((c) => c.name === 'Services');
+    assert.deepEqual(services.actions.click.panel.links.map((l) => l.text), ['Permits', 'Taxes', 'Feedback']);
+    assert.deepEqual(r.controls.map((c) => c.name), ['Brand', 'Services', 'Contact']);
+  });
+  await check('an auto-advancing carousel below the header is no control\'s panel; a panel rendered outside the header element still is', async () => {
+    const r = await withPage(1440, (page) => explore(page, `${srv.origin}/carousel`, 1440, { maxRequests: 0 }));
+    const states = r.controls.flatMap((c) => Object.values(c.actions || {}).filter((s) => s && s.opened).map((s) => [c.name, s]));
+    assert.deepEqual([...new Set(states.map(([n]) => n))], ['Shop'], 'the plain links open nothing: the slide that changed while they were hovered is the page\'s own');
+    const shop = r.controls.find((c) => c.name === 'Shop');
+    for (const a of ['hover', 'click', 'key']) {
+      assert.deepEqual(shop.actions[a].panel.links.map((l) => l.text), ['Men', 'Women'], `Shop [${a}]: the panel's links, no slide link`);
+      assert.deepEqual(shop.actions[a].panel.headings, ['Shop']);
+    }
+    assert.deepEqual([shop.close.escape, shop.close.outside], [true, true], 'the close paths are read without the carousel');
+    // once the carousel is known, the header is at rest whatever slide shows: the explorer that took each slide change for an
+    // open panel reloaded 28 times here
+    assert.ok(r.loads <= 4, `${r.loads} loads`);
   });
   await check('identical copy compares clean, crops included; the stock header fails on behaviour, content, motion, crops', async () => {
     const same = compareDocs(rich, rich2);
