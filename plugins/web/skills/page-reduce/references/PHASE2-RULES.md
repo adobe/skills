@@ -35,7 +35,7 @@ Tokens you produce in Phase 2:
 |-------|---------|
 | `{REPEAT:N}` | N more items identical to the pattern above |
 | `{FORM:N-fields}` | Entire form collapsed (when > 3 fields) |
-| `{NAV:N-items}` | N more links in a list of links (when > 5 links) |
+| `{NAV:N-items}` | The N links replaced after the first 2 kept, not the total (lists of > 5 links) |
 
 ## Rules
 
@@ -94,19 +94,16 @@ Remove classes matching these patterns:
 - Color: `bg-*`, `text-*` when followed by a color name
 - Animation: `fade-*`, `slide-*`, `inview-*`, `js-*`
 
-A class is semantic when it names what the element is: `hero`, `card`,
-`nav-item`, `footer`, `testimonial`, a block name. Keep it. Strip classes that
-only say how the element looks or which state it is in: the patterns above,
-state classes (`is-*`, `has-*`, `active`, `open`, `selected`) and
-design-system modifiers (a design-system prefix or a BEM `--` modifier plus a
-size, colour or variant, such as `hds-button--primary` or `btn-lg`). Strip
-generated names (`_grid_1ahgq_13`, `lkxsBq`): they name nothing. When unsure,
-keep the class.
+Keep semantic classes (`hero`, `card`, `nav-item`, `footer`, `testimonial`,
+a block name). Strip state classes (`is-*`, `has-*`, `active`, `open`,
+`selected`) and design-system modifiers: a BEM `--` modifier or a
+design-system prefix plus a size, colour or variant, such as
+`hds-button--primary` or `btn-lg`.
 
-Block options are the exception: the skeleton is for block planning, so on
-the element that carries a block name keep its other classes (`columns four
-icon-sm text-sm`), except the patterns above, state classes and generated
-names.
+Block options are the exception: on an element with `data-block-name`, keep
+the plain option words next to the block name (`columns four icon-sm text-sm`,
+`three-up compact`). Still strip the patterns above, state classes and
+design-system modifiers there.
 
 ### 5. Strip tracking data attributes
 
@@ -124,10 +121,9 @@ count. Keep the `<form>` tag with its `action` and `method` attributes.
 ### 7. Collapse complex navigation
 
 If a `<nav>` or navigation-like list has more than 5 `{LINK:*}` or
-`{CTA:*}` items, keep the first 2 and replace the rest with `{NAV:N-items}`,
-where N is the number of items replaced, as for `{REPEAT:N}`: 7 links become
-2 links and `{NAV:5-items}`. Use `{NAV}` only for lists of links. Repeated
-content items (cards, teasers) follow rule 1.
+`{CTA:*}` items, keep the first 2 and replace the rest with `{NAV:N-items}`.
+Use `{NAV}` only for lists of links. Repeated content items (cards, teasers)
+follow rule 1.
 
 ### 8. Preserve table structure
 
@@ -178,9 +174,10 @@ TOKENIZED_HTML
 
 Pretty-print with 2-space indentation.
 
-Without its `<!-- section:… -->` lines, `skeleton.html` is never larger than
-the Phase 1 `tokenizedHtml` it came from (all sections together). If it is,
-collapse more (rules 1, 7 and 8) before writing.
+Without its `<!-- section:… -->` lines and with whitespace removed,
+`skeleton.html` is never larger than the Phase 1 `tokenizedHtml` it came from
+(all sections, whitespace removed). If it is, collapse more (rules 1, 7 and 8)
+before writing.
 
 ### manifest.json
 

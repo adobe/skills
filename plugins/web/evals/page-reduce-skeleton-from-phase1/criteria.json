@@ -1,5 +1,5 @@
 {
-  "context": "The agent runs the structural-reasoning half of a page reduction on real Phase 1 output from https://www.aem.live/ (15 sections; their tokenizedHtml totals 9,707 bytes). Judge skeleton.html, manifest.json and answer.md.",
+  "context": "The agent runs the structural-reasoning half of a page reduction on real Phase 1 output from https://www.aem.live/ (15 sections; their tokenizedHtml totals 9,379 bytes with whitespace removed). Judge skeleton.html, manifest.json and answer.md.",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -48,7 +48,7 @@
       "name": "skeleton_not_larger",
       "max_score": 10,
       "category": "INTENT",
-      "description": "Without its `<!-- section:\u2026 -->` comment lines, skeleton.html is no larger than the Phase 1 tokenizedHtml it came from: at most 9,707 bytes."
+      "description": "Without its `<!-- section:\u2026 -->` comment lines and with all whitespace removed, skeleton.html is no larger than the Phase 1 tokenizedHtml it came from with whitespace removed: at most 9,379 bytes."
     },
     {
       "name": "summary",

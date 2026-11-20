@@ -1,5 +1,5 @@
 {
-  "context": "The agent runs the structural-reasoning half of a page reduction on a synthetic Phase 1 output for a fictional coffee shop (9 sections, index 0 to 8). The tokenizedHtml of all sections totals 7,774 bytes. Sections 5 (carousel arrows and dots, only {ICON} tokens) and 6 (an empty counter) have no content tokens; section 8 is a cookie consent dialog with no {INPUT} or {SELECT}. Judge skeleton.html and manifest.json.",
+  "context": "The agent runs the structural-reasoning half of a page reduction on a synthetic Phase 1 output for a fictional coffee shop (9 sections, index 0 to 8). The tokenizedHtml of all sections totals 7,466 bytes with whitespace removed. Sections 5 (carousel arrows and dots, only {ICON} tokens) and 6 (an empty counter) have no content tokens; section 8 is a cookie consent dialog with no {INPUT} or {SELECT}. Judge skeleton.html and manifest.json.",
   "type": "weighted_checklist",
   "checklist": [
     {
@@ -48,7 +48,7 @@
       "name": "skeleton_not_larger",
       "max_score": 10,
       "category": "INTENT",
-      "description": "Without its `<!-- section:… -->` comment lines, skeleton.html is no larger than the Phase 1 tokenizedHtml it came from: at most 7,774 bytes."
+      "description": "Without its `<!-- section:… -->` comment lines and with all whitespace removed, skeleton.html is no larger than the Phase 1 tokenizedHtml it came from with whitespace removed: at most 7,466 bytes."
     }
   ]
 }
