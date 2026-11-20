@@ -1,0 +1,13 @@
+{
+  "name": "adobe/aem-forms-core-components",
+  "description": "Skills for AEM Adaptive Forms Core Components: building server-side form components in adobe/aem-core-forms-components.",
+  "author": {
+    "name": "Adobe"
+  },
+  "repository": "https://github.com/adobe/skills",
+  "license": "Apache-2.0",
+  "private": false,
+  "skills": [
+    "skills/create-core-component"
+  ]
+}
