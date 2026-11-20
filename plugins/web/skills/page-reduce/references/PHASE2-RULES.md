@@ -35,7 +35,7 @@ Tokens you produce in Phase 2:
 |-------|---------|
 | `{REPEAT:N}` | N more items identical to the pattern above |
 | `{FORM:N-fields}` | Entire form collapsed (when > 3 fields) |
-| `{NAV:N-items}` | The N links replaced after the first 2 kept, not the total (lists of > 5 links) |
+| `{NAV:N-items}` | The rest of a list of > 5 links, after the first 2 kept |
 
 ## Rules
 
