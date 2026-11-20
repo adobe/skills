@@ -1,3 +1,10 @@
+## [2.4.3](https://github.com/adobe/skills/compare/web-cli-v2.4.2...web-cli-v2.4.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **web:** header check menus waits for a panel that closes with a transition ([#770](https://github.com/adobe/skills/issues/770)) ([20766bc](https://github.com/adobe/skills/commit/20766bce7f223417ec007f7017844de4b0027ad7))
+
 ## [2.4.2](https://github.com/adobe/skills/compare/web-cli-v2.4.1...web-cli-v2.4.2) (2026-11-14)
 
 
