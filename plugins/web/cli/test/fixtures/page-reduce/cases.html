@@ -88,6 +88,28 @@
       footer a {
         color: #ccc;
       }
+      .dots {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        padding: 30px 40px;
+      }
+      .dots button {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        border: 0;
+        background: #ccd;
+      }
+      .backdrop {
+        height: 240px;
+        background: linear-gradient(#dde, #bbc);
+      }
+      .consent {
+        min-height: 160px;
+        margin: 20px 40px;
+        background: #f4f4f4;
+      }
     </style>
   </head>
   <body>
@@ -140,6 +162,12 @@
         <p>Questions about pricing or integrations? We reply within one business day.</p>
         <a class="btn" href="/contact">Contact us</a>
       </section>
+      <div class="dots">
+        <button aria-label="Slide 1"></button><button aria-label="Slide 2"></button
+        ><button aria-label="Slide 3"></button>
+      </div>
+      <div class="backdrop" aria-hidden="true"></div>
+      <div class="consent" role="dialog" aria-modal="true" aria-label="Cookie consent"></div>
     </main>
     <footer>
       <p>2026 Acme Inc. All rights reserved.</p>

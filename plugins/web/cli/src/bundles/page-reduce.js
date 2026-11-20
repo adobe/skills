@@ -2941,6 +2941,7 @@
     const pairs = new Map([clone, ...clone.querySelectorAll("*")].map((c, i) => [c, live[i]]));
     return (node) => pairs.get(node) ?? node;
   }
+  var CONTENT_TOKEN = /\{(TEXT|HEADING:|IMAGE:|LINK:|CTA:|INPUT:|SELECT:|VIDEO)/;
   function processSectionBox(box, doc, win) {
     const el = box.div;
     if (!el) return null;
@@ -2953,6 +2954,7 @@
       tokenizeAll(sroot, win);
     }
     tokenizeAll(clone, win, live);
+    if (!CONTENT_TOKEN.test(clone.textContent)) return null;
     return {
       sectionType: box.prediction?.sectionType || "unknown",
       xpath: box.xpath || DOM.getXPath(el, doc),
@@ -2969,16 +2971,21 @@
   function reduceForSkill(root, win) {
     const doc = win.document;
     const boxes = win.xp?.boxes;
-    if (!boxes || !boxes.predictedBoxes) {
+    if (!boxes) {
       return { url: win.location.href, sections: [] };
     }
-    const sections = [];
-    boxes.predictedBoxes.forEach((box, index) => {
-      const section = processSectionBox(box, doc, win);
-      if (section) {
-        section.index = index;
-        sections.push(section);
+    const sections = (boxes.predictedBoxes || []).map((box) => processSectionBox(box, doc, win)).filter(Boolean);
+    if (sections.length === 0) {
+      for (const div of [doc.querySelector("main"), doc.body]) {
+        const section = div && processSectionBox({ div }, doc, win);
+        if (section) {
+          sections.push({ ...section, fallback: true });
+          break;
+        }
       }
+    }
+    sections.forEach((section, index) => {
+      section.index = index;
     });
     const pageTpl = boxes.children?.map((child) => {
       const tpl = [DOM.getXPath(child.div, doc)];

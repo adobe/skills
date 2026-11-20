@@ -74,9 +74,11 @@ where each section is:
   "layout": { "numCols": 2, "numRows": 1 }, "features": ["hasHeading", "hasCTA"] }
 ```
 
-Exit 1 (`EMPTY_RESULT`): no sections after `--retries` rescrolls. Report that to
-the user instead of writing empty output files; try `--retries 4 --settle-ms 4000`
-or `--headed` once. Exit 3: blocked, run `browser-probe` and pass `--recipe`.
+A single section with `"fallback": true` is `main` (or `body`) as a whole: no
+section was found after `--retries` rescrolls. Tell the user; on a page that is
+more than one block, try `--retries 4 --settle-ms 4000` or `--headed` once.
+Exit 1 (`EMPTY_RESULT`): the page has no content. Report that to the user instead
+of writing empty output files. Exit 3: blocked, run `browser-probe` and pass `--recipe`.
 
 If `--phase1-only` was requested, stop here.
 

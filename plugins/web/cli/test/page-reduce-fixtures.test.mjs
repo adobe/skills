@@ -15,11 +15,18 @@ const casesHtml = readFileSync(
   new URL('./fixtures/page-reduce/cases.html', import.meta.url),
   'utf8',
 );
+const oneBlockHtml = readFileSync(
+  new URL('./fixtures/page-reduce/one-block.html', import.meta.url),
+  'utf8',
+);
+const CONTENT = /\{(?:TEXT|HEADING:|IMAGE:|LINK:|CTA:|INPUT:|SELECT:|VIDEO)/;
 const probe = spawnSync('playwright-cli', ['--version']);
 const available = !probe.error && probe.status === 0;
 const session = `page-reduce-fixtures-${process.pid}`;
 let cwd;
+let sections;
 let html;
+let oneBlock;
 
 // Async spawn: spawnSync blocks the event loop that serves the in-process fixture.
 function web(...args) {
@@ -37,11 +44,17 @@ before(async () => {
   try {
     const res = await web('page', 'reduce', fixture.url, '--session', session, '--settle-ms', '0');
     assert.equal(res.status, 0, res.stdout);
-    html = JSON.parse(res.stdout)
-      .sections.map((s) => s.tokenizedHtml)
-      .join('\n');
+    ({ sections } = JSON.parse(res.stdout));
+    html = sections.map((s) => s.tokenizedHtml).join('\n');
   } finally {
     await fixture.close();
+  }
+  const single = await startFixture(oneBlockHtml);
+  try {
+    const res = await web('page', 'reduce', single.url, '--session', session, '--settle-ms', '0');
+    oneBlock = { status: res.status, doc: JSON.parse(res.stdout) };
+  } finally {
+    await single.close();
   }
 });
 
@@ -83,4 +96,23 @@ fixtureTest('a link around a large SVG keeps it as a sized image', () => {
 fixtureTest('a card link keeps its heading and image', () => {
   assert.equal(html.match(/\{HEADING:3\}/g)?.length, 4, html);
   assert.match(html, /<a[^>]*class="card"[^>]*>\s*\{IMAGE:\d+x120\}/);
+});
+
+fixtureTest('no section is left without content (dots, backdrop, empty dialog)', () => {
+  const empty = sections.filter((s) => !CONTENT.test(s.tokenizedHtml));
+  assert.deepEqual(
+    empty.map((s) => s.xpath),
+    [],
+  );
+  assert.deepEqual(
+    sections.map((s) => s.index),
+    sections.map((_, i) => i),
+  );
+});
+
+fixtureTest('a page with one block gives one fallback section', () => {
+  assert.equal(oneBlock.status, 0, JSON.stringify(oneBlock.doc));
+  assert.equal(oneBlock.doc.sections.length, 1);
+  assert.equal(oneBlock.doc.sections[0].fallback, true);
+  assert.match(oneBlock.doc.sections[0].tokenizedHtml, /\{HEADING:1\}/);
 });
