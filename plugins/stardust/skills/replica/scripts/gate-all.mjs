@@ -491,7 +491,8 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   if (compared && !heightPass) reasons.push(`Δh ${pixel.heightDelta}px > ${Math.round(heightTol * 100)}% of ${originH}`);
   if (clipPass === false) reasons.push(`clipped ${clipped}${allowance ? ` > allowance ${allowance}` : ''}${clip.counts ? ` (text ${clip.counts.textClipped + clip.counts.textHidden}, controls ${clip.counts.controlHidden + clip.counts.controlClipped})` : ''}`);
   if (contentPass === false) reasons.push(`content MISSING ${cTot.missing} / HIDDEN ${cTot.hidden}${cTot.controlState ? ` (+${cTot.controlState} control state)` : ''}`);
-  if (unitPass === false) reasons.push(`units off ${units.verdict.off} hidden ${units.verdict.hidden} missing ${units.verdict.missing}`);
+  // a selector error is named: "off 0 hidden 0 missing 0" said nothing about what to fix
+  if (unitPass === false) reasons.push(`units off ${units.verdict.off} hidden ${units.verdict.hidden} missing ${units.verdict.missing}${units.verdict.errors ? ` — ${units.verdict.errors} selector error(s)${units.errors && units.errors.length ? `: ${units.errors.slice(0, 2).join('; ')}` : ''} (fix the family's selector in stardust/replica/units.json)` : ''}`);
   const probeErrors = [];
   if (contentOn && content && content.probeError) probeErrors.push({ probe: 'content', error: String(content.error || 'no result') });
   if (clipOn && clip && clip.error) probeErrors.push({ probe: 'clip', error: String(clip.error) });
@@ -846,7 +847,7 @@ async function main() {
       const s = await run('node', unitArgs(join(DIFF_DIR, 'unit-geometry.mjs'), p.url, edsUrl(p), join(d, 'units.json'), p.slug, units, optsFor(p)));
       const res = readJsonSafe(join(d, 'units.json'));
       const required = units.some((x) => x.required);
-      if (res && res.verdict && (s.code === 0 || s.code === 2)) { put('units', { verdict: res.verdict, required }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
+      if (res && res.verdict && (s.code === 0 || s.code === 2)) { put('units', { verdict: res.verdict, required, errors: (res.results || []).filter((x) => x.error).map((x) => `${String(x.sel).slice(0, 80)} — ${x.error}`) }); log(`units ${p.slug} → off ${res.verdict.off} hidden ${res.verdict.hidden} missing ${res.verdict.missing}`); }
       else { put('units', { error: `unit-geometry exit ${s.code}: ${lastLine(s.err)}`, required }); log(`units ${p.slug} → ERROR ${lastLine(s.err)}`); }
     }
     writeFileSync(join(d, 'probes.json'), JSON.stringify({ writtenBy: 'gate-all.mjs', at: new Date().toISOString(), ...got }, null, 1));
