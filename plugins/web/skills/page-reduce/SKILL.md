@@ -9,6 +9,8 @@ description: >-
   writes skeleton.html and manifest.json. Use when migrating a page to AEM Edge
   Delivery Services, extracting a page blueprint, or analyzing page structure for
   block generation.
+metadata:
+  version: "1.0.1"
 ---
 
 # page-reduce
