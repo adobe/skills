@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/adobe/skills/compare/replica-v1.4.1...replica-v1.5.0) (2026-11-20)
+
+
+### Features
+
+* **stardust:** rollout is not done until the DA block library is published (stale/wrong-site aware); one shared DA token resolver ([#739](https://github.com/adobe/skills/issues/739)) ([8b2f8c8](https://github.com/adobe/skills/commit/8b2f8c8d6247952c488fe33d72f312a6fe78048e))
+
 ## [1.4.1](https://github.com/adobe/skills/compare/replica-v1.4.0...replica-v1.4.1) (2026-11-20)
 
 # [1.4.0](https://github.com/adobe/skills/compare/replica-v1.3.0...replica-v1.4.0) (2026-11-19)
