@@ -108,7 +108,7 @@
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (overrides count), 2 any FAIL or error row, 1 error; --wide: 0. `verdict`, `referenceOf`, `wideWidth`, `wideFlagged`, `wideLine`, `selectPages`, `fontsNotLoaded`, `fontFails`,
  * `fontChecksSkipped`, `shotFonts`, `formatSummary`, `parseArgs`, `passThrough`, `stitchArgs`, `contentArgs`,
- * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `dropPassedCaptures`, `droppedPass`
+ * `clipArgs`, `unitArgs`, `recordedProbes`, `captureRecordOf`, `staleCapture`, `staleReason`, `holdMismatch`, `envHold`, `dropPassedCaptures`, `droppedPass`
  * are exported.
  */
 import { spawn } from 'node:child_process';
@@ -159,6 +159,11 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --dismiss <sel,…>         extra overlay-dismiss selectors — both captures
   --no-dismiss              dismiss no overlay (contradicts --consent / --dismiss: exit 1)
   --locale <tag>            en-US — both captures and every probe
+  --hold-timers             stitch-shot's timer hold (its --help; default OFF) on the reference and both captures; a
+                            reference frozen without it is frozen again, a run that omits it inherits a held reference's;
+                            a reused capture taken under another hold is retaken. GATE_HOLD_TIMERS=1 (or a number of ms)
+                            in the environment does the same (gate.sh's)
+  --hold-min <ms>           a higher threshold for the hold; implies --hold-timers (default and floor 2000)
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
@@ -199,10 +204,12 @@ Exit: 0 all PASS (overrides count), 2 any FAIL or error row, 1 error; --wide: 0.
 
 /** --eds-host as an origin: a bare host (`main--site--org.aem.page`) gets https://, a trailing slash goes. */
 export const hostOrigin = (h) => { const x = String(h || '').trim().replace(/\/+$/, ''); return x && !/^[a-z][a-z0-9+.-]*:\/\//i.test(x) ? `https://${x}` : x; };
+/** GATE_HOLD_TIMERS → the timer hold's threshold in ms: unset, '' or 0 = null (off), 1 = 2000, else the number. */
+export const envHold = (v) => (v == null || v === '' || v === '0' ? null : v === '1' ? 2000 : Number(v));
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', wide: false, design: 'DESIGN.json' };
+  const o = { stage: 'published', protoBase: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, coverage: 'stardust/rollout/coverage/pages.json', consent: null, dismiss: null, noDismiss: false, locale: 'en-US', offsetMax: null, liveOrigin: process.env.GATE_REFERENCE === 'live', holdTimers: envHold(process.env.GATE_HOLD_TIMERS), wide: false, design: 'DESIGN.json' };
   let widthGiven = false;
   const need = (flag, val) => { if (val == null || val.startsWith('--')) { console.error(`${flag} needs a value\n\n${HELP}`); process.exit(1); } return val; };
   for (let i = 0; i < rest.length; i += 1) {
@@ -220,9 +227,11 @@ export function parseArgs(argv) {
     else if (a === '--coverage') o.coverage = need(a, v());
     else if (a === '--offset-max') { o.offsetMax = Number(need(a, v())); if (!(Number.isFinite(o.offsetMax) && o.offsetMax >= 0)) { console.error(`--offset-max needs a number of px\n\n${HELP}`); process.exit(1); } }
     else if (a === '--live-origin') o.liveOrigin = true; else if (a === '--wide') o.wide = true; else if (a === '--design') o.design = need(a, v());
+    else if (a === '--hold-timers') o.holdTimers = o.holdTimers ?? 2000; else if (a === '--hold-min') o.holdTimers = Number(need(a, v()));
     else if (a === '--consent') o.consent = need(a, v()); else if (a === '--dismiss') o.dismiss = need(a, v()); else if (a === '--no-dismiss') o.noDismiss = true; else if (a === '--locale') { o.locale = need(a, v()); o.localeGiven = true; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
+  if (o.holdTimers != null && !(Number.isFinite(o.holdTimers) && o.holdTimers >= 2000)) { console.error(`--hold-min / GATE_HOLD_TIMERS needs a number of ms, at least 2000\n\n${HELP}`); process.exit(1); }
   if (o.noDismiss && (o.consent || o.dismiss)) { console.error('gate-all: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)'); process.exit(1); }
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
   // --wide: a report table at the derived probe width — its own dir, no content probe (the base width measured it).
@@ -397,11 +406,12 @@ export function migratedPathOf(file) {
 // The overlay / locale flags each child accepts (its own parseArgs) — only those are passed. The three probes take
 // --locale and no dismiss flag (they dismiss with the built-in candidates); the test reads each child's source, so a
 // probe that gains one fails there until it is listed here.
-export const CHILD_FLAGS = { 'stitch-shot': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'content-presence': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'clip-probe': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'unit-geometry': ['--consent', '--dismiss', '--no-dismiss', '--locale'] };
+export const CHILD_FLAGS = { 'stitch-shot': ['--consent', '--dismiss', '--no-dismiss', '--locale', '--hold-timers', '--hold-min'], 'content-presence': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'clip-probe': ['--consent', '--dismiss', '--no-dismiss', '--locale'], 'unit-geometry': ['--consent', '--dismiss', '--no-dismiss', '--locale'] };
 /** passThrough(child, opts) → the --locale / --consent / --dismiss / --no-dismiss arguments `child` accepts. */
 export function passThrough(child, opts = {}) {
   const takes = (f) => (CHILD_FLAGS[child] || []).includes(f); const a = [];
   if (takes('--locale')) a.push('--locale', opts.locale || 'en-US');
+  if (opts.holdTimers && takes('--hold-timers')) a.push('--hold-timers', '--hold-min', String(opts.holdTimers)); // the timer hold: stitched captures only
   if (opts.noDismiss) { if (takes('--no-dismiss')) a.push('--no-dismiss'); return a; }
   if (opts.consent && takes('--consent')) a.push('--consent', opts.consent);
   if (opts.dismiss && takes('--dismiss')) a.push('--dismiss', opts.dismiss);
@@ -417,12 +427,14 @@ export function inheritedOpts(opts, flags) {
   // a setting the run gives that differs from the recorded one: the reference is frozen again under the run's
   // settings (reference.mjs settings), so nothing of the old one is inherited
   const differs = (opts.noDismiss === true) !== (flags.noDismiss === true) && (opts.noDismiss || text(opts.consent) || text(opts.dismiss))
+    || (opts.holdTimers && opts.holdTimers !== (Number(flags.holdTimers) || null))
     || ['consent', 'dismiss', 'locale'].some((k) => (k === 'locale' ? opts.localeGiven : true) && text(opts[k]) && text(opts[k]) !== (text(flags[k]) || (k === 'locale' ? 'en-US' : null)));
   if (differs) return opts;
   const gave = opts.noDismiss || text(opts.consent) || text(opts.dismiss); const o = { ...opts };
   if (flags.noDismiss === true && !gave) o.noDismiss = true;
   if (!opts.noDismiss && !o.noDismiss) for (const k of ['consent', 'dismiss']) if (!text(opts[k]) && text(flags[k])) o[k] = text(flags[k]);
   if (!opts.localeGiven && text(flags.locale)) o.locale = text(flags.locale);
+  if (!opts.holdTimers && Number(flags.holdTimers) > 0) o.holdTimers = Number(flags.holdTimers);
   return o;
 }
 /** A capture, either side: stitch-shot <url> <out> --width --settle + the overlay / locale flags [+ --vh] [+ tail]. */
@@ -555,12 +567,26 @@ const readJsonSafe = (p) => { try { return readJson(p); } catch { return null; }
 // asymmetric diff. A live.png copied from the frozen baseline (live.json origin "baseline") has no capture record;
 // baseline.json's fixedLayers decides. → true when the capture must be retaken.
 export const captureRecordOf = (png) => `${png.replace(/\.png$/i, '')}.capture.json`;
-export function staleCapture(png) {
+// `hold` (the timer hold the run captures this page under: ms, or null) joins the rule: a capture taken under another
+// hold — none against one, or another threshold — is retaken too (record.timers.hold; stitch-shot --hold-timers).
+// staleReason → null (reusable) | the words for the log line; staleCapture → true when the capture must be retaken.
+export function staleReason(png, hold = null) {
+  const FIXED = 'predates the fixed-layer capture (no fixedLayers in its record)';
+  const why = (r) => (!r.fixedLayers ? FIXED : ((r.timers && r.timers.hold) || null) !== (hold || null) ? `was captured under another timer hold (${(r.timers && r.timers.hold) || 'none'}, this run ${hold || 'none'})` : null);
   const rec = readJsonSafe(captureRecordOf(png));
-  if (rec) return !rec.fixedLayers;
+  if (rec) return why(rec);
   const live = basename(png) === 'live.png' ? readJsonSafe(join(dirname(png), 'live.json')) : null;
-  if (live && live.origin === 'baseline') return !(readJsonSafe(join(dirname(png), 'baseline.json')) || {}).fixedLayers;
-  return true;
+  if (live && live.origin === 'baseline') return why(readJsonSafe(join(dirname(png), 'baseline.json')) || {});
+  return FIXED;
+}
+export const staleCapture = (png, hold = null) => staleReason(png, hold) !== null;
+
+/** Two capture records (stitch-shot's) → null when both were taken under the same timer hold (or one has no record: a
+ * crawl shot, already flagged asymmetric), else the one-line error of the row. */
+export function holdMismatch(originRec, buildRec) {
+  if (!originRec || !buildRec) return null;
+  const h = (r) => (r.timers && r.timers.hold) || null;
+  return h(originRec) === h(buildRec) ? null : `timer hold differs: origin ${h(originRec) ?? 'none'}, build ${h(buildRec) ?? 'none'} (ms) — not compared; re-run with --recapture-origin or --recapture-eds`;
 }
 
 // Disk (#156): a passed page keeps its records, not its pictures. Every PNG in its dir goes (an extra capture put
@@ -666,7 +692,7 @@ async function main() {
   // without the subcommand answers nothing: reused as before.
   const settingsSeen = new Map();
   const settingsOf = (refDir) => {
-    if (!settingsSeen.has(refDir)) settingsSeen.set(refDir, run('node', [REFERENCE, 'settings', refDir, ...givenFlags(opts)]).then((s) => { const line = lastLine(s.out); return { changed: s.code === 0 && line.startsWith('changed: ') ? line.slice(9) : null, unrecorded: s.code === 0 && line === 'not recorded' }; }));
+    if (!settingsSeen.has(refDir)) settingsSeen.set(refDir, run('node', [REFERENCE, 'settings', refDir, ...givenFlags(opts)]).then((s) => { const line = lastLine(s.out); return { changed: s.code === 0 && line.startsWith('changed: ') ? line.slice(9) : s.code !== 0 && opts.holdTimers ? 'holdTimers (reference.mjs settings gave no answer)' : null, unrecorded: s.code === 0 && line === 'not recorded' }; }));
     return settingsSeen.get(refDir);
   };
   // a reused origin or recorded pass (--skip-existing / --compare-only) stands only while its reference's settings do
@@ -684,8 +710,9 @@ async function main() {
   // (staleCapture): retaken, one log line, so both sides of the compare capture alike.
   const reusable = (p, side, png, meta) => {
     if (!existsSync(png) || !existsSync(meta)) return false;
-    if ((readJsonSafe(meta) || {}).instrument !== 'stitch-live' || !staleCapture(png)) return true;
-    log(`${side} ${p.slug}: ${png} predates the fixed-layer capture (no fixedLayers in its record) — retaking it`);
+    const stale = (readJsonSafe(meta) || {}).instrument === 'stitch-live' ? staleReason(png, optsFor(p).holdTimers) : null;
+    if (!stale) return true;
+    log(`${side} ${p.slug}: ${png} ${stale} — retaking it`);
     return false;
   };
   // stitch-shot's capture record (captureRecordOf: <side>.capture.json beside the PNG; stitch-shot removes it when a
@@ -714,7 +741,7 @@ async function main() {
   const fromReference = (refDir, out, how) => {
     const base = readJsonSafe(join(refDir, 'baseline.json')) || {};
     copyFileSync(join(refDir, 'baseline.png'), out);
-    const src = { writtenBy: 'gate-all.mjs', copiedFrom: join(refDir, 'baseline.png'), fixedLayers: base.fixedLayers, ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
+    const src = { writtenBy: 'gate-all.mjs', copiedFrom: join(refDir, 'baseline.png'), fixedLayers: base.fixedLayers, ...(base.timers ? { timers: base.timers } : {}), ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
     writeFileSync(captureRecordOf(out), `${JSON.stringify(src, null, 2)}\n`);
     return { instrument: 'stitch-live', url: base.url, reference: referenceOf(base, refDir), note: `${how} ${join(refDir, 'baseline.png')} (the page's frozen reference — primed, not re-captured)`, ...shotFonts(src) };
   };
@@ -739,7 +766,8 @@ async function main() {
       } else if (await usable(gateDir, p)) refDir = gateDir;
     }
     let useCached = !refDir && !freezeInto && opts.stage === 'prototype' && existsSync(cachedLive);
-    if (useCached && staleCapture(cachedLive)) { useCached = false; log(`origin ${p.slug}: ${cachedLive} predates the fixed-layer capture (no fixedLayers in its record) — not reused, capturing the origin`); }
+    const staleLive = useCached ? staleReason(cachedLive, optsFor(p).holdTimers) : null;
+    if (staleLive) { useCached = false; log(`origin ${p.slug}: ${cachedLive} ${staleLive} — not reused, capturing the origin`); }
     if (!opts.liveOrigin && !blocked && !refDir && !freezeInto && !useCached) { if (await usable(d, p)) refDir = d; else freezeInto = d; }
     let refrozen = null;
     if (refDir) {
@@ -772,7 +800,7 @@ async function main() {
       // its record goes with it (a frozen-baseline copy has none: baseline.json's fixedLayers and fontsFailed stand in),
       // so a later --skip-existing round reads the same rule, and the font check (shotFonts) reads the record that went
       const base = readJsonSafe(join(dirname(cachedLive), 'baseline.json')) || {};
-      const src = readJsonSafe(captureRecordOf(cachedLive)) || { writtenBy: 'gate-all.mjs', copiedFrom: cachedLive, fixedLayers: base.fixedLayers, ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
+      const src = readJsonSafe(captureRecordOf(cachedLive)) || { writtenBy: 'gate-all.mjs', copiedFrom: cachedLive, fixedLayers: base.fixedLayers, ...(base.timers ? { timers: base.timers } : {}), ...('fontsFailed' in base ? { fontsFailed: base.fontsFailed, ...(base.fontCheck ? { fontCheck: base.fontCheck } : {}), ...(Array.isArray(base.deadFaces) ? { deadFaces: base.deadFaces } : {}) } : {}) };
       writeFileSync(captureRecordOf(out), `${JSON.stringify(src, null, 2)}\n`);
       r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...shotFonts(src) };
     }
@@ -866,6 +894,9 @@ async function main() {
     if (!existsSync(join(d, 'origin.png')) || !existsSync(join(d, 'eds.png'))) {
       const px = { error: UNSTABLE.test(originMeta.error || '') ? originMeta.error : 'missing capture' }; mkdirSync(d, { recursive: true }); writeFileSync(join(d, 'pixel.json'), JSON.stringify(px, null, 2)); rec(p, 'pixel', px); return;
     }
+    // the two sides stitched under different timer holds are two instruments: an error row, nothing compared
+    const hm = holdMismatch(readJsonSafe(captureRecordOf(join(d, 'origin.png'))), readJsonSafe(captureRecordOf(join(d, 'eds.png'))));
+    if (hm) { const px = { error: hm }; writeFileSync(join(d, 'pixel.json'), JSON.stringify(px, null, 2)); rec(p, 'pixel', px); log(`pixel ${p.slug} → ERROR ${hm}`); return; }
     // masks: the page's masks.json rows, then the frozen reference's self-varying rows (origin.json `reference`)
     const mk = MASKS[p.slug]; const ref = originMeta.reference || null;
     const masks = [...((mk && mk.masks) || []), ...(ref && ref.maskArg ? ref.maskArg.split(',') : [])];

@@ -27,7 +27,8 @@
  *
  * Usage:
  *   node skills/replica/scripts/reference.mjs freeze <url> <dir> --width <px> [options]
- *     --consent <sel> | --dismiss <sel,…> | --no-dismiss | --locale <tag> | --vh <px> | --headed
+ *     --consent <sel> | --dismiss <sel,…> | --no-dismiss | --locale <tag> | --vh <px> | --headed |
+ *     --hold-timers | --hold-min <ms>
  *                          passed to every stitch-shot capture unchanged (--settle always rides)
  *     --captures <n>       kept captures, 2 or 3                                   (default 2)
  *     --floor-max <pct>    largest % allowed outside the variable regions           (default 1)
@@ -38,20 +39,25 @@
  *     --pad <px>           rows added on each side of a region                      (default 8)
  *     --timeout <s>        per capture                                              (default 300)
  *     --force              re-freeze over an existing baseline; freeze an unstable one (stable: false)
- *   A usable baseline for this URL and width (stitch-shot's `baseline <dir>` check) is reused: no capture, exit 0.
+ *   A usable baseline for this URL and width (stitch-shot's `baseline <dir>` check) is reused: no capture, exit 0 —
+ *   unless the call asks for the timer hold and the baseline was frozen without it (or with another threshold).
  *   node skills/replica/scripts/reference.mjs status <dir> [--json] [--url <u>] [--width <px>]
  *   node skills/replica/scripts/reference.mjs mask <dir>      only the --mask argument for pixel-compare ('' = none)
- *   node skills/replica/scripts/reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>] [--inherit]
+ *   node skills/replica/scripts/reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>] [--hold-timers] [--hold-min <ms>] [--inherit]
  *       (--inherit: instead of the comparison, the settings this call omits and the reference recorded, one argument per line)
  *                          were the given capture settings the ones <dir>/baseline.json was frozen with (`flags`)?
  *                          One line: `same` | `changed: consent, locale` | `not recorded` (a baseline from before
  *                          flags were recorded). Compared: the settings this call GIVES (an omitted one inherits the reference's) — what
  *                          changes the captured page; vh and headed are not. Exit 0; 1 no readable baseline.json
+ *                          holdTimers: a call that gives --hold-timers against a reference frozen without it, or with
+ *                          another threshold, is `changed: holdTimers` — also when the reference recorded no flags
+ *                          (never `not recorded`: a build captured with the hold is not compared with an origin
+ *                          captured without it); a call that omits it inherits the reference's (--inherit prints it)
  *   node skills/replica/scripts/reference.mjs assess <a.png> <b.png> [<c.png>] [--json] [threshold flags]
  *                          the same decision over EXISTING captures; writes nothing
  *
  * baseline.json: stitch-shot's fields (writtenBy, schema, capturedAt, url, width, vh, height, settle, chunks,
- * fontsFailed, fixedLayers) + { primed: true, prime: { height, pct, heightDelta }, captures, heights, noiseFloor,
+ * fontsFailed, fixedLayers[, timers — the first kept capture's, only with the hold]) + { primed: true, prime: { height, pct, heightDelta }, captures, heights, noiseFloor,
  * heightSpread, outside, variable: [{ y, h, pct }], variableShare, maskArg, stable, reason, frozenAt, flags,
  * thresholds }.
  *
@@ -71,6 +77,9 @@ export const HELP = `reference — freeze a page's origin reference after primin
 Usage: node reference.mjs freeze <url> <dir> --width <px> [options]
   --consent <sel> | --dismiss <sel,…> | --no-dismiss | --locale <tag> | --vh <px> | --headed
                        passed to every stitch-shot capture unchanged (--settle always rides)
+  --hold-timers | --hold-min <ms>
+                       stitch-shot's timer hold (default OFF; --hold-min implies it, default and floor 2000 ms), on every capture
+                       of the freeze; recorded as flags.holdTimers (the threshold in ms, null = not held) + timers
   --captures <n>       kept captures, 2 or 3 (default 2)
   --floor-max <pct>    largest % allowed outside the variable regions (default 1)
   --height-max <px>    largest height spread between captures (default 8)
@@ -83,8 +92,12 @@ Usage: node reference.mjs freeze <url> <dir> --width <px> [options]
        node reference.mjs status <dir> [--json] [--url <u>] [--width <px>]   the stored reference on one line
        node reference.mjs mask <dir>                                         only the pixel-compare --mask argument
        node reference.mjs settings <dir> [--consent <sel>] [--dismiss <sel,…>] [--no-dismiss] [--locale <tag>]
+                            [--hold-timers] [--hold-min <ms>] [--inherit]
                             the given capture settings vs the ones the baseline was frozen with (baseline.json flags):
-                            "same" | "changed: consent, locale" | "not recorded"; locale none = en-US; exit 1 no baseline.json
+                            "same" | "changed: consent, locale" | "not recorded"; locale none = en-US; exit 1 no baseline.json.
+                            --hold-timers against a reference frozen without the hold (or with another threshold, or
+                            with no recorded flags) is "changed: holdTimers"; omitted, the reference's hold is inherited
+                            (--inherit: the settings this call omits and the reference recorded, one argument per line)
        node reference.mjs assess <a.png> <b.png> [<c.png>] [--json]          the decision over existing captures; writes nothing
 
 freeze: one PRIMING capture is discarded (the shared live session reaches its steady state: cookies set, consent
@@ -94,7 +107,7 @@ full-page %; variable regions = the rows where the page differs from itself (pix
 (heights within --height-max, outside ≤ --floor-max, regions ≤ --variable-max % of the rows, the same dead font faces on every capture) →
 baseline.png (= ref-1) + baseline.json in <dir>, atomic: stitch-shot's baseline record plus primed, prime { height,
 pct, heightDelta }, captures, heights, noiseFloor, heightSpread, outside, variable [{ y, h, pct }], variableShare,
-maskArg, stable, reason, frozenAt, flags, thresholds. Unstable → nothing frozen; ref-*.png and
+maskArg, stable, reason, frozenAt, flags (holdTimers among them), thresholds[, timers]. Unstable → nothing frozen; ref-*.png and
 reference-unstable.json stay. A usable baseline for this URL and width is reused without a capture.
 One verdict line on stdout; the children's output goes to stderr.
 Exit codes: 0 frozen / reused / usable / stable, 1 error or no usable reference, 2 unstable (not frozen),
@@ -109,12 +122,13 @@ export class UsageError extends Error {}
 const round2 = (n) => Number(Number(n).toFixed(2));
 
 // ── pure ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-const NUM = { '--width': 'width', '--vh': 'vh', '--captures': 'captures', '--floor-max': 'floorMax', '--height-max': 'heightMax', '--variable-max': 'variableMax', '--band': 'band', '--band-min': 'bandMin', '--pad': 'pad', '--timeout': 'timeout' };
+export const HOLD_MIN_DEFAULT = 2000; // stitch-shot's
+const NUM = { '--hold-min': 'holdMin', '--width': 'width', '--vh': 'vh', '--captures': 'captures', '--floor-max': 'floorMax', '--height-max': 'heightMax', '--variable-max': 'variableMax', '--band': 'band', '--band-min': 'bandMin', '--pad': 'pad', '--timeout': 'timeout' };
 const STR = { '--consent': 'consent', '--dismiss': 'dismiss', '--locale': 'locale', '--url': 'url' };
-const BOOL = { '--no-dismiss': 'noDismiss', '--headed': 'headed', '--force': 'force', '--json': 'json', '--inherit': 'inherit' };
+const BOOL = { '--hold-timers': 'holdTimers', '--no-dismiss': 'noDismiss', '--headed': 'headed', '--force': 'force', '--json': 'json', '--inherit': 'inherit' };
 export function parseArgs(argv) {
   const [cmd, ...rest] = argv;
-  const o = { cmd, pos: [], width: null, vh: null, consent: null, dismiss: null, noDismiss: false, locale: null, headed: false, force: false, json: false, url: null, ...DEFAULTS };
+  const o = { cmd, pos: [], width: null, vh: null, consent: null, dismiss: null, noDismiss: false, locale: null, holdTimers: null, holdMin: null, headed: false, force: false, json: false, url: null, ...DEFAULTS };
   if (!['freeze', 'status', 'mask', 'settings', 'assess'].includes(cmd)) throw new UsageError(`unknown command ${cmd ?? '(none)'} — freeze | status | mask | settings | assess`);
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
@@ -142,30 +156,40 @@ export function parseArgs(argv) {
     if (o.pos.length !== 1) throw new UsageError(`${cmd} needs <dir>`);
   }
   if (!(o.band >= 1)) throw new UsageError('--band needs at least 1 px');
+  // one value from here on: the hold's threshold in ms, or null (not held); --hold-min implies --hold-timers
+  o.holdTimers = o.holdMin != null ? o.holdMin : o.holdTimers ? HOLD_MIN_DEFAULT : null; delete o.holdMin;
+  if (o.holdTimers !== null && o.holdTimers < HOLD_MIN_DEFAULT) throw new UsageError(`--hold-min needs at least ${HOLD_MIN_DEFAULT} ms`);
   return o;
 }
 
 // The flags every capture of one freeze gets (prime and kept alike).
 export function captureArgs(o) {
   return ['--width', String(o.width), '--settle', ...(o.vh ? ['--vh', String(o.vh)] : []), ...(o.consent ? ['--consent', o.consent] : []),
-    ...(o.dismiss ? ['--dismiss', o.dismiss] : []), ...(o.noDismiss ? ['--no-dismiss'] : []), ...(o.locale ? ['--locale', o.locale] : []), ...(o.headed ? ['--headed'] : [])];
+    ...(o.dismiss ? ['--dismiss', o.dismiss] : []), ...(o.noDismiss ? ['--no-dismiss'] : []), ...(o.locale ? ['--locale', o.locale] : []), ...(o.headed ? ['--headed'] : []),
+    ...(holdOf(o) ? ['--hold-timers', '--hold-min', String(holdOf(o))] : [])];
 }
+// The timer hold of a call's options or of a recorded reference: its threshold in ms, or null (not held). A record's
+// is flags.holdTimers (this script's freeze) or timers.hold (stitch-shot --freeze-baseline --hold-timers).
+export const holdOf = (f) => { const n = Number(f && f.holdTimers === true ? HOLD_MIN_DEFAULT : f && f.holdTimers); return Number.isFinite(n) && n > 0 ? n : null; };
+export const recordedHold = (base) => holdOf(base && base.flags) ?? holdOf({ holdTimers: base && base.timers && base.timers.hold });
 
 // The settings that change what a capture shows, normalised: '' = null, no locale = en-US (the browser's default and
 // gate-all's), --no-dismiss drops the selectors it contradicts. vh and headed do not change the page.
 export const DEFAULT_LOCALE = 'en-US';
 export function captureSettings(f = {}) {
   const noDismiss = f.noDismiss === true; const text = (v) => (Array.isArray(v) ? v.join(',') : String(v ?? '')).trim() || null;
-  return { consent: noDismiss ? null : text(f.consent), dismiss: noDismiss ? null : text(f.dismiss), noDismiss, locale: text(f.locale) || DEFAULT_LOCALE };
+  return { consent: noDismiss ? null : text(f.consent), dismiss: noDismiss ? null : text(f.dismiss), noDismiss, locale: text(f.locale) || DEFAULT_LOCALE, holdTimers: holdOf(f) };
 }
 // baseline.json `flags` vs the current call's → the names that differ ([] = same), or null when the baseline recorded
 // none (frozen before flags were recorded, or by stitch-shot --freeze-baseline).
 export function settingsChanged(recorded, current) {
-  if (!recorded || typeof recorded !== 'object') return null;
+  // no recorded flags: unknown — except for a call that asks for the timer hold, which such a reference was not
+  // frozen with as far as anyone can tell (fail closed: frozen again, never reused against a held build)
+  if (!recorded || typeof recorded !== 'object') return holdOf(current) ? ['holdTimers'] : null;
   // Only a setting this call GIVES can differ: a round that omits --consent or --locale inherits the reference's
   // (a recorded pilot froze 8 references again because one call carried the flags and the next did not).
   const a = captureSettings(recorded); const b = captureSettings(current);
-  const given = { consent: b.consent !== null, dismiss: b.dismiss !== null, noDismiss: b.noDismiss === true, locale: String(current?.locale ?? '').trim() !== '' };
+  const given = { consent: b.consent !== null, dismiss: b.dismiss !== null, noDismiss: b.noDismiss === true, locale: String(current?.locale ?? '').trim() !== '', holdTimers: b.holdTimers !== null };
   return Object.keys(a).filter((k) => given[k] && a[k] !== b[k]);
 }
 
@@ -173,15 +197,16 @@ export function settingsChanged(recorded, current) {
 // under the settings the reference was frozen with, or the two sides are not the same page. → the round's settings
 // with the omitted ones filled from baseline.json `flags`, and `inherited` naming them (a given setting is never replaced).
 export function inheritSettings(recorded, current = {}) {
-  const out = { consent: current.consent ?? null, dismiss: current.dismiss ?? null, noDismiss: current.noDismiss === true, locale: current.locale ?? null, inherited: [] };
+  const out = { consent: current.consent ?? null, dismiss: current.dismiss ?? null, noDismiss: current.noDismiss === true, locale: current.locale ?? null, holdTimers: holdOf(current), inherited: [] };
   if (!recorded || typeof recorded !== 'object') return out;
   const r = captureSettings(recorded); const b = captureSettings(current);
   if (r.noDismiss && !b.noDismiss && b.consent === null && b.dismiss === null) { out.noDismiss = true; out.inherited.push('noDismiss'); }
   if (!b.noDismiss && !out.noDismiss) for (const k of ['consent', 'dismiss']) if (b[k] === null && r[k] !== null) { out[k] = r[k]; out.inherited.push(k); }
   if (String(current.locale ?? '').trim() === '' && r.locale !== DEFAULT_LOCALE) { out.locale = r.locale; out.inherited.push('locale'); }
+  if (out.holdTimers === null && r.holdTimers !== null) { out.holdTimers = r.holdTimers; out.inherited.push('holdTimers'); }
   return out;
 }
-export const inheritedArgs = (s) => s.inherited.flatMap((k) => (k === 'noDismiss' ? ['--no-dismiss'] : [`--${k}`, String(s[k])]));
+export const inheritedArgs = (s) => s.inherited.flatMap((k) => (k === 'noDismiss' ? ['--no-dismiss'] : k === 'holdTimers' ? ['--hold-min', String(s[k])] : [`--${k}`, String(s[k])]));
 
 // Several comparisons' bands → one list: per band start, the largest % any pair measured there.
 export function mergeBands(lists) {
@@ -249,7 +274,8 @@ export function verdictLine(r, how = 'frozen') {
   const size = `${r.width}×${r.height}`;
   const primed = r.primed ? ', primed' : '';
   const fonts = Array.isArray(r.fontsFailed) && r.fontsFailed.length ? `; dead on the source: ${r.fontsFailed.join(', ')}` : r.fontsFailed === null ? '; fonts not checked' : '';
-  const forced = `${fonts}${r.stable ? '' : ` (FORCED, unstable: ${r.reason})`}`;
+  const held = r.timers && Number.isInteger(r.timers.held) ? `; timers held: ${r.timers.held}` : '';
+  const forced = `${fonts}${held}${r.stable ? '' : ` (FORCED, unstable: ${r.reason})`}`;
   if (typeof r.noiseFloor !== 'number') return `reference: ${how} ${size}${primed}, noise floor not measured (frozen by stitch-shot --freeze-baseline; freeze --force measures it)`;
   const floor = `noise floor ${r.noiseFloor.toFixed(2)}%`;
   if (!r.variable.length) return `reference: ${how} ${size}${primed}, ${floor}, no variable region${forced}`;
@@ -275,8 +301,9 @@ export function fontsDiffer(records) {
 // → { code, line, result }.
 export function freeze(o, deps) {
   const have = deps.baselineCheck(o.dir, { url: o.url, width: o.width });
-  if (have.ok && !o.force) {
-    const b = deps.readJson(join(o.dir, 'baseline.json')) || {};
+  const b = have.ok ? deps.readJson(join(o.dir, 'baseline.json')) || {} : null;
+  // a freeze that asks for the timer hold never reuses a reference frozen without it (or with another threshold)
+  if (b && !o.force && !(holdOf(o) && recordedHold(b) !== holdOf(o))) {
     return { code: 0, line: verdictLine({ ...b, stable: b.stable !== false, forced: true }, 'reused'), result: b, reused: true };
   }
   mkdirSync(o.dir, { recursive: true });
@@ -295,10 +322,10 @@ export function freeze(o, deps) {
   const frozenAt = deps.now();
   const result = {
     writtenBy: WRITER, schema: 1, capturedAt: rec.at ?? frozenAt, url: o.url, width: o.width, vh: rec.vh ?? o.vh ?? null, height: a.height, settle: true,
-    chunks: rec.chunks ?? null, ...fontsOfRecord(rec), fixedLayers: rec.fixedLayers ?? null,
+    chunks: rec.chunks ?? null, ...fontsOfRecord(rec), fixedLayers: rec.fixedLayers ?? null, ...(rec.timers ? { timers: rec.timers } : {}),
     primed: true, prime, captures: a.captures, heights: a.heights, noiseFloor: a.noiseFloor, heightSpread: a.heightSpread, outside: a.outside,
     variable: a.variable, variableShare: a.variableShare, maskArg: a.maskArg, stable: a.stable, reason: a.reason, frozenAt,
-    flags: { consent: o.consent, dismiss: o.dismiss, noDismiss: o.noDismiss, locale: o.locale, vh: o.vh, headed: o.headed }, thresholds: a.thresholds,
+    flags: { consent: o.consent, dismiss: o.dismiss, noDismiss: o.noDismiss, locale: o.locale, vh: o.vh, headed: o.headed, ...(holdOf(o) ? { holdTimers: holdOf(o) } : {}) }, thresholds: a.thresholds,
   };
   if (!a.stable && !o.force) {
     writeJsonAtomic(join(o.dir, 'reference-unstable.json'), result);
@@ -360,8 +387,9 @@ export function main(argv, deps = realDeps) {
   if (o.cmd === 'settings') {
     const base = deps.readJson(join(o.dir, 'baseline.json'));
     if (!base) { console.log(`reference: none — no readable ${join(o.dir, 'baseline.json')}`); return 1; }
-    if (o.inherit) { const args = inheritedArgs(inheritSettings(base.flags, o)); if (args.length) console.log(args.join('\n')); return 0; } // one argument per line
-    const changed = settingsChanged(base.flags, o);
+    const recorded = recordedHold(base) && !holdOf(base.flags) ? { ...(base.flags || {}), holdTimers: recordedHold(base) } : base.flags; // a stitch-shot freeze records the hold in `timers` only
+    if (o.inherit) { const args = inheritedArgs(inheritSettings(recorded, o)); if (args.length) console.log(args.join('\n')); return 0; } // one argument per line
+    const changed = settingsChanged(recorded, o);
     console.log(changed === null ? 'not recorded' : changed.length ? `changed: ${changed.join(', ')}` : 'same');
     return 0;
   }
