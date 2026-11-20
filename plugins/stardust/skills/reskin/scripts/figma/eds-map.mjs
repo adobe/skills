@@ -36,7 +36,7 @@ const DEFAULT_CONTENT = new Set([
 // [block, exact names, last-token names (the name ends with one: "faq-accordion", "product-card"), variant]
 // variant: null | 'name' (the Figma name, unless it is the block's own name) | (slug, tokens) => string|null
 //   | 'field': a form field module (input, checkbox, dropdown, …) — the Block Collection form's content model
-//     makes field types rows (Label | value | type | state) of the one form block, never classes: variant null.
+//     makes each field a row of the JSON sheet the one form block links (field, label, type, default, options), never a class: variant null.
 const heroVariant = (s, t) => t.filter((x) => !['hero', 'home', 'page', 'main'].includes(x)).join('-') || null;
 // The Block Collection table's own variants; any other table name is the plain table.
 const TABLE_VARIANTS = ['striped', 'bordered', 'no-header'];
@@ -95,7 +95,7 @@ export function edsEquivalent(figmaName, { hasRepeatingUnits, interactive } = {}
   const loose = slug.replace(/-and-/g, '-');
   for (const [block, exact, last, variant] of RULES) {
     if (!exact.includes(slug) && !exact.includes(loose) && !last.includes(tokens.at(-1)) && !(block === 'hero' && tokens.includes('hero'))) continue;
-    if (variant === 'field') return { block, variant: null, field: true, reason: `${STEP2} D11: "${label}" is field type rows of the Block Collection form, not a variant` };
+    if (variant === 'field') return { block, variant: null, field: true, reason: `${STEP2} D11: "${label}" is a field row of the Block Collection form's sheet, not a variant` };
     let v = null;
     if (variant === 'name') v = slug === block || slug === block.replace(/s$/, '') ? null : slug;
     else if (typeof variant === 'function') v = variant(slug, tokens);
@@ -126,7 +126,7 @@ const sharedForm = (e) => e.field === true || (e.block === 'form' && !e.variant)
  * Several Figma modules → one EDS block: each becomes a variant of it. entries: [{ key, figma, eds }] in kit
  * order; a module whose (block, variant) another already holds takes its Figma slug as the variant, so no
  * two modules render the same block the same way and no block name is ever suffixed. Form field modules are
- * the exception: they all share the plain form block (field type rows, never variants). Returns eds objects.
+ * the exception: they all share the plain form block (rows of its field sheet, never variants). Returns eds objects.
  */
 export function resolveVariants(entries) {
   const seen = new Set();

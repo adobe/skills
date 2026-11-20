@@ -154,8 +154,7 @@ Recipe notes:
 
 `scripts/figma-donor.mjs` reads a Figma file headlessly over the REST
 API: no browser, no crawl, no MCP server. The token is `FIGMA_TOKEN`
-(a personal access token with `file_content:read`), from the
-environment only. Recipe:
+(a personal access token), from the environment only. Recipe:
 
 1. `$stardust extract <content-url> --all` — the whole content site,
    uncapped, as for the other donors (it creates `state.json`).
@@ -331,9 +330,13 @@ Rules:
   match keeps the donor name); a pattern word anywhere in the name
   counts (Accordion Item / FAQ Section → `accordion`, Table – Striped →
   `table (striped)`, Image Top Columns → `columns (image-top)`,
-  3 Columns → `columns`), Input / Dropdown / Toggle → `form` (field
-  type rows of the Block Collection form, `Label | value | type | state`,
-  not variants; only a layout such as Login stays a class, `form (login)`).
+  3 Columns → `columns`), Input / Dropdown / Toggle → `form`. The
+  Block Collection form holds no fields inline: its cell links a JSON
+  sheet (optional second link: the submit URL), and each field module
+  is a row of that sheet (`field`, `label`, `type`, `default`,
+  `options`), never a variant. A form without the link is removed at
+  decoration. Only a layout such as Login stays a class,
+  `form (login)`.
   Other modules sharing an EDS block are its variants, never a second
   block.
 

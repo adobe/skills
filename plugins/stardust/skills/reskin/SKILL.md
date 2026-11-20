@@ -43,8 +43,8 @@ regression check instead of a debugging tool.
     path — recipe in `reference/donor-sources.md` § Local prototypes.
   - `--donor-figma <url>` — a Figma file (a design, file, proto or
     branch URL; the whole file is read, a `node-id` only recorded), read
-    headlessly over the REST API. Needs `FIGMA_TOKEN`, a personal
-    access token with `file_content:read`. Optional `--frames <ids>`
+    headlessly over the REST API. Needs a personal access token in
+    `FIGMA_TOKEN`. Optional `--frames <ids>`
     and `--confidential` (refuses to write anything git would track;
     sticky for `curate` and `stamp`).
     Flags, file schemas and exit codes: `figma-donor.mjs --help`.
@@ -120,7 +120,7 @@ content site, always `--all` and never `--prep`
   `node stardust/scripts/reskin/figma-donor.mjs capture <figma-url>`
   (the whole file), author `stardust/reskin/curation-rules.json`,
   then `curate` and `stamp`. Judge the result against the frame
-  screenshots and fix the rules, not the outputs. Recipe:
+  screenshots; fix it in the rules. Recipe:
   `reference/donor-sources.md` § Figma.
 
 **Type every inventory page** before Phase 2 and print the count per

@@ -1,0 +1,41 @@
+{
+  "context": "reskin with a confidential Figma donor over a whole live content site whose earlier crawl was capped. Task and setup in task.md; each item is judged pass/fail and weighted by max_score.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "reskin_skill_followed",
+      "max_score": 15,
+      "description": "The reskin skill is loaded and its Figma path followed: figma-donor.mjs capture, then reskin/curation-rules.json, curate and stamp. No hand-written Figma REST script, browser capture or MCP server replaces it."
+    },
+    {
+      "name": "full_crawl_redone",
+      "max_score": 20,
+      "description": "The capped earlier crawl is detected (pageCap 5, below cap rows) and the content site is re-crawled with extract --all before Phase 2; afterwards site.crawled plus crawl.failures equals discovery.filteredCount. No --prep, direct --prep or prepare-migration runs."
+    },
+    {
+      "name": "pages_typed",
+      "max_score": 10,
+      "description": "Every inventory page gets a type before Phase 2 and the run prints the count per type with its archetype; the default --pages set is one archetype per type."
+    },
+    {
+      "name": "confidential_honoured",
+      "max_score": 20,
+      "description": "capture runs with --confidential and curate and stamp inherit it: every Figma-derived output and cache is git-ignored and untracked (git status and git ls-files show none), and state.json.designSource carries no Figma URL."
+    },
+    {
+      "name": "token_kept_out",
+      "max_score": 10,
+      "description": "FIGMA_TOKEN is read from the environment only and appears in no file, log, state.json or transcript output."
+    },
+    {
+      "name": "full_site_delivery",
+      "max_score": 15,
+      "description": "ledger.json#delivery.scope is full-site (or absent, which means full-site); the run does not choose archetypes-only and plans every non-archetype page at the sibling tier against its type's archetype."
+    },
+    {
+      "name": "content_from_site",
+      "max_score": 10,
+      "description": "Captured content comes from the live site's pages; no Figma sample text, placeholder copy or sample image sizes appear in the content model."
+    }
+  ]
+}

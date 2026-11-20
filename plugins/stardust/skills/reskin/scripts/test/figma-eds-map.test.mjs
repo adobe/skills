@@ -99,7 +99,7 @@ test('form fields are rows of the one Block Collection form, never variants', ()
   for (const n of ['Input', 'Checkbox & Radio', 'Dropdown', 'Select', 'Slider', 'Range', 'Toggle', 'Switch', 'Textarea']) {
     const e = edsEquivalent(n);
     assert.deepEqual([e.block, e.variant, e.field], ['form', null, true], n);
-    assert.match(e.reason, /field type rows of the Block Collection form, not a variant/, n);
+    assert.match(e.reason, /field row of the Block Collection form's sheet, not a variant/, n);
   }
   assert.equal(edsEquivalent('Login').field, undefined);
   const out = resolveVariants(['Forms', 'Input', 'Dropdown', 'Toggle', 'Login', 'Sign In'].map((figma) => ({ key: slugOf(figma), figma, eds: edsEquivalent(figma) })));
