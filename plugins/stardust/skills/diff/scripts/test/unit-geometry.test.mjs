@@ -40,6 +40,7 @@ check('alignUnit: a row pushed down by an off row above it is displaced and coun
   const r = alignUnit(o, e, 4); const by = Object.fromEntries(r.rows.map((x) => [x.role + ':' + x.dy, x]));
   assert.deepEqual([r.summary.off, r.summary.displaced, r.summary.within], [1, 2, 1], JSON.stringify(r.summary));
   assert.equal(by['link:-24'].displaced, true); assert.equal(by['link:-24'].off, false);
+  const txt = formatUnits([{ sel: '.u', units: [{ index: 0, ...r }] }], 4); assert.match(txt, /1 off, 2 displaced \(pushed by an off row above\)/); assert.equal((txt.match(/↓ displaced/g) || []).length, 2, txt);
   // an independent offset is still off: not what the cause above it adds
   const e2 = { rect, elements: [el('text', 'A paragraph that wraps to four lines on the source', 0, 0, 300, 72), el('link', 'Read more', 0, 60, 90, 20), el('text', 'A closing line', 0, 116, 300, 24), el('image', '', 200, 0, 80, 80)] };
   assert.equal(alignUnit(o, e2, 4).summary.off, 2);
