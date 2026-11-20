@@ -2,7 +2,7 @@
 
 The bundle at `cli/src/bundles/page-reduce.js` is build output. Its source lives in the
 site-transfer-blueprint-detector project (internal Adobe AEM Foundation repository), on
-branch `fix/reduce-empty-sections`. The current bundle comes from commit `56dcfcc3`, built
+branch `fix/reduce-empty-sections`. The current bundle comes from commit `249aaa3b`, built
 with esbuild 0.25.9.
 
 Never edit `page-reduce.js` by hand. The next rebuild overwrites it. Fix the source,

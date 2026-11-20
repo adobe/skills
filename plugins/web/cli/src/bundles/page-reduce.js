@@ -2371,12 +2371,21 @@
     const top = rect.top + win.scrollY;
     return left + rect.width <= 0 || left >= scrollWidth || top + rect.height <= 0 || top >= scrollHeight;
   }
-  function isHidden(el, win) {
+  function isStyleHidden(s) {
+    return s.display === "none" || s.opacity === "0" || s.contentVisibility === "hidden";
+  }
+  function hasHiddenAncestor(el, win) {
+    for (let a = el.parentElement; a; a = a.parentElement) {
+      if (isStyleHidden(win.getComputedStyle(a))) return true;
+    }
+    return false;
+  }
+  function isHidden(el, win, { offPage = true } = {}) {
     const s = win.getComputedStyle(el);
-    if (s.display === "none" || s.opacity === "0") return true;
+    if (isStyleHidden(s)) return true;
     if (s.display === "contents") return false;
     const rect = el.getBoundingClientRect();
-    return isCollapsed(s, rect) || isOffPage(rect, el, win);
+    return isCollapsed(s, rect) || offPage && isOffPage(rect, el, win);
   }
   function hasVisibleDescendant(el, win) {
     return [...el.querySelectorAll("*")].some((c) => win.getComputedStyle(c).visibility === "visible");
@@ -2384,11 +2393,11 @@
   function dropOwnText(el) {
     [...el.childNodes].filter((n) => n.nodeType === 3).forEach((n) => n.remove());
   }
-  function removeInvisibleElements(root, win, live = (n) => n) {
+  function removeInvisibleElements(root, win, live = (n) => n, sectionRoot = null) {
     [...root.querySelectorAll("*")].forEach((el) => {
       if (!root.contains(el)) return;
       const liveEl = live(el);
-      if (isHidden(liveEl, win)) {
+      if (isHidden(liveEl, win, { offPage: el !== sectionRoot })) {
         el.remove();
       } else if (win.getComputedStyle(liveEl).visibility === "hidden") {
         if (hasVisibleDescendant(liveEl, win)) dropOwnText(el);
@@ -2428,9 +2437,9 @@
       toRemove.forEach((attrName) => el.removeAttribute(attrName));
     });
   }
-  function cleanupAll(root, win, live = (n) => n) {
+  function cleanupAll(root, win, live = (n) => n, sectionRoot = null) {
     removeNoiseElements(root);
-    removeInvisibleElements(root, win, live);
+    removeInvisibleElements(root, win, live, sectionRoot);
     stripStylingTags(root);
     removeComments(root);
     stripAttributes(root);
@@ -2452,7 +2461,9 @@
   var VIDEO_EXTENSIONS = ["mp4", "webm", "ogg", "mov", "avi"];
   var HEADING_TAGS = /* @__PURE__ */ new Set(["H1", "H2", "H3", "H4", "H5", "H6"]);
   var ICON_THRESHOLD = 64;
-  var TOKEN_PATTERN = /^\{[A-Z]+[^}]*\}$/;
+  var TOKEN_BODY = String.raw`(?:TEXT|ICON|VIDEO|HEADING:[1-6]|IMAGE:\d+x\d+|SELECT:\d+|INPUT:[^}]*|(?:LINK|CTA):.*)`;
+  var TOKEN_PATTERN = new RegExp(`^\\{${TOKEN_BODY}\\}$`, "s");
+  var CONTENT_TOKEN = /\{(?:TEXT|VIDEO|HEADING:[1-6]|IMAGE:\d+x\d+|SELECT:\d+|INPUT:[^}]*|(?:LINK|CTA):[^}]*)\}/;
   var SHOW_TEXT = 4;
   var PRESERVED_VOID_TAGS = /* @__PURE__ */ new Set([
     "BR",
@@ -2941,15 +2952,14 @@
     const pairs = new Map([clone, ...clone.querySelectorAll("*")].map((c, i) => [c, live[i]]));
     return (node) => pairs.get(node) ?? node;
   }
-  var CONTENT_TOKEN = /\{(TEXT|HEADING:|IMAGE:|LINK:|CTA:|INPUT:|SELECT:|VIDEO)/;
   function processSectionBox(box, doc, win) {
     const el = box.div;
-    if (!el) return null;
+    if (!el || hasHiddenAncestor(el, win)) return null;
     const clone = el.cloneNode(true);
     const live = liveLookup(clone, el);
     const wrapper = doc.createElement("div");
     wrapper.append(clone);
-    cleanupAll(wrapper, win, live);
+    cleanupAll(wrapper, win, live, clone);
     const shadowRoots = findShadowRoots(wrapper);
     for (const sroot of shadowRoots) {
       cleanupAll(sroot, win);

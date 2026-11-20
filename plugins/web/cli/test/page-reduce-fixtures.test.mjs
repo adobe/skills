@@ -13,7 +13,8 @@ import { startFixture } from './fixture-server.mjs';
 const binPath = fileURLToPath(new URL('../dist/web.mjs', import.meta.url));
 const page = (name) =>
   readFileSync(new URL(`./fixtures/page-reduce/${name}.html`, import.meta.url), 'utf8');
-const CONTENT = /\{(?:TEXT|HEADING:|IMAGE:|LINK:|CTA:|INPUT:|SELECT:|VIDEO)/;
+const CONTENT =
+  /\{(?:TEXT|VIDEO)\}|\{HEADING:\d\}|\{IMAGE:\d+x\d+\}|\{(?:LINK|CTA|INPUT):[^}]*\}|\{SELECT:\d+\}/;
 const probe = spawnSync('playwright-cli', ['--version']);
 const available = !probe.error && probe.status === 0;
 const session = `page-reduce-fixtures-${process.pid}`;
@@ -23,6 +24,8 @@ let html;
 let oneBlock;
 let hiddenMain;
 let hiddenOnly;
+let ancestorHidden;
+let overflowBody;
 
 // Async spawn: spawnSync blocks the event loop that serves the in-process fixture.
 function web(...args) {
@@ -54,6 +57,8 @@ before(async () => {
   oneBlock = await reduceFixture('one-block');
   hiddenMain = await reduceFixture('hidden-main');
   hiddenOnly = await reduceFixture('hidden-only', '--retries', '0');
+  ancestorHidden = await reduceFixture('ancestor-hidden');
+  overflowBody = await reduceFixture('overflow-body');
 });
 
 after(async () => {
@@ -135,4 +140,27 @@ fixtureTest('a hidden main falls through to the visible body, without event hand
 fixtureTest('a page whose only content is hidden gives EMPTY_RESULT', () => {
   assert.equal(hiddenOnly.status, 1);
   assert.equal(hiddenOnly.doc.error.code, 'EMPTY_RESULT');
+});
+
+fixtureTest('a main under an invisible ancestor falls through to the visible body', () => {
+  assert.equal(ancestorHidden.status, 0, JSON.stringify(ancestorHidden.doc));
+  const [section, ...rest] = ancestorHidden.doc.sections;
+  assert.equal(rest.length, 0);
+  assert.equal(section.fallback, true);
+  assert.match(section.xpath, /body(\[1\])?$/);
+  assert.match(section.tokenizedHtml, /\{LINK:a link\}/);
+  assert.doesNotMatch(section.tokenizedHtml, /\{HEADING:1\}/);
+});
+
+fixtureTest('a body with no height keeps its absolutely positioned content', () => {
+  assert.equal(overflowBody.status, 0, JSON.stringify(overflowBody.doc));
+  const [section, ...rest] = overflowBody.doc.sections;
+  assert.equal(rest.length, 0);
+  assert.equal(section.fallback, true);
+  assert.match(section.tokenizedHtml, /\{HEADING:2\}/);
+});
+
+fixtureTest('brace text that is not a token is ordinary text', () => {
+  const [section] = oneBlock.doc.sections;
+  assert.doesNotMatch(section.tokenizedHtml, /\{TEXTURE\}/);
 });

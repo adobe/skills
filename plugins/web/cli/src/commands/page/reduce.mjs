@@ -28,7 +28,7 @@ Notes:
   Rescrolls up to --retries times when no sections are found. A page with content but no
   detected section then gives one section for main (else body), marked fallback: true.
 Exit codes:
-  1 EMPTY_RESULT when the page has no content; 3 when blocked.
+  1 EMPTY_RESULT when no reducible content was found; 3 when blocked.
 `;
 
 /**
@@ -45,7 +45,7 @@ export function reducePage(driver, session, { retries = 2, settleMs } = {}) {
     phase1 = detect(driver, session);
   }
   if (!phase1.sections?.length) {
-    throw new CliError('EMPTY_RESULT', `no content tokens left after ${retries} retries`, {
+    throw new CliError('EMPTY_RESULT', `no reducible content found after ${retries} retries`, {
       hint: 'if the page should have content, retry with --headed or a longer --settle-ms',
     });
   }

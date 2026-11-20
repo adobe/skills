@@ -79,7 +79,8 @@ section was found after `--retries` rescrolls. Tell the user, and keep it as one
 section (index 0, its xpath) in the skeleton and manifest; name the blocks inside
 it in notes, not as new sections. On a page that is more than one block, try
 `--retries 4 --settle-ms 4000` or `--headed` once.
-Exit 1 (`EMPTY_RESULT`): the page has no content. Report that to the user instead
+Exit 1 (`EMPTY_RESULT`): no reducible content was found (icons only, or content
+the reducer can't read, such as a shadow root). Report that to the user instead
 of writing empty output files. Exit 3: blocked, run `browser-probe` and pass `--recipe`.
 
 If `--phase1-only` was requested, stop here.
