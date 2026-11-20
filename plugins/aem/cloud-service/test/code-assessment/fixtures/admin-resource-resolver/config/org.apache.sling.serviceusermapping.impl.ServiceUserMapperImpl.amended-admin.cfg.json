@@ -1,0 +1,6 @@
+{
+  "user.mapping": [
+    "com.example.core:siteAdminService=admin",
+    "com.example.core:siteReader=site-reader-service"
+  ]
+}
