@@ -54,13 +54,13 @@ Example — 6 identical card divs become:
   {IMAGE:400x300}
   <h3>{HEADING:3}</h3>
   <p>{TEXT}</p>
-  <a>{LINK:Read more}</a>
+  {LINK:Read more}
 </div>
 <div class="card">
   {IMAGE:400x300}
   <h3>{HEADING:3}</h3>
   <p>{TEXT}</p>
-  <a>{LINK:Read more}</a>
+  {LINK:Read more}
 </div>
 {REPEAT:4}
 ```

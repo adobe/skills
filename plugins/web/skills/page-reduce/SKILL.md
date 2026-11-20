@@ -109,13 +109,13 @@ forms and navs, strip overlay panels, drop empty sections and re-type sections.
     {IMAGE:400x300}
     <h3>{HEADING:3}</h3>
     <p>{TEXT}</p>
-    <a>{LINK:Read more}</a>
+    {LINK:Read more}
   </div>
   <div class="card">
     {IMAGE:400x300}
     <h3>{HEADING:3}</h3>
     <p>{TEXT}</p>
-    <a>{LINK:Read more}</a>
+    {LINK:Read more}
   </div>
   {REPEAT:4}
 </div>
