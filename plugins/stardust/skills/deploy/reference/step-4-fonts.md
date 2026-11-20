@@ -58,7 +58,7 @@ adj = upm*size_adjust
 print(f"size-adjust:{size_adjust*100:.2f}% ascent-override:{hhea.ascent/adj*100:.2f}% "
       f"descent-override:{abs(hhea.descent)/adj*100:.2f}% line-gap-override:{hhea.lineGap/adj*100:.2f}%")
 ```
-Apply those to the `<brand>-fallback` `@font-face` (sourcing `local("Arial")` / `local("Times New Roman")`) exactly as in principle 3.
+Apply those to the `<brand>-fallback` `@font-face` exactly as in principle 3.
 
 **3. Deferred `fonts.css` with a metric-matched `-fallback` `@font-face` — the stock boilerplate mechanism, aimed at your brand.**
 The brand font must NOT render at first paint — and under vanilla EDS it can't: the brand `@font-face` lives in `styles/fonts.css`, which `loadFonts()` loads after first paint (immediately on desktop/repeat views, in `loadLazy` otherwise). Until it lands, the stack's SECOND family renders — so make that second family a metric-matched local face, declared in `styles/styles.css` following the boilerplate's own `roboto-fallback` convention:
@@ -79,7 +79,7 @@ The brand font must NOT render at first paint — and under vanilla EDS it can't
    (the stock convention — see roboto-fallback in the boilerplate). */
 @font-face {
   font-family: "<brand>-fallback";
-  src: local("Arial");           /* local("Times New Roman") for a serif brand */
+  src: local("Arial"), local("Liberation Sans"), local("Arimo"); /* serif: Times New Roman, Liberation Serif, Tinos */
   size-adjust: <X>%;
   ascent-override: <Y>%;
   descent-override: <Z>%;
@@ -113,8 +113,8 @@ The CLS chain that results:
 
 **4. Match the fallback family to the brand font's classification.**
 Use the SAME class of typeface for the fallback so visual rhythm is preserved during the load:
-- Sans-serif brand → `<brand>-fallback` sources `local("Arial")`; stack ends `sans-serif`.
-- Serif brand → `<brand>-fallback` sources `local("Times New Roman")`; stack ends `serif`.
+- Sans-serif brand → the Arial-class sources above; stack ends `sans-serif`.
+- Serif brand → the Times-class sources; stack ends `serif`.
 - Monospace brand → `<brand>-fallback` sources `local("Courier New")`; stack ends `monospace`. (Note: skipping monospace metric-matching is acceptable when the mono font is only used in small eyebrows/labels — CLS impact is negligible. Document the choice in the conversion log.)
 
 Never substitute classifications (don't match a serif brand to Arial; don't match a sans brand to Times). Even with metric overrides, character widths and rhythm differ enough that the visible shift is jarring.
