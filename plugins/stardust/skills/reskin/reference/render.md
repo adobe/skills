@@ -37,12 +37,26 @@ experiment's `render-reskin.mjs`) that:
   garbage like broken JSON-LD URLs: fidelity over repair; **flag** such
   items for the human in the run report, never silently fix or
   silently keep);
-- takes its surface exclusively from `donor-tokens.json` (emitted as
-  CSS custom properties) + the donor module patterns assigned in
-  `mapping.md`. Use the rendered-page conventions the Phase 5 probe
+- keeps the donor's image frames and crops each content image to the
+  area the source shows: the source's `object-position` (a block option
+  in EDS), the upper third where the source shows the image whole; the
+  content gate fails a render that shows another area (`gates.md`
+  § Image crop);
+- takes its surface exclusively from `donor-tokens.json` + the donor
+  module patterns assigned in `mapping.md`: it imports `rootTokens`
+  from `../../scripts/reskin/render/root-tokens.mjs`, emits its `css`
+  first in the first `<style>` and styles through `var(--…)` (per-module
+  text styles are `--type-<kebab(key)>-*`: `cardTitle` is
+  `--type-card-title-size`, and a camelCase name silently falls back);
+  root names the donor does not supply (`absent`) go to the page's
+  `flags[]`. Use the rendered-page conventions the Phase 5 probe
   asserts against: content in `<main>`, `.container` for the measure,
   `.btn` for the donor primary button (`gates.md` § Rendered-page
   conventions);
+- renders every `mapped` or `new-module` slot as one top-level
+  `<section data-slot="<slot id>" data-module="<Mn>">` (`new-module`:
+  no `data-module`), in `mapping.md` order — the Figma join reads them
+  (`gates.md` § (d));
 - writes `stardust/reskin/pages/<slug>.html`, self-contained.
 
 ## Parsing a node, and unverified slots

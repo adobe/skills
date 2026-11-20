@@ -202,6 +202,29 @@ await checkAsync('pageDenial: a readable page → its marker (or null); a read t
   assert.deepEqual(await session.pageDenial(broken), { marker: null, skipped: 'Execution context was destroyed, most likely because of a navigation' });
   assert.deepEqual([broken.calls.evaluate, broken.calls.waits], [2, [500]]);
 });
+await checkAsync('pageDenial forwards the capture-only stylesheet to the in-page probe', async () => {
+  const captureStyle = {};
+  const page = {
+    evaluate: async (fn, style) => { assert.equal(fn, session.denialProbeInPage); assert.equal(style, captureStyle); return SIGNATURE_PAGES['system-down']; },
+    waitForTimeout: async () => {},
+  };
+  assert.deepEqual(await session.pageDenial(page, { captureStyle }), { marker: 'denial page — "System Down"', skipped: null });
+});
+check('denialProbeInPage restores a capture stylesheet even when the probe throws', () => {
+  const captureStyle = { disabled: false };
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    get() { assert.equal(captureStyle.disabled, true); throw new Error('probe failed'); },
+  });
+  try {
+    assert.throws(() => session.denialProbeInPage(captureStyle), /probe failed/);
+    assert.equal(captureStyle.disabled, false);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'document', previous);
+    else delete globalThis.document;
+  }
+});
 await checkAsync('pageDenial: a read past the probe deadline is a failed read — a page whose evaluate never settles → skipped "denial-page probe: deadline 50 ms exceeded" after two reads', async () => {
   const wedged = pageWith(() => new Promise(() => {}));
   const t0 = Date.now();

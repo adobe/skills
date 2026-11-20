@@ -25,10 +25,10 @@ export const writeJson = (path, obj) => writeFileAtomic(path, `${JSON.stringify(
 export const readJson = (path) => JSON.parse(readFileSync(path, 'utf8'));
 export const readJsonIf = (path) => (existsSync(path) ? readJson(path) : null);
 
-export function provenance({ at, readArtifacts = [], note } = {}) {
+export function provenance({ at, readArtifacts = [], note, writtenBy = WRITTEN_BY } = {}) {
   const version = pluginVersion();
   return {
-    writtenBy: WRITTEN_BY,
+    writtenBy,
     writtenAt: at,
     readArtifacts,
     synthesizedInputs: [],
