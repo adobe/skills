@@ -117,9 +117,10 @@ const site = (dir, names) => {
     writeFileSync(f, FRAG[`/${n}`]);
   }
 };
-const run = (args, { token = TOKEN, tokenEnv = 'DA_TOKEN' } = {}) => new Promise((resolve) => {
+const run = (args, { token = TOKEN, tokenEnv = 'DA_TOKEN', imsTokenFile } = {}) => new Promise((resolve) => {
   const env = { ...process.env, DA_SOURCE_BASE: `${BASE}/source`, AEM_ADMIN_BASE: BASE, DEPLOY_VERIFY_ORIGIN: BASE };
-  delete env.DA_TOKEN; if (token) env[tokenEnv] = token;
+  delete env.DA_TOKEN; delete env.ADOBE_IMS_TOKEN_FILE; if (token) env[tokenEnv] = token;
+  if (imsTokenFile) env.ADOBE_IMS_TOKEN_FILE = imsTokenFile;
   const p = spawn(process.execPath, [SCRIPT, '--org', ORG, '--repo', REPO, '--branch', BRANCH, '--backoff-ms', '1', ...args], { cwd: proj, env });
   let out = ''; let err = '';
   p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
@@ -387,6 +388,24 @@ await check('--token-file <path> reads the token from the file once at start (tr
   assert.equal(r2.code, 0, r2.out + r2.err);
   assert.match(r2.err, /done\. 1 ok, 0 failed\./);
   assert.equal(ledgerOf('site-f2')['/g-dead'].status, 'live'); assert.equal(ledgerOf('site-f2')['/g-dead'].attempts, 2);
+});
+await check('no flag and DA_TOKEN unset: the file named by ADOBE_IMS_TOKEN_FILE is the --token-file (HALT names it); DA_TOKEN set wins; --token-env never falls back', async () => {
+  const imsFile = join(proj, 'ims-token'); writeFileSync(imsFile, `${TOKEN}\n`);
+  site('site-ims', ['i1']);
+  const from = requests.length;
+  const r = await run(['--content', 'site-ims'], { token: null, imsTokenFile: imsFile });
+  assert.equal(r.code, 0, r.out + r.err);
+  for (const q of since(from).filter((x) => x.method !== 'GET')) assert.equal(q.headers.authorization, `Bearer ${TOKEN}`);
+  site('site-ims2', ['j-dead']);
+  const h = await run(['--content', 'site-ims2', '--retries', '1'], { token: null, imsTokenFile: imsFile });
+  assert.equal(h.code, 3, h.out + h.err);
+  assert.match(haltLines(h.err)[0], new RegExp(`write a fresh token to ${esc(imsFile)} and re-run: node `));
+  writeFileSync(imsFile, 'not-the-token');
+  site('site-ims3', ['k1']);
+  const w = await run(['--content', 'site-ims3'], { token: TOKEN, imsTokenFile: imsFile });
+  assert.equal(w.code, 0, 'DA_TOKEN wins over the file');
+  const e = await run(['--content', 'site-ims3', '--token-env', 'OTHER'], { token: null, imsTokenFile: imsFile });
+  assert.equal(e.code, 2); assert.match(e.err, /fatal: missing token in env OTHER/);
 });
 await check('--token-file usage errors exit 2 with nothing sent: together with --token-env, a missing file (named), an empty file (named) — DA_TOKEN in the environment does not stand in; --help names the flag', async () => {
   const from = requests.length;

@@ -4,7 +4,8 @@
 // reproduces its consumer (values from the characterization table); names.mjs applies the widget contract (a stem only
 // for /widgets/…, any extension case, .htm included; reserved stems; pageWidgets drops a page link; widgetLinks' three
 // mount rules, origin filter and dedupe keys); kinds.mjs classifies documents and chrome; taxonomy.mjs labels every class;
-// resolve.mjs names the copy that fixes a missing sibling; contracts.mjs re-exports every lib export (no name lost to a clash).
+// resolve.mjs names the copy that fixes a missing sibling; da-token.mjs picks one token source and names it in every error;
+// contracts.mjs re-exports every lib export (no name lost to a clash).
 // The cross-implementation pins live in contracts-characterize.test.mjs; the project-copy layout in layout.test.mjs. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
@@ -15,6 +16,7 @@ import * as names from '../lib/names.mjs';
 import * as kinds from '../lib/kinds.mjs';
 import * as taxonomy from '../lib/taxonomy.mjs';
 import * as resolve from '../lib/resolve.mjs';
+import * as daToken from '../lib/da-token.mjs';
 import * as contracts from '../contracts.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -22,14 +24,14 @@ const LIB = join(HERE, '..', 'lib');
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
-check('every lib file opens with a header that names what it owns and has no Node I/O import besides resolve.mjs', () => {
+check('every lib file opens with a header that names what it owns and has no Node I/O import besides resolve.mjs and da-token.mjs (read when called)', () => {
   const files = readdirSync(LIB).filter((f) => f.endsWith('.mjs')).sort();
-  assert.deepEqual(files, ['kinds.mjs', 'names.mjs', 'paths.mjs', 'resolve.mjs', 'taxonomy.mjs']);
+  assert.deepEqual(files, ['da-token.mjs', 'kinds.mjs', 'names.mjs', 'paths.mjs', 'resolve.mjs', 'taxonomy.mjs']);
   for (const f of files) {
     const src = readFileSync(join(LIB, f), 'utf8');
     assert.ok(src.startsWith('/**\n * skills/stardust/scripts/lib/'), `${f}: header`);
     assert.match(src.slice(0, 2500), /\bOwns?\b|\bowns\b|one copy/, `${f}: says what it owns`);
-    if (f !== 'resolve.mjs') assert.ok(!/from 'node:(fs|child_process)'/.test(src), `${f}: no I/O modules`);
+    if (f !== 'resolve.mjs' && f !== 'da-token.mjs') assert.ok(!/from 'node:(fs|child_process)'/.test(src), `${f}: no I/O modules`);
   }
 });
 
@@ -139,12 +141,34 @@ check('resolve: plugin layout here; siblings found; a missing one names the copy
   assert.ok(resolve.sibling('deploy', 'eds-path.mjs').startsWith('file://'));
 });
 
+// ---- da-token.mjs ----------------------------------------------------------------------------------------------------
+check('da-token: --token-file, --token-env, DA_TOKEN, then ADOBE_IMS_TOKEN_FILE; an explicit --token-env never falls back', () => {
+  const ims = { ADOBE_IMS_TOKEN_FILE: '/run/ims' };
+  assert.deepEqual(daToken.daTokenSource({ tokenFile: '/t' }, ims), { tokenFile: '/t', via: '--token-file' });
+  assert.deepEqual(daToken.daTokenSource({ tokenEnv: 'X' }, ims), { tokenEnv: 'X', via: 'X' });
+  assert.deepEqual(daToken.daTokenSource({}, { ...ims, DA_TOKEN: 't' }), { tokenEnv: 'DA_TOKEN', via: 'DA_TOKEN' });
+  assert.deepEqual(daToken.daTokenSource({}, ims), { tokenFile: '/run/ims', via: 'ADOBE_IMS_TOKEN_FILE' });
+  assert.deepEqual(daToken.daTokenSource({}, {}), { tokenEnv: 'DA_TOKEN', via: 'DA_TOKEN' });
+  assert.throws(() => daToken.daTokenSource({ tokenEnv: 'X', tokenFile: '/t' }, {}), /at most one of --token-env \/ --token-file/);
+});
+check('da-token: readDaToken trims, returns "" for an unset variable, and names the source (never --token-file for ADOBE_IMS_TOKEN_FILE) in a read error', () => {
+  assert.equal(daToken.readDaToken({ tokenEnv: 'X' }, { X: ' tok\n' }), 'tok');
+  assert.equal(daToken.readDaToken({ tokenEnv: 'X' }, {}), '');
+  assert.throws(() => daToken.readDaToken({ tokenFile: '/nonexistent/ims', via: 'ADOBE_IMS_TOKEN_FILE' }, {}), /^Error: cannot read ADOBE_IMS_TOKEN_FILE \/nonexistent\/ims: /);
+  assert.throws(() => daToken.readDaToken({ tokenFile: '/nonexistent/t', via: '--token-file' }, {}), /^Error: cannot read --token-file \/nonexistent\/t: /);
+});
+check('da-token: jwtExpiry reads a numeric exp claim and nothing else', () => {
+  const jwt = (claims) => `h.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.s`;
+  assert.equal(daToken.jwtExpiry(jwt({ exp: 1700000000 })), 1700000000);
+  assert.equal(daToken.jwtExpiry(jwt({ exp: 'soon' })), null); assert.equal(daToken.jwtExpiry('opaque'), null); assert.equal(daToken.jwtExpiry(undefined), null);
+});
+
 // ---- contracts.mjs ---------------------------------------------------------------------------------------------------
 check('contracts.mjs re-exports every export of every lib file, the same binding (an `export *` name clash would drop one silently)', () => {
-  const all = [paths, names, kinds, taxonomy, resolve].flatMap((m) => Object.keys(m));
+  const all = [paths, names, kinds, taxonomy, resolve, daToken].flatMap((m) => Object.keys(m));
   assert.equal(new Set(all).size, all.length, 'two lib files export the same name');
   assert.deepEqual(Object.keys(contracts).sort(), [...all].sort());
-  for (const m of [paths, names, kinds, taxonomy, resolve]) for (const k of Object.keys(m)) assert.equal(contracts[k], m[k], k);
+  for (const m of [paths, names, kinds, taxonomy, resolve, daToken]) for (const k of Object.keys(m)) assert.equal(contracts[k], m[k], k);
 });
 
 console.log(`\n${failed ? `${failed} check(s) failed` : 'all checks passed'}`);

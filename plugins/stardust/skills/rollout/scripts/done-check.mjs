@@ -23,6 +23,11 @@
  *                                  chrome/header-parity.json (chrome-compare) is missing, older than the contract,
  *                                  of the wrong profile (replica flow: replica; redesign, reskin: functional),
  *                                  short of a contract width, not run on the live host, or has undecided errors
+ *   library_missing[:<why>]        pages were delivered but da-library.mjs has not written the site's block library to
+ *                                  DA for them: <out>/library/published.json is absent (never run, or its last run
+ *                                  stopped or failed), was published to another org/site than rollout.json site.da,
+ *                                  or is stale — delivered pages it never read, or pages re-delivered (deployedAt)
+ *                                  after it ran (lib.mjs libraryGap)
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  *
  * Advisory, after the verdict line — never a gap, the verdict and the exit code do not read it:
@@ -34,7 +39,7 @@
 import { readFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readJSON, isSourceParity, publicUrl, scopeLine } from './lib.mjs';
+import { readJSON, isSourceParity, publicUrl, scopeLine, libraryMarkerPath, libraryGap } from './lib.mjs';
 
 const UNFINISHED = new Set(['pending', 'content-pending', 'converting', 'deployed', 'stale']);
 const DELIVERED = new Set(['deployed', 'verified']);
@@ -80,7 +85,8 @@ export function headerGap({ flow = null, contract = null, parity = null, liveHos
   return open.length ? `header_parity:${open.length}: ${listed(open.map((f) => f.key))}` : null;
 }
 
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null }) {
+/** `library` is the library gap (lib.mjs libraryGap) or null; it counts only once a page is delivered. */
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, library = null }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -90,6 +96,7 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   const p1 = openP1(findings);
   if (p1.length) gaps.push(`open_p1:${p1.length}`);
   if (header) gaps.push(header);
+  if (library && deliveredPaths(pages).length) gaps.push(library);
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null };
 }
@@ -163,7 +170,10 @@ async function main() {
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
   const chrome = arg('chrome', 'stardust/chrome');
   const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
-  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header });
+  // the coverage `path`s da-library recorded (it reads the same rows), not the probed public URLs, with when each was delivered
+  const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => ({ path: p.path, deployedAt: p.delivery && p.delivery.deployedAt }));
+  const library = libraryGap(readJSON(libraryMarkerPath(OUT)), { da: (config.site && config.site.da) || {}, delivered });
+  const verdict = doneGaps({ pages, findings, ledgerLines: readLedger(LEDGER), notLive, header, library });
   const advisories = wideAdvisories(readWideTables(arg('gates', 'stardust/replica/gates')));
 
   if (JSON_OUT) console.log(JSON.stringify({ ...verdict, ...(config.scope ? { scope: config.scope } : {}), ...(advisories.length ? { advisories } : {}) }));
