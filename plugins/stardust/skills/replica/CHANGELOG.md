@@ -1,3 +1,5 @@
+## [1.4.1](https://github.com/adobe/skills/compare/replica-v1.4.0...replica-v1.4.1) (2026-11-20)
+
 # [1.4.0](https://github.com/adobe/skills/compare/replica-v1.3.0...replica-v1.4.0) (2026-11-19)
 
 
