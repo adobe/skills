@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.43.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.2...plugin/stardust/v0.43.3) (2026-11-20)
+
+
+### Bug Fixes
+
+* **stardust:** the fallback font face names sources the gate's browser has ([#779](https://github.com/adobe/skills/issues/779)) ([d141fdf](https://github.com/adobe/skills/commit/d141fdfcf151097c5b9c3e96de780af7ee3a3704))
+* **stardust:** the unit check treats an element clipped on both sides as parity, counts a pushed row once, and names a selector error ([#766](https://github.com/adobe/skills/issues/766)) ([267c9dc](https://github.com/adobe/skills/commit/267c9dc360f1d0b11e30bbbed15782c11b8c4c99))
+
 ## [0.43.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.1...plugin/stardust/v0.43.2) (2026-11-20)
 
 
