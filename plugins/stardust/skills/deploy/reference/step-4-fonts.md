@@ -79,7 +79,7 @@ The brand font must NOT render at first paint — and under vanilla EDS it can't
    (the stock convention — see roboto-fallback in the boilerplate). */
 @font-face {
   font-family: "<brand>-fallback";
-  src: <local() sources>;  /* the gate's browser has no Arial or Times New Roman: replica/reference/recreation-procedure.md § Fonts policy */
+  src: <local() sources>;  /* the gate's browser lacks Arial and Times: replica/reference/recreation-procedure.md § Fonts policy */
   size-adjust: <X>%;
   ascent-override: <Y>%;
   descent-override: <Z>%;
