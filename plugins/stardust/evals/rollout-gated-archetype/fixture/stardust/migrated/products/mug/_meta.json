@@ -1,0 +1,30 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:migrate",
+    "writtenAt": "2026-11-20T09:10:00Z",
+    "readArtifacts": [
+      "stardust/prototypes/products-mug-proposed.html"
+    ]
+  },
+  "slug": "products-mug",
+  "type": "product",
+  "source": {
+    "url": "https://shop.example.com/products/mug/"
+  },
+  "renderBranch": "A",
+  "fidelityTier": "archetype",
+  "template": null,
+  "modules": [
+    "header",
+    "product-hero",
+    "spec-table",
+    "product-cards",
+    "footer"
+  ],
+  "widgets": [],
+  "metadata": {
+    "title": "Stoneware mug | Fixture Store",
+    "description": "A stoneware mug that holds a proper cup of tea."
+  },
+  "contentDeviations": []
+}
