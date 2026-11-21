@@ -5,7 +5,7 @@
     {
       "name": "inventory_and_plan_from_the_scripts",
       "max_score": 15,
-      "description": "The coverage and the plan come from the rollout scripts, in order: inventory.mjs (with --site-url), then blocks.mjs, then plan.mjs. stardust/rollout/coverage/pages.json holds six rows in three templates (home: 1, products-mug: 3, visit: 2), coverage/blocks.json and plan.json exist, and the order the run reports to the user is the one of plan.json (representative first per template), not one it made up."
+      "description": "The coverage and the plan come from the rollout scripts, in order: inventory.mjs (with --site-url), then blocks.mjs, then plan.mjs. stardust/rollout/coverage/pages.json holds six rows in three templates (home: 1, products-mug: 3, visit: 2), coverage/blocks.json and plan.json exist, and the order the run reports to the user is the one of plan.json (representative first per template); a different order counts only when the run names the blocked template as its reason (a block a later page reuses is owned by a page that cannot ship)."
     },
     {
       "name": "ungated_page_type_blocked",

@@ -334,8 +334,7 @@ run surfaced.
 node skills/rollout/scripts/dashboard.mjs    # → dashboard/index.html + data.json
 ```
 
-Regenerate it at every iteration boundary (`reference/coverage-model.md`
-§ Dashboard stages).
+When to regenerate it: `reference/coverage-model.md` § Dashboard stages.
 
 **Done is one verdict:** the rollout is complete when `node
 skills/rollout/scripts/done-check.mjs` exits 0; otherwise it prints one gap
