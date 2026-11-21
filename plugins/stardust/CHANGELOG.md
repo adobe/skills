@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.46.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.46.0...plugin/stardust/v0.46.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** rollout no longer marks pages failed for gate captures that never happened ([#787](https://github.com/adobe/skills/issues/787)) ([e430c89](https://github.com/adobe/skills/commit/e430c891d1976183ec0e1789f1826f4f124c3910))
+
 # [0.46.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.45.0...plugin/stardust/v0.46.0) (2026-11-21)
 
 
