@@ -253,9 +253,6 @@ check('CLI: usage errors exit 2 — no pages.json; no live host without --offlin
   [noPages, noHost].forEach((p) => rmSync(p, { recursive: true, force: true }));
 });
 
-for (const [name, fn] of tests) {
-  try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); }
-}
 check('units_not_declared: an advisory line per published table with pages that took no repeated-unit check — after the verdict, never a gap; complete and the exit code unchanged', () => {
   const table = (w, rows, extra = {}) => ({ _provenance: { breakpoint: w, ...extra }, totals: {}, rows });
   const none = (slug, unitsRecorded = null) => ({ slug, unitsDeclared: 0, unitsRecorded });
@@ -278,6 +275,10 @@ check('units_not_declared: an advisory line per published table with pages that 
   assert.match(run(proj, ['--help']).stdout, /units_not_declared:N/);
   rmSync(proj, { recursive: true, force: true });
 });
+
+for (const [name, fn] of tests) {
+  try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); }
+}
 
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
