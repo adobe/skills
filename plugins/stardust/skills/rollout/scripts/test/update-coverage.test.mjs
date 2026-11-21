@@ -304,6 +304,25 @@ await check('--gate: a capture error beside a measured failure (clip / content /
   assert.deepEqual(by['page-2'].gate.reasons, ['clipped 2']); assert.equal(by['page-2'].gate.error, 'missing capture'); assert.equal(by['page-2'].gate.table, later);
 });
 
+await check('--gate: a gate record an errored row left before this rule (pass false, capture-only reasons) is replaced, not kept — the page recovers to deployed with gate.pass null', async () => {
+  const { proj, out } = fixture();
+  const pagesFile = join(out, 'coverage', 'pages.json');
+  const doc = JSON.parse(readFileSync(pagesFile, 'utf8'));
+  const stale = { pass: false, pct: null, heightDelta: null, clipped: null, content: null, reasons: ['pixel error: missing capture'], override: null, table: 'old.json', at: '2026-01-01T00:00:00Z' };
+  doc.pages[0].delivery = { status: 'failed', deployedUrl: 'https://eds.example/page-0', error: 'gate: pixel error: missing capture', gate: stale };
+  doc.pages[1].delivery = { status: 'failed', deployedUrl: 'https://eds.example/page-1', error: 'gate: clipped 3', gate: { ...stale, reasons: ['clipped 3'], pct: 2 } };
+  writeFileSync(pagesFile, JSON.stringify(doc, null, 2));
+  const table = join(proj, 'summary.json');
+  const errored = (slug) => ({ slug, pct: null, pass: false, error: 'missing capture', failing: ['capture'], reasons: ['pixel error: missing capture'] });
+  writeFileSync(table, JSON.stringify({ rows: [errored('page-0'), errored('page-1')] }));
+  const r = await run(['--gate', table], proj);
+  assert.equal(r.code, 0, r.err);
+  const by = Object.fromEntries(JSON.parse(readFileSync(pagesFile, 'utf8')).pages.map((p) => [p.slug, p.delivery]));
+  assert.equal(by['page-0'].status, 'deployed'); assert.equal(by['page-0'].error, null);
+  assert.equal(by['page-0'].gate.pass, null, 'the stale capture-only false is not a measured verdict'); assert.equal(by['page-0'].gate.error, 'missing capture');
+  assert.equal(by['page-1'].status, 'failed', 'a measured failure recorded earlier stays'); assert.equal(by['page-1'].gate.pass, false); assert.deepEqual(by['page-1'].gate.reasons, ['clipped 3']);
+});
+
 await check('--gate --pin (first page first): a passing row matched by PATH (the inventory slug differs) is pinned and moved to deployed with the table\'s eds URL; a failing one is not pinned; --status stale unpins', async () => {
   const { proj, out } = fixture();
   const pj = join(out, 'coverage', 'pages.json');

@@ -214,9 +214,12 @@ if (gateFile) {
     // gate-all decides whether the override covers every failing criterion (overrideScope); a table from before
     // passWithOverride existed keeps the old reading. An errored capture is no verdict (null): never a failure.
     const pass = gateRowVerdict(r);
-    // A no-verdict row never erases a measured verdict: keep the previous pass / pct / reasons, record the error.
+    // A no-verdict row never erases a measured verdict: keep the previous pass / pct / reasons, record the error. A
+    // previous `false` whose reasons are capture errors only (what an errored row recorded before this rule) is no
+    // measured verdict and is replaced.
     const prev = p.delivery.gate;
-    p.delivery.gate = pass === null && prev && typeof prev.pass === 'boolean'
+    const prevMeasured = !!prev && typeof prev.pass === 'boolean' && !(prev.pass === false && gateFailureIsCaptureErrorOnly(`gate: ${(prev.reasons || []).join('; ')}`));
+    p.delivery.gate = pass === null && prevMeasured
       ? { ...prev, error: r.error, table: gateFile, at: now }
       : { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, ...(pass === null ? { error: r.error } : {}), table: gateFile, at: now };
     if (pass === false && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
