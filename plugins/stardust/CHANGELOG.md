@@ -1,5 +1,12 @@
 # Changelog
 
+# [0.44.0](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.4...plugin/stardust/v0.44.0) (2026-11-21)
+
+
+### Features
+
+* **stardust:** a capture can hold autoplay timers, and the reference says when a page changes on its own ([#780](https://github.com/adobe/skills/issues/780)) ([d15a206](https://github.com/adobe/skills/commit/d15a206ba45ef7303fcd398375d794e85d619b91))
+
 ## [0.43.4](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.3...plugin/stardust/v0.43.4) (2026-11-21)
 
 ## [0.43.3](https://github.com/adobe/skills/compare/plugin/stardust/v0.43.2...plugin/stardust/v0.43.3) (2026-11-20)
