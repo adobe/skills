@@ -209,6 +209,10 @@ check('headerGap: none without a flow; otherwise the contract, a fresh compariso
   assert.match(headerGap({ flow: 'replica', contract, parity: { ...parity, build: 'https://main--site--org.aem.page/' }, liveHost: live }), /not the live host/);
   const findings = [{ key: 'state-missing@1440 Shop [hover]', severity: 'error' }, { key: 'motion@390 Open menu [click]', severity: 'error', decided: { by: 'Site owner' } }, { key: 'link-href@1440 Shop', severity: 'warn' }];
   assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings }, liveHost: live }), 'header_parity:1: state-missing@1440 Shop [hover]');
+  // classes written at the comparison's round cap: printed with the gap, which stays a gap
+  const classed = [{ ...findings[0], classed: { class: 'owner', reason: 'the menu service' } }, { key: 'panel-visual@390 Menu [click]', severity: 'error', classed: { class: 'instrument' } }, { key: 'keyboard@1440 Shop', severity: 'error', classed: { class: 'owner' } }, { key: 'motion@1440 Shop [hover]', severity: 'error' }, findings[1]];
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed }, liveHost: live }), 'header_parity:4 — 2 owner, 1 instrument, 1 no class: state-missing@1440 Shop [hover] (owner), panel-visual@390 Menu [click] (instrument), keyboard@1440 Shop (owner), motion@1440 Shop [hover]');
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed.slice(0, 1) }, liveHost: live }), 'header_parity:1 — 1 owner: state-missing@1440 Shop [hover] (owner)');
 });
 
 check('CLI: a replica project without a header contract is not complete', () => {

@@ -3,14 +3,17 @@
 // pairing by name then family, a hover menu rebuilt as click-only, missing panel links (a link with text on one side
 // only pairs by its address, in the header as in a panel), the at-rest watch of the two records, keyboard and close paths,
 // motion and scroll states under `replica` only, search typeahead, and site-owner decisions (agents cannot sign).
+// The round cap (the CLI, in a scratch project): three counted comparisons per stage in stardust/chrome/rounds.json, the
+// fourth refused (exit 6) until every remaining error has a class in the decisions file; classes are written beside the
+// findings and clear nothing; the guard fails closed.
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-compare.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdtempSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyDecisions, compareDocs, findingKey, pairControls, pairLinks } from '../chrome-compare.mjs';
+import { CLASSES, applyDecisions, compareDocs, findingKey, pairControls, pairLinks, stageOfBuild } from '../chrome-compare.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 let failed = 0;
@@ -184,12 +187,149 @@ check('decisions: a site-owner entry clears its finding (exact or prefix*); an a
   assert.equal(out[0].decided.decision, 'decided-out'); assert.equal(out[1].decided, undefined);
   assert.equal(out.filter((x) => x.id === 'decision-invalid').length, 2);
 });
+check('classes: written beside the error, never a clearance; an exact key, a known class and a reason are required', () => {
+  const f = [{ id: 'state-missing', width: 1440, path: 'Cart', action: 'click', severity: 'error' }, { id: 'motion', width: 390, path: 'Open menu', severity: 'error' }, { id: 'link-href', width: 390, path: 'Shop', severity: 'warn' }];
+  const out = applyDecisions(structuredClone(f), [
+    { finding: 'state-missing@1440 Cart [click]', class: 'owner', reason: ' the cart is the shop vendor\'s widget ', by: 'agent', at: '2026-10-09' },
+    { finding: 'motion@390 Open menu', class: 'instrument', reason: 'the recorder read a carousel as motion: header-build.json' },
+    { finding: 'motion@390*', class: 'accept-residual', reason: 'a prefix is not one finding' },
+    { finding: 'motion@390 Open menu', class: 'later', reason: 'not a class' },
+    { finding: 'motion@390 Open menu', class: 'owner' },
+    { finding: 'link-href@390 Shop', class: 'accept-residual', reason: 'a warning has nothing to class' },
+  ]);
+  assert.deepEqual(out[0].classed, { class: 'owner', reason: 'the cart is the shop vendor\'s widget', at: '2026-10-09' });
+  assert.deepEqual([out[0].decided, out[1].decided], [undefined, undefined], 'a class is not a decision, whoever signs it');
+  assert.equal(out[1].classed.class, 'instrument'); assert.equal(out[2].classed, undefined);
+  assert.equal(out.filter((x) => x.id === 'decision-invalid').length, 3);
+  assert.match(out.find((x) => x.id === 'decision-invalid').detail, /a class is one of owner \| instrument \| accept-residual, with a `reason`, for one finding key/);
+  assert.deepEqual(CLASSES, ['owner', 'instrument', 'accept-residual']);
+  // the owner's signed decision on a classed finding still clears it
+  const both = applyDecisions(structuredClone(f), [{ finding: 'motion@390 Open menu', class: 'owner', reason: 'r', decision: 'accepted', by: 'Site owner', at: '2026-10-09' }]);
+  assert.equal(both[1].decided.by, 'Site owner'); assert.equal(both[1].classed.class, 'owner');
+});
+check('stageOfBuild is gate.sh\'s rule', () => {
+  assert.deepEqual(['http://localhost:8791/home-proposed.html?x=1', 'http://127.0.0.1:3000/', 'file:///p/about-proposed.html', 'https://main--site--org.aem.page/', undefined].map(stageOfBuild), ['prototype', 'local-build', 'prototype', 'published', 'published']);
+});
+
+// ── the CLI in a scratch project: the round cap, its classes, the guard ──
+const CLI = join(HERE, '..', 'chrome-compare.mjs');
+const scratch = () => realpathSync(mkdtempSync(join(tmpdir(), 'chrome-compare-')));
+const stockBuild = (url) => ({ ...doc([ctl('Shop', 'menu', { hover: null, click: st(shopLinks, { expanded: 'true' }), key: st(shopLinks, { expanded: 'true', tab: true }) }, { close: { escape: true, focusReturn: true, outside: true, leave: true } }), source.widths[1440].controls[1]], source.widths[1440].scroll), url });
+const project = (buildUrl = 'http://localhost:8791/home-proposed.html') => {
+  const root = scratch();
+  mkdirSync(join(root, 'stardust', 'chrome'), { recursive: true });
+  writeFileSync(join(root, 'stardust/chrome/header-contract.json'), JSON.stringify(source));
+  writeFileSync(join(root, 'stardust/chrome/header-build.json'), JSON.stringify(stockBuild(buildUrl)));
+  return root;
+};
+const run = (root, extra = [], env = {}, script = CLI) => spawnSync(process.execPath, [script, 'stardust/chrome/header-contract.json', 'stardust/chrome/header-build.json', '--profile', 'functional', '--json', 'stardust/chrome/header-parity.json', ...extra], { cwd: root, encoding: 'utf8', timeout: 30000, env: { ...process.env, STARDUST_ROUND_CAP: '', ...env } });
+const json = (root, name) => JSON.parse(readFileSync(join(root, 'stardust/chrome', name), 'utf8'));
+const decisions = (root, list) => writeFileSync(join(root, 'stardust/chrome/header-decisions.json'), JSON.stringify({ decisions: list }));
+const KEYS = ['state-missing@1440 Shop [hover]', 'control-missing@1440 Shop > Women'];
+
+check('round cap: three comparisons are recorded, the fourth exits 6 and writes no verdict', () => {
+  const root = project();
+  try {
+    const rcs = [1, 2, 3].map(() => run(root));
+    assert.deepEqual(rcs.map((r) => r.status), [2, 2, 2], rcs[0].stderr);
+    assert.match(rcs[0].stdout, /^chrome-compare: prototype stage — recorded "compare-1" fail as first: 1 of 3 counted rounds$/m);
+    assert.match(rcs[2].stdout, /recorded "compare-3" fail as fix: 3 of 3 counted rounds — cap reached: the next comparison at this stage exits 6 until every remaining error has a class in stardust\/chrome\/header-decisions\.json/);
+    assert.deepEqual(json(root, 'rounds.json').stages.prototype.rounds.map((x) => `${x.label}:${x.verdict}:${x.kind}`), ['compare-1:fail:first', 'compare-2:fail:fix', 'compare-3:fail:fix']);
+    const third = json(root, 'header-parity.json');
+    assert.deepEqual([third.stage, third.round, third.counts.error, third.counts.classed, third.capped], ['prototype', { label: 'compare-3', kind: 'fix' }, 2, 0, undefined]);
+    assert.deepEqual(third.findings.filter((f) => f.severity === 'error').map((f) => f.key), KEYS);
+    const r = run(root);
+    assert.equal(r.status, 6, r.stdout + r.stderr);
+    assert.match(r.stderr, /^chrome-compare: comparison refused at the prototype stage \(exit 6\) — 3 of 3 counted rounds spent, the last one a FAIL, and 2 of 2 error\(s\) still have no class\. Record one per finding in stardust\/chrome\/header-decisions\.json — \{ "decisions": \[\{ "finding": "<key>", "class": "owner\|instrument\|accept-residual", "reason": /);
+    assert.ok(r.stderr.includes(`No class: ${KEYS.join('; ')}`), r.stderr);
+    assert.match(r.stderr, /rounds\.mjs decide stardust\/chrome --stage prototype --decision extend/);
+    assert.equal(r.stdout, '', 'a refused comparison prints no finding');
+    assert.equal(json(root, 'header-parity.json').at, third.at, 'the verdict of the last counted round stays');
+    assert.equal(json(root, 'rounds.json').stages.prototype.rounds.length, 3);
+    // one class is not every class
+    decisions(root, [{ finding: KEYS[0], class: 'owner', reason: 'the mega menu needs the source\'s menu service' }]);
+    const one = run(root);
+    assert.equal(one.status, 6); assert.match(one.stderr, /1 of 2 error\(s\) still have no class/); assert.ok(one.stderr.includes(`No class: ${KEYS[1]}`));
+    // a stage has its own budget: the same build on a published origin starts at round one
+    writeFileSync(join(root, 'stardust/chrome/header-build.json'), JSON.stringify(stockBuild('https://main--site--org.aem.page/')));
+    const pub = run(root, [], {});
+    assert.equal(pub.status, 2); assert.match(pub.stdout, /published stage — recorded "compare-1" fail as first/);
+    assert.match(run(root, ['--stage', 'prototype']).stderr, /refused at the prototype stage/, '--stage overrides the URL rule');
+    assert.equal(run(root, ['--stage', 'foundation']).status, 1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('round cap: with a class per remaining error the comparison runs — exit 2, the classes beside the findings, nothing cleared; an agent-signed owner decision is still ignored', () => {
+  const root = project();
+  try {
+    for (let i = 0; i < 3; i += 1) run(root);
+    decisions(root, [
+      { finding: KEYS[0], class: 'owner', reason: 'the mega menu needs the source\'s menu service (dynamics row nav-menu)' },
+      { finding: KEYS[1], class: 'instrument', reason: 'the recorder never reached the second level: header-build.json' },
+      { finding: KEYS[0], decision: 'accepted', by: 'agent', at: '2026-11-20' },
+    ]);
+    const r = run(root);
+    assert.equal(r.status, 2, r.stdout + r.stderr);
+    assert.match(r.stdout, /^🔴 state-missing@1440 Shop \[hover\] — .* \[class owner: the mega menu needs the source's menu service \(dynamics row nav-menu\)\]$/m);
+    assert.match(r.stdout, /^chrome-compare: 2 error\(s\), 2 warning\(s\), 0 decided \(profile functional, widths 1440\) — classes: 1 owner, 1 instrument → stardust\/chrome\/header-parity\.json$/m);
+    assert.match(r.stdout, /^chrome-compare: prototype stage — capped after 3 of 3 counted rounds: every remaining error has a class \(1 owner, 1 instrument\), the stage is closed and this comparison is not counted$/m);
+    const v = json(root, 'header-parity.json');
+    assert.deepEqual([v.capped, v.round, v.counts], [true, undefined, { error: 2, warn: 2, decided: 0, classed: 2 }]);
+    assert.deepEqual(v.findings.filter((f) => f.severity === 'error').map((f) => [f.key, f.classed.class, f.decided]), [[KEYS[0], 'owner', undefined], [KEYS[1], 'instrument', undefined]]);
+    assert.match(v.findings.find((f) => f.id === 'decision-invalid').detail, /a decision needs the site owner's `by` and `at`/);
+    const st0 = json(root, 'rounds.json').stages.prototype;
+    assert.deepEqual([st0.rounds.length, st0.decisions.map((d) => d.decision)], [3, ['accept-residual']]);
+    assert.match(st0.decisions[0].reason, /^2 header-contract error\(s\) classed \(1 owner, 1 instrument\) in stardust\/chrome\/header-decisions\.json$/);
+    // closed: later comparisons run uncounted while every error is classed, and are refused when one is not
+    assert.equal(run(root).status, 2); assert.equal(json(root, 'rounds.json').stages.prototype.decisions.length, 1);
+    decisions(root, [{ finding: KEYS[0], class: 'owner', reason: 'the menu service' }]);
+    const again = run(root);
+    assert.equal(again.status, 6); assert.match(again.stderr, /the stage was closed after 3 of 3 counted rounds, and 1 of 2 error\(s\) have no class/);
+    // the site owner's signature is what clears: no error left, exit 0, recorded as a pass
+    decisions(root, KEYS.map((k) => ({ finding: k, decision: 'accepted', reason: 'agreed', by: 'Site owner', at: '2026-11-20' })));
+    const owner = run(root);
+    assert.equal(owner.status, 0, owner.stderr); assert.equal(json(root, 'rounds.json').stages.prototype.rounds.at(-1).verdict, 'pass');
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('round cap: a pass after a pass is free; the guard fails closed on a ledger it cannot read or write, and STARDUST_ROUND_CAP=0 compares without it', () => {
+  const root = project();
+  try {
+    writeFileSync(join(root, 'stardust/chrome/header-build.json'), JSON.stringify({ ...source, url: 'http://localhost:8791/home-proposed.html' }));
+    for (let i = 0; i < 5; i += 1) assert.equal(run(root).status, 0);
+    assert.deepEqual(json(root, 'rounds.json').stages.prototype.rounds.map((x) => x.kind), ['first', 'confirm', 'confirm', 'confirm', 'confirm']);
+    writeFileSync(join(root, 'stardust/chrome/rounds.json'), '{ "version": 1, "stages": ');
+    const bad = run(root);
+    assert.equal(bad.status, 1); assert.equal(bad.stdout, '');
+    assert.match(bad.stderr, /^chrome-compare: the round cap could not be checked — stardust\/chrome\/rounds\.json is not a readable round ledger: repair or delete it — so nothing is compared \(STARDUST_ROUND_CAP=0 compares without the cap\)$/m);
+    const off = run(root, [], { STARDUST_ROUND_CAP: '0' });
+    assert.equal(off.status, 0); assert.match(off.stderr, /the comparison runs uncounted \(STARDUST_ROUND_CAP=0\)/);
+    // a ledger folder that cannot be made (a file is in its place)
+    writeFileSync(join(root, 'blocked'), '');
+    const nodir = run(root, ['--rounds', 'blocked/chrome']);
+    assert.equal(nodir.status, 1); assert.match(nodir.stderr, /the round cap could not be checked/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+  // STARDUST_ROUND_CAP=0 at the cap: the round is recorded, never refused
+  const capped = project();
+  try {
+    for (let i = 0; i < 4; i += 1) assert.equal(run(capped, [], { STARDUST_ROUND_CAP: '0' }).status, 2);
+    assert.equal(json(capped, 'rounds.json').stages.prototype.rounds.length, 4);
+  } finally { rmSync(capped, { recursive: true, force: true }); }
+});
 const copyWithoutMaster = () => {
   const root = mkdtempSync(join(tmpdir(), 'diff-nomaster-'));
   const copy = join(root, 'a', 'b');
   cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => !src.endsWith('/test') });
   return { root, copy };
 };
+check('a copy without the replica scripts beside it compares nothing (exit 1)', () => {
+  const { root, copy } = copyWithoutMaster();
+  const proj = project();
+  try {
+    const r = run(proj, [], {}, join(copy, 'chrome-compare.mjs'));
+    assert.equal(r.status, 1, r.stdout);
+    assert.match(r.stderr, /^chrome-compare: the round cap could not be checked — rounds\.mjs not found \(looked in \.\.\/\.\.\/replica\/scripts\/ and \.\.\/replica\/\): copy the replica skill's scripts dir to stardust\/scripts\/replica\/ — so nothing is compared/);
+    assert.ok(!existsSync(join(proj, 'stardust/chrome/header-parity.json')));
+  } finally { rmSync(root, { recursive: true, force: true }); rmSync(proj, { recursive: true, force: true }); }
+});
 check('a copy without the master scripts answers --help, no stack trace', () => {
   const { root, copy } = copyWithoutMaster();
   try {

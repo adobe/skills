@@ -18,18 +18,36 @@
  * ({ decisions: [{ finding: "<key or prefix*>", decision, reason, by, at }] }); entries without
  * `by`/`at`, or signed by an agent, are ignored and reported.
  *
+ * Round cap (replica's rounds.mjs is the ledger and the definition: <--rounds dir>/rounds.json, one budget per stage).
+ * A comparison that ends with a verdict is a round of its stage: 3 counted rounds, the first and two fix rounds; a
+ * pass after a pass is free. After that the comparison is refused (exit 6, no verdict written) until every remaining
+ * error has a CLASS in --decisions: { finding: "<exact key>", class, reason } with class
+ *   owner            only the site owner can close it: the reason names the dynamics row or the third party
+ *   instrument       the recorder or the comparer is wrong: the reason names the defect and its evidence
+ *   accept-residual  a difference left in the build: the reason says why
+ * Anyone may record a class. A class does not clear a finding: the error stays (exit 2), `classed` is written beside
+ * it in the verdict and done-check prints the gap with its classes; only the site owner's `by` and `at` clear it.
+ * With every error classed the stage is closed in the ledger (accept-residual) and later comparisons of it run
+ * uncounted, refused again when an error without a class appears. `rounds.mjs decide <dir> --stage <s> --decision
+ * extend` grants one more counted round for a named instrument defect. The guard fails closed: without rounds.mjs
+ * (../../replica/scripts/ or ../replica/), or with a ledger that cannot be read or written, nothing is compared
+ * (exit 1); STARDUST_ROUND_CAP=0 compares without the refusal.
+ *
  * Usage: node skills/diff/scripts/chrome-compare.mjs <source.json> <build.json> [options]
  *   --profile replica|functional   default replica
  *   --bar <ratio>                  open-state crop bar (default 0.02)
  *   --decisions <file>             default stardust/chrome/header-decisions.json
  *   --json <file>                  write the verdict (stardust/chrome/header-parity.json is what done-check reads)
  *   --src-shots <dir> / --build-shots <dir>   crop folders when not where the records say
- * Exit: 0 no undecided error · 2 errors · 1 usage. `compareDocs`, `applyDecisions`, `findingKey`, `pairControls`,
- * `pairLinks` are exported.
+ *   --stage prototype|local-build|published   the round's stage; default from the build record's URL, as gate.sh:
+ *                                  a local URL ending in -proposed.html, any other local URL, anything else
+ *   --rounds <dir>                 the ledger's folder (default stardust/chrome)
+ * Exit: 0 no undecided error · 2 errors · 6 round refused by the cap · 1 usage, or the cap could not be checked.
+ * `compareDocs`, `applyDecisions`, `findingKey`, `pairControls`, `pairLinks`, `stageOfBuild`, `CLASSES` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { normName, watchLine } from './chrome-explore.mjs';
 
@@ -40,6 +58,12 @@ const CONTRACTS = ['../../stardust/scripts/contracts.mjs', '../stardust/contract
 const missing = () => { throw new Error('contracts.mjs not found (looked in ../../stardust/scripts/ and ../stardust/). Copy the master skill\'s scripts dir to stardust/scripts/stardust/ (skills/stardust/SKILL.md § Setup).'); };
 // a header link's identity: decoded lower-case pathname, extension/index/slash folded, query kept (lib/paths.mjs)
 const { chromeHrefKey: hrefKey } = CONTRACTS ? await import(CONTRACTS.href) : { chromeHrefKey: missing };
+
+// The round ledger is the replica skill's (one definition of a round and its cap): the plugin tree or the project copy.
+const ROUNDS = ['../../replica/scripts/rounds.mjs', '../replica/rounds.mjs']
+  .map((p) => new URL(p, import.meta.url)).find((u) => existsSync(u));
+const LEDGER_STAGES = ['prototype', 'local-build', 'published'];
+export const CLASSES = ['owner', 'instrument', 'accept-residual'];
 
 const TOUCH_BELOW = 768;
 const FAMILIES = new Set(['search', 'cart', 'account', 'locale', 'drawer']);
@@ -224,20 +248,42 @@ export function compareDocs(src, bld, { profile = 'replica' } = {}) {
   return { findings, visual: profile === 'replica' ? visual : [] };
 }
 
-/** Mark findings cleared by a valid site-owner decision; invalid entries become warnings. Pure. */
+/** Mark findings cleared by a valid site-owner decision, and write the class of an entry that has one beside its
+ * finding (`classed`: it clears nothing, anyone may record it, for one exact key; such an entry clears only with the
+ * owner's `decision`, `by` and `at` as well); invalid entries become warnings. Pure. */
 export function applyDecisions(findings, decisions = []) {
-  const valid = []; const out = [...findings];
+  const valid = []; const classes = []; const out = [...findings];
+  const ignored = (d, why) => out.push({ width: 0, path: '(decisions)', id: 'decision-invalid', severity: 'warn', detail: `ignored: ${d && d.finding ? d.finding : '(no finding)'} — ${why}` });
   for (const d of decisions) {
-    if (!d || !d.finding || !d.by || !d.at || AGENT.test(String(d.by))) { out.push({ width: 0, path: '(decisions)', id: 'decision-invalid', severity: 'warn', detail: `ignored: ${d && d.finding ? d.finding : '(no finding)'} — a decision needs the site owner's \`by\` and \`at\`` }); continue; }
+    const signed = !!(d && d.finding && d.by && d.at && !AGENT.test(String(d.by)));
+    if (d && d.finding && d.class !== undefined) {
+      if (!CLASSES.includes(d.class) || !String(d.reason || '').trim() || String(d.finding).endsWith('*')) ignored(d, `a class is one of ${CLASSES.join(' | ')}, with a \`reason\`, for one finding key (no prefix*)`);
+      else classes.push(d);
+      if (signed && d.decision) valid.push(d);
+      continue;
+    }
+    if (!signed) { ignored(d, 'a decision needs the site owner\'s `by` and `at`'); continue; }
     valid.push(d);
   }
   for (const f of out) {
+    if (f.severity !== 'error') continue;
     const k = findingKey(f);
     const d = valid.find((x) => (x.finding.endsWith('*') ? k.startsWith(x.finding.slice(0, -1)) : k === x.finding));
-    if (d && f.severity === 'error') f.decided = { decision: d.decision || 'accepted', by: d.by, at: d.at, reason: d.reason || '' };
+    if (d) f.decided = { decision: d.decision || 'accepted', by: d.by, at: d.at, reason: d.reason || '' };
+    const c = classes.find((x) => x.finding === k);
+    if (c) f.classed = { class: c.class, reason: String(c.reason).trim(), ...(c.at ? { at: c.at } : {}) };
   }
   return out;
 }
+
+/** The stage of a comparison from the build's URL — gate.sh's rule (its --help § Stage). Pure. */
+export function stageOfBuild(url) {
+  const u = String(url || '');
+  if (!/^(http:\/\/localhost|http:\/\/127\.0\.0\.1|file:)/.test(u)) return 'published';
+  return /-proposed\.html$/.test(u.split(/[?#]/)[0]) ? 'prototype' : 'local-build';
+}
+
+const classCounts = (list) => CLASSES.map((c) => [list.filter((f) => f.classed && f.classed.class === c).length, c]).filter(([n]) => n).map(([n, c]) => `${n} ${c}`).join(', ');
 
 const loadDep = async (name) => {
   try { const req = createRequire(join(process.cwd(), 'package.json')); const m = await import(pathToFileURL(req.resolve(name)).href); return m.default || m; } catch { /* fall through */ }
@@ -276,20 +322,72 @@ async function main() {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, '').trim()); process.exit(0); }
   const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
   const [sf, bf] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--')));
-  if (!sf || !bf || !existsSync(sf) || !existsSync(bf)) { console.error('usage: chrome-compare.mjs <source.json> <build.json> [--profile replica|functional] [--bar 0.02] [--decisions f] [--json f]'); process.exit(1); }
+  const usage = (why) => { console.error(`${why ? `chrome-compare: ${why}\n` : ''}usage: chrome-compare.mjs <source.json> <build.json> [--profile replica|functional] [--bar 0.02] [--decisions f] [--json f] [--stage s] [--rounds dir] (see --help)`); process.exit(1); };
+  if (!sf || !bf || !existsSync(sf) || !existsSync(bf)) usage();
+  const dir = arg('rounds', join('stardust', 'chrome'));
+  const df = arg('decisions', join('stardust', 'chrome', 'header-decisions.json'));
+  const profile = arg('profile', 'replica');
   const src = JSON.parse(readFileSync(sf, 'utf8')); const bld = JSON.parse(readFileSync(bf, 'utf8'));
-  const profile = arg('profile', 'replica'); const bar = Number(arg('bar', 0.02));
+  const bar = Number(arg('bar', 0.02));
+  const stage = arg('stage', stageOfBuild(bld.url));
+  if (!LEDGER_STAGES.includes(stage)) usage(`--stage is one of ${LEDGER_STAGES.join(' | ')} (got ${stage})`);
+  // Round cap (header § Round cap): the ledger is read and written BEFORE anything is compared — a cap that cannot be
+  // checked or kept refuses the comparison (exit 1); only STARDUST_ROUND_CAP=0 compares without it.
+  const capOff = process.env.STARDUST_ROUND_CAP === '0';
+  let R = null; let ledger = null; let may = null;
+  try {
+    if (!ROUNDS) throw new Error('rounds.mjs not found (looked in ../../replica/scripts/ and ../replica/): copy the replica skill\'s scripts dir to stardust/scripts/replica/');
+    R = await import(ROUNDS.href);
+    mkdirSync(dir, { recursive: true });
+    const l = R.load(dir);
+    if (l.source !== 'ledger' && existsSync(join(dir, 'rounds.json'))) throw new Error(`${join(dir, 'rounds.json')} is not a readable round ledger: repair or delete it`);
+    ledger = l.ledger; R.save(dir, ledger);
+    may = R.mayRun(ledger, stage);
+  } catch (e) {
+    if (!capOff) { console.error(`chrome-compare: the round cap could not be checked — ${e.message} — so nothing is compared (STARDUST_ROUND_CAP=0 compares without the cap)`); process.exit(1); }
+    console.error(`chrome-compare: the round cap could not be checked — ${e.message} — the comparison runs uncounted (STARDUST_ROUND_CAP=0)`);
+    R = null;
+  }
   const { findings, visual } = compareDocs(src, bld, { profile });
   findings.push(...await visualFindings(visual, { srcDir: arg('src-shots', src.shots || '.'), buildDir: arg('build-shots', bld.shots || '.'), bar }));
-  const df = arg('decisions', join('stardust', 'chrome', 'header-decisions.json'));
   const all = applyDecisions(findings, existsSync(df) ? (JSON.parse(readFileSync(df, 'utf8')).decisions || []) : []);
   const errors = all.filter((f) => f.severity === 'error' && !f.decided); const warns = all.filter((f) => f.severity === 'warn'); const decided = all.filter((f) => f.decided);
-  for (const f of [...errors, ...warns]) console.log(`${f.severity === 'error' ? '🔴' : '🟡'} ${findingKey(f)} — ${f.detail}`);
+  const unclassed = errors.filter((f) => !f.classed);
+  const refused = !!R && !may.ok && !capOff;
+  const spent = () => { const t = R.tally(ledger, stage); return `${t.counted} of ${t.allowance} counted rounds`; };
+  if (refused && unclassed.length) {
+    const keys = unclassed.map(findingKey);
+    console.error(`chrome-compare: comparison refused at the ${stage} stage (exit 6) — ${may.t.closed ? `the stage was closed after ${spent()}` : `${spent()} spent, the last one a FAIL`}, and ${unclassed.length} of ${errors.length} error(s) ${may.t.closed ? 'have' : 'still have'} no class. Record one per finding in ${df} — { "decisions": [{ "finding": "<key>", "class": "${CLASSES.join('|')}", "reason": "<owner: the dynamics row or the third party; instrument: the defect and its evidence>" }] } — and run this again: it then exits 2 with the classes in the verdict (a class clears nothing; only the site owner does).${may.t.closed ? '' : ` A round lost to an instrument defect: node ${relative(process.cwd(), fileURLToPath(ROUNDS))} decide ${dir} --stage ${stage} --decision extend --reason "<the evidence file in ${dir} and the defect>".`} No class: ${keys.slice(0, 12).join('; ')}${keys.length > 12 ? `; … (+${keys.length - 12})` : ''}`);
+    process.exit(6);
+  }
+  // The ledger first, the verdict after: a comparison the ledger could not keep is not a verdict.
+  let round = null; let roundLine = '';
+  try {
+    if (R && refused && errors.length) {
+      if (!may.t.closed) {
+        const d = R.decide(ledger, stage, 'accept-residual', `${errors.length} header-contract error(s) classed (${classCounts(errors)}) in ${df}`);
+        if (d.error) throw new Error(d.error);
+        R.save(dir, ledger);
+      }
+      roundLine = `chrome-compare: ${stage} stage — capped after ${spent()}: every remaining error has a class (${classCounts(errors)}), the stage is closed and this comparison is not counted`;
+    } else if (R) {
+      const t0 = R.tally(ledger, stage);
+      round = R.record(ledger, stage, `compare-${t0.rounds + 1}`, errors.length ? 'fail' : 'pass');
+      R.save(dir, ledger);
+      const m = R.mayRun(ledger, stage);
+      roundLine = `chrome-compare: ${stage} stage — recorded "${round.label}" ${round.verdict} as ${round.kind}: ${spent()}${!m.ok && !m.t.closed ? ` — cap reached: the next comparison at this stage exits 6 until every remaining error has a class in ${df} (--help § Round cap)` : ''}`;
+    }
+  } catch (e) {
+    console.error(`chrome-compare: the round could not be recorded in ${join(dir, 'rounds.json')} — ${e.message} — so this comparison is not a verdict${capOff ? ' (STARDUST_ROUND_CAP=0: its findings follow)' : ''}`);
+    if (!capOff) process.exit(1);
+  }
+  for (const f of [...errors, ...warns]) console.log(`${f.severity === 'error' ? '🔴' : '🟡'} ${findingKey(f)} — ${f.detail}${f.classed ? ` [class ${f.classed.class}: ${f.classed.reason}]` : ''}`);
   const widths = Object.keys(src.widths || {}).map(Number);
-  const verdict = { tool: 'chrome-compare', at: new Date().toISOString(), source: src.url, build: bld.url, profile, bar, widths, counts: { error: errors.length, warn: warns.length, decided: decided.length }, findings: all.map((f) => ({ key: findingKey(f), ...f })) };
+  const verdict = { tool: 'chrome-compare', at: new Date().toISOString(), source: src.url, build: bld.url, profile, bar, widths, stage, ...(round ? { round: { label: round.label, kind: round.kind } } : {}), ...(refused && errors.length ? { capped: true } : {}), counts: { error: errors.length, warn: warns.length, decided: decided.length, classed: errors.length - unclassed.length }, findings: all.map((f) => ({ key: findingKey(f), ...f })) };
   const out = arg('json', null);
   if (out) { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, `${JSON.stringify(verdict, null, 1)}\n`); }
-  console.log(`chrome-compare: ${errors.length} error(s), ${warns.length} warning(s), ${decided.length} decided (profile ${profile}, widths ${widths.join(',')})${out ? ` → ${out}` : ''}`);
+  console.log(`chrome-compare: ${errors.length} error(s), ${warns.length} warning(s), ${decided.length} decided (profile ${profile}, widths ${widths.join(',')})${errors.length > unclassed.length ? ` — classes: ${classCounts(errors)}${unclassed.length ? `, ${unclassed.length} without` : ''}` : ''}${out ? ` → ${out}` : ''}`);
+  if (roundLine) console.log(roundLine);
   process.exit(errors.length ? 2 : 0);
 }
 

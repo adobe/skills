@@ -16,7 +16,7 @@ Run the copies under `stardust/scripts/<skill>/`. Read before `--help`; ask it o
 - `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html`
 - `deploy/section-schema.mjs` — section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
 - `deploy/style-fingerprint.mjs` — variation groups — `file:///abs/<proto>.html`
-- `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f]`; exit 2 = undecided error
+- `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f]`; exit 2 errors, 6 capped
 - `diff/chrome-explore.mjs` — header states, motion, scroll — `<url> <out.json> [--width 1440,390] [--max-requests 600]`
 - `diff/clip-probe.mjs` — text/controls clipped by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped > 0
 - `diff/content-diff.mjs` — structural + attribute/icon diff, all roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json]`
