@@ -44,6 +44,7 @@ Usage: node content-presence.mjs <originUrl> <edsUrl> [options]
   --json [<file>]          JSON (inventories, bands, findings, totals, clip, textBoxes)
   --min-cut <px>           clip partial-cut floor (default 2)
   --chrome                 include header / footer items (default: left to the chrome crop gate)
+  --parallel-sides         inventory the origin and the served page at once (each in its own context)
   --settle-passes <n>      slow-scroll passes until the height is stable (default 4; infinite-scroll
                            origins keep loading — mark those regions --variable)
   --max-findings <n>       printed findings per kind (default 40)
@@ -304,7 +305,7 @@ export function formatReport(res, { maxPerKind = 40 } = {}) {
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.length < 2 || rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(rest.includes('--help') || rest.includes('-h') || !rest.length ? 0 : 1); }
-  const opts = { origin: null, eds: null, width: 1440, main: null, mainEds: null, variable: [], variableEds: [], json: false, jsonFile: null, minCut: 2, maxFindings: 40, plain: false, warmup: null, locale: 'en-US', chrome: false, settlePasses: 4, countWords: null, moreWords: null };
+  const opts = { origin: null, eds: null, width: 1440, main: null, mainEds: null, variable: [], variableEds: [], json: false, jsonFile: null, minCut: 2, maxFindings: 40, plain: false, warmup: null, locale: 'en-US', chrome: false, settlePasses: 4, countWords: null, moreWords: null, parallelSides: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') opts.width = Number(rest[++i]);
@@ -314,6 +315,7 @@ export function parseArgs(argv) {
     else if (a === '--min-cut') opts.minCut = Number(rest[++i]);
     else if (a === '--chrome') opts.chrome = true;
     else if (a === '--settle-passes') opts.settlePasses = Number(rest[++i]);
+    else if (a === '--parallel-sides') opts.parallelSides = true;
     else if (a === '--count-words') opts.countWords = rest[++i].split(',').map((w) => w.trim()).filter(Boolean).join('|');
     else if (a === '--more-words') opts.moreWords = rest[++i];
     else if (a === '--max-findings') opts.maxFindings = Number(rest[++i]);
@@ -348,8 +350,11 @@ async function main() {
     // ORIGIN side fails loud on any HTTP ≥ 400 (a 403 page measured as the origin reads "100 EXTRA on the
     // build"); the SERVED side is measured with a warning (a 404 build before preview propagation is the
     // advisory contract).
-    o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, overlay: overlayOf(opts), rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
-    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, overlay: overlayOf(opts), rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
+    const sideO = () => inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, overlay: overlayOf(opts), rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
+    const sideE = () => inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, overlay: overlayOf(opts), rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
+    // --parallel-sides: each side has its own browser context, so the two inventories can run at once
+    if (opts.parallelSides) [o, e] = await Promise.all([sideO(), sideE()]);
+    else { o = await sideO(); e = await sideE(); }
   } finally { await browser.close(); }
   const res = diffPresence(o, e, { chrome: opts.chrome });
   const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups } });
