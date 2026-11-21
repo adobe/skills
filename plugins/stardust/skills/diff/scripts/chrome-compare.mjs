@@ -47,8 +47,12 @@
  *                                  a local URL ending in -proposed.html, any other local URL, anything else
  *   --rounds <dir>                 the ledger's folder, also where --status reads header-contract.json (default stardust/chrome)
  *   --status --page <source-url> --build <build-url>   no comparison: has the header contract a verdict at --stage
- *                                  (default from --build)? Prints nothing (exit 0) without a contract or when the
- *                                  contract's `url` is another page than --page (host and path); else one line:
+ *                                  (default from --build)? Without a contract: `header contract: NOT RECORDED —
+ *                                  <the chrome-explore command for --page>` (exit 2) when stardust/state.json says
+ *                                  flow "replica" — every page asks until one is recorded; a page with no header
+ *                                  records a contract with no root and no control, which a build without one
+ *                                  passes — and nothing (exit 0) in any other project. With a contract: nothing
+ *                                  (exit 0) when its `url` is another page than --page (host and path); else one line:
  *                                  `header contract: PASS at this stage …` or `… CAPPED at this stage …` (exit 0),
  *                                  `… NOT COMPARED at this stage — <command>` or `… FAIL at this stage …` (exit 2).
  *                                  CAPPED needs more than a closed ledger: the stage's last verdict (--json, default
@@ -386,7 +390,13 @@ async function main() {
   if (status) {
     // gate.sh's question (no comparison, no write): nothing without a contract; an unreadable contract or ledger is an error, never "compared".
     const cf = join(dir, 'header-contract.json');
-    if (!existsSync(cf)) process.exit(0);
+    if (!existsSync(cf)) {
+      // never recorded: asked of every page in a replica project by state.json's flow (gate.sh makes stardust/replica/ itself, so the folder tells nothing here)
+      const sf = join('stardust', 'state.json');
+      if (!existsSync(sf) || JSON.parse(readFileSync(sf, 'utf8')).flow !== 'replica') process.exit(0);
+      console.log(`header contract: NOT RECORDED — node ${join(dirname(me), 'chrome-explore.mjs')} "${arg('page')}" ${cf}`);
+      process.exit(2);
+    }
     const contract = JSON.parse(readFileSync(cf, 'utf8'));
     const stage = arg('stage', stageOfBuild(arg('build')));
     if (!LEDGER_STAGES.includes(stage)) usage(`--stage is one of ${LEDGER_STAGES.join(' | ')} (got ${stage})`);

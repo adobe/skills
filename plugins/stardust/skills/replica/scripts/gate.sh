@@ -202,15 +202,22 @@
 #   (exit 1, before any curl or capture) — re-copy the replica scripts dir, or repair
 #   <evidence dir>/rounds.json. Only STARDUST_ROUND_CAP=0 runs a round the guard could not check.
 #
-# Header contract (--full, the prototype stage, only when stardust/chrome/header-contract.json exists): the first
-#   comparison of the header's behaviour belongs here, before the header is converted to a block. No browser:
-#   `chrome-compare.mjs --status` reads the contract and its round ledger (stardust/chrome/rounds.json, stage
-#   prototype) and answers for the page the contract was recorded on — the round whose <live-url> is the contract's
-#   `url` (host and path); every other page prints nothing. One verdict line, in every --full round of that page:
+# Header contract (--full, the prototype stage): the header's behaviour is recorded from the source and first
+#   compared here, before the header is converted to a block. No browser: `chrome-compare.mjs --status` answers.
+#   No stardust/chrome/header-contract.json, in a replica project (stardust/state.json flow "replica"; without that
+#   line in state.json nothing is asked): EVERY page's --full round prints
+#     header contract: NOT RECORDED — <the chrome-explore command for this round's <live-url>>
+#   a failed probe like NOT COMPARED below, until a contract exists — any page can be the one explored. A site with
+#   no header gets through by recording it: the explorer writes a contract with no root and no control, and a build
+#   without a header compares clean against it.
+#   With a contract, `--status` reads it and its round ledger (stardust/chrome/rounds.json, stage prototype) and
+#   answers for the page the contract was recorded on — the round whose <live-url> is the contract's `url` (host
+#   and path); every other page prints nothing. One verdict line, in every --full round of that page:
 #     header contract: NOT COMPARED at this stage — <the chrome-explore and chrome-compare commands to run>
 #     header contract: FAIL at this stage — <n> counted round(s) of 3, the last one a FAIL: …
 #     header contract: PASS at this stage (…)  |  header contract: CAPPED at this stage — … (closed with a class per error)
-#   NOT COMPARED and FAIL count as a failed probe (exit 2) once the pixel criterion passes; PASS and CAPPED do not.
+#   NOT RECORDED, NOT COMPARED and FAIL count as a failed probe (exit 2) once the pixel criterion passes; PASS and
+#   CAPPED do not. No environment variable turns the probe off (STARDUST_ROUND_CAP=0 is the round cap's only).
 #   The comparison has its own cap (chrome-compare.mjs --help § Round cap): after its three rounds a class per
 #   remaining error closes the stage, so a prototype that cannot carry the behaviour still passes this probe.
 #   Fails closed: a contract or ledger that cannot be read, or a chrome-compare.mjs without --status, is
@@ -739,9 +746,10 @@ if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
   capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --stage "$UNIT_STAGE" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$UG" 2>&1 &
   P_UG=$!
 fi
-# Header contract (header § Header contract): at the prototype stage, with a contract on disk, has it a verdict here?
+# Header contract (header § Header contract): at the prototype stage — with a contract on disk, has it a verdict here?
+# Without one, in a replica project (state.json flow), it was never recorded.
 RC_HC=0; HC=""
-if [ "$REGIME" = prototype ] && [ -f stardust/chrome/header-contract.json ]; then
+if [ "$REGIME" = prototype ] && { [ -f stardust/chrome/header-contract.json ] || grep -qE '"flow"[[:space:]]*:[[:space:]]*"replica"' stardust/state.json 2>/dev/null; }; then
   HC="$DIR/header-contract-$LBL.txt"
   node "$DIFF/chrome-compare.mjs" --status --stage prototype --page "$LIVE_URL" --build "$BUILD_URL" > "$HC" 2>&1; RC_HC=$?
 fi
@@ -795,7 +803,7 @@ fi
 if [ -n "$HC" ]; then
   HC_LINE=$(grep -E '^header contract: ' "$HC" | head -1)
   case "$RC_HC" in
-    0|2) if [ -n "$HC_LINE" ]; then echo "$HC_LINE"; else rm -f "$HC"; HC=""; RC_HC=0; fi ;; # no line: the contract is another page's
+    0|2) if [ -n "$HC_LINE" ]; then echo "$HC_LINE"; else rm -f "$HC"; HC=""; RC_HC=0; fi ;; # no line: the contract is another page's, or none and no replica flow
     *) echo "header contract: ERROR (exit $RC_HC) — $(head -1 "$HC" | cut -c1-200) — no verdict; repair it, or re-copy the diff scripts dir" ;;
   esac
 fi

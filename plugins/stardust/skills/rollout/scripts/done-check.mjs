@@ -19,7 +19,7 @@
  *   open_p1:N                      open or in-progress P1 findings in optimize/findings.json, source parity
  *                                  excluded — the optimize gate's own count
  *   header_parity:<why>            migration projects (state.json `flow`) only: the header contract
- *                                  (chrome/header-contract.json, chrome-explore of the source) is missing, or
+ *                                  (chrome/header-contract.json, chrome-explore of the source) was never recorded, or
  *                                  chrome/header-parity.json (chrome-compare) is missing, older than the contract,
  *                                  of the wrong profile (replica flow: replica; redesign, reskin: functional),
  *                                  short of a contract width, not run on the live host, or has undecided errors —
@@ -80,7 +80,7 @@ const hostOf = (u) => { try { return new URL(/^https?:/.test(u) ? u : `https://$
 export function headerGap({ flow = null, contract = null, parity = null, liveHost = null, decisions = [] }) {
   if (!flow) return null;
   const want = flow === 'replica' ? 'replica' : 'functional';
-  if (!contract) return 'header_parity:no contract: chrome-explore.mjs <source home> stardust/chrome/header-contract.json';
+  if (!contract) return 'header_parity:no contract — the header contract was never recorded, so the header\'s behaviour was never compared: node stardust/scripts/diff/chrome-explore.mjs <source home> stardust/chrome/header-contract.json, then chrome-compare.mjs the live header against it';
   if (!parity) return `header_parity:unchecked: chrome-compare.mjs the live header against the contract --profile ${want} --json stardust/chrome/header-parity.json`;
   if (parity.source !== contract.url) return `header_parity:compared against ${parity.source}, not the contract (${contract.url})`;
   if (String(parity.at) < String(contract.at)) return 'header_parity:stale: the contract is newer than the comparison';

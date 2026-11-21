@@ -218,6 +218,19 @@ check('headerGap: none without a flow; otherwise the contract, a fresh compariso
   assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed.slice(0, 1) }, liveHost: live, decisions: held }), 'header_parity:1 — 1 owner: state-missing@1440 Shop [hover] (owner)');
 });
 
+check('CLI: a replica project with no header contract → the never-recorded gap keeps it incomplete; a project with no flow in state.json → no header gap', () => {
+  const proj = project();
+  let r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout); assert.doesNotMatch(r.stdout, /header_parity/);
+  writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'replica' }));
+  r = run(proj, ['--offline']);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^header_parity:no contract — the header contract was never recorded, so the header's behaviour was never compared: node stardust\/scripts\/diff\/chrome-explore\.mjs <source home> stardust\/chrome\/header-contract\.json/m);
+  assert.match(r.stdout, /^✗ 1 gap\(s\)/m);
+  writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'redesign' }));
+  assert.match(run(proj, ['--offline']).stdout, /^header_parity:no contract/m, 'a redesign migration has a header contract too (as before)');
+  rmSync(proj, { recursive: true, force: true });
+});
 check('CLI: a replica project without a header contract is not complete', () => {
   const proj = project();
   writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'replica' }));

@@ -403,7 +403,19 @@ check('a hand-made accept-residual in the ledger is not a cap: --status stays FA
     assert.match(status().stdout, /but no verdict file of the comparison/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
-check('--status: silent without a contract or for another page; NOT COMPARED names the two commands; a pass or a capped stage exits 0', () => {
+check('a source with no header: a contract with no root and no control is a contract, and a build without a header passes it', () => {
+  const bare = (url) => ({ url, widths: { 1440: { root: null, controls: [], scroll: [], states: 0 }, 390: { root: null, controls: [], scroll: [], states: 0 } } });
+  assert.deepEqual(compareDocs(bare('https://example.com/'), bare('http://localhost:8791/home-proposed.html')).findings, []);
+  const root = project();
+  try {
+    writeFileSync(join(root, 'stardust/chrome/header-contract.json'), JSON.stringify(bare('https://example.com/')));
+    writeFileSync(join(root, 'stardust/chrome/header-build.json'), JSON.stringify(bare('http://localhost:8791/home-proposed.html')));
+    assert.equal(run(root).status, 0);
+    const r = run(root, ['--status', '--page', 'https://example.com/', '--build', 'http://localhost:8791/home-proposed.html']);
+    assert.deepEqual([r.status, r.stdout], [0, 'header contract: PASS at this stage (1 counted round)\n']);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+check('--status: NOT RECORDED without a contract in a replica project, silent for another page; NOT COMPARED names the two commands; a pass or a capped stage exits 0', () => {
   const root = project();
   const status = (page, extra = []) => run(root, ['--status', '--page', page, '--build', 'http://localhost:8791/home-proposed.html', ...extra]);
   try {
@@ -428,8 +440,17 @@ check('--status: silent without a contract or for another page; NOT COMPARED nam
     writeFileSync(join(root, 'stardust/chrome/rounds.json'), 'not json');
     assert.equal(status('https://example.com/').status, 1, 'an unreadable ledger is an error, never "compared"');
     rmSync(join(root, 'stardust/chrome/header-contract.json'));
-    r = status('https://example.com/');
-    assert.deepEqual([r.status, r.stdout], [0, ''], 'no contract: nothing to say');
+    r = status('https://example.com/about');
+    assert.equal(r.status, 2, r.stderr);
+    assert.match(r.stdout, /^header contract: NOT RECORDED — node .*chrome-explore\.mjs "https:\/\/example\.com\/about" stardust\/chrome\/header-contract\.json\n$/, 'a replica project with no contract: any page asks');
+    for (const state of ['{ "flow": "reskin" }', null]) {
+      if (state) writeFileSync(join(root, 'stardust/state.json'), state); else rmSync(join(root, 'stardust/state.json'));
+      r = status('https://example.com/');
+      assert.deepEqual([r.status, r.stdout], [0, ''], 'no contract outside a replica project: nothing to say');
+    }
+    writeFileSync(join(root, 'stardust/state.json'), '{ "flow": ');
+    assert.equal(status('https://example.com/').status, 1, 'a state.json that cannot be read is an error, never silence');
+    writeFileSync(join(root, 'stardust/state.json'), '{ "flow": "replica" }');
     assert.equal(run(root, ['--status']).status, 1, '--status needs --page and --build');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

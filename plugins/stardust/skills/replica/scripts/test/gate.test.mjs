@@ -17,7 +17,8 @@
 // (the `gate` helper's default here); the reference sections pass DEF.
 // The header contract at the prototype stage (--full, the REAL chrome-compare.mjs --status, no browser): for the page the
 // contract was recorded on, NOT COMPARED / FAIL is a failed probe once the pixels pass, PASS / CAPPED is not; another
-// page, another stage or no contract prints nothing; a contract that cannot be read is no verdict (exit 1).
+// page, another stage or no contract prints nothing; a contract that cannot be read is no verdict (exit 1). No contract
+// in a replica project (state.json flow "replica"): every page's round prints NOT RECORDED, a failed probe.
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -836,11 +837,27 @@ check('--help names --hold-timers, --hold-min and GATE_HOLD_TIMERS', r.status ==
   const probe = (slug, label) => ((verdictJson(slug, label) || {}).probes || {})['header-contract'];
   r = await hc('n0');
   check('header contract: no contract file → nothing printed, nothing failed', r.status === 0 && !/header contract/.test(r.stdout) && !probe('hc', 'n0') && !existsSync(join(root, gdir('hc'), 'header-contract-n0.txt')), `status ${r.status} ${r.stdout}`);
+  // never recorded: a replica project (state.json flow) asks on every page's round; any other project is not asked
+  const stateFile = join(root, 'stardust/state.json');
+  const notRecorded = (slug) => new RegExp(`^header contract: NOT RECORDED — node stardust/scripts/diff/chrome-explore\\.mjs "https://live\\.example/${slug}" stardust/chrome/header-contract\\.json$`, 'm');
+  writeFileSync(stateFile, JSON.stringify({ flow: 'replica', pages: [] }, null, 2));
+  r = await hc('nr1');
+  check('header contract: no contract in a replica project → the NOT RECORDED line with the explore command for this page\'s source, a failed probe (exit 2) on a pixel pass', r.status === 2 && notRecorded('hc').test(r.stdout) && (probe('hc', 'nr1') || {}).rc === 2 && (roundsOf('hc').find((x) => x.label === 'nr1') || {}).verdict === 'fail', `status ${r.status} ${r.stdout} ${r.stderr}`);
+  r = await hc('nr2', {}, 'hcother');
+  check('header contract: … on every page\'s round until one is recorded', r.status === 2 && notRecorded('hcother').test(r.stdout), `status ${r.status} ${r.stdout}`);
+  r = await hc('nr3', { STUB_PIXEL_RC: '2' });
+  check('header contract: NOT RECORDED is printed on a pixel FAIL too; the pixel verdict is the exit', r.status === 2 && notRecorded('hc').test(r.stdout), `status ${r.status} ${r.stdout}`);
+  r = await hc('nr4', { GATE_REGIME: 'published' });
+  check('header contract: NOT RECORDED is not asked at the published stage', r.status === 0 && !/header contract/.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  writeFileSync(stateFile, JSON.stringify({ flow: 'reskin' }));
+  r = await hc('nr5');
+  check('header contract: no contract in a project of another flow → nothing printed, nothing failed', r.status === 0 && !/header contract/.test(r.stdout) && !probe('hc', 'nr5'), `status ${r.status} ${r.stdout}`);
+  writeFileSync(stateFile, JSON.stringify({ flow: 'replica' }));
   writeFileSync(contractFile, JSON.stringify({ url: 'http://live.example/hc/index.html', widths: { 1440: {}, 390: {} } }));
   r = await hc('n1');
   check('header contract: recorded on this page and never compared at the prototype stage → the NOT COMPARED verdict line with the two commands, a failed probe (exit 2) on a pixel pass',
     r.status === 2 && new RegExp(`^header contract: NOT COMPARED at this stage — node stardust/scripts/diff/chrome-explore\\.mjs "${buildUrl}" stardust/chrome/header-build\\.json --width 390,1440 --max-requests 0 --pace-ms 0 --reload-pause-ms 0 && node stardust/scripts/diff/chrome-compare\\.mjs stardust/chrome/header-contract\\.json stardust/chrome/header-build\\.json --profile replica --json stardust/chrome/header-parity\\.json$`, 'm').test(r.stdout), `status ${r.status} ${r.stdout} ${r.stderr}`);
-  check('… every other probe ran and passed, the verdict file records the probe and its evidence, and the round is a FAIL in the page\'s ledger', /^content-diff: none/m.test(r.stdout) && /^chrome-parity: ✓/m.test(r.stdout) && (probe('hc', 'n1') || {}).rc === 2 && /header-contract-n1\.txt$/.test((probe('hc', 'n1') || {}).evidence || '') && / stardust\/replica\/gates\/hc-1440\/header-contract-n1\.txt /.test(r.stdout.split('\n').find((l) => l.startsWith('evidence: ')) || '') && roundsOf('hc').at(-1).verdict === 'fail', JSON.stringify(verdictJson('hc', 'n1')));
+  check('… every other probe ran and passed, the verdict file records the probe and its evidence, and the round is a FAIL in the page\'s ledger', /^content-diff: none/m.test(r.stdout) && /^chrome-parity: ✓/m.test(r.stdout) && (probe('hc', 'n1') || {}).rc === 2 && /header-contract-n1\.txt$/.test((probe('hc', 'n1') || {}).evidence || '') && / stardust\/replica\/gates\/hc-1440\/header-contract-n1\.txt /.test(r.stdout.split('\n').find((l) => l.startsWith('evidence: ')) || '') && (roundsOf('hc').find((x) => x.label === 'n1') || {}).verdict === 'fail', JSON.stringify(verdictJson('hc', 'n1')));
   check('… the status question writes no ledger', !existsSync(join(chromeDir, 'rounds.json')));
   r = await hc('n2', { STUB_PIXEL_RC: '2' });
   check('header contract: on a pixel FAIL the line is still printed; the pixel verdict is the exit', r.status === 2 && /^header contract: NOT COMPARED at this stage — /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
@@ -874,9 +891,9 @@ check('--help names --hold-timers, --hold-min and GATE_HOLD_TIMERS', r.status ==
   writeFileSync(join(diff, 'chrome-compare.mjs'), '#!/usr/bin/env node\nconsole.error("usage: chrome-compare.mjs <source.json> <build.json>"); process.exit(1);\n');
   r = await hc('e2');
   check('header contract: a chrome-compare.mjs copy without --status is no verdict (exit 1), with the re-copy instruction', r.status === 1 && /^header contract: ERROR \(exit 1\) — usage: chrome-compare\.mjs .* re-copy the diff scripts dir$/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
-  rmSync(chromeDir, { recursive: true, force: true });
+  rmSync(chromeDir, { recursive: true, force: true }); rmSync(stateFile);
   r = await gate(['--help']);
-  check('--help documents the header contract probe and its lines', /^Header contract \(--full, the prototype stage/m.test(r.stdout) && /header contract: NOT COMPARED at this stage — /.test(r.stdout) && /CAPPED at this stage/.test(r.stdout));
+  check('--help documents the header contract probe and its lines', /^Header contract \(--full, the prototype stage/m.test(r.stdout) && /header contract: NOT COMPARED at this stage — /.test(r.stdout) && /CAPPED at this stage/.test(r.stdout) && /header contract: NOT RECORDED — /.test(r.stdout));
 }
 unlinkSync(join(replica, 'rounds.mjs'));
 
