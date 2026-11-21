@@ -126,8 +126,9 @@
  *   - a setInterval of --hold-min ms or more is registered (a real id) and its callback never runs;
  *   - a setTimeout of --hold-min ms or more fires ONCE as the page asked (anti-flicker reveals, delayed script
  *     loading and late consent UI are one-shot timeouts of that length); the NEXT link of a chain is held: one
- *     armed while such a callback runs, or with the delay of one that already fired on this document (a carousel
- *     that re-arms from a transition-end handler). A chain is not known before its first tick, so a
+ *     armed while such a callback runs, or the same callback code with the same delay as one that already fired on
+ *     this document (a carousel that re-arms from a transition-end handler; another callback with that delay still
+ *     fires). A chain is not known before its first tick, so a
  *     timeout-driven carousel is captured after exactly one advance, an interval-driven one on its first slide;
  *   - shorter timers and requestAnimationFrame are untouched.
  * The record says timers { hold, held, intervals, chains, delays } for the captured document. A hold that was
@@ -193,7 +194,7 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --timeout <ms>    goto timeout (default 60000)
   --hold-timers     hold autoplay-class timers from document start, in every document (a reload included); default OFF.
                     A setInterval of --hold-min ms or more never ticks. A setTimeout of that length fires once; the next
-                    link of a chain (armed inside such a callback, or with the delay of one that already fired) is held —
+                    link of a chain (armed inside such a callback, or the same callback code and delay as one that fired) is held —
                     so an interval carousel is captured on its first slide, a timeout-chain one after one advance.
                     Shorter timers and requestAnimationFrame are untouched. The record gets timers { hold, held,
                     intervals, chains, delays }; a hold that is not installed in the captured document is exit 1, no PNG.
@@ -334,7 +335,8 @@ export function installTimerHold(win, min) {
   const nativeTimeout = win.setTimeout; const nativeInterval = win.setInterval;
   const noop = () => {};
   const ms = (d) => { const n = Number(d); return Number.isFinite(n) ? n : 0; };
-  const fired = new Set(); // the delays of the long timeouts that ran on this document
+  const fired = new Set(); // delay + callback source of the long timeouts that ran on this document
+  const sig = (cb, d) => `${d}|${Function.prototype.toString.call(cb)}`;
   let running = 0; // > 0 while the callback of a long timeout runs
   const hold = (kind, d) => {
     state.held += 1; state[kind] += 1;
@@ -348,9 +350,9 @@ export function installTimerHold(win, min) {
   win.setTimeout = function setTimeout(cb, delay, ...args) {
     const d = ms(delay);
     if (d < min || typeof cb !== 'function') return nativeTimeout.call(win, cb, delay, ...args);
-    if (running > 0 || fired.has(d)) return hold('chains', d);
+    if (running > 0 || fired.has(sig(cb, d))) return hold('chains', d);
     return nativeTimeout.call(win, function longTimeout(...a) {
-      fired.add(d); running += 1;
+      fired.add(sig(cb, d)); running += 1;
       try { return cb.apply(this, a); } finally { running -= 1; }
     }, delay, ...args);
   };

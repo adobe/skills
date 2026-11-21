@@ -656,7 +656,7 @@ await check('installTimerHold: a 5 s setInterval carousel never ticks — regist
   assert.equal(win.__sdTimerHold, state); assert.deepEqual(Object.keys(win).includes('__sdTimerHold'), false, 'not enumerable');
   assert.equal(installTimerHold(win, 2000), state, 'installed once per document');
 });
-await check('installTimerHold: a self-re-arming setTimeout carousel advances ONCE, then the chain is held — re-armed inside the callback (any delay), or later with the delay of a timeout that already fired (a transition-end handler, a fresh closure)', () => {
+await check('installTimerHold: a self-re-arming setTimeout carousel advances ONCE, then the chain is held — re-armed inside the callback (any delay), or later by the same callback code with the delay of one that already fired (a transition-end handler, a fresh closure)', () => {
   // (a) the callback re-arms itself
   let a = clockWindow(); let state = installTimerHold(a.win, 2000); let slide = 0;
   const next = () => { slide += 1; a.win.setTimeout(next, 5000); };
@@ -672,6 +672,12 @@ await check('installTimerHold: a self-re-arming setTimeout carousel advances ONC
   const arm = () => a.win.setTimeout(() => { slide += 1; a.win.setTimeout(arm, 300); }, 5000); // 300 ms: the "transition"
   arm(); a.advance(60000);
   assert.equal(slide, 1); assert.equal(state.chains, 1);
+});
+await check('installTimerHold: an unrelated one-shot timeout with the delay of one that already fired still runs — only the same callback code is a chain', () => {
+  const a = clockWindow(); const state = installTimerHold(a.win, 2000); const ran = [];
+  a.win.setTimeout(() => { ran.push('A'); }, 2000); a.advance(2500);
+  a.win.setTimeout(() => { ran.push('B: a late reveal'); }, 2000); a.advance(2500);
+  assert.deepEqual(ran, ['A', 'B: a late reveal']); assert.deepEqual({ ...state }, { min: 2000, held: 0, intervals: 0, chains: 0, delays: [] });
 });
 await check('installTimerHold: one-shot timeouts of any length fire once as the page asked (this, arguments, return value untouched) — content revealed after 2.5 s, an anti-flicker timeout, two reveals armed together with one delay; short timeouts reach the native timer unwrapped', () => {
   const { win, advance } = clockWindow();
