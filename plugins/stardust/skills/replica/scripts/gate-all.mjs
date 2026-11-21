@@ -436,6 +436,7 @@ export function contentArgs(script, originUrl, edsUrl, jsonFile, opts, presence 
   if (presence.variable && presence.variable.length) args.push('--variable', presence.variable.join(','));
   if (presence.main) args.push('--main', presence.main);
   if (opts.warmup) args.push('--warmup', opts.warmup);
+  if (opts.parallelProbes) args.push('--parallel-sides');
   return args;
 }
 /** clip-probe <eds> --json <file> (the served side). */
