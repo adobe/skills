@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.2](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.1...plugin/stardust/v0.44.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** header parity pairs a link by address when one side has no text, and the explorer ignores and records what changes on its own ([#767](https://github.com/adobe/skills/issues/767)) ([1ceb7b9](https://github.com/adobe/skills/commit/1ceb7b9cfbd1392d050230b94a5eee3498d3d416))
+
 ## [0.44.1](https://github.com/adobe/skills/compare/plugin/stardust/v0.44.0...plugin/stardust/v0.44.1) (2026-11-21)
 
 
