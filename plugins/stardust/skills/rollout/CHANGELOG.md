@@ -1,3 +1,10 @@
+## [1.3.2](https://github.com/adobe/skills/compare/rollout-v1.3.1...rollout-v1.3.2) (2026-11-21)
+
+
+### Bug Fixes
+
+* **stardust:** the replica gate says when a page had no unit family and the repeated-unit check did not run ([#781](https://github.com/adobe/skills/issues/781)) ([5456c48](https://github.com/adobe/skills/commit/5456c48a8a903f3a91767538cc102f5862003895))
+
 ## [1.3.1](https://github.com/adobe/skills/compare/rollout-v1.3.0...rollout-v1.3.1) (2026-11-21)
 
 # [1.3.0](https://github.com/adobe/skills/compare/rollout-v1.2.1...rollout-v1.3.0) (2026-11-20)
