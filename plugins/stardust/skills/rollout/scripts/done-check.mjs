@@ -19,10 +19,13 @@
  *   open_p1:N                      open or in-progress P1 findings in optimize/findings.json, source parity
  *                                  excluded — the optimize gate's own count
  *   header_parity:<why>            migration projects (state.json `flow`) only: the header contract
- *                                  (chrome/header-contract.json, chrome-explore of the source) is missing, or
+ *                                  (chrome/header-contract.json, chrome-explore of the source) was never recorded, or
  *                                  chrome/header-parity.json (chrome-compare) is missing, older than the contract,
  *                                  of the wrong profile (replica flow: replica; redesign, reskin: functional),
- *                                  short of a contract width, not run on the live host, or has undecided errors
+ *                                  short of a contract width, not run on the live host, or has undecided errors —
+ *                                  `header_parity:3 — 2 owner, 1 no class: <key> (owner), …` when chrome-compare wrote a
+ *                                  class beside one (its --help § Round cap) that chrome/header-decisions.json still
+ *                                  holds: a class names who closes it, never closes it
  *   library_missing[:<why>]        pages were delivered but da-library.mjs has not written the site's block library to
  *                                  DA for them: <out>/library/published.json is absent (never run, or its last run
  *                                  stopped or failed), was published to another org/site than rollout.json site.da,
@@ -74,10 +77,10 @@ export const openP1 = (findings) => findings.filter((f) => (f.status === 'open' 
 const hostOf = (u) => { try { return new URL(/^https?:/.test(u) ? u : `https://${u}`).host; } catch { return ''; } };
 
 /** The header's gap, or null: a migration is not done while its header's behaviour is unproven (header-parity). */
-export function headerGap({ flow = null, contract = null, parity = null, liveHost = null }) {
+export function headerGap({ flow = null, contract = null, parity = null, liveHost = null, decisions = [] }) {
   if (!flow) return null;
   const want = flow === 'replica' ? 'replica' : 'functional';
-  if (!contract) return 'header_parity:no contract: chrome-explore.mjs <source home> stardust/chrome/header-contract.json';
+  if (!contract) return 'header_parity:no contract — the header contract was never recorded, so the header\'s behaviour was never compared: node stardust/scripts/diff/chrome-explore.mjs <source home> stardust/chrome/header-contract.json, then chrome-compare.mjs the live header against it';
   if (!parity) return `header_parity:unchecked: chrome-compare.mjs the live header against the contract --profile ${want} --json stardust/chrome/header-parity.json`;
   if (parity.source !== contract.url) return `header_parity:compared against ${parity.source}, not the contract (${contract.url})`;
   if (String(parity.at) < String(contract.at)) return 'header_parity:stale: the contract is newer than the comparison';
@@ -86,7 +89,15 @@ export function headerGap({ flow = null, contract = null, parity = null, liveHos
   if (short.length) return `header_parity:not compared at ${short.join(', ')}`;
   if (liveHost && hostOf(parity.build) !== hostOf(liveHost)) return `header_parity:compared on ${hostOf(parity.build)}, not the live host ${hostOf(liveHost)}`;
   const open = (parity.findings || []).filter((f) => f.severity === 'error' && !f.decided);
-  return open.length ? `header_parity:${open.length}: ${listed(open.map((f) => f.key))}` : null;
+  if (!open.length) return null;
+  // the classes chrome-compare wrote at its round cap: said with the gap, which stays a gap
+  // … and only a class the decisions file still holds for that key, with a reason: a class written by hand into the verdict is none
+  const held = (f) => decisions.some((d) => d && d.finding === f.key && d.class === f.classed.class && String(d.reason || '').trim());
+  const cls = (f) => (f.classed && f.classed.class && held(f) ? f.classed.class : null);
+  if (!open.some(cls)) return `header_parity:${open.length}: ${listed(open.map((f) => f.key))}`;
+  const counts = [...new Set(open.map(cls).filter(Boolean))].map((c) => `${open.filter((f) => cls(f) === c).length} ${c}`);
+  const none = open.filter((f) => !cls(f)).length;
+  return `header_parity:${open.length} — ${[...counts, ...(none ? [`${none} no class`] : [])].join(', ')}: ${listed(open.map((f) => (cls(f) ? `${f.key} (${cls(f)})` : f.key)))}`;
 }
 
 /** `library` is the library gap (lib.mjs libraryGap) or null; it counts only once a page is delivered. */
@@ -194,7 +205,7 @@ async function main() {
   const findings = (readJSON(join(OUT, 'optimize', 'findings.json'), {}) || {}).findings || [];
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
   const chrome = arg('chrome', 'stardust/chrome');
-  const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
+  const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host, decisions: (readJSON(join(chrome, 'header-decisions.json'), {}) || {}).decisions || [] });
   // the coverage `path`s da-library recorded (it reads the same rows), not the probed public URLs, with when each was delivered
   const delivered = pages.filter((p) => DELIVERED.has(statusOf(p)) && p.path).map((p) => ({ path: p.path, deployedAt: p.delivery && p.delivery.deployedAt }));
   const library = libraryGap(readJSON(libraryMarkerPath(OUT)), { da: (config.site && config.site.da) || {}, delivered });

@@ -209,8 +209,28 @@ check('headerGap: none without a flow; otherwise the contract, a fresh compariso
   assert.match(headerGap({ flow: 'replica', contract, parity: { ...parity, build: 'https://main--site--org.aem.page/' }, liveHost: live }), /not the live host/);
   const findings = [{ key: 'state-missing@1440 Shop [hover]', severity: 'error' }, { key: 'motion@390 Open menu [click]', severity: 'error', decided: { by: 'Site owner' } }, { key: 'link-href@1440 Shop', severity: 'warn' }];
   assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings }, liveHost: live }), 'header_parity:1: state-missing@1440 Shop [hover]');
+  // classes written at the comparison's round cap: printed with the gap, which stays a gap
+  const classed = [{ ...findings[0], classed: { class: 'owner', reason: 'the menu service' } }, { key: 'panel-visual@390 Menu [click]', severity: 'error', classed: { class: 'instrument' } }, { key: 'keyboard@1440 Shop', severity: 'error', classed: { class: 'owner' } }, { key: 'motion@1440 Shop [hover]', severity: 'error' }, findings[1]];
+  const held = classed.filter((f) => f.classed).map((f) => ({ finding: f.key, class: f.classed.class, reason: 'why' }));
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed }, liveHost: live }), 'header_parity:4: state-missing@1440 Shop [hover], panel-visual@390 Menu [click], keyboard@1440 Shop, motion@1440 Shop [hover]', 'a class the decisions file does not hold is not printed');
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed }, liveHost: live, decisions: [held[0], { ...held[1], reason: '' }, { ...held[2], class: 'instrument' }] }), 'header_parity:4 — 1 owner, 3 no class: state-missing@1440 Shop [hover] (owner), panel-visual@390 Menu [click], keyboard@1440 Shop, motion@1440 Shop [hover]');
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed }, liveHost: live, decisions: held }), 'header_parity:4 — 2 owner, 1 instrument, 1 no class: state-missing@1440 Shop [hover] (owner), panel-visual@390 Menu [click] (instrument), keyboard@1440 Shop (owner), motion@1440 Shop [hover]');
+  assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings: classed.slice(0, 1) }, liveHost: live, decisions: held }), 'header_parity:1 — 1 owner: state-missing@1440 Shop [hover] (owner)');
 });
 
+check('CLI: a replica project with no header contract → the never-recorded gap keeps it incomplete; a project with no flow in state.json → no header gap', () => {
+  const proj = project();
+  let r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout); assert.doesNotMatch(r.stdout, /header_parity/);
+  writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'replica' }));
+  r = run(proj, ['--offline']);
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /^header_parity:no contract — the header contract was never recorded, so the header's behaviour was never compared: node stardust\/scripts\/diff\/chrome-explore\.mjs <source home> stardust\/chrome\/header-contract\.json/m);
+  assert.match(r.stdout, /^✗ 1 gap\(s\)/m);
+  writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'redesign' }));
+  assert.match(run(proj, ['--offline']).stdout, /^header_parity:no contract/m, 'a redesign migration has a header contract too (as before)');
+  rmSync(proj, { recursive: true, force: true });
+});
 check('CLI: a replica project without a header contract is not complete', () => {
   const proj = project();
   writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'replica' }));
