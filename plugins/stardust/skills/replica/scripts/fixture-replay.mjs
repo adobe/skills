@@ -329,6 +329,21 @@ const codeP = (async () => {
   timing('code-live', D.codeLive ? 'ok' : 'FAIL');
 })();
 const deliveryP = Promise.all([daP, codeP]).catch((e) => { D.error = e.message; });
+// the published-origin gate starts as soon as the page and its code are served and the fixture
+// records (with the frozen origin reference) are seeded — overlapping the remaining checkpoints
+let recordsSeeded;
+const seededP = new Promise((r) => { recordsSeeded = r; });
+const gateP = (async () => {
+  await Promise.all([deliveryP, seededP]);
+  if (D.error || flag('--skip-gate')) return { skipped: true };
+  sh('node', ['stardust/scripts/rollout/inventory.mjs']);
+  sh('node', ['stardust/scripts/rollout/update-coverage.mjs', slug, '--status', 'deployed', '--url', `${LIVE}${m.page.path}`]);
+  mark('gate-start');
+  timing('published-gate-start');
+  const g = await shBg('node', ['stardust/scripts/replica/gate-all.mjs', '--width', '1440', '--coverage', 'stardust/rollout/coverage/pages.json', ...(m.gate?.args || [])]);
+  mark('gate-end');
+  return g;
+})();
 timing('deploy-start', 'pipelined: push + DA media/docs → preview → publish, in parallel with the record phases');
 
 // Phase 1 — extract: the fixture's capture, proven current by the fingerprint
@@ -341,11 +356,13 @@ if (!skip('replica', 'extract')) {
     `Fingerprint: live page HTML and ${Object.keys(m.fingerprint.assets || {}).length} same-origin assets hash-identical to the fixture's capture, so the capture is current.`,
     `${n} capture, spec, prototype and gate-evidence files seeded from the fixture (site placeholders set to ${ORG}/${SITE}).`,
   ]);
+  recordsSeeded();
   ledger('replica', 'extract', 'end', `1/1 page: fixture capture verified current (fingerprint match, ${Object.keys(m.fingerprint.assets || {}).length + 1} hashes)`);
   timing('extract-end', 'fingerprint match');
   notes('We confirmed your page is unchanged since we last measured it and are restoring its verified rebuild.', 'Next we place the rebuilt page on Adobe Edge Delivery.');
   await boundary('extract');
 }
+recordsSeeded();
 for (const [phase, title, detail] of [
   ['preserve-direction', 'preserve-direction — bounded spec from the fixture', m.evidence?.direction || 'bounded-single spec + empty register (fixture)'],
   ['recreate', 'recreate — gated prototype from the fixture', m.evidence?.recreate || 'archetype prototype from the fixture'],
@@ -380,8 +397,8 @@ if (D.error) throw new Error(`delivery failed: ${D.error}`);
 // coverage + published-origin gate
 sh('node', ['stardust/scripts/rollout/update-coverage.mjs', slug, '--status', 'deployed', '--url', `${LIVE}${m.page.path}`]);
 let gateLine = 'skipped (--skip-gate)';
-if (!flag('--skip-gate')) {
-  const g = await shBg('node', ['stardust/scripts/replica/gate-all.mjs', '--width', '1440', '--coverage', 'stardust/rollout/coverage/pages.json', ...(m.gate?.args || [])]);
+const g = await gateP;
+if (!g.skipped) {
   const sum = path.join(SD, 'replica', 'gates', 'all-1440', 'summary.json');
   if (fs.existsSync(sum)) {
     const row = (JSON.parse(fs.readFileSync(sum, 'utf8')).rows || [])[0] || {};
