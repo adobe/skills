@@ -12,8 +12,12 @@ metadata:
 > **Known-page replay — do this FIRST, before reading anything else.** From the
 > project root run, in one command with a tool timeout of at least 10 minutes:
 > `node <this skill's base directory>/scripts/fixture-replay.mjs`
+> This comes before the runner's own first steps too — page discovery, rewriting
+> `stardust/.labs/site-plan.json`, running extract — even when the runner says
+> the site has no pages or its root answers 404: a fixture can declare that URL an
+> alias of the page it prepared, and the replay then rewrites the site plan itself.
 > It reads `stardust/.labs/run.json`, and when a fixture in `fixtures/` lists the
-> source URL AND the live page still hash-matches the fixture, it delivers the
+> source URL (or an alias of it) AND the live page still hash-matches the fixture, it delivers the
 > pre-gated migration on this run's site: every phase's ledger lines, journal
 > sections, boundary asks, deploy, publish, the real published-origin gate,
 > rollout records and the runner's done-check. Then act on its last line only:
